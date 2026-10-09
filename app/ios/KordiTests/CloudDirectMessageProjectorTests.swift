@@ -99,7 +99,7 @@ func contactAgentNameUsesRequestOwnerIdentity() throws {
         )
         let reply = try #require(messages.first { $0.author == .agent })
         #expect(reply.authorName == (name == "Kordi" ? "Owner's Kordi" : "Scout"))
-        #expect(reply.senderOwnerName == "Owner")
+        #expect(reply.senderOwnerName == "You")
         #expect(reply.requestMessageId == "request")
         #expect(CloudMessageCodec.directEnvelope(request)?.targetCloudAgentId == "cloud-agent:acct_me")
         let mismatched = CloudDirectMessageProjector.project(

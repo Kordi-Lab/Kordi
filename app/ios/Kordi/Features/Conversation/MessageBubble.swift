@@ -751,11 +751,10 @@ struct MessageBubble: View, Equatable {
                     messageID: message.id,
                     execution: execution,
                     showsWaitingIndicator: Self.showsAgentWaitingIndicator(execution: execution, responseText: message.text),
+                    stopRequestID: message.author == .agent && !execution.completed ? message.requestMessageId : nil,
+                    conversationID: message.conversationId,
                     onExpansionChange: onContentExpansionChange
                 )
-                if message.author == .agent, !execution.completed, let requestMessageId = message.requestMessageId {
-                    AgentRequestStopButton(conversationId: message.conversationId, requestMessageId: requestMessageId)
-                }
             }
 
             if let voiceMessage = message.voiceMessage {
@@ -1640,6 +1639,8 @@ struct AgentExecutionTimeline: View {
     let messageID: String
     let execution: AgentExecutionSnapshot
     let showsWaitingIndicator: Bool
+    var stopRequestID: String? = nil
+    var conversationID: String = ""
     let onExpansionChange: (Bool) -> Void
     @State private var localExpansion = AgentExecutionTimelineExpansion()
 
@@ -1657,11 +1658,18 @@ struct AgentExecutionTimeline: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if showsWaitingIndicator {
-                AgentExecutionActivityIndicator(
-                    accessibilityStatus: presentation.headline
-                )
-                .frame(minHeight: 24, alignment: .leading)
+            if showsWaitingIndicator || stopRequestID != nil {
+                HStack(spacing: 8) {
+                    if showsWaitingIndicator {
+                        AgentExecutionActivityIndicator(
+                            accessibilityStatus: presentation.headline
+                        )
+                    }
+                    if let stopRequestID {
+                        AgentRequestStopButton(conversationId: conversationID, requestMessageId: stopRequestID)
+                    }
+                }
+                .frame(height: 24, alignment: .leading)
             }
             if let activeOutputStatus = presentation.activeOutputStatus {
                 Button(action: toggleExpansion) {

@@ -79,7 +79,8 @@ enum CloudDirectMessageProjector {
                 author: .agent,
                 authorName: requestTargetsById[wire.messageId]?.targetCloudAgentName?.nonEmpty
                     ?? conversation.agentDisplayName?.nonEmpty ?? "Kordi",
-                senderOwnerName: requestTargetsById[wire.messageId]?.targetCloudAgentOwnerName?.nonEmpty
+                senderOwnerName: targetAccountId == ownAccountId ? "You"
+                    : requestTargetsById[wire.messageId]?.targetCloudAgentOwnerName?.nonEmpty
                     ?? conversation.ownerDisplayName?.nonEmpty,
                 text: "Request canceled by \(cancelledBy).",
                 createdAt: parseCloudDate(cancel.createdAt),
@@ -143,7 +144,7 @@ enum CloudDirectMessageProjector {
             conversationSequence: message.conversationSequence,
             author: author,
             authorName: authorName,
-            senderOwnerName: author == .agent ? agentOwnerName : nil,
+            senderOwnerName: author == .agent ? (message.fromAccountId == ownAccountId ? "You" : agentOwnerName) : nil,
             text: CloudMessageCodec.displayText(message.body),
             createdAt: createdAt ?? parseCloudDate(message.createdAt),
             editedAt: message.editedAt.map(parseCloudDate),

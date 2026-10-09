@@ -2155,8 +2155,10 @@ final class AppModel: ObservableObject {
                 agentDisplayName: routedAgent?.displayName
                     ?? conversation.agentDisplayName?.nonEmpty
                     ?? "Kordi",
-                agentOwnerName: routedAgent?.ownerName
-                    ?? (conversation.kind == .agent ? conversation.ownerDisplayName : nil),
+                agentOwnerName: routedAgent.map { $0.accountId == account.accountId ? "You" : $0.ownerName }
+                    ?? (conversation.kind == .agent
+                        ? (conversation.peerAccountId == account.accountId ? "You" : conversation.ownerDisplayName)
+                        : nil),
                 queued: conversation.kind == .agent
                     && !pendingAgentRequestIds[conversation.id, default: []].isEmpty
             )
@@ -5580,7 +5582,9 @@ final class AppModel: ObservableObject {
                 requestMessageId: requestMessageId,
                 startedAt: Date(),
                 agentDisplayName: conversation.agentDisplayName?.nonEmpty ?? "Kordi",
-                agentOwnerName: conversation.kind == .agent ? conversation.ownerDisplayName : nil
+                agentOwnerName: conversation.kind == .agent
+                    ? (conversation.peerAccountId == account.accountId ? "You" : conversation.ownerDisplayName)
+                    : nil
             )
         }
         while !Task.isCancelled,
@@ -6351,7 +6355,7 @@ final class AppModel: ObservableObject {
                 authorName: author == .me
                     ? "You"
                     : author == .agent ? agentName : payload.senderDisplayName?.nonEmpty ?? participantNames[payload.senderAccountId] ?? "Participant",
-                senderOwnerName: author == .agent ? ownerName : nil,
+                senderOwnerName: author == .agent ? (payload.senderAccountId == ownAccountId ? "You" : ownerName) : nil,
                 text: payload.text,
                 createdAt: Date(
                     timeIntervalSince1970: (

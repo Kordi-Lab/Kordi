@@ -52,6 +52,12 @@ struct AgentSubsessionStopButton: View {
     }
 }
 
+private struct AgentRequestStopButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.6 : 1)
+    }
+}
+
 /// Stop for a running agent request this account sent. It appears only on the
 /// request's processing row and asks the executor to stop through the server.
 struct AgentRequestStopButton: View {
@@ -74,15 +80,24 @@ struct AgentRequestStopButton: View {
                     }
                 }
             } label: {
-                Label(stopping ? "Stopping…" : "Stop", systemImage: "stop.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(minWidth: 44, minHeight: 44)
-                    .contentShape(.rect)
+                ZStack {
+                    Circle().fill(Color(uiColor: .tertiarySystemFill))
+                    if stopping {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 28, height: 28)
+                .padding(8)
+                .contentShape(.rect)
+                .padding(-8)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(KordiTheme.signalBlue)
+            .buttonStyle(AgentRequestStopButtonStyle())
             .disabled(stopping)
-            .accessibilityLabel(stopping ? "Stopping agent request" : "Stop agent request")
+            .accessibilityLabel(stopping ? "Stopping" : "Stop")
             .alert("Couldn't stop request", isPresented: Binding(
                 get: { failure != nil }, set: { if !$0 { failure = nil } }
             )) {
