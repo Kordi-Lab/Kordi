@@ -2,7 +2,8 @@
 //! so other devices leave the `processing` state.
 
 use kordi_cloud_server::cloud_agent_runtime::runs::terminal_backfill::{
-    backfill_terminal_responses, publish_missing_terminal_response, INTERRUPTED_TEXT,
+    backfill_terminal_responses, publish_missing_terminal_response, BACKFILL_WINDOW_MINUTES,
+    INTERRUPTED_TEXT,
 };
 
 use super::*;
@@ -267,53 +268,157 @@ async fn the_sweep_releases_a_desktop_run_whose_executor_is_gone() {
         .execute(&pool)
         .await
         .unwrap();
-    backfill_terminal_responses(&pool, 1).await.unwrap();
+    backfill_terminal_responses(&pool, BACKFILL_WINDOW_MINUTES)
+        .await
+        .unwrap();
     let after = replies(&pool, &accounts.owner, &turn.session, &turn.canonical).await;
     assert!(after.contains(&interrupted()), "{after:?}");
 }
 
-#[tokio::test]
-async fn the_sweep_ends_failed_desktop_runs_that_never_replied() {
-    let Some(pool) = try_pool().await else { return };
-    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
-    let owner = signup(&router, "terminal-sweep-owner", "Owner").await;
-    let peer = signup(&router, "terminal-sweep-peer", "Peer").await;
-    accept_contacts(&router, &owner, &peer).await;
+/// A direct chat between `owner` and a new contact, and its session ID.
+async fn direct_session(
+    router: &axum::Router,
+    pool: &sqlx_postgres::PgPool,
+    name: &str,
+) -> (TestAccount, String) {
+    let owner = signup(router, &format!("{name}-owner"), "Owner").await;
+    let peer = signup(router, &format!("{name}-peer"), "Peer").await;
+    accept_contacts(router, &owner, &peer).await;
     let mut ids = [owner.account_id.clone(), peer.account_id.clone()];
     ids.sort();
     let session = format!("session:direct-person:{}:{}", ids[0], ids[1]);
     create_test_conversation(
-        &pool,
+        pool,
         &owner.account_id,
         &session,
         ConversationKind::Direct,
         vec![peer.account_id.clone()],
     )
     .await;
+    (owner, session)
+}
+
+/// Inserts a desktop run of `owner` that ended `failed` `ended_ago`, and
+/// returns its request ID.
+async fn ended_desktop_run(
+    pool: &sqlx_postgres::PgPool,
+    owner: &TestAccount,
+    session: &str,
+    ended_ago: &str,
+) -> String {
     let request = format!("msg_sweep_{}", uuid::Uuid::new_v4().simple());
     let run = format!("car_sweep_{}", uuid::Uuid::new_v4().simple());
-    sqlx_core::query::query(
+    sqlx_core::query::query(&format!(
         "INSERT INTO cloud_agent_fallback_runs (run_id, idempotency_key, request_message_id, \
          session_id, owner_account_id, requester_account_id, status, prompt, created_at, \
          updated_at, completed_at, execution_backend, execution_agent_id) \
-         VALUES ($1, $1, $2, $3, $4, $5, 'failed', 'reply', now()::text, now()::text, \
-         now()::text, 'desktop', $6)",
-    )
+         VALUES ($1, $1, $2, $3, $4, $4, 'failed', 'reply', (now()-interval '{ended_ago}')::text, \
+         (now()-interval '{ended_ago}')::text, (now()-interval '{ended_ago}')::text, 'desktop', $5)"
+    ))
     .bind(&run)
     .bind(&request)
-    .bind(&session)
+    .bind(session)
     .bind(&owner.account_id)
-    .bind(&peer.account_id)
     .bind(format!("cloud-agent:{}", owner.account_id))
-    .execute(&pool)
+    .execute(pool)
     .await
     .unwrap();
-    backfill_terminal_responses(&pool, 1).await.unwrap();
+    request
+}
+
+#[tokio::test]
+async fn the_sweep_ends_failed_desktop_runs_that_never_replied() {
+    let Some(pool) = try_pool().await else { return };
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
+    let (owner, session) = direct_session(&router, &pool, "terminal-sweep").await;
+    let request = ended_desktop_run(&pool, &owner, &session, "0 seconds").await;
+    backfill_terminal_responses(&pool, BACKFILL_WINDOW_MINUTES)
+        .await
+        .unwrap();
     let after = replies(&pool, &owner, &session, &request).await;
     assert_eq!(after.len(), 1, "{after:?}");
     assert_eq!(after[0].0, "failed");
-    backfill_terminal_responses(&pool, 1).await.unwrap();
+    backfill_terminal_responses(&pool, BACKFILL_WINDOW_MINUTES)
+        .await
+        .unwrap();
     assert_eq!(replies(&pool, &owner, &session, &request).await, after);
+}
+
+#[tokio::test]
+async fn the_sweep_backfills_only_recently_ended_runs() {
+    let Some(pool) = try_pool().await else { return };
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
+    let (owner, session) = direct_session(&router, &pool, "terminal-window").await;
+    let old = ended_desktop_run(&pool, &owner, &session, "2 days").await;
+    let recent = ended_desktop_run(&pool, &owner, &session, "2 minutes").await;
+    backfill_terminal_responses(&pool, BACKFILL_WINDOW_MINUTES)
+        .await
+        .unwrap();
+    assert_eq!(replies(&pool, &owner, &session, &old).await, vec![]);
+    let recent = replies(&pool, &owner, &session, &recent).await;
+    assert_eq!(recent.len(), 1, "{recent:?}");
+    assert_eq!(recent[0].0, "failed");
+}
+
+#[tokio::test]
+async fn the_sweep_closes_a_desktop_run_lost_long_ago_without_a_reply() {
+    let Some(pool) = try_pool().await else { return };
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
+    let accounts = ready_accounts(&router, &pool).await;
+    let turn = processing_desktop_turn(&router, &pool, &accounts, true).await;
+    sqlx_core::query::query("UPDATE cloud_agent_fallback_runs SET lease_expires_at=(now()-interval '2 days')::text WHERE run_id=$1")
+        .bind(&turn.run)
+        .execute(&pool)
+        .await
+        .unwrap();
+    backfill_terminal_responses(&pool, BACKFILL_WINDOW_MINUTES)
+        .await
+        .unwrap();
+    assert_eq!(run_status(&pool, &turn.run).await, "cancelled");
+    assert_eq!(
+        replies(&pool, &accounts.owner, &turn.session, &turn.canonical).await,
+        vec![("processing".to_string(), "Processing".to_string())]
+    );
+}
+
+#[tokio::test]
+async fn the_sweep_finds_the_terminal_reply_among_many_later_replies() {
+    let Some(pool) = try_pool().await else { return };
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
+    let accounts = ready_accounts(&router, &pool).await;
+    let owner = &accounts.owner;
+    let turn = processing_desktop_turn(&router, &pool, &accounts, false).await;
+    let (conversation,): (uuid::Uuid,) = sqlx_core::query_as::query_as(
+        "SELECT conversation_id FROM cloud_chat_conversations WHERE legacy_session_id=$1",
+    )
+    .bind(&turn.session)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let reply = |request: &str, text: &str, state: &str| {
+        encode(
+            "kordi-cloud-agent-response",
+            json!({"kind":"agent-response","requestId":request,"text":text,"deliveryState":state}),
+        )
+    };
+    let stopped = reply(&turn.canonical, "Half an answer", "cancelled");
+    insert_test_message(&pool, &owner.account_id, conversation, &stopped).await;
+    // More replies to other requests than one scan reads.
+    for _ in 0..60 {
+        let other = reply(&uuid::Uuid::new_v4().to_string(), "Done", "complete");
+        insert_test_message(&pool, &owner.account_id, conversation, &other).await;
+    }
+    sqlx_core::query::query("UPDATE cloud_agent_fallback_runs SET lease_expires_at=(now()-interval '1 second')::text WHERE run_id=$1")
+        .bind(&turn.run)
+        .execute(&pool)
+        .await
+        .unwrap();
+    backfill_terminal_responses(&pool, BACKFILL_WINDOW_MINUTES)
+        .await
+        .unwrap();
+    assert_eq!(run_status(&pool, &turn.run).await, "cancelled");
+    let after = replies(&pool, owner, &turn.session, &turn.canonical).await;
+    assert!(!after.contains(&interrupted()), "{after:?}");
 }
 
 async fn run_status(pool: &sqlx_postgres::PgPool, run: &str) -> String {
@@ -430,7 +535,9 @@ async fn the_sweep_closes_a_lapsed_desktop_run_whose_reply_is_terminal_at_once()
         .execute(&pool)
         .await
         .unwrap();
-    backfill_terminal_responses(&pool, 1).await.unwrap();
+    backfill_terminal_responses(&pool, BACKFILL_WINDOW_MINUTES)
+        .await
+        .unwrap();
     assert_eq!(run_status(&pool, &turn.run).await, "cancelled");
     // The reply stays as published; the sweep adds none.
     let after = replies(&pool, owner, &turn.session, &turn.canonical).await;
@@ -443,6 +550,8 @@ async fn the_sweep_closes_a_lapsed_desktop_run_whose_reply_is_terminal_at_once()
 
     // A run whose lease is still live is left alone.
     let live = processing_desktop_turn(&router, &pool, &accounts, true).await;
-    backfill_terminal_responses(&pool, 1).await.unwrap();
+    backfill_terminal_responses(&pool, BACKFILL_WINDOW_MINUTES)
+        .await
+        .unwrap();
     assert_ne!(run_status(&pool, &live.run).await, "cancelled");
 }

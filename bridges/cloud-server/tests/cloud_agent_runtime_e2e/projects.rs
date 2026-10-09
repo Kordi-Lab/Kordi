@@ -328,4 +328,16 @@ async fn project_runs_use_the_cloud_only_while_the_project_mac_is_offline() {
     assert!(earlier
         .system_prompt
         .contains("This chat belongs to the project \"Example\""));
+
+    // A run the Mac claimed never moves to the cloud, even once its lease
+    // lapses with the Mac offline; the lost-desktop sweep ends it instead.
+    sqlx_core::query::query("UPDATE cloud_agent_fallback_runs SET status='running', lease_expires_at=(now()-interval '1 minute')::text WHERE run_id=$1")
+        .bind(&desktop.run_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(lease_canary_run(&pool, "project-runner", &desktop.run_id)
+        .await
+        .unwrap()
+        .is_none());
 }

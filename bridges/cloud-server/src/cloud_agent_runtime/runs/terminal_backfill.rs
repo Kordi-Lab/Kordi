@@ -30,12 +30,19 @@ const RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 const RELEASE_INTERVAL: Duration = Duration::from_secs(10);
 /// Missing terminal replies are backfilled every this many release passes.
 const BACKFILL_EVERY_RELEASES: u32 = 6;
-const STARTUP_WINDOW_HOURS: i64 = 7 * 24;
-const SWEEP_WINDOW_HOURS: i64 = 1;
+/// Only runs that ended this recently get a backfilled reply, at startup and
+/// in every later pass. An older run keeps its ended status without a new
+/// chat message, so a restart never re-notifies members about old requests.
+pub const BACKFILL_WINDOW_MINUTES: i64 = 15;
 const SWEEP_LIMIT: i64 = 200;
 const LOST_DESKTOP_GRACE_MINUTES: i32 = 10;
+/// The newest replies to one request that are read to find its state.
+const REPLY_SCAN_LIMIT: i64 = 50;
+/// Allowed clock skew between a run's creation and its request's replies.
+const REPLY_SCAN_SKEW_MINUTES: i32 = 10;
+const _: () = assert!(BACKFILL_WINDOW_MINUTES > LOST_DESKTOP_GRACE_MINUTES as i64);
 
-type EndedRun = (String, String, String, String, String, bool);
+type EndedRun = (String, String, String, String, String, bool, String);
 
 /// The reply an executor reports for the run it ended, such as the partial
 /// text of a turn that stopped early. Without it the server publishes a short
@@ -82,36 +89,41 @@ fn is_terminal_state(state: &str) -> bool {
     !matches!(state.trim(), "processing" | "queued")
 }
 
-async fn has_terminal_response(
-    pool: &PgPool,
-    owner_account_id: &str,
-    session_id: &str,
-    request_id: &str,
-) -> RunResult<bool> {
-    Ok(
-        terminal_response_state(pool, owner_account_id, session_id, request_id)
-            .await?
-            .is_some(),
-    )
+/// The run whose request a reply answers.
+struct ReplyScope<'a> {
+    owner_account_id: &'a str,
+    session_id: &'a str,
+    request_id: &'a str,
+    /// The run's creation time; replies to its request come after it.
+    run_created_at: &'a str,
 }
 
-/// The delivery state of the owner's terminal reply to `request_id`, if any.
+/// The delivery state of the owner's terminal reply to the request, if any.
 async fn terminal_response_state(
     pool: &PgPool,
-    owner_account_id: &str,
-    session_id: &str,
-    request_id: &str,
+    scope: ReplyScope<'_>,
 ) -> RunResult<Option<String>> {
+    let request_id = scope.request_id.trim();
     // Deleted replies count: a reply the user removed must not come back.
+    // `attention_content` holds the decoded envelope, so only this request's
+    // newest replies are decoded here.
     let rows: Vec<(Option<String>,)> = query_as(
         "SELECT message.content #>> '{blocks,0,text}' \
          FROM cloud_chat_messages message \
          JOIN cloud_chat_conversations conversation \
            ON conversation.conversation_id = message.conversation_id \
-         WHERE conversation.legacy_session_id = $1 AND message.sender_account_id = $2",
+         WHERE conversation.legacy_session_id = $1 AND message.sender_account_id = $2 \
+           AND (btrim(message.attention_content ->> 'requestId') = $3 \
+             OR btrim(message.attention_content ->> 'replyToMessageId') = $3) \
+           AND message.created_at >= $4::timestamptz - make_interval(mins => $5::INT) \
+         ORDER BY message.created_at DESC, message.conversation_sequence DESC LIMIT $6",
     )
-    .bind(session_id)
-    .bind(owner_account_id)
+    .bind(scope.session_id)
+    .bind(scope.owner_account_id)
+    .bind(request_id)
+    .bind(scope.run_created_at)
+    .bind(REPLY_SCAN_SKEW_MINUTES)
+    .bind(REPLY_SCAN_LIMIT)
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().find_map(|(body,)| {
@@ -140,7 +152,7 @@ pub async fn publish_terminal_response(
 ) -> RunResult<Option<String>> {
     let run: Option<EndedRun> = query_as(
         "SELECT owner_account_id, requester_account_id, session_id, request_message_id, status, \
-           cancel_requested_at IS NOT NULL \
+           cancel_requested_at IS NOT NULL, created_at \
          FROM cloud_agent_fallback_runs run \
          WHERE run_id = $1 AND (status IN ('cancelled', 'failed') OR ($2 AND status = 'completed')) \
            AND NOT legacy_duplicate \
@@ -151,13 +163,24 @@ pub async fn publish_terminal_response(
     .bind(reply.is_some())
     .fetch_optional(pool)
     .await?;
-    let Some((owner, requester, session_id, request_id, status, stop_requested)) = run else {
+    let Some((owner, requester, session_id, request_id, status, stop_requested, created_at)) = run
+    else {
         return Ok(None);
     };
     if is_scheduled_run_request_id(&request_id)
         || run_id.starts_with(crate::digest::RUN_PREFIX)
         || run_id.starts_with(crate::pip::RUN_PREFIX)
-        || has_terminal_response(pool, &owner, &session_id, &request_id).await?
+        || terminal_response_state(
+            pool,
+            ReplyScope {
+                owner_account_id: &owner,
+                session_id: &session_id,
+                request_id: &request_id,
+                run_created_at: &created_at,
+            },
+        )
+        .await?
+        .is_some()
     {
         return Ok(None);
     }
@@ -247,8 +270,8 @@ fn run_status_for_reply(state: &str) -> &'static str {
 /// seconds when it can, so a run still held by the desktop after the grace has
 /// lost its executor (for example a project chat that runs only on its Mac).
 pub(crate) async fn release_lost_desktop_runs(pool: &PgPool) -> RunResult<()> {
-    let lapsed: Vec<(String, String, String, String)> = query_as(
-        "SELECT run_id, owner_account_id, session_id, request_message_id \
+    let lapsed: Vec<(String, String, String, String, String)> = query_as(
+        "SELECT run_id, owner_account_id, session_id, request_message_id, created_at \
          FROM cloud_agent_fallback_runs run \
          WHERE execution_backend = 'desktop' AND status IN ('leased', 'running') \
            AND NOT legacy_duplicate AND subsession_id IS NULL \
@@ -259,9 +282,14 @@ pub(crate) async fn release_lost_desktop_runs(pool: &PgPool) -> RunResult<()> {
     .bind(SWEEP_LIMIT)
     .fetch_all(pool)
     .await?;
-    for (run_id, owner, session_id, request_id) in lapsed {
-        let Some(state) = terminal_response_state(pool, &owner, &session_id, &request_id).await?
-        else {
+    for (run_id, owner, session_id, request_id, created_at) in lapsed {
+        let scope = ReplyScope {
+            owner_account_id: &owner,
+            session_id: &session_id,
+            request_id: &request_id,
+            run_created_at: &created_at,
+        };
+        let Some(state) = terminal_response_state(pool, scope).await? else {
             continue;
         };
         sqlx_core::query::query(
@@ -277,7 +305,7 @@ pub(crate) async fn release_lost_desktop_runs(pool: &PgPool) -> RunResult<()> {
     }
     sqlx_core::query::query(
         "UPDATE cloud_agent_fallback_runs run SET status = 'cancelled', \
-           error_code = 'desktop_executor_lost', completed_at = now()::text, updated_at = now()::text \
+           error_code = 'desktop_executor_lost', completed_at = lease_expires_at, updated_at = now()::text \
          WHERE execution_backend = 'desktop' AND status IN ('leased', 'running') \
            AND NOT legacy_duplicate AND subsession_id IS NULL \
            AND lease_expires_at IS NOT NULL \
@@ -291,17 +319,19 @@ pub(crate) async fn release_lost_desktop_runs(pool: &PgPool) -> RunResult<()> {
 }
 
 /// Publishes missing terminal replies for desktop runs that ended within the
-/// last `window_hours`, and returns how many it published.
-pub async fn backfill_terminal_responses(pool: &PgPool, window_hours: i64) -> RunResult<usize> {
+/// last `window_minutes`, and returns how many it published. A run that lost
+/// its desktop ended when its lease lapsed, so one lost long ago is closed
+/// without a reply.
+pub async fn backfill_terminal_responses(pool: &PgPool, window_minutes: i64) -> RunResult<usize> {
     release_lost_desktop_runs(pool).await?;
     let runs: Vec<(String,)> = query_as(
         "SELECT run_id FROM cloud_agent_fallback_runs \
          WHERE execution_backend = 'desktop' AND status IN ('cancelled', 'failed') \
            AND NOT legacy_duplicate AND subsession_id IS NULL \
-           AND COALESCE(completed_at, updated_at)::timestamptz > now() - make_interval(hours => $1::INT) \
+           AND COALESCE(completed_at, updated_at)::timestamptz > now() - make_interval(mins => $1::INT) \
          ORDER BY COALESCE(completed_at, updated_at) DESC LIMIT $2",
     )
-    .bind(window_hours as i32)
+    .bind(window_minutes as i32)
     .bind(SWEEP_LIMIT)
     .fetch_all(pool)
     .await?;
@@ -317,11 +347,10 @@ pub async fn backfill_terminal_responses(pool: &PgPool, window_hours: i64) -> Ru
 }
 
 /// Starts the sweep: ended runs are released every few seconds; missing
-/// terminal replies are backfilled for a week of history once at startup,
-/// then for the last hour every minute.
+/// terminal replies of recently ended runs are backfilled at startup, then
+/// every minute.
 pub fn spawn(pool: PgPool) {
     tokio::spawn(async move {
-        let mut window_hours = STARTUP_WINDOW_HOURS;
         let mut interval = tokio::time::interval(RELEASE_INTERVAL);
         let mut releases = 0u32;
         loop {
@@ -330,10 +359,11 @@ pub fn spawn(pool: PgPool) {
                 eprintln!("[cloud_agent_runtime] stopped run sweep: {error}");
             }
             if releases.is_multiple_of(BACKFILL_EVERY_RELEASES) {
-                if let Err(error) = backfill_terminal_responses(&pool, window_hours).await {
+                if let Err(error) =
+                    backfill_terminal_responses(&pool, BACKFILL_WINDOW_MINUTES).await
+                {
                     eprintln!("[cloud_agent_runtime] terminal reply sweep: {error}");
                 }
-                window_hours = SWEEP_WINDOW_HOURS;
             } else if let Err(error) = release_lost_desktop_runs(&pool).await {
                 eprintln!("[cloud_agent_runtime] lost desktop run sweep: {error}");
             }

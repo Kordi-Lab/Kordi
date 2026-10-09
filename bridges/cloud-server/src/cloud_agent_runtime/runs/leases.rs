@@ -132,6 +132,10 @@ async fn lease_run(
     sqlx_core::query::query("SELECT pg_advisory_xact_lock(81208411)")
         .execute(&mut *tx)
         .await?;
+    // A project chat may wait for its Mac but never falls back to another
+    // filesystem: the cloud leases a project run only while the project Mac is
+    // offline, and never one a desktop claimed. A lapsed desktop lease on a
+    // project run ends through the lost-desktop sweep instead.
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'leased', execution_backend = 'cloud', claimed_by = $1, lease_expires_at = $2, updated_at = $3 \
@@ -143,7 +147,7 @@ async fn lease_run(
                     AND lease_expires_at IS NOT NULL \
                     AND lease_expires_at::timestamptz <= $3::timestamptz \
                 )) \
-             AND NOT EXISTS(SELECT 1 FROM cloud_project_devices p JOIN cloud_devices d USING(device_id), jsonb_array_elements(p.projects) project WHERE p.account_id=candidate.owner_account_id AND (project->'sessions') ? candidate.session_id AND d.revoked_at IS NULL AND p.updated_at>now()-make_interval(secs=>$5)) \
+             AND NOT EXISTS(SELECT 1 FROM cloud_project_devices p JOIN cloud_devices d USING(device_id), jsonb_array_elements(p.projects) project WHERE p.account_id=candidate.owner_account_id AND (project->'sessions') ? candidate.session_id AND d.revoked_at IS NULL AND (candidate.execution_backend='desktop' OR p.updated_at>now()-make_interval(secs=>$5))) \
              AND NOT candidate.legacy_duplicate AND candidate.cancel_requested_at IS NULL \
              AND ($4::text IS NULL OR candidate.run_id=$4) \
              AND (NOT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat q WHERE q.run_id=candidate.run_id) OR ( \
