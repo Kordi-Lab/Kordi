@@ -439,7 +439,14 @@ export function createCanonicalSessionReadModel(
     },
     buildChatConversations(conversations, buildSubtitle) {
       const unreadBySessionId = mergedUnreadBySessionId(conversations);
-      const sourceBySessionId = new Map(conversations.map((conversation) => [conversation.canonicalSessionId ?? conversation.id, conversation]));
+      const sourceBySessionId = new Map<string, Conversation>();
+      for (const conversation of conversations) {
+        const sessionId = conversation.canonicalSessionId ?? conversation.id;
+        // Activity order must not hand a desktop session to its cloud mirror,
+        // or the selected chat changes id (and remounts) on every send.
+        if (sourceBySessionId.get(sessionId)?.desktopRuntimeBacked && !conversation.desktopRuntimeBacked) continue;
+        sourceBySessionId.set(sessionId, conversation);
+      }
       const sourceByOutreachParentSessionId = new Map<string, Conversation>();
       for (const conversation of conversations) {
         const parentSessionIds = new Set([
