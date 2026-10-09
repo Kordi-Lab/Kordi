@@ -48,6 +48,11 @@ test('task panel renders the whole task as an expandable row with a checkbox-sty
   assert.match(markup, /review code/);
   assert.equal(markup.match(/1 subtask/g)?.length, 1);
   assert.match(markup, /research_docs/);
+  assert.match(markup, /data-task-meta="true"[^>]*>Awaiting human input · \d{2}:\d{2} · 1 subtask</);
+  assert.equal(markup.match(/data-task-meta="true"/g)?.length, 1);
+  const nestedRow = markup.slice(markup.indexOf('data-subtask-status-icon'));
+  assert.match(nestedRow, /research_docs<\/div>.*?data-subtask-status-label="true"[^>]*>Done<.*?>\/root\/research_docs</);
+  assert.equal(nestedRow.match(/\/root\/research_docs/g)?.length, 1);
 });
 
 test('task panel renders nested durable subtasks with a circle status and status text', () => {

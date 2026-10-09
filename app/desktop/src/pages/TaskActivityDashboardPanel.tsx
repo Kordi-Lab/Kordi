@@ -209,6 +209,21 @@ function TaskContent({
   const subtaskStatusParts = nested
     ? [task.statusLabel, ...timeParts].filter((part): part is string => Boolean(part?.trim()))
     : [];
+  const target = task.target?.trim() || '';
+  const summaryText = secondaryText.trim().replace(/\.$/, '');
+  const targetIsSummary = Boolean(target) && secondaryText.trim() === target;
+  const nestedSummary = nested && task.summary && !(target && task.summary.includes(target)) && task.summary.trim() !== task.statusLabel
+    ? task.summary.trim()
+    : '';
+  const showTarget = Boolean(target) && !targetIsSummary;
+  const inlineTarget = showTarget && (nested || target.length < 40);
+  const metaParts = nested
+    ? []
+    : [targetIsSummary ? '' : summaryText, ...timeParts, subtaskLabel].filter((part): part is string => Boolean(part && part.trim()));
+  const metaClassName = 'text-[11px] text-[color:var(--utility-muted-text)]';
+  const targetSpan = inlineTarget ? (
+    <span className="min-w-0 break-all font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">{target}</span>
+  ) : null;
 
   return (
     <div className={cn('flex min-w-0 items-start gap-3', nested && 'gap-2.5')}>
@@ -216,12 +231,31 @@ function TaskContent({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className={cn('app-inspector-heading whitespace-normal break-words leading-5', nested && 'text-[12px] leading-4')}>{task.title}</div>
-            {secondaryText ? <div className="mt-1 app-inspector-text-block">{secondaryText}</div> : null}
-            {subtaskStatusParts.length > 0 ? (
-              <div data-subtask-status-label="true" className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{subtaskStatusParts.join(' · ')}</div>
-            ) : timeParts.length > 0 ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{timeParts.join(' · ')}</div> : null}
-            {subtaskLabel ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{subtaskLabel}</div> : null}
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0">
+              <div className={cn('app-inspector-heading whitespace-normal break-words leading-5', nested && 'text-[12px] leading-4')}>{task.title}</div>
+              {nested ? (
+                <>
+                  {subtaskStatusParts.length > 0 ? (
+                    <>
+                      <span aria-hidden="true" className={metaClassName}>·</span>
+                      <span data-subtask-status-label="true" className={metaClassName}>{subtaskStatusParts.join(' · ')}</span>
+                    </>
+                  ) : null}
+                  {targetSpan ? (
+                    <>
+                      <span aria-hidden="true" className={metaClassName}>·</span>
+                      {targetSpan}
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  {metaParts.length > 0 ? <span data-task-meta="true" className={metaClassName}>{metaParts.join(' · ')}</span> : null}
+                  {targetSpan}
+                </>
+              )}
+            </div>
+            {nestedSummary ? <div className={cn('mt-0.5', metaClassName)}>{nestedSummary}</div> : null}
           </div>
           {!nested && 'responseMessageId' in task ? (
             <div className="flex shrink-0 items-center gap-2">
@@ -235,9 +269,9 @@ function TaskContent({
             </div>
           ) : null}
         </div>
-        {task.target ? <div className="mt-2 break-all font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">{task.target}</div> : null}
+        {showTarget && !inlineTarget ? <div className="mt-1 break-all font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">{target}</div> : null}
         {task.writeScope.length > 0 ? (
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          <div className="mt-1 flex flex-wrap gap-1.5">
             {task.writeScope.map((scope) => (
               <span key={`${task.id}:${scope}`} className="rounded-full border border-[color:var(--app-divider)] px-2 py-0.5 font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">
                 {scope}
@@ -504,7 +538,7 @@ function TaskRow({
       <summary className="list-none cursor-pointer [&::-webkit-details-marker]:hidden">
         <TaskContent task={task} artifactId={artifactId} targetParticipants={matchedTargetParticipants} onOpenArtifact={onOpenArtifact} onNavigateToResponse={onNavigateToResponse} />
       </summary>
-      <div className="mt-3 space-y-2 border-l border-[color:var(--app-divider)] pl-4">
+      <div className="mt-1.5 space-y-1 border-l border-[color:var(--app-divider)] pl-3">
         {task.subtasks.map((subtask) => {
           const rowClassName = 'rounded-2xl bg-[color:var(--app-transcript-assistant-bg)]/45 px-3 py-2.5';
           const responseMessageId = subtask.responseMessageId;
