@@ -160,7 +160,7 @@ export function dispatchLocalAgentVoiceTurn(
   prepared: PreparedCanonicalUserMessage | null,
   attachments: readonly AttachmentItem[],
   transcription: Promise<VoiceTranscriptionOutcome>,
-  session: { clearInFlight: () => void; flushQueue: () => void },
+  session: { clearInFlight: () => void; flushQueue: () => void; waitForHostedRequest: (requestMessageId: string) => void },
 ) {
   const delivered = deliveredCanonicalMessage(context, prepared);
   const deliveryWrite = markLocalAgentMessageDelivered(context, prepared);
@@ -189,8 +189,12 @@ export function dispatchLocalAgentVoiceTurn(
       }
       const turn = await startLocalAgentTurn(context, dispatchedCanonicalMessage, agentVoice.attachments);
       if (!turn) {
-        // A Kordi Cloud turn: the session is free as soon as the request is delivered.
+        // A Kordi Cloud turn: delivery is done; queued messages wait until its run settles.
         session.clearInFlight();
+        if (dispatchedCanonicalMessage) {
+          session.waitForHostedRequest(dispatchedCanonicalMessage.messageId);
+          turnStarted = true;
+        }
         return;
       }
       context.watchTurn(turn, localAgentNoProviderCompletion(context, dispatchedCanonicalMessage));
