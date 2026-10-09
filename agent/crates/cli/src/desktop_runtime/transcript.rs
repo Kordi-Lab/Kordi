@@ -72,6 +72,40 @@ mod tests {
     }
 
     #[test]
+    fn load_session_messages_shows_background_follow_up_as_a_notice() -> Result<()> {
+        let conn = kordi_session::store::open_memory()?;
+        let session_id = "desktop-follow-up-session";
+        kordi_session::store::create_session_with_id(&conn, session_id, "/tmp/kordi")?;
+        let entry_id = format!(
+            "{}child:done",
+            super::super::BACKGROUND_FOLLOW_UP_ENTRY_PREFIX
+        );
+        let follow_up = SessionEntry::Message {
+            base: EntryBase {
+                id: EntryId(entry_id.clone()),
+                parent_id: None,
+                timestamp: Utc::now(),
+            },
+            message: AgentMessage::User(UserMessage {
+                content: vec![ContentBlock::Text {
+                    text: "Background session \"Count lines\" finished.\n\nThis is a runtime follow-up, not a message from a person.".to_string(),
+                }],
+                timestamp: 1_000,
+            }),
+        };
+        kordi_session::store::append_entry(&conn, session_id, &follow_up)?;
+
+        let messages = load_session_messages(&conn, session_id)?;
+        assert_eq!(messages.len(), 1);
+        let notice = &messages[0];
+        assert_eq!(notice.role, "system");
+        assert_eq!(notice.sender, None);
+        assert_eq!(notice.text, "Background session \"Count lines\" finished.");
+        assert_eq!(notice.entry_id.as_deref(), Some(entry_id.as_str()));
+        Ok(())
+    }
+
+    #[test]
     fn load_session_messages_preserves_empty_cancelled_assistant_turn() -> Result<()> {
         let conn = kordi_session::store::open_memory()?;
         let session_id = "desktop-cancelled-session";

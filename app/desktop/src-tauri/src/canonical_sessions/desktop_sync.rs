@@ -391,15 +391,29 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
                     .then_some(latest_user_message_id.as_deref())
                     .flatten(),
             )?;
-            if message.role.trim().eq_ignore_ascii_case("user") {
-                if let Some(message_id) = synced_message_id {
-                    latest_user_message_id = Some(message_id);
-                }
-            }
+            latest_user_message_id =
+                reply_parent_after(latest_user_message_id, message, synced_message_id);
         }
     }
 
     Ok(())
+}
+
+/// The message that a following agent reply answers. A background follow-up
+/// reply answers its runtime notice, not the earlier request, so it never
+/// replaces that request's reply and synchronizes under its own identity.
+pub(crate) fn reply_parent_after(
+    latest: Option<String>,
+    message: &kordi_cli::desktop_runtime::DesktopChatMessage,
+    synced_message_id: Option<String>,
+) -> Option<String> {
+    if message.role.trim().eq_ignore_ascii_case("user")
+        || message_role::is_background_follow_up_notice(message)
+    {
+        synced_message_id.or(latest)
+    } else {
+        latest
+    }
 }
 
 #[cfg(test)]

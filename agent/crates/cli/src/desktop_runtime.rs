@@ -41,9 +41,9 @@ use attachments::attachment_metadata_from_path;
 use attachments::attachment_summary_from_metadata;
 
 pub use background_sessions::{
-    BackgroundSessionMessage, BackgroundSessionSnapshot, activate_background_runtime_session,
-    background_runtime_session_ids, background_runtime_snapshot,
-    background_session_for_parent_message, create_background_session,
+    BACKGROUND_FOLLOW_UP_ENTRY_PREFIX, BackgroundSessionMessage, BackgroundSessionSnapshot,
+    activate_background_runtime_session, background_runtime_session_ids,
+    background_runtime_snapshot, background_session_for_parent_message, create_background_session,
     is_background_runtime_session, session_exists,
 };
 pub use model_options::{

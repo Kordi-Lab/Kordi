@@ -364,6 +364,15 @@ export type CollaborationAgentRequestControl = {
   requestId: string;
 };
 
+export type DesktopBackgroundFollowUp = {
+  /** Stable follow-up identity; unique per background session and outcome. */
+  id: string;
+  sessionId: string;
+  parentRequestId?: string | null;
+  title: string;
+  status: 'done' | 'failed' | 'stopped';
+};
+
 export type DesktopChatTurnSnapshot = {
   localExecutionStarted?: boolean;
   /** Server-confirmed state of a hosted request; never a local execution handle. */
@@ -384,6 +393,8 @@ export type DesktopChatTurnSnapshot = {
   transcriptEntryId?: string | null;
   error?: string | null;
   transcriptRefreshRequired?: boolean;
+  /** A runtime follow-up turn that reports a finished background session. */
+  backgroundFollowUp?: DesktopBackgroundFollowUp | null;
   replyToMessageId?: string | null;
   sourceMessage?: MessageSourceReference | null;
   pendingCollaborationAgentRequest?: CollaborationAgentRequestControl | null;

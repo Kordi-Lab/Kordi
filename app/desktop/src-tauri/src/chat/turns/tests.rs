@@ -25,6 +25,7 @@ async fn new_admission_preserves_recent_terminal_snapshots_for_publishers() {
                 transcript_entry_id: None,
                 error: None,
                 transcript_refresh_required: false,
+                background_follow_up: None,
             })),
             cancel: tokio_util::sync::CancellationToken::new(),
             execution_lease_deadline: Arc::new(Mutex::new(None)),
@@ -109,6 +110,7 @@ fn persisted_abort_completes_only_its_mounted_live_turn() {
         transcript_entry_id: None,
         error: Some("tool failed".to_string()),
         transcript_refresh_required: false,
+        background_follow_up: None,
     };
 
     assert!(!reconcile_persisted_cancelled_turn(
@@ -148,6 +150,7 @@ fn tool_result_before_start_keeps_the_background_session_result() {
         transcript_entry_id: None,
         error: None,
         transcript_refresh_required: false,
+        background_follow_up: None,
     }));
     let result = "Background session: {\"sessionId\":\"child\",\"title\":\"Count lines\",\"status\":\"running\"}";
     apply_desktop_turn_event(

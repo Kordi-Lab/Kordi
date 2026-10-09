@@ -16,13 +16,18 @@ use tokio::sync::Mutex;
 
 use super::super::{
     cancel_turn_by_id, hosted_provider_auth::HostedTurnAuth, message_execution,
-    turn_snapshot_by_id, DesktopChatManager, DesktopChatMessageRoute,
+    turn_snapshot_by_id, DesktopBackgroundFollowUp, DesktopChatManager, DesktopChatMessageRoute,
+    DesktopChatTurnSnapshot,
 };
+use super::follow_up;
+
+const FOLLOW_UP_POLL: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Debug)]
 struct ManagedTask {
     session_id: String,
     turn_id: String,
+    title: String,
 }
 
 #[derive(Clone)]
@@ -30,6 +35,7 @@ pub(in crate::chat) struct ManagedChildAgentRunner {
     manager: DesktopChatManager,
     parent_session_id: String,
     parent_request_id: Option<String>,
+    parent_runtime_session_id: Option<String>,
     base_profile: DesktopRuntimeProfile,
     directory: Option<String>,
     scoped_observation: bool,
@@ -50,6 +56,7 @@ impl ManagedChildAgentRunner {
             manager,
             parent_session_id,
             parent_request_id,
+            parent_runtime_session_id: None,
             base_profile,
             directory: None,
             scoped_observation: false,
@@ -82,6 +89,13 @@ impl ManagedChildAgentRunner {
     ) -> Self {
         self.parent_route = route;
         self.parent_hosted_auth = hosted_auth;
+        self
+    }
+
+    /// The runtime session that receives the follow-up turn when a child
+    /// finishes. Without it, outcomes stay in the background session only.
+    pub(in crate::chat) fn with_parent_runtime_session(mut self, session_id: String) -> Self {
+        self.parent_runtime_session_id = Some(session_id);
         self
     }
 
@@ -163,6 +177,76 @@ impl ManagedChildAgentRunner {
         .await
         .map_err(anyhow::Error::msg)
     }
+
+    fn watch_for_follow_up(&self, task: ManagedTask) {
+        let Some(parent_session_id) = self.parent_runtime_session_id.clone() else {
+            return;
+        };
+        let runner = self.clone();
+        tokio::spawn(async move {
+            let turn = loop {
+                match turn_snapshot_by_id(&runner.manager, &task.turn_id).await {
+                    Ok(turn) if turn.completed => break turn,
+                    Ok(_) => tokio::time::sleep(FOLLOW_UP_POLL).await,
+                    Err(_) => return,
+                }
+            };
+            let _ = runner
+                .deliver_follow_up(&parent_session_id, &task, &turn)
+                .await;
+        });
+    }
+
+    /// Starts one follow-up turn in the parent session for a finished child.
+    /// The turn queues behind any running parent turn and runs on the parent
+    /// route and credential, like the child itself.
+    async fn deliver_follow_up(
+        &self,
+        parent_session_id: &str,
+        task: &ManagedTask,
+        child_turn: &DesktopChatTurnSnapshot,
+    ) -> Result<Option<DesktopChatTurnSnapshot>> {
+        let Some(status) = follow_up::terminal_status(child_turn) else {
+            return Ok(None);
+        };
+        let id = follow_up::follow_up_id(&task.session_id, status);
+        if !follow_up::claim(&self.manager, &id).await {
+            return Ok(None);
+        }
+        let text = follow_up::follow_up_text(
+            &task.title,
+            status,
+            &child_turn.assistant_text,
+            child_turn.error.as_deref(),
+        );
+        let mut input = self.start_input(parent_session_id.to_string(), text, Vec::new());
+        input.request_message_id = Some(id.clone());
+        let turn = message_execution::start_message(&self.manager, input)
+            .await
+            .map_err(anyhow::Error::msg)?;
+        follow_up::expose_turn(
+            &self.manager,
+            &turn.id,
+            DesktopBackgroundFollowUp {
+                id,
+                session_id: task.session_id.clone(),
+                parent_request_id: self.parent_request_id.clone(),
+                title: task.title.clone(),
+                status: status.to_string(),
+            },
+        )
+        .await;
+        Ok(Some(turn))
+    }
+
+    /// The parent consumed this outcome in its own turn; no follow-up needed.
+    async fn mark_outcome_reported(&self, task: &ManagedTask, status: &str) {
+        follow_up::claim(
+            &self.manager,
+            &follow_up::follow_up_id(&task.session_id, status),
+        )
+        .await;
+    }
 }
 
 #[async_trait]
@@ -216,13 +300,16 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
             let _ = cancel_turn_by_id(&self.manager, &turn.id).await;
             return Err(error);
         }
-        self.jobs.lock().await.insert(
-            request.task_path.clone(),
-            ManagedTask {
-                session_id: session_id.clone(),
-                turn_id: turn.id.clone(),
-            },
-        );
+        let task = ManagedTask {
+            session_id: session_id.clone(),
+            turn_id: turn.id.clone(),
+            title: request.task_title.clone(),
+        };
+        self.jobs
+            .lock()
+            .await
+            .insert(request.task_path.clone(), task.clone());
+        self.watch_for_follow_up(task);
 
         Ok(SpawnedTask::running_in_background_session(
             request.task_path,
@@ -248,13 +335,16 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
             .lock()
             .await
             .insert(turn.id.clone());
-        self.jobs.lock().await.insert(
-            target.to_string(),
-            ManagedTask {
-                session_id: task.session_id,
-                turn_id: turn.id,
-            },
-        );
+        let task = ManagedTask {
+            session_id: task.session_id,
+            turn_id: turn.id,
+            title: task.title,
+        };
+        self.jobs
+            .lock()
+            .await
+            .insert(target.to_string(), task.clone());
+        self.watch_for_follow_up(task);
         Ok(())
     }
 
@@ -266,9 +356,10 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
                 let Ok(turn) = turn_snapshot_by_id(&self.manager, &task.turn_id).await else {
                     continue;
                 };
-                if !turn.completed {
+                let Some(status) = follow_up::terminal_status(&turn) else {
                     continue;
-                }
+                };
+                self.mark_outcome_reported(&task, status).await;
                 let summary = format!("Result retained in background session: {}", task.session_id);
                 if turn.succeeded {
                     return Ok(WaitOutcome::Completed { target, summary });
@@ -286,6 +377,7 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
         let Some(task) = self.jobs.lock().await.remove(target) else {
             bail!("background task `{target}` was not found")
         };
+        self.mark_outcome_reported(&task, "stopped").await;
         cancel_turn_by_id(&self.manager, &task.turn_id)
             .await
             .map_err(anyhow::Error::msg)?;

@@ -22,7 +22,7 @@ export type {
   ChangedFileRow,CollaborationAgentRequestControl,
   ComposerQuoteState,DesktopArtifactDirectory,
   DesktopArtifactDirectoryEntry,
-  DesktopArtifactPreview,DesktopChatAttachment,DesktopChatToolSnapshot,
+  DesktopArtifactPreview,DesktopBackgroundFollowUp,DesktopChatAttachment,DesktopChatToolSnapshot,
   DesktopChatTurnSnapshot,
   EditDiffLine,
   EditFilePreview,

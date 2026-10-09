@@ -115,6 +115,7 @@ pub(super) async fn start_message(
         transcript_entry_id: None,
         error: None,
         transcript_refresh_required: false,
+        background_follow_up: None,
     }));
     let cancel = tokio_util::sync::CancellationToken::new();
 

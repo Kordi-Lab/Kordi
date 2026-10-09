@@ -117,6 +117,7 @@ async fn run_agent_prompt_once(
         transcript_entry_id: None,
         error: None,
         transcript_refresh_required: false,
+        background_follow_up: None,
     }));
 
     let result = {
@@ -405,6 +406,7 @@ mod tests {
             transcript_entry_id: None,
             error: Some("default auth failed".to_string()),
             transcript_refresh_required: false,
+            background_follow_up: None,
         };
         let default_route = AgentRunRoute {
             model: Some("gpt-5".to_string()),

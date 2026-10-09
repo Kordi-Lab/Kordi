@@ -32,7 +32,7 @@ impl Tool for TaskOperatorTool {
     }
 
     fn description(&self) -> &str {
-        "Operator tool for verifiable Kordi task events and bounded child-agent work. Durable tasks are scoped to the current session and use generated opaque IDs returned by this tool. Actions: create a task with {action:'create', taskTitle:'...'}; create a subtask with parentTaskId; list/search current session tasks with {action:'search', status:'open'} or add query; close with {action:'close', taskId:'task_...'}. Use spawn only for a concrete, independent task that can continue in a separate agent session; provide a concise user-facing taskTitle, a self-contained message, forkTurns:'none', and disjoint writeScope paths. After a successful background spawn, continue the parent turn with a short normal response instead of waiting. For a later status or result request, use inspect with the exact sessionId returned by spawn. list/wait cover only the current live child registry and must not be used to infer durable linked-session status; search returns user-visible task records, not agent execution state. Side effects: create/close affect task state; spawn/message/close with a child-agent target affect child-agent state. Write scopes must be disjoint; retry spawn can fail on duplicate task paths."
+        "Operator tool for verifiable Kordi task events and bounded child-agent work. Durable tasks are scoped to the current session and use generated opaque IDs returned by this tool. Actions: create a task with {action:'create', taskTitle:'...'}; create a subtask with parentTaskId; list/search current session tasks with {action:'search', status:'open'} or add query; close with {action:'close', taskId:'task_...'}. Use spawn only for a concrete, independent task that can continue in a separate agent session; provide a concise user-facing taskTitle, a self-contained message, forkTurns:'none', and disjoint writeScope paths. After a successful background spawn, continue the parent turn with a short normal response instead of waiting; the session's result arrives later as a runtime follow-up for you to report. For a later status or result request, use inspect with the exact sessionId returned by spawn. list/wait cover only the current live child registry and must not be used to infer durable linked-session status; search returns user-visible task records, not agent execution state. Side effects: create/close affect task state; spawn/message/close with a child-agent target affect child-agent state. Write scopes must be disjoint; retry spawn can fail on duplicate task paths."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -46,7 +46,7 @@ impl Tool for TaskOperatorTool {
                 },
                 "taskTitle": {
                     "type": "string",
-                    "description": "Concise 5-10 words for the user-facing overall task title used by action=create, task close events, or the linked agent session created by action=spawn."
+                    "description": "User-facing overall task title in sentence case, 3 to 7 words, no trailing period (for example \"Count lines across project files\"). Used by action=create, task close events, or the linked agent session created by action=spawn."
                 },
                 "parentTaskId": {
                     "type": "string",

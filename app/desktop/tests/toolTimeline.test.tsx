@@ -281,3 +281,23 @@ test('uses a clean one-line folded label for active and completed timelines', ()
     'Execution: running command: df -h',
   );
 });
+
+test('labels background task actions in plain words', () => {
+  const spawn = { name: 'task_operator', status: 'done', arguments: '{"action":"spawn","taskTitle":"Count lines across project files"}' };
+  const inspect = { name: 'task_operator', status: 'done', arguments: '{"action":"inspect","sessionId":"child"}' };
+  assert.equal(toolTimelineToolLabel(spawn), 'Start background task');
+  assert.equal(toolTimelineToolLabel(inspect), 'Check background task');
+  assert.equal(toolTimelineToolLabel({ name: 'task_operator', status: 'done', arguments: '{"action":"create"}' }), 'Coordinate task');
+  assert.equal(
+    toolTimelineFoldedLabel({ tools: [spawn], active: false, completed: true, thinkingText: '**Planning spawn task creation**' }),
+    'Starting background task',
+  );
+  assert.equal(
+    toolTimelineFoldedLabel({ tools: [inspect], active: false, completed: true, thinkingText: '**Checking the child session**' }),
+    'Checking background task',
+  );
+  assert.equal(
+    toolTimelineFoldedLabel({ tools: [{ ...spawn, status: 'running' }], active: true, completed: false }),
+    'Operator: starting background task',
+  );
+});

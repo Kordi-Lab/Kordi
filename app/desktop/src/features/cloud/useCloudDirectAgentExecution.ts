@@ -38,6 +38,7 @@ import {
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
 import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
+import { registerCloudBackgroundFollowUpPublisher } from './cloudBackgroundFollowUps';
 import {
   cloudAgentRuntimeSessionId,
 } from './cloudAgentRuntime';
@@ -253,6 +254,26 @@ export function useCloudDirectAgentExecution({
             lease.attach(startedTurn.id);
             rememberLocalTurn(startedTurn);
             turnIdsByRequestIdRef.current.set(message.messageId, startedTurn.id);
+            registerCloudBackgroundFollowUpPublisher(message.messageId, async (reply) => {
+              const current = await loadSession();
+              if (!current?.token || current.accountId !== account.accountId) return;
+              const followUpResponse = await client.sendMessage(
+                current.token,
+                peerId,
+                encodeCloudAgentResponse({
+                  requestId: reply.requestId,
+                  text: reply.text,
+                  deliveryState: reply.deliveryState,
+                  messageAction: replyMessageAction,
+                }),
+                {
+                  sessionId: message.sessionId ?? null,
+                  clientMessageId: `shared:${message.messageId}:${reply.requestId}`,
+                },
+              );
+              mergeMessage(followUpResponse);
+              void syncMessages();
+            });
             if (replyMessageAction) {
               await lease.publisher.sendMessage(session.token, peerId, encodeCloudAgentResponse({
                 requestId: message.messageId,

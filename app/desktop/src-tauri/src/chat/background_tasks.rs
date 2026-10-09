@@ -1,3 +1,4 @@
+mod follow_up;
 mod managed_child;
 pub mod snapshots;
 

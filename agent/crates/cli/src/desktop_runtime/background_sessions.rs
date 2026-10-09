@@ -6,6 +6,35 @@ use kordi_tools::task_operator::models::TaskOperatorBackgroundSession;
 use super::session_catalog::open_sessions_db;
 use super::{DesktopRuntimeSession, load_session_messages, truncate_chars};
 
+/// Entry-id prefix of a runtime follow-up that hands a finished background
+/// session's outcome back to its parent session. Such an entry is model input,
+/// not a message from a person, and the transcript shows it as a notice.
+pub const BACKGROUND_FOLLOW_UP_ENTRY_PREFIX: &str = "background-result:";
+
+/// Shows a follow-up entry as a one-line notice instead of a person's message.
+pub(super) fn background_follow_up_notice(
+    entry_id: &str,
+    text: &str,
+    timestamp_ms: i64,
+) -> Option<super::DesktopChatMessage> {
+    entry_id
+        .starts_with(BACKGROUND_FOLLOW_UP_ENTRY_PREFIX)
+        .then(|| super::DesktopChatMessage {
+            role: "system".to_string(),
+            sender: None,
+            text: text.lines().next().unwrap_or_default().trim().to_string(),
+            detail: Some("Background session".to_string()),
+            time_label: super::format_message_timestamp(timestamp_ms),
+            timestamp_ms,
+            failed: false,
+            cancelled: false,
+            attachments: Vec::new(),
+            thinking_text: None,
+            tools: Vec::new(),
+            entry_id: Some(entry_id.to_string()),
+        })
+}
+
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackgroundSessionMessage {

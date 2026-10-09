@@ -237,7 +237,8 @@ pub(super) async fn prepare_desktop_session_for_send(
             directory,
             runtime.runtime_identity_context().ok().flatten(),
         )
-        .with_parent_route(parent_route.0.cloned(), parent_route.1.cloned());
+        .with_parent_route(parent_route.0.cloned(), parent_route.1.cloned())
+        .with_parent_runtime_session(runtime.session_id().to_string());
         let _ = runtime.set_task_operator_runner(Arc::new(runner));
     }
     Ok(())

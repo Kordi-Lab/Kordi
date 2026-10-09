@@ -43,9 +43,9 @@ pub(crate) use attachments::allow_attachment_asset_scope;
 
 pub(crate) use models::DesktopStoredChatAttachment;
 pub use models::{
-    DesktopArtifactDirectory, DesktopArtifactDirectoryEntry, DesktopChatArtifactPreview,
-    DesktopChatArtifactPreviewLine, DesktopChatForkSessionResult, DesktopChatMessageRoute,
-    DesktopChatState, DesktopChatToolSnapshot, DesktopChatTurnSnapshot,
+    DesktopArtifactDirectory, DesktopArtifactDirectoryEntry, DesktopBackgroundFollowUp,
+    DesktopChatArtifactPreview, DesktopChatArtifactPreviewLine, DesktopChatForkSessionResult,
+    DesktopChatMessageRoute, DesktopChatState, DesktopChatToolSnapshot, DesktopChatTurnSnapshot,
 };
 
 pub(crate) use agent_prompt_runner::{run_agent_prompt, DesktopAgentModelRouting};
@@ -109,6 +109,7 @@ pub struct DesktopChatManager {
         Arc<tokio::sync::Mutex<HashMap<String, tokio::sync::oneshot::Receiver<()>>>>,
     background_turn_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
     shared_request_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
+    background_follow_up_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 impl DesktopChatManager {
