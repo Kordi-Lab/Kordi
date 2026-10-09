@@ -802,6 +802,12 @@ struct MessageBubble: View, Equatable {
                     )
                         .foregroundStyle(bubbleTextColor)
                 }
+                // A reply that ended early keeps its text with how it ended.
+                if message.author == .agent, let ending = message.agentReplyEnding {
+                    Text(ending.label)
+                        .font(.caption2)
+                        .foregroundStyle(bubbleSecondaryTextColor)
+                }
             }
 
             if !message.attachments.isEmpty, !usesDetachedImageGroup {

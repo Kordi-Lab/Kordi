@@ -5,7 +5,8 @@ import React, { act, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import type { CloudAccount, CloudAuthClient, CloudMessage } from '../src/features/cloud/authClient';
-import { parseCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
+import { encodeCloudAgentResponse, parseCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
+import { CloudAuthError } from '../src/features/cloud/cloudAuthError';
 import { buildCloudMessageIndex } from '../src/features/cloud/cloudMessageIndex';
 import { __setSessionBackendForTests } from '../src/features/cloud/session';
 import { useCloudSelfAgentExecution } from '../src/features/cloud/useCloudSelfAgentExecution';
@@ -37,14 +38,28 @@ type Scenario = {
   admitCancelRequested?: boolean;
   /** This Mac does not execute the request. */
   runtimeReady?: boolean;
+  /** The answer text the turn streams before it ends. */
+  streamedText?: string;
+  /** The server refuses progress after this many publications, as after a lost lease. */
+  progressConflictAfter?: number;
+  /** Replies other devices already saw for the request. */
+  earlierReplies?: string[];
+  /** Local turns this Mac already shows. */
+  initialLocalTurns?: Record<string, DesktopChatTurnSnapshot>;
+  /** What the run-closing route reports. */
+  closeResult?: Record<string, unknown>;
 };
+
+type Reply = { deliveryState?: string; text: string; ending?: string };
 
 async function withHarness(scenario: Scenario, run: (env: {
   stop: () => Promise<boolean>;
   cancelledTurnIds: string[];
-  replies: () => { deliveryState?: string; text: string }[];
+  replies: () => Reply[];
   stopRequests: string[];
   started: () => boolean;
+  closures: Record<string, unknown>[];
+  localTurns: () => Record<string, DesktopChatTurnSnapshot>;
 }) => Promise<void>) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost', pretendToBeVisual: true });
   const globals = { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement,
@@ -56,11 +71,13 @@ async function withHarness(scenario: Scenario, run: (env: {
   const cancelledTurnIds: string[] = [];
   const progressBodies: string[] = [];
   const stopRequests: string[] = [];
+  const closures: Record<string, unknown>[] = [];
+  let progressCount = 0;
   let started = false;
   let cancelled = false;
   const turn = (): DesktopChatTurnSnapshot => ({
     id: 'turn-1', sessionId, prompt: 'Check disk usage', status: cancelled ? 'cancelled' : 'running', message: '',
-    assistantText: '', thinkingText: '', tools: [], completed: cancelled, succeeded: false, startedAtMs: 1,
+    assistantText: scenario.streamedText ?? '', thinkingText: '', tools: [], completed: cancelled, succeeded: false, startedAtMs: 1,
     replyToMessageId: 'request-1',
   } as unknown as DesktopChatTurnSnapshot);
   mockIPC((command, payload) => {
@@ -80,7 +97,15 @@ async function withHarness(scenario: Scenario, run: (env: {
       if (action === 'claim') return { runId: 'run-1', acquired: true, turnIdentity: { ownerAccountId: 'me', requesterAccountId: 'me' } };
       if (action.endsWith('/admit')) return { admitted: true, cancelRequested: Boolean(scenario.admitCancelRequested) };
       if (action.endsWith('/renew')) return { ok: true, cancelRequested: false };
+      if (action === 'interrupted') {
+        closures.push(input);
+        return scenario.closeResult ?? { released: true, closed: true, published: false };
+      }
       if (action.endsWith('/progress')) {
+        progressCount += 1;
+        if (scenario.progressConflictAfter !== undefined && progressCount > scenario.progressConflictAfter) {
+          throw new CloudAuthError('execution_lease_lost' as never, 'This runtime no longer owns the request.', 409);
+        }
         progressBodies.push(String(input.body));
         return cloudMessage(`response-${progressBodies.length}`, String(input.body));
       }
@@ -98,12 +123,17 @@ async function withHarness(scenario: Scenario, run: (env: {
     participants: [{ sessionId, identityId: 'human:me', state: 'active' }], messages: [],
     delegatedExchanges: [], presence: [], contextSnapshots: [],
   } as unknown as CanonicalSessionState;
-  const messageIndex = buildCloudMessageIndex('me', { me: [cloudMessage('request-1', 'Check disk usage')] });
+  const messageIndex = buildCloudMessageIndex('me', { me: [
+    cloudMessage('request-1', 'Check disk usage'),
+    ...(scenario.earlierReplies ?? []).map((body, index) => cloudMessage(`earlier-${index}`, body)),
+  ] });
+  let localTurns: Record<string, DesktopChatTurnSnapshot> = scenario.initialLocalTurns ?? {};
   let stop!: (sessionId: string) => Promise<boolean>;
   function Harness() {
     const processedRequestIdsRef = useRef(new Set<string>());
     const turnIdsByRequestIdRef = useRef(new Map<string, string>());
-    const [, setLocalTurns] = useState<Record<string, DesktopChatTurnSnapshot>>({});
+    const [turns, setLocalTurns] = useState<Record<string, DesktopChatTurnSnapshot>>(scenario.initialLocalTurns ?? {});
+    localTurns = turns;
     const execution = useCloudSelfAgentExecution({
       account, canonicalState, client, messageIndex, initialMessagesSettled: true,
       runtimeReady: scenario.runtimeReady ?? true, routesBySessionId: {}, defaultRoute: route,
@@ -121,10 +151,14 @@ async function withHarness(scenario: Scenario, run: (env: {
       cancelledTurnIds,
       replies: () => progressBodies.flatMap((body) => {
         const response = parseCloudAgentResponse(body);
-        return response ? [{ deliveryState: response.deliveryState, text: response.text }] : [];
+        return response
+          ? [{ deliveryState: response.deliveryState, text: response.text, ...(response.ending ? { ending: response.ending } : {}) }]
+          : [];
       }),
       stopRequests,
       started: () => started,
+      closures,
+      localTurns: () => localTurns,
     });
   } finally {
     await act(async () => root.unmount());
@@ -163,9 +197,67 @@ test('a stop requested from another device reaches the turn this Mac runs', asyn
 });
 
 test('stop on a request another executor runs asks the server', async () => {
-  await withHarness({ runtimeReady: false }, async ({ stop, stopRequests, started }) => {
+  await withHarness({ runtimeReady: false, closeResult: { released: false, closed: false, published: false } }, async ({ stop, stopRequests, started }) => {
     assert.equal(await stop(), true);
     assert.deepEqual(stopRequests, ['request-1']);
     assert.equal(started(), false);
+  });
+});
+
+test('stopping mid-stream keeps the partial text, marks it stopped, and ends the run', async () => {
+  await withHarness({ streamedText: 'Disk usage is 40% on' }, async ({ stop, started, replies, closures, localTurns }) => {
+    await waitFor(started);
+    await waitFor(() => replies().length > 0);
+    assert.equal(await stop(), true);
+    await waitFor(() => replies().some((reply) => reply.deliveryState === 'cancelled'));
+    assert.deepEqual(replies().at(-1), { deliveryState: 'cancelled', text: 'Disk usage is 40% on', ending: 'stopped' });
+    await waitFor(() => closures.length > 0);
+    assert.deepEqual(closures, [{ sessionId, requestMessageId: 'request-1', state: 'cancelled', text: 'Disk usage is 40% on', ending: 'stopped' }]);
+    // The live row leaves the running state at once.
+    await waitFor(() => localTurns()['request-1']?.completed === true);
+    assert.equal(localTurns()['request-1'].ending, 'stopped');
+  });
+});
+
+test('a lost lease ends the reply as interrupted with its partial text and closes the run', async () => {
+  await withHarness({ streamedText: 'Disk usage is 40% on', progressConflictAfter: 0 }, async ({ started, replies, closures, localTurns }) => {
+    await waitFor(started);
+    // The server can no longer take this Mac's reply, so the closing route
+    // ends the run and publishes the same reply.
+    await waitFor(() => closures.length > 0, 8_000);
+    assert.deepEqual(closures, [{ sessionId, requestMessageId: 'request-1', state: 'failed', text: 'Disk usage is 40% on', ending: 'interrupted' }]);
+    assert.equal(replies().some((reply) => reply.deliveryState !== 'processing'), false);
+    await waitFor(() => localTurns()['request-1']?.completed === true);
+    assert.equal(localTurns()['request-1'].status, 'failed');
+    assert.equal(localTurns()['request-1'].assistantText, 'Disk usage is 40% on');
+    assert.equal(localTurns()['request-1'].ending, 'interrupted');
+    assert.equal(localTurns()['request-1'].error, null);
+  });
+});
+
+test('stop on a request whose local turn is gone ends it with the text seen so far', async () => {
+  const runningTurn = {
+    id: 'turn-gone', sessionId, prompt: 'Check disk usage', status: 'writing', message: '', assistantText: 'Disk usage is',
+    thinkingText: '', tools: [], completed: false, succeeded: false, startedAtMs: 1, replyToMessageId: 'request-1',
+  } as unknown as DesktopChatTurnSnapshot;
+  await withHarness({
+    runtimeReady: false,
+    earlierReplies: [encodeCloudAgentResponse({ requestId: 'request-1', text: 'Disk usage is 40% on', deliveryState: 'processing' })],
+    initialLocalTurns: { 'request-1': runningTurn },
+    closeResult: { released: true, closed: true, published: true },
+  }, async ({ stop, stopRequests, closures, localTurns, started }) => {
+    assert.equal(await stop(), true);
+    assert.deepEqual(closures, [{ sessionId, requestMessageId: 'request-1', state: 'cancelled', text: 'Disk usage is 40% on', ending: 'stopped' }]);
+    // This device's run ended it, so no stop is relayed to another executor.
+    assert.deepEqual(stopRequests, []);
+    await waitFor(() => !localTurns()['request-1']);
+    assert.equal(started(), false);
+  });
+});
+
+test('stop on a request with no streamed text still ends it with the short notice', async () => {
+  await withHarness({ runtimeReady: false, closeResult: { released: true, closed: true, published: true } }, async ({ stop, closures }) => {
+    assert.equal(await stop(), true);
+    assert.deepEqual(closures, [{ sessionId, requestMessageId: 'request-1', state: 'cancelled', text: 'Request stopped.' }]);
   });
 });

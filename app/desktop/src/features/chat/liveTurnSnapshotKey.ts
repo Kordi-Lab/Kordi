@@ -13,6 +13,7 @@ export function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
     turn.completed ? 'completed' : 'running',
     turn.succeeded ? 'succeeded' : 'pending',
     turn.error ?? '',
+    turn.ending ?? '',
     turn.transcriptRefreshRequired ? 'refresh' : 'stable',
     turn.replyToMessageId ?? '',
     turn.sourceMessage ? [turn.sourceMessage.messageId, turn.sourceMessage.text, turn.sourceMessage.senderLabel ?? '', turn.sourceMessage.senderAvatarSeed ?? '', turn.sourceMessage.senderProfileImageUrl ?? ''].join(':') : '',

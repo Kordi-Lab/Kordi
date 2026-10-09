@@ -8,6 +8,7 @@ import {
   parseCloudAgentCancel,
   parseCloudAgentResponse,
   type CloudAgentExecutionSnapshot,
+  type CloudAgentReplyEnding,
 } from './cloudAgentMessages';
 import {
   cloudDirectMessageAction,
@@ -31,6 +32,8 @@ export type CloudSelfAgentRestoreMessage = {
   responseRequestId: string | null;
   responseDeliveryState: CloudSelfAgentResponseDeliveryState | null;
   responseExecution: CloudAgentExecutionSnapshot | undefined;
+  /** How a reply that kept its partial text ended early. */
+  responseEnding?: CloudAgentReplyEnding;
   messageAction: MessageActionMetadata | null;
   mentions: MessageMention[] | undefined;
   agentRuntimeRoute: ReturnType<typeof cloudAgentRuntimeRouteChangeFromBody>;
@@ -97,6 +100,7 @@ export function normalizeCloudSelfAgentRestoreMessage(
         : response.deliveryState ?? 'complete'
       : null,
     responseExecution: response?.execution,
+    ...(response?.ending ? { responseEnding: response.ending } : {}),
     messageAction: response ? null : cloudDirectMessageAction(message.body),
     mentions: response ? undefined : cloudDirectMessageMentions(message.body),
     agentRuntimeRoute: isModelChange

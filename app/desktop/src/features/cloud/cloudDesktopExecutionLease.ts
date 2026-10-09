@@ -1,5 +1,6 @@
 import type { CloudAgentRunClaimInput, CloudAuthClient, CloudMessage, SendCloudMessageOptions } from './authClient';
 import { cloudOperationUuid } from './chatSyncMapping';
+import { CloudAuthError } from './cloudAuthError';
 import { cancelDesktopChatTurn, renewDesktopChatExecutionLease } from '@/lib/desktop';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 
@@ -59,6 +60,8 @@ export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient,
       return [...messages.filter(message => !message.id.startsWith('cloud-group-persona:')
         && !message.id.startsWith('requester:')), identityMessage];
     },
+    /** Whether this Mac no longer owns the run, so it can no longer publish. */
+    get lost() { return lost || deadline <= Date.now(); },
     get deadline() { if (lost || deadline <= Date.now()) throw new Error('Execution lease lost.'); return deadline; },
     attach(id: string) { turnId = id; if (lost || deadline <= Date.now()) loseLease(); },
     async admitted() {
@@ -77,9 +80,15 @@ export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient,
     publisher: {
       sendMessage: async (_token: string, _peer: string, body: string, options: SendCloudMessageOptions = {}): Promise<CloudMessage> => {
         if (lost || deadline <= Date.now()) { loseLease(); throw new Error('Execution lease lost.'); }
-        return client.desktopAgentExecution(token, `${encodeURIComponent(result.runId)}/progress`, {
-          claimId, body, clientMessageId: cloudOperationUuid(options.clientMessageId),
-        });
+        try {
+          return await client.desktopAgentExecution<CloudMessage>(token, `${encodeURIComponent(result.runId)}/progress`, {
+            claimId, body, clientMessageId: cloudOperationUuid(options.clientMessageId),
+          });
+        } catch (error) {
+          // The server refuses a run this Mac no longer owns.
+          if (error instanceof CloudAuthError && error.status === 409) loseLease();
+          throw error;
+        }
       },
     },
   };

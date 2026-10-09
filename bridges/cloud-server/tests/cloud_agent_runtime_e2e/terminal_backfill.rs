@@ -238,7 +238,10 @@ async fn a_restarted_desktop_releases_the_request_it_lost() {
     let foreign = read_json(release(accounts.peer.token.clone()).await.unwrap()).await;
     assert_eq!(foreign["released"], false);
     let released = read_json(release(accounts.owner.token.clone()).await.unwrap()).await;
-    assert_eq!(released, json!({"released":true,"published":true}));
+    assert_eq!(
+        released,
+        json!({"released":true,"closed":true,"published":true})
+    );
     let (status,): (String,) = sqlx_core::query_as::query_as(
         "SELECT status FROM cloud_agent_fallback_runs WHERE run_id=$1",
     )
@@ -311,4 +314,135 @@ async fn the_sweep_ends_failed_desktop_runs_that_never_replied() {
     assert_eq!(after[0].0, "failed");
     backfill_terminal_responses(&pool, 1).await.unwrap();
     assert_eq!(replies(&pool, &owner, &session, &request).await, after);
+}
+
+async fn run_status(pool: &sqlx_postgres::PgPool, run: &str) -> String {
+    let (status,): (String,) = sqlx_core::query_as::query_as(
+        "SELECT status FROM cloud_agent_fallback_runs WHERE run_id=$1",
+    )
+    .bind(run)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    status
+}
+
+#[tokio::test]
+async fn a_desktop_closes_its_run_with_the_partial_reply_after_losing_its_lease() {
+    let Some(pool) = try_pool().await else { return };
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
+    let accounts = ready_accounts(&router, &pool).await;
+    let owner = &accounts.owner;
+    let turn = processing_desktop_turn(&router, &pool, &accounts, false).await;
+    // The lease lapsed, so the progress route refuses this Mac.
+    sqlx_core::query::query("UPDATE cloud_agent_fallback_runs SET lease_expires_at=(now()-interval '5 seconds')::text WHERE run_id=$1")
+        .bind(&turn.run)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let closed = read_json(
+        router
+            .clone()
+            .oneshot(post_json_with_token(
+                "/v1/cloud/agent-runs/desktop/interrupted",
+                &owner.token,
+                json!({"sessionId":turn.session,"requestMessageId":turn.canonical,"state":"failed","text":"Half an answer","ending":"interrupted"}),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(
+        closed,
+        json!({"released":true,"closed":true,"published":true})
+    );
+    assert_eq!(run_status(&pool, &turn.run).await, "failed");
+    let after = replies(&pool, owner, &turn.session, &turn.canonical).await;
+    assert_eq!(
+        after.last(),
+        Some(&("failed".to_string(), "Half an answer".to_string())),
+        "{after:?}"
+    );
+    let rows: Vec<(Option<String>,)> = sqlx_core::query_as::query_as(
+        "SELECT m.content #>> '{blocks,0,text}' FROM cloud_chat_messages m \
+         JOIN cloud_chat_conversations c USING(conversation_id) WHERE c.legacy_session_id=$1",
+    )
+    .bind(&turn.session)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let endings: Vec<Value> = rows
+        .into_iter()
+        .filter_map(|(body,)| {
+            let encoded = body?
+                .strip_prefix("kordi-cloud-agent-response:")?
+                .to_string();
+            let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(encoded)
+                .ok()?;
+            serde_json::from_slice::<Value>(&bytes).ok()
+        })
+        .filter_map(|reply| reply.get("ending").cloned())
+        .collect();
+    assert_eq!(endings, vec![json!("interrupted")]);
+    // A second report finds the run ended and the reply published.
+    let again = read_json(
+        router
+            .clone()
+            .oneshot(post_json_with_token(
+                "/v1/cloud/agent-runs/desktop/interrupted",
+                &owner.token,
+                json!({"sessionId":turn.session,"requestMessageId":turn.canonical,"state":"failed","text":"Half an answer","ending":"interrupted"}),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(
+        again,
+        json!({"released":true,"closed":false,"published":false})
+    );
+}
+
+#[tokio::test]
+async fn the_sweep_closes_a_lapsed_desktop_run_whose_reply_is_terminal_at_once() {
+    let Some(pool) = try_pool().await else { return };
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
+    let accounts = ready_accounts(&router, &pool).await;
+    let owner = &accounts.owner;
+    let turn = processing_desktop_turn(&router, &pool, &accounts, false).await;
+    // The terminal reply reached the chat, but the run was never ended.
+    let (conversation,): (uuid::Uuid,) = sqlx_core::query_as::query_as(
+        "SELECT conversation_id FROM cloud_chat_conversations WHERE legacy_session_id=$1",
+    )
+    .bind(&turn.session)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let stopped = encode(
+        "kordi-cloud-agent-response",
+        json!({"kind":"agent-response","requestId":turn.canonical,"text":"Half an answer","deliveryState":"cancelled","ending":"stopped"}),
+    );
+    insert_test_message(&pool, &owner.account_id, conversation, &stopped).await;
+    // Seconds after the lease lapsed: far inside the lost-executor grace.
+    sqlx_core::query::query("UPDATE cloud_agent_fallback_runs SET lease_expires_at=(now()-interval '1 second')::text WHERE run_id=$1")
+        .bind(&turn.run)
+        .execute(&pool)
+        .await
+        .unwrap();
+    backfill_terminal_responses(&pool, 1).await.unwrap();
+    assert_eq!(run_status(&pool, &turn.run).await, "cancelled");
+    // The reply stays as published; the sweep adds none.
+    let after = replies(&pool, owner, &turn.session, &turn.canonical).await;
+    assert_eq!(
+        after.last(),
+        Some(&("cancelled".to_string(), "Half an answer".to_string())),
+        "{after:?}"
+    );
+    assert!(!after.contains(&interrupted()), "{after:?}");
+
+    // A run whose lease is still live is left alone.
+    let live = processing_desktop_turn(&router, &pool, &accounts, true).await;
+    backfill_terminal_responses(&pool, 1).await.unwrap();
+    assert_ne!(run_status(&pool, &live.run).await, "cancelled");
 }

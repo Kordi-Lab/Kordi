@@ -24,6 +24,8 @@ enum CloudMessageCodec {
         let text: String
         let requestId: String?
         let deliveryState: String?
+        /// Older replies omit it; unknown values decode as no marker.
+        let ending: String?
         let execution: AgentExecutionSnapshot?
         let executionClaimId: String?
         let backgroundSessions: [BackgroundAgentSession.Wire]?
@@ -182,6 +184,17 @@ enum CloudMessageCodec {
         }
     }
 
+    /// How a terminal reply that keeps its partial text ended early. A reply
+    /// without text, or one that finished, has no marker.
+    static func agentReplyEnding(_ body: String) -> AgentReplyEnding? {
+        guard let response = parsedEnvelopes(body).response,
+              response.deliveryState == "cancelled" || response.deliveryState == "failed",
+              !response.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return response.ending.flatMap(AgentReplyEnding.init(rawValue:))
+    }
+
     static func agentResponseRequestId(_ body: String) -> String? {
         parsedEnvelopes(body).response?.requestId
     }
@@ -302,6 +315,19 @@ enum CloudMessageCodec {
             normalized += String(repeating: "=", count: 4 - remainder)
         }
         return Data(base64Encoded: normalized)
+    }
+}
+
+/// How an agent reply that keeps its partial text ended early.
+enum AgentReplyEnding: String, Codable, Equatable, Sendable {
+    case stopped
+    case interrupted
+
+    var label: String {
+        switch self {
+        case .stopped: String(localized: "Stopped", comment: "Caption under an agent reply a person stopped before it finished.")
+        case .interrupted: String(localized: "Interrupted", comment: "Caption under an agent reply that ended early because its device stopped working on it.")
+        }
     }
 }
 

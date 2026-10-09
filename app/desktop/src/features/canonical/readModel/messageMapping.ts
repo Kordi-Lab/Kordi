@@ -409,8 +409,11 @@ export function mapCanonicalMessage(
     && (deliveryState === 'queued' || deliveryState === 'processing')
     && (!rawDisplayText.trim() || isProcessingPlaceholderText(rawDisplayText));
   const displayText = isProcessingAgentPlaceholder || legacyCollaborationAgentFailure || noProviderFailure ? '' : rawDisplayText;
+  // A reply that ended early keeps its partial text and marks how it ended.
+  const rawEnding = isAgentTurn && completed && displayText.trim() ? stringValue(content.ending) : undefined;
+  const ending = rawEnding === 'stopped' || rawEnding === 'interrupted' ? rawEnding : undefined;
   const cancelledByRole = stringValue(content.cancelledByRole)?.trim();
-  const cancelledContent = cancelled
+  const cancelledContent = cancelled && !ending
     ? cancelledTurnContent(displayText, cancelledByRole ? `Request canceled by ${cancelledByRole}.` : displayText.trim() || 'Request canceled.')
     : null;
   const rawErrorText = stringValue(content.error) ?? (noProviderFailure ? rawDisplayText : null) ?? 'Message failed';
@@ -474,14 +477,15 @@ export function mapCanonicalMessage(
           sessionId: message.sessionId,
           prompt: '',
           status: completed ? (cancelled ? 'cancelled' : failed ? 'failed' : 'complete') : (stringValue(content.localExecutionStatus) ?? (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'queued' : 'processing' : displayText.trim() ? 'writing' : 'typing')),
-          message: completed ? (cancelledContent ? cancelledContent.notice : failed ? 'Failed' : 'Complete') : stringValue(content.localExecutionMessage) ?? (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'Queued…' : '' : displayText.trim() ? 'Replying…' : 'Typing…'),
+          message: completed ? (ending ? (ending === 'stopped' ? 'Stopped' : 'Interrupted') : cancelledContent ? cancelledContent.notice : failed ? 'Failed' : 'Complete') : stringValue(content.localExecutionMessage) ?? (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'Queued…' : '' : displayText.trim() ? 'Replying…' : 'Typing…'),
           assistantText: cancelledContent ? cancelledContent.assistantText : displayText,
           thinkingText,
           tools: visibleTools,
           startedAtMs: numberValue(content.startedAtMs), completedAtMs: numberValue(content.completedAtMs),
           completed,
           succeeded: completed && !failed && visibleTools.every((tool) => !tool.isError),
-          error: cancelled ? null : failed ? (legacyCollaborationAgentFailure ? 'Message failed' : agentTurnErrorText) : null,
+          error: cancelled || ending ? null : failed ? (legacyCollaborationAgentFailure ? 'Message failed' : agentTurnErrorText) : null,
+          ...(ending ? { ending } : {}),
           replyToMessageId,
           pendingCollaborationAgentRequest,
           hostedRunStatus: !completed && (content.hostedRunStatus === 'queued' || content.hostedRunStatus === 'leased' || content.hostedRunStatus === 'running')

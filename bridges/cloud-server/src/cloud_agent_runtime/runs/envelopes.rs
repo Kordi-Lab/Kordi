@@ -346,12 +346,31 @@ pub(super) fn encode_cloud_agent_response_body_with_state(
     response_text: &str,
     delivery_state: &str,
 ) -> String {
-    let envelope = serde_json::json!({
+    encode_cloud_agent_response_body_with_ending(
+        request_message_id,
+        response_text,
+        delivery_state,
+        None,
+    )
+}
+
+/// `ending` marks a reply that keeps the partial text of a turn that ended
+/// early: `stopped` by a user or `interrupted` by its executor.
+pub(super) fn encode_cloud_agent_response_body_with_ending(
+    request_message_id: &str,
+    response_text: &str,
+    delivery_state: &str,
+    ending: Option<&str>,
+) -> String {
+    let mut envelope = serde_json::json!({
         "kind": "agent-response",
         "requestId": request_message_id,
         "text": response_text,
         "deliveryState": delivery_state,
     });
+    if let Some(ending) = ending {
+        envelope["ending"] = serde_json::Value::String(ending.to_string());
+    }
     format!(
         "{}{}",
         CLOUD_AGENT_RESPONSE_PREFIX,

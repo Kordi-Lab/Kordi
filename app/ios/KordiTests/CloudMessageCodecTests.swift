@@ -933,3 +933,57 @@ final class CloudMessageCodecTests: XCTestCase {
         XCTAssertFalse(CloudMessageCodec.isAgentControl("A visible session message"))
     }
 }
+
+private func agentReplyBody(_ payload: [String: Any]) throws -> String {
+    let encoded = try JSONSerialization.data(withJSONObject: payload).base64EncodedString()
+        .replacingOccurrences(of: "+", with: "-")
+        .replacingOccurrences(of: "/", with: "_")
+        .replacingOccurrences(of: "=", with: "")
+    return CloudMessageCodec.agentResponsePrefix + encoded
+}
+
+@Test func agentReplyEndingDecodesWithItsPartialText() throws {
+    let stopped = try agentReplyBody([
+        "kind": "agent-response", "requestId": "request", "text": "Partial answer",
+        "deliveryState": "cancelled", "ending": "stopped"
+    ])
+    #expect(CloudMessageCodec.agentReplyEnding(stopped) == .stopped)
+    #expect(CloudMessageCodec.displayText(stopped) == "Partial answer")
+    #expect(CloudMessageCodec.agentResponseDeliveryState(stopped) == .cancelled)
+    let interrupted = try agentReplyBody([
+        "kind": "agent-response", "requestId": "request", "text": "Partial answer",
+        "deliveryState": "failed", "ending": "interrupted"
+    ])
+    #expect(CloudMessageCodec.agentReplyEnding(interrupted) == .interrupted)
+    #expect(CloudMessageCodec.agentResponseDeliveryState(interrupted) == .failed)
+}
+
+@Test func agentReplyWithoutEndingDecodesAsBefore() throws {
+    let legacy = try agentReplyBody([
+        "kind": "agent-response", "requestId": "request", "text": "Request stopped.", "deliveryState": "cancelled"
+    ])
+    #expect(CloudMessageCodec.agentReplyEnding(legacy) == nil)
+    #expect(CloudMessageCodec.displayText(legacy) == "Request stopped.")
+    #expect(CloudMessageCodec.agentResponseDeliveryState(legacy) == .cancelled)
+    let unknown = try agentReplyBody([
+        "kind": "agent-response", "requestId": "request", "text": "Partial", "deliveryState": "cancelled", "ending": "paused"
+    ])
+    #expect(CloudMessageCodec.agentReplyEnding(unknown) == nil)
+    #expect(CloudMessageCodec.displayText(unknown) == "Partial")
+    // A finished reply carries no marker even when one is present.
+    let complete = try agentReplyBody([
+        "kind": "agent-response", "requestId": "request", "text": "Done", "deliveryState": "complete", "ending": "stopped"
+    ])
+    #expect(CloudMessageCodec.agentReplyEnding(complete) == nil)
+}
+
+@Test func agentRepliesNeverShowAsEdited() {
+    let reply = ChatMessage(
+        id: "reply", conversationId: "c", author: .agent, authorName: "Kordi", text: "Partial",
+        createdAt: .now, editedAt: .now, deliveryState: .cancelled, errorMessage: nil,
+        requestMessageId: "request", agentReplyEnding: .stopped
+    )
+    #expect(!reply.isEdited)
+    let decoded = try? JSONDecoder().decode(ChatMessage.self, from: JSONEncoder().encode(reply))
+    #expect(decoded?.agentReplyEnding == .stopped)
+}

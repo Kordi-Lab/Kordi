@@ -398,4 +398,6 @@ export type DesktopChatTurnSnapshot = {
   replyToMessageId?: string | null;
   sourceMessage?: MessageSourceReference | null;
   pendingCollaborationAgentRequest?: CollaborationAgentRequestControl | null;
+  /** How a reply that keeps its partial text ended early. */
+  ending?: 'stopped' | 'interrupted';
 };

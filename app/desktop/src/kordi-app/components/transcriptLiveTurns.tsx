@@ -597,7 +597,9 @@ function LiveChatTurnCardView({
   onOpenAuthSettings?: () => void;
 }) {
   const visibleTurn = useVisibleLiveTurn(turn, historical, showReasoning);
-  const cancelledContent = visibleTurn.status === 'cancelled'
+  // A reply that ended early keeps its partial text with a footer of how it ended.
+  const ending = visibleTurn.completed && visibleTurn.assistantText.trim() ? visibleTurn.ending : undefined;
+  const cancelledContent = visibleTurn.status === 'cancelled' && !ending
     ? cancelledTurnContent(visibleTurn.assistantText, visibleTurn.message, visibleTurn.error)
     : null;
   const assistantText = cancelledContent?.assistantText ?? visibleTurn.assistantText;
@@ -648,7 +650,7 @@ function LiveChatTurnCardView({
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
   const changedFileRows = changedFileRowsFromTurn(visibleTurn);
   const noProviderConfiguredError = Boolean(visibleTurn.error && isCloudAgentNoProviderConfiguredError(visibleTurn.error));
-  const displayedError = noProviderConfiguredError ? cloudAgentNoProviderNoticeText() : cancelledContent ? cancelledContent.error : visibleTurn.error;
+  const displayedError = ending ? null : noProviderConfiguredError ? cloudAgentNoProviderNoticeText() : cancelledContent ? cancelledContent.error : visibleTurn.error;
   const cancellationNotice = cancelledContent?.notice;
   const shouldShowSourceQuote = !plainAgentResponse && Boolean(visibleTurn.sourceMessage);
   const hasResponseSurface = Boolean( // A failed quoted turn keeps its answer surface; the quote sits below it.
@@ -737,8 +739,13 @@ function LiveChatTurnCardView({
               key="answer"
               text={assistantText}
               foldable={!plainAgentResponse}
-              tone={visibleTurn.status === 'cancelled' ? 'cancelled' : 'default'}
+              tone={visibleTurn.status === 'cancelled' && !ending ? 'cancelled' : 'default'}
             />
+          ) : null}
+          {ending && hasAssistant ? (
+            <div data-reply-ending={ending} className="app-message-footer app-live-turn-ending px-0.5 text-[11px] leading-4">
+              {ending === 'stopped' ? 'Stopped' : 'Interrupted'}
+            </div>
           ) : null}
           {cancellationNotice ? (
             <div className="app-live-turn-cancelled px-0.5 text-[12px] font-medium leading-5 text-[color:var(--utility-muted-text)]">

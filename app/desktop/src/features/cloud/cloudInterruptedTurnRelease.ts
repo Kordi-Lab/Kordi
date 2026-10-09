@@ -1,4 +1,5 @@
 import type { CloudAuthClient } from './authClient';
+import type { CloudAgentReplyEnding } from './cloudAgentMessages';
 import { loadSession } from './session';
 
 export type InterruptedCloudAgentRequest = {
@@ -48,5 +49,52 @@ export async function releaseInterruptedCloudAgentRequests(
     failures: results.flatMap((result): unknown[] => (
       result.status === 'rejected' ? [result.reason as unknown] : []
     )),
+  };
+}
+
+export type CloudAgentRunClosure = {
+  sessionId: string;
+  requestId: string;
+  /** How the run ended. The server never reopens an ended run. */
+  state: 'completed' | 'failed' | 'cancelled';
+  /** The terminal reply the server publishes when the request has none yet. */
+  text?: string;
+  ending?: CloudAgentReplyEnding;
+};
+
+export type CloudAgentRunClosureResult = {
+  /** A run of this device exists for the request. */
+  released: boolean;
+  /** This call ended a run that was still open. */
+  closed: boolean;
+  /** This call published the terminal reply. */
+  published: boolean;
+};
+
+/**
+ * Ends this device's run for a request in the same step as its terminal
+ * reply. It needs no execution lease, so it also works after the lease was
+ * lost: the server publishes the reply when no terminal reply exists yet.
+ */
+export async function closeCloudAgentRunFromDesktop(
+  client: Pick<CloudAuthClient, 'desktopAgentExecution'>,
+  token: string,
+  closure: CloudAgentRunClosure,
+): Promise<CloudAgentRunClosureResult> {
+  const response = await client.desktopAgentExecution<Partial<CloudAgentRunClosureResult> | null>(
+    token,
+    'interrupted',
+    {
+      sessionId: closure.sessionId,
+      requestMessageId: closure.requestId,
+      state: closure.state,
+      ...(closure.text?.trim() ? { text: closure.text } : {}),
+      ...(closure.ending ? { ending: closure.ending } : {}),
+    },
+  );
+  return {
+    released: response?.released === true,
+    closed: response?.closed === true,
+    published: response?.published === true,
   };
 }

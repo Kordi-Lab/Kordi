@@ -174,6 +174,7 @@ enum CloudDirectMessageProjector {
                     ? nil : CloudMessageCodec.agentResponseDeliveryState(message.body),
                 updatedAtMs: parseCloudDate(message.createdAt).timeIntervalSince1970 * 1_000
             ),
+            agentReplyEnding: CloudMessageCodec.agentReplyEnding(message.body),
             backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
             reactions: message.reactions,
             attachmentReactions: message.attachmentReactions
