@@ -649,10 +649,16 @@ final class ConversationReadPresentationTests: XCTestCase {
             requestID: "request-1", createdAt: Date(timeIntervalSince1970: 1),
             messages: fixture.filter { $0.id != "response-1" }, kind: .agent, locallyQueued: false
         ), .preparing)
+        // A mention in a person or group chat waits for its own reply and
+        // never queues behind another request.
         for kind: ConversationKind in [.group, .person] {
-            XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
+            XCTAssertEqual(AgentSessionQueuePresentation.pendingPhase(
                 requestID: "request-2", createdAt: Date(timeIntervalSince1970: 2),
                 messages: fixture, kind: kind, locallyQueued: true
+            ), .preparing)
+            XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
+                requestID: "request-2", createdAt: Date(timeIntervalSince1970: 2),
+                messages: fixture, kind: kind, locallyQueued: false, confirmedRunStatus: "cancelled"
             ))
         }
     }

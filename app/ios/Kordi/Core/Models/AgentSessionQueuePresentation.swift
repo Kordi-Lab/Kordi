@@ -23,13 +23,15 @@ enum AgentSessionQueuePresentation {
         locallyQueued: Bool,
         confirmedRunStatus: String? = nil
     ) -> AgentExecutionSnapshot.Phase? {
-        guard kind == .agent,
-              let request = messages.first(where: { $0.id == requestID }),
+        guard let request = messages.first(where: { $0.id == requestID }),
               [.sent, .delivered, .read].contains(request.deliveryState) else { return nil }
         if let confirmedRunStatus {
             if confirmedRunStatus == "running" { return .preparing }
             if ["failed", "cancelled"].contains(confirmedRunStatus) { return nil }
         }
+        // A mention in a person or group chat has no session queue; it waits
+        // for its own reply.
+        guard kind == .agent else { return .preparing }
         if locallyQueued { return .queued }
         let snapshots = executionSnapshots(in: messages)
         let hasActivePredecessor = messages.contains { message in

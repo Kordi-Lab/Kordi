@@ -266,6 +266,7 @@ export async function respondToCloudGroupAgentMention(
     void cancelDesktopChatTurn(startedTurn.id).catch(() => undefined);
   };
   signal.addEventListener('abort', cancelStartedTurn, { once: true });
+  lease.onStopRequested(cancelStartedTurn);
   if (signal.aborted) cancelStartedTurn();
   let persistedProcessingMessage: Awaited<ReturnType<typeof upsertCanonicalMessageFast>>;
   let finalTurn: DesktopChatTurnSnapshot;

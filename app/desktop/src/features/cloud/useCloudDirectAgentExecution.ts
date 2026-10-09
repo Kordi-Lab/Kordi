@@ -9,6 +9,7 @@ import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
 import { publishModelSubsessions } from './agentSubsessionSync';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
 import {
+  cancelDesktopChatTurn,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
 import {
@@ -64,6 +65,7 @@ import {
 } from './cloudAgentMentionPolicy';
 import { cloudSessionIdForCollaborationSend } from './cloudCollaborationState';
 import { loadSession } from './session';
+import { createCloudSharedAgentProgress } from './cloudSharedAgentProgress';
 
 export function useCloudDirectAgentExecution({
   account,
@@ -226,8 +228,16 @@ export function useCloudDirectAgentExecution({
             reportWarning('Agent execution admission failed', error); return null;
           });
           if (!lease) return;
+          const token = session.token;
+          const progress = createCloudSharedAgentProgress({
+            requestId: message.messageId, messageAction: replyMessageAction,
+            publish: (body, clientMessageId) => lease.publisher.sendMessage(token, peerId, body, { sessionId: message.sessionId ?? null, clientMessageId }),
+            onPublished: mergeMessage,
+            onError: (error) => reportWarning('[cloud-agent-mention] progress publish failed', error),
+          });
           try {
           if (!await lease.admitted()) return;
+          progress.start();
           let finalTurn: DesktopChatTurnSnapshot;
           try {
             const agentAttachments = message.attachments?.length
@@ -252,6 +262,7 @@ export function useCloudDirectAgentExecution({
               lease.deadline,
             );
             lease.attach(startedTurn.id);
+            lease.onStopRequested(() => { void cancelDesktopChatTurn(startedTurn.id).catch(() => undefined); });
             rememberLocalTurn(startedTurn);
             turnIdsByRequestIdRef.current.set(message.messageId, startedTurn.id);
             registerCloudBackgroundFollowUpPublisher(message.messageId, async (reply) => {
@@ -274,22 +285,13 @@ export function useCloudDirectAgentExecution({
               mergeMessage(followUpResponse);
               void syncMessages();
             });
-            if (replyMessageAction) {
-              await lease.publisher.sendMessage(session.token, peerId, encodeCloudAgentResponse({
-                requestId: message.messageId,
-                text: '',
-                deliveryState: 'processing',
-                messageAction: replyMessageAction,
-              }), { sessionId: message.sessionId ?? null })
-                .then(mergeMessage)
-                .catch((error) => reportWarning('[cloud-agent-mention] thread status publish failed', error));
-            }
+            progress.update(startedTurn);
             finalTurn = startedTurn.completed
               ? startedTurn
-              : await waitForCloudAgentTurn(
-                startedTurn.id,
-                rememberLocalTurn,
-              );
+              : await waitForCloudAgentTurn(startedTurn.id, (turn) => {
+                rememberLocalTurn(turn);
+                progress.update(turn);
+              });
             rememberLocalTurn(finalTurn);
             void publishModelSubsessions(finalTurn).catch(() => undefined);
           } catch (error) {
@@ -307,6 +309,7 @@ export function useCloudDirectAgentExecution({
             );
           } finally {
             turnIdsByRequestIdRef.current.delete(message.messageId);
+            await progress.finish();
           }
 
           try {
