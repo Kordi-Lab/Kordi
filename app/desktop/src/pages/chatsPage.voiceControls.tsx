@@ -1,4 +1,5 @@
-import { Send } from 'lucide-react';
+import { useState } from 'react';
+import { LoaderCircle, Send, Square } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { VoiceRecordingRail } from '@/kordi-app/components/voiceMessage';
@@ -16,17 +17,53 @@ function VoiceMessageIcon({ className }: { className?: string }) {
   );
 }
 
+/** The running request's stop, in the send button's place. */
+export type ComposerStopControl = {
+  /** Identifies the request, so a new one starts with a fresh button. */
+  requestKey: string;
+  onStop: () => Promise<void> | void;
+};
+
+/** Square stop in the send button's size and position; spins while stopping. */
+export function ComposerStopButton({ onStop, className }: { onStop: () => Promise<void> | void; className: string }) {
+  const [stopping, setStopping] = useState(false);
+  return (
+    <Button
+      type="button"
+      className={className}
+      onClick={() => {
+        if (stopping) return;
+        setStopping(true);
+        void Promise.resolve()
+          .then(onStop)
+          .catch(() => setStopping(false));
+      }}
+      aria-busy={stopping || undefined}
+      data-composer-stop="true"
+      title="Stop"
+      aria-label="Stop"
+    >
+      {stopping
+        ? <LoaderCircle className="h-[15px] w-[15px] animate-spin motion-reduce:animate-none" aria-hidden="true" />
+        : <Square className="h-3 w-3 fill-current" aria-hidden="true" />}
+    </Button>
+  );
+}
+
 /** Idle: voice icon beside the send button. Active: the voice draft pill takes their place. */
 export function VoiceComposerControls({
   voice,
   hasSendableDraft,
   activeLiveTurnIsRunning,
   onSend,
+  stop = null,
 }: {
   voice: VoiceComposerController;
   hasSendableDraft: boolean;
   activeLiveTurnIsRunning: boolean;
   onSend: () => void;
+  /** While the viewer's request runs, Stop replaces Send; the draft stays. */
+  stop?: ComposerStopControl | null;
 }) {
   const recorder = voice.recorder;
   if (voice.surfaceActive) {
@@ -51,7 +88,13 @@ export function VoiceComposerControls({
       >
         <VoiceMessageIcon className="h-5 w-5" />
       </button>
-      <Button
+      {stop ? (
+        <ComposerStopButton
+          key={stop.requestKey}
+          className="app-composer-send app-composer-send-compact h-8 w-8 shrink-0 rounded-full p-0"
+          onStop={stop.onStop}
+        />
+      ) : <Button
         className="app-composer-send app-composer-send-compact h-8 w-8 shrink-0 rounded-full p-0"
         onClick={onSend}
         disabled={!hasSendableDraft}
@@ -60,7 +103,7 @@ export function VoiceComposerControls({
         aria-label="Send message"
       >
         <Send className="h-[15px] w-[15px]" />
-      </Button>
+      </Button>}
     </div>
   );
 }

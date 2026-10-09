@@ -44,7 +44,7 @@ import { AttachmentPreview } from './transcriptAttachments';
 import { TranscriptCallActivityContent } from './transcriptCallActivityContent';
 import { StandaloneEmojiMessage } from './transcriptEmojiMessage';
 import { standaloneEmojiItemForMessage } from './transcriptEmojiMessageEligibility';
-import { LiveChatTurnCard,LiveChatTurnMessage,type StopActiveTurnHandler,type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
+import { AgentRequestHeaderStop,LiveChatTurnCard,LiveChatTurnMessage,type StopActiveTurnHandler,type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import type { MessageForkSummary } from './transcriptMessageForks';
 import { transcriptMessageIsOwnHuman,transcriptMessageIsPeerHuman } from './transcriptMessageHumanRole';
 import { TranscriptMessageSurface } from './transcriptMessageSurface';
@@ -633,6 +633,13 @@ function MessageBubbleView({
             <div className="flex w-full items-center gap-1.5">
               {threadLayout ? <ThreadMessageHeader msg={msg} name={msg.sender || "Agent"} ownerName={agentOwnerName} /> : null}
               {!threadLayout ? <><div className="app-message-meta">{msg.sender}</div><AgentOwnerTag name={agentOwnerName} /></> : null}
+              <AgentRequestHeaderStop
+                turn={msg.turn}
+                message={msg}
+                historical={msg.turn.completed}
+                onStopActiveTurn={onStopActiveTurn}
+                onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
+              />
               {forkButton}
               {forkChip}
             </div>
@@ -641,6 +648,7 @@ function MessageBubbleView({
               hideSourceQuote={threadLayout}
               historical={msg.turn.completed} showReasoning={msg.role === 'owned-agent'}
               plainAgentResponse={plainAgentResponse}
+              stopInHeader
               onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
               onStopActiveTurn={onStopActiveTurn}
               onNavigateToMessage={onNavigateToMessage}

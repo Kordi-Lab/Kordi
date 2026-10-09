@@ -138,20 +138,19 @@ test('new agent sessions receive a stable first-message title across devices', (
   assert.equal(initialCloudAgentSessionTitle('', 3), '3 attachments');
 });
 
-test('chat composer is always in send mode regardless of running/busy state', () => {
-  // The composer-side stop variant was removed (#273); the inline stop button on the
-  // running message is now the only stop affordance. The composer always sends/queues
-  // regardless of `isDesktopChatSending`, `activeLiveTurnIsRunning`, or `hasDraft`.
+test('chat composer stops a running request and sends otherwise', () => {
+  // Stop replaces Send while a request runs, whether or not a draft is typed;
+  // sending in flight alone does not turn the button into Stop.
   assert.equal(chatComposerSubmitMode({ isDesktopChatSending: false, activeLiveTurnIsRunning: false, hasDraft: false }), 'send');
-  assert.equal(chatComposerSubmitMode({ isDesktopChatSending: false, activeLiveTurnIsRunning: true, hasDraft: false }), 'send');
-  assert.equal(chatComposerSubmitMode({ isDesktopChatSending: false, activeLiveTurnIsRunning: true, hasDraft: true }), 'send');
+  assert.equal(chatComposerSubmitMode({ isDesktopChatSending: false, activeLiveTurnIsRunning: true, hasDraft: false }), 'stop');
+  assert.equal(chatComposerSubmitMode({ isDesktopChatSending: false, activeLiveTurnIsRunning: true, hasDraft: true }), 'stop');
   assert.equal(chatComposerSubmitMode({ isDesktopChatSending: true, activeLiveTurnIsRunning: false, hasDraft: true }), 'send');
   assert.equal(chatComposerSubmitMode({
     isDesktopChatSending: true,
     activeLiveTurnIsRunning: true,
     hasDraft: false,
     canSendWhileBusy: true,
-  }), 'send');
+  }), 'stop');
   assert.equal(chatComposerSubmitMode(), 'send');
 });
 

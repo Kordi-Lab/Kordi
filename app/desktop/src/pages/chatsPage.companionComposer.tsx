@@ -8,6 +8,7 @@ import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/c
 import { BlobEmojiComposerInput, type BlobEmojiComposerInputHandle } from '@/features/emoji/BlobEmojiComposerInput';
 import { subsessionMentions } from '@/features/cloud/subsessionConversation';
 import { ComposerMentionMenu } from '@/kordi-app/components/composerMentionMenu';
+import { ComposerStopButton, type ComposerStopControl } from '@/pages/chatsPage.voiceControls';
 import { currentMentionQuery, orderedComposerMentionOptions } from '@/kordi-app/components/composerMentionOptions';
 import type { ComposerMentionOption } from '@/kordi-app/components/composer';
 import {
@@ -96,6 +97,8 @@ export type CompanionComposerProps = {
     target?: HTMLTextAreaElement | HTMLDivElement,
   ) => void;
   onSend: (conversation: Conversation, mentions?: MessageMention[]) => void;
+  /** While the viewer's request runs, Stop replaces Send; the draft stays. */
+  stop?: ComposerStopControl | null;
 };
 
 export function CompanionComposer({
@@ -114,6 +117,7 @@ export function CompanionComposer({
   ui,
   onDraftChange,
   onSend,
+  stop = null,
 }: CompanionComposerProps) {
   const {
     chatComposerAttachments,
@@ -344,7 +348,13 @@ export function CompanionComposer({
                 />
               </div>
             ) : null}
-            <Button
+            {stop ? (
+              <ComposerStopButton
+                key={stop.requestKey}
+                className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
+                onStop={stop.onStop}
+              />
+            ) : <Button
               type="button"
               size="icon"
               variant="secondary"
@@ -356,7 +366,7 @@ export function CompanionComposer({
               data-companion-send-control="true"
             >
               <Send className="h-4 w-4" />
-            </Button>
+            </Button>}
           </div>
         </div>
       </div>

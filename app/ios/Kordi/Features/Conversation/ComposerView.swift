@@ -811,7 +811,23 @@ struct ComposerView: View {
         .accessibilityLabel("Add photo, video, or file")
     }
 
+    /// While a request this account sent runs or waits here, Stop takes the
+    /// send button's place. The draft stays and can be sent after stopping.
+    @ViewBuilder
     private var sendButton: some View {
+        if editingMessage == nil, !isVoiceInputMode,
+           let stopRequestID = model.composerStopAgentRequestID(conversationId: conversation.id) {
+            ComposerAgentRequestStopButton(
+                conversationId: conversation.id,
+                requestMessageId: stopRequestID,
+                diameter: sendButtonDiameter
+            )
+        } else {
+            sendOrVoiceButton
+        }
+    }
+
+    private var sendOrVoiceButton: some View {
         Button {
             dismissExpressivePicker()
             dismissAgentModelPicker()

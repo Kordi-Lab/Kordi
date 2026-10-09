@@ -76,4 +76,21 @@ enum AgentSessionQueuePresentation {
             return copy
         }
     }
+
+    /// The request the composer's Stop acts on: the newest running request
+    /// this account sent, else the newest queued one. Requests run one at a
+    /// time, so a request behind the front one is queued until the server
+    /// confirms it running.
+    static func composerStopRequestID(
+        pending: [String],
+        locallyQueued: Set<String>,
+        confirmedRunStatuses: [String: String]
+    ) -> String? {
+        let unfinished = pending.filter { !["failed", "cancelled"].contains(confirmedRunStatuses[$0] ?? "") }
+        let front = unfinished.first
+        let running = unfinished.filter { id in
+            confirmedRunStatuses[id] == "running" || (id == front && !locallyQueued.contains(id))
+        }
+        return running.last ?? unfinished.last
+    }
 }

@@ -116,3 +116,50 @@ struct AgentRequestStopButton: View {
         return "Could not stop this request. Try again."
     }
 }
+
+/// The composer's Stop, in the send button's size and position. It stops the
+/// newest running request this account sent in the chat, else the queued one.
+struct ComposerAgentRequestStopButton: View {
+    @EnvironmentObject private var model: AppModel
+    let conversationId: String
+    let requestMessageId: String
+    let diameter: CGFloat
+    @State private var failure: String?
+
+    private var stopping: Bool { model.stoppingAgentRequestIDs.contains(requestMessageId) }
+
+    var body: some View {
+        Button {
+            Task {
+                do { try await model.stopAgentRequest(conversationId: conversationId, requestMessageId: requestMessageId) }
+                catch {
+                    if !CloudTransportErrorPolicy.isCancellation(error) {
+                        failure = AgentRequestStopButton.failureMessage(error)
+                    }
+                }
+            }
+        } label: {
+            ZStack {
+                Circle().fill(Color(uiColor: .tertiarySystemFill))
+                if stopping {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: "stop.fill")
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(KordiTheme.signalBlue)
+                }
+            }
+            .frame(width: diameter, height: diameter)
+            .frame(width: max(44, diameter), height: max(44, diameter))
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(stopping)
+        .accessibilityLabel(stopping ? "Stopping" : "Stop")
+        .alert("Couldn't stop request", isPresented: Binding(
+            get: { failure != nil }, set: { if !$0 { failure = nil } }
+        )) {
+            Button("OK", role: .cancel) { failure = nil }
+        } message: { Text(failure ?? "") }
+    }
+}

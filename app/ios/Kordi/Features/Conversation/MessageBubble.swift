@@ -264,10 +264,16 @@ struct MessageBubble: View, Equatable {
                     }
                 }
                 if let position = message.agentQueuePosition {
-                    Label(position == 1 ? "Queued next" : "Queued · \(position)", systemImage: "clock")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
+                    HStack(spacing: 6) {
+                        Label(position == 1 ? "Queued next" : "Queued · \(position)", systemImage: "clock")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        if message.author == .me {
+                            // The server cancels a queued run directly.
+                            AgentRequestStopButton(conversationId: message.conversationId, requestMessageId: message.id)
+                        }
+                    }
+                    .padding(.horizontal, 4)
                 }
                 if !isThreadLayout && showAuthor && message.author == .agent {
                     HStack(spacing: 6) {

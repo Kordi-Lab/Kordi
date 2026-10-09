@@ -6,11 +6,13 @@ import { IdentityAvatar, useLocalAgentAvatarSeed } from './IdentityAvatar';
 import { ThreadMessageHeader } from './ThreadMessageHeader';
 import { SourceMessageQuoteRow } from './transcriptReplyAttribution';
 
-export function LiveTurnMessageFrame({ turn, sender, showSourceQuote, onNavigateToMessage, children }: {
+export function LiveTurnMessageFrame({ turn, sender, showSourceQuote, onNavigateToMessage, headerAccessory, children }: {
   turn: DesktopChatTurnSnapshot;
   sender: string;
   showSourceQuote: boolean;
   onNavigateToMessage?: (id: string, source?: MessageSourceReference) => void;
+  /** Controls beside the time, such as the running request's stop. */
+  headerAccessory?: ReactNode;
   children: ReactNode;
 }) {
   const threadLayout = useMessageLayout() === 'threads';
@@ -18,7 +20,10 @@ export function LiveTurnMessageFrame({ turn, sender, showSourceQuote, onNavigate
   const id = turn.id ? transcriptMessageDomId(turn.id) : undefined;
   if (!threadLayout) return (
     <div id={id} data-transcript-message-root="true" className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5">
-      <div className="app-message-meta">{sender}</div>
+      <div className="flex items-center gap-1.5">
+        <div className="app-message-meta">{sender}</div>
+        {headerAccessory}
+      </div>
       {children}
     </div>
   );
@@ -31,7 +36,10 @@ export function LiveTurnMessageFrame({ turn, sender, showSourceQuote, onNavigate
       <div className="app-thread-message-main flex">
         <IdentityAvatar kind="agent" seed={agentAvatarSeed} name={sender} className="h-7 w-7 shrink-0" />
         <div className="app-message-hover-time-trigger min-w-0 flex-1">
-          <ThreadMessageHeader name={sender} msg={{ role: 'owned-agent', text: '', time, timestampMs }} />
+          <div className="flex w-full items-center gap-1.5">
+            <ThreadMessageHeader name={sender} msg={{ role: 'owned-agent', text: '', time, timestampMs }} />
+            {headerAccessory}
+          </div>
           {children}
         </div>
       </div>

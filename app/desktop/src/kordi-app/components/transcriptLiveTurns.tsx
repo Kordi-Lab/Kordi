@@ -4,6 +4,7 @@ import { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
 export { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
 import { agentTurnHasStarted, canDisplayAgentTurn, shouldShowAgentWaitingAnimation } from '@/features/chat/agentProcessingVisibility';
 import { cancelledTurnContent } from '@/features/chat/cancellation';
+import { agentRequestStopTarget } from '@/features/chat/agentRequestStop';
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowRightLeft,
@@ -47,7 +48,7 @@ import {
   toolTimelineTypeLabel,
   type ToolTimelineLayerGroup,
 } from './toolTimeline';
-import type { CollaborationAgentRequestControl, DesktopChatTurnSnapshot, MessageSourceReference } from '../types';
+import type { CollaborationAgentRequestControl, DesktopChatTurnSnapshot, Message, MessageSourceReference } from '../types';
 
 function toolDisplayConfig(toolName: string) {
   const normalized = toolName.toLowerCase();
@@ -531,6 +532,33 @@ function TurnStopButton({
   );
 }
 
+/**
+ * Stop beside the time in a running reply's header. It stays from admission
+ * until the terminal state, including while the reply streams text.
+ */
+export function AgentRequestHeaderStop({
+  turn,
+  message,
+  historical = false,
+  onStopActiveTurn,
+  onStopCollaborationAgentRequest,
+}: {
+  turn: DesktopChatTurnSnapshot | null | undefined;
+  message?: Pick<Message, 'role' | 'senderOwnerName'>;
+  historical?: boolean;
+  onStopActiveTurn?: StopActiveTurnHandler;
+  onStopCollaborationAgentRequest?: StopCollaborationAgentRequestHandler;
+}) {
+  const target = historical ? null : agentRequestStopTarget(turn, message);
+  if (target?.kind === 'collaboration' && onStopCollaborationAgentRequest) {
+    return <span className="app-thread-message-stop inline-flex shrink-0 items-center" data-agent-request-stop="header"><TurnStopButton key={target.turnId} onStop={() => onStopCollaborationAgentRequest(target.request)} /></span>;
+  }
+  if (target?.kind === 'turn' && onStopActiveTurn) {
+    return <span className="app-thread-message-stop inline-flex shrink-0 items-center" data-agent-request-stop="header"><TurnStopButton key={target.turnId} onStop={onStopActiveTurn} /></span>;
+  }
+  return null;
+}
+
 function CollaborationAgentStopButton({
   request,
   onStop,
@@ -548,6 +576,7 @@ function LiveChatTurnCardView({
   hideSourceQuote = false,
   showReasoning = false,
   plainAgentResponse = false,
+  stopInHeader = false,
   onStopCollaborationAgentRequest,
   onStopActiveTurn,
   onNavigateToMessage,
@@ -559,6 +588,8 @@ function LiveChatTurnCardView({
   hideSourceQuote?: boolean;
   showReasoning?: boolean;
   plainAgentResponse?: boolean;
+  /** The row header renders the stop control, so the card does not repeat it. */
+  stopInHeader?: boolean;
   onStopCollaborationAgentRequest?: StopCollaborationAgentRequestHandler;
   onStopActiveTurn?: StopActiveTurnHandler;
   onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
@@ -594,6 +625,8 @@ function LiveChatTurnCardView({
   const pendingCollaborationAgentRequest = visibleTurn.pendingCollaborationAgentRequest ?? null;
   const turnIsRunning = !historical && !visibleTurn.completed;
   const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingCollaborationAgentRequest && !visibleTurn.id.startsWith('collaboration-live-turn:');
+  const cardStopAvailable = activeStopAvailable && !stopInHeader;
+  const cardCollaborationStop = stopInHeader ? null : pendingCollaborationAgentRequest;
   const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id)
     || Boolean(shouldShowLiveStatusHeader && (visibleTurn.status === 'queued' || pendingCollaborationAgentRequest || activeStopAvailable || visibleTurn.sourceMessage || visibleTurn.hostedRunStatus));
   const liveStatusText = visibleTurn.status === 'cancelling'
@@ -646,12 +679,12 @@ function LiveChatTurnCardView({
               ) : shouldShowAgentWaitingAnimation(visibleTurn) ? (
                 <AgentWaitingWave label="Waiting for agent response" />
               ) : null}
-              {pendingCollaborationAgentRequest ? (
+              {cardCollaborationStop ? (
                 <CollaborationAgentStopButton
-                  request={pendingCollaborationAgentRequest}
+                  request={cardCollaborationStop}
                   onStop={onStopCollaborationAgentRequest}
                 />
-              ) : activeStopAvailable ? (
+              ) : cardStopAvailable ? (
                 <TurnStopButton onStop={onStopActiveTurn} />
               ) : null}
             </div>
@@ -689,12 +722,12 @@ function LiveChatTurnCardView({
               completed={visibleTurn.completed}
               summaryOverride={desktopTurnWorkDurationLabel(visibleTurn)}
               separatesAnswer={hasAssistant}
-              trailing={pendingCollaborationAgentRequest && onStopCollaborationAgentRequest ? (
+              trailing={cardCollaborationStop && onStopCollaborationAgentRequest ? (
                 <CollaborationAgentStopButton
-                  request={pendingCollaborationAgentRequest}
+                  request={cardCollaborationStop}
                   onStop={onStopCollaborationAgentRequest}
                 />
-              ) : activeStopAvailable ? (
+              ) : cardStopAvailable ? (
                 <TurnStopButton onStop={onStopActiveTurn} />
               ) : null}
             />
@@ -747,6 +780,7 @@ export const LiveChatTurnCard = memo(
     && previous.hideSourceQuote === next.hideSourceQuote
     && previous.showReasoning === next.showReasoning
     && previous.plainAgentResponse === next.plainAgentResponse
+    && previous.stopInHeader === next.stopInHeader
     && previous.onStopCollaborationAgentRequest === next.onStopCollaborationAgentRequest
     && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
@@ -781,6 +815,7 @@ function LiveChatTurnMessageView({
       hideSourceQuote={threadLayout}
       showReasoning
       plainAgentResponse={plainAgentResponse}
+      stopInHeader
       onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
       onStopActiveTurn={onStopActiveTurn}
       onNavigateToMessage={onNavigateToMessage}
@@ -788,7 +823,14 @@ function LiveChatTurnMessageView({
       onOpenAuthSettings={onOpenAuthSettings}
     />
   );
-  return <LiveTurnMessageFrame turn={turn} sender={sender} showSourceQuote={!plainAgentResponse} onNavigateToMessage={onNavigateToMessage}>{card}</LiveTurnMessageFrame>;
+  const headerStop = (
+    <AgentRequestHeaderStop
+      turn={turn}
+      onStopActiveTurn={onStopActiveTurn}
+      onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
+    />
+  );
+  return <LiveTurnMessageFrame turn={turn} sender={sender} showSourceQuote={!plainAgentResponse} onNavigateToMessage={onNavigateToMessage} headerAccessory={headerStop}>{card}</LiveTurnMessageFrame>;
 }
 export const LiveChatTurnMessage = memo(
   LiveChatTurnMessageView,

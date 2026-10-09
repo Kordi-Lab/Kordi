@@ -1877,6 +1877,16 @@ final class AppModel: ObservableObject {
         pendingAgentRequestIds[conversationId, default: []].contains(requestMessageId)
     }
 
+    /// The request the composer's Stop acts on in a chat, if this account
+    /// has one running or queued there.
+    func composerStopAgentRequestID(conversationId: String) -> String? {
+        AgentSessionQueuePresentation.composerStopRequestID(
+            pending: pendingAgentRequestIds[conversationId, default: []],
+            locallyQueued: pendingAgentQueuedRequestIds,
+            confirmedRunStatuses: confirmedAgentRunStatuses
+        )
+    }
+
     /// Stops a running agent request this account sent. The row stays in
     /// "Stopping…" until the executor publishes the terminal reply.
     func stopAgentRequest(conversationId: String, requestMessageId: String) async throws {
