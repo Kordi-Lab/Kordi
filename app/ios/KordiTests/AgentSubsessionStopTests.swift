@@ -65,6 +65,15 @@ struct AgentSubsessionStopTests {
         #expect(model.composerStopAgentRequestID(conversationId: "no-such-chat") == nil)
     }
 
+    @Test func stopPlacementFollowsConversationKind() {
+        #expect(ComposerStopPlacement.resolve(kind: .agent, pendingRequestID: "r") == .replaceSend)
+        #expect(ComposerStopPlacement.resolve(kind: .person, pendingRequestID: "r") == .beside)
+        #expect(ComposerStopPlacement.resolve(kind: .group, pendingRequestID: "r") == .beside)
+        for kind in [ConversationKind.agent, .person, .group] {
+            #expect(ComposerStopPlacement.resolve(kind: kind, pendingRequestID: nil) == .none)
+        }
+    }
+
     @Test func failuresDoNotClaimTheTaskStopped() {
         let text = AgentSubsessionStopButton.failureMessage(URLError(.notConnectedToInternet))
         #expect(text.contains("may still be running"))

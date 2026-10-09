@@ -96,3 +96,16 @@ enum AgentSessionQueuePresentation {
         return running.last ?? unfinished.last
     }
 }
+
+/// Where the composer shows Stop. Agent chats swap it for Send. Person and
+/// group chats keep Send and show a compact Stop beside it.
+enum ComposerStopPlacement: Equatable {
+    case replaceSend
+    case beside
+    case none
+
+    static func resolve(kind: ConversationKind, pendingRequestID: String?) -> ComposerStopPlacement {
+        guard pendingRequestID != nil else { return .none }
+        return kind == .agent ? .replaceSend : .beside
+    }
+}

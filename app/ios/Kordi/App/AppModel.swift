@@ -1973,6 +1973,14 @@ final class AppModel: ObservableObject {
         )
     }
 
+    /// Where the composer shows Stop for this chat.
+    func composerStopPlacement(for conversation: ConversationSummary) -> ComposerStopPlacement {
+        ComposerStopPlacement.resolve(
+            kind: conversation.kind,
+            pendingRequestID: composerStopAgentRequestID(conversationId: conversation.id)
+        )
+    }
+
     /// Stops a running agent request this account sent. The row stays in
     /// "Stopping…" until the executor publishes the terminal reply.
     func stopAgentRequest(conversationId: String, requestMessageId: String) async throws {
