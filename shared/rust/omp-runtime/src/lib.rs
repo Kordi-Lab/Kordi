@@ -6,12 +6,14 @@ mod error;
 mod protocol;
 mod supervisor_helpers;
 mod warm_pool;
+mod worker_command;
 pub use error::RuntimeError;
 use supervisor_helpers::{
     ToolCancelGuard, acquire_computer_lock, check_frame, read_line_bounded, validate_request,
     write_json_line,
 };
 use warm_pool::{AttachedWorker, WarmPool, spawn_worker};
+pub use worker_command::WorkerCommand;
 
 pub use protocol::{
     AuthConfig, AuthKind, Capabilities, Checkpoint, CompactionSettings, ImageInput, ModelConfig,
@@ -20,9 +22,7 @@ pub use protocol::{
 };
 
 use std::collections::HashSet;
-use std::ffi::OsString;
 use std::future::Future;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -44,38 +44,6 @@ const MAX_STDERR_BYTES: usize = 64 * 1024;
 const WARM_READY_TIMEOUT: Duration = Duration::from_secs(10);
 #[cfg(test)]
 const WARM_READY_TIMEOUT: Duration = Duration::from_secs(1);
-
-#[derive(Clone)]
-pub struct WorkerCommand {
-    pub program: PathBuf,
-    /// Executable/script flags only. Never place auth material here.
-    pub args: Vec<OsString>,
-    /// Stable file inside the owning user's private app-data directory.
-    pub computer_lock_path: Option<PathBuf>,
-}
-
-impl WorkerCommand {
-    pub fn sidecar(path: impl Into<PathBuf>) -> Self {
-        Self {
-            program: path.into(),
-            args: Vec::new(),
-            computer_lock_path: None,
-        }
-    }
-
-    pub fn node(script: impl Into<PathBuf>) -> Self {
-        Self {
-            program: PathBuf::from("node"),
-            args: vec![script.into().into_os_string()],
-            computer_lock_path: None,
-        }
-    }
-
-    pub fn with_computer_lock(mut self, path: impl Into<PathBuf>) -> Self {
-        self.computer_lock_path = Some(path.into());
-        self
-    }
-}
 
 #[async_trait]
 pub trait HostTool: Send + Sync {
