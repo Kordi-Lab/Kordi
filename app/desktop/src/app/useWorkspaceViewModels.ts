@@ -1,5 +1,6 @@
 import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { localProjectSessions } from '@/features/projects/localProjectSessions';
+import { useProjectRoutingGroups } from '@/features/projects/useProjectRoutingGroups';
 import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 import {useThreadAttention} from '@/features/cloud/threadAttention';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -9,7 +10,6 @@ import { EMPTY_CLOUD_SESSION_ACTIVITY, type CloudSessionActivityStore } from '@/
 import { cloudAgentDefinitionToAgent, type CloudAgentDefinition } from '@/features/cloud/cloudAgents';
 import type { CloudPresenceStore } from '@/features/cloud/presence';
 import {
-  buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
   isLegacyCanonicalCollaborationSessionId,
   isCanonicalCloudSessionId,
@@ -779,12 +779,13 @@ export function useWorkspaceViewModels({
   const activeContact = displayedContacts.find((contact) => contact.id === activeContactId) ?? displayedContacts[0] ?? contacts[0];
   const activeAgent = displayedAgents.find((agent) => agent.id === activeAgentId) ?? displayedAgents[0];
 
+  const projectRouting = useProjectRoutingGroups(desktopChatState, canonicalSessionState);
   const runtimeProjects = useMemo(() => {
     if (!isNativeShell) {
       return projectWorkspaces;
     }
 
-    const routingGroups = buildProjectRoutingGroups(desktopChatState?.projects, canonicalSessionState);
+    const routingGroups = projectRouting.groups;
     if (routingGroups.length === 0) {
       return [];
     }
@@ -813,9 +814,14 @@ export function useWorkspaceViewModels({
       const canonicalLeadSession = group.sessions
         .map((session) => canonicalProjectSessionById.get(session.id))
         .find((session) => Boolean(session));
+      const activeSessionProject = desktopChatState?.activeSession.project;
+      const activeSessionProjectName = activeSessionProject
+        && canonicalProjectGroupIdFromRoot(activeSessionProject.root) === group.id
+        ? activeSessionProject.name
+        : undefined;
       const projectName = desktopProject?.name
         ?? workspaceProject?.name
-        ?? (canonicalLeadSession ? canonicalProjectDisplayName(canonicalLeadSession) : 'Project');
+        ?? (canonicalLeadSession ? canonicalProjectDisplayName(canonicalLeadSession) : activeSessionProjectName ?? 'Project');
       const projectSummary = desktopProject?.summary
         ?? workspaceProject?.summary
         ?? (canonicalLeadSession ? canonicalProjectDisplayName(canonicalLeadSession) : projectScope);
@@ -847,7 +853,8 @@ export function useWorkspaceViewModels({
         backgroundSystem: desktopProject?.backgroundSystem ?? workspaceProject?.backgroundSystem,
         sharedSources,
         sessions: group.sessions.map(({ id: sessionId }) => {
-          const desktopSession = desktopProject?.sessions.find((session) => session.id === sessionId);
+          const desktopSession = desktopProject?.sessions.find((session) => session.id === sessionId)
+            ?? projectRouting.sessionSummaryById.get(sessionId);
           const canonicalSession = canonicalProjectSessionById.get(sessionId);
           const isVisibleSession = activeNav === 'projects' && activeProjectId === group.id && activeProjectSessionId === sessionId;
           const cachedSourceMessages = cachedDesktopSessionSourceMessages[sessionId];
@@ -911,7 +918,7 @@ export function useWorkspaceViewModels({
         }),
       };
     });
-  }, [activeNav, activeProjectId, activeProjectSessionId, cachedDesktopSessionSourceMessages, cachedProjectSessionMessages, canonicalReadModel, canonicalSessionState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectWorkspaces]);
+  }, [activeNav, activeProjectId, activeProjectSessionId, cachedDesktopSessionSourceMessages, cachedProjectSessionMessages, canonicalReadModel, canonicalSessionState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectRouting, projectWorkspaces]);
 
   const filteredProjects = useMemo(() => {
     const normalizedSearch = projectSearch.trim().toLowerCase();
