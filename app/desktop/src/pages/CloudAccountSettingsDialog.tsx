@@ -1,26 +1,35 @@
 import { MessageLayoutSetting } from '@/kordi-app/components/MessageLayoutSetting';
-import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, KeyRound, Laptop, Palette, User, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AuthPage } from '@/kordi-app/auth/AuthPage';
-import { SettingsNav, SettingsRow, SettingsSection, SettingsValueControl, type SettingsNavGroup } from '@/kordi-app/components';
+import { SettingsNav, SettingsRow, SettingsSection, SettingsValueControl } from '@/kordi-app/components';
 import { EditableIdentityAvatar } from '@/kordi-app/components/EditableIdentityAvatar';
 import type { SettingsSection as SettingsSectionData, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { DesktopAuthProvider, DesktopAuthState, ThemeMode } from '@/kordi-app/types';
-import type {
-  CloudAccount,
-  CloudAccountEmailVerificationInput,
-  CloudProfileUpdateInput,
-  CloudSignupCodeChallenge,
+import {
+  cloudApiBaseUrl,
+  defaultCloudAuthClient,
+  type CloudAccount,
+  type CloudAccountEmailVerificationInput,
+  type CloudProfileUpdateInput,
+  type CloudSignupCodeChallenge,
 } from '@/features/cloud/authClient';
+import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
+import { CloudConnectorsHttpClient } from '@/features/cloud/cloudConnectorsClient';
 import { CloudAccountEmailRow } from '@/kordi-app/cloud/CloudAccountEmailRow';
 import { CloudDevicesPanel } from '@/features/cloud/CloudDevicesPanel';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { cn } from '@/lib/utils';
 import { NotificationSettingsPanel } from '@/features/notifications/NotificationSettingsPanel';
+import { ConnectorsSettingsPanel } from '@/features/connectors/ConnectorsSettingsPanel';
+import type { ConnectorsClient } from '@/features/connectors/connectorsClient';
+import { connectorsClientForAccount } from '@/features/connectors/connectorsClientSelection';
+import { useConnectorsLinkSelection } from '@/features/connectors/useConnectorsLinkSelection';
+import { cloudAccountSettingsNavGroups, type CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
 import {
   canonicalAvatarImageSource,
   generatedAvatarPreviewUrl,
@@ -28,7 +37,7 @@ import {
   type CanonicalAvatarMutation,
 } from '@/features/cloud/canonicalAvatar';
 
-export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'auth' | 'notifications' | 'appearance';
+export type { CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
 
 export type CloudAccountSettingsConfig = {
   settingsSections: SettingsSectionData[];
@@ -60,6 +69,13 @@ type CloudAccountSettingsDialogProps = CloudAccountSettingsConfig & {
   onVerifyEmail?: (input: CloudAccountEmailVerificationInput) => Promise<void>;
   onEmailAlreadyVerified?: () => Promise<void>;
   onSignOut?: () => Promise<void> | void;
+  /**
+   * Connectors client override for previews; null hides the section. When
+   * omitted, the client follows the server's `connectorsVersion` capability.
+   */
+  connectorsClient?: ConnectorsClient | null;
+  /** Marks an overriding `connectorsClient` as sample data. */
+  connectorsIsPreview?: boolean;
 };
 
 function profileDisplayName(account: CloudAccount | null) {
@@ -96,6 +112,8 @@ export function CloudAccountSettingsDialog({
   onVerifyEmail,
   onEmailAlreadyVerified,
   onSignOut,
+  connectorsClient: connectorsClientOverride,
+  connectorsIsPreview = false,
   settingsSections,
   setActiveSettingsSectionId,
   authSettingsLayoutWidth,
@@ -123,6 +141,42 @@ export function CloudAccountSettingsDialog({
   const profileErrorId = useId();
   const openedAccountIdRef = useRef<string | null>(null);
   const wasOpenRef = useRef(false);
+  const hasConnectorsOverride = connectorsClientOverride !== undefined;
+  const connectorsClients = useMemo(
+    () => (hasConnectorsOverride ? null : { auth: defaultCloudAuthClient(), http: new CloudConnectorsHttpClient() }),
+    [hasConnectorsOverride],
+  );
+  const capabilitiesState = useCloudAuthCapabilitiesState(account && connectorsClients ? connectorsClients.auth : null, cloudApiBaseUrl());
+  const { capabilities, status: capabilitiesStatus, refetch: refetchCapabilities } = capabilitiesState;
+  const connectorsAccountId = account?.accountId ?? null;
+  const defaultAgentName = account?.defaultAgent?.displayName ?? undefined;
+  // Kept per account so the preview client's sample state survives closing the dialog.
+  const connectorsSelection = useMemo(() => {
+    if (!connectorsAccountId || !connectorsClients) return null;
+    return connectorsClientForAccount({
+      accountId: connectorsAccountId,
+      http: connectorsClients.http,
+      capabilities,
+      capabilitiesStatus,
+      defaultAgentName,
+    });
+  }, [capabilities, capabilitiesStatus, connectorsAccountId, connectorsClients, defaultAgentName]);
+  const connectorsClient = hasConnectorsOverride ? connectorsClientOverride : connectorsSelection?.client ?? null;
+  const connectorsArePreview = hasConnectorsOverride ? connectorsIsPreview : connectorsSelection?.source === 'preview';
+  const connectorsServicesStatus = hasConnectorsOverride ? undefined : connectorsSelection?.servicesStatus;
+  // A Connectors link opens the provider's detail, also when the dialog is already open.
+  const showConnectorsTab = useCallback(() => setActiveTab('connectors'), []);
+  const { selection: connectorsLinkSelection, clearSelection: clearConnectorsLinkSelection } = useConnectorsLinkSelection({
+    isOpen,
+    activeTab,
+    showConnectorsTab,
+  });
+  const capabilitiesStatusRef = useRef(capabilitiesStatus);
+  useEffect(() => { capabilitiesStatusRef.current = capabilitiesStatus; }, [capabilitiesStatus]);
+  // Opening the Connectors tab retries a failed capabilities fetch once.
+  useEffect(() => {
+    if (isOpen && activeTab === 'connectors' && capabilitiesStatusRef.current === 'failed') refetchCapabilities();
+  }, [activeTab, isOpen, refetchCapabilities]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -164,25 +218,11 @@ export function CloudAccountSettingsDialog({
   const isDisplayNameInvalid = Boolean(profileError && !displayNameDraft.trim());
   const avatarSeed = account.avatar.seed;
   const appearanceSection = settingsSections.find((section) => section.id === 'appearance');
-  const navGroups: Array<SettingsNavGroup<CloudAccountSettingsTabId>> = [
-    {
-      label: 'Account',
-      items: [
-        { id: 'profile', label: 'Profile', icon: User, keywords: ['name', 'avatar', 'sign out'] },
-        { id: 'devices', label: 'Active sessions', icon: Laptop, keywords: ['devices'] },
-      ],
-    },
-    {
-      label: 'Settings',
-      items: [
-        { id: 'auth', label: 'Authentication', icon: KeyRound, keywords: ['providers', 'accounts', 'api key', 'omp'] },
-        { id: 'notifications', label: 'Notifications', icon: Bell, keywords: ['alerts', 'sound', 'badge'] },
-        { id: 'appearance', label: 'Appearance', icon: Palette, keywords: ['theme', 'dark', 'light', 'chat', 'threads', 'message layout'] },
-      ],
-    },
-  ];
+  const navGroups = cloudAccountSettingsNavGroups({ connectorsAvailable: connectorsClient !== null });
+  const visibleTab: CloudAccountSettingsTabId = activeTab === 'connectors' && !connectorsClient ? 'profile' : activeTab;
 
   const selectTab = (tabId: CloudAccountSettingsTabId) => {
+    if (tabId !== 'connectors') clearConnectorsLinkSelection();
     setActiveTab(tabId);
     if (tabId === 'auth' || tabId === 'notifications' || tabId === 'appearance') {
       setActiveSettingsSectionId(tabId);
@@ -386,6 +426,20 @@ export function CloudAccountSettingsDialog({
 
   const devicesPanel = <CloudDevicesPanel key={account.accountId} accountId={account.accountId} />;
 
+  const connectorsPanel = connectorsClient ? (
+    <ConnectorsSettingsPanel
+      key={account.accountId}
+      accountId={account.accountId}
+      client={connectorsClient}
+      isNativeShell={isNativeShell}
+      isPreview={connectorsArePreview}
+      servicesStatus={connectorsServicesStatus}
+      onRetryServices={refetchCapabilities}
+      initialProviderId={connectorsLinkSelection?.providerId ?? null}
+      initialProviderRequest={connectorsLinkSelection?.request}
+    />
+  ) : null;
+
   return createPortal(
     <div
       className="app-transient-overlay app-cloud-account-settings-overlay fixed inset-0 z-[180] flex items-center justify-center px-6 py-6 backdrop-blur-sm"
@@ -403,7 +457,7 @@ export function CloudAccountSettingsDialog({
           <SettingsNav
             className="app-cloud-account-settings-tabs"
             groups={navGroups}
-            activeId={activeTab}
+            activeId={visibleTab}
             onSelect={selectTab}
           />
         </div>
@@ -415,7 +469,7 @@ export function CloudAccountSettingsDialog({
           </div>
           <ScrollArea className="min-h-0 flex-1">
             <div className="px-8 pb-8 pt-10">
-              {activeTab === 'profile' ? profilePanel : activeTab === 'devices' ? devicesPanel : activeTab === 'auth' ? authPanel : activeTab === 'notifications' ? notificationsPanel : appearancePanel}
+              {visibleTab === 'profile' ? profilePanel : visibleTab === 'devices' ? devicesPanel : visibleTab === 'auth' ? authPanel : visibleTab === 'notifications' ? notificationsPanel : visibleTab === 'connectors' ? connectorsPanel : appearancePanel}
             </div>
           </ScrollArea>
         </div>

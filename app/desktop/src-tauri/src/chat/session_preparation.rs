@@ -1,5 +1,9 @@
 #[path = "calendar_runtime.rs"]
 mod calendar_runtime;
+#[path = "connector_tools_runtime.rs"]
+mod connector_tools_runtime;
+#[path = "mac_local_runtime.rs"]
+mod mac_local_runtime;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -183,6 +187,46 @@ pub(super) async fn prepare_desktop_session_for_send(
         kordi_tools::session_observation::CHAT_HISTORY_GUIDANCE
     )));
     let calendar = calendar_runtime::build(runtime, context_session_id);
+    // Owner-only tools follow this turn's identity; the stored one is only a
+    // fallback for Mac-local sources.
+    let turn_identity = system_context
+        .iter()
+        .find(|message| message.context_role.as_deref() == Some("runtimeIdentity"))
+        .map(|message| message.text.as_str());
+    // Mac-local sources are the owner's: never on a cloud-lease turn or for
+    // a request that another account made through the owner's agent.
+    let owner_local =
+        mac_local_runtime::is_owner_local_turn(cloud_lease.is_some(), turn_identity, || {
+            runtime
+                .runtime_identity_context()
+                .map(|context| context.map(|context| context.text))
+                .map_err(|_| ())
+        });
+    runtime.set_mac_local_runtime(mac_local_runtime::build(owner_local));
+    // Only a cloud lease carries connector tools, and only for the owner's
+    // own request. The owner's own local turn (no lease, no shared
+    // conversation) gets the connect link only.
+    let owner_request = turn_identity.is_none_or(mac_local_runtime::is_owner_identity);
+    runtime.set_connector_tools_runtime(match cloud_lease.as_ref() {
+        Some(lease) => owner_request
+            .then(|| connector_tools_runtime::build(lease))
+            .flatten(),
+        None => {
+            (owner_local && context_session_id.is_none()).then(connector_tools_runtime::owner_local)
+        }
+    });
+    // Only the lease's `act` tools may ask the person; the rest stay refused.
+    // The card names the conversation and agent of this turn.
+    let act_tools = super::tool_approval::act_tools_for_lease(cloud_lease.as_ref());
+    let approval_hook = (!act_tools.is_empty())
+        .then(|| super::tool_approval::ApprovalContext {
+            session_id: prompt_session_id.clone(),
+            conversation_title: crate::canonical_sessions::session_title(&prompt_session_id),
+            agent_name: Some(runtime.agent_profile().label)
+                .filter(|label| !label.trim().is_empty()),
+        })
+        .and_then(|context| super::tool_approval::hook(act_tools, context));
+    runtime.set_tool_approval_hook(approval_hook);
     let observation = if let Some(lease) = cloud_lease {
         let observation =
             super::session_observation::cloud::build(lease, prompt_session_id.clone(), calendar);

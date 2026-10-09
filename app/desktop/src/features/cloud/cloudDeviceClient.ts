@@ -22,6 +22,14 @@ export type CloudDeviceAuthorization = {
     lastAppliedSequence: number;
     lastSuccessfulCatchUpAt: string | null;
   };
+  /** Whether the device is currently online through presence. Older servers omit it. */
+  online?: boolean;
+  /** Number of live sessions on this device row. Older servers omit it; treat as 1. */
+  sessionCount?: number;
+  /** True for rows created by old clients that did not report an installation key. */
+  legacy?: boolean;
+  /** Sign-in method that created the session, such as "google", "github" or "password". */
+  signInMethod?: string | null;
 };
 
 export type CloudDeviceListResponse = { devices: CloudDeviceAuthorization[] };

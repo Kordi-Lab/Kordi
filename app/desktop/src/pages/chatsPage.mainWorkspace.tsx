@@ -20,6 +20,7 @@ import type {
 import type { ReactNode } from 'react';
 import { ContactInfoPopover } from '@/pages/ContactInfoPopover';
 import { MainComposer } from '@/pages/chatsPage.mainComposer';
+import { ToolApprovalPrompts } from '@/features/connectors/ToolApprovalPrompts';
 import { MainChatHeader } from '@/pages/chatsPage.mainHeader';
 import {
   canonicalHistorySessionIdForConversation,
@@ -365,6 +366,7 @@ export function ChatMainWorkspace({
                       layout.setIsDetailPanelCollapsed
                     }
                   >
+                    <ToolApprovalPrompts />
                     <MainComposer
                       conversation={activeConv}
                       cloudAccountId={session.cloudAccount?.accountId}

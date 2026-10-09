@@ -31,6 +31,7 @@ pub struct ServerState {
     call_media: Option<CallMediaConfig>,
     notifications: Option<PushNotificationService>,
     signup_email: Option<crate::auth::signup_email::SignupEmailService>,
+    connectors: crate::connectors::ConnectorRuntime,
 }
 
 impl ServerState {
@@ -46,6 +47,7 @@ impl ServerState {
             call_media: None,
             notifications: None,
             signup_email: None,
+            connectors: crate::connectors::ConnectorRuntime::from_env(),
         }
     }
 
@@ -89,6 +91,24 @@ impl ServerState {
     pub fn with_notifications(mut self, notifications: PushNotificationService) -> Self {
         self.notifications = Some(notifications);
         self
+    }
+
+    /// Replaces the connector cipher and providers; tests inject the stub.
+    pub fn with_connector_runtime(mut self, runtime: crate::connectors::ConnectorRuntime) -> Self {
+        self.connectors = runtime;
+        self
+    }
+
+    /// Charges connector tool calls to `limiter`, the limiter the router
+    /// shares, so the per-account budget holds across replicas.
+    pub fn with_connector_call_limiter(mut self, limiter: Arc<CloudRateLimiter>) -> Self {
+        let budget = self.connectors.budget.clone().with_limiter(limiter);
+        self.connectors.budget = budget;
+        self
+    }
+
+    pub fn connectors(&self) -> &crate::connectors::ConnectorRuntime {
+        &self.connectors
     }
 
     pub fn db_pool(&self) -> &PgPool {
@@ -139,7 +159,13 @@ pub fn router(state: Arc<ServerState>) -> Router {
 }
 
 pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRateLimiter) -> Router {
-    let rate_limiter = Arc::new(rate_limiter);
+    router_with_shared_rate_limiter(state, Arc::new(rate_limiter))
+}
+
+pub fn router_with_shared_rate_limiter(
+    state: Arc<ServerState>,
+    rate_limiter: Arc<CloudRateLimiter>,
+) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -174,6 +200,7 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
         )
         .merge(crate::calls::routes(state.clone()))
         .merge(crate::cloud_agents::routes::routes(state.clone()))
+        .merge(crate::connectors::routes::routes(state.clone()))
         .merge(
             crate::cloud_agent_runtime::routes::routes(state.clone())
                 .layer(axum::Extension(rate_limiter.clone())),
@@ -272,7 +299,7 @@ pub async fn run(
             EventBus::noop()
         }
     };
-    let rate_limiter = match redis_url {
+    let rate_limiter = Arc::new(match redis_url {
         Some(url) => {
             println!(
                 "Kordi cloud server connecting to Redis at {}",
@@ -286,8 +313,9 @@ pub async fn run(
             println!("Kordi cloud server starting without Redis (rate limiter is in-memory)");
             CloudRateLimiter::memory(CloudRateLimitConfig::production())
         }
-    };
-    let mut state = ServerState::new(pool, events);
+    });
+    let mut state =
+        ServerState::new(pool, events).with_connector_call_limiter(rate_limiter.clone());
     if let Some(service) = crate::auth::signup_email::SignupEmailService::from_env() {
         state = state.with_signup_email(service);
         println!("Kordi signup email verification is configured");
@@ -392,7 +420,7 @@ pub async fn run(
             }
         }
     });
-    let app = router_with_rate_limiter(state, rate_limiter);
+    let app = router_with_shared_rate_limiter(state, rate_limiter);
     let addr = format!("0.0.0.0:{port}");
     println!("Kordi cloud server on {addr}");
     let listener = tokio::net::TcpListener::bind(&addr)

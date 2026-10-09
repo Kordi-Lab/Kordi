@@ -5,7 +5,7 @@
 mod account_email;
 pub mod accounts;
 pub mod devices;
-mod oauth;
+pub(crate) mod oauth;
 pub mod password;
 pub mod rate_limit;
 pub mod routes;

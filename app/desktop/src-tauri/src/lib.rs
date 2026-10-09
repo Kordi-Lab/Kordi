@@ -14,6 +14,7 @@ mod cloud_session;
 mod digest_calendar;
 mod digest_calendar_sync;
 mod link_preview;
+mod mac_local;
 mod media_preview_window;
 mod menu_bar;
 mod message_notification;
@@ -183,6 +184,7 @@ pub fn run() {
             if let Err(err) = chat::allow_attachment_asset_scope(app) {
                 eprintln!("[kordi] Unable to allow attachment preview assets: {err}");
             }
+            chat::tool_approval::install(app.handle().clone());
             if let Err(err) = menu_bar::setup(app) {
                 eprintln!("[kordi] Unable to create menu bar item: {err}");
             }
@@ -205,6 +207,10 @@ pub fn run() {
             desktop_reveal_media_preview_window,
             menu_bar::desktop_set_menu_bar_unread_count,
             message_notification::desktop_notification_permission_state,
+            mac_local::desktop_mac_local_connectors_state,
+            mac_local::desktop_mac_local_connectors_set_enabled,
+            mac_local::desktop_mac_local_connectors_recheck,
+            mac_local::desktop_mac_local_connectors_preview,
             digest_calendar::desktop_digest_calendars,
             digest_calendar::desktop_digest_fetch_ics,
             digest_calendar::desktop_digest_calendar_events,
@@ -327,6 +333,8 @@ pub fn run() {
             chat::attachments::cloud_upload::desktop_cloud_attachment_cancel,
             chat::artifacts::desktop_chat_artifact_preview,
             chat::artifacts::desktop_chat_artifact_directory,
+            chat::tool_approval::desktop_tool_approval_respond,
+            chat::tool_approval::desktop_tool_approval_pending,
             chat::desktop_chat_state,
             chat::desktop_chat_session_detail,
             chat::agent_identity::desktop_chat_rename_agent,

@@ -82,6 +82,8 @@ struct KordiApp: App {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
     @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
+    @State private var connectorsSettingsRequest: ConnectorsSettingsRequest?
+    @State private var showsConnectorsSettings = false
 
     init() {
 #if DEBUG
@@ -137,6 +139,21 @@ struct KordiApp: App {
                     .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.28), value: callCoordinator.isMinimized)
                 }
                 .preferredColorScheme(preferredColorScheme)
+                // Agent-shared Connectors links open account settings in the app.
+                .environment(\.openURL, OpenURLAction { url in
+                    guard let link = ConnectorsSettingsLink.parse(url) else { return .systemAction }
+                    openConnectorsSettings(link)
+                    return .handled
+                })
+                .onOpenURL { url in
+                    if let link = ConnectorsSettingsLink.parse(url) { openConnectorsSettings(link) }
+                }
+                // Opens on Connectors and the link's provider; a new link while
+                // the sheet is up navigates within it.
+                .sheet(isPresented: $showsConnectorsSettings) {
+                    AccountSheet(connectorsRequest: connectorsSettingsRequest)
+                        .environmentObject(model)
+                }
                 .fullScreenCover(isPresented: $callCoordinator.isCallScreenPresented) {
                     KordiCallView(room: callCoordinator.room)
                         .environmentObject(callCoordinator)
@@ -210,6 +227,11 @@ struct KordiApp: App {
                     }
                 }
         }
+    }
+
+    private func openConnectorsSettings(_ link: ConnectorsSettingsLink) {
+        connectorsSettingsRequest = ConnectorsSettingsRequest(link: link)
+        showsConnectorsSettings = true
     }
 
     private var preferredColorScheme: ColorScheme? {
@@ -389,6 +411,8 @@ private struct RootView: View {
             AppearanceSettingsPreview()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-profile") {
             ProfileSettingsPreview()
+        } else if ConnectorsAvailability.isPreviewRequested() {
+            ConnectorsSettingsPreview()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-devices") {
             ActiveSessionsPreview()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-account") {

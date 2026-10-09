@@ -10,13 +10,8 @@ const TURN_RUNNER_JOIN_TIMEOUT: std::time::Duration = std::time::Duration::from_
 
 use super::controller::{QueuedPrompt, TuiController};
 
-fn is_auto_compaction_status(message: &str) -> bool {
-    message.starts_with("Auto-compacted session:")
-}
-
-fn is_auto_compaction_terminal_status(message: &str) -> bool {
-    is_auto_compaction_status(message) || message.starts_with("Auto-compaction failed:")
-}
+mod compaction_status;
+use compaction_status::{is_auto_compaction_status, is_auto_compaction_terminal_status};
 
 enum TurnJoinPoll<T> {
     Completed(T),
@@ -187,10 +182,11 @@ impl TuiController {
                 reach_out: self.session_setup.tool_ctx.reach_out.clone(),
                 reflection: None,
                 session_observation: self.session_setup.tool_ctx.session_observation.clone(),
-                task_operator: None,
                 schedule_task: self.session_setup.tool_ctx.schedule_task.clone(),
+                mac_local: self.session_setup.tool_ctx.mac_local.clone(),
                 execution_mode: self.session_setup.tool_ctx.execution_mode,
                 request_approval: self.session_setup.tool_ctx.request_approval.clone(),
+                ..Default::default()
             },
             thinking: crate::runtime_model::request_thinking_value(
                 &self.session_setup.model,

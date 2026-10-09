@@ -23,6 +23,7 @@ mod model_options;
 mod models;
 mod prompt_context;
 mod shared_context;
+mod tool_runtimes;
 #[cfg(test)]
 use prompt_context::strip_session_prompt_context;
 mod project_membership;
@@ -512,13 +513,6 @@ impl DesktopRuntimeSession {
                 api_base, token, session_id,
             ),
         );
-    }
-
-    pub fn set_session_observation_runtime(
-        &mut self,
-        runtime: Option<kordi_tools::SessionObservationRuntime>,
-    ) {
-        self.setup.tool_ctx.session_observation = runtime;
     }
 
     pub fn sync_visible_task_records(

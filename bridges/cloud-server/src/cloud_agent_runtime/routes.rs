@@ -183,6 +183,10 @@ pub fn runner_authorized_for_scheduled_tasks(headers: &HeaderMap) -> bool {
     runner_authorized(headers)
 }
 
+pub fn runner_authorized_for_connectors(headers: &HeaderMap) -> bool {
+    runner_authorized(headers)
+}
+
 async fn lease_runner_run(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -206,6 +210,16 @@ async fn lease_runner_run(
         Ok(mut run) => {
             if let Some(run) = run.as_mut() {
                 include_service_provider_auth(&state, run);
+                if matches!(run.status.as_str(), "leased" | "running") {
+                    run.connector_tools = crate::connectors::delivery::deliver_to_run(
+                        state.db_pool(),
+                        &state.connectors().providers,
+                        &run.run_id,
+                    )
+                    .await;
+                } else {
+                    run.connector_tools.clear();
+                }
             }
             Json(RunnerLeaseResponse { run }).into_response()
         }

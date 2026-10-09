@@ -20,7 +20,8 @@ use std::{
 };
 
 pub const MAX_SYNC_ITEMS: usize = 500;
-pub const CALENDAR_CAPACITY: i64 = 1000;
+/// Matches the bounded complete snapshot returned by store::calendar.
+pub const CALENDAR_CAPACITY: i64 = 10_000;
 
 /// One reconciliation batch from a device calendar. Every upsert carries the
 /// device identity (`externalUid`); Kordi-only events keep using the single-event routes.
@@ -135,6 +136,26 @@ pub(super) async fn sync(
     let mut saved: Vec<Value> = Vec::new();
     let mut conflicts = Vec::new();
     let mut skipped = Vec::new();
+    let mut deleted = Vec::new();
+    let mut delete_conflicts = Vec::new();
+    for expected in &request.deletes {
+        match query(
+            "DELETE FROM cloud_calendar_events WHERE account_id=$1 AND event_id=$2 AND revision=$3",
+        )
+        .bind(&session.account_id)
+        .bind(&expected.id)
+        .bind(expected.revision)
+        .execute(&mut *tx)
+        .await
+        {
+            Ok(result) if result.rows_affected() == 1 => {
+                deleted.push(expected.id.clone());
+                capacity += 1;
+            }
+            Ok(_) => delete_conflicts.push(expected.id.clone()),
+            Err(_) => return failed(),
+        }
+    }
     for event in &request.upserts {
         if event.revision == 0 && capacity <= 0 {
             skipped.push(event.id.clone());
@@ -150,23 +171,6 @@ pub(super) async fn sync(
                 saved.push(value);
             }
             Ok(None) => conflicts.push(event.id.clone()),
-            Err(_) => return failed(),
-        }
-    }
-    let mut deleted = Vec::new();
-    let mut delete_conflicts = Vec::new();
-    for expected in &request.deletes {
-        match query(
-            "DELETE FROM cloud_calendar_events WHERE account_id=$1 AND event_id=$2 AND revision=$3",
-        )
-        .bind(&session.account_id)
-        .bind(&expected.id)
-        .bind(expected.revision)
-        .execute(&mut *tx)
-        .await
-        {
-            Ok(result) if result.rows_affected() == 1 => deleted.push(expected.id.clone()),
-            Ok(_) => delete_conflicts.push(expected.id.clone()),
             Err(_) => return failed(),
         }
     }

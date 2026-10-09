@@ -25,7 +25,13 @@ pub async fn initialize_preferences(
 }
 
 pub async fn calendar(pool: &PgPool, account: &str) -> Result<Vec<CalendarEvent>> {
-    let rows:Vec<(Value,i64,chrono::DateTime<Utc>)>=query_as("SELECT payload,revision,updated_at FROM cloud_calendar_events WHERE account_id=$1 ORDER BY (payload->>'startAt')::timestamptz,event_id LIMIT 1000").bind(account).fetch_all(pool).await?;
+    let rows:Vec<(Value,i64,chrono::DateTime<Utc>)>=query_as("SELECT payload,revision,updated_at FROM cloud_calendar_events WHERE account_id=$1 ORDER BY (payload->>'startAt')::timestamptz,event_id LIMIT $2").bind(account).bind(super::sync_routes::CALENDAR_CAPACITY + 1).fetch_all(pool).await?;
+    // Never expose a truncated snapshot: clients interpret missing rows as deletions.
+    if rows.len() as i64 > super::sync_routes::CALENDAR_CAPACITY {
+        return Err(sqlx_core::Error::Protocol(
+            "Calendar snapshot exceeds the supported capacity".into(),
+        ));
+    }
     let mut events = Vec::new();
     for (value, revision, updated_at) in rows {
         if let Ok(mut event) = serde_json::from_value::<CalendarEvent>(value) {
@@ -181,6 +187,12 @@ pub async fn input(
         as_of: Utc::now().to_rfc3339(),
         viewer_account_id: account.into(),
         changes: None,
+        connector_events: crate::connectors::digest_input::recent_events(
+            pool,
+            account,
+            Utc::now() - chrono::Duration::days(7),
+        )
+        .await?,
     })
 }
 
@@ -213,7 +225,7 @@ pub(super) fn retain_previous_evidence(
 }
 
 fn input_hash(input: &Input) -> String {
-    let value = json!({"version":1,"sources":input.sources,"events":input.calendar_events,"tasks":input.existing_tasks,"locale":input.locale,"timezone":input.timezone,"dueReminders":super::incremental::due_reminders(input)});
+    let value = json!({"version":1,"sources":input.sources,"events":input.calendar_events,"tasks":input.existing_tasks,"locale":input.locale,"timezone":input.timezone,"connectorEvents":input.connector_events,"dueReminders":super::incremental::due_reminders(input)});
     hex::encode(Sha256::digest(value.to_string().as_bytes()))
 }
 
@@ -292,7 +304,9 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
         return Ok(());
     }
     let now = Utc::now().to_rfc3339();
-    query("INSERT INTO cloud_agent_fallback_runs (run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,system_prompt,runtime_route_json,created_at,updated_at) VALUES($1,$1,$1,$2,$3,$3,'queued',$4,$5,'{}',$6,$6)")
+    // Digest runs are background runs (read-only connector tools) whose
+    // output only the owner reads.
+    query("INSERT INTO cloud_agent_fallback_runs (run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,system_prompt,runtime_route_json,created_at,updated_at,run_trigger,connector_audience) VALUES($1,$1,$1,$2,$3,$3,'queued',$4,$5,'{}',$6,$6,'background','owner_private')")
         .bind(&run).bind(format!("digest:{account}")).bind(account).bind(serde_json::to_string(&input).unwrap()).bind(super::SYSTEM_PROMPT).bind(now).execute(&mut *tx).await?;
     tx.commit().await
 }

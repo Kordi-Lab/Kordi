@@ -15,6 +15,23 @@ test('shared runs cannot activate OMP Eval even when requested flags are true', 
   expect(options.enableMCP).toBe(false);
 });
 
+test('connector host tools do not turn on MCP or extension discovery', () => {
+  for (const capabilities of [
+    { ownerLocal: false, computer: false, browser: false },
+    { ownerLocal: true, computer: true, browser: true },
+  ]) {
+    const plain = ompCapabilityOptions(capabilities, ['kordi_read']);
+    const withConnectors = ompCapabilityOptions(capabilities, ['kordi_read', 'gmail_search', 'gmail_send']);
+    expect(withConnectors.enableMCP).toBe(false);
+    expect(withConnectors.disableExtensionDiscovery).toBe(true);
+    expect(withConnectors.enableLsp).toBe(false);
+    expect(withConnectors.restrictToolNames).toBe(plain.restrictToolNames);
+    expect(withConnectors.toolNames).toEqual(
+      capabilities.ownerLocal ? ['kordi_read', 'gmail_search', 'gmail_send', 'eval'] : ['kordi_read', 'gmail_search', 'gmail_send'],
+    );
+  }
+});
+
 test('owner-local run without explicit computer or browser stays restricted', () => {
   const options = ompCapabilityOptions({ ownerLocal: true, computer: false, browser: false }, ['kordi_read']);
   expect(options.restrictToolNames).toBe(true);

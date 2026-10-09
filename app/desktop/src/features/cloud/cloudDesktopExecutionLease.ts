@@ -10,7 +10,7 @@ export const DESKTOP_EXECUTION_WATCHDOG_MS = 30_000;
 export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient, 'desktopAgentExecution'>, token: string, input: CloudAgentRunClaimInput) {
   const claimId = crypto.randomUUID();
   const started = Date.now();
-  const result = await client.desktopAgentExecution<{runId: string; acquired: boolean; contextSessionId?: string; turnIdentity?: Record<string, unknown>}>(token, 'claim', { ...input, claimId });
+  const result = await client.desktopAgentExecution<{runId: string; acquired: boolean; contextSessionId?: string; turnIdentity?: Record<string, unknown>; connectorTools?: unknown[]; connectorAudience?: string}>(token, 'claim', { ...input, claimId });
   if (!result.acquired) return null;
   if (!result.turnIdentity || result.turnIdentity.ownerAccountId !== input.ownerAccountId
     || result.turnIdentity.requesterAccountId !== input.requesterAccountId) {
@@ -19,7 +19,10 @@ export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient,
   const identityMessage: DesktopChatContextMessage = {
     id: `runtime-identity:${result.runId}`, authorName: 'Kordi runtime', authorKind: 'agent',
     contextRole: 'runtimeIdentity', text: JSON.stringify(result.turnIdentity),
-    executionLease: { runId: result.runId, claimId, ownerAccountId: input.ownerAccountId, sessionId: result.contextSessionId ?? input.sessionId },
+    // Connector tool descriptors from the server; the native runtime registers them.
+    executionLease: { runId: result.runId, claimId, ownerAccountId: input.ownerAccountId, sessionId: result.contextSessionId ?? input.sessionId,
+      ...(Array.isArray(result.connectorTools) && result.connectorTools.length > 0 ? { connectorTools: result.connectorTools } : {}),
+      ...(result.connectorAudience === 'owner_private' ? { connectorAudience: result.connectorAudience } : {}) },
   };
   let deadline = started + DESKTOP_EXECUTION_WATCHDOG_MS;
   let turnId: string | null = null;

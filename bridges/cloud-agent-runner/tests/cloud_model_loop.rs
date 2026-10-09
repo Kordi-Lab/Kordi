@@ -169,6 +169,7 @@ fn run() -> CloudAgentRun {
         sandbox_id: Some("sandbox_test".to_string()),
         runtime_route: Default::default(),
         provider_auth_available: true,
+        connectors: Default::default(),
     }
 }
 

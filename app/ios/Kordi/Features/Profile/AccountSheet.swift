@@ -2,11 +2,12 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
-private enum AccountSettingsRoute: String, Hashable {
+enum AccountSettingsRoute: String, Hashable {
     case profile
     case activeSessions = "active-sessions"
     case authentication
     case notifications
+    case connectors
     case colorMode = "color-mode"
     case messageDisplay = "message-display"
     case chatTheme = "chat-theme"
@@ -19,7 +20,10 @@ struct AccountSheet: View {
     @AppStorage(MessageLayout.storageKey) private var messageLayoutRawValue = MessageLayout.chat.rawValue
     @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
     @State private var path: [AccountSettingsRoute]
+    // Sample connectors for the debug preview argument; nil otherwise.
+    @State private var previewConnectorsClient: (any ConnectorsClient)? = ConnectorsAvailability.makeClient()
     private let embeddedInNavigationStack: Bool
+    private var connectorsRequest: ConnectorsSettingsRequest?
 
     init(embeddedInNavigationStack: Bool = false) {
         _path = State(initialValue: [])
@@ -31,9 +35,25 @@ struct AccountSheet: View {
         embeddedInNavigationStack = false
     }
 
+    /// Opens on Connectors for a settings link; a later request navigates within the open sheet.
+    init(connectorsRequest: ConnectorsSettingsRequest?) {
+        _path = State(initialValue: connectorsRequest?.path ?? [])
+        embeddedInNavigationStack = false
+        self.connectorsRequest = connectorsRequest
+    }
+
     fileprivate init(previewing route: AccountSettingsRoute) {
         _path = State(initialValue: [route])
         embeddedInNavigationStack = false
+    }
+
+    // Present only when the server reports connectors or the preview argument is set.
+    private var connectorsClient: (any ConnectorsClient)? {
+        previewConnectorsClient ?? ConnectorsAvailability.makeClient(
+            arguments: [],
+            connectorsVersion: model.connectorsVersion,
+            cloudClient: model.cloudConnectorsClient
+        )
     }
 
     @ViewBuilder
@@ -41,15 +61,20 @@ struct AccountSheet: View {
         if embeddedInNavigationStack {
             settingsContent
                 .preferredColorScheme(preferredColorScheme)
+                .task { await model.refreshConnectorsCapabilityIfNeeded() }
         } else {
             NavigationStack(path: $path) {
                 settingsContent
             }
+            .task { await model.refreshConnectorsCapabilityIfNeeded() }
             .preferredColorScheme(preferredColorScheme)
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
             // Start chat opens the conversation behind this sheet.
             .onChange(of: model.startedAgentChatRevision) { _, _ in dismiss() }
+            .onChange(of: connectorsRequest) { _, request in
+                if let request { path = request.path }
+            }
         }
     }
 
@@ -57,13 +82,21 @@ struct AccountSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 settingsLink(.profile) { accountHeader }
-                settingsDivider
+                settingsDivider()
 
                 settingsSectionTitle("Notifications")
                 settingsLink(.notifications) {
                     CompactSettingsLabel(title: "Notifications", subtitle: "Messages, sounds, and previews", systemImage: "bell")
                 }
-                settingsDivider
+                settingsDivider()
+
+                if connectorsClient != nil {
+                    settingsSectionTitle("Connectors")
+                    settingsLink(.connectors) {
+                        CompactSettingsLabel(title: "Connectors", subtitle: "Services and sources your agent can use", systemImage: "app.connected.to.app.below.fill")
+                    }
+                    settingsDivider()
+                }
 
                 settingsSectionTitle("Appearance")
                 settingsLink(.colorMode) {
@@ -75,7 +108,7 @@ struct AccountSheet: View {
                 settingsLink(.chatTheme) {
                     CompactSettingsLabel(title: "Chat theme", systemImage: "paintbrush", value: (KordiChatTheme(rawValue: chatThemeRawValue) ?? .quiet).label)
                 }
-                settingsDivider
+                settingsDivider()
 
                 settingsSectionTitle("Account")
                 settingsLink(.activeSessions) {
@@ -120,6 +153,14 @@ struct AccountSheet: View {
                 ProviderAuthenticationView()
             case .notifications:
                 NotificationSettingsView()
+            case .connectors:
+                if let connectorsClient {
+                    ConnectorsSettingsView(
+                        client: connectorsClient,
+                        isPreview: connectorsClient is PreviewConnectorsClient,
+                        request: connectorsRequest
+                    )
+                }
             case .colorMode, .messageDisplay, .chatTheme:
                 CompactAppearanceSettingsView(route: route)
             }
@@ -167,20 +208,6 @@ struct AccountSheet: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func settingsSectionTitle(_ title: String) -> some View {
-        Text(title)
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(.primary)
-            .textCase(nil)
-            .padding(.top, 6)
-            .padding(.bottom, 6)
-            .accessibilityAddTraits(.isHeader)
-    }
-
-    private var settingsDivider: some View {
-        Divider().padding(.vertical, 10)
-    }
-
     private func settingsLink<Content: View>(_ route: AccountSettingsRoute, @ViewBuilder content: () -> Content) -> some View {
         NavigationLink(value: route) {
             HStack(spacing: 10) {
@@ -199,7 +226,23 @@ struct AccountSheet: View {
     }
 }
 
-private struct CompactSettingsLabel: View {
+/// Section title shared by the Settings sheet and its sub-screens.
+private func settingsSectionTitle(_ title: String) -> some View {
+    Text(title)
+        .font(.footnote.weight(.semibold))
+        .foregroundStyle(.primary)
+        .textCase(nil)
+        .padding(.top, 6)
+        .padding(.bottom, 6)
+        .accessibilityAddTraits(.isHeader)
+}
+
+/// Divider between Settings sections.
+private func settingsDivider() -> some View {
+    Divider().padding(.vertical, 10)
+}
+
+struct CompactSettingsLabel: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let title: String
     var subtitle: String? = nil
@@ -213,7 +256,10 @@ private struct CompactSettingsLabel: View {
                 .frame(width: 22)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.subheadline)
+                Text(title)
+                    .font(.subheadline)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 if let subtitle {
                     Text(subtitle).font(.caption).foregroundStyle(.secondary)
                 }
@@ -224,7 +270,12 @@ private struct CompactSettingsLabel: View {
             .fixedSize(horizontal: false, vertical: true)
             if !dynamicTypeSize.isAccessibilitySize, let value {
                 Spacer(minLength: 8)
-                Text(value).font(.caption).foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
             }
         }
         .foregroundStyle(.primary)
@@ -372,148 +423,290 @@ struct ActiveSessionsPreview: View {
     }
 }
 
+/// Settings opened on Connectors, for `--preview-connectors`.
+struct ConnectorsSettingsPreview: View {
+    var body: some View {
+        AccountSheet(previewing: .connectors)
+    }
+}
+
+private enum DeviceLogoutRequest: Identifiable {
+    case single(CloudDeviceAuthorization)
+    case group(CloudDeviceGroup)
+    case allOthers
+    case allLegacy([CloudDeviceAuthorization])
+
+    var id: String {
+        switch self {
+        case .single(let device): "single:\(device.deviceId)"
+        case .group(let group): "group:\(group.id)"
+        case .allOthers: "all-others"
+        case .allLegacy: "all-legacy"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .single(let device): "Log out of \(device.sessionTitle)?"
+        case .group(let group): "Log out of \(group.title)?"
+        case .allOthers: "Log out of all other devices?"
+        case .allLegacy: "Log out of all older sign-ins?"
+        }
+    }
+
+    var message: String? {
+        switch self {
+        case .single: nil
+        case .group(let group): group.sessionCount > 1 ? "\(group.sessionCount) sessions will be signed out." : nil
+        case .allOthers: "Every device except this one will be signed out."
+        case .allLegacy(let rows): rows.count == 1 ? nil : "\(rows.count) older sign-ins will be signed out."
+        }
+    }
+}
+
 private struct DevicesSettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var renameTarget: CloudDeviceAuthorization?
     @State private var renameDraft = ""
-    @State private var revokeTarget: CloudDeviceAuthorization?
-    @State private var showRevokeOthers = false
+    @State private var logoutRequest: DeviceLogoutRequest?
     @State private var isMutating = false
 
-    private var currentDevice: CloudDeviceAuthorization? {
-        model.devices.first(where: \.currentDevice)
-    }
+    /// Leading inset that aligns sub-rows with the row title (icon width + spacing).
+    private static let titleInset: CGFloat = 22 + 12
 
-    private var otherDevices: [CloudDeviceAuthorization] {
-        model.devices.filter { !$0.currentDevice }
+    private var grouping: CloudDeviceGrouping {
+        CloudDeviceGrouping.make(from: model.devices)
     }
 
     @ViewBuilder
     private var deviceSections: some View {
-        if let currentDevice {
-            currentDeviceSection(currentDevice)
+        let grouping = grouping
+        if let current = grouping.current {
+            currentDeviceSection(current)
         } else {
-            Section {
-                Label(
-                    "Kordi could not identify this iPhone in the active session list. Refresh before terminating another session.",
-                    systemImage: "exclamationmark.triangle.fill"
-                )
+            Label("This iPhone is not in the list. Refresh and try again.", systemImage: "exclamationmark.triangle")
+                .font(.subheadline)
                 .foregroundStyle(.orange)
+                .frame(minHeight: 48, alignment: .leading)
+        }
+        if !grouping.otherDevices.isEmpty {
+            destructiveRow("Log out of all other devices") { logoutRequest = .allOthers }
+        }
+        if !grouping.groups.isEmpty {
+            settingsDivider()
+            settingsSectionTitle("Other devices")
+            ForEach(grouping.groups) { group in
+                groupRows(group)
             }
         }
-        activeDevicesSection
+        if !grouping.legacy.isEmpty {
+            settingsDivider()
+            legacySection(grouping.legacy)
+        }
     }
 
+    @ViewBuilder
     private func currentDeviceSection(_ device: CloudDeviceAuthorization) -> some View {
-        Section {
-            DeviceAuthorizationRow(
-                device: device,
-                isMutating: isMutating,
-                confirm: {},
-                requestRevoke: {}
-            )
+        HStack(alignment: .firstTextBaseline) {
+            settingsSectionTitle("This device")
+            Spacer(minLength: 8)
+            Button("Rename") {
+                renameDraft = device.title
+                renameTarget = device
+            }
+            .font(.caption.weight(.semibold))
+            .textCase(nil)
+            .disabled(isMutating)
+        }
+        DeviceSessionRow(
+            title: device.title,
+            systemImage: device.deviceSystemImage,
+            detail: device.currentDetailLine,
+            online: true,
+            lastActiveAt: device.lastActiveAt,
+            location: device.approximateLocation
+        )
+    }
 
-            if !otherDevices.isEmpty {
-                Button(role: .destructive) {
-                    showRevokeOthers = true
-                } label: {
-                    Label("Terminate all other sessions", systemImage: "hand.raised")
-                        .frame(minHeight: 32)
+    @ViewBuilder
+    private func groupRows(_ group: CloudDeviceGroup) -> some View {
+        if group.devices.count == 1 {
+            let device = group.primary
+            HStack(alignment: .center, spacing: 8) {
+                DeviceSessionRow(
+                    title: group.title,
+                    systemImage: device.deviceSystemImage,
+                    detail: [group.platformVersionLabel, device.appVersionLabel]
+                        .compactMap { $0 }
+                        .joined(separator: " · "),
+                    online: group.online,
+                    lastActiveAt: group.lastActiveAt,
+                    location: group.location,
+                    pending: group.pending
+                )
+                revokeButton(title: group.title) { logoutRequest = .single(device) }
+            }
+            if device.isPendingReview {
+                confirmButton(device)
+                    .padding(.leading, Self.titleInset)
+                    .padding(.bottom, 6)
+            }
+        } else {
+            DeviceSessionRow(
+                title: group.title,
+                systemImage: group.primary.deviceSystemImage,
+                detail: [group.platformVersionLabel, "\(group.sessionCount) sessions"]
+                    .compactMap { $0 }
+                    .joined(separator: " · "),
+                online: group.online,
+                lastActiveAt: group.lastActiveAt,
+                location: group.location,
+                pending: group.pending
+            )
+            ForEach(group.devices) { device in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .center, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(device.appVersionLabel)
+                                    .font(.subheadline)
+                                if device.isPendingReview {
+                                    NeedsReviewBadge()
+                                }
+                            }
+                            DeviceStatusLine(online: device.online, lastActiveAt: device.lastActiveAt, location: nil)
+                        }
+                        .accessibilityElement(children: .combine)
+                        Spacer(minLength: 8)
+                        revokeButton(title: device.sessionTitle) { logoutRequest = .single(device) }
+                    }
+                    if device.isPendingReview {
+                        confirmButton(device)
+                            .padding(.bottom, 6)
+                    }
                 }
-                .disabled(isMutating)
+                .padding(.leading, Self.titleInset)
             }
-        } header: {
-            HStack {
-                Text("This device")
-                Spacer()
-                Button("Rename") {
-                    renameDraft = device.displayTitle
-                    renameTarget = device
-                }
-                .font(.caption.weight(.semibold))
-                .textCase(nil)
-                .disabled(isMutating)
-            }
-        } footer: {
-            if otherDevices.isEmpty {
-                Text("No other active sessions are connected to this account.")
-            } else {
-                Text("Terminates every other Kordi session except this one. Files already saved on those devices are not erased.")
-            }
+            destructiveRow("Log out of this device") { logoutRequest = .group(group) }
+                .padding(.leading, Self.titleInset)
         }
     }
 
-    private var activeDevicesSection: some View {
-        Section {
-            if otherDevices.isEmpty {
-                Text("Your other devices will appear here after they sign in.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(otherDevices) { device in
-                    DeviceAuthorizationRow(
-                        device: device,
-                        isMutating: isMutating,
-                        confirm: {
-                            isMutating = true
-                            Task {
-                                _ = await model.confirmDevice(device)
-                                isMutating = false
-                            }
-                        },
-                        requestRevoke: { revokeTarget = device }
-                    )
-                }
+    @ViewBuilder
+    private func legacySection(_ rows: [CloudDeviceAuthorization]) -> some View {
+        settingsSectionTitle("Older sign-ins")
+        ForEach(rows) { device in
+            HStack(alignment: .center, spacing: 8) {
+                DeviceSessionRow(
+                    title: device.sessionTitle,
+                    systemImage: "key",
+                    detail: nil,
+                    online: false,
+                    lastActiveAt: device.lastActiveAt,
+                    location: device.approximateLocation
+                )
+                revokeButton(title: device.sessionTitle) { logoutRequest = .single(device) }
             }
-        } header: {
-            Text("Active devices")
+        }
+        destructiveRow("Log out of all older sign-ins") { logoutRequest = .allLegacy(rows) }
+    }
+
+    private func destructiveRow(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(role: .destructive, action: action) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isMutating)
+    }
+
+    private func revokeButton(title: String, action: @escaping () -> Void) -> some View {
+        Button(role: .destructive, action: action) {
+            Image(systemName: "xmark.circle")
+                .font(.body)
+                .foregroundStyle(.tertiary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isMutating)
+        .accessibilityLabel("Log out \(title)")
+    }
+
+    private func confirmButton(_ device: CloudDeviceAuthorization) -> some View {
+        Button("This was me") {
+            isMutating = true
+            Task {
+                _ = await model.confirmDevice(device)
+                isMutating = false
+            }
+        }
+        .font(.caption.weight(.semibold))
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.small)
+        .tint(.primary)
+        .disabled(isMutating)
+    }
+
+    private func perform(_ request: DeviceLogoutRequest) {
+        isMutating = true
+        Task {
+            switch request {
+            case .single(let device):
+                _ = await model.revokeDevice(device)
+            case .group(let group):
+                _ = await model.revokeDevices(group.devices)
+            case .allOthers:
+                _ = await model.revokeOtherDevices()
+            case .allLegacy(let rows):
+                _ = await model.revokeDevices(rows)
+            }
+            isMutating = false
+            logoutRequest = nil
         }
     }
 
     var body: some View {
-        List {
-            if model.isRefreshingDevices && model.devices.isEmpty {
-                Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if model.isRefreshingDevices && model.devices.isEmpty {
                     HStack(spacing: 10) {
                         ProgressView()
-                        Text("Loading active sessions…")
+                        Text("Loading…")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
-                    .frame(minHeight: 44)
+                    .frame(minHeight: 48)
                     .accessibilityElement(children: .combine)
+                } else if model.devices.isEmpty {
+                    ContentUnavailableView("No active sessions", systemImage: "laptopcomputer.and.iphone")
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 40)
+                } else {
+                    deviceSections
                 }
-            } else if model.devices.isEmpty {
-                Section {
-                    ContentUnavailableView(
-                        "No active sessions",
-                        systemImage: "laptopcomputer.and.iphone",
-                        description: Text("Refresh the list, or sign in again if this iPhone is missing.")
-                    )
-                }
-            } else {
-                deviceSections
-            }
 
-            if let error = model.deviceErrorMessage.nonEmpty {
-                Section {
+                if let error = model.deviceErrorMessage.nonEmpty {
+                    settingsDivider()
                     VStack(alignment: .leading, spacing: 8) {
-                        Label(error, systemImage: "exclamationmark.circle.fill")
+                        Label(error, systemImage: "exclamationmark.circle")
+                            .font(.subheadline)
                             .foregroundStyle(.red)
-                        if !model.devices.isEmpty {
-                            Text("The saved list remains visible. Reconnect and refresh to verify changes.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
                         Button("Try again") { Task { await model.refreshDevices() } }
                             .font(.subheadline.weight(.semibold))
-                            .frame(minHeight: 32)
+                            .frame(minHeight: 44)
                     }
                 }
             }
-
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 24)
         }
-        .listStyle(.insetGrouped)
-        .environment(\.defaultMinListRowHeight, 44)
+        .background(Color(uiColor: .systemBackground))
         .navigationTitle("Active sessions")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -555,139 +748,124 @@ private struct DevicesSettingsView: View {
             }
             .disabled(renameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button("Cancel", role: .cancel) { renameTarget = nil }
-        } message: {
-            Text("Use a name that helps you recognize this session in Kordi.")
         }
         .confirmationDialog(
-            "Terminate this device?",
+            logoutRequest?.title ?? "",
             isPresented: Binding(
-                get: { revokeTarget != nil },
-                set: { if !$0 { revokeTarget = nil } }
+                get: { logoutRequest != nil },
+                set: { if !$0 { logoutRequest = nil } }
             ),
             titleVisibility: .visible,
-            presenting: revokeTarget
-        ) { device in
-            Button("Terminate \(device.displayTitle)", role: .destructive) {
-                isMutating = true
-                Task {
-                    _ = await model.revokeDevice(device)
-                    isMutating = false
-                    revokeTarget = nil
-                }
+            presenting: logoutRequest
+        ) { request in
+            Button("Log out", role: .destructive) { perform(request) }
+            Button("Cancel", role: .cancel) { logoutRequest = nil }
+        } message: { request in
+            if let message = request.message {
+                Text(message)
             }
-            Button("Cancel", role: .cancel) { revokeTarget = nil }
-        } message: { _ in
-            Text("Every Kordi Cloud session on this device will be revoked. Local files on it will not be erased.")
-        }
-        .confirmationDialog(
-            "Terminate all other sessions?",
-            isPresented: $showRevokeOthers,
-            titleVisibility: .visible
-        ) {
-            Button("Terminate all other sessions", role: .destructive) {
-                isMutating = true
-                Task {
-                    _ = await model.revokeOtherDevices()
-                    isMutating = false
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Every other Kordi Cloud authorization and session will be revoked. This iPhone stays signed in.")
         }
     }
 }
 
-private struct DeviceAuthorizationRow: View {
-    let device: CloudDeviceAuthorization
-    let isMutating: Bool
-    let confirm: () -> Void
-    let requestRevoke: () -> Void
+private struct NeedsReviewBadge: View {
+    var body: some View {
+        Text("Needs review")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.orange.opacity(0.12), in: Capsule())
+    }
+}
+
+private struct DeviceStatusLine: View {
+    let online: Bool
+    let lastActiveAt: String
+    let location: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(alignment: .top, spacing: 11) {
-                ZStack {
+        let status = online ? "Active now" : lastActiveDescription(lastActiveAt)
+        let text = [status, location.nonEmpty].compactMap { $0 }.joined(separator: " · ")
+        if !text.isEmpty {
+            HStack(spacing: 5) {
+                if online {
                     Circle()
-                        .fill((device.needsReview ? Color.orange : KordiTheme.signalBlue).opacity(0.12))
-                    Image(systemName: device.needsReview ? "exclamationmark.shield.fill" : device.systemImage)
-                        .foregroundStyle(device.needsReview ? Color.orange : KordiTheme.signalBlue)
+                        .fill(Color.green)
+                        .frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
                 }
-                .frame(width: 38, height: 38)
-                .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(device.displayTitle)
-                        .font(.body.weight(.semibold))
-                    if let detailLine = device.detailLine {
-                        Text(detailLine)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let activityLine = device.activityLine {
-                        Text(activityLine)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer(minLength: 8)
-                if !device.currentDevice {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        if device.needsReview {
-                            Text("Needs review")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.orange)
-                        }
-                        Button(role: .destructive, action: requestRevoke) {
-                            Image(systemName: "xmark")
-                                .font(.caption.weight(.semibold))
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isMutating)
-                        .accessibilityLabel("Terminate \(device.displayTitle)")
-                    }
-                }
-            }
-
-            if !device.currentDevice && device.needsReview {
-                Button("This was me", action: confirm)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .disabled(isMutating)
+                Text(text)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .contain)
+    }
+}
+
+/// A device row in the same flat style as `CompactSettingsLabel`.
+private struct DeviceSessionRow: View {
+    let title: String
+    let systemImage: String
+    let detail: String?
+    let online: Bool
+    let lastActiveAt: String
+    let location: String?
+    var pending = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.body)
+                .frame(width: 22)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(title).font(.subheadline)
+                    if pending {
+                        NeedsReviewBadge()
+                    }
+                }
+                if let detail = detail?.nonEmpty {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                DeviceStatusLine(online: online, lastActiveAt: lastActiveAt, location: location)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(.primary)
+        .padding(.vertical, 5)
+        .frame(minHeight: 48)
+        .accessibilityElement(children: .combine)
     }
 }
 
 private extension CloudDeviceAuthorization {
-    var displayTitle: String {
-        displayName?.nonEmpty ?? (platform == "ios" ? "iPhone" : platform == "macos" ? "Mac" : "Kordi device")
+    var deviceSystemImage: String {
+        switch platform?.lowercased() {
+        case "ios": "iphone"
+        case "macos": "laptopcomputer"
+        case "windows", "linux": "desktopcomputer"
+        default: "key"
+        }
     }
 
-    var systemImage: String { platform == "ios" ? "iphone" : "laptopcomputer" }
-
-    var detailLine: String? {
-        [platform?.uppercased(), osVersion?.nonEmpty, appVersion.nonEmpty.map { "Kordi \($0)" }]
+    var currentDetailLine: String? {
+        [platformVersionLabel, appVersionLabel]
             .compactMap { $0 }
             .joined(separator: " · ")
             .nonEmpty
     }
 
-    var activityLine: String? {
-        let lastActive = DeviceDateFormatting.iso8601.date(from: lastActiveAt)
-            .map { "Active \($0.formatted(.relative(presentation: .named)))" }
-        return [approximateLocation.nonEmpty, lastActive]
-            .compactMap { $0 }
-            .joined(separator: " · ")
-            .nonEmpty
+    /// Row title that also names older sign-ins by their method.
+    var sessionTitle: String {
+        guard isLegacySignIn else { return title }
+        if let method = signInMethodLabel { return "\(method) sign-in" }
+        return "Older sign-in"
     }
-}
-
-private enum DeviceDateFormatting {
-    static let iso8601 = ISO8601DateFormatter()
 }
 
 private struct ProfileSettingsView: View {

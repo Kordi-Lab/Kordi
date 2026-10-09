@@ -50,6 +50,10 @@ tests=(
   title_tests::upgrade_from_89_repairs_only_proven_defaults_and_authenticated_titles
   email_verification_tests::upgrade_from_110_marks_only_provider_verified_primary_emails
   account_email_tests::upgrade_from_112_adds_account_email_codes
+  connectors_tests::upgrade_from_113_adds_connectors_without_touching_accounts
+  connectors_tests::upgrade_from_114_labels_existing_runs_as_background
+  connectors_tests::upgrade_from_115_adds_provider_state_and_dedupes_events
+  connectors_tests::upgrade_from_116_labels_existing_runs_as_shared
 )
 index=0
 for test_name in "${tests[@]}"; do
@@ -64,3 +68,7 @@ migration_create_database kordi_migration_test_runtime
 # shared fixture. Serialize them so one test cannot sweep another test's rows.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --test cloud_agent_runtime_e2e --test chat_sync_e2e -- --test-threads=1
+# Connector acceptance tests need a database; their fixture fails in CI when
+# DATABASE_URL is missing, so they cannot pass by skipping.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib connectors:: -- --test-threads=1

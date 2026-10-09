@@ -48,6 +48,13 @@ test('model config completion preserves a concurrent send, reading position, and
   let actions!: ReturnType<typeof useComposerInputActions>;
   const noChange = () => {};
   const noAction = async () => {};
+  // The native invoke waits on a lazy Tauri module import, so let pending requests register before resolving them.
+  const waitForRequests = async (pending: unknown[], count: number) => {
+    await act(async () => {
+      for (let attempt = 0; pending.length < count && attempt < 400; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+    });
+    assert.equal(pending.length, count);
+  };
   function Probe() {
     [state, setState] = useState<DesktopChatState | null>(desktopState());
     const [currentSelections, setSelections] = useState<ComposerSelectionState>({
@@ -74,7 +81,7 @@ test('model config completion preserves a concurrent send, reading position, and
     await act(async () => root.render(createElement(Probe)));
     let first!: Promise<void>;
     await act(async () => { first = actions.selectComposerValue('chat', 'model', 'openai/second'); });
-    assert.equal(requests.length, 1);
+    await waitForRequests(requests, 1);
     assert.equal(follow.current, false, 'Changing settings must preserve the user reading older messages');
     await act(async () => setState((current) => ({ ...current!, activeSession: { ...current!.activeSession,
       messageCount: 3, messages: [...current!.activeSession.messages, { role: 'user', text: 'Just sent', timestampMs: 3, timeLabel: '10:01' }],
@@ -87,7 +94,10 @@ test('model config completion preserves a concurrent send, reading position, and
     let older!: Promise<void>;
     let newer!: Promise<void>;
     await act(async () => { older = actions.selectComposerValue('chat', 'model', 'openai/first'); });
+    await waitForRequests(requests, 2);
     await act(async () => { newer = actions.selectComposerValue('chat', 'model', 'openai/third'); });
+    await waitForRequests(requests, 3);
+    assert.deepEqual(requests.map((request) => request.model), ['openai/second', 'openai/first', 'openai/third']);
     await act(async () => { requests[2].resolve(desktopState('project-session', 'third')); await newer; });
     await act(async () => { requests[1].resolve(desktopState('project-session', 'first')); await older; });
     assert.equal(state!.activeSession.model, 'third', 'An older response must not roll back a newer model');
@@ -95,6 +105,7 @@ test('model config completion preserves a concurrent send, reading position, and
 
     let switching!: Promise<void>;
     await act(async () => { switching = actions.selectComposerValue('chat', 'model', 'openai/second'); });
+    await waitForRequests(requests, 4);
     await act(async () => setState(desktopState('different-session')));
     await act(async () => { requests[3].resolve(desktopState('project-session', 'second')); await switching; });
     assert.equal(state!.activeSessionId, 'different-session', 'Config completion must not return to a session the user left');
@@ -106,7 +117,7 @@ test('model config completion preserves a concurrent send, reading position, and
     let newerRoute!: Promise<void>;
     await act(async () => { olderRoute = actions.selectComposerValue('chat', 'thinking', 'low', 'project-session'); });
     await act(async () => { newerRoute = actions.selectComposerValue('chat', 'thinking', 'high', 'project-session'); });
-    assert.equal(routeRequests.length, 2);
+    await waitForRequests(routeRequests, 2);
     assert.equal(routeRequests[0].input.sessionId, 'project-session', 'A hosted route must honor the composer target override');
     await act(async () => { routeRequests[1].resolve(); await newerRoute; });
     await act(async () => { routeRequests[0].reject(new Error('Older update failed')); await olderRoute; });

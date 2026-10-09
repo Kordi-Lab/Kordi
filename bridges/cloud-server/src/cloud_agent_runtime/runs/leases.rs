@@ -6,6 +6,9 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use super::{AgentRuntimeRoute, RunError, RunResult};
+use crate::connectors;
+use crate::connectors::delivery::LeaseConnectorTool;
+use crate::connectors::models::{ConnectorAudience, RunTrigger};
 
 #[derive(Debug, Deserialize)]
 pub struct RunnerRunRequest {
@@ -82,6 +85,16 @@ pub struct RunnerRunResponse {
     /// The requester or owner asked to stop this run.
     #[serde(rename = "cancelRequested")]
     pub cancel_requested: bool,
+    /// `person_started` or `background`; background runs get `read`
+    /// connector tools only.
+    pub trigger: RunTrigger,
+    /// `owner_private` or `shared`; a shared run gets no connector tools.
+    #[serde(rename = "connectorAudience")]
+    pub connector_audience: ConnectorAudience,
+    /// Connector tools delivered with this lease. Descriptors only: the
+    /// broker holds every credential.
+    #[serde(rename = "connectorTools")]
+    pub connector_tools: Vec<LeaseConnectorTool>,
 }
 
 pub(super) type RunnerRunRow = (
@@ -205,7 +218,14 @@ pub(super) async fn runner_response_from_row(
     pool: &PgPool,
     mut row: RunnerRunRow,
 ) -> RunResult<RunnerRunResponse> {
-    let (subsession_id, scope, cancel_requested): (Option<uuid::Uuid>, serde_json::Value, bool) = query_as("SELECT subsession_id,subsession_write_scope,cancel_requested_at IS NOT NULL FROM cloud_agent_fallback_runs WHERE run_id=$1")
+    let (subsession_id, scope, cancel_requested, trigger, connector_tools, audience): (
+        Option<uuid::Uuid>,
+        serde_json::Value,
+        bool,
+        String,
+        serde_json::Value,
+        String,
+    ) = query_as("SELECT subsession_id,subsession_write_scope,cancel_requested_at IS NOT NULL,run_trigger,connector_tools_json,connector_audience FROM cloud_agent_fallback_runs WHERE run_id=$1")
         .bind(&row.0).fetch_one(pool).await?;
     if row.0.starts_with(crate::digest::RUN_PREFIX)
         && matches!(row.1.as_str(), "leased" | "running")
@@ -242,5 +262,8 @@ pub(super) async fn runner_response_from_row(
         error_code: row.9,
         error_message: row.10,
         cancel_requested,
+        trigger: RunTrigger::parse(&trigger),
+        connector_audience: ConnectorAudience::parse(&audience),
+        connector_tools: connectors::delivery::tools_from_json(connector_tools),
     })
 }

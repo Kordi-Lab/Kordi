@@ -240,9 +240,79 @@ struct CloudDeviceAuthorization: Codable, Hashable, Identifiable {
     let sessionExpiresAt: String?
     let approximateLocation: String?
     let syncStatus: CloudDeviceSyncStatus
+    /// The device is connected right now. Older servers omit it.
+    let online: Bool
+    /// Live sessions on this row. Older servers omit it, so it defaults to one.
+    let sessionCount: Int
+    /// Created by an old client that reported no device details.
+    let legacy: Bool
+    /// How the session was signed in, such as "google", "github", or "password".
+    let signInMethod: String?
 
     var id: String { deviceId }
     var needsReview: Bool { authorizationState == "pending_review" }
+
+    private enum CodingKeys: String, CodingKey {
+        case deviceId, displayName, platform, osVersion, appVersion, createdAt, lastActiveAt
+        case authorizationState, currentDevice, sessionExpiresAt, approximateLocation, syncStatus
+        case online, sessionCount, legacy, signInMethod
+    }
+
+    init(
+        deviceId: String,
+        displayName: String?,
+        platform: String?,
+        osVersion: String?,
+        appVersion: String?,
+        createdAt: String,
+        lastActiveAt: String,
+        authorizationState: String,
+        currentDevice: Bool,
+        sessionExpiresAt: String?,
+        approximateLocation: String?,
+        syncStatus: CloudDeviceSyncStatus,
+        online: Bool = false,
+        sessionCount: Int = 1,
+        legacy: Bool = false,
+        signInMethod: String? = nil
+    ) {
+        self.deviceId = deviceId
+        self.displayName = displayName
+        self.platform = platform
+        self.osVersion = osVersion
+        self.appVersion = appVersion
+        self.createdAt = createdAt
+        self.lastActiveAt = lastActiveAt
+        self.authorizationState = authorizationState
+        self.currentDevice = currentDevice
+        self.sessionExpiresAt = sessionExpiresAt
+        self.approximateLocation = approximateLocation
+        self.syncStatus = syncStatus
+        self.online = online
+        self.sessionCount = sessionCount
+        self.legacy = legacy
+        self.signInMethod = signInMethod
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        deviceId = try container.decode(String.self, forKey: .deviceId)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+        platform = try container.decodeIfPresent(String.self, forKey: .platform)
+        osVersion = try container.decodeIfPresent(String.self, forKey: .osVersion)
+        appVersion = try container.decodeIfPresent(String.self, forKey: .appVersion)
+        createdAt = try container.decode(String.self, forKey: .createdAt)
+        lastActiveAt = try container.decode(String.self, forKey: .lastActiveAt)
+        authorizationState = try container.decode(String.self, forKey: .authorizationState)
+        currentDevice = try container.decode(Bool.self, forKey: .currentDevice)
+        sessionExpiresAt = try container.decodeIfPresent(String.self, forKey: .sessionExpiresAt)
+        approximateLocation = try container.decodeIfPresent(String.self, forKey: .approximateLocation)
+        syncStatus = try container.decode(CloudDeviceSyncStatus.self, forKey: .syncStatus)
+        online = try container.decodeIfPresent(Bool.self, forKey: .online) ?? false
+        sessionCount = max(1, try container.decodeIfPresent(Int.self, forKey: .sessionCount) ?? 1)
+        legacy = try container.decodeIfPresent(Bool.self, forKey: .legacy) ?? false
+        signInMethod = try container.decodeIfPresent(String.self, forKey: .signInMethod)
+    }
 }
 
 struct CloudDeviceListResponse: Codable, Hashable {

@@ -42,6 +42,7 @@ enum KordiPreviewModePersistence {
         "--preview-companion-return", "--preview-contact-chat", "--preview-direct-call", "--preview-group-call",
         "--preview-group-detail", "--preview-group-invite", "--preview-media", "--preview-media-messages",
         "--preview-media-expanded", "--preview-media-separated", "--preview-photo-send",
+        "--preview-connectors",
     ]
 
     static func launchRequested(by arguments: [String]) -> Bool {
@@ -307,6 +308,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var loadingConversationIDs = Set<String>()
     @Published var errorMessage: String?
     @Published private(set) var accountEmailCodeState: AccountEmailCodeState?
+    /// `connectorsVersion` from `/v1/cloud/auth/capabilities`; nil hides Connectors.
+    @Published private(set) var connectorsVersion: Int?
 
     private let api: CloudAPIClient
     private let oauth: CloudOAuthSession
@@ -321,6 +324,10 @@ final class AppModel: ObservableObject {
     let conversationViewportMemory = ConversationViewportMemory()
     private var token: String?
     private var currentDeviceId: String?
+    private var isRefreshingConnectorsCapability = false
+    /// True until a capabilities fetch succeeds, so the account sheet retries.
+    private var connectorsCapabilityNeedsRetry = true
+    private var connectorsClientCache: CloudConnectorsClient?
     private var deviceOperationIds: [String: String] = [:]
     private var cloudSyncTask: Task<Void, Never>?
     private var cloudRealtimeTask: Task<Void, Never>?
@@ -484,6 +491,7 @@ final class AppModel: ObservableObject {
                     && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
             }
             phase = .signedIn
+            Task { await refreshConnectorsCapability() }
             scheduleDigestWarmup()
             presencePublisher.start(token: savedToken)
             startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
@@ -793,6 +801,9 @@ final class AppModel: ObservableObject {
         canonicalConversationIDBySessionID = [:]
         ownedCloudAgents = []
         sharedCloudAgents = []
+        connectorsClientCache = nil
+        connectorsVersion = nil
+        connectorsCapabilityNeedsRetry = true
         hiddenCloudSessionIds = []
         deletedCloudSessionIds = []
         sessionVisibilityMutationRevision = 0
@@ -1012,6 +1023,7 @@ final class AppModel: ObservableObject {
 
     func appDidBecomeActive() async {
         guard phase == .signedIn, !previewMode, let token else { return }
+        Task { await refreshConnectorsCapability() }
         scheduleDigestWarmup()
         presencePublisher.start(token: token)
         await refreshWorkspace()
@@ -1019,6 +1031,45 @@ final class AppModel: ObservableObject {
             hasHydratedWireSnapshot: hasHydratedWireSnapshot,
             hasHydratedForkLineage: hasHydratedForkLineage
         ))
+    }
+
+    /// Reads whether this server serves Connectors. Called on sign-in and on
+    /// foreground; a failed fetch keeps the last known value.
+    func refreshConnectorsCapability() async {
+        guard !previewMode, !isRefreshingConnectorsCapability else { return }
+        isRefreshingConnectorsCapability = true
+        defer { isRefreshingConnectorsCapability = false }
+        guard let capabilities = try? await api.authCapabilities() else {
+            connectorsCapabilityNeedsRetry = true
+            return
+        }
+        connectorsCapabilityNeedsRetry = false
+        if connectorsVersion != capabilities.connectorsVersion {
+            connectorsVersion = capabilities.connectorsVersion
+        }
+    }
+
+    /// Called when the account sheet opens: retries the capabilities fetch
+    /// only when the last attempt failed or none has succeeded yet.
+    func refreshConnectorsCapabilityIfNeeded() async {
+        guard phase == .signedIn, connectorsCapabilityNeedsRetry else { return }
+        await refreshConnectorsCapability()
+    }
+
+    /// The server-backed Connectors client for the signed-in account, shared
+    /// by every Settings screen so cached connector ids survive navigation.
+    func cloudConnectorsClient() -> (any ConnectorsClient)? {
+        guard !previewMode, token != nil else { return nil }
+        if let connectorsClientCache { return connectorsClientCache }
+        let oauth = oauth
+        let client = CloudConnectorsClient(
+            api: api,
+            token: { [weak self] in self?.token },
+            accountId: { [weak self] in self?.account?.accountId },
+            authenticate: { url in try await oauth.open(url) }
+        )
+        connectorsClientCache = client
+        return client
     }
 
     func updateProfile(
@@ -1135,9 +1186,44 @@ final class AppModel: ObservableObject {
             return true
         } catch {
             devices = previous
-            deviceErrorMessage = userFacing(error, fallback: "Could not terminate this device.")
+            deviceErrorMessage = userFacing(error, fallback: "Could not log out of this device.")
             return false
         }
+    }
+
+    /// Logs out of several rows one after another, then refreshes once.
+    func revokeDevices(_ targets: [CloudDeviceAuthorization]) async -> Bool {
+        let targets = targets.filter { !$0.currentDevice }
+        guard let token, !targets.isEmpty else { return false }
+        if previewMode {
+            let ids = Set(targets.map(\.deviceId))
+            devices.removeAll { ids.contains($0.deviceId) }
+            return true
+        }
+        deviceErrorMessage = nil
+        var failure: Error?
+        for device in targets {
+            let operationKey = "revoke:\(device.deviceId)"
+            let operationId = deviceOperationId(for: operationKey)
+            do {
+                _ = try await api.revokeDevice(
+                    token: token,
+                    deviceId: device.deviceId,
+                    clientOperationId: operationId
+                )
+                deviceOperationIds.removeValue(forKey: operationKey)
+                devices.removeAll { $0.deviceId == device.deviceId }
+            } catch {
+                failure = error
+                break
+            }
+        }
+        await refreshDevices()
+        if let failure {
+            deviceErrorMessage = userFacing(failure, fallback: "Could not log out of every session.")
+            return false
+        }
+        return true
     }
 
     func revokeOtherDevices() async -> Bool {
@@ -1157,7 +1243,7 @@ final class AppModel: ObservableObject {
             return true
         } catch {
             devices = previous
-            deviceErrorMessage = userFacing(error, fallback: "Could not terminate other devices.")
+            deviceErrorMessage = userFacing(error, fallback: "Could not log out of other devices.")
             return false
         }
     }
@@ -7835,43 +7921,63 @@ final class AppModel: ObservableObject {
             // route saved by an earlier preview launch.
             saveSessionRuntimeRoute(previewRouting, sessionId: researchSession.sessionId)
         }
-        devices = [
+        func previewDevice(
+            _ deviceId: String,
+            name: String?,
+            platform: String?,
+            osVersion: String?,
+            appVersion: String?,
+            lastActive: TimeInterval,
+            state: String = "authorized",
+            current: Bool = false,
+            location: String? = "Riyadh, Saudi Arabia",
+            online: Bool = false,
+            legacy: Bool = false,
+            signInMethod: String? = nil
+        ) -> CloudDeviceAuthorization {
             CloudDeviceAuthorization(
-                deviceId: "device_preview_iphone",
-                displayName: "iPhone 17e",
-                platform: "ios",
-                osVersion: "iOS 27.0",
-                appVersion: "0.0.1-beta.12",
-                createdAt: timestamp.string(from: now.addingTimeInterval(-2_592_000)),
-                lastActiveAt: timestamp.string(from: now),
-                authorizationState: "authorized",
-                currentDevice: true,
-                sessionExpiresAt: timestamp.string(from: now.addingTimeInterval(2_592_000)),
-                approximateLocation: "Riyadh, Saudi Arabia",
-                syncStatus: CloudDeviceSyncStatus(
-                    protocolVersion: 2,
-                    lastAppliedSequence: 1_248,
-                    lastSuccessfulCatchUpAt: timestamp.string(from: now.addingTimeInterval(-12))
-                )
-            ),
-            CloudDeviceAuthorization(
-                deviceId: "device_preview_mac",
-                displayName: "MacBook Pro",
-                platform: "macos",
-                osVersion: "macOS 26.0",
-                appVersion: "0.0.1-beta.12",
+                deviceId: deviceId,
+                displayName: name,
+                platform: platform,
+                osVersion: osVersion,
+                appVersion: appVersion,
                 createdAt: timestamp.string(from: now.addingTimeInterval(-7_776_000)),
-                lastActiveAt: timestamp.string(from: now.addingTimeInterval(-540)),
-                authorizationState: "authorized",
-                currentDevice: false,
+                lastActiveAt: timestamp.string(from: now.addingTimeInterval(-lastActive)),
+                authorizationState: state,
+                currentDevice: current,
                 sessionExpiresAt: timestamp.string(from: now.addingTimeInterval(2_592_000)),
-                approximateLocation: "Riyadh, Saudi Arabia",
+                approximateLocation: location,
                 syncStatus: CloudDeviceSyncStatus(
                     protocolVersion: 2,
                     lastAppliedSequence: 1_248,
-                    lastSuccessfulCatchUpAt: timestamp.string(from: now.addingTimeInterval(-545))
-                )
+                    lastSuccessfulCatchUpAt: timestamp.string(from: now.addingTimeInterval(-lastActive - 5))
+                ),
+                online: online,
+                legacy: legacy,
+                signInMethod: signInMethod
             )
+        }
+        let day: TimeInterval = 86_400
+        devices = [
+            previewDevice("device_preview_iphone", name: "iPhone 17e", platform: "ios", osVersion: "iOS 27.0",
+                          appVersion: "0.0.2", lastActive: 0, current: true, online: true, signInMethod: "google"),
+            previewDevice("device_preview_mac", name: "MacBook Pro", platform: "macos", osVersion: "macOS 26.0",
+                          appVersion: "0.0.2", lastActive: 30, online: true, signInMethod: "google"),
+            previewDevice("device_preview_mac_beta", name: "MacBook Pro", platform: "macos", osVersion: "macOS 26.0",
+                          appVersion: "0.0.2-beta.3", lastActive: 3 * 3_600, state: "pending_review",
+                          signInMethod: "github"),
+            previewDevice("device_preview_mac_old", name: "MacBook Pro", platform: "macos", osVersion: "26.0",
+                          appVersion: "0.0.1", lastActive: 5 * day, signInMethod: "password"),
+            previewDevice("device_preview_studio", name: "Mac Studio", platform: "macos", osVersion: "macOS 26.0",
+                          appVersion: "0.0.2", lastActive: 2 * day, location: "Jeddah, Saudi Arabia",
+                          signInMethod: "google"),
+            previewDevice("device_preview_legacy_google_1", name: nil, platform: nil, osVersion: nil,
+                          appVersion: nil, lastActive: 9 * day, legacy: true, signInMethod: "google"),
+            previewDevice("device_preview_legacy_google_2", name: nil, platform: nil, osVersion: nil,
+                          appVersion: nil, lastActive: 17 * day, location: "Jeddah, Saudi Arabia",
+                          legacy: true, signInMethod: "google"),
+            previewDevice("device_preview_legacy_password", name: nil, platform: nil, osVersion: nil,
+                          appVersion: nil, lastActive: 25 * day, legacy: true, signInMethod: "password")
         ]
         currentDeviceId = "device_preview_iphone"
         token = "preview-token"
@@ -7912,6 +8018,8 @@ final class AppModel: ObservableObject {
                 && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
         }
         phase = .signedIn
+        connectorsClientCache = nil
+        Task { await refreshConnectorsCapability() }
         presencePublisher.start(token: response.session.token)
         scheduleDigestWarmup()
         startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(

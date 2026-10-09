@@ -32,6 +32,8 @@ pub fn spawn_scheduled_task_worker(state: Arc<ServerState>) -> JoinHandle<()> {
                 }
                 Err(err) => eprintln!("[scheduled_tasks] sweep due jobs: {err}"),
             }
+            crate::connectors::events::run_retention_sweep(state.db_pool()).await;
+            crate::connectors::polling::spawn_poll_sweep(state.db_pool(), state.connectors());
         }
     })
 }

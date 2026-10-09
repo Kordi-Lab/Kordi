@@ -1,7 +1,6 @@
 //! Every embedded Postgres migration, in version order.
 
-use super::migration_entry::migration;
-use super::EmbeddedMigration;
+use super::{migration_entry::migration, EmbeddedMigration};
 
 pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     migration!(1, "initial cloud schema", "0001_initial.sql"),
@@ -484,6 +483,18 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         "account email verification codes",
         "0113_account_email_codes.sql"
     ),
+    migration!(114, "cloud connectors", "0114_cloud_connectors.sql"),
+    migration!(
+        115,
+        "run trigger and connector tools",
+        "0115_run_trigger_connector_tools.sql"
+    ),
+    migration!(
+        116,
+        "connector provider state",
+        "0116_connector_provider_state.sql"
+    ),
+    migration!(117, "connector audience", "0117_run_connector_audience.sql"),
     migration!(
         118,
         "agent run stop requests",

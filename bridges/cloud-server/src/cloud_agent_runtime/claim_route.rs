@@ -5,9 +5,10 @@ use std::sync::Arc;
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::routes::CloudSession;
 use crate::cloud_agent_runtime::runs::{
-    claim_has_shared_cloud_agent_target, claim_run, cloud_agent_response_is_processing_for_request,
-    error_response, requester_can_target_owner, run_error_response, validate_group_agent_claim,
-    validate_shared_cloud_agent_claim, ClaimRunRequest,
+    claim_has_shared_cloud_agent_target, claim_run_for_person_message,
+    cloud_agent_response_is_processing_for_request, error_response, requester_can_target_owner,
+    run_error_response, validate_group_agent_claim, validate_shared_cloud_agent_claim,
+    ClaimRunRequest,
 };
 use crate::server::ServerState;
 use axum::extract::State;
@@ -226,7 +227,7 @@ pub(super) async fn claim_cloud_agent_run(
 
     // The exact idempotency key is the durable Cloud admission boundary once
     // no reachable owner Mac can claim the request.
-    match claim_run(state.db_pool(), &input).await {
+    match claim_run_for_person_message(state.db_pool(), &input).await {
         Ok(run) => Json(run).into_response(),
         Err(error) => run_error_response(
             "claim run",

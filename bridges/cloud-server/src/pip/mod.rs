@@ -18,6 +18,8 @@ pub mod store;
 mod worker;
 
 pub use agent::bootstrap_pip_agent;
+#[cfg(test)]
+pub(crate) use config::test_config;
 pub use config::{PendingPipConfig, PipConfig, PipConfigError, PipProviderAuth};
 pub use store::RUN_PREFIX;
 pub use worker::spawn;

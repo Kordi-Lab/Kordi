@@ -212,6 +212,7 @@ pub(crate) fn omp_provider(auth: &OpenAiProviderConfig) -> &str {
 
 fn tools_for_run(run: &CloudAgentRun) -> Result<Vec<ToolDefinition>, ModelLoopError> {
     let mut tools = tool_catalog();
+    tools.extend(crate::connectors::tool_definitions(run));
     if run.subsession_id.is_some() {
         tools.retain(|tool| {
             let name = tool["function"]["name"].as_str().unwrap_or_default();
@@ -260,6 +261,10 @@ fn system_prompt_for_run(run: &CloudAgentRun) -> Result<String, ModelLoopError> 
             || run.session_id.starts_with("session:direct-person:"))
     {
         system_prompt.push_str("\n\nYou are participating in a shared conversation. Keep brief answers, clarifications, and immediate user decisions in this conversation. For self-contained extended research or multi-step work, use task_operator action=spawn before starting heavy work, unless the user explicitly asks to keep the work inline. Supply a concise taskTitle, a self-contained message and forkTurns=none. After successful creation, give a short task-specific acknowledgement and end this parent turn. The subsession owns progress and the final result; do not wait for or repeat them here. Never create a conversation channel or an ordinary message thread.");
+    }
+    if let Some(section) = crate::connectors::prompt_section(run) {
+        system_prompt.push_str("\n\n");
+        system_prompt.push_str(&section);
     }
     if let Some(identity) = &run.turn_identity {
         system_prompt.push_str("\n\n");

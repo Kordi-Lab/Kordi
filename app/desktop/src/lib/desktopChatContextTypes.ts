@@ -1,6 +1,6 @@
 
 export type DesktopChatContextMessage = {
-  executionLease?: { runId: string; claimId: string; ownerAccountId: string; sessionId: string };
+  executionLease?: { runId: string; claimId: string; ownerAccountId: string; sessionId: string; connectorTools?: unknown[]; connectorAudience?: 'owner_private' };
   id: string;
   authorName: string;
   authorKind: 'human' | 'agent'; contextRole?: 'history' | 'system' | 'resource' | 'runtimeIdentity';

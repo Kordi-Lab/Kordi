@@ -66,6 +66,7 @@ where
     let mut auth = OpenAiProviderConfig::from_material(&auth_material)?;
     auth.apply_runtime_route(&run.runtime_route, &auth_material.provider)?;
     let mut tools = prompt::tool_catalog();
+    tools.extend(crate::connectors::tool_definitions(run));
     if run.subsession_id.is_some() {
         tools.retain(|tool| {
             let name = tool["function"]["name"].as_str().unwrap_or_default();
@@ -88,6 +89,10 @@ where
         format!("{system_prompt}\n\nYou are participating in a shared conversation. Keep brief answers, clarifications, and immediate user decisions in this conversation. For self-contained extended research or multi-step work, use task_operator action=spawn before starting heavy work, unless the user explicitly asks to keep the work inline. Supply a concise taskTitle, a self-contained message and forkTurns=none. After successful creation, give a short task-specific acknowledgement and end this parent turn. The subsession owns progress and the final result; do not wait for or repeat them here. Never create a conversation channel or an ordinary message thread.")
     } else {
         system_prompt
+    };
+    let system_prompt = match crate::connectors::prompt_section(run) {
+        Some(section) => format!("{system_prompt}\n\n{section}"),
+        None => system_prompt,
     };
     let mut messages = vec![json!({ "role": "system", "content": system_prompt })];
     for message in &run.history_messages {
@@ -189,6 +194,9 @@ pub(crate) async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
     run: &CloudAgentRun,
     call: &ModelToolCall,
 ) -> Value {
+    if let Some(output) = crate::connectors::execute_connector_call(client, run, call).await {
+        return output;
+    }
     if call.name == "task_operator" {
         if run.subsession_id.is_some() {
             return "Nested execution subsessions are not supported.".into();
@@ -280,6 +288,7 @@ pub(crate) async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
         requester_account_id: &run.requester_account_id,
         owner_account_id: &run.owner_account_id,
         data_owner_account_id: None,
+        connector_tools: &run.connectors.tools,
     };
 
     match executor

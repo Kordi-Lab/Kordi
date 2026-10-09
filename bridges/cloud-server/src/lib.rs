@@ -14,6 +14,7 @@ pub mod chat_sync;
 pub mod client_ip;
 pub mod cloud_agent_runtime;
 pub mod cloud_agents;
+pub mod connectors;
 pub mod digest;
 pub mod events;
 pub mod notifications;
