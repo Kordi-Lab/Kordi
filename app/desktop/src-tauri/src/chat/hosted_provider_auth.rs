@@ -22,6 +22,7 @@ struct HostedProviderAuthEnvelope {
     provider_auth: HostedProviderAuthMaterial,
 }
 
+#[derive(Clone)]
 pub(super) struct HostedTurnAuth {
     pub provider: String,
     pub auth: ResolvedProviderAuth,

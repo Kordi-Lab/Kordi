@@ -14,7 +14,10 @@ use kordi_cli::task_operator::{
 };
 use tokio::sync::Mutex;
 
-use super::super::{cancel_turn_by_id, message_execution, turn_snapshot_by_id, DesktopChatManager};
+use super::super::{
+    cancel_turn_by_id, hosted_provider_auth::HostedTurnAuth, message_execution,
+    turn_snapshot_by_id, DesktopChatManager, DesktopChatMessageRoute,
+};
 
 #[derive(Clone, Debug)]
 struct ManagedTask {
@@ -31,6 +34,8 @@ pub(in crate::chat) struct ManagedChildAgentRunner {
     directory: Option<String>,
     scoped_observation: bool,
     runtime_identity: Option<kordi_cli::desktop_runtime::DesktopChatContextMessage>,
+    parent_route: Option<DesktopChatMessageRoute>,
+    parent_hosted_auth: Option<HostedTurnAuth>,
     jobs: Arc<Mutex<BTreeMap<String, ManagedTask>>>,
 }
 
@@ -49,6 +54,8 @@ impl ManagedChildAgentRunner {
             directory: None,
             scoped_observation: false,
             runtime_identity: None,
+            parent_route: None,
+            parent_hosted_auth: None,
             jobs: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -62,6 +69,19 @@ impl ManagedChildAgentRunner {
         self.scoped_observation = scoped;
         self.directory = directory;
         self.runtime_identity = runtime_identity;
+        self
+    }
+
+    /// Children run on the parent turn's route. A hosted route's credential is
+    /// resolved once against the parent's execution lease and reused here,
+    /// because a background subsession has no lease of its own.
+    pub(in crate::chat) fn with_parent_route(
+        mut self,
+        route: Option<DesktopChatMessageRoute>,
+        hosted_auth: Option<HostedTurnAuth>,
+    ) -> Self {
+        self.parent_route = route;
+        self.parent_hosted_auth = hosted_auth;
         self
     }
 
@@ -89,6 +109,47 @@ impl ManagedChildAgentRunner {
         Ok(profile)
     }
 
+    fn start_input(
+        &self,
+        session_id: String,
+        message: String,
+        attachment_paths: Vec<String>,
+    ) -> message_execution::StartMessageInput {
+        message_execution::StartMessageInput {
+            session_id,
+            text: message,
+            attachment_paths: Some(attachment_paths),
+            route: self.parent_route.clone(),
+            context_messages: Some(
+                self.directory
+                    .as_ref()
+                    .map(
+                        |text| kordi_cli::desktop_runtime::DesktopChatContextMessage {
+                            execution_lease: None,
+                            id: "group-directory".to_string(),
+                            author_name: "Group directory".to_string(),
+                            author_kind: "agent".to_string(),
+                            context_role: Some("resource".to_string()),
+                            text: text.clone(),
+                            created_at_ms: None,
+                        },
+                    )
+                    .into_iter()
+                    .chain(self.runtime_identity.clone())
+                    .collect(),
+            ),
+            visible_task_records: None,
+            scheduled_task_session_id: self
+                .scoped_observation
+                .then(|| self.parent_session_id.clone()),
+            sync_session_at_start: false,
+            shared_context: false,
+            request_message_id: None,
+            execution_lease_deadline_ms: None,
+            inherited_hosted_auth: self.parent_hosted_auth.clone(),
+        }
+    }
+
     async fn start_turn(
         &self,
         session_id: String,
@@ -97,38 +158,7 @@ impl ManagedChildAgentRunner {
     ) -> Result<super::super::DesktopChatTurnSnapshot> {
         message_execution::start_message(
             &self.manager,
-            message_execution::StartMessageInput {
-                session_id,
-                text: message,
-                attachment_paths: Some(attachment_paths),
-                route: None,
-                context_messages: Some(
-                    self.directory
-                        .as_ref()
-                        .map(
-                            |text| kordi_cli::desktop_runtime::DesktopChatContextMessage {
-                                execution_lease: None,
-                                id: "group-directory".to_string(),
-                                author_name: "Group directory".to_string(),
-                                author_kind: "agent".to_string(),
-                                context_role: Some("resource".to_string()),
-                                text: text.clone(),
-                                created_at_ms: None,
-                            },
-                        )
-                        .into_iter()
-                        .chain(self.runtime_identity.clone())
-                        .collect(),
-                ),
-                visible_task_records: None,
-                scheduled_task_session_id: self
-                    .scoped_observation
-                    .then(|| self.parent_session_id.clone()),
-                sync_session_at_start: false,
-                shared_context: false,
-                request_message_id: None,
-                execution_lease_deadline_ms: None,
-            },
+            self.start_input(session_id, message, attachment_paths),
         )
         .await
         .map_err(anyhow::Error::msg)
@@ -316,5 +346,47 @@ mod tests {
         assert!(runner
             .profile_for(&request(Some("all"), Vec::new()))
             .is_err());
+    }
+
+    #[test]
+    fn background_child_inherits_parent_hosted_route() {
+        let route = DesktopChatMessageRoute {
+            model: Some("openai-codex/gpt-5.6-sol".to_string()),
+            auth_provider: Some("openai-codex".to_string()),
+            auth_choice: Some("cloud-login:account".to_string()),
+            thinking: Some("high".to_string()),
+        };
+        let hosted_auth = HostedTurnAuth {
+            provider: "openai-codex".to_string(),
+            auth: kordi_cli::login::ResolvedProviderAuth {
+                source: kordi_cli::login::AuthSource::KordiAuth,
+                credential_provider: "openai-codex".to_string(),
+                method: kordi_cli::login::ProviderAuthMethod::OAuth,
+                credential: "access-token".to_string(),
+                account_id: None,
+                account_label: None,
+                authority: None,
+            },
+            base_url: None,
+            api: None,
+        };
+        let runner = ManagedChildAgentRunner::new(
+            DesktopChatManager::default(),
+            "session:group:parent".to_string(),
+            Some("request".to_string()),
+            DesktopRuntimeProfile::default(),
+        )
+        .with_parent_route(Some(route), Some(hosted_auth));
+
+        let input = runner.start_input("child".to_string(), "Count lines.".to_string(), Vec::new());
+
+        let route = input.route.expect("child route");
+        assert_eq!(route.auth_choice.as_deref(), Some("cloud-login:account"));
+        assert_eq!(route.auth_provider.as_deref(), Some("openai-codex"));
+        assert_eq!(route.model.as_deref(), Some("openai-codex/gpt-5.6-sol"));
+        assert_eq!(route.thinking.as_deref(), Some("high"));
+        let inherited = input.inherited_hosted_auth.expect("inherited hosted auth");
+        assert_eq!(inherited.auth.credential, "access-token");
+        assert_eq!(inherited.provider, "openai-codex");
     }
 }

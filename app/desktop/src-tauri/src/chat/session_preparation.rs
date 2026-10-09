@@ -117,6 +117,10 @@ fn should_load_shared_session_context(
     has_explicit_context_session || text_mentions_local_agent(text, local_agent_labels)
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "per-turn context assembled by two IPC entry points"
+)]
 pub(super) async fn prepare_desktop_session_for_send(
     manager: &DesktopChatManager,
     runtime: &mut DesktopRuntimeSession,
@@ -125,6 +129,10 @@ pub(super) async fn prepare_desktop_session_for_send(
     context: (Option<&str>, Option<String>),
     request_message_id: Option<&str>,
     system_context: &[kordi_cli::desktop_runtime::DesktopChatContextMessage],
+    parent_route: (
+        Option<&super::DesktopChatMessageRoute>,
+        Option<&super::hosted_provider_auth::HostedTurnAuth>,
+    ),
 ) -> Result<(), String> {
     let (requested_session, directory) = context;
     let stored_scope = runtime
@@ -228,7 +236,8 @@ pub(super) async fn prepare_desktop_session_for_send(
             context_session_id.is_some(),
             directory,
             runtime.runtime_identity_context().ok().flatten(),
-        );
+        )
+        .with_parent_route(parent_route.0.cloned(), parent_route.1.cloned());
         let _ = runtime.set_task_operator_runner(Arc::new(runner));
     }
     Ok(())

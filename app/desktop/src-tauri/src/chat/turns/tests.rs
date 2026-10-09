@@ -129,3 +129,66 @@ fn persisted_abort_completes_only_its_mounted_live_turn() {
     assert_eq!(turn.transcript_entry_id.as_deref(), Some("entry:aborted"));
     assert!(turn.error.is_none());
 }
+
+#[test]
+fn tool_result_before_start_keeps_the_background_session_result() {
+    let snapshot = Arc::new(Mutex::new(DesktopChatTurnSnapshot {
+        id: "turn".to_string(),
+        session_id: "session".to_string(),
+        prompt: String::new(),
+        status: "streaming".to_string(),
+        message: String::new(),
+        assistant_text: String::new(),
+        thinking_text: String::new(),
+        tools: vec![],
+        completed: false,
+        succeeded: false,
+        started_at_ms: 0,
+        completed_at_ms: None,
+        transcript_entry_id: None,
+        error: None,
+        transcript_refresh_required: false,
+    }));
+    let result = "Background session: {\"sessionId\":\"child\",\"title\":\"Count lines\",\"status\":\"running\"}";
+    apply_desktop_turn_event(
+        &snapshot,
+        &TurnEvent::ToolExecuting {
+            id: "call-1".to_string(),
+        },
+    );
+    apply_desktop_turn_event(
+        &snapshot,
+        &TurnEvent::ToolResult {
+            id: "call-1".to_string(),
+            name: "task_operator".to_string(),
+            content: vec![kordi_core::types::ContentBlock::Text {
+                text: result.to_string(),
+            }],
+            details: None,
+            artifact_path: None,
+            is_error: false,
+        },
+    );
+    apply_desktop_turn_event(
+        &snapshot,
+        &TurnEvent::ToolCallStart {
+            id: "call-1".to_string(),
+            name: "task_operator".to_string(),
+        },
+    );
+    apply_desktop_turn_event(
+        &snapshot,
+        &TurnEvent::ToolCallDelta {
+            id: "call-1".to_string(),
+            args: "{\"action\":\"spawn\"}".to_string(),
+        },
+    );
+
+    let turn = snapshot_turn(&snapshot).unwrap();
+    assert_eq!(turn.tools.len(), 1);
+    let tool = &turn.tools[0];
+    assert_eq!(tool.name, "task_operator");
+    assert_eq!(tool.status, "done");
+    assert_eq!(tool.result_text.as_deref(), Some(result));
+    assert_eq!(tool.arguments, "{\"action\":\"spawn\"}");
+}

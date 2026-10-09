@@ -199,6 +199,7 @@ pub async fn desktop_chat_send_message(
                 (None, None),
                 None,
                 &[],
+                (None, None),
             )
             .await?;
         }
@@ -253,6 +254,7 @@ pub async fn desktop_chat_start_message(
             shared_context: false,
             request_message_id,
             execution_lease_deadline_ms,
+            inherited_hosted_auth: None,
         },
     )
     .await
