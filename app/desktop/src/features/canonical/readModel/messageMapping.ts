@@ -101,9 +101,7 @@ function contentTaskTarget(content: Record<string, unknown>) {
     return `Group: ${parentSessionTitle || parentGroupSpaceId || 'Shared session'}`;
   }
   const targetDisplayName = stringValue(content.targetDisplayName)?.trim();
-  const sender = stringValue(content.sender)?.trim();
   if (targetDisplayName) return `User: ${targetDisplayName}`;
-  if (sender) return `User: ${sender}`;
   return null;
 }
 
