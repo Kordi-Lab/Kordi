@@ -4,7 +4,6 @@ import { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
 export { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
 import { agentTurnHasStarted, canDisplayAgentTurn, shouldShowAgentWaitingAnimation } from '@/features/chat/agentProcessingVisibility';
 import { cancelledTurnContent } from '@/features/chat/cancellation';
-import { agentRequestStopTarget } from '@/features/chat/agentRequestStop';
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowRightLeft,
@@ -21,7 +20,6 @@ import {
   LoaderCircle,
   Pencil,
   Search,
-  Square,
   TerminalSquare,
   Wrench,
 } from 'lucide-react';
@@ -48,7 +46,8 @@ import {
   toolTimelineTypeLabel,
   type ToolTimelineLayerGroup,
 } from './toolTimeline';
-import type { CollaborationAgentRequestControl, DesktopChatTurnSnapshot, Message, MessageSourceReference } from '../types';
+import type { DesktopChatTurnSnapshot, MessageSourceReference } from '../types';
+import { AgentRequestHeaderStop, CollaborationAgentStopButton, TurnStopButton, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptTurnStopControls';
 
 function toolDisplayConfig(toolName: string) {
   const normalized = toolName.toLowerCase();
@@ -443,9 +442,6 @@ function useDelayedLiveStatus(shouldShow: boolean, turnId: string, delayMs = 180
   return shouldShow && visible;
 }
 
-export type StopCollaborationAgentRequestHandler = (request: CollaborationAgentRequestControl) => Promise<void> | void;
-export type StopActiveTurnHandler = () => Promise<void> | void;
-
 const GENERIC_LIVE_STATUS_MESSAGES = new Set(['working…', 'running tool…']);
 
 function normalizedLiveStatusMessage(value: string) {
@@ -497,77 +493,6 @@ function liveTurnPhaseStatusText(turn: DesktopChatTurnSnapshot) {
 
   if (turn.status === 'starting') return 'Starting…';
   return 'Thinking…';
-}
-
-function TurnStopButton({
-  onStop,
-  ariaLabel = 'Stop agent request',
-  stoppingLabel = 'Stopping agent request',
-}: {
-  onStop?: StopActiveTurnHandler;
-  ariaLabel?: string;
-  stoppingLabel?: string;
-}) {
-  const [stopping, setStopping] = useState(false);
-  if (!onStop) return null;
-
-  return (
-    <button
-      type="button"
-      className="app-collaboration-agent-stop-button inline-grid h-[18px] w-[18px] place-items-center rounded-full border border-slate-500/25 bg-slate-800/30 text-slate-400 transition hover:border-rose-300/40 hover:bg-rose-400/[0.08] hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-55"
-      aria-label={stopping ? stoppingLabel : ariaLabel}
-      title={stopping ? 'Stopping…' : ariaLabel}
-      disabled={stopping}
-      onClick={(event) => {
-        event.stopPropagation();
-        event.preventDefault();
-        setStopping(true);
-        void Promise.resolve(onStop()).catch(() => {
-          setStopping(false);
-        });
-      }}
-    >
-      <Square className="h-2 w-2 fill-current" aria-hidden="true" />
-    </button>
-  );
-}
-
-/**
- * Stop beside the time in a running reply's header. It stays from admission
- * until the terminal state, including while the reply streams text.
- */
-export function AgentRequestHeaderStop({
-  turn,
-  message,
-  historical = false,
-  onStopActiveTurn,
-  onStopCollaborationAgentRequest,
-}: {
-  turn: DesktopChatTurnSnapshot | null | undefined;
-  message?: Pick<Message, 'role' | 'senderOwnerName'>;
-  historical?: boolean;
-  onStopActiveTurn?: StopActiveTurnHandler;
-  onStopCollaborationAgentRequest?: StopCollaborationAgentRequestHandler;
-}) {
-  const target = historical ? null : agentRequestStopTarget(turn, message);
-  if (target?.kind === 'collaboration' && onStopCollaborationAgentRequest) {
-    return <span className="app-thread-message-stop inline-flex shrink-0 items-center" data-agent-request-stop="header"><TurnStopButton key={target.turnId} onStop={() => onStopCollaborationAgentRequest(target.request)} /></span>;
-  }
-  if (target?.kind === 'turn' && onStopActiveTurn) {
-    return <span className="app-thread-message-stop inline-flex shrink-0 items-center" data-agent-request-stop="header"><TurnStopButton key={target.turnId} onStop={onStopActiveTurn} /></span>;
-  }
-  return null;
-}
-
-function CollaborationAgentStopButton({
-  request,
-  onStop,
-}: {
-  request: CollaborationAgentRequestControl;
-  onStop?: StopCollaborationAgentRequestHandler;
-}) {
-  if (!onStop) return null;
-  return <TurnStopButton onStop={() => onStop(request)} />;
 }
 
 function LiveChatTurnCardView({
