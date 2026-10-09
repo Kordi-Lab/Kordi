@@ -51,3 +51,53 @@ struct AgentSubsessionStopButton: View {
         return "Could not stop this task. Try again."
     }
 }
+
+/// Stop for a running agent request this account sent. It appears only on the
+/// request's processing row and asks the executor to stop through the server.
+struct AgentRequestStopButton: View {
+    @EnvironmentObject private var model: AppModel
+    let conversationId: String
+    let requestMessageId: String
+    @State private var failure: String?
+
+    private var stopping: Bool { model.stoppingAgentRequestIDs.contains(requestMessageId) }
+
+    var body: some View {
+        if model.canStopAgentRequest(conversationId: conversationId, requestMessageId: requestMessageId) {
+            Button {
+                Task {
+                    do { try await model.stopAgentRequest(conversationId: conversationId, requestMessageId: requestMessageId) }
+                    catch {
+                        if !CloudTransportErrorPolicy.isCancellation(error) {
+                            failure = Self.failureMessage(error)
+                        }
+                    }
+                }
+            } label: {
+                Label(stopping ? "Stopping…" : "Stop", systemImage: "stop.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(KordiTheme.signalBlue)
+            .disabled(stopping)
+            .accessibilityLabel(stopping ? "Stopping agent request" : "Stop agent request")
+            .alert("Couldn't stop request", isPresented: Binding(
+                get: { failure != nil }, set: { if !$0 { failure = nil } }
+            )) {
+                Button("OK", role: .cancel) { failure = nil }
+            } message: { Text(failure ?? "") }
+        }
+    }
+
+    static func failureMessage(_ error: Error) -> String {
+        guard let error = error as? CloudAPIError else {
+            return "Check your connection and try again. The agent may still be running."
+        }
+        if error.statusCode == 409 { return "This request already finished." }
+        if [401, 403].contains(error.statusCode) { return "Only the requester or the agent owner can stop this request." }
+        if error.statusCode == 404 { return "Stop is unavailable for this request or this server version. The agent may still be running." }
+        return "Could not stop this request. Try again."
+    }
+}

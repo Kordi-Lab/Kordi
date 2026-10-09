@@ -128,6 +128,8 @@ export type UseCloudCollaborationStateResult = {
   deleteCloudSession: (sessionId: string) => Promise<void>;
   cancelCloudAgentRequest:
     (conversationId: string, requestId: string) => Promise<void>;
+  /** Stops the self-agent session's running request; false when none runs. */
+  stopCloudSelfAgentRequest: (sessionId: string) => Promise<boolean>;
   refreshCloudMessages: () => Promise<void>;
   refreshCloudAgents: () => Promise<void>;
   createCloudAgentDefinition:

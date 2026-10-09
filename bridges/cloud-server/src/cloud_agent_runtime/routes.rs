@@ -97,6 +97,14 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             "/v1/cloud/agent-runs/request/:request_message_id",
             get(lookup_cloud_agent_run_for_request),
         )
+        .route(
+            "/v1/cloud/agent-runs/request/:request_message_id/stop",
+            post(super::runs::stop::stop_request_route),
+        )
+        .route(
+            "/v1/cloud/agent-runs/:run_id/stop",
+            post(super::runs::stop::stop_run_route),
+        )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,
@@ -225,6 +233,15 @@ async fn mark_runner_run_running(
             StatusCode::BAD_REQUEST,
         );
     };
+    // A stop request ends the run here; the runner reads `cancelRequested`
+    // from this heartbeat and abandons the turn.
+    match super::runs::stop::acknowledge_runner_stop(&state, &run_id, &runner_id).await {
+        Ok(Some(run)) => return Json(RunnerRunEnvelope { run }).into_response(),
+        Ok(None) => {}
+        Err(error) => {
+            return run_error_response("acknowledge stop", "Could not mark run running.", error)
+        }
+    }
     match mark_run_running(state.db_pool(), &run_id, &runner_id).await {
         Ok(run) => Json(RunnerRunEnvelope { run }).into_response(),
         Err(error) => run_error_response("mark running", "Could not mark run running.", error),

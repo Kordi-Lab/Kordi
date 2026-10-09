@@ -4,6 +4,7 @@ import { publishModelSubsessions } from './agentSubsessionSync';
 import { useDesktopAgentReadiness, type CloudSelfAgentExecutionInput } from './useDesktopAgentReadiness';
 import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
 import {
+  useCallback,
   useEffect,
   useRef,
 } from 'react';
@@ -26,7 +27,8 @@ import {
   cloudAgentLocalFailureMessage,
   waitForCloudAgentTurn,
 } from './cloudAgentLocalExecution';
-import { encodeCloudAgentResponse } from './cloudAgentMessages';
+import { cloudMessageIsSelfAgentRequest, encodeCloudAgentResponse } from './cloudAgentMessages';
+import { CloudAuthError } from './cloudAuthError';
 import {
   cloudAgentRuntimeRouteAfterModelChange,
   cloudAgentRuntimeSessionId,
@@ -88,6 +90,12 @@ export function useCloudSelfAgentExecution({
   reportWarning,
 }: CloudSelfAgentExecutionInput) {
   const supersededRequestIdsRef = useRef<Set<string>>(new Set());
+  // Requests this Mac executes, by request message ID, with how to stop each.
+  const activeRequestsRef = useRef(new Map<string, { sessionId: string; stop: () => void }>());
+  const latestRef = useRef({ account, client, messageIndex });
+  useEffect(() => {
+    latestRef.current = { account, client, messageIndex };
+  }, [account, client, messageIndex]);
   const voiceGate = useVoiceAgentRequestGate();
   const executionReady = useDesktopAgentReadiness({ account, client, runtimeReady, cloudAgentDefinitionsById, reportWarning });
   const activeAccountIdRef = useRef<string | null>(
@@ -236,6 +244,19 @@ export function useCloudSelfAgentExecution({
           idempotencyKey: `request:${request.messageId}`,
         });
         if (!lease) return;
+        let stopRequested = false;
+        const stop = () => {
+          if (stopRequested) return;
+          stopRequested = true;
+          const turnId = turnIdsByRequestIdRef.current.get(request.messageId);
+          if (!turnId) return;
+          void cancelDesktopChatTurn(turnId).catch((error) => reportWarning(
+            '[cloud-self-agent-execution] stop failed',
+            error,
+          ));
+        };
+        activeRequestsRef.current.set(request.messageId, { sessionId, stop });
+        lease.onStopRequested(stop);
         try {
           if (isInactive()) return;
           const publisher = lease.publisher;
@@ -350,9 +371,9 @@ export function useCloudSelfAgentExecution({
               do {
                 await new Promise((resolve) => setTimeout(resolve, 1000));
                 if (isInactive()) return;
-                if (supersededRequestIdsRef.current.has(request.messageId)) {
+                if (supersededRequestIdsRef.current.has(request.messageId) || stopRequested) {
                   const cancelled = await publisher.sendMessage(session.token, account.accountId,
-                    encodeCloudAgentResponse({ requestId: request.messageId, text: 'Request canceled.', deliveryState: 'cancelled' }),
+                    encodeCloudAgentResponse({ requestId: request.messageId, text: stopRequested ? 'Request stopped.' : 'Request canceled.', deliveryState: 'cancelled' }),
                     { clientMessageId: `request:${request.messageId}:cancelled` });
                   mergeMessage(cancelled);
                   return;
@@ -386,6 +407,9 @@ export function useCloudSelfAgentExecution({
               request.messageId,
               startedTurn.id,
             );
+            if (stopRequested) {
+              void cancelDesktopChatTurn(startedTurn.id).catch(() => undefined);
+            }
             finalTurn = startedTurn.completed
               ? startedTurn
               : await waitForCloudAgentTurn(startedTurn.id, queueProgress);
@@ -427,15 +451,16 @@ export function useCloudSelfAgentExecution({
 
           const succeeded = finalTurn.succeeded
             && finalTurn.assistantText.trim().length > 0;
-          const deliveryState = finalTurn.status === 'cancelled'
+          const cancelled = finalTurn.status === 'cancelled' || (stopRequested && !succeeded);
+          const deliveryState = cancelled
             ? 'cancelled' as const
             : succeeded
               ? 'complete' as const
               : 'failed' as const;
-          const responseText = succeeded
-            ? finalTurn.assistantText.trim()
-            : finalTurn.status === 'cancelled'
-              ? 'Request stopped.'
+          const responseText = cancelled
+            ? 'Request stopped.'
+            : succeeded
+              ? finalTurn.assistantText.trim()
               : cloudAgentLocalFailureMessage(
                 finalTurn.error || finalTurn.message,
               );
@@ -465,7 +490,10 @@ export function useCloudSelfAgentExecution({
           if (isInactive()) return;
           mergeMessage(response);
           await syncMessages();
-        } finally { lease.dispose(); }
+        } finally {
+          activeRequestsRef.current.delete(request.messageId);
+          lease.dispose();
+        }
       };
       processedRequestIdsRef.current.add(request.messageId);
       void executeRequest().catch((error) => {
@@ -492,4 +520,42 @@ export function useCloudSelfAgentExecution({
     turnIdsByRequestIdRef,
     voiceGate,
   ]);
+
+  /**
+   * Stops the session's running request. A request this Mac executes stops
+   * here; another executor learns of the stop from the server.
+   */
+  const stopActiveRequest = useCallback(async (sessionId: string): Promise<boolean> => {
+    for (const active of activeRequestsRef.current.values()) {
+      if (active.sessionId !== sessionId) continue;
+      active.stop();
+      return true;
+    }
+    const { account: currentAccount, client: currentClient, messageIndex: currentIndex } = latestRef.current;
+    if (!currentAccount) return false;
+    const selfMessages = currentIndex.byPeerId.get(currentAccount.accountId) ?? [];
+    // Oldest first: the running request precedes the ones queued behind it.
+    // The server reports requests that already ended, so try the next one.
+    const pending = selfMessages
+      .filter((message) => (
+        message.sessionId === sessionId
+        && cloudMessageIsSelfAgentRequest(message, currentAccount)
+        && !cloudSelfAgentHasTerminalResponse(message.messageId, selfMessages)
+      ))
+      .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
+    if (pending.length === 0) return false;
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    for (const request of pending) {
+      try {
+        await currentClient.stopCloudAgentRequest(session.token, request.messageId);
+        return true;
+      } catch (error) {
+        if (!(error instanceof CloudAuthError) || ![404, 409].includes(error.status)) throw error;
+      }
+    }
+    return false;
+  }, []);
+
+  return { stopActiveRequest };
 }

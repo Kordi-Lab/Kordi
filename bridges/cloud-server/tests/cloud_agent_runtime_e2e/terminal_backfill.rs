@@ -7,7 +7,7 @@ use kordi_cloud_server::cloud_agent_runtime::runs::terminal_backfill::{
 
 use super::*;
 
-fn encode(prefix: &str, value: Value) -> String {
+pub(super) fn encode(prefix: &str, value: Value) -> String {
     format!(
         "{prefix}:{}",
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(value.to_string())
@@ -15,7 +15,7 @@ fn encode(prefix: &str, value: Value) -> String {
 }
 
 /// `(deliveryState, text)` of every agent reply to `request` the owner sent.
-async fn replies(
+pub(super) async fn replies(
     pool: &sqlx_postgres::PgPool,
     owner: &TestAccount,
     session: &str,
@@ -54,14 +54,17 @@ async fn replies(
         .collect()
 }
 
-struct Accounts {
-    owner: TestAccount,
-    peer: TestAccount,
-    agent: String,
+pub(super) struct Accounts {
+    pub(super) owner: TestAccount,
+    pub(super) peer: TestAccount,
+    pub(super) agent: String,
 }
 
 /// An owner whose Mac is ready for its default agent, and a contact.
-async fn ready_accounts(router: &axum::Router, pool: &sqlx_postgres::PgPool) -> Accounts {
+pub(super) async fn ready_accounts(
+    router: &axum::Router,
+    pool: &sqlx_postgres::PgPool,
+) -> Accounts {
     let owner = signup(router, "terminal-owner", "Owner").await;
     let peer = signup(router, "terminal-peer", "Requester").await;
     accept_contacts(router, &owner, &peer).await;
@@ -85,16 +88,16 @@ async fn ready_accounts(router: &axum::Router, pool: &sqlx_postgres::PgPool) -> 
     Accounts { owner, peer, agent }
 }
 
-struct DesktopTurn {
-    session: String,
+pub(super) struct DesktopTurn {
+    pub(super) session: String,
     /// The request ID replies carry.
-    canonical: String,
-    run: String,
-    claim_id: uuid::Uuid,
+    pub(super) canonical: String,
+    pub(super) run: String,
+    pub(super) claim_id: uuid::Uuid,
 }
 
 /// The owner Mac claims a contact's request and publishes `processing`.
-async fn processing_desktop_turn(
+pub(super) async fn processing_desktop_turn(
     router: &axum::Router,
     pool: &sqlx_postgres::PgPool,
     accounts: &Accounts,

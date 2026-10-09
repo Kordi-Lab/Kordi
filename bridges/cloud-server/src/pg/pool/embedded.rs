@@ -484,4 +484,9 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         "account email verification codes",
         "0113_account_email_codes.sql"
     ),
+    migration!(
+        118,
+        "agent run stop requests",
+        "0118_agent_run_stop_requests.sql"
+    ),
 ];

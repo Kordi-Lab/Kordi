@@ -457,7 +457,7 @@ export function useCloudCollaborationState({
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
-  useCloudSelfAgentExecution({
+  const { stopActiveRequest: stopCloudSelfAgentRequest } = useCloudSelfAgentExecution({
     account, canonicalState: canonicalSessionState,
     client,
     messageIndex: cloudMessageIndex,
@@ -649,7 +649,7 @@ export function useCloudCollaborationState({
     hideCloudSession, unhideCloudSession,
     setCloudSessionPinned, setCloudSessionMuted, setCloudSessionUnread, markCloudSessionsRead,
     setCloudGroupSpacePinned, setCloudGroupSpaceMuted, setCloudGroupSpaceArchived, deleteCloudSession,
-    cancelCloudAgentRequest,
+    cancelCloudAgentRequest, stopCloudSelfAgentRequest,
     refreshCloudMessages,
     refreshCloudAgents,
     createCloudAgentDefinition,

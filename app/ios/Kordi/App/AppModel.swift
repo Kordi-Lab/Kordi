@@ -258,6 +258,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
     @Published private(set) var subsessions: [String: CloudAgentSubsession] = [:]
     @Published private(set) var stoppingSubsessionIDs: Set<String> = []
+    /// Agent requests a Stop was sent for, until their terminal reply arrives.
+    @Published private(set) var stoppingAgentRequestIDs: Set<String> = []
     @Published private(set) var callsByConversationID: [String: CloudCall] = [:]
     @Published private(set) var latestCallSnapshot: CloudCall?
     @Published private(set) var sessionActivityByID: [String: CloudSessionActivity] = [:]
@@ -765,6 +767,7 @@ final class AppModel: ObservableObject {
         messagesByConversation = [:]
         subsessions = [:]
         stoppingSubsessionIDs = []
+        stoppingAgentRequestIDs = []
         callsByConversationID = [:]
         latestCallSnapshot = nil
         endedCallIDs = []
@@ -1867,6 +1870,28 @@ final class AppModel: ObservableObject {
         if (subsessions[snapshot.sessionId]?.version ?? -1) <= result.version {
             subsessions[snapshot.sessionId] = result
         }
+    }
+
+    /// Whether this account sent the request and it is still running.
+    func canStopAgentRequest(conversationId: String, requestMessageId: String) -> Bool {
+        pendingAgentRequestIds[conversationId, default: []].contains(requestMessageId)
+    }
+
+    /// Stops a running agent request this account sent. The row stays in
+    /// "Stopping…" until the executor publishes the terminal reply.
+    func stopAgentRequest(conversationId: String, requestMessageId: String) async throws {
+        guard canStopAgentRequest(conversationId: conversationId, requestMessageId: requestMessageId) else { return }
+        guard let accountId = account?.accountId else { throw URLError(.userAuthenticationRequired) }
+        guard stoppingAgentRequestIDs.insert(requestMessageId).inserted else { return }
+        if previewMode { return }
+        do {
+            guard let token else { throw URLError(.userAuthenticationRequired) }
+            try await api.stopAgentRequest(token: token, requestMessageId: requestMessageId)
+        } catch {
+            stoppingAgentRequestIDs.remove(requestMessageId)
+            throw error
+        }
+        guard self.account?.accountId == accountId else { throw CancellationError() }
     }
 
     func installSubsessionStopPreview(_ snapshot: CloudAgentSubsession, reset: Bool = false) {
@@ -7398,6 +7423,7 @@ final class AppModel: ObservableObject {
 
     private func clearPendingAgentRequest(conversationId: String) {
         for requestID in pendingAgentRequestIds[conversationId, default: []] {
+            stoppingAgentRequestIDs.remove(requestID)
             pendingAgentQueuedRequestIds.remove(requestID)
             confirmedAgentRunStatuses[requestID] = nil
             pendingAgentRequestStartedAt[requestID] = nil
@@ -7418,6 +7444,7 @@ final class AppModel: ObservableObject {
         failed: Bool = false
     ) {
         pendingAgentRequestIds[conversationId]?.removeAll { $0 == requestMessageId }
+        stoppingAgentRequestIDs.remove(requestMessageId)
         pendingAgentQueuedRequestIds.remove(requestMessageId)
         confirmedAgentRunStatuses[requestMessageId] = nil
         pendingAgentRequestStartedAt[requestMessageId] = nil

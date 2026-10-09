@@ -54,6 +54,17 @@ struct RunEnvelope {
     run: CloudAgentRun,
 }
 
+#[derive(Debug, Deserialize)]
+struct HeartbeatEnvelope {
+    run: HeartbeatRun,
+}
+
+#[derive(Debug, Deserialize)]
+struct HeartbeatRun {
+    #[serde(rename = "cancelRequested", default)]
+    cancel_requested: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderAuthMaterial {
     #[serde(rename = "snapshotId")]
@@ -157,6 +168,11 @@ pub trait CloudAgentRunClient {
     }
     async fn lease_next_run(&self) -> Result<Option<CloudAgentRun>, RunnerClientError>;
     async fn mark_running(&self, run_id: &str) -> Result<(), RunnerClientError>;
+    /// Renews the lease and returns whether the requester or owner stopped
+    /// the run. The server has already ended a stopped run.
+    async fn heartbeat(&self, run_id: &str) -> Result<bool, RunnerClientError> {
+        self.mark_running(run_id).await.map(|()| false)
+    }
     async fn complete_run(
         &self,
         run_id: &str,
@@ -339,6 +355,16 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
             .await?;
         let _ = envelope.run;
         Ok(())
+    }
+
+    async fn heartbeat(&self, run_id: &str) -> Result<bool, RunnerClientError> {
+        let envelope: HeartbeatEnvelope = self
+            .post_json(
+                &format!("/v1/cloud/agent-runs/{run_id}/running"),
+                serde_json::json!({ "runnerId": self.runner_id }),
+            )
+            .await?;
+        Ok(envelope.run.cancel_requested)
     }
 
     async fn complete_run(

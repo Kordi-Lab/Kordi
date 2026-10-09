@@ -31,7 +31,7 @@ const SWEEP_WINDOW_HOURS: i64 = 1;
 const SWEEP_LIMIT: i64 = 200;
 const LOST_DESKTOP_GRACE_MINUTES: i32 = 10;
 
-type EndedRun = (String, String, String, String, String);
+type EndedRun = (String, String, String, String, String, bool);
 
 /// The delivery state an agent response for `request_id` carries, when `body`
 /// is one.
@@ -100,7 +100,8 @@ pub async fn publish_missing_terminal_response(
     run_id: &str,
 ) -> RunResult<Option<String>> {
     let run: Option<EndedRun> = query_as(
-        "SELECT owner_account_id, requester_account_id, session_id, request_message_id, status \
+        "SELECT owner_account_id, requester_account_id, session_id, request_message_id, status, \
+           cancel_requested_at IS NOT NULL \
          FROM cloud_agent_fallback_runs run \
          WHERE run_id = $1 AND status IN ('cancelled', 'failed') AND NOT legacy_duplicate \
            AND subsession_id IS NULL \
@@ -109,7 +110,7 @@ pub async fn publish_missing_terminal_response(
     .bind(run_id)
     .fetch_optional(pool)
     .await?;
-    let Some((owner, requester, session_id, request_id, status)) = run else {
+    let Some((owner, requester, session_id, request_id, status, stop_requested)) = run else {
         return Ok(None);
     };
     if is_scheduled_run_request_id(&request_id)
@@ -119,7 +120,9 @@ pub async fn publish_missing_terminal_response(
     {
         return Ok(None);
     }
-    let text = if status == "cancelled" {
+    let text = if status == "cancelled" && stop_requested {
+        super::stop::STOPPED_TEXT
+    } else if status == "cancelled" {
         INTERRUPTED_TEXT
     } else {
         FAILED_TEXT
@@ -228,6 +231,9 @@ pub fn spawn(pool: PgPool) {
         let mut interval = tokio::time::interval(SWEEP_INTERVAL);
         loop {
             interval.tick().await;
+            if let Err(error) = super::stop::release_stopped_runs(&pool).await {
+                eprintln!("[cloud_agent_runtime] stopped run sweep: {error}");
+            }
             if let Err(error) = backfill_terminal_responses(&pool, window_hours).await {
                 eprintln!("[cloud_agent_runtime] terminal reply sweep: {error}");
             }

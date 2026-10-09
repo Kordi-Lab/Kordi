@@ -753,6 +753,9 @@ struct MessageBubble: View, Equatable {
                     showsWaitingIndicator: Self.showsAgentWaitingIndicator(execution: execution, responseText: message.text),
                     onExpansionChange: onContentExpansionChange
                 )
+                if message.author == .agent, !execution.completed, let requestMessageId = message.requestMessageId {
+                    AgentRequestStopButton(conversationId: message.conversationId, requestMessageId: requestMessageId)
+                }
             }
 
             if let voiceMessage = message.voiceMessage {

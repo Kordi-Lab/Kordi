@@ -106,6 +106,7 @@ export function useComposerMessageActions({
     sendCloudGroupControl,
     publishCloudAgentRuntimeRouteChange,
     cancelCloudAgentRequest,
+    stopCloudSelfAgentRequest,
     watchDesktopLiveTurn,
     shouldAutoFollowChatRef,
     setActiveConvId,
@@ -309,6 +310,17 @@ export function useComposerMessageActions({
         localChatSendInFlightRef.current = null;
         setIsDesktopChatSending(false);
       }
+      // A hosted-account request runs through the shared lease, not a native
+      // turn of this session. Its cancelled reply releases the session queue.
+      const hostedSessionId = activeConvCanonicalSessionId?.trim();
+      if (hostedSessionId && stopCloudSelfAgentRequest) {
+        setDesktopChatError(null);
+        try {
+          await stopCloudSelfAgentRequest(hostedSessionId);
+        } catch (error) {
+          setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop request');
+        }
+      }
       return;
     }
 
@@ -330,7 +342,7 @@ export function useComposerMessageActions({
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop chat turn');
     }
-  }, [desktopLiveTurn, isDesktopChatSending, refreshDesktopChat, setDesktopChatError, setDesktopLiveTurnsBySession, setIsDesktopChatSending, stopCollaborationOutreach]);
+  }, [activeConvCanonicalSessionId, desktopLiveTurn, isDesktopChatSending, refreshDesktopChat, setDesktopChatError, setDesktopLiveTurnsBySession, setIsDesktopChatSending, stopCloudSelfAgentRequest, stopCollaborationOutreach]);
 
   return {
     handleSendChatMessage,

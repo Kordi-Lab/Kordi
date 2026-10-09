@@ -673,6 +673,16 @@ export class CloudAuthClient {
     }, 'Could not coordinate desktop agent execution.');
   }
 
+  /** Asks whoever executes the request's agent run to stop it. */
+  async stopCloudAgentRequest(token: string, requestMessageId: string): Promise<void> {
+    const encoded = encodeURIComponent(requestMessageId.trim());
+    await this.send<unknown>(
+      `/v1/cloud/agent-runs/request/${encoded}/stop`,
+      { method: 'POST', headers: { authorization: `Bearer ${token}` } },
+      'Could not stop the request.',
+    );
+  }
+
   async lookupCloudAgentRunForRequest(token: string, requestMessageId: string): Promise<CloudAgentRun | null> {
     const encoded = encodeURIComponent(requestMessageId.trim());
     const response = await this.send<CloudAgentRunLookup>(

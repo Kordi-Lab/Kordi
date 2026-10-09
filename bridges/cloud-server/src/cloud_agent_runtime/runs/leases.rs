@@ -79,6 +79,9 @@ pub struct RunnerRunResponse {
     pub error_code: Option<String>,
     #[serde(rename = "errorMessage")]
     pub error_message: Option<String>,
+    /// The requester or owner asked to stop this run.
+    #[serde(rename = "cancelRequested")]
+    pub cancel_requested: bool,
 }
 
 pub(super) type RunnerRunRow = (
@@ -128,7 +131,7 @@ async fn lease_run(
                     AND lease_expires_at::timestamptz <= $3::timestamptz \
                 )) \
              AND NOT EXISTS(SELECT 1 FROM cloud_project_devices p JOIN cloud_devices d USING(device_id), jsonb_array_elements(p.projects) project WHERE p.account_id=candidate.owner_account_id AND (project->'sessions') ? candidate.session_id AND d.revoked_at IS NULL AND p.updated_at>now()-make_interval(secs=>$5)) \
-             AND NOT candidate.legacy_duplicate \
+             AND NOT candidate.legacy_duplicate AND candidate.cancel_requested_at IS NULL \
              AND ($4::text IS NULL OR candidate.run_id=$4) \
              AND (NOT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat q WHERE q.run_id=candidate.run_id) OR ( \
                  NOT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs earlier LEFT JOIN cloud_agent_subsession_chat e ON e.run_id=earlier.run_id JOIN cloud_agent_subsession_chat current ON current.run_id=candidate.run_id WHERE earlier.subsession_id=candidate.subsession_id AND earlier.run_id<>candidate.run_id AND earlier.status IN ('queued','leased','running') AND (e.sequence IS NULL OR e.sequence<current.sequence)) \
@@ -202,7 +205,7 @@ pub(super) async fn runner_response_from_row(
     pool: &PgPool,
     mut row: RunnerRunRow,
 ) -> RunResult<RunnerRunResponse> {
-    let (subsession_id, scope): (Option<uuid::Uuid>, serde_json::Value) = query_as("SELECT subsession_id,subsession_write_scope FROM cloud_agent_fallback_runs WHERE run_id=$1")
+    let (subsession_id, scope, cancel_requested): (Option<uuid::Uuid>, serde_json::Value, bool) = query_as("SELECT subsession_id,subsession_write_scope,cancel_requested_at IS NOT NULL FROM cloud_agent_fallback_runs WHERE run_id=$1")
         .bind(&row.0).fetch_one(pool).await?;
     if row.0.starts_with(crate::digest::RUN_PREFIX)
         && matches!(row.1.as_str(), "leased" | "running")
@@ -238,5 +241,6 @@ pub(super) async fn runner_response_from_row(
         response_message_id: row.8,
         error_code: row.9,
         error_message: row.10,
+        cancel_requested,
     })
 }

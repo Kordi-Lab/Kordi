@@ -12,6 +12,7 @@ mod leases;
 pub(crate) mod omp_state;
 mod prompt_history;
 pub(crate) mod route_fill;
+pub mod stop;
 pub(crate) mod subsession_lifecycle;
 pub(crate) mod subsessions;
 pub mod terminal_backfill;
