@@ -1,7 +1,6 @@
 //! A desktop run that ends without a terminal reply gets one from the server,
 //! so other devices leave the `processing` state.
 
-use base64::Engine as _;
 use kordi_cloud_server::cloud_agent_runtime::runs::terminal_backfill::{
     backfill_terminal_responses, publish_missing_terminal_response, INTERRUPTED_TEXT,
 };
