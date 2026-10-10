@@ -37,23 +37,17 @@ final class MemoryPresentationTests: XCTestCase {
         CloudMemory(memoryId: id, scope: scope, scopeId: "scope-\(id)", scopeLabel: label, source: source, text: "Memory \(id)", createdAt: updatedAt, updatedAt: updatedAt)
     }
 
-    func testGroupsUseFixedOrderNewestFirstAndSkipEmptyGroups() {
-        let groups = MemoryPresentation.groups([
-            memory("g1", .group, updatedAt: "2026-10-01T00:00:00Z"),
-            memory("c-old", .conversation, updatedAt: "2026-09-01T00:00:00Z"),
-            memory("c-new", .conversation, updatedAt: "2026-10-06T00:00:00.250Z"),
-            memory("c-mid", .conversation, updatedAt: "2026-10-02T00:00:00Z"),
-        ])
-        XCTAssertEqual(groups.map(\.label), ["Conversations", "Groups"])
-        XCTAssertEqual(groups[0].memories.map(\.memoryId), ["c-new", "c-mid", "c-old"])
-
-        let all = MemoryPresentation.groups([
-            memory("g", .group, updatedAt: "2026-10-01T00:00:00Z"),
-            memory("p", .project, updatedAt: "2026-10-01T00:00:00Z"),
-            memory("c", .conversation, updatedAt: "2026-10-01T00:00:00Z"),
-        ])
-        XCTAssertEqual(all.map(\.label), ["Conversations", "Projects", "Groups"])
-        XCTAssertTrue(MemoryPresentation.groups([]).isEmpty)
+    func testSettingsListOnlyGlobalMemoriesNewestFirst() {
+        let memories = [
+            memory("g-old", .global, updatedAt: "2026-09-01T00:00:00Z"),
+            memory("c", .conversation, updatedAt: "2026-10-06T00:00:00Z"),
+            memory("g-new", .global, updatedAt: "2026-10-06T00:00:00.250Z"),
+            memory("grp", .group, updatedAt: "2026-10-05T00:00:00Z"),
+            memory("p", .project, updatedAt: "2026-10-04T00:00:00Z"),
+        ]
+        XCTAssertEqual(MemoryPresentation.globalMemories(memories).map(\.memoryId), ["g-new", "g-old"])
+        XCTAssertTrue(MemoryPresentation.globalMemories([]).isEmpty)
+        XCTAssertEqual(MemoryPresentation.globalMemoriesTitle(count: 2), "Global memories · 2")
     }
 
     func testValidationNormalisesAndEnforcesTheLimit() {
@@ -78,7 +72,7 @@ final class MemoryPresentationTests: XCTestCase {
 
     func testDetailAndDateLabels() {
         let today = memory("a", .conversation, updatedAt: "2026-10-07T08:00:00Z", source: .userCorrection, label: "Launch copy with Priya")
-        XCTAssertEqual(MemoryPresentation.detail(today, now: now, calendar: calendar), "From a correction · Launch copy with Priya · Today")
+        XCTAssertEqual(MemoryPresentation.detail(today, now: now, calendar: calendar), "From a correction · Today")
         XCTAssertEqual(MemoryPresentation.dateLabel("2026-10-06T23:00:00Z", now: now, calendar: calendar), "Yesterday")
         let older = MemoryPresentation.dateLabel("2026-09-01T10:00:00Z", now: now, calendar: calendar, locale: Locale(identifier: "en_US"))
         XCTAssertEqual(older, "Sep 1, 2026")
@@ -122,20 +116,25 @@ final class MemoryPresentationTests: XCTestCase {
         {
           "memories": [
             {"memoryId":"m1","scope":"conversation","scopeId":"c1","scopeLabel":"Weekly planning","source":"user_correction","text":"Ask first.","createdAt":"2026-10-06T10:00:00Z","updatedAt":"2026-10-06T10:00:00Z"},
+            {"memoryId":"m3","scope":"global","scopeId":"account","scopeLabel":null,"source":"manual","text":"Reply in bullet points.","createdAt":"2026-10-04T10:00:00Z","updatedAt":"2026-10-04T10:00:00Z"},
             {"memoryId":"m2","scope":"workspace","scopeId":"w1","scopeLabel":null,"source":"imported","text":"Future value.","createdAt":"2026-10-05T10:00:00.123Z","updatedAt":"2026-10-05T10:00:00.123Z"}
           ],
           "settings": {"memoryEnabled": false, "excludeSensitive": true}
         }
         """#
         let response = try JSONDecoder().decode(CloudMemoryListResponse.self, from: Data(json.utf8))
-        XCTAssertEqual(response.memories.count, 2)
+        XCTAssertEqual(response.memories.count, 3)
         XCTAssertEqual(response.memories[0].scope, .conversation)
         XCTAssertEqual(response.memories[0].source, .userCorrection)
-        XCTAssertEqual(response.memories[1].scope, .other("workspace"))
-        XCTAssertEqual(response.memories[1].source, .other("imported"))
-        XCTAssertNil(response.memories[1].scopeLabel)
+        XCTAssertEqual(response.memories[1].scope, .global)
+        XCTAssertEqual(response.memories[2].scope, .other("workspace"))
+        XCTAssertEqual(response.memories[2].source, .other("imported"))
+        XCTAssertNil(response.memories[2].scopeLabel)
         XCTAssertEqual(response.settings, CloudMemorySettings(memoryEnabled: false, excludeSensitive: true))
-        XCTAssertEqual(MemoryPresentation.groups(response.memories).map(\.label), ["Conversations", "Other"])
+        XCTAssertEqual(MemoryPresentation.globalMemories(response.memories).map(\.memoryId), ["m3"])
+        // A scope from a newer server never shows on a conversation's tab.
+        let scopes = MemoryPresentation.ConversationScopes(conversation: ["w1"], group: ["w1"], project: ["w1"])
+        XCTAssertTrue(MemoryPresentation.memories(response.memories, for: scopes).isEmpty)
     }
 
     func testSettingsUpdateOmitsUnsetFields() throws {
@@ -148,12 +147,13 @@ final class MemoryPresentationTests: XCTestCase {
         let service = PreviewMemoryService(now: now, latency: .zero)
         let model = MemorySettingsModel(service: service, accountLabel: "taylor@memory.example")
         await model.load()
-        XCTAssertEqual(model.memories.count, 7)
-        // Settings lists personal memories only; the group sample belongs to the preview group.
-        XCTAssertEqual(model.personalMemories.count, 6)
-        XCTAssertEqual(model.groups.map(\.label), ["Conversations", "Projects"])
+        XCTAssertEqual(model.memories.count, 9)
+        // Settings list only the global samples; the group sample belongs to the preview group.
+        XCTAssertEqual(model.globalMemories.map(\.memoryId), ["lesson-8", "lesson-9"])
         let previewGroup = groupConversation(sessionId: "session:group:mobile", groupSpaceId: "session:group:mobile")
-        XCTAssertEqual(model.memories(forGroup: MemoryPresentation.groupMemoryScopeIds(for: previewGroup)).map(\.memoryId), ["lesson-7"])
+        XCTAssertEqual(model.memories(for: MemoryPresentation.conversationScopes(for: previewGroup)).map(\.memoryId), ["lesson-7"])
+        let launchCopy = directConversation(sessionId: "conv-launch-copy")
+        XCTAssertEqual(model.memories(for: MemoryPresentation.conversationScopes(for: launchCopy)).map(\.memoryId), ["lesson-1", "lesson-2"])
         let rejected = await model.save(memoryId: "lesson-1", draft: String(repeating: "a", count: 501))
         XCTAssertEqual(rejected, "Memories are 500 characters or fewer.")
         let saved = await model.save(memoryId: "lesson-1", draft: " Short  headlines. ")
@@ -178,47 +178,60 @@ extension MemoryPresentationTests {
         CloudMemory(memoryId: id, scope: scope, scopeId: scopeId, scopeLabel: nil, source: .manual, text: id, createdAt: updatedAt, updatedAt: updatedAt)
     }
 
-    func testGroupScopeIdsAcceptSpaceIdStrippedAndFullSessionId() {
-        let uuid = "7f3c2a10-5b1e-4c3d-9a8f-2e6b1d0c4f55"
-        let conversation = groupConversation(sessionId: "session:group:\(uuid)", groupSpaceId: "space-123")
-        XCTAssertEqual(
-            MemoryPresentation.groupMemoryScopeIds(for: conversation),
-            ["space-123", uuid, "session:group:\(uuid)"]
+    fileprivate func directConversation(sessionId: String, subsessionId: String? = nil) -> ConversationSummary {
+        ConversationSummary(
+            id: "agent:test", kind: .agent, peerAccountId: "acct_owner", agentId: "agent-1",
+            ownerDisplayName: "Me", displayName: "My Kordi", lastMessage: "",
+            lastActivityAt: Date(), unreadCount: 0, avatarSource: nil, agentActivity: nil,
+            sessionId: sessionId, subsessionId: subsessionId
         )
-        // Without a group space id, both session id forms still match.
-        let bare = groupConversation(sessionId: "session:group:\(uuid)", groupSpaceId: nil)
-        XCTAssertEqual(MemoryPresentation.groupMemoryScopeIds(for: bare), [uuid, "session:group:\(uuid)"])
-        // A session id without the group prefix is kept whole and never stripped to empty.
-        let other = groupConversation(sessionId: "session:group:", groupSpaceId: " ")
-        XCTAssertEqual(MemoryPresentation.groupMemoryScopeIds(for: other), ["session:group:"])
     }
 
-    func testMemoriesForGroupMatchesEachScopeIdFormNewestFirst() {
+    func testConversationScopesUseTheCloudSessionId() {
+        let conversation = directConversation(sessionId: "0acdb239-cf23-46b0-872b-ed92cf6028eb", subsessionId: "sub-1")
+        let scopes = MemoryPresentation.conversationScopes(for: conversation)
+        XCTAssertEqual(scopes.conversation, ["0acdb239-cf23-46b0-872b-ed92cf6028eb", "sub-1"])
+        XCTAssertTrue(scopes.group.isEmpty)
+        XCTAssertTrue(scopes.project.isEmpty)
+        let memories = [
+            scoped("mine", .conversation, "0acdb239-cf23-46b0-872b-ed92cf6028eb", updatedAt: "2026-10-02T00:00:00Z"),
+            scoped("thread", .conversation, "sub-1", updatedAt: "2026-10-03T00:00:00Z"),
+            scoped("other-chat", .conversation, "another-chat"),
+            scoped("global", .global, "account"),
+            scoped("same-id-group", .group, "0acdb239-cf23-46b0-872b-ed92cf6028eb"),
+        ]
+        XCTAssertEqual(MemoryPresentation.memories(memories, for: scopes).map(\.memoryId), ["thread", "mine"])
+    }
+
+    func testGroupScopesAcceptSpaceIdStrippedAndFullSessionId() {
+        let uuid = "7f3c2a10-5b1e-4c3d-9a8f-2e6b1d0c4f55"
+        let conversation = groupConversation(sessionId: "session:group:\(uuid)", groupSpaceId: "space-123")
+        let scopes = MemoryPresentation.conversationScopes(for: conversation)
+        XCTAssertEqual(scopes.group, ["space-123", uuid, "session:group:\(uuid)"])
+        XCTAssertEqual(scopes.conversation, ["session:group:\(uuid)"])
+        // Without a group space id, both session id forms still match.
+        let bare = groupConversation(sessionId: "session:group:\(uuid)", groupSpaceId: nil)
+        XCTAssertEqual(MemoryPresentation.conversationScopes(for: bare).group, [uuid, "session:group:\(uuid)"])
+        // A bare prefix is never stripped to an empty id.
+        let other = groupConversation(sessionId: "session:group:", groupSpaceId: " ")
+        XCTAssertEqual(MemoryPresentation.conversationScopes(for: other).group, ["session:group:"])
+    }
+
+    func testGroupTabMatchesEachScopeIdFormNewestFirst() {
         let uuid = "7f3c2a10-5b1e-4c3d-9a8f-2e6b1d0c4f55"
         let conversation = groupConversation(sessionId: "session:group:\(uuid)", groupSpaceId: "space-123")
         let memories = [
             scoped("stripped", .group, uuid, updatedAt: "2026-10-03T00:00:00Z"),
             scoped("full", .group, "session:group:\(uuid)", updatedAt: "2026-10-01T00:00:00Z"),
             scoped("space", .group, "space-123", updatedAt: "2026-10-02T00:00:00Z"),
+            scoped("group-conversation", .conversation, "session:group:\(uuid)", updatedAt: "2026-09-30T00:00:00Z"),
             scoped("other-group", .group, "another-uuid"),
             scoped("same-id-conversation", .conversation, uuid),
             scoped("same-id-project", .project, "space-123"),
         ]
-        let matched = MemoryPresentation.memoriesForGroup(memories, scopeIds: MemoryPresentation.groupMemoryScopeIds(for: conversation))
-        XCTAssertEqual(matched.map(\.memoryId), ["stripped", "space", "full"])
-        XCTAssertTrue(MemoryPresentation.memoriesForGroup(memories, scopeIds: []).isEmpty)
-    }
-
-    func testSettingsListExcludesGroupMemories() {
-        let memories = [
-            scoped("c", .conversation, "c1"),
-            scoped("p", .project, "p1"),
-            scoped("g", .group, "g1"),
-        ]
-        let personal = MemoryPresentation.personalMemories(memories)
-        XCTAssertEqual(personal.map(\.memoryId), ["c", "p"])
-        XCTAssertEqual(MemoryPresentation.groups(personal).map(\.label), ["Conversations", "Projects"])
-        XCTAssertEqual(MemoryPresentation.savedMemoriesTitle(count: personal.count), "Saved memories · 2")
+        let matched = MemoryPresentation.memories(memories, for: MemoryPresentation.conversationScopes(for: conversation))
+        XCTAssertEqual(matched.map(\.memoryId), ["stripped", "space", "full", "group-conversation"])
+        XCTAssertTrue(MemoryPresentation.memories(memories, for: .init()).isEmpty)
     }
 
     @MainActor
@@ -261,15 +274,17 @@ private extension MemoryPresentation.Validation {
 }
 
 extension MemoryPresentationTests {
-    func testGroupTabsIncludeMemoryBetweenMembersAndMediaWhenAvailable() {
-        let tabs = SessionDetailTab.groupTabs(capabilities: CloudAuthCapabilities(password: true, memoryVersion: 1))
-        XCTAssertEqual(tabs, [.members, .memory, .media, .files, .todo])
+    func testEveryConversationGetsAMemoryTabWhenAvailable() {
+        let capabilities = CloudAuthCapabilities(password: true, memoryVersion: 1)
+        XCTAssertEqual(SessionDetailTab.tabs(for: .group, capabilities: capabilities), [.members, .memory, .media, .files, .todo])
+        XCTAssertEqual(SessionDetailTab.tabs(for: .person, capabilities: capabilities), [.media, .files, .todo, .groups, .memory])
+        XCTAssertEqual(SessionDetailTab.tabs(for: .agent, capabilities: capabilities), [.media, .files, .todo, .memory])
     }
 
-    func testGroupTabsKeepOriginalFourWithoutMemoryCapability() {
-        let original: [SessionDetailTab] = [.members, .media, .files, .todo]
-        XCTAssertEqual(SessionDetailTab.groupTabs(capabilities: nil), original)
-        XCTAssertEqual(SessionDetailTab.groupTabs(capabilities: CloudAuthCapabilities(password: true, memoryVersion: nil)), original)
-        XCTAssertEqual(SessionDetailTab.groupTabs(memoryAvailable: false), original)
+    func testTabsLeaveOutMemoryWithoutTheCapability() {
+        XCTAssertEqual(SessionDetailTab.tabs(for: .group, capabilities: nil), [.members, .media, .files, .todo])
+        XCTAssertEqual(SessionDetailTab.tabs(for: .group, capabilities: CloudAuthCapabilities(password: true, memoryVersion: nil)), [.members, .media, .files, .todo])
+        XCTAssertEqual(SessionDetailTab.tabs(for: .person, memoryAvailable: false), [.media, .files, .todo, .groups])
+        XCTAssertEqual(SessionDetailTab.tabs(for: .agent, memoryAvailable: false), [.media, .files, .todo])
     }
 }

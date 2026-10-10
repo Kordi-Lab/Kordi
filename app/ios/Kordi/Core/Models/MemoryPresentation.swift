@@ -1,16 +1,15 @@
 import Foundation
 
-/// Pure presentation rules for the Memory settings screen. The copy matches
-/// the desktop Memory tab (`app/desktop/src/features/memory/memoryModel.ts`).
+/// Pure presentation rules for the Memory settings screen and each conversation's
+/// Memory tab. The copy matches the desktop (`app/desktop/src/features/memory/`).
 enum MemoryPresentation {
     static let maxCharacters = 500
 
-    struct Group: Identifiable, Equatable {
-        let scope: CloudMemoryScope
-        let label: String
-        let memories: [CloudMemory]
-
-        var id: String { label }
+    /// The scope ids whose memories belong to one conversation, per scope.
+    struct ConversationScopes: Equatable {
+        var conversation: Set<String> = []
+        var group: Set<String> = []
+        var project: Set<String> = []
     }
 
     enum Validation: Equatable {
@@ -33,64 +32,49 @@ enum MemoryPresentation {
         }
     }
 
-    static func groupLabel(_ scope: CloudMemoryScope) -> String {
-        switch scope {
-        case .conversation: "Conversations"
-        case .project: "Projects"
-        case .group: "Groups"
-        case .other: "Other"
-        }
-    }
-
-    private static func groupRank(_ scope: CloudMemoryScope) -> Int {
-        switch scope {
-        case .conversation: 0
-        case .project: 1
-        case .group: 2
-        case .other: 3
-        }
-    }
-
-    /// Groups memories as Conversations, Projects, Groups, newest first, without empty groups.
-    /// Scopes from a newer server follow under Other so no memory is hidden.
-    static func groups(_ memories: [CloudMemory]) -> [Group] {
-        let buckets = Dictionary(grouping: memories) { groupRank($0.scope) }
-        return buckets.keys.sorted().compactMap { rank in
-            guard let entries = buckets[rank], let first = entries.first else { return nil }
-            return Group(scope: first.scope, label: groupLabel(first.scope), memories: entries.sorted(by: isNewer))
-        }
-    }
-
-    /// Personal memories for the Settings screen. Group memories live on each
-    /// group's info page, so they are left out here.
-    static func personalMemories(_ memories: [CloudMemory]) -> [CloudMemory] {
-        memories.filter { $0.scope != .group }
+    /// Global memories for the Settings screen, newest first. The others are
+    /// shown on each conversation's Memory tab.
+    static func globalMemories(_ memories: [CloudMemory]) -> [CloudMemory] {
+        memories.filter { $0.scope == .global }.sorted(by: isNewer)
     }
 
     static let groupSessionPrefix = "session:group:"
 
-    /// The scope ids a group memory may carry for this conversation. The cloud
-    /// runner stores the group session id without its `session:group:` prefix,
-    /// so the group space id, the stripped session id, and the full session id
-    /// all match.
-    static func groupMemoryScopeIds(for conversation: ConversationSummary) -> Set<String> {
-        var ids = Set<String>()
-        if let space = conversation.groupSpaceId?.nonEmptyMemoryText { ids.insert(space) }
-        if let session = conversation.sessionId.nonEmptyMemoryText {
-            ids.insert(session)
-            if session.hasPrefix(groupSessionPrefix),
-               let stripped = String(session.dropFirst(groupSessionPrefix.count)).nonEmptyMemoryText {
-                ids.insert(stripped)
+    /// The scope ids memories of this conversation are saved under. Agents save
+    /// conversation memories under the cloud session id (the desktop canonical
+    /// session id) or the agent subsession id, and group memories under the group
+    /// id: the group session id without `session:group:`. The group space id and
+    /// the full session id match too. iPhone conversations carry no project.
+    static func conversationScopes(for conversation: ConversationSummary) -> ConversationScopes {
+        var scopes = ConversationScopes()
+        let session = conversation.sessionId.nonEmptyMemoryText
+        for id in [session, conversation.subsessionId?.nonEmptyMemoryText].compactMap({ $0 }) {
+            scopes.conversation.insert(id)
+        }
+        if let session, session.hasPrefix(groupSessionPrefix) {
+            scopes.group.insert(session)
+            if let stripped = String(session.dropFirst(groupSessionPrefix.count)).nonEmptyMemoryText {
+                scopes.group.insert(stripped)
             }
         }
-        return ids
+        if conversation.kind == .group, let space = conversation.groupSpaceId?.nonEmptyMemoryText {
+            scopes.group.insert(space)
+        }
+        return scopes
     }
 
-    /// Group memories whose scope id matches, newest first.
-    static func memoriesForGroup(_ memories: [CloudMemory], scopeIds: Set<String>) -> [CloudMemory] {
-        memories
-            .filter { $0.scope == .group && scopeIds.contains($0.scopeId) }
-            .sorted(by: isNewer)
+    /// The memories of one conversation, its group, or its project, newest first.
+    /// Global memories never appear here.
+    static func memories(_ memories: [CloudMemory], for scopes: ConversationScopes) -> [CloudMemory] {
+        memories.filter { memory in
+            switch memory.scope {
+            case .conversation: scopes.conversation.contains(memory.scopeId)
+            case .group: scopes.group.contains(memory.scopeId)
+            case .project: scopes.project.contains(memory.scopeId)
+            case .global, .other: false
+            }
+        }
+        .sorted(by: isNewer)
     }
 
     private static func isNewer(_ lhs: CloudMemory, _ rhs: CloudMemory) -> Bool {
@@ -126,9 +110,10 @@ enum MemoryPresentation {
         return formatter.string(from: date)
     }
 
-    /// "From a correction · Launch copy with Priya · Today"
+    /// "From a correction · Today". Settings list only global memories and each
+    /// conversation lists its own, so the scope label is left out.
     static func detail(_ memory: CloudMemory, now: Date = Date(), calendar: Calendar = .current) -> String {
-        [sourceLabel(memory.source), memory.scopeLabel?.nonEmptyMemoryText, dateLabel(memory.updatedAt, now: now, calendar: calendar).nonEmptyMemoryText]
+        [sourceLabel(memory.source), dateLabel(memory.updatedAt, now: now, calendar: calendar).nonEmptyMemoryText]
             .compactMap { $0 }
             .joined(separator: " · ")
     }
@@ -166,8 +151,8 @@ enum MemoryPresentation {
         return "This deletes \(memories) from your account and every signed-in device. It cannot be undone."
     }
 
-    static func savedMemoriesTitle(count: Int) -> String {
-        "Saved memories · \(count)"
+    static func globalMemoriesTitle(count: Int) -> String {
+        "Global memories · \(count)"
     }
 
     /// Prefers the account email, then the Kordi ID.

@@ -12,16 +12,6 @@ enum SessionDetailTab: String, Identifiable {
     case groups = "Groups"
 
     var id: Self { self }
-
-    /// Tabs on a group info page. Memory sits between Members and Media when the
-    /// server advertises memory support.
-    static func groupTabs(memoryAvailable: Bool) -> [SessionDetailTab] {
-        memoryAvailable ? [.members, .memory, .media, .files, .todo] : [.members, .media, .files, .todo]
-    }
-
-    static func groupTabs(capabilities: CloudAuthCapabilities?) -> [SessionDetailTab] {
-        groupTabs(memoryAvailable: MemoryPresentation.isAvailable(capabilities))
-    }
 }
 
 private struct SessionFeatureNotice {
@@ -84,7 +74,7 @@ struct SessionDetailView: View {
         self.conversation = conversation
         self.presentationContext = presentationContext
         self.onBack = onBack
-        _tab = State(initialValue: conversation.kind == .group ? (opensMemory ? .memory : .members) : .media)
+        _tab = State(initialValue: opensMemory ? .memory : conversation.kind == .group ? .members : .media)
     }
 
     private var currentConversation: ConversationSummary {
@@ -188,15 +178,8 @@ struct SessionDetailView: View {
     }
 
     private var availableTabs: [SessionDetailTab] {
-        switch currentConversation.kind {
-        case .group:
-            // Reads the published capabilities so the picker re-renders when they load.
-            SessionDetailTab.groupTabs(capabilities: model.memoryCapabilities)
-        case .person:
-            [.media, .files, .todo, .groups]
-        case .agent:
-            [.media, .files, .todo]
-        }
+        // Reads the published capabilities so the picker re-renders when they load.
+        SessionDetailTab.tabs(for: currentConversation.kind, capabilities: model.memoryCapabilities)
     }
 
     private var mutualGroupSpaces: [GroupSpaceSummary] {
@@ -383,7 +366,7 @@ struct SessionDetailView: View {
         case .members:
             membersPage
         case .memory:
-            SessionMemoryPage(conversation: currentConversation, service: model.makeMemoryService())
+            SessionMemoryPage(conversation: currentConversation, account: model.account, service: model.makeMemoryService())
         case .media:
             mediaPage
         case .files:

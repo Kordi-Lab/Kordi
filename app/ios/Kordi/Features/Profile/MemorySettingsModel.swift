@@ -92,6 +92,10 @@ final class PreviewMemoryService: MemoryService {
             // Matches the preview group conversation `group:mobile` (session id `session:group:mobile`).
             memory("lesson-7", .group, "mobile", "Mobile builders", .repeatedFailure,
                    "Share screenshots as attachments instead of links. Several members could not open the shared folder links.", hoursAgo: 40 * 24),
+            memory("lesson-8", .global, "account", "", .userCorrection,
+                   "Answer in British English and keep replies short unless I ask for more detail.", hoursAgo: 4),
+            memory("lesson-9", .global, "account", "", .manual,
+                   "Write times in the 24-hour clock and dates as 2026-10-10 in schedules and plans.", hoursAgo: 6 * 24),
         ]
     }
 
@@ -156,12 +160,12 @@ final class MemorySettingsModel: ObservableObject {
     }
 
     var hasLoaded: Bool { settings != nil }
-    /// Conversation and project memories for the Settings screen.
-    var personalMemories: [CloudMemory] { MemoryPresentation.personalMemories(memories) }
-    var groups: [MemoryPresentation.Group] { MemoryPresentation.groups(personalMemories) }
+    /// Global memories for the Settings screen.
+    var globalMemories: [CloudMemory] { MemoryPresentation.globalMemories(memories) }
 
-    func memories(forGroup scopeIds: Set<String>) -> [CloudMemory] {
-        MemoryPresentation.memoriesForGroup(memories, scopeIds: scopeIds)
+    /// The memories a conversation's Memory tab lists.
+    func memories(for scopes: MemoryPresentation.ConversationScopes) -> [CloudMemory] {
+        MemoryPresentation.memories(memories, for: scopes)
     }
 
     func syncCaption(now: Date = Date()) -> String? {

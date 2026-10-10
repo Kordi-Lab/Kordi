@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Account memory settings. The sections and copy match the desktop Memory tab.
+/// Account memory settings: the switches, global memories, and Forget everything.
+/// The sections and copy match the desktop Memory settings.
 struct MemorySettingsView: View {
     @StateObject private var model: MemorySettingsModel
     @State private var confirmsForget = false
@@ -19,7 +20,7 @@ struct MemorySettingsView: View {
                 if let settings = model.settings {
                     memorySection(settings)
                     SettingsDivider()
-                    savedMemoriesSection(settings)
+                    globalMemoriesSection(settings)
                 } else if model.isLoading || model.errorMessage == nil {
                     HStack(spacing: 10) {
                         ProgressView()
@@ -109,20 +110,18 @@ struct MemorySettingsView: View {
     }
 
     @ViewBuilder
-    private func savedMemoriesSection(_ settings: CloudMemorySettings) -> some View {
-        let groups = model.groups
-        SettingsSectionTitle(MemoryPresentation.savedMemoriesTitle(count: model.personalMemories.count))
+    private func globalMemoriesSection(_ settings: CloudMemorySettings) -> some View {
+        let memories = model.globalMemories
+        SettingsSectionTitle(MemoryPresentation.globalMemoriesTitle(count: memories.count))
         if !settings.memoryEnabled {
             SettingsCaption("Memory is off. These are kept but not read.")
         }
-        if groups.isEmpty {
-            SettingsCaption("No memories saved yet.")
+        if memories.isEmpty {
+            SettingsCaption("No global memories yet.")
+        } else {
+            MemoryRowsView(model: model, memories: memories)
         }
-        ForEach(groups) { group in
-            SettingsGroupLabel(group.label)
-            MemoryRowsView(model: model, memories: group.memories)
-        }
-        // Forget everything also covers group memories, so it stays while any exist.
+        // Forget everything covers every scope, so it stays while any memory exists.
         if !model.memories.isEmpty {
             Button {
                 confirmsForget = true
@@ -144,6 +143,6 @@ struct MemorySettingsView: View {
             .disabled(model.isMutating)
             .accessibilityIdentifier("memory-forget-everything")
         }
-        SettingsCaption("Group memories are managed from each group's info page.")
+        SettingsCaption("Other memories are on each conversation's Memory tab.")
     }
 }
