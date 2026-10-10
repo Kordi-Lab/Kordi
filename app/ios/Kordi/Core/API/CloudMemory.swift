@@ -1,14 +1,5 @@
 import Foundation
 
-/// Public capability flags from `GET /v1/cloud/auth/capabilities`. Only the
-/// fields the app reads are declared, so new server fields never break decoding.
-struct CloudAuthCapabilities: Decodable, Equatable {
-    var password: Bool?
-    /// Present when the server offers account memory and replay state routes.
-    /// Older servers omit it, and the Memory screen stays hidden.
-    var memoryVersion: Int?
-}
-
 enum CloudMemoryScope: Hashable, Codable {
     case conversation
     case group

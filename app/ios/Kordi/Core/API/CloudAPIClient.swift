@@ -279,14 +279,6 @@ actor CloudAPIClient {
 
     // MARK: Account memory
 
-    func fetchCapabilities() async throws -> CloudAuthCapabilities {
-        try await send(
-            path: "/v1/cloud/auth/capabilities",
-            method: "GET",
-            fallback: "Could not load Kordi Cloud capabilities."
-        )
-    }
-
     func listMemories(token: String) async throws -> CloudMemoryListResponse {
         try await send(path: "/v1/cloud/memory", method: "GET", token: token, fallback: "Could not load memory settings.")
     }

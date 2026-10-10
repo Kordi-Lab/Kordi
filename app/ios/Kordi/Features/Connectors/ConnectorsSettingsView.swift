@@ -228,7 +228,7 @@ private struct ConnectorRowLabel: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            CompactSettingsLabel(title: definition.name, systemImage: ConnectorsModel.systemImage(definition.providerId), value: value)
+            CompactSettingsLabel(title: definition.name, systemImage: ConnectorsModel.systemImage(definition.providerId), value: value, titleLineLimit: 1)
             if definition.experimental {
                 ConnectorCapsule(text: "Experimental", tint: .orange)
             }

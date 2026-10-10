@@ -290,7 +290,7 @@ private struct CompactAppearanceSettingsView: View {
     private func option(_ title: String, identifier: String, detail: String? = nil, icon: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack {
-                CompactSettingsLabel(title: title, subtitle: detail, systemImage: icon)
+                CompactSettingsLabel(title: title, subtitle: detail, systemImage: icon, titleLineLimit: 1)
                 Spacer(minLength: 8)
                 if selected {
                     Image(systemName: "checkmark").foregroundStyle(KordiTheme.signalBlue)

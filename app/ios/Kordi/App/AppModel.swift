@@ -1144,7 +1144,7 @@ final class AppModel: ObservableObject {
             return
         }
         do {
-            memoryCapabilities = try await api.fetchCapabilities()
+            memoryCapabilities = try await api.authCapabilities()
         } catch {
             // An unreachable server keeps the last known flag; without one the entry stays hidden.
         }

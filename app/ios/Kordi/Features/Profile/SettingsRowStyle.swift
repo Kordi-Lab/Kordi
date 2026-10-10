@@ -100,6 +100,7 @@ struct CompactSettingsLabel: View {
                     .font(.subheadline)
                     .foregroundStyle(tint ?? Color.primary)
                     .lineLimit(titleLineLimit)
+                    .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
                 if let subtitle {
                     Text(subtitle).font(.caption).foregroundStyle(.secondary)
@@ -111,7 +112,12 @@ struct CompactSettingsLabel: View {
             .fixedSize(horizontal: false, vertical: true)
             if !dynamicTypeSize.isAccessibilitySize, let value {
                 Spacer(minLength: 8)
-                Text(value).font(.caption).foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
             }
         }
         .foregroundStyle(.primary)
