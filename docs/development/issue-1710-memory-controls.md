@@ -119,6 +119,30 @@ runtime changes land.
   rejected. The comparison is on whitespace-normalised, case-folded text. The
   Mac checks against the opted-out texts it already receives; the server
   checks against its own copy of the scope's messages.
+- **Four scopes, with global for account-wide preferences.** Scopes are
+  `global`, `conversation`, `group`, and `project`. A global memory always
+  uses the scope id `account` and no label; the server rejects any other
+  scope id with `invalid_scope_id` (migration 0120 widens the scope check).
+  Agents write global only for preferences the user wants everywhere ("from
+  now on", "always", "in general"); everything tied to one chat stays
+  `conversation`, group facts stay `group`, project facts stay `project`. On
+  the Mac the global artifact is `reflection-lessons/global/account.md` and
+  the prompt section lists it first. Cloud runs read the owner's global
+  memories and render them as the first block of `## Memories`.
+- **Agents avoid duplicates; stores dedup as a safety net.** The `reflection`
+  tool description and both prompt sections tell the agent to read the
+  scope's memories before saving, skip anything already there or restated,
+  and save the corrected version when a preference changes. The server and
+  the Mac also treat the same whitespace-collapsed text in the same scope as
+  one memory. The tool then answers "Memory already saved: <text>". The Mac
+  and the runner detect this by comparing the returned `memoryId` with the
+  fresh `clientMemoryId` the save sent: a new memory takes that id, an
+  existing one keeps its own.
+- **Where memories are shown.** Desktop and iPhone account settings show only
+  global memories, the two switches, and "Forget everything", which still
+  clears every scope. Conversation, group, and project memories are shown on
+  that conversation's Memory tab: a desktop conversation header tab and the
+  iPhone session detail Memory tab.
 - **iPhone gets the same Memory screen.** It uses the same routes to read,
   edit, delete, and forget memories, and to flip both switches.
 - **Memories are in the deletion register.** They are recorded in the
@@ -286,8 +310,10 @@ The `MemoryClient` interface is the contract for PR 4:
 
 ## Out of scope
 
-Unchanged from the issue: bridge memory management, a global memory scope,
-and automatic rewriting of memories when a quoted message is later deleted.
+Unchanged from the issue: bridge memory management and automatic rewriting
+of memories when a quoted message is later deleted. The global scope, first
+out of scope, was added later as an account-wide preference scope (see
+Decisions).
 
 ## Open questions for review
 

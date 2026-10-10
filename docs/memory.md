@@ -6,16 +6,29 @@ Kordi keeps a small amount of remembered context so agents do not repeat the sam
 
 | Layer | Where it lives | Who can read it | How to control it |
 | --- | --- | --- | --- |
-| Account memories | The Kordi account on the server. Each Mac keeps a cache. | You, and agents running for your account on any device or in cloud runs. | Memory tab in desktop account settings, Memory screen on iPhone. |
+| Account memories | The Kordi account on the server. Each Mac keeps a cache. | You, and agents running for your account on any device or in cloud runs. | Global memories in account settings; the others on each conversation's Memory tab. |
 | Bridge conversation memory | A file on the Mac running the CLI bridge. | Only the bridge on that Mac. | `list` and `reset` commands of the CLI bridge. |
 
 ## Account memories
 
-A memory is one short note an agent saved to do better next time, for example a correction you made. Each memory has a scope (conversation, group, or project), a source (a correction, a repeated failure, an outcome, or added by hand), and text of at most 500 characters.
+A memory is one short note an agent saved to do better next time, for example a correction you made. Each memory has a scope, a source (a correction, a repeated failure, an outcome, or added by hand), and text of at most 500 characters.
 
-Agents save memories with the `reflection` tool, on the Mac and in cloud runs. In cloud runs the runner reads the account's memories at run start and saves through the runner memory route for the run.
+There are four scopes:
 
-The server is the source of truth, so every device and every cloud run sees the same memories. The Mac keeps a cache in its session database and rewrites the `reflection-lessons/<scope>/<scope-id>.md` files in the artifacts directory from the server list. The agent reads those files as before, so the prompt path does not change.
+| Scope | Scope id | Used for |
+| --- | --- | --- |
+| `global` | Always `account`, with no label. | Preferences you want everywhere, such as "from now on, answer in British English". |
+| `conversation` | The session id. | Anything tied to one chat. This is the default. |
+| `group` | The group id. | Facts about one group. |
+| `project` | The project root path. | Facts about one project. |
+
+The server rejects a global memory with any scope id other than `account` (`invalid_scope_id`) and drops any label sent with it. Agents write global memories only when you say a preference should apply everywhere ("from now on", "always", "in general"); everything else stays in its conversation, group, or project scope.
+
+Agents save memories with the `reflection` tool, on the Mac and in cloud runs. In cloud runs the runner reads the account's memories at run start: the owner's global memories plus the conversation's and the group's. The `## Memories` prompt section lists them in a Global block first, then the conversation and group blocks. The runner saves through the runner memory route for the run.
+
+Agents avoid duplicates themselves. Before saving, the agent reads the memories for that scope (the artifact file on the Mac, the `## Memories` section in cloud runs) and does not save a memory that repeats or restates one already there. When you change a preference, the agent saves the corrected version, and you can edit or delete the old one. As a safety net, the server and the Mac treat the same text in the same scope as the same memory: the save returns the existing memory, and the tool tells the agent "Memory already saved: <text>" instead of reporting a new one.
+
+The server is the source of truth, so every device and every cloud run sees the same memories. The Mac keeps a cache in its session database and rewrites the `reflection-lessons/<scope>/<scope-id>.md` files in the artifacts directory from the server list. Global memories live in one file, `reflection-lessons/global/account.md`. The Mac prompt section lists the global file first, then the conversation, project, and group files that exist, and tells the agent to read the relevant file before relying on memories.
 
 - Signed in, a new memory is saved to the server first and the local files are rewritten from the server list.
 - Signed out, a memory is saved locally with a pending marker and uploaded at the next sign-in. If the server cannot be reached, the memory is also kept locally and uploaded later. A memory the server rejects is not saved anywhere.
@@ -38,9 +51,9 @@ There are two switches, both on by default.
 
 The switches are an account setting on the server. The Mac mirrors them into the global settings file as `memory.memory_enabled` and `memory.exclude_sensitive`, which is also what applies when you are signed out.
 
-On desktop, open account settings and choose the Memory tab. On iPhone, open the account sheet and choose Memory. The Settings Memory page lists conversation and project memories. Group memories are listed on the group's info page instead (the desktop group details dialog, and the "Memory" tab of the iPhone group detail sheet), where they can be edited and deleted. These screens hide the Memory section when the server does not report `memoryVersion` in its capabilities.
+On desktop, open account settings and choose the Memory tab. On iPhone, open the account sheet and choose Memory. Account settings show only global memories, the two switches, and "Forget everything". Conversation, group, and project memories are shown on that conversation's Memory tab (a tab in the desktop conversation header, and the Memory tab of the iPhone session detail), where they can be edited and deleted. These screens hide the Memory section when the server does not report `memoryVersion` in its capabilities.
 
-"Forget everything" in Settings still removes every memory, including group ones. A group memory's scope id is the group id (`session:group:<id>` stripped to `<id>`), and only the account that saved a memory sees it.
+"Forget everything" in account settings still removes every memory in every scope. A group memory's scope id is the group id (`session:group:<id>` stripped to `<id>`), and only the account that saved a memory sees it.
 
 ## What each control deletes
 
