@@ -73,7 +73,13 @@ pub async fn account_agents(pool: &PgPool, account_id: &str) -> StoreResult<Vec<
     .bind(account_id)
     .fetch_all(pool)
     .await?;
-    agents.extend(rows.into_iter().map(|(agent_id, name)| ConnectorAgent {
+    // Only the built-in agent is the default, listed once, whatever the
+    // definitions table holds.
+    let default_id = default_agent_id(account_id);
+    let rows = rows
+        .into_iter()
+        .filter(|(agent_id, _)| *agent_id != default_id);
+    agents.extend(rows.map(|(agent_id, name)| ConnectorAgent {
         agent_id,
         name,
         is_default: false,

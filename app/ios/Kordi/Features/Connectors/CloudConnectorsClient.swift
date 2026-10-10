@@ -265,6 +265,8 @@ final class CloudConnectorsClient: ConnectorsClient {
         let state = result.states.first { $0.providerId == providerId } ?? .empty(providerId)
         switch grant {
         case .read:
+            // Connect asks for read and act together. A provider may still
+            // return read-only access; that connects with acting off.
             guard state.status == .connected else {
                 throw ConnectorsClientError(message: "Kordi could not confirm the connection to \(definition.name). Try again.")
             }
@@ -301,8 +303,8 @@ final class CloudConnectorsClient: ConnectorsClient {
     static let connectorNotFoundCode = "connector_not_found"
 
     func connect(_ providerId: ConnectorProviderId, scopeIds: [String]) async throws -> ConnectorState {
-        // The server requests the provider scopes for the read grant; the
-        // catalog scope ids only describe them on screen.
+        // The server requests the provider's read and act scopes for the
+        // connect grant; the catalog scope ids only describe them on screen.
         try await runGrant(providerId, grant: .read)
     }
 

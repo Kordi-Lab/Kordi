@@ -54,7 +54,7 @@ final class ConnectorsStore: ObservableObject {
 
     func connect(_ definition: ConnectorDefinition) async -> Bool {
         let connected = await perform(definition.providerId, fallback: "Could not connect \(definition.name).") {
-            try await client.connect(definition.providerId, scopeIds: definition.readScopes.map(\.id))
+            try await client.connect(definition.providerId, scopeIds: ConnectorsModel.connectScopes(definition).map(\.id))
         }
         if connected { await refresh(quiet: true) }
         return connected

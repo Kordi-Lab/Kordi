@@ -97,7 +97,13 @@ async fn broker_enforces_leases_grants_triggers_and_ownership() {
     let (runtime, stub) = stub_runtime();
     let (owner, _) = signed_in_account(&pool, "broker_owner").await;
     let (stranger, _) = signed_in_account(&pool, "broker_stranger").await;
+    // The provider returns read scopes only, and the person then removes
+    // the default agent, so the test starts with act off and no grant.
+    stub.grant_only_read_scopes(true);
     let connector_id = connect_stub(&pool, &runtime, &owner, ConnectorToolGroup::Read).await;
+    store::replace_agent_grants(&pool, &connector_id, &[])
+        .await
+        .unwrap();
     let as_holder = |holder: LeaseHolder, request: BrokerCallRequest| {
         let (pool, runtime) = (pool.clone(), runtime.clone());
         async move { broker::call_connector_tool(&pool, &runtime, &holder, &request).await }
@@ -134,6 +140,7 @@ async fn broker_enforces_leases_grants_triggers_and_ownership() {
     assert_eq!(act_off.error_code(), Some(codes::ACT_DISABLED));
 
     // Second OAuth grant for act turns act on and extends scopes.
+    stub.grant_only_read_scopes(false);
     assert_eq!(
         connect_stub(&pool, &runtime, &owner, ConnectorToolGroup::Act).await,
         connector_id

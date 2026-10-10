@@ -8,6 +8,8 @@ async fn disconnect_deletes_secret_and_events_and_queues_removal() {
     let (runtime, stub) = stub_runtime();
     let (owner, token) = signed_in_account(&pool, "disconnect").await;
     let (other, other_token) = signed_in_account(&pool, "disconnect_other").await;
+    // The provider returns read scopes only, so act stays off.
+    stub.grant_only_read_scopes(true);
     let connector_id = connect_stub(&pool, &runtime, &owner, ConnectorToolGroup::Read).await;
     for external in ["evt-1", "evt-2"] {
         events::record_event(

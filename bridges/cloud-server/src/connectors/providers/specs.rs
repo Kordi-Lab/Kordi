@@ -82,11 +82,12 @@ pub static GITHUB: ProviderSpec = ProviderSpec {
     // GitHub revokes OAuth app grants through a Basic-authenticated
     // `DELETE /applications/{client_id}/grant`; see `oauth2.rs`.
     revoke_url: Some("https://api.github.com/applications"),
-    // GitHub OAuth apps have no read-only repository scope. The read grant
-    // covers notifications and pull requests in public repositories. `repo`
-    // (the act grant) gives full read and write access to every private
-    // repository the person can reach; the consent text says so, and the
-    // broker only runs the commenting tool with it.
+    // GitHub OAuth apps have no read-only repository scope. The read scopes
+    // cover notifications and pull requests in public repositories. `repo`
+    // (an act scope, requested with them on connect) gives full read and
+    // write access to every private repository the person can reach; the
+    // consent text says the grant includes commenting and private
+    // repository write, and the broker only runs the commenting tool with it.
     read_scopes: &["read:user", "notifications"],
     act_scopes: &["repo"],
     scope_param: ScopeParam::SpaceSeparated,

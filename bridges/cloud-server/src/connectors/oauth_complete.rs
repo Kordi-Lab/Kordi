@@ -123,11 +123,12 @@ pub async fn finish_grant(
         .get(&pending.provider)
         .ok_or(FinishError::NotFound)?;
     let spec = provider.spec();
-    let summary = format!(
-        "Granted {} access to {}.",
-        pending.grant.as_str(),
-        spec.display_name
-    );
+    let access = if pending.act_scopes.is_empty() {
+        "read"
+    } else {
+        "read and act"
+    };
+    let summary = format!("Granted {access} access to {}.", spec.display_name);
     store::apply_grant(
         pool,
         GrantUpdate {
@@ -135,7 +136,6 @@ pub async fn finish_grant(
             provider: spec.id,
             read_scopes: &pending.read_scopes,
             act_scopes: &pending.act_scopes,
-            enable_act: pending.grant == super::models::ConnectorToolGroup::Act,
             provider_account_id: pending.provider_account_id.as_deref(),
             audit_tool_group: pending.grant,
             audit_summary: &summary,

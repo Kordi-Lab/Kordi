@@ -103,15 +103,21 @@ test('the preview client never exposes token-like fields', async () => {
   assert.equal(result.states.length, connectorCatalog.length);
 });
 
-test('preview client grants act on purpose and disconnect clears audit entries', async () => {
+test('preview client connects with act on and disconnect clears audit entries', async () => {
   const client = createPreviewConnectorsClient({ latencyMs: 0 });
   const connected = await client.connect('gmail', { scopeIds: [] });
   assert.equal(connected.status, 'connected');
-  assert.equal(connected.actEnabled, false);
-  await assert.rejects(client.setActEnabled('gmail', true));
-  const granted = await client.grantAct('gmail');
+  assert.equal(connected.actEnabled, true);
+  assert.ok(connected.grantedScopeIds.includes('gmail.messages.send'));
+  assert.deepEqual(connected.agentIds, ['agent-default']);
+  assert.equal((await client.setActEnabled('gmail', false)).actEnabled, false);
+  assert.equal((await client.setActEnabled('gmail', true)).actEnabled, true, 'no new grant needed');
+
+  // The sample GitHub row has read scopes only, so acting needs the act grant.
+  await assert.rejects(client.setActEnabled('github', true));
+  const granted = await client.grantAct('github');
   assert.equal(granted.actEnabled, true);
-  assert.ok(granted.grantedScopeIds.includes('gmail.messages.send'));
+  assert.ok(granted.grantedScopeIds.includes('github.comments.write'));
 
   assert.ok((await client.auditLog('github')).length > 0);
   await client.disconnect('github');
@@ -292,7 +298,7 @@ test('panel lists each connector as a navigation row with a status value', async
   }
 });
 
-test('connecting from the detail view stays on the detail with read access', async () => {
+test('connecting from the detail view stays on the detail with act on', async () => {
   const installed = installDom();
   const host = document.createElement('div');
   document.body.append(host);
@@ -308,14 +314,30 @@ test('connecting from the detail view stays on the detail with read access', asy
     assert.equal(host.querySelector('h1')?.textContent, 'Gmail');
     assert.match(host.textContent ?? '', /Not connected/);
     await click(host.querySelector('[aria-label="Connect Gmail"]'), installed.dom.window);
-    assert.match(document.body.textContent ?? '', /Kordi asks Google for read access only\./);
+    assert.match(
+      document.body.textContent ?? '',
+      /Kordi asks Google for the access your agent needs to read and act here\. You can turn acting off at any time from this page\./,
+    );
+    assert.match(document.body.textContent ?? '', /Search and read your mail/);
+    assert.match(document.body.textContent ?? '', /Send mail as you/);
     await click(buttonByText(document.body, 'Continue to Google'), installed.dom.window);
     await flush();
 
     assert.equal(host.querySelector('h1')?.textContent, 'Gmail');
-    assert.match(host.textContent ?? '', /Connected · Read only · 1 agent/);
-    assert.ok(host.querySelector('[aria-label="Let my agent act in Gmail"]'));
+    assert.match(host.textContent ?? '', /Connected · Can act · 1 agent/);
+    assert.match(host.textContent ?? '', /Gmail connected\. Your agent can read and act here\./);
+    const toggle = () => host.querySelector('[aria-label="Let my agent act in Gmail"]');
+    assert.ok(toggle());
     assert.doesNotMatch(document.body.textContent ?? '', /Continue to Google/);
+
+    // Acting turns off and back on without another grant dialog.
+    await click(toggle(), installed.dom.window);
+    await flush();
+    assert.match(host.textContent ?? '', /Connected · Read only · 1 agent/);
+    await click(toggle(), installed.dom.window);
+    await flush();
+    assert.match(host.textContent ?? '', /Connected · Can act · 1 agent/);
+    assert.doesNotMatch(document.body.textContent ?? '', /Let your agent act in Gmail/);
   } finally {
     await act(async () => root.unmount());
     installed.restore();
