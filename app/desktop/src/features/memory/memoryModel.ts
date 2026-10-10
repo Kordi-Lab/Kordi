@@ -1,4 +1,4 @@
-export type MemoryLessonScope = 'conversation' | 'project' | 'group';
+export type MemoryLessonScope = 'global' | 'conversation' | 'project' | 'group';
 export type MemoryLessonSource = 'user_correction' | 'repeated_failure' | 'outcome' | 'manual';
 
 export type MemoryLesson = {
@@ -16,8 +16,6 @@ export type MemorySettings = { lessonsEnabled: boolean; excludeSensitive: boolea
 
 export const LESSON_MAX_CHARS = 500;
 
-const scopeOrder: MemoryLessonScope[] = ['conversation', 'project', 'group'];
-
 const sourceLabels: Record<MemoryLessonSource, string> = {
   user_correction: 'From a correction',
   repeated_failure: 'From a repeated failure',
@@ -25,53 +23,13 @@ const sourceLabels: Record<MemoryLessonSource, string> = {
   manual: 'Added by hand',
 };
 
-const scopeGroupLabels: Record<MemoryLessonScope, string> = {
-  conversation: 'Conversations',
-  project: 'Projects',
-  group: 'Groups',
-};
-
 export function lessonSourceLabel(source: MemoryLessonSource): string {
   return sourceLabels[source];
 }
 
-export function lessonScopeGroupLabel(scope: MemoryLessonScope): string {
-  return scopeGroupLabels[scope];
-}
-
-export type MemoryLessonGroup = { scope: MemoryLessonScope; label: string; lessons: MemoryLesson[] };
-
-/** Personal memories: the settings page lists these; groups list theirs on the group info page. */
-export const PERSONAL_MEMORY_SCOPES: readonly MemoryLessonScope[] = ['conversation', 'project'];
-
-/** Keeps the memories of one conversation, group, or project together, ordered by their newest memory. */
-function keepScopesTogether(lessons: MemoryLesson[]): MemoryLesson[] {
-  const byScope = new Map<string, MemoryLesson[]>();
-  for (const lesson of lessons) {
-    const rows = byScope.get(lesson.scopeId);
-    if (rows) rows.push(lesson);
-    else byScope.set(lesson.scopeId, [lesson]);
-  }
-  return [...byScope.values()].flat();
-}
-
-/** Groups memories by scope in a fixed order, newest first, without empty groups. */
-export function groupLessonsByScope(
-  lessons: MemoryLesson[],
-  scopes: readonly MemoryLessonScope[] = scopeOrder,
-): MemoryLessonGroup[] {
-  return scopeOrder
-    .filter((scope) => scopes.includes(scope))
-    .map((scope) => ({
-      scope,
-      label: lessonScopeGroupLabel(scope),
-      lessons: keepScopesTogether(
-        lessons
-          .filter((lesson) => lesson.scope === scope)
-          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-      ),
-    }))
-    .filter((group) => group.lessons.length > 0);
+/** Account settings list only global memories; the rest show on each conversation's Memory tab. */
+export function isGlobalMemory(lesson: Pick<MemoryLesson, 'scope'>): boolean {
+  return lesson.scope === 'global';
 }
 
 const lessonDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });

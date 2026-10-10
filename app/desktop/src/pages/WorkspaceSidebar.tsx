@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Archive, ChevronLeft } from 'lucide-react';
 
-import { memoryClientForEnvironment, memorySectionAvailable } from '@/features/memory/memoryClient';
 import { cn } from '@/lib/utils';
 import { ChatCreateDialog } from '@/pages/ChatCreateDialog';
 import { ChannelCreateDialog } from '@/pages/ChannelCreateDialog';
@@ -136,7 +135,6 @@ export function WorkspaceSidebar({
   } = directory;
   const {
     cloudAccount,
-    cloudMemoryVersion,
     onCreateGroupInvite,
     onListGroupInvites,
     onRevokeGroupInvite,
@@ -438,7 +436,6 @@ export function WorkspaceSidebar({
           await onStartChatWithPerson(contact);
         }}
         anchorRect={groupDetailsAnchor}
-        memoryClient={memorySectionAvailable(cloudMemoryVersion) ? memoryClientForEnvironment() : null}
       />
 
       {isCreateProjectDialogOpen ? (

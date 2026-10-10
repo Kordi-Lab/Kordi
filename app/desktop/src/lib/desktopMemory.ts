@@ -11,7 +11,7 @@ export type DesktopMemorySyncResult = {
 
 export type DesktopLocalMemory = {
   lessonId: string;
-  scope: 'conversation' | 'group' | 'project';
+  scope: 'global' | 'conversation' | 'group' | 'project';
   scopeId: string;
   scopeLabel: string | null;
   source: 'user_correction' | 'repeated_failure' | 'outcome' | 'manual';

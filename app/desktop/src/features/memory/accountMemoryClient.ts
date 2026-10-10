@@ -49,6 +49,7 @@ export const SIGN_IN_TO_EDIT_MEMORIES = 'Sign in to edit memories.';
 const DEFAULT_SETTINGS: MemorySettings = { lessonsEnabled: true, excludeSensitive: true };
 
 const fallbackScopeLabels: Record<MemoryLessonScope, string> = {
+  global: 'Global',
   conversation: 'Conversation',
   project: 'Project',
   group: 'Group',

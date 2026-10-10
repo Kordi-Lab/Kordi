@@ -1,7 +1,6 @@
 import { filterGroupManagementMembers, normalizedSearch } from './groupManagementMembers';
 export { filterGroupManagementMembers } from './groupManagementMembers';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
-import { flushSync } from 'react-dom';
 import {
   ArrowLeft,
   Check,
@@ -22,7 +21,6 @@ import type {
   CloudGroupInvitationCreateInput,
   CloudGroupInvitationSummary,
 } from '@/features/cloud/authClient';
-import type { MemoryClient } from '@/features/memory/memoryClient';
 import { GroupAvatarEditor } from '@/kordi-app/components/GroupAvatarEditor';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import {
@@ -34,7 +32,6 @@ import {
 } from '@/features/chat/chatCreateFlows';
 import type { Contact, ConversationParticipant, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
-import { GroupDetailsMemory } from '@/pages/groupDetailsMemory';
 import { GroupNameSettings } from '@/pages/GroupNameSettings';
 import { GroupProfileHeader } from '@/pages/GroupProfileHeader';
 import { GroupInvitationSharePanel } from '@/pages/GroupInvitationSharePanel';
@@ -69,9 +66,6 @@ export type GroupDetailsDialogProps = {
   onRevokeGroupInvitation?: (invitationId: string) => Promise<void>;
   onMessageContact?: (contact: Contact) => Promise<void> | void;
   anchorRect?: GroupManagementPopoverAnchor | null;
-  /** Adds the Memory view to the dialog; null hides it. */
-  memoryClient?: MemoryClient | null;
-  initialView?: 'members' | 'memory';
 };
 
 function isHumanMember(participant: ConversationParticipant) {
@@ -192,8 +186,6 @@ export function GroupDetailsDialog({
   onRevokeGroupInvitation,
   onMessageContact,
   anchorRect = null,
-  memoryClient = null,
-  initialView = 'members',
 }: GroupDetailsDialogProps) {
   const memberSearchId = useId();
   const addSearchId = useId();
@@ -216,7 +208,6 @@ export function GroupDetailsDialog({
   const [actionError, setActionError] = useState<string | null>(null);
   const [gridFocusId, setGridFocusId] = useState<string | null>(null);
   const [showAllMembers, setShowAllMembers] = useState(false);
-  const [view, setView] = useState<'members' | 'memory'>(initialView);
 
   const session = space?.sessions[0] ?? null;
   const groupSessionIds = useMemo(
@@ -323,8 +314,7 @@ export function GroupDetailsDialog({
     setActionError(null);
     setGridFocusId(null);
     setShowAllMembers(false);
-    setView(initialView);
-  }, [initialView, isOpen, space?.id, space?.title]);
+  }, [isOpen, space?.id, space?.title]);
 
   useEffect(() => {
     if (!isEditingName || typeof document === 'undefined') return;
@@ -489,12 +479,9 @@ export function GroupDetailsDialog({
               />
             ) : undefined}
             onClose={onClose}
-            activeView={memoryClient ? view : undefined}
-            onShowMembers={() => { flushSync(() => setView('members')); memberSearchRef.current?.focus(); }}
-            onShowMemory={memoryClient ? () => setView('memory') : undefined}
-            onAddPeople={() => { setView('members'); openAddPeople(); }}
+            onShowMembers={() => memberSearchRef.current?.focus()}
+            onAddPeople={openAddPeople}
             onManage={() => {
-              setView('members');
               setNameDraft(space.title);
               setIsEditingName(true);
               setActionError(null);
@@ -517,7 +504,7 @@ export function GroupDetailsDialog({
               </div>
             ) : null}
 
-            {view === 'members' || !memoryClient ? (<>
+            <>
               <section aria-label="Group members">
                 <label htmlFor={memberSearchId} className="sr-only">Search group members</label>
                 <div className="app-group-management-search relative mb-3">
@@ -922,7 +909,7 @@ export function GroupDetailsDialog({
                 onCancel={() => { setNameDraft(space.title); setIsEditingName(false); }}
                 onSubmit={submitRename}
               />
-          </>) : <GroupDetailsMemory client={memoryClient} space={space} />}
+          </>
           </div>
         </div>
       </div>

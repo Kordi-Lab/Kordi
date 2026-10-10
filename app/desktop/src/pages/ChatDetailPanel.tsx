@@ -5,6 +5,7 @@ import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { Conversation, DesktopChatTurnSnapshot, DetailTab, SessionArtifact } from '@/kordi-app/types';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
+import { ChatMemoryTab } from '@/pages/ChatMemoryTab';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
 import { useScheduledTasks } from '@/features/cloud/useScheduledTasks';
 import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfObjectLabel } from '@/lib/identityLabels';
@@ -329,6 +330,10 @@ function ChatDetailPanelView({
         </section>
       </div>
     );
+  }
+
+  if (activeDetailTab === 'memory') {
+    return <ChatMemoryTab conversation={activeConv} projectRoot={activeSessionProject?.root} />;
   }
 
   if (activeDetailTab === 'artifacts') {

@@ -14,9 +14,8 @@ import {
 } from '../src/features/memory/memoryClient';
 import {
   LESSON_MAX_CHARS,
-  PERSONAL_MEMORY_SCOPES,
   forgetConsequences,
-  groupLessonsByScope,
+  isGlobalMemory,
   lessonSourceLabel,
   validateLessonText,
   type MemoryLesson,
@@ -74,44 +73,11 @@ function sampleLesson(overrides: Partial<MemoryLesson>): MemoryLesson {
   };
 }
 
-test('memories group by scope in a fixed order, newest first', () => {
-  const groups = groupLessonsByScope([
-    sampleLesson({ lessonId: 'g1', scope: 'group', updatedAt: '2026-10-03T00:00:00.000Z' }),
-    sampleLesson({ lessonId: 'c-old', scope: 'conversation', updatedAt: '2026-09-01T00:00:00.000Z' }),
-    sampleLesson({ lessonId: 'c-new', scope: 'conversation', updatedAt: '2026-10-05T00:00:00.000Z' }),
-  ]);
-  assert.deepEqual(groups.map((group) => group.label), ['Conversations', 'Groups']);
-  assert.deepEqual(groups[0]?.lessons.map((lesson) => lesson.lessonId), ['c-new', 'c-old']);
-  assert.deepEqual(groupLessonsByScope([]), []);
-});
-
-test('memories of one conversation stay together under its title', async () => {
-  const lessons = [
-    sampleLesson({ lessonId: 'a-new', scopeId: 'chat-a', scopeLabel: 'Launch planning', updatedAt: '2026-10-05T00:00:00.000Z' }),
-    sampleLesson({ lessonId: 'b-mid', scopeId: 'chat-b', scopeLabel: 'Release notes', updatedAt: '2026-10-04T00:00:00.000Z' }),
-    sampleLesson({ lessonId: 'a-old', scopeId: 'chat-a', scopeLabel: 'Launch planning', updatedAt: '2026-10-03T00:00:00.000Z' }),
-  ];
-  const [conversations] = groupLessonsByScope(lessons);
-  assert.deepEqual(conversations?.lessons.map((lesson) => lesson.lessonId), ['a-new', 'a-old', 'b-mid']);
-
-  const client = { ...createPreviewMemoryClient({ latencyMs: 0 }), listLessons: async () => lessons };
-  await withPanel(client, async (host) => {
-    const metas = Array.from(host.querySelectorAll('[data-memory-lesson]')).map((row) => row.textContent ?? '');
-    assert.equal(metas.length, 3);
-    assert.match(metas[0] ?? '', /Launch planning/);
-    assert.match(metas[1] ?? '', /Launch planning/);
-    assert.match(metas[2] ?? '', /Release notes/);
-  });
-});
-
-test('the scope filter keeps only the requested scopes', () => {
-  const lessons = [
-    sampleLesson({ lessonId: 'g1', scope: 'group' }),
-    sampleLesson({ lessonId: 'p1', scope: 'project' }),
-    sampleLesson({ lessonId: 'c1', scope: 'conversation' }),
-  ];
-  assert.deepEqual(groupLessonsByScope(lessons, PERSONAL_MEMORY_SCOPES).map((group) => group.label), ['Conversations', 'Projects']);
-  assert.deepEqual(groupLessonsByScope(lessons, ['group']).map((group) => group.label), ['Groups']);
+test('only global memories count as global', () => {
+  assert.equal(isGlobalMemory(sampleLesson({ scope: 'global', scopeId: 'account' })), true);
+  for (const scope of ['conversation', 'group', 'project'] as const) {
+    assert.equal(isGlobalMemory(sampleLesson({ scope })), false);
+  }
 });
 
 test('memory text is normalized and limited', () => {
@@ -139,7 +105,8 @@ test('source labels and forget copy read plainly', () => {
 
 test('preview memories are short, varied, and free of em-dashes', async () => {
   const lessons = await createPreviewMemoryClient({ latencyMs: 0 }).listLessons();
-  assert.equal(lessons.length, 7);
+  assert.equal(lessons.length, 9);
+  assert.deepEqual(lessons.filter(isGlobalMemory).map((lesson) => lesson.lessonId), ['lesson-8', 'lesson-9']);
   assert.deepEqual(new Set(lessons.map((lesson) => lesson.source)).size, 4);
   for (const lesson of lessons) {
     assert.ok(lesson.text.length >= 60 && lesson.text.length <= 220, lesson.text);
@@ -204,15 +171,17 @@ async function withPanel(
   }
 }
 
-test('panel lists only personal memories and points to group info for the rest', async () => {
+test('panel lists only global memories and points to the conversation tabs for the rest', async () => {
   await withPanel(createPreviewMemoryClient({ latencyMs: 0 }), async (host) => {
     const headings = Array.from(host.querySelectorAll('h2')).map((heading) => heading.textContent);
-    assert.ok(headings.includes('Saved memories · 6'));
-    const groupHeadings = headings.filter((heading) => ['Conversations', 'Projects', 'Groups'].includes(heading ?? ''));
-    assert.deepEqual(groupHeadings, ['Conversations', 'Projects']);
-    assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 6);
-    assert.equal(host.querySelector('[data-memory-lesson="lesson-7"]'), null);
-    assert.match(host.textContent ?? '', /Group memories are managed from each group's info page\./);
+    assert.ok(headings.includes('Global memories · 2'));
+    assert.equal(headings.some((heading) => ['Conversations', 'Projects', 'Groups'].includes(heading ?? '')), false);
+    assert.deepEqual(
+      Array.from(host.querySelectorAll('[data-memory-lesson]')).map((row) => row.getAttribute('data-memory-lesson')),
+      ['lesson-8', 'lesson-9'],
+    );
+    assert.doesNotMatch(host.querySelector('[data-memory-lesson="lesson-8"]')?.textContent ?? '', /Global/);
+    assert.match(host.textContent ?? '', /Other memories are on each conversation's Memory tab\./);
     assert.doesNotMatch(host.textContent ?? '', /[Rr]eplay/);
     assert.match(host.textContent ?? '', /Bridge conversation memory/);
   });
@@ -244,8 +213,8 @@ test('editing past the limit shows the error without saving', async () => {
     return updateLesson(lessonId, text);
   };
   await withPanel(client, async (host, window) => {
-    await click(host.querySelector('[data-memory-lesson="lesson-1"] button[aria-label^="Edit memory"]'), window);
-    const textarea = host.querySelector<HTMLTextAreaElement>('[data-memory-lesson="lesson-1"] textarea');
+    await click(host.querySelector('[data-memory-lesson="lesson-8"] button[aria-label^="Edit memory"]'), window);
+    const textarea = host.querySelector<HTMLTextAreaElement>('[data-memory-lesson="lesson-8"] textarea');
     assert.ok(textarea);
     const type = async (value: string) => {
       await act(async () => {
@@ -271,14 +240,14 @@ test('editing past the limit shows the error without saving', async () => {
 
 test('deleting a memory asks first, then removes the row', async () => {
   await withPanel(createPreviewMemoryClient({ latencyMs: 0 }), async (host, window) => {
-    await click(host.querySelector('[data-memory-lesson="lesson-5"] button[aria-label^="Delete memory"]'), window);
+    await click(host.querySelector('[data-memory-lesson="lesson-9"] button[aria-label^="Delete memory"]'), window);
     assert.match(document.body.textContent ?? '', /Delete this memory\?/);
     assert.match(document.body.textContent ?? '', /Kordi will not read it again on any device\. This cannot be undone\./);
     const dialog = document.body.querySelector('[role="dialog"], [role="alertdialog"]') ?? document.body;
     await click(buttonByText(dialog, 'Delete'), window);
-    assert.equal(host.querySelector('[data-memory-lesson="lesson-5"]'), null);
-    assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 5);
-    assert.match(host.textContent ?? '', /Saved memories · 5/);
+    assert.equal(host.querySelector('[data-memory-lesson="lesson-9"]'), null);
+    assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 1);
+    assert.match(host.textContent ?? '', /Global memories · 1/);
     assert.doesNotMatch(document.body.textContent ?? '', /Delete this memory\?/);
   });
 });
@@ -287,13 +256,14 @@ test('forget everything leaves the empty state', async () => {
   await withPanel(createPreviewMemoryClient({ latencyMs: 0 }), async (host, window) => {
     await click(buttonByText(host, 'Forget everything'), window);
     assert.match(document.body.textContent ?? '', /Forget all memories\?/);
-    assert.match(document.body.textContent ?? '', /This deletes 7 memories from your account and every signed-in device/);
+    // Forget everything still clears every scope, not only the listed global memories.
+    assert.match(document.body.textContent ?? '', /This deletes 9 memories from your account and every signed-in device/);
     const dialog = document.body.querySelector('[role="dialog"], [role="alertdialog"]');
     assert.ok(dialog);
     await click(buttonByText(dialog, 'Forget everything'), window);
     assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 0);
-    assert.match(host.textContent ?? '', /No memories saved yet\./);
-    assert.match(host.textContent ?? '', /Saved memories · 0/);
+    assert.match(host.textContent ?? '', /No global memories yet\./);
+    assert.match(host.textContent ?? '', /Global memories · 0/);
     assert.equal(buttonByText(host, 'Forget everything'), undefined);
   });
 });
