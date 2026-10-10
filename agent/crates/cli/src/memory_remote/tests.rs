@@ -420,3 +420,23 @@ async fn server_rejection_is_a_tool_error_and_writes_nothing() {
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn saving_the_same_text_twice_keeps_one_row_and_one_upload() {
+    let harness = Harness::new();
+    harness.connect();
+    let first = harness.save("Use pnpm, not npm.").await.expect("save");
+    let again = harness.save("  Use pnpm,\n not npm. ").await.expect("save");
+    assert_eq!(first, again);
+    assert_eq!(harness.rows().await.len(), 1);
+    assert_eq!(harness.remote.save_count(), 1);
+
+    // Offline, a repeat of a pending memory is not queued twice either.
+    harness.remote.set_unavailable(true);
+    harness.save("Run the visual job serially.").await.unwrap();
+    harness.save("Run the visual job serially.").await.unwrap();
+    harness.remote.set_unavailable(false);
+    assert_eq!(harness.sync().await.uploaded, 1);
+    assert_eq!(harness.remote.save_count(), 2);
+    assert_eq!(harness.rows().await.len(), 2);
+}

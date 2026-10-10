@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use kordi_session::reflection_lessons::{
     NewReflectionLesson, ReflectionLesson, ReflectionScope, ReflectionSource,
-    list_all_reflection_lessons, list_reflection_lessons, new_reflection_lesson_id,
-    save_reflection_lesson,
+    find_active_reflection_lesson_by_text, list_all_reflection_lessons, list_reflection_lessons,
+    new_reflection_lesson_id, save_reflection_lesson, touch_reflection_lesson,
 };
 use kordi_tools::memory_guard::{MemoryGuardOptions, check_memory_text};
 use kordi_tools::{
@@ -72,6 +72,30 @@ pub(crate) fn build_reflection_runtime(
             .map_err(tool_error)?;
             let scope_id = request.scope_id.trim().to_string();
             let scope_label = scope_label_for(&scope, &scope_id);
+            let artifact_path =
+                reflection_lesson_artifact_path(&artifacts_dir, &request.scope, &scope_id);
+            let artifact_path_text = artifact_path.display().to_string();
+            let saved = |lesson_id: String| ReflectionLessonResponse {
+                lesson_id,
+                scope: request.scope.clone(),
+                scope_id: request.scope_id.clone(),
+                artifact_path: artifact_path_text.clone(),
+            };
+
+            // The same text in the same scope is the same memory: reuse the
+            // row and skip the upload.
+            {
+                let conn = conn.lock().await;
+                // Lines written by older builds live only in the file. Keep
+                // them in the cache before comparing or rewriting the file.
+                import_unlisted_artifact_lines(&conn, &artifact_path, &scope, &scope_id)
+                    .map_err(tool_error)?;
+                if let Some(existing) =
+                    reuse_existing_lesson(&conn, &scope, &scope_id, &lesson_text, &scope_label)?
+                {
+                    return Ok(saved(existing));
+                }
+            }
             let lesson_id = new_reflection_lesson_id();
 
             // Write through to the account first. A rejection writes nothing;
@@ -109,15 +133,15 @@ pub(crate) fn build_reflection_runtime(
                 }
             }
 
-            let artifact_path =
-                reflection_lesson_artifact_path(&artifacts_dir, &request.scope, &scope_id);
-            let artifact_path_text = artifact_path.display().to_string();
             let lesson_id = {
                 let conn = conn.lock().await;
-                // Lines written by older builds live only in the file. Keep
-                // them in the cache before the file is rewritten from it.
-                import_unlisted_artifact_lines(&conn, &artifact_path, &scope, &scope_id)
-                    .map_err(tool_error)?;
+                // Another save of the same text may have finished while this
+                // one waited for the account.
+                if let Some(existing) =
+                    reuse_existing_lesson(&conn, &scope, &scope_id, &lesson_text, &scope_label)?
+                {
+                    return Ok(saved(existing));
+                }
                 let lesson_id = save_reflection_lesson(
                     &conn,
                     NewReflectionLesson {
@@ -141,15 +165,28 @@ pub(crate) fn build_reflection_runtime(
                     .map_err(tool_error)?;
                 lesson_id
             };
-            Ok(ReflectionLessonResponse {
-                lesson_id,
-                scope: request.scope,
-                scope_id: request.scope_id,
-                artifact_path: artifact_path_text,
-            })
+            Ok(saved(lesson_id))
         })
     });
     ReflectionRuntime { save_lesson }
+}
+
+/// Touch the non-archived row holding `text` in this scope and return its id.
+fn reuse_existing_lesson(
+    conn: &rusqlite::Connection,
+    scope: &ReflectionScope,
+    scope_id: &str,
+    text: &str,
+    scope_label: &Option<String>,
+) -> kordi_core::error::KordiResult<Option<String>> {
+    let Some(existing) =
+        find_active_reflection_lesson_by_text(conn, scope, scope_id, text).map_err(tool_error)?
+    else {
+        return Ok(None);
+    };
+    touch_reflection_lesson(conn, &existing.lesson_id, scope_label.as_deref())
+        .map_err(tool_error)?;
+    Ok(Some(existing.lesson_id))
 }
 
 fn lesson_artifact_header(scope: &str, scope_id: &str) -> String {

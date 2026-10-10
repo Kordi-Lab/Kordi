@@ -242,6 +242,50 @@ pub fn list_all_reflection_lessons(conn: &Connection) -> Result<Vec<ReflectionLe
     )
 }
 
+fn collapse_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The oldest non-archived row in this scope whose text matches `text` after
+/// whitespace collapsing. The comparison is case-sensitive, like the account
+/// server, so a save of the same memory reuses the row instead of adding one.
+pub fn find_active_reflection_lesson_by_text(
+    conn: &Connection,
+    scope: &ReflectionScope,
+    scope_id: &str,
+    text: &str,
+) -> Result<Option<ReflectionLesson>> {
+    let wanted = collapse_whitespace(text);
+    if wanted.is_empty() {
+        return Ok(None);
+    }
+    Ok(
+        list_reflection_lessons(conn, scope.clone(), scope_id.trim())?
+            .into_iter()
+            .find(|lesson| {
+                lesson
+                    .lesson_text
+                    .as_deref()
+                    .is_some_and(|existing| collapse_whitespace(existing) == wanted)
+            }),
+    )
+}
+
+/// Mark a row as saved again: bump `updated_at` and fill a missing label.
+pub fn touch_reflection_lesson(
+    conn: &Connection,
+    lesson_id: &str,
+    scope_label: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE reflection_lessons
+         SET updated_at = ?2, scope_label = COALESCE(scope_label, ?3)
+         WHERE lesson_id = ?1",
+        params![lesson_id, Utc::now().to_rfc3339(), scope_label],
+    )?;
+    Ok(())
+}
+
 /// Non-archived rows that still have to be sent to the account, oldest first.
 pub fn list_pending_upload_reflection_lessons(conn: &Connection) -> Result<Vec<ReflectionLesson>> {
     query_lessons(

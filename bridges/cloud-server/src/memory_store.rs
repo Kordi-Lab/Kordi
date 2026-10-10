@@ -218,6 +218,58 @@ pub(crate) async fn save(
     let protected = protected_texts_for_scope(pool, account_id, scope, scope_id).await?;
     let text = guard_text(&input.text, settings, &protected)?;
 
+    // A retry of an earlier save with the same clientMemoryId returns that row
+    // unchanged.
+    if let Some(id) = client_memory_id {
+        let existing: Option<ArchivedMemoryRow> = query_as(&format!(
+            "SELECT archived_at, {MEMORY_COLUMNS} FROM cloud_account_memories \
+             WHERE memory_id = $1 AND owner_account_id = $2"
+        ))
+        .bind(id)
+        .bind(account_id)
+        .fetch_optional(pool)
+        .await?;
+        if let Some((archived_at, id, scope, scope_id, label, source, text, created, updated)) =
+            existing
+        {
+            if archived_at.is_some() {
+                return Err(client_id_conflict());
+            }
+            let row = (id, scope, scope_id, label, source, text, created, updated);
+            return Ok(SaveOutcome::Existing(memory_from_row(row)));
+        }
+    }
+
+    let mut transaction = pool.begin().await?;
+    // Serialize saves for one scope so two identical saves cannot both insert.
+    query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("memory:{account_id}:{scope}:{scope_id}"))
+        .execute(&mut *transaction)
+        .await?;
+    // The same text in the same scope is the same memory: touch it, fill a
+    // missing label, and return it instead of saving a second row.
+    let duplicate: Option<MemoryRow> = query_as(&format!(
+        "UPDATE cloud_account_memories \
+         SET updated_at = now(), scope_label = COALESCE(scope_label, $5) \
+         WHERE memory_id = ( \
+           SELECT memory_id FROM cloud_account_memories \
+           WHERE owner_account_id = $1 AND scope = $2 AND scope_id = $3 AND text = $4 \
+             AND archived_at IS NULL \
+           ORDER BY created_at, memory_id LIMIT 1) \
+         RETURNING {MEMORY_COLUMNS}"
+    ))
+    .bind(account_id)
+    .bind(scope)
+    .bind(scope_id)
+    .bind(&text)
+    .bind(scope_label)
+    .fetch_optional(&mut *transaction)
+    .await?;
+    if let Some(row) = duplicate {
+        transaction.commit().await?;
+        return Ok(SaveOutcome::Existing(memory_from_row(row)));
+    }
+
     let memory_id = client_memory_id
         .map(str::to_owned)
         .unwrap_or_else(|| format!("mem_{}", uuid::Uuid::new_v4().simple()));
@@ -235,29 +287,33 @@ pub(crate) async fn save(
     .bind(scope_label)
     .bind(source)
     .bind(&text)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *transaction)
     .await?;
-    if let Some(row) = inserted {
-        return Ok(SaveOutcome::Created(memory_from_row(row)));
-    }
-    // The id exists: a retry of an earlier save returns that row unchanged.
-    let existing: Option<MemoryRow> = query_as(&format!(
-        "SELECT {MEMORY_COLUMNS} FROM cloud_account_memories \
-         WHERE memory_id = $1 AND owner_account_id = $2 AND archived_at IS NULL"
-    ))
-    .bind(&memory_id)
-    .bind(account_id)
-    .fetch_optional(pool)
-    .await?;
-    existing
-        .map(|row| SaveOutcome::Existing(memory_from_row(row)))
-        .ok_or_else(|| {
-            MemoryError::new(
-                StatusCode::CONFLICT,
-                "memory_id_conflict",
-                "A memory with this clientMemoryId already exists.",
-            )
-        })
+    transaction.commit().await?;
+    // No row means the clientMemoryId belongs to another account.
+    inserted
+        .map(|row| SaveOutcome::Created(memory_from_row(row)))
+        .ok_or_else(client_id_conflict)
+}
+
+type ArchivedMemoryRow = (
+    Option<DateTime<Utc>>,
+    String,
+    String,
+    String,
+    Option<String>,
+    String,
+    String,
+    DateTime<Utc>,
+    DateTime<Utc>,
+);
+
+fn client_id_conflict() -> MemoryError {
+    MemoryError::new(
+        StatusCode::CONFLICT,
+        "memory_id_conflict",
+        "A memory with this clientMemoryId already exists.",
+    )
 }
 
 pub(crate) async fn update_text(

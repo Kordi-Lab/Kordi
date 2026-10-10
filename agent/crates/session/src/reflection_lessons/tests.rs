@@ -166,3 +166,69 @@ fn replace_from_remote_keeps_pending_rows_and_archives_stale_ones() {
     let remote = rows.iter().find(|row| row.lesson_id == "remote-a").unwrap();
     assert_eq!(remote.lesson_text.as_deref(), Some("Edited on the phone."));
 }
+
+#[test]
+fn finds_an_active_row_with_the_same_text_and_touches_it() {
+    let conn = crate::store::open_memory().expect("memory db");
+    let save = |scope_id: &str, text: &str| {
+        save_reflection_lesson(
+            &conn,
+            NewReflectionLesson {
+                scope: ReflectionScope::Conversation,
+                scope_id: scope_id.to_string(),
+                artifact_path: "/tmp/kordi-lessons/conversation.md".to_string(),
+                lesson_text: text.to_string(),
+                created_at: Some("2026-10-01T10:00:00+00:00".to_string()),
+                ..NewReflectionLesson::default()
+            },
+        )
+        .expect("save lesson")
+    };
+    let lesson_id = save("session-1", "Prefer short status updates");
+    save("session-2", "Keep replies brief");
+
+    let found = find_active_reflection_lesson_by_text(
+        &conn,
+        &ReflectionScope::Conversation,
+        "session-1",
+        "  Prefer  short\nstatus updates ",
+    )
+    .expect("find")
+    .expect("same text matches");
+    assert_eq!(found.lesson_id, lesson_id);
+    for (scope_id, text) in [
+        ("session-1", "prefer short status updates"),
+        ("session-2", "Prefer short status updates"),
+    ] {
+        assert!(
+            find_active_reflection_lesson_by_text(
+                &conn,
+                &ReflectionScope::Conversation,
+                scope_id,
+                text
+            )
+            .expect("find")
+            .is_none(),
+            "case and scope id distinguish memories"
+        );
+    }
+
+    touch_reflection_lesson(&conn, &lesson_id, Some("Launch planning")).expect("touch");
+    touch_reflection_lesson(&conn, &lesson_id, Some("Other title")).expect("touch again");
+    let row = &list_reflection_lessons(&conn, ReflectionScope::Conversation, "session-1")
+        .expect("list")[0];
+    assert_eq!(row.scope_label.as_deref(), Some("Launch planning"));
+    assert!(row.updated_at.as_str() > "2026-10-01T10:00:00+00:00");
+
+    archive_reflection_lesson(&conn, &lesson_id).expect("archive");
+    assert!(
+        find_active_reflection_lesson_by_text(
+            &conn,
+            &ReflectionScope::Conversation,
+            "session-1",
+            "Prefer short status updates",
+        )
+        .expect("find")
+        .is_none()
+    );
+}

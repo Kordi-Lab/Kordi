@@ -8,6 +8,7 @@ use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::util::ServiceExt;
 
+mod dedup;
 mod isolation;
 mod runs;
 
