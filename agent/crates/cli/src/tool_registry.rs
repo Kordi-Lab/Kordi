@@ -15,8 +15,32 @@ pub(crate) enum ToolSelectionPreference {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ToolSelection {
     All,
+    /// Every available tool except the named ones.
+    AllExcept(Vec<String>),
     None,
     Only(Vec<String>),
+}
+
+impl ToolSelection {
+    /// Return this selection with `name` removed, whatever its shape.
+    pub(crate) fn without(self, name: &str) -> Self {
+        match self {
+            Self::All => Self::AllExcept(vec![name.to_string()]),
+            Self::AllExcept(mut excluded) => {
+                if !excluded.iter().any(|existing| existing == name) {
+                    excluded.push(name.to_string());
+                }
+                Self::AllExcept(excluded)
+            }
+            Self::None => Self::None,
+            Self::Only(names) => Self::Only(
+                names
+                    .into_iter()
+                    .filter(|existing| existing != name)
+                    .collect(),
+            ),
+        }
+    }
 }
 
 impl ToolSelectionPreference {
@@ -225,6 +249,18 @@ fn activate_tools(
                 .collect();
             (active_tools, active_names)
         }
+        ToolSelection::AllExcept(excluded) => {
+            let kept = deduped
+                .into_iter()
+                .filter(|registered| !excluded.iter().any(|name| name == registered.tool.name()))
+                .collect::<Vec<_>>();
+            let active_names = kept
+                .iter()
+                .map(|registered| registered.tool.name().to_string())
+                .collect();
+            let active_tools = kept.into_iter().map(|registered| registered.tool).collect();
+            (active_tools, active_names)
+        }
         ToolSelection::None => (Vec::new(), Vec::new()),
         ToolSelection::Only(requested_names) => {
             let mut requested = Vec::new();
@@ -258,6 +294,11 @@ fn activate_tools(deduped: Vec<RegisteredTool>, selection: &ToolSelection) -> Ve
     match selection {
         ToolSelection::All => deduped
             .into_iter()
+            .map(|registered| registered.tool)
+            .collect(),
+        ToolSelection::AllExcept(excluded) => deduped
+            .into_iter()
+            .filter(|registered| !excluded.iter().any(|name| name == registered.tool.name()))
             .map(|registered| registered.tool)
             .collect(),
         ToolSelection::None => Vec::new(),

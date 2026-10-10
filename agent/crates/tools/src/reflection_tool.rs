@@ -3,6 +3,7 @@ use kordi_core::error::{KordiError, KordiResult};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
+use crate::memory_guard::{MEMORY_MAX_CHARS, normalize_memory_text};
 use crate::support::text_result_with;
 use crate::{ReflectionLessonRequest, Tool, ToolContext, ToolMetadata, ToolResult};
 
@@ -15,7 +16,7 @@ impl Tool for ReflectionTool {
     }
 
     fn description(&self) -> &str {
-        "Reflection tool for saving concise scoped lessons from user corrections, repeated failures, or outcomes. Use conversation, group, or project scope only; never global memory by default. Side effect: appends a markdown lesson artifact and stores metadata. Lessons are max 500 characters; retrying may create a duplicate lesson."
+        "Reflection tool for saving concise scoped memories from user corrections, repeated failures, or outcomes. Use conversation, group, or project scope only; never global memory. Memories sync with the account and must not record health, finances, relationships, identity attributes, credentials, or other people's private details. Side effect: stores the memory and updates the scoped memory artifact. Memories are max 500 characters."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -25,7 +26,7 @@ impl Tool for ReflectionTool {
                 "scope": { "type": "string", "enum": ["conversation", "group", "project"] },
                 "scopeId": { "type": "string" },
                 "source": { "type": "string", "enum": ["user_correction", "repeated_failure", "outcome", "manual"] },
-                "lesson": { "type": "string", "description": "Concise lesson to append to the scoped lesson artifact file, max 500 characters." }
+                "lesson": { "type": "string", "description": "Concise memory to save to the scoped memory artifact, max 500 characters." }
             },
             "required": ["scope", "scopeId", "source", "lesson"],
             "additionalProperties": false
@@ -85,16 +86,18 @@ fn validate_request(request: &ReflectionLessonRequest) -> KordiResult<()> {
     ) {
         return Err(KordiError::Tool("reflection source is invalid".to_string()));
     }
-    let lesson = request.lesson.trim();
+    // Length and emptiness only. The sensitive keyword and quote guards run
+    // in the runtime, which knows the memory settings.
+    let lesson = normalize_memory_text(&request.lesson);
     if lesson.is_empty() {
         return Err(KordiError::Tool(
-            "reflection lesson cannot be empty".to_string(),
+            "reflection memory cannot be empty".to_string(),
         ));
     }
-    if lesson.chars().count() > 500 {
-        return Err(KordiError::Tool(
-            "reflection lesson must be 500 characters or fewer".to_string(),
-        ));
+    if lesson.chars().count() > MEMORY_MAX_CHARS {
+        return Err(KordiError::Tool(format!(
+            "reflection memory must be {MEMORY_MAX_CHARS} characters or fewer"
+        )));
     }
     Ok(())
 }
@@ -108,8 +111,8 @@ mod tests {
         let tool = super::ReflectionTool;
         assert_eq!(tool.name(), "reflection");
         assert!(tool.description().contains("Side effect"));
-        assert!(tool.description().contains("retrying"));
-        assert!(tool.description().len() < 420);
+        assert!(tool.description().contains("must not record health"));
+        assert!(tool.description().len() < 520);
         let metadata = tool.metadata();
         assert_eq!(metadata.layer, ToolLayer::Reflection);
         assert_eq!(metadata.risk, ToolRiskLevel::Low);

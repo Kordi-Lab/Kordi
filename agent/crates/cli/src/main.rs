@@ -12,6 +12,8 @@ mod omp_turn;
 mod input_files;
 mod live_models;
 mod login;
+#[allow(dead_code)]
+mod memory_remote;
 mod models;
 mod oauth;
 mod reflection_runtime;

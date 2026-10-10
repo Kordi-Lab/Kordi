@@ -114,7 +114,13 @@ pub(crate) struct RuntimeSlashCommandItem {
     pub value: String,
 }
 
+mod memory;
 mod runtime_setup;
+#[cfg(test)]
+use memory::{
+    apply_memory_setting_to_tool_selection, build_reflection_lesson_artifacts_system_prompt_section,
+};
+pub(crate) use memory::{build_memory_aware_tools, reflection_runtime_for_settings};
 pub(crate) use runtime_setup::SessionRuntimeSetup;
 
 pub(crate) fn resolve_tool_selection_for_runtime(
@@ -228,53 +234,6 @@ fn format_tool_subtool(tool: &dyn Tool) -> String {
 
 mod tool_descriptions;
 use tool_descriptions::compact_tool_description;
-
-pub(crate) fn build_reflection_lesson_artifacts_system_prompt_section(
-    tools: &[Box<dyn Tool>],
-    artifacts_dir: &std::path::Path,
-    session_id: &str,
-    cwd: &std::path::Path,
-) -> String {
-    if !tools.iter().any(|tool| tool.name() == "reflection") {
-        return String::new();
-    }
-
-    let project_root = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
-    let project_scope_id = project_root.display().to_string();
-    let conversation_path = crate::reflection_runtime::reflection_lesson_artifact_path(
-        artifacts_dir,
-        "conversation",
-        session_id,
-    );
-    let project_path = crate::reflection_runtime::reflection_lesson_artifact_path(
-        artifacts_dir,
-        "project",
-        &project_scope_id,
-    );
-
-    let mut artifact_lines = Vec::new();
-    if conversation_path.exists() {
-        artifact_lines.push(format!(
-            "- Conversation scope `{session_id}`: {}",
-            conversation_path.display()
-        ));
-    }
-    if project_path.exists() {
-        artifact_lines.push(format!(
-            "- Project scope `{project_scope_id}`: {}",
-            project_path.display()
-        ));
-    }
-
-    if artifact_lines.is_empty() {
-        return String::new();
-    }
-
-    format!(
-        "\n\n## Scoped lesson artifacts\nLesson content lives in files, not this prompt. Use `read` on the relevant artifact before relying on prior lessons; after corrections, repeated failures, or outcomes, report the update and call `reflection` to save a concise lesson.\n{}",
-        artifact_lines.join("\n"),
-    )
-}
 
 fn build_project_system_prompt_section(settings: &Settings, cwd: &std::path::Path) -> String {
     let project_root = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
@@ -586,23 +545,25 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         settings.tools.as_deref(),
         &provider_name,
     );
-    let tool_registry = ToolRegistry::from_builtin_and_extensions(tools, tool_selection.clone());
+    let artifacts_dir = config::artifacts_dir(&global_settings.storage);
+    std::fs::create_dir_all(&artifacts_dir)?;
+    let (tool_registry, tool_selection, reflection_lesson_section) = build_memory_aware_tools(
+        tools,
+        tool_selection,
+        &settings.memory,
+        &artifacts_dir,
+        &session_id,
+        &effective_cwd,
+    );
     let skill_section = build_skill_system_prompt_section(&session_resources);
     let project_system_section =
         build_project_system_prompt_section(&project_settings, &effective_cwd);
     let available_tools_section =
         build_available_tools_system_prompt_section(tool_registry.active_tools());
-    let artifacts_dir = config::artifacts_dir(&global_settings.storage);
-    std::fs::create_dir_all(&artifacts_dir)?;
-    let reflection_lesson_section = build_reflection_lesson_artifacts_system_prompt_section(
-        tool_registry.active_tools(),
-        &artifacts_dir,
-        &session_id,
-        &effective_cwd,
-    );
     let system_prompt = format!(
         "{base_system_prompt}{project_system_section}{skill_section}{available_tools_section}{reflection_lesson_section}"
     );
+    let memory_remote = crate::memory_remote::empty_memory_remote_slot();
     let tool_ctx = ToolContext {
         cwd: effective_cwd.clone(),
         artifacts_dir: artifacts_dir.clone(),
@@ -619,10 +580,12 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
             enabled: true,
         }),
         reach_out: None,
-        reflection: Some(crate::reflection_runtime::build_reflection_runtime(
+        reflection: reflection_runtime_for_settings(
+            &settings.memory,
             sibling_conn.clone(),
             artifacts_dir.clone(),
-        )),
+            memory_remote.clone(),
+        ),
         session_observation: None,
         task_operator: Some(crate::task_operator::build_task_operator_runtime(
             effective_cwd.clone(),
@@ -674,6 +637,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         tool_registry,
         tool_selection,
         tool_ctx,
+        memory_remote,
         system_prompt,
         base_system_prompt,
         thinking_level: thinking_str.to_string(),
@@ -745,5 +709,7 @@ fn resolve_startup_session_id(
     Ok((uuid::Uuid::new_v4().to_string(), false))
 }
 
+#[cfg(test)]
+mod memory_tests;
 #[cfg(test)]
 mod tests;
