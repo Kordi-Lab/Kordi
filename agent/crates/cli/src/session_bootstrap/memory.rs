@@ -100,7 +100,20 @@ pub(crate) fn build_reflection_lesson_artifacts_system_prompt_section(
         &project_scope_id,
     );
 
+    let global_scope_id = kordi_tools::reflection_tool::GLOBAL_SCOPE_ID;
+    let global_path = crate::reflection_runtime::reflection_lesson_artifact_path(
+        artifacts_dir,
+        "global",
+        global_scope_id,
+    );
+
     let mut artifact_lines = Vec::new();
+    if global_path.exists() {
+        artifact_lines.push(format!(
+            "- Global scope `{global_scope_id}`: {}",
+            global_path.display()
+        ));
+    }
     if conversation_path.exists() {
         artifact_lines.push(format!(
             "- Conversation scope `{session_id}`: {}",
@@ -138,7 +151,7 @@ pub(crate) fn build_reflection_lesson_artifacts_system_prompt_section(
         ""
     };
     format!(
-        "\n\n## Scoped lesson artifacts\nMemory content lives in files, not this prompt. Use `read` on the relevant artifact before relying on prior memories; after corrections, repeated failures, or outcomes, report the update and call `reflection` to save a concise memory.{sensitive_rule}\n{}",
+        "\n\n## Scoped lesson artifacts\nMemory content lives in files, not this prompt. Use `read` on the relevant artifact before relying on prior memories; after corrections, repeated failures, or outcomes, report the update and call `reflection` to save a concise memory. Before saving, read that scope's artifact and skip anything already there or restated. Use `global` only for preferences the user wants everywhere; keep everything else in its conversation, group, or project scope.{sensitive_rule}\n{}",
         artifact_lines.join("\n"),
     )
 }

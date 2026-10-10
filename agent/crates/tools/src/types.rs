@@ -179,6 +179,9 @@ pub struct ReflectionLessonResponse {
     pub scope: String,
     pub scope_id: String,
     pub artifact_path: String,
+    /// The scope already held this memory, so nothing new was saved.
+    #[serde(default)]
+    pub already_saved: bool,
 }
 
 pub type ReflectionLessonFuture =

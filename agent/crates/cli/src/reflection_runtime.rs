@@ -26,10 +26,16 @@ pub(crate) fn reflection_lesson_artifact_path(
     scope: &str,
     scope_id: &str,
 ) -> PathBuf {
+    let file_name = if scope == "global" {
+        // One account-wide file: `reflection-lessons/global/account.md`.
+        format!("{}.md", kordi_tools::reflection_tool::GLOBAL_SCOPE_ID)
+    } else {
+        format!("{}.md", scope_id_slug(scope_id))
+    };
     artifacts_dir
         .join("reflection-lessons")
         .join(scope)
-        .join(format!("{}.md", scope_id_slug(scope_id)))
+        .join(file_name)
 }
 
 /// Guards applied to every memory before anything is written.
@@ -75,11 +81,12 @@ pub(crate) fn build_reflection_runtime(
             let artifact_path =
                 reflection_lesson_artifact_path(&artifacts_dir, &request.scope, &scope_id);
             let artifact_path_text = artifact_path.display().to_string();
-            let saved = |lesson_id: String| ReflectionLessonResponse {
+            let saved = |lesson_id: String, already_saved: bool| ReflectionLessonResponse {
                 lesson_id,
                 scope: request.scope.clone(),
                 scope_id: request.scope_id.clone(),
                 artifact_path: artifact_path_text.clone(),
+                already_saved,
             };
 
             // The same text in the same scope is the same memory: reuse the
@@ -93,7 +100,7 @@ pub(crate) fn build_reflection_runtime(
                 if let Some(existing) =
                     reuse_existing_lesson(&conn, &scope, &scope_id, &lesson_text, &scope_label)?
                 {
-                    return Ok(saved(existing));
+                    return Ok(saved(existing, true));
                 }
             }
             let lesson_id = new_reflection_lesson_id();
@@ -104,6 +111,9 @@ pub(crate) fn build_reflection_runtime(
             let mut created_at = None;
             let mut updated_at = None;
             let mut pending_upload = true;
+            // The account answers a save of text it already holds with that
+            // memory, whose id differs from the id this save proposed.
+            let mut already_on_account = false;
             if let Some(remote) = remote {
                 match remote
                     .save(NewRemoteMemory {
@@ -117,6 +127,7 @@ pub(crate) fn build_reflection_runtime(
                     .await
                 {
                     Ok(memory) => {
+                        already_on_account = memory.memory_id != lesson_id;
                         remote_memory_id = Some(memory.memory_id);
                         created_at = Some(memory.created_at);
                         updated_at = Some(memory.updated_at);
@@ -133,6 +144,11 @@ pub(crate) fn build_reflection_runtime(
                 }
             }
 
+            // Cache an existing account memory under its own id.
+            let lesson_id = match (&remote_memory_id, already_on_account) {
+                (Some(remote_id), true) => remote_id.clone(),
+                _ => lesson_id,
+            };
             let lesson_id = {
                 let conn = conn.lock().await;
                 // Another save of the same text may have finished while this
@@ -140,7 +156,7 @@ pub(crate) fn build_reflection_runtime(
                 if let Some(existing) =
                     reuse_existing_lesson(&conn, &scope, &scope_id, &lesson_text, &scope_label)?
                 {
-                    return Ok(saved(existing));
+                    return Ok(saved(existing, true));
                 }
                 let lesson_id = save_reflection_lesson(
                     &conn,
@@ -165,7 +181,7 @@ pub(crate) fn build_reflection_runtime(
                     .map_err(tool_error)?;
                 lesson_id
             };
-            Ok(saved(lesson_id))
+            Ok(saved(lesson_id, already_on_account))
         })
     });
     ReflectionRuntime { save_lesson }
@@ -378,6 +394,7 @@ fn short_hash_hex(value: &str) -> String {
 
 fn parse_scope(scope: &str) -> kordi_core::error::KordiResult<ReflectionScope> {
     match scope {
+        "global" => Ok(ReflectionScope::Global),
         "conversation" => Ok(ReflectionScope::Conversation),
         "group" => Ok(ReflectionScope::Group),
         "project" => Ok(ReflectionScope::Project),

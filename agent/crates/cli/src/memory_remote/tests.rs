@@ -4,6 +4,9 @@ use kordi_session::reflection_lessons::{list_all_reflection_lessons, list_reflec
 use kordi_tools::ReflectionLessonRequest;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
+#[path = "global_tests.rs"]
+mod global_tests;
+
 #[derive(Default)]
 struct FakeRemote {
     memories: std::sync::Mutex<Vec<RemoteMemory>>,
@@ -60,14 +63,18 @@ impl MemoryRemote for FakeRemote {
         }
         self.saves.lock().unwrap().push(memory.clone());
         let mut memories = self.memories.lock().unwrap();
-        let memory_id = format!(
-            "remote_{}",
-            memory
-                .client_memory_id
-                .clone()
-                .unwrap_or_else(|| self.counter.fetch_add(1, Ordering::SeqCst).to_string())
-        );
-        if let Some(existing) = memories.iter().find(|row| row.memory_id == memory_id) {
+        // Like the server: the client id becomes the memory id, and the same
+        // text in the same scope returns the existing memory.
+        let memory_id = memory
+            .client_memory_id
+            .clone()
+            .unwrap_or_else(|| format!("remote_{}", self.counter.fetch_add(1, Ordering::SeqCst)));
+        if let Some(existing) = memories.iter().find(|row| {
+            row.memory_id == memory_id
+                || (row.scope == memory.scope
+                    && row.scope_id == memory.scope_id
+                    && row.text == memory.text)
+        }) {
             return Ok(existing.clone());
         }
         let n = self.counter.fetch_add(1, Ordering::SeqCst);
@@ -201,7 +208,7 @@ async fn write_through_stores_remote_id_and_rewrites_file() {
     assert_eq!(rows.len(), 1);
     assert!(!rows[0].pending_upload);
     let remote_id = rows[0].remote_memory_id.clone().expect("remote id");
-    assert_eq!(remote_id, format!("remote_{}", rows[0].lesson_id));
+    assert_eq!(remote_id, rows[0].lesson_id);
     assert!(rows[0].lesson_id.starts_with("mem_"));
     assert_eq!(rows[0].scope_label.as_deref(), Some("acme-app"));
     let sent = harness.remote.saves.lock().unwrap()[0].clone();

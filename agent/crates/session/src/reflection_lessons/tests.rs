@@ -232,3 +232,32 @@ fn finds_an_active_row_with_the_same_text_and_touches_it() {
         .is_none()
     );
 }
+
+#[test]
+fn global_scope_round_trips_and_sorts_first() {
+    assert_eq!(
+        ReflectionScope::parse("global").unwrap(),
+        ReflectionScope::Global
+    );
+    assert_eq!(ReflectionScope::Global.as_str(), "global");
+    assert_eq!(ReflectionScope::default(), ReflectionScope::Conversation);
+    assert!(ReflectionScope::Global < ReflectionScope::Conversation);
+
+    let conn = crate::store::open_memory().expect("memory db");
+    save_reflection_lesson(
+        &conn,
+        NewReflectionLesson {
+            scope: ReflectionScope::Global,
+            scope_id: "account".to_string(),
+            artifact_path: "/tmp/reflection-lessons/global/account.md".to_string(),
+            source: ReflectionSource::UserCorrection,
+            lesson_text: "Always answer in British English.".to_string(),
+            ..NewReflectionLesson::default()
+        },
+    )
+    .expect("save global lesson");
+    let lessons =
+        list_reflection_lessons(&conn, ReflectionScope::Global, "account").expect("list global");
+    assert_eq!(lessons.len(), 1);
+    assert_eq!(lessons[0].scope, ReflectionScope::Global);
+}

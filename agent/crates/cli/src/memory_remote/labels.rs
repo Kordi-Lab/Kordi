@@ -58,6 +58,9 @@ pub fn label_from_message(text: &str) -> Option<String> {
 /// The display label for a scope: the label the host recorded, or for a
 /// project the final path component.
 pub(crate) fn scope_label_for(scope: &ReflectionScope, scope_id: &str) -> Option<String> {
+    if *scope == ReflectionScope::Global {
+        return None;
+    }
     if let Some(label) = remembered_scope_label(scope, scope_id) {
         return Some(label);
     }
@@ -67,7 +70,8 @@ pub(crate) fn scope_label_for(scope: &ReflectionScope, scope_id: &str) -> Option
             .and_then(|name| name.to_str())
             .map(str::to_string)
             .filter(|name| !name.is_empty()),
-        ReflectionScope::Conversation | ReflectionScope::Group => None,
+        // Global memories apply to the whole account and carry no label.
+        ReflectionScope::Global | ReflectionScope::Conversation | ReflectionScope::Group => None,
     }
 }
 

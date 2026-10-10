@@ -187,9 +187,13 @@ pub async fn load_run_memory<C: CloudAgentRunClient + Sync>(
     }
 }
 
+/// Scope id of every global memory: global memories belong to the account.
+pub const GLOBAL_SCOPE_ID: &str = kordi_tools::reflection_tool::GLOBAL_SCOPE_ID;
+
 /// Scope ids this run reads memories from.
 ///
-/// The cloud run carries one conversation id, `sessionId` (for example
+/// Every run reads the owner's global memories (scope id `account`). The cloud
+/// run carries one conversation id, `sessionId` (for example
 /// `session:group:<groupId>` or `session:direct-person:<a>:<b>`), plus a
 /// `subsessionId` for execution subsessions. Both are conversation scope ids.
 /// A group conversation also exposes its group id. Runs carry no project id.
@@ -199,6 +203,14 @@ pub struct RunMemoryScopes {
     pub group_id: Option<String>,
     pub project_id: Option<String>,
 }
+
+/// Prompt blocks in display order: global first, then the run's scopes.
+const PROMPT_BLOCKS: [(&str, &str); 4] = [
+    ("global", "Global"),
+    ("conversation", "This conversation"),
+    ("group", "This group"),
+    ("project", "This project"),
+];
 
 impl RunMemoryScopes {
     pub fn for_run(run: &CloudAgentRun) -> Self {
@@ -223,6 +235,7 @@ impl RunMemoryScopes {
     fn applies(&self, memory: &RunnerMemory) -> bool {
         let scope_id = memory.scope_id.as_str();
         match memory.scope.as_str() {
+            "global" => scope_id == GLOBAL_SCOPE_ID,
             "conversation" => self.conversation_ids.iter().any(|id| id == scope_id),
             "group" => self.group_id.as_deref() == Some(scope_id),
             "project" => self.project_id.as_deref() == Some(scope_id),
@@ -232,18 +245,8 @@ impl RunMemoryScopes {
 }
 
 fn memory_line(memory: &RunnerMemory) -> String {
-    let label = memory
-        .scope_label
-        .as_deref()
-        .map(str::trim)
-        .filter(|label| !label.is_empty());
-    let tag = match (memory.scope.as_str(), label) {
-        ("conversation", _) => "conversation".to_string(),
-        (scope, Some(label)) => format!("{scope}: {label}"),
-        (scope, None) => format!("{scope}: {}", memory.scope_id),
-    };
     let text = memory.text.split_whitespace().collect::<Vec<_>>().join(" ");
-    format!("- [{tag}] {text}")
+    format!("- {text}")
 }
 
 /// The `## Memories` system prompt section, or `None` when memory is off.
@@ -258,9 +261,12 @@ pub fn memory_prompt_section(run: &CloudAgentRun, memory: &RunMemory) -> Option<
         "Memories sync with the account."
     };
     let mut section = format!(
-        "## Memories\n{first} After corrections, repeated failures, or outcomes, call `reflection` to save a concise memory in conversation, group, or project scope."
+        "## Memories\n{first} After corrections, repeated failures, or outcomes, call `reflection` to save a concise memory. Before saving, check the memories below and skip anything already there or restated; when a preference changes, save the corrected version. Use `global` only for preferences the user wants everywhere (\"from now on\", \"always\"); keep everything else in its conversation or group scope."
     );
-    let mut scope_ids = vec![format!("conversation `{}`", run.session_id)];
+    let mut scope_ids = vec![
+        format!("global `{GLOBAL_SCOPE_ID}`"),
+        format!("conversation `{}`", run.session_id),
+    ];
     if let Some(group_id) = &scopes.group_id {
         scope_ids.push(format!("group `{group_id}`"));
     }
@@ -269,29 +275,40 @@ pub fn memory_prompt_section(run: &CloudAgentRun, memory: &RunMemory) -> Option<
         scope_ids.join(", ")
     ));
 
-    let mut applicable = memory
+    let applicable = memory
         .memories
         .iter()
         .filter(|memory| scopes.applies(memory))
         .collect::<Vec<_>>();
-    applicable.sort_by(|left, right| {
-        right
-            .updated_at
-            .cmp(&left.updated_at)
-            .then_with(|| right.created_at.cmp(&left.created_at))
-    });
     let mut used_chars = 0usize;
     let mut shown = 0usize;
-    for memory in &applicable {
-        let line = memory_line(memory);
-        let chars = line.chars().count() + 1;
-        if shown >= MAX_PROMPT_MEMORIES || used_chars + chars > MAX_PROMPT_MEMORY_CHARS {
-            break;
+    'blocks: for (scope, heading) in PROMPT_BLOCKS {
+        let mut block = applicable
+            .iter()
+            .filter(|memory| memory.scope == scope)
+            .collect::<Vec<_>>();
+        block.sort_by(|left, right| {
+            right
+                .updated_at
+                .cmp(&left.updated_at)
+                .then_with(|| right.created_at.cmp(&left.created_at))
+        });
+        let mut wrote_heading = false;
+        for memory in block {
+            let line = memory_line(memory);
+            let chars = line.chars().count() + 1;
+            if shown >= MAX_PROMPT_MEMORIES || used_chars + chars > MAX_PROMPT_MEMORY_CHARS {
+                break 'blocks;
+            }
+            if !wrote_heading {
+                section.push_str(&format!("\n{heading}:"));
+                wrote_heading = true;
+            }
+            section.push('\n');
+            section.push_str(&line);
+            used_chars += chars;
+            shown += 1;
         }
-        section.push('\n');
-        section.push_str(&line);
-        used_chars += chars;
-        shown += 1;
     }
     if shown < applicable.len() {
         section.push_str("\n(more memories omitted)");

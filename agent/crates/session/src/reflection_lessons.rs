@@ -5,6 +5,8 @@ use uuid::Uuid;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ReflectionScope {
+    /// Account-wide preferences. Ordered first so global memories list first.
+    Global,
     #[default]
     Conversation,
     Group,
@@ -14,6 +16,7 @@ pub enum ReflectionScope {
 impl ReflectionScope {
     pub fn as_str(&self) -> &'static str {
         match self {
+            Self::Global => "global",
             Self::Conversation => "conversation",
             Self::Group => "group",
             Self::Project => "project",
@@ -22,6 +25,7 @@ impl ReflectionScope {
 
     pub fn parse(value: &str) -> Result<Self> {
         match value {
+            "global" => Ok(Self::Global),
             "conversation" => Ok(Self::Conversation),
             "group" => Ok(Self::Group),
             "project" => Ok(Self::Project),

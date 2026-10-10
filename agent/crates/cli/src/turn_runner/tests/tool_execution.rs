@@ -257,6 +257,7 @@ async fn run_turn_preserves_reflection_runtime_for_tool_execution() {
                 scope: request.scope,
                 scope_id: request.scope_id,
                 artifact_path: "reflection-lessons/conversation/session-1.md".to_string(),
+                already_saved: false,
             })
         })
     });

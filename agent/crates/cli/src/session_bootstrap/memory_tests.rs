@@ -222,3 +222,52 @@ fn scoped_lesson_artifact_prompt_lists_group_scope_when_file_exists() {
     assert!(section.contains("- Group scope `abc-123`: "));
     assert!(section.contains(group_path.to_str().expect("group path")));
 }
+
+#[test]
+fn scoped_lesson_artifact_prompt_lists_the_global_artifact_first() {
+    let tools: Vec<Box<dyn Tool>> = vec![Box::new(NamedTool {
+        name: "reflection",
+        description: "reflection",
+        schema: json!({"type": "object"}),
+    })];
+    let artifacts_dir = tempdir().expect("artifacts dir");
+    let cwd = tempdir().expect("cwd");
+    let global_path = artifacts_dir
+        .path()
+        .join("reflection-lessons")
+        .join("global")
+        .join("account.md");
+    assert_eq!(
+        crate::reflection_runtime::reflection_lesson_artifact_path(
+            artifacts_dir.path(),
+            "global",
+            "account",
+        ),
+        global_path
+    );
+    let conversation_path = crate::reflection_runtime::reflection_lesson_artifact_path(
+        artifacts_dir.path(),
+        "conversation",
+        "session-123",
+    );
+    for path in [&global_path, &conversation_path] {
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+        std::fs::write(path, "# lessons").expect("lesson file");
+    }
+
+    let section = super::build_reflection_lesson_artifacts_system_prompt_section(
+        &tools,
+        artifacts_dir.path(),
+        "session-123",
+        cwd.path(),
+        true,
+    );
+    let global_line = format!("- Global scope `account`: {}", global_path.display());
+    let global_at = section.find(&global_line).expect("global line");
+    let conversation_at = section
+        .find("- Conversation scope `session-123`: ")
+        .expect("conversation line");
+    assert!(global_at < conversation_at);
+    assert!(section.contains("skip anything already there or restated"));
+    assert!(section.contains("Use `global` only for preferences the user wants everywhere"));
+}

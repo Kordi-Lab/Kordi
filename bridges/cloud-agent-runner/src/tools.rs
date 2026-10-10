@@ -209,17 +209,22 @@ async fn save_lesson_as_memory<C: CloudAgentRunClient + Sync>(
     run_id: &str,
     request: ReflectionLessonRequest,
 ) -> kordi_core::error::KordiResult<ReflectionLessonResponse> {
+    let client_memory_id = format!("mem_{}", uuid::Uuid::new_v4().simple());
     let memory = NewRunnerMemory {
         scope: request.scope.trim().to_string(),
         scope_id: request.scope_id.trim().to_string(),
         scope_label: None,
         source: request.source.trim().to_string(),
         text: request.lesson.trim().to_string(),
-        client_memory_id: Some(format!("mem_{}", uuid::Uuid::new_v4().simple())),
+        client_memory_id: Some(client_memory_id.clone()),
     };
     match client.save_memory(run_id, memory).await {
+        // A new memory takes this save's fresh clientMemoryId as its id. When
+        // the scope already holds the text, the server returns that memory,
+        // whose id differs.
         Ok(saved) => Ok(ReflectionLessonResponse {
             artifact_path: memory_artifact_path(&saved.scope, &saved.scope_id),
+            already_saved: saved.memory_id != client_memory_id,
             lesson_id: saved.memory_id,
             scope: saved.scope,
             scope_id: saved.scope_id,

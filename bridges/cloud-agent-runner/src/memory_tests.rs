@@ -1,4 +1,7 @@
 use super::*;
+
+#[path = "memory_global_tests.rs"]
+mod global_tests;
 use crate::client::{
     ArtifactExportInput, ArtifactExportResponse, ProviderAuthMaterial, RunnerClientError,
 };
@@ -23,6 +26,7 @@ enum FetchBehavior {
 struct MemoryClient {
     fetch: FetchBehavior,
     save_error: Option<MemoryRequestError>,
+    existing_id: Option<String>,
     saved: Arc<Mutex<Vec<(String, NewRunnerMemory)>>>,
 }
 
@@ -31,6 +35,7 @@ impl MemoryClient {
         Self {
             fetch,
             save_error: None,
+            existing_id: None,
             saved: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -81,8 +86,15 @@ impl CloudAgentRunClient for MemoryClient {
         if let Some(error) = &self.save_error {
             return Err(error.clone());
         }
+        // Like the server: a new memory takes the clientMemoryId, and text the
+        // scope already holds returns that memory.
+        let id = self
+            .existing_id
+            .clone()
+            .or(memory.client_memory_id.clone())
+            .unwrap();
         Ok(memory_row(
-            "mem_saved",
+            &id,
             &memory.scope,
             &memory.scope_id,
             &memory.text,
@@ -242,7 +254,7 @@ async fn enabled_memory_adds_matching_memories_and_the_reflection_tool() {
     let prompt = provider.system_prompt();
     assert!(prompt.contains("## Memories"));
     assert!(prompt.contains("must not record health"));
-    assert!(prompt.contains("- [conversation] Use metric units here."));
+    assert!(prompt.contains("\nThis conversation:\n- Use metric units here."));
     assert!(!prompt.contains("Other conversation memory."));
     assert!(provider
         .tool_names()
@@ -396,13 +408,13 @@ fn prompt_section_scopes_caps_and_sensitive_sentence() {
     let section = memory_prompt_section(&run(), &memory).unwrap();
     assert!(!section.contains("must not record health"));
     assert!(section.contains(
-        "Scope ids for this run: conversation `session:group:grp_alpha`, group `grp_alpha`."
+        "Scope ids for this run: global `account`, conversation `session:group:grp_alpha`, group `grp_alpha`."
     ));
     assert!(section.contains("Memory number 44."));
     assert!(!section.contains("Memory number 04."));
     assert!(!section.contains("Project memory."));
     assert!(section.find("Memory number 44.") < section.find("Memory number 43."));
-    assert_eq!(section.matches("\n- [").count(), MAX_PROMPT_MEMORIES);
+    assert_eq!(section.matches("\n- ").count(), MAX_PROMPT_MEMORIES);
     assert!(section.ends_with("(more memories omitted)"));
 
     let mut long = memory.clone();
@@ -419,7 +431,7 @@ fn prompt_section_scopes_caps_and_sensitive_sentence() {
         .collect();
     let section = memory_prompt_section(&run(), &long).unwrap();
     assert!(section.ends_with("(more memories omitted)"));
-    assert!(section.matches("\n- [").count() < 30);
+    assert!(section.matches("\n- ").count() < 30);
 
     let empty = RunMemory {
         enabled: true,
@@ -427,6 +439,6 @@ fn prompt_section_scopes_caps_and_sensitive_sentence() {
         memories: Vec::new(),
     };
     let section = memory_prompt_section(&run(), &empty).unwrap();
-    assert!(!section.contains("\n- ["));
+    assert!(!section.contains("\n- "));
     assert!(memory_prompt_section(&run(), &RunMemory::disabled()).is_none());
 }
