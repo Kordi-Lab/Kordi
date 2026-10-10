@@ -1,26 +1,23 @@
 import SwiftUI
 
-/// Memory rows shared by the Settings Memory screen and a group's info page.
+/// Memory rows shared by the Settings Memory screen and each conversation's Memory tab.
 /// Each row opens the edit sheet on tap and offers Edit and Delete on long press;
 /// deleting asks for confirmation first.
 struct MemoryRowsView: View {
     @ObservedObject var model: MemorySettingsModel
     let memories: [CloudMemory]
-    /// Draws a divider between rows, for rows placed inside a card.
-    var separated = false
     @State private var editing: CloudMemory?
     @State private var deleteTarget: CloudMemory?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(memories.enumerated()), id: \.element.id) { index, memory in
+            ForEach(memories) { memory in
                 MemoryRow(
                     memory: memory,
                     edit: { editing = memory },
                     delete: { deleteTarget = memory }
                 )
                 .disabled(model.isMutating)
-                if separated, index < memories.count - 1 { Divider() }
             }
         }
         .sheet(item: $editing) { memory in

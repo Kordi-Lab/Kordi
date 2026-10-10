@@ -1,6 +1,8 @@
 import Foundation
 
 enum CloudMemoryScope: Hashable, Codable {
+    /// Preferences for every conversation; the scope id is always `account`.
+    case global
     case conversation
     case group
     case project
@@ -9,6 +11,7 @@ enum CloudMemoryScope: Hashable, Codable {
 
     init(rawValue: String) {
         switch rawValue {
+        case "global": self = .global
         case "conversation": self = .conversation
         case "group": self = .group
         case "project": self = .project
@@ -18,6 +21,7 @@ enum CloudMemoryScope: Hashable, Codable {
 
     var rawValue: String {
         switch self {
+        case .global: "global"
         case .conversation: "conversation"
         case .group: "group"
         case .project: "project"

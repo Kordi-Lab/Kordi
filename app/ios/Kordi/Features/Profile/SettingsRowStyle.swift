@@ -22,24 +22,6 @@ struct SettingsSectionTitle: View {
     }
 }
 
-/// Smaller group label inside a section, in the subtitle colour.
-struct SettingsGroupLabel: View {
-    let title: String
-
-    init(_ title: String) {
-        self.title = title
-    }
-
-    var body: some View {
-        Text(title)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.top, 8)
-            .padding(.bottom, 2)
-            .accessibilityAddTraits(.isHeader)
-    }
-}
-
 /// Quiet one-line note inside a section, in the subtitle colour.
 struct SettingsCaption: View {
     let text: String
