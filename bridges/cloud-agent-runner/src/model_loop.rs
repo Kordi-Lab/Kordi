@@ -275,6 +275,7 @@ pub(crate) async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
             requester_account_id: &run.requester_account_id,
             owner_account_id: &run.owner_account_id,
             data_owner_account_id: None,
+            connector_tools: &run.connectors.tools,
         };
         return match executor
             .execute_reflection(client, &run.run_id, request, &call.arguments)
