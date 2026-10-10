@@ -424,3 +424,8 @@
 .app-agent-code-panel {
   background: var(--app-code-bg);
 }
+
+.app-cloud-account-settings-header {
+  border-bottom: 1px solid var(--app-divider);
+  background: var(--app-main-bg);
+}

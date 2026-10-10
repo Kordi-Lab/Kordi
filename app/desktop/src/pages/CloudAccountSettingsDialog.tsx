@@ -471,7 +471,7 @@ export function CloudAccountSettingsDialog({
         aria-modal="true"
         className="app-transient-surface app-modal-panel app-cloud-account-settings-dialog grid h-[min(680px,calc(100vh-40px))] w-[min(900px,calc(100vw-40px))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[12px] md:grid-cols-[208px_minmax(0,1fr)] md:grid-rows-1"
       >
-        <div className="app-session-panel app-cloud-account-settings-rail flex min-h-0 flex-col overflow-y-auto border-b p-3 md:border-b-0 md:border-r">
+        <div className="app-session-panel app-cloud-account-settings-rail flex min-h-0 flex-col overflow-y-auto border-b px-3 pb-3 pt-5 md:border-b-0 md:border-r">
           <SettingsNav
             className="app-cloud-account-settings-tabs"
             groups={navGroups}
@@ -479,14 +479,14 @@ export function CloudAccountSettingsDialog({
             onSelect={selectTab}
           />
         </div>
-        <div className="app-main-panel app-cloud-account-settings-page relative flex min-h-0 flex-col">
-          <div className="absolute right-3 top-3 z-10">
+        <div className="app-main-panel app-cloud-account-settings-page flex min-h-0 flex-col">
+          <div className="app-cloud-account-settings-header flex h-14 shrink-0 items-center justify-end px-4">
             <button type="button" className="app-button-quiet app-transient-flat-action grid h-8 w-8 place-items-center rounded-full p-0" onClick={onClose} aria-label="Close account settings">
               <X className="h-4 w-4" />
             </button>
           </div>
           <ScrollArea className="min-h-0 flex-1">
-            <div className="px-8 pb-8 pt-10">
+            <div className="px-8 pb-8 pt-2">
               {visibleTab === 'profile' ? profilePanel : visibleTab === 'devices' ? devicesPanel : visibleTab === 'auth' ? authPanel : visibleTab === 'notifications' ? notificationsPanel : visibleTab === 'connectors' ? connectorsPanel : visibleTab === 'memory' ? memoryPanel : appearancePanel}
             </div>
           </ScrollArea>
