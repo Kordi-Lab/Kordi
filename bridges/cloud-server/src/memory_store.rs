@@ -24,7 +24,10 @@ pub(crate) use types::{
     UpdateMemorySettingsRequest,
 };
 
-pub(crate) const MEMORY_SCOPES: [&str; 3] = ["conversation", "group", "project"];
+pub(crate) const MEMORY_SCOPES: [&str; 4] = ["global", "conversation", "group", "project"];
+/// The only scope id a `global` memory may use: global memories belong to the
+/// whole account.
+pub(crate) const GLOBAL_SCOPE_ID: &str = "account";
 pub(crate) const MEMORY_SOURCES: [&str; 4] =
     ["user_correction", "repeated_failure", "outcome", "manual"];
 const MAX_SCOPE_ID_CHARS: usize = 256;
@@ -171,7 +174,7 @@ pub(crate) async fn save(
     if !MEMORY_SCOPES.contains(&scope) {
         return Err(MemoryError::bad_request(
             "invalid_scope",
-            "scope must be conversation, group, or project.",
+            "scope must be global, conversation, group, or project.",
         ));
     }
     let source = input.source.trim();
@@ -188,11 +191,18 @@ pub(crate) async fn save(
             "scopeId is required and must be 256 characters or fewer.",
         ));
     }
+    if scope == "global" && scope_id != GLOBAL_SCOPE_ID {
+        return Err(MemoryError::bad_request(
+            "invalid_scope_id",
+            "scopeId must be account for global memories.",
+        ));
+    }
+    // Global memories have no label: they apply to the whole account.
     let scope_label = input
         .scope_label
         .as_deref()
         .map(str::trim)
-        .filter(|label| !label.is_empty());
+        .filter(|label| !label.is_empty() && scope != "global");
     if scope_label.is_some_and(|label| label.chars().count() > MAX_SCOPE_LABEL_CHARS) {
         return Err(MemoryError::bad_request(
             "invalid_scope_label",

@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 use tower::util::ServiceExt;
 
 mod dedup;
+mod global;
 mod isolation;
 mod runs;
 
