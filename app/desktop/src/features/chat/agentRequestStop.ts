@@ -15,19 +15,22 @@ function messageIsViewersAgent(message: Pick<Message, 'role' | 'senderOwnerName'
 }
 
 /**
- * A running turn the viewer may stop: a request the viewer sent, from admission
- * until its terminal state. Finished turns and other people's requests have none.
+ * A running turn the viewer may stop: a request the viewer sent, or any run of
+ * the viewer's own agent, from admission until its terminal state. Finished
+ * turns and other people's requests to other people's agents have none.
  */
 export function agentRequestStopTarget(
   turn: DesktopChatTurnSnapshot | null | undefined,
   message: Pick<Message, 'role' | 'senderOwnerName'> = { role: 'owned-agent' },
 ): AgentRequestStopTarget | null {
   if (!turn || turn.completed || TERMINAL_TURN_STATUSES.has(turn.status)) return null;
-  if (turn.sourceMessage?.senderIsSelf === false) return null;
+  const viewersAgent = messageIsViewersAgent(message);
+  // The agent's owner may stop any run of their agent, whoever asked for it.
+  if (turn.sourceMessage?.senderIsSelf === false && !viewersAgent) return null;
   const request = turn.pendingCollaborationAgentRequest;
   if (request) return { kind: 'collaboration', turnId: turn.id, request };
   if (turn.id.startsWith('collaboration-live-turn:')) return null;
-  return messageIsViewersAgent(message) ? { kind: 'turn', turnId: turn.id } : null;
+  return viewersAgent ? { kind: 'turn', turnId: turn.id } : null;
 }
 
 /** The newest running request the viewer sent in a chat, for the composer's stop. */

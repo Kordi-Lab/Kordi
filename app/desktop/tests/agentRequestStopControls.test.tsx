@@ -103,7 +103,7 @@ test('composer Stop offers a retry when the stop handler stopped nothing or fail
   });
 });
 
-test('composer stop targets only running requests the viewer sent', () => {
+test('composer stop targets running requests the viewer sent or runs of the viewer\'s agent', () => {
   const onStopActiveTurn = () => {};
   const onStopCollaborationAgentRequest = () => {};
   const handlers = { onStopActiveTurn, onStopCollaborationAgentRequest };
@@ -112,7 +112,7 @@ test('composer stop targets only running requests the viewer sent', () => {
 
   const peerRequest = streamingReply();
   peerRequest.turn = { ...peerRequest.turn!, sourceMessage: { messageId: 'request', senderLabel: 'Peer', senderIsSelf: false, text: 'hi' } };
-  assert.equal(composerAgentRequestStop({ messages: [peerRequest], ...handlers }), null);
+  assert.equal(composerAgentRequestStop({ messages: [peerRequest], ...handlers })?.requestKey, 'turn-story', 'the owner stops a peer\'s request to their own agent');
 
   const peerAgent = streamingReply({ role: 'external-agent', senderOwnerName: 'Peer' });
   assert.equal(composerAgentRequestStop({ messages: [peerAgent], ...handlers }), null);
@@ -157,10 +157,15 @@ test('the live reply header keeps Stop while text streams and drops it when the 
     await mount(<MessageBubble msg={completed} onStopActiveTurn={onStopActiveTurn} />);
     assert.equal(host.querySelector('button[aria-label="Stop agent request"]'), null);
 
-    const peer = streamingReply({ id: 'peer-reply' });
+    const askedByPeer = streamingReply({ id: 'peer-request-reply' });
+    askedByPeer.turn = { ...askedByPeer.turn!, sourceMessage: { messageId: 'request', senderLabel: 'Peer', senderIsSelf: false, text: 'hi' } };
+    await mount(<MessageBubble msg={askedByPeer} onStopActiveTurn={onStopActiveTurn} />);
+    assert.ok(host.querySelector('button[aria-label="Stop agent request"]'), 'the owner can stop a run of their own agent that a peer asked for');
+
+    const peer = streamingReply({ id: 'peer-reply', role: 'external-agent', senderOwnerName: 'Peer' });
     peer.turn = { ...peer.turn!, sourceMessage: { messageId: 'request', senderLabel: 'Peer', senderIsSelf: false, text: 'hi' } };
     await mount(<MessageBubble msg={peer} onStopActiveTurn={onStopActiveTurn} />);
-    assert.equal(host.querySelector('button[aria-label="Stop agent request"]'), null, 'no stop on other people\'s requests');
+    assert.equal(host.querySelector('button[aria-label="Stop agent request"]'), null, 'no stop on other people\'s requests to other people\'s agents');
     await act(async () => { setMessageLayout('chat'); });
   });
 });
