@@ -87,6 +87,7 @@ fn build_test_controller() -> (
         tool_selection: crate::tool_registry::ToolSelection::All,
         tool_ctx,
         memory_remote: crate::memory_remote::empty_memory_remote_slot(),
+        memory_prompt: None,
         system_prompt: String::new(),
         base_system_prompt: String::new(),
         thinking_level: "medium".to_string(),

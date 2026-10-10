@@ -1,8 +1,8 @@
 //! Setters that attach tool runtimes (reach out, scheduled tasks, session
 //! observation, Mac-local tools, and the account memory remote) to a desktop
-//! session.
+//! session, and refresh the memory prompt section each turn.
 
-use super::DesktopRuntimeSession;
+use super::{DesktopRuntimeSession, prompt_context};
 
 impl DesktopRuntimeSession {
     pub fn set_reach_out_runtime(&mut self, runtime: Option<kordi_tools::ReachOutRuntime>) {
@@ -55,5 +55,18 @@ impl DesktopRuntimeSession {
             Ok(mut slot) => *slot = remote,
             Err(poisoned) => *poisoned.into_inner() = remote,
         }
+    }
+
+    /// Rebuild the memory section from the current lesson files and swap it
+    /// into the system prompt. Desktop sessions are cached across turns, so
+    /// memory edits made after the session loaded only reach the model
+    /// through this refresh. Leaves no memory block when memory is off.
+    pub fn refresh_memory_prompt_section(&mut self) {
+        let block = crate::session_bootstrap::memory::memory_prompt_block(
+            self.setup.memory_prompt.as_ref(),
+            &self.setup.session_id,
+        );
+        self.setup.system_prompt =
+            prompt_context::with_memory_context(&self.setup.system_prompt, &block);
     }
 }

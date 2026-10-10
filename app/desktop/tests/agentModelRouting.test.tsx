@@ -88,8 +88,8 @@ test('agent prompt preview placeholders scoped lesson artifact paths instead of 
   const scopedPrompt = [
     'You are Kordi.',
     '',
-    '## Scoped lesson artifacts',
-    'Lesson content lives in files, not this prompt.',
+    '## Memories',
+    'This conversation:\n- Reply in French.\nArtifacts:',
     '- Conversation scope `690702c4-a4ac-4ba5-b443-0e85e886434a`: /Users/example/worktrees/kordi/main/app/desktop/.multi-instance-data/preview/kordi/artifacts/reflection-lessons/conversation/690702c4-a4ac-4ba5-b443-0e85e886434a-abcd12.md',
     '- Project scope `/Users/example/worktrees/kordi/main/app/desktop`: /Users/example/worktrees/kordi/main/app/desktop/.multi-instance-data/preview/kordi/artifacts/reflection-lessons/project/Users-example-worktrees-kordi-main-app-desktop-ef3456.md',
   ].join('\n');

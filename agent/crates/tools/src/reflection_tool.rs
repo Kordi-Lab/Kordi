@@ -12,6 +12,13 @@ pub struct ReflectionTool;
 /// Scope id of every `global` memory: they belong to the whole account.
 pub const GLOBAL_SCOPE_ID: &str = "account";
 
+/// Most memories inlined into a system prompt, shared by the Mac runtime and
+/// cloud runs.
+pub const MAX_PROMPT_MEMORIES: usize = 40;
+
+/// Most characters of memory lines inlined into a system prompt.
+pub const MAX_PROMPT_MEMORY_CHARS: usize = 8000;
+
 #[async_trait]
 impl Tool for ReflectionTool {
     fn name(&self) -> &str {

@@ -38,8 +38,20 @@ runtime changes land.
   `agent/crates/session/src/reflection_lessons.rs` with no caller outside its
   tests. Archiving a row would not change the file the agent reads.
 - `session_bootstrap.rs` builds `ToolContext` with `reflection: Some(...)` and
-  appends the "Scoped lesson artifacts" prompt section whenever the `reflection`
-  tool is in the active set. `run.rs` does the same for the CLI path.
+  appends the `## Memories` prompt section whenever the `reflection` tool is
+  in the active set. `run.rs` does the same for the CLI path. The section
+  inlines the memories from the `reflection-lessons/` files in Global, This
+  conversation, This project, and This group blocks, newest first, with the
+  same caps as cloud runs (40 memories, 8000 characters, then "(more memories
+  omitted)"). It says memories are current and take precedence over older
+  instructions earlier in the conversation when they conflict, and it keeps
+  an `Artifacts:` list of the file paths so the agent can read a scope's file
+  before saving and the `reflection` tool can dedup against it. Desktop
+  sessions are cached across turns, so the section is wrapped in
+  `<desktop_memory_context>` tags and rebuilt from the files at the start of
+  every desktop turn (`DesktopRuntimeSession::refresh_memory_prompt_section`);
+  an edit made in Settings applies to the next message. The CLI builds it
+  once per run.
 - The cloud runner's tool policy blocks `reflection`, so cloud runs neither
   save nor read memories today.
 - The desktop shows the files as pinned "Session lessons" and "Project
@@ -127,7 +139,7 @@ runtime changes land.
   now on", "always", "in general"); everything tied to one chat stays
   `conversation`, group facts stay `group`, project facts stay `project`. On
   the Mac the global artifact is `reflection-lessons/global/account.md` and
-  the prompt section lists it first. Cloud runs read the owner's global
+  the prompt section shows its memories as the first block. Cloud runs read the owner's global
   memories and render them as the first block of `## Memories`.
 - **Agents avoid duplicates; stores dedup as a safety net.** The `reflection`
   tool description and both prompt sections tell the agent to read the
@@ -255,8 +267,8 @@ The `MemoryClient` interface is the contract for PR 4:
   in, the block mirrors the account settings.
 - `session_bootstrap.rs` and `run.rs` branch on `memory_enabled` as described
   under Decisions. A test asserts the tool is absent from
-  `tool_registry.active_tools()` and the prompt has no "Scoped lesson
-  artifacts" section.
+  `tool_registry.active_tools()` and the prompt has no `## Memories`
+  section.
 - `ReflectionTool::description` and the prompt section gain the sensitive
   categories sentence when `exclude_sensitive` is true.
   `reflection_runtime::build_reflection_runtime` takes a `ReflectionGuards`

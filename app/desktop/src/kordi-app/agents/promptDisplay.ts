@@ -1,6 +1,9 @@
-const SCOPED_LESSON_SECTION_HEADING = '## Scoped lesson artifacts';
+const MEMORY_SECTION_HEADING = '## Memories';
 
 function placeholderScopedLessonLine(line: string) {
+  if (/^\s*-\s*Global scope `[^`]*`:\s*\S+/.test(line)) {
+    return '- Global scope `account`: <global lesson artifact path>';
+  }
   if (/^\s*-\s*Conversation scope `[^`]*`:\s*\S+/.test(line)) {
     return '- Conversation scope `{session_id}`: <conversation lesson artifact path>';
   }
@@ -14,7 +17,7 @@ function placeholderScopedLessonLine(line: string) {
 }
 
 export function promptDisplayText(systemPrompt: string) {
-  if (!systemPrompt.includes(SCOPED_LESSON_SECTION_HEADING)) return systemPrompt;
+  if (!systemPrompt.includes(MEMORY_SECTION_HEADING)) return systemPrompt;
   return systemPrompt
     .split('\n')
     .map(placeholderScopedLessonLine)

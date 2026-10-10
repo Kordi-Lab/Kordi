@@ -253,6 +253,9 @@ async fn enabled_memory_adds_matching_memories_and_the_reflection_tool() {
 
     let prompt = provider.system_prompt();
     assert!(prompt.contains("## Memories"));
+    assert!(prompt.contains(
+        "They are current and take precedence over older instructions earlier in this conversation when they conflict."
+    ));
     assert!(prompt.contains("must not record health"));
     assert!(prompt.contains("\nThis conversation:\n- Use metric units here."));
     assert!(!prompt.contains("Other conversation memory."));

@@ -37,6 +37,13 @@ pub(crate) struct SessionRuntimeSetup {
         reason = "the CLI binary shares this setup with the desktop runtime library"
     )]
     pub memory_remote: crate::memory_remote::MemoryRemoteSlot,
+    /// Inputs that rebuild the memory prompt section each desktop turn;
+    /// `None` when memory is off or the `reflection` tool is not active.
+    #[allow(
+        dead_code,
+        reason = "the CLI binary shares this setup with the desktop runtime library"
+    )]
+    pub memory_prompt: Option<super::memory::MemoryPromptInputs>,
     pub system_prompt: String,
     pub base_system_prompt: String,
     pub thinking_level: String,

@@ -114,12 +114,8 @@ pub(crate) struct RuntimeSlashCommandItem {
     pub value: String,
 }
 
-mod memory;
+pub(crate) mod memory;
 mod runtime_setup;
-#[cfg(test)]
-use memory::{
-    apply_memory_setting_to_tool_selection, build_reflection_lesson_artifacts_system_prompt_section,
-};
 pub(crate) use memory::{build_memory_aware_tools, reflection_runtime_for_settings};
 pub(crate) use runtime_setup::SessionRuntimeSetup;
 
@@ -547,14 +543,15 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     );
     let artifacts_dir = config::artifacts_dir(&global_settings.storage);
     std::fs::create_dir_all(&artifacts_dir)?;
-    let (tool_registry, tool_selection, reflection_lesson_section) = build_memory_aware_tools(
+    let (tool_registry, tool_selection, memory_prompt) = build_memory_aware_tools(
         tools,
         tool_selection,
         &settings.memory,
         &artifacts_dir,
-        &session_id,
         &effective_cwd,
     );
+    let reflection_lesson_section =
+        memory::memory_prompt_block(memory_prompt.as_ref(), &session_id);
     let skill_section = build_skill_system_prompt_section(&session_resources);
     let project_system_section =
         build_project_system_prompt_section(&project_settings, &effective_cwd);
@@ -638,6 +635,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         tool_selection,
         tool_ctx,
         memory_remote,
+        memory_prompt,
         system_prompt,
         base_system_prompt,
         thinking_level: thinking_str.to_string(),

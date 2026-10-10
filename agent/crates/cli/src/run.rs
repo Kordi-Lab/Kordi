@@ -121,15 +121,16 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
     commands.bind_session_context(sibling_conn.clone(), session_id.clone(), None);
     let _ = commands.send_event(&kordi_hooks::Event::SessionStart).await;
     let tool_selection = tool_selection_from_cli_and_settings(&cli, &settings, &provider_name);
-    let (tool_registry, _, reflection_lesson_section) =
-        crate::session_bootstrap::build_memory_aware_tools(
-            tools,
-            tool_selection,
-            &settings.memory,
-            &artifacts_dir,
-            &session_id,
-            &cwd,
-        );
+    let (tool_registry, _, memory_prompt) = crate::session_bootstrap::build_memory_aware_tools(
+        tools,
+        tool_selection,
+        &settings.memory,
+        &artifacts_dir,
+        &cwd,
+    );
+    let reflection_lesson_section = memory_prompt
+        .map(|inputs| inputs.section(&session_id))
+        .unwrap_or_default();
     let skill_section = build_skill_system_prompt_section(&session_resources);
     let system_prompt = format!("{system_prompt}{skill_section}{reflection_lesson_section}");
 

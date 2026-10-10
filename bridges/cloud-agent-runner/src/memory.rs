@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::client::{CloudAgentRun, CloudAgentRunClient, HttpCloudAgentRunClient};
 
-pub const MAX_PROMPT_MEMORIES: usize = 40;
-pub const MAX_PROMPT_MEMORY_CHARS: usize = 8000;
+pub use kordi_tools::reflection_tool::{MAX_PROMPT_MEMORIES, MAX_PROMPT_MEMORY_CHARS};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -261,7 +260,7 @@ pub fn memory_prompt_section(run: &CloudAgentRun, memory: &RunMemory) -> Option<
         "Memories sync with the account."
     };
     let mut section = format!(
-        "## Memories\n{first} After corrections, repeated failures, or outcomes, call `reflection` to save a concise memory. Before saving, check the memories below and skip anything already there or restated; when a preference changes, save the corrected version. Use `global` only for preferences the user wants everywhere (\"from now on\", \"always\"); keep everything else in its conversation or group scope."
+        "## Memories\n{first} They are current and take precedence over older instructions earlier in this conversation when they conflict. After corrections, repeated failures, or outcomes, call `reflection` to save a concise memory. Before saving, check the memories below and skip anything already there or restated; when a preference changes, save the corrected version. Use `global` only for preferences the user wants everywhere (\"from now on\", \"always\"); keep everything else in its conversation or group scope."
     );
     let mut scope_ids = vec![
         format!("global `{GLOBAL_SCOPE_ID}`"),

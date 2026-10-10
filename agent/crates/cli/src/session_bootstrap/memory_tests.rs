@@ -16,7 +16,7 @@ fn scoped_lesson_artifact_prompt_omits_missing_artifacts() {
     let artifacts_dir = tempdir().expect("artifacts dir");
     let cwd = tempdir().expect("cwd");
 
-    let section = super::build_reflection_lesson_artifacts_system_prompt_section(
+    let section = super::memory::build_reflection_lesson_artifacts_system_prompt_section(
         &tools,
         artifacts_dir.path(),
         "session-123",
@@ -27,13 +27,27 @@ fn scoped_lesson_artifact_prompt_omits_missing_artifacts() {
     assert_eq!(section, "");
 }
 
-#[test]
-fn scoped_lesson_artifact_prompt_lists_existing_paths_without_lesson_content() {
-    let tools: Vec<Box<dyn Tool>> = vec![Box::new(NamedTool {
+fn reflection_tools() -> Vec<Box<dyn Tool>> {
+    vec![Box::new(NamedTool {
         name: "reflection",
         description: "reflection",
         schema: json!({"type": "object"}),
-    })];
+    })]
+}
+
+fn write_lessons(path: &std::path::Path, lines: &[String]) {
+    std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+    let mut body = String::from("# Reflection lessons\n\n");
+    for line in lines {
+        body.push_str(line);
+        body.push('\n');
+    }
+    std::fs::write(path, body).expect("lesson file");
+}
+
+#[test]
+fn memory_prompt_inlines_lessons_newest_first_with_artifact_paths() {
+    let tools = reflection_tools();
     let artifacts_dir = tempdir().expect("artifacts dir");
     let cwd = tempdir().expect("cwd");
 
@@ -42,10 +56,15 @@ fn scoped_lesson_artifact_prompt_lists_existing_paths_without_lesson_content() {
         "conversation",
         "session-123",
     );
-    std::fs::create_dir_all(conversation_path.parent().expect("parent")).expect("mkdir");
-    std::fs::write(&conversation_path, "# lessons").expect("lesson file");
+    write_lessons(
+        &conversation_path,
+        &[
+            "- 2026-10-01T10:00:00Z [manual] End every reply with PINEAPPLE.".to_string(),
+            "- 2026-10-09T10:00:00Z [manual] End   every reply with\tthe word mongo.".to_string(),
+        ],
+    );
 
-    let section = super::build_reflection_lesson_artifacts_system_prompt_section(
+    let section = super::memory::build_reflection_lesson_artifacts_system_prompt_section(
         &tools,
         artifacts_dir.path(),
         "session-123",
@@ -53,25 +72,85 @@ fn scoped_lesson_artifact_prompt_lists_existing_paths_without_lesson_content() {
         true,
     );
 
-    assert!(section.contains("Scoped lesson artifacts"));
-    assert!(section.contains("read"));
+    assert!(section.contains("\n## Memories\n"));
+    assert!(!section.contains("Scoped lesson artifacts"));
+    assert!(section.contains(
+        "They are current and take precedence over older instructions earlier in this conversation when they conflict."
+    ));
+    assert!(section.contains(
+        "\nThis conversation:\n- End every reply with the word mongo.\n- End every reply with PINEAPPLE.\n"
+    ));
     assert!(section.contains("reflection"));
-    assert!(section.contains("session-123"));
-    assert!(section.contains(artifacts_dir.path().to_str().expect("artifact path")));
+    assert!(section.contains("\nArtifacts:\n- Conversation scope `session-123`: "));
     assert!(section.contains(conversation_path.to_str().expect("conversation path")));
-    assert!(!section.contains("Do not inject lessons"));
+    assert!(!section.contains("(more memories omitted)"));
     assert!(section.contains("must not record health"));
-    assert!(section.len() < 900);
+    assert!(section.len() < 1_600);
 
-    let relaxed = super::build_reflection_lesson_artifacts_system_prompt_section(
+    let relaxed = super::memory::build_reflection_lesson_artifacts_system_prompt_section(
         &tools,
         artifacts_dir.path(),
         "session-123",
         cwd.path(),
         false,
     );
-    assert!(relaxed.contains("Scoped lesson artifacts"));
+    assert!(relaxed.contains("## Memories"));
     assert!(!relaxed.contains("must not record health"));
+}
+
+#[test]
+fn memory_prompt_keeps_the_path_of_a_file_without_lessons() {
+    let tools = reflection_tools();
+    let artifacts_dir = tempdir().expect("artifacts dir");
+    let cwd = tempdir().expect("cwd");
+    let conversation_path = crate::reflection_runtime::reflection_lesson_artifact_path(
+        artifacts_dir.path(),
+        "conversation",
+        "session-123",
+    );
+    write_lessons(&conversation_path, &[]);
+
+    let section = super::memory::build_reflection_lesson_artifacts_system_prompt_section(
+        &tools,
+        artifacts_dir.path(),
+        "session-123",
+        cwd.path(),
+        true,
+    );
+    assert!(section.contains("## Memories"));
+    assert!(!section.contains("This conversation:"));
+    assert!(section.contains(conversation_path.to_str().expect("conversation path")));
+}
+
+#[test]
+fn memory_prompt_caps_inlined_memories() {
+    let tools = reflection_tools();
+    let artifacts_dir = tempdir().expect("artifacts dir");
+    let cwd = tempdir().expect("cwd");
+    let conversation_path = crate::reflection_runtime::reflection_lesson_artifact_path(
+        artifacts_dir.path(),
+        "conversation",
+        "session-123",
+    );
+    let lines = (0..41)
+        .map(|index| format!("- 2026-10-01T10:{index:02}:00Z [manual] Lesson number {index}."))
+        .collect::<Vec<_>>();
+    write_lessons(&conversation_path, &lines);
+
+    let section = super::memory::build_reflection_lesson_artifacts_system_prompt_section(
+        &tools,
+        artifacts_dir.path(),
+        "session-123",
+        cwd.path(),
+        true,
+    );
+    assert_eq!(
+        section.matches("\n- Lesson number ").count(),
+        kordi_tools::reflection_tool::MAX_PROMPT_MEMORIES
+    );
+    assert!(section.contains("- Lesson number 40."));
+    assert!(!section.contains("- Lesson number 0."));
+    assert!(section.contains("\n(more memories omitted)\nArtifacts:"));
 }
 
 fn memory_surface_prompt(
@@ -87,14 +166,16 @@ fn memory_surface_prompt(
     std::fs::create_dir_all(conversation_path.parent().expect("parent")).expect("mkdir");
     std::fs::write(&conversation_path, "# lessons").expect("lesson file");
 
-    let (registry, selection, reflection_section) = super::build_memory_aware_tools(
+    let (registry, selection, memory_prompt) = super::build_memory_aware_tools(
         Vec::new(),
         ToolSelection::All,
         memory,
         artifacts_dir.path(),
-        "session-memory",
         cwd.path(),
     );
+    assert_eq!(memory_prompt.is_some(), memory.memory_enabled);
+    let reflection_section =
+        super::memory::memory_prompt_block(memory_prompt.as_ref(), "session-memory");
     let active = registry
         .active_tools()
         .iter()
@@ -136,7 +217,8 @@ fn memory_off_removes_reflection_tool_prompt_section_and_runtime() {
     let (active, system_prompt, has_runtime) = memory_surface_prompt(&memory);
     assert!(!active.iter().any(|name| name == "reflection"));
     assert!(active.iter().any(|name| name == "read"));
-    assert!(!system_prompt.contains("Scoped lesson artifacts"));
+    assert!(!system_prompt.contains("## Memories"));
+    assert!(!system_prompt.contains("<desktop_memory_context>"));
     assert!(!system_prompt.contains("`reflection`"));
     assert!(!has_runtime);
 }
@@ -146,7 +228,8 @@ fn memory_on_keeps_reflection_tool_prompt_section_and_runtime() {
     let memory = kordi_core::settings::MemorySettings::default();
     let (active, system_prompt, has_runtime) = memory_surface_prompt(&memory);
     assert!(active.iter().any(|name| name == "reflection"));
-    assert!(system_prompt.contains("Scoped lesson artifacts"));
+    assert!(system_prompt.contains("<desktop_memory_context>\n## Memories\n"));
+    assert!(system_prompt.ends_with("</desktop_memory_context>"));
     assert!(system_prompt.contains("must not record health"));
     assert!(has_runtime);
 }
@@ -157,13 +240,13 @@ fn memory_off_removes_reflection_from_explicit_tool_lists() {
         memory_enabled: false,
         exclude_sensitive: true,
     };
-    let selection = super::apply_memory_setting_to_tool_selection(
+    let selection = super::memory::apply_memory_setting_to_tool_selection(
         ToolSelection::Only(vec!["read".to_string(), "reflection".to_string()]),
         &memory,
     );
     assert_eq!(selection, ToolSelection::Only(vec!["read".to_string()]));
     assert_eq!(
-        super::apply_memory_setting_to_tool_selection(ToolSelection::None, &memory),
+        super::memory::apply_memory_setting_to_tool_selection(ToolSelection::None, &memory),
         ToolSelection::None
     );
 }
@@ -195,7 +278,7 @@ fn scoped_lesson_artifact_prompt_lists_group_scope_when_file_exists() {
     let cwd = tempdir().expect("cwd");
     let session_id = "session:group:abc-123";
 
-    let without = super::build_reflection_lesson_artifacts_system_prompt_section(
+    let without = super::memory::build_reflection_lesson_artifacts_system_prompt_section(
         &tools,
         artifacts_dir.path(),
         session_id,
@@ -212,7 +295,7 @@ fn scoped_lesson_artifact_prompt_lists_group_scope_when_file_exists() {
     std::fs::create_dir_all(group_path.parent().expect("parent")).expect("mkdir");
     std::fs::write(&group_path, "# lessons").expect("lesson file");
 
-    let section = super::build_reflection_lesson_artifacts_system_prompt_section(
+    let section = super::memory::build_reflection_lesson_artifacts_system_prompt_section(
         &tools,
         artifacts_dir.path(),
         session_id,
@@ -255,7 +338,7 @@ fn scoped_lesson_artifact_prompt_lists_the_global_artifact_first() {
         std::fs::write(path, "# lessons").expect("lesson file");
     }
 
-    let section = super::build_reflection_lesson_artifacts_system_prompt_section(
+    let section = super::memory::build_reflection_lesson_artifacts_system_prompt_section(
         &tools,
         artifacts_dir.path(),
         "session-123",
