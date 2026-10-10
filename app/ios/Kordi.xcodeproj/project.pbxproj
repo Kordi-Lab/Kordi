@@ -114,8 +114,8 @@
 		6F2D0803E1F21DA091A51FF8 /* ComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12ADFCB554A69C285C7F753 /* ComposerView.swift */; };
 		703607EC961B76A19B713738 /* ProviderLoginTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60BE37790E3215B906FF3CF3 /* ProviderLoginTests.swift */; };
 		715CD4AE535A1B1B2B6D4973 /* CloudWireCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D60F97D3355040D5CEBF231 /* CloudWireCache.swift */; };
-		72DEE2500485956AAB9B2458 /* CloudConnectorsAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E24067FAE92D2E21D10ED67 /* CloudConnectorsAPI.swift */; };
 		719C3D9F59C2EFD4B35654FC /* CloudMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7028359C98849CFD0A5FCE /* CloudMemory.swift */; };
+		72DEE2500485956AAB9B2458 /* CloudConnectorsAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E24067FAE92D2E21D10ED67 /* CloudConnectorsAPI.swift */; };
 		735940ACD507FDA270A98C8A /* SignupAvatarRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D8174EC8BFB7A84E06048DB /* SignupAvatarRenderer.swift */; };
 		741F7D673A152CD924795AEF /* CloudOAuthSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151CB7A492FFA22F02806ED0 /* CloudOAuthSession.swift */; };
 		7450B6513CBD85BE88B9D802 /* GroupAgentTargetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FF8982F88272CFCECE0D898 /* GroupAgentTargetTests.swift */; };
@@ -221,8 +221,8 @@
 		D799149952AEEC85476E82B6 /* LivePhotoAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C2D1BC4DA20D76871039412 /* LivePhotoAttachment.swift */; };
 		D8DBAE5BA9E4237E34169C64 /* GroupManagementSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B7E8E86F8830C031FE1EC87 /* GroupManagementSheet.swift */; };
 		D9428E4F1B6772EBB490EFC9 /* CloudMessageCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B208AC082D8D2E3AC98654A /* CloudMessageCodec.swift */; };
-		DA71358901C6D380DA59B3A7 /* CloudConnectorsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4D3A905ED69987690821A5 /* CloudConnectorsClient.swift */; };
 		D99E4D2028C07C78214CC613 /* SessionMemoryPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C38BD82CFE66D7F95C33CCC /* SessionMemoryPage.swift */; };
+		DA71358901C6D380DA59B3A7 /* CloudConnectorsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4D3A905ED69987690821A5 /* CloudConnectorsClient.swift */; };
 		DAF7778C91E57F2408A19698 /* AccountSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D103773112752246FE1B75D5 /* AccountSheet.swift */; };
 		DBF208CACDCDD3766655FEF7 /* KordiMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEB09654088CAEF319E56FEC /* KordiMark.swift */; };
 		DEAE54A65AF63D57C0DFF6CA /* CloudGroupMessageCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = F07103152F3015F0B24FEE45 /* CloudGroupMessageCodec.swift */; };
