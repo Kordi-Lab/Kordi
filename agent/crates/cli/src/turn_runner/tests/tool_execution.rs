@@ -245,9 +245,8 @@ async fn run_turn_preserves_reflection_runtime_for_tool_execution() {
     let reflection_invocations = Arc::new(AtomicUsize::new(0));
     let reflection_invocations_for_runtime = reflection_invocations.clone();
     let save_lesson: kordi_tools::SaveReflectionLessonFn = Arc::new(move |request| {
-        let reflection_invocations_for_runtime = reflection_invocations_for_runtime.clone();
+        reflection_invocations_for_runtime.fetch_add(1, Ordering::SeqCst);
         Box::pin(async move {
-            reflection_invocations_for_runtime.fetch_add(1, Ordering::SeqCst);
             assert_eq!(request.scope, "conversation");
             assert_eq!(request.scope_id, "session-1");
             assert_eq!(request.source, "manual");
