@@ -170,11 +170,6 @@ enum MemoryPresentation {
         "Saved memories · \(count)"
     }
 
-    static func replayRunsLabel(_ count: Int) -> String {
-        if count <= 0 { return "Nothing stored" }
-        return count == 1 ? "1 run" : "\(count) runs"
-    }
-
     /// Prefers the account email, then the Kordi ID.
     static func accountLabel(email: String?, kordiId: String?) -> String? {
         email?.nonEmptyMemoryText ?? kordiId?.nonEmptyMemoryText

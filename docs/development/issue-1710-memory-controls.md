@@ -9,10 +9,10 @@ or switch off either of them. This plan adds one Memory section to the desktop
 account settings and a matching iPhone screen, moves memories to the signed-in
 account so every device and every cloud run reads the same memories, enforces
 the memory switch and the sensitive-content rule in the harness on the Mac and
-in the cloud runner, and gives the account a route that clears its server-side
-replay state. The desktop settings surface ships first behind a preview flag
-so the product shape can be reviewed before the storage and runtime changes
-land.
+in the cloud runner, and makes "Forget everything" also clear the account's
+server-side replay state. The desktop settings surface ships first behind a
+preview flag so the product shape can be reviewed before the storage and
+runtime changes land.
 
 | PR | Scope | Depends on |
 |---|---|---|
@@ -74,7 +74,8 @@ land.
   - `POST /v1/cloud/memory`: save one memory.
   - `PATCH /v1/cloud/memory/{memory_id}`: edit the text.
   - `DELETE /v1/cloud/memory/{memory_id}`: delete one memory.
-  - `DELETE /v1/cloud/memory`: forget all, returning `{ "archived": n }`.
+  - `DELETE /v1/cloud/memory`: forget all. It also deletes the account's
+    replay state and returns `{ "archived": n, "clearedRuns": m }`.
   - `GET` and `PUT /v1/cloud/memory/settings`: `{ memoryEnabled, excludeSensitive }`.
 
   Every write is audited through `write_audit`. The capabilities response
@@ -119,18 +120,18 @@ land.
   Mac checks against the opted-out texts it already receives; the server
   checks against its own copy of the scope's messages.
 - **iPhone gets the same Memory screen.** It uses the same routes to read,
-  edit, delete, and forget memories, to flip both switches, and to clear
-  replay state.
+  edit, delete, and forget memories, and to flip both switches.
 - **Memories are in the deletion register.** They are recorded in the
   register from #1685 and removed when the account is deleted.
-- **Replay state is cleared, not shown.** The server route deletes every
-  `cloud_agent_omp_state` row with the caller's `owner_account_id`, writes one
-  `cloud_audit_events` row with the deleted count, and returns the count. The
-  settings page describes the state in one sentence and offers the clear
-  action. Nothing in the state is rendered to the person because it is a
-  provider message log, not content the person wrote.
+- **Replay state is not a user control.** It is a provider message log, not
+  content the person wrote, so the settings pages do not show it. "Forget
+  everything" deletes every `cloud_agent_omp_state` row with the caller's
+  `owner_account_id` in the same request and writes both the
+  `memory_forget_all` and `omp_state_cleared` audit events.
+  `GET` and `DELETE /v1/cloud/agent-runs/omp-state` remain for support and
+  account deletion flows; clients do not call them.
 - **Capability gating, not version sniffing.** Desktop and iPhone show the
-  Memory section and the Replay state section only when `memoryVersion` is
+  Memory section only when `memoryVersion` is
   present in `AuthCapabilitiesResponse`
   (`bridges/cloud-server/src/auth/routes/types.rs`), following #1686.
 - **Preview flag until the real client exists.** PR 0 renders the tab only
@@ -169,12 +170,10 @@ Panel, top to bottom:
    "From an outcome", "Added by hand"), the conversation or project label, and
    the date. Edit opens an inline editor with a 500 character counter. Delete
    asks once. "Forget everything" asks once and states the count and that the
-   memories are deleted from the account and every signed-in device. When
-   memory is off, a note says existing memories are kept but not read.
-3. **Replay state.** Shown only when the client reports it available. One
-   sentence of description from the issue, the run count, and "Clear replay
-   state" with a confirmation.
-4. **On this Mac only.** One read-only row naming bridge conversation memory
+   memories are deleted from the account and every signed-in device. The
+   server also clears the account's replay state. When memory is off, a note
+   says existing memories are kept but not read.
+3. **On this Mac only.** One read-only row naming bridge conversation memory
    and where it is managed.
 
 The `MemoryClient` interface is the contract for PR 4:
@@ -188,8 +187,6 @@ The `MemoryClient` interface is the contract for PR 4:
 | `archiveLesson(id)` | `DELETE /v1/cloud/memory/{memory_id}` |
 | `forgetAll()` | `DELETE /v1/cloud/memory` |
 | `syncState()` | signed-in account label, and the time of the last successful list or write |
-| `replayState()` | capabilities fetch plus `GET` count, or `available: false` |
-| `clearReplayState()` | `DELETE /v1/cloud/agent-runs/omp-state` (PR 5) |
 
 ## PR 1: server memory store
 
@@ -253,14 +250,15 @@ The `MemoryClient` interface is the contract for PR 4:
   `memoryVersion`. Signed out, `settings()` and `updateSettings()` go through
   a desktop command that reads and writes the global settings file.
 - The iPhone Memory screen, reachable from account settings, with the same
-  sections and copy: read, edit, delete, forget, both switches, and replay
-  state.
+  sections and copy: read, edit, delete, forget, and both switches.
 - Desktop and iPhone tests for capability gating and the sync row.
 
 ## PR 5: replay state and deletion register
 
 - `DELETE /v1/cloud/agent-runs/omp-state` for the signed-in account, returning
-  `{ "deleted": n }`, audited through `write_audit`. Database-backed test.
+  `{ "deleted": n }`, audited through `write_audit`, for support and account
+  deletion flows. `DELETE /v1/cloud/memory` runs the same deletion.
+  Database-backed tests for both.
 - Deletion register entries from #1685 for `cloud_account_memories` and
   `cloud_agent_omp_state`, so both are removed when the account is deleted.
 
@@ -282,7 +280,7 @@ The `MemoryClient` interface is the contract for PR 4:
 | Sensitive keyword rejected on both paths | PR 1 server guard test, PR 3 Mac guard test |
 | Three-line fixture uploads as three rows | PR 2 upload test |
 | Same memories on every device and cloud run | PR 2 write-through test, PR 3 runner test |
-| Clear replay state deletes rows and audits; older servers hide the control | PR 5 route test, PR 4 capability test |
+| Forget everything also deletes replay state rows and audits both events | PR 5 route tests |
 | Memories and replay state removed on account deletion | PR 5 register test |
 | Copy passes `pnpm check:english` | every PR |
 
@@ -299,7 +297,5 @@ and automatic rewriting of memories when a quoted message is later deleted.
 2. The keyword guard will have false positives. Is an error with a category
    name the right failure, or should the memory be saved with the matching
    span removed?
-3. Replay state shows a run count only. Is a per-conversation list worth the
-   extra route, given the state is a provider message log?
-4. Should a memory saved while signed out be uploaded automatically at
+3. Should a memory saved while signed out be uploaded automatically at
    sign-in, or should the person confirm the upload once?

@@ -194,8 +194,7 @@ test('panel lists only personal memories and points to group info for the rest',
     assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 6);
     assert.equal(host.querySelector('[data-memory-lesson="lesson-7"]'), null);
     assert.match(host.textContent ?? '', /Group memories are managed from each group's info page\./);
-    assert.match(host.textContent ?? '', /Replay state for this account/);
-    assert.match(host.textContent ?? '', /6 runs/);
+    assert.doesNotMatch(host.textContent ?? '', /[Rr]eplay/);
     assert.match(host.textContent ?? '', /Bridge conversation memory/);
   });
 });
@@ -280,31 +279,11 @@ test('forget everything leaves the empty state', async () => {
   });
 });
 
-test('clearing replay state confirms and reports the count', async () => {
-  await withPanel(createPreviewMemoryClient({ latencyMs: 0 }), async (host, window) => {
-    await click(buttonByText(host, 'Clear replay state'), window);
-    assert.match(document.body.textContent ?? '', /Clear replay state\?/);
-    const dialog = document.body.querySelector('[role="dialog"], [role="alertdialog"]');
-    assert.ok(dialog);
-    await click(buttonByText(dialog, 'Clear replay state'), window);
-    assert.match(host.textContent ?? '', /Nothing stored/);
-    assert.match(host.textContent ?? '', /Cleared 6 replays\./);
-    assert.equal(buttonByText(host, 'Clear replay state')?.disabled, true);
-  });
-});
-
 test('sync status names the account', async () => {
   await withPanel(createPreviewMemoryClient({ latencyMs: 0 }), async (host) => {
     assert.match(host.textContent ?? '', /Synced with taylor@memory\.example/);
     assert.match(host.textContent ?? '', /2 minutes ago/);
     assert.doesNotMatch(host.textContent ?? '', /Kordi saves short memories/);
-  });
-});
-
-test('replay state is hidden when the server does not offer it', async () => {
-  await withPanel(createPreviewMemoryClient({ latencyMs: 0, replayAvailable: false }), async (host) => {
-    assert.match(host.textContent ?? '', /Saved memories · 6/);
-    assert.doesNotMatch(host.textContent ?? '', /Replay state/);
   });
 });
 

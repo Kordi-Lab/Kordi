@@ -111,19 +111,31 @@ pub(super) async fn forget_all_memories(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Response {
-    match memory_store::archive_all(state.db_pool(), &session.account_id).await {
-        Ok(archived) => {
-            audit(
-                &session,
-                &state,
-                "memory_forget_all",
-                serde_json::json!({ "archived": archived }),
-            )
-            .await;
-            Json(serde_json::json!({ "archived": archived })).into_response()
-        }
-        Err(error) => error.into_response(),
-    }
+    let archived = match memory_store::archive_all(state.db_pool(), &session.account_id).await {
+        Ok(archived) => archived,
+        Err(error) => return error.into_response(),
+    };
+    audit(
+        &session,
+        &state,
+        "memory_forget_all",
+        serde_json::json!({ "archived": archived }),
+    )
+    .await;
+    // Forget everything also removes the account's private run replay state.
+    let cleared_runs =
+        match memory_store::clear_omp_state(state.db_pool(), &session.account_id).await {
+            Ok(deleted) => deleted,
+            Err(error) => return error.into_response(),
+        };
+    audit(
+        &session,
+        &state,
+        "omp_state_cleared",
+        serde_json::json!({ "deleted": cleared_runs }),
+    )
+    .await;
+    Json(serde_json::json!({ "archived": archived, "clearedRuns": cleared_runs })).into_response()
 }
 
 pub(super) async fn get_memory_settings(

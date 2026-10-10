@@ -95,9 +95,6 @@ final class MemoryPresentationTests: XCTestCase {
             MemoryPresentation.forgetConsequences(count: 7),
             "This deletes 7 memories from your account and every signed-in device. It cannot be undone."
         )
-        XCTAssertEqual(MemoryPresentation.replayRunsLabel(0), "Nothing stored")
-        XCTAssertEqual(MemoryPresentation.replayRunsLabel(1), "1 run")
-        XCTAssertEqual(MemoryPresentation.replayRunsLabel(6), "6 runs")
     }
 
     func testSyncCaptionVariants() {
@@ -157,7 +154,6 @@ final class MemoryPresentationTests: XCTestCase {
         XCTAssertEqual(model.groups.map(\.label), ["Conversations", "Projects"])
         let previewGroup = groupConversation(sessionId: "session:group:mobile", groupSpaceId: "session:group:mobile")
         XCTAssertEqual(model.memories(forGroup: MemoryPresentation.groupMemoryScopeIds(for: previewGroup)).map(\.memoryId), ["lesson-7"])
-        XCTAssertEqual(model.replayRunCount, 6)
         let rejected = await model.save(memoryId: "lesson-1", draft: String(repeating: "a", count: 501))
         XCTAssertEqual(rejected, "Memories are 500 characters or fewer.")
         let saved = await model.save(memoryId: "lesson-1", draft: " Short  headlines. ")
@@ -165,8 +161,6 @@ final class MemoryPresentationTests: XCTestCase {
         XCTAssertEqual(model.memories.first { $0.memoryId == "lesson-1" }?.text, "Short headlines.")
         await model.forgetAll()
         XCTAssertTrue(model.memories.isEmpty)
-        await model.clearReplayState()
-        XCTAssertEqual(model.replayRunCount, 0)
     }
 }
 

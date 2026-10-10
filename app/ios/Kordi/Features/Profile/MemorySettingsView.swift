@@ -4,7 +4,6 @@ import SwiftUI
 struct MemorySettingsView: View {
     @StateObject private var model: MemorySettingsModel
     @State private var confirmsForget = false
-    @State private var confirmsReplayClear = false
 
     init(service: any MemoryService, accountLabel: String?) {
         _model = StateObject(wrappedValue: MemorySettingsModel(service: service, accountLabel: accountLabel))
@@ -21,7 +20,6 @@ struct MemorySettingsView: View {
                     memorySection(settings)
                     SettingsDivider()
                     savedMemoriesSection(settings)
-                    replaySection
                 } else if model.isLoading || model.errorMessage == nil {
                     HStack(spacing: 10) {
                         ProgressView()
@@ -50,14 +48,6 @@ struct MemorySettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(MemoryPresentation.forgetConsequences(count: model.memories.count))
-        }
-        .alert("Clear replay state?", isPresented: $confirmsReplayClear) {
-            Button("Clear replay state", role: .destructive) {
-                Task { await model.clearReplayState() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Follow-ups start from the saved conversation instead of the private replay. Nothing else is deleted.")
         }
     }
 
@@ -155,39 +145,5 @@ struct MemorySettingsView: View {
             .accessibilityIdentifier("memory-forget-everything")
         }
         SettingsCaption("Group memories are managed from each group's info page.")
-    }
-
-    @ViewBuilder
-    private var replaySection: some View {
-        if let runCount = model.replayRunCount {
-            SettingsDivider()
-            SettingsSectionTitle("Replay state")
-            SettingsCaption("Kordi keeps a private replay of each run so follow-ups can continue where they stopped. It is discarded when a message in it is deleted or when a member turns off AI use.")
-            CompactSettingsLabel(
-                title: "Replay state for this account",
-                systemImage: "clock.arrow.circlepath",
-                value: MemoryPresentation.replayRunsLabel(runCount)
-            )
-            .frame(minHeight: 48)
-
-            let canClear = runCount > 0 && !model.isMutating
-            Button {
-                confirmsReplayClear = true
-            } label: {
-                HStack(spacing: 10) {
-                    CompactSettingsLabel(
-                        title: "Clear replay state",
-                        systemImage: "xmark.circle",
-                        tint: canClear ? KordiTheme.signalBlue : Color.secondary
-                    )
-                    Spacer(minLength: 0)
-                }
-                .frame(minHeight: 48)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!canClear)
-            .accessibilityIdentifier("memory-clear-replay")
-        }
     }
 }

@@ -327,20 +327,6 @@ actor CloudAPIClient {
         )
     }
 
-    func replayState(token: String) async throws -> CloudReplayStateResponse {
-        try await send(path: "/v1/cloud/agent-runs/omp-state", method: "GET", token: token, fallback: "Could not load replay state.")
-    }
-
-    func clearReplayState(token: String) async throws -> Int {
-        let response: CloudReplayStateClearResponse = try await send(
-            path: "/v1/cloud/agent-runs/omp-state",
-            method: "DELETE",
-            token: token,
-            fallback: "Could not clear replay state. Try again."
-        )
-        return response.deleted
-    }
-
     func listDevices(token: String) async throws -> [CloudDeviceAuthorization] {
         let device = try await deviceRegistration()
         try await sendWithoutResponse(

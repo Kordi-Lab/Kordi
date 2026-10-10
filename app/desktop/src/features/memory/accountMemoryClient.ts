@@ -24,7 +24,7 @@ export type AccountMemoryAuthClient = Pick<CloudAuthClient, 'request' | 'me'>;
 /** The account memory routes the client calls. */
 export type AccountMemoryRoutes = Pick<
   CloudMemoryClient,
-  'list' | 'update' | 'remove' | 'forgetAll' | 'settings' | 'updateSettings' | 'replayState' | 'clearReplayState'
+  'list' | 'update' | 'remove' | 'forgetAll' | 'settings' | 'updateSettings'
 >;
 
 /** Memory commands of the desktop shell. They only exist in the native shell. */
@@ -222,22 +222,6 @@ export function createAccountMemoryClient(options: AccountMemoryClientOptions = 
       markSynced(stored);
       syncDesktop();
       return { archived: result.archived };
-    },
-    async replayState() {
-      const stored = await session();
-      if (!stored) return { available: false, runCount: 0 };
-      try {
-        const state = await memory().replayState(stored.token);
-        return { available: true, runCount: state.runCount };
-      } catch {
-        // Older servers do not offer replay state, so the section stays hidden.
-        return { available: false, runCount: 0 };
-      }
-    },
-    async clearReplayState() {
-      const stored = await requireSession();
-      const result = await memory().clearReplayState(stored.token);
-      return { deleted: result.deleted };
     },
     async syncState() {
       // The page loads the list and the sync row together, so wait for the list.

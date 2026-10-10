@@ -9,8 +9,6 @@ protocol MemoryService: AnyObject {
     func delete(memoryId: String) async throws
     func forgetAll() async throws -> Int
     func updateSettings(memoryEnabled: Bool?, excludeSensitive: Bool?) async throws -> CloudMemorySettings
-    func replayRunCount() async throws -> Int
-    func clearReplayState() async throws -> Int
 }
 
 @MainActor
@@ -49,14 +47,6 @@ final class CloudMemoryService: MemoryService {
     func updateSettings(memoryEnabled: Bool?, excludeSensitive: Bool?) async throws -> CloudMemorySettings {
         try await api.updateMemorySettings(token: token(), memoryEnabled: memoryEnabled, excludeSensitive: excludeSensitive)
     }
-
-    func replayRunCount() async throws -> Int {
-        try await api.replayState(token: token()).runCount
-    }
-
-    func clearReplayState() async throws -> Int {
-        try await api.clearReplayState(token: token())
-    }
 }
 
 /// Offline sample memories for `--preview-data`. They match the desktop
@@ -65,7 +55,6 @@ final class CloudMemoryService: MemoryService {
 final class PreviewMemoryService: MemoryService {
     private var memories: [CloudMemory]
     private var settings = CloudMemorySettings(memoryEnabled: true, excludeSensitive: true)
-    private var runCount = 6
     private let latency: Duration
 
     init(now: Date = Date(), latency: Duration = .milliseconds(300)) {
@@ -146,25 +135,12 @@ final class PreviewMemoryService: MemoryService {
         if let excludeSensitive { settings.excludeSensitive = excludeSensitive }
         return settings
     }
-
-    func replayRunCount() async throws -> Int {
-        try await wait()
-        return runCount
-    }
-
-    func clearReplayState() async throws -> Int {
-        try await wait()
-        defer { runCount = 0 }
-        return runCount
-    }
 }
 
 @MainActor
 final class MemorySettingsModel: ObservableObject {
     @Published private(set) var settings: CloudMemorySettings?
     @Published private(set) var memories: [CloudMemory] = []
-    /// Nil hides the Replay state section, for example when the request fails.
-    @Published private(set) var replayRunCount: Int?
     @Published private(set) var lastSyncedAt: Date?
     @Published private(set) var isLoading = false
     @Published private(set) var isUpdatingSettings = false
@@ -206,8 +182,6 @@ final class MemorySettingsModel: ObservableObject {
         } catch {
             report(error, fallback: "Could not load memory settings.")
         }
-        // A failed replay lookup hides the section instead of blocking the page.
-        replayRunCount = try? await service.replayRunCount()
     }
 
     func setMemoryEnabled(_ enabled: Bool) async {
@@ -260,13 +234,6 @@ final class MemorySettingsModel: ObservableObject {
             _ = try await self.service.forgetAll()
             self.memories = []
             self.lastSyncedAt = Date()
-        }
-    }
-
-    func clearReplayState() async {
-        await mutate(fallback: "Could not clear replay state. Try again.") {
-            _ = try await self.service.clearReplayState()
-            self.replayRunCount = 0
         }
     }
 

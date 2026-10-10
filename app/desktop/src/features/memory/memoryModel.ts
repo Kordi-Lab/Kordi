@@ -14,8 +14,6 @@ export type MemoryLesson = {
 
 export type MemorySettings = { lessonsEnabled: boolean; excludeSensitive: boolean };
 
-export type MemoryReplayState = { available: boolean; runCount: number };
-
 export const LESSON_MAX_CHARS = 500;
 
 const scopeOrder: MemoryLessonScope[] = ['conversation', 'project', 'group'];

@@ -16,7 +16,6 @@ export type CloudMemorySettings = { memoryEnabled: boolean; excludeSensitive: bo
 export type CloudMemorySettingsPatch = Partial<CloudMemorySettings>;
 
 export type CloudMemoryListResponse = { memories: CloudMemory[]; settings: CloudMemorySettings };
-export type CloudMemoryReplayState = { runCount: number };
 
 type CloudMemoryRequest = <TResponse>(
   path: string,
@@ -75,22 +74,6 @@ export class CloudMemoryClient {
       '/v1/cloud/memory/settings',
       authorized(token, 'PUT', patch),
       'Could not save memory settings.',
-    );
-  }
-
-  replayState(token: string): Promise<CloudMemoryReplayState> {
-    return this.request<CloudMemoryReplayState>(
-      '/v1/cloud/agent-runs/omp-state',
-      authorized(token, 'GET'),
-      'Could not load replay state.',
-    );
-  }
-
-  clearReplayState(token: string): Promise<{ deleted: number }> {
-    return this.request<{ deleted: number }>(
-      '/v1/cloud/agent-runs/omp-state',
-      authorized(token, 'DELETE'),
-      'Could not clear replay state.',
     );
   }
 }

@@ -2,7 +2,6 @@ import { createAccountMemoryClient } from './accountMemoryClient';
 import {
   validateLessonText,
   type MemoryLesson,
-  type MemoryReplayState,
   type MemorySettings,
   type MemorySyncState,
 } from './memoryModel';
@@ -14,9 +13,6 @@ export type MemoryClient = {
   updateLesson(lessonId: string, text: string): Promise<MemoryLesson>;
   archiveLesson(lessonId: string): Promise<void>;
   forgetAll(): Promise<{ archived: number }>;
-  /** `available: false` means the server does not offer replay state, so the section is hidden. */
-  replayState(): Promise<MemoryReplayState>;
-  clearReplayState(): Promise<{ deleted: number }>;
   /** Which account the memories sync with and when they were last synced. */
   syncState(): Promise<MemorySyncState>;
 };
@@ -36,8 +32,6 @@ export type PreviewMemoryClientOptions = {
   /** Simulated network latency in milliseconds. */
   latencyMs?: number;
   now?: () => number;
-  /** False simulates a server without the replay state route. */
-  replayAvailable?: boolean;
   /** The account the sample memories appear to sync with. */
   accountLabel?: string;
 };
@@ -49,7 +43,6 @@ export type PreviewMemoryClientOptions = {
 export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = {}): MemoryClient {
   const latencyMs = options.latencyMs ?? 400;
   const now = options.now ?? Date.now;
-  const replayAvailable = options.replayAvailable ?? true;
   const seededAt = now();
   const accountLabel = options.accountLabel ?? 'taylor@memory.example';
   let lastSyncedAt: string | null = null;
@@ -69,7 +62,6 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
   };
 
   let settings: MemorySettings = { lessonsEnabled: true, excludeSensitive: true };
-  let runCount = 6;
   let lessons: MemoryLesson[] = [
     lesson('lesson-1', 'conversation', 'conv-launch-copy', 'Launch copy with Priya', 'user_correction',
       'Keep launch headlines under eight words and write them in sentence case, not title case.', 2 * HOUR),
@@ -127,16 +119,6 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
       lessons = [];
       markSynced();
       return { archived };
-    },
-    async replayState() {
-      await wait();
-      return replayAvailable ? { available: true, runCount } : { available: false, runCount: 0 };
-    },
-    async clearReplayState() {
-      await wait();
-      const deleted = runCount;
-      runCount = 0;
-      return { deleted };
     },
     async syncState() {
       await wait();

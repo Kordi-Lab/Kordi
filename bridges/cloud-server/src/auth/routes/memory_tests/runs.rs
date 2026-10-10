@@ -2,14 +2,8 @@
 
 use super::*;
 
-#[tokio::test]
-async fn omp_state_count_and_clear() {
-    let Some(fx) = fixture().await else { return };
-    let (status, body) = fx.send("GET", "/v1/cloud/agent-runs/omp-state", None).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body, json!({ "runCount": 0 }));
-
-    for _ in 0..2 {
+async fn insert_omp_state(fx: &Fixture, runs: usize) {
+    for _ in 0..runs {
         let run_id = fx.leased_run("omp-state-runner").await;
         query(
             "INSERT INTO cloud_agent_omp_state \
@@ -25,6 +19,16 @@ async fn omp_state_count_and_clear() {
         .await
         .unwrap();
     }
+}
+
+#[tokio::test]
+async fn omp_state_count_and_clear() {
+    let Some(fx) = fixture().await else { return };
+    let (status, body) = fx.send("GET", "/v1/cloud/agent-runs/omp-state", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, json!({ "runCount": 0 }));
+
+    insert_omp_state(&fx, 2).await;
     let (_, body) = fx.send("GET", "/v1/cloud/agent-runs/omp-state", None).await;
     assert_eq!(body, json!({ "runCount": 2 }));
     let (status, body) = fx
@@ -37,6 +41,32 @@ async fn omp_state_count_and_clear() {
     assert_eq!(
         fx.audit_metadata("omp_state_cleared").await,
         vec![json!({ "deleted": 2 })]
+    );
+}
+
+#[tokio::test]
+async fn forget_all_also_clears_omp_state() {
+    let Some(fx) = fixture().await else { return };
+    fx.send(
+        "POST",
+        "/v1/cloud/memory",
+        Some(memory_body("Use the staging bucket")),
+    )
+    .await;
+    insert_omp_state(&fx, 3).await;
+
+    let (status, body) = fx.send("DELETE", "/v1/cloud/memory", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, json!({ "archived": 1, "clearedRuns": 3 }));
+    let (_, body) = fx.send("GET", "/v1/cloud/agent-runs/omp-state", None).await;
+    assert_eq!(body, json!({ "runCount": 0 }));
+    assert_eq!(
+        fx.audit_metadata("memory_forget_all").await,
+        vec![json!({ "archived": 1 })]
+    );
+    assert_eq!(
+        fx.audit_metadata("omp_state_cleared").await,
+        vec![json!({ "deleted": 3 })]
     );
 }
 

@@ -75,14 +75,6 @@ function fakeAuth(overrides: Partial<FakeAuth> = {}) {
       settings = { ...settings, ...patch };
       return settings;
     },
-    async replayState(token) {
-      calls.push(['memoryReplayState', token]);
-      return { runCount: 4 };
-    },
-    async clearReplayState(token) {
-      calls.push(['clearMemoryReplayState', token]);
-      return { deleted: 4 };
-    },
     async me(token) {
       calls.push(['me', token]);
       return { accountId: 'acct-1', primaryEmail: 'taylor@memory.example', displayName: 'Taylor', kordiId: '517309264' } as CloudAccount;
@@ -209,19 +201,6 @@ test('a server rejection reaches the panel as the error message', async () => {
   assert.equal((await client.syncState()).lastSyncedAt, null);
 });
 
-test('replay state hides on older servers and clears on newer ones', async () => {
-  const newer = createAccountMemoryClient({ ...wire(fakeAuth().client), loadSession: async () => session, desktop: fakeDesktop().desktop });
-  assert.deepEqual(await newer.replayState(), { available: true, runCount: 4 });
-  assert.deepEqual(await newer.clearReplayState(), { deleted: 4 });
-
-  const older = createAccountMemoryClient({
-    ...wire(fakeAuth({ async replayState() { throw new CloudAuthError('unknown', 'Not found.', 404); } }).client),
-    loadSession: async () => session,
-    desktop: fakeDesktop().desktop,
-  });
-  assert.deepEqual(await older.replayState(), { available: false, runCount: 0 });
-});
-
 test('signed out, the list and settings come from this Mac', async () => {
   const auth = fakeAuth();
   const native = fakeDesktop(true, [{
@@ -250,7 +229,6 @@ test('signed out, the list and settings come from this Mac', async () => {
   assert.deepEqual(await client.settings(), { lessonsEnabled: true, excludeSensitive: false });
   assert.deepEqual(await client.updateSettings({ excludeSensitive: true }), { lessonsEnabled: true, excludeSensitive: true });
   assert.deepEqual(await client.syncState(), { accountLabel: '', lastSyncedAt: null });
-  assert.deepEqual(await client.replayState(), { available: false, runCount: 0 });
   assert.deepEqual(auth.calls, []);
   assert.deepEqual(native.calls.map(([name]) => name), ['listLocal', 'settings', 'updateSettings']);
 });
@@ -299,9 +277,6 @@ test('the auth client calls the memory routes with the session token', async () 
     if (url.pathname === '/v1/cloud/memory' && init?.method === 'DELETE') return json(200, { archived: 2 });
     if (url.pathname === '/v1/cloud/memory') return json(200, { memories: [], settings: { memoryEnabled: true, excludeSensitive: true } });
     if (url.pathname === '/v1/cloud/memory/settings') return json(200, { memoryEnabled: false, excludeSensitive: true });
-    if (url.pathname === '/v1/cloud/agent-runs/omp-state') {
-      return init?.method === 'DELETE' ? json(200, { deleted: 5 }) : json(200, { runCount: 5 });
-    }
     return json(404, { errorCode: 'memory_not_found', message: 'Not found.' });
   };
   const auth = new CloudAuthClient({ baseUrl: 'https://api.memory.example', fetchImpl });
@@ -312,8 +287,6 @@ test('the auth client calls the memory routes with the session token', async () 
   assert.deepEqual(await client.forgetAll('tok'), { archived: 2 });
   assert.deepEqual(await client.settings('tok'), { memoryEnabled: false, excludeSensitive: true });
   await client.updateSettings('tok', { memoryEnabled: false });
-  assert.deepEqual(await client.replayState('tok'), { runCount: 5 });
-  assert.deepEqual(await client.clearReplayState('tok'), { deleted: 5 });
   assert.deepEqual(calls.map(({ method, path }) => `${method} ${path}`), [
     'GET /v1/cloud/memory',
     'PATCH /v1/cloud/memory/mem%2F1',
@@ -321,8 +294,6 @@ test('the auth client calls the memory routes with the session token', async () 
     'DELETE /v1/cloud/memory',
     'GET /v1/cloud/memory/settings',
     'PUT /v1/cloud/memory/settings',
-    'GET /v1/cloud/agent-runs/omp-state',
-    'DELETE /v1/cloud/agent-runs/omp-state',
   ]);
   assert.ok(calls.every((call) => call.auth === 'Bearer tok'));
   assert.deepEqual(calls[1].body, { text: 'token=abc' });

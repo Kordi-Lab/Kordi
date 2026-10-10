@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { SettingsRow, SettingsSection, SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 
-import { MemoryList, destructiveConfirmClass, quietButtonClass } from './MemoryList';
+import { MemoryList, destructiveConfirmClass } from './MemoryList';
 import type { MemoryClient } from './memoryClient';
 import {
   PERSONAL_MEMORY_SCOPES,
@@ -17,19 +17,13 @@ import {
   memoryErrorMessage as errorMessage,
   syncStatusLabel,
   type MemoryLesson,
-  type MemoryReplayState,
   type MemorySettings,
   type MemorySyncState,
 } from './memoryModel';
 
 const destructiveButtonClass = 'h-8 rounded-lg border border-rose-400/20 bg-rose-500/10 px-3.5 text-[12px] text-rose-200 hover:bg-rose-500/15 hover:text-rose-100';
 
-type MemoryDialog = { kind: 'forget'; count: number } | { kind: 'replay' };
-
-function runsLabel(count: number): string {
-  if (count === 0) return 'Nothing stored';
-  return count === 1 ? '1 run' : `${count} runs`;
-}
+type MemoryDialog = { kind: 'forget'; count: number };
 
 export function MemorySettingsPanel({
   accountId,
@@ -42,7 +36,6 @@ export function MemorySettingsPanel({
 }) {
   const [settings, setSettings] = useState<MemorySettings | null>(null);
   const [lessons, setLessons] = useState<MemoryLesson[]>([]);
-  const [replay, setReplay] = useState<MemoryReplayState>({ available: false, runCount: 0 });
   const [sync, setSync] = useState<MemorySyncState>({ accountLabel: '', lastSyncedAt: null });
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -56,17 +49,14 @@ export function MemorySettingsPanel({
   const refresh = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [nextSettings, nextLessons, nextReplay, nextSync] = await Promise.all([
+      const [nextSettings, nextLessons, nextSync] = await Promise.all([
         client.settings(),
         client.listLessons(),
-        // A failed replay lookup hides the section instead of blocking the page.
-        client.replayState().catch((): MemoryReplayState => ({ available: false, runCount: 0 })),
         // A failed sync lookup hides the sync row instead of blocking the page.
         client.syncState().catch((): MemorySyncState => ({ accountLabel: '', lastSyncedAt: null })),
       ]);
       setSettings(nextSettings);
       setLessons(nextLessons);
-      setReplay(nextReplay);
       setSync(nextSync);
       setHasLoaded(true);
       setError(null);
@@ -127,12 +117,6 @@ export function MemorySettingsPanel({
     refreshSync();
     return archived === 1 ? 'Deleted 1 memory.' : `Deleted ${archived} memories.`;
   }, 'Could not delete your memories. Try again.');
-
-  const confirmClearReplay = () => runDialogAction(async () => {
-    const { deleted } = await client.clearReplayState();
-    setReplay((current) => ({ ...current, runCount: 0 }));
-    return deleted === 1 ? 'Cleared 1 replay.' : `Cleared ${deleted} replays.`;
-  }, 'Could not clear replay state. Try again.');
 
   const personalLessons = lessons.filter((lesson) => PERSONAL_MEMORY_SCOPES.includes(lesson.scope));
 
@@ -231,31 +215,6 @@ export function MemorySettingsPanel({
             </div>
           </SettingsSection>
 
-          {replay.available ? (
-            <SettingsSection
-              title="Replay state"
-              description="Kordi keeps a private replay of each run so follow-ups can continue where they stopped. It is discarded when a message in it is deleted or when a member turns off AI use."
-            >
-              <SettingsRow
-                title="Replay state for this account"
-                control={(
-                  <>
-                    <span className="text-[13px] font-normal text-slate-400">{runsLabel(replay.runCount)}</span>
-                    <Button
-                      type="button"
-                      variant="quiet"
-                      className={quietButtonClass}
-                      disabled={replay.runCount === 0}
-                      onClick={() => setDialog({ kind: 'replay' })}
-                    >
-                      Clear replay state
-                    </Button>
-                  </>
-                )}
-              />
-            </SettingsSection>
-          ) : null}
-
           <SettingsSection title="On this Mac only">
             <SettingsRow
               title="Bridge conversation memory"
@@ -276,24 +235,19 @@ export function MemorySettingsPanel({
           backdropClassName="!z-[100000]"
         >
           <AppDialogTitle id={`${idPrefix}-dialog-title`}>
-            {dialog.kind === 'forget' ? 'Forget all memories?' : 'Clear replay state?'}
+            Forget all memories?
           </AppDialogTitle>
           <AppDialogDescription id={`${idPrefix}-dialog-description`}>
-            {dialog.kind === 'forget'
-              ? forgetConsequences(dialog.count)
-              : 'Follow-ups start from the saved conversation instead of the private replay. Nothing else is deleted.'}
+            {forgetConsequences(dialog.count)}
           </AppDialogDescription>
           <AppDialogActions>
             <Button variant="quiet" className="rounded-full px-4" autoFocus disabled={dialogBusy} onClick={closeDialog}>Cancel</Button>
             <Button
               className={destructiveConfirmClass}
               disabled={dialogBusy}
-              onClick={() => {
-                if (dialog.kind === 'forget') void confirmForget();
-                else void confirmClearReplay();
-              }}
+              onClick={() => { void confirmForget(); }}
             >
-              {dialog.kind === 'forget' ? 'Forget everything' : 'Clear replay state'}
+              Forget everything
             </Button>
           </AppDialogActions>
         </AppDialog>

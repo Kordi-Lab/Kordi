@@ -249,7 +249,7 @@ async fn memory_save_edit_delete_and_forget_all() {
     }
     let (status, forgotten) = fx.send("DELETE", "/v1/cloud/memory", None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(forgotten, json!({ "archived": 2 }));
+    assert_eq!(forgotten, json!({ "archived": 2, "clearedRuns": 0 }));
     let (_, list) = fx.send("GET", "/v1/cloud/memory", None).await;
     assert_eq!(list["memories"], json!([]));
 

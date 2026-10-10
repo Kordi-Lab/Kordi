@@ -104,14 +104,6 @@ struct CloudMemoryForgetResponse: Decodable {
     let archived: Int
 }
 
-struct CloudReplayStateResponse: Decodable, Equatable {
-    let runCount: Int
-}
-
-struct CloudReplayStateClearResponse: Decodable {
-    let deleted: Int
-}
-
 struct CloudMemoryUpdateRequest: Encodable {
     let text: String
 }
