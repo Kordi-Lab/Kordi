@@ -17,6 +17,15 @@ use kordi_session::reflection_lessons::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
+#[path = "memory_remote/labels.rs"]
+mod labels;
+pub(crate) use labels::scope_label_for;
+#[allow(
+    unused_imports,
+    reason = "the desktop library uses these; the CLI binary does not"
+)]
+pub use labels::{MESSAGE_LABEL_MAX_CHARS, label_from_message, remember_scope_label};
+
 use crate::reflection_runtime::{
     parse_lesson_artifact, parse_lesson_artifact_scope_id, reflection_lesson_artifact_path,
     rewrite_all_lesson_artifacts,
@@ -118,18 +127,6 @@ pub(crate) fn normalise_memory_text(text: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase()
-}
-
-/// The display label for a scope. Projects use the final path component.
-pub(crate) fn scope_label_for(scope: &ReflectionScope, scope_id: &str) -> Option<String> {
-    match scope {
-        ReflectionScope::Project => Path::new(scope_id.trim())
-            .file_name()
-            .and_then(|name| name.to_str())
-            .map(str::to_string)
-            .filter(|name| !name.is_empty()),
-        ReflectionScope::Conversation | ReflectionScope::Group => None,
-    }
 }
 
 /// Insert a pending cache row for every lesson line in `artifact_path` that
@@ -303,7 +300,10 @@ pub async fn sync_memories_with_remote(
         let request = NewRemoteMemory {
             scope: row.scope.as_str().to_string(),
             scope_id: row.scope_id.clone(),
-            scope_label: row.scope_label.clone(),
+            scope_label: row
+                .scope_label
+                .clone()
+                .or_else(|| scope_label_for(&row.scope, &row.scope_id)),
             source: row.source.as_str().to_string(),
             text,
             client_memory_id: Some(row.lesson_id.clone()),

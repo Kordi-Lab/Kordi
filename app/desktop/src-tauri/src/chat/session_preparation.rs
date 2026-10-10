@@ -251,6 +251,13 @@ pub(super) async fn prepare_desktop_session_for_send(
     super::memory::attach_memory_remote(runtime).await;
 
     if let Ok(detail) = runtime.detail() {
+        super::memory::remember_scope_labels(
+            &detail,
+            runtime.session_id(),
+            &prompt_session_id,
+            user_text,
+            &cwd,
+        );
         let agent = runtime.agent_profile();
         let profile = DesktopRuntimeProfile {
             provider: Some(detail.provider),

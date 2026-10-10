@@ -85,6 +85,25 @@ test('memories group by scope in a fixed order, newest first', () => {
   assert.deepEqual(groupLessonsByScope([]), []);
 });
 
+test('memories of one conversation stay together under its title', async () => {
+  const lessons = [
+    sampleLesson({ lessonId: 'a-new', scopeId: 'chat-a', scopeLabel: 'Launch planning', updatedAt: '2026-10-05T00:00:00.000Z' }),
+    sampleLesson({ lessonId: 'b-mid', scopeId: 'chat-b', scopeLabel: 'Release notes', updatedAt: '2026-10-04T00:00:00.000Z' }),
+    sampleLesson({ lessonId: 'a-old', scopeId: 'chat-a', scopeLabel: 'Launch planning', updatedAt: '2026-10-03T00:00:00.000Z' }),
+  ];
+  const [conversations] = groupLessonsByScope(lessons);
+  assert.deepEqual(conversations?.lessons.map((lesson) => lesson.lessonId), ['a-new', 'a-old', 'b-mid']);
+
+  const client = { ...createPreviewMemoryClient({ latencyMs: 0 }), listLessons: async () => lessons };
+  await withPanel(client, async (host) => {
+    const metas = Array.from(host.querySelectorAll('[data-memory-lesson]')).map((row) => row.textContent ?? '');
+    assert.equal(metas.length, 3);
+    assert.match(metas[0] ?? '', /Launch planning/);
+    assert.match(metas[1] ?? '', /Launch planning/);
+    assert.match(metas[2] ?? '', /Release notes/);
+  });
+});
+
 test('the scope filter keeps only the requested scopes', () => {
   const lessons = [
     sampleLesson({ lessonId: 'g1', scope: 'group' }),

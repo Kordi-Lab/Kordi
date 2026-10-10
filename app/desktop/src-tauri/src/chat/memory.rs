@@ -1,8 +1,8 @@
 //! Account memory on the Mac (#1710): the cloud remote for the `reflection`
 //! tool and the Memory settings commands.
 use kordi_cli::memory_remote::{
-    sync_memories_with_remote, MemoryRemote, MemoryRemoteError, NewRemoteMemory, RemoteMemory,
-    RemoteMemoryList,
+    label_from_message, remember_scope_label, sync_memories_with_remote, MemoryRemote,
+    MemoryRemoteError, NewRemoteMemory, RemoteMemory, RemoteMemoryList,
 };
 use kordi_core::settings::{MemorySettings, Settings};
 use serde::{Deserialize, Serialize};
@@ -160,6 +160,42 @@ pub(crate) async fn attach_memory_remote(
         .flatten()
         .map(|remote| Arc::new(remote) as Arc<dyn MemoryRemote>);
     runtime.set_memory_remote(remote);
+}
+
+/// Record the labels for the scopes the `reflection` tool can save into this
+/// turn: the conversation title for the conversation (and its group), and the
+/// project name for the project. A conversation without a title yet is
+/// labelled from its first user message.
+pub(crate) fn remember_scope_labels(
+    detail: &kordi_cli::desktop_runtime::DesktopChatSessionDetail,
+    runtime_session_id: &str,
+    prompt_session_id: &str,
+    user_text: &str,
+    cwd: &std::path::Path,
+) {
+    let conversation_label = crate::canonical_sessions::session_title(prompt_session_id)
+        .or_else(|| crate::canonical_sessions::session_title(runtime_session_id))
+        .or_else(|| {
+            detail
+                .messages
+                .iter()
+                .filter(|message| message.role == "user")
+                .find_map(|message| label_from_message(&message.text))
+        })
+        .or_else(|| label_from_message(user_text));
+    if let Some(label) = conversation_label {
+        for session_id in [prompt_session_id, runtime_session_id] {
+            remember_scope_label("conversation", session_id, &label);
+            if let Some(group_id) = session_id.strip_prefix("session:group:") {
+                remember_scope_label("group", group_id, &label);
+            }
+        }
+    }
+    if let Some(project) = &detail.project {
+        let root = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
+        remember_scope_label("project", &project.root, &project.name);
+        remember_scope_label("project", &root.display().to_string(), &project.name);
+    }
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]

@@ -440,3 +440,47 @@ async fn saving_the_same_text_twice_keeps_one_row_and_one_upload() {
     assert_eq!(harness.remote.save_count(), 2);
     assert_eq!(harness.rows().await.len(), 2);
 }
+
+#[tokio::test]
+async fn saves_and_uploads_carry_the_recorded_scope_label() {
+    let harness = Harness::new();
+    let save = |scope_id: &'static str| {
+        let runtime = harness.runtime();
+        async move {
+            (runtime.save_lesson)(ReflectionLessonRequest {
+                scope: "conversation".to_string(),
+                scope_id: scope_id.to_string(),
+                source: "user_correction".to_string(),
+                lesson: format!("End replies with a summary for {scope_id}."),
+            })
+            .await
+            .expect("save");
+        }
+    };
+    remember_scope_label("conversation", "label-test-online", "Launch planning");
+    remember_scope_label("conversation", "label-test-offline", "  ");
+    harness.connect();
+    save("label-test-online").await;
+    assert_eq!(
+        harness.remote.saves.lock().unwrap()[0]
+            .scope_label
+            .as_deref(),
+        Some("Launch planning")
+    );
+
+    // Saved signed out before the title was known; the upload adds it.
+    *harness.slot.write().unwrap() = None;
+    save("label-test-offline").await;
+    let rows = harness.rows().await;
+    assert_eq!(
+        rows.iter().filter(|row| row.scope_label.is_none()).count(),
+        1
+    );
+    remember_scope_label("conversation", "label-test-offline", "Release notes");
+    harness.connect();
+    harness.sync().await;
+    let saves = harness.remote.saves.lock().unwrap().clone();
+    assert_eq!(saves[1].scope_label.as_deref(), Some("Release notes"));
+    let rows = harness.rows().await;
+    assert!(rows.iter().all(|row| row.scope_label.is_some()));
+}

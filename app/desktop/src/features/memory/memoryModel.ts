@@ -44,6 +44,17 @@ export type MemoryLessonGroup = { scope: MemoryLessonScope; label: string; lesso
 /** Personal memories: the settings page lists these; groups list theirs on the group info page. */
 export const PERSONAL_MEMORY_SCOPES: readonly MemoryLessonScope[] = ['conversation', 'project'];
 
+/** Keeps the memories of one conversation, group, or project together, ordered by their newest memory. */
+function keepScopesTogether(lessons: MemoryLesson[]): MemoryLesson[] {
+  const byScope = new Map<string, MemoryLesson[]>();
+  for (const lesson of lessons) {
+    const rows = byScope.get(lesson.scopeId);
+    if (rows) rows.push(lesson);
+    else byScope.set(lesson.scopeId, [lesson]);
+  }
+  return [...byScope.values()].flat();
+}
+
 /** Groups memories by scope in a fixed order, newest first, without empty groups. */
 export function groupLessonsByScope(
   lessons: MemoryLesson[],
@@ -54,9 +65,11 @@ export function groupLessonsByScope(
     .map((scope) => ({
       scope,
       label: lessonScopeGroupLabel(scope),
-      lessons: lessons
-        .filter((lesson) => lesson.scope === scope)
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+      lessons: keepScopesTogether(
+        lessons
+          .filter((lesson) => lesson.scope === scope)
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+      ),
     }))
     .filter((group) => group.lessons.length > 0);
 }
