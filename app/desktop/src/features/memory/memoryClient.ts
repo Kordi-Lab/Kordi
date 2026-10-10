@@ -25,6 +25,9 @@ function ago(now: number, ms: number): string {
   return new Date(now - ms).toISOString();
 }
 
+/** Conversation id of the sample conversation memories; it is the chat's canonical session id. */
+export const PREVIEW_CONVERSATION_MEMORY_SCOPE_ID = 'conv-launch-copy';
+
 /** Group uuid of the sample group memory; the cloud runner stores group memories under the bare uuid. */
 export const PREVIEW_GROUP_MEMORY_SCOPE_ID = '4f1c2a9e-7d3b-4e8a-9c61-2b5d8e0f3a17';
 
@@ -63,9 +66,9 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
 
   let settings: MemorySettings = { lessonsEnabled: true, excludeSensitive: true };
   let lessons: MemoryLesson[] = [
-    lesson('lesson-1', 'conversation', 'conv-launch-copy', 'Launch copy with Priya', 'user_correction',
+    lesson('lesson-1', 'conversation', PREVIEW_CONVERSATION_MEMORY_SCOPE_ID, 'Launch copy with Priya', 'user_correction',
       'Keep launch headlines under eight words and write them in sentence case, not title case.', 2 * HOUR),
-    lesson('lesson-2', 'conversation', 'conv-launch-copy', 'Launch copy with Priya', 'outcome',
+    lesson('lesson-2', 'conversation', PREVIEW_CONVERSATION_MEMORY_SCOPE_ID, 'Launch copy with Priya', 'outcome',
       'Priya approved the second draft once the pricing line moved below the feature list. Lead with what the product does.', 3 * DAY),
     lesson('lesson-3', 'conversation', 'conv-weekly-planning', 'Weekly planning', 'manual',
       'Plan the week on Monday mornings and list at most three priorities, each with one owner.', DAY + 2 * HOUR),
@@ -77,6 +80,10 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
       'Plugin tests pass only after the sample config is copied into the test folder. Copy it before the first run.', 21 * DAY),
     lesson('lesson-7', 'group', PREVIEW_GROUP_MEMORY_SCOPE_ID, 'Design review', 'repeated_failure',
       'Share screenshots as attachments instead of links. Several members could not open the shared folder links.', 40 * DAY),
+    lesson('lesson-8', 'global', 'account', 'Global', 'user_correction',
+      'Answer in British English and keep replies short unless I ask for more detail.', 4 * HOUR),
+    lesson('lesson-9', 'global', 'account', 'Global', 'manual',
+      'Write times in the 24-hour clock and dates as 2026-10-10 in schedules and plans.', 6 * DAY),
   ];
 
   const wait = () => new Promise<void>((resolve) => { setTimeout(resolve, latencyMs); });

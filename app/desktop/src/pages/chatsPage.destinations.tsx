@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { CHAT_DESTINATIONS } from '@/pages/chatsPage.destinationModel';
+import { useMemoryTabAvailable } from '@/features/memory/memoryAvailability';
+import { CHAT_DESTINATIONS, withMemoryTab } from '@/pages/chatsPage.destinationModel';
 import type { ChatDestination } from '@/pages/chatsPage.destinationModel';
 
 export function SessionDestinationTabs({
@@ -13,11 +14,12 @@ export function SessionDestinationTabs({
   onSelect: (destination: ChatDestination) => void;
 }) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const destinations = withMemoryTab(CHAT_DESTINATIONS, useMemoryTabAvailable());
 
   const focusTab = (index: number) => {
-    const destinationCount = CHAT_DESTINATIONS.length;
+    const destinationCount = destinations.length;
     const normalizedIndex = (index + destinationCount) % destinationCount;
-    onSelect(CHAT_DESTINATIONS[normalizedIndex].id);
+    onSelect(destinations[normalizedIndex].id);
     tabRefs.current[normalizedIndex]?.focus();
   };
 
@@ -34,7 +36,7 @@ export function SessionDestinationTabs({
       onPointerDown={(event) => event.stopPropagation()}
     >
       <div className="app-chat-destination-tab-list" role="tablist">
-        {CHAT_DESTINATIONS.map((destination, index) => {
+        {destinations.map((destination, index) => {
           const Icon = destination.icon;
           const active = destination.id === activeDestination;
           return (
@@ -67,7 +69,7 @@ export function SessionDestinationTabs({
                   focusTab(0);
                 } else if (event.key === 'End') {
                   event.preventDefault();
-                  focusTab(CHAT_DESTINATIONS.length - 1);
+                  focusTab(destinations.length - 1);
                 }
               }}
             >

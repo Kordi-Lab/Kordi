@@ -2,8 +2,10 @@ import type { ComponentType, ReactNode } from 'react';
 import { Braces, X } from 'lucide-react';
 
 import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
+import { useMemoryTabAvailable } from '@/features/memory/memoryAvailability';
 import type { DetailTab, EditFilePreview } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
+import { withMemoryTab } from '@/pages/chatsPage.destinationModel';
 
 type RightDetailRailProps = {
   detailTabs: ReadonlyArray<{
@@ -20,7 +22,7 @@ type RightDetailRailProps = {
 };
 
 export function RightDetailRail({
-  detailTabs,
+  detailTabs: allDetailTabs,
   activeDetailTab,
   onSelectDetailTab,
   activeSourcePreview,
@@ -28,6 +30,7 @@ export function RightDetailRail({
   children,
   variant = 'rail',
 }: RightDetailRailProps) {
+  const detailTabs = withMemoryTab(allDetailTabs, useMemoryTabAvailable());
   const activeTab = detailTabs.find((tab) => tab.id === activeDetailTab) ?? detailTabs[0];
   const pageTitle = activeSourcePreview
     ? activeSourcePreview.path.split('/').pop() ?? 'Source preview'

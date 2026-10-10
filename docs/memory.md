@@ -89,4 +89,4 @@ The design and decisions are in [development/issue-1710-memory-controls.md](deve
 To preview without a server:
 
 - iPhone: launch with `--preview-memory` to open the account sheet on the Memory screen with sample data.
-- Desktop: open `app/desktop/tests/visual/memorySettings.html` through `KORDI_DEV_PREVIEW_PATH`. It needs no sign-in.
+- Desktop: open `app/desktop/tests/visual/memorySettings.html` (account settings) or `app/desktop/tests/visual/conversationMemory.html` (a conversation's Memory tab; add `?chat=group` for a group chat) through `KORDI_DEV_PREVIEW_PATH`. They need no sign-in.

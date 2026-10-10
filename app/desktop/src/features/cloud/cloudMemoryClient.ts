@@ -1,4 +1,4 @@
-export type CloudMemoryScope = 'conversation' | 'group' | 'project';
+export type CloudMemoryScope = 'global' | 'conversation' | 'group' | 'project';
 export type CloudMemorySource = 'user_correction' | 'repeated_failure' | 'outcome' | 'manual';
 
 export type CloudMemory = {

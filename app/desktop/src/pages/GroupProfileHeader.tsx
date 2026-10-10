@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import {
-  Brain,
   Settings2,
   UserPlus,
   Users,
@@ -31,21 +30,17 @@ function GroupProfileAction({
   onClick,
   disabled = false,
   title,
-  active,
 }: {
   icon: ReactNode;
   label: string;
   onClick: () => void;
   disabled?: boolean;
   title?: string;
-  /** Marks the action as the dialog's current view; undefined leaves it a plain action. */
-  active?: boolean;
 }) {
   return (
     <button
       type="button"
       className="app-transient-flat-action app-group-profile-action flex min-w-0 flex-col items-center gap-1.5 rounded-[12px] px-2 py-2"
-      aria-pressed={active}
       onClick={onClick}
       disabled={disabled}
       title={title ?? label}
@@ -64,9 +59,7 @@ export function GroupProfileHeader({
   canManageGroup,
   avatarEditor,
   onClose,
-  activeView,
   onShowMembers,
-  onShowMemory,
   onAddPeople,
   onManage,
 }: {
@@ -77,11 +70,7 @@ export function GroupProfileHeader({
   canManageGroup: boolean;
   avatarEditor?: ReactNode;
   onClose: () => void;
-  /** The dialog's current view; set only when the dialog has more than one view. */
-  activeView?: 'members' | 'memory';
   onShowMembers: () => void;
-  /** Opens the group's Memory view; omitted when memory is unavailable. */
-  onShowMemory?: () => void;
   onAddPeople: () => void;
   onManage: () => void;
 }) {
@@ -138,16 +127,7 @@ export function GroupProfileHeader({
           icon={<Users className="h-4 w-4" aria-hidden="true" />}
           label="Members"
           onClick={onShowMembers}
-          active={activeView ? activeView === 'members' : undefined}
         />
-        {onShowMemory ? (
-          <GroupProfileAction
-            icon={<Brain className="h-4 w-4" aria-hidden="true" />}
-            label="Memory"
-            onClick={onShowMemory}
-            active={activeView === 'memory'}
-          />
-        ) : null}
         {canInvitePeople ? (
           <GroupProfileAction
             icon={<UserPlus className="h-4 w-4" aria-hidden="true" />}

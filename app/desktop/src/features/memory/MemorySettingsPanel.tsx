@@ -12,8 +12,8 @@ import { SettingsRow, SettingsSection, SettingsSwitch } from '@/kordi-app/compon
 import { MemoryList, destructiveConfirmClass } from './MemoryList';
 import type { MemoryClient } from './memoryClient';
 import {
-  PERSONAL_MEMORY_SCOPES,
   forgetConsequences,
+  isGlobalMemory,
   memoryErrorMessage as errorMessage,
   syncStatusLabel,
   type MemoryLesson,
@@ -118,7 +118,7 @@ export function MemorySettingsPanel({
     return archived === 1 ? 'Deleted 1 memory.' : `Deleted ${archived} memories.`;
   }, 'Could not delete your memories. Try again.');
 
-  const personalLessons = lessons.filter((lesson) => PERSONAL_MEMORY_SCOPES.includes(lesson.scope));
+  const globalLessons = lessons.filter(isGlobalMemory);
 
   return (
     <div>
@@ -180,20 +180,16 @@ export function MemorySettingsPanel({
             />
           </SettingsSection>
 
-          <SettingsSection
-            title={`Saved memories · ${personalLessons.length}`}
-            description="Edit or delete any memory. The next turn on any device uses only what is listed here."
-          >
+          <SettingsSection title={`Global memories · ${globalLessons.length}`}>
             <div>
               {!settings.lessonsEnabled ? (
                 <SettingsRow title={<span className="font-normal text-slate-400">Memory is off. These are kept but not read.</span>} />
               ) : null}
               <MemoryList
                 client={client}
-                lessons={personalLessons}
+                lessons={globalLessons}
                 onLessonsChange={setLessons}
-                emptyLabel="No memories saved yet."
-                groupByScope
+                emptyLabel="No global memories yet."
                 onChanged={refreshSync}
               />
               {lessons.length > 0 ? (
@@ -210,7 +206,7 @@ export function MemorySettingsPanel({
                 </SettingsSection>
               ) : null}
               <SettingsSection size="compact">
-                <SettingsRow title={<span className="font-normal text-slate-400">Group memories are managed from each group&apos;s info page.</span>} />
+                <SettingsRow title={<span className="font-normal text-slate-400">Other memories are on each conversation&apos;s Memory tab.</span>} />
               </SettingsSection>
             </div>
           </SettingsSection>
