@@ -184,7 +184,17 @@ fn is_default_kordi_target(
 ) -> bool {
     agent_id == format!("cloud-agent:{owner_account_id}")
         || agent_id == format!("cloud-self:{owner_account_id}")
-        || (agent_id == "cloud-local-agent" && owner_account_id == requester_account_id)
+        || (is_local_default_agent_alias(agent_id) && owner_account_id == requester_account_id)
+}
+
+/// Desktop-local aliases for the owner's default Kordi. `local:<hash>` is the
+/// canonical id of the desktop's local delegate (one per profile/workspace) and
+/// names where the agent runs, not a separate Cloud agent definition.
+pub(super) fn is_local_default_agent_alias(agent_id: &str) -> bool {
+    agent_id == "cloud-local-agent"
+        || agent_id
+            .strip_prefix("local:")
+            .is_some_and(|hash| !hash.is_empty())
 }
 
 pub async fn execution_agent_id(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<String> {
@@ -259,6 +269,27 @@ mod tests {
             "cloud-local-agent",
             "acct_owner",
             "acct_requester"
+        ));
+    }
+
+    #[test]
+    fn local_delegate_targets_are_the_owner_default_agent() {
+        // A private Agent Chat forwarded from the desktop can name the local
+        // delegate (`local:<hash>`); the claim must run as `cloud-agent:<owner>`.
+        assert!(is_default_kordi_target(
+            "local:060c69e6f296f6acea5df9d653cc305c",
+            "acct_owner",
+            "acct_owner"
+        ));
+        assert!(!is_default_kordi_target(
+            "local:060c69e6f296f6acea5df9d653cc305c",
+            "acct_owner",
+            "acct_requester"
+        ));
+        assert!(!is_default_kordi_target(
+            "local:",
+            "acct_owner",
+            "acct_owner"
         ));
     }
 }
