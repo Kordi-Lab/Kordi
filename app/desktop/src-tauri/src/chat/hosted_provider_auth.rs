@@ -415,6 +415,8 @@ mod tests {
             run_id: "run-parent".into(),
             claim_id: "claim-parent".into(),
             owner_account_id: "owner".into(),
+            connector_tools: None,
+            connector_audience: None,
         }
     }
 

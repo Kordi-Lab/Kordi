@@ -68,6 +68,8 @@ fn background_child_inherits_parent_hosted_route() {
         run_id: "run-parent".to_string(),
         claim_id: "claim-parent".to_string(),
         owner_account_id: "owner".to_string(),
+        connector_tools: None,
+        connector_audience: None,
     };
     let runner = ManagedChildAgentRunner::new(
         DesktopChatManager::default(),
