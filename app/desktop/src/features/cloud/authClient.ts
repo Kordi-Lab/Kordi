@@ -1,3 +1,5 @@
+import type { CloudAuthCapabilities, CloudOAuthProvider } from './cloudAuthCapabilityTypes';
+export type { CloudAuthCapabilities, CloudOAuthProvider } from './cloudAuthCapabilityTypes';
 import { CloudPinClient } from './cloudPinClient';
 import { uploadCloudAvatarAsset } from './avatarAssetClient';
 import type { CloudMessage } from './cloudMessageTypes';
@@ -109,15 +111,6 @@ export type CloudAuthResult = {
   account: CloudAccount;
   session: CloudSession;
   avatarUploadWarning?: string;
-};
-
-export type CloudOAuthProvider = 'google' | 'github';
-
-export type CloudAuthCapabilities = {
-  password: boolean;
-  oauthProviders: CloudOAuthProvider[];
-  connectorsVersion?: number | null; // Present when the server serves /v1/cloud/connectors.
-  memoryVersion?: number;
 };
 
 export type CloudOAuthStartResponse = {
