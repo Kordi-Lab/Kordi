@@ -1,6 +1,19 @@
-.app-group-profile-actions,
 .app-contact-profile-actions {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* Group actions share one row however many apply (Members, Memory, Add people, Video chat, Manage). */
+.app-group-profile-actions {
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+}
+
+.app-group-profile-actions > .app-group-profile-action {
+  padding-inline: 2px;
+}
+
+.app-group-profile-actions:has(> :nth-child(5)) {
+  gap: 2px;
 }
 
 .app-group-profile-action,
@@ -9,6 +22,11 @@
   background: var(--app-transient-raised-bg);
   color: var(--app-transient-text);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-transient-divider) 72%, transparent);
+}
+
+/* The group dialog's current view (Members or Memory), matching a selected member tile. */
+.app-transient-surface .app-group-profile-action[aria-pressed='true'] {
+  background: var(--app-sidebar-selected-bg);
 }
 
 .app-group-profile-action:disabled,
@@ -106,6 +124,7 @@
   .app-contact-profile-actions,
   .app-group-profile-actions {
     gap: 4px;
+    grid-auto-flow: row;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

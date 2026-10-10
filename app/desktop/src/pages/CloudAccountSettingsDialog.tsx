@@ -29,6 +29,8 @@ import { ConnectorsSettingsPanel } from '@/features/connectors/ConnectorsSetting
 import type { ConnectorsClient } from '@/features/connectors/connectorsClient';
 import { connectorsClientForAccount } from '@/features/connectors/connectorsClientSelection';
 import { useConnectorsLinkSelection } from '@/features/connectors/useConnectorsLinkSelection';
+import { MemorySettingsPanel } from '@/features/memory/MemorySettingsPanel';
+import { memoryClientForEnvironment, type MemoryClient } from '@/features/memory/memoryClient';
 import { cloudAccountSettingsNavGroups, type CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
 import {
   canonicalAvatarImageSource,
@@ -38,6 +40,9 @@ import {
 } from '@/features/cloud/canonicalAvatar';
 
 export type { CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
+
+// Created once per app load so preview state survives closing the dialog.
+const environmentMemoryClient = memoryClientForEnvironment();
 
 export type CloudAccountSettingsConfig = {
   settingsSections: SettingsSectionData[];
@@ -76,6 +81,8 @@ type CloudAccountSettingsDialogProps = CloudAccountSettingsConfig & {
   connectorsClient?: ConnectorsClient | null;
   /** Marks an overriding `connectorsClient` as sample data. */
   connectorsIsPreview?: boolean;
+  /** Memory client; null hides the Memory section. Defaults to the build environment. */
+  memoryClient?: MemoryClient | null;
 };
 
 function profileDisplayName(account: CloudAccount | null) {
@@ -114,6 +121,7 @@ export function CloudAccountSettingsDialog({
   onSignOut,
   connectorsClient: connectorsClientOverride,
   connectorsIsPreview = false,
+  memoryClient = environmentMemoryClient,
   settingsSections,
   setActiveSettingsSectionId,
   authSettingsLayoutWidth,
@@ -218,8 +226,12 @@ export function CloudAccountSettingsDialog({
   const isDisplayNameInvalid = Boolean(profileError && !displayNameDraft.trim());
   const avatarSeed = account.avatar.seed;
   const appearanceSection = settingsSections.find((section) => section.id === 'appearance');
-  const navGroups = cloudAccountSettingsNavGroups({ connectorsAvailable: connectorsClient !== null });
-  const visibleTab: CloudAccountSettingsTabId = activeTab === 'connectors' && !connectorsClient ? 'profile' : activeTab;
+  const navGroups = cloudAccountSettingsNavGroups({
+    connectorsAvailable: connectorsClient !== null,
+    memoryAvailable: memoryClient !== null,
+  });
+  const visibleTab: CloudAccountSettingsTabId =
+    (activeTab === 'connectors' && !connectorsClient) || (activeTab === 'memory' && !memoryClient) ? 'profile' : activeTab;
 
   const selectTab = (tabId: CloudAccountSettingsTabId) => {
     if (tabId !== 'connectors') clearConnectorsLinkSelection();
@@ -440,6 +452,12 @@ export function CloudAccountSettingsDialog({
     />
   ) : null;
 
+  const memoryPanel = memoryClient ? (
+    <div className="app-cloud-account-settings-section max-w-[680px]">
+      <MemorySettingsPanel key={account.accountId} accountId={account.accountId} client={memoryClient} isNativeShell={isNativeShell} />
+    </div>
+  ) : null;
+
   return createPortal(
     <div
       className="app-transient-overlay app-cloud-account-settings-overlay fixed inset-0 z-[180] flex items-center justify-center px-6 py-6 backdrop-blur-sm"
@@ -469,7 +487,7 @@ export function CloudAccountSettingsDialog({
           </div>
           <ScrollArea className="min-h-0 flex-1">
             <div className="px-8 pb-8 pt-10">
-              {visibleTab === 'profile' ? profilePanel : visibleTab === 'devices' ? devicesPanel : visibleTab === 'auth' ? authPanel : visibleTab === 'notifications' ? notificationsPanel : visibleTab === 'connectors' ? connectorsPanel : appearancePanel}
+              {visibleTab === 'profile' ? profilePanel : visibleTab === 'devices' ? devicesPanel : visibleTab === 'auth' ? authPanel : visibleTab === 'notifications' ? notificationsPanel : visibleTab === 'connectors' ? connectorsPanel : visibleTab === 'memory' ? memoryPanel : appearancePanel}
             </div>
           </ScrollArea>
         </div>

@@ -1,10 +1,16 @@
-import { Bell, KeyRound, Laptop, Palette, Plug, User } from 'lucide-react';
+import { Bell, Brain, KeyRound, Laptop, Palette, Plug, User } from 'lucide-react';
 
 import type { SettingsNavGroup } from '@/kordi-app/components';
 
-export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'auth' | 'notifications' | 'connectors' | 'appearance';
+export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'auth' | 'notifications' | 'connectors' | 'memory' | 'appearance';
 
-export function cloudAccountSettingsNavGroups({ connectorsAvailable }: { connectorsAvailable: boolean }): Array<SettingsNavGroup<CloudAccountSettingsTabId>> {
+export function cloudAccountSettingsNavGroups({
+  connectorsAvailable,
+  memoryAvailable = false,
+}: {
+  connectorsAvailable: boolean;
+  memoryAvailable?: boolean;
+}): Array<SettingsNavGroup<CloudAccountSettingsTabId>> {
   return [
     {
       label: 'Account',
@@ -20,6 +26,9 @@ export function cloudAccountSettingsNavGroups({ connectorsAvailable }: { connect
         { id: 'notifications', label: 'Notifications', icon: Bell, keywords: ['alerts', 'sound', 'badge'] },
         ...(connectorsAvailable
           ? [{ id: 'connectors' as const, label: 'Connectors', icon: Plug, keywords: ['gmail', 'calendar', 'github', 'slack', 'services', 'integrations', 'mac'] }]
+          : []),
+        ...(memoryAvailable
+          ? [{ id: 'memory' as const, label: 'Memory', icon: Brain, keywords: ['lessons', 'remember', 'forget', 'replay', 'privacy'] }]
           : []),
         { id: 'appearance', label: 'Appearance', icon: Palette, keywords: ['theme', 'dark', 'light', 'chat', 'threads', 'message layout'] },
       ],
