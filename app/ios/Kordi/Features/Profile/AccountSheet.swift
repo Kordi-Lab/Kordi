@@ -8,6 +8,7 @@ enum AccountSettingsRoute: String, Hashable {
     case authentication
     case notifications
     case connectors
+    case memory
     case colorMode = "color-mode"
     case messageDisplay = "message-display"
     case chatTheme = "chat-theme"
@@ -82,23 +83,31 @@ struct AccountSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 settingsLink(.profile) { accountHeader }
-                settingsDivider()
+                SettingsDivider()
 
-                settingsSectionTitle("Notifications")
+                SettingsSectionTitle("Notifications")
                 settingsLink(.notifications) {
                     CompactSettingsLabel(title: "Notifications", subtitle: "Messages, sounds, and previews", systemImage: "bell")
                 }
-                settingsDivider()
+                SettingsDivider()
 
                 if connectorsClient != nil {
-                    settingsSectionTitle("Connectors")
+                    SettingsSectionTitle("Connectors")
                     settingsLink(.connectors) {
                         CompactSettingsLabel(title: "Connectors", subtitle: "Services and sources your agent can use", systemImage: "app.connected.to.app.below.fill")
                     }
-                    settingsDivider()
+                    SettingsDivider()
                 }
 
-                settingsSectionTitle("Appearance")
+                if model.isMemoryAvailable {
+                    SettingsSectionTitle("Memory")
+                    settingsLink(.memory) {
+                        CompactSettingsLabel(title: "Memory", subtitle: "What Kordi remembers across devices", systemImage: "brain")
+                    }
+                    SettingsDivider()
+                }
+
+                SettingsSectionTitle("Appearance")
                 settingsLink(.colorMode) {
                     CompactSettingsLabel(title: "Color mode", systemImage: "circle.lefthalf.filled", value: (AppAppearance(rawValue: appearanceRawValue) ?? .system).label)
                 }
@@ -108,9 +117,9 @@ struct AccountSheet: View {
                 settingsLink(.chatTheme) {
                     CompactSettingsLabel(title: "Chat theme", systemImage: "paintbrush", value: (KordiChatTheme(rawValue: chatThemeRawValue) ?? .quiet).label)
                 }
-                settingsDivider()
+                SettingsDivider()
 
-                settingsSectionTitle("Account")
+                SettingsSectionTitle("Account")
                 settingsLink(.activeSessions) {
                     HStack {
                         CompactSettingsLabel(title: "Active sessions", subtitle: "Manage your connected devices", systemImage: "iphone.and.arrow.forward")
@@ -161,10 +170,19 @@ struct AccountSheet: View {
                         request: connectorsRequest
                     )
                 }
+            case .memory:
+                MemorySettingsView(
+                    service: model.makeMemoryService(),
+                    accountLabel: MemoryPresentation.accountLabel(
+                        email: model.account?.primaryEmail,
+                        kordiId: model.account?.kordiId
+                    )
+                )
             case .colorMode, .messageDisplay, .chatTheme:
                 CompactAppearanceSettingsView(route: route)
             }
         }
+        .task { await model.refreshMemoryCapabilities() }
         .toolbar {
             if !embeddedInNavigationStack {
                 ToolbarItem(placement: .cancellationAction) {
@@ -213,74 +231,13 @@ struct AccountSheet: View {
             HStack(spacing: 10) {
                 content()
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
+                SettingsChevron()
             }
             .frame(minHeight: 48)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("settings-\(route.rawValue)")
-    }
-}
-
-/// Section title shared by the Settings sheet and its sub-screens.
-private func settingsSectionTitle(_ title: String) -> some View {
-    Text(title)
-        .font(.footnote.weight(.semibold))
-        .foregroundStyle(.primary)
-        .textCase(nil)
-        .padding(.top, 6)
-        .padding(.bottom, 6)
-        .accessibilityAddTraits(.isHeader)
-}
-
-/// Divider between Settings sections.
-private func settingsDivider() -> some View {
-    Divider().padding(.vertical, 10)
-}
-
-struct CompactSettingsLabel: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    let title: String
-    var subtitle: String? = nil
-    let systemImage: String
-    var value: String? = nil
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.body)
-                .frame(width: 22)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                if let subtitle {
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
-                }
-                if dynamicTypeSize.isAccessibilitySize, let value {
-                    Text(value).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            if !dynamicTypeSize.isAccessibilitySize, let value {
-                Spacer(minLength: 8)
-                Text(value)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .layoutPriority(1)
-            }
-        }
-        .foregroundStyle(.primary)
-        .padding(.vertical, 5)
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -493,14 +450,14 @@ private struct DevicesSettingsView: View {
             destructiveRow("Log out of all other devices") { logoutRequest = .allOthers }
         }
         if !grouping.groups.isEmpty {
-            settingsDivider()
-            settingsSectionTitle("Other devices")
+            SettingsDivider()
+            SettingsSectionTitle("Other devices")
             ForEach(grouping.groups) { group in
                 groupRows(group)
             }
         }
         if !grouping.legacy.isEmpty {
-            settingsDivider()
+            SettingsDivider()
             legacySection(grouping.legacy)
         }
     }
@@ -508,7 +465,7 @@ private struct DevicesSettingsView: View {
     @ViewBuilder
     private func currentDeviceSection(_ device: CloudDeviceAuthorization) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            settingsSectionTitle("This device")
+            SettingsSectionTitle("This device")
             Spacer(minLength: 8)
             Button("Rename") {
                 renameDraft = device.title
@@ -594,7 +551,7 @@ private struct DevicesSettingsView: View {
 
     @ViewBuilder
     private func legacySection(_ rows: [CloudDeviceAuthorization]) -> some View {
-        settingsSectionTitle("Older sign-ins")
+        SettingsSectionTitle("Older sign-ins")
         ForEach(rows) { device in
             HStack(alignment: .center, spacing: 8) {
                 DeviceSessionRow(
@@ -691,7 +648,7 @@ private struct DevicesSettingsView: View {
                 }
 
                 if let error = model.deviceErrorMessage.nonEmpty {
-                    settingsDivider()
+                    SettingsDivider()
                     VStack(alignment: .leading, spacing: 8) {
                         Label(error, systemImage: "exclamationmark.circle")
                             .font(.subheadline)
@@ -1515,6 +1472,12 @@ private extension AppAppearance {
         .environmentObject(AppModel(previewMode: true))
         .environmentObject(KordiCallCoordinator())
         .tint(KordiTheme.signalBlue)
+}
+
+struct MemorySettingsPreview: View {
+    var body: some View {
+        AccountSheet(previewing: .memory)
+    }
 }
 
 struct AccountAuthenticationPreview: View {

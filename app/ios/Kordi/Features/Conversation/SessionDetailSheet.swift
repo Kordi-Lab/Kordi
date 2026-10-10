@@ -3,14 +3,25 @@ import QuickLook
 import SwiftUI
 import UIKit
 
-private enum SessionDetailTab: String, Identifiable {
+enum SessionDetailTab: String, Identifiable {
     case members = "Members"
+    case memory = "Memory"
     case media = "Media"
     case files = "Files"
     case todo = "Todo"
     case groups = "Groups"
 
     var id: Self { self }
+
+    /// Tabs on a group info page. Memory sits between Members and Media when the
+    /// server advertises memory support.
+    static func groupTabs(memoryAvailable: Bool) -> [SessionDetailTab] {
+        memoryAvailable ? [.members, .memory, .media, .files, .todo] : [.members, .media, .files, .todo]
+    }
+
+    static func groupTabs(capabilities: CloudAuthCapabilities?) -> [SessionDetailTab] {
+        groupTabs(memoryAvailable: MemoryPresentation.isAvailable(capabilities))
+    }
 }
 
 private struct SessionFeatureNotice {
@@ -67,12 +78,13 @@ struct SessionDetailView: View {
     init(
         conversation: ConversationSummary,
         presentationContext: SessionDetailPresentationContext = .conversation,
+        opensMemory: Bool = false,
         onBack: (() -> Void)? = nil
     ) {
         self.conversation = conversation
         self.presentationContext = presentationContext
         self.onBack = onBack
-        _tab = State(initialValue: conversation.kind == .group ? .members : .media)
+        _tab = State(initialValue: conversation.kind == .group ? (opensMemory ? .memory : .members) : .media)
     }
 
     private var currentConversation: ConversationSummary {
@@ -178,7 +190,8 @@ struct SessionDetailView: View {
     private var availableTabs: [SessionDetailTab] {
         switch currentConversation.kind {
         case .group:
-            [.members, .media, .files, .todo]
+            // Reads the published capabilities so the picker re-renders when they load.
+            SessionDetailTab.groupTabs(capabilities: model.memoryCapabilities)
         case .person:
             [.media, .files, .todo, .groups]
         case .agent:
@@ -290,6 +303,7 @@ struct SessionDetailView: View {
             await model.refreshActiveCall(in: currentConversation)
         }
         .quickLookPreview($previewURL)
+        .task { await model.refreshMemoryCapabilities() }
         .task(id: "\(currentConversation.sessionId):\(model.account?.accountId ?? ""):\(tab.rawValue)") {
             agentThreads = []
             agentThreadError = false
@@ -368,6 +382,8 @@ struct SessionDetailView: View {
         switch tab {
         case .members:
             membersPage
+        case .memory:
+            SessionMemoryPage(conversation: currentConversation, service: model.makeMemoryService())
         case .media:
             mediaPage
         case .files:
@@ -1122,7 +1138,7 @@ private struct SessionDetailCard<Content: View>: View {
     }
 }
 
-private struct SessionDetailEmptyState: View {
+struct SessionDetailEmptyState: View {
     let title: String
     let symbol: String
     let description: String

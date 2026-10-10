@@ -36,11 +36,11 @@ enum KordiPreviewModePersistence {
     private static let launchArguments: Set<String> = [
         "--preview-launching", "--preview-data", "--preview-background-stop", "--preview-markdown",
         "--preview-native-design", "--preview-native-agent", "--preview-native-thread", "--preview-native-samples",
-        "--preview-login", "--preview-signup", "--preview-account", "--preview-devices",
+        "--preview-login", "--preview-signup", "--preview-account", "--preview-devices", "--preview-memory",
         "--preview-authentication", "--preview-authentication-detail", "--preview-codex-device-login",
         "--preview-contacts", "--preview-new-chat", "--preview-add-contact", "--preview-companion-panel",
         "--preview-companion-return", "--preview-contact-chat", "--preview-direct-call", "--preview-group-call",
-        "--preview-group-detail", "--preview-group-invite", "--preview-media", "--preview-media-messages",
+        "--preview-group-detail", "--preview-group-memory", "--preview-group-invite", "--preview-media", "--preview-media-messages",
         "--preview-media-expanded", "--preview-media-separated", "--preview-photo-send",
         "--preview-connectors",
     ]
@@ -310,6 +310,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var accountEmailCodeState: AccountEmailCodeState?
     /// `connectorsVersion` from `/v1/cloud/auth/capabilities`; nil hides Connectors.
     @Published private(set) var connectorsVersion: Int?
+    /// Server capabilities for the Memory screen. Nil until loaded or when the
+    /// request fails, which keeps the Memory entry hidden.
+    @Published private(set) var memoryCapabilities: CloudAuthCapabilities?
 
     private let api: CloudAPIClient
     private let oauth: CloudOAuthSession
@@ -422,6 +425,11 @@ final class AppModel: ObservableObject {
         self.previewHistoryLoadDelay = previewHistoryLoadDelay
             ?? (ProcessInfo.processInfo.arguments.contains("--preview-slow-session-load") ? .seconds(2) : .zero)
         UserDefaults.standard.removeObject(forKey: "kordi.session-title-overrides")
+        if previewMode {
+            // Preview data always advertises memory, so every group info page and
+            // Settings show the Memory entry without an extra launch argument.
+            memoryCapabilities = Self.previewMemoryCapabilities
+        }
         if ProcessInfo.processInfo.arguments.contains("--preview-launching") {
             // Keep the initial phase so the network-free launch surface remains visible.
         } else if ProcessInfo.processInfo.arguments.contains("--preview-login")
@@ -492,6 +500,7 @@ final class AppModel: ObservableObject {
             }
             phase = .signedIn
             Task { await refreshConnectorsCapability() }
+            scheduleMemoryCapabilitiesRefresh()
             scheduleDigestWarmup()
             presencePublisher.start(token: savedToken)
             startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
@@ -1116,6 +1125,35 @@ final class AppModel: ObservableObject {
         } catch {
             deviceErrorMessage = userFacing(error, fallback: "Could not load active devices.")
         }
+    }
+
+    var isMemoryAvailable: Bool { MemoryPresentation.isAvailable(memoryCapabilities) }
+
+    private static let previewMemoryCapabilities = CloudAuthCapabilities(password: true, memoryVersion: 1)
+
+    /// Fetches the memory capability in the background right after sign-in or a
+    /// restored session, so it is cached before any detail view appears.
+    private func scheduleMemoryCapabilitiesRefresh() {
+        Task { [weak self] in await self?.refreshMemoryCapabilities() }
+    }
+
+    /// Loads the capability flag that shows the Memory settings entry and group tab.
+    func refreshMemoryCapabilities() async {
+        if previewMode {
+            memoryCapabilities = Self.previewMemoryCapabilities
+            return
+        }
+        do {
+            memoryCapabilities = try await api.fetchCapabilities()
+        } catch {
+            // An unreachable server keeps the last known flag; without one the entry stays hidden.
+        }
+    }
+
+    /// The memory routes for the signed-in account, or the offline sample store in preview mode.
+    func makeMemoryService() -> any MemoryService {
+        if previewMode { return PreviewMemoryService() }
+        return CloudMemoryService(api: api) { [weak self] in self?.token }
     }
 
     func markDeviceReviewSeen() {
@@ -8028,6 +8066,7 @@ final class AppModel: ObservableObject {
         phase = .signedIn
         connectorsClientCache = nil
         Task { await refreshConnectorsCapability() }
+        scheduleMemoryCapabilitiesRefresh()
         presencePublisher.start(token: response.session.token)
         scheduleDigestWarmup()
         startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(

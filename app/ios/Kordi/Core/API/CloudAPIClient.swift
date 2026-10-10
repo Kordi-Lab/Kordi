@@ -277,6 +277,78 @@ actor CloudAPIClient {
         try await sendWithoutResponse(path: "/v1/cloud/auth/logout", method: "POST", token: token, fallback: "Could not sign out.")
     }
 
+    // MARK: Account memory
+
+    func fetchCapabilities() async throws -> CloudAuthCapabilities {
+        try await send(
+            path: "/v1/cloud/auth/capabilities",
+            method: "GET",
+            fallback: "Could not load Kordi Cloud capabilities."
+        )
+    }
+
+    func listMemories(token: String) async throws -> CloudMemoryListResponse {
+        try await send(path: "/v1/cloud/memory", method: "GET", token: token, fallback: "Could not load memory settings.")
+    }
+
+    func updateMemory(token: String, memoryId: String, text: String) async throws -> CloudMemory {
+        let response: CloudMemoryResponse = try await send(
+            path: "/v1/cloud/memory/\(escapedPath(memoryId))",
+            method: "PATCH",
+            token: token,
+            body: CloudMemoryUpdateRequest(text: text),
+            fallback: "Could not save this memory. Try again."
+        )
+        return response.memory
+    }
+
+    func deleteMemory(token: String, memoryId: String) async throws {
+        try await sendWithoutResponse(
+            path: "/v1/cloud/memory/\(escapedPath(memoryId))",
+            method: "DELETE",
+            token: token,
+            fallback: "Could not delete this memory. Try again."
+        )
+    }
+
+    func forgetAllMemories(token: String) async throws -> Int {
+        let response: CloudMemoryForgetResponse = try await send(
+            path: "/v1/cloud/memory",
+            method: "DELETE",
+            token: token,
+            fallback: "Could not delete your memories. Try again."
+        )
+        return response.archived
+    }
+
+    func memorySettings(token: String) async throws -> CloudMemorySettings {
+        try await send(path: "/v1/cloud/memory/settings", method: "GET", token: token, fallback: "Could not load memory settings.")
+    }
+
+    func updateMemorySettings(token: String, memoryEnabled: Bool? = nil, excludeSensitive: Bool? = nil) async throws -> CloudMemorySettings {
+        try await send(
+            path: "/v1/cloud/memory/settings",
+            method: "PUT",
+            token: token,
+            body: CloudMemorySettingsUpdateRequest(memoryEnabled: memoryEnabled, excludeSensitive: excludeSensitive),
+            fallback: "Could not update memory settings. Try again."
+        )
+    }
+
+    func replayState(token: String) async throws -> CloudReplayStateResponse {
+        try await send(path: "/v1/cloud/agent-runs/omp-state", method: "GET", token: token, fallback: "Could not load replay state.")
+    }
+
+    func clearReplayState(token: String) async throws -> Int {
+        let response: CloudReplayStateClearResponse = try await send(
+            path: "/v1/cloud/agent-runs/omp-state",
+            method: "DELETE",
+            token: token,
+            fallback: "Could not clear replay state. Try again."
+        )
+        return response.deleted
+    }
+
     func listDevices(token: String) async throws -> [CloudDeviceAuthorization] {
         let device = try await deviceRegistration()
         try await sendWithoutResponse(
