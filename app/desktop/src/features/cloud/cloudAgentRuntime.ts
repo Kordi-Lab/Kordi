@@ -15,6 +15,11 @@ import {
   encodeCloudDirectMessageEnvelope,
 } from './cloudDirectMessages';
 import {
+  canonicalAgentRequestRuntimeRoute,
+  cloudAgentRequestRuntimeRoute,
+  type SessionRuntimeRouteRecord,
+} from './cloudAgentRuntimeRequestRoutes';
+import {
   agentRuntimeRouteChangeNotice,
   cleanRuntimeRouteText as cleanText,
   modelFromAgentModelChangeNotice,
@@ -37,6 +42,8 @@ export type CloudAgentRuntimeRouteChangeInput = {
   authProvider?: string | null;
   authChoice?: string | null;
   initialSessionTitle?: string | null;
+  /** Records the route without a visible notice, for a change the person did not make. */
+  synchronizationOnly?: boolean;
 };
 
 function runtimeRouteFromUnknown(value: unknown): DesktopChatMessageRoute | null {
@@ -214,37 +221,40 @@ export function applyCloudAgentModelChangeMessages(
   accountId: string | null | undefined,
   messages: CanonicalSessionMessage[] | null | undefined,
   localExecutionRoute?: DesktopChatMessageRoute | null,
+  mirroredRoutes: readonly SessionRuntimeRouteRecord[] = [],
 ): Record<string, DesktopChatMessageRoute> {
-  if (!cleanText(accountId) || !messages?.length) return current;
+  if (!cleanText(accountId) || (!messages?.length && !mirroredRoutes.length)) return current;
 
-  const latestBySessionId = new Map<string, CanonicalSessionMessage>();
-  for (const message of messages) {
-    if (message.messageKind !== CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND) continue;
-    const route = runtimeRouteFromUnknown(message.content)
-      ?? cloudAgentRuntimeRouteChangeFromBody(message.contentText);
+  // A person's own request records the route it ran on; a later model change
+  // wins. Records apply in session order, so a model-only change keeps the
+  // account an earlier request recorded for the same provider.
+  const records = [...mirroredRoutes];
+  for (const message of messages ?? []) {
+    const route = message.messageKind === CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND
+      ? runtimeRouteFromUnknown(message.content) ?? cloudAgentRuntimeRouteChangeFromBody(message.contentText)
+      : canonicalAgentRequestRuntimeRoute(message);
     if (!route?.model) continue;
-    const existing = latestBySessionId.get(message.sessionId);
-    if (!existing
-      || message.sequenceNum > existing.sequenceNum
-      || (message.sequenceNum === existing.sequenceNum && message.updatedAtMs > existing.updatedAtMs)) {
-      latestBySessionId.set(message.sessionId, message);
-    }
+    records.push({ sessionId: message.sessionId, sequenceNum: message.sequenceNum, updatedAtMs: message.updatedAtMs, route });
   }
+  records.sort((left, right) => left.sequenceNum - right.sequenceNum || left.updatedAtMs - right.updatedAtMs);
 
-  let next = current;
-  for (const [sessionId, message] of latestBySessionId) {
-    const changeRoute = runtimeRouteFromUnknown(message.content)
-      ?? cloudAgentRuntimeRouteChangeFromBody(message.contentText);
+  // Fold each session's records, then compare only the final route, so a
+  // replay of the same history keeps the current object.
+  const folded = new Map<string, DesktopChatMessageRoute>();
+  for (const { sessionId, route: changeRoute } of records) {
     const runtimeSessionId = cloudAgentRuntimeSessionId(accountId, sessionId);
-    if (!changeRoute?.model || !runtimeSessionId) continue;
-
-    const existing = current[runtimeSessionId] ?? {};
+    if (!runtimeSessionId) continue;
     const synchronized = cloudAgentRuntimeRouteAfterModelChange(
-      existing,
+      folded.get(runtimeSessionId) ?? current[runtimeSessionId] ?? {},
       changeRoute,
       localExecutionRoute,
     );
-    if (!synchronized) continue;
+    if (synchronized) folded.set(runtimeSessionId, synchronized);
+  }
+
+  let next = current;
+  for (const [runtimeSessionId, synchronized] of folded) {
+    const existing = current[runtimeSessionId] ?? {};
     if (
       cleanText(existing.model) === cleanText(synchronized.model)
       && routeProvider(existing) === routeProvider(synchronized)
@@ -265,29 +275,29 @@ export function applyCloudAgentRuntimeRouteChangeCloudMessages(
 ): Record<string, DesktopChatMessageRoute> {
   const localAccountId = cleanText(accountId);
   if (!localAccountId || !messages?.length) return current;
-  const latestBySessionId = new Map<string, CloudMessage>();
+  // A request's envelope records the route it ran on, so sessions whose route
+  // was never published still recover it; a later model change wins.
+  const latestBySessionId = new Map<string, { message: CloudMessage; route: DesktopChatMessageRoute }>();
   for (const message of messages) {
     const sessionId = cleanText(message.sessionId);
-    if (
-      !sessionId
-      || message.fromAccountId !== localAccountId
-      || message.messageKind !== CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND
-      || !cloudAgentRuntimeRouteChangeFromBody(message.body)?.model
-    ) continue;
-    const existing = latestBySessionId.get(sessionId);
+    if (!sessionId || message.fromAccountId !== localAccountId) continue;
+    const route = message.messageKind === CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND
+      ? cloudAgentRuntimeRouteChangeFromBody(message.body)
+      : cloudAgentRequestRuntimeRoute(message, localAccountId);
+    if (!route?.model) continue;
+    const existing = latestBySessionId.get(sessionId)?.message;
     if (!existing || compareCloudMessageOrder(existing, message) < 0) {
-      latestBySessionId.set(sessionId, message);
+      latestBySessionId.set(sessionId, { message, route });
     }
   }
 
   let next = current;
-  for (const [sessionId, message] of latestBySessionId) {
+  for (const [sessionId, { route: changeRoute }] of latestBySessionId) {
     const runtimeSessionId = cloudAgentRuntimeSessionId(
       localAccountId,
       sessionId,
     );
-    const changeRoute = cloudAgentRuntimeRouteChangeFromBody(message.body);
-    if (!runtimeSessionId || !changeRoute) continue;
+    if (!runtimeSessionId) continue;
     const existing = current[runtimeSessionId] ?? {};
     const synchronized = cloudAgentRuntimeRouteAfterModelChange(
       existing,
@@ -307,12 +317,26 @@ export function applyCloudAgentRuntimeRouteChangeCloudMessages(
   return next;
 }
 
+/** The person's own Cloud messages that record a session route: model changes and routed requests. */
+export function cloudAgentRuntimeRouteSourceMessages(
+  messages: readonly CloudMessage[],
+  accountId: string | null | undefined,
+): CloudMessage[] {
+  return messages.filter((message) => (
+    message.fromAccountId === accountId
+    && message.toAccountId === accountId
+    && (message.messageKind === CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND
+      || Boolean(cloudAgentRequestRuntimeRoute(message, accountId)))
+  ));
+}
+
 export function applySynchronizedCloudAgentRuntimeRoutes(
   current: Record<string, DesktopChatMessageRoute>,
   accountId: string | null | undefined,
   canonicalMessages: CanonicalSessionMessage[] | null | undefined,
   cloudMessages: readonly CloudMessage[] | null | undefined,
   localExecutionRoute?: DesktopChatMessageRoute | null,
+  mirroredRoutes?: readonly SessionRuntimeRouteRecord[],
 ): Record<string, DesktopChatMessageRoute> {
   // Canonical history can lag the reliable Cloud stream while its mirror is
   // being hydrated. Apply it first as a recovery source, then let the ordered
@@ -324,6 +348,7 @@ export function applySynchronizedCloudAgentRuntimeRoutes(
     accountId,
     canonicalMessages,
     localExecutionRoute,
+    mirroredRoutes,
   );
   const synchronized = applyCloudAgentRuntimeRouteChangeCloudMessages(
     recovered,

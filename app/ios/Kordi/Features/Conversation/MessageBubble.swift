@@ -264,10 +264,16 @@ struct MessageBubble: View, Equatable {
                     }
                 }
                 if let position = message.agentQueuePosition {
-                    Label(position == 1 ? "Queued next" : "Queued · \(position)", systemImage: "clock")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
+                    HStack(spacing: 6) {
+                        Label(position == 1 ? "Queued next" : "Queued · \(position)", systemImage: "clock")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        if message.author == .me {
+                            // The server cancels a queued run directly.
+                            AgentRequestStopButton(conversationId: message.conversationId, requestMessageId: message.id)
+                        }
+                    }
+                    .padding(.horizontal, 4)
                 }
                 if !isThreadLayout && showAuthor && message.author == .agent {
                     HStack(spacing: 6) {
@@ -751,6 +757,8 @@ struct MessageBubble: View, Equatable {
                     messageID: message.id,
                     execution: execution,
                     showsWaitingIndicator: Self.showsAgentWaitingIndicator(execution: execution, responseText: message.text),
+                    stopRequestID: message.author == .agent && !execution.completed ? message.requestMessageId : nil,
+                    conversationID: message.conversationId,
                     onExpansionChange: onContentExpansionChange
                 )
             }
@@ -793,6 +801,12 @@ struct MessageBubble: View, Equatable {
                         onOpenPersonMention: onOpenMentionProfile
                     )
                         .foregroundStyle(bubbleTextColor)
+                }
+                // A reply that ended early keeps its text with how it ended.
+                if message.author == .agent, let ending = message.agentReplyEnding {
+                    Text(ending.label)
+                        .font(.caption2)
+                        .foregroundStyle(bubbleSecondaryTextColor)
                 }
             }
 
@@ -1637,6 +1651,8 @@ struct AgentExecutionTimeline: View {
     let messageID: String
     let execution: AgentExecutionSnapshot
     let showsWaitingIndicator: Bool
+    var stopRequestID: String? = nil
+    var conversationID: String = ""
     let onExpansionChange: (Bool) -> Void
     @State private var localExpansion = AgentExecutionTimelineExpansion()
 
@@ -1654,11 +1670,18 @@ struct AgentExecutionTimeline: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if showsWaitingIndicator {
-                AgentExecutionActivityIndicator(
-                    accessibilityStatus: presentation.headline
-                )
-                .frame(minHeight: 24, alignment: .leading)
+            if showsWaitingIndicator || stopRequestID != nil {
+                HStack(spacing: 8) {
+                    if showsWaitingIndicator {
+                        AgentExecutionActivityIndicator(
+                            accessibilityStatus: presentation.headline
+                        )
+                    }
+                    if let stopRequestID {
+                        AgentRequestStopButton(conversationId: conversationID, requestMessageId: stopRequestID)
+                    }
+                }
+                .frame(height: 24, alignment: .leading)
             }
             if let activeOutputStatus = presentation.activeOutputStatus {
                 Button(action: toggleExpansion) {

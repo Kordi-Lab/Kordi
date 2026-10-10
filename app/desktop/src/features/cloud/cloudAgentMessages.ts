@@ -24,11 +24,23 @@ export function isCloudAgentRuntimeSessionId(sessionId: string | null | undefine
   return Boolean(sessionId?.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX));
 }
 
+/**
+ * How a reply that ended early stopped: `stopped` by a user, `interrupted` by
+ * its executor (lost lease or runtime error). Present only when the reply
+ * keeps the text the agent produced before it ended.
+ */
+export type CloudAgentReplyEnding = 'stopped' | 'interrupted';
+
+export function cloudAgentReplyEnding(value: unknown): CloudAgentReplyEnding | undefined {
+  return value === 'stopped' || value === 'interrupted' ? value : undefined;
+}
+
 export type CloudAgentResponseEnvelope = {
   kind: 'agent-response';
   requestId: string;
   text: string;
   deliveryState?: 'processing' | 'complete' | 'failed' | 'cancelled';
+  ending?: CloudAgentReplyEnding;
   execution?: CloudAgentExecutionSnapshot;
   backgroundSessions?: CloudAgentBackgroundSession[];
   messageAction?: MessageActionMetadata;
@@ -144,6 +156,7 @@ export function encodeCloudAgentResponse(input: {
   requestId: string;
   text: string;
   deliveryState?: CloudAgentResponseEnvelope['deliveryState'];
+  ending?: CloudAgentReplyEnding;
   execution?: CloudAgentExecutionSnapshot;
   backgroundSessions?: CloudAgentBackgroundSession[];
   messageAction?: MessageActionMetadata | null;
@@ -155,6 +168,7 @@ export function encodeCloudAgentResponse(input: {
     text: input.text,
     ...(input.messageAction ? { messageAction: input.messageAction } : {}),
     ...(input.deliveryState ? { deliveryState: input.deliveryState } : {}),
+    ...(input.ending ? { ending: input.ending } : {}),
     ...(input.execution ? { execution: input.execution } : {}),
     ...(input.backgroundSessions?.length
       ? { backgroundSessions: input.backgroundSessions.slice(0, 4) }
@@ -178,6 +192,7 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
       || parsed.deliveryState === 'cancelled'
       ? parsed.deliveryState
       : undefined;
+    const ending = cloudAgentReplyEnding(parsed.ending);
     const execution = parseCloudAgentExecutionSnapshot(parsed.execution);
     const backgroundSessions = parseCloudAgentBackgroundSessions(parsed.backgroundSessions);
     const messageAction = cloudMessageActionFromRecord(parsed.messageAction);
@@ -189,6 +204,7 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
       requestId: parsed.requestId,
       text: parsed.text,
       ...(deliveryState ? { deliveryState } : {}),
+      ...(ending ? { ending } : {}),
       ...(execution ? { execution } : {}),
       ...(backgroundSessions.length > 0 ? { backgroundSessions } : {}),
       ...(messageAction?.kind === 'thread' ? { messageAction } : {}),

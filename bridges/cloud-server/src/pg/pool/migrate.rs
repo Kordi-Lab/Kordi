@@ -47,7 +47,7 @@ pub(crate) async fn apply_migrations(pool: &PgPool) -> Result<(), PgPoolError> {
     query("CREATE TABLE IF NOT EXISTS cloud_schema_versions (version BIGINT PRIMARY KEY, description TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())")
         .execute(&mut *tx).await.map_err(PgPoolError::Migrate)?;
     tx.commit().await.map_err(PgPoolError::Migrate)?;
-    for migration in EMBEDDED_MIGRATIONS {
+    for migration in EMBEDDED_MIGRATIONS.iter() {
         let mut tx = pool.begin().await.map_err(PgPoolError::Migrate)?;
         query("SELECT pg_advisory_xact_lock(hashtextextended('kordi-schema-migrations',0))")
             .execute(&mut *tx)
@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn pending_compatibility_guards_are_narrowly_scoped() {
-        for migration in EMBEDDED_MIGRATIONS {
+        for migration in EMBEDDED_MIGRATIONS.iter() {
             let sql = pending_migration_sql(migration);
             match migration.version {
                 77 => assert_eq!(sql, "SELECT 1;"),

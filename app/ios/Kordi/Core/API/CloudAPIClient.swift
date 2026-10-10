@@ -1032,6 +1032,14 @@ actor CloudAPIClient {
         }
     }
 
+    /// Asks whoever executes this request's agent run to stop it.
+    func stopAgentRequest(token: String, requestMessageId: String) async throws {
+        try await sendWithoutResponse(
+            path: "/v1/cloud/agent-runs/request/\(escapedPath(requestMessageId))/stop", method: "POST", token: token,
+            fallback: "Could not stop this request. Try again."
+        )
+    }
+
     func stopAgentSubsession(token: String, id: String, expectedStartedAtMs: Int64?) async throws -> CloudAgentSubsession {
         struct StopRequest: Encodable { let expectedStartedAtMs: Int64? }
         return try await send(

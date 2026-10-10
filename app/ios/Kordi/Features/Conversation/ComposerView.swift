@@ -131,12 +131,17 @@ enum ComposerMessageFieldLayout {
 }
 
 enum ComposerTextExclusionLayout {
+    static let defaultTrailingWidth: CGFloat = 88
+    /// Extra width for the compact Stop control beside Send.
+    static let stopControlWidth: CGFloat = 44
+
     static func rects(
         containerWidth: CGFloat,
         contentHeight: CGFloat,
-        showsDraftButton: Bool
+        showsDraftButton: Bool,
+        trailingWidth: CGFloat = defaultTrailingWidth
     ) -> [CGRect] {
-        let bottomWidth = min(88, containerWidth)
+        let bottomWidth = min(trailingWidth, containerWidth)
         let accessoryHeight = min(44, contentHeight)
         var rects = [CGRect(
             x: max(0, containerWidth - bottomWidth),
@@ -565,6 +570,11 @@ struct ComposerView: View {
         .accessibilityHint("Hold to record. Recordings shorter than one second are discarded.")
     }
 
+    private var showsStopBesideSend: Bool {
+        editingMessage == nil && !isVoiceInputMode
+            && model.composerStopPlacement(for: conversation) == .beside
+    }
+
     private var messageEditor: some View {
         ComposerTextView(
             model: model,
@@ -581,6 +591,8 @@ struct ComposerView: View {
             onRequestExpressiveMediaImport: requestExpressiveMediaImport,
             measuredHeight: $messageEditorHeight,
             draftButtonThreshold: draftPaneExpansionThreshold,
+            trailingExclusionWidth: ComposerTextExclusionLayout.defaultTrailingWidth
+                + (showsStopBesideSend ? ComposerTextExclusionLayout.stopControlWidth : 0),
             accessibilityLabel: editingMessage == nil
                 ? "Message \(destinationName)"
                 : "Edit message"
@@ -811,7 +823,32 @@ struct ComposerView: View {
         .accessibilityLabel("Add photo, video, or file")
     }
 
+    /// In agent chats, Stop takes the send button's place while a request this
+    /// account sent runs or waits. In person and group chats Send stays and a
+    /// compact Stop sits beside it. The draft stays and can be sent after.
+    @ViewBuilder
     private var sendButton: some View {
+        let stopID = model.composerStopAgentRequestID(conversationId: conversation.id)
+        let placement = editingMessage == nil && !isVoiceInputMode
+            ? ComposerStopPlacement.resolve(kind: conversation.kind, pendingRequestID: stopID)
+            : .none
+        if placement == .replaceSend, let stopID {
+            ComposerAgentRequestStopButton(
+                conversationId: conversation.id,
+                requestMessageId: stopID,
+                diameter: sendButtonDiameter
+            )
+        } else if placement == .beside, let stopID {
+            HStack(spacing: 0) {
+                AgentRequestStopButton(conversationId: conversation.id, requestMessageId: stopID)
+                sendOrVoiceButton
+            }
+        } else {
+            sendOrVoiceButton
+        }
+    }
+
+    private var sendOrVoiceButton: some View {
         Button {
             dismissExpressivePicker()
             dismissAgentModelPicker()

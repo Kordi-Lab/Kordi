@@ -22,6 +22,7 @@ import {
 export { composerAttachmentItemFromStoredPath } from './composerAttachments';
 import { updateScopeDraft } from './composerDrafts';
 import { appendOptimisticSessionConfigMessage } from './composerSessionConfigState';
+import { composerSelectionIsAutomatic, type ComposerSelectionOptions } from './composerSelectionOrigin';
 
 import { isProjectDraftSessionId } from './draftSessions';
 
@@ -111,7 +112,8 @@ export function useComposerInputActions({
     setOpenComposerSelector((current) => (current?.scope === scope && current.type === type ? null : { scope, type }));
   }, [setOpenComposerSelector]);
 
-  const selectComposerValue = useCallback(async (scope: ComposerScope, type: ComposerSelectorType, value: string, configTargetOverride?: ComposerConfigTargetOverride) => {
+  const selectComposerValue = useCallback(async (scope: ComposerScope, type: ComposerSelectorType, value: string, configTargetOverride?: ComposerConfigTargetOverride, selectionOptions?: ComposerSelectionOptions) => {
+    const silent = composerSelectionIsAutomatic(selectionOptions);
     const isolatedTarget = typeof configTargetOverride === 'object' && configTargetOverride !== null
       ? configTargetOverride
       : null;
@@ -193,6 +195,7 @@ export function useComposerInputActions({
           sessionId: cloudRuntimeSessionId,
           model: nextSelection.model,
           thinking: nextThinkingValue ?? nextSelection.thinking,
+          ...(silent ? { synchronizationOnly: true } : {}),
         });
       } catch (error) {
         setComposerSelections((current: ComposerSelectionState) => ({
@@ -223,7 +226,7 @@ export function useComposerInputActions({
       try {
         setDesktopChatError(null);
 
-        if (!isolatedTarget && (modelChanged || thinkingChanged) && desktopChatState?.activeSessionId === targetSessionId) {
+        if (!silent && !isolatedTarget && (modelChanged || thinkingChanged) && desktopChatState?.activeSessionId === targetSessionId) {
           setDesktopChatState((current) => {
             if (!current || current.activeSessionId !== targetSessionId) return current;
             return appendOptimisticSessionConfigMessage({

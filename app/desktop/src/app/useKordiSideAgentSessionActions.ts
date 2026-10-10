@@ -10,6 +10,8 @@ import type { DesktopChatState } from '@/kordi-app/types';
 import { createDesktopChatSession } from '@/lib/desktop';
 
 type UseKordiSideAgentSessionActionsArgs = {
+  /** Gives the new session the source session's route and records it for restarts. */
+  inheritRuntimeRoute?: (sourceSessionId?: string | null, targetSessionId?: string | null) => void;
   isNativeShell: boolean;
   setComposerDrafts: Dispatch<SetStateAction<ComposerDraftState>>;
   setDesktopChatError: Dispatch<SetStateAction<string | null>>;
@@ -17,6 +19,7 @@ type UseKordiSideAgentSessionActionsArgs = {
 };
 
 export function useKordiSideAgentSessionActions({
+  inheritRuntimeRoute,
   isNativeShell,
   setComposerDrafts,
   setDesktopChatError,
@@ -47,6 +50,7 @@ export function useKordiSideAgentSessionActions({
           || nextState.activeSession.id !== sessionId || nextState.activeSession.messageCount > 0
           || nextState.activeSession.messages.length > 0) throw new Error('Unable to create an empty private Agent session.');
         setDesktopChatState(nextState);
+        inheritRuntimeRoute?.(sourceSessionId, sessionId);
         if (sessionId) {
           setComposerDrafts((current) => (
             updateScopeDraft(current, 'chat', sessionId, '')
@@ -67,6 +71,7 @@ export function useKordiSideAgentSessionActions({
     createFlightRef.current = { source: sourceSessionId, promise: request };
     return request;
   }, [
+    inheritRuntimeRoute,
     isNativeShell,
     setComposerDrafts,
     setDesktopChatError,

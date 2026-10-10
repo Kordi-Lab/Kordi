@@ -259,6 +259,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
     @Published private(set) var subsessions: [String: CloudAgentSubsession] = [:]
     @Published private(set) var stoppingSubsessionIDs: Set<String> = []
+    /// Agent requests a Stop was sent for, until their terminal reply arrives.
+    @Published private(set) var stoppingAgentRequestIDs: Set<String> = []
     @Published private(set) var callsByConversationID: [String: CloudCall] = [:]
     @Published private(set) var latestCallSnapshot: CloudCall?
     @Published private(set) var sessionActivityByID: [String: CloudSessionActivity] = [:]
@@ -773,6 +775,7 @@ final class AppModel: ObservableObject {
         messagesByConversation = [:]
         subsessions = [:]
         stoppingSubsessionIDs = []
+        stoppingAgentRequestIDs = []
         callsByConversationID = [:]
         latestCallSnapshot = nil
         endedCallIDs = []
@@ -1955,6 +1958,46 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Whether this account sent the request and it is still running.
+    func canStopAgentRequest(conversationId: String, requestMessageId: String) -> Bool {
+        pendingAgentRequestIds[conversationId, default: []].contains(requestMessageId)
+    }
+
+    /// The request the composer's Stop acts on in a chat, if this account
+    /// has one running or queued there.
+    func composerStopAgentRequestID(conversationId: String) -> String? {
+        AgentSessionQueuePresentation.composerStopRequestID(
+            pending: pendingAgentRequestIds[conversationId, default: []],
+            locallyQueued: pendingAgentQueuedRequestIds,
+            confirmedRunStatuses: confirmedAgentRunStatuses
+        )
+    }
+
+    /// Where the composer shows Stop for this chat.
+    func composerStopPlacement(for conversation: ConversationSummary) -> ComposerStopPlacement {
+        ComposerStopPlacement.resolve(
+            kind: conversation.kind,
+            pendingRequestID: composerStopAgentRequestID(conversationId: conversation.id)
+        )
+    }
+
+    /// Stops a running agent request this account sent. The row stays in
+    /// "Stopping…" until the executor publishes the terminal reply.
+    func stopAgentRequest(conversationId: String, requestMessageId: String) async throws {
+        guard canStopAgentRequest(conversationId: conversationId, requestMessageId: requestMessageId) else { return }
+        guard let accountId = account?.accountId else { throw URLError(.userAuthenticationRequired) }
+        guard stoppingAgentRequestIDs.insert(requestMessageId).inserted else { return }
+        if previewMode { return }
+        do {
+            guard let token else { throw URLError(.userAuthenticationRequired) }
+            try await api.stopAgentRequest(token: token, requestMessageId: requestMessageId)
+        } catch {
+            stoppingAgentRequestIDs.remove(requestMessageId)
+            throw error
+        }
+        guard self.account?.accountId == accountId else { throw CancellationError() }
+    }
+
     func installSubsessionStopPreview(_ snapshot: CloudAgentSubsession, reset: Bool = false) {
         guard previewMode, reset || subsessions[snapshot.sessionId] == nil else { return }
         var preview = snapshot
@@ -2216,8 +2259,10 @@ final class AppModel: ObservableObject {
                 agentDisplayName: routedAgent?.displayName
                     ?? conversation.agentDisplayName?.nonEmpty
                     ?? "Kordi",
-                agentOwnerName: routedAgent?.ownerName
-                    ?? (conversation.kind == .agent ? conversation.ownerDisplayName : nil),
+                agentOwnerName: routedAgent.map { $0.accountId == account.accountId ? "You" : $0.ownerName }
+                    ?? (conversation.kind == .agent
+                        ? (conversation.peerAccountId == account.accountId ? "You" : conversation.ownerDisplayName)
+                        : nil),
                 queued: conversation.kind == .agent
                     && !pendingAgentRequestIds[conversation.id, default: []].isEmpty
             )
@@ -3227,6 +3272,7 @@ final class AppModel: ObservableObject {
                     mentions: message.mentions,
                     messageKind: message.messageKind,
                     agentExecution: message.agentExecution,
+                    agentReplyEnding: message.agentReplyEnding,
                     backgroundAgentSessions: message.backgroundAgentSessions,
                     reactions: message.reactions,
                     attachmentReactions: message.attachmentReactions
@@ -5641,7 +5687,9 @@ final class AppModel: ObservableObject {
                 requestMessageId: requestMessageId,
                 startedAt: Date(),
                 agentDisplayName: conversation.agentDisplayName?.nonEmpty ?? "Kordi",
-                agentOwnerName: conversation.kind == .agent ? conversation.ownerDisplayName : nil
+                agentOwnerName: conversation.kind == .agent
+                    ? (conversation.peerAccountId == account.accountId ? "You" : conversation.ownerDisplayName)
+                    : nil
             )
         }
         while !Task.isCancelled,
@@ -5658,6 +5706,7 @@ final class AppModel: ObservableObject {
                 runtimeRoute: runtimeRoute
             )
                 recordConfirmedAgentRun(run, conversationId: conversation.id, requestMessageId: requestMessageId)
+                if errorMessage != nil { errorMessage = nil }
                 agentExecutionLocation[conversation.id] = run.executionBackend == "desktop"
                     ? .mac(label: ownerAccountId == account.accountId ? "your Mac" : "the owner’s Mac")
                     : .cloud
@@ -6261,6 +6310,7 @@ final class AppModel: ObservableObject {
                     ? nil : CloudMessageCodec.agentResponseDeliveryState(message.body),
                 updatedAtMs: parseCloudDate(message.createdAt).timeIntervalSince1970 * 1_000
             ),
+            agentReplyEnding: CloudMessageCodec.agentReplyEnding(message.body),
             backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
             reactions: message.reactions,
             attachmentReactions: message.attachmentReactions
@@ -6411,7 +6461,7 @@ final class AppModel: ObservableObject {
                 authorName: author == .me
                     ? "You"
                     : author == .agent ? agentName : payload.senderDisplayName?.nonEmpty ?? participantNames[payload.senderAccountId] ?? "Participant",
-                senderOwnerName: author == .agent ? ownerName : nil,
+                senderOwnerName: author == .agent ? (payload.senderAccountId == ownAccountId ? "You" : ownerName) : nil,
                 text: payload.text,
                 createdAt: Date(
                     timeIntervalSince1970: (
@@ -7483,6 +7533,7 @@ final class AppModel: ObservableObject {
 
     private func clearPendingAgentRequest(conversationId: String) {
         for requestID in pendingAgentRequestIds[conversationId, default: []] {
+            stoppingAgentRequestIDs.remove(requestID)
             pendingAgentQueuedRequestIds.remove(requestID)
             confirmedAgentRunStatuses[requestID] = nil
             pendingAgentRequestStartedAt[requestID] = nil
@@ -7503,6 +7554,7 @@ final class AppModel: ObservableObject {
         failed: Bool = false
     ) {
         pendingAgentRequestIds[conversationId]?.removeAll { $0 == requestMessageId }
+        stoppingAgentRequestIDs.remove(requestMessageId)
         pendingAgentQueuedRequestIds.remove(requestMessageId)
         confirmedAgentRunStatuses[requestMessageId] = nil
         pendingAgentRequestStartedAt[requestMessageId] = nil

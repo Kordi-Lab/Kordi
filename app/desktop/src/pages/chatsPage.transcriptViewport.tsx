@@ -281,6 +281,7 @@ export function useChatTranscriptViewport({
               isCompressionActive={isCompressionActive}
               own={msg.role === 'user' || msg.isOwnMessage === true}
               sender={msg.sender}
+              threadLayout={threadLayout}
             />
           ) : <MessageBubble
             msg={msg}
@@ -352,6 +353,7 @@ export function useChatTranscriptViewport({
               isCompressionActive={isCompressionActive}
               onEdit={onEditQueuedMessage}
               onCancel={onCancelQueuedMessage}
+              threadLayout={threadLayout}
             />
           ))}
         </div>

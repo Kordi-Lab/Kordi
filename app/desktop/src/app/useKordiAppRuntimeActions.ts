@@ -85,6 +85,7 @@ export function useKordiAppRuntimeActions({
       sendCloudGroupControl,
       recordCloudSessionFork,
       cancelCloudAgentRequest,
+      stopCloudSelfAgentRequest,
       unsupportedLegacyCollaborationAction,
       resolveChatRuntimeRoute,
       inheritCloudAgentRuntimeRoute,
@@ -169,7 +170,10 @@ export function useKordiAppRuntimeActions({
       activeConv.canonicalSessionId || activeConvId,
       'draft:local-chat',
     ),
-    onForkCreated: syncCloudAgentFork,
+    onForkCreated: (result) => {
+      inheritCloudAgentRuntimeRoute(result.sourceSessionId, result.forkedSessionId);
+      return syncCloudAgentFork(result);
+    },
   });
 
   const {
@@ -271,6 +275,7 @@ export function useKordiAppRuntimeActions({
       publishCloudAgentRuntimeRouteChange,
       resolveChatRuntimeRoute,
       cancelCloudAgentRequest,
+      stopCloudSelfAgentRequest,
       watchDesktopLiveTurn,
       shouldAutoFollowChatRef,
       setActiveConvId,
@@ -293,10 +298,12 @@ export function useKordiAppRuntimeActions({
   useKordiProviderAutoSwitch({
     activeLoginProviderId,
     activeProjectSessionId,
+    activeConversationSessionId: activeConv.canonicalSessionId ?? activeConvId,
     desktopAuthState,
     desktopChatState,
     isNativeShell,
     preferredModelValueForProvider,
+    resolveSessionRoute: resolveChatRuntimeRoute,
     selectComposerValue,
   });
 

@@ -1,6 +1,11 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+mod envelopes;
+use envelopes::{
+    ArtifactExportEnvelope, HeartbeatEnvelope, LeaseResponse, ProviderAuthEnvelope, RunEnvelope,
+};
+
 #[derive(Debug, thiserror::Error)]
 pub enum RunnerClientError {
     #[error("cloud runner client request failed: {0}")]
@@ -47,16 +52,6 @@ pub struct AgentRuntimeRoute {
     pub thinking: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct LeaseResponse {
-    run: Option<CloudAgentRun>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RunEnvelope {
-    run: CloudAgentRun,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderAuthMaterial {
     #[serde(rename = "snapshotId")]
@@ -86,12 +81,6 @@ pub struct OmpState {
     pub replayable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub checkpoint: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ProviderAuthEnvelope {
-    #[serde(rename = "providerAuth")]
-    provider_auth: ProviderAuthMaterial,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -132,11 +121,6 @@ pub struct ArtifactExportResponse {
     pub created_at: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct ArtifactExportEnvelope {
-    artifact: ArtifactExportResponse,
-}
-
 #[async_trait]
 pub trait CloudAgentRunClient {
     async fn task_operator(
@@ -160,6 +144,11 @@ pub trait CloudAgentRunClient {
     }
     async fn lease_next_run(&self) -> Result<Option<CloudAgentRun>, RunnerClientError>;
     async fn mark_running(&self, run_id: &str) -> Result<(), RunnerClientError>;
+    /// Renews the lease and returns whether the requester or owner stopped
+    /// the run. The server has already ended a stopped run.
+    async fn heartbeat(&self, run_id: &str) -> Result<bool, RunnerClientError> {
+        self.mark_running(run_id).await.map(|()| false)
+    }
     async fn complete_run(
         &self,
         run_id: &str,
@@ -354,6 +343,16 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
             .await?;
         let _ = envelope.run;
         Ok(())
+    }
+
+    async fn heartbeat(&self, run_id: &str) -> Result<bool, RunnerClientError> {
+        let envelope: HeartbeatEnvelope = self
+            .post_json(
+                &format!("/v1/cloud/agent-runs/{run_id}/running"),
+                serde_json::json!({ "runnerId": self.runner_id }),
+            )
+            .await?;
+        Ok(envelope.run.cancel_requested)
     }
 
     async fn complete_run(

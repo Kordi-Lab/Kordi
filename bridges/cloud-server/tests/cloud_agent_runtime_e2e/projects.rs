@@ -211,10 +211,20 @@ async fn projects_are_private_device_bound_and_operations_are_claimed_once() {
     );
 }
 
+async fn set_project_device_seen(pool: &sqlx_postgres::PgPool, account: &str, age: &str) {
+    sqlx_core::query::query(&format!(
+        "UPDATE cloud_project_devices SET updated_at=now()-interval '{age}' WHERE account_id=$1"
+    ))
+    .bind(account)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
 #[tokio::test]
-async fn project_runs_cannot_fall_back_to_cloud_or_another_mac() {
+async fn project_runs_use_the_cloud_only_while_the_project_mac_is_offline() {
     use kordi_cloud_server::cloud_agent_runtime::runs::{
-        claim_run, claim_run_for_desktop, ClaimRunRequest,
+        claim_run, claim_run_for_desktop, lease_canary_run, ClaimRunRequest,
     };
     let Some(pool) = try_pool().await else { return };
     let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
@@ -238,12 +248,43 @@ async fn project_runs_cannot_fall_back_to_cloud_or_another_mac() {
             .status(),
         StatusCode::OK
     );
-    let input: ClaimRunRequest = serde_json::from_value(json!({"requestMessageId":uuid::Uuid::new_v4().to_string(),"sessionId":session,"ownerAccountId":owner.account_id,"requesterAccountId":owner.account_id,"prompt":"Check workspace","idempotencyKey":uuid::Uuid::new_v4().to_string()})).unwrap();
-    assert!(claim_run(&pool, &input)
+    let device = kordi_cloud_server::projects::session_device(&pool, &owner.account_id, &session)
         .await
-        .unwrap_err()
-        .to_string()
-        .contains("project Mac"));
+        .unwrap()
+        .unwrap();
+
+    // Online project Mac: the claim route defers to it and runners skip queued runs.
+    let online_claim = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &owner.token,
+            claim_body_with_session(&owner, &owner, &uuid::Uuid::new_v4().to_string(), &session),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(online_claim.status(), StatusCode::CONFLICT);
+    let online_claim = read_json(online_claim).await;
+    assert_eq!(online_claim["errorCode"], "owner_online");
+    assert_eq!(
+        online_claim["message"],
+        "The project Mac will handle this task."
+    );
+    let queued: ClaimRunRequest = serde_json::from_value(claim_body_with_session(
+        &owner,
+        &owner,
+        &uuid::Uuid::new_v4().to_string(),
+        &session,
+    ))
+    .unwrap();
+    let queued = claim_run(&pool, &queued).await.unwrap();
+    assert!(lease_canary_run(&pool, "project-runner", &queued.run_id)
+        .await
+        .unwrap()
+        .is_none());
+
+    // A different Mac never runs it; the project Mac does.
+    let input: ClaimRunRequest = serde_json::from_value(json!({"requestMessageId":uuid::Uuid::new_v4().to_string(),"sessionId":session,"ownerAccountId":owner.account_id,"requesterAccountId":owner.account_id,"prompt":"Check workspace","idempotencyKey":uuid::Uuid::new_v4().to_string()})).unwrap();
     assert!(
         claim_run_for_desktop(&pool, &input, "desktop:another-device:claim")
             .await
@@ -251,4 +292,52 @@ async fn project_runs_cannot_fall_back_to_cloud_or_another_mac() {
             .to_string()
             .contains("project Mac")
     );
+    let desktop = claim_run_for_desktop(&pool, &input, &format!("desktop:{device}:claim"))
+        .await
+        .unwrap();
+    assert_eq!(desktop.execution_backend, "desktop");
+
+    // Offline project Mac: the cloud answers without the project files.
+    set_project_device_seen(&pool, &owner.account_id, "1 minute").await;
+    let offline_claim = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &owner.token,
+            claim_body_with_session(&owner, &owner, &uuid::Uuid::new_v4().to_string(), &session),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(offline_claim.status(), StatusCode::OK);
+    let run_id = read_json(offline_claim).await["runId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let leased = lease_canary_run(&pool, "project-runner", &run_id)
+        .await
+        .unwrap()
+        .expect("offline project run is leased by the cloud runner");
+    assert_eq!(leased.run_id, run_id);
+    assert!(leased
+        .system_prompt
+        .contains("This chat belongs to the project \"Example\""));
+    let earlier = lease_canary_run(&pool, "project-runner", &queued.run_id)
+        .await
+        .unwrap()
+        .expect("runs queued while the Mac was online run once it goes offline");
+    assert!(earlier
+        .system_prompt
+        .contains("This chat belongs to the project \"Example\""));
+
+    // A run the Mac claimed never moves to the cloud, even once its lease
+    // lapses with the Mac offline; the lost-desktop sweep ends it instead.
+    sqlx_core::query::query("UPDATE cloud_agent_fallback_runs SET status='running', lease_expires_at=(now()-interval '1 minute')::text WHERE run_id=$1")
+        .bind(&desktop.run_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(lease_canary_run(&pool, "project-runner", &desktop.run_id)
+        .await
+        .unwrap()
+        .is_none());
 }

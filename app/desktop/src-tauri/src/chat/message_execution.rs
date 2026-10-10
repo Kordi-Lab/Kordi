@@ -28,6 +28,10 @@ pub(super) struct StartMessageInput {
     pub shared_context: bool,
     pub request_message_id: Option<String>,
     pub execution_lease_deadline_ms: Option<i64>,
+    /// Hosted credential already resolved for the parent turn. Background
+    /// subsessions inherit it because they hold no execution lease of their
+    /// own; it is resolved again against the parent lease near expiry.
+    pub inherited_hosted_auth: Option<super::hosted_provider_auth::InheritedHostedAuth>,
 }
 
 async fn reserve_shared_request(
@@ -77,6 +81,7 @@ pub(super) async fn start_message(
         shared_context,
         request_message_id,
         execution_lease_deadline_ms,
+        inherited_hosted_auth,
     } = input;
     let attachment_paths = attachment_paths.unwrap_or_default();
     if text.trim().is_empty() && attachment_paths.is_empty() {
@@ -111,6 +116,7 @@ pub(super) async fn start_message(
         transcript_entry_id: None,
         error: None,
         transcript_refresh_required: false,
+        background_follow_up: None,
     }));
     let cancel = tokio_util::sync::CancellationToken::new();
 
@@ -143,7 +149,9 @@ pub(super) async fn start_message(
         if !admission::begin_preparation(&snapshot_for_task, &cancel, previous_turn).await {
             return;
         }
-        let hosted_auth = if super::hosted_provider_auth::route_uses_hosted_auth(route.as_ref()) {
+        let hosted_auth = if let Some(inherited) = inherited_hosted_auth {
+            Some(inherited.for_turn(route.as_ref()).await)
+        } else if super::hosted_provider_auth::route_uses_hosted_auth(route.as_ref()) {
             let Some(hosted_route) = route.as_ref() else {
                 fail_turn(
                     &snapshot_for_task,
@@ -222,6 +230,7 @@ pub(super) async fn start_message(
                     (scheduled_task_session_id.as_deref(), directory),
                     request_message_id.as_deref(),
                     &context_messages,
+                    (route.as_ref(), hosted_auth.as_ref()),
                 )
                 .await
                 {
@@ -246,7 +255,7 @@ pub(super) async fn start_message(
                     .map(str::trim)
                     .filter(|value| !value.is_empty() && *value != "default")
                 {
-                    if let Err(error) = session.set_thinking(thinking) {
+                    if let Err(error) = session.apply_turn_thinking(thinking) {
                         fail_turn(&snapshot_for_task, error.to_string());
                         return;
                     }

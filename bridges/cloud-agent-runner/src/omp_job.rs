@@ -106,17 +106,28 @@ pub(crate) async fn run<H: HostTool, E: EventSink>(
     host: &H,
     events: &E,
 ) -> Result<RunResult, RuntimeError> {
-    run_with_worker(job, host, events, worker_command()?).await
+    let runtime = crate::omp_pool::shared_runtime(worker_command()?);
+    run_on(job, host, events, &runtime).await
 }
 
+#[cfg(test)]
 async fn run_with_worker<H: HostTool, E: EventSink>(
     job: Job<'_>,
     host: &H,
     events: &E,
     worker: WorkerCommand,
 ) -> Result<RunResult, RuntimeError> {
+    run_on(job, host, events, &OmpRuntime::new(worker)).await
+}
+
+async fn run_on<H: HostTool, E: EventSink>(
+    job: Job<'_>,
+    host: &H,
+    events: &E,
+    runtime: &OmpRuntime,
+) -> Result<RunResult, RuntimeError> {
     let request = job.request()?;
-    OmpRuntime::new(worker)
+    runtime
         .run_turn(&request, host, events, CancellationToken::new())
         .await
 }

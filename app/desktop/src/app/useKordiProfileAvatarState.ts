@@ -6,6 +6,7 @@ import {
   canonicalLocalAgentAvatarSeed,
   canonicalProfileImageUrl,
 } from '@/app/useKordiAppModelHelpers';
+import { localAgentAvatarFromAccount, setLocalAgentAvatar } from '@/features/canonical/localAgentAvatar';
 import type { CloudAccount } from '@/features/cloud/authClient';
 import { cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { canonicalAvatarImageSource } from '@/features/cloud/canonicalAvatar';
@@ -64,7 +65,10 @@ export function resolveKordiProfileAvatarState({
     && identity.ownerIdentityId === canonicalState.profile.humanIdentityId
   ));
 
+  const accountAgentAvatar = localAgentAvatarFromAccount(account);
+
   return {
+    accountAgentAvatar,
     localProfileAvatarSeed:
       cloudProfileAvatar?.seed ?? canonicalProfileAvatarSeed,
     localProfileImageUrl:
@@ -85,7 +89,8 @@ export function resolveKordiProfileAvatarState({
       || localAgentIdentity?.displayName?.trim()
       || host?.displayName?.trim()
       || null,
-    localAgentAvatarSeed: canonicalLocalAgentAvatarSeed(canonicalState)
+    localAgentAvatarSeed: accountAgentAvatar?.seed
+      || canonicalLocalAgentAvatarSeed(canonicalState)
       || agent?.id?.trim()
       || host?.activeAgentId?.trim()
       || agent?.nodeId?.trim()
@@ -110,6 +115,11 @@ export function useKordiProfileAvatarState({
     if (!state.shouldPersistProfileSeed) return;
     setLocalProfileAvatarSeed(state.localProfileAvatarSeed);
   }, [state.localProfileAvatarSeed, state.shouldPersistProfileSeed]);
+
+  const { accountId: agentAccountId, seed: agentSeed, imageUrl: agentImageUrl } = state.accountAgentAvatar ?? {};
+  useLayoutEffect(() => {
+    setLocalAgentAvatar(agentAccountId ? { accountId: agentAccountId, seed: agentSeed, imageUrl: agentImageUrl } : null);
+  }, [agentAccountId, agentSeed, agentImageUrl]);
 
   useLayoutEffect(() => {
     setActiveLocalProfileIdentity({

@@ -113,6 +113,12 @@ export type MessageMention = {
 export type MessageSourceReference = {
   messageId: string;
   senderLabel?: string | null;
+  /** Avatar of the quoted sender, copied from the quoted message when it is known. */
+  senderKind?: 'human' | 'agent' | null;
+  senderAvatarSeed?: string | null;
+  senderProfileImageUrl?: string | null;
+  /** The quoted message came from the viewer or the viewer's own agent. */
+  senderIsSelf?: boolean;
   text: string;
   mentions?: MessageMention[];
   attachmentCount?: number;
@@ -358,6 +364,15 @@ export type CollaborationAgentRequestControl = {
   requestId: string;
 };
 
+export type DesktopBackgroundFollowUp = {
+  /** Stable follow-up identity; unique per background session and outcome. */
+  id: string;
+  sessionId: string;
+  parentRequestId?: string | null;
+  title: string;
+  status: 'done' | 'failed' | 'stopped';
+};
+
 export type DesktopChatTurnSnapshot = {
   localExecutionStarted?: boolean;
   /** Server-confirmed state of a hosted request; never a local execution handle. */
@@ -378,7 +393,11 @@ export type DesktopChatTurnSnapshot = {
   transcriptEntryId?: string | null;
   error?: string | null;
   transcriptRefreshRequired?: boolean;
+  /** A runtime follow-up turn that reports a finished background session. */
+  backgroundFollowUp?: DesktopBackgroundFollowUp | null;
   replyToMessageId?: string | null;
   sourceMessage?: MessageSourceReference | null;
   pendingCollaborationAgentRequest?: CollaborationAgentRequestControl | null;
+  /** How a reply that keeps its partial text ended early. */
+  ending?: 'stopped' | 'interrupted';
 };

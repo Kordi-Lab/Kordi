@@ -411,6 +411,8 @@ mod sandboxes;
 mod scheduled_runs;
 #[path = "cloud_agent_runtime_e2e/shared_desktop_lease.rs"]
 mod shared_desktop_lease;
+#[path = "cloud_agent_runtime_e2e/stop_requests.rs"]
+mod stop_requests;
 #[path = "cloud_agent_runtime_e2e/subsession_budgets.rs"]
 mod subsession_budgets;
 #[path = "cloud_agent_runtime_e2e/subsession_follow.rs"]
@@ -419,6 +421,8 @@ mod subsession_follow;
 mod subsession_stop;
 #[path = "cloud_agent_runtime_e2e/subsessions.rs"]
 mod subsessions;
+#[path = "cloud_agent_runtime_e2e/terminal_backfill.rs"]
+mod terminal_backfill;
 
 #[path = "cloud_agent_runtime_e2e/attachment_backfill.rs"]
 mod attachment_backfill;

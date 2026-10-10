@@ -1,67 +1,30 @@
-import { voiceAgentText } from '@/features/chat/voiceTranscription';
 import { useVoiceAgentRequestGate } from './useVoiceAgentRequestGate';
-import { publishModelSubsessions } from './agentSubsessionSync';
 import { useDesktopAgentReadiness, type CloudSelfAgentExecutionInput } from './useDesktopAgentReadiness';
-import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
 import {
+  useCallback,
   useEffect,
   useRef,
 } from 'react';
-import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
-import {
-  cancelDesktopChatTurn,
-  startDesktopChatMessage,
-} from '@/lib/desktop';
-import type {
-  DesktopChatTurnSnapshot,
-} from '@/kordi-app/types';
-import { resolveCloudMessageAttachments } from './cloudAttachments';
-import {
-  cloudAgentExecutionFingerprint,
-  cloudAgentExecutionSnapshotFromTurn,
-  finalizeCloudAgentExecutionSnapshot,
-} from './cloudAgentExecutionTrace';
-import {
-  cloudAgentFailedTurnSnapshot,
-  cloudAgentLocalFailureMessage,
-  waitForCloudAgentTurn,
-} from './cloudAgentLocalExecution';
-import {
-  cloudAgentNativeContextMessagesFromDirectCloudSession,
-  encodeCloudAgentResponse,
-} from './cloudAgentMessages';
+import { cancelDesktopChatTurn } from '@/lib/desktop';
 import {
   cloudAgentRuntimeRouteAfterModelChange,
   cloudAgentRuntimeSessionId,
   cloudSelfAgentRuntimeSessionId,
   latestCloudAgentRuntimeRouteChangeBeforeRequest,
 } from './cloudAgentRuntime';
-import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
-import {
-  cloudDirectMessageAgentRuntimeRoute,
-  cloudDirectMessageDisplayText,
-  cloudDirectMessageTargetCloudAgentId,
-} from './cloudDirectMessages';
-import { cloudAgentRunAlreadyOwnsRequest } from './cloudAgentRequestState';
-import {
-  CLOUD_SELF_AGENT_EXECUTION_STREAM_MS,
-  CLOUD_SELF_AGENT_HEARTBEAT_MS,
-  publishCloudSelfAgentExecutionSnapshot,
-  publishCloudSelfAgentHeartbeat,
-} from './cloudSelfAgentForwardExecution';
-import { loadSession } from './session';
+import { cloudDirectMessageAgentRuntimeRoute } from './cloudDirectMessages';
 import {
   cloudSelfAgentExecutionCanStart,
-  cloudSelfAgentHasTerminalResponse,
   cloudSelfAgentTerminalOrLocalRequestIds,
   omitTerminalCloudSelfAgentLocalTurns,
   pendingCloudSelfAgentExecutionRequests,
   localSelfAgentRequestClientMessageIds,
 } from './cloudSelfAgentExecutionState';
-import { cloudAgentSessionTargetFromMessages } from './cloudSelfAgentSessionIdentity';
-import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
-import { planCloudSelfAgentCanonicalSync } from './cloudSelfAgentCanonicalSync';
-import { persistCloudSelfAgentCanonicalSyncPlan } from './cloudSelfAgentCanonicalSyncExecution';
+import {
+  executeCloudSelfAgentRequest,
+  type CloudSelfAgentActiveRequest,
+} from './cloudSelfAgentRequestExecution';
+import { stopCloudSelfAgentRequest } from './cloudSelfAgentStopRequest';
 export {
   cloudSelfAgentExecutionCanStart,
   cloudSelfAgentHasTerminalResponse,
@@ -90,6 +53,14 @@ export function useCloudSelfAgentExecution({
   reportWarning,
 }: CloudSelfAgentExecutionInput) {
   const supersededRequestIdsRef = useRef<Set<string>>(new Set());
+  // Requests this Mac executes, by request message ID, with how to stop each.
+  const activeRequestsRef = useRef(new Map<string, CloudSelfAgentActiveRequest>());
+  // The answer text each request streamed so far, kept when the reply ends early.
+  const streamedTextByRequestIdRef = useRef(new Map<string, string>());
+  const latestRef = useRef({ account, client, messageIndex, setLocalTurns, syncMessages, reportWarning });
+  useEffect(() => {
+    latestRef.current = { account, client, messageIndex, setLocalTurns, syncMessages, reportWarning };
+  }, [account, client, messageIndex, setLocalTurns, syncMessages, reportWarning]);
   const voiceGate = useVoiceAgentRequestGate();
   const executionReady = useDesktopAgentReadiness({ account, client, runtimeReady, cloudAgentDefinitionsById, reportWarning });
   const activeAccountIdRef = useRef<string | null>(
@@ -191,287 +162,31 @@ export function useCloudSelfAgentExecution({
             [candidateRuntimeSessionId]: eventConvergedSessionRoute,
           }
         : routesBySessionId;
-      const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
-        if (
-          isInactive()
-          || supersededRequestIdsRef.current.has(request.messageId)
-        ) return;
-        setLocalTurns((current) => ({
-          ...current,
-          [request.messageId]: turn,
-        }));
-      };
-
-      const executeRequest = async () => {
-        const session = await loadSession();
-        const sessionId = request.sessionId?.trim() ?? '';
-        if (!session?.token || !sessionId || isInactive()) {
-          processedRequestIdsRef.current.delete(request.messageId);
-          return;
-        }
-        const existingRun = await client
-          .lookupCloudAgentRunForRequest(session.token, request.messageId)
-          .catch(() => null);
-        if (cloudAgentRunAlreadyOwnsRequest(existingRun) || isInactive()) return;
-
-        const targetCloudAgentId =
-          cloudDirectMessageTargetCloudAgentId(request.body)
-          || cloudAgentSessionTargetFromMessages(
-            selfMessages,
-            account.accountId,
-            request,
-          )?.targetCloudAgentId
-          || null;
-        const executionRoute = cloudAgentRuntimeRouteForTargetCloudAgent({
-          targetCloudAgentId,
-          cloudAgentDefinitionsById,
-          routesByRuntimeSessionId: effectiveRoutesBySessionId,
-          runtimeSessionId: candidateRuntimeSessionId,
-          fallbackRoute: defaultRoute,
-          requestRoute,
-        });
-        const lease = await acquireDesktopExecutionLease(client, session.token, {
-          requestMessageId: request.messageId, sessionId, ownerAccountId: account.accountId,
-          requesterAccountId: account.accountId, prompt: (voice ? voiceAgentText(voice) : cloudDirectMessageDisplayText(request.body)),
-          runtimeRoute: executionRoute ? { defaultModel: executionRoute.model, defaultAuthProvider: executionRoute.authProvider,
-            defaultAuthChoice: executionRoute.authChoice, thinking: executionRoute.thinking } : undefined,
-          idempotencyKey: `request:${request.messageId}`,
-        });
-        if (!lease) return;
-        try {
-          if (isInactive()) return;
-          const publisher = lease.publisher;
-          await persistCloudSelfAgentCanonicalSyncPlan(planCloudSelfAgentCanonicalSync({
-            account,
-            messages: [request],
-            state: canonicalState,
-          }), { shouldContinue: () => !isInactive() });
-          void syncMessages().catch((error) => reportWarning(
-            '[cloud-self-agent-execution] claim sync failed',
-            error,
-          ));
-
-          const runtimeSessionId = cloudSelfAgentRuntimeSessionId(sessionId);
-          if (!runtimeSessionId) {
-            processedRequestIdsRef.current.delete(request.messageId);
-            return;
-          }
-          const prompt = (voice ? voiceAgentText(voice) : cloudDirectMessageDisplayText(request.body)).trim();
-          if (!prompt) {
-            processedRequestIdsRef.current.delete(request.messageId);
-            return;
-          }
-          const ownerName =
-            account.displayName || account.primaryEmail || 'Me';
-          const contextMessages = [
-            ...cloudAgentContextMessagesFromDefinition(
-              cloudAgentDefinitionsById?.[targetCloudAgentId ?? ''] ?? null,
-            ),
-            ...cloudAgentNativeContextMessagesFromDirectCloudSession({
-              messages: selfMessages,
-              requestMessage: request,
-              localAccountId: account.accountId,
-              localHumanName: ownerName,
-              peerHumanName: ownerName,
-              localAgentName: account.defaultAgent?.displayName || 'Kordi',
-              peerAgentName: account.defaultAgent?.displayName || 'Kordi',
-            }),
-          ];
-
-          let publishChain = Promise.resolve();
-          let lastPublishedAtMs = 0;
-          let lastFingerprint = '';
-          let lastPublishedPhase: string | null = null;
-          let revision = 0;
-          const queueProgress = (turn: DesktopChatTurnSnapshot) => {
-            rememberLocalTurn(turn);
-            if (turn.completed || isInactive()) return;
-            const execution = cloudAgentExecutionSnapshotFromTurn(turn);
-            const fingerprint = cloudAgentExecutionFingerprint(
-              execution,
-              turn.assistantText,
-            );
-            const nowMs = Date.now();
-            const changed = fingerprint !== lastFingerprint;
-            const publishAfterMs = changed
-              ? CLOUD_SELF_AGENT_EXECUTION_STREAM_MS
-              : CLOUD_SELF_AGENT_HEARTBEAT_MS;
-            const admissionChanged = lastPublishedPhase === null
-              || (lastPublishedPhase === 'queued') !== (execution.phase === 'queued');
-            if (!admissionChanged && nowMs - lastPublishedAtMs < publishAfterMs) return;
-            lastPublishedAtMs = nowMs;
-            lastFingerprint = fingerprint;
-            lastPublishedPhase = execution.phase;
-            revision += 1;
-            const publishRevision = revision;
-            publishChain = publishChain.then(async () => {
-              if (isInactive()) return;
-              const progress = changed
-                ? await publishCloudSelfAgentExecutionSnapshot({
-                    accountId: account.accountId,
-                    assistantText: turn.assistantText,
-                    client: publisher,
-                    cloudRequestMessageId: request.messageId,
-                    execution,
-                    localRequestMessageId: request.messageId,
-                    revision: publishRevision,
-                    sessionId,
-                    token: session.token,
-                  })
-                : await publishCloudSelfAgentHeartbeat({
-                    accountId: account.accountId,
-                    assistantText: turn.assistantText,
-                    client: publisher,
-                    cloudRequestMessageId: request.messageId,
-                    execution,
-                    localRequestMessageId: request.messageId,
-                    nowMs,
-                    sessionId,
-                    token: session.token,
-                  });
-              if (isInactive()) return;
-              mergeMessage(progress);
-              await syncMessages();
-            }).catch((error) => {
-              reportWarning(
-                '[cloud-self-agent-execution] progress publish failed',
-                error,
-              );
-            });
-          };
-
-          let finalTurn: DesktopChatTurnSnapshot;
-          try {
-            if (!await lease.admitted()) {
-              const queuedTurn: DesktopChatTurnSnapshot = {
-                id: `queued:${request.messageId}`, sessionId: runtimeSessionId, prompt,
-                status: 'queued', message: 'Queued next', assistantText: '', thinkingText: '', tools: [],
-                completed: false, succeeded: false, startedAtMs: Date.now(), replyToMessageId: request.messageId,
-              };
-              queueProgress(queuedTurn);
-              await publishChain;
-              do {
-                await new Promise((resolve) => setTimeout(resolve, 1000));
-                if (isInactive()) return;
-                if (supersededRequestIdsRef.current.has(request.messageId)) {
-                  const cancelled = await publisher.sendMessage(session.token, account.accountId,
-                    encodeCloudAgentResponse({ requestId: request.messageId, text: 'Request canceled.', deliveryState: 'cancelled' }),
-                    { clientMessageId: `request:${request.messageId}:cancelled` });
-                  mergeMessage(cancelled);
-                  return;
-                }
-              } while (!await lease.admitted());
-            }
-            const agentAttachments = request.attachments?.length
-              ? await resolveCloudMessageAttachments({
-                  token: session.token,
-                  client,
-                  attachments: request.attachments,
-                })
-              : request.attachments ?? [];
-            const startedTurn = await startDesktopChatMessage(
-              runtimeSessionId,
-              prompt,
-              agentAttachments
-                .map((attachment) => attachment.localPath?.trim() || '')
-                .filter(Boolean),
-              executionRoute,
-              lease.contextMessages(contextMessages),
-              [],
-              null,
-              request.messageId,
-              lease.deadline,
-            );
-            lease.attach(startedTurn.id);
-            rememberLocalTurn(startedTurn);
-            queueProgress(startedTurn);
-            turnIdsByRequestIdRef.current.set(
-              request.messageId,
-              startedTurn.id,
-            );
-            finalTurn = startedTurn.completed
-              ? startedTurn
-              : await waitForCloudAgentTurn(startedTurn.id, queueProgress);
-            rememberLocalTurn(finalTurn);
-          } catch (error) {
-            finalTurn = cloudAgentFailedTurnSnapshot({
-              requestId: request.messageId,
-              sessionId: runtimeSessionId,
-              prompt,
-              error,
-            });
-            rememberLocalTurn(finalTurn);
-            reportWarning(
-              '[cloud-self-agent-execution] local response failed',
-              error,
-            );
-          } finally {
-            turnIdsByRequestIdRef.current.delete(request.messageId);
-          }
-
-          await publishChain;
-          if (isInactive()) return;
-          const [latestSnapshot, fallbackRun] = await Promise.all([
-            client.listMessageSnapshot(session.token, account.accountId, 100)
-              .then((snapshot) => snapshot.messages)
-              .catch(() => messageIndex.byPeerId.get(account.accountId) ?? []),
-            client.lookupCloudAgentRunForRequest(
-              session.token,
-              request.messageId,
-            ).catch(() => null),
-          ] as const);
-          if (
-            cloudSelfAgentHasTerminalResponse(
-              request.messageId,
-              latestSnapshot,
-            )
-            || (fallbackRun?.executionBackend !== 'desktop' && cloudAgentRunAlreadyOwnsRequest(fallbackRun))
-          ) return;
-
-          const succeeded = finalTurn.succeeded
-            && finalTurn.assistantText.trim().length > 0;
-          const deliveryState = finalTurn.status === 'cancelled'
-            ? 'cancelled' as const
-            : succeeded
-              ? 'complete' as const
-              : 'failed' as const;
-          const responseText = succeeded
-            ? finalTurn.assistantText.trim()
-            : finalTurn.status === 'cancelled'
-              ? 'Request stopped.'
-              : cloudAgentLocalFailureMessage(
-                finalTurn.error || finalTurn.message,
-              );
-          const execution = finalizeCloudAgentExecutionSnapshot(
-            cloudAgentExecutionSnapshotFromTurn(finalTurn),
-            deliveryState,
-            finalTurn.completedAtMs ?? Date.now(),
-          );
-          void publishModelSubsessions(finalTurn).catch(() => undefined);
-          const response = await publisher.sendMessage(
-            session.token,
-            account.accountId,
-            encodeCloudAgentResponse({
-              requestId: request.messageId,
-              text: responseText,
-              deliveryState,
-              execution,
-              backgroundSessions: cloudAgentBackgroundSessionsFromTurn(finalTurn),
-            }),
-            {
-              sessionId,
-              clientMessageId:
-                `self-agent:${sessionId}:${request.messageId}`
-                + ':desktop-execution-response',
-            },
-          );
-          if (isInactive()) return;
-          mergeMessage(response);
-          await syncMessages();
-        } finally { lease.dispose(); }
-      };
       processedRequestIdsRef.current.add(request.messageId);
-      void executeRequest().catch((error) => {
+      void executeCloudSelfAgentRequest({
+        account,
+        canonicalState,
+        client,
+        messageIndex,
+        defaultRoute,
+        cloudAgentDefinitionsById,
+        processedRequestIdsRef,
+        turnIdsByRequestIdRef,
+        setLocalTurns,
+        mergeMessage,
+        syncMessages,
+        reportWarning,
+        request,
+        voice,
+        selfMessages,
+        candidateRuntimeSessionId,
+        effectiveRoutesBySessionId,
+        requestRoute,
+        isInactive,
+        supersededRequestIdsRef,
+        activeRequestsRef,
+        streamedTextByRequestIdRef,
+      }).catch((error) => {
         processedRequestIdsRef.current.delete(request.messageId);
         reportWarning('[cloud-self-agent-execution] request failed', error);
       });
@@ -495,4 +210,21 @@ export function useCloudSelfAgentExecution({
     turnIdsByRequestIdRef,
     voiceGate,
   ]);
+
+  /**
+   * Stops the session's running request. A request this Mac executes stops
+   * here. A request whose local turn is already gone, such as after a lost
+   * lease, is ended through this device's run with the text it streamed.
+   * Another executor learns of the stop from the server.
+   */
+  const stopActiveRequest = useCallback((sessionId: string): Promise<boolean> => stopCloudSelfAgentRequest({
+    sessionId,
+    activeRequests: activeRequestsRef.current,
+    localTurnRequestIds: turnIdsByRequestIdRef.current,
+    supersededRequestIds: supersededRequestIdsRef.current,
+    streamedTextByRequestId: streamedTextByRequestIdRef.current,
+    latest: latestRef.current,
+  }), [turnIdsByRequestIdRef]);
+
+  return { stopActiveRequest };
 }

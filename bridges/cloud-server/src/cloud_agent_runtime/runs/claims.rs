@@ -172,12 +172,12 @@ async fn claim_run_with_executor(
     desktop_executor: Option<&str>,
     trigger: RunTrigger,
 ) -> RunResult<CloudAgentRunResponse> {
-    if let Some(device) =
-        crate::projects::session_device(pool, &input.owner_account_id, &input.session_id).await?
-    {
-        if !desktop_executor
-            .is_some_and(|executor| executor.starts_with(&format!("desktop:{device}:")))
-        {
+    let project =
+        crate::projects::project_session_binding(pool, &input.owner_account_id, &input.session_id)
+            .await?;
+    // A cloud claim answers without project files; another Mac never runs it.
+    if let (Some(binding), Some(executor)) = (&project, desktop_executor) {
+        if !executor.starts_with(&format!("desktop:{}:", binding.device_id)) {
             return Err(super::RunError::ContextUnavailable("Open Kordi on the project Mac to run this task. Project files are available only on that device."));
         }
     }
@@ -211,8 +211,21 @@ async fn claim_run_with_executor(
     )
     .await?;
     let run_id = format!("car_{}", Uuid::new_v4().simple());
-    let prompt = fallback_prompt_for_claim(pool, input).await?;
-    let runtime_route = serde_json::to_value(runtime_route_for_claim(pool, input).await?)
+    let offline_project = project
+        .filter(|_| desktop_executor.is_none())
+        .map(|binding| binding.project_name);
+    let prompt = fallback_prompt_for_claim(pool, input, offline_project.as_deref()).await?;
+    let mut runtime_route = runtime_route_for_claim(pool, input).await?;
+    if desktop_executor.is_none() {
+        runtime_route = super::route_fill::fill_cloud_route(
+            pool,
+            &input.owner_account_id,
+            &input.session_id,
+            runtime_route,
+        )
+        .await?;
+    }
+    let runtime_route = serde_json::to_value(runtime_route)
         .map_err(|error| sqlx_core::Error::Encode(Box::new(error)))?;
     let audience = crate::connectors::audience::audience_for_message(
         pool,

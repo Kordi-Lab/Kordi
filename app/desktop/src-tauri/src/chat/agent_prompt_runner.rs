@@ -117,6 +117,7 @@ async fn run_agent_prompt_once(
         transcript_entry_id: None,
         error: None,
         transcript_refresh_required: false,
+        background_follow_up: None,
     }));
 
     let result = {
@@ -124,19 +125,19 @@ async fn run_agent_prompt_once(
         let setup_result = (|| -> Result<(), String> {
             if let Some(model) = route.model.as_deref() {
                 session
-                    .set_model(model)
+                    .apply_turn_model(model)
                     .map_err(|error| error.to_string())?;
             }
             if let (Some(auth_provider), Some(auth_choice)) =
                 (route.auth_provider.as_deref(), route.auth_choice.as_deref())
             {
                 session
-                    .set_auth_choice(auth_provider, auth_choice)
+                    .apply_turn_auth_choice(auth_provider, auth_choice)
                     .map_err(|error| error.to_string())?;
             }
             if let Some(thinking) = route.thinking.as_deref() {
                 session
-                    .set_thinking(thinking)
+                    .apply_turn_thinking(thinking)
                     .map_err(|error| error.to_string())?;
             }
             Ok(())
@@ -405,6 +406,7 @@ mod tests {
             transcript_entry_id: None,
             error: Some("default auth failed".to_string()),
             transcript_refresh_required: false,
+            background_follow_up: None,
         };
         let default_route = AgentRunRoute {
             model: Some("gpt-5".to_string()),

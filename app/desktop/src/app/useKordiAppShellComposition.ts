@@ -104,7 +104,7 @@ export function useKordiAppShellComposition({
     createSideAgentSession: handleCreateSideAgentSession,
     setComposerTextForSession: setChatComposerTextForSession,
   } = useKordiSideAgentSessionActions({
-    isNativeShell: environment.isNativeShell,
+    inheritRuntimeRoute: cloud.inheritCloudAgentRuntimeRoute, isNativeShell: environment.isNativeShell,
     setComposerDrafts: ui.composerUi.setComposerDrafts,
     setDesktopChatError: chat.setDesktopChatError,
     setDesktopChatState: chat.setDesktopChatState,

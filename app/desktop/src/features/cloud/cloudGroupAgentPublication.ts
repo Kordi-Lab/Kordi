@@ -32,6 +32,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   responseText,
   responseDeliveryState,
   responseTools,
+  requestId,
   agentId,
   agentDisplayName,
   agentHandoff,
@@ -48,6 +49,8 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   responseText: string;
   responseDeliveryState: 'complete' | 'failed';
   responseTools: CloudAgentExecutionTool[];
+  /** A follow-up reply carries its own request id so it never replaces the first reply. */
+  requestId?: string;
   agentId: string;
   agentDisplayName: string;
   agentHandoff: CloudGroupAgentHandoff | null;
@@ -115,7 +118,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
           senderDisplayName: agentDisplayName,
           deliveryState: responseDeliveryState,
           replyToMessageId: message.id,
-          requestId: message.id,
+          requestId: requestId ?? message.id,
           ...(message.messageAction?.kind === 'thread' ? { messageAction: message.messageAction } : {}),
           structuredContent: responseTools.length > 0
             ? { tools: responseTools }

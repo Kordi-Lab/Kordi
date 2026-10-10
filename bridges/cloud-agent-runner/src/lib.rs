@@ -5,6 +5,7 @@ pub mod connectors;
 pub mod k8s_sandbox;
 pub mod model_loop;
 mod omp_job;
+pub mod omp_pool;
 pub mod prompt;
 pub mod runtime;
 pub mod sandbox_client;

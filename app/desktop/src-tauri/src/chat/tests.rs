@@ -88,6 +88,7 @@ async fn running_turn_lookup_is_session_scoped() {
         transcript_entry_id: None,
         error: None,
         transcript_refresh_required: false,
+        background_follow_up: None,
     }));
     manager.turns.lock().await.insert(
         "turn-a".to_string(),
@@ -130,6 +131,7 @@ async fn concurrent_turn_admission_queues_per_canonical_session() {
                 transcript_entry_id: None,
                 error: None,
                 transcript_refresh_required: false,
+                background_follow_up: None,
             })),
             cancel: tokio_util::sync::CancellationToken::new(),
             execution_lease_deadline: Arc::new(Mutex::new(None)),

@@ -45,6 +45,35 @@ struct AgentSubsessionStopTests {
         #expect(result.state == .stopped)
     }
 
+    @Test func composerStopsTheRunningRequestElseTheQueuedOne() {
+        let select = AgentSessionQueuePresentation.composerStopRequestID
+        #expect(select([], [], [:]) == nil)
+        // The front request runs; the one behind it waits.
+        #expect(select(["running", "queued"], ["queued"], [:]) == "running")
+        #expect(select(["running", "behind"], [], [:]) == "running")
+        // The newest confirmed-running request wins over an older one.
+        #expect(select(["a", "b"], [], ["a": "running", "b": "running"]) == "b")
+        // Nothing runs yet: Stop cancels the newest queued request.
+        #expect(select(["first", "second"], ["first", "second"], [:]) == "second")
+        // Finished runs do not keep Stop in the composer.
+        #expect(select(["done"], [], ["done": "cancelled"]) == nil)
+        #expect(select(["done", "next"], ["next"], ["done": "failed"]) == "next")
+    }
+
+    @Test func composerHasNoStopWithoutAPendingRequest() {
+        let model = AppModel(previewMode: true, previewLaunchFlow: false)
+        #expect(model.composerStopAgentRequestID(conversationId: "no-such-chat") == nil)
+    }
+
+    @Test func stopPlacementFollowsConversationKind() {
+        #expect(ComposerStopPlacement.resolve(kind: .agent, pendingRequestID: "r") == .replaceSend)
+        #expect(ComposerStopPlacement.resolve(kind: .person, pendingRequestID: "r") == .beside)
+        #expect(ComposerStopPlacement.resolve(kind: .group, pendingRequestID: "r") == .beside)
+        for kind in [ConversationKind.agent, .person, .group] {
+            #expect(ComposerStopPlacement.resolve(kind: kind, pendingRequestID: nil) == .none)
+        }
+    }
+
     @Test func failuresDoNotClaimTheTaskStopped() {
         let text = AgentSubsessionStopButton.failureMessage(URLError(.notConnectedToInternet))
         #expect(text.contains("may still be running"))

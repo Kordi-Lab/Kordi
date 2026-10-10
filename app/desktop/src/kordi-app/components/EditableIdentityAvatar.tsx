@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react';
 import { Camera, Dice5 } from 'lucide-react';
 import { fileToAvatarDataUrl, setAvatarOverride } from './avatarOverrides';
+import { resolveLocalAgentAvatarSeed } from '@/features/canonical/localAgentAvatar';
 import { getIdentityAvatarKey, IdentityAvatar, type IdentityAvatarProps } from './IdentityAvatar';
+import { useLocalAgentAvatar } from './useLocalAgentAvatar';
 
 type EditableIdentityAvatarProps = IdentityAvatarProps & {
   label?: string;
@@ -20,7 +22,12 @@ export function EditableIdentityAvatar({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const normalizedSeed = avatarProps.seed.trim() || avatarProps.name?.trim() || `${avatarProps.kind}:unknown`;
+  const localAgentAvatar = useLocalAgentAvatar();
+  const rawSeed = avatarProps.seed.trim() || avatarProps.name?.trim() || `${avatarProps.kind}:unknown`;
+  // Key the user's own agent by the same seed IdentityAvatar renders it with.
+  const normalizedSeed = avatarProps.kind === 'agent' && !avatarProps.isSelf
+    ? resolveLocalAgentAvatarSeed(rawSeed, localAgentAvatar)
+    : rawSeed;
   const avatarKey = getIdentityAvatarKey(avatarProps.kind, normalizedSeed, avatarProps.avatarKey);
 
   const handleFileChange = (file?: File) => {

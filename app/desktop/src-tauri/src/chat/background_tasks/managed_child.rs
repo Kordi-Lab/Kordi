@@ -14,12 +14,20 @@ use kordi_cli::task_operator::{
 };
 use tokio::sync::Mutex;
 
-use super::super::{cancel_turn_by_id, message_execution, turn_snapshot_by_id, DesktopChatManager};
+use super::super::{
+    cancel_turn_by_id, hosted_provider_auth::InheritedHostedAuth, message_execution,
+    turn_snapshot_by_id, DesktopBackgroundFollowUp, DesktopChatManager, DesktopChatMessageRoute,
+    DesktopChatTurnSnapshot,
+};
+use super::follow_up;
+
+const FOLLOW_UP_POLL: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Debug)]
 struct ManagedTask {
     session_id: String,
     turn_id: String,
+    title: String,
 }
 
 #[derive(Clone)]
@@ -27,10 +35,13 @@ pub(in crate::chat) struct ManagedChildAgentRunner {
     manager: DesktopChatManager,
     parent_session_id: String,
     parent_request_id: Option<String>,
+    parent_runtime_session_id: Option<String>,
     base_profile: DesktopRuntimeProfile,
     directory: Option<String>,
     scoped_observation: bool,
     runtime_identity: Option<kordi_cli::desktop_runtime::DesktopChatContextMessage>,
+    parent_route: Option<DesktopChatMessageRoute>,
+    parent_hosted_auth: Option<InheritedHostedAuth>,
     jobs: Arc<Mutex<BTreeMap<String, ManagedTask>>>,
 }
 
@@ -45,10 +56,13 @@ impl ManagedChildAgentRunner {
             manager,
             parent_session_id,
             parent_request_id,
+            parent_runtime_session_id: None,
             base_profile,
             directory: None,
             scoped_observation: false,
             runtime_identity: None,
+            parent_route: None,
+            parent_hosted_auth: None,
             jobs: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -62,6 +76,27 @@ impl ManagedChildAgentRunner {
         self.scoped_observation = scoped;
         self.directory = directory;
         self.runtime_identity = runtime_identity;
+        self
+    }
+
+    /// Children run on the parent turn's route. A hosted route's credential is
+    /// resolved against the parent's execution lease and reused here, because
+    /// a background subsession has no lease of its own. Each turn resolves it
+    /// again against that lease once it is near expiry.
+    pub(in crate::chat) fn with_parent_route(
+        mut self,
+        route: Option<DesktopChatMessageRoute>,
+        hosted_auth: Option<InheritedHostedAuth>,
+    ) -> Self {
+        self.parent_route = route;
+        self.parent_hosted_auth = hosted_auth;
+        self
+    }
+
+    /// The runtime session that receives the follow-up turn when a child
+    /// finishes. Without it, outcomes stay in the background session only.
+    pub(in crate::chat) fn with_parent_runtime_session(mut self, session_id: String) -> Self {
+        self.parent_runtime_session_id = Some(session_id);
         self
     }
 
@@ -89,6 +124,47 @@ impl ManagedChildAgentRunner {
         Ok(profile)
     }
 
+    fn start_input(
+        &self,
+        session_id: String,
+        message: String,
+        attachment_paths: Vec<String>,
+    ) -> message_execution::StartMessageInput {
+        message_execution::StartMessageInput {
+            session_id,
+            text: message,
+            attachment_paths: Some(attachment_paths),
+            route: self.parent_route.clone(),
+            context_messages: Some(
+                self.directory
+                    .as_ref()
+                    .map(
+                        |text| kordi_cli::desktop_runtime::DesktopChatContextMessage {
+                            execution_lease: None,
+                            id: "group-directory".to_string(),
+                            author_name: "Group directory".to_string(),
+                            author_kind: "agent".to_string(),
+                            context_role: Some("resource".to_string()),
+                            text: text.clone(),
+                            created_at_ms: None,
+                        },
+                    )
+                    .into_iter()
+                    .chain(self.runtime_identity.clone())
+                    .collect(),
+            ),
+            visible_task_records: None,
+            scheduled_task_session_id: self
+                .scoped_observation
+                .then(|| self.parent_session_id.clone()),
+            sync_session_at_start: false,
+            shared_context: false,
+            request_message_id: None,
+            execution_lease_deadline_ms: None,
+            inherited_hosted_auth: self.parent_hosted_auth.clone(),
+        }
+    }
+
     async fn start_turn(
         &self,
         session_id: String,
@@ -97,41 +173,80 @@ impl ManagedChildAgentRunner {
     ) -> Result<super::super::DesktopChatTurnSnapshot> {
         message_execution::start_message(
             &self.manager,
-            message_execution::StartMessageInput {
-                session_id,
-                text: message,
-                attachment_paths: Some(attachment_paths),
-                route: None,
-                context_messages: Some(
-                    self.directory
-                        .as_ref()
-                        .map(
-                            |text| kordi_cli::desktop_runtime::DesktopChatContextMessage {
-                                execution_lease: None,
-                                id: "group-directory".to_string(),
-                                author_name: "Group directory".to_string(),
-                                author_kind: "agent".to_string(),
-                                context_role: Some("resource".to_string()),
-                                text: text.clone(),
-                                created_at_ms: None,
-                            },
-                        )
-                        .into_iter()
-                        .chain(self.runtime_identity.clone())
-                        .collect(),
-                ),
-                visible_task_records: None,
-                scheduled_task_session_id: self
-                    .scoped_observation
-                    .then(|| self.parent_session_id.clone()),
-                sync_session_at_start: false,
-                shared_context: false,
-                request_message_id: None,
-                execution_lease_deadline_ms: None,
-            },
+            self.start_input(session_id, message, attachment_paths),
         )
         .await
         .map_err(anyhow::Error::msg)
+    }
+
+    fn watch_for_follow_up(&self, task: ManagedTask) {
+        let Some(parent_session_id) = self.parent_runtime_session_id.clone() else {
+            return;
+        };
+        let runner = self.clone();
+        tokio::spawn(async move {
+            let turn = loop {
+                match turn_snapshot_by_id(&runner.manager, &task.turn_id).await {
+                    Ok(turn) if turn.completed => break turn,
+                    Ok(_) => tokio::time::sleep(FOLLOW_UP_POLL).await,
+                    Err(_) => return,
+                }
+            };
+            let _ = runner
+                .deliver_follow_up(&parent_session_id, &task, &turn)
+                .await;
+        });
+    }
+
+    /// Starts one follow-up turn in the parent session for a finished child.
+    /// The turn queues behind any running parent turn and runs on the parent
+    /// route and credential, like the child itself.
+    async fn deliver_follow_up(
+        &self,
+        parent_session_id: &str,
+        task: &ManagedTask,
+        child_turn: &DesktopChatTurnSnapshot,
+    ) -> Result<Option<DesktopChatTurnSnapshot>> {
+        let Some(status) = follow_up::terminal_status(child_turn) else {
+            return Ok(None);
+        };
+        let id = follow_up::follow_up_id(&task.session_id, status);
+        if !follow_up::claim(&self.manager, &id).await {
+            return Ok(None);
+        }
+        let text = follow_up::follow_up_text(
+            &task.title,
+            status,
+            &child_turn.assistant_text,
+            child_turn.error.as_deref(),
+        );
+        let mut input = self.start_input(parent_session_id.to_string(), text, Vec::new());
+        input.request_message_id = Some(id.clone());
+        let turn = message_execution::start_message(&self.manager, input)
+            .await
+            .map_err(anyhow::Error::msg)?;
+        follow_up::expose_turn(
+            &self.manager,
+            &turn.id,
+            DesktopBackgroundFollowUp {
+                id,
+                session_id: task.session_id.clone(),
+                parent_request_id: self.parent_request_id.clone(),
+                title: task.title.clone(),
+                status: status.to_string(),
+            },
+        )
+        .await;
+        Ok(Some(turn))
+    }
+
+    /// The parent consumed this outcome in its own turn; no follow-up needed.
+    async fn mark_outcome_reported(&self, task: &ManagedTask, status: &str) {
+        follow_up::claim(
+            &self.manager,
+            &follow_up::follow_up_id(&task.session_id, status),
+        )
+        .await;
     }
 }
 
@@ -186,13 +301,16 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
             let _ = cancel_turn_by_id(&self.manager, &turn.id).await;
             return Err(error);
         }
-        self.jobs.lock().await.insert(
-            request.task_path.clone(),
-            ManagedTask {
-                session_id: session_id.clone(),
-                turn_id: turn.id.clone(),
-            },
-        );
+        let task = ManagedTask {
+            session_id: session_id.clone(),
+            turn_id: turn.id.clone(),
+            title: request.task_title.clone(),
+        };
+        self.jobs
+            .lock()
+            .await
+            .insert(request.task_path.clone(), task.clone());
+        self.watch_for_follow_up(task);
 
         Ok(SpawnedTask::running_in_background_session(
             request.task_path,
@@ -218,13 +336,16 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
             .lock()
             .await
             .insert(turn.id.clone());
-        self.jobs.lock().await.insert(
-            target.to_string(),
-            ManagedTask {
-                session_id: task.session_id,
-                turn_id: turn.id,
-            },
-        );
+        let task = ManagedTask {
+            session_id: task.session_id,
+            turn_id: turn.id,
+            title: task.title,
+        };
+        self.jobs
+            .lock()
+            .await
+            .insert(target.to_string(), task.clone());
+        self.watch_for_follow_up(task);
         Ok(())
     }
 
@@ -236,9 +357,10 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
                 let Ok(turn) = turn_snapshot_by_id(&self.manager, &task.turn_id).await else {
                     continue;
                 };
-                if !turn.completed {
+                let Some(status) = follow_up::terminal_status(&turn) else {
                     continue;
-                }
+                };
+                self.mark_outcome_reported(&task, status).await;
                 let summary = format!("Result retained in background session: {}", task.session_id);
                 if turn.succeeded {
                     return Ok(WaitOutcome::Completed { target, summary });
@@ -256,6 +378,7 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
         let Some(task) = self.jobs.lock().await.remove(target) else {
             bail!("background task `{target}` was not found")
         };
+        self.mark_outcome_reported(&task, "stopped").await;
         cancel_turn_by_id(&self.manager, &task.turn_id)
             .await
             .map_err(anyhow::Error::msg)?;
@@ -275,46 +398,4 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn request(fork_turns: Option<&str>, write_scope: Vec<String>) -> SpawnRequest {
-        SpawnRequest {
-            task_path: "/root/research".to_string(),
-            task_name: "research".to_string(),
-            task_title: "Research the sources".to_string(),
-            message: "Research the sources.".to_string(),
-            fork_turns: fork_turns.map(ToString::to_string),
-            write_scope,
-            cwd: std::path::PathBuf::from("/tmp"),
-            parent_message_id: None,
-            attachment_paths: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn managed_background_profile_is_isolated_and_scope_aware() {
-        let runner = ManagedChildAgentRunner::new(
-            DesktopChatManager::default(),
-            "parent".to_string(),
-            Some("request".to_string()),
-            DesktopRuntimeProfile::default(),
-        );
-        let read_only = runner
-            .profile_for(&request(Some("none"), Vec::new()))
-            .unwrap();
-        let writer = runner
-            .profile_for(&request(Some("none"), vec!["src".to_string()]))
-            .unwrap();
-
-        assert!(!read_only
-            .tool_names
-            .unwrap()
-            .iter()
-            .any(|name| name == "bash"));
-        assert!(writer.tool_names.unwrap().iter().any(|name| name == "bash"));
-        assert!(runner
-            .profile_for(&request(Some("all"), Vec::new()))
-            .is_err());
-    }
-}
+mod tests;

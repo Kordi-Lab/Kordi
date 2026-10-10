@@ -1,12 +1,15 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   type Dispatch,
   type SetStateAction,
 } from 'react';
 
+import { cloudAgentRuntimeRouteMessageTarget } from '@/app/cloudAgentRuntimeRouteMessageTarget';
 import { resolveDefaultCloudAgentRuntimeRoute } from '@/app/useKordiDefaultCloudAgentRuntimeRoute';
+import { useMirroredSessionRequestRoutes } from '@/app/useMirroredSessionRequestRoutes';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import {
   completeKordiCloudChatRequest,
@@ -76,6 +79,7 @@ export function useCloudAgentRuntimeRouteSync({
   sendCloudCollaborationMessage,
   setRoutesBySessionId,
   updateCloudCollaborationSessionTitle,
+  fetchMirroredRequestRoutes,
 }: {
   accountId?: string | null;
   activeConversationId: string;
@@ -100,13 +104,22 @@ export function useCloudAgentRuntimeRouteSync({
   >;
   updateCloudCollaborationSessionTitle:
     CloudCollaborationViewModel['updateCloudCollaborationSessionTitle'];
+  fetchMirroredRequestRoutes?: Parameters<typeof useMirroredSessionRequestRoutes>[2];
 }) {
+  // Loaded pages and the Cloud bootstrap hold only part of each session, so
+  // the mirror's latest routed request per session is a recovery source too.
+  const mirroredRequestRoutes = useMirroredSessionRequestRoutes(
+    accountId,
+    canonicalSessionState?.messages,
+    fetchMirroredRequestRoutes,
+  );
   useEffect(() => {
     if (
       !accountId
       || (
         cloudAgentRuntimeRouteMessages.length === 0
         && !canonicalSessionState?.messages.length
+        && mirroredRequestRoutes.length === 0
       )
     ) return;
     const animationFrame = window.requestAnimationFrame(() => {
@@ -117,6 +130,7 @@ export function useCloudAgentRuntimeRouteSync({
           canonicalSessionState?.messages,
           cloudAgentRuntimeRouteMessages,
           defaultCloudAgentRuntimeRoute,
+          mirroredRequestRoutes,
         )
       ));
     });
@@ -126,54 +140,135 @@ export function useCloudAgentRuntimeRouteSync({
     canonicalSessionState?.messages,
     cloudAgentRuntimeRouteMessages,
     defaultCloudAgentRuntimeRoute,
+    mirroredRequestRoutes,
     setRoutesBySessionId,
   ]);
+
+  // The same history the effect above applies, read synchronously, so a send
+  // or the composer right after startup never falls back to another route
+  // while the restored session route is still one frame away.
+  const recoveredRoutesBySessionId = useMemo(() => (
+    accountId
+      ? applySynchronizedCloudAgentRuntimeRoutes(
+        {},
+        accountId,
+        canonicalSessionState?.messages,
+        cloudAgentRuntimeRouteMessages,
+        defaultCloudAgentRuntimeRoute,
+        mirroredRequestRoutes,
+      )
+      : {}
+  ), [
+    accountId,
+    canonicalSessionState?.messages,
+    cloudAgentRuntimeRouteMessages,
+    defaultCloudAgentRuntimeRoute,
+    mirroredRequestRoutes,
+  ]);
+  const storedSessionRoute = useCallback((runtimeSessionId: string | null) => (
+    runtimeSessionId
+      ? compactCloudAgentRuntimeRoute(routesBySessionId[runtimeSessionId])
+        ?? compactCloudAgentRuntimeRoute(recoveredRoutesBySessionId[runtimeSessionId])
+      : null
+  ), [recoveredRoutesBySessionId, routesBySessionId]);
 
   const activeRuntimeSessionId = cloudAgentRuntimeSessionId(
     accountId,
     activeConversationId,
   );
-  const activeRuntimeRoute = activeRuntimeSessionId
-    ? routesBySessionId[activeRuntimeSessionId]
-    : null;
-  const resolveChatRuntimeRoute = useCallback((sessionId?: string | null) => {
-    const runtimeSessionId = cloudAgentRuntimeSessionId(accountId, sessionId);
-    return compactCloudAgentRuntimeRoute(
-      runtimeSessionId ? routesBySessionId[runtimeSessionId] : null,
-    ) ?? compactCloudAgentRuntimeRoute(defaultCloudAgentRuntimeRoute);
-  }, [accountId, defaultCloudAgentRuntimeRoute, routesBySessionId]);
+  const activeRuntimeRoute = storedSessionRoute(activeRuntimeSessionId);
+  const activeRuntimeRouteKey = JSON.stringify(activeRuntimeRoute);
+  const resolveChatRuntimeRoute = useCallback((sessionId?: string | null) => (
+    storedSessionRoute(cloudAgentRuntimeSessionId(accountId, sessionId))
+      ?? compactCloudAgentRuntimeRoute(defaultCloudAgentRuntimeRoute)
+  ), [accountId, defaultCloudAgentRuntimeRoute, storedSessionRoute]);
+
+  const sendRuntimeRouteChangeMessage = useCallback(async ({
+    sessionId,
+    route,
+    previousRoute,
+    synchronizationOnly,
+    sharedTitle,
+  }: {
+    sessionId: string;
+    route: DesktopChatMessageRoute;
+    previousRoute?: DesktopChatMessageRoute | null;
+    synchronizationOnly: boolean;
+    sharedTitle?: string | null;
+  }) => {
+    const normalizedAccountId = accountId?.trim() ?? '';
+    if (!normalizedAccountId) throw new Error('The Cloud session is still loading. Try again.');
+    const target = cloudAgentRuntimeRouteMessageTarget(canonicalSessionState, sessionId);
+    await sendCloudCollaborationMessage(
+      cloudCollaborationConversationId(normalizedAccountId, 'agent', sessionId),
+      encodeCloudAgentRuntimeRouteChange(route, previousRoute, synchronizationOnly),
+      [],
+      {
+        clientMessageId:
+          `${CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND}:${sessionId}:${crypto.randomUUID()}`,
+        messageKind: CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND,
+        sharedTitle,
+        conversationKind: target.conversationKind,
+        memberAccountIds: target.memberAccountIds,
+      },
+    );
+  }, [accountId, canonicalSessionState, sendCloudCollaborationMessage]);
+
+  // An inherited route lives only in memory until it is recorded, so a new
+  // session records it once, silently, as soon as its real id is known.
+  const recordedInheritedRouteSessionIdsRef = useRef(new Set<string>());
   const inheritCloudAgentRuntimeRoute = useCallback((
     sourceSessionId?: string | null,
     targetSessionId?: string | null,
   ) => {
-    const sourceRuntimeSessionId = cloudAgentRuntimeSessionId(
-      accountId,
-      sourceSessionId,
-    );
     const targetRuntimeSessionId = cloudAgentRuntimeSessionId(
       accountId,
       targetSessionId,
     );
     if (!targetRuntimeSessionId) return;
-    setRoutesBySessionId((current) => {
-      const sourceRoute = compactCloudAgentRuntimeRoute(
-        sourceRuntimeSessionId ? current[sourceRuntimeSessionId] : null,
-      ) ?? compactCloudAgentRuntimeRoute(defaultCloudAgentRuntimeRoute);
-      if (!sourceRoute) return current;
-      return { ...current, [targetRuntimeSessionId]: sourceRoute };
+    const inheritedRoute = storedSessionRoute(
+      cloudAgentRuntimeSessionId(accountId, sourceSessionId),
+    ) ?? compactCloudAgentRuntimeRoute(defaultCloudAgentRuntimeRoute);
+    if (!inheritedRoute) return;
+    setRoutesBySessionId((current) => ({ ...current, [targetRuntimeSessionId]: inheritedRoute }));
+    const sessionId = targetSessionId?.trim() ?? '';
+    const recorded = recordedInheritedRouteSessionIdsRef.current;
+    if (
+      !sessionId
+      || isLocalDraftChatConversationId(sessionId)
+      || !inheritedRoute.model
+      || recorded.has(targetRuntimeSessionId)
+      || recoveredRoutesBySessionId[targetRuntimeSessionId]
+    ) return;
+    recorded.add(targetRuntimeSessionId);
+    void sendRuntimeRouteChangeMessage({
+      sessionId,
+      route: inheritedRoute,
+      synchronizationOnly: true,
+    }).catch(() => {
+      // A later inheritance may retry; a hosted request still records its route.
+      recorded.delete(targetRuntimeSessionId);
     });
-  }, [accountId, defaultCloudAgentRuntimeRoute, setRoutesBySessionId]);
+  }, [
+    accountId,
+    defaultCloudAgentRuntimeRoute,
+    recoveredRoutesBySessionId,
+    sendRuntimeRouteChangeMessage,
+    setRoutesBySessionId,
+    storedSessionRoute,
+  ]);
 
   const setComposerSelections = composerUi.setComposerSelections;
   useEffect(() => {
-    if (!activeRuntimeRoute?.model?.trim() && !routeRunsOnKordiCloud(defaultCloudAgentRuntimeRoute)) return;
+    const route = JSON.parse(activeRuntimeRouteKey) as DesktopChatMessageRoute | null;
+    if (!route?.model?.trim() && !routeRunsOnKordiCloud(defaultCloudAgentRuntimeRoute)) return;
     setComposerSelections((current) => chatComposerSelectionForRoute(
       current,
-      activeRuntimeRoute,
+      route,
       defaultCloudAgentRuntimeRoute,
     ));
   }, [
-    activeRuntimeRoute,
+    activeRuntimeRouteKey,
     defaultCloudAgentRuntimeRoute,
     setComposerSelections,
   ]);
@@ -215,7 +310,7 @@ export function useCloudAgentRuntimeRouteSync({
         'Connect this model provider on the executing Mac before switching the session.',
       );
     }
-    const previousRoute = routesBySessionId[runtimeSessionId];
+    const previousRoute = storedSessionRoute(runtimeSessionId);
     const initializingSession = Boolean(input.initialSessionTitle?.trim());
     if (!initializingSession && runtimeRoutesMatch(previousRoute, nextRoute)) return;
     setRoutesBySessionId((current) => ({
@@ -224,50 +319,14 @@ export function useCloudAgentRuntimeRouteSync({
     }));
     if (isLocalDraftChatConversationId(sessionId)) return;
 
-    const canonicalRouteSession = canonicalSessionState?.sessions.find(
-      (session) => session.id === sessionId,
-    );
-    const routeConversationKind = canonicalRouteSession?.kind === 'group'
-      ? 'group'
-      : canonicalRouteSession?.kind === 'direct-person'
-        || canonicalRouteSession?.kind === 'relationship'
-        ? 'direct'
-        : 'ai';
-    const routeMemberAccountIds = canonicalSessionState
-      ? canonicalSessionState.participants
-        .filter((participant) => (
-          participant.sessionId === sessionId
-          && participant.state === 'active'
-        ))
-        .flatMap((participant) => {
-          const identity = canonicalSessionState.identities.find(
-            (candidate) => candidate.id === participant.identityId,
-          );
-          if (!identity || identity.kind !== 'human') return [];
-          const memberAccountId = identity.humanId?.trim()
-            || identity.sourceIdentityId?.trim()
-            || '';
-          return memberAccountId ? [memberAccountId] : [];
-        })
-      : [];
     try {
-      await sendCloudCollaborationMessage(
-        cloudCollaborationConversationId(
-          normalizedAccountId,
-          'agent',
-          sessionId,
-        ),
-        encodeCloudAgentRuntimeRouteChange(nextRoute, previousRoute, initializingSession),
-        [],
-        {
-          clientMessageId:
-            `${CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND}:${sessionId}:${crypto.randomUUID()}`,
-          messageKind: CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND,
-          sharedTitle: input.initialSessionTitle,
-          conversationKind: routeConversationKind,
-          memberAccountIds: routeMemberAccountIds,
-        },
-      );
+      await sendRuntimeRouteChangeMessage({
+        sessionId,
+        route: nextRoute,
+        previousRoute,
+        synchronizationOnly: initializingSession || Boolean(input.synchronizationOnly),
+        sharedTitle: input.initialSessionTitle,
+      });
       if (input.initialSessionTitle?.trim()) {
         await updateCloudCollaborationSessionTitle(
           sessionId,
@@ -287,16 +346,15 @@ export function useCloudAgentRuntimeRouteSync({
   }, [
     accountId,
     activeLoginProviderId,
-    canonicalSessionState,
     chatModelOptions,
     composerAuthByScope.optionsByScope.chat,
     desktopAuthState,
     isNativeShell,
     preferredModelValueForProvider,
     resolveComposerProviderId,
-    routesBySessionId,
-    sendCloudCollaborationMessage,
+    sendRuntimeRouteChangeMessage,
     setRoutesBySessionId,
+    storedSessionRoute,
     updateCloudCollaborationSessionTitle,
   ]);
 

@@ -232,6 +232,7 @@ pub fn run() {
             canonical_sessions::desktop_canonical_session_catalog,
             canonical_sessions::desktop_canonical_session_messages,
             canonical_sessions::desktop_canonical_existing_message_sources,
+            canonical_sessions::session_route_command::desktop_canonical_session_request_routes,
             canonical_sessions::desktop_canonical_delete_cloud_message,
             canonical_sessions::desktop_canonical_prune_missing_cloud_messages,
             canonical_sessions::desktop_canonical_upsert_identity,

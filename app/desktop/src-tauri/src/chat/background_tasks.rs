@@ -1,3 +1,4 @@
+mod follow_up;
 mod managed_child;
 pub mod snapshots;
 
@@ -39,6 +40,7 @@ pub async fn desktop_chat_start_shared_message(
             shared_context: false,
             request_message_id: None,
             execution_lease_deadline_ms,
+            inherited_hosted_auth: None,
         },
     )
     .await

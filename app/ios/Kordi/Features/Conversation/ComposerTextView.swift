@@ -55,6 +55,7 @@ struct ComposerTextView: UIViewRepresentable {
     let onRequestExpressiveMediaImport: (ExpressiveMediaImportRequest) -> Void
     @Binding var measuredHeight: CGFloat
     let draftButtonThreshold: CGFloat
+    var trailingExclusionWidth: CGFloat = ComposerTextExclusionLayout.defaultTrailingWidth
     let accessibilityLabel: String
 
     func makeCoordinator() -> Coordinator {
@@ -219,7 +220,8 @@ struct ComposerTextView: UIViewRepresentable {
         textView.textContainer.exclusionPaths = ComposerTextExclusionLayout.rects(
             containerWidth: containerWidth,
             contentHeight: contentHeight,
-            showsDraftButton: height >= draftButtonThreshold
+            showsDraftButton: height >= draftButtonThreshold,
+            trailingWidth: trailingExclusionWidth
         ).map(UIBezierPath.init(rect:))
     }
 

@@ -109,7 +109,7 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
   assert.match(recoveredReplay, /useCloudGroupReplay\(\{\s*enabled: backgroundReplayEnabled/);
   assert.match(
     recoveredReplay,
-    /useCloudAgentTurnRecovery\(\{[\s\S]*processedRequestIdsRef,\s*reportWarning,\s*\}\);/,
+    /useCloudAgentTurnRecovery\(\{[\s\S]*processedRequestIdsRef,\s*reportWarning,\s*releaseClient: nativeShell \? client : null,\s*\}\);/,
     'interrupted-turn recovery must receive stable hydration callbacks',
   );
   assert.match(

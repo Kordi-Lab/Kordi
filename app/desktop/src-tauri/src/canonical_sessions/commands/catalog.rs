@@ -5,6 +5,7 @@ mod message_page;
 mod message_sources;
 mod rows;
 mod session_catalog;
+mod session_routes;
 
 pub(in crate::canonical_sessions) use full_state::{
     desktop_canonical_session_state, load_state_from_db,
@@ -18,3 +19,8 @@ pub(in crate::canonical_sessions) use message_sources::existing_message_sources_
 pub(in crate::canonical_sessions) use session_catalog::desktop_canonical_session_catalog;
 #[cfg(test)]
 pub(super) use session_catalog::load_catalog_from_db;
+#[cfg(test)]
+pub(in crate::canonical_sessions) use session_routes::latest_session_request_routes_from_db;
+pub(in crate::canonical_sessions) use session_routes::{
+    desktop_canonical_session_request_routes, CanonicalSessionRequestRoute,
+};

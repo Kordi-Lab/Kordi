@@ -44,9 +44,9 @@ pub(crate) use attachments::allow_attachment_asset_scope;
 
 pub(crate) use models::DesktopStoredChatAttachment;
 pub use models::{
-    DesktopArtifactDirectory, DesktopArtifactDirectoryEntry, DesktopChatArtifactPreview,
-    DesktopChatArtifactPreviewLine, DesktopChatForkSessionResult, DesktopChatMessageRoute,
-    DesktopChatState, DesktopChatToolSnapshot, DesktopChatTurnSnapshot,
+    DesktopArtifactDirectory, DesktopArtifactDirectoryEntry, DesktopBackgroundFollowUp,
+    DesktopChatArtifactPreview, DesktopChatArtifactPreviewLine, DesktopChatForkSessionResult,
+    DesktopChatMessageRoute, DesktopChatState, DesktopChatToolSnapshot, DesktopChatTurnSnapshot,
 };
 
 pub(crate) use agent_prompt_runner::{run_agent_prompt, DesktopAgentModelRouting};
@@ -110,6 +110,7 @@ pub struct DesktopChatManager {
         Arc<tokio::sync::Mutex<HashMap<String, tokio::sync::oneshot::Receiver<()>>>>,
     background_turn_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
     shared_request_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
+    background_follow_up_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 impl DesktopChatManager {
@@ -200,6 +201,7 @@ pub async fn desktop_chat_send_message(
                 (None, None),
                 None,
                 &[],
+                (None, None),
             )
             .await?;
         }
@@ -254,6 +256,7 @@ pub async fn desktop_chat_start_message(
             shared_context: false,
             request_message_id,
             execution_lease_deadline_ms,
+            inherited_hosted_auth: None,
         },
     )
     .await

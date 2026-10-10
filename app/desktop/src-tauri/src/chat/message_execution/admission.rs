@@ -52,6 +52,7 @@ mod tests {
             transcript_entry_id: None,
             error: None,
             transcript_refresh_required: false,
+            background_follow_up: None,
         }))
     }
 
