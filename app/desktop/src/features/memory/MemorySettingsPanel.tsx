@@ -21,7 +21,7 @@ import {
   type MemorySyncState,
 } from './memoryModel';
 
-const destructiveButtonClass = 'h-8 rounded-lg border border-rose-400/20 bg-rose-500/10 px-3.5 text-[12px] text-rose-200 hover:bg-rose-500/15 hover:text-rose-100';
+const destructiveButtonClass = 'app-transient-danger-button h-8 rounded-lg px-3.5 text-[12px]';
 
 type MemoryDialog = { kind: 'forget'; count: number };
 

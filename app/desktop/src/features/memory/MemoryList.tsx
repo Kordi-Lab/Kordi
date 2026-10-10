@@ -27,7 +27,7 @@ const dialogMuted = 'text-[color:var(--app-transient-muted-text)]';
 const popoverMuted = 'text-[color:var(--app-transient-muted-text)]';
 
 export const quietButtonClass = 'h-8 rounded-lg px-3 text-[12px]';
-export const destructiveConfirmClass = 'app-transient-flat-action-danger rounded-full px-4 font-semibold';
+export const destructiveConfirmClass = 'app-transient-danger-button rounded-full px-4 font-semibold';
 const compactActionClass = 'app-transient-flat-action rounded-[9px] px-2 py-1 text-[10px]';
 
 type LessonEdit = { lessonId: string; draft: string; error: string | null; busy: boolean };
