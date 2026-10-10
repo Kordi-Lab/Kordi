@@ -29,6 +29,8 @@ import { ConnectorsSettingsPanel } from '@/features/connectors/ConnectorsSetting
 import type { ConnectorsClient } from '@/features/connectors/connectorsClient';
 import { connectorsClientForAccount } from '@/features/connectors/connectorsClientSelection';
 import { useConnectorsLinkSelection } from '@/features/connectors/useConnectorsLinkSelection';
+import { MemorySettingsPanel } from '@/features/memory/MemorySettingsPanel';
+import { memoryClientForEnvironment, type MemoryClient } from '@/features/memory/memoryClient';
 import { cloudAccountSettingsNavGroups, type CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
 import {
   canonicalAvatarImageSource,
@@ -38,6 +40,9 @@ import {
 } from '@/features/cloud/canonicalAvatar';
 
 export type { CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
+
+// Created once per app load so preview state survives closing the dialog.
+const environmentMemoryClient = memoryClientForEnvironment();
 
 export type CloudAccountSettingsConfig = {
   settingsSections: SettingsSectionData[];
@@ -76,6 +81,8 @@ type CloudAccountSettingsDialogProps = CloudAccountSettingsConfig & {
   connectorsClient?: ConnectorsClient | null;
   /** Marks an overriding `connectorsClient` as sample data. */
   connectorsIsPreview?: boolean;
+  /** Memory client; null hides the Memory section. Defaults to the build environment. */
+  memoryClient?: MemoryClient | null;
 };
 
 function profileDisplayName(account: CloudAccount | null) {
@@ -114,6 +121,7 @@ export function CloudAccountSettingsDialog({
   onSignOut,
   connectorsClient: connectorsClientOverride,
   connectorsIsPreview = false,
+  memoryClient = environmentMemoryClient,
   settingsSections,
   setActiveSettingsSectionId,
   authSettingsLayoutWidth,
@@ -218,8 +226,12 @@ export function CloudAccountSettingsDialog({
   const isDisplayNameInvalid = Boolean(profileError && !displayNameDraft.trim());
   const avatarSeed = account.avatar.seed;
   const appearanceSection = settingsSections.find((section) => section.id === 'appearance');
-  const navGroups = cloudAccountSettingsNavGroups({ connectorsAvailable: connectorsClient !== null });
-  const visibleTab: CloudAccountSettingsTabId = activeTab === 'connectors' && !connectorsClient ? 'profile' : activeTab;
+  const navGroups = cloudAccountSettingsNavGroups({
+    connectorsAvailable: connectorsClient !== null,
+    memoryAvailable: memoryClient !== null,
+  });
+  const visibleTab: CloudAccountSettingsTabId =
+    (activeTab === 'connectors' && !connectorsClient) || (activeTab === 'memory' && !memoryClient) ? 'profile' : activeTab;
 
   const selectTab = (tabId: CloudAccountSettingsTabId) => {
     if (tabId !== 'connectors') clearConnectorsLinkSelection();
@@ -440,6 +452,12 @@ export function CloudAccountSettingsDialog({
     />
   ) : null;
 
+  const memoryPanel = memoryClient ? (
+    <div className="app-cloud-account-settings-section max-w-[680px]">
+      <MemorySettingsPanel key={account.accountId} accountId={account.accountId} client={memoryClient} isNativeShell={isNativeShell} />
+    </div>
+  ) : null;
+
   return createPortal(
     <div
       className="app-transient-overlay app-cloud-account-settings-overlay fixed inset-0 z-[180] flex items-center justify-center px-6 py-6 backdrop-blur-sm"
@@ -453,7 +471,7 @@ export function CloudAccountSettingsDialog({
         aria-modal="true"
         className="app-transient-surface app-modal-panel app-cloud-account-settings-dialog grid h-[min(680px,calc(100vh-40px))] w-[min(900px,calc(100vw-40px))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[12px] md:grid-cols-[208px_minmax(0,1fr)] md:grid-rows-1"
       >
-        <div className="app-session-panel app-cloud-account-settings-rail flex min-h-0 flex-col overflow-y-auto border-b p-3 md:border-b-0 md:border-r">
+        <div className="app-cloud-account-settings-rail flex min-h-0 flex-col overflow-y-auto border-b px-3 pb-3 pt-5 md:border-b-0 md:border-r">
           <SettingsNav
             className="app-cloud-account-settings-tabs"
             groups={navGroups}
@@ -461,15 +479,15 @@ export function CloudAccountSettingsDialog({
             onSelect={selectTab}
           />
         </div>
-        <div className="app-main-panel app-cloud-account-settings-page relative flex min-h-0 flex-col">
-          <div className="absolute right-3 top-3 z-10">
+        <div className="app-main-panel app-cloud-account-settings-page flex min-h-0 flex-col">
+          <div className="app-cloud-account-settings-header flex h-14 shrink-0 items-center justify-end px-4">
             <button type="button" className="app-button-quiet app-transient-flat-action grid h-8 w-8 place-items-center rounded-full p-0" onClick={onClose} aria-label="Close account settings">
               <X className="h-4 w-4" />
             </button>
           </div>
           <ScrollArea className="min-h-0 flex-1">
-            <div className="px-8 pb-8 pt-10">
-              {visibleTab === 'profile' ? profilePanel : visibleTab === 'devices' ? devicesPanel : visibleTab === 'auth' ? authPanel : visibleTab === 'notifications' ? notificationsPanel : visibleTab === 'connectors' ? connectorsPanel : appearancePanel}
+            <div className="px-8 pb-8 pt-2">
+              {visibleTab === 'profile' ? profilePanel : visibleTab === 'devices' ? devicesPanel : visibleTab === 'auth' ? authPanel : visibleTab === 'notifications' ? notificationsPanel : visibleTab === 'connectors' ? connectorsPanel : visibleTab === 'memory' ? memoryPanel : appearancePanel}
             </div>
           </ScrollArea>
         </div>

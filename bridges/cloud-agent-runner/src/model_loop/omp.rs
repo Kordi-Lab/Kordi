@@ -7,13 +7,14 @@ use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
 use crate::client::{CloudAgentRun, CloudAgentRunClient, OmpState, ProviderAuthMaterial};
+use crate::memory::{load_run_memory, memory_prompt_section, RunMemory};
 use crate::sandbox_client::SandboxBackendHandle;
 use crate::tools::CloudToolExecutor;
 
 use super::provider::OpenAiApiMode;
 use super::{
-    cloud_sandbox_system_prompt, execute_model_tool, tool_catalog, ModelLoopError, ModelToolCall,
-    OpenAiProviderConfig, MAX_MODEL_CALLS, MAX_TOOL_CALLS,
+    cloud_sandbox_system_prompt, execute_model_tool, run_tool_catalog, ModelLoopError,
+    ModelToolCall, OpenAiProviderConfig, MAX_MODEL_CALLS, MAX_TOOL_CALLS,
 };
 
 pub async fn run_omp_model_loop<C: CloudAgentRunClient + Sync>(
@@ -79,8 +80,13 @@ async fn run_omp_with_config<C: CloudAgentRunClient + Sync>(
         prompt,
         messages,
     } = config;
-    let tools = tools_for_run(run)?;
-    let system_prompt = system_prompt_for_run(run)?;
+    let memory = load_run_memory(client, run).await;
+    let tools = tools_for_run(run, &memory)?;
+    let mut system_prompt = system_prompt_for_run(run)?;
+    if let Some(section) = memory_prompt_section(run, &memory) {
+        system_prompt.push_str("\n\n");
+        system_prompt.push_str(&section);
+    }
     let mut headers = std::collections::BTreeMap::new();
     if let Some(account_id) = &auth.account_id {
         headers.insert("ChatGPT-Account-ID".to_string(), account_id.clone());
@@ -131,7 +137,7 @@ async fn run_omp_with_config<C: CloudAgentRunClient + Sync>(
         // Cloud never gains owner-device computer/browser capabilities.
         capabilities: Capabilities::default(),
     };
-    let executor = CloudToolExecutor::new(sandbox.clone());
+    let executor = CloudToolExecutor::new(sandbox.clone()).with_memory(memory.enabled);
     let host = CloudOmpTools {
         client,
         executor,
@@ -210,19 +216,11 @@ pub(crate) fn omp_provider(auth: &OpenAiProviderConfig) -> &str {
     }
 }
 
-fn tools_for_run(run: &CloudAgentRun) -> Result<Vec<ToolDefinition>, ModelLoopError> {
-    let mut tools = tool_catalog();
-    tools.extend(crate::connectors::tool_definitions(run));
-    if run.subsession_id.is_some() {
-        tools.retain(|tool| {
-            let name = tool["function"]["name"].as_str().unwrap_or_default();
-            name != "task_operator"
-                && name != "export_artifact"
-                && name != "bash"
-                && (!run.subsession_write_scope.is_empty() || !matches!(name, "write" | "edit"))
-        });
-    }
-    tools
+fn tools_for_run(
+    run: &CloudAgentRun,
+    memory: &RunMemory,
+) -> Result<Vec<ToolDefinition>, ModelLoopError> {
+    run_tool_catalog(run, memory)
         .into_iter()
         .map(|tool| {
             let function = &tool["function"];

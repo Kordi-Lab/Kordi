@@ -1,16 +1,6 @@
 import { filterGroupManagementMembers, normalizedSearch } from './groupManagementMembers';
 export { filterGroupManagementMembers } from './groupManagementMembers';
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import type {
-  FormEvent,
-} from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowLeft,
   Check,
@@ -18,7 +8,6 @@ import {
   ChevronRight,
   ChevronUp,
   LoaderCircle,
-  Pencil,
   Plus,
   Search,
   Star,
@@ -43,6 +32,7 @@ import {
 } from '@/features/chat/chatCreateFlows';
 import type { Contact, ConversationParticipant, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
+import { GroupNameSettings } from '@/pages/GroupNameSettings';
 import { GroupProfileHeader } from '@/pages/GroupProfileHeader';
 import { GroupInvitationSharePanel } from '@/pages/GroupInvitationSharePanel';
 import {
@@ -349,6 +339,7 @@ export function GroupDetailsDialog({
       : null;
     memberSearchRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (document.querySelector('[data-app-dialog-backdrop]')) return; // A confirmation dialog above owns the keys.
       if (event.key === 'Escape') {
         if (dialogRef.current?.querySelector('[data-group-avatar-menu]')) return;
         event.preventDefault();
@@ -513,448 +504,412 @@ export function GroupDetailsDialog({
               </div>
             ) : null}
 
-            <section aria-label="Group members">
-              <label htmlFor={memberSearchId} className="sr-only">Search group members</label>
-              <div className="app-group-management-search relative mb-3">
-                <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--utility-muted-text)]" />
-                <input
-                  ref={memberSearchRef}
-                  id={memberSearchId}
-                  type="search"
-                  value={memberQuery}
-                  onChange={(event) => {
-                    setMemberQuery(event.target.value);
-                    setShowAllMembers(false);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== 'ArrowDown') return;
-                    const firstItem = dialogRef.current?.querySelector<HTMLButtonElement>('[data-group-member-grid-item]');
-                    if (!firstItem) return;
-                    event.preventDefault();
-                    firstItem.focus();
-                  }}
-                  placeholder="Search members"
-                  className="app-input-shell h-9 w-full rounded-[11px] py-2 pl-8 pr-3 text-[12px] outline-none"
-                />
-              </div>
-              <span className="sr-only" aria-live="polite">
-                {memberQuery ? `${filteredMembers.length} of ${members.length} members` : `${members.length} members`}
-              </span>
+            <>
+              <section aria-label="Group members">
+                <label htmlFor={memberSearchId} className="sr-only">Search group members</label>
+                <div className="app-group-management-search relative mb-3">
+                  <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--utility-muted-text)]" />
+                  <input
+                    ref={memberSearchRef}
+                    id={memberSearchId}
+                    type="search"
+                    value={memberQuery}
+                    onChange={(event) => {
+                      setMemberQuery(event.target.value);
+                      setShowAllMembers(false);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'ArrowDown') return;
+                      const firstItem = dialogRef.current?.querySelector<HTMLButtonElement>('[data-group-member-grid-item]');
+                      if (!firstItem) return;
+                      event.preventDefault();
+                      firstItem.focus();
+                    }}
+                    placeholder="Search members"
+                    className="app-input-shell h-9 w-full rounded-[11px] py-2 pl-8 pr-3 text-[12px] outline-none"
+                  />
+                </div>
+                <span className="sr-only" aria-live="polite">
+                  {memberQuery ? `${filteredMembers.length} of ${members.length} members` : `${members.length} members`}
+                </span>
 
-              <div
-                role="group"
-                aria-label="Group members"
-                data-group-member-grid
-                id={`${memberSearchId}-member-grid`}
-                className="app-group-management-member-grid"
-              >
-                {visibleMembers.map((member) => {
-                  const admin = memberIsAdmin(member, adminIds, currentAccountId);
-                  const selected = selectedMember?.id === member.id;
-                  const identityLabel = visibleIdentityLabel(memberStableId(member));
-                  const showIdentityLabel = hasDuplicateName(member.name, duplicateNames)
-                    && identityLabel
-                    && identityLabel !== member.name;
-                  return (
-                    <button
-                      key={member.id}
-                      type="button"
-                      data-group-member-grid-item
-                      data-member-role={admin ? 'admin' : 'member'}
-                      aria-label={`${member.name}, ${admin ? 'admin' : 'member'}${showIdentityLabel ? `, ${identityLabel}` : ''}`}
-                      aria-expanded={selected}
-                      aria-controls={selected ? `${memberSearchId}-member-actions` : undefined}
-                      tabIndex={resolvedGridFocusId === member.id ? 0 : -1}
-                      className={cn('app-group-management-member-tile min-w-0 rounded-[12px] px-1 py-2 text-center transition', selected && 'app-group-management-member-tile-selected')}
-                      onFocus={() => setGridFocusId(member.id)}
-                      onKeyDown={handleGridArrowNavigation}
-                      onClick={() => {
-                        setIsAddPeopleOpen(false);
-                        setConfirmingRemovalId(null);
-                        setActionError(null);
-                        setSelectedMemberId((current) => (current === member.id ? null : member.id));
-                      }}
-                    >
-                      <span className="relative mx-auto block h-9 w-9">
-                        <IdentityAvatar
-                          kind="human"
-                          seed={member.avatarKey ?? memberStableId(member)} isSelf={isSelfMember(member)}
-                          name={member.name}
-                          imageUrl={member.profileImageUrl}
-                          className="h-9 w-9 border border-white/10"
-                          presenceStatus={memberPresence(member)}
-                          presenceLabel={`${member.name} is ${memberPresence(member) === 'online' ? 'online' : 'offline'}`}
-                        />
-                        {admin ? (
-                          <span className="app-group-management-admin-mark absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full" aria-hidden="true">
-                            <Star className="h-3 w-3 fill-current" strokeWidth={1.75} />
+                <div
+                  role="group"
+                  aria-label="Group members"
+                  data-group-member-grid
+                  id={`${memberSearchId}-member-grid`}
+                  className="app-group-management-member-grid"
+                >
+                  {visibleMembers.map((member) => {
+                    const admin = memberIsAdmin(member, adminIds, currentAccountId);
+                    const selected = selectedMember?.id === member.id;
+                    const identityLabel = visibleIdentityLabel(memberStableId(member));
+                    const showIdentityLabel = hasDuplicateName(member.name, duplicateNames)
+                      && identityLabel
+                      && identityLabel !== member.name;
+                    return (
+                      <button
+                        key={member.id}
+                        type="button"
+                        data-group-member-grid-item
+                        data-member-role={admin ? 'admin' : 'member'}
+                        aria-label={`${member.name}, ${admin ? 'admin' : 'member'}${showIdentityLabel ? `, ${identityLabel}` : ''}`}
+                        aria-expanded={selected}
+                        aria-controls={selected ? `${memberSearchId}-member-actions` : undefined}
+                        tabIndex={resolvedGridFocusId === member.id ? 0 : -1}
+                        className={cn('app-group-management-member-tile min-w-0 rounded-[12px] px-1 py-2 text-center transition', selected && 'app-group-management-member-tile-selected')}
+                        onFocus={() => setGridFocusId(member.id)}
+                        onKeyDown={handleGridArrowNavigation}
+                        onClick={() => {
+                          setIsAddPeopleOpen(false);
+                          setConfirmingRemovalId(null);
+                          setActionError(null);
+                          setSelectedMemberId((current) => (current === member.id ? null : member.id));
+                        }}
+                      >
+                        <span className="relative mx-auto block h-9 w-9">
+                          <IdentityAvatar
+                            kind="human"
+                            seed={member.avatarKey ?? memberStableId(member)} isSelf={isSelfMember(member)}
+                            name={member.name}
+                            imageUrl={member.profileImageUrl}
+                            className="h-9 w-9 border border-white/10"
+                            presenceStatus={memberPresence(member)}
+                            presenceLabel={`${member.name} is ${memberPresence(member) === 'online' ? 'online' : 'offline'}`}
+                          />
+                          {admin ? (
+                            <span className="app-group-management-admin-mark absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full" aria-hidden="true">
+                              <Star className="h-3 w-3 fill-current" strokeWidth={1.75} />
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="mt-1.5 block truncate text-[10.5px] font-medium leading-4" title={member.name}>
+                          {member.name}
+                        </span>
+                        {showIdentityLabel ? (
+                          <span className="block truncate text-[9.5px] leading-3 text-[color:var(--utility-muted-text)]">
+                            {identityLabel}
                           </span>
                         ) : null}
-                      </span>
-                      <span className="mt-1.5 block truncate text-[10.5px] font-medium leading-4" title={member.name}>
-                        {member.name}
-                      </span>
-                      {showIdentityLabel ? (
-                        <span className="block truncate text-[9.5px] leading-3 text-[color:var(--utility-muted-text)]">
-                          {identityLabel}
-                        </span>
-                      ) : null}
-                    </button>
-                  );
-                })}
+                      </button>
+                    );
+                  })}
 
-                {canInvitePeople ? (
-                  <button
-                    type="button"
-                    data-group-member-grid-item
-                    aria-label="Add people"
-                    aria-expanded={isAddPeopleOpen}
-                    tabIndex={resolvedGridFocusId === '__add_people__' ? 0 : -1}
-                    className={cn('app-group-management-member-tile app-group-management-add-tile min-w-0 rounded-[12px] px-1 py-2 text-center transition', isAddPeopleOpen && 'app-group-management-member-tile-selected')}
-                    onFocus={() => setGridFocusId('__add_people__')}
-                    onKeyDown={handleGridArrowNavigation}
-                    onClick={openAddPeople}
-                  >
-                    <span className="app-group-management-add-avatar mx-auto grid h-9 w-9 place-items-center rounded-[12px] border border-dashed">
-                      <Plus className="h-4 w-4" />
-                    </span>
-                    <span className="mt-1.5 block truncate text-[10.5px] font-medium leading-4">Add</span>
-                  </button>
-                ) : null}
-              </div>
-
-              {memberListCanCollapse ? (
-                <button
-                  type="button"
-                  className="app-button-quiet app-group-management-show-all mt-1 flex w-full items-center justify-center gap-1 rounded-[9px] py-1.5 text-[10px] font-medium"
-                  aria-expanded={showAllMembers}
-                  aria-controls={`${memberSearchId}-member-grid`}
-                  onClick={() => setShowAllMembers((current) => !current)}
-                >
-                  {showAllMembers ? 'Show less' : 'Show all'}
-                  {showAllMembers
-                    ? <ChevronUp className="h-3 w-3" aria-hidden="true" />
-                    : <ChevronDown className="h-3 w-3" aria-hidden="true" />}
-                  {!showAllMembers && hiddenMemberCount > 0 ? (
-                    <span className="sr-only"> ({hiddenMemberCount} more people)</span>
-                  ) : null}
-                </button>
-              ) : null}
-
-              {filteredMembers.length === 0 ? (
-                <div className="app-group-management-empty mt-2 rounded-[11px] px-2.5 py-3 text-center text-[11px]">
-                  No members match “{memberQuery.trim()}”.
-                </div>
-              ) : null}
-            </section>
-
-            {selectedMember ? (() => {
-              const admin = memberIsAdmin(selectedMember, adminIds, currentAccountId);
-              const isCreator = memberMatchesIdentity(selectedMember, space.groupCreatorIdentityId, currentAccountId);
-              const isSelf = isSelfMember(selectedMember);
-              const canChangeAdminRole = canManageAdmins && !isCreator;
-              const canRemoveMember = !isCreator && (
-                isSelf || (canManageMembers && !admin)
-              );
-              const isPending = pendingAction === `admin:${selectedMember.id}`
-                || pendingAction === `remove:${selectedMember.id}`;
-              return (
-                <section
-                  id={`${memberSearchId}-member-actions`}
-                  aria-label={`Manage ${selectedMember.name}`}
-                  data-group-member-actions
-                  className="app-group-management-member-actions mt-2 border-b pb-2"
-                >
-                  <div className="py-1">
-                    <MemberContactProfileContent
-                      key={selectedMember.id}
-                      participant={selectedMember}
-                      contacts={contacts}
-                      metadataMode="kordi-handle"
-                      presenceStatus={memberPresence(selectedMember)}
-                      isSelf={isSelf}
-                      onAddContact={onAddContact}
-                      onMessageContact={onMessageContact}
-                    />
-                  </div>
-
-                  {canChangeAdminRole ? (
+                  {canInvitePeople ? (
                     <button
                       type="button"
-                      className="app-transient-flat-action app-group-management-action-row mt-1 flex w-full items-center justify-between gap-3 rounded-[10px] px-2 py-2 text-left text-[11px]"
-                      disabled={Boolean(pendingAction)}
-                      onClick={() => {
-                        void runAction(
-                          `admin:${selectedMember.id}`,
-                          () => onSetAdmin(groupMembershipSessionIds, selectedMember.id, !admin),
-                        );
-                      }}
+                      data-group-member-grid-item
+                      aria-label="Add people"
+                      aria-expanded={isAddPeopleOpen}
+                      tabIndex={resolvedGridFocusId === '__add_people__' ? 0 : -1}
+                      className={cn('app-group-management-member-tile app-group-management-add-tile min-w-0 rounded-[12px] px-1 py-2 text-center transition', isAddPeopleOpen && 'app-group-management-member-tile-selected')}
+                      onFocus={() => setGridFocusId('__add_people__')}
+                      onKeyDown={handleGridArrowNavigation}
+                      onClick={openAddPeople}
                     >
-                      <span className="flex items-center gap-2">
-                        <Star className={cn('h-3.5 w-3.5', admin && 'fill-current')} />
-                        {admin ? 'Remove admin role' : 'Make group admin'}
+                      <span className="app-group-management-add-avatar mx-auto grid h-9 w-9 place-items-center rounded-[12px] border border-dashed">
+                        <Plus className="h-4 w-4" />
                       </span>
-                      {pendingAction === `admin:${selectedMember.id}` ? <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                      <span className="mt-1.5 block truncate text-[10.5px] font-medium leading-4">Add</span>
                     </button>
                   ) : null}
+                </div>
 
-                  {canRemoveMember ? (
-                    confirmingRemovalId === selectedMember.id ? (
-                      <div className="app-group-management-confirm mt-1 rounded-[10px] px-2 py-2">
-                        <p className="text-[10.5px] leading-4">
-                          {isSelf ? 'Leave this group?' : `Remove ${selectedMember.name} from this group?`}
-                        </p>
-                        <div className="mt-2 flex justify-end gap-1.5">
-                          <button
-                            type="button"
-                            className="app-transient-flat-action rounded-[9px] px-2.5 py-1.5 text-[10px]"
-                            disabled={isPending}
-                            onClick={() => setConfirmingRemovalId(null)}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            className="app-transient-flat-action app-transient-flat-action-danger rounded-[9px] px-2.5 py-1.5 text-[10px]"
-                            disabled={isPending}
-                            onClick={() => {
-                              void runAction(
-                                `remove:${selectedMember.id}`,
-                                () => onRemoveMember(groupMembershipSessionIds, selectedMember.id),
-                                () => {
-                                  setSelectedMemberId(null);
-                                  setConfirmingRemovalId(null);
-                                },
-                              );
-                            }}
-                          >
-                            {pendingAction === `remove:${selectedMember.id}` ? 'Removing…' : isSelf ? 'Leave group' : 'Remove'}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className="app-transient-flat-action app-transient-flat-action-danger app-group-management-action-row mt-1 flex w-full items-center justify-between gap-3 rounded-[10px] px-2 py-2 text-left text-[11px]"
-                        disabled={Boolean(pendingAction)}
-                        onClick={() => setConfirmingRemovalId(selectedMember.id)}
-                      >
-                        <span className="flex items-center gap-2">
-                          <UserMinus className="h-3.5 w-3.5" />
-                          {isSelf ? 'Leave group' : 'Remove from group'}
-                        </span>
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </button>
-                    )
-                  ) : null}
-                </section>
-              );
-            })() : null}
-
-            {isAddPeopleOpen ? (
-              <section aria-labelledby={`${addSearchId}-heading`} className="app-group-management-add-panel mt-3 border-t pt-2">
-                <div className="flex items-center gap-2 px-1 py-1">
+                {memberListCanCollapse ? (
                   <button
                     type="button"
-                    className="app-button-quiet app-group-management-close grid h-7 w-7 place-items-center rounded-[9px] p-0"
-                    aria-label="Back to group members"
-                    onClick={() => {
-                      setIsAddPeopleOpen(false);
-                      setSelectedContactIds([]);
-                    }}
+                    className="app-button-quiet app-group-management-show-all mt-1 flex w-full items-center justify-center gap-1 rounded-[9px] py-1.5 text-[10px] font-medium"
+                    aria-expanded={showAllMembers}
+                    aria-controls={`${memberSearchId}-member-grid`}
+                    onClick={() => setShowAllMembers((current) => !current)}
                   >
-                    <ArrowLeft className="h-3.5 w-3.5" />
+                    {showAllMembers ? 'Show less' : 'Show all'}
+                    {showAllMembers
+                      ? <ChevronUp className="h-3 w-3" aria-hidden="true" />
+                      : <ChevronDown className="h-3 w-3" aria-hidden="true" />}
+                    {!showAllMembers && hiddenMemberCount > 0 ? (
+                      <span className="sr-only"> ({hiddenMemberCount} more people)</span>
+                    ) : null}
                   </button>
-                  <div className="min-w-0 flex-1">
-                    <h3 id={`${addSearchId}-heading`} className="text-[12px] font-semibold">Add people</h3>
+                ) : null}
+
+                {filteredMembers.length === 0 ? (
+                  <div className="app-group-management-empty mt-2 rounded-[11px] px-2.5 py-3 text-center text-[11px]">
+                    No members match “{memberQuery.trim()}”.
                   </div>
-                  {addPeopleMode === 'contacts' && selectedAddContactIds.length > 0 ? (
-                    <span className="text-[10px] tabular-nums text-[color:var(--utility-muted-text)]">
-                      {selectedAddContactIds.length} selected
-                    </span>
-                  ) : null}
-                </div>
+                ) : null}
+              </section>
 
-                <div className="app-filter-tabs app-group-management-add-tabs my-2 w-full" role="tablist" aria-label="Ways to add people">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={addPeopleMode === 'contacts'}
-                    className={addPeopleMode === 'contacts' ? 'app-filter-tab app-filter-tab-active' : 'app-filter-tab'}
-                    onClick={() => {
-                      setAddPeopleMode('contacts');
-                      setActionError(null);
-                    }}
+              {selectedMember ? (() => {
+                const admin = memberIsAdmin(selectedMember, adminIds, currentAccountId);
+                const isCreator = memberMatchesIdentity(selectedMember, space.groupCreatorIdentityId, currentAccountId);
+                const isSelf = isSelfMember(selectedMember);
+                const canChangeAdminRole = canManageAdmins && !isCreator;
+                const canRemoveMember = !isCreator && (
+                  isSelf || (canManageMembers && !admin)
+                );
+                const isPending = pendingAction === `admin:${selectedMember.id}`
+                  || pendingAction === `remove:${selectedMember.id}`;
+                return (
+                  <section
+                    id={`${memberSearchId}-member-actions`}
+                    aria-label={`Manage ${selectedMember.name}`}
+                    data-group-member-actions
+                    className="app-group-management-member-actions mt-2 border-b pb-2"
                   >
-                    Existing contacts
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={addPeopleMode === 'link'}
-                    className={addPeopleMode === 'link' ? 'app-filter-tab app-filter-tab-active' : 'app-filter-tab'}
-                    onClick={() => {
-                      setAddPeopleMode('link');
-                      setActionError(null);
-                    }}
-                  >
-                    Share link
-                  </button>
-                </div>
-
-                {addPeopleMode === 'contacts' ? (
-                  <>
-                    <label htmlFor={addSearchId} className="sr-only">Search contacts to add</label>
-                    <div className="app-group-management-search relative my-2">
-                      <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--utility-muted-text)]" />
-                      <input
-                        id={addSearchId}
-                        type="search"
-                        value={addQuery}
-                        onChange={(event) => setAddQuery(event.target.value)}
-                        placeholder="Search contacts"
-                        className="app-input-shell h-9 w-full rounded-[11px] py-2 pl-8 pr-3 text-[12px] outline-none"
+                    <div className="py-1">
+                      <MemberContactProfileContent
+                        key={selectedMember.id}
+                        participant={selectedMember}
+                        contacts={contacts}
+                        metadataMode="kordi-handle"
+                        presenceStatus={memberPresence(selectedMember)}
+                        isSelf={isSelf}
+                        onAddContact={onAddContact}
+                        onMessageContact={onMessageContact}
                       />
                     </div>
 
-                    <div className="space-y-0.5" aria-label="Contacts available to add">
-                      {filteredAddOptions.length > 0 ? filteredAddOptions.map((option) => {
-                        const selected = selectedContactIds.includes(option.id);
-                        const rawIdentityLabel = contactStableId(option.contact);
-                        const identityLabel = visibleIdentityLabel(rawIdentityLabel);
-                        const detail = visibleIdentityLabel(option.detail ?? '');
-                        const showIdentityLabel = hasDuplicateName(option.label, duplicateNames)
-                          && identityLabel
-                          && identityLabel !== option.label;
-                        return (
-                          <button
-                            key={option.id}
-                            type="button"
-                            disabled={!canInvitePeople || Boolean(pendingAction)}
-                            aria-pressed={selected}
-                            onClick={() => toggleAddContact(option.id)}
-                            className={cn('app-group-management-contact-row flex w-full items-center gap-2 rounded-[10px] px-2 py-1.5 text-left text-[11px] transition', selected && 'app-group-management-contact-row-selected')}
-                          >
-                            <IdentityAvatar
-                              kind="human"
-                              seed={option.avatarSeed ?? rawIdentityLabel}
-                              name={option.label}
-                              imageUrl={option.profileImageUrl}
-                              className="h-7 w-7 border border-white/10"
-                              presenceStatus={option.contact.presenceStatus}
-                            />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate font-medium">{option.label}</span>
-                              {showIdentityLabel || detail ? (
-                                <span className="block truncate text-[9.5px] text-[color:var(--utility-muted-text)]">
-                                  {showIdentityLabel ? identityLabel : detail}
-                                </span>
-                              ) : null}
-                            </span>
-                            <span className={cn('app-group-management-contact-check grid h-5 w-5 place-items-center rounded-full border', selected && 'app-group-management-contact-check-selected')}>
-                              {selected ? <Check className="h-3 w-3" /> : null}
-                            </span>
-                          </button>
-                        );
-                      }) : addOptions.length > 0 ? (
-                        <div className="app-group-management-empty rounded-[11px] px-2.5 py-3 text-center text-[11px]">
-                          No contacts match “{addQuery.trim()}”.
+                    {canChangeAdminRole ? (
+                      <button
+                        type="button"
+                        className="app-transient-flat-action app-group-management-action-row mt-1 flex w-full items-center justify-between gap-3 rounded-[10px] px-2 py-2 text-left text-[11px]"
+                        disabled={Boolean(pendingAction)}
+                        onClick={() => {
+                          void runAction(
+                            `admin:${selectedMember.id}`,
+                            () => onSetAdmin(groupMembershipSessionIds, selectedMember.id, !admin),
+                          );
+                        }}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Star className={cn('h-3.5 w-3.5', admin && 'fill-current')} />
+                          {admin ? 'Remove admin role' : 'Make group admin'}
+                        </span>
+                        {pendingAction === `admin:${selectedMember.id}` ? <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                      </button>
+                    ) : null}
+
+                    {canRemoveMember ? (
+                      confirmingRemovalId === selectedMember.id ? (
+                        <div className="app-group-management-confirm mt-1 rounded-[10px] px-2 py-2">
+                          <p className="text-[10.5px] leading-4">
+                            {isSelf ? 'Leave this group?' : `Remove ${selectedMember.name} from this group?`}
+                          </p>
+                          <div className="mt-2 flex justify-end gap-1.5">
+                            <button
+                              type="button"
+                              className="app-transient-flat-action rounded-[9px] px-2.5 py-1.5 text-[10px]"
+                              disabled={isPending}
+                              onClick={() => setConfirmingRemovalId(null)}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              className="app-transient-flat-action app-transient-flat-action-danger rounded-[9px] px-2.5 py-1.5 text-[10px]"
+                              disabled={isPending}
+                              onClick={() => {
+                                void runAction(
+                                  `remove:${selectedMember.id}`,
+                                  () => onRemoveMember(groupMembershipSessionIds, selectedMember.id),
+                                  () => {
+                                    setSelectedMemberId(null);
+                                    setConfirmingRemovalId(null);
+                                  },
+                                );
+                              }}
+                            >
+                              {pendingAction === `remove:${selectedMember.id}` ? 'Removing…' : isSelf ? 'Leave group' : 'Remove'}
+                            </button>
+                          </div>
                         </div>
                       ) : (
-                        <div className="app-group-management-empty rounded-[11px] px-2.5 py-3 text-center text-[11px]">
-                          No existing contacts are available to add.
-                        </div>
-                      )}
-                    </div>
+                        <button
+                          type="button"
+                          className="app-transient-flat-action app-transient-flat-action-danger app-group-management-action-row mt-1 flex w-full items-center justify-between gap-3 rounded-[10px] px-2 py-2 text-left text-[11px]"
+                          disabled={Boolean(pendingAction)}
+                          onClick={() => setConfirmingRemovalId(selectedMember.id)}
+                        >
+                          <span className="flex items-center gap-2">
+                            <UserMinus className="h-3.5 w-3.5" />
+                            {isSelf ? 'Leave group' : 'Remove from group'}
+                          </span>
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      )
+                    ) : null}
+                  </section>
+                );
+              })() : null}
 
-                    <Button
-                      type="button"
-                      className="mt-2 h-9 w-full rounded-[11px] text-[11px]"
-                      disabled={!canInvitePeople || selectedAddContactIds.length === 0 || Boolean(pendingAction)}
-                      onClick={() => {
-                        void runAction(
-                          'add-members',
-                          () => onAddMembers(groupMembershipSessionIds, selectedAddContactIds),
-                          () => {
-                            setSelectedContactIds([]);
-                            setIsAddPeopleOpen(false);
-                          },
-                        );
-                      }}
-                    >
-                      {pendingAction === 'add-members' ? (
-                        <><LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Adding…</>
-                      ) : selectedAddContactIds.length > 0 ? `Add ${selectedAddContactIds.length} ${selectedAddContactIds.length === 1 ? 'person' : 'people'}` : 'Select people to add'}
-                    </Button>
-                  </>
-                ) : (
-                  <GroupInvitationSharePanel
-                    hidden={false}
-                    space={space}
-                    canShareInvitation={canShareInvitation}
-                    permissionHint={invitationPermissionHint}
-                    pendingAction={pendingAction}
-                    onCreateGroupInvitation={onCreateGroupInvitation}
-                    onListGroupInvitations={onListGroupInvitations}
-                    onRevokeGroupInvitation={onRevokeGroupInvitation}
-                    runAction={runAction}
-                    onError={setActionError}
-                  />
-                )}
-              </section>
-            ) : null}
-
-            <section aria-label="Group settings" className="app-group-management-settings mt-3 border-t pt-1">
-              <button
-                type="button"
-                className="app-transient-flat-action app-group-management-setting-row flex w-full items-center gap-3 rounded-[10px] px-1.5 py-2.5 text-left"
-                disabled={!canManageGroup || Boolean(pendingAction)}
-                aria-expanded={isEditingName}
-                onClick={() => {
-                  setNameDraft(space.title);
-                  setIsEditingName((current) => !current);
-                  setActionError(null);
-                }}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[11px] font-medium">Group name</span>
-                  <span className="mt-0.5 block truncate text-[10px] text-[color:var(--utility-muted-text)]">{space.title}</span>
-                </span>
-                {canManageGroup ? <Pencil className="h-3.5 w-3.5 text-[color:var(--utility-muted-text)]" /> : null}
-              </button>
-
-              {isEditingName ? (
-                <form className="app-group-management-name-form px-1.5 pb-2" onSubmit={submitRename}>
-                  <label htmlFor={nameInputId} className="sr-only">Group name</label>
-                  <input
-                    id={nameInputId}
-                    value={nameDraft}
-                    onChange={(event) => setNameDraft(event.target.value)}
-                    className="app-input-shell h-9 w-full rounded-[11px] px-3 text-[12px] outline-none"
-                  />
-                  <div className="mt-2 flex justify-end gap-1.5">
+              {isAddPeopleOpen ? (
+                <section aria-labelledby={`${addSearchId}-heading`} className="app-group-management-add-panel mt-3 border-t pt-2">
+                  <div className="flex items-center gap-2 px-1 py-1">
                     <button
                       type="button"
-                      className="app-transient-flat-action rounded-[9px] px-2.5 py-1.5 text-[10px]"
-                      disabled={pendingAction === 'rename'}
+                      className="app-button-quiet app-group-management-close grid h-7 w-7 place-items-center rounded-[9px] p-0"
+                      aria-label="Back to group members"
                       onClick={() => {
-                        setNameDraft(space.title);
-                        setIsEditingName(false);
+                        setIsAddPeopleOpen(false);
+                        setSelectedContactIds([]);
                       }}
                     >
-                      Cancel
+                      <ArrowLeft className="h-3.5 w-3.5" />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <h3 id={`${addSearchId}-heading`} className="text-[12px] font-semibold">Add people</h3>
+                    </div>
+                    {addPeopleMode === 'contacts' && selectedAddContactIds.length > 0 ? (
+                      <span className="text-[10px] tabular-nums text-[color:var(--utility-muted-text)]">
+                        {selectedAddContactIds.length} selected
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="app-filter-tabs app-group-management-add-tabs my-2 w-full" role="tablist" aria-label="Ways to add people">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={addPeopleMode === 'contacts'}
+                      className={addPeopleMode === 'contacts' ? 'app-filter-tab app-filter-tab-active' : 'app-filter-tab'}
+                      onClick={() => {
+                        setAddPeopleMode('contacts');
+                        setActionError(null);
+                      }}
+                    >
+                      Existing contacts
                     </button>
                     <button
-                      type="submit"
-                      className="app-button-primary rounded-[9px] px-2.5 py-1.5 text-[10px]"
-                      disabled={!nameDraft.trim() || nameDraft.trim() === space.title.trim() || Boolean(pendingAction)}
+                      type="button"
+                      role="tab"
+                      aria-selected={addPeopleMode === 'link'}
+                      className={addPeopleMode === 'link' ? 'app-filter-tab app-filter-tab-active' : 'app-filter-tab'}
+                      onClick={() => {
+                        setAddPeopleMode('link');
+                        setActionError(null);
+                      }}
                     >
-                      {pendingAction === 'rename' ? 'Saving…' : 'Save'}
+                      Share link
                     </button>
                   </div>
-                </form>
+
+                  {addPeopleMode === 'contacts' ? (
+                    <>
+                      <label htmlFor={addSearchId} className="sr-only">Search contacts to add</label>
+                      <div className="app-group-management-search relative my-2">
+                        <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--utility-muted-text)]" />
+                        <input
+                          id={addSearchId}
+                          type="search"
+                          value={addQuery}
+                          onChange={(event) => setAddQuery(event.target.value)}
+                          placeholder="Search contacts"
+                          className="app-input-shell h-9 w-full rounded-[11px] py-2 pl-8 pr-3 text-[12px] outline-none"
+                        />
+                      </div>
+
+                      <div className="space-y-0.5" aria-label="Contacts available to add">
+                        {filteredAddOptions.length > 0 ? filteredAddOptions.map((option) => {
+                          const selected = selectedContactIds.includes(option.id);
+                          const rawIdentityLabel = contactStableId(option.contact);
+                          const identityLabel = visibleIdentityLabel(rawIdentityLabel);
+                          const detail = visibleIdentityLabel(option.detail ?? '');
+                          const showIdentityLabel = hasDuplicateName(option.label, duplicateNames)
+                            && identityLabel
+                            && identityLabel !== option.label;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              disabled={!canInvitePeople || Boolean(pendingAction)}
+                              aria-pressed={selected}
+                              onClick={() => toggleAddContact(option.id)}
+                              className={cn('app-group-management-contact-row flex w-full items-center gap-2 rounded-[10px] px-2 py-1.5 text-left text-[11px] transition', selected && 'app-group-management-contact-row-selected')}
+                            >
+                              <IdentityAvatar
+                                kind="human"
+                                seed={option.avatarSeed ?? rawIdentityLabel}
+                                name={option.label}
+                                imageUrl={option.profileImageUrl}
+                                className="h-7 w-7 border border-white/10"
+                                presenceStatus={option.contact.presenceStatus}
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate font-medium">{option.label}</span>
+                                {showIdentityLabel || detail ? (
+                                  <span className="block truncate text-[9.5px] text-[color:var(--utility-muted-text)]">
+                                    {showIdentityLabel ? identityLabel : detail}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span className={cn('app-group-management-contact-check grid h-5 w-5 place-items-center rounded-full border', selected && 'app-group-management-contact-check-selected')}>
+                                {selected ? <Check className="h-3 w-3" /> : null}
+                              </span>
+                            </button>
+                          );
+                        }) : addOptions.length > 0 ? (
+                          <div className="app-group-management-empty rounded-[11px] px-2.5 py-3 text-center text-[11px]">
+                            No contacts match “{addQuery.trim()}”.
+                          </div>
+                        ) : (
+                          <div className="app-group-management-empty rounded-[11px] px-2.5 py-3 text-center text-[11px]">
+                            No existing contacts are available to add.
+                          </div>
+                        )}
+                      </div>
+
+                      <Button
+                        type="button"
+                        className="mt-2 h-9 w-full rounded-[11px] text-[11px]"
+                        disabled={!canInvitePeople || selectedAddContactIds.length === 0 || Boolean(pendingAction)}
+                        onClick={() => {
+                          void runAction(
+                            'add-members',
+                            () => onAddMembers(groupMembershipSessionIds, selectedAddContactIds),
+                            () => {
+                              setSelectedContactIds([]);
+                              setIsAddPeopleOpen(false);
+                            },
+                          );
+                        }}
+                      >
+                        {pendingAction === 'add-members' ? (
+                          <><LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Adding…</>
+                        ) : selectedAddContactIds.length > 0 ? `Add ${selectedAddContactIds.length} ${selectedAddContactIds.length === 1 ? 'person' : 'people'}` : 'Select people to add'}
+                      </Button>
+                    </>
+                  ) : (
+                    <GroupInvitationSharePanel
+                      hidden={false}
+                      space={space}
+                      canShareInvitation={canShareInvitation}
+                      permissionHint={invitationPermissionHint}
+                      pendingAction={pendingAction}
+                      onCreateGroupInvitation={onCreateGroupInvitation}
+                      onListGroupInvitations={onListGroupInvitations}
+                      onRevokeGroupInvitation={onRevokeGroupInvitation}
+                      runAction={runAction}
+                      onError={setActionError}
+                    />
+                  )}
+                </section>
               ) : null}
-            </section>
+
+
+              <GroupNameSettings
+                title={space.title}
+                canManageGroup={canManageGroup}
+                pendingAction={pendingAction}
+                isEditingName={isEditingName}
+                nameDraft={nameDraft}
+                nameInputId={nameInputId}
+                onToggleEditing={() => { setNameDraft(space.title); setIsEditingName((current) => !current); setActionError(null); }}
+                onNameDraftChange={setNameDraft}
+                onCancel={() => { setNameDraft(space.title); setIsEditingName(false); }}
+                onSubmit={submitRename}
+              />
+          </>
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use super::Settings;
+use super::{MemorySettings, Settings};
 
 impl Settings {
     // IO boundary — should migrate to cli
@@ -26,10 +26,24 @@ impl Settings {
         }
     }
 
-    /// Save global settings to `~/.kordi/settings.json`.
+    /// Save global settings to `~/.kordi/settings.json`. The write is atomic
+    /// (see `save_to_file`).
     pub fn save_global(&self) -> std::io::Result<()> {
         let _ = crate::config::migrate_legacy_global_config();
         self.save_to_file(&crate::config::preferred_global_settings_path())
+    }
+
+    /// Load the global settings file, apply `patch` to its memory block, save
+    /// it, and return the new block. Unlike `load_global`, a malformed file is
+    /// an error so the update never overwrites settings it could not read.
+    pub fn update_global_memory(
+        patch: impl FnOnce(&mut MemorySettings),
+    ) -> std::io::Result<MemorySettings> {
+        let _ = crate::config::migrate_legacy_global_config();
+        let mut settings = Self::load_from_file_result(&crate::config::global_settings_path())?;
+        patch(&mut settings.memory);
+        settings.save_global()?;
+        Ok(settings.memory)
     }
 
     /// Save project settings to the detected project root's `.kordi/settings.json`.
@@ -39,13 +53,32 @@ impl Settings {
         self.save_to_file(&crate::config::preferred_project_settings_path(cwd))
     }
 
-    /// Save settings to a specific file path.
+    /// Save settings to a specific file path. Writes a sibling temporary
+    /// file and renames it over the target, so a crash leaves either the old
+    /// or the new file, never a partial one.
     pub fn save_to_file(&self, path: &Path) -> std::io::Result<()> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
+        let parent = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(parent)?;
         let content = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
-        std::fs::write(path, content)
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("settings.json");
+        let temp_path = parent.join(format!(
+            ".{file_name}.{}.{}.tmp",
+            std::process::id(),
+            uuid::Uuid::new_v4().simple()
+        ));
+        if let Err(error) = std::fs::write(&temp_path, content) {
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(error);
+        }
+        std::fs::rename(&temp_path, path).inspect_err(|_| {
+            let _ = std::fs::remove_file(&temp_path);
+        })
     }
 
     // IO boundary — should migrate to cli

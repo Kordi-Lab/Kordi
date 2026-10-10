@@ -62,7 +62,10 @@ pub fn decide_runner_tool(request: &RunnerToolRequest<'_>) -> RunnerToolDecision
             decide_sandbox_paths(&request.path_args)
         }
         "web_search" | "web_fetch" | "browser_fetch" => decide_web_urls(&request.url_args),
-        "reach_out" | "reflection" | "update_plan" | "task_operator" => {
+        // Memories go through the run-scoped server route, which holds the
+        // guards and the account setting; the tool touches no paths or URLs.
+        "reflection" => RunnerToolDecision::AllowSandbox,
+        "reach_out" | "update_plan" | "task_operator" => {
             RunnerToolDecision::Block(RunnerToolBlockReason::UnsupportedTool)
         }
         // Connector tools (`gmail_search`, ...): only names the lease lists
@@ -190,6 +193,20 @@ mod tests {
             let explanation = reason.explanation();
             assert!(explanation.contains("Cloud fallback"));
             assert!(!explanation.contains("approval"));
+        }
+    }
+
+    #[test]
+    fn reflection_is_allowed_and_other_host_tools_stay_blocked() {
+        assert_eq!(
+            decide_runner_tool(&request("reflection")),
+            RunnerToolDecision::AllowSandbox
+        );
+        for tool in ["reach_out", "update_plan", "task_operator"] {
+            assert_eq!(
+                decide_runner_tool(&request(tool)),
+                RunnerToolDecision::Block(RunnerToolBlockReason::UnsupportedTool)
+            );
         }
     }
 

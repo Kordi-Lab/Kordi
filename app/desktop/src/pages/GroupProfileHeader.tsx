@@ -46,7 +46,7 @@ function GroupProfileAction({
       title={title ?? label}
     >
       {icon}
-      <span className="truncate text-[10px] font-medium">{label}</span>
+      <span className="max-w-full truncate text-[10px] font-medium">{label}</span>
     </button>
   );
 }

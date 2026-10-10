@@ -10,6 +10,7 @@ import { Check, Copy, Settings, Share2 } from 'lucide-react';
 import { cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { canonicalAvatarImageSource } from '@/features/cloud/canonicalAvatar';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
+import { memoryClientForEnvironment, memorySectionAvailable } from '@/features/memory/memoryClient';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { cn } from '@/lib/utils';
 import {
@@ -199,6 +200,7 @@ export function SidebarProfileControl({
   cloudAccountDialogTab: controlledDialogTab,
   setCloudAccountDialogTab: setControlledDialogTab,
   cloudSettings,
+  cloudMemoryVersion,
   onUpdateCloudProfile,
   onRequestCloudEmailCode,
   onVerifyCloudEmail,
@@ -338,6 +340,7 @@ export function SidebarProfileControl({
           onVerifyEmail={onVerifyCloudEmail}
           onEmailAlreadyVerified={onCloudEmailAlreadyVerified}
           onSignOut={onCloudSignOut}
+          memoryClient={memorySectionAvailable(cloudMemoryVersion) ? memoryClientForEnvironment() : null}
         />
       ) : null}
 

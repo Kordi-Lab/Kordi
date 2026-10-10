@@ -226,7 +226,8 @@ export function CloudDevicesPanel({
 
   return (
     <div className="app-cloud-account-settings-section max-w-[680px] py-1">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="m-0 text-[15px] font-semibold text-white">Active sessions</h2>
         <Button
           variant="quiet"
           size="icon"

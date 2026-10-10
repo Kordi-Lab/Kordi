@@ -1,5 +1,5 @@
 import { isChatNavigation } from '@/features/chat/chatNavigation';
-import { CheckCircle2, FolderOpen, Info, Layers3 } from 'lucide-react';
+import { Brain, CheckCircle2, FolderOpen, Info, Layers3 } from 'lucide-react';
 
 import { ChatDetailPanel } from '@/pages/ChatDetailPanel';
 import { ProjectDetailPanel } from '@/pages/ProjectDetailPanel';
@@ -30,12 +30,14 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
         { id: 'info', label: 'Info', icon: Info },
         { id: 'artifacts', label: 'Artifacts', icon: FolderOpen },
         { id: 'tasks', label: 'Tasks', icon: CheckCircle2 },
+        { id: 'memory', label: 'Memory', icon: Brain },
       ]
     : [
         { id: 'info', label: 'Info', icon: Info },
         { id: 'context', label: 'Context', icon: Layers3 },
         { id: 'artifacts', label: 'Artifacts', icon: FolderOpen },
         { id: 'tasks', label: 'Tasks', icon: CheckCircle2 },
+        { id: 'memory', label: 'Memory', icon: Brain },
       ];
   const detailTabs = allDetailTabs;
 

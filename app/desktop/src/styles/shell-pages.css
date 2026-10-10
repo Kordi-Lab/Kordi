@@ -424,3 +424,12 @@
 .app-agent-code-panel {
   background: var(--app-code-bg);
 }
+
+.app-cloud-account-settings-header {
+  border-bottom: 1px solid var(--app-divider);
+  background: var(--app-main-bg);
+}
+
+.kordi-app.theme-light .app-cloud-account-settings-rail {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}

@@ -17,6 +17,9 @@ impl ToolRegistry {
         for tool in kordi_tools::mac_local::mac_local_tools(runtime) {
             let selected = match selection {
                 ToolSelection::All => true,
+                ToolSelection::AllExcept(excluded) => {
+                    !excluded.iter().any(|name| name == tool.name())
+                }
                 ToolSelection::None => false,
                 ToolSelection::Only(names) => names.iter().any(|name| name == tool.name()),
             };

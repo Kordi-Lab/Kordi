@@ -215,7 +215,9 @@ impl DesktopRuntimeSession {
             ..SessionBootstrapOptions::default()
         };
         let (_runtime_host, _ui, setup) = prepare_session_runtime_for_cwd(cwd, entry).await?;
+        let remote = crate::memory_remote::current_memory_remote(&self.setup.memory_remote);
         self.setup = setup;
+        self.set_memory_remote(remote);
         self.refresh_saved_agent_persona();
         Ok(())
     }
@@ -488,31 +490,6 @@ impl DesktopRuntimeSession {
             append_thinking_level_change_entry(&self.setup.conn, &self.setup.session_id, thinking)?;
         }
         Ok(())
-    }
-
-    pub fn set_reach_out_runtime(&mut self, runtime: Option<kordi_tools::ReachOutRuntime>) {
-        self.setup.tool_ctx.reach_out = runtime;
-    }
-
-    pub fn set_scheduled_tasks_cloud_runtime(&mut self, api_base: String, token: String) {
-        self.set_scheduled_tasks_cloud_runtime_for_session(
-            api_base,
-            token,
-            self.setup.session_id.clone(),
-        );
-    }
-
-    pub fn set_scheduled_tasks_cloud_runtime_for_session(
-        &mut self,
-        api_base: String,
-        token: String,
-        session_id: String,
-    ) {
-        self.setup.tool_ctx.schedule_task = Some(
-            crate::scheduled_tasks_runtime::build_scheduled_tasks_runtime_for_session(
-                api_base, token, session_id,
-            ),
-        );
     }
 
     pub fn sync_visible_task_records(

@@ -5,6 +5,7 @@ mod compaction_exec;
 mod extensions;
 mod input_files;
 mod live_models;
+pub mod memory_remote;
 mod omp_turn;
 #[allow(dead_code)]
 mod reflection_runtime;

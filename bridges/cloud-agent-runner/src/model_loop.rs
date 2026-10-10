@@ -12,6 +12,7 @@ pub use provider::{OpenAiCompatibleProvider, OpenAiProviderConfig};
 
 use crate::artifacts::export_sandbox_file;
 use crate::client::{CloudAgentRun, CloudAgentRunClient, ProviderAuthMaterial, RunnerClientError};
+use crate::memory::{load_run_memory, memory_prompt_section, RunMemory};
 use crate::sandbox_client::SandboxBackendHandle;
 use crate::tool_policy::RunnerToolRequest;
 use crate::tools::{CloudToolExecutor, CloudToolOutput};
@@ -52,6 +53,25 @@ pub trait CloudModelProvider {
     ) -> Result<ModelProviderResponse, ModelLoopError>;
 }
 
+/// The tool catalog for a run: subsession limits, and `reflection` only when
+/// the account has memory on.
+pub fn run_tool_catalog(run: &CloudAgentRun, memory: &RunMemory) -> Vec<Value> {
+    let mut tools = prompt::tool_catalog();
+    tools.extend(crate::connectors::tool_definitions(run));
+    tools.retain(|tool| {
+        let name = tool["function"]["name"].as_str().unwrap_or_default();
+        if name == "reflection" {
+            return memory.enabled;
+        }
+        run.subsession_id.is_none()
+            || (name != "task_operator"
+                && name != "export_artifact"
+                && name != "bash"
+                && (!run.subsession_write_scope.is_empty() || !matches!(name, "write" | "edit")))
+    });
+    tools
+}
+
 pub async fn run_model_loop<C, P>(
     client: &C,
     provider: &P,
@@ -65,18 +85,9 @@ where
 {
     let mut auth = OpenAiProviderConfig::from_material(&auth_material)?;
     auth.apply_runtime_route(&run.runtime_route, &auth_material.provider)?;
-    let mut tools = prompt::tool_catalog();
-    tools.extend(crate::connectors::tool_definitions(run));
-    if run.subsession_id.is_some() {
-        tools.retain(|tool| {
-            let name = tool["function"]["name"].as_str().unwrap_or_default();
-            name != "task_operator"
-                && name != "export_artifact"
-                && name != "bash"
-                && (!run.subsession_write_scope.is_empty() || !matches!(name, "write" | "edit"))
-        });
-    }
-    let executor = CloudToolExecutor::new(sandbox.clone());
+    let memory = load_run_memory(client, run).await;
+    let tools = run_tool_catalog(run, &memory);
+    let executor = CloudToolExecutor::new(sandbox.clone()).with_memory(memory.enabled);
     let system_prompt = [run.system_prompt.trim(), cloud_sandbox_system_prompt()]
         .into_iter()
         .filter(|section| !section.is_empty())
@@ -91,6 +102,10 @@ where
         system_prompt
     };
     let system_prompt = match crate::connectors::prompt_section(run) {
+        Some(section) => format!("{system_prompt}\n\n{section}"),
+        None => system_prompt,
+    };
+    let system_prompt = match memory_prompt_section(run, &memory) {
         Some(section) => format!("{system_prompt}\n\n{section}"),
         None => system_prompt,
     };
@@ -250,6 +265,24 @@ pub(crate) async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
         return match client.read_context(&run.run_id, &call.name, call.arguments.clone()).await {
             Ok(value) => context_tool_output(value),
             Err(_) => "Conversation retrieval is unavailable or access was revoked. Do not infer missing context.".into(),
+        };
+    }
+    if call.name == "reflection" {
+        let request = RunnerToolRequest {
+            tool_name: &call.name,
+            path_args: Vec::new(),
+            url_args: Vec::new(),
+            requester_account_id: &run.requester_account_id,
+            owner_account_id: &run.owner_account_id,
+            data_owner_account_id: None,
+            connector_tools: &run.connectors.tools,
+        };
+        return match executor
+            .execute_reflection(client, &run.run_id, request, &call.arguments)
+            .await
+        {
+            Ok(output) => format_tool_output(output),
+            Err(err) => err.to_string().into(),
         };
     }
     if call.name == "export_artifact" {

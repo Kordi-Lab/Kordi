@@ -78,7 +78,7 @@ fn concurrent_file_opens_initialize_each_schema_version_once() {
         .expect("query schema versions")
         .collect::<rusqlite::Result<Vec<_>>>()
         .expect("collect schema versions");
-    assert_eq!(versions, (1..=10).collect::<Vec<_>>());
+    assert_eq!(versions, (1..=11).collect::<Vec<_>>());
 }
 
 #[test]

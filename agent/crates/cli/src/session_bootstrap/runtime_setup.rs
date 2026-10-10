@@ -30,6 +30,13 @@ pub(crate) struct SessionRuntimeSetup {
     pub tool_registry: ToolRegistry,
     pub tool_selection: ToolSelection,
     pub tool_ctx: ToolContext,
+    /// Account memory remote used by `tool_ctx.reflection`. The desktop
+    /// runtime fills it when a cloud session exists.
+    #[allow(
+        dead_code,
+        reason = "the CLI binary shares this setup with the desktop runtime library"
+    )]
+    pub memory_remote: crate::memory_remote::MemoryRemoteSlot,
     pub system_prompt: String,
     pub base_system_prompt: String,
     pub thinking_level: String,

@@ -22,7 +22,8 @@ struct ConnectorDetailView: View {
                             subtitle: definition.experimental
                                 ? "\(definition.summary) Experimental, read-only, best effort."
                                 : definition.summary,
-                            systemImage: ConnectorsModel.systemImage(definition.providerId)
+                            systemImage: ConnectorsModel.systemImage(definition.providerId),
+                            titleLineLimit: 1
                         )
                         if definition.experimental {
                             ConnectorCapsule(text: "Experimental", tint: .orange)
