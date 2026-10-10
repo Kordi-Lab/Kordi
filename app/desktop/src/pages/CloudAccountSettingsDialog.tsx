@@ -471,7 +471,7 @@ export function CloudAccountSettingsDialog({
         aria-modal="true"
         className="app-transient-surface app-modal-panel app-cloud-account-settings-dialog grid h-[min(680px,calc(100vh-40px))] w-[min(900px,calc(100vw-40px))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[12px] md:grid-cols-[208px_minmax(0,1fr)] md:grid-rows-1"
       >
-        <div className="app-session-panel app-cloud-account-settings-rail flex min-h-0 flex-col overflow-y-auto border-b px-3 pb-3 pt-5 md:border-b-0 md:border-r">
+        <div className="app-cloud-account-settings-rail flex min-h-0 flex-col overflow-y-auto border-b px-3 pb-3 pt-5 md:border-b-0 md:border-r">
           <SettingsNav
             className="app-cloud-account-settings-tabs"
             groups={navGroups}
