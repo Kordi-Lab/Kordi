@@ -4,7 +4,9 @@ use kordi_core::types::{
 };
 use rusqlite::OptionalExtension;
 
-use super::{DesktopChatContextMessage, DesktopRuntimeSession, ensure_session_row_created};
+use super::{
+    DesktopChatContextMessage, DesktopRuntimeSession, ensure_session_row_created, prompt_context,
+};
 
 impl DesktopRuntimeSession {
     /// Resolve authority from persisted application metadata, never participant text.
@@ -107,6 +109,8 @@ impl DesktopRuntimeSession {
 
     /// Freeze the full prepared header, not just its first few static lines.
     /// Existing sessions adopt it without rewriting any historical messages.
+    /// The frozen header never carries the memory block; the current block is
+    /// re-applied after it on every turn so memory edits reach the model.
     pub(super) fn freeze_identity_prompt(&mut self) -> Result<()> {
         if self.runtime_identity_context()?.is_none() {
             return Ok(());
@@ -117,8 +121,10 @@ impl DesktopRuntimeSession {
         ).optional()?;
         if let Some(prompt) = saved {
             self.setup.system_prompt = prompt;
+            self.refresh_memory_prompt_section();
             return Ok(());
         }
+        let frozen = prompt_context::strip_memory_context(&self.setup.system_prompt);
         let parent_id =
             kordi_session::store::get_session(&self.setup.conn, &self.setup.session_id)?
                 .and_then(|s| s.leaf_id)
@@ -133,9 +139,10 @@ impl DesktopRuntimeSession {
                     timestamp: chrono::Utc::now(),
                 },
                 custom_type: "runtime_identity_prompt".into(),
-                data: Some(serde_json::json!({"systemPrompt":self.setup.system_prompt})),
+                data: Some(serde_json::json!({"systemPrompt":frozen})),
             },
         )?;
+        self.refresh_memory_prompt_section();
         Ok(())
     }
 }

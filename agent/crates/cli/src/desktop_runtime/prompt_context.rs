@@ -101,6 +101,11 @@ pub(super) fn with_memory_context(prompt: &str, block: &str) -> String {
     )
 }
 
+/// Remove the tagged memory block, leaving the rest of the prompt unchanged.
+pub(super) fn strip_memory_context(prompt: &str) -> String {
+    strip_tagged(prompt, MEMORY_START, MEMORY_END)
+}
+
 pub(super) fn strip_session_prompt_context(prompt: &str) -> String {
     strip_tagged(
         &strip_tagged(prompt, SESSION_START, SESSION_END),
