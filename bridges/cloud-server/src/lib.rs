@@ -16,6 +16,7 @@ pub mod cloud_agent_runtime;
 pub mod cloud_agents;
 pub mod connectors;
 pub mod digest;
+pub mod document_shares;
 pub mod events;
 pub(crate) mod memory_store;
 pub mod notifications;

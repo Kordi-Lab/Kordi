@@ -3533,6 +3533,7 @@ dependencies = [
  "livekit-api",
  "p256",
  "password-hash",
+ "pulldown-cmark",
  "rand 0.8.6",
  "redis",
  "reqwest 0.12.28",

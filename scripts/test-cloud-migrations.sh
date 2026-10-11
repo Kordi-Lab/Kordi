@@ -54,6 +54,7 @@ tests=(
   connectors_tests::upgrade_from_114_labels_existing_runs_as_background
   connectors_tests::upgrade_from_115_adds_provider_state_and_dedupes_events
   connectors_tests::upgrade_from_116_labels_existing_runs_as_shared
+  document_share_tests::upgrade_from_121_adds_document_shares
 )
 index=0
 for test_name in "${tests[@]}"; do
@@ -72,3 +73,6 @@ DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
 # DATABASE_URL is missing, so they cannot pass by skipping.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib connectors:: -- --test-threads=1
+# Shared document tests follow the same rule.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib document_shares:: -- --test-threads=1

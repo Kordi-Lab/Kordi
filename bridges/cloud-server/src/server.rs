@@ -201,6 +201,10 @@ pub fn router_with_shared_rate_limiter(
         .merge(crate::calls::routes(state.clone()))
         .merge(crate::cloud_agents::routes::routes(state.clone()))
         .merge(crate::connectors::routes::routes(state.clone()))
+        .merge(crate::document_shares::routes(
+            state.clone(),
+            rate_limiter.clone(),
+        ))
         .merge(
             crate::cloud_agent_runtime::routes::routes(state.clone())
                 .layer(axum::Extension(rate_limiter.clone())),

@@ -260,4 +260,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "shared group memories",
         "0121_shared_group_memories.sql"
     ),
+    migration!(122, "document shares", "0122_cloud_document_shares.sql"),
 ];
