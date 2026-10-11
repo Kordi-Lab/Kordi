@@ -119,9 +119,9 @@ export const connectorCatalog: ConnectorDefinition[] = [
       read('github.pulls.read', 'Pull request state and reviews'),
     ],
     actScopes: [
-      act('github.comments.write', 'Comment on issues and pull requests'),
+      act('github.comments.write', 'Comment on issues and pull requests, with write access to your private repositories'),
     ],
-    actDescription: 'Your agent can comment on issues and pull requests. GitHub grants this as write access to all your private repositories.',
+    actDescription: 'Your agent can comment on issues and pull requests. The GitHub grant includes write access to all your private repositories.',
     availability: 'available',
   },
   {
@@ -213,6 +213,15 @@ export function connectorToolGroupsForRun(
   if (state.status !== 'connected') return [];
   if (!state.actEnabled || !run.startedByPerson) return ['read'];
   return ['read', 'act'];
+}
+
+/**
+ * Scopes the connect step asks for. A service connect grants read and act
+ * together so the service is usable at once; acting can be turned off later.
+ * Mac-local sources are read only.
+ */
+export function connectScopes(definition: ConnectorDefinition): ConnectorScope[] {
+  return definition.kind === 'service' ? [...definition.readScopes, ...definition.actScopes] : definition.readScopes;
 }
 
 export function hasGrantedActScopes(definition: ConnectorDefinition, state: ConnectorState): boolean {
