@@ -176,7 +176,8 @@ struct AccountSheet: View {
                     accountLabel: MemoryPresentation.accountLabel(
                         email: model.account?.primaryEmail,
                         kordiId: model.account?.kordiId
-                    )
+                    ),
+                    viewerAccountId: model.account?.accountId
                 )
             case .colorMode, .messageDisplay, .chatTheme:
                 CompactAppearanceSettingsView(route: route)

@@ -10,6 +10,9 @@ export type MemoryLesson = {
   text: string;
   createdAt: string;
   updatedAt: string;
+  /** The account that saved the memory; absent for memories read from this Mac. */
+  ownerAccountId?: string;
+  ownerName?: string | null;
 };
 
 export type MemorySettings = { lessonsEnabled: boolean; excludeSensitive: boolean };
@@ -30,6 +33,22 @@ export function lessonSourceLabel(source: MemoryLessonSource): string {
 /** Account settings list only global memories; the rest show on each conversation's Memory tab. */
 export function isGlobalMemory(lesson: Pick<MemoryLesson, 'scope'>): boolean {
   return lesson.scope === 'global';
+}
+
+export const NOT_A_GROUP_MEMBER_MESSAGE = 'Only group members can change this memory.';
+
+/** Whether the viewer saved the memory. Memories without an owner are the viewer's own. */
+export function isOwnMemory(lesson: Pick<MemoryLesson, 'ownerAccountId'>, viewerAccountId: string | null | undefined): boolean {
+  return !lesson.ownerAccountId || !viewerAccountId || lesson.ownerAccountId === viewerAccountId;
+}
+
+/** "Saved by …" for a group memory another member saved, otherwise null. */
+export function memoryOwnerCaption(
+  lesson: Pick<MemoryLesson, 'scope' | 'ownerAccountId' | 'ownerName'>,
+  viewerAccountId: string | null | undefined,
+): string | null {
+  if (lesson.scope !== 'group' || isOwnMemory(lesson, viewerAccountId)) return null;
+  return `Saved by ${lesson.ownerName?.trim() || 'a group member'}`;
 }
 
 const lessonDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });

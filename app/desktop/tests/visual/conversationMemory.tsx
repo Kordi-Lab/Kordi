@@ -1,7 +1,8 @@
 // Login-free synthetic preview of a conversation's Memory tab: the real
 // destination tabs, detail page, and memory list with the preview memory
 // client. `?chat=group` opens the group chat whose id matches the sample group
-// memory. It makes no network calls and needs no session.
+// memories: one this account saved and one another member saved, which shows
+// "Saved by Priya". It makes no network calls and needs no session.
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 

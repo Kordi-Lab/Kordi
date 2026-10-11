@@ -10,6 +10,9 @@ export type CloudMemory = {
   text: string;
   createdAt: string;
   updatedAt: string;
+  /** The account that saved the memory. Group memories are shared, so it can be another member. */
+  ownerAccountId?: string;
+  ownerName?: string | null;
 };
 
 export type CloudMemorySettings = { memoryEnabled: boolean; excludeSensitive: boolean };

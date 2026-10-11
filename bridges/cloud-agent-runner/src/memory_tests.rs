@@ -181,6 +181,8 @@ fn memory_row(id: &str, scope: &str, scope_id: &str, text: &str, at: &str) -> Ru
         text: text.into(),
         created_at: at.into(),
         updated_at: at.into(),
+        owner_account_id: None,
+        owner_name: None,
     }
 }
 
@@ -379,13 +381,17 @@ async fn saved_reflection_reports_a_pseudo_path_instead_of_a_file() {
 #[test]
 fn prompt_section_scopes_caps_and_sensitive_sentence() {
     let mut memories = vec![
-        memory_row(
-            "mem_g",
-            "group",
-            "grp_alpha",
-            "Group memory.",
-            "2026-09-01T00:00:00+00:00",
-        ),
+        RunnerMemory {
+            owner_account_id: Some("acct_priya".into()),
+            owner_name: Some("Priya".into()),
+            ..memory_row(
+                "mem_g",
+                "group",
+                "grp_alpha",
+                "Group memory.",
+                "2026-09-01T00:00:00+00:00",
+            )
+        },
         memory_row(
             "mem_p",
             "project",
@@ -432,6 +438,13 @@ fn prompt_section_scopes_caps_and_sensitive_sentence() {
             )
         })
         .collect();
+    // A memory another group member saved reads like any other group line.
+    let mut shared = memory.clone();
+    shared.memories.truncate(1);
+    let section = memory_prompt_section(&run(), &shared).unwrap();
+    assert!(section.ends_with("\nThis group:\n- Group memory."));
+    assert!(!section.contains("Priya"));
+
     let section = memory_prompt_section(&run(), &long).unwrap();
     assert!(section.ends_with("(more memories omitted)"));
     assert!(section.matches("\n- ").count() < 30);

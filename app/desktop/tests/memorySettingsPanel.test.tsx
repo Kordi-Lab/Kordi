@@ -105,7 +105,7 @@ test('source labels and forget copy read plainly', () => {
 
 test('preview memories are short, varied, and free of em-dashes', async () => {
   const lessons = await createPreviewMemoryClient({ latencyMs: 0 }).listLessons();
-  assert.equal(lessons.length, 9);
+  assert.equal(lessons.length, 10);
   assert.deepEqual(lessons.filter(isGlobalMemory).map((lesson) => lesson.lessonId), ['lesson-8', 'lesson-9']);
   assert.deepEqual(new Set(lessons.map((lesson) => lesson.source)).size, 4);
   for (const lesson of lessons) {

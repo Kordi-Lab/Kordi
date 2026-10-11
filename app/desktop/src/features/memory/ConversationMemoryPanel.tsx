@@ -10,11 +10,12 @@ import {
   type MemorySyncState,
 } from './memoryModel';
 
-/** A conversation's Memory tab: this account's memories saved for the chat, its group, or its project. */
+/** A conversation's Memory tab: memories saved for the chat, its project, or its group (shared by every member). */
 export function ConversationMemoryPanel({ client, scopes }: { client: MemoryClient; scopes: ConversationMemoryScopes }) {
   const [lessons, setLessons] = useState<MemoryLesson[] | null>(null);
   const [sync, setSync] = useState<MemorySyncState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [viewerAccountId, setViewerAccountId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -28,8 +29,9 @@ export function ConversationMemoryPanel({ client, scopes }: { client: MemoryClie
         if (active) setError(memoryErrorMessage(caught, 'Could not load memories.'));
       },
     );
-    // A failed sync lookup only hides the caption.
+    // A failed sync or account lookup only hides the captions.
     client.syncState().then((next) => { if (active) setSync(next); }, () => undefined);
+    client.viewerAccountId?.().then((next) => { if (active) setViewerAccountId(next); }, () => undefined);
     return () => { active = false; };
   }, [client]);
 
@@ -53,6 +55,7 @@ export function ConversationMemoryPanel({ client, scopes }: { client: MemoryClie
           onLessonsChange={(update) => setLessons((current) => update(current ?? []))}
           emptyLabel="No memories yet."
           onChanged={refreshSync}
+          viewerAccountId={viewerAccountId}
         />
       )}
     </section>

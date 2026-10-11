@@ -16,6 +16,7 @@ import {
   lessonDateLabel,
   lessonSourceLabel,
   memoryErrorMessage,
+  memoryOwnerCaption,
   validateLessonText,
   type MemoryLesson,
 } from './memoryModel';
@@ -37,6 +38,8 @@ export type MemoryListProps = {
   emptyLabel: string;
   /** Called after an edit or delete reaches the client. */
   onChanged?: () => void;
+  /** The signed-in account; group memories other members saved show who saved them. */
+  viewerAccountId?: string | null;
 };
 
 function lessonPrefix(text: string): string {
@@ -50,6 +53,7 @@ export function MemoryList({
   onLessonsChange,
   emptyLabel,
   onChanged,
+  viewerAccountId,
 }: MemoryListProps) {
   const [edit, setEdit] = useState<LessonEdit | null>(null);
   const [pendingDelete, setPendingDelete] = useState<MemoryLesson | null>(null);
@@ -148,12 +152,13 @@ export function MemoryList({
     const meta = `${lessonSourceLabel(lesson.source)} · ${lessonDateLabel(lesson.updatedAt)}`;
     if (edit?.lessonId === lesson.lessonId) return renderEditor(lesson, edit, meta);
     const prefix = lessonPrefix(lesson.text);
+    const owner = memoryOwnerCaption(lesson, viewerAccountId);
     const startEdit = () => setEdit({ lessonId: lesson.lessonId, draft: lesson.text, error: null, busy: false });
     return (
       <div key={lesson.lessonId} data-memory-lesson={lesson.lessonId}>
         <SettingsRow
           title={<span className="block whitespace-normal break-words text-[13px] font-normal leading-5">{lesson.text}</span>}
-          description={meta}
+          description={owner ? <>{meta}<span data-memory-owner="" className="block">{owner}</span></> : meta}
           control={(
             <>
               <Button type="button" variant="quiet" className={quietButtonClass} aria-label={`Edit memory: ${prefix}`} onClick={startEdit}>

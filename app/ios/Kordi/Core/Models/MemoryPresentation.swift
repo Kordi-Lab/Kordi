@@ -118,6 +118,22 @@ enum MemoryPresentation {
             .joined(separator: " · ")
     }
 
+    static let notAGroupMemberMessage = "Only group members can change this memory."
+
+    /// Whether the viewer saved the memory. Memories without an owner, or with
+    /// no signed-in account to compare, count as the viewer's own.
+    static func isOwn(_ memory: CloudMemory, viewerAccountId: String?) -> Bool {
+        guard let owner = memory.ownerAccountId?.nonEmptyMemoryText,
+              let viewer = viewerAccountId?.nonEmptyMemoryText else { return true }
+        return owner == viewer
+    }
+
+    /// "Saved by Priya" for a group memory another member saved, otherwise nil.
+    static func ownerCaption(_ memory: CloudMemory, viewerAccountId: String?) -> String? {
+        guard memory.scope == .group, !isOwn(memory, viewerAccountId: viewerAccountId) else { return nil }
+        return "Saved by \(memory.ownerName?.nonEmptyMemoryText ?? "a group member")"
+    }
+
     /// Collapses whitespace runs to single spaces and trims the ends.
     static func normalize(_ text: String) -> String {
         text.split(whereSeparator: { $0.isWhitespace || $0.isNewline })

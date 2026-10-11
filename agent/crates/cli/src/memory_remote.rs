@@ -32,6 +32,12 @@ use crate::reflection_runtime::{
 };
 
 /// One account memory as the server returns it.
+///
+/// Group memories are shared by the group, so the list also holds memories
+/// other members saved. The cache stores them like any other row: they arrive
+/// with `pending_upload = 0`, so the Mac never uploads or archives them on its
+/// own. The owner fields stay out of the cache; the agent only reads the text,
+/// and the desktop Memory tab reads owners from the account list.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteMemory {
@@ -44,6 +50,12 @@ pub struct RemoteMemory {
     pub text: String,
     pub created_at: String,
     pub updated_at: String,
+    /// The account that saved the memory.
+    #[serde(default)]
+    pub owner_account_id: Option<String>,
+    /// That account's display name, when it has one.
+    #[serde(default)]
+    pub owner_name: Option<String>,
 }
 
 /// Body of `POST /v1/cloud/memory`.

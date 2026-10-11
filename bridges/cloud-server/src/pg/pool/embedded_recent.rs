@@ -255,4 +255,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "global account memories",
         "0120_global_account_memories.sql"
     ),
+    migration!(
+        121,
+        "shared group memories",
+        "0121_shared_group_memories.sql"
+    ),
 ];

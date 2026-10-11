@@ -14,6 +14,7 @@ import type { MemoryClient } from './memoryClient';
 import {
   forgetConsequences,
   isGlobalMemory,
+  isOwnMemory,
   memoryErrorMessage as errorMessage,
   syncStatusLabel,
   type MemoryLesson,
@@ -113,12 +114,14 @@ export function MemorySettingsPanel({
 
   const confirmForget = () => runDialogAction(async () => {
     const { archived } = await client.forgetAll();
-    setLessons([]);
+    // Group memories other members saved stay; forgetting only removes this account's own.
+    setLessons((current) => current.filter((lesson) => !isOwnMemory(lesson, accountId)));
     refreshSync();
     return archived === 1 ? 'Deleted 1 memory.' : `Deleted ${archived} memories.`;
   }, 'Could not delete your memories. Try again.');
 
   const globalLessons = lessons.filter(isGlobalMemory);
+  const ownCount = lessons.filter((lesson) => isOwnMemory(lesson, accountId)).length;
 
   return (
     <div>
@@ -192,13 +195,13 @@ export function MemorySettingsPanel({
                 emptyLabel="No global memories yet."
                 onChanged={refreshSync}
               />
-              {lessons.length > 0 ? (
+              {ownCount > 0 ? (
                 <SettingsSection size="compact">
                   <SettingsRow
                     title="Forget everything"
                     description="Deletes every memory from your account and from every signed-in device."
                     control={(
-                      <Button type="button" className={destructiveButtonClass} onClick={() => setDialog({ kind: 'forget', count: lessons.length })}>
+                      <Button type="button" className={destructiveButtonClass} onClick={() => setDialog({ kind: 'forget', count: ownCount })}>
                         Forget everything
                       </Button>
                     )}

@@ -14,6 +14,7 @@ struct MemoryRowsView: View {
             ForEach(memories) { memory in
                 MemoryRow(
                     memory: memory,
+                    ownerCaption: model.ownerCaption(memory),
                     edit: { editing = memory },
                     delete: { deleteTarget = memory }
                 )
@@ -42,6 +43,8 @@ struct MemoryRowsView: View {
 
 private struct MemoryRow: View {
     let memory: CloudMemory
+    /// "Saved by …" on a group memory another member saved.
+    let ownerCaption: String?
     let edit: () -> Void
     let delete: () -> Void
 
@@ -50,7 +53,7 @@ private struct MemoryRow: View {
             HStack(spacing: 10) {
                 CompactSettingsLabel(
                     title: memory.text,
-                    subtitle: MemoryPresentation.detail(memory),
+                    subtitle: [MemoryPresentation.detail(memory), ownerCaption].compactMap { $0 }.joined(separator: "\n"),
                     systemImage: nil,
                     titleLineLimit: 3
                 )

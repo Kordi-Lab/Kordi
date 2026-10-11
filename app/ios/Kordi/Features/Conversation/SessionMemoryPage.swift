@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// A conversation's Memory tab: the memories Kordi saved for this conversation
-/// or its group, matched with the same scope id rules as the desktop tab.
+/// or its group, matched with the same scope id rules as the desktop tab. Group
+/// memories are shared, so ones other members saved say who saved them.
 struct SessionMemoryPage: View {
     let conversation: ConversationSummary
     @StateObject private var model: MemorySettingsModel
@@ -9,7 +10,11 @@ struct SessionMemoryPage: View {
     init(conversation: ConversationSummary, account: CloudAccount?, service: @autoclosure @escaping () -> any MemoryService) {
         self.conversation = conversation
         let accountLabel = MemoryPresentation.accountLabel(email: account?.primaryEmail, kordiId: account?.kordiId)
-        _model = StateObject(wrappedValue: MemorySettingsModel(service: service(), accountLabel: accountLabel))
+        _model = StateObject(wrappedValue: MemorySettingsModel(
+            service: service(),
+            accountLabel: accountLabel,
+            viewerAccountId: account?.accountId
+        ))
     }
 
     private var memories: [CloudMemory] {

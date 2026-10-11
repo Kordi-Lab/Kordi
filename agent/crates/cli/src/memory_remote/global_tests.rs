@@ -75,6 +75,8 @@ async fn saving_text_the_scope_already_holds_reports_already_saved() {
         text: "Prefer short answers.".to_string(),
         created_at: "2026-10-07T09:00:00+00:00".to_string(),
         updated_at: "2026-10-07T09:00:00+00:00".to_string(),
+        owner_account_id: None,
+        owner_name: None,
     });
     let from_account = (runtime.save_lesson)(global_request("Prefer short answers."))
         .await

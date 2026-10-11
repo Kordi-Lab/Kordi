@@ -86,6 +86,10 @@ struct CloudMemory: Codable, Hashable, Identifiable {
     var text: String
     let createdAt: String
     var updatedAt: String
+    /// The account that saved the memory. Group memories are shared by the
+    /// group, so it can be another member. Nil from servers that predate it.
+    var ownerAccountId: String? = nil
+    var ownerName: String? = nil
 
     var id: String { memoryId }
 }

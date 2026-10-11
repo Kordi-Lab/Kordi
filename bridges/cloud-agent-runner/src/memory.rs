@@ -1,7 +1,8 @@
 //! Account memories for cloud runs (#1710).
 //!
-//! The runner reads the run owner's memories once at run start and saves new
-//! ones through the `reflection` tool. The server owns the guards and the
+//! The runner reads the run owner's memories once at run start, plus the
+//! group memories other members saved (group memories are shared by the
+//! group), and saves new ones through the `reflection` tool. The server owns the guards and the
 //! account setting; the runner only drops the tool and the prompt section
 //! when memory is off, and never fails a run because memory is unavailable.
 
@@ -23,6 +24,11 @@ pub struct RunnerMemory {
     pub text: String,
     pub created_at: String,
     pub updated_at: String,
+    /// The account that saved the memory. The prompt never shows owners.
+    #[serde(default)]
+    pub owner_account_id: Option<String>,
+    #[serde(default)]
+    pub owner_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

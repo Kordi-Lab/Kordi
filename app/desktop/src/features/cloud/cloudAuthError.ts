@@ -43,6 +43,7 @@ export type CloudAuthErrorCode =
   | 'memory_disabled'
   | 'memory_id_conflict'
   | 'memory_not_found'
+  | 'not_a_group_member'
   | 'unknown';
 
 export class CloudAuthError extends Error {
@@ -100,6 +101,7 @@ const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'group_invitation_missing', 'self_group_invitation', 'wrong_group_invitation_account',
   'server_error', 'plan_card_revision_conflict', 'omp_unavailable',
   'memory_rejected', 'memory_disabled', 'memory_id_conflict', 'memory_not_found',
+  'not_a_group_member',
 ]);
 
 function isErrorCode(value: unknown): value is CloudAuthErrorCode {

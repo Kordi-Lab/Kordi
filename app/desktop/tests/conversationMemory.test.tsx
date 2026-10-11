@@ -13,7 +13,7 @@ import {
   createPreviewMemoryClient,
   type MemoryClient,
 } from '../src/features/memory/memoryClient';
-import type { MemoryLesson } from '../src/features/memory/memoryModel';
+import { NOT_A_GROUP_MEMBER_MESSAGE, memoryOwnerCaption, type MemoryLesson } from '../src/features/memory/memoryModel';
 import { ChatMemoryTab } from '../src/pages/ChatMemoryTab';
 import { GroupDetailsDialog } from '../src/pages/GroupDetailsDialog';
 import { SessionDestinationTabs } from '../src/pages/chatsPage.destinations';
@@ -145,11 +145,52 @@ test('the Memory tab lists only the chat memories with the sync caption', async 
   });
 });
 
-test('a group chat Memory tab lists the group memory', async () => {
+test('a group chat Memory tab lists shared group memories and who saved the ones from other members', async () => {
   const client = createPreviewMemoryClient({ latencyMs: 0 });
   await withRendered(memoryTab(client, `session:group:${PREVIEW_GROUP_MEMORY_SCOPE_ID}`), async (host) => {
-    assert.deepEqual(rowIds(host), ['lesson-7']);
+    assert.deepEqual(rowIds(host), ['lesson-10', 'lesson-7']);
     assert.match(host.textContent ?? '', /Share screenshots as attachments instead of links\./);
+    const owners = Array.from(host.querySelectorAll('[data-memory-owner]')).map((caption) => [
+      caption.closest('[data-memory-lesson]')?.getAttribute('data-memory-lesson'),
+      caption.textContent,
+    ]);
+    assert.deepEqual(owners, [['lesson-10', 'Saved by Priya']]);
+    // Every group memory can be edited and deleted; the server checks membership.
+    for (const id of ['lesson-10', 'lesson-7']) {
+      assert.ok(host.querySelector(`[data-memory-lesson="${id}"] button[aria-label^="Edit memory"]`));
+      assert.ok(host.querySelector(`[data-memory-lesson="${id}"] button[aria-label^="Delete memory"]`));
+    }
+  });
+});
+
+test('the owner caption names group members and falls back without a name', () => {
+  const shared = { scope: 'group' as const, ownerAccountId: 'acct-2', ownerName: 'Priya' };
+  assert.equal(memoryOwnerCaption(shared, 'acct-1'), 'Saved by Priya');
+  assert.equal(memoryOwnerCaption({ ...shared, ownerName: null }, 'acct-1'), 'Saved by a group member');
+  assert.equal(memoryOwnerCaption({ ...shared, ownerName: '  ' }, 'acct-1'), 'Saved by a group member');
+  assert.equal(memoryOwnerCaption(shared, 'acct-2'), null);
+  assert.equal(memoryOwnerCaption({ scope: 'group' }, 'acct-1'), null);
+  assert.equal(memoryOwnerCaption(shared, null), null);
+  assert.equal(memoryOwnerCaption({ ...shared, scope: 'conversation' }, 'acct-1'), null);
+});
+
+test('a group memory edit by someone outside the group shows the membership error inline', async () => {
+  const client = createPreviewMemoryClient({ latencyMs: 0 });
+  client.updateLesson = async () => { throw new Error(NOT_A_GROUP_MEMBER_MESSAGE); };
+  client.archiveLesson = async () => { throw new Error(NOT_A_GROUP_MEMBER_MESSAGE); };
+  await withRendered(memoryTab(client, `session:group:${PREVIEW_GROUP_MEMORY_SCOPE_ID}`), async (host, window) => {
+    await click(host.querySelector('[data-memory-lesson="lesson-10"] button[aria-label^="Edit memory"]'), window);
+    await click(buttonByText(host, 'Save'), window);
+    const inline = host.querySelector('[data-memory-lesson="lesson-10"] [role="alert"]');
+    assert.equal(inline?.textContent, 'Only group members can change this memory.');
+
+    await click(buttonByText(host, 'Cancel'), window);
+    await click(host.querySelector('[data-memory-lesson="lesson-7"] button[aria-label^="Delete memory"]'), window);
+    const backdrop = document.body.querySelector('[data-app-dialog-backdrop]');
+    assert.ok(backdrop);
+    await click(buttonByText(backdrop, 'Delete'), window);
+    assert.match(host.querySelector('[role="alert"]')?.textContent ?? '', /Only group members can change this memory\./);
+    assert.deepEqual(rowIds(host), ['lesson-10', 'lesson-7']);
   });
 });
 

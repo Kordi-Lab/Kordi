@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 #[path = "global_tests.rs"]
 mod global_tests;
+#[path = "shared_group_tests.rs"]
+mod shared_group_tests;
 
 #[derive(Default)]
 struct FakeRemote {
@@ -88,6 +90,8 @@ impl MemoryRemote for FakeRemote {
             text: memory.text,
             created_at: stamp.clone(),
             updated_at: stamp,
+            owner_account_id: Some(self.account_id()),
+            owner_name: None,
         };
         memories.push(saved.clone());
         Ok(saved)

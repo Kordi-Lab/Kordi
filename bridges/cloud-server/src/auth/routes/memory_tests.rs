@@ -10,6 +10,7 @@ use tower::util::ServiceExt;
 
 mod dedup;
 mod global;
+mod group_shared;
 mod isolation;
 mod runs;
 

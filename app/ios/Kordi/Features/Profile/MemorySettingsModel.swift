@@ -96,6 +96,14 @@ final class PreviewMemoryService: MemoryService {
                    "Answer in British English and keep replies short unless I ask for more detail.", hoursAgo: 4),
             memory("lesson-9", .global, "account", "", .manual,
                    "Write times in the 24-hour clock and dates as 2026-10-10 in schedules and plans.", hoursAgo: 6 * 24),
+            // Another member of the preview group saved this one.
+            {
+                var shared = memory("lesson-10", .group, "mobile", "Mobile builders", .manual,
+                                    "Post review notes in the thread before Friday so everyone can read them over the weekend.", hoursAgo: 3 * 24)
+                shared.ownerAccountId = "acct_priya"
+                shared.ownerName = "Priya"
+                return shared
+            }(),
         ]
     }
 
@@ -128,8 +136,9 @@ final class PreviewMemoryService: MemoryService {
 
     func forgetAll() async throws -> Int {
         try await wait()
-        let archived = memories.count
-        memories = []
+        // Like the server, forgetting keeps the memories other group members saved.
+        let archived = memories.filter { $0.ownerAccountId == nil }.count
+        memories.removeAll { $0.ownerAccountId == nil }
         return archived
     }
 
@@ -152,16 +161,25 @@ final class MemorySettingsModel: ObservableObject {
     @Published var errorMessage: String?
 
     let accountLabel: String?
+    /// The signed-in account, to tell group memories other members saved apart.
+    let viewerAccountId: String?
     private let service: any MemoryService
 
-    init(service: any MemoryService, accountLabel: String?) {
+    init(service: any MemoryService, accountLabel: String?, viewerAccountId: String? = nil) {
         self.service = service
         self.accountLabel = accountLabel
+        self.viewerAccountId = viewerAccountId
     }
 
     var hasLoaded: Bool { settings != nil }
     /// Global memories for the Settings screen.
     var globalMemories: [CloudMemory] { MemoryPresentation.globalMemories(memories) }
+    /// The memories Forget everything deletes: every one this account saved.
+    var ownMemories: [CloudMemory] { memories.filter { MemoryPresentation.isOwn($0, viewerAccountId: viewerAccountId) } }
+
+    func ownerCaption(_ memory: CloudMemory) -> String? {
+        MemoryPresentation.ownerCaption(memory, viewerAccountId: viewerAccountId)
+    }
 
     /// The memories a conversation's Memory tab lists.
     func memories(for scopes: MemoryPresentation.ConversationScopes) -> [CloudMemory] {
@@ -236,7 +254,8 @@ final class MemorySettingsModel: ObservableObject {
     func forgetAll() async {
         await mutate(fallback: "Could not delete your memories. Try again.") {
             _ = try await self.service.forgetAll()
-            self.memories = []
+            // Group memories other members saved stay.
+            self.memories = self.memories.filter { !MemoryPresentation.isOwn($0, viewerAccountId: self.viewerAccountId) }
             self.lastSyncedAt = Date()
         }
     }
@@ -258,6 +277,9 @@ final class MemorySettingsModel: ObservableObject {
     }
 
     static func message(for error: Error, fallback: String) -> String {
+        if let apiError = error as? CloudAPIError, apiError.code == "not_a_group_member" {
+            return MemoryPresentation.notAGroupMemberMessage
+        }
         if let apiError = error as? CloudAPIError, !apiError.message.isEmpty { return apiError.message }
         return fallback
     }

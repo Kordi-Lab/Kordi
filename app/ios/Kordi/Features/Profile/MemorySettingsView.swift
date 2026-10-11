@@ -6,8 +6,8 @@ struct MemorySettingsView: View {
     @StateObject private var model: MemorySettingsModel
     @State private var confirmsForget = false
 
-    init(service: any MemoryService, accountLabel: String?) {
-        _model = StateObject(wrappedValue: MemorySettingsModel(service: service, accountLabel: accountLabel))
+    init(service: any MemoryService, accountLabel: String?, viewerAccountId: String? = nil) {
+        _model = StateObject(wrappedValue: MemorySettingsModel(service: service, accountLabel: accountLabel, viewerAccountId: viewerAccountId))
     }
 
     var body: some View {
@@ -48,7 +48,7 @@ struct MemorySettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(MemoryPresentation.forgetConsequences(count: model.memories.count))
+            Text(MemoryPresentation.forgetConsequences(count: model.ownMemories.count))
         }
     }
 
@@ -122,7 +122,7 @@ struct MemorySettingsView: View {
             MemoryRowsView(model: model, memories: memories)
         }
         // Forget everything covers every scope, so it stays while any memory exists.
-        if !model.memories.isEmpty {
+        if !model.ownMemories.isEmpty {
             Button {
                 confirmsForget = true
             } label: {

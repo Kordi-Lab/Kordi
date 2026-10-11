@@ -295,6 +295,32 @@ The `MemoryClient` interface is the contract for PR 4:
   sections and copy: read, edit, delete, forget, and both switches.
 - Desktop and iPhone tests for capability gating and the sync row.
 
+## Shared group memories
+
+Group memories (scope `group`, scope id = the group id) are shared by the
+group: every member sees them, every member's agent reads them, and any member
+can edit or delete them. Client side:
+
+- Every memory object carries `ownerAccountId` and `ownerName` (null when the
+  owner has no display name). The Mac model (`RemoteMemory`), the runner model
+  (`RunnerMemory`), the desktop `MemoryLesson` and the iPhone `CloudMemory`
+  read both as optional fields, so older servers still decode.
+- The Mac cache stores other members' group memories like its own rows, keyed
+  by memory id with `pending_upload = 0`, so sync never uploads or archives
+  them, and saving text a member already shared reports "already saved". The
+  owner fields stay out of the cache: the agent only reads the text, and the
+  desktop Memory tab reads owners from the account list. Adding them would
+  need a session schema migration for no runtime use.
+- The runner prompt lists shared group memories in the same "This group:"
+  lines, without owner names.
+- In a group's Memory tab on the desktop and the iPhone, a memory another
+  member saved shows "Saved by <name>" (or "Saved by a group member") under
+  the source and date. Edit and Delete stay available on every group memory;
+  the server checks membership. A 403 `not_a_group_member` answer shows
+  "Only group members can change this memory." in the existing inline error.
+- "Forget everything" deletes only the caller's own memories, so its count and
+  the list it clears leave other members' group memories in place.
+
 ## PR 5: replay state and deletion register
 
 - `DELETE /v1/cloud/agent-runs/omp-state` for the signed-in account, returning

@@ -16,6 +16,11 @@ pub(crate) struct MemoryResponse {
     pub text: String,
     pub created_at: String,
     pub updated_at: String,
+    /// The account that saved the memory. Group memories are shared, so this
+    /// can be another member of the group.
+    pub owner_account_id: String,
+    /// The owner's display name, when the owner has one.
+    pub owner_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -100,6 +105,14 @@ impl MemoryError {
             StatusCode::NOT_FOUND,
             "memory_not_found",
             "Memory was not found.",
+        )
+    }
+
+    pub(crate) fn not_a_group_member() -> Self {
+        Self::new(
+            StatusCode::FORBIDDEN,
+            "not_a_group_member",
+            "Only members of this group can change its memories.",
         )
     }
 

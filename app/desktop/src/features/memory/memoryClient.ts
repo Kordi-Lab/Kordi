@@ -15,6 +15,8 @@ export type MemoryClient = {
   forgetAll(): Promise<{ archived: number }>;
   /** Which account the memories sync with and when they were last synced. */
   syncState(): Promise<MemorySyncState>;
+  /** The signed-in account, to tell group memories other members saved apart. */
+  viewerAccountId?(): Promise<string | null>;
 };
 
 const MINUTE = 60_000;
@@ -28,8 +30,11 @@ function ago(now: number, ms: number): string {
 /** Conversation id of the sample conversation memories; it is the chat's canonical session id. */
 export const PREVIEW_CONVERSATION_MEMORY_SCOPE_ID = 'conv-launch-copy';
 
-/** Group uuid of the sample group memory; the cloud runner stores group memories under the bare uuid. */
+/** Group uuid of the sample group memories; the cloud runner stores group memories under the bare uuid. */
 export const PREVIEW_GROUP_MEMORY_SCOPE_ID = '4f1c2a9e-7d3b-4e8a-9c61-2b5d8e0f3a17';
+
+/** The account the preview signs in as. */
+export const PREVIEW_VIEWER_ACCOUNT_ID = 'acct-preview-taylor';
 
 export type PreviewMemoryClientOptions = {
   /** Simulated network latency in milliseconds. */
@@ -84,7 +89,14 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
       'Answer in British English and keep replies short unless I ask for more detail.', 4 * HOUR),
     lesson('lesson-9', 'global', 'account', 'Global', 'manual',
       'Write times in the 24-hour clock and dates as 2026-10-10 in schedules and plans.', 6 * DAY),
+    {
+      ...lesson('lesson-10', 'group', PREVIEW_GROUP_MEMORY_SCOPE_ID, 'Design review', 'manual',
+        'Post review notes in the thread before Friday so everyone can read them over the weekend.', 3 * DAY),
+      ownerAccountId: 'acct-preview-priya',
+      ownerName: 'Priya',
+    },
   ];
+  const isOwn = (entry: MemoryLesson) => !entry.ownerAccountId || entry.ownerAccountId === PREVIEW_VIEWER_ACCOUNT_ID;
 
   const wait = () => new Promise<void>((resolve) => { setTimeout(resolve, latencyMs); });
   const copyLessons = () => lessons.map((entry) => ({ ...entry }));
@@ -122,10 +134,14 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
     },
     async forgetAll() {
       await wait();
-      const archived = lessons.length;
-      lessons = [];
+      // Like the server, forget everything keeps memories other group members saved.
+      const archived = lessons.filter(isOwn).length;
+      lessons = lessons.filter((entry) => !isOwn(entry));
       markSynced();
       return { archived };
+    },
+    viewerAccountId() {
+      return Promise.resolve(PREVIEW_VIEWER_ACCOUNT_ID);
     },
     async syncState() {
       await wait();

@@ -1,7 +1,8 @@
 //! Account memory storage shared by the signed-in account routes and the
 //! cloud runner routes (#1710).
 //!
-//! Memories belong to the account. Every save and edit runs the shared guard
+//! Memories belong to the account that saved them, except that `group`
+//! memories are shared by the group's active members (see `groups`). Every save and edit runs the shared guard
 //! from `kordi_tools::memory_guard`, so the Mac and the server reject the same
 //! text. Deleting archives a row; archived rows are never returned or read by
 //! agents, and every row is removed with the account through `ON DELETE
@@ -14,9 +15,11 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+mod groups;
 mod runs;
 mod types;
 
+pub(crate) use groups::is_active_group_member;
 pub(crate) use runs::{clear_omp_state, leased_run_owner, omp_state_count, write_memory_audit};
 pub(crate) use types::{
     MemoryEnvelope, MemoryError, MemoryListResponse, MemoryResponse, MemoryResult,
@@ -43,13 +46,30 @@ type MemoryRow = (
     String,
     DateTime<Utc>,
     DateTime<Utc>,
+    String,
+    Option<String>,
 );
 
-const MEMORY_COLUMNS: &str =
-    "memory_id, scope, scope_id, scope_label, source, text, created_at, updated_at";
+/// Selects memory rows from a CTE named `m` (a query or a `RETURNING *`
+/// write) with the owner's display name.
+const MEMORY_SELECT: &str = "SELECT m.memory_id, m.scope, m.scope_id, m.scope_label, m.source, \
+     m.text, m.created_at, m.updated_at, m.owner_account_id, \
+     NULLIF(btrim(owner.display_name), '') \
+     FROM m LEFT JOIN cloud_accounts owner ON owner.account_id = m.owner_account_id";
 
 fn memory_from_row(row: MemoryRow) -> MemoryResponse {
-    let (memory_id, scope, scope_id, scope_label, source, text, created_at, updated_at) = row;
+    let (
+        memory_id,
+        scope,
+        scope_id,
+        scope_label,
+        source,
+        text,
+        created_at,
+        updated_at,
+        owner_account_id,
+        owner_name,
+    ) = row;
     MemoryResponse {
         memory_id,
         scope,
@@ -59,6 +79,8 @@ fn memory_from_row(row: MemoryRow) -> MemoryResponse {
         text,
         created_at: created_at.to_rfc3339(),
         updated_at: updated_at.to_rfc3339(),
+        owner_account_id,
+        owner_name,
     }
 }
 
@@ -142,11 +164,15 @@ pub(crate) async fn update_settings(
     })
 }
 
+/// The account's own memories plus the group memories of every group the
+/// account is an active member of, whoever saved them.
 pub(crate) async fn list(pool: &PgPool, account_id: &str) -> MemoryResult<MemoryListResponse> {
     let rows: Vec<MemoryRow> = query_as(&format!(
-        "SELECT {MEMORY_COLUMNS} FROM cloud_account_memories \
-         WHERE owner_account_id = $1 AND archived_at IS NULL \
-         ORDER BY updated_at DESC, memory_id"
+        "WITH m AS (SELECT * FROM cloud_account_memories \
+           WHERE archived_at IS NULL \
+             AND (owner_account_id = $1 OR (scope = 'group' AND {})) ) \
+         {MEMORY_SELECT} ORDER BY m.updated_at DESC, m.memory_id",
+        groups::active_member_condition("cloud_account_memories.scope_id", "$1")
     ))
     .bind(account_id)
     .fetch_all(pool)
@@ -184,7 +210,7 @@ pub(crate) async fn save(
             "source must be user_correction, repeated_failure, outcome, or manual.",
         ));
     }
-    let scope_id = input.scope_id.trim();
+    let mut scope_id = input.scope_id.trim().to_owned();
     if scope_id.is_empty() || scope_id.chars().count() > MAX_SCOPE_ID_CHARS {
         return Err(MemoryError::bad_request(
             "invalid_scope_id",
@@ -217,6 +243,18 @@ pub(crate) async fn save(
         ));
     }
 
+    // Group memories are shared, so only a member may add one. The id is
+    // stored in its canonical form so every member's list matches it.
+    if scope == "group" {
+        if !is_active_group_member(pool, account_id, &scope_id).await? {
+            return Err(MemoryError::not_a_group_member());
+        }
+        scope_id = uuid::Uuid::parse_str(&scope_id)
+            .map(|id| id.to_string())
+            .unwrap_or(scope_id);
+    }
+    let scope_id = scope_id.as_str();
+
     let settings = settings(pool, account_id).await?;
     if !settings.memory_enabled {
         return Err(MemoryError::new(
@@ -231,42 +269,54 @@ pub(crate) async fn save(
     // A retry of an earlier save with the same clientMemoryId returns that row
     // unchanged.
     if let Some(id) = client_memory_id {
-        let existing: Option<ArchivedMemoryRow> = query_as(&format!(
-            "SELECT archived_at, {MEMORY_COLUMNS} FROM cloud_account_memories \
-             WHERE memory_id = $1 AND owner_account_id = $2"
-        ))
+        let existing: Option<(bool,)> = query_as(
+            "SELECT archived_at IS NOT NULL FROM cloud_account_memories \
+             WHERE memory_id = $1 AND owner_account_id = $2",
+        )
         .bind(id)
         .bind(account_id)
         .fetch_optional(pool)
         .await?;
-        if let Some((archived_at, id, scope, scope_id, label, source, text, created, updated)) =
-            existing
-        {
-            if archived_at.is_some() {
+        if let Some((archived,)) = existing {
+            if archived {
                 return Err(client_id_conflict());
             }
-            let row = (id, scope, scope_id, label, source, text, created, updated);
+            let row: MemoryRow = query_as(&format!(
+                "WITH m AS (SELECT * FROM cloud_account_memories WHERE memory_id = $1) \
+                 {MEMORY_SELECT}"
+            ))
+            .bind(id)
+            .fetch_one(pool)
+            .await?;
             return Ok(SaveOutcome::Existing(memory_from_row(row)));
         }
     }
 
     let mut transaction = pool.begin().await?;
     // Serialize saves for one scope so two identical saves cannot both insert.
+    // A group's memories are shared, so its saves share one lock.
+    let lock_key = if scope == "group" {
+        format!("memory:group:{scope_id}")
+    } else {
+        format!("memory:{account_id}:{scope}:{scope_id}")
+    };
     query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
-        .bind(format!("memory:{account_id}:{scope}:{scope_id}"))
+        .bind(lock_key)
         .execute(&mut *transaction)
         .await?;
     // The same text in the same scope is the same memory: touch it, fill a
-    // missing label, and return it instead of saving a second row.
+    // missing label, and return it instead of saving a second row. In a group
+    // this matches the memory whichever member saved it.
     let duplicate: Option<MemoryRow> = query_as(&format!(
-        "UPDATE cloud_account_memories \
+        "WITH m AS (UPDATE cloud_account_memories \
          SET updated_at = now(), scope_label = COALESCE(scope_label, $5) \
          WHERE memory_id = ( \
            SELECT memory_id FROM cloud_account_memories \
-           WHERE owner_account_id = $1 AND scope = $2 AND scope_id = $3 AND text = $4 \
+           WHERE (owner_account_id = $1 OR scope = 'group') \
+             AND scope = $2 AND scope_id = $3 AND text = $4 \
              AND archived_at IS NULL \
            ORDER BY created_at, memory_id LIMIT 1) \
-         RETURNING {MEMORY_COLUMNS}"
+         RETURNING *) {MEMORY_SELECT}"
     ))
     .bind(account_id)
     .bind(scope)
@@ -284,11 +334,11 @@ pub(crate) async fn save(
         .map(str::to_owned)
         .unwrap_or_else(|| format!("mem_{}", uuid::Uuid::new_v4().simple()));
     let inserted: Option<MemoryRow> = query_as(&format!(
-        "INSERT INTO cloud_account_memories \
+        "WITH m AS (INSERT INTO cloud_account_memories \
          (memory_id, owner_account_id, scope, scope_id, scope_label, source, text) \
          VALUES ($1, $2, $3, $4, $5, $6, $7) \
          ON CONFLICT (memory_id) DO NOTHING \
-         RETURNING {MEMORY_COLUMNS}"
+         RETURNING *) {MEMORY_SELECT}"
     ))
     .bind(&memory_id)
     .bind(account_id)
@@ -306,18 +356,6 @@ pub(crate) async fn save(
         .ok_or_else(client_id_conflict)
 }
 
-type ArchivedMemoryRow = (
-    Option<DateTime<Utc>>,
-    String,
-    String,
-    String,
-    Option<String>,
-    String,
-    String,
-    DateTime<Utc>,
-    DateTime<Utc>,
-);
-
 fn client_id_conflict() -> MemoryError {
     MemoryError::new(
         StatusCode::CONFLICT,
@@ -332,25 +370,16 @@ pub(crate) async fn update_text(
     memory_id: &str,
     text: &str,
 ) -> MemoryResult<MemoryResponse> {
-    let current: Option<(String, String)> = query_as(
-        "SELECT scope, scope_id FROM cloud_account_memories \
-         WHERE memory_id = $1 AND owner_account_id = $2 AND archived_at IS NULL",
-    )
-    .bind(memory_id)
-    .bind(account_id)
-    .fetch_optional(pool)
-    .await?;
-    let (scope, scope_id) = current.ok_or_else(MemoryError::not_found)?;
+    let (scope, scope_id) = groups::authorize_change(pool, account_id, memory_id).await?;
     let settings = settings(pool, account_id).await?;
     let protected = protected_texts_for_scope(pool, account_id, &scope, &scope_id).await?;
     let text = guard_text(text, settings, &protected)?;
     let row: Option<MemoryRow> = query_as(&format!(
-        "UPDATE cloud_account_memories SET text = $3, updated_at = now() \
-         WHERE memory_id = $1 AND owner_account_id = $2 AND archived_at IS NULL \
-         RETURNING {MEMORY_COLUMNS}"
+        "WITH m AS (UPDATE cloud_account_memories SET text = $2, updated_at = now() \
+         WHERE memory_id = $1 AND archived_at IS NULL \
+         RETURNING *) {MEMORY_SELECT}"
     ))
     .bind(memory_id)
-    .bind(account_id)
     .bind(&text)
     .fetch_optional(pool)
     .await?;
@@ -358,12 +387,12 @@ pub(crate) async fn update_text(
 }
 
 pub(crate) async fn archive(pool: &PgPool, account_id: &str, memory_id: &str) -> MemoryResult<()> {
+    groups::authorize_change(pool, account_id, memory_id).await?;
     let result = query(
         "UPDATE cloud_account_memories SET archived_at = now(), updated_at = now() \
-         WHERE memory_id = $1 AND owner_account_id = $2 AND archived_at IS NULL",
+         WHERE memory_id = $1 AND archived_at IS NULL",
     )
     .bind(memory_id)
-    .bind(account_id)
     .execute(pool)
     .await?;
     if result.rows_affected() == 0 {
@@ -372,6 +401,8 @@ pub(crate) async fn archive(pool: &PgPool, account_id: &str, memory_id: &str) ->
     Ok(())
 }
 
+/// Archives the memories the account saved. Group memories saved by other
+/// members stay, since they belong to those members.
 pub(crate) async fn archive_all(pool: &PgPool, account_id: &str) -> MemoryResult<u64> {
     let result = query(
         "UPDATE cloud_account_memories SET archived_at = now(), updated_at = now() \

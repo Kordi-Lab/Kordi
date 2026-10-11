@@ -3,6 +3,7 @@ import {
   type CloudAccount,
   type CloudAuthClient,
 } from '@/features/cloud/authClient';
+import { CloudAuthError } from '@/features/cloud/cloudAuthError';
 import { CloudMemoryClient, type CloudMemorySettings } from '@/features/cloud/cloudMemoryClient';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { loadSession, type StoredSession } from '@/features/cloud/session';
@@ -17,7 +18,12 @@ import {
 import { isNativeDesktopShell } from '@/lib/desktop';
 
 import type { MemoryClient } from './memoryClient';
-import type { MemoryLesson, MemoryLessonScope, MemorySettings } from './memoryModel';
+import {
+  NOT_A_GROUP_MEMBER_MESSAGE,
+  type MemoryLesson,
+  type MemoryLessonScope,
+  type MemorySettings,
+} from './memoryModel';
 
 export type AccountMemoryAuthClient = Pick<CloudAuthClient, 'request' | 'me'>;
 
@@ -72,8 +78,10 @@ function toLesson(entry: {
   text: string;
   createdAt: string;
   updatedAt: string;
+  ownerAccountId?: string;
+  ownerName?: string | null;
 }): MemoryLesson {
-  return {
+  const lesson: MemoryLesson = {
     lessonId: entry.lessonId,
     scope: entry.scope,
     scopeId: entry.scopeId,
@@ -83,6 +91,23 @@ function toLesson(entry: {
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
   };
+  if (entry.ownerAccountId) {
+    lesson.ownerAccountId = entry.ownerAccountId;
+    lesson.ownerName = entry.ownerName?.trim() || null;
+  }
+  return lesson;
+}
+
+/** The server answers 403 `not_a_group_member` when someone outside the group edits a group memory. */
+async function asGroupMember<T>(request: Promise<T>): Promise<T> {
+  try {
+    return await request;
+  } catch (caught) {
+    if (caught instanceof CloudAuthError && caught.status === 403 && caught.code === 'not_a_group_member') {
+      throw new Error(NOT_A_GROUP_MEMBER_MESSAGE);
+    }
+    throw caught;
+  }
 }
 
 function fromWireSettings(settings: CloudMemorySettings | DesktopMemorySettings): MemorySettings {
@@ -206,14 +231,14 @@ export function createAccountMemoryClient(options: AccountMemoryClientOptions = 
     },
     async updateLesson(lessonId, text) {
       const stored = await requireSession();
-      const { memoryId, ...rest } = await memory().update(stored.token, lessonId, text);
+      const { memoryId, ...rest } = await asGroupMember(memory().update(stored.token, lessonId, text));
       markSynced(stored);
       syncDesktop();
       return toLesson({ lessonId: memoryId, ...rest });
     },
     async archiveLesson(lessonId) {
       const stored = await requireSession();
-      await memory().remove(stored.token, lessonId);
+      await asGroupMember(memory().remove(stored.token, lessonId));
       markSynced(stored);
       syncDesktop();
     },
@@ -223,6 +248,9 @@ export function createAccountMemoryClient(options: AccountMemoryClientOptions = 
       markSynced(stored);
       syncDesktop();
       return { archived: result.archived };
+    },
+    async viewerAccountId() {
+      return (await session())?.accountId ?? null;
     },
     async syncState() {
       // The page loads the list and the sync row together, so wait for the list.

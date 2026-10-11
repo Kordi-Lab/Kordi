@@ -19,7 +19,7 @@ There are four scopes:
 | --- | --- | --- |
 | `global` | Always `account`, with no label. | Preferences you want everywhere, such as "from now on, answer in British English". |
 | `conversation` | The session id. | Anything tied to one chat. This is the default. |
-| `group` | The group id. | Facts about one group. |
+| `group` | The group id. | Facts about one group, shared by its members. |
 | `project` | The project root path. | Facts about one project. |
 
 The server rejects a global memory with any scope id other than `account` (`invalid_scope_id`) and drops any label sent with it. Agents write global memories only when you say a preference should apply everywhere ("from now on", "always", "in general"); everything else stays in its conversation, group, or project scope.
@@ -55,12 +55,14 @@ The switches are an account setting on the server. The Mac mirrors them into the
 
 On desktop, open account settings and choose the Memory tab. On iPhone, open the account sheet and choose Memory. Account settings show only global memories, the two switches, and "Forget everything". Conversation, group, and project memories are shown on that conversation's Memory tab (a tab in the desktop conversation header, and the Memory tab of the iPhone session detail), where they can be edited and deleted. These screens hide the Memory section when the server does not report `memoryVersion` in its capabilities.
 
-"Forget everything" in account settings still removes every memory in every scope. A group memory's scope id is the group id (`session:group:<id>` stripped to `<id>`), and only the account that saved a memory sees it.
+A group memory's scope id is the group id (`session:group:<id>` stripped to `<id>`). Group memories are shared: every active member of the group sees them, every member's agent reads them, and any member can edit or delete them. Only a member can save one (`403 not_a_group_member`), and the same text saved by two members is one memory. Every memory in the server responses carries `ownerAccountId` and `ownerName`, so the Memory tab shows who saved each one. Other memories are seen only by the account that saved them.
+
+"Forget everything" in account settings removes every memory you saved, in every scope. Group memories saved by other members stay.
 
 ## What each control deletes
 
 - Delete one memory. Archives that memory on the server. It is no longer listed or read. The Mac files are rewritten from the server list at the next sync.
-- Forget everything. Archives every memory of the account and deletes the account's replay state in the same request. It returns both counts. Devices drop the memories at their next sync.
+- Forget everything. Archives every memory the account saved (other members' group memories stay) and deletes the account's replay state in the same request. It returns both counts. Devices drop the memories at their next sync.
 - Account deletion. Memories and memory settings are rows tied to the account with `ON DELETE CASCADE`, so deleting the account removes them, including archived rows. Replay state has no foreign key to the account, so it is removed through the account deletion register planned in the design document, not by a cascade.
 
 Archived rows stay on the server until the account is deleted, but they are hidden and never read by agents. Every write is audited. The event names are `memory_saved`, `memory_updated`, `memory_deleted`, `memory_forget_all`, `memory_settings_updated`, `memory_rejected`, and `omp_state_cleared`.

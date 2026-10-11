@@ -8,7 +8,10 @@ private final class MemoryErrorURLProtocol: URLProtocol {
     override func startLoading() {
         let status: Int
         let body: String
-        if request.httpMethod == "PATCH" {
+        if request.url?.path.hasSuffix("/group-memory") == true {
+            status = 403
+            body = #"{"errorCode":"not_a_group_member","message":"Not a member of this group."}"#
+        } else if request.httpMethod == "PATCH" {
             status = 422
             body = #"{"errorCode":"memory_rejected","message":"This looks like a health detail. Save a memory about the task instead."}"#
         } else {
@@ -147,11 +150,11 @@ final class MemoryPresentationTests: XCTestCase {
         let service = PreviewMemoryService(now: now, latency: .zero)
         let model = MemorySettingsModel(service: service, accountLabel: "taylor@memory.example")
         await model.load()
-        XCTAssertEqual(model.memories.count, 9)
+        XCTAssertEqual(model.memories.count, 10)
         // Settings list only the global samples; the group sample belongs to the preview group.
         XCTAssertEqual(model.globalMemories.map(\.memoryId), ["lesson-8", "lesson-9"])
         let previewGroup = groupConversation(sessionId: "session:group:mobile", groupSpaceId: "session:group:mobile")
-        XCTAssertEqual(model.memories(for: MemoryPresentation.conversationScopes(for: previewGroup)).map(\.memoryId), ["lesson-7"])
+        XCTAssertEqual(model.memories(for: MemoryPresentation.conversationScopes(for: previewGroup)).map(\.memoryId), ["lesson-10", "lesson-7"])
         let launchCopy = directConversation(sessionId: "conv-launch-copy")
         XCTAssertEqual(model.memories(for: MemoryPresentation.conversationScopes(for: launchCopy)).map(\.memoryId), ["lesson-1", "lesson-2"])
         let rejected = await model.save(memoryId: "lesson-1", draft: String(repeating: "a", count: 501))
@@ -161,6 +164,40 @@ final class MemoryPresentationTests: XCTestCase {
         XCTAssertEqual(model.memories.first { $0.memoryId == "lesson-1" }?.text, "Short headlines.")
         await model.forgetAll()
         XCTAssertTrue(model.memories.isEmpty)
+    }
+
+    @MainActor
+    func testSharedGroupMemoriesShowWhoSavedThemAndSurviveForget() async throws {
+        let json = #"""
+        {"memoryId":"m1","scope":"group","scopeId":"mobile","scopeLabel":null,"source":"manual","text":"Shared.","createdAt":"2026-10-06T10:00:00Z","updatedAt":"2026-10-06T10:00:00Z","ownerAccountId":"acct_priya","ownerName":null}
+        """#
+        let decoded = try JSONDecoder().decode(CloudMemory.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.ownerAccountId, "acct_priya")
+        XCTAssertNil(decoded.ownerName)
+        XCTAssertEqual(MemoryPresentation.ownerCaption(decoded, viewerAccountId: "acct_me"), "Saved by a group member")
+        XCTAssertNil(MemoryPresentation.ownerCaption(decoded, viewerAccountId: "acct_priya"))
+        XCTAssertNil(MemoryPresentation.ownerCaption(decoded, viewerAccountId: nil))
+        XCTAssertNil(MemoryPresentation.ownerCaption(memory("m2", .group, updatedAt: "2026-10-06T10:00:00Z"), viewerAccountId: "acct_me"))
+
+        let model = MemorySettingsModel(service: PreviewMemoryService(now: now, latency: .zero), accountLabel: nil, viewerAccountId: "acct_me")
+        await model.load()
+        let shared = try XCTUnwrap(model.memories.first { $0.memoryId == "lesson-10" })
+        XCTAssertEqual(model.ownerCaption(shared), "Saved by Priya")
+        XCTAssertNil(model.ownerCaption(try XCTUnwrap(model.memories.first { $0.memoryId == "lesson-7" })))
+        XCTAssertEqual(model.ownMemories.count, 9)
+        await model.forgetAll()
+        XCTAssertEqual(model.memories.map(\.memoryId), ["lesson-10"])
+    }
+
+    @MainActor
+    func testNotAGroupMemberAnswerShowsTheMembershipMessage() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MemoryErrorURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let model = MemorySettingsModel(service: CloudMemoryService(api: CloudAPIClient(session: session)) { "token" }, accountLabel: nil)
+        let inline = await model.save(memoryId: "group-memory", draft: "Text")
+        XCTAssertEqual(inline, "Only group members can change this memory.")
     }
 }
 

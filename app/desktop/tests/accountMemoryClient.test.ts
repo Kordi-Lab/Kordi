@@ -12,6 +12,7 @@ import {
   type AccountMemoryRoutes,
   type AccountMemoryDesktop,
 } from '../src/features/memory/accountMemoryClient';
+import { NOT_A_GROUP_MEMBER_MESSAGE } from '../src/features/memory/memoryModel';
 import type { DesktopLocalMemory, DesktopMemorySettings } from '../src/lib/desktopMemory';
 
 const session: StoredSession = { token: 'token-1', accountId: 'acct-1', expiresAt: '2027-01-01T00:00:00Z' };
@@ -127,6 +128,49 @@ test('list maps memory ids and fills missing scope labels', async () => {
   await settle();
   assert.deepEqual(native.calls, [['sync']]);
   assert.deepEqual(await client.syncState(), { accountLabel: 'taylor@memory.example', lastSyncedAt: new Date(NOW).toISOString() });
+});
+
+test('list keeps the owner of shared group memories', async () => {
+  const auth = fakeAuth({
+    async list() {
+      return {
+        memories: [
+          memory({ memoryId: 'mem-own', scope: 'group', ownerAccountId: 'acct-1', ownerName: 'Taylor' }),
+          memory({ memoryId: 'mem-priya', scope: 'group', ownerAccountId: 'acct-2', ownerName: ' Priya ' }),
+          memory({ memoryId: 'mem-unnamed', scope: 'group', ownerAccountId: 'acct-3', ownerName: null }),
+          memory({ memoryId: 'mem-older-server', scope: 'group' }),
+        ],
+        settings: { memoryEnabled: true, excludeSensitive: true },
+      };
+    },
+  });
+  const client = createAccountMemoryClient({ ...wire(auth.client), loadSession: async () => session, desktop: fakeDesktop(false).desktop });
+  const lessons = await client.listLessons();
+  assert.deepEqual(lessons.map((lesson) => [lesson.lessonId, lesson.ownerAccountId, lesson.ownerName]), [
+    ['mem-own', 'acct-1', 'Taylor'],
+    ['mem-priya', 'acct-2', 'Priya'],
+    ['mem-unnamed', 'acct-3', null],
+    ['mem-older-server', undefined, undefined],
+  ]);
+  assert.equal('ownerAccountId' in lessons[3], false);
+  assert.equal(await client.viewerAccountId?.(), 'acct-1');
+  const signedOut = createAccountMemoryClient({ ...wire(fakeAuth().client), loadSession: async () => null, desktop: fakeDesktop(false).desktop });
+  assert.equal(await signedOut.viewerAccountId?.(), null);
+});
+
+test('a 403 not_a_group_member answer becomes the membership message', async () => {
+  const notMember = () => new CloudAuthError('not_a_group_member', 'Not a member of this group.', 403);
+  const auth = fakeAuth({
+    async update() { throw notMember(); },
+    async remove() { throw notMember(); },
+  });
+  const client = createAccountMemoryClient({ ...wire(auth.client), loadSession: async () => session, desktop: fakeDesktop(false).desktop });
+  await assert.rejects(client.updateLesson('mem-priya', 'New text.'), { message: NOT_A_GROUP_MEMBER_MESSAGE });
+  await assert.rejects(client.archiveLesson('mem-priya'), { message: 'Only group members can change this memory.' });
+  // Other 403 answers keep the server message.
+  const other = fakeAuth({ async remove() { throw new CloudAuthError('unknown', 'Forbidden.', 403); } });
+  const otherClient = createAccountMemoryClient({ ...wire(other.client), loadSession: async () => session, desktop: fakeDesktop(false).desktop });
+  await assert.rejects(otherClient.archiveLesson('mem-1'), { message: 'Forbidden.' });
 });
 
 test('settings map memoryEnabled to lessonsEnabled and mirror to this Mac', async () => {
@@ -273,6 +317,9 @@ test('the auth client calls the memory routes with the session token', async () 
     if (url.pathname === '/v1/cloud/memory/mem%2F1' && init?.method === 'PATCH') {
       return json(422, { errorCode: 'memory_rejected', message: 'Memories cannot contain secrets.' });
     }
+    if (url.pathname === '/v1/cloud/memory/mem-group' && init?.method === 'PATCH') {
+      return json(403, { errorCode: 'not_a_group_member', message: 'Not a member of this group.' });
+    }
     if (init?.method === 'DELETE' && url.pathname.startsWith('/v1/cloud/memory/')) return new Response(null, { status: 204 });
     if (url.pathname === '/v1/cloud/memory' && init?.method === 'DELETE') return json(200, { archived: 2 });
     if (url.pathname === '/v1/cloud/memory') return json(200, { memories: [], settings: { memoryEnabled: true, excludeSensitive: true } });
@@ -283,6 +330,7 @@ test('the auth client calls the memory routes with the session token', async () 
   const client = new CloudMemoryClient((path, init, fallback) => auth.request(path, init, fallback));
   assert.deepEqual((await client.list('tok')).memories, []);
   await assert.rejects(client.update('tok', 'mem/1', 'token=abc'), { message: 'Memories cannot contain secrets.', status: 422, code: 'memory_rejected' });
+  await assert.rejects(client.update('tok', 'mem-group', 'Hi.'), { status: 403, code: 'not_a_group_member' });
   await client.remove('tok', 'mem-2');
   assert.deepEqual(await client.forgetAll('tok'), { archived: 2 });
   assert.deepEqual(await client.settings('tok'), { memoryEnabled: false, excludeSensitive: true });
@@ -290,6 +338,7 @@ test('the auth client calls the memory routes with the session token', async () 
   assert.deepEqual(calls.map(({ method, path }) => `${method} ${path}`), [
     'GET /v1/cloud/memory',
     'PATCH /v1/cloud/memory/mem%2F1',
+    'PATCH /v1/cloud/memory/mem-group',
     'DELETE /v1/cloud/memory/mem-2',
     'DELETE /v1/cloud/memory',
     'GET /v1/cloud/memory/settings',
@@ -297,5 +346,5 @@ test('the auth client calls the memory routes with the session token', async () 
   ]);
   assert.ok(calls.every((call) => call.auth === 'Bearer tok'));
   assert.deepEqual(calls[1].body, { text: 'token=abc' });
-  assert.deepEqual(calls[5].body, { memoryEnabled: false });
+  assert.deepEqual(calls[6].body, { memoryEnabled: false });
 });
