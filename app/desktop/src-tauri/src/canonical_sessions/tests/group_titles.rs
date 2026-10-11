@@ -329,3 +329,60 @@ fn canonical_group_session_title_rename_requires_group_admin() {
     assert_eq!(metadata["sessionTitleSource"], "manual");
     assert_eq!(metadata["sessionTitleUpdatedByAccountId"], "acct_creator");
 }
+
+#[test]
+fn canonical_group_session_accepts_chat_sync_snapshot_without_shared_title() {
+    let conn = test_conn();
+    let creator = seed_identity(&conn, "human:me", "Me", "human");
+    let cases = [
+        ("session:group:null-title", true),
+        ("session:group:missing-title", false),
+    ];
+    for (index, (session_id, include_null_title)) in cases.into_iter().enumerate() {
+        let mut snapshot = serde_json::json!({
+            "id": format!("conversation-untitled-{index}"),
+            "kind": "group",
+            "legacy_session_id": session_id
+        });
+        if include_null_title {
+            snapshot["shared_title"] = serde_json::Value::Null;
+        }
+        conn.execute(
+            "INSERT INTO chat_sync_conversations(
+                 account_id, conversation_id, client_session_id, version, snapshot_json, updated_at_ms
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                "acct_me",
+                format!("conversation-untitled-{index}"),
+                session_id,
+                7,
+                snapshot.to_string(),
+                1_000,
+            ],
+        )
+        .expect("seed untitled chat sync conversation");
+
+        let session = open_or_create_session_in_db(
+            &conn,
+            OpenCanonicalSessionRequest {
+                id: Some(session_id.to_string()),
+                kind: "group".to_string(),
+                title: Some("Channel 1".to_string()),
+                status: Some("active".to_string()),
+                created_by_identity_id: creator.id.clone(),
+                primary_identity_id: None,
+                project_id: None,
+                project_name: None,
+                relationship_identity_id: None,
+                participant_identity_ids: vec![],
+                metadata: Some(serde_json::json!({
+                    "groupId": session_id,
+                    "groupSpaceId": session_id
+                })),
+            },
+        )
+        .expect("untitled group snapshot must not fail session open");
+
+        assert_eq!(session.title, "Channel 1");
+    }
+}
