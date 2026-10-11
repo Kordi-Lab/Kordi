@@ -19,6 +19,7 @@ mod attachments;
 mod background_sessions;
 mod hosted_auth;
 mod identity;
+mod memory_updates;
 mod model_options;
 mod models;
 mod prompt_context;
@@ -687,7 +688,6 @@ fn ensure_session_row_created(setup: &mut SessionRuntimeSetup) -> Result<()> {
     if setup.session_created {
         return Ok(());
     }
-
     let cwd = setup.tool_ctx.cwd.display().to_string();
     kordi_session::store::create_session_with_id(&setup.conn, &setup.session_id, &cwd)?;
     // Do not persist the session's initial model/thinking defaults as transcript

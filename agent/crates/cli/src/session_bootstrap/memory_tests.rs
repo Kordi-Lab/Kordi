@@ -354,3 +354,108 @@ fn scoped_lesson_artifact_prompt_lists_the_global_artifact_first() {
     assert!(section.contains("skip anything already there or restated"));
     assert!(section.contains("Use `global` only for preferences the user wants everywhere"));
 }
+
+fn memory_inputs(
+    artifacts_dir: &std::path::Path,
+    cwd: &std::path::Path,
+) -> super::memory::MemoryPromptInputs {
+    super::memory::MemoryPromptInputs {
+        artifacts_dir: artifacts_dir.to_path_buf(),
+        cwd: cwd.to_path_buf(),
+        exclude_sensitive: true,
+    }
+}
+
+fn snapshot(scope: &str, text: &str) -> super::memory::MemorySnapshotEntry {
+    super::memory::MemorySnapshotEntry {
+        scope: scope.to_string(),
+        heading: super::memory::memory_scope_heading(scope),
+        text: text.to_string(),
+    }
+}
+
+#[test]
+fn current_memories_follow_the_section_order_and_caps() {
+    let artifacts_dir = tempdir().expect("artifacts dir");
+    let cwd = tempdir().expect("cwd");
+    let inputs = memory_inputs(artifacts_dir.path(), cwd.path());
+    assert!(inputs.current("session-123").is_empty());
+
+    let path = |scope: &str, id: &str| {
+        crate::reflection_runtime::reflection_lesson_artifact_path(artifacts_dir.path(), scope, id)
+    };
+    write_lessons(
+        &path("conversation", "session-123"),
+        &[
+            "- 2026-10-01T10:00:00Z [manual] End every reply with PINEAPPLE.".to_string(),
+            "- 2026-10-09T10:00:00Z [manual] End   every reply with mongo.".to_string(),
+        ],
+    );
+    write_lessons(
+        &path("global", "account"),
+        &["- 2026-10-02T10:00:00Z [manual] Use bullet points.".to_string()],
+    );
+    assert_eq!(
+        inputs.current("session-123"),
+        vec![
+            snapshot("global", "Use bullet points."),
+            snapshot("conversation", "End every reply with mongo."),
+            snapshot("conversation", "End every reply with PINEAPPLE."),
+        ]
+    );
+
+    let lines = (0..41)
+        .map(|index| format!("- 2026-10-01T10:{index:02}:00Z [manual] Lesson number {index}."))
+        .collect::<Vec<_>>();
+    write_lessons(&path("conversation", "session-123"), &lines);
+    let current = inputs.current("session-123");
+    assert_eq!(
+        current.len(),
+        kordi_tools::reflection_tool::MAX_PROMPT_MEMORIES
+    );
+    assert_eq!(current[0], snapshot("global", "Use bullet points."));
+    assert_eq!(current[1].text, "Lesson number 40.");
+}
+
+#[test]
+fn memory_update_message_lists_added_removed_and_current_memories() {
+    let previous = vec![
+        snapshot("global", "Reply in bullet points unless asked for prose."),
+        snapshot(
+            "conversation",
+            "End every reply in this conversation with the single word PINEAPPLE.",
+        ),
+    ];
+    let current = vec![
+        snapshot("global", "Reply in bullet points unless asked for prose."),
+        snapshot(
+            "conversation",
+            "From now on, end every reply in this conversation with the single word mongo.",
+        ),
+    ];
+    assert_eq!(
+        super::memory::memory_update_message(&current, &current),
+        None
+    );
+    let reordered = current.iter().rev().cloned().collect::<Vec<_>>();
+    assert_eq!(
+        super::memory::memory_update_message(&reordered, &current),
+        None
+    );
+    assert_eq!(super::memory::memory_update_message(&[], &[]), None);
+
+    assert_eq!(
+        super::memory::memory_update_message(&previous, &current).expect("update"),
+        "Memory update: the saved memories changed since the previous message. They are current and replace any earlier instruction in this chat that conflicts with them.\nAdded:\n- (This conversation) From now on, end every reply in this conversation with the single word mongo.\nRemoved:\n- (This conversation) End every reply in this conversation with the single word PINEAPPLE.\nCurrent memories:\nGlobal:\n- Reply in bullet points unless asked for prose.\nThis conversation:\n- From now on, end every reply in this conversation with the single word mongo."
+    );
+
+    let added_only = super::memory::memory_update_message(&[], &current).expect("update");
+    assert!(added_only.contains("\nAdded:\n- (Global) Reply in bullet points"));
+    assert!(!added_only.contains("Removed:"));
+
+    let removed_only = super::memory::memory_update_message(&previous[..1], &[]).expect("update");
+    assert!(!removed_only.contains("Added:"));
+    assert!(removed_only.ends_with(
+        "\nRemoved:\n- (Global) Reply in bullet points unless asked for prose.\nCurrent memories:\n(none)"
+    ));
+}

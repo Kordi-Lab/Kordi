@@ -1,6 +1,6 @@
 //! Setters that attach tool runtimes (reach out, scheduled tasks, session
 //! observation, Mac-local tools, and the account memory remote) to a desktop
-//! session, and refresh the memory prompt section each turn.
+//! session, and rebuild the memory prompt section.
 
 use super::{DesktopRuntimeSession, prompt_context};
 
@@ -58,9 +58,9 @@ impl DesktopRuntimeSession {
     }
 
     /// Rebuild the memory section from the current lesson files and swap it
-    /// into the system prompt. Desktop sessions are cached across turns, so
-    /// memory edits made after the session loaded only reach the model
-    /// through this refresh. Leaves no memory block when memory is off.
+    /// into the system prompt. Turns do not call this: the prompt keeps the
+    /// memories it was built with, and later changes reach the model through
+    /// `record_memory_updates`. Leaves no memory block when memory is off.
     pub fn refresh_memory_prompt_section(&mut self) {
         let block = crate::session_bootstrap::memory::memory_prompt_block(
             self.setup.memory_prompt.as_ref(),

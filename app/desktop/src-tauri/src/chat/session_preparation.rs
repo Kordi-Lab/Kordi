@@ -249,9 +249,12 @@ pub(super) async fn prepare_desktop_session_for_send(
     super::session_observation::image_visibility::refresh(runtime, &observation).await?;
     runtime.set_session_observation_runtime(Some(observation));
     super::memory::attach_memory_remote(runtime).await;
-    // Cached sessions keep their prompt across turns; reread the memory files
-    // so edits made since the last turn apply to this message.
-    runtime.refresh_memory_prompt_section();
+    // The system prompt keeps the memories it started with; a change since
+    // the last message is recorded as a hidden note before this message.
+    // Memory must never fail a send.
+    if let Err(error) = runtime.record_memory_updates() {
+        eprintln!("Unable to record desktop memory updates: {error}");
+    }
 
     if let Ok(detail) = runtime.detail() {
         super::memory::remember_scope_labels(

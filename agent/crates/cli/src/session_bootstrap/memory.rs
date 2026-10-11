@@ -41,9 +41,9 @@ pub(crate) fn reflection_runtime_for_settings(
     ))
 }
 
-/// Inputs that rebuild the memory prompt section from the lesson files. The
+/// Inputs that build the memory prompt section from the lesson files. The
 /// bootstrap keeps them on the session setup so a cached desktop session can
-/// refresh the section at the start of every turn.
+/// compare the current memories with the last ones it told the model about.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MemoryPromptInputs {
     pub artifacts_dir: std::path::PathBuf,
@@ -62,10 +62,18 @@ impl MemoryPromptInputs {
             self.exclude_sensitive,
         )
     }
+
+    /// The memories the prompt section would show for `session_id`, in the
+    /// same scope order, newest first, and with the same caps. Empty when no
+    /// memory exists.
+    #[allow(dead_code)] // Used by the desktop runtime, not the `kordi` binary.
+    pub(crate) fn current(&self, session_id: &str) -> Vec<MemorySnapshotEntry> {
+        capped_memories(&scope_artifacts(&self.artifacts_dir, session_id, &self.cwd)).0
+    }
 }
 
-/// Tags around the memory section in a desktop system prompt, so a cached
-/// session can swap it for a fresh copy every turn.
+/// Tags around the memory section in a desktop system prompt, so the block
+/// can be found and replaced as one unit.
 pub(crate) const MEMORY_CONTEXT_START: &str = "\n\n<desktop_memory_context>";
 pub(crate) const MEMORY_CONTEXT_END: &str = "</desktop_memory_context>";
 
@@ -134,8 +142,77 @@ pub(crate) fn build_reflection_lesson_artifacts_system_prompt_section(
     memory_prompt_section_from_files(artifacts_dir, session_id, cwd, exclude_sensitive)
 }
 
+/// One saved memory as the prompt shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MemorySnapshotEntry {
+    /// Scope kind: `global`, `conversation`, `project`, or `group`.
+    pub scope: String,
+    /// Block heading in the prompt, such as "This conversation".
+    pub heading: &'static str,
+    pub text: String,
+}
+
+/// The prompt heading for a scope kind.
+pub(crate) fn memory_scope_heading(scope: &str) -> &'static str {
+    match scope {
+        "global" => "Global",
+        "conversation" => "This conversation",
+        "project" => "This project",
+        "group" => "This group",
+        _ => "Other",
+    }
+}
+
+/// The hidden note that tells the agent its memories changed since the last
+/// message, or `None` when nothing changed. Order alone is not a change.
+#[allow(dead_code)] // Used by the desktop runtime, not the `kordi` binary.
+pub(crate) fn memory_update_message(
+    previous: &[MemorySnapshotEntry],
+    current: &[MemorySnapshotEntry],
+) -> Option<String> {
+    let key = |entry: &MemorySnapshotEntry| (entry.scope.clone(), entry.text.clone());
+    let previous_keys = previous
+        .iter()
+        .map(key)
+        .collect::<std::collections::HashSet<_>>();
+    let current_keys = current
+        .iter()
+        .map(key)
+        .collect::<std::collections::HashSet<_>>();
+    if previous_keys == current_keys {
+        return None;
+    }
+    let mut message = String::from(
+        "Memory update: the saved memories changed since the previous message. They are current and replace any earlier instruction in this chat that conflicts with them.",
+    );
+    for (heading, entries, others) in [
+        ("Added", current, &previous_keys),
+        ("Removed", previous, &current_keys),
+    ] {
+        let changed = entries
+            .iter()
+            .filter(|entry| !others.contains(&key(entry)))
+            .collect::<Vec<_>>();
+        if changed.is_empty() {
+            continue;
+        }
+        message.push_str(&format!("\n{heading}:"));
+        for entry in changed {
+            message.push_str(&format!("\n- ({}) {}", entry.heading, entry.text));
+        }
+    }
+    message.push_str("\nCurrent memories:");
+    if current.is_empty() {
+        message.push_str("\n(none)");
+    } else {
+        push_memory_blocks(&mut message, current);
+    }
+    Some(message)
+}
+
 /// One scope's lesson file as it appears in the prompt.
 struct ScopeArtifact {
+    scope: &'static str,
     heading: &'static str,
     path_line: String,
     lessons: Vec<crate::reflection_runtime::ParsedLessonLine>,
@@ -143,7 +220,7 @@ struct ScopeArtifact {
 
 fn scope_artifact(
     path: std::path::PathBuf,
-    heading: &'static str,
+    scope: &'static str,
     label: &str,
     scope_id: &str,
 ) -> Option<ScopeArtifact> {
@@ -156,17 +233,100 @@ fn scope_artifact(
     let mut lessons = crate::reflection_runtime::parse_lesson_artifact(&text);
     lessons.sort_by(|left, right| right.created_at.cmp(&left.created_at));
     Some(ScopeArtifact {
-        heading,
+        scope,
+        heading: memory_scope_heading(scope),
         path_line: format!("- {label} scope `{scope_id}`: {}", path.display()),
         lessons,
     })
 }
 
-fn memory_line(text: &str) -> String {
-    format!(
-        "- {}",
-        text.split_whitespace().collect::<Vec<_>>().join(" ")
-    )
+fn normalized_memory_text(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The lesson files that exist for `session_id`, in prompt order: global,
+/// conversation, project, then group.
+fn scope_artifacts(
+    artifacts_dir: &std::path::Path,
+    session_id: &str,
+    cwd: &std::path::Path,
+) -> Vec<ScopeArtifact> {
+    use crate::reflection_runtime::reflection_lesson_artifact_path as artifact_path;
+    use kordi_tools::reflection_tool::GLOBAL_SCOPE_ID;
+
+    let project_root = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
+    let project_scope_id = project_root.display().to_string();
+    let mut artifacts = vec![
+        scope_artifact(
+            artifact_path(artifacts_dir, "global", GLOBAL_SCOPE_ID),
+            "global",
+            "Global",
+            GLOBAL_SCOPE_ID,
+        ),
+        scope_artifact(
+            artifact_path(artifacts_dir, "conversation", session_id),
+            "conversation",
+            "Conversation",
+            session_id,
+        ),
+        scope_artifact(
+            artifact_path(artifacts_dir, "project", &project_scope_id),
+            "project",
+            "Project",
+            &project_scope_id,
+        ),
+    ];
+    if let Some(group_scope_id) = group_scope_id_for_session(session_id) {
+        artifacts.push(scope_artifact(
+            artifact_path(artifacts_dir, "group", &group_scope_id),
+            "group",
+            "Group",
+            &group_scope_id,
+        ));
+    }
+    artifacts.into_iter().flatten().collect()
+}
+
+/// The memories that fit the prompt caps (newest first within each scope),
+/// with the total number of memories before the caps.
+fn capped_memories(artifacts: &[ScopeArtifact]) -> (Vec<MemorySnapshotEntry>, usize) {
+    use kordi_tools::reflection_tool::{MAX_PROMPT_MEMORIES, MAX_PROMPT_MEMORY_CHARS};
+
+    let total = artifacts
+        .iter()
+        .map(|artifact| artifact.lessons.len())
+        .sum::<usize>();
+    let mut used_chars = 0usize;
+    let mut shown = Vec::new();
+    'blocks: for artifact in artifacts {
+        for lesson in &artifact.lessons {
+            let text = normalized_memory_text(&lesson.text);
+            // Each line is "- <text>" plus a newline.
+            let chars = text.chars().count() + 3;
+            if shown.len() >= MAX_PROMPT_MEMORIES || used_chars + chars > MAX_PROMPT_MEMORY_CHARS {
+                break 'blocks;
+            }
+            shown.push(MemorySnapshotEntry {
+                scope: artifact.scope.to_string(),
+                heading: artifact.heading,
+                text,
+            });
+            used_chars += chars;
+        }
+    }
+    (shown, total)
+}
+
+/// Append the memories grouped under their scope headings.
+fn push_memory_blocks(out: &mut String, entries: &[MemorySnapshotEntry]) {
+    let mut heading = None;
+    for entry in entries {
+        if heading != Some(entry.heading) {
+            out.push_str(&format!("\n{}:", entry.heading));
+            heading = Some(entry.heading);
+        }
+        out.push_str(&format!("\n- {}", entry.text));
+    }
 }
 
 fn memory_prompt_section_from_files(
@@ -175,42 +335,7 @@ fn memory_prompt_section_from_files(
     cwd: &std::path::Path,
     exclude_sensitive: bool,
 ) -> String {
-    use crate::reflection_runtime::reflection_lesson_artifact_path as artifact_path;
-    use kordi_tools::reflection_tool::{
-        GLOBAL_SCOPE_ID, MAX_PROMPT_MEMORIES, MAX_PROMPT_MEMORY_CHARS,
-    };
-
-    let project_root = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
-    let project_scope_id = project_root.display().to_string();
-    let mut artifacts = vec![
-        scope_artifact(
-            artifact_path(artifacts_dir, "global", GLOBAL_SCOPE_ID),
-            "Global",
-            "Global",
-            GLOBAL_SCOPE_ID,
-        ),
-        scope_artifact(
-            artifact_path(artifacts_dir, "conversation", session_id),
-            "This conversation",
-            "Conversation",
-            session_id,
-        ),
-        scope_artifact(
-            artifact_path(artifacts_dir, "project", &project_scope_id),
-            "This project",
-            "Project",
-            &project_scope_id,
-        ),
-    ];
-    if let Some(group_scope_id) = group_scope_id_for_session(session_id) {
-        artifacts.push(scope_artifact(
-            artifact_path(artifacts_dir, "group", &group_scope_id),
-            "This group",
-            "Group",
-            &group_scope_id,
-        ));
-    }
-    let artifacts = artifacts.into_iter().flatten().collect::<Vec<_>>();
+    let artifacts = scope_artifacts(artifacts_dir, session_id, cwd);
     if artifacts.is_empty() {
         return String::new();
     }
@@ -223,32 +348,9 @@ fn memory_prompt_section_from_files(
     let mut section = format!(
         "\n\n## Memories\nThese are the user's saved memories for this account and conversation. They are current and take precedence over older instructions earlier in this conversation when they conflict. After corrections, repeated failures, or outcomes, report the update and call `reflection` to save a concise memory. Before saving, read that scope's artifact and skip anything already there or restated; when a preference changes, save the corrected version. Use `global` only for preferences the user wants everywhere (\"from now on\", \"always\"); keep everything else in its conversation, group, or project scope.{sensitive_rule}"
     );
-
-    let total = artifacts
-        .iter()
-        .map(|artifact| artifact.lessons.len())
-        .sum::<usize>();
-    let mut used_chars = 0usize;
-    let mut shown = 0usize;
-    'blocks: for artifact in &artifacts {
-        let mut wrote_heading = false;
-        for lesson in &artifact.lessons {
-            let line = memory_line(&lesson.text);
-            let chars = line.chars().count() + 1;
-            if shown >= MAX_PROMPT_MEMORIES || used_chars + chars > MAX_PROMPT_MEMORY_CHARS {
-                break 'blocks;
-            }
-            if !wrote_heading {
-                section.push_str(&format!("\n{}:", artifact.heading));
-                wrote_heading = true;
-            }
-            section.push('\n');
-            section.push_str(&line);
-            used_chars += chars;
-            shown += 1;
-        }
-    }
-    if shown < total {
+    let (shown, total) = capped_memories(&artifacts);
+    push_memory_blocks(&mut section, &shown);
+    if shown.len() < total {
         section.push_str("\n(more memories omitted)");
     }
 

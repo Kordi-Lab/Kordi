@@ -46,12 +46,18 @@ runtime changes land.
   omitted)"). It says memories are current and take precedence over older
   instructions earlier in the conversation when they conflict, and it keeps
   an `Artifacts:` list of the file paths so the agent can read a scope's file
-  before saving and the `reflection` tool can dedup against it. Desktop
-  sessions are cached across turns, so the section is wrapped in
-  `<desktop_memory_context>` tags and rebuilt from the files at the start of
-  every desktop turn (`DesktopRuntimeSession::refresh_memory_prompt_section`);
-  an edit made in Settings applies to the next message. The CLI builds it
-  once per run.
+  before saving and the `reflection` tool can dedup against it. The section
+  is wrapped in `<desktop_memory_context>` tags and is built when the session
+  is bootstrapped; a frozen identity header keeps the block it was frozen
+  with. The system prompt does not change mid-conversation. Before each
+  desktop message, `DesktopRuntimeSession::record_memory_updates` compares
+  the current memories (`MemoryPromptInputs::current`) with the latest
+  `memory_snapshot` custom entry. When they differ it appends a hidden
+  `memory_update` custom message (added, removed, and current memories)
+  before the user message, then a new snapshot. Without a snapshot, a prompt
+  that already shows a memory block only records a snapshot, and a prompt
+  without one gets an update listing every memory. Nothing is written when
+  memory is off. The CLI builds the section once per run.
 - The cloud runner's tool policy blocks `reflection`, so cloud runs neither
   save nor read memories today.
 - The desktop shows the files as pinned "Session lessons" and "Project
