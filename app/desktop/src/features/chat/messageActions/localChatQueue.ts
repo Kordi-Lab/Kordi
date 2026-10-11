@@ -1,4 +1,6 @@
+import { isTerminalCloudAgentTurn } from '@/features/canonical/cloudAgentTurnLifecycle';
 import type {
+CanonicalSessionState,
 MessageActionMetadata,
 QueuedDesktopChatMessage
 } from '@/kordi-app/types';
@@ -26,16 +28,40 @@ export function localChatTargetHasRunningTurn(
   return Boolean(targetSessionId && desktopLiveTurn?.sessionId === targetSessionId && !desktopLiveTurn.completed);
 }
 
+/**
+ * A Kordi Cloud request has no native turn on the sending Mac. Its run is over once an
+ * agent reply to it is complete, failed, or cancelled, or the request itself failed.
+ */
+export function hostedRequestIsSettled(
+  state: CanonicalSessionState | null | undefined,
+  requestMessageId: string,
+) {
+  return Boolean(state?.messages.some((message) => {
+    const content = message.content && typeof message.content === 'object' && !Array.isArray(message.content)
+      ? message.content as Record<string, unknown>
+      : {};
+    if (message.id === requestMessageId) {
+      const deliveryState = typeof content.deliveryState === 'string' ? content.deliveryState : '';
+      return [message.status, deliveryState].some((state) => ['failed', 'cancelled'].includes(state.trim().toLowerCase()));
+    }
+    return (message.parentMessageId === requestMessageId || content.requestId === requestMessageId)
+      && isTerminalCloudAgentTurn(message);
+  }));
+}
+
 export type LocalChatSendDelayReason = 'session-starting' | 'same-session-running';
 
 export function localChatSendDelayReason({
   inFlight,
   targetSessionId,
   desktopLiveTurn,
+  hostedRequestRunning = false,
 }: {
   inFlight: LocalChatSendInFlight | null;
   targetSessionId: string | null;
   desktopLiveTurn?: { sessionId?: string | null; completed?: boolean } | null;
+  /** A Kordi Cloud request sent to the target session has not settled yet. */
+  hostedRequestRunning?: boolean;
 }): LocalChatSendDelayReason | null {
   if (localChatSendIsInFlightForTarget(inFlight, targetSessionId)) {
     return targetSessionId && inFlight?.sessionId === targetSessionId
@@ -45,6 +71,7 @@ export function localChatSendDelayReason({
   if (localChatTargetHasRunningTurn(desktopLiveTurn, targetSessionId)) {
     return 'same-session-running';
   }
+  if (targetSessionId && hostedRequestRunning) return 'same-session-running';
   return null;
 }
 

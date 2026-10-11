@@ -42,7 +42,7 @@ export function messageSnapshotKey(msg: Message) {
       msg.voiceMessage.transcription?.attempts ?? '',
     ].join(':') : '',
     msg.reactions?.map((reaction) => [reaction.value, reaction.accountIds.join(',')].join(':')).join('|') ?? '',
-    msg.sourceMessage ? [msg.sourceMessage.messageId, msg.sourceMessage.text, msg.sourceMessage.senderLabel ?? '', JSON.stringify(msg.sourceMessage.mentions ?? [])].join(':') : '',
+    msg.sourceMessage ? [msg.sourceMessage.messageId, msg.sourceMessage.text, msg.sourceMessage.senderLabel ?? '', msg.sourceMessage.senderAvatarSeed ?? '', msg.sourceMessage.senderProfileImageUrl ?? '', JSON.stringify(msg.sourceMessage.mentions ?? [])].join(':') : '',
     msg.attachments?.map((attachment) => [attachment.kind, attachment.name, attachment.formatLabel ?? '', attachment.previewUrl ?? '', attachment.localPath ?? '', attachment.mimeType ?? ''].join(':')).join('|') ?? '',
     JSON.stringify(msg.mentions ?? []),
     msg.turn ? liveTurnSnapshotKey(msg.turn) : '',

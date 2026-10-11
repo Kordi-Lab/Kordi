@@ -1167,6 +1167,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var voiceMessage: VoiceMessage?
     var planCard: PlanCard? = nil
     var agentExecution: AgentExecutionSnapshot?
+    /// How an agent reply that keeps its partial text ended early.
+    var agentReplyEnding: AgentReplyEnding? = nil
     // Derived from pending requests, never from transport delivery receipts.
     var agentQueuePosition: Int? = nil
     var backgroundAgentSessions: [BackgroundAgentSession]
@@ -1206,7 +1208,9 @@ struct ChatMessage: Identifiable, Codable, Hashable {
             && cloudMessageVersion == nil
     }
 
-    var isEdited: Bool { editedAt != nil }
+    /// Agent replies are rewritten in place by their runtime as they finish,
+    /// which is not an edit.
+    var isEdited: Bool { editedAt != nil && author != .agent }
 
     var quotedReplyMessageId: String? {
         if author == .agent, let requestMessageId = requestMessageId?.nonEmpty { return requestMessageId }
@@ -1254,6 +1258,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         voiceMessage: VoiceMessage? = nil,
         planCard: PlanCard? = nil,
         agentExecution: AgentExecutionSnapshot? = nil,
+        agentReplyEnding: AgentReplyEnding? = nil,
         backgroundAgentSessions: [BackgroundAgentSession] = [],
         reactions: [MessageReaction] = [],
         attachmentReactions: [String: [MessageReaction]] = [:]
@@ -1284,6 +1289,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.voiceMessage = voiceMessage
         self.planCard = planCard
         self.agentExecution = agentExecution
+        self.agentReplyEnding = agentReplyEnding
         self.backgroundAgentSessions = backgroundAgentSessions
         self.mentions = mentions
         self.reactions = reactions
@@ -1351,6 +1357,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, reactionTargetMessageId, messageAction
         case messageKind, voiceMessage
         case agentExecution
+        case agentReplyEnding
         case backgroundAgentSessions
         case mentions
         case reactions, attachmentReactions
@@ -1389,6 +1396,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
             AgentExecutionSnapshot.self,
             forKey: .agentExecution
         )
+        agentReplyEnding = try? container.decodeIfPresent(AgentReplyEnding.self, forKey: .agentReplyEnding)
         backgroundAgentSessions = try container.decodeIfPresent(
             [BackgroundAgentSession].self,
             forKey: .backgroundAgentSessions

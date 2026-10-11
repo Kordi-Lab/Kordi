@@ -64,6 +64,21 @@ function urlFromTool(tool: ToolTimelineInput) {
   return firstStringValue(safeParseToolArguments(tool.arguments), ['url', 'uri', 'href', 'link']);
 }
 
+// Background task actions of task_operator, as [completed label, running label].
+const BACKGROUND_TASK_ACTION_LABELS: Record<string, [string, string]> = {
+  spawn: ['Start background task', 'Starting background task'],
+  inspect: ['Check background task', 'Checking background task'],
+  wait: ['Check background task', 'Checking background task'],
+  list: ['Check background tasks', 'Checking background tasks'],
+  message: ['Message background task', 'Messaging background task'],
+};
+
+function backgroundTaskActionLabels(tool: ToolTimelineInput) {
+  if (normalizedToolName(tool.name) !== 'task_operator') return null;
+  const action = firstStringValue(safeParseToolArguments(tool.arguments), ['action']).toLowerCase();
+  return BACKGROUND_TASK_ACTION_LABELS[action] ?? null;
+}
+
 function inlineToolDetail(value: string, maxLength = 96) {
   const compactValue = value.replace(/\s+/g, ' ').trim();
   if (compactValue.length <= maxLength) return compactValue;
@@ -182,7 +197,7 @@ export function toolTimelineToolLabel(tool: ToolTimelineInput) {
 
   if (normalized === LEGACY_PARTICIPANT_REQUEST_TOOL_NAME) return 'Contact participant';
   if (normalized === 'update_plan') return 'Update plan';
-  if (normalized === 'task_operator') return 'Coordinate task';
+  if (normalized === 'task_operator') return backgroundTaskActionLabels(tool)?.[0] ?? 'Coordinate task';
   if (normalized === 'reflection') return 'Save lesson';
   if (normalized.includes('bash') || normalized.includes('shell') || normalized.includes('command') || normalized.includes('terminal')) {
     return command ? labelForShellCommand(command) : 'Run script';
@@ -306,7 +321,7 @@ export function toolTimelineRunningToolLabel(tool: ToolTimelineInput) {
 
   if (normalized === LEGACY_PARTICIPANT_REQUEST_TOOL_NAME) return 'Contacting participant';
   if (normalized === 'update_plan') return 'Updating plan';
-  if (normalized === 'task_operator') return 'Coordinating task';
+  if (normalized === 'task_operator') return backgroundTaskActionLabels(tool)?.[1] ?? 'Coordinating task';
   if (normalized === 'reflection') return 'Saving lesson';
   if (normalized.includes('bash') || normalized.includes('shell') || normalized.includes('command') || normalized.includes('terminal')) {
     return command ? `Running command: ${inlineToolDetail(command)}` : 'Running command';
@@ -333,6 +348,17 @@ export function toolTimelineRunningPreviewLabel(tool: ToolTimelineInput, running
   return elapsed ? `${label} · ${elapsed}` : label;
 }
 
+// A turn that started a background task is labelled by that action rather
+// than by the model's reasoning headline, which reads like internal jargon.
+function backgroundTaskFoldedLabel(tools: ToolTimelineInput[]) {
+  const labels = tools
+    .filter((tool) => !timelineToolFailed(tool))
+    .map(backgroundTaskActionLabels)
+    .filter((value): value is [string, string] => value !== null);
+  const spawn = labels.find((value) => value === BACKGROUND_TASK_ACTION_LABELS.spawn);
+  return (spawn ?? labels[labels.length - 1])?.[1] ?? null;
+}
+
 export function toolTimelineFoldedLabel({ tools, active, completed, thinkingText, runningElapsed }: ToolTimelineFoldedLabelInput) {
   const phrase = thinkingPhrase(thinkingText ?? '');
   const runningTool = completed ? undefined : tools.find((tool) => !timelineToolDone(tool) && !timelineToolFailed(tool));
@@ -344,6 +370,8 @@ export function toolTimelineFoldedLabel({ tools, active, completed, thinkingText
     return 'Thinking';
   }
 
+  const backgroundTaskLabel = completed ? backgroundTaskFoldedLabel(tools) : null;
+  if (backgroundTaskLabel) return backgroundTaskLabel;
   if (completed && phrase) return withoutTrailingSentencePunctuation(phrase);
   return toolTimelineSummary({ tools, active, completed, thinkingText });
 }

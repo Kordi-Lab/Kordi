@@ -4,10 +4,11 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { syncNativeWindowTheme } from '@/app/nativeWindowTheme';
 import {
-  isLocalDraftChatConversationId,
   isProjectDraftSessionId,
   isUnmaterializedDesktopAgentSession,
 } from '@/features/chat/draftSessions';
+import { useActiveChatRoute } from '@/features/chat/kordiCloudChatRoute';
+import { chatComposerFollowsRuntimeSession } from '@/features/chat/runtimeComposerSync';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { transcriptIsAtLatest } from '@/features/cloud/activeConversationReadPolicy';
 import type { ComposerScope, ContactClass, DesktopAuthState, DesktopChatState, DesktopChatTurnSnapshot, EditFilePreview, NavId, ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
@@ -135,6 +136,7 @@ export function useKordiUiEffects({
   filteredProjectSlashCommandsLength,
 }: UseKordiUiEffectsArgs) {
   const transcriptScrollMetricsRef = useRef<{ scrollHeight: number; scrollTop: number; clientHeight: number } | null>(null);
+  const activeChatRoute = useActiveChatRoute();
 
   useEffect(() => {
     if (!isNativeShell || activeNav !== 'agent-chats' || !desktopChatState?.activeSessionId) return;
@@ -210,10 +212,12 @@ export function useKordiUiEffects({
       setDesktopSessionRenameDraft(desktopChatState.activeSession.title);
       setIsEditingDesktopSessionTitle(false);
     }
-    const shouldSyncChatSelection = !activeConversationUsesCollaboration && (
-      !isLocalDraftChatConversationId(activeConvId)
-      || isLocalDraftChatConversationId(desktopChatState.activeSessionId)
-    );
+    const shouldSyncChatSelection = chatComposerFollowsRuntimeSession({
+      activeConversationUsesCollaboration,
+      activeConvId,
+      desktopActiveSessionId: desktopChatState.activeSessionId,
+      activeChatRoute,
+    });
     // This effect's deps include the active session object, so it reruns on
     // every chat-state refresh (every incoming/outgoing message, not just a
     // real selection change). Building `chat`/`project` unconditionally
@@ -238,6 +242,7 @@ export function useKordiUiEffects({
       };
     });
   }, [
+    activeChatRoute,
     activeConversationUsesCollaboration,
     activeConvId,
     activeProjectSessionId,

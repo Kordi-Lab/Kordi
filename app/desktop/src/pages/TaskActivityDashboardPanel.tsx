@@ -3,14 +3,14 @@ import { buildTaskActivityDashboard,type TaskDashboardItem,type TaskDashboardSub
 import { navigateToTranscriptMessage } from '@/features/chat/transcriptNavigation';
 import { useAgentSubsessionTasks } from '@/features/cloud/agentSubsessionTasks';
 import type { ScheduledTask,ScheduledTaskRun } from '@/features/cloud/scheduledTasksClient';
-import { collaborationMessageSourceId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { DesktopChatTurnSnapshot,Message,SessionArtifact,SessionTaskActivity } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { CheckCircle2,Circle,CornerDownLeft,FileText,XCircle } from 'lucide-react';
 import { useEffect,useRef,useState,type MouseEvent } from 'react';
 import { AgentThreadTaskRow } from './AgentThreadTaskRow';
-import { enrichTaskParticipant,matchingCanonicalParticipant,mergeTaskTargetParticipants,taskTargetParticipants,type TaskDashboardItemWithParticipants,type TaskDashboardSubtaskWithOutput,type TaskTargetParticipant } from "./taskActivityParticipants";
+import { formatTaskElapsed,scheduledTaskToDashboardItem,taskActivityToDashboardItem } from './taskActivityDashboardItems';
+import { mergeTaskTargetParticipants,taskTargetParticipants,type TaskDashboardItemWithParticipants,type TaskTargetParticipant } from "./taskActivityParticipants";
 
 type TaskActivityDashboardPanelProps = {
   messages: Message[];
@@ -55,14 +55,6 @@ function TaskStatusIcon({ task, nested }: { task: TaskDashboardItem | TaskDashbo
     return <XCircle {...dataAttribute} className={iconClassName} aria-hidden="true" />;
   }
   return <Circle {...dataAttribute} className={iconClassName} aria-hidden="true" />;
-}
-
-function formatTaskElapsed(elapsedMs: number) {
-  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
-  if (totalSeconds < 60) return `${totalSeconds}s`;
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }
 
 function useRunningElapsedLabel(running: boolean, resetKey?: string | null, startedAtMs?: number | null) {
@@ -209,6 +201,21 @@ function TaskContent({
   const subtaskStatusParts = nested
     ? [task.statusLabel, ...timeParts].filter((part): part is string => Boolean(part?.trim()))
     : [];
+  const target = task.target?.trim() || '';
+  const summaryText = secondaryText.trim().replace(/\.$/, '');
+  const targetIsSummary = Boolean(target) && secondaryText.trim() === target;
+  const nestedSummary = nested && task.summary && !(target && task.summary.includes(target)) && task.summary.trim() !== task.statusLabel
+    ? task.summary.trim()
+    : '';
+  const showTarget = Boolean(target) && !targetIsSummary;
+  const inlineTarget = showTarget && (nested || target.length < 40);
+  const metaParts = nested
+    ? []
+    : [targetIsSummary ? '' : summaryText, ...timeParts, subtaskLabel].filter((part): part is string => Boolean(part && part.trim()));
+  const metaClassName = 'text-[11px] text-[color:var(--utility-muted-text)]';
+  const targetSpan = inlineTarget ? (
+    <span className="min-w-0 break-all font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">{target}</span>
+  ) : null;
 
   return (
     <div className={cn('flex min-w-0 items-start gap-3', nested && 'gap-2.5')}>
@@ -216,12 +223,31 @@ function TaskContent({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className={cn('app-inspector-heading whitespace-normal break-words leading-5', nested && 'text-[12px] leading-4')}>{task.title}</div>
-            {secondaryText ? <div className="mt-1 app-inspector-text-block">{secondaryText}</div> : null}
-            {subtaskStatusParts.length > 0 ? (
-              <div data-subtask-status-label="true" className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{subtaskStatusParts.join(' · ')}</div>
-            ) : timeParts.length > 0 ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{timeParts.join(' · ')}</div> : null}
-            {subtaskLabel ? <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">{subtaskLabel}</div> : null}
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0">
+              <div className={cn('app-inspector-heading whitespace-normal break-words leading-5', nested && 'text-[12px] leading-4')}>{task.title}</div>
+              {nested ? (
+                <>
+                  {subtaskStatusParts.length > 0 ? (
+                    <>
+                      <span aria-hidden="true" className={metaClassName}>·</span>
+                      <span data-subtask-status-label="true" className={metaClassName}>{subtaskStatusParts.join(' · ')}</span>
+                    </>
+                  ) : null}
+                  {targetSpan ? (
+                    <>
+                      <span aria-hidden="true" className={metaClassName}>·</span>
+                      {targetSpan}
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  {metaParts.length > 0 ? <span data-task-meta="true" className={metaClassName}>{metaParts.join(' · ')}</span> : null}
+                  {targetSpan}
+                </>
+              )}
+            </div>
+            {nestedSummary ? <div className={cn('mt-0.5', metaClassName)}>{nestedSummary}</div> : null}
           </div>
           {!nested && 'responseMessageId' in task ? (
             <div className="flex shrink-0 items-center gap-2">
@@ -235,9 +261,9 @@ function TaskContent({
             </div>
           ) : null}
         </div>
-        {task.target ? <div className="mt-2 break-all font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">{task.target}</div> : null}
+        {showTarget && !inlineTarget ? <div className="mt-1 break-all font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">{target}</div> : null}
         {task.writeScope.length > 0 ? (
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          <div className="mt-1 flex flex-wrap gap-1.5">
             {task.writeScope.map((scope) => (
               <span key={`${task.id}:${scope}`} className="rounded-full border border-[color:var(--app-divider)] px-2 py-0.5 font-mono text-[10.5px] text-[color:var(--utility-muted-text)]">
                 {scope}
@@ -261,218 +287,6 @@ function firstLinkedArtifactId(task: TaskDashboardItemWithParticipants, artifact
       .map((artifact) => artifact.id),
   );
   return task.artifactIds.find((artifactId) => generatedArtifactIds.has(artifactId)) ?? task.artifactIds[0] ?? null;
-}
-
-function dashboardStatusFromActivity(status: string): TaskDashboardItem['status'] {
-  const normalized = status.trim().toLowerCase();
-  if (normalized === 'complete' || normalized === 'completed' || normalized === 'done') return 'completed';
-  if (normalized === 'closed' || normalized === 'failed') return normalized;
-  if (normalized === 'cancelled' || normalized === 'timeout') return 'failed';
-  if (normalized === 'processing' || normalized === 'active' || normalized === 'running') return 'active';
-  return 'planned';
-}
-
-function dashboardToneFromStatus(status: TaskDashboardItem['status']): TaskDashboardTone {
-  if (status === 'active') return 'running';
-  if (status === 'completed') return 'success';
-  if (status === 'closed') return 'closed';
-  if (status === 'failed') return 'error';
-  return 'muted';
-}
-
-function dashboardStatusLabel(status: TaskDashboardItem['status']) {
-  switch (status) {
-    case 'active': return 'Active';
-    case 'completed': return 'Done';
-    case 'closed': return 'Closed';
-    case 'failed': return 'Failed';
-    case 'waiting': return 'Needs input';
-    case 'planned':
-    default: return 'Planned';
-  }
-}
-
-function taskActivityToDashboardItem(activity: SessionTaskActivity, targetParticipants: TaskTargetParticipant[]): TaskDashboardItemWithParticipants {
-  const status = dashboardStatusFromActivity(activity.status);
-  const title = activity.target?.name ?? activity.sourceRequestId ?? 'Cloud task';
-  const initiator = matchingCanonicalParticipant(activity.initiator, targetParticipants) ?? activity.initiator;
-  const participants = activity.participants.map((participant) => enrichTaskParticipant(participant, targetParticipants));
-  return {
-    id: activity.id,
-    title,
-    summary: activity.error ?? (status === 'active' ? 'Last reported as running. No current execution timing is available.' : `Synced Cloud task${initiator?.name ? ` by ${initiator.name}` : ''}.`),
-    status,
-    statusLabel: dashboardStatusLabel(status),
-    tone: dashboardToneFromStatus(status),
-    target: activity.sourceRequestId ? `ID: ${activity.sourceRequestId}` : null,
-    writeScope: [],
-    live: false,
-    timeLabel: null,
-    startedAtMs: activity.createdAtMs || null,
-    responseMessageId: activity.sourceRequestId ?? null,
-    taskId: activity.sourceRequestId ?? activity.id,
-    artifactIds: [],
-    involvedParticipantNames: Array.from(new Set(participants.map((participant) => participant.name).filter(Boolean))),
-    targetParticipants: participants.map((participant) => ({
-      id: participant.id,
-      name: participant.name,
-      kind: participant.kind === 'agent' ? 'agent' : 'human',
-      role: participant.role,
-      avatarKey: participant.avatarKey,
-      profileImageUrl: participant.profileImageUrl,
-    })),
-    subtasks: [],
-    subtaskCount: 0,
-    activeSubtaskCount: 0,
-  };
-}
-
-function scheduledDateParts(date: Date, timeZone?: string): { day: string; time: string } {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
-  return {
-    day: `${parts.year}-${parts.month}-${parts.day}`,
-    time: `${parts.hour}:${parts.minute}`,
-  };
-}
-
-function friendlyScheduledInstantLabel(value: string, now: Date, timeZone?: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  const scheduled = scheduledDateParts(date, timeZone);
-  const current = scheduledDateParts(now, timeZone);
-  if (scheduled.day === current.day) return `Today ${scheduled.time}`;
-  return `${scheduled.day} ${scheduled.time}`;
-}
-
-function scheduledTaskScheduleLabel(task: ScheduledTask, now: Date, timeZone?: string): string {
-  if (task.schedule.kind === 'daily') return `Daily at ${task.schedule.time} ${task.schedule.timezone ?? 'UTC'}`;
-  return friendlyScheduledInstantLabel(task.schedule.at, now, timeZone);
-}
-
-function scheduledTaskRuntimeLabel(task: ScheduledTask): string | null {
-  return task.targetRuntime === 'local_required' ? 'Requires Desktop' : null;
-}
-
-function scheduledTaskStatusLabel(task: ScheduledTask): string {
-  if (task.lastRunStatus === 'waiting_for_desktop') return 'Waiting for Desktop';
-  if (task.status === 'paused') return 'Paused';
-  if (task.lastRunStatus === 'completed') return 'Last run completed';
-  if (task.lastRunStatus === 'failed') return task.lastRunError ? `Last run failed: ${task.lastRunError}` : 'Last run failed';
-  if (task.lastRunStatus === 'queued') return 'Queued';
-  if (task.lastRunStatus === 'leased' || task.lastRunStatus === 'running') return 'Running in Cloud';
-  if (task.lastRunStatus) return task.lastRunStatus.replace(/_/g, ' ');
-  return 'Scheduled';
-}
-
-function scheduledTaskDashboardStatus(task: ScheduledTask): TaskDashboardItem['status'] {
-  if (task.status === 'paused') return 'waiting';
-  if (task.lastRunStatus === 'completed') return 'completed';
-  if (task.lastRunStatus === 'failed') return 'failed';
-  if (task.lastRunStatus === 'queued' || task.lastRunStatus === 'leased' || task.lastRunStatus === 'running') return 'active';
-  return 'planned';
-}
-
-function runDurationLabel(run: ScheduledTaskRun): string | null {
-  const startMs = Date.parse(run.createdAt);
-  const endMs = Date.parse(run.completedAt ?? run.updatedAt);
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return null;
-  return formatTaskElapsed(endMs - startMs);
-}
-
-function scheduledRunStatusLabel(run: ScheduledTaskRun): string {
-  const duration = runDurationLabel(run);
-  const status = run.status.replace(/_/g, ' ');
-  return duration ? `${status} · ${duration}` : status;
-}
-
-function messageCloudIds(message: Message): string[] {
-  const id = message.id?.trim() ?? '';
-  return [
-    id,
-    id.startsWith('msg:cloud:self:') ? id.slice('msg:cloud:self:'.length) : null,
-    collaborationMessageSourceId(id),
-  ].filter((value): value is string => Boolean(value?.trim()));
-}
-
-function scheduledRunMessage(messages: Message[], resultMessage: string | null): Message | null {
-  const target = resultMessage?.trim();
-  if (!target) return null;
-  return messages.find((message) => messageCloudIds(message).includes(target)) ?? null;
-}
-
-function scheduledRunPreview(message: Message | null, run: ScheduledTaskRun): string {
-  if (message) {
-    const text = message.turn?.assistantText?.trim() || message.text?.trim();
-    if (text) return text.length > 150 ? `${text.slice(0, 147).trimEnd()}…` : text;
-  }
-  if (run.errorMessage?.trim()) return run.errorMessage.trim();
-  if (run.errorCode?.trim()) return run.errorCode.trim().replace(/_/g, ' ');
-  return run.status === 'completed' ? 'Response posted to this session.' : 'Run is still in progress.';
-}
-
-function scheduledRunSubtask(run: ScheduledTaskRun, messages: Message[], now: Date, timeZone?: string): TaskDashboardSubtaskWithOutput {
-  const message = scheduledRunMessage(messages, run.resultMessage);
-  const status: TaskDashboardItem['status'] = run.status === 'completed'
-    ? 'completed'
-    : run.status === 'failed'
-      ? 'failed'
-      : run.status === 'waiting_for_desktop'
-        ? 'waiting'
-        : 'active';
-  return {
-    id: `scheduled-run:${run.runId}`,
-    title: friendlyScheduledInstantLabel(run.dueAt, now, timeZone),
-    summary: scheduledRunPreview(message, run),
-    status,
-    statusLabel: scheduledRunStatusLabel(run),
-    tone: dashboardToneFromStatus(status),
-    target: null,
-    writeScope: [],
-    live: status === 'active',
-    timeLabel: null,
-    startedAtMs: Date.parse(run.createdAt) || null,
-    responseMessageId: message?.id ?? null,
-    outputPreview: Boolean(message?.id),
-  };
-}
-
-function scheduledTaskToDashboardItem(task: ScheduledTask, now: Date, timeZone: string | undefined, runs: ScheduledTaskRun[], messages: Message[]): TaskDashboardItemWithParticipants {
-  const status = scheduledTaskDashboardStatus(task);
-  const runSubtasks = runs.slice(0, 5).map((run) => scheduledRunSubtask(run, messages, now, timeZone));
-  const latestRun = runs[0] ?? null;
-  return {
-    id: `scheduled:${task.taskId}`,
-    title: task.title,
-    summary: scheduledTaskStatusLabel(task),
-    status,
-    statusLabel: scheduledTaskStatusLabel(task),
-    tone: dashboardToneFromStatus(status),
-    target: null,
-    writeScope: [],
-    live: status === 'active',
-    timeLabel: [scheduledTaskScheduleLabel(task, now, timeZone), scheduledTaskRuntimeLabel(task)]
-      .filter((part): part is string => Boolean(part))
-      .join(' · '),
-    startedAtMs: latestRun ? Date.parse(latestRun.createdAt) || null : null,
-    responseMessageId: null,
-    taskId: task.taskId,
-    artifactIds: [],
-    involvedParticipantNames: [],
-    targetParticipants: [],
-    subtasks: runSubtasks,
-    subtaskCount: runSubtasks.length,
-    activeSubtaskCount: runSubtasks.filter((run) => run.status === 'active').length,
-    subtaskCountLabel: runSubtasks.length > 0 ? `${runSubtasks.length} run${runSubtasks.length === 1 ? '' : 's'}` : null,
-  };
 }
 
 function TaskRow({
@@ -504,7 +318,7 @@ function TaskRow({
       <summary className="list-none cursor-pointer [&::-webkit-details-marker]:hidden">
         <TaskContent task={task} artifactId={artifactId} targetParticipants={matchedTargetParticipants} onOpenArtifact={onOpenArtifact} onNavigateToResponse={onNavigateToResponse} />
       </summary>
-      <div className="mt-3 space-y-2 border-l border-[color:var(--app-divider)] pl-4">
+      <div className="mt-1.5 space-y-1 border-l border-[color:var(--app-divider)] pl-3">
         {task.subtasks.map((subtask) => {
           const rowClassName = 'rounded-2xl bg-[color:var(--app-transcript-assistant-bg)]/45 px-3 py-2.5';
           const responseMessageId = subtask.responseMessageId;

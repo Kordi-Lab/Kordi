@@ -1,8 +1,10 @@
 use super::*;
+use crate::supervisor_helpers::ChildGuard;
 use serde_json::json;
 use std::sync::Arc;
+use tokio::process::Command;
 
-fn request() -> RunRequest {
+pub(crate) fn request() -> RunRequest {
     RunRequest {
         run_id: "run-1".into(),
         request_id: "request-1".into(),
@@ -45,7 +47,7 @@ fn request() -> RunRequest {
     }
 }
 
-struct EchoTool;
+pub(crate) struct EchoTool;
 #[async_trait]
 impl HostTool for EchoTool {
     async fn execute(&self, call: ToolCall, _: CancellationToken) -> ToolResult {
@@ -56,7 +58,7 @@ impl HostTool for EchoTool {
         }
     }
 }
-struct NoEvents;
+pub(crate) struct NoEvents;
 #[async_trait]
 impl EventSink for NoEvents {
     async fn on_event(&self, _: RuntimeEvent) -> Result<(), String> {

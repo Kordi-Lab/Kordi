@@ -1,7 +1,8 @@
 import { normalizedMessageMentions } from '@/features/chat/messageMentions';
 import { cloudAgentId } from './cloudAgentIdentity';
 import type { MessageActionMetadata, MessageMention } from '../../kordi-app/types/message';
-import type { DesktopChatMessageRoute } from '@/lib/desktop';
+import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
+import { boundedRequestContextMessages } from './cloudAgentRequestContext';
 
 export const CLOUD_DIRECT_MESSAGE_PREFIX = 'kordi-cloud-message:';
 export const CLOUD_AGENT_SESSION_IDENTITY_MESSAGE_KIND =
@@ -23,6 +24,8 @@ export type CloudDirectMessageEnvelope = {
     defaultAuthProvider?: string | null;
     defaultAuthChoice?: string | null;
   }) | null;
+  /** Bounded, history-role reference context for the run (for example the Ask Agent chat reference). */
+  contextMessages?: DesktopChatContextMessage[];
 };
 
 function encodeBase64Url(value: string) {
@@ -87,6 +90,11 @@ export function cloudDirectMessageTargetCloudAgentId(body: string): string | nul
   return agentId.startsWith('cloud_agent_') || agentId.startsWith('cloud-agent:') || agentId === 'cloud-local-agent'
     ? agentId
     : null;
+}
+
+/** The request's own reference context, bounded again on read because envelopes are wire data. */
+export function cloudDirectMessageContextMessages(body: string): DesktopChatContextMessage[] {
+  return boundedRequestContextMessages(parseCloudDirectMessageEnvelope(body)?.contextMessages);
 }
 
 export function cloudDirectMessageTargetCloudAgentName(body: string): string | null {

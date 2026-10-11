@@ -27,7 +27,7 @@ use crate::login;
 use crate::runtime_model::{
     build_runtime_config_with_settings, resolve_or_synthesize_model_with_settings,
 };
-use crate::tool_registry::{ToolRegistry, ToolSelection, ToolSelectionPreference};
+use crate::tool_registry::{ToolSelection, ToolSelectionPreference};
 use crate::turn_runner::{self, TurnConfig, TurnEvent, wrap_conn};
 use kordi_monitor::RequestMetricsTracker;
 
@@ -121,15 +121,17 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
     commands.bind_session_context(sibling_conn.clone(), session_id.clone(), None);
     let _ = commands.send_event(&kordi_hooks::Event::SessionStart).await;
     let tool_selection = tool_selection_from_cli_and_settings(&cli, &settings, &provider_name);
-    let tool_registry = ToolRegistry::from_builtin_and_extensions(tools, tool_selection);
+    let (tool_registry, _, memory_prompt) = crate::session_bootstrap::build_memory_aware_tools(
+        tools,
+        tool_selection,
+        &settings.memory,
+        &artifacts_dir,
+        &cwd,
+    );
+    let reflection_lesson_section = memory_prompt
+        .map(|inputs| inputs.section(&session_id))
+        .unwrap_or_default();
     let skill_section = build_skill_system_prompt_section(&session_resources);
-    let reflection_lesson_section =
-        crate::session_bootstrap::build_reflection_lesson_artifacts_system_prompt_section(
-            tool_registry.active_tools(),
-            &artifacts_dir,
-            &session_id,
-            &cwd,
-        );
     let system_prompt = format!("{system_prompt}{skill_section}{reflection_lesson_section}");
 
     let provider: Arc<dyn kordi_provider::Provider> = runtime.provider.clone();
@@ -150,10 +152,16 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
             enabled: true,
         }),
         reach_out: None,
-        reflection: Some(crate::reflection_runtime::build_reflection_runtime(
+        reflection: crate::session_bootstrap::reflection_runtime_for_settings(
+            &settings.memory,
             sibling_conn.clone(),
-            artifacts_dir.clone(),
-        )),
+            crate::session_bootstrap::memory::ReflectionTarget::new(
+                &artifacts_dir,
+                &session_id,
+                &cwd,
+            ),
+            crate::memory_remote::empty_memory_remote_slot(),
+        ),
         session_observation: None,
         task_operator: Some(crate::task_operator::build_task_operator_runtime(
             cwd.clone(),

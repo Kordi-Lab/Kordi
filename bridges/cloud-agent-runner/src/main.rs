@@ -37,6 +37,9 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Boot the OMP worker ahead of the first turn; it takes seconds on small hosts.
+    kordi_cloud_agent_runner::omp_pool::prewarm();
+
     let canary_run_id = std::env::var("KORDI_CLOUD_RUNNER_CANARY_RUN_ID").ok();
     let client = HttpCloudAgentRunClient::with_canary_run_id(
         base_url,

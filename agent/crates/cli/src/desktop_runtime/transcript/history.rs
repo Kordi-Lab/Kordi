@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use super::super::attachments::{
     attachments_from_details, image_attachments_from_blocks, merge_attachment_metadata,
 };
+use super::super::background_sessions::background_follow_up_notice;
 use super::super::{
     ATTACHMENT_CONTEXT_CUSTOM_TYPE, DesktopChatMessage, DesktopChatStoredTool,
     format_message_timestamp, format_utc_timestamp, thinking_label,
@@ -44,10 +45,15 @@ fn append_agent_message(
     match message {
         AgentMessage::User(user) => {
             flush_historical_turn(out, current_turn);
+            let text = user_visible_text_from_blocks(&user.content);
+            if let Some(notice) = background_follow_up_notice(entry_id, &text, user.timestamp) {
+                out.push(notice);
+                return;
+            }
             out.push(DesktopChatMessage {
                 role: "user".to_string(),
                 sender: Some("You".to_string()),
-                text: user_visible_text_from_blocks(&user.content),
+                text,
                 detail: None,
                 time_label: format_message_timestamp(user.timestamp),
                 timestamp_ms: user.timestamp,

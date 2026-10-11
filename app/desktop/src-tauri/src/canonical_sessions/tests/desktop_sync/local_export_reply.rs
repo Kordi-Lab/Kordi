@@ -151,3 +151,44 @@ fn native_request_with_exact_live_cloud_wire_id_does_not_export_second_reply() {
         assert_eq!(result.is_none(), should_suppress, "wire kind: {kind}");
     }
 }
+
+#[test]
+fn background_follow_up_reply_answers_its_notice() {
+    use crate::canonical_sessions::desktop_sync::reply_parent_after;
+    let message = |role: &str, entry_id: &str| kordi_cli::desktop_runtime::DesktopChatMessage {
+        role: role.into(),
+        sender: None,
+        text: "Background session \"Count lines\" finished.".into(),
+        detail: None,
+        time_label: "Now".into(),
+        timestamp_ms: 2000,
+        thinking_text: None,
+        tools: Vec::new(),
+        attachments: Vec::new(),
+        failed: false,
+        cancelled: false,
+        entry_id: Some(entry_id.into()),
+    };
+    let request = Some("request".to_string());
+    let synced = |id: &str| Some(id.to_string());
+
+    let notice = message("system", "background-result:child:done");
+    assert_eq!(
+        reply_parent_after(request.clone(), &notice, synced("notice")),
+        synced("notice")
+    );
+    let other_notice = message("system", "other");
+    assert_eq!(
+        reply_parent_after(request.clone(), &other_notice, synced("other")),
+        request
+    );
+    let next_request = message("user", "next");
+    assert_eq!(
+        reply_parent_after(request.clone(), &next_request, synced("next")),
+        synced("next")
+    );
+    assert_eq!(
+        reply_parent_after(request.clone(), &next_request, None),
+        request
+    );
+}

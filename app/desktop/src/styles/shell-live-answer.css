@@ -78,3 +78,11 @@
     animation: none;
   }
 }
+
+/* A reply that has not produced content yet: a small surface sized to the indicator. */
+.app-live-assistant-answer-surface[data-live-turn-pending="true"] {
+  display: flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.5rem 0.75rem;
+}

@@ -55,10 +55,10 @@ fn make_cli(overrides: CliOverrides) -> crate::Cli {
     }
 }
 
-struct NamedTool {
-    name: &'static str,
-    description: &'static str,
-    schema: Value,
+pub(super) struct NamedTool {
+    pub(super) name: &'static str,
+    pub(super) description: &'static str,
+    pub(super) schema: Value,
 }
 
 #[async_trait]
@@ -308,61 +308,6 @@ fn active_tool_section_groups_subtools_under_four_big_tools() {
     assert!(section.contains("choose a big tool group first"));
     assert!(!section.contains("Use Observation to gather facts"));
     assert!(section.len() < 1200);
-}
-
-#[test]
-fn scoped_lesson_artifact_prompt_omits_missing_artifacts() {
-    let tools: Vec<Box<dyn Tool>> = vec![Box::new(NamedTool {
-        name: "reflection",
-        description: "reflection",
-        schema: json!({"type": "object"}),
-    })];
-    let artifacts_dir = tempdir().expect("artifacts dir");
-    let cwd = tempdir().expect("cwd");
-
-    let section = super::build_reflection_lesson_artifacts_system_prompt_section(
-        &tools,
-        artifacts_dir.path(),
-        "session-123",
-        cwd.path(),
-    );
-
-    assert_eq!(section, "");
-}
-
-#[test]
-fn scoped_lesson_artifact_prompt_lists_existing_paths_without_lesson_content() {
-    let tools: Vec<Box<dyn Tool>> = vec![Box::new(NamedTool {
-        name: "reflection",
-        description: "reflection",
-        schema: json!({"type": "object"}),
-    })];
-    let artifacts_dir = tempdir().expect("artifacts dir");
-    let cwd = tempdir().expect("cwd");
-
-    let conversation_path = crate::reflection_runtime::reflection_lesson_artifact_path(
-        artifacts_dir.path(),
-        "conversation",
-        "session-123",
-    );
-    std::fs::create_dir_all(conversation_path.parent().expect("parent")).expect("mkdir");
-    std::fs::write(&conversation_path, "# lessons").expect("lesson file");
-
-    let section = super::build_reflection_lesson_artifacts_system_prompt_section(
-        &tools,
-        artifacts_dir.path(),
-        "session-123",
-        cwd.path(),
-    );
-
-    assert!(section.contains("Scoped lesson artifacts"));
-    assert!(section.contains("read"));
-    assert!(section.contains("reflection"));
-    assert!(section.contains("session-123"));
-    assert!(section.contains(artifacts_dir.path().to_str().expect("artifact path")));
-    assert!(section.contains(conversation_path.to_str().expect("conversation path")));
-    assert!(!section.contains("Do not inject lessons"));
-    assert!(section.len() < 900);
 }
 
 #[test]

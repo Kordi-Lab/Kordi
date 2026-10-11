@@ -5,11 +5,15 @@
 mod error;
 mod protocol;
 mod supervisor_helpers;
+mod warm_pool;
+mod worker_command;
 pub use error::RuntimeError;
 use supervisor_helpers::{
-    ChildGuard, ToolCancelGuard, acquire_computer_lock, check_frame, read_line_bounded,
-    validate_request, write_json_line,
+    ToolCancelGuard, acquire_computer_lock, check_frame, read_line_bounded, validate_request,
+    write_json_line,
 };
+use warm_pool::{AttachedWorker, WarmPool, spawn_worker};
+pub use worker_command::WorkerCommand;
 
 pub use protocol::{
     AuthConfig, AuthKind, Capabilities, Checkpoint, CompactionSettings, ImageInput, ModelConfig,
@@ -18,54 +22,28 @@ pub use protocol::{
 };
 
 use std::collections::HashSet;
-use std::ffi::OsString;
 use std::future::Future;
-use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use futures::{StreamExt, future::BoxFuture, stream::FuturesUnordered};
 use protocol::{WorkerInput, WorkerOutput};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, Command};
+use tokio::process::{Child, ChildStdin};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_REQUEST_BYTES: usize = 32 * 1024 * 1024;
 const MAX_STDERR_BYTES: usize = 64 * 1024;
-
-#[derive(Clone)]
-pub struct WorkerCommand {
-    pub program: PathBuf,
-    /// Executable/script flags only. Never place auth material here.
-    pub args: Vec<OsString>,
-    /// Stable file inside the owning user's private app-data directory.
-    pub computer_lock_path: Option<PathBuf>,
-}
-
-impl WorkerCommand {
-    pub fn sidecar(path: impl Into<PathBuf>) -> Self {
-        Self {
-            program: path.into(),
-            args: Vec::new(),
-            computer_lock_path: None,
-        }
-    }
-
-    pub fn node(script: impl Into<PathBuf>) -> Self {
-        Self {
-            program: PathBuf::from("node"),
-            args: vec![script.into().into_os_string()],
-            computer_lock_path: None,
-        }
-    }
-
-    pub fn with_computer_lock(mut self, path: impl Into<PathBuf>) -> Self {
-        self.computer_lock_path = Some(path.into());
-        self
-    }
-}
+/// How long a taken warm worker may take to produce its first stdout line
+/// after the Run request. A worker that stays silent is treated like one that
+/// exited and replaced by a fresh worker, so it never costs the whole turn.
+#[cfg(not(test))]
+const WARM_READY_TIMEOUT: Duration = Duration::from_secs(10);
+#[cfg(test)]
+const WARM_READY_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[async_trait]
 pub trait HostTool: Send + Sync {
@@ -111,11 +89,52 @@ where
 #[derive(Clone)]
 pub struct OmpRuntime {
     command: WorkerCommand,
+    warm: Option<Arc<WarmPool>>,
 }
 
 impl OmpRuntime {
     pub fn new(command: WorkerCommand) -> Self {
-        Self { command }
+        Self {
+            command,
+            warm: None,
+        }
+    }
+
+    /// Keeps up to `count` idle one-shot workers started ahead of their turn.
+    /// Zero (the default) spawns every worker on demand. Clones share the pool.
+    pub fn with_warm_workers(mut self, count: usize) -> Self {
+        self.warm = (count > 0).then(|| Arc::new(WarmPool::new(count)));
+        self
+    }
+
+    /// Starts the warm workers now. Needs a Tokio runtime context.
+    pub fn prewarm(&self) {
+        if let Some(pool) = &self.warm {
+            pool.fill(&self.command);
+        }
+    }
+
+    /// Kills idle warm workers and stops refilling. Turns still run on demand.
+    pub fn shutdown(&self) {
+        if let Some(pool) = &self.warm {
+            pool.shutdown();
+        }
+    }
+
+    fn fresh_worker(&self) -> Result<AttachedWorker, RuntimeError> {
+        AttachedWorker::attach(spawn_worker(&self.command)?)
+    }
+
+    fn take_worker(&self) -> Result<(AttachedWorker, bool), RuntimeError> {
+        let Some(pool) = &self.warm else {
+            return Ok((self.fresh_worker()?, false));
+        };
+        let taken = pool.take();
+        pool.refill_in_background(&self.command);
+        match taken {
+            Some(worker) => Ok((worker.attach()?, true)),
+            None => Ok((self.fresh_worker()?, false)),
+        }
     }
 
     pub async fn run_turn<H: HostTool, E: EventSink>(
@@ -136,55 +155,64 @@ impl OmpRuntime {
         } else {
             None
         };
-        let mut command = Command::new(&self.command.program);
-        command.args(&self.command.args);
-        command.env_clear();
-        if let Some(path) = std::env::var_os("PATH") {
-            command.env("PATH", path);
-        }
-        command.env("NODE_ENV", "production");
-        command.stdin(std::process::Stdio::piped());
-        command.stdout(std::process::Stdio::piped());
-        command.stderr(std::process::Stdio::piped());
-        command.kill_on_drop(true);
-        #[cfg(unix)]
-        command.process_group(0);
-        let mut child = ChildGuard::new(command.spawn().map_err(|_| RuntimeError::Spawn)?);
-        let mut stdin = child.0.stdin.take().ok_or(RuntimeError::Spawn)?;
-        let stdout = child.0.stdout.take().ok_or(RuntimeError::Spawn)?;
-        let stderr = child.0.stderr.take().ok_or(RuntimeError::Spawn)?;
-        let (stderr_overflow_tx, mut stderr_overflow_rx) = tokio::sync::oneshot::channel();
-        tokio::spawn(async move {
-            let mut reader = stderr;
-            let mut total = 0usize;
-            let mut chunk = [0u8; 4096];
-            while let Ok(size) = reader.read(&mut chunk).await {
-                if size == 0 {
-                    break;
-                }
-                total += size;
-                if total > MAX_STDERR_BYTES {
-                    let _ = stderr_overflow_tx.send(());
-                    break;
-                }
-            }
-        });
-
+        let (mut worker, mut warm) = self.take_worker()?;
         let deadline = Instant::now() + Duration::from_millis(request.limits.timeout_ms);
         let run_command = WorkerInput::Run {
             schema_version: SCHEMA_VERSION,
             request,
         };
-        tokio::select! {
-            _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
-            _ = tokio::time::sleep_until(deadline) => return Err(RuntimeError::Timeout),
-            result = write_json_line(&mut stdin, &run_command) => result?,
-        }
+        let mut output_bytes = 0usize;
+        let (_worker_guard, mut stdin, mut stdout, mut stderr_overflow_rx, mut first_line) = loop {
+            let written = tokio::select! {
+                _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
+                _ = tokio::time::sleep_until(deadline) => return Err(RuntimeError::Timeout),
+                result = write_json_line(&mut worker.stdin, &run_command) => result,
+            };
+            match written {
+                // A warm worker can die between its liveness check and the
+                // write. Fall back to a fresh worker once.
+                Err(RuntimeError::UnexpectedExit) if warm => {
+                    warm = false;
+                    worker = self.fresh_worker()?;
+                    continue;
+                }
+                result => result?,
+            }
+            let AttachedWorker {
+                _child: child,
+                stdin,
+                stdout,
+                stderr_overflow,
+            } = worker;
+            let mut stdout = BufReader::new(stdout);
+            if !warm {
+                break (child, stdin, stdout, stderr_overflow, None);
+            }
+            // A warm worker that is alive but silent is as unusable as one
+            // that exited: replace it once instead of waiting out the turn.
+            let wait = WARM_READY_TIMEOUT.min(deadline.saturating_duration_since(Instant::now()));
+            let first = tokio::select! {
+                _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
+                result = tokio::time::timeout(
+                    wait,
+                    read_line_bounded(&mut stdout, &mut output_bytes, request.limits.max_output_bytes),
+                ) => result,
+            };
+            match first {
+                Ok(Ok(Some(line))) => break (child, stdin, stdout, stderr_overflow, Some(line)),
+                Ok(Err(error)) if error != RuntimeError::UnexpectedExit => return Err(error),
+                Err(_) if Instant::now() >= deadline => return Err(RuntimeError::Timeout),
+                Ok(_) | Err(_) => {
+                    drop(child);
+                    warm = false;
+                    output_bytes = 0;
+                    worker = self.fresh_worker()?;
+                }
+            }
+        };
 
-        let mut stdout = BufReader::new(stdout);
         let mut seen_ready = false;
         let mut last_sequence = None;
-        let mut output_bytes = 0usize;
         let mut tool_calls = HashSet::new();
         let mut hook_calls = HashSet::new();
         let tool_cancel = cancel.child_token();
@@ -201,7 +229,10 @@ impl OmpRuntime {
                 Tool(String, ToolResult),
                 Hook(String, Result<serde_json::Value, String>),
             }
-            let next = tokio::select! {
+            let next = if let Some(line) = first_line.take() {
+                Next::Line(Some(line))
+            } else {
+                tokio::select! {
                 _ = cancel.cancelled() => {
                     let _ = tokio::time::timeout(Duration::from_millis(100), write_json_line(
                         &mut stdin,
@@ -222,6 +253,7 @@ impl OmpRuntime {
                 result = read_line_bounded(&mut stdout, &mut output_bytes, request.limits.max_output_bytes) => Next::Line(result?),
                 Some((call_id, result)) = pending_tools.next(), if !pending_tools.is_empty() => Next::Tool(call_id, result),
                 Some((call_id, result)) = pending_hooks.next(), if !pending_hooks.is_empty() => Next::Hook(call_id, result),
+                }
             };
             if let Next::Tool(call_id, result) = next {
                 let reply = WorkerInput::ToolResult {

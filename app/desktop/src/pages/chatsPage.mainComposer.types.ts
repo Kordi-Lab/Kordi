@@ -6,6 +6,7 @@ import type {
   CollaborationRoutingPatch,
 } from '@/pages/chatsPage.collaborationRoutingControls';
 import type { ChatsPageComposer, ChatsPageRuntime } from '@/pages/chatsPage.types';
+import type { ComposerStopControl } from '@/pages/chatsPage.voiceControls';
 
 type MainComposerLocalRouting = {
   paneKind: 'human' | 'agent' | null;
@@ -42,5 +43,7 @@ export type MainComposerProps = {
     placeholder: string;
   };
   onSend: (draftOverride?: string, attachmentOverride?: AttachmentItem[]) => Promise<void> | void;
+  /** Present while a request the viewer sent in this chat runs or waits. */
+  stop?: ComposerStopControl | null;
   cloudAccountId?: string | null;
 };

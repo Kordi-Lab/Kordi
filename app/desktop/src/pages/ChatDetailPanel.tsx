@@ -5,11 +5,13 @@ import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { Conversation, DesktopChatTurnSnapshot, DetailTab, SessionArtifact } from '@/kordi-app/types';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
+import { ChatMemoryTab } from '@/pages/ChatMemoryTab';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
 import { useScheduledTasks } from '@/features/cloud/useScheduledTasks';
 import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfObjectLabel } from '@/lib/identityLabels';
 import { ChatSenderProfileContext } from '@/pages/useChatSenderProfiles';
 import { conversationIsGroupChat } from '@/pages/chatsPage.model';
+import { displayCanonicalParticipants } from '@/features/canonical/readModel/participantPresentation';
 
 type ActiveConversation = Conversation;
 
@@ -175,9 +177,10 @@ function ChatDetailPanelView({
     activeConv.canonicalProjectionPending
     && (activeConv.canonicalMessageCount ?? activeConv.messages.length) <= 1,
   );
-  const canonicalMessageSummary = canonicalProjectionPending
-    ? 'Syncing history…'
-    : `${activeConv.canonicalMessageCount ?? 0} message${activeConv.canonicalMessageCount === 1 ? '' : 's'}`;
+  const messageCount = activeConv.canonicalMessageCount ?? activeConv.messages.length;
+  const messageSummary = canonicalProjectionPending ? 'Syncing history…' : String(messageCount);
+  const displayParticipants = displayCanonicalParticipants(activeConv.canonicalParticipants ?? []);
+  const participantCount = displayParticipants.length || activeConv.participants.length;
   const artifactPreviewBaseRoot = chatArtifactPreviewBaseRoot({
     activeConversationUsesCollaboration,
     activeSessionProjectRoot: activeSessionProject?.root,
@@ -200,8 +203,8 @@ function ChatDetailPanelView({
               <div className="app-inspector-heading">{activeConv.name}</div>
             </div>
             <div className="app-inspector-meta-list">
-              {activeConv.canonicalParticipantCount !== undefined ? <MetaRow label="Canonical graph" value={`${activeConv.canonicalParticipantCount} participant${activeConv.canonicalParticipantCount === 1 ? '' : 's'} • ${canonicalMessageSummary} • ${activeConv.canonicalDelegatedExchangeCount ?? 0} delegation${activeConv.canonicalDelegatedExchangeCount === 1 ? '' : 's'}`} /> : null}
-              {activeConv.canonicalContextSnapshotCount !== undefined ? <MetaRow label="Context cache" value={`${activeConv.canonicalContextSnapshotCount} snapshot${activeConv.canonicalContextSnapshotCount === 1 ? '' : 's'}`} /> : null}
+              <MetaRow label="Participants" value={participantCount} />
+              <MetaRow label="Messages" value={messageSummary} />
               {activeConv.canonicalPresenceSummary ? <MetaRow label="Presence" value={activeConv.canonicalPresenceSummary} /> : null}
               <MetaRow label="Last active" value={activeLastMessage?.time} />
             </div>
@@ -211,7 +214,7 @@ function ChatDetailPanelView({
         <section className="app-detail-section">
           <div className="app-detail-kicker">Participants</div>
           <div className="app-inspector-list">
-            {activeConv.canonicalParticipants?.length ? activeConv.canonicalParticipants.map((participant) => {
+            {displayParticipants.length ? displayParticipants.map((participant) => {
               const isAgent = participant.kind === 'agent';
               const isSelfHuman = canonicalParticipantIsSelfHuman(participant);
               const displayName = canonicalParticipantDisplayName(activeConv, participant);
@@ -329,6 +332,10 @@ function ChatDetailPanelView({
         </section>
       </div>
     );
+  }
+
+  if (activeDetailTab === 'memory') {
+    return <ChatMemoryTab conversation={activeConv} projectRoot={activeSessionProject?.root} />;
   }
 
   if (activeDetailTab === 'artifacts') {

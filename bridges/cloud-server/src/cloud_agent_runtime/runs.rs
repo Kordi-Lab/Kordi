@@ -11,8 +11,11 @@ pub(crate) mod identity;
 mod leases;
 pub(crate) mod omp_state;
 mod prompt_history;
+pub(crate) mod route_fill;
+pub mod stop;
 pub(crate) mod subsession_lifecycle;
 pub(crate) mod subsessions;
+pub mod terminal_backfill;
 
 pub use authorization::{
     claim_has_shared_cloud_agent_target, execution_agent_id, request_identity,

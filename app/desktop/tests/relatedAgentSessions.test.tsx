@@ -6,7 +6,9 @@ import {
   relatedAgentSessionStatusById,
   relatedAgentSessionStatusMapsEqual,
 } from '../src/features/chat/relatedAgentSessions';
-import type { Conversation, DesktopChatToolSnapshot } from '../src/kordi-app/types';
+import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
+import { cloudAgentPublicBackgroundToolsFromTurn } from '../src/features/cloud/cloudAgentBackgroundSessions';
+import type { CanonicalSessionMessage, Conversation, DesktopChatToolSnapshot } from '../src/kordi-app/types';
 
 function spawnTool(
   sessionId: string,
@@ -112,4 +114,39 @@ test('derives live and terminal background session states from child conversatio
     relatedAgentSessionStatusMapsEqual(statuses, new Map([...statuses, ['running', 'done']])),
     false,
   );
+});
+
+test('group mention replies carry the spawned agent thread card for executor and members', () => {
+  const groupReply = (senderRole: 'owned-agent' | 'external-agent', tools: DesktopChatToolSnapshot[]): CanonicalSessionMessage => ({
+    id: `msg:cloud-agent-processing:msg:ui:request:${senderRole}`,
+    sessionId: 'session:group:weekend-trip',
+    senderIdentityId: 'agent:owner',
+    senderRole,
+    messageKind: 'agent-turn',
+    contentText: 'Started the background task.',
+    content: {
+      sender: 'Kordi',
+      deliveryState: 'complete',
+      requestId: 'msg:ui:request',
+      replyToMessageId: 'msg:ui:request',
+      sourceConversationId: 'cloud-group-agent:session:group:weekend-trip',
+      tools,
+    },
+    parentMessageId: 'msg:ui:request',
+    status: 'received',
+    sequenceNum: 2,
+    createdAtMs: 2,
+    updatedAtMs: 2,
+    sourceTransport: 'cloud-group-agent',
+  });
+  const executorTools = [spawnTool('subsession-group', { id: 'call_1|fc_1' })];
+  const memberTools = cloudAgentPublicBackgroundToolsFromTurn({ tools: executorTools });
+
+  for (const reply of [groupReply('owned-agent', executorTools), groupReply('external-agent', memberTools)]) {
+    const message = mapCanonicalMessage(reply, new Map());
+    assert.deepEqual(
+      relatedAgentSessionsFromTools(message?.turn?.tools).map(({ sessionId, title }) => ({ sessionId, title })),
+      [{ sessionId: 'subsession-group', title: 'Research orchestration' }],
+    );
+  }
 });

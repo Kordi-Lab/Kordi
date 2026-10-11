@@ -172,6 +172,8 @@ export type WorkspaceSidebarAccount = {
   cloudAccountDialogTab?: CloudAccountSettingsTabId | null;
   setCloudAccountDialogTab?: Dispatch<SetStateAction<CloudAccountSettingsTabId | null>>;
   cloudSettings?: CloudAccountSettingsConfig;
+  /** Memory route version from the server capabilities; the Memory tab hides without it. */
+  cloudMemoryVersion?: number | null;
   onUpdateCloudProfile?: (input: CloudProfileUpdateInput) => Promise<void>;
   onRequestCloudEmailCode?: () => Promise<CloudSignupCodeChallenge>;
   onVerifyCloudEmail?: (input: CloudAccountEmailVerificationInput) => Promise<void>;

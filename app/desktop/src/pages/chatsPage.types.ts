@@ -201,7 +201,7 @@ export type ChatsPageRuntime = {
   composerProviderOptions: ComposerProviderOption[];
   chatModelOptions?: ComposerModelOption[];
   isDesktopChatSending: boolean;
-  onStopDesktopChatTurn: () => void;
+  onStopDesktopChatTurn: () => Promise<boolean> | void;
   onStopCollaborationAgentRequest: NonNullable<
     ComponentProps<typeof MessageBubble>['onStopCollaborationAgentRequest']
   >;
@@ -294,7 +294,7 @@ export type ChatSessionPaneActions = {
   onStopCollaborationAgentRequest: NonNullable<
     ComponentProps<typeof MessageBubble>['onStopCollaborationAgentRequest']
   >;
-  onStopActiveTurn?: () => void;
+  onStopActiveTurn?: () => Promise<boolean> | void;
   onRequestCollaborationContact?: ComponentProps<
     typeof MessageBubble
   >['onRequestCollaborationContact'];

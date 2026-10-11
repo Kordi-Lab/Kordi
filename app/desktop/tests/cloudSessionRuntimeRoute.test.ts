@@ -319,7 +319,7 @@ test('a new desktop agent session inherits its source route and publishes one ti
   );
   assert.match(
     routeSyncSource,
-    /\[targetRuntimeSessionId\]: sourceRoute/,
+    /\[targetRuntimeSessionId\]: inheritedRoute/,
   );
   assert.match(
     routeSyncSource,

@@ -23,13 +23,15 @@ enum AgentSessionQueuePresentation {
         locallyQueued: Bool,
         confirmedRunStatus: String? = nil
     ) -> AgentExecutionSnapshot.Phase? {
-        guard kind == .agent,
-              let request = messages.first(where: { $0.id == requestID }),
+        guard let request = messages.first(where: { $0.id == requestID }),
               [.sent, .delivered, .read].contains(request.deliveryState) else { return nil }
         if let confirmedRunStatus {
             if confirmedRunStatus == "running" { return .preparing }
             if ["failed", "cancelled"].contains(confirmedRunStatus) { return nil }
         }
+        // A mention in a person or group chat has no session queue; it waits
+        // for its own reply.
+        guard kind == .agent else { return .preparing }
         if locallyQueued { return .queued }
         let snapshots = executionSnapshots(in: messages)
         let hasActivePredecessor = messages.contains { message in
@@ -75,5 +77,35 @@ enum AgentSessionQueuePresentation {
             copy.agentQueuePosition = positions[message.id]
             return copy
         }
+    }
+
+    /// The request the composer's Stop acts on: the newest running request
+    /// this account sent, else the newest queued one. Requests run one at a
+    /// time, so a request behind the front one is queued until the server
+    /// confirms it running.
+    static func composerStopRequestID(
+        pending: [String],
+        locallyQueued: Set<String>,
+        confirmedRunStatuses: [String: String]
+    ) -> String? {
+        let unfinished = pending.filter { !["failed", "cancelled"].contains(confirmedRunStatuses[$0] ?? "") }
+        let front = unfinished.first
+        let running = unfinished.filter { id in
+            confirmedRunStatuses[id] == "running" || (id == front && !locallyQueued.contains(id))
+        }
+        return running.last ?? unfinished.last
+    }
+}
+
+/// Where the composer shows Stop. Agent chats swap it for Send. Person and
+/// group chats keep Send and show a compact Stop beside it.
+enum ComposerStopPlacement: Equatable {
+    case replaceSend
+    case beside
+    case none
+
+    static func resolve(kind: ConversationKind, pendingRequestID: String?) -> ComposerStopPlacement {
+        guard pendingRequestID != nil else { return .none }
+        return kind == .agent ? .replaceSend : .beside
     }
 }

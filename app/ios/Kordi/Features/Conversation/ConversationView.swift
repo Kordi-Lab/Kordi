@@ -3440,7 +3440,8 @@ enum ConversationTimelineScrollBehavior {
         if previous.messageAction != current.messageAction || previous.replyToMessageId != current.replyToMessageId
             || previous.mentions != current.mentions || previous.reactions != current.reactions { return true }
         if previous.agentExecution != current.agentExecution || previous.agentQueuePosition != current.agentQueuePosition
-            || previous.backgroundAgentSessions != current.backgroundAgentSessions { return true }
+            || previous.backgroundAgentSessions != current.backgroundAgentSessions
+            || previous.agentReplyEnding != current.agentReplyEnding { return true }
         return previous.author != current.author || previous.authorName != current.authorName
             || previous.senderOwnerName != current.senderOwnerName || previous.errorMessage != current.errorMessage
             || (previous.editedAt != nil) != (current.editedAt != nil)

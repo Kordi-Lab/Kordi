@@ -10,11 +10,25 @@ use crate::sandbox_client::{LocalSandboxBackend, SandboxBackendHandle};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunnerStepOutcome {
     NoRun,
-    Completed { run_id: String },
-    FailedMissingProviderAuth { run_id: String },
-    FailedProviderError { run_id: String },
-    FailedMissingSandbox { run_id: String },
-    SkippedCancelled { run_id: String },
+    Completed {
+        run_id: String,
+    },
+    FailedMissingProviderAuth {
+        run_id: String,
+    },
+    FailedProviderError {
+        run_id: String,
+    },
+    FailedMissingSandbox {
+        run_id: String,
+    },
+    SkippedCancelled {
+        run_id: String,
+    },
+    /// The requester or owner stopped the run while it was generating.
+    Stopped {
+        run_id: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -330,6 +344,7 @@ where
     enum GenerationResult {
         Rust(String),
         Omp(String, crate::client::OmpState),
+        Stopped,
     }
     let result = {
         let generation = async {
@@ -345,7 +360,9 @@ where
             }
         };
         tokio::pin!(generation);
-        let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(40));
+        // The heartbeat also carries stop requests, so it runs more often than
+        // the lease needs. Dropping the generation aborts the model job.
+        let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(10));
         heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         heartbeat.tick().await;
         let deadline = tokio::time::sleep(std::time::Duration::from_secs(600));
@@ -353,7 +370,9 @@ where
         loop {
             tokio::select! {
                 result = &mut generation => break result,
-                _ = heartbeat.tick() => client.mark_running(&run.run_id).await?,
+                _ = heartbeat.tick() => if client.heartbeat(&run.run_id).await? {
+                    break Ok(GenerationResult::Stopped);
+                },
                 _ = &mut deadline => break Err(crate::model_loop::ModelLoopError::Provider("Cloud execution timed out".into())),
             }
         }
@@ -380,6 +399,8 @@ where
                 .complete_run_with_omp_state(&run.run_id, &response_text, state)
                 .await?
         }
+        // The server ended the run and published its terminal reply.
+        GenerationResult::Stopped => return Ok(RunnerStepOutcome::Stopped { run_id: run.run_id }),
     }
     Ok(RunnerStepOutcome::Completed { run_id: run.run_id })
 }

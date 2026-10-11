@@ -31,6 +31,10 @@ export function agentMessagePresentation(
   const owner = identity?.kind === 'agent' && identity.ownerIdentityId
     ? identityById.get(identity.ownerIdentityId)
     : undefined;
+  // Owner labels are viewer-relative: the viewer's own agent is always "You",
+  // whether the row is live, persisted, or a synced echo with a stored owner name.
+  const ownerId = identity?.kind === 'agent' ? identity.ownerIdentityId?.trim() : undefined;
+  const viewerOwnsAgent = Boolean(ownerId && profileHumanIdentityId && ownerId === profileHumanIdentityId);
   const localIdentitySender = identity?.kind === 'agent'
     && identity.source === 'local'
     && /^(?:my\s+)?kordi$/iu.test(contentSender ?? '')
@@ -38,10 +42,12 @@ export function agentMessagePresentation(
     : null;
   return {
     sender: isDefaultAgent(identity, owner)
-      ? defaultAgentDisplayName(owner?.displayName || contentOwnerName, localIdentitySender || contentSender || identity?.displayName)
+      // Own default agents keep the unscoped label so presentLocalAgentMessages
+      // applies the same local agent name the live turn row uses.
+      ? defaultAgentDisplayName(viewerOwnsAgent ? null : owner?.displayName || contentOwnerName, localIdentitySender || contentSender || identity?.displayName)
       : localIdentitySender || contentSender || identity?.displayName,
     senderOwnerName: isAgentTurn
-      ? contentOwnerName?.trim() || (owner?.id === profileHumanIdentityId ? 'You' : owner?.displayName?.trim()) || null
+      ? viewerOwnsAgent ? 'You' : contentOwnerName?.trim() || owner?.displayName?.trim() || null
       : null,
   };
 }

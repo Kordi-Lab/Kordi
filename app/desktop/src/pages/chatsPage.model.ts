@@ -410,19 +410,6 @@ export function collaborationThinkingDisplayName(value?: string | null) {
   return value[0]?.toUpperCase() + value.slice(1);
 }
 
-export function chatComposerSubmitMode(_input?: {
-  isDesktopChatSending?: boolean;
-  activeLiveTurnIsRunning?: boolean;
-  hasDraft?: boolean;
-  canSendWhileBusy?: boolean;
-}) {
-  // The composer is always in Send mode. Stopping a running turn happens via the
-  // inline stop button on the agent message itself (see #267 / #273); keeping a
-  // separate stop variant on the composer was redundant and prevented users from
-  // queueing a follow-up message while a turn was in flight.
-  return 'send' as const;
-}
-
 export function normalizeRoutingProviderId(providerId: string) {
   const normalized = providerId.trim().toLowerCase();
   return normalized === 'openai-codex' ? 'openai' : normalized;

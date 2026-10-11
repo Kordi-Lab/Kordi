@@ -2,46 +2,6 @@ use super::model_options::resolve_auth_choice_override_for_model;
 use super::*;
 
 impl DesktopRuntimeSession {
-    /// Select a model whose auth is supplied by a server-validated desktop
-    /// lease rather than the local login store. The caller must resolve that
-    /// lease before using this path.
-    pub fn set_hosted_model(&mut self, requested_model: &str) -> Result<()> {
-        let (provider, model_id) = requested_model
-            .trim()
-            .split_once('/')
-            .ok_or_else(|| anyhow!("Hosted model must include a provider"))?;
-        if provider.trim().is_empty() || model_id.trim().is_empty() {
-            bail!("Hosted model must include a provider and model");
-        }
-        let provider = login::normalize_provider_for_model_selection(provider);
-        let settings = Settings::load_merged(&self.setup.tool_ctx.cwd);
-        let mut registry = kordi_provider::registry::ModelRegistry::new();
-        registry.load_custom_models(&settings);
-        let model = crate::runtime_model::resolve_or_synthesize_model_with_settings(
-            &registry, &settings, &provider, model_id,
-        );
-        let previous_provider = self.setup.model.provider.clone();
-        let previous_model = self.setup.model.id.clone();
-        let previous_thinking = self.setup.thinking_level.clone();
-        self.setup.model = model;
-        refresh_provider_runtime_fields(&mut self.setup);
-        normalize_setup_thinking(&mut self.setup);
-        let session_has_visible_history = self.setup.session_created
-            && session_has_visible_message_entries(&self.setup.conn, &self.setup.session_id);
-        if session_has_visible_history
-            && (previous_provider != self.setup.model.provider
-                || previous_model != self.setup.model.id)
-        {
-            append_model_change_entry(&self.setup.conn, &self.setup.session_id, &self.setup.model)?;
-        }
-        if session_has_visible_history && previous_thinking != self.setup.thinking_level {
-            let thinking = ThinkingLevel::parse(&self.setup.thinking_level)
-                .ok_or_else(|| anyhow!("Unknown thinking level"))?;
-            append_thinking_level_change_entry(&self.setup.conn, &self.setup.session_id, thinking)?;
-        }
-        Ok(())
-    }
-
     /// Supplies provider credentials only to the next desktop turn. The
     /// credential is held in memory and is never saved as a local auth profile.
     pub fn set_ephemeral_provider_auth(

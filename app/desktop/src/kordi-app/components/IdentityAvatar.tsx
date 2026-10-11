@@ -9,9 +9,13 @@ import {
 } from '@/features/cloud/canonicalAvatar';
 import {
   DEFAULT_LOCAL_AGENT_AVATAR_SEED,
-} from '@/features/canonical/avatarIdentity';
+  getLocalAgentAvatar,
+  isLocalAgentAvatarSeed,
+  subscribeLocalAgentAvatar,
+} from '@/features/canonical/localAgentAvatar';
 import { cn } from '@/lib/utils';
 import { useAvatarOverride } from './avatarOverrides';
+import { useLocalAgentAvatar } from './useLocalAgentAvatar';
 import {
   resolveIdentityAvatarPresentation,
   useActiveLocalProfileIdentity,
@@ -110,11 +114,15 @@ export function useLocalProfileAvatarSeed() {
 }
 
 export function getLocalAgentAvatarSeed() {
-  return DEFAULT_LOCAL_AGENT_AVATAR_SEED;
+  return getLocalAgentAvatar().seed;
 }
 
 export function useLocalAgentAvatarSeed() {
-  return DEFAULT_LOCAL_AGENT_AVATAR_SEED;
+  return useSyncExternalStore(
+    subscribeLocalAgentAvatar,
+    getLocalAgentAvatarSeed,
+    () => DEFAULT_LOCAL_AGENT_AVATAR_SEED,
+  );
 }
 
 export function getIdentityAvatarKey(kind: IdentityAvatarKind, seed: string, avatarKey?: string | null) {
@@ -124,9 +132,12 @@ export function getIdentityAvatarKey(kind: IdentityAvatarKind, seed: string, ava
 
 export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, avatarKey, className, cornerRadius = '17%', generatedClassName, presenceStatus, presenceLabel }: IdentityAvatarProps) {
   const activeLocalProfileIdentity = useActiveLocalProfileIdentity();
+  const localAgentAvatar = useLocalAgentAvatar();
+  // Every seed that names the user's own agent renders the account's agent avatar.
+  const isOwnAgent = kind === 'agent' && !isSelf && isLocalAgentAvatarSeed(seed, localAgentAvatar);
   const { fallbackLabel, normalizedSeed, resolvedImageUrl: identityImageUrl } = resolveIdentityAvatarPresentation({
     kind,
-    seed,
+    seed: isOwnAgent ? localAgentAvatar.seed : seed,
     isSelf,
     name,
     imageUrl,
@@ -134,7 +145,8 @@ export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, ava
   });
   const resolvedAvatarKey = getIdentityAvatarKey(kind, normalizedSeed, isSelf ? null : avatarKey);
   const localOverride = useAvatarOverride(resolvedAvatarKey);
-  const generatedImageUrl = !identityImageUrl && !localOverride
+  const ownAgentImageUrl = isOwnAgent ? localAgentAvatar.imageUrl : null;
+  const generatedImageUrl = !identityImageUrl && !localOverride && !ownAgentImageUrl
     ? generatedAvatarPreviewUrl(
         kind === 'agent'
           ? AGENT_CANONICAL_AVATAR_STYLE
@@ -142,7 +154,7 @@ export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, ava
         normalizedSeed,
       )
     : null;
-  const originalImageUrl = canonicalAvatarImageUrl(identityImageUrl || localOverride)
+  const originalImageUrl = canonicalAvatarImageUrl(identityImageUrl || localOverride || ownAgentImageUrl)
     || generatedImageUrl;
   const needsNativeProxy = shouldLoadAvatarThroughNativeProxy(originalImageUrl);
   const remoteAvatar = useRemoteAvatarImage(originalImageUrl, needsNativeProxy);

@@ -1,4 +1,5 @@
 import type { Conversation, DesktopChatToolSnapshot, DesktopChatTurnSnapshot } from '@/kordi-app/types';
+import { sentenceCaseAgentThreadTitle } from './agentThreadTitle';
 
 const BACKGROUND_SESSION_PREFIX = 'Background session: ';
 const MAX_RELATED_SESSIONS = 4;
@@ -91,7 +92,7 @@ function parseBackgroundSession(resultText?: string | null): RelatedAgentSession
     return {
       sessionId,
       ...(turnId ? { turnId } : {}),
-      title,
+      title: sentenceCaseAgentThreadTitle(title),
       status: cleanText(parsed.status, 32) || 'running',
     };
   } catch {

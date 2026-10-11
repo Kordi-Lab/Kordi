@@ -70,7 +70,7 @@ test('project detail task panel renders synced delegated Cloud task activity row
   assert.doesNotMatch(markup, /No planning or execution task activity in this project session yet/);
   assert.match(markup, /app-inspector-source-row/);
   assert.match(markup, /Remote Kordi/);
-  assert.match(markup, /Synced Cloud task by Me\./);
+  assert.match(markup, /Synced Cloud task by Me(?!\.)/);
   assert.match(markup, /ID:\s*bridge_req_project_task/);
   assert.match(markup, /aria-label="Task target participants"/);
   assert.doesNotMatch(markup, /Delegated by Me/);
