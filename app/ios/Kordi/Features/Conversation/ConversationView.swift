@@ -323,6 +323,7 @@ struct ConversationView: View {
     @State private var liveShareURLs: [URL] = []
     @State private var showLiveShare = false
     @State private var shareItem: SharedFileItem?
+    @State private var documentReader: DocumentReaderRequest?
     @State private var messageShareItem: SharedMessageItem?
     @State private var showSessionDetails = false
     @State private var authorProfileConversation: ConversationSummary?
@@ -1375,6 +1376,7 @@ struct ConversationView: View {
         .navigationDestination(isPresented: $showSessionDetails) {
             SessionDetailView(conversation: conversation)
         }
+        .navigationDestination(item: $documentReader) { DocumentReaderScreen(request: $0) }
         .navigationDestination(item: $authorProfileConversation) { destination in
             SessionDetailView(
                 conversation: destination,
@@ -3200,6 +3202,11 @@ struct ConversationView: View {
         in timeline: [ChatMessage],
         previewImage: UIImage?
     ) {
+        // Markdown and HTML files open in the document reader instead of Quick Look.
+        if let request = DocumentReaderRequest(attachment: attachment, message: message, conversation: conversation) {
+            documentReader = request
+            return
+        }
         guard attachment.kind == .image else {
             prepare(attachment, forSharing: false)
             return
@@ -3242,61 +3249,6 @@ private struct ContactPresenceStatusText: View {
         Text(label)
             .font(.caption2)
             .lineLimit(1)
-    }
-}
-
-enum ContactPresencePresentation {
-    static func label(
-        for presence: CloudPresenceAccount?,
-        now: Date = Date(),
-        calendar: Calendar = .current,
-        locale: Locale = .current
-    ) -> String {
-        guard presence?.status != .online else { return "online" }
-        guard let value = presence?.lastSeenAt else {
-            return "last seen recently"
-        }
-
-        let lastSeen = parseCloudDate(value)
-        guard lastSeen != .distantPast else { return "last seen recently" }
-        let time = formattedTime(lastSeen, calendar: calendar, locale: locale)
-        if calendar.isDate(lastSeen, inSameDayAs: now) {
-            let elapsed = now.timeIntervalSince(lastSeen)
-            return elapsed >= -60 && elapsed < 60
-                ? "last seen just now"
-                : "last seen today at \(time)"
-        }
-        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
-           calendar.isDate(lastSeen, inSameDayAs: yesterday) {
-            return "last seen yesterday at \(time)"
-        }
-        return "last seen \(formattedDate(lastSeen, calendar: calendar, locale: locale)) at \(time)"
-    }
-
-    private static func formattedTime(_ date: Date, calendar: Calendar, locale: Locale) -> String {
-        date.formatted(
-            Date.FormatStyle(
-                date: .omitted,
-                time: .shortened,
-                locale: locale,
-                calendar: calendar,
-                timeZone: calendar.timeZone
-            )
-        )
-    }
-
-    private static func formattedDate(_ date: Date, calendar: Calendar, locale: Locale) -> String {
-        date.formatted(
-            Date.FormatStyle(
-                date: .omitted,
-                time: .omitted,
-                locale: locale,
-                calendar: calendar,
-                timeZone: calendar.timeZone
-            )
-            .month(.abbreviated)
-            .day()
-        )
     }
 }
 

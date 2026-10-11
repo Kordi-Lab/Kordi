@@ -42,7 +42,7 @@ enum KordiPreviewModePersistence {
         "--preview-companion-return", "--preview-contact-chat", "--preview-direct-call", "--preview-group-call",
         "--preview-group-detail", "--preview-group-memory", "--preview-group-invite", "--preview-media", "--preview-media-messages",
         "--preview-media-expanded", "--preview-media-separated", "--preview-photo-send",
-        "--preview-connectors",
+        "--preview-connectors", "--preview-shared-document",
     ]
 
     static func launchRequested(by arguments: [String]) -> Bool {
@@ -1150,15 +1150,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// The memory routes for the signed-in account, or the offline sample store in preview mode.
+    /// The memory and shared document routes for the signed-in account, or offline samples in preview mode.
     func makeMemoryService() -> any MemoryService {
         if previewMode { return PreviewMemoryService() }
         return CloudMemoryService(api: api) { [weak self] in self?.token }
     }
+    func makeDocumentService() -> any DocumentService { previewMode ? PreviewDocumentService() : CloudDocumentService(api: api) { [weak self] in self?.token } }
 
-    func markDeviceReviewSeen() {
-        deviceReviewRequired = false
-    }
+    func markDeviceReviewSeen() { deviceReviewRequired = false }
 
     func confirmDevice(_ device: CloudDeviceAuthorization) async -> Bool {
         guard let token else { return false }

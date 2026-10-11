@@ -53,6 +53,7 @@ struct SessionDetailView: View {
     @State private var previewURL: URL?
     @State private var mediaPreview: MediaPreviewPresentation?
     @State private var shareItem: SharedFileItem?
+    @State private var documentReader: DocumentReaderRequest?
     @State private var loadingAttachmentId: String?
     @State private var featureNotice: SessionFeatureNotice?
     @State private var groupManagementPresentation: GroupManagementPresentation?
@@ -306,6 +307,7 @@ struct SessionDetailView: View {
                 do { try await Task.sleep(for: .seconds(3)) } catch { return }
             }
         }
+        .navigationDestination(item: $documentReader) { DocumentReaderScreen(request: $0) }
         .navigationDestination(item: $selectedAgentThread) { task in
             AgentSubsessionView(sessionId: task.sessionId)
         }
@@ -424,7 +426,7 @@ struct SessionDetailView: View {
                 if let artifacts = activity?.artifacts, !artifacts.isEmpty {
                     SessionDetailCard(title: "Generated") {
                         ForEach(Array(artifacts.enumerated()), id: \.element.id) { index, artifact in
-                            CloudArtifactRow(artifact: artifact)
+                            CloudArtifactRow(artifact: artifact, onOpen: documentOpener(for: artifact))
                             if index < artifacts.count - 1 { Divider() }
                         }
                     }
@@ -436,7 +438,7 @@ struct SessionDetailView: View {
                             SessionDetailFileRow(
                                 item: item,
                                 isLoading: loadingAttachmentId == item.attachment.id,
-                                onReview: { prepare(item.attachment, forSharing: false) },
+                                onReview: { review(item) },
                                 onDownload: { prepare(item.attachment, forSharing: true) }
                             )
                             if index < fileAttachments.count - 1 { Divider() }
@@ -610,6 +612,22 @@ struct SessionDetailView: View {
             in: model.messages(for: currentConversation),
             initialImage: nil
         )
+    }
+
+    /// Markdown and HTML files open in the document reader; others in Quick Look.
+    private func review(_ item: SessionDetailAttachment) {
+        if let request = DocumentReaderRequest(attachment: item.attachment, message: item.message, conversation: currentConversation) {
+            documentReader = request
+        } else {
+            prepare(item.attachment, forSharing: false)
+        }
+    }
+
+    /// Nil for artifacts that stay on the Mac or are not documents.
+    private func documentOpener(for artifact: CloudSessionArtifactActivity) -> (() -> Void)? {
+        let messages = model.messages(for: currentConversation)
+        guard let request = DocumentReaderRequest(artifact: artifact, messages: messages, conversation: currentConversation) else { return nil }
+        return { documentReader = request }
     }
 
     private func prepare(_ attachment: ChatAttachment, forSharing: Bool) {
@@ -1137,7 +1155,7 @@ struct SessionDetailEmptyState: View {
     }
 }
 
-private struct SessionDetailAttachment: Identifiable {
+struct SessionDetailAttachment: Identifiable {
     let message: ChatMessage
     let attachment: ChatAttachment
     var id: String { "\(message.id):\(attachment.id)" }
@@ -1194,66 +1212,6 @@ private struct SessionMediaThumbnail: View {
         guard !Task.isCancelled else { return }
         image = loaded
         hasFailed = loaded == nil
-    }
-}
-
-private struct CloudArtifactRow: View {
-    let artifact: CloudSessionArtifactActivity
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: artifact.kind == "document" ? "doc.text.fill" : "shippingbox.fill")
-                .foregroundStyle(KordiTheme.signalBlue)
-                .frame(width: 38, height: 38)
-                .background(KordiTheme.signalBlue.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(artifact.name).font(.headline)
-                Text(artifact.summary.nonEmpty ?? artifact.path)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-        }
-        .padding(.vertical, 3)
-    }
-}
-
-private struct SessionDetailFileRow: View {
-    let item: SessionDetailAttachment
-    let isLoading: Bool
-    let onReview: () -> Void
-    let onDownload: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: item.attachment.kind == .image ? "photo.fill" : "doc.text.fill")
-                .foregroundStyle(item.attachment.kind == .image ? KordiTheme.signalBlue : .secondary)
-                .frame(width: 38, height: 38)
-                .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(item.attachment.name).font(.headline).lineLimit(1)
-                Text([item.attachment.formatLabel, item.attachment.sizeLabel].compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.secondary)
-                Text("Shared by \(item.message.authorName)")
-                    .font(.caption2).foregroundStyle(.tertiary)
-            }
-            Spacer(minLength: 4)
-            if isLoading {
-                ProgressView().frame(width: 44, height: 44)
-            } else {
-                Menu {
-                    Button(action: onReview) { Label("Review", systemImage: "eye") }
-                    Button(action: onDownload) { Label("Download / Save to Files", systemImage: "arrow.down.circle") }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .contentShape(Rectangle())
-                .accessibilityLabel("More actions for \(item.attachment.name)")
-            }
-        }
-        .padding(.vertical, 3)
     }
 }
 
