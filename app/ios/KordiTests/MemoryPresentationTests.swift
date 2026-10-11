@@ -254,6 +254,18 @@ extension MemoryPresentationTests {
         XCTAssertEqual(MemoryPresentation.conversationScopes(for: other).group, ["session:group:"])
     }
 
+    func testGroupScopesMatchTheCloudGroupConversationId() {
+        let local = "session:group:a47e1bcf-4911-5988-9150-1c106bd49848"
+        let cloudId = "01a12383-586f-7842-955b-571a9e31c942"
+        let group = groupConversation(sessionId: local, groupSpaceId: local)
+        let scopes = MemoryPresentation.conversationScopes(for: group, cloudConversationIds: [cloudId, " "])
+        XCTAssertTrue(scopes.group.contains(cloudId))
+        XCTAssertFalse(scopes.group.contains(""))
+        XCTAssertEqual(MemoryPresentation.memories([scoped("cloud", .group, cloudId)], for: scopes).map(\.memoryId), ["cloud"])
+        let direct = directConversation(sessionId: "chat-1")
+        XCTAssertTrue(MemoryPresentation.conversationScopes(for: direct, cloudConversationIds: [cloudId]).group.isEmpty)
+    }
+
     func testGroupTabMatchesEachScopeIdFormNewestFirst() {
         let uuid = "7f3c2a10-5b1e-4c3d-9a8f-2e6b1d0c4f55"
         let conversation = groupConversation(sessionId: "session:group:\(uuid)", groupSpaceId: "space-123")

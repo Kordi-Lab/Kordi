@@ -6,6 +6,8 @@ import SwiftUI
 struct SessionMemoryPage: View {
     let conversation: ConversationSummary
     @StateObject private var model: MemorySettingsModel
+    /// The cloud group conversation ids, or `nil` until they load.
+    @State private var cloudGroupIds: [String]?
 
     init(conversation: ConversationSummary, account: CloudAccount?, service: @autoclosure @escaping () -> any MemoryService) {
         self.conversation = conversation
@@ -18,7 +20,9 @@ struct SessionMemoryPage: View {
     }
 
     private var memories: [CloudMemory] {
-        model.memories(for: MemoryPresentation.conversationScopes(for: conversation))
+        model.memories(for: MemoryPresentation.conversationScopes(
+            for: conversation, cloudConversationIds: cloudGroupIds ?? []
+        ))
     }
 
     var body: some View {
@@ -30,7 +34,7 @@ struct SessionMemoryPage: View {
                     .padding(.vertical, 6)
             }
 
-            if !model.hasLoaded {
+            if !model.hasLoaded || cloudGroupIds == nil {
                 if model.errorMessage == nil {
                     HStack(spacing: 10) {
                         ProgressView()
@@ -64,6 +68,9 @@ struct SessionMemoryPage: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 4)
         .task { await model.load() }
+        .task(id: conversation.sessionId) {
+            cloudGroupIds = await model.cloudGroupConversationIds(for: conversation)
+        }
         .accessibilityIdentifier("session-memory-page")
     }
 }

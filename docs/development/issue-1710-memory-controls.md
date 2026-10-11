@@ -327,6 +327,10 @@ can edit or delete them. Client side:
   "Only group members can change this memory." in the existing inline error.
 - "Forget everything" deletes only the caller's own memories, so its count and
   the list it clears leave other members' group memories in place.
+- The desktop group Memory tab resolves the cloud group id through the chat
+  sync conversation mapping (`desktop_chat_sync_conversations`), and the iPhone
+  tab through its cached chat sync conversations, so memories saved under the
+  cloud id show for a group whose session id is the local form.
 
 ## PR 5: replay state and deletion register
 

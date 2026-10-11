@@ -45,7 +45,12 @@ enum MemoryPresentation {
     /// session id) or the agent subsession id, and group memories under the group
     /// id: the group session id without `session:group:`. The group space id and
     /// the full session id match too. iPhone conversations carry no project.
-    static func conversationScopes(for conversation: ConversationSummary) -> ConversationScopes {
+    /// The server stores group memories under the cloud group conversation id,
+    /// which differs from the group session id, so `cloudConversationIds` match too.
+    static func conversationScopes(
+        for conversation: ConversationSummary,
+        cloudConversationIds: [String] = []
+    ) -> ConversationScopes {
         var scopes = ConversationScopes()
         let session = conversation.sessionId.nonEmptyMemoryText
         for id in [session, conversation.subsessionId?.nonEmptyMemoryText].compactMap({ $0 }) {
@@ -59,6 +64,9 @@ enum MemoryPresentation {
         }
         if conversation.kind == .group, let space = conversation.groupSpaceId?.nonEmptyMemoryText {
             scopes.group.insert(space)
+        }
+        if conversation.kind == .group {
+            scopes.group.formUnion(cloudConversationIds.compactMap(\.nonEmptyMemoryText))
         }
         return scopes
     }

@@ -5,6 +5,7 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
+import { cloudGroupConversationIds, type CloudConversationLoader } from '../src/features/memory/cloudGroupConversation';
 import { conversationMemoryScopes, isMemoryForConversation } from '../src/features/memory/conversationMemory';
 import { publishMemoryVersion } from '../src/features/memory/memoryAvailability';
 import {
@@ -85,6 +86,25 @@ test('a group chat matches the bare group id, the session id, and the space id',
   assert.equal(isMemoryForConversation(memory('conversation', '0b7c-uuid'), scopes), false);
 });
 
+test('a group chat matches the cloud group conversation id from the chat sync mapping', () => {
+  const sessionId = 'session:group:a47e1bcf-4911-5988-9150-1c106bd49848';
+  const cloudId = '01a12383-586f-7842-955b-571a9e31c942';
+  const scopes = conversationMemoryScopes({
+    sessionIds: [sessionId],
+    participantSpaceId: `group:${sessionId}`,
+    cloudConversationIds: [` ${cloudId} `, '', null],
+  });
+  assert.ok(scopes.group.includes(cloudId));
+  assert.ok(scopes.group.includes('a47e1bcf-4911-5988-9150-1c106bd49848'));
+  assert.equal(isMemoryForConversation(memory('group', cloudId), scopes), true);
+  assert.equal(isMemoryForConversation(memory('conversation', cloudId), scopes), false);
+  assert.deepEqual(cloudGroupConversationIds([
+    { id: cloudId, kind: 'group', legacy_session_id: sessionId },
+    { id: 'direct-1', kind: 'direct', legacy_session_id: sessionId },
+    { id: 'other-group', kind: 'group', legacy_session_id: 'session:group:other' },
+  ], [sessionId, undefined]), [cloudId]);
+});
+
 test('a project chat matches its project root and chat project id', () => {
   const scopes = conversationMemoryScopes({ sessionIds: ['chat-1'], projectIds: ['/Users/example/site', 'project-7', null] });
   assert.equal(isMemoryForConversation(memory('project', '/Users/example/site'), scopes), true);
@@ -160,6 +180,28 @@ test('a group chat Memory tab lists shared group memories and who saved the ones
       assert.ok(host.querySelector(`[data-memory-lesson="${id}"] button[aria-label^="Edit memory"]`));
       assert.ok(host.querySelector(`[data-memory-lesson="${id}"] button[aria-label^="Delete memory"]`));
     }
+  });
+});
+
+test('a group chat Memory tab shows memories saved under the cloud group id', async () => {
+  const client = createPreviewMemoryClient({ latencyMs: 0 });
+  const localSessionId = 'session:group:a47e1bcf-4911-5988-9150-1c106bd49848';
+  const accounts: string[] = [];
+  const load: CloudConversationLoader = async (accountId) => {
+    accounts.push(accountId);
+    return [{ id: PREVIEW_GROUP_MEMORY_SCOPE_ID, kind: 'group', legacy_session_id: localSessionId }];
+  };
+  const tab = (
+    <ChatMemoryTab
+      conversation={{ id: localSessionId, canonicalSessionId: localSessionId, participantSpaceId: `group:${localSessionId}` }}
+      client={client}
+      loadCloudConversations={load}
+    />
+  );
+  await withRendered(tab, async (host) => {
+    assert.deepEqual(rowIds(host), ['lesson-10', 'lesson-7']);
+    assert.doesNotMatch(host.textContent ?? '', /No memories yet\./);
+    assert.deepEqual(accounts, ['acct-preview-taylor']);
   });
 });
 

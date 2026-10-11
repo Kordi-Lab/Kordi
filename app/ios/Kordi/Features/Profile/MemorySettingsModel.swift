@@ -9,6 +9,12 @@ protocol MemoryService: AnyObject {
     func delete(memoryId: String) async throws
     func forgetAll() async throws -> Int
     func updateSettings(memoryEnabled: Bool?, excludeSensitive: Bool?) async throws -> CloudMemorySettings
+    /// The cloud ids of the group conversations whose client session id is `sessionId`.
+    func cloudGroupConversationIds(sessionId: String) async -> [String]
+}
+
+extension MemoryService {
+    func cloudGroupConversationIds(sessionId: String) async -> [String] { [] }
 }
 
 @MainActor
@@ -46,6 +52,14 @@ final class CloudMemoryService: MemoryService {
 
     func updateSettings(memoryEnabled: Bool?, excludeSensitive: Bool?) async throws -> CloudMemorySettings {
         try await api.updateMemorySettings(token: token(), memoryEnabled: memoryEnabled, excludeSensitive: excludeSensitive)
+    }
+
+    func cloudGroupConversationIds(sessionId: String) async -> [String] {
+        let sessionId = sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sessionId.isEmpty else { return [] }
+        return await api.cachedChatConversations()
+            .filter { $0.kind == "group" && $0.legacySessionId?.trimmingCharacters(in: .whitespacesAndNewlines) == sessionId }
+            .map(\.id)
     }
 }
 
@@ -184,6 +198,12 @@ final class MemorySettingsModel: ObservableObject {
     /// The memories a conversation's Memory tab lists.
     func memories(for scopes: MemoryPresentation.ConversationScopes) -> [CloudMemory] {
         MemoryPresentation.memories(memories, for: scopes)
+    }
+
+    /// The cloud group conversation ids a group's memories are saved under.
+    func cloudGroupConversationIds(for conversation: ConversationSummary) async -> [String] {
+        guard conversation.kind == .group else { return [] }
+        return await service.cloudGroupConversationIds(sessionId: conversation.sessionId)
     }
 
     func syncCaption(now: Date = Date()) -> String? {

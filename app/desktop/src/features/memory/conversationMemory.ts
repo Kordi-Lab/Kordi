@@ -24,6 +24,11 @@ export type ConversationMemoryScopeInput = {
   participantSpaceId?: MaybeId;
   /** The project root path the Mac saves project memories under, plus the chat project id. */
   projectIds?: readonly MaybeId[];
+  /**
+   * The cloud group conversation ids of a group chat. Group memories are saved
+   * under the cloud id, which differs from the local group session id.
+   */
+  cloudConversationIds?: readonly MaybeId[];
 };
 
 function present(values: readonly MaybeId[]): string[] {
@@ -40,13 +45,17 @@ function groupIdForms(value: string): string[] {
 /**
  * Every scope id a memory of this chat may be stored under. A group memory
  * uses the group id: the group session id with `session:group:` stripped. The
- * full session id and the space id are accepted too, as older writers used them.
+ * full session id and the space id are accepted too, as older writers used them,
+ * and so is the cloud group conversation id the server stores group memories under.
  */
 export function conversationMemoryScopes(input: ConversationMemoryScopeInput): ConversationMemoryScopes {
   const sessionIds = present(input.sessionIds);
   return {
     conversation: sessionIds,
-    group: present([...sessionIds, input.participantSpaceId].flatMap((id) => (id ? groupIdForms(id.trim()) : []))),
+    group: present([
+      ...[...sessionIds, input.participantSpaceId].flatMap((id) => (id ? groupIdForms(id.trim()) : [])),
+      ...(input.cloudConversationIds ?? []),
+    ]),
     project: present(input.projectIds ?? []),
   };
 }
