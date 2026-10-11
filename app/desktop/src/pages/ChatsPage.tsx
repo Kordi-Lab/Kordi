@@ -55,7 +55,6 @@ export {
   chatCompanionCandidates,
   chatCompanionSideForPaneKinds,
   chatCompanionSideFromDropPosition,
-  chatComposerSubmitMode,
   chatSideAgentConversationForOpenRequest,
   forkSnapshotBoundaryIndexForMessages,
   forkSourceMessageIds,

@@ -44,6 +44,9 @@ export function cloudMessageDeliveryPresentation(
     ? 'failed'
     : cancelled
       ? 'cancelled'
+      // A running agent reply shows its processing row on every device.
+      : agentDeliveryState === 'processing'
+        ? 'processing'
       : message.direction === 'outgoing'
         ? (message.readAt ? 'read' : 'delivered')
         : agentDeliveryState === 'complete'

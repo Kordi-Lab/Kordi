@@ -265,6 +265,21 @@ pub(super) fn is_auto_compaction_failure_status(message: &str) -> bool {
     message.starts_with("Auto-compaction failed:")
 }
 
+fn pending_tool_snapshot(id: &str, name: &str) -> DesktopChatToolSnapshot {
+    DesktopChatToolSnapshot {
+        id: id.to_string(),
+        name: name.to_string(),
+        status: "preparing".to_string(),
+        arguments: String::new(),
+        live_output: String::new(),
+        result_text: None,
+        detail: None,
+        artifact_path: None,
+        tool_layer: None,
+        is_error: false,
+    }
+}
+
 pub(super) fn apply_desktop_turn_event(
     snapshot: &Arc<Mutex<DesktopChatTurnSnapshot>>,
     event: &TurnEvent,
@@ -291,18 +306,11 @@ pub(super) fn apply_desktop_turn_event(
             state.status = "tooling".to_string();
             state.message = "Working…".to_string();
             state.error = None;
-            state.tools.push(DesktopChatToolSnapshot {
-                id: id.clone(),
-                name: name.clone(),
-                status: "preparing".to_string(),
-                arguments: String::new(),
-                live_output: String::new(),
-                result_text: None,
-                detail: None,
-                artifact_path: None,
-                tool_layer: None,
-                is_error: false,
-            });
+            // OMP can deliver a host tool's execution and result before its
+            // start event; never reset a tool that already ran.
+            if !state.tools.iter().any(|tool| tool.id == *id) {
+                state.tools.push(pending_tool_snapshot(id, name));
+            }
         }),
         TurnEvent::ToolCallDelta { id, args } => update_turn(snapshot, |state| {
             if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
@@ -324,11 +332,11 @@ pub(super) fn apply_desktop_turn_event(
         }),
         TurnEvent::ToolResult {
             id,
+            name,
             content,
             details,
             artifact_path,
             is_error,
-            ..
         } => update_turn(snapshot, |state| {
             state.status = "tooling".to_string();
             state.message = if *is_error {
@@ -336,6 +344,9 @@ pub(super) fn apply_desktop_turn_event(
             } else {
                 "Tool finished".to_string()
             };
+            if !state.tools.iter().any(|tool| tool.id == *id) {
+                state.tools.push(pending_tool_snapshot(id, name));
+            }
             if let Some(tool) = state.tools.iter_mut().find(|tool| tool.id == *id) {
                 tool.status = if *is_error {
                     "error".to_string()

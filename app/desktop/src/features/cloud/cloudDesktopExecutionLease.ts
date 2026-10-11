@@ -1,5 +1,6 @@
 import type { CloudAgentRunClaimInput, CloudAuthClient, CloudMessage, SendCloudMessageOptions } from './authClient';
 import { cloudOperationUuid } from './chatSyncMapping';
+import { CloudAuthError } from './cloudAuthError';
 import { cancelDesktopChatTurn, renewDesktopChatExecutionLease } from '@/lib/desktop';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 
@@ -28,6 +29,15 @@ export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient,
   let lost = false;
   let disposed = false;
   let renewing = false;
+  // The requester or owner can stop the run from any device; renewals and
+  // admission checks carry that request.
+  let stopRequested = false;
+  let onStop: (() => void) | null = null;
+  const noteStop = (response: { cancelRequested?: boolean } | null | undefined) => {
+    if (!response?.cancelRequested || stopRequested) return;
+    stopRequested = true;
+    onStop?.();
+  };
   const loseLease = () => {
     lost = true;
     if (turnId) void cancelDesktopChatTurn(turnId).catch(() => undefined);
@@ -37,9 +47,10 @@ export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient,
     if (deadline <= Date.now()) { loseLease(); return; }
     renewing = true;
     const sentAt = Date.now();
-    void client.desktopAgentExecution(token, `${encodeURIComponent(result.runId)}/renew`, { claimId })
-      .then(async () => {
+    void client.desktopAgentExecution<{ cancelRequested?: boolean }>(token, `${encodeURIComponent(result.runId)}/renew`, { claimId })
+      .then(async (response) => {
         if (lost || disposed) return;
+        noteStop(response);
         deadline = sentAt + DESKTOP_EXECUTION_WATCHDOG_MS;
         if (deadline <= Date.now()) throw new Error('Execution lease expired during renewal.');
         if (turnId) await renewDesktopChatExecutionLease(turnId, deadline);
@@ -52,12 +63,18 @@ export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient,
       return [...messages.filter(message => !message.id.startsWith('cloud-group-persona:')
         && !message.id.startsWith('requester:')), identityMessage];
     },
+    /** Whether this Mac no longer owns the run, so it can no longer publish. */
+    get lost() { return lost || deadline <= Date.now(); },
     get deadline() { if (lost || deadline <= Date.now()) throw new Error('Execution lease lost.'); return deadline; },
     attach(id: string) { turnId = id; if (lost || deadline <= Date.now()) loseLease(); },
     async admitted() {
       if (lost || deadline <= Date.now()) { loseLease(); throw new Error('Execution lease lost.'); }
-      return (await client.desktopAgentExecution<{admitted:boolean}>(token, `${encodeURIComponent(result.runId)}/admit`, { claimId })).admitted;
+      const response = await client.desktopAgentExecution<{admitted:boolean; cancelRequested?: boolean}>(token, `${encodeURIComponent(result.runId)}/admit`, { claimId });
+      noteStop(response);
+      return response.admitted;
     },
+    /** Runs `handler` once when a stop is requested, including one already noted. */
+    onStopRequested(handler: () => void) { onStop = handler; if (stopRequested) handler(); },
     dispose() { disposed = true; clearInterval(timer); },
     async cancel() {
       if (lost || disposed) return;
@@ -66,9 +83,15 @@ export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient,
     publisher: {
       sendMessage: async (_token: string, _peer: string, body: string, options: SendCloudMessageOptions = {}): Promise<CloudMessage> => {
         if (lost || deadline <= Date.now()) { loseLease(); throw new Error('Execution lease lost.'); }
-        return client.desktopAgentExecution(token, `${encodeURIComponent(result.runId)}/progress`, {
-          claimId, body, clientMessageId: cloudOperationUuid(options.clientMessageId),
-        });
+        try {
+          return await client.desktopAgentExecution<CloudMessage>(token, `${encodeURIComponent(result.runId)}/progress`, {
+            claimId, body, clientMessageId: cloudOperationUuid(options.clientMessageId),
+          });
+        } catch (error) {
+          // The server refuses a run this Mac no longer owns.
+          if (error instanceof CloudAuthError && error.status === 409) loseLease();
+          throw error;
+        }
       },
     },
   };

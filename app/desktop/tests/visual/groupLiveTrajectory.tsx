@@ -6,6 +6,7 @@ import { MessageBubble } from '../../src/kordi-app/components/transcript';
 import { ChatPaneLayout } from '../../src/pages/ChatPaneLayout';
 import { projectCloudGroupLiveTurns } from '../../src/features/cloud/cloudGroupLiveProjection';
 import { cloudGroupAgentRuntimeSessionId } from '../../src/features/cloud/cloudAgentRuntime';
+import { buildReplyAttribution } from '../../src/features/chat/replyAttribution';
 import { createCanonicalSessionReadModel } from '../../src/features/canonical/sessionReadModel';
 import type { CanonicalSessionState, DesktopChatTurnSnapshot, Message } from '../../src/kordi-app/types';
 import '../../src/index.css';
@@ -19,6 +20,8 @@ const history: Message[] = Array.from({ length: 20 }, (_, i) => ({
   id: `history-${i}`, role: 'person', sender: 'Synthetic member', time: '12:00',
   text: `Synthetic earlier message ${i + 1}. ${'Context stays in the conversation during a follow-up. '.repeat(5)}`,
 }));
+const requestText = '@SyntheticAgent From now on, in this group always start your reply with a short summary of the request.';
+const requestMentions = [{ label: 'SyntheticAgent', targetKind: 'agent' as const, startUtf16: 0, lengthUtf16: 15 }];
 function Fixture() {
   const [phase, setPhase] = useState<'waiting' | 'tools' | 'stalled' | 'text' | 'complete' | 'public'>('waiting');
   const [draft, setDraft] = useState('Keep this draft');
@@ -48,7 +51,7 @@ function Fixture() {
   } as CanonicalSessionState;
   const projected = projectCloudGroupLiveTurns(canonical, { request: live }, 'owner')!;
   const response = createCanonicalSessionReadModel(projected).messages('synthetic-group')[0];
-  const messages: Message[] = [...history, { id: 'request', role: 'user', text: 'Synthetic request', time: '12:01' }, response];
+  const messages: Message[] = buildReplyAttribution([...history, { id: 'request', role: 'user', sender: 'Synthetic Owner', text: requestText, mentions: requestMentions, time: '12:01' }, response]).messages;
   return <>
     <div style={{ position: 'fixed', right: 30, top: 12, zIndex: 1000 }}>
       <button onClick={() => setPhase('tools')}>Tool progress</button>
@@ -67,7 +70,7 @@ function Fixture() {
         <header data-testid="header" className="app-page-header app-chat-pane-header">Synthetic group</header>
         <div className="flex min-h-0 flex-1 flex-col">
           <VirtualTranscript items={messages} sessionKey="synthetic-group" getItemKey={message => message.id!}
-            estimateSize={() => 150} scrollClassName="min-h-0 flex-1" renderItem={message => <MessageBubble msg={message} />} />
+            estimateSize={() => 150} scrollClassName="min-h-0 flex-1" renderItem={message => <MessageBubble msg={message} onStopActiveTurn={noop} onStopCollaborationAgentRequest={noop} />} />
           <textarea data-testid="composer" aria-label="Message" className="shrink-0" value={draft} onChange={e => setDraft(e.target.value)} />
         </div>
       </ChatPaneLayout>} />

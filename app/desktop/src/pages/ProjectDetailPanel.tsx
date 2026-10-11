@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import type { ConversationParticipant, DesktopChatTurnSnapshot, DetailTab, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
+import { ChatMemoryTab } from '@/pages/ChatMemoryTab';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
 
@@ -148,6 +149,10 @@ export function ProjectDetailPanel({
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed();
   const projectArtifacts = mergeArtifacts(artifacts, relatedProjectArtifacts(activeProject));
+
+  if (activeDetailTab === 'memory') {
+    return <ChatMemoryTab conversation={{ id: activeProjectSession.id }} projectRoot={activeProject.root} />;
+  }
 
   if (activeDetailTab === 'info') {
     return (

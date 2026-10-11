@@ -10,7 +10,6 @@ import { resolvedPublishedAgentRuntimeRoute } from '@/features/chat/agentSession
 import { cloudAgentContextMessagesFromConversation } from '@/features/chat/chatCreateFlows';
 import { persistQueuedDesktopMessage } from '@/features/chat/queuedDesktopMessages';
 import { restoredSelfAgentContextMessages } from './restoredSelfAgentContext';
-import { waitForCloudAgentTurn } from '@/features/cloud/cloudAgentLocalExecution';
 import { cloudAgentNoProviderNoticeText,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
@@ -90,6 +89,7 @@ import {
 } from './localAgentTurnDispatch';
 import { localChatSendDelayReason,localChatTargetHasRunningTurn,queuedDesktopChatMessageFromDraft } from "./localChatQueue";
 import { mentionsLocalAgent } from './mentions';
+import { useSessionQueueWaits } from './sessionQueueWaits';
 import { activeConversationMatchesSendScope,claimConversationSend,releaseConversationSend } from './messageSendScope';
 import {
 appendOptimisticCanonicalMessage,appendOptimisticCollaborationMessage,appendOptimisticOutboundMessage,
@@ -131,47 +131,7 @@ async function persistCanonicalGroupMessageFailure(
   await upsertCanonicalMessage(request);
 }
 
-export type LocalAgentRelayTurnResult = Pick<DesktopChatTurnSnapshot, 'assistantText' | 'error' | 'succeeded' | 'status'>;
-export type LocalAgentRelayTerminalDeliveryState = 'responded' | 'cancelled' | 'processing_failed';
-
-function turnWasCancelled(turn: Pick<LocalAgentRelayTurnResult, 'status'>) {
-  return turn.status === 'cancelled' || turn.status === 'cancelling';
-}
-
-export function localAgentRelayTerminalDeliveryState(turn: LocalAgentRelayTurnResult): LocalAgentRelayTerminalDeliveryState {
-  if (turnWasCancelled(turn)) return 'cancelled';
-  return turn.succeeded && turn.assistantText.trim() ? 'responded' : 'processing_failed';
-}
-
-export function localAgentRelayFailureText(turn: Pick<LocalAgentRelayTurnResult, 'error' | 'status'>) {
-  if (turnWasCancelled(turn)) return 'Stopped';
-  return 'Processing failed';
-}
-
-export async function awaitRelayProgressBeforeTerminal(
-  progressRelayPromise: Promise<void> | null,
-  timeoutMs = 1_500,
-) {
-  if (!progressRelayPromise) return;
-  await Promise.race([
-    progressRelayPromise,
-    new Promise<void>((resolve) => globalThis.setTimeout(resolve, timeoutMs)),
-  ]);
-}
-
-export async function waitForCompletedDesktopTurn(
-  fetchTurnState: (turnId: string) => Promise<DesktopChatTurnSnapshot>,
-  turnId: string,
-  pollIntervalMs = 60,
-) {
-  let turn = await fetchTurnState(turnId);
-  while (!turn.completed) {
-    await new Promise<void>((resolve) => globalThis.setTimeout(resolve, pollIntervalMs));
-    turn = await fetchTurnState(turn.id);
-  }
-  return turn;
-}
-
+export { awaitRelayProgressBeforeTerminal,localAgentRelayFailureText,localAgentRelayTerminalDeliveryState,waitForCompletedDesktopTurn,type LocalAgentRelayTerminalDeliveryState,type LocalAgentRelayTurnResult } from './localAgentRelayTurns';
 export { collaborationConversationSendPlan } from './messageSendScope';
 export function activeLocalTurnShouldDelayChatSend({
   activeConversationUsesCollaborationRouting,
@@ -311,18 +271,9 @@ export function useChatMessageActions({
   const queuedDesktopMessagesBySessionRef = useRef(queuedDesktopMessagesBySession);
   const flushQueuedDesktopMessagesForSessionRef = useRef<(sessionId: string) => void>(() => {});
   const waitingSessionTurnsRef = useRef(new Map<string, string>());
-
-  useEffect(() => () => { waitingSessionTurnsRef.current.clear(); }, []);
-
-  const waitForSessionQueue = useCallback((sessionId: string, turn: DesktopChatTurnSnapshot) => {
-    if (waitingSessionTurnsRef.current.get(sessionId) === turn.id) return;
-    waitingSessionTurnsRef.current.set(sessionId, turn.id);
-    void waitForCloudAgentTurn(turn.id).catch(() => undefined).finally(() => {
-      if (waitingSessionTurnsRef.current.get(sessionId) !== turn.id) return;
-      waitingSessionTurnsRef.current.delete(sessionId);
-      flushQueuedDesktopMessagesForSessionRef.current(sessionId);
-    });
-  }, []);
+  // Kordi Cloud requests run outside this Mac's native turns; each session waits for its request to settle.
+  const waitingHostedRequestsRef = useRef(new Map<string, string>());
+  const { waitForHostedRequest, waitForSessionQueue } = useSessionQueueWaits({ canonicalSessionState, flushQueuedDesktopMessagesForSessionRef, waitingSessionTurnsRef, waitingHostedRequestsRef });
 
   useEffect(() => {
     queuedDesktopMessagesBySessionRef.current = queuedDesktopMessagesBySession;
@@ -415,6 +366,7 @@ export function useChatMessageActions({
       inFlight: localChatSendInFlightRef.current,
       targetSessionId: message.sessionId,
       desktopLiveTurn: null,
+      hostedRequestRunning: waitingHostedRequestsRef.current.has(message.sessionId),
     });
     if (delayReason) {
       enqueueLocalQueuedMessage(message, 'front');
@@ -459,7 +411,9 @@ export function useChatMessageActions({
             : current;
         });
         releaseLocalChatSend(localChatSendInFlightRef, message.sessionId);
-        flushQueuedDesktopMessagesForSessionRef.current(message.sessionId);
+        // The next queued message waits until this request's run settles.
+        if (preparedCanonicalMessage) waitForHostedRequest(message.sessionId, preparedCanonicalMessage.messageId);
+        else flushQueuedDesktopMessagesForSessionRef.current(message.sessionId);
         return;
       }
       const queuedRow = await persistQueuedDesktopMessage(dispatchMessage, canonicalHumanIdentityId, 'sent');
@@ -491,11 +445,12 @@ export function useChatMessageActions({
       enqueueLocalQueuedMessage(message, 'front');
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to send queued chat message');
     }
-  }, [attachmentSummaryText, canonicalHumanIdentityId, canonicalSessionState, enqueueLocalQueuedMessage, localChatSendInFlightRef, materializeLocalChatTarget, resolveChatRuntimeRoute, setCanonicalSessionState, setDesktopChatError, setDesktopChatState, waitForSessionQueue, watchLocalTurnAndFlushQueue]);
+  }, [attachmentSummaryText, canonicalHumanIdentityId, canonicalSessionState, enqueueLocalQueuedMessage, localChatSendInFlightRef, materializeLocalChatTarget, resolveChatRuntimeRoute, setCanonicalSessionState, setDesktopChatError, setDesktopChatState, waitForHostedRequest, waitForSessionQueue, watchLocalTurnAndFlushQueue]);
 
   useEffect(() => {
     flushQueuedDesktopMessagesForSessionRef.current = (sessionId: string) => {
       if (waitingSessionTurnsRef.current.has(sessionId)
+        || waitingHostedRequestsRef.current.has(sessionId)
         || localChatSendInFlightRef.current?.sessionId === sessionId) return;
       const nextMessage = dequeueLocalQueuedMessage(sessionId);
       if (!nextMessage) return;
@@ -510,6 +465,7 @@ export function useChatMessageActions({
       inFlight: localChatSendInFlightRef.current,
       targetSessionId: activeConvId,
       desktopLiveTurn,
+      hostedRequestRunning: waitingHostedRequestsRef.current.has(activeConvId),
     });
     if (delayReason) return;
     flushQueuedDesktopMessagesForSessionRef.current(activeConvId);
@@ -596,13 +552,19 @@ export function useChatMessageActions({
             if (localChatSendInFlightRef.current?.sessionId === targetConversationId) localChatSendInFlightRef.current = null;
           },
           flushQueue: () => flushQueuedDesktopMessagesForSessionRef.current(targetConversationId),
+          waitForHostedRequest: (requestMessageId) => waitForHostedRequest(targetConversationId, requestMessageId),
         });
         if (setSendingState) setIsDesktopChatSending(false);
         return;
       }
       const linkedTurn = await startLocalAgentTurn(turnContext, preparedCanonicalMessage, attachments);
       if (linkedTurn) void markLocalAgentMessageDelivered(turnContext, preparedCanonicalMessage).catch(() => undefined);
-      if (linkedTurn) watchLocalTurnAndFlushQueue(linkedTurn, localAgentNoProviderCompletion(turnContext, preparedCanonicalMessage)); else releaseLocalChatSend(localChatSendInFlightRef, targetConversationId);
+      if (linkedTurn) watchLocalTurnAndFlushQueue(linkedTurn, localAgentNoProviderCompletion(turnContext, preparedCanonicalMessage));
+      else {
+        // A Kordi Cloud request: messages sent while it runs wait until it settles.
+        if (preparedCanonicalMessage) waitForHostedRequest(targetConversationId, preparedCanonicalMessage.messageId);
+        releaseLocalChatSend(localChatSendInFlightRef, targetConversationId);
+      }
       if (setSendingState) setIsDesktopChatSending(false);
     } catch (error) {
       setPendingUserChatMessage(null);
@@ -645,6 +607,7 @@ export function useChatMessageActions({
     setIsDesktopChatSending,
     setPendingUserChatMessage,
     shouldAutoFollowChatRef,
+    waitForHostedRequest,
     watchLocalTurnAndFlushQueue,
     resolveChatRuntimeRoute,
   ]);
@@ -828,6 +791,7 @@ export function useChatMessageActions({
       inFlight: localChatSendInFlightRef.current,
       targetSessionId: targetRuntimeSessionId,
       desktopLiveTurn: null,
+      hostedRequestRunning: waitingHostedRequestsRef.current.has(targetRuntimeSessionId),
     });
     if (delayReason === 'same-session-running') {
       queueLocalDraftForSession(targetRuntimeSessionId, text, attachments, contextMessages, activeChatQuote);
@@ -1385,6 +1349,7 @@ export function useChatMessageActions({
       inFlight: localChatSendInFlightRef.current,
       targetSessionId: localTargetSessionId,
       desktopLiveTurn,
+      hostedRequestRunning: Boolean(localTargetSessionId && waitingHostedRequestsRef.current.has(localTargetSessionId)),
     });
     if (localSendDelayReason === 'same-session-running' && localTargetSessionId) {
       retireRetriedRequest(); queueLocalDraftForSession(localTargetSessionId, text, attachmentsToSend, [], quoteForSend, Boolean(retryMessage));

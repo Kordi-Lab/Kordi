@@ -6,6 +6,7 @@ import type {
   MessageReplySummary,
   MessageSourceReference,
 } from '@/kordi-app/types';
+import { sourceAvatarFieldsForMessage, withKnownSourceAvatar } from './sourceMessageAvatar';
 
 export type ReplyAttributionResult = {
   messages: Message[];
@@ -42,6 +43,7 @@ function sourceReferenceForMessage(message: Message, messageId: string): Message
   return {
     messageId,
     senderLabel: message.sender ?? (message.isOwnMessage ? 'You' : null),
+    ...sourceAvatarFieldsForMessage(message),
     text: responseText,
     mentions: message.mentions,
     attachmentCount: message.attachments?.length ?? 0,
@@ -244,7 +246,7 @@ function addReplySummary(
 function withSourceMessage(message: Message, sourceMessage?: MessageSourceReference) {
   return {
     ...message,
-    sourceMessage: isAgentResponse(message) ? sourceMessage : message.sourceMessage ?? sourceMessage,
+    sourceMessage: isAgentResponse(message) || !message.sourceMessage ? sourceMessage : withKnownSourceAvatar(message.sourceMessage, sourceMessage),
     turn: message.turn
       ? {
           ...message.turn,

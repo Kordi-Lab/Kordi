@@ -107,8 +107,10 @@ test('a new Ask Agent panel chat forwards its first and second hosted sends', as
   const localChatSendInFlightRef = { current: null };
   let actions!: ReturnType<typeof useChatMessageActions>;
   let latestCanonical: CanonicalSessionState | null = initialCanonical;
+  let setLatestCanonical!: React.Dispatch<React.SetStateAction<CanonicalSessionState | null>>;
   function App() {
     const [canonical, setCanonical] = useState<CanonicalSessionState | null>(initialCanonical);
+    setLatestCanonical = setCanonical;
     const [desktop, setDesktop] = useState<DesktopChatState | null>(mainDesktop);
     latestCanonical = canonical;
     latestDesktop = desktop;
@@ -155,6 +157,14 @@ test('a new Ask Agent panel chat forwards its first and second hosted sends', as
     assert.equal(requests('First panel question').length, 1);
     assert.deepEqual(cloudDirectMessageAgentRuntimeRoute(requests('First panel question')[0]), route);
 
+    // The second send would wait in the queue while the first hosted run is active.
+    const firstRequestId = latestCanonical?.messages.find(message => message.contentText === 'First panel question')?.id ?? '';
+    await act(async () => setLatestCanonical(current => current && ({ ...current, messages: [...current.messages, {
+      id: 'synthetic-first-reply', sessionId: panelSessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent',
+      messageKind: 'agent-turn', contentText: 'Answer', status: 'complete', parentMessageId: firstRequestId,
+      content: { requestId: firstRequestId, deliveryState: 'complete' }, createdAtMs: Date.now(), updatedAtMs: Date.now(),
+      sequenceNum: 99, sourceTransport: 'cloud-self-agent',
+    } as unknown as CanonicalSessionState['messages'][number]] })));
     await act(async () => { await actions.handleSendChatMessage('Second panel question', panelSessionId); });
     await waitFor(() => requests('Second panel question').length > 0);
     assert.deepEqual(errors, []);

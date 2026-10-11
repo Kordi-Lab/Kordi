@@ -14,6 +14,12 @@ fn read(path: impl AsRef<Path>) -> String {
     fs::read_to_string(path).expect("read contract source")
 }
 
+/// The embedded migration registry source, early entries then recent ones.
+fn read_migration_registry(root: &Path) -> String {
+    read(root.join("bridges/cloud-server/src/pg/pool/embedded.rs"))
+        + &read(root.join("bridges/cloud-server/src/pg/pool/embedded_recent.rs"))
+}
+
 fn read_runtime_sources(path: &Path) -> String {
     let mut entries = fs::read_dir(path)
         .expect("read runtime source directory")
@@ -115,7 +121,7 @@ fn migration_embeds_canonical_ordering_idempotency_and_title_state() {
     }
     assert!(!lowercase.contains("drop table"));
 
-    let pool = read(root.join("bridges/cloud-server/src/pg/pool/embedded.rs"));
+    let pool = read_migration_registry(&root);
     let migration_33 = pool.find("version: 33").expect("migration 33 embedded");
     let migration_35 = pool.find("version: 35").expect("migration 35 embedded");
     let migration_47 = pool.find("version: 47").expect("migration 47 embedded");
@@ -199,7 +205,7 @@ fn bootstrap_reads_titles_only_from_canonical_state() {
     let root = repository_root();
     let cursors = read(root.join("bridges/cloud-server/src/chat_sync/store/cursors.rs"));
     let migration = read(root.join("bridges/cloud-server/migrations/0075_chat_group_catalog.sql"));
-    let pool = read(root.join("bridges/cloud-server/src/pg/pool/embedded.rs"));
+    let pool = read_migration_registry(&root);
 
     assert!(cursors.contains("conversation.updated_at, viewer.personal_title"));
     assert!(cursors.contains("conversation.group_space_id, conversation.group_title"));
@@ -222,7 +228,7 @@ fn group_channel_titles_are_shared_and_admin_controlled() {
         read(root.join("bridges/cloud-server/migrations/0078_normalize_group_space_ids.sql"));
     let channel_defaults =
         read(root.join("bridges/cloud-server/migrations/0079_default_group_channel_titles.sql"));
-    let pool = read(root.join("bridges/cloud-server/src/pg/pool/embedded.rs"));
+    let pool = read_migration_registry(&root);
 
     assert!(message_store.contains("\"group-title-update\" | \"session-title-update\""));
     assert!(message_store.contains("role != \"owner\" && role != \"admin\""));

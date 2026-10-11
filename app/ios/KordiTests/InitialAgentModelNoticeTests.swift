@@ -92,8 +92,8 @@ struct InitialAgentModelNoticeTests {
             authorName: "You", text: "Hello", createdAt: .distantPast, deliveryState: state,
             errorMessage: nil, requestMessageId: nil)
         for kind: ConversationKind in [.agent, .person, .group] {
-            let expected: AgentExecutionSnapshot.Phase? = kind == .agent
-                && [.sent, .delivered, .read].contains(state) ? .preparing : nil
+            let expected: AgentExecutionSnapshot.Phase? = [.sent, .delivered, .read].contains(state)
+                ? .preparing : nil
             #expect(AgentSessionQueuePresentation.pendingPhase(requestID: request.id, createdAt: request.createdAt,
                 messages: [request], kind: kind, locallyQueued: false) == expected)
         }

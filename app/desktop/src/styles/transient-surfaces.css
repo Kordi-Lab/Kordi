@@ -270,6 +270,24 @@
   color: var(--app-transient-danger-text);
 }
 
+/* Filled destructive button for dialogs: light danger surface in light mode, current tint in dark. */
+.app-transient-surface .app-transient-danger-button,
+.app-transient-danger-button {
+  border: 1px solid var(--app-transient-danger-border);
+  background: var(--app-transient-danger-bg);
+  color: var(--app-transient-danger-text);
+  box-shadow: none;
+}
+
+.app-transient-surface .app-transient-danger-button:hover:not(:disabled),
+.app-transient-surface .app-transient-danger-button:focus-visible,
+.app-transient-danger-button:hover:not(:disabled),
+.app-transient-danger-button:focus-visible {
+  border-color: var(--app-transient-danger-border);
+  background: var(--app-transient-danger-hover-bg);
+  color: var(--app-transient-danger-text);
+}
+
 .app-chat-create-popover-arrow,
 .app-dialog-popover-arrow,
 .app-group-management-popover-arrow {

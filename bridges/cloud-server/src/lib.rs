@@ -17,6 +17,7 @@ pub mod cloud_agents;
 pub mod connectors;
 pub mod digest;
 pub mod events;
+pub(crate) mod memory_store;
 pub mod notifications;
 pub mod pg;
 pub mod pip;

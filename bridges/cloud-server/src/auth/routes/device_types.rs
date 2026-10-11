@@ -35,6 +35,17 @@ pub struct DeviceAuthorizationResponse {
     pub approximate_location: Option<String>,
     #[serde(rename = "syncStatus")]
     pub sync_status: DeviceSyncStatusResponse,
+    /// True when the device has a fresh `online` presence heartbeat.
+    pub online: bool,
+    /// Number of unrevoked, unexpired session tokens held by the device.
+    #[serde(rename = "sessionCount")]
+    pub session_count: i64,
+    /// True when the device signed in without an installation key.
+    pub legacy: bool,
+    /// Sign-in method implied by a server-generated placeholder device name
+    /// (for example "google", "github" or "password").
+    #[serde(rename = "signInMethod")]
+    pub sign_in_method: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

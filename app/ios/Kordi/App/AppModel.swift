@@ -36,11 +36,11 @@ enum KordiPreviewModePersistence {
     private static let launchArguments: Set<String> = [
         "--preview-launching", "--preview-data", "--preview-background-stop", "--preview-markdown",
         "--preview-native-design", "--preview-native-agent", "--preview-native-thread", "--preview-native-samples",
-        "--preview-login", "--preview-signup", "--preview-account", "--preview-devices",
+        "--preview-login", "--preview-signup", "--preview-account", "--preview-devices", "--preview-memory",
         "--preview-authentication", "--preview-authentication-detail", "--preview-codex-device-login",
         "--preview-contacts", "--preview-new-chat", "--preview-add-contact", "--preview-companion-panel",
         "--preview-companion-return", "--preview-contact-chat", "--preview-direct-call", "--preview-group-call",
-        "--preview-group-detail", "--preview-group-invite", "--preview-media", "--preview-media-messages",
+        "--preview-group-detail", "--preview-group-memory", "--preview-group-invite", "--preview-media", "--preview-media-messages",
         "--preview-media-expanded", "--preview-media-separated", "--preview-photo-send",
         "--preview-connectors",
     ]
@@ -259,6 +259,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
     @Published private(set) var subsessions: [String: CloudAgentSubsession] = [:]
     @Published private(set) var stoppingSubsessionIDs: Set<String> = []
+    /// Agent requests a Stop was sent for, until their terminal reply arrives.
+    @Published private(set) var stoppingAgentRequestIDs: Set<String> = []
     @Published private(set) var callsByConversationID: [String: CloudCall] = [:]
     @Published private(set) var latestCallSnapshot: CloudCall?
     @Published private(set) var sessionActivityByID: [String: CloudSessionActivity] = [:]
@@ -308,6 +310,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var accountEmailCodeState: AccountEmailCodeState?
     /// `connectorsVersion` from `/v1/cloud/auth/capabilities`; nil hides Connectors.
     @Published private(set) var connectorsVersion: Int?
+    /// Server capabilities for the Memory screen. Nil until loaded or when the
+    /// request fails, which keeps the Memory entry hidden.
+    @Published private(set) var memoryCapabilities: CloudAuthCapabilities?
 
     private let api: CloudAPIClient
     private let oauth: CloudOAuthSession
@@ -420,6 +425,11 @@ final class AppModel: ObservableObject {
         self.previewHistoryLoadDelay = previewHistoryLoadDelay
             ?? (ProcessInfo.processInfo.arguments.contains("--preview-slow-session-load") ? .seconds(2) : .zero)
         UserDefaults.standard.removeObject(forKey: "kordi.session-title-overrides")
+        if previewMode {
+            // Preview data always advertises memory, so every group info page and
+            // Settings show the Memory entry without an extra launch argument.
+            memoryCapabilities = Self.previewMemoryCapabilities
+        }
         if ProcessInfo.processInfo.arguments.contains("--preview-launching") {
             // Keep the initial phase so the network-free launch surface remains visible.
         } else if ProcessInfo.processInfo.arguments.contains("--preview-login")
@@ -490,6 +500,7 @@ final class AppModel: ObservableObject {
             }
             phase = .signedIn
             Task { await refreshConnectorsCapability() }
+            scheduleMemoryCapabilitiesRefresh()
             scheduleDigestWarmup()
             presencePublisher.start(token: savedToken)
             startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
@@ -773,6 +784,7 @@ final class AppModel: ObservableObject {
         messagesByConversation = [:]
         subsessions = [:]
         stoppingSubsessionIDs = []
+        stoppingAgentRequestIDs = []
         callsByConversationID = [:]
         latestCallSnapshot = nil
         endedCallIDs = []
@@ -1115,6 +1127,35 @@ final class AppModel: ObservableObject {
         }
     }
 
+    var isMemoryAvailable: Bool { MemoryPresentation.isAvailable(memoryCapabilities) }
+
+    private static let previewMemoryCapabilities = CloudAuthCapabilities(password: true, memoryVersion: 1)
+
+    /// Fetches the memory capability in the background right after sign-in or a
+    /// restored session, so it is cached before any detail view appears.
+    private func scheduleMemoryCapabilitiesRefresh() {
+        Task { [weak self] in await self?.refreshMemoryCapabilities() }
+    }
+
+    /// Loads the capability flag that shows the Memory settings entry and group tab.
+    func refreshMemoryCapabilities() async {
+        if previewMode {
+            memoryCapabilities = Self.previewMemoryCapabilities
+            return
+        }
+        do {
+            memoryCapabilities = try await api.authCapabilities()
+        } catch {
+            // An unreachable server keeps the last known flag; without one the entry stays hidden.
+        }
+    }
+
+    /// The memory routes for the signed-in account, or the offline sample store in preview mode.
+    func makeMemoryService() -> any MemoryService {
+        if previewMode { return PreviewMemoryService() }
+        return CloudMemoryService(api: api) { [weak self] in self?.token }
+    }
+
     func markDeviceReviewSeen() {
         deviceReviewRequired = false
     }
@@ -1183,9 +1224,44 @@ final class AppModel: ObservableObject {
             return true
         } catch {
             devices = previous
-            deviceErrorMessage = userFacing(error, fallback: "Could not terminate this device.")
+            deviceErrorMessage = userFacing(error, fallback: "Could not log out of this device.")
             return false
         }
+    }
+
+    /// Logs out of several rows one after another, then refreshes once.
+    func revokeDevices(_ targets: [CloudDeviceAuthorization]) async -> Bool {
+        let targets = targets.filter { !$0.currentDevice }
+        guard let token, !targets.isEmpty else { return false }
+        if previewMode {
+            let ids = Set(targets.map(\.deviceId))
+            devices.removeAll { ids.contains($0.deviceId) }
+            return true
+        }
+        deviceErrorMessage = nil
+        var failure: Error?
+        for device in targets {
+            let operationKey = "revoke:\(device.deviceId)"
+            let operationId = deviceOperationId(for: operationKey)
+            do {
+                _ = try await api.revokeDevice(
+                    token: token,
+                    deviceId: device.deviceId,
+                    clientOperationId: operationId
+                )
+                deviceOperationIds.removeValue(forKey: operationKey)
+                devices.removeAll { $0.deviceId == device.deviceId }
+            } catch {
+                failure = error
+                break
+            }
+        }
+        await refreshDevices()
+        if let failure {
+            deviceErrorMessage = userFacing(failure, fallback: "Could not log out of every session.")
+            return false
+        }
+        return true
     }
 
     func revokeOtherDevices() async -> Bool {
@@ -1205,7 +1281,7 @@ final class AppModel: ObservableObject {
             return true
         } catch {
             devices = previous
-            deviceErrorMessage = userFacing(error, fallback: "Could not terminate other devices.")
+            deviceErrorMessage = userFacing(error, fallback: "Could not log out of other devices.")
             return false
         }
     }
@@ -1920,6 +1996,46 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Whether this account sent the request and it is still running.
+    func canStopAgentRequest(conversationId: String, requestMessageId: String) -> Bool {
+        pendingAgentRequestIds[conversationId, default: []].contains(requestMessageId)
+    }
+
+    /// The request the composer's Stop acts on in a chat, if this account
+    /// has one running or queued there.
+    func composerStopAgentRequestID(conversationId: String) -> String? {
+        AgentSessionQueuePresentation.composerStopRequestID(
+            pending: pendingAgentRequestIds[conversationId, default: []],
+            locallyQueued: pendingAgentQueuedRequestIds,
+            confirmedRunStatuses: confirmedAgentRunStatuses
+        )
+    }
+
+    /// Where the composer shows Stop for this chat.
+    func composerStopPlacement(for conversation: ConversationSummary) -> ComposerStopPlacement {
+        ComposerStopPlacement.resolve(
+            kind: conversation.kind,
+            pendingRequestID: composerStopAgentRequestID(conversationId: conversation.id)
+        )
+    }
+
+    /// Stops a running agent request this account sent. The row stays in
+    /// "Stopping…" until the executor publishes the terminal reply.
+    func stopAgentRequest(conversationId: String, requestMessageId: String) async throws {
+        guard canStopAgentRequest(conversationId: conversationId, requestMessageId: requestMessageId) else { return }
+        guard let accountId = account?.accountId else { throw URLError(.userAuthenticationRequired) }
+        guard stoppingAgentRequestIDs.insert(requestMessageId).inserted else { return }
+        if previewMode { return }
+        do {
+            guard let token else { throw URLError(.userAuthenticationRequired) }
+            try await api.stopAgentRequest(token: token, requestMessageId: requestMessageId)
+        } catch {
+            stoppingAgentRequestIDs.remove(requestMessageId)
+            throw error
+        }
+        guard self.account?.accountId == accountId else { throw CancellationError() }
+    }
+
     func installSubsessionStopPreview(_ snapshot: CloudAgentSubsession, reset: Bool = false) {
         guard previewMode, reset || subsessions[snapshot.sessionId] == nil else { return }
         var preview = snapshot
@@ -2181,8 +2297,10 @@ final class AppModel: ObservableObject {
                 agentDisplayName: routedAgent?.displayName
                     ?? conversation.agentDisplayName?.nonEmpty
                     ?? "Kordi",
-                agentOwnerName: routedAgent?.ownerName
-                    ?? (conversation.kind == .agent ? conversation.ownerDisplayName : nil),
+                agentOwnerName: routedAgent.map { $0.accountId == account.accountId ? "You" : $0.ownerName }
+                    ?? (conversation.kind == .agent
+                        ? (conversation.peerAccountId == account.accountId ? "You" : conversation.ownerDisplayName)
+                        : nil),
                 queued: conversation.kind == .agent
                     && !pendingAgentRequestIds[conversation.id, default: []].isEmpty
             )
@@ -3192,6 +3310,7 @@ final class AppModel: ObservableObject {
                     mentions: message.mentions,
                     messageKind: message.messageKind,
                     agentExecution: message.agentExecution,
+                    agentReplyEnding: message.agentReplyEnding,
                     backgroundAgentSessions: message.backgroundAgentSessions,
                     reactions: message.reactions,
                     attachmentReactions: message.attachmentReactions
@@ -5606,7 +5725,9 @@ final class AppModel: ObservableObject {
                 requestMessageId: requestMessageId,
                 startedAt: Date(),
                 agentDisplayName: conversation.agentDisplayName?.nonEmpty ?? "Kordi",
-                agentOwnerName: conversation.kind == .agent ? conversation.ownerDisplayName : nil
+                agentOwnerName: conversation.kind == .agent
+                    ? (conversation.peerAccountId == account.accountId ? "You" : conversation.ownerDisplayName)
+                    : nil
             )
         }
         while !Task.isCancelled,
@@ -5623,6 +5744,7 @@ final class AppModel: ObservableObject {
                 runtimeRoute: runtimeRoute
             )
                 recordConfirmedAgentRun(run, conversationId: conversation.id, requestMessageId: requestMessageId)
+                if errorMessage != nil { errorMessage = nil }
                 agentExecutionLocation[conversation.id] = run.executionBackend == "desktop"
                     ? .mac(label: ownerAccountId == account.accountId ? "your Mac" : "the owner’s Mac")
                     : .cloud
@@ -6226,6 +6348,7 @@ final class AppModel: ObservableObject {
                     ? nil : CloudMessageCodec.agentResponseDeliveryState(message.body),
                 updatedAtMs: parseCloudDate(message.createdAt).timeIntervalSince1970 * 1_000
             ),
+            agentReplyEnding: CloudMessageCodec.agentReplyEnding(message.body),
             backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
             reactions: message.reactions,
             attachmentReactions: message.attachmentReactions
@@ -6376,7 +6499,7 @@ final class AppModel: ObservableObject {
                 authorName: author == .me
                     ? "You"
                     : author == .agent ? agentName : payload.senderDisplayName?.nonEmpty ?? participantNames[payload.senderAccountId] ?? "Participant",
-                senderOwnerName: author == .agent ? ownerName : nil,
+                senderOwnerName: author == .agent ? (payload.senderAccountId == ownAccountId ? "You" : ownerName) : nil,
                 text: payload.text,
                 createdAt: Date(
                     timeIntervalSince1970: (
@@ -7448,6 +7571,7 @@ final class AppModel: ObservableObject {
 
     private func clearPendingAgentRequest(conversationId: String) {
         for requestID in pendingAgentRequestIds[conversationId, default: []] {
+            stoppingAgentRequestIDs.remove(requestID)
             pendingAgentQueuedRequestIds.remove(requestID)
             confirmedAgentRunStatuses[requestID] = nil
             pendingAgentRequestStartedAt[requestID] = nil
@@ -7468,6 +7592,7 @@ final class AppModel: ObservableObject {
         failed: Bool = false
     ) {
         pendingAgentRequestIds[conversationId]?.removeAll { $0 == requestMessageId }
+        stoppingAgentRequestIDs.remove(requestMessageId)
         pendingAgentQueuedRequestIds.remove(requestMessageId)
         confirmedAgentRunStatuses[requestMessageId] = nil
         pendingAgentRequestStartedAt[requestMessageId] = nil
@@ -7842,43 +7967,63 @@ final class AppModel: ObservableObject {
             // route saved by an earlier preview launch.
             saveSessionRuntimeRoute(previewRouting, sessionId: researchSession.sessionId)
         }
-        devices = [
+        func previewDevice(
+            _ deviceId: String,
+            name: String?,
+            platform: String?,
+            osVersion: String?,
+            appVersion: String?,
+            lastActive: TimeInterval,
+            state: String = "authorized",
+            current: Bool = false,
+            location: String? = "Riyadh, Saudi Arabia",
+            online: Bool = false,
+            legacy: Bool = false,
+            signInMethod: String? = nil
+        ) -> CloudDeviceAuthorization {
             CloudDeviceAuthorization(
-                deviceId: "device_preview_iphone",
-                displayName: "iPhone 17e",
-                platform: "ios",
-                osVersion: "iOS 27.0",
-                appVersion: "0.0.1-beta.12",
-                createdAt: timestamp.string(from: now.addingTimeInterval(-2_592_000)),
-                lastActiveAt: timestamp.string(from: now),
-                authorizationState: "authorized",
-                currentDevice: true,
-                sessionExpiresAt: timestamp.string(from: now.addingTimeInterval(2_592_000)),
-                approximateLocation: "Riyadh, Saudi Arabia",
-                syncStatus: CloudDeviceSyncStatus(
-                    protocolVersion: 2,
-                    lastAppliedSequence: 1_248,
-                    lastSuccessfulCatchUpAt: timestamp.string(from: now.addingTimeInterval(-12))
-                )
-            ),
-            CloudDeviceAuthorization(
-                deviceId: "device_preview_mac",
-                displayName: "MacBook Pro",
-                platform: "macos",
-                osVersion: "macOS 26.0",
-                appVersion: "0.0.1-beta.12",
+                deviceId: deviceId,
+                displayName: name,
+                platform: platform,
+                osVersion: osVersion,
+                appVersion: appVersion,
                 createdAt: timestamp.string(from: now.addingTimeInterval(-7_776_000)),
-                lastActiveAt: timestamp.string(from: now.addingTimeInterval(-540)),
-                authorizationState: "authorized",
-                currentDevice: false,
+                lastActiveAt: timestamp.string(from: now.addingTimeInterval(-lastActive)),
+                authorizationState: state,
+                currentDevice: current,
                 sessionExpiresAt: timestamp.string(from: now.addingTimeInterval(2_592_000)),
-                approximateLocation: "Riyadh, Saudi Arabia",
+                approximateLocation: location,
                 syncStatus: CloudDeviceSyncStatus(
                     protocolVersion: 2,
                     lastAppliedSequence: 1_248,
-                    lastSuccessfulCatchUpAt: timestamp.string(from: now.addingTimeInterval(-545))
-                )
+                    lastSuccessfulCatchUpAt: timestamp.string(from: now.addingTimeInterval(-lastActive - 5))
+                ),
+                online: online,
+                legacy: legacy,
+                signInMethod: signInMethod
             )
+        }
+        let day: TimeInterval = 86_400
+        devices = [
+            previewDevice("device_preview_iphone", name: "iPhone 17e", platform: "ios", osVersion: "iOS 27.0",
+                          appVersion: "0.0.2", lastActive: 0, current: true, online: true, signInMethod: "google"),
+            previewDevice("device_preview_mac", name: "MacBook Pro", platform: "macos", osVersion: "macOS 26.0",
+                          appVersion: "0.0.2", lastActive: 30, online: true, signInMethod: "google"),
+            previewDevice("device_preview_mac_beta", name: "MacBook Pro", platform: "macos", osVersion: "macOS 26.0",
+                          appVersion: "0.0.2-beta.3", lastActive: 3 * 3_600, state: "pending_review",
+                          signInMethod: "github"),
+            previewDevice("device_preview_mac_old", name: "MacBook Pro", platform: "macos", osVersion: "26.0",
+                          appVersion: "0.0.1", lastActive: 5 * day, signInMethod: "password"),
+            previewDevice("device_preview_studio", name: "Mac Studio", platform: "macos", osVersion: "macOS 26.0",
+                          appVersion: "0.0.2", lastActive: 2 * day, location: "Jeddah, Saudi Arabia",
+                          signInMethod: "google"),
+            previewDevice("device_preview_legacy_google_1", name: nil, platform: nil, osVersion: nil,
+                          appVersion: nil, lastActive: 9 * day, legacy: true, signInMethod: "google"),
+            previewDevice("device_preview_legacy_google_2", name: nil, platform: nil, osVersion: nil,
+                          appVersion: nil, lastActive: 17 * day, location: "Jeddah, Saudi Arabia",
+                          legacy: true, signInMethod: "google"),
+            previewDevice("device_preview_legacy_password", name: nil, platform: nil, osVersion: nil,
+                          appVersion: nil, lastActive: 25 * day, legacy: true, signInMethod: "password")
         ]
         currentDeviceId = "device_preview_iphone"
         token = "preview-token"
@@ -7921,6 +8066,7 @@ final class AppModel: ObservableObject {
         phase = .signedIn
         connectorsClientCache = nil
         Task { await refreshConnectorsCapability() }
+        scheduleMemoryCapabilitiesRefresh()
         presencePublisher.start(token: response.session.token)
         scheduleDigestWarmup()
         startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(

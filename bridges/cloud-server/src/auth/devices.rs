@@ -166,6 +166,37 @@ pub fn legacy_device_registration(default_name: &str) -> NormalizedDeviceRegistr
     }
 }
 
+/// Placeholder device name assigned to legacy email/password sign-ins.
+pub const EMAIL_PASSWORD_PLACEHOLDER_DEVICE_NAME: &str = "cloud-email-password-device";
+
+/// Returns the sign-in method encoded in a server-generated placeholder device
+/// name, or `None` when the name was chosen by the user or client.
+///
+/// This mirrors the SQL placeholder predicate used when upgrading device
+/// metadata: `device_name LIKE 'oauth-%-device' OR device_name =
+/// 'cloud-email-password-device'`.
+pub fn placeholder_sign_in_method(name: &str) -> Option<String> {
+    if name == EMAIL_PASSWORD_PLACEHOLDER_DEVICE_NAME {
+        return Some("password".to_string());
+    }
+    name.strip_prefix("oauth-")
+        .and_then(|rest| rest.strip_suffix("-device"))
+        .filter(|provider| !provider.is_empty())
+        .map(str::to_string)
+}
+
+/// Splits a stored device name into the user-visible display name and the
+/// sign-in method implied by a placeholder name.
+pub fn device_display_identity(stored_name: Option<String>) -> (Option<String>, Option<String>) {
+    match stored_name {
+        Some(name) => match placeholder_sign_in_method(&name) {
+            Some(method) => (None, Some(method)),
+            None => (Some(name), None),
+        },
+        None => (None, None),
+    }
+}
+
 pub async fn authorize_device(
     transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
@@ -395,5 +426,53 @@ mod tests {
             normalize_device_registration(request).unwrap_err(),
             DeviceInputError::InvalidPublicKey
         );
+    }
+
+    #[test]
+    fn placeholder_sign_in_method_recognizes_oauth_google() {
+        assert_eq!(
+            placeholder_sign_in_method("oauth-google-device").as_deref(),
+            Some("google")
+        );
+    }
+
+    #[test]
+    fn placeholder_sign_in_method_recognizes_oauth_github() {
+        assert_eq!(
+            placeholder_sign_in_method("oauth-github-device").as_deref(),
+            Some("github")
+        );
+    }
+
+    #[test]
+    fn placeholder_sign_in_method_recognizes_email_password() {
+        assert_eq!(
+            placeholder_sign_in_method("cloud-email-password-device").as_deref(),
+            Some("password")
+        );
+    }
+
+    #[test]
+    fn placeholder_sign_in_method_ignores_real_names() {
+        assert_eq!(placeholder_sign_in_method("Shu's MacBook Pro"), None);
+        assert_eq!(placeholder_sign_in_method("oauth--device"), None);
+    }
+
+    #[test]
+    fn placeholder_sign_in_method_ignores_empty_names() {
+        assert_eq!(placeholder_sign_in_method(""), None);
+    }
+
+    #[test]
+    fn device_display_identity_hides_placeholder_names() {
+        assert_eq!(
+            device_display_identity(Some("oauth-google-device".to_string())),
+            (None, Some("google".to_string()))
+        );
+        assert_eq!(
+            device_display_identity(Some("Work iPhone".to_string())),
+            (Some("Work iPhone".to_string()), None)
+        );
+        assert_eq!(device_display_identity(None), (None, None));
     }
 }

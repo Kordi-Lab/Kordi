@@ -1,8 +1,9 @@
 import { useMessageLayout } from '@/app/messageLayoutPreference';
-import { IdentityAvatar } from './IdentityAvatar';
+import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from './IdentityAvatar';
 import { CornerDownLeft, MessagesSquare } from 'lucide-react';
 
 import { replyStatusText } from '@/features/chat/replyAttribution';
+import { sourceQuoteAvatar } from '@/features/chat/sourceMessageAvatar';
 import { navigateToTranscriptMessage } from '@/features/chat/transcriptNavigation';
 import { quotedSenderLabel } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
@@ -32,8 +33,15 @@ export function SourceMessageQuote({
 }) {
   const activeLocalProfileIdentity = useActiveLocalProfileIdentity();
   const threadLayout = useMessageLayout() === 'threads';
+  const profileAvatarSeed = useLocalProfileAvatarSeed();
+  const agentAvatarSeed = useLocalAgentAvatarSeed();
   if (!sourceMessage) return null;
   const senderLabel = quotedSenderLabel(sourceMessage.senderLabel, activeLocalProfileIdentity.displayName);
+  const avatar = sourceQuoteAvatar(sourceMessage, {
+    selfDisplayName: activeLocalProfileIdentity.displayName,
+    profileAvatarSeed,
+    agentAvatarSeed,
+  });
   const text = sourceQuoteText(sourceMessage);
   const navigate = () => {
     if (onNavigateToMessage) {
@@ -51,7 +59,7 @@ export function SourceMessageQuote({
       onClick={navigate}
       title={text ? `${senderLabel}: ${text}` : senderLabel}
     >
-      {threadLayout ? <IdentityAvatar kind="human" seed={`human:${senderLabel}`} name={senderLabel} className="app-thread-quote-avatar h-4 w-4 shrink-0" /> : null}
+      {threadLayout ? <IdentityAvatar kind={avatar.kind} seed={avatar.seed} isSelf={avatar.isSelf} imageUrl={avatar.imageUrl} name={senderLabel} className="app-thread-quote-avatar h-4 w-4 shrink-0" /> : null}
       <span className="app-source-message-quote-text" data-kordi-copy-surface="message">
         <span className="app-source-message-quote-label">{threadLayout ? `@${senderLabel} ` : `${senderLabel}: `}</span>
         <MessageInlineContent text={text} mentions={sourceMessage.mentions} linksInteractive={false} showSiteIcons={false} />

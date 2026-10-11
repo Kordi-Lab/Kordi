@@ -2,6 +2,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { routeRunsOnKordiCloud } from '@/features/cloud/cloudAgentRuntimeRoute';
+import { hostedRequestContextContent } from '@/features/cloud/cloudAgentRequestContext';
 import type { CanonicalSessionState, DesktopChatTurnSnapshot } from '@/kordi-app/types';
 import {
   appendCanonicalMessage,
@@ -77,12 +78,19 @@ export async function startLocalAgentTurn(
     : turn;
 }
 
-/** The delivered message; a Kordi Cloud turn keeps its route so the cloud request can carry it. */
+/** Fields a Kordi Cloud request stores for forwarding: its route and bounded reference context. */
+function hostedDeliveryContent(context: LocalAgentTurnContext): Record<string, unknown> | null {
+  if (!context.route || !routeRunsOnKordiCloud(context.route)) return null;
+  return { agentRuntimeRoute: context.route, ...hostedRequestContextContent(context.contextMessages) };
+}
+
+/** The delivered message; a Kordi Cloud turn keeps its route and reference context so the cloud request can carry them. */
 function deliveredCanonicalMessage(context: LocalAgentTurnContext, prepared: PreparedCanonicalUserMessage | null) {
   const sent = sentPreparedCanonicalUserMessage(prepared);
-  if (!sent || !context.route || !routeRunsOnKordiCloud(context.route)) return sent;
+  const hostedContent = hostedDeliveryContent(context);
+  if (!sent || !hostedContent) return sent;
   const content = sent.request.content && typeof sent.request.content === 'object' ? sent.request.content : {};
-  return { ...sent, request: { ...sent.request, content: { ...content, agentRuntimeRoute: context.route } } };
+  return { ...sent, request: { ...sent.request, content: { ...content, ...hostedContent } } };
 }
 
 export async function markLocalAgentMessageDelivered(
@@ -98,12 +106,11 @@ export async function markLocalAgentMessageDelivered(
     context.setDesktopChatError(error instanceof Error ? error.message : 'Unable to update message delivery status');
     throw error;
   }
-  const hostedRoute = routeRunsOnKordiCloud(context.route) ? context.route : null;
   context.setCanonicalSessionState((current) => markOptimisticCanonicalMessageSent(
     current,
     context.canonicalSessionId,
     sentCanonicalMessage.messageId,
-    hostedRoute ? { agentRuntimeRoute: hostedRoute } : {},
+    hostedDeliveryContent(context) ?? {},
   ));
 }
 
@@ -153,7 +160,7 @@ export function dispatchLocalAgentVoiceTurn(
   prepared: PreparedCanonicalUserMessage | null,
   attachments: readonly AttachmentItem[],
   transcription: Promise<VoiceTranscriptionOutcome>,
-  session: { clearInFlight: () => void; flushQueue: () => void },
+  session: { clearInFlight: () => void; flushQueue: () => void; waitForHostedRequest: (requestMessageId: string) => void },
 ) {
   const delivered = deliveredCanonicalMessage(context, prepared);
   const deliveryWrite = markLocalAgentMessageDelivered(context, prepared);
@@ -182,8 +189,12 @@ export function dispatchLocalAgentVoiceTurn(
       }
       const turn = await startLocalAgentTurn(context, dispatchedCanonicalMessage, agentVoice.attachments);
       if (!turn) {
-        // A Kordi Cloud turn: the session is free as soon as the request is delivered.
+        // A Kordi Cloud turn: delivery is done; queued messages wait until its run settles.
         session.clearInFlight();
+        if (dispatchedCanonicalMessage) {
+          session.waitForHostedRequest(dispatchedCanonicalMessage.messageId);
+          turnStarted = true;
+        }
         return;
       }
       context.watchTurn(turn, localAgentNoProviderCompletion(context, dispatchedCanonicalMessage));

@@ -277,6 +277,13 @@ struct ChatHomeView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .animation(.default, value: model.errorMessage)
+        .task(id: model.errorMessage) {
+            guard let shown = model.errorMessage else { return }
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled, model.errorMessage == shown else { return }
+            withAnimation { model.errorMessage = nil }
+        }
     }
 
     private var newChatButton: some View {
@@ -1682,14 +1689,14 @@ private enum ContactListRow: Identifiable {
 private struct ErrorBanner: View {
     let message: String
     var body: some View {
-        Label(message, systemImage: "wifi.exclamationmark")
+        Label(message, systemImage: "exclamationmark.circle")
             .font(.subheadline)
             .foregroundStyle(.primary)
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
-            .accessibilityLabel("Connection error: \(message)")
+            .accessibilityLabel("Error: \(message)")
     }
 }
 

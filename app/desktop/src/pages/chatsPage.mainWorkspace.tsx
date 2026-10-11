@@ -5,6 +5,7 @@ import { ChatPaneLayout } from '@/pages/ChatPaneLayout';
 import {
   localOwnedAgentSenderLabel,
 } from '@/app/viewModels/helpers';
+import { composerAgentRequestStop } from '@/features/chat/agentRequestStop';
 import { chatComposerPlaceholder } from '@/features/chat/composerCopy';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { isEmptyChatSelectionId } from '@/features/chat/draftSessions';
@@ -140,6 +141,13 @@ export function ChatMainWorkspace({
   const shouldRenderLiveTurn = Boolean(
     presentation.liveTurn && !presentation.liveTurn.completed,
   );
+  const composerStop = composerAgentRequestStop({
+    messages: presentation.messages,
+    liveTurn: presentation.liveTurn,
+    liveTurnIsRunning: presentation.activeLiveTurnIsRunning,
+    onStopActiveTurn: runtime.onStopDesktopChatTurn,
+    onStopCollaborationAgentRequest: runtime.onStopCollaborationAgentRequest,
+  });
   const handleSend = (draftOverride?: string, attachmentOverride?: AttachmentItem[]) => {
     const draft = draftOverride ?? composer.chatComposerText;
     const attachmentCount = attachmentOverride?.length ?? composer.chatComposerAttachments.length;
@@ -400,6 +408,7 @@ export function ChatMainWorkspace({
                         placeholder: chatComposerPlaceholder(activeConv),
                       }}
                       onSend={handleSend}
+                      stop={composerStop}
                     />
                   </ChatComposerShell>
                 ),

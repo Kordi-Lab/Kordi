@@ -3,6 +3,7 @@ import type { Conversation, Message, MessageMention, DesktopChatToolSnapshot } f
 import type { ComposerMentionOption } from '@/kordi-app/components/composer';
 import { publicScopedAgentMentionHandle } from '@/lib/identityLabels';
 import { mentionHandleForLabel } from '@/features/chat/messageActions/mentionHandles';
+import { sentenceCaseAgentThreadTitle } from '@/features/chat/agentThreadTitle';
 
 export function subsessionMentionOptions(record: CloudAgentSubsession, accountId: string): ComposerMentionOption[] {
   return [{
@@ -74,7 +75,7 @@ export function subsessionTranscript(record: CloudAgentSubsession, accountId: st
 export function subsessionConversation(id: string, record: CloudAgentSubsession | null, accountId: string): Conversation {
   return {
     id, canonicalSessionId: id, agentSubsessionId: id,
-    name: record?.title ?? 'Agent session',
+    name: record?.title ? sentenceCaseAgentThreadTitle(record.title) : 'Agent session',
     type: record?.ownerAccountId === accountId ? 'owned-agent' : 'external-agent',
     subtitle: record ? `${record.agentDisplayName} · Owner · ${record.ownerAccountId === accountId ? 'You' : record.ownerDisplayName}` : 'Loading conversation…',
     unread: 0, collaborationSources: ['Cloud'], trust: 'Shared', directness: 'Agent session',

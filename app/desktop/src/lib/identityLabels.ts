@@ -128,3 +128,26 @@ export function rewriteLeadingFirstPersonAgentMention(
   const mention = `@${publicScopedAgentMentionHandle(ownerName, agentLabel)}`;
   return normalizedRest ? `${leading}${mention} ${normalizedRest}` : `${leading}${mention}`;
 }
+
+// Matches `is_valid_avatar_seed` on the cloud server; other seeds render blank.
+const VALID_AVATAR_SEED_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+export function isValidAvatarSeed(value?: string | null) {
+  return VALID_AVATAR_SEED_RE.test(cleanLabel(value));
+}
+
+function labelHash(value: string) {
+  let hash = 0x811c9dc5;
+  for (const character of value) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+/** A stable generated seed for a sender known only by name; always server-valid. */
+export function generatedAvatarSeedForLabel(kind: 'human' | 'agent', label?: string | null) {
+  const name = cleanLabel(label) || 'unknown';
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+  return [kind, slug, labelHash(name)].filter(Boolean).join('-');
+}

@@ -15,26 +15,53 @@ type DeviceListRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    i64,
+    bool,
+    bool,
 );
 
+/// Lists the caller's account devices for the "Active sessions" screen.
+///
+/// A non-revoked device row is returned only when it is the caller's current
+/// device, still holds at least one live session token, or is online in
+/// presence. Rows whose tokens have all expired or been revoked can no longer
+/// access the account and are omitted.
 pub(super) async fn list_devices(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Response {
+    let now = Utc::now();
+    let presence_cutoff =
+        crate::presence::stale_presence_cutoff(now, crate::presence::presence_timeout());
     let rows: Vec<DeviceListRow> = match query_as(
-        "SELECT d.device_id, d.device_name, d.device_platform, d.os_version, d.app_version, \
-                d.created_at, d.last_seen_at, d.authorization_state, d.protocol_version, \
-                d.last_ack_seq, d.last_sync_at, \
-                (SELECT MAX(t.expires_at) FROM cloud_refresh_tokens t \
-                 WHERE t.device_id = d.device_id AND t.revoked_at IS NULL AND t.expires_at > $3), \
-                d.approximate_location \
-         FROM cloud_devices d \
-         WHERE d.account_id = $1 AND d.revoked_at IS NULL \
-         ORDER BY (d.device_id = $2) DESC, d.last_seen_at DESC, d.created_at DESC",
+        "SELECT device_id, device_name, device_platform, os_version, app_version, \
+                created_at, last_seen_at, authorization_state, protocol_version, \
+                last_ack_seq, last_sync_at, session_expires_at, approximate_location, \
+                session_count, online, legacy \
+         FROM ( \
+           SELECT d.device_id, d.device_name, d.device_platform, d.os_version, d.app_version, \
+                  d.created_at, d.last_seen_at, d.authorization_state, d.protocol_version, \
+                  d.last_ack_seq, d.last_sync_at, d.approximate_location, \
+                  (SELECT MAX(t.expires_at) FROM cloud_refresh_tokens t \
+                   WHERE t.device_id = d.device_id AND t.revoked_at IS NULL \
+                     AND t.expires_at > $3) AS session_expires_at, \
+                  (SELECT COUNT(*)::BIGINT FROM cloud_refresh_tokens t \
+                   WHERE t.device_id = d.device_id AND t.revoked_at IS NULL \
+                     AND t.expires_at > $3) AS session_count, \
+                  EXISTS (SELECT 1 FROM cloud_device_presence p \
+                          WHERE p.device_id = d.device_id AND p.account_id = d.account_id \
+                            AND p.state = 'online' AND p.last_heartbeat_at >= $4) AS online, \
+                  (d.device_key_algorithm = 'legacy') AS legacy \
+           FROM cloud_devices d \
+           WHERE d.account_id = $1 AND d.revoked_at IS NULL \
+         ) devices \
+         WHERE device_id = $2 OR session_count > 0 OR online \
+         ORDER BY (device_id = $2) DESC, last_seen_at DESC, created_at DESC",
     )
     .bind(&session.account_id)
     .bind(&session.device_id)
-    .bind(Utc::now().to_rfc3339())
+    .bind(now.to_rfc3339())
+    .bind(presence_cutoff.to_rfc3339())
     .fetch_all(state.db_pool())
     .await
     {
@@ -48,7 +75,7 @@ pub(super) async fn list_devices(
             .map(
                 |(
                     device_id,
-                    display_name,
+                    stored_name,
                     platform,
                     os_version,
                     app_version,
@@ -60,23 +87,34 @@ pub(super) async fn list_devices(
                     last_successful_catch_up_at,
                     session_expires_at,
                     approximate_location,
-                )| DeviceAuthorizationResponse {
-                    current_device: device_id == session.device_id,
-                    device_id,
-                    display_name,
-                    platform,
-                    os_version,
-                    app_version,
-                    created_at,
-                    last_active_at,
-                    authorization_state,
-                    session_expires_at,
-                    approximate_location,
-                    sync_status: DeviceSyncStatusResponse {
-                        protocol_version,
-                        last_applied_sequence,
-                        last_successful_catch_up_at,
-                    },
+                    session_count,
+                    online,
+                    legacy,
+                )| {
+                    let (display_name, sign_in_method) =
+                        crate::auth::devices::device_display_identity(stored_name);
+                    DeviceAuthorizationResponse {
+                        current_device: device_id == session.device_id,
+                        device_id,
+                        display_name,
+                        platform,
+                        os_version,
+                        app_version,
+                        created_at,
+                        last_active_at,
+                        authorization_state,
+                        session_expires_at,
+                        approximate_location,
+                        sync_status: DeviceSyncStatusResponse {
+                            protocol_version,
+                            last_applied_sequence,
+                            last_successful_catch_up_at,
+                        },
+                        online,
+                        session_count,
+                        legacy,
+                        sign_in_method,
+                    }
                 },
             )
             .collect(),

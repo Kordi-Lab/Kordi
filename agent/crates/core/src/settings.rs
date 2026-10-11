@@ -10,6 +10,8 @@ pub use crate::settings_packages::{PackageEntry, PackageFilter};
 #[cfg(test)]
 mod connectors_tests;
 mod io;
+#[cfg(test)]
+mod memory_tests;
 mod merge;
 #[cfg(test)]
 mod tests;
@@ -74,6 +76,8 @@ pub struct Settings {
     pub update_check: UpdateCheckSettings,
     #[serde(default)]
     pub storage: StorageSettings,
+    #[serde(default)]
+    pub memory: MemorySettings,
     /// Per-source connector switches. Global only; project settings cannot
     /// turn on a source that reads the owner's personal data.
     #[serde(default, skip_serializing_if = "ConnectorsSettings::is_default")]
@@ -231,6 +235,25 @@ pub struct StorageSettings {
     pub artifacts_dir: Option<String>,
 }
 
+/// Account memory switches. Signed in, this block mirrors the account
+/// settings; signed out, it is the source of truth for the Mac harness.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MemorySettings {
+    #[serde(default = "default_true", alias = "memoryEnabled")]
+    pub memory_enabled: bool,
+    #[serde(default = "default_true", alias = "excludeSensitive")]
+    pub exclude_sensitive: bool,
+}
+
+impl Default for MemorySettings {
+    fn default() -> Self {
+        Self {
+            memory_enabled: default_true(),
+            exclude_sensitive: default_true(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProviderOverride {
     pub name: String,
@@ -271,6 +294,7 @@ impl Default for Settings {
             compatibility_mode: false,
             update_check: UpdateCheckSettings::default(),
             storage: StorageSettings::default(),
+            memory: MemorySettings::default(),
             connectors: ConnectorsSettings::default(),
         }
     }

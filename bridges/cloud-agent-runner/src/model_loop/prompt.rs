@@ -64,6 +64,7 @@ pub fn tool_catalog() -> Vec<Value> {
         local_tool_schema(&kordi_tools::calendar::ReadCalendarTool),
         local_tool_schema(&WebSearchTool),
         local_tool_schema(&WebFetchTool),
+        local_tool_schema(&kordi_tools::reflection_tool::ReflectionTool),
         tool_schema(
             "export_artifact",
             "Export a file from the Cloud sandbox into chat attachments.",

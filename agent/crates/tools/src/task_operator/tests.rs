@@ -58,7 +58,7 @@ fn task_operator_schema_prompts_for_parent_task_title() {
         .expect("taskTitle should have a description");
 
     assert!(description.contains("overall task"));
-    assert!(description.contains("5-10 words"));
+    assert!(description.contains("sentence case, 3 to 7 words, no trailing period"));
 }
 
 #[tokio::test]

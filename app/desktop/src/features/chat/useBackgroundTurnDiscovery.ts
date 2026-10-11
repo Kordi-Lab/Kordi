@@ -5,6 +5,7 @@ import { fetchDesktopChatActiveTurns, fetchDesktopSubsessionIds } from '@/lib/de
 import { publishModelSubsession } from '@/features/cloud/agentSubsessionSync';
 import { loadSession } from '@/features/cloud/session';
 import { discoverSubsessionFollowups } from '@/features/cloud/subsessionFollowExecution';
+import { publishCloudBackgroundFollowUp } from '@/features/cloud/cloudBackgroundFollowUps';
 
 export function useBackgroundTurnDiscovery({
   enabled,
@@ -34,6 +35,7 @@ export function useBackgroundTurnDiscovery({
       }
       const currentIds = new Set(turns.map((turn) => turn.id));
       for (const turn of turns) {
+        if (turn.backgroundFollowUp) void publishCloudBackgroundFollowUp(turn);
         if (discoveredTurnIdsRef.current.has(turn.id)) continue;
         discoveredTurnIdsRef.current.add(turn.id);
         if (subsessionIds.has(turn.sessionId)) void publishModelSubsession(turn.sessionId).catch(() => undefined);

@@ -55,6 +55,7 @@ fn sample_runner_run(connector_tools: Vec<LeaseConnectorTool>) -> RunnerRunRespo
         response_message_id: None,
         error_code: None,
         error_message: None,
+        cancel_requested: false,
         trigger: RunTrigger::PersonStarted,
         connector_audience: ConnectorAudience::OwnerPrivate,
         connector_tools,

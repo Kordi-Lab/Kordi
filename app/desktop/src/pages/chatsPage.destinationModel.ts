@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import {
+  Brain,
   CheckCircle2,
   FolderOpen,
   Info,
@@ -8,7 +9,7 @@ import {
 
 import type { DetailTab } from '@/kordi-app/types';
 
-export type ChatDestination = 'messages' | 'info' | 'artifacts' | 'tasks';
+export type ChatDestination = 'messages' | 'info' | 'artifacts' | 'tasks' | 'memory';
 export type ChatDetailDestination = Exclude<ChatDestination, 'messages'>;
 
 export const CHAT_DESTINATIONS: ReadonlyArray<{
@@ -20,6 +21,7 @@ export const CHAT_DESTINATIONS: ReadonlyArray<{
   { id: 'info', label: 'Info', icon: Info },
   { id: 'artifacts', label: 'Artifacts', icon: FolderOpen },
   { id: 'tasks', label: 'Tasks', icon: CheckCircle2 },
+  { id: 'memory', label: 'Memory', icon: Brain },
 ];
 
 export const CHAT_DETAIL_TABS: ReadonlyArray<{
@@ -39,5 +41,13 @@ export const CHAT_DETAIL_TABS: ReadonlyArray<{
 export function detailDestinationFromTab(
   tab: DetailTab,
 ): ChatDetailDestination {
-  return tab === 'artifacts' || tab === 'tasks' ? tab : 'info';
+  return tab === 'artifacts' || tab === 'tasks' || tab === 'memory' ? tab : 'info';
+}
+
+/** Leaves out the Memory tab when the server reports no memory routes. */
+export function withMemoryTab<T extends { id: string }>(
+  tabs: ReadonlyArray<T>,
+  memoryAvailable: boolean,
+): ReadonlyArray<T> {
+  return memoryAvailable ? tabs : tabs.filter((tab) => tab.id !== 'memory');
 }

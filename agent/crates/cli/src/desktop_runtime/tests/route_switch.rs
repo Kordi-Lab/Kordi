@@ -69,7 +69,7 @@ async fn hosted_credential_is_ephemeral_and_keeps_local_runtime_provider() -> Re
     .save_global()?;
     let session_id = "session:self-agent:hosted-ephemeral";
     let mut runtime = DesktopRuntimeSession::create_with_id(cwd.path().into(), session_id).await?;
-    runtime.set_hosted_model("openai-codex/gpt-5.5")?;
+    runtime.apply_turn_hosted_model("openai-codex/gpt-5.5")?;
     let auth = crate::login::ResolvedProviderAuth {
         source: crate::login::AuthSource::KordiAuth,
         credential_provider: "openai-codex".into(),
@@ -112,6 +112,58 @@ async fn hosted_credential_is_ephemeral_and_keeps_local_runtime_provider() -> Re
     drop(runtime);
     let resumed = DesktopRuntimeSession::resume(cwd.path().into(), session_id).await?;
     assert_ne!(resumed.setup.api_key, "synthetic-hosted-token");
+    Ok(())
+}
+
+#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
+#[tokio::test]
+async fn request_routes_apply_to_one_turn_without_switch_entries() -> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir()?;
+    let cwd = tempfile::tempdir()?;
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+    let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
+    Settings {
+        default_provider: Some("openai".into()),
+        default_model: Some("gpt-5.6-sol".into()),
+        ..Settings::default()
+    }
+    .save_global()?;
+    let mut runtime =
+        DesktopRuntimeSession::create_with_id(cwd.path().into(), "session:self-agent:turn-route")
+            .await?;
+    let cancel = tokio_util::sync::CancellationToken::new();
+    cancel.cancel();
+    drop(runtime.begin_message_streaming("hello".into(), vec![], cancel.clone()).await?);
+    let configured = runtime.detail()?;
+    let count = |runtime: &DesktopRuntimeSession, kind: &str| -> Result<i64> {
+        Ok(runtime.setup.conn.query_row(
+            "SELECT count(*) FROM entries WHERE session_id = ?1 AND type = ?2",
+            rusqlite::params![runtime.setup.session_id, kind],
+            |row| row.get(0),
+        )?)
+    };
+
+    // A hosted request route runs its exact model, even one the local
+    // registry does not list, and records nothing in the transcript.
+    runtime.apply_turn_hosted_model("openai-codex/gpt-6-sol")?;
+    runtime.apply_turn_thinking("high")?;
+    assert_runtime_request_model_context(&mut runtime, "gpt-6-sol", "openai").await?;
+    drop(runtime.begin_message_streaming("again".into(), vec![], cancel.clone()).await?);
+    let detail = runtime.detail()?;
+    assert_eq!((detail.provider, detail.model), (configured.provider, configured.model));
+    assert_eq!(detail.thinking, configured.thinking);
+
+    runtime.apply_turn_model("openai/gpt-6-astra")?;
+    drop(runtime.begin_message_streaming("local".into(), vec![], cancel.clone()).await?);
+    assert_eq!(runtime.detail()?.model, "gpt-5.6-sol");
+    assert_eq!(count(&runtime, "model_change")?, 0);
+    assert_eq!(count(&runtime, "thinking_level_change")?, 0);
+
+    // A change the person makes is still recorded once.
+    runtime.set_explicit_config(Some("openai/gpt-6-astra"), None)?;
+    assert_eq!(count(&runtime, "model_change")?, 1);
+    assert_eq!(runtime.detail()?.model, "gpt-6-astra");
     Ok(())
 }
 

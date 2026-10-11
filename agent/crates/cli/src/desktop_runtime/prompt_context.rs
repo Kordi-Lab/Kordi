@@ -12,6 +12,8 @@ const SESSION_START: &str = "\n\n<desktop_session_context>";
 const SESSION_END: &str = "</desktop_session_context>";
 const LEGACY_SESSION_START: &str = "\n\n<desktop_bridge_outreach_context>";
 const LEGACY_SESSION_END: &str = "</desktop_bridge_outreach_context>";
+const MEMORY_START: &str = crate::session_bootstrap::memory::MEMORY_CONTEXT_START;
+const MEMORY_END: &str = crate::session_bootstrap::memory::MEMORY_CONTEXT_END;
 
 pub(super) fn is_system_context(message: &DesktopChatContextMessage) -> bool {
     message
@@ -75,6 +77,30 @@ pub(super) fn with_session_context(prompt: &str, context: Option<&str>) -> Strin
     }
 }
 
+/// Replace the tagged memory block. The block sits before the dynamic and
+/// session context blocks so its place stays stable across turns; an empty
+/// `block` removes it.
+pub(super) fn with_memory_context(prompt: &str, block: &str) -> String {
+    let base_prompt = strip_tagged(prompt, MEMORY_START, MEMORY_END);
+    if block.trim().is_empty() {
+        return base_prompt;
+    }
+    let insert_at = [
+        format!("\n\n{DYNAMIC_START}"),
+        SESSION_START.to_string(),
+        LEGACY_SESSION_START.to_string(),
+    ]
+    .iter()
+    .filter_map(|tag| base_prompt.find(tag.as_str()))
+    .min()
+    .unwrap_or(base_prompt.len());
+    format!(
+        "{}{block}{}",
+        &base_prompt[..insert_at],
+        &base_prompt[insert_at..]
+    )
+}
+
 pub(super) fn strip_session_prompt_context(prompt: &str) -> String {
     strip_tagged(
         &strip_tagged(prompt, SESSION_START, SESSION_END),
@@ -112,5 +138,39 @@ mod tests {
         assert!(!second.contains("Requester Alice"));
         assert!(second.contains("Requester Bob"));
         assert_eq!(second.matches(DYNAMIC_START).count(), 1);
+    }
+
+    #[test]
+    fn memory_block_survives_dynamic_and_session_context_exactly_once() {
+        let block = crate::session_bootstrap::memory::tagged_memory_prompt_block(
+            "## Memories\nThis conversation:\n- Reply in French.",
+        );
+        let base = format!("Stable agent instructions{block}");
+        let mut prompt = base.clone();
+        for turn in ["Alice", "Bob"] {
+            prompt = with_dynamic_system_context(
+                &prompt,
+                Path::new("."),
+                false,
+                Some(&format!("Requester {turn}")),
+            );
+            prompt = with_session_context(&prompt, Some(&format!("Session {turn}")));
+            prompt = with_memory_context(&prompt, &block);
+        }
+        assert_eq!(prompt.matches(MEMORY_START.trim_start()).count(), 1);
+        assert_eq!(prompt.matches(MEMORY_END).count(), 1);
+        assert_eq!(prompt.matches(DYNAMIC_START).count(), 1);
+        assert_eq!(prompt.matches(SESSION_START.trim_start()).count(), 1);
+        assert!(prompt.contains("- Reply in French."));
+        assert!(prompt.contains("Requester Bob") && !prompt.contains("Requester Alice"));
+        let memory_at = prompt.find(MEMORY_END).expect("memory block");
+        assert!(memory_at < prompt.find(DYNAMIC_START).expect("dynamic block"));
+        assert!(memory_at < prompt.find(SESSION_START).expect("session block"));
+
+        let cleared = with_memory_context(&prompt, "");
+        assert!(!cleared.contains(MEMORY_END));
+        assert!(!cleared.contains("Reply in French"));
+        assert!(cleared.contains("Requester Bob"));
+        assert!(cleared.contains("Session Bob"));
     }
 }

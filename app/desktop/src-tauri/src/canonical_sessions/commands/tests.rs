@@ -8,9 +8,10 @@ use super::super::{
 };
 use super::{
     add_canonical_group_members_in_db, classify_legacy_cloud_group_title_notices_in_db,
-    list_legacy_cloud_group_title_notice_ids_in_db, load_catalog_from_db,
-    load_message_page_from_db, load_state_from_db, reconcile_canonical_message_mirror_in_db,
-    select_session_participants, update_canonical_message_delivery_in_db,
+    latest_session_request_routes_from_db, list_legacy_cloud_group_title_notice_ids_in_db,
+    load_catalog_from_db, load_message_page_from_db, load_state_from_db,
+    reconcile_canonical_message_mirror_in_db, select_session_participants,
+    update_canonical_message_delivery_in_db,
 };
 
 fn test_conn() -> Connection {
@@ -126,3 +127,4 @@ mod delivery;
 mod membership;
 mod message_mirror;
 mod message_mirror_reply_echo;
+mod session_routes;

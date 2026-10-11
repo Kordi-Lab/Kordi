@@ -165,7 +165,7 @@ export function planCloudSelfAgentCanonicalSync({
       createdAtMs,
       responseRequestId,
       responseDeliveryState,
-      responseExecution,
+      responseExecution, responseEnding,
       messageAction, mentions, agentRuntimeRoute,
     } = restoreMessage;
     const sourceTransport =
@@ -404,7 +404,8 @@ export function planCloudSelfAgentCanonicalSync({
           ? 'system'
           : 'user',
       messageKind,
-      contentText: deliveryState === 'failed' ? '' : text,
+      // A reply that ended early keeps its partial text; otherwise the failure notice is the error.
+      contentText: deliveryState === 'failed' && !responseEnding ? '' : text,
       content: responseRequestId
         ? {
             cloudRequestMessageId: stableRequestCloudMessageId,
@@ -412,7 +413,8 @@ export function planCloudSelfAgentCanonicalSync({
             replyToMessageId: parentMessageId ?? stableRequestCloudMessageId,
             deliveryState,
             ...cloudAgentExecutionCanonicalContent(responseExecution),
-            ...(deliveryState === 'failed' ? { error: text } : {}),
+            ...(responseEnding ? { ending: responseEnding } : {}),
+            ...(deliveryState === 'failed' && !responseEnding ? { error: text } : {}),
           }
         : role === 'system' && agentRuntimeRoute
           ? { agentRuntimeRoute }

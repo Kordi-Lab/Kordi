@@ -5,8 +5,10 @@ import {
   queuedMessageBubbleShapeClass,
   humanMessageBubbleShapeClass,
 } from '@/features/chat/messageBubbleShape';
+import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { MessageInlineContent } from '@/kordi-app/components/messageInlineContent';
 import type { QueuedDesktopChatMessage } from '@/kordi-app/types';
+import { generatedAvatarSeedForLabel, selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 
 export function QueuedMessageBubble({
@@ -16,6 +18,7 @@ export function QueuedMessageBubble({
   onCancel,
   own = true,
   sender,
+  threadLayout = false,
 }: {
   message: Pick<QueuedDesktopChatMessage, 'id' | 'sessionId' | 'text' | 'time'> & { attachments: readonly unknown[] };
   isCompressionActive: boolean;
@@ -23,7 +26,73 @@ export function QueuedMessageBubble({
   onCancel?: (sessionId: string, queuedMessageId: string) => void;
   own?: boolean;
   sender?: string;
+  threadLayout?: boolean;
 }) {
+  const profileAvatarSeed = useLocalProfileAvatarSeed();
+  const statusLabel = isCompressionActive ? 'Queued during compression' : 'Queued next';
+  const actions = onEdit || onCancel ? (
+    <div
+      className="app-queued-message-actions flex shrink-0 items-center gap-1 self-center"
+      aria-label="Queued message actions"
+    >
+      {onEdit ? <button
+        type="button"
+        className="app-button-quiet app-queued-message-edit inline-flex h-7 w-7 items-center justify-center rounded-full p-0"
+        aria-label={`Edit queued message: ${message.text.slice(0, 48)}`}
+        title="Edit queued message"
+        onClick={() => onEdit?.(message.sessionId, message.id)}
+      >
+        <SquarePen className="h-3.5 w-3.5" aria-hidden="true" />
+      </button> : null}
+      {onCancel ? <button
+        type="button"
+        className="app-button-quiet app-queued-message-cancel inline-flex h-7 w-7 items-center justify-center rounded-full p-0"
+        aria-label={`Cancel queued message: ${message.text.slice(0, 48)}`}
+        title="Cancel queued message"
+        onClick={() => onCancel?.(message.sessionId, message.id)}
+      >
+        <X className="h-3.5 w-3.5" aria-hidden="true" />
+      </button> : null}
+    </div>
+  ) : null;
+  if (threadLayout) {
+    const name = selfDisplayName(sender ?? 'Me', own);
+    return (
+      <div className="flex w-full flex-col gap-1 app-thread-message-row pt-0.5 pb-0.5" data-message-layout="threads">
+        <div className="flex w-full max-w-full app-thread-message-main items-start gap-2">
+          <IdentityAvatar
+            kind="human"
+            seed={own ? profileAvatarSeed : generatedAvatarSeedForLabel('human', name)}
+            isSelf={own}
+            name={name}
+            className="h-7 w-7 mb-0.5 border border-white/10"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="app-thread-message-header">
+              <span className="app-thread-message-author">{name}</span>
+              <span className="app-thread-message-queued">
+                <Clock3 className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+                <span>{isCompressionActive ? 'Queued during compression' : 'Queued'}</span>
+              </span>
+              <time className="app-thread-message-time">{message.time}</time>
+            </div>
+            <div className="flex items-start gap-2">
+              <div className="app-queued-message-text min-w-0 flex-1 whitespace-pre-wrap break-words text-[14px] leading-5" data-kordi-copy-surface="message">
+                <MessageInlineContent text={message.text} />
+              </div>
+              {actions}
+            </div>
+            {message.attachments.length > 0 ? (
+              <div className="app-queued-message-meta mt-1 text-[10px] leading-none">
+                {message.attachments.length} attachment
+                {message.attachments.length === 1 ? '' : 's'} waiting
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={cn('flex py-0.5', own ? 'justify-end' : 'justify-start')}>
       <div
@@ -36,13 +105,9 @@ export function QueuedMessageBubble({
         <div className="min-w-0 text-left">
           {sender ? <div className="mb-1 text-xs">{sender}</div> : null}
           <div className="mb-0.5 flex items-center justify-between gap-3">
-            <div className="app-queued-message-label inline-flex min-w-0 items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-[0.07em]">
+            <div className="app-queued-message-label inline-flex min-w-0 items-center gap-1.5 text-[11px] font-medium">
               <Clock3 className="h-2.5 w-2.5 shrink-0" />
-              <span className="truncate">
-                {isCompressionActive
-                  ? 'Queued during compression'
-                  : 'Queued next'}
-              </span>
+              <span className="truncate">{statusLabel}</span>
             </div>
             <div className="app-queued-message-meta shrink-0 text-[10px] leading-none">
               {message.time}
@@ -52,29 +117,7 @@ export function QueuedMessageBubble({
             <div className="app-queued-message-text min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-5" data-kordi-copy-surface="message">
               <MessageInlineContent text={message.text} />
             </div>
-            {onEdit || onCancel ? <div
-              className="app-queued-message-actions flex shrink-0 items-center gap-1 self-center"
-              aria-label="Queued message actions"
-            >
-              {onEdit ? <button
-                type="button"
-                className="app-button-quiet app-queued-message-edit inline-flex h-7 w-7 items-center justify-center rounded-full p-0"
-                aria-label={`Edit queued message: ${message.text.slice(0, 48)}`}
-                title="Edit queued message"
-                onClick={() => onEdit?.(message.sessionId, message.id)}
-              >
-                <SquarePen className="h-3.5 w-3.5" aria-hidden="true" />
-              </button> : null}
-              {onCancel ? <button
-                type="button"
-                className="app-button-quiet app-queued-message-cancel inline-flex h-7 w-7 items-center justify-center rounded-full p-0"
-                aria-label={`Cancel queued message: ${message.text.slice(0, 48)}`}
-                title="Cancel queued message"
-                onClick={() => onCancel?.(message.sessionId, message.id)}
-              >
-                <X className="h-3.5 w-3.5" aria-hidden="true" />
-              </button> : null}
-            </div> : null}
+            {actions}
           </div>
         </div>
         {message.attachments.length > 0 ? (

@@ -64,6 +64,20 @@ pub struct DesktopChatTurnSnapshot {
     pub transcript_entry_id: Option<String>,
     pub error: Option<String>,
     pub transcript_refresh_required: bool,
+    /// Set on a runtime follow-up turn that reports a background session's outcome.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background_follow_up: Option<DesktopBackgroundFollowUp>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBackgroundFollowUp {
+    /// Stable identity: the follow-up entry id, unique per session and outcome.
+    pub id: String,
+    pub session_id: String,
+    pub parent_request_id: Option<String>,
+    pub title: String,
+    pub status: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]

@@ -1,7 +1,7 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { withLocalExecutionProgress } from '@/features/chat/localExecutionProgress';
 import { collaborationMessageActionSourceReference,collaborationMessageActionWithRealSourceLabel } from "./messageActionPresentation";
-import { DEFAULT_LOCAL_AGENT_AVATAR_SEED } from '@/features/canonical/avatarIdentity';
+import { getLocalAgentAvatar } from '@/features/canonical/localAgentAvatar';
 import { isProcessingPlaceholderText,stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import {
 collaborationPendingAgentReplyState,
@@ -187,7 +187,7 @@ export function mapCollaborationConversationToViewModel(
     && (candidate.agentId === conversation.identity?.remoteAgentId || candidate.humanId === conversation.identity?.remoteHumanId)
   ));
   const localHumanAvatarSeed = host?.humanId || conversation.identity?.localHumanId || host?.ownerName || 'local';
-  const localAgentAvatarSeed = DEFAULT_LOCAL_AGENT_AVATAR_SEED;
+  const localAgentAvatarSeed = getLocalAgentAvatar().seed;
   const remoteHumanAvatarSeed = peer?.avatarSeed || conversation.identity?.remoteHumanId || peer?.humanId || conversation.peerOwnerName || conversation.peerNodeId;
   const remoteAgentAvatarSeed = remoteAgentPeer?.avatarSeed || conversation.identity?.remoteAgentId || peer?.agentId || conversation.peerNodeId;
   const conversationAvatarSeed = isCloudSelfAgent ? localAgentAvatarSeed : isAgent ? remoteAgentAvatarSeed : remoteHumanAvatarSeed;

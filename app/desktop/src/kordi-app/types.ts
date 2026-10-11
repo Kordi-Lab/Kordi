@@ -22,7 +22,7 @@ export type {
   ChangedFileRow,CollaborationAgentRequestControl,
   ComposerQuoteState,DesktopArtifactDirectory,
   DesktopArtifactDirectoryEntry,
-  DesktopArtifactPreview,DesktopChatAttachment,DesktopChatToolSnapshot,
+  DesktopArtifactPreview,DesktopBackgroundFollowUp,DesktopChatAttachment,DesktopChatToolSnapshot,
   DesktopChatTurnSnapshot,
   EditDiffLine,
   EditFilePreview,
@@ -40,7 +40,7 @@ export type { DesktopChatSessionSummary };
 
 export type NavId = 'chats' | 'agent-chats' | 'contacts' | 'projects' | 'agents' | 'settings' | 'digest';
 export type ChatChannel = 'contact' | 'agent';
-export type DetailTab = 'info' | 'context' | 'artifacts' | 'tasks';
+export type DetailTab = 'info' | 'context' | 'artifacts' | 'tasks' | 'memory';
 export type ConversationType = 'person' | 'owned-agent' | 'external-agent';
 export type ResizeDirection =
   | 'left'

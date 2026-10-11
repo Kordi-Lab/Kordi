@@ -269,6 +269,11 @@
   font-weight: inherit;
 }
 
+.app-source-message-quote-label {
+  color: var(--utility-muted-text);
+  font-weight: 500;
+}
+
 .app-source-message-quote .app-inline-blob-emoji {
   vertical-align: -0.2em;
 }

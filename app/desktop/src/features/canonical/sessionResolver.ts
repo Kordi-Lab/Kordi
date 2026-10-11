@@ -21,6 +21,24 @@ export type ProjectRoutingGroup = {
   persisted?: boolean;
 };
 
+/** A local session the project catalog may not list yet, with any workspace paths it already carries. */
+export type ProjectSessionHint = {
+  sessionId: string;
+  /** Working directories of the session; a path at or under a known project root binds it there. */
+  paths?: ReadonlyArray<string | null | undefined>;
+  updatedAtMs?: number | null;
+  /** False when fresh runtime detail shows the session left its project. */
+  rememberMembership?: boolean;
+};
+
+export type ProjectRoutingOptions = {
+  sessionHints?: readonly ProjectSessionHint[];
+  /** Sessions the runtime lists as plain chats; they never inherit a project from a hint or memory. */
+  unboundSessionIds?: ReadonlySet<string>;
+  /** Project group each session was last shown under. */
+  previousGroupIdBySession?: ReadonlyMap<string, string>;
+};
+
 function normalizedProjectRoot(value?: string | null) {
   const trimmed = (value ?? '').trim();
   return trimmed || null;
@@ -57,6 +75,19 @@ export function projectRootFromCanonicalProjectGroupId(projectId?: string | null
   return normalizedProjectId.startsWith('project:')
     ? normalizedProjectRoot(normalizedProjectId.slice('project:'.length))
     : normalizedProjectRoot(normalizedProjectId);
+}
+
+function trimTrailingSeparators(path: string) {
+  return path.length > 1 ? path.replace(/[\\/]+$/u, '') : path;
+}
+
+function pathIsWithinRoot(path: string, root: string) {
+  const normalizedPath = trimTrailingSeparators(path);
+  const normalizedRoot = trimTrailingSeparators(root);
+  if (!normalizedRoot) return false;
+  return normalizedPath === normalizedRoot
+    || normalizedPath.startsWith(`${normalizedRoot}/`)
+    || normalizedPath.startsWith(`${normalizedRoot}\\`);
 }
 
 function isLegacyStableHumanCollaborationSessionId(value?: string | null) {
@@ -123,6 +154,7 @@ export function findOwnedAgentConversation(conversations: Conversation[]) {
 export function buildProjectRoutingGroups(
   desktopProjects: DesktopChatProjectGroup[] | null | undefined,
   canonicalState: CanonicalSessionState | null | undefined,
+  options: ProjectRoutingOptions = {},
 ): ProjectRoutingGroup[] {
   const groupIdsInOrder: string[] = [];
   const sessionIdsByGroupId = new Map<string, string[]>();
@@ -185,6 +217,29 @@ export function buildProjectRoutingGroups(
     addSession(groupId, session.id, session.lastMessageAtMs ?? session.updatedAtMs ?? session.createdAtMs);
   }
 
+  // The catalog can lag behind a session that already knows its project (a new
+  // project chat, a send, a refresh). Place it from its own binding or from the
+  // group it was last shown under so it never falls back to Recents.
+  const placedSessionIds = new Set([...sessionIdsByGroupId.values()].flat());
+  const groupRoots = groupIdsInOrder
+    .map((groupId) => ({ groupId, root: projectRootFromCanonicalProjectGroupId(groupId) }))
+    .filter((entry): entry is { groupId: string; root: string } => Boolean(entry.root))
+    .sort((left, right) => right.root.length - left.root.length);
+  for (const hint of options.sessionHints ?? []) {
+    const sessionId = hint.sessionId;
+    if (!sessionId || placedSessionIds.has(sessionId) || archivedSessionIds.has(sessionId)) continue;
+    if (options.unboundSessionIds?.has(sessionId)) continue;
+    const paths = (hint.paths ?? []).map(normalizedProjectRoot).filter((path): path is string => Boolean(path));
+    const rememberedGroupId = hint.rememberMembership === false
+      ? undefined
+      : options.previousGroupIdBySession?.get(sessionId);
+    const groupId = groupRoots.find((entry) => paths.some((path) => pathIsWithinRoot(path, entry.root)))?.groupId
+      ?? (rememberedGroupId && sessionIdsByGroupId.has(rememberedGroupId) ? rememberedGroupId : undefined);
+    if (!groupId) continue;
+    addSession(groupId, sessionId, hint.updatedAtMs ?? 0);
+    placedSessionIds.add(sessionId);
+  }
+
   return groupIdsInOrder
     .sort((left, right) => (latestTimestampByGroupId.get(right) ?? 0) - (latestTimestampByGroupId.get(left) ?? 0))
     .map((groupId) => ({
@@ -195,6 +250,19 @@ export function buildProjectRoutingGroups(
         .map((id) => ({ id })),
     }))
     .filter((group) => group.persisted || group.sessions.length > 0);
+}
+
+/** Remember where each session was shown; plain chats the runtime lists drop their memory. */
+export function rememberProjectMembership(
+  previous: ReadonlyMap<string, string>,
+  groups: readonly ProjectRoutingGroup[],
+  unboundSessionIds: ReadonlySet<string> = new Set(),
+) {
+  const next = new Map([...previous].filter(([sessionId]) => !unboundSessionIds.has(sessionId)));
+  for (const group of groups) {
+    for (const session of group.sessions) next.set(session.id, group.id);
+  }
+  return next;
 }
 
 export function resolveProjectSelection(

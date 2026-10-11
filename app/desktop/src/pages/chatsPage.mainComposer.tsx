@@ -56,6 +56,7 @@ export function MainComposer({
   collaborationRouting,
   display,
   onSend: sendMessage,
+  stop = null,
   cloudAccountId = null,
 }: MainComposerProps) {
   const {
@@ -481,6 +482,7 @@ export function MainComposer({
               hasSendableDraft={hasSendableDraft && !routeAccountUnavailable}
               activeLiveTurnIsRunning={display.activeLiveTurnIsRunning}
               onSend={() => { void onSend(); }}
+              stop={stop}
             />}
           </div>
         </div>

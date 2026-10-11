@@ -179,6 +179,7 @@ async function publishCloudSelfAgentOperationBatch({
             text: operation.text,
             ...(target ?? {}),
             ...(operation.agentRuntimeRoute ? { agentRuntimeRoute: operation.agentRuntimeRoute } : {}),
+            ...(operation.contextMessages?.length ? { contextMessages: operation.contextMessages } : {}),
           })
         : operation.text;
       const uploadKey = `attachments:${operation.localMessageId}`;
@@ -272,9 +273,9 @@ async function publishCloudSelfAgentOperationBatch({
     }
 
     const parentLocalMessageId = operation.parentLocalMessageId;
-    const parentCloudMessageId = parentLocalMessageId
+    const parentCloudMessageId = operation.requestId ?? (parentLocalMessageId
       ? ledger[parentLocalMessageId]?.cloudMessageId ?? null
-      : null;
+      : null);
     if (!parentCloudMessageId || !shouldContinue()) continue;
     const response = await client.sendMessage(
       token,

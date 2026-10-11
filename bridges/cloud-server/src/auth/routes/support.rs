@@ -3,7 +3,8 @@ use sqlx_core::transaction::Transaction;
 use sqlx_postgres::Postgres;
 use uuid::Uuid;
 
-pub(super) const SIGNUP_DEFAULT_DEVICE_NAME: &str = "cloud-email-password-device";
+pub(super) const SIGNUP_DEFAULT_DEVICE_NAME: &str =
+    crate::auth::devices::EMAIL_PASSWORD_PLACEHOLDER_DEVICE_NAME;
 
 pub(super) fn err(code: &'static str, message: impl Into<String>, status: StatusCode) -> Response {
     let body = ErrorBody {

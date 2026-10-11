@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use super::{
-    CompactionConfig, ModelOverride, PackageEntry, ProviderOverride, RetryConfig, Settings,
-    StorageSettings, UpdateCheckSettings,
+    CompactionConfig, MemorySettings, ModelOverride, PackageEntry, ProviderOverride, RetryConfig,
+    Settings, StorageSettings, UpdateCheckSettings,
 };
 
 pub(super) fn merge_settings(global: &Settings, project: &Settings) -> Settings {
@@ -63,7 +63,19 @@ pub(super) fn merge_settings(global: &Settings, project: &Settings) -> Settings 
         ),
         update_check: merge_update_check(&global.update_check, &project.update_check),
         storage: merge_storage(&global.storage, &project.storage),
+        memory: merge_memory(&global.memory, &project.memory),
         connectors: global.connectors.clone(),
+    }
+}
+
+/// Memory is an account-level choice, so the global block wins unless the
+/// project block differs from the defaults. The whole block is taken from
+/// one side so the two switches never mix sources.
+fn merge_memory(global: &MemorySettings, project: &MemorySettings) -> MemorySettings {
+    if *project != MemorySettings::default() {
+        project.clone()
+    } else {
+        global.clone()
     }
 }
 

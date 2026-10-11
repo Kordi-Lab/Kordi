@@ -74,7 +74,14 @@ impl OpenAiProviderConfig {
         }
         // Empty only for a custom account without a model; a route model may
         // still supply one in `apply_runtime_route`.
-        let model = snapshot_model(payload, &provider)
+        // A ChatGPT login normalizes to `openai` for its endpoint, but it
+        // serves only Codex models, so it keeps the `openai-codex` default.
+        let model_provider = if api_mode == OpenAiApiMode::CodexOAuth {
+            "openai-codex"
+        } else {
+            provider.as_str()
+        };
+        let model = snapshot_model(payload, model_provider)
             .map(|model| normalize_model_for_mode(model, api_mode).to_string())
             .unwrap_or_default();
         let account_id = payload
@@ -347,5 +354,7 @@ fn model_response_from_stream_events(
 
 #[cfg(test)]
 mod endpoint_tests;
+#[cfg(test)]
+mod model_choice_tests;
 #[cfg(test)]
 mod tests;

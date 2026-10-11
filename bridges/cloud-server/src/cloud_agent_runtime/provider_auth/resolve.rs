@@ -93,6 +93,15 @@ pub async fn provider_auth_for_account_route(
         }
     }
     record_snapshot_used(pool, &snapshot_id, owner_account_id, run_id).await?;
+    if let Some(run_id) = run_id {
+        crate::cloud_agent_runtime::runs::route_fill::record_resolved_route(
+            pool,
+            run_id,
+            &snapshot.provider,
+            &snapshot.auth_choice,
+        )
+        .await?;
+    }
 
     // Refresh capability stays with the server. The runner only needs the
     // short-lived access token for this claimed run.

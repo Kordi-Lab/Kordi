@@ -273,7 +273,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellComposerRouteArgs & KordiShe
   toggleComposerSelector: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking') => void;
   selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, configTargetOverride?: ComposerConfigTargetOverride) => void | Promise<void>;
   isDesktopChatSending: boolean;
-  handleStopDesktopChatTurn: () => void;
+  handleStopDesktopChatTurn: () => Promise<boolean> | void;
   handleStopCollaborationAgentRequest: (request: CollaborationAgentRequestControl) => void | Promise<void>;
   handleSendProjectMessage: (draftOverride?: string) => void;
   handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[], attachmentOverride?: AttachmentItem[], quoteOverride?: ComposerQuoteState | null) => Promise<void> | void;

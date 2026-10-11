@@ -218,28 +218,48 @@ async fn complete(
     }
 }
 
+/// Seconds since the last heartbeat for a project Mac to count as online.
+pub const PROJECT_DEVICE_ONLINE_SECONDS: i64 = 25;
+
+/// The project Mac a chat session is bound to.
+pub struct ProjectSessionBinding {
+    pub device_id: String,
+    pub project_name: String,
+    pub device_online: bool,
+}
+
+pub async fn project_session_binding(
+    pool: &PgPool,
+    account: &str,
+    session: &str,
+) -> Result<Option<ProjectSessionBinding>, sqlx_core::Error> {
+    let row: Option<(String, String, bool)> = query_as("SELECT p.device_id,coalesce(project->>'name','Project'),EXISTS(SELECT 1 FROM cloud_devices d WHERE d.device_id=p.device_id AND d.revoked_at IS NULL) AND p.updated_at>now()-make_interval(secs=>$3) FROM cloud_project_devices p, jsonb_array_elements(p.projects) project WHERE p.account_id=$1 AND (project->'sessions') ? $2 ORDER BY p.updated_at DESC LIMIT 1")
+        .bind(account).bind(session).bind(PROJECT_DEVICE_ONLINE_SECONDS as f64).fetch_optional(pool).await?;
+    Ok(row.map(
+        |(device_id, project_name, device_online)| ProjectSessionBinding {
+            device_id,
+            project_name,
+            device_online,
+        },
+    ))
+}
+
 pub async fn session_device(
     pool: &PgPool,
     account: &str,
     session: &str,
 ) -> Result<Option<String>, sqlx_core::Error> {
-    let row:Option<(String,)> = query_as("SELECT p.device_id FROM cloud_project_devices p, jsonb_array_elements(p.projects) project WHERE p.account_id=$1 AND (project->'sessions') ? $2 ORDER BY p.updated_at DESC LIMIT 1")
-        .bind(account).bind(session).fetch_optional(pool).await?;
-    Ok(row.map(|r| r.0))
+    Ok(project_session_binding(pool, account, session)
+        .await?
+        .map(|binding| binding.device_id))
 }
 
-/// A project can wait for its Mac, but can never fall back to a different filesystem.
+/// An online project Mac handles its sessions; while it is offline the cloud
+/// answers the chat without the project files.
 pub async fn cloud_execution_gate(pool: &PgPool, account: &str, session: &str) -> Option<Response> {
-    let device = match session_device(pool, account, session).await {
-        Ok(Some(device)) => device,
-        Ok(None) => return None,
-        Err(error) => return Some(database_error(error)),
-    };
-    let online: Result<(bool,), _> = query_as("SELECT EXISTS(SELECT 1 FROM cloud_project_devices p JOIN cloud_devices d USING(device_id) WHERE p.device_id=$1 AND d.revoked_at IS NULL AND p.updated_at>now()-interval '25 seconds')")
-        .bind(device).fetch_one(pool).await;
-    Some(match online {
-        Ok((true,)) => (StatusCode::CONFLICT, Json(json!({"errorCode":"owner_online","message":"The project Mac will handle this task."}))).into_response(),
-        Ok((false,)) => (StatusCode::CONFLICT, Json(json!({"errorCode":"project_mac_offline","message":"Open Kordi on the project Mac to run this task."}))).into_response(),
-        Err(error) => database_error(error),
-    })
+    match project_session_binding(pool, account, session).await {
+        Ok(Some(binding)) if binding.device_online => Some((StatusCode::CONFLICT, Json(json!({"errorCode":"owner_online","message":"The project Mac will handle this task."}))).into_response()),
+        Ok(_) => None,
+        Err(error) => Some(database_error(error)),
+    }
 }

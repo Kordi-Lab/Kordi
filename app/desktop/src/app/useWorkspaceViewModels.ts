@@ -1,15 +1,13 @@
 import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { localProjectSessions } from '@/features/projects/localProjectSessions';
-import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
+import { useProjectRoutingGroups } from '@/features/projects/useProjectRoutingGroups';
 import {useThreadAttention} from '@/features/cloud/threadAttention';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createCollaborationConversationMapper } from '@/features/collaboration/conversationProjectionCache';
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
-import { EMPTY_CLOUD_SESSION_ACTIVITY, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
-import { cloudAgentDefinitionToAgent, type CloudAgentDefinition } from '@/features/cloud/cloudAgents';
-import type { CloudPresenceStore } from '@/features/cloud/presence';
+import { EMPTY_CLOUD_SESSION_ACTIVITY } from '@/features/cloud/cloudSessionActivity';
+import { cloudAgentDefinitionToAgent } from '@/features/cloud/cloudAgents';
 import {
-  buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
   isLegacyCanonicalCollaborationSessionId,
   isCanonicalCloudSessionId,
@@ -32,18 +30,10 @@ import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
-  CanonicalSessionState,
-  CanonicalSessionSummary,
   Contact,
-  Conversation,
   DesktopCollaborationConversation,
   DesktopCollaborationHost,
-  DesktopCollaborationState,
-  DesktopChatMessage,
-  DesktopChatState,
-  DesktopChatTurnSnapshot,
   Message,
-  NavId,
   Project,
 } from '@/kordi-app/types';
 import { getInitials } from '@/kordi-app/utils';
@@ -88,43 +78,7 @@ export {
 import { collaborationChatConversationRoutesToLocalAgentPage, collaborationChatConversationIsVisible } from './viewModels/collaborationVisibility';
 export { collaborationChatConversationRoutesToLocalAgentPage, collaborationChatConversationIsVisible } from './viewModels/collaborationVisibility';
 
-type UseWorkspaceViewModelsArgs = {
-  cloudAccountId?: string;
-  cloudCatalogReady?: boolean;
-  isNativeShell: boolean;
-  isDesktopChatLoading: boolean;
-  desktopChatState: DesktopChatState | null; localAgentDisplayName?: string | null;
-  desktopCollaborationState: DesktopCollaborationState | null;
-  canonicalSessionState: CanonicalSessionState | null;
-  canonicalSessionSummaries?: CanonicalSessionSummary[];
-  transcriptHydration?: Readonly<Record<string, SessionHydrationState>>;
-  hiddenSessionIds: Set<string>;
-  archivedSessionIds?: ReadonlySet<string>;
-  projectWorkspaces: Project[];
-  projectSelectedSessionIds: Record<string, string>;
-  activeNav: NavId;
-  activeConvId: string;
-  activeProjectId: string;
-  activeProjectSessionId: string;
-  chatSearch: string;
-  projectSearch: string;
-  contactSearch: string;
-  activeContactId: string;
-  activeAgentId: string;
-  cachedChatSessionMessages: Record<string, Message[]>;
-  cachedProjectSessionMessages: Record<string, Message[]>;
-  cachedDesktopSessionSourceMessages?: Record<string, DesktopChatMessage[]>;
-  hydratedDesktopSessionIds?: ReadonlySet<string>;
-  localSessionUnreadCounts: Record<string, number>;
-  desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot>;
-  mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[], sessionContext?: { metadata?: unknown }) => Message[];
-  cloudSessionActivity?: CloudSessionActivityStore;
-  cloudAgentDefinitionsById?: Record<string, CloudAgentDefinition>;
-  cloudPresence?: CloudPresenceStore;
-  cloudUnreadReady?: boolean; pendingGroupProjectionSessionIds?: ReadonlySet<string>;
-  cloudLegacyGroupSessionTitlesById?: ReadonlyMap<string, string>; cloudReliableGroupSessionTitleIds?: ReadonlySet<string>; cloudReliableGroupSessionActivityAtMs?: ReadonlyMap<string, number>;
-  transientChatConversations?: Conversation[];
-};
+import type { UseWorkspaceViewModelsArgs } from './viewModels/workspaceViewModelArgs';
 
 export function useWorkspaceViewModels({
   cloudCatalogReady = true,
@@ -779,12 +733,13 @@ export function useWorkspaceViewModels({
   const activeContact = displayedContacts.find((contact) => contact.id === activeContactId) ?? displayedContacts[0] ?? contacts[0];
   const activeAgent = displayedAgents.find((agent) => agent.id === activeAgentId) ?? displayedAgents[0];
 
+  const projectRouting = useProjectRoutingGroups(desktopChatState, canonicalSessionState);
   const runtimeProjects = useMemo(() => {
     if (!isNativeShell) {
       return projectWorkspaces;
     }
 
-    const routingGroups = buildProjectRoutingGroups(desktopChatState?.projects, canonicalSessionState);
+    const routingGroups = projectRouting.groups;
     if (routingGroups.length === 0) {
       return [];
     }
@@ -813,9 +768,14 @@ export function useWorkspaceViewModels({
       const canonicalLeadSession = group.sessions
         .map((session) => canonicalProjectSessionById.get(session.id))
         .find((session) => Boolean(session));
+      const activeSessionProject = desktopChatState?.activeSession.project;
+      const activeSessionProjectName = activeSessionProject
+        && canonicalProjectGroupIdFromRoot(activeSessionProject.root) === group.id
+        ? activeSessionProject.name
+        : undefined;
       const projectName = desktopProject?.name
         ?? workspaceProject?.name
-        ?? (canonicalLeadSession ? canonicalProjectDisplayName(canonicalLeadSession) : 'Project');
+        ?? (canonicalLeadSession ? canonicalProjectDisplayName(canonicalLeadSession) : activeSessionProjectName ?? 'Project');
       const projectSummary = desktopProject?.summary
         ?? workspaceProject?.summary
         ?? (canonicalLeadSession ? canonicalProjectDisplayName(canonicalLeadSession) : projectScope);
@@ -847,7 +807,8 @@ export function useWorkspaceViewModels({
         backgroundSystem: desktopProject?.backgroundSystem ?? workspaceProject?.backgroundSystem,
         sharedSources,
         sessions: group.sessions.map(({ id: sessionId }) => {
-          const desktopSession = desktopProject?.sessions.find((session) => session.id === sessionId);
+          const desktopSession = desktopProject?.sessions.find((session) => session.id === sessionId)
+            ?? projectRouting.sessionSummaryById.get(sessionId);
           const canonicalSession = canonicalProjectSessionById.get(sessionId);
           const isVisibleSession = activeNav === 'projects' && activeProjectId === group.id && activeProjectSessionId === sessionId;
           const cachedSourceMessages = cachedDesktopSessionSourceMessages[sessionId];
@@ -911,7 +872,7 @@ export function useWorkspaceViewModels({
         }),
       };
     });
-  }, [activeNav, activeProjectId, activeProjectSessionId, cachedDesktopSessionSourceMessages, cachedProjectSessionMessages, canonicalReadModel, canonicalSessionState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectWorkspaces]);
+  }, [activeNav, activeProjectId, activeProjectSessionId, cachedDesktopSessionSourceMessages, cachedProjectSessionMessages, canonicalReadModel, canonicalSessionState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectRouting, projectWorkspaces]);
 
   const filteredProjects = useMemo(() => {
     const normalizedSearch = projectSearch.trim().toLowerCase();

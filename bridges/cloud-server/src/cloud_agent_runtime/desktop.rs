@@ -23,6 +23,9 @@ use uuid::Uuid;
 #[path = "desktop_claim.rs"]
 mod claim;
 pub(super) use claim::claim;
+#[path = "desktop_interrupted.rs"]
+mod interrupted;
+pub(super) use interrupted::interrupted;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -250,11 +253,14 @@ pub(super) async fn admit(
             .bind(session_id).bind(agent_id).bind(&run_id).bind(created_at).fetch_one(&mut *tx).await?;
         if !blocked.0 { query("UPDATE cloud_agent_fallback_runs SET status='running' WHERE run_id=$1").bind(&run_id).execute(&mut *tx).await?; }
         tx.commit().await?;
+        let cancel_requested = super::runs::stop::desktop_cancel_requested(state.db_pool(), &run_id).await;
         if !blocked.0 { super::subsession_execution::mark_active(state.db_pool(),&run_id,"desktop").await.map_err(|e|sqlx_core::Error::Protocol(e.to_string()))?; }
-        Ok(Some(!blocked.0))
+        Ok(Some((!blocked.0, cancel_requested)))
     }.await;
     match result {
-        Ok(Some(admitted)) => Json(json!({"admitted":admitted})).into_response(),
+        Ok(Some((admitted, cancel_requested))) => {
+            Json(json!({"admitted":admitted,"cancelRequested":cancel_requested})).into_response()
+        }
         Ok(None) => expired(),
         Err(e) => run_error_response(
             "desktop admission",
@@ -276,11 +282,15 @@ pub(super) async fn renew(
     ) {
         return expired();
     }
-    let result = query("UPDATE cloud_agent_fallback_runs SET lease_expires_at=$3, updated_at=$4 WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='desktop' AND status IN ('leased','running') AND lease_expires_at::timestamptz>now()")
-        .bind(run_id).bind(executor(&session,input.claim_id)).bind((Utc::now()+chrono::Duration::seconds(45)).to_rfc3339()).bind(Utc::now().to_rfc3339()).execute(state.db_pool()).await;
+    // A desktop still renewing well after a stop request ignores it, so its
+    // lease is refused and the run ends when the lease lapses.
+    let result = query_as::<_, (bool,)>("UPDATE cloud_agent_fallback_runs SET lease_expires_at=$3, updated_at=$4 WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='desktop' AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() AND (cancel_requested_at IS NULL OR cancel_requested_at>now()-interval '30 seconds') RETURNING cancel_requested_at IS NOT NULL")
+        .bind(run_id).bind(executor(&session,input.claim_id)).bind((Utc::now()+chrono::Duration::seconds(45)).to_rfc3339()).bind(Utc::now().to_rfc3339()).fetch_optional(state.db_pool()).await;
     match result {
-        Ok(r) if r.rows_affected() == 1 => Json(json!({"ok":true})).into_response(),
-        Ok(_) => expired(),
+        Ok(Some((cancel_requested,))) => {
+            Json(json!({"ok":true,"cancelRequested":cancel_requested})).into_response()
+        }
+        Ok(None) => expired(),
         Err(e) => run_error_response("desktop lease", "Could not renew execution.", e.into()),
     }
 }
@@ -294,7 +304,10 @@ pub(super) async fn cancel(
     match query("UPDATE cloud_agent_fallback_runs SET status='cancelled',completed_at=$3,updated_at=$3 WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='desktop' AND status IN ('leased','running') AND lease_expires_at::timestamptz>now()")
         .bind(&run_id).bind(executor(&session,input.claim_id)).bind(Utc::now().to_rfc3339()).execute(state.db_pool()).await {
         Ok(value) if value.rows_affected()==1 => match super::subsession_execution::cancelled(state.db_pool(), &run_id).await {
-            Ok(()) => Json(json!({"ok":true})).into_response(),
+            Ok(()) => {
+                super::runs::terminal_backfill::publish_after_cancel(&state, &run_id).await;
+                Json(json!({"ok":true})).into_response()
+            }
             Err(e) => run_error_response("cancel follow-up", "Could not update the stopped session.", e),
         },
         Ok(_) => expired(),

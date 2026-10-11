@@ -127,6 +127,7 @@ final class CachedMessageRecord {
     var messageActionJSON: String?
     var messageKind: String?
     var agentExecutionJSON: String?
+    var agentReplyEnding: String? = nil
     var backgroundAgentSessionsJSON: String?
     var reactionsJSON: String?
     var mentionsJSON: String?
@@ -157,6 +158,7 @@ final class CachedMessageRecord {
         messageActionJSON = Self.encode(message.messageAction)
         messageKind = message.messageKind
         agentExecutionJSON = Self.encode(message.agentExecution)
+        agentReplyEnding = message.agentReplyEnding?.rawValue
         backgroundAgentSessionsJSON = Self.encode(message.backgroundAgentSessions)
         reactionsJSON = Self.encode(message.reactions)
         mentionsJSON = Self.encode(message.mentions)
@@ -185,6 +187,7 @@ final class CachedMessageRecord {
         messageActionJSON = Self.encode(message.messageAction)
         messageKind = message.messageKind
         agentExecutionJSON = Self.encode(message.agentExecution)
+        agentReplyEnding = message.agentReplyEnding?.rawValue
         backgroundAgentSessionsJSON = Self.encode(message.backgroundAgentSessions)
         reactionsJSON = Self.encode(message.reactions)
         mentionsJSON = Self.encode(message.mentions)
@@ -222,6 +225,7 @@ final class CachedMessageRecord {
                 AgentExecutionSnapshot.self,
                 from: agentExecutionJSON
             ),
+            agentReplyEnding: agentReplyEnding.flatMap(AgentReplyEnding.init(rawValue:)),
             backgroundAgentSessions: Self.decode(
                 [BackgroundAgentSession].self,
                 from: backgroundAgentSessionsJSON

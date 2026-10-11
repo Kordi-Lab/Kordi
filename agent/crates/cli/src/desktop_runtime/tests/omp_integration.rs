@@ -120,7 +120,7 @@ async fn omp_real_worker_fixture(plugin: bool) -> Result<()> {
     let mut runtime =
         DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), "session:omp:synthetic")
             .await?;
-    runtime.set_hosted_model("fixture-provider/fixture-model")?;
+    runtime.apply_turn_hosted_model("fixture-provider/fixture-model")?;
     let auth = crate::login::ResolvedProviderAuth {
         source: crate::login::AuthSource::KordiAuth,
         credential_provider: "fixture-provider".into(),
@@ -218,6 +218,7 @@ async fn omp_real_worker_fixture(plugin: bool) -> Result<()> {
             ),
         },
     )?;
+    runtime.apply_turn_hosted_model("fixture-provider/fixture-model")?;
     runtime.set_ephemeral_provider_auth_with_options(
         "fixture-provider",
         auth,

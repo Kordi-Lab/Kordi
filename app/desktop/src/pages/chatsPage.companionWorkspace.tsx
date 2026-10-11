@@ -1,3 +1,4 @@
+import { composerAgentRequestStop } from '@/features/chat/agentRequestStop';
 import { useCompanionReadPresentation } from '@/pages/useCompanionReadPresentation';
 import { useCompanionHistorySession } from '@/pages/useCompanionHistorySession';
 import { importLivePhotos } from '@/features/chat/importLivePhotos';
@@ -421,6 +422,13 @@ export function ChatCompanionWorkspace({
             prefersReducedMotion: presentation.prefersReducedMotion,
           }}
           onDraftChange={session.actions.updateDraft}
+          stop={composerAgentRequestStop({
+            messages: presentation.messages,
+            liveTurn: presentation.liveTurn,
+            // The desktop turn stop acts on the main pane's chat, so this pane
+            // offers Stop only for outreach requests that name their own target.
+            onStopCollaborationAgentRequest: runtime.onStopCollaborationAgentRequest,
+          })}
           onSend={(targetConversation, mentions) => {
             if (!session.actions.sendDraft(targetConversation, companionAttachments, mentions)) return;
             updateCompanionAttachments(() => []);
