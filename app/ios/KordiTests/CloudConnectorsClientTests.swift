@@ -17,10 +17,7 @@ final class CloudConnectorsClientTests: XCTestCase {
           "agentIds": ["cloud-agent:acct_1", "agent_research"],
           "createdAt": "2026-10-01T09:00:00+00:00",
           "updatedAt": "2026-10-02T09:00:00+00:00",
-          "grantedScopeIds": [
-            "google_calendar.events.read", "google_calendar.freebusy.read",
-            "google_calendar.invitations.reply", "google_calendar.events.write"
-          ],
+          "grantedScopeIds": ["google_calendar.events.read", "google_calendar.freebusy.read", "google_calendar.invitations.reply", "google_calendar.events.write"],
           "settings": {},
           "lastEventAt": "2026-10-02T10:00:00+00:00"
         },
@@ -68,10 +65,7 @@ final class CloudConnectorsClientTests: XCTestCase {
           "lastEventAt": null
         }
       ],
-      "agents": [
-        {"agentId": "cloud-agent:acct_1", "name": "My Kordi", "isDefault": true},
-        {"agentId": "agent_research", "name": "Research", "isDefault": false}
-      ]
+      "agents": [{"agentId": "cloud-agent:acct_1", "name": "My Kordi", "isDefault": true}, {"agentId": "agent_research", "name": "Research", "isDefault": false}]
     }
     """#
 
@@ -341,17 +335,18 @@ final class CloudConnectorsClientTests: XCTestCase {
     // MARK: - Round trips through the server client
 
     private static let baseURL = URL(string: "http://127.0.0.1:17081")!
+    private static let calendarIds = ConnectorsModel.connectScopes(ConnectorsModel.definition(.googleCalendar)).map(\.id)
 
     private static func summaryJSON(
         id: String = "conn_cal",
         provider: String = "google_calendar",
         status: String = "connected",
         grantedScopeIds: [String] = ["google_calendar.events.read", "google_calendar.freebusy.read"],
-        agentIds: [String] = []
+        agentIds: [String] = [], actEnabled: Bool = false
     ) -> String {
         let scopes = grantedScopeIds.map { "\"\($0)\"" }.joined(separator: ",")
         let agents = agentIds.map { "\"\($0)\"" }.joined(separator: ",")
-        return #"{"connectorId":"\#(id)","provider":"\#(provider)","status":"\#(status)","readScopes":["r"],"actScopes":[],"actEnabled":false,"agentIds":[\#(agents)],"createdAt":"2026-10-01T09:00:00+00:00","updatedAt":"2026-10-02T09:00:00+00:00","grantedScopeIds":[\#(scopes)],"settings":{},"lastEventAt":null}"#
+        return #"{"connectorId":"\#(id)","provider":"\#(provider)","status":"\#(status)","readScopes":["r"],"actScopes":[],"actEnabled":\#(actEnabled),"agentIds":[\#(agents)],"createdAt":"2026-10-01T09:00:00+00:00","updatedAt":"2026-10-02T09:00:00+00:00","grantedScopeIds":[\#(scopes)],"settings":{},"lastEventAt":null}"#
     }
 
     private static func listBody(_ summaries: [String], agents: String? = #"[{"agentId":"cloud-agent:acct_1","name":"My Kordi","isDefault":true},{"agentId":"agent_research","name":"Research","isDefault":false}]"#) -> String {
@@ -406,12 +401,15 @@ final class CloudConnectorsClientTests: XCTestCase {
             Self.fragmentURL(#"{"completionCode":"cc_123","provider":"google_calendar","grant":"read","status":"pending"}"#)
         }
         ConnectorsURLProtocol.stub("POST", "/v1/cloud/connectors/google_calendar/oauth/start", #"{"authUrl":"https://accounts.example.com/o/oauth2"}"#)
-        ConnectorsURLProtocol.stub("POST", "/v1/cloud/connectors/oauth/complete", #"{"connector":\#(Self.summaryJSON())}"#)
-        ConnectorsURLProtocol.stub("GET", "/v1/cloud/connectors", Self.listBody([Self.summaryJSON()]))
+        // Connect grants read and act together, with acting on and the default agent granted.
+        let full = Self.summaryJSON(grantedScopeIds: Self.calendarIds, agentIds: ["cloud-agent:acct_1"], actEnabled: true)
+        ConnectorsURLProtocol.stub("POST", "/v1/cloud/connectors/oauth/complete", #"{"connector":\#(full)}"#)
+        ConnectorsURLProtocol.stub("GET", "/v1/cloud/connectors", Self.listBody([full]))
 
         let state = try await client.connect(.googleCalendar, scopeIds: [])
         XCTAssertEqual(state.status, .connected)
-        XCTAssertEqual(state.grantedScopeIds, ["google_calendar.events.read", "google_calendar.freebusy.read"])
+        XCTAssertEqual(state.grantedScopeIds, Self.calendarIds)
+        XCTAssertTrue(state.actEnabled && state.agentIds == ["cloud-agent:acct_1"])
         XCTAssertEqual(ConnectorsURLProtocol.paths, [
             "POST /v1/cloud/connectors/google_calendar/oauth/start",
             "POST /v1/cloud/connectors/oauth/complete",
@@ -429,8 +427,9 @@ final class CloudConnectorsClientTests: XCTestCase {
         }
         ConnectorsURLProtocol.stub("POST", "/v1/cloud/connectors/google_calendar/oauth/start", #"{"authUrl":"https://accounts.example.com/o/oauth2"}"#)
         ConnectorsURLProtocol.stub("GET", "/v1/cloud/connectors", Self.listBody([Self.summaryJSON()]))
+        // A provider that returned read-only access still connects, with acting off.
         let state = try await client.connect(.googleCalendar, scopeIds: [])
-        XCTAssertEqual(state.status, .connected)
+        XCTAssertTrue(state.status == .connected && !state.actEnabled)
         XCTAssertFalse(ConnectorsURLProtocol.paths.contains("POST /v1/cloud/connectors/oauth/complete"))
     }
 
@@ -466,8 +465,7 @@ final class CloudConnectorsClientTests: XCTestCase {
             XCTAssertEqual((error as? ConnectorsClientError)?.message, "Google Calendar did not grant act access.")
         }
 
-        let full = Self.summaryJSON(grantedScopeIds: ConnectorsModel.definition(.googleCalendar).readScopes.map(\.id)
-            + ConnectorsModel.definition(.googleCalendar).actScopes.map(\.id))
+        let full = Self.summaryJSON(grantedScopeIds: Self.calendarIds)
         ConnectorsURLProtocol.stub("POST", "/v1/cloud/connectors/oauth/complete", #"{"connector":\#(full)}"#)
         ConnectorsURLProtocol.stub("GET", "/v1/cloud/connectors", Self.listBody([full]))
         let state = try await client.grantAct(.googleCalendar)

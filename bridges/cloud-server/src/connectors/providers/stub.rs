@@ -54,6 +54,8 @@ pub(crate) struct RefreshGate {
 pub(crate) struct StubConnectorProvider {
     calls: Mutex<Vec<String>>,
     refresh_gate: Mutex<Option<RefreshGate>>,
+    /// When set, code exchanges report only the read scopes as granted.
+    read_only_grants: std::sync::atomic::AtomicBool,
 }
 
 impl StubConnectorProvider {
@@ -62,6 +64,13 @@ impl StubConnectorProvider {
         let gate = RefreshGate::default();
         *self.refresh_gate.lock().unwrap() = Some(gate.clone());
         gate
+    }
+
+    /// Makes later code exchanges report only the read scopes, like a
+    /// provider whose consent screen let the person untick act.
+    pub(crate) fn grant_only_read_scopes(&self, only_read: bool) {
+        self.read_only_grants
+            .store(only_read, std::sync::atomic::Ordering::SeqCst);
     }
 
     pub(crate) fn refresh_count(&self) -> usize {
@@ -111,7 +120,10 @@ impl ConnectorProvider for StubConnectorProvider {
                 refresh_token: Some(format!("stub-refresh-{code}")),
                 expires_at: Some(Utc::now() + ChronoDuration::hours(1)),
             },
-            granted_scopes: None,
+            granted_scopes: self
+                .read_only_grants
+                .load(std::sync::atomic::Ordering::SeqCst)
+                .then(|| STUB.read_scopes.iter().map(|s| s.to_string()).collect()),
             provider_account_id: Some(format!("stub-user-{code}")),
         })
     }
