@@ -197,10 +197,10 @@ pub(crate) async fn react(
     };
     let (record, _) = match authorized_document(&state, &session, &attachment_id).await {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     if let Err(response) = require_block(&state, &record, &req.block_id).await {
-        return response;
+        return *response;
     }
     let caller = Caller::Account(session.account_id.clone());
     toggle_and_list(
@@ -232,7 +232,7 @@ pub(crate) async fn react_public(
     )
     .await
     {
-        return response;
+        return *response;
     }
     let Some(reaction) = clean_reaction(&req.reaction) else {
         return invalid_reaction();
@@ -245,10 +245,10 @@ pub(crate) async fn react_public(
     };
     let (_, record) = match public_document(&state, &token).await {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     if let Err(response) = require_block(&state, &record, &req.block_id).await {
-        return response;
+        return *response;
     }
     let caller = Caller::Reader(Some(req.reader_key.clone()));
     toggle_and_list(

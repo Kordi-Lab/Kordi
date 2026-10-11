@@ -90,7 +90,7 @@ pub(crate) async fn create_share(
     };
     let (record, viewer) = match authorized_document(&state, &session, &attachment_id).await {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     if viewer != Viewer::Owner {
         return owner_only();
@@ -162,7 +162,7 @@ pub(crate) async fn list_shares(
     };
     let (record, viewer) = match authorized_document(&state, &session, &attachment_id).await {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     if viewer != Viewer::Owner {
         return owner_only();

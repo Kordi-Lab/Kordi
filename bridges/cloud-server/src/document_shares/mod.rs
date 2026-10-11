@@ -209,7 +209,7 @@ pub(crate) async fn observe_public(
     headers: &HeaderMap,
     connect_info: Option<&ConnectInfo<SocketAddr>>,
     access: PublicAccess,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     let peer = connect_info.map(|info| info.0.ip());
     let client = crate::client_ip::resolve_client_ip(headers, peer);
     observe_public_address(rate_limiter, client, access).await
@@ -219,7 +219,7 @@ pub(crate) async fn observe_public_address(
     rate_limiter: &CloudRateLimiter,
     client: Option<IpAddr>,
     access: PublicAccess,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     let limit = match access {
         PublicAccess::Read => DOCUMENT_PUBLIC_READ_LIMIT,
         PublicAccess::Write => DOCUMENT_PUBLIC_WRITE_LIMIT,
@@ -236,7 +236,7 @@ pub(crate) async fn observe_public_address(
             if let Ok(value) = retry_after.as_secs().max(1).to_string().parse() {
                 response.headers_mut().insert("Retry-After", value);
             }
-            Err(response)
+            Err(Box::new(response))
         }
     }
 }
@@ -247,7 +247,7 @@ pub(crate) async fn require_block(
     state: &ServerState,
     record: &access::DocumentRecord,
     block_id: &str,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     let invalid = || {
         err(
             "invalid_block",
@@ -256,7 +256,7 @@ pub(crate) async fn require_block(
         )
     };
     if !validate::is_valid_block_id(block_id) {
-        return Err(invalid());
+        return Err(Box::new(invalid()));
     }
     let exists = match record.format {
         model::DocumentFormat::Html => block_id == "b0",
@@ -269,7 +269,7 @@ pub(crate) async fn require_block(
     if exists {
         Ok(())
     } else {
-        Err(invalid())
+        Err(Box::new(invalid()))
     }
 }
 

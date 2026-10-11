@@ -16,7 +16,7 @@ pub(crate) async fn fetch_attachment_bytes(
     state: &ServerState,
     object_key: &str,
     max_bytes: usize,
-) -> Result<Vec<u8>, Response> {
+) -> Result<Vec<u8>, Box<Response>> {
     let s3 = s3_or_503(state).map_err(|response| *response)?;
     let url = presign_download_url(s3, object_key).map_err(|error| {
         eprintln!("[attachments] presign fetch: {error}");
@@ -43,7 +43,7 @@ pub(crate) async fn fetch_attachment_bytes(
         })?;
     if !response.status().is_success() {
         eprintln!("[attachments] fetch failed: {}", response.status());
-        return Err(bad_gateway());
+        return Err(Box::new(bad_gateway()));
     }
     let too_large = || {
         err(
@@ -56,7 +56,7 @@ pub(crate) async fn fetch_attachment_bytes(
         .content_length()
         .is_some_and(|length| length > max_bytes as u64)
     {
-        return Err(too_large());
+        return Err(Box::new(too_large()));
     }
     let mut bytes = Vec::new();
     let mut stream = response.bytes_stream();
@@ -66,7 +66,7 @@ pub(crate) async fn fetch_attachment_bytes(
             bad_gateway()
         })?;
         if bytes.len() + chunk.len() > max_bytes {
-            return Err(too_large());
+            return Err(Box::new(too_large()));
         }
         bytes.extend_from_slice(&chunk);
     }

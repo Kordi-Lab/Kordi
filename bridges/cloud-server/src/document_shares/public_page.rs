@@ -246,7 +246,7 @@ pub(crate) async fn page(
     )
     .await
     {
-        return response;
+        return *response;
     }
     let nonce = new_nonce();
     let (_, record) = match public_document(&state, &token).await {
@@ -254,11 +254,11 @@ pub(crate) async fn page(
         Err(response) if response.status() == StatusCode::NOT_FOUND => {
             return html_response(StatusCode::NOT_FOUND, &nonce, link_off_page(&nonce));
         }
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let source = match document_source(&state, &record).await {
         Ok(source) => source,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let input = PageInput {
         token: &token,
@@ -284,10 +284,10 @@ pub(crate) async fn raw(
     )
     .await
     {
-        return response;
+        return *response;
     }
     match public_document(&state, &token).await {
         Ok((_, record)) => raw_html_response(&state, &record).await,
-        Err(response) => response,
+        Err(response) => *response,
     }
 }

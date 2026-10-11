@@ -147,7 +147,7 @@ async fn create(
         );
     };
     if let Err(response) = require_block(state, record, input.block_id).await {
-        return response;
+        return *response;
     }
     if let Some(parent) = input.parent_comment_id {
         let found: Result<Option<(String,)>, _> = query_as(
@@ -222,7 +222,7 @@ pub(crate) async fn comment(
 ) -> Response {
     let (record, _) = match authorized_document(&state, &session, &attachment_id).await {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let author = match super::access::load_author(state.db_pool(), &session.account_id).await {
         Ok(author) => author,
@@ -255,7 +255,7 @@ pub(crate) async fn comment_public(
     )
     .await
     {
-        return response;
+        return *response;
     }
     if !is_valid_reader_key(&req.reader_key) {
         return super::invalid_reader_key();
@@ -265,7 +265,7 @@ pub(crate) async fn comment_public(
     };
     let (_, record) = match public_document(&state, &token).await {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let caller = Caller::Reader(Some(req.reader_key.clone()));
     let input = NewComment {
@@ -283,7 +283,7 @@ async fn comment_for_caller(
     state: &ServerState,
     session: &CloudSession,
     comment_id: &str,
-) -> Result<(DocumentRecord, Option<String>), Response> {
+) -> Result<(DocumentRecord, Option<String>), Box<Response>> {
     let row: Option<(String, Option<String>)> = query_as(
         "SELECT attachment_id, author_account_id FROM cloud_document_comments \
          WHERE comment_id = $1 AND deleted_at IS NULL",
@@ -317,7 +317,7 @@ pub(crate) async fn patch_comment(
 ) -> Response {
     let (record, author) = match comment_for_caller(&state, &session, &comment_id).await {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let is_author = author.as_deref() == Some(session.account_id.as_str());
     let is_owner = record.owner_account_id == session.account_id;
@@ -384,7 +384,7 @@ pub(crate) async fn delete_comment(
 ) -> Response {
     let (_, author) = match comment_for_caller(&state, &session, &comment_id).await {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     if author.as_deref() != Some(session.account_id.as_str()) {
         return forbidden();

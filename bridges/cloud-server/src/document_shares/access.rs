@@ -96,7 +96,7 @@ pub(crate) async fn live_share_for_token(
 pub(crate) async fn public_document(
     state: &ServerState,
     token: &str,
-) -> Result<(ShareRow, DocumentRecord), Response> {
+) -> Result<(ShareRow, DocumentRecord), Box<Response>> {
     let pool = state.db_pool();
     let share = live_share_for_token(pool, token)
         .await
@@ -112,10 +112,10 @@ pub(crate) async fn public_document(
     .await
     .map_err(|_| db_error())?;
     let Some((object_key, owner, content_type, detected, size_bytes, finalized_at)) = row else {
-        return Err(link_off());
+        return Err(Box::new(link_off()));
     };
     if owner != share.owner_account_id {
-        return Err(link_off());
+        return Err(Box::new(link_off()));
     }
     let record = load_record(
         pool,
@@ -138,7 +138,7 @@ pub(crate) async fn authorized_document(
     state: &ServerState,
     session: &CloudSession,
     attachment_id: &str,
-) -> Result<(DocumentRecord, Viewer), Response> {
+) -> Result<(DocumentRecord, Viewer), Box<Response>> {
     let (object_key, owner, finalized_at, content_type, detected, size_bytes, _) =
         attachment_access_row(state, session, attachment_id)
             .await
@@ -186,7 +186,7 @@ pub(crate) struct AttachmentFacts {
 async fn load_record(
     pool: &PgPool,
     facts: AttachmentFacts,
-) -> Result<Option<DocumentRecord>, Response> {
+) -> Result<Option<DocumentRecord>, Box<Response>> {
     let artifact: Option<(String, String)> = query_as(
         "SELECT artifact.name, \
                 COALESCE((SELECT definition.name FROM cloud_agent_definitions definition \
@@ -345,16 +345,16 @@ pub(crate) async fn document_session(
 pub(crate) async fn document_source(
     state: &ServerState,
     record: &DocumentRecord,
-) -> Result<String, Response> {
+) -> Result<String, Box<Response>> {
     if record
         .size_bytes
         .is_some_and(|size| size > MAX_DOCUMENT_BYTES as i64)
     {
-        return Err(err(
+        return Err(Box::new(err(
             "document_too_large",
             "This document is too large to open.",
             StatusCode::PAYLOAD_TOO_LARGE,
-        ));
+        )));
     }
     let bytes = crate::attachments::fetch::fetch_attachment_bytes(
         state,

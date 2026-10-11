@@ -42,7 +42,7 @@ pub(crate) async fn document_response(
     caller: &Caller,
     share: Option<&ShareRow>,
     raw_path: Option<String>,
-) -> Result<DocumentResponse, Response> {
+) -> Result<DocumentResponse, Box<Response>> {
     let pool = state.db_pool();
     let session = match viewer {
         Viewer::Public => Ok(None),
@@ -113,11 +113,11 @@ pub(crate) async fn get_document(
 ) -> Response {
     let (record, viewer) = match authorized_document(&state, &session, &attachment_id).await {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let source = match document_source(&state, &record).await {
         Ok(source) => source,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let share = if viewer == Viewer::Owner {
         match live_shares(state.db_pool(), &session.account_id, &record.attachment_id).await {
@@ -141,7 +141,7 @@ pub(crate) async fn get_document(
     .await
     {
         Ok(response) => Json(response).into_response(),
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 
@@ -162,15 +162,15 @@ pub(crate) async fn get_public_document(
     )
     .await
     {
-        return response;
+        return *response;
     }
     let (share, record) = match public_document(&state, &token).await {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let source = match document_source(&state, &record).await {
         Ok(source) => source,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let reader_key = query
         .reader_key
@@ -194,7 +194,7 @@ pub(crate) async fn get_public_document(
     .await
     {
         Ok(response) => Json(response).into_response(),
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 
@@ -209,7 +209,7 @@ pub(crate) async fn raw_html_response(state: &ServerState, record: &DocumentReco
     }
     let source = match document_source(state, record).await {
         Ok(source) => source,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let mut response = source.into_response();
     let headers = response.headers_mut();
@@ -245,6 +245,6 @@ pub(crate) async fn get_raw(
 ) -> Response {
     match authorized_document(&state, &session, &attachment_id).await {
         Ok((record, _)) => raw_html_response(&state, &record).await,
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
