@@ -10,7 +10,7 @@ import {
 } from './cloudDirectMessages';
 import { compareCloudMessages } from './cloudMessageMerge';
 import { cloudOperationUuid } from './chatSyncMapping';
-import { cloudAgentId } from './cloudAgentIdentity';
+import { cloudAgentId, isLocalDelegateAgentId } from './cloudAgentIdentity';
 
 type IdentityLedger = Record<string, {
   cloudMessageId: string | null;
@@ -96,7 +96,10 @@ export function cloudAgentTargetsBySessionId(
     const ownerAccountId = text(identityMetadata.accountId) || text(identityMetadata.ownerAccountId);
     const targetAgentId = ownerAccountId ? cloudAgentId(rawAgentId, ownerAccountId) : rawAgentId;
     const targetAgentName = text(metadata.cloudAgentName) || text(identity?.displayName);
-    const isDefaultAgent = primaryIdentityId === state.profile.activeAgentIdentityId && !text(metadata.cloudAgentId);
+    // The frontend profile can lag the native one, so a local delegate is the
+    // default agent whether or not it matches activeAgentIdentityId.
+    const isDefaultAgent = isLocalDelegateAgentId(rawAgentId)
+      || (primaryIdentityId === state.profile.activeAgentIdentityId && !text(metadata.cloudAgentId));
     if (!isDefaultAgent && targetAgentId && targetAgentName) {
       targets.set(sessionId, { targetAgentId, targetAgentName });
     }
