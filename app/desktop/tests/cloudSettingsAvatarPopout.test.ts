@@ -66,7 +66,7 @@ test('cloud settings modal uses the flat main-app palette instead of nested tran
 
   assert.match(themeOverrides, /\.kordi-app\.theme-light \.app-cloud-account-settings-dialog\s*\{/);
   assert.match(themeOverrides, /\.kordi-app\.theme-light \.app-cloud-account-settings-overlay\s*\{/);
-  assert.match(modal, /app-session-panel app-cloud-account-settings-rail/);
+  assert.match(modal, /app-cloud-account-settings-rail/);
   assert.match(modal, /app-main-panel app-cloud-account-settings-page/);
   assert.doesNotMatch(modal, /app-surface-muted rounded-\[24px\]/);
   assert.doesNotMatch(providerList, /app-surface-muted app-auth-provider-list/);

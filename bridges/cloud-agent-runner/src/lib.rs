@@ -3,6 +3,7 @@ pub mod client;
 pub mod config;
 pub mod connectors;
 pub mod k8s_sandbox;
+pub mod memory;
 pub mod model_loop;
 mod omp_job;
 pub mod omp_pool;

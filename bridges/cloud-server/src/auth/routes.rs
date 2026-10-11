@@ -70,6 +70,9 @@ mod device_types;
 mod expressive_media;
 mod group_invitation_handlers;
 mod identity_handlers;
+mod memory_handlers;
+#[cfg(test)]
+mod memory_tests;
 mod middleware;
 mod oauth_avatar;
 mod password_handlers;
@@ -92,6 +95,7 @@ use device_types::*;
 use expressive_media::*;
 use group_invitation_handlers::*;
 use identity_handlers::*;
+use memory_handlers::*;
 use oauth_avatar::*;
 use password_handlers::*;
 use presence_handlers::*;
@@ -344,6 +348,24 @@ pub fn routes_with_shared_rate_limiter(
         .route(
             "/v1/cloud/sessions/:source_session_id/forks",
             get(list_cloud_session_forks).post(create_cloud_session_fork),
+        )
+        .route(
+            "/v1/cloud/memory",
+            get(list_memories)
+                .post(save_memory)
+                .delete(forget_all_memories),
+        )
+        .route(
+            "/v1/cloud/memory/settings",
+            get(get_memory_settings).put(update_memory_settings),
+        )
+        .route(
+            "/v1/cloud/memory/:memory_id",
+            axum::routing::patch(update_memory).delete(delete_memory),
+        )
+        .route(
+            "/v1/cloud/agent-runs/omp-state",
+            get(get_omp_state_count).delete(clear_omp_state),
         )
         .layer(Extension(rate_limiter.clone()))
         .layer(axum::middleware::from_fn_with_state(

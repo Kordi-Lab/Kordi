@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { WorkspaceSidebar } from '@/pages/WorkspaceSidebar';
 import type { WorkspaceSidebarProps } from '@/pages/WorkspaceSidebar';
@@ -17,6 +17,7 @@ import {
 } from '@/lib/desktop';
 import { isPendingIncomingCloudContactRequest, useCloudContacts } from '@/features/cloud/useCloudContacts';
 import { normalizeKordiId } from '@/features/cloud/kordiId';
+import { publishMemoryVersion } from '@/features/memory/memoryAvailability';
 import { authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
 import { usesDefaultLocalAgentSession } from '@/app/openLocalAgentChat';
 
@@ -68,6 +69,7 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
 function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
   const cloudSession = args.cloudSession;
   const cloud = useCloudContacts(cloudSession.account);
+  useEffect(() => { publishMemoryVersion(cloudSession.memoryVersion); }, [cloudSession.memoryVersion]);
 
   // Cloud profile lookup for the search-first Add-contacts UX in the
   // chat-create dialog. Stable across renders so the dialog doesn't
@@ -257,6 +259,7 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
           themeMode: args.themeMode,
           setThemeMode: args.setThemeMode,
         },
+        cloudMemoryVersion: cloudSession.memoryVersion ?? null,
         onUpdateCloudProfile: async (input) => { await cloudSession.updateProfile(input); },
         onRequestCloudEmailCode: cloudSession.requestAccountEmailCode,
         onVerifyCloudEmail: cloudSession.verifyAccountEmail,

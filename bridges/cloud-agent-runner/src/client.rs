@@ -1,10 +1,14 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+mod artifacts;
 mod envelopes;
+pub use artifacts::{ArtifactExportInput, ArtifactExportResponse};
 use envelopes::{
     ArtifactExportEnvelope, HeartbeatEnvelope, LeaseResponse, ProviderAuthEnvelope, RunEnvelope,
 };
+
+use crate::memory::{MemoryRequestError, NewRunnerMemory, RunnerMemory, RunnerMemoryContext};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunnerClientError {
@@ -81,44 +85,6 @@ pub struct OmpState {
     pub replayable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub checkpoint: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ArtifactExportInput {
-    #[serde(rename = "runnerId")]
-    pub runner_id: String,
-    pub name: String,
-    #[serde(rename = "sandboxPath")]
-    pub sandbox_path: String,
-    #[serde(rename = "contentType")]
-    pub content_type: String,
-    #[serde(rename = "sha256Hex")]
-    pub sha256_hex: String,
-    #[serde(rename = "bytesBase64")]
-    pub bytes_base64: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ArtifactExportResponse {
-    #[serde(rename = "artifactId")]
-    pub artifact_id: String,
-    #[serde(rename = "attachmentId")]
-    pub attachment_id: String,
-    #[serde(rename = "runId")]
-    pub run_id: String,
-    #[serde(rename = "messageId")]
-    pub message_id: String,
-    pub name: String,
-    #[serde(rename = "sandboxPath")]
-    pub sandbox_path: String,
-    #[serde(rename = "contentType")]
-    pub content_type: String,
-    #[serde(rename = "sizeBytes")]
-    pub size_bytes: i64,
-    #[serde(rename = "sha256Hex")]
-    pub sha256_hex: Option<String>,
-    #[serde(rename = "createdAt")]
-    pub created_at: String,
 }
 
 #[async_trait]
@@ -226,15 +192,28 @@ pub trait CloudAgentRunClient {
             "Connector tools are unavailable".into(),
         ))
     }
+
+    /// Reads the run owner's account memories and memory settings (#1710).
+    async fn fetch_memory(&self, _run_id: &str) -> Result<RunnerMemoryContext, MemoryRequestError> {
+        Err(MemoryRequestError::Unavailable)
+    }
+
+    async fn save_memory(
+        &self,
+        _run_id: &str,
+        _memory: NewRunnerMemory,
+    ) -> Result<RunnerMemory, MemoryRequestError> {
+        Err(MemoryRequestError::Unavailable)
+    }
 }
 
 #[derive(Clone)]
 pub struct HttpCloudAgentRunClient {
-    base_url: String,
-    runner_token: String,
-    runner_id: String,
+    pub(crate) base_url: String,
+    pub(crate) runner_token: String,
+    pub(crate) runner_id: String,
     canary_run_id: Option<String>,
-    http: reqwest::Client,
+    pub(crate) http: reqwest::Client,
 }
 
 impl HttpCloudAgentRunClient {
@@ -478,5 +457,17 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
             .post_json(&format!("/v1/cloud/agent-runs/{run_id}/artifacts"), body)
             .await?;
         Ok(envelope.artifact)
+    }
+
+    async fn fetch_memory(&self, run_id: &str) -> Result<RunnerMemoryContext, MemoryRequestError> {
+        crate::memory::http_fetch_memory(self, run_id).await
+    }
+
+    async fn save_memory(
+        &self,
+        run_id: &str,
+        memory: NewRunnerMemory,
+    ) -> Result<RunnerMemory, MemoryRequestError> {
+        crate::memory::http_save_memory(self, run_id, memory).await
     }
 }

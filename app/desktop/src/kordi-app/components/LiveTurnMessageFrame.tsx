@@ -20,7 +20,7 @@ export function LiveTurnMessageFrame({ turn, sender, showSourceQuote, onNavigate
   const id = turn.id ? transcriptMessageDomId(turn.id) : undefined;
   if (!threadLayout) return (
     <div id={id} data-transcript-message-root="true" className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5">
-      <div className="flex items-center gap-1.5">
+      <div className="flex min-h-[18px] items-center gap-1.5">
         <div className="app-message-meta">{sender}</div>
         {headerAccessory}
       </div>
@@ -36,7 +36,7 @@ export function LiveTurnMessageFrame({ turn, sender, showSourceQuote, onNavigate
       <div className="app-thread-message-main flex">
         <IdentityAvatar kind="agent" seed={agentAvatarSeed} name={sender} className="h-7 w-7 shrink-0" />
         <div className="app-message-hover-time-trigger min-w-0 flex-1">
-          <div className="flex w-full items-center gap-1.5">
+          <div className="flex min-h-[18px] w-full items-center gap-1.5">
             <ThreadMessageHeader name={sender} msg={{ role: 'owned-agent', text: '', time, timestampMs }} />
             {headerAccessory}
           </div>

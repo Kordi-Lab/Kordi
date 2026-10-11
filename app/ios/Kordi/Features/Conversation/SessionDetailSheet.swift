@@ -3,8 +3,9 @@ import QuickLook
 import SwiftUI
 import UIKit
 
-private enum SessionDetailTab: String, Identifiable {
+enum SessionDetailTab: String, Identifiable {
     case members = "Members"
+    case memory = "Memory"
     case media = "Media"
     case files = "Files"
     case todo = "Todo"
@@ -67,12 +68,13 @@ struct SessionDetailView: View {
     init(
         conversation: ConversationSummary,
         presentationContext: SessionDetailPresentationContext = .conversation,
+        opensMemory: Bool = false,
         onBack: (() -> Void)? = nil
     ) {
         self.conversation = conversation
         self.presentationContext = presentationContext
         self.onBack = onBack
-        _tab = State(initialValue: conversation.kind == .group ? .members : .media)
+        _tab = State(initialValue: opensMemory ? .memory : conversation.kind == .group ? .members : .media)
     }
 
     private var currentConversation: ConversationSummary {
@@ -176,14 +178,8 @@ struct SessionDetailView: View {
     }
 
     private var availableTabs: [SessionDetailTab] {
-        switch currentConversation.kind {
-        case .group:
-            [.members, .media, .files, .todo]
-        case .person:
-            [.media, .files, .todo, .groups]
-        case .agent:
-            [.media, .files, .todo]
-        }
+        // Reads the published capabilities so the picker re-renders when they load.
+        SessionDetailTab.tabs(for: currentConversation.kind, capabilities: model.memoryCapabilities)
     }
 
     private var mutualGroupSpaces: [GroupSpaceSummary] {
@@ -290,6 +286,7 @@ struct SessionDetailView: View {
             await model.refreshActiveCall(in: currentConversation)
         }
         .quickLookPreview($previewURL)
+        .task { await model.refreshMemoryCapabilities() }
         .task(id: "\(currentConversation.sessionId):\(model.account?.accountId ?? ""):\(tab.rawValue)") {
             agentThreads = []
             agentThreadError = false
@@ -368,6 +365,8 @@ struct SessionDetailView: View {
         switch tab {
         case .members:
             membersPage
+        case .memory:
+            SessionMemoryPage(conversation: currentConversation, account: model.account, service: model.makeMemoryService())
         case .media:
             mediaPage
         case .files:
@@ -1122,7 +1121,7 @@ private struct SessionDetailCard<Content: View>: View {
     }
 }
 
-private struct SessionDetailEmptyState: View {
+struct SessionDetailEmptyState: View {
     let title: String
     let symbol: String
     let description: String

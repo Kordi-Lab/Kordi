@@ -19,6 +19,7 @@ mod attachments;
 mod background_sessions;
 mod hosted_auth;
 mod identity;
+mod memory_updates;
 mod model_options;
 mod models;
 mod prompt_context;
@@ -215,7 +216,9 @@ impl DesktopRuntimeSession {
             ..SessionBootstrapOptions::default()
         };
         let (_runtime_host, _ui, setup) = prepare_session_runtime_for_cwd(cwd, entry).await?;
+        let remote = crate::memory_remote::current_memory_remote(&self.setup.memory_remote);
         self.setup = setup;
+        self.set_memory_remote(remote);
         self.refresh_saved_agent_persona();
         Ok(())
     }
@@ -490,31 +493,6 @@ impl DesktopRuntimeSession {
         Ok(())
     }
 
-    pub fn set_reach_out_runtime(&mut self, runtime: Option<kordi_tools::ReachOutRuntime>) {
-        self.setup.tool_ctx.reach_out = runtime;
-    }
-
-    pub fn set_scheduled_tasks_cloud_runtime(&mut self, api_base: String, token: String) {
-        self.set_scheduled_tasks_cloud_runtime_for_session(
-            api_base,
-            token,
-            self.setup.session_id.clone(),
-        );
-    }
-
-    pub fn set_scheduled_tasks_cloud_runtime_for_session(
-        &mut self,
-        api_base: String,
-        token: String,
-        session_id: String,
-    ) {
-        self.setup.tool_ctx.schedule_task = Some(
-            crate::scheduled_tasks_runtime::build_scheduled_tasks_runtime_for_session(
-                api_base, token, session_id,
-            ),
-        );
-    }
-
     pub fn sync_visible_task_records(
         &mut self,
         records: &[DesktopVisibleTaskRecord],
@@ -710,7 +688,6 @@ fn ensure_session_row_created(setup: &mut SessionRuntimeSetup) -> Result<()> {
     if setup.session_created {
         return Ok(());
     }
-
     let cwd = setup.tool_ctx.cwd.display().to_string();
     kordi_session::store::create_session_with_id(&setup.conn, &setup.session_id, &cwd)?;
     // Do not persist the session's initial model/thinking defaults as transcript

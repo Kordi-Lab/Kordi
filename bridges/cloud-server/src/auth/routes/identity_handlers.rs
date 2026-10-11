@@ -37,6 +37,7 @@ pub(super) async fn auth_capabilities(
             .cipher
             .is_some()
             .then_some(crate::connectors::CONNECTORS_VERSION),
+        memory_version: 1,
     })
 }
 

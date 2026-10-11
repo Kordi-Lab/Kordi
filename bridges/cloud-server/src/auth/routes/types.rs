@@ -78,6 +78,9 @@ pub struct AuthCapabilitiesResponse {
     /// Connectors section when it is absent.
     #[serde(rename = "connectorsVersion", skip_serializing_if = "Option::is_none")]
     pub connectors_version: Option<u32>,
+    /// Present when the account memory routes exist (#1710).
+    #[serde(rename = "memoryVersion")]
+    pub memory_version: u32,
 }
 
 #[derive(Debug, Deserialize)]

@@ -6,21 +6,30 @@ import Foundation
 // sign-ins to itself and only returns connector metadata.
 
 /// `GET /v1/cloud/auth/capabilities`. Decoded leniently so older servers,
-/// which omit `connectorsVersion`, still parse.
+/// which omit `connectorsVersion` or `memoryVersion`, still parse.
 struct CloudAuthCapabilities: Decodable, Equatable {
     let password: Bool?
     let oauthProviders: [String]
     /// Present when the server serves `/v1/cloud/connectors`.
     let connectorsVersion: Int?
+    /// Present when the server offers account memory and replay state routes.
+    /// Older servers omit it, and the Memory screen stays hidden.
+    let memoryVersion: Int?
 
     private enum CodingKeys: String, CodingKey {
-        case password, oauthProviders, connectorsVersion
+        case password, oauthProviders, connectorsVersion, memoryVersion
     }
 
-    init(password: Bool? = nil, oauthProviders: [String] = [], connectorsVersion: Int? = nil) {
+    init(
+        password: Bool? = nil,
+        oauthProviders: [String] = [],
+        connectorsVersion: Int? = nil,
+        memoryVersion: Int? = nil
+    ) {
         self.password = password
         self.oauthProviders = oauthProviders
         self.connectorsVersion = connectorsVersion
+        self.memoryVersion = memoryVersion
     }
 
     init(from decoder: Decoder) throws {
@@ -28,6 +37,7 @@ struct CloudAuthCapabilities: Decodable, Equatable {
         password = try? container.decodeIfPresent(Bool.self, forKey: .password)
         oauthProviders = (try? container.decodeIfPresent([String].self, forKey: .oauthProviders)) ?? []
         connectorsVersion = try? container.decodeIfPresent(Int.self, forKey: .connectorsVersion)
+        memoryVersion = try? container.decodeIfPresent(Int.self, forKey: .memoryVersion)
     }
 }
 

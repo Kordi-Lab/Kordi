@@ -195,13 +195,15 @@ pub(super) async fn prepare_desktop_session_for_send(
         .map(|message| message.text.as_str());
     // Mac-local sources are the owner's: never on a cloud-lease turn or for
     // a request that another account made through the owner's agent.
-    let owner_local =
-        mac_local_runtime::is_owner_local_turn(cloud_lease.is_some(), turn_identity, || {
-            runtime
-                .runtime_identity_context()
-                .map(|context| context.map(|context| context.text))
-                .map_err(|_| ())
-        });
+    // The requester is the owner: this turn's identity decides, else the
+    // stored one. Shared requests may not write the owner's global memories.
+    let owner_requester = mac_local_runtime::is_owner_local_turn(false, turn_identity, || {
+        runtime
+            .runtime_identity_context()
+            .map(|context| context.map(|context| context.text))
+            .map_err(|_| ())
+    });
+    let owner_local = cloud_lease.is_none() && owner_requester;
     runtime.set_mac_local_runtime(mac_local_runtime::build(owner_local));
     // Only a cloud lease carries connector tools, and only for the owner's
     // own request. The owner's own local turn (no lease, no shared
@@ -248,8 +250,41 @@ pub(super) async fn prepare_desktop_session_for_send(
     };
     super::session_observation::image_visibility::refresh(runtime, &observation).await?;
     runtime.set_session_observation_runtime(Some(observation));
+    super::memory::attach_memory_remote(runtime).await;
+    // Group memories are keyed by the cloud group id, learned here. Only a
+    // session that has not started (such as a per-request group session)
+    // rebuilds its memory section; a started one keeps its prompt and gets
+    // missing memories as an update note.
+    for session_id in [prompt_session_id.as_str(), runtime.session_id()] {
+        super::memory::remember_group_scope_alias_for_session(session_id);
+    }
+    if runtime.has_not_started().unwrap_or(false) {
+        runtime.refresh_memory_prompt_section();
+    }
+    let has_project = runtime
+        .detail()
+        .is_ok_and(|detail| detail.project.is_some());
+    allow_memory_scopes(
+        runtime.session_id(),
+        [Some(prompt_session_id.as_str()), context_session_id],
+        has_project.then_some(cwd.as_path()),
+        owner_requester,
+    );
+    // The system prompt keeps the memories it started with; a change since
+    // the last message is recorded as a hidden note before this message.
+    // Memory must never fail a send.
+    if let Err(error) = runtime.record_memory_updates() {
+        eprintln!("Unable to record desktop memory updates: {error}");
+    }
 
     if let Ok(detail) = runtime.detail() {
+        super::memory::remember_scope_labels(
+            &detail,
+            runtime.session_id(),
+            &prompt_session_id,
+            user_text,
+            &cwd,
+        );
         let agent = runtime.agent_profile();
         let profile = DesktopRuntimeProfile {
             provider: Some(detail.provider),
@@ -292,6 +327,47 @@ pub(super) async fn prepare_desktop_session_for_send(
         let _ = runtime.set_task_operator_runner(Arc::new(runner));
     }
     Ok(())
+}
+
+/// Record the scopes the `reflection` tool may save into this turn: every id
+/// form of this conversation, its cloud group, its project, and global only
+/// for the owner's own request.
+fn allow_memory_scopes(
+    runtime_session_id: &str,
+    session_ids: [Option<&str>; 2],
+    project_cwd: Option<&std::path::Path>,
+    owner_requester: bool,
+) {
+    use kordi_cli::memory_remote::{canonical_group_scope_id, group_session_part};
+    let mut ids = vec![runtime_session_id.to_string()];
+    ids.extend(session_ids.into_iter().flatten().map(str::to_string));
+    let group_id = ids
+        .iter()
+        .find(|id| group_session_part(id).is_some())
+        .map(|id| canonical_group_scope_id(id));
+    let cloud_ids = ids
+        .iter()
+        .filter_map(|id| crate::canonical_sessions::cloud_conversation_id_for_client_session(id))
+        .collect::<Vec<_>>();
+    ids.extend(cloud_ids);
+    ids.retain(|id| !id.trim().is_empty());
+    ids.sort();
+    ids.dedup();
+    let project_root = project_cwd.map(|cwd| {
+        kordi_core::config::project_root(cwd)
+            .unwrap_or_else(|| cwd.to_path_buf())
+            .display()
+            .to_string()
+    });
+    kordi_cli::memory_remote::set_allowed_memory_scopes(
+        runtime_session_id,
+        kordi_cli::memory_remote::AllowedMemoryScopes {
+            conversation_ids: ids,
+            group_id,
+            project_root,
+            allow_global: owner_requester,
+        },
+    );
 }
 
 #[cfg(test)]

@@ -111,11 +111,7 @@ impl DesktopRuntimeSession {
         if self.runtime_identity_context()?.is_none() {
             return Ok(());
         }
-        let saved: Option<String> = self.setup.conn.query_row(
-            "SELECT json_extract(payload,'$.data.systemPrompt') FROM entries WHERE session_id=?1 AND type='custom' AND json_extract(payload,'$.custom_type')='runtime_identity_prompt' ORDER BY seq LIMIT 1",
-            [&self.setup.session_id], |row| row.get(0),
-        ).optional()?;
-        if let Some(prompt) = saved {
+        if let Some(prompt) = self.frozen_identity_prompt()? {
             self.setup.system_prompt = prompt;
             return Ok(());
         }
@@ -137,5 +133,30 @@ impl DesktopRuntimeSession {
             },
         )?;
         Ok(())
+    }
+
+    /// The system prompt frozen at the first shared turn, if any.
+    pub(super) fn frozen_identity_prompt(&self) -> Result<Option<String>> {
+        Ok(self.setup.conn.query_row(
+            "SELECT json_extract(payload,'$.data.systemPrompt') FROM entries WHERE session_id=?1 AND type='custom' AND json_extract(payload,'$.custom_type')='runtime_identity_prompt' ORDER BY seq LIMIT 1",
+            [&self.setup.session_id], |row| row.get(0),
+        ).optional()?)
+    }
+
+    /// True once a shared turn has frozen this session's system prompt.
+    pub fn has_frozen_identity_prompt(&self) -> Result<bool> {
+        Ok(self.frozen_identity_prompt()?.is_some())
+    }
+
+    /// True for a session that has neither frozen its system prompt nor
+    /// recorded a message: its prompt may still be rebuilt before the first
+    /// turn without changing anything the model has seen.
+    pub fn has_not_started(&self) -> Result<bool> {
+        let has_messages: bool = self.setup.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM entries WHERE session_id=?1 AND type='message')",
+            [&self.setup.session_id],
+            |row| row.get(0),
+        )?;
+        Ok(!has_messages && !self.has_frozen_identity_prompt()?)
     }
 }

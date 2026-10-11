@@ -249,4 +249,15 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "agent run stop requests",
         "0118_agent_run_stop_requests.sql"
     ),
+    migration!(119, "account memories", "0119_account_memories.sql"),
+    migration!(
+        120,
+        "global account memories",
+        "0120_global_account_memories.sql"
+    ),
+    migration!(
+        121,
+        "shared group memories",
+        "0121_shared_group_memories.sql"
+    ),
 ];

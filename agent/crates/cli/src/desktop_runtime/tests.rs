@@ -5,6 +5,7 @@ use std::sync::Mutex;
 include!("tests/route_switch.rs");
 include!("tests/background_sessions.rs");
 include!("tests/persona.rs");
+include!("tests/memory_prompt.rs");
 include!("tests/workspace.rs");
 include!("tests/live_local_tools.rs");
 include!("tests/omp_integration.rs");
