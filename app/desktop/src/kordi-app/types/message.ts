@@ -25,6 +25,8 @@ export type SessionArtifact = {
   timeLabel?: string;
   live?: boolean;
   pinned?: boolean;
+  /** Cloud attachment of the file, once it has been uploaded. */
+  attachmentId?: string | null;
 };
 
 export type ChangedFileRow = {

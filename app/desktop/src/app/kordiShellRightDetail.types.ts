@@ -31,4 +31,8 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeSessionProject'
   | 'activeQueuedDesktopMessages'
   | 'chatTranscriptScrollRef'
+  | 'cloudSession'
+  | 'displayedContacts'
+  | 'handleStartChatWithPerson'
+  | 'onForwardMessage'
 >;

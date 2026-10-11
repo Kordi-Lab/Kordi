@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Braces, ChevronLeft, FileText, FolderOpen, Globe2, LoaderCircle, Maximize2, X } from 'lucide-react';
-import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
 import { MarkdownCodeBlock, MarkdownContent, MermaidDiagram } from '@/kordi-app/components';
 import type { DesktopArtifactDirectory, DesktopArtifactDirectoryEntry, DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
 import { fetchDesktopChatArtifactDirectory, fetchDesktopChatArtifactPreview } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
+import { ArtifactDocumentSection } from '@/features/documents/ArtifactDocumentSection';
+import { isDocumentReaderArtifact } from '@/features/documents/documentReaderModel';
 import { artifactPreviewDocumentSource, type ArtifactPreviewMode } from './artifactPreviewDocument';
+import { ArtifactDataTable } from './artifactDataTable';
+import { ARTIFACT_MARKDOWN_PREVIEW_CLASS, formattedJsonSource } from './artifactPreviewText';
 
 type ArtifactInspectorProps = {
   isNativeShell: boolean;
@@ -78,71 +81,6 @@ function artifactPreviewKind(path: string) {
   if (extension === 'csv' || extension === 'tsv') return 'table';
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif'].includes(extension)) return 'image';
   return 'source';
-}
-
-function parseDelimitedRows(source: string, delimiter: ',' | '\t') {
-  return source.split(/\r?\n/).filter((line) => line.trim()).map((line) => {
-    const cells: string[] = [];
-    let current = '';
-    let quoted = false;
-
-    for (let index = 0; index < line.length; index += 1) {
-      const character = line[index];
-      if (character === '"') {
-        if (quoted && line[index + 1] === '"') {
-          current += '"';
-          index += 1;
-        } else {
-          quoted = !quoted;
-        }
-      } else if (character === delimiter && !quoted) {
-        cells.push(current.trim());
-        current = '';
-      } else {
-        current += character;
-      }
-    }
-
-    cells.push(current.trim());
-    return cells;
-  });
-}
-
-const ARTIFACT_MARKDOWN_PREVIEW_CLASS = 'app-artifact-markdown-preview app-artifact-preview-opaque-surface text-[12px] leading-5 [&_p]:text-[12px] [&_p]:leading-5 [&_p]:text-[color:var(--utility-foreground)] [&_div]:text-[12px] [&_div]:leading-5 [&_blockquote]:text-[12px] [&_blockquote]:leading-5 [&_ul]:space-y-0.5 [&_ol]:space-y-0.5 [&_li]:space-y-0.5 [&_pre]:text-[10.5px] [&_pre]:leading-5';
-
-function ArtifactDataTable({ source, delimiter, mode = 'panel' }: { source: string; delimiter: ',' | '\t'; mode?: ArtifactPreviewMode }) {
-  const rows = parseDelimitedRows(source, delimiter);
-  if (rows.length === 0) return <div className="px-4 py-4 text-[12px] text-slate-400">This table is empty.</div>;
-  const [headers, ...bodyRows] = rows;
-
-  return (
-    <div data-artifact-preview-mode={mode} data-kordi-copy-surface="document" tabIndex={0} onKeyDown={handleDocumentCopySurfaceKeyDown} className={cn('overflow-auto p-3', mode === 'panel' ? 'max-h-[32rem]' : 'min-h-full')}>
-      <div className="overflow-hidden rounded-[18px] border border-white/8 bg-[color:var(--app-control-bg)]/70">
-        <table className="min-w-full border-collapse text-left text-[12px] text-slate-100">
-          <thead className="bg-white/[0.05] text-[10px] uppercase tracking-[0.12em] text-slate-400">
-            <tr>
-              {headers.map((header, index) => <th key={`header-${index}`} className="border-b border-white/8 px-3 py-2 font-medium">{header || `Column ${index + 1}`}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {bodyRows.map((row, rowIndex) => (
-              <tr key={`row-${rowIndex}`} className="border-b border-white/6 last:border-b-0">
-                {headers.map((_, cellIndex) => <td key={`cell-${rowIndex}-${cellIndex}`} className="align-top px-3 py-2 text-slate-200">{row[cellIndex] ?? ''}</td>)}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function formattedJsonSource(source: string) {
-  try {
-    return JSON.stringify(JSON.parse(source), null, 2);
-  } catch {
-    return source;
-  }
 }
 
 export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: ArtifactPreviewMode = 'panel') {
@@ -628,7 +566,9 @@ export function ArtifactInspector({
         )}
       </div>
 
-      {previewArtifact ? (
+      {previewArtifact && isDocumentReaderArtifact(previewArtifact, cachedPreview) ? (
+        <ArtifactDocumentSection artifact={previewArtifact} preview={cachedPreview} />
+      ) : previewArtifact ? (
         <section data-artifact-preview-section="true" className="app-detail-section flex min-h-0 flex-1 flex-col border-t border-[color:var(--app-divider)] pt-[18px] pb-0">
           <div className="app-detail-kicker shrink-0">Preview</div>
           <div className="app-code-panel app-artifact-preview-opaque-surface flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] shadow-[var(--app-shadow-soft)]">
