@@ -167,6 +167,7 @@ impl CallbackError {
 
 /// Splits granted scopes into the read and act sets the provider defines.
 /// When the provider does not report scopes, the requested ones are used.
+/// Act scopes count whatever the grant kind, since every grant asks for them.
 pub fn classify_granted_scopes(
     spec: &ProviderSpec,
     grant: ConnectorToolGroup,
@@ -185,11 +186,7 @@ pub fn classify_granted_scopes(
             .map(|scope| scope.to_string())
             .collect::<Vec<_>>()
     };
-    let act = match grant {
-        ConnectorToolGroup::Act => pick(spec.act_scopes),
-        ConnectorToolGroup::Read => Vec::new(),
-    };
-    (pick(spec.read_scopes), act)
+    (pick(spec.read_scopes), pick(spec.act_scopes))
 }
 
 /// Handles the provider redirect back to the server: exchanges the code and

@@ -166,6 +166,33 @@ test('connect finishes the grant with the completion code before re-listing', as
   assert.equal(cancelled(), 1);
 });
 
+test('connect grants read and act together and accepts a read-only answer', async () => {
+  const full = gmailSummary({
+    actScopes: ['https://www.googleapis.com/auth/gmail.send'],
+    grantedScopeIds: [...readIds('gmail'), ...actIds('gmail')],
+    actEnabled: true,
+  });
+  for (const [connector, actEnabled] of [[full, true], [gmailSummary(), false]] as const) {
+    let connectors: CloudConnectorSummary[] = [];
+    const fixture = cloudFixture((call) => {
+      const path = call.url.replace('http://srv', '');
+      if (path === '/v1/cloud/connectors') return jsonResponse(200, { connectors, agents: agents1726 });
+      if (path === '/v1/cloud/connectors/oauth/complete') {
+        connectors = [connector];
+        return jsonResponse(200, { connector });
+      }
+      return undefined;
+    });
+    const fragment = `#kordi_connector=${base64UrlJson({ completionCode: 'cc-3', provider: 'gmail', grant: 'read', status: 'pending' })}`;
+    const client = createCloudConnectorsClient({ accountId: ACCOUNT_ID, http: fixture.http, loadToken: async () => TOKEN, oauth: fakeHandoff(fragment).handoff });
+    const state = await client.connect('gmail', { scopeIds: [] });
+    assert.equal(state.status, 'connected');
+    assert.equal(state.actEnabled, actEnabled);
+    const start = fixture.calls.find((call) => call.url.endsWith('/oauth/start'));
+    assert.equal(JSON.parse(String(start?.init?.body)).grant, 'read');
+  }
+});
+
 test('a read grant that does not end connected is rejected', async () => {
   const fixture = cloudFixture((call) => {
     const path = call.url.replace('http://srv', '');

@@ -57,7 +57,11 @@ async fn another_account_cannot_change_or_read_a_connector() {
     let grants = store::agent_grants(&pool, std::slice::from_ref(&connector_id))
         .await
         .unwrap();
-    assert!(!grants.contains_key(&connector_id), "no grant was added");
+    assert_eq!(
+        grants[&connector_id],
+        [store::default_agent_id(&owner)],
+        "only the default agent from connect holds a grant"
+    );
     assert_eq!(audit_outcomes(&pool, &connector_id).await, audit_before);
 }
 
