@@ -53,3 +53,20 @@ test('peer group view never receives owner-local progress', async ({ page }) => 
     await expect(page.locator('.app-transcript-tool-timeline')).toHaveCount(0);
   }
 });
+
+test('a pending reply shows a compact indicator and a quiet quote, and keeps its header in place', async ({ page }) => {
+  await page.goto('/tests/visual/groupLiveTrajectory.html?random=1');
+  const row = page.locator('[data-transcript-message-root]').filter({ has: page.locator('.app-live-turn-card') });
+  const pending = row.locator('.app-live-turn-response-panel[data-live-turn-pending="true"]');
+  await expect(pending.locator('.app-agent-waiting-wave')).toBeVisible();
+  expect((await pending.boundingBox())!.width).toBeLessThan(80);
+  await expect(row.locator('[data-agent-request-stop="header"]')).toBeVisible();
+  await expect(row.locator('.app-source-message-quote')).toContainText('Synthetic Owner: @SyntheticAgent From now on');
+  // The transcript stays pinned to its tail, so compare offsets inside the row.
+  const offsets = () => row.evaluate((root) => ['.app-message-meta', '.app-live-turn-response-panel']
+    .map((selector) => root.querySelector(selector)!.getBoundingClientRect().top - root.getBoundingClientRect().top));
+  const pendingOffsets = await offsets();
+  await page.getByRole('button', { name: 'Answer text' }).click();
+  await expect(row.locator('.app-live-turn-response-panel')).not.toHaveAttribute('data-live-turn-pending', 'true');
+  expect(await offsets()).toEqual(pendingOffsets);
+});

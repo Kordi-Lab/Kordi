@@ -26,7 +26,7 @@ impl Tool for ReflectionTool {
     }
 
     fn description(&self) -> &str {
-        "Saves a concise memory after user corrections, repeated failures, or outcomes. Scopes: conversation, group, project, or global (scopeId `account`) only for preferences the user wants everywhere (\"from now on\", \"always\"). First read the scope's memories; never save one that repeats or restates them. When a preference changes, save the corrected version. Memories sync with the account and must not record health, finances, relationships, identity attributes, credentials, or other people's private details. Side effect: stores the memory and updates the scoped memory artifact. Max 500 characters."
+        "Saves a concise memory after user corrections, repeated failures, or outcomes. Scopes: conversation, group, project, or global (scopeId `account`) only for preferences the user wants everywhere (\"from now on\", \"always\"). For group, pass the group scopeId exactly as the memory prompt shows it. First read the scope's memories; never save one that repeats or restates them. When a preference changes, save the corrected version. Memories sync with the account and must not record health, finances, relationships, identity attributes, credentials, or other people's private details. Side effect: stores the memory and updates the scoped memory artifact. Max 500 characters."
     }
 
     fn parameters_schema(&self) -> Value {

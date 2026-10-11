@@ -119,13 +119,12 @@ pub(crate) fn build_memory_aware_tools(
     (registry, selection, inputs)
 }
 
-/// The group id behind a group session id (`session:group:<id>`), which is
-/// the scope id of that group's memories.
+/// The scope id of the group memories for a group session id
+/// (`session:group:<id>` or the cloud-agent runtime form): the cloud group id
+/// behind it. `None` for a session that is not a group session.
 pub(crate) fn group_scope_id_for_session(session_id: &str) -> Option<String> {
-    session_id
-        .strip_prefix("session:group:")
-        .filter(|id| !id.is_empty())
-        .map(str::to_string)
+    crate::memory_remote::group_session_part(session_id)?;
+    Some(crate::memory_remote::canonical_group_scope_id(session_id))
 }
 
 #[cfg(test)]
@@ -235,7 +234,15 @@ fn scope_artifact(
     Some(ScopeArtifact {
         scope,
         heading: memory_scope_heading(scope),
-        path_line: format!("- {label} scope `{scope_id}`: {}", path.display()),
+        // The group id is the cloud group id; the agent must save with it.
+        path_line: if scope == "group" {
+            format!(
+                "- {label} scope `{scope_id}` (pass this exact scopeId to save a group memory): {}",
+                path.display()
+            )
+        } else {
+            format!("- {label} scope `{scope_id}`: {}", path.display())
+        },
         lessons,
     })
 }

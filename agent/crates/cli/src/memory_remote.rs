@@ -9,10 +9,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use kordi_session::reflection_lessons::{
-    NewReflectionLesson, ReflectionScope, ReflectionSource, archive_reflection_lesson,
-    list_all_reflection_lessons, list_pending_upload_reflection_lessons,
-    mark_reflection_lesson_uploaded, replace_reflection_lessons_from_remote,
-    save_reflection_lesson,
+    NewReflectionLesson, ReflectionLesson, ReflectionScope, ReflectionSource,
+    archive_reflection_lesson, find_active_reflection_lesson_by_text, list_all_reflection_lessons,
+    list_pending_upload_reflection_lessons, list_reflection_lessons,
+    mark_reflection_lesson_uploaded, move_reflection_lesson_scope,
+    replace_reflection_lessons_from_remote, save_reflection_lesson,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -26,9 +27,18 @@ pub(crate) use labels::scope_label_for;
 )]
 pub use labels::{MESSAGE_LABEL_MAX_CHARS, label_from_message, remember_scope_label};
 
+#[path = "memory_remote/group_scope.rs"]
+mod group_scope;
+#[allow(
+    unused_imports,
+    reason = "the desktop library uses this; the CLI binary does not"
+)]
+pub use group_scope::remember_group_scope_alias;
+pub use group_scope::{canonical_group_scope_id, group_session_part};
+
 use crate::reflection_runtime::{
     parse_lesson_artifact, parse_lesson_artifact_scope_id, reflection_lesson_artifact_path,
-    rewrite_all_lesson_artifacts,
+    rewrite_all_lesson_artifacts, rewrite_lesson_artifact,
 };
 
 /// One account memory as the server returns it.
@@ -288,6 +298,48 @@ fn remote_rows(artifacts_dir: &Path, memories: Vec<RemoteMemory>) -> Vec<NewRefl
         .collect()
 }
 
+/// Move a pending group row cached under a local group id (older builds kept
+/// `session:group:<local id>`) to the cloud group id and rewrite both lesson
+/// files. Returns the row to upload, or `None` when the cloud scope already
+/// holds the same text and the row was archived. A row whose id has no known
+/// cloud id only loses the `session:group:` prefix; when the account refuses
+/// it, the rejection handling archives it.
+fn canonicalise_pending_group_row(
+    conn: &rusqlite::Connection,
+    artifacts_dir: &Path,
+    mut row: ReflectionLesson,
+) -> anyhow::Result<Option<ReflectionLesson>> {
+    if row.scope != ReflectionScope::Group {
+        return Ok(Some(row));
+    }
+    let canonical = canonical_group_scope_id(&row.scope_id);
+    if canonical == row.scope_id {
+        return Ok(Some(row));
+    }
+    let old_scope_id = std::mem::replace(&mut row.scope_id, canonical.clone());
+    let canonical_path = reflection_lesson_artifact_path(artifacts_dir, "group", &canonical);
+    // Keep lines of the cloud scope's file that the cache does not hold yet.
+    import_unlisted_artifact_lines(conn, &canonical_path, &row.scope, &canonical)?;
+    let duplicate = match row.lesson_text.as_deref() {
+        Some(text) => {
+            find_active_reflection_lesson_by_text(conn, &row.scope, &canonical, text)?.is_some()
+        }
+        None => false,
+    };
+    if duplicate {
+        archive_reflection_lesson(conn, &row.lesson_id)?;
+    } else {
+        row.artifact_path = canonical_path.display().to_string();
+        move_reflection_lesson_scope(conn, &row.lesson_id, &canonical, &row.artifact_path)?;
+    }
+    for scope_id in [&old_scope_id, &canonical] {
+        let lessons = list_reflection_lessons(conn, ReflectionScope::Group, scope_id)?;
+        let path = reflection_lesson_artifact_path(artifacts_dir, "group", scope_id);
+        rewrite_lesson_artifact(&path, "group", scope_id, &lessons)?;
+    }
+    Ok((!duplicate).then_some(row))
+}
+
 /// Upload pending memories, refresh the cache from the account, and rewrite
 /// the lesson files.
 pub async fn sync_memories_with_remote(
@@ -306,6 +358,13 @@ pub async fn sync_memories_with_remote(
         list_pending_upload_reflection_lessons(&conn)?
     };
     for row in pending {
+        let row = {
+            let conn = conn.lock().await;
+            canonicalise_pending_group_row(&conn, artifacts_dir, row)?
+        };
+        let Some(row) = row else {
+            continue;
+        };
         let Some(text) = row.lesson_text.clone() else {
             continue;
         };

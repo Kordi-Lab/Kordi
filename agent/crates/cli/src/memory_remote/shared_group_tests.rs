@@ -2,6 +2,10 @@
 
 use super::*;
 
+// Group memories saved under a local group session id.
+#[path = "group_scope_tests.rs"]
+mod group_scope_tests;
+
 const GROUP_ID: &str = "4f1c2a9e-7d3b-4e8a-9c61-2b5d8e0f3a17";
 
 fn foreign_group_memory(memory_id: &str, text: &str) -> RemoteMemory {

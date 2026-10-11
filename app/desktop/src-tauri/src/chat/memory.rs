@@ -1,8 +1,9 @@
 //! Account memory on the Mac (#1710): the cloud remote for the `reflection`
 //! tool and the Memory settings commands.
 use kordi_cli::memory_remote::{
-    label_from_message, remember_scope_label, sync_memories_with_remote, MemoryRemote,
-    MemoryRemoteError, NewRemoteMemory, RemoteMemory, RemoteMemoryList,
+    canonical_group_scope_id, group_session_part, label_from_message, remember_group_scope_alias,
+    remember_scope_label, sync_memories_with_remote, MemoryRemote, MemoryRemoteError,
+    NewRemoteMemory, RemoteMemory, RemoteMemoryList,
 };
 use kordi_core::settings::{MemorySettings, Settings};
 use serde::{Deserialize, Serialize};
@@ -124,6 +125,8 @@ pub(crate) fn decode_memory_error(status: u16, body: &[u8]) -> MemoryRemoteError
     match (status, code) {
         (422, "memory_rejected") => MemoryRemoteError::Rejected(message),
         (409, "memory_disabled") => MemoryRemoteError::Disabled,
+        // A group the account is not a member of: retrying cannot succeed.
+        (403, "not_a_group_member") => MemoryRemoteError::Rejected(message),
         (404, _) => MemoryRemoteError::Unavailable(message),
         (401 | 403, _) => MemoryRemoteError::Unavailable(message),
         (status, _) if status >= 500 => MemoryRemoteError::Unavailable(message),
@@ -186,8 +189,8 @@ pub(crate) fn remember_scope_labels(
     if let Some(label) = conversation_label {
         for session_id in [prompt_session_id, runtime_session_id] {
             remember_scope_label("conversation", session_id, &label);
-            if let Some(group_id) = session_id.strip_prefix("session:group:") {
-                remember_scope_label("group", group_id, &label);
+            if group_session_part(session_id).is_some() {
+                remember_scope_label("group", &canonical_group_scope_id(session_id), &label);
             }
         }
     }
@@ -195,6 +198,30 @@ pub(crate) fn remember_scope_labels(
         let root = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
         remember_scope_label("project", &project.root, &project.name);
         remember_scope_label("project", &root.display().to_string(), &project.name);
+    }
+}
+
+/// Record the cloud group id behind a local group session (any group session
+/// id form), read from the chat sync mapping, so group memories are saved and
+/// read under the id the account server knows. Returns true when the mapping
+/// is new or changed.
+pub(crate) fn remember_group_scope_alias_for_session(session_id: &str) -> bool {
+    let Some(local_id) = group_session_part(session_id) else {
+        return false;
+    };
+    crate::canonical_sessions::cloud_conversation_id_for_client_session(&format!(
+        "session:group:{local_id}"
+    ))
+    .is_some_and(|cloud_id| remember_group_scope_alias(local_id, &cloud_id))
+}
+
+/// Record the cloud group id of every group session the chat sync mapped for
+/// `account_id`, so a sync can move memories cached under a local group id.
+fn remember_group_scope_aliases(account_id: &str) {
+    for (client_session_id, cloud_id) in
+        crate::canonical_sessions::group_conversation_mappings(account_id)
+    {
+        remember_group_scope_alias(&client_session_id, &cloud_id);
     }
 }
 
@@ -289,9 +316,13 @@ pub async fn desktop_memory_sync() -> Result<DesktopMemorySyncResult, String> {
     let Some(remote) = remote else {
         return Ok(DesktopMemorySyncResult::default());
     };
-    let (conn, artifacts_dir) = tokio::task::spawn_blocking(open_session_db)
-        .await
-        .map_err(|error| error.to_string())??;
+    let account_id = remote.account_id();
+    let (conn, artifacts_dir) = tokio::task::spawn_blocking(move || {
+        remember_group_scope_aliases(&account_id);
+        open_session_db()
+    })
+    .await
+    .map_err(|error| error.to_string())??;
     let conn = tokio::sync::Mutex::new(conn);
     let report = sync_memories_with_remote(&conn, &artifacts_dir, &remote)
         .await
@@ -365,6 +396,17 @@ mod tests {
             ),
             MemoryRemoteError::Other("Id is taken.".to_string())
         );
+        assert_eq!(
+            decode_memory_error(
+                403,
+                br#"{"errorCode":"not_a_group_member","message":"Not a member of this group."}"#
+            ),
+            MemoryRemoteError::Rejected("Not a member of this group.".to_string())
+        );
+        assert!(matches!(
+            decode_memory_error(403, b"{}"),
+            MemoryRemoteError::Unavailable(_)
+        ));
         assert!(matches!(
             decode_memory_error(404, b"Not Found"),
             MemoryRemoteError::Unavailable(_)

@@ -311,6 +311,13 @@ can edit or delete them. Client side:
   owner fields stay out of the cache: the agent only reads the text, and the
   desktop Memory tab reads owners from the account list. Adding them would
   need a session schema migration for no runtime use.
+- On the Mac the group scope id is the cloud group id, resolved from the local
+  group session (`session:group:<local id>`, or the runtime form
+  `cloud-agent:<account>:session:group:<local id>:request:<message id>`)
+  through the chat sync mapping (`chat_sync_conversations`). The prompt, the
+  `reflection` tool, the cache, and the lesson files all use it, and a sync
+  moves pending group rows cached under a local id to the cloud id before
+  upload.
 - The runner prompt lists shared group memories in the same "This group:"
   lines, without owner names.
 - In a group's Memory tab on the desktop and the iPhone, a memory another

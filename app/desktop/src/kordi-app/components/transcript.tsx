@@ -561,7 +561,7 @@ function MessageBubbleView({
         <div className={cn("flex w-fit max-w-full items-end gap-2", threadLayout && "app-thread-message-main")}>
           {threadLayout ? <IdentityAvatar kind="agent" seed={msg.senderAvatarSeed || currentLocalAgentAvatarSeed} name={msg.sender} imageUrl={msg.senderProfileImageUrl} className="h-7 w-7 shrink-0" /> : null}
           <div className="app-message-hover-time-trigger min-w-0 w-fit max-w-[58rem]">
-            <div className="flex w-full items-center gap-1.5">
+            <div className="flex min-h-[18px] w-full items-center gap-1.5">
               {threadLayout ? <ThreadMessageHeader msg={msg} name={msg.sender || "Agent"} ownerName={agentOwnerName} /> : null}
               {!threadLayout ? <><div className="app-message-meta">{msg.sender}</div><AgentOwnerTag name={agentOwnerName} /></> : null}
               <AgentRequestHeaderStop

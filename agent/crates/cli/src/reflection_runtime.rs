@@ -14,8 +14,8 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 
 use crate::memory_remote::{
-    MemoryRemoteError, MemoryRemoteSlot, NewRemoteMemory, current_memory_remote,
-    group_lessons_by_scope, import_unlisted_artifact_lines, scope_label_for,
+    MemoryRemoteError, MemoryRemoteSlot, NewRemoteMemory, canonical_group_scope_id,
+    current_memory_remote, group_lessons_by_scope, import_unlisted_artifact_lines, scope_label_for,
 };
 
 const LESSON_ARTIFACT_TITLE: &str = "# Scoped reflection lessons";
@@ -76,7 +76,13 @@ pub(crate) fn build_reflection_runtime(
                 },
             )
             .map_err(tool_error)?;
-            let scope_id = request.scope_id.trim().to_string();
+            // Group memories are keyed by the cloud group id, whatever form
+            // of the group session id the agent passed.
+            let scope_id = if scope == ReflectionScope::Group {
+                canonical_group_scope_id(&request.scope_id)
+            } else {
+                request.scope_id.trim().to_string()
+            };
             let scope_label = scope_label_for(&scope, &scope_id);
             let artifact_path =
                 reflection_lesson_artifact_path(&artifacts_dir, &request.scope, &scope_id);
@@ -84,7 +90,7 @@ pub(crate) fn build_reflection_runtime(
             let saved = |lesson_id: String, already_saved: bool| ReflectionLessonResponse {
                 lesson_id,
                 scope: request.scope.clone(),
-                scope_id: request.scope_id.clone(),
+                scope_id: scope_id.clone(),
                 artifact_path: artifact_path_text.clone(),
                 already_saved,
             };

@@ -327,6 +327,27 @@ pub fn update_reflection_lesson_text(conn: &Connection, lesson_id: &str, text: &
     Ok(())
 }
 
+/// Move a row to another scope id, for example a group memory cached under a
+/// local group id that belongs under the cloud group id.
+pub fn move_reflection_lesson_scope(
+    conn: &Connection,
+    lesson_id: &str,
+    scope_id: &str,
+    artifact_path: &str,
+) -> Result<()> {
+    let scope_id = scope_id.trim();
+    if scope_id.is_empty() {
+        return Err(anyhow!("reflection scope_id cannot be empty"));
+    }
+    conn.execute(
+        "UPDATE reflection_lessons
+         SET scope_id = ?2, artifact_path = ?3
+         WHERE lesson_id = ?1",
+        params![lesson_id, scope_id, artifact_path.trim()],
+    )?;
+    Ok(())
+}
+
 pub fn archive_reflection_lesson(conn: &Connection, lesson_id: &str) -> Result<()> {
     conn.execute(
         "UPDATE reflection_lessons

@@ -84,7 +84,8 @@ use self::identity_migration::{
     adopt_cloud_profile_identity_in_db, local_agent_identity_id, local_profile_human_identity_id,
 };
 pub(crate) use self::message_lookup::{
-    canonical_message_exists, session_title, similar_agent_message_exists,
+    canonical_message_exists, cloud_conversation_id_for_client_session,
+    group_conversation_mappings, session_title, similar_agent_message_exists,
     similar_agent_message_text,
 };
 pub use self::message_mirror_command::desktop_canonical_reconcile_message_mirror;

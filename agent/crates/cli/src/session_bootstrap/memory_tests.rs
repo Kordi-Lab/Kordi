@@ -302,8 +302,42 @@ fn scoped_lesson_artifact_prompt_lists_group_scope_when_file_exists() {
         cwd.path(),
         true,
     );
-    assert!(section.contains("- Group scope `abc-123`: "));
+    assert!(
+        section
+            .contains("- Group scope `abc-123` (pass this exact scopeId to save a group memory): ")
+    );
     assert!(section.contains(group_path.to_str().expect("group path")));
+}
+
+#[test]
+fn runtime_group_session_reads_the_group_file_of_the_cloud_id() {
+    crate::memory_remote::remember_group_scope_alias("bootstrap-local-1", "bootstrap-cloud-1");
+    let artifacts_dir = tempdir().expect("artifacts dir");
+    let cwd = tempdir().expect("cwd");
+    let session_id = "cloud-agent:acct_a:session:group:bootstrap-local-1:request:msg_1";
+    let line = "- 2026-10-01T09:00:00+00:00 [manual] Keep group replies short.";
+    for scope_id in ["bootstrap-cloud-1", "bootstrap-local-1"] {
+        let path = crate::reflection_runtime::reflection_lesson_artifact_path(
+            artifacts_dir.path(),
+            "group",
+            scope_id,
+        );
+        let text = if scope_id == "bootstrap-local-1" {
+            "- 2026-10-01T09:00:00+00:00 [manual] Stale local copy."
+        } else {
+            line
+        };
+        write_lessons(&path, &[text.to_string()]);
+    }
+    let inputs = memory_inputs(artifacts_dir.path(), cwd.path());
+    let section = inputs.section(session_id);
+    assert!(section.contains("Keep group replies short."), "{section}");
+    assert!(!section.contains("Stale local copy."), "{section}");
+    assert!(section.contains("- Group scope `bootstrap-cloud-1` (pass this exact scopeId"));
+    assert_eq!(
+        inputs.current(session_id),
+        vec![snapshot("group", "Keep group replies short.")]
+    );
 }
 
 #[test]
