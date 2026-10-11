@@ -50,13 +50,24 @@ export function defaultCloudAgentId(ownerAccountId: string): string {
   return owner ? `cloud-agent:${owner}` : '';
 }
 
+// `local:<hash>` is the desktop's local delegate for the owner's default Kordi
+// (one per profile/workspace). It names where the agent runs, not a Cloud
+// agent, so it must never be published as a Cloud agent target.
+export function isLocalDelegateAgentId(agentId: string | null | undefined) {
+  const id = agentId?.trim() ?? '';
+  return id.startsWith('local:') && id.length > 'local:'.length;
+}
+
 export function cloudAgentId(
   agentId: string | null | undefined,
   ownerAccountId: string,
 ): string {
   const id = agentId?.trim();
   // Old local mirrors described execution location, not a separate agent.
-  return !id || id === 'cloud-local-agent' || id === `cloud-self:${ownerAccountId.trim()}`
+  return !id
+    || id === 'cloud-local-agent'
+    || id === `cloud-self:${ownerAccountId.trim()}`
+    || isLocalDelegateAgentId(id)
     ? defaultCloudAgentId(ownerAccountId)
     : id;
 }

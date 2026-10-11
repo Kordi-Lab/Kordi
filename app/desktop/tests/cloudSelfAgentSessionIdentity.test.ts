@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import type { CanonicalSessionState } from '../src/kordi-app/types';
 import type { CloudMessage } from '../src/features/cloud/authClient';
 import { encodeCloudDirectMessageEnvelope, parseCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import {
   cloudAgentSessionTargetFromMessages,
+  cloudAgentTargetsBySessionId,
   cloudSelfAgentIdentityLedgerKey,
   publishCloudAgentIdentityMarkers,
 } from '../src/features/cloud/cloudSelfAgentSessionIdentity';
@@ -133,4 +135,40 @@ test('remote agent identity marker seeds a fresh device without republishing', a
     result.ledger[cloudSelfAgentIdentityLedgerKey(sessionId)]?.cloudMessageId,
     'existing-identity-marker',
   );
+});
+
+const localDelegateId = 'local:060c69e6f296f6acea5df9d653cc305c';
+
+function localDelegateState(activeAgentIdentityId: string | null) {
+  return {
+    profile: { humanIdentityId: 'human:acct_me', activeAgentIdentityId },
+    identities: [{
+      id: `agent:${localDelegateId}`, kind: 'agent', displayName: 'Kordi', source: 'local',
+      agentId: localDelegateId, ownerIdentityId: 'human:acct_me',
+      metadata: { delegateAgentName: 'Kordi', ownerIdentityId: 'human:acct_me' },
+    }, {
+      id: 'agent:cloud-owned:cloud_agent_stock', kind: 'agent', displayName: 'US Stock Paper Trader',
+      source: 'local', agentId: 'cloud_agent_stock', ownerIdentityId: 'human:acct_me',
+      metadata: { isOwned: true, accountId: 'acct_me', agentId: 'cloud_agent_stock' },
+    }],
+    sessions: [
+      { id: 'session-local', kind: 'self-agent', primaryIdentityId: `agent:${localDelegateId}`, metadata: {} },
+      { id: 'session-stock', kind: 'direct-agent', primaryIdentityId: 'agent:cloud-owned:cloud_agent_stock', metadata: {} },
+    ],
+  } as unknown as CanonicalSessionState;
+}
+
+test('the local delegate is never published as a Cloud agent target', () => {
+  // The frontend profile may not name the local delegate yet (fresh profile).
+  for (const active of [null, 'agent:cloud-self:acct_me', `agent:${localDelegateId}`]) {
+    const targets = cloudAgentTargetsBySessionId(
+      localDelegateState(active),
+      new Set(['session-local', 'session-stock']),
+    );
+    assert.equal(targets.has('session-local'), false);
+    assert.deepEqual(targets.get('session-stock'), {
+      targetAgentId: 'cloud_agent_stock',
+      targetAgentName: 'US Stock Paper Trader',
+    });
+  }
 });
