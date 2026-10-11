@@ -10,7 +10,7 @@ import {
 } from './cloudDirectMessages';
 import { compareCloudMessages } from './cloudMessageMerge';
 import { cloudOperationUuid } from './chatSyncMapping';
-import { cloudAgentId } from './cloudAgentIdentity';
+import { cloudAgentId, isLocalDelegateAgentId } from './cloudAgentIdentity';
 
 type IdentityLedger = Record<string, {
   cloudMessageId: string | null;
@@ -31,14 +31,6 @@ function record(value: unknown): Record<string, unknown> {
 
 function text(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
-}
-
-// `local:<hash>` is the desktop's local delegate for the owner's default Kordi
-// (one per profile/workspace). It names where the agent runs, not a Cloud
-// agent, so it must never be published as a Cloud agent target.
-function isLocalDelegateAgentId(agentId: string | null | undefined) {
-  const id = agentId?.trim() ?? '';
-  return id.startsWith('local:') && id.length > 'local:'.length;
 }
 
 export function cloudSelfAgentIdentityLedgerKey(sessionId: string) {
@@ -106,7 +98,7 @@ export function cloudAgentTargetsBySessionId(
     const targetAgentName = text(metadata.cloudAgentName) || text(identity?.displayName);
     // The frontend profile can lag the native one, so a local delegate is the
     // default agent whether or not it matches activeAgentIdentityId.
-    const isDefaultAgent = isLocalDelegateAgentId(targetAgentId)
+    const isDefaultAgent = isLocalDelegateAgentId(rawAgentId)
       || (primaryIdentityId === state.profile.activeAgentIdentityId && !text(metadata.cloudAgentId));
     if (!isDefaultAgent && targetAgentId && targetAgentName) {
       targets.set(sessionId, { targetAgentId, targetAgentName });
