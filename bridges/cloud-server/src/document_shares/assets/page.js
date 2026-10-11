@@ -62,6 +62,8 @@
       headers: body ? { 'content-type': 'application/json' } : {},
       body: body ? JSON.stringify(body) : undefined,
       credentials: 'omit'
+    }).catch(function () {
+      throw new Error('No connection');
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         if (!res.ok) throw new Error(data.message || 'Something went wrong');
