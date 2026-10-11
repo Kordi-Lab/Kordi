@@ -9,6 +9,7 @@ use rusqlite::OptionalExtension;
 use super::{DesktopRuntimeSession, ensure_session_row_created};
 use crate::session_bootstrap::memory::{
     MEMORY_CONTEXT_END, MemorySnapshotEntry, memory_scope_heading, memory_update_message,
+    parse_memory_prompt_block,
 };
 
 /// Custom entry with the memories the model was last told about.
@@ -25,15 +26,26 @@ impl DesktopRuntimeSession {
             return Ok(());
         };
         let current = inputs.current(&self.setup.session_id);
-        let previous = match self.latest_memory_snapshot()? {
+        let snapshot = self.latest_memory_snapshot()?;
+        let had_snapshot = snapshot.is_some();
+        // Without a snapshot the model knows what the prompt's memory block
+        // lists, which may predate a scope learned later (a group id).
+        let previous = match snapshot {
             Some(previous) => previous,
-            // The prompt already shows the current memories; only record them.
-            None if self.effective_system_prompt()?.contains(MEMORY_CONTEXT_END) => {
-                return self.append_memory_entry(snapshot_entry(&current));
+            None => {
+                let prompt = self.effective_system_prompt()?;
+                if prompt.contains(MEMORY_CONTEXT_END) {
+                    parse_memory_prompt_block(&prompt)
+                } else {
+                    Vec::new()
+                }
             }
-            None => Vec::new(),
         };
         let Some(text) = memory_update_message(&previous, &current) else {
+            // The prompt already shows the current memories; only record them.
+            if !had_snapshot && !current.is_empty() {
+                return self.append_memory_entry(snapshot_entry(&current));
+            }
             return Ok(());
         };
         self.append_memory_entry(SessionEntry::CustomMessage {
@@ -71,11 +83,9 @@ impl DesktopRuntimeSession {
     /// The prompt the model sees this turn: the frozen identity header when
     /// one exists, otherwise the session's prompt.
     fn effective_system_prompt(&self) -> Result<String> {
-        let frozen: Option<String> = self.setup.conn.query_row(
-            "SELECT json_extract(payload,'$.data.systemPrompt') FROM entries WHERE session_id=?1 AND type='custom' AND json_extract(payload,'$.custom_type')='runtime_identity_prompt' ORDER BY seq LIMIT 1",
-            [&self.setup.session_id], |row| row.get(0),
-        ).optional()?;
-        Ok(frozen.unwrap_or_else(|| self.setup.system_prompt.clone()))
+        Ok(self
+            .frozen_identity_prompt()?
+            .unwrap_or_else(|| self.setup.system_prompt.clone()))
     }
 
     fn append_memory_entry(&mut self, mut entry: SessionEntry) -> Result<()> {

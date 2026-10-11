@@ -162,6 +162,50 @@ pub(crate) fn memory_scope_heading(scope: &str) -> &'static str {
     }
 }
 
+/// The scope kinds in prompt order.
+const MEMORY_SCOPES: [&str; 4] = ["global", "conversation", "project", "group"];
+
+/// The memories a rendered memory block lists, in order. Accepts a whole
+/// system prompt (only its `<desktop_memory_context>` block is read) or a bare
+/// section. Ignores the `Artifacts:` list and the omitted-memories marker.
+#[allow(dead_code)] // Used by the desktop runtime, not the `kordi` binary.
+pub(crate) fn parse_memory_prompt_block(text: &str) -> Vec<MemorySnapshotEntry> {
+    let start = MEMORY_CONTEXT_START.trim_start();
+    let block = match text.find(start) {
+        Some(index) => {
+            let rest = &text[index + start.len()..];
+            rest.find(MEMORY_CONTEXT_END)
+                .map_or(rest, |end| &rest[..end])
+        }
+        None => text,
+    };
+    let mut scope: Option<&str> = None;
+    let mut memories = Vec::new();
+    for line in block.lines().map(str::trim) {
+        if let Some(item) = line.strip_prefix("- ") {
+            if let Some(scope) = scope {
+                let text = normalized_memory_text(item);
+                if !text.is_empty() {
+                    memories.push(MemorySnapshotEntry {
+                        scope: scope.to_string(),
+                        heading: memory_scope_heading(scope),
+                        text,
+                    });
+                }
+            }
+            continue;
+        }
+        if line == "Artifacts:" {
+            break;
+        }
+        let heading = line.strip_suffix(':');
+        scope = MEMORY_SCOPES
+            .into_iter()
+            .find(|scope| heading == Some(memory_scope_heading(scope)));
+    }
+    memories
+}
+
 /// The hidden note that tells the agent its memories changed since the last
 /// message, or `None` when nothing changed. Order alone is not a change.
 #[allow(dead_code)] // Used by the desktop runtime, not the `kordi` binary.
@@ -368,3 +412,7 @@ fn memory_prompt_section_from_files(
     }
     section
 }
+
+#[cfg(test)]
+#[path = "memory_parse_tests.rs"]
+mod parse_tests;

@@ -323,3 +323,99 @@ async fn frozen_identity_prompt_is_restored_unchanged() -> Result<()> {
     assert!(entries[1].1.contains(&format!("\nRemoved:\n- (This conversation) {PINEAPPLE}\n")));
     Ok(())
 }
+
+const GROUP_SESSION: &str = "cloud-agent:acct_a:session:group:gs-memory-test:request:msg_1";
+const GLOBAL_MEMORY: &str = "Reply briefly.";
+const GROUP_MEMORY: &str = "Start every reply in this group with Hi team.";
+
+/// A group request session whose prompt block was built with the global
+/// memory only. Returns the group lesson file path.
+async fn global_only_group_runtime(
+    cwd: &std::path::Path,
+) -> Result<(DesktopRuntimeSession, std::path::PathBuf)> {
+    let mut runtime = DesktopRuntimeSession::create_with_id(cwd.to_path_buf(), GROUP_SESSION).await?;
+    let artifacts_dir = runtime.setup.tool_ctx.artifacts_dir.clone();
+    let lesson = |scope: &str, id: &str| {
+        crate::reflection_runtime::reflection_lesson_artifact_path(&artifacts_dir, scope, id)
+    };
+    let global_path = lesson("global", kordi_tools::reflection_tool::GLOBAL_SCOPE_ID);
+    write_conversation_memory(&global_path, GLOBAL_MEMORY)?;
+    runtime.refresh_memory_prompt_section();
+    assert!(runtime.setup.system_prompt.contains(GLOBAL_MEMORY));
+    assert!(!runtime.setup.system_prompt.contains("This group:"));
+    Ok((runtime, lesson("group", "gs-memory-test")))
+}
+
+#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
+#[tokio::test]
+async fn memories_missing_from_the_prompt_block_arrive_as_an_update() -> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let cwd = tempfile::tempdir().expect("cwd tempdir");
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+    let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
+    save_memory_settings(true)?;
+
+    let (mut runtime, group_path) = global_only_group_runtime(cwd.path()).await?;
+    let prompt = runtime.setup.system_prompt.clone();
+    write_conversation_memory(&group_path, GROUP_MEMORY)?;
+    runtime.record_memory_updates()?;
+    let entries = memory_entries(&runtime)?;
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].0, "memory_update");
+    assert!(entries[0].1.contains(&format!("\nAdded:\n- (This group) {GROUP_MEMORY}\n")));
+    assert!(!entries[0].1.contains("Removed:"));
+    assert!(!entries[0].1.contains(&format!("(Global) {GLOBAL_MEMORY}")));
+    assert_eq!(entries[1].0, "memory_snapshot");
+    assert!(entries[1].1.contains(GLOBAL_MEMORY) && entries[1].1.contains(GROUP_MEMORY));
+    assert_eq!(runtime.setup.system_prompt, prompt);
+    Ok(())
+}
+
+#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
+#[tokio::test]
+async fn a_prompt_block_matching_the_files_records_only_a_snapshot() -> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let cwd = tempfile::tempdir().expect("cwd tempdir");
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+    let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
+    save_memory_settings(true)?;
+
+    let (mut runtime, group_path) = global_only_group_runtime(cwd.path()).await?;
+    write_conversation_memory(&group_path, GROUP_MEMORY)?;
+    // A session that has not started rebuilds its block before the first turn.
+    assert!(runtime.has_not_started()?);
+    runtime.refresh_memory_prompt_section();
+    assert!(
+        runtime
+            .setup
+            .system_prompt
+            .contains(&format!("This group:\n- {GROUP_MEMORY}"))
+    );
+    runtime.record_memory_updates()?;
+    let entries = memory_entries(&runtime)?;
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].0, "memory_snapshot");
+    assert!(entries[0].1.contains(GLOBAL_MEMORY) && entries[0].1.contains(GROUP_MEMORY));
+    Ok(())
+}
+
+#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
+#[tokio::test]
+async fn freezing_the_identity_prompt_marks_the_session_started() -> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let cwd = tempfile::tempdir().expect("cwd tempdir");
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+    let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
+    save_memory_settings(true)?;
+
+    let (mut runtime, _) = identity_memory_runtime(cwd.path(), "identity-freeze-session").await?;
+    assert!(!runtime.has_frozen_identity_prompt()?);
+    assert!(runtime.has_not_started()?);
+    runtime.freeze_identity_prompt()?;
+    assert!(runtime.has_frozen_identity_prompt()?);
+    assert!(!runtime.has_not_started()?);
+    Ok(())
+}

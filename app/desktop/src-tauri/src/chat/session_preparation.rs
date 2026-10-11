@@ -249,15 +249,16 @@ pub(super) async fn prepare_desktop_session_for_send(
     super::session_observation::image_visibility::refresh(runtime, &observation).await?;
     runtime.set_session_observation_runtime(Some(observation));
     super::memory::attach_memory_remote(runtime).await;
-    // Group memories are keyed by the cloud group id. The first turn of a
-    // group after launch learns it here, so rebuild the memory section the
-    // session started with.
+    // Group memories are keyed by the cloud group id, learned here. A session
+    // that has not started yet (such as a per-request group session) rebuilds
+    // its memory section so the first prompt is complete; a started one gets
+    // the missing memories as an update note instead.
     let group_alias_learned = [prompt_session_id.as_str(), runtime.session_id()]
         .into_iter()
         .fold(false, |learned, session_id| {
             super::memory::remember_group_scope_alias_for_session(session_id) || learned
         });
-    if group_alias_learned {
+    if group_alias_learned || runtime.has_not_started().unwrap_or(false) {
         runtime.refresh_memory_prompt_section();
     }
     // The system prompt keeps the memories it started with; a change since
