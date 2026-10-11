@@ -194,8 +194,10 @@ final class PreviewConnectorsClient: ConnectorsClient {
         guard definition.availability == .available else {
             throw ConnectorsClientError(message: "\(definition.name) is not yet available.")
         }
-        let allowed = Self.readScopeIds(providerId)
+        // A service connect grants read and act together and turns acting on.
+        let allowed = ConnectorsModel.connectScopes(definition).map(\.id)
         let requested = scopeIds.filter { allowed.contains($0) }
+        let granted = requested.isEmpty ? allowed : requested
         let previous = try current(providerId)
         if definition.requiresFullDiskAccess {
             // Full Disk Access cannot be requested in-app; the person grants it in System Settings.
@@ -208,8 +210,8 @@ final class PreviewConnectorsClient: ConnectorsClient {
             providerId: providerId,
             status: .connected,
             connectedAt: Self.timestamp(now()),
-            grantedScopeIds: requested.isEmpty ? allowed : requested,
-            actEnabled: false,
+            grantedScopeIds: granted,
+            actEnabled: definition.kind == .service && Self.actScopeIds(providerId).contains { granted.contains($0) },
             agentIds: previous.agentIds.isEmpty ? defaultAgentIds : previous.agentIds,
             lastEventAt: previous.lastEventAt
         ))

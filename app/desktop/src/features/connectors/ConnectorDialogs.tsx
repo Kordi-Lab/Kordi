@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 
 import {
   connectorDefinition,
+  connectScopes,
   disconnectConsequences,
   type ConnectorAuditOutcome,
   type ConnectorProviderId,
@@ -95,7 +96,7 @@ export function ConnectorDialogs({
                 {dialog.reauth ? `Sign in to ${dialogDefinition.name} again` : `Connect ${dialogDefinition.name}`}
               </AppDialogTitle>
               <AppDialogDescription id={`${idPrefix}-connect-description`}>
-                Kordi asks {dialogDefinition.providerName} for read access only. You can let your agent act here later from this page.
+                Kordi asks {dialogDefinition.providerName} for the access your agent needs to read and act here. You can turn acting off at any time from this page.
               </AppDialogDescription>
             </>
           ) : (
@@ -109,7 +110,7 @@ export function ConnectorDialogs({
               </AppDialogDescription>
             </>
           )}
-          <ScopeList scopes={dialogDefinition.readScopes} />
+          <ScopeList scopes={connectScopes(dialogDefinition)} />
           {dialogBusy ? (
             <p className={cn('m-0 mt-4 text-[12px] leading-5', dialogMuted)} role="status">
               {dialogDefinition.kind === 'service' ? `Waiting for ${dialogDefinition.providerName}…` : 'Waiting for macOS…'}
@@ -136,7 +137,7 @@ export function ConnectorDialogs({
         >
           <AppDialogTitle id={`${idPrefix}-grant-title`}>Let your agent act in {dialogDefinition.name}</AppDialogTitle>
           <AppDialogDescription id={`${idPrefix}-grant-description`}>
-            This is a second permission you grant on purpose. Your agent will be able to:
+            {dialogDefinition.providerName} did not grant this when you connected. Your agent will be able to:
           </AppDialogDescription>
           <ScopeList scopes={dialogDefinition.actScopes} />
           <p className={cn('m-0 mt-3 text-[13px] leading-6', dialogMuted)}>
