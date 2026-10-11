@@ -397,12 +397,11 @@ test('queued Ask Agent bubbles expose icon-only edit and cancel actions before q
   const queuedBubble = queuedMessageSource();
   assert.match(chatsSource, /onCancelQueuedMessage/);
   assert.match(chatsSource, /onEditQueuedMessage/);
-  assert.match(queuedBubble, /className="mt-0\.5 flex items-center gap-2"/);
-  assert.match(queuedBubble, /app-queued-message-text[\s\S]*\{actions\}/, 'queued action icons should align in the same row as the queued text');
+  assert.match(queuedBubble, /app-queued-message-meta[\s\S]*\{actions\}/, 'queued action icons should sit on the queued status line');
   assert.match(queuedBubble, /aria-label=\{`Edit queued message/);
   assert.match(queuedBubble, /aria-label=\{`Cancel queued message/);
-  assert.match(queuedBubble, /<SquarePen className="h-3\.5 w-3\.5" aria-hidden="true" \/>/);
-  assert.match(queuedBubble, /<X className="h-3\.5 w-3\.5" aria-hidden="true" \/>/);
+  assert.match(queuedBubble, /<SquarePen className="h-3 w-3" aria-hidden="true" \/>/);
+  assert.match(queuedBubble, /<X className="h-3 w-3" aria-hidden="true" \/>/);
   assert.doesNotMatch(queuedBubble, />\s*(Edit|Cancel)\s*<\/button>/, 'queued actions should be icon-only, not visible text buttons');
   assert.match(shellTypes, /handleCancelQueuedMessage/);
   assert.match(shellTypes, /handleEditQueuedMessage/);
