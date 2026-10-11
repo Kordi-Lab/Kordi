@@ -146,3 +146,32 @@ async fn read_only_scopes_leave_act_off_until_an_act_grant() {
     assert_eq!(listed["connectors"][0]["actEnabled"], true);
     assert_eq!(listed["connectors"][0]["agentIds"], json!([]));
 }
+
+#[tokio::test]
+async fn a_new_sign_in_keeps_acting_off() {
+    let Some(pool) = pool().await else { return };
+    let (runtime, stub) = stub_runtime();
+    let (owner, token) = signed_in_account(&pool, "defaults_resign_in").await;
+    let app = app_for(&pool, runtime.clone());
+    let connector_id = connect_stub(&pool, &runtime, &owner, ConnectorToolGroup::Read).await;
+    let off = set_act(&app, &token, &connector_id, false).await;
+    assert_eq!(off["connector"]["actEnabled"], false);
+    let agents = off["connector"]["agentIds"].clone();
+
+    // Signing in again returns the act scopes, but acting stays off.
+    assert_eq!(
+        connect_stub(&pool, &runtime, &owner, ConnectorToolGroup::Read).await,
+        connector_id
+    );
+    let listed = list(&app, &token).await;
+    assert_eq!(listed["connectors"][0]["connectorId"], connector_id);
+    assert_eq!(listed["connectors"][0]["actScopes"], json!(["stub.act"]));
+    assert_eq!(listed["connectors"][0]["actEnabled"], false);
+    assert_eq!(listed["connectors"][0]["agentIds"], agents);
+
+    // Acting turns on again without another provider exchange.
+    let calls = stub.calls();
+    let on = set_act(&app, &token, &connector_id, true).await;
+    assert_eq!(on["connector"]["actEnabled"], true);
+    assert_eq!(stub.calls(), calls, "no new grant was needed");
+}

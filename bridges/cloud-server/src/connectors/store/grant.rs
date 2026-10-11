@@ -101,19 +101,24 @@ pub struct GrantUpdate<'a> {
     pub account_id: &'a str,
     pub provider: &'a str,
     pub read_scopes: &'a [String],
-    /// Act scopes granted now. When any are present, acting is turned on.
+    /// Act scopes granted now. A new connector starts with acting on when any
+    /// are present; see `apply_grant` for an existing connector.
     pub act_scopes: &'a [String],
     /// The provider account behind the credential, when known.
     pub provider_account_id: Option<&'a str>,
+    /// The grant kind the person asked for. It labels the audit row, and an
+    /// `Act` grant also turns acting on for an existing connector.
     pub audit_tool_group: ConnectorToolGroup,
     pub audit_summary: &'a str,
 }
 
 /// Records a completed OAuth grant: creates or updates the live connector,
 /// stores the sealed secret, and writes the `oauth.grant` audit row, all in
-/// one transaction. Acting is turned on whenever the grant carries act
-/// scopes, and a newly created connector is granted to the account's
-/// default agent, so a connected service is usable at once. An advisory
+/// one transaction. A new connector starts with acting on when the grant
+/// carries act scopes and is granted to the account's default agent, so a
+/// connected service is usable at once. An existing connector keeps the
+/// person's acting choice, unless this is an explicit act grant or the first
+/// grant that brings act scopes at all. An advisory
 /// lock on (account, provider) serializes racing completions, so the second
 /// one updates the connector the first created instead of hitting the
 /// one-live-connector index.
@@ -142,7 +147,10 @@ pub async fn apply_grant(
         Some(current) => {
             let read = merge_scopes(&current.read_scopes, grant.read_scopes);
             let act = merge_scopes(&current.act_scopes, grant.act_scopes);
-            let act_enabled = current.act_enabled || !grant.act_scopes.is_empty();
+            let first_act_grant = current.act_scopes.is_empty() && !grant.act_scopes.is_empty();
+            let explicit_act_grant =
+                grant.audit_tool_group == ConnectorToolGroup::Act && !act.is_empty();
+            let act_enabled = current.act_enabled || explicit_act_grant || first_act_grant;
             query_as(&format!(
                 "UPDATE cloud_connectors SET status = 'connected', read_scopes = $2, \
                  act_scopes = $3, act_enabled = $4, updated_at = now(), \

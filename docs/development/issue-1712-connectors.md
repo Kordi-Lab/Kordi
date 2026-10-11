@@ -38,6 +38,7 @@ product shape can be reviewed before any token is stored.
   grants the connector to the account's default agent, so a connected service
   is usable at once. The person can turn acting off, and on again, from
   settings without another OAuth round trip while act scopes are granted. A
+  later sign-in to the same connector keeps the person's acting choice. A
   provider that returns read-only scopes leaves acting off; the act toggle then
   starts an `act` re-grant. Background runs never receive `act` tools, and
   only the owner changes these settings.
