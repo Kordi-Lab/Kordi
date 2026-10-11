@@ -37,25 +37,25 @@ async fn run_owner(
     headers: &HeaderMap,
     run_id: &str,
     runner_id: Option<&str>,
-) -> Result<String, Response> {
+) -> Result<String, Box<Response>> {
     if !super::runner_authorized(headers) {
-        return Err(runner_unauthorized());
+        return Err(Box::new(runner_unauthorized()));
     }
     let Some(runner_id) = runner_id.map(str::trim).filter(|id| !id.is_empty()) else {
-        return Err(error_response(
+        return Err(Box::new(error_response(
             "invalid_runner_request",
             "runnerId is required.",
             StatusCode::BAD_REQUEST,
-        ));
+        )));
     };
     match memory_store::leased_run_owner(state.db_pool(), run_id, runner_id).await {
         Ok(Some(owner)) => Ok(owner),
-        Ok(None) => Err(error_response(
+        Ok(None) => Err(Box::new(error_response(
             "agent_run_not_found",
             "Cloud agent run was not found for this runner.",
             StatusCode::NOT_FOUND,
-        )),
-        Err(error) => Err(error.into_response()),
+        ))),
+        Err(error) => Err(Box::new(error.into_response())),
     }
 }
 
@@ -67,7 +67,7 @@ pub(super) async fn list(
 ) -> Response {
     let owner = match run_owner(&state, &headers, &run_id, input.runner_id.as_deref()).await {
         Ok(owner) => owner,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     match memory_store::list(state.db_pool(), &owner).await {
         Ok(list) => Json(list).into_response(),
@@ -83,7 +83,7 @@ pub(super) async fn save(
 ) -> Response {
     let owner = match run_owner(&state, &headers, &run_id, input.runner_id.as_deref()).await {
         Ok(owner) => owner,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let outcome = match memory_store::save(state.db_pool(), &owner, &input.memory).await {
         Ok(outcome) => outcome,
