@@ -20,6 +20,7 @@ import { loadSession } from '@/features/cloud/session';
 import { attachmentFileFamily, attachmentFileTileLabel, splitAttachmentName } from '@/features/chat/attachmentFileFamily';
 import { revealDesktopAttachment, saveDesktopAttachmentAs } from '@/features/chat/attachmentDesktopActions';
 import { isMp4VideoAttachment } from '@/features/chat/attachmentMediaGallery';
+import { openAttachmentInCompanion } from '@/features/documents/companionDocument';
 import { attachmentFormatLabel } from '@/features/chat/composerAttachments';
 import {
   downloadDesktopAttachment,
@@ -349,7 +350,11 @@ export function TranscriptFileAttachmentLink({
           data-attachment-file-chip="true"
           data-file-family={family}
           data-downloaded={downloadedPath ? 'true' : undefined}
-          onClick={() => void (canOpen ? handleOpen() : handleDownload())}
+          onClick={() => {
+            // Markdown and HTML cloud attachments open in the chat's document pane.
+            if (openAttachmentInCompanion(attachment)) return;
+            void (canOpen ? handleOpen() : handleDownload());
+          }}
           onContextMenu={openMenu}
           disabled={isDownloading}
           className="app-attachment-file-chip"

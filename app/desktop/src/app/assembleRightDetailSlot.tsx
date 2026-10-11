@@ -74,14 +74,14 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
           onNavigateToResponse={navigateToResponse}
         />
       ) : (
-        <DocumentReaderHostContext.Provider value={documentReaderHostForConversation({
+        <DocumentReaderHostContext.Provider value={{ opensDocumentsInCompanion: true, ...documentReaderHostForConversation({
           account: args.cloudSession?.account ?? null,
           conversation: args.activeConv,
           contacts: args.displayedContacts ?? [],
           isNativeShell: args.isNativeShell,
           startChatWithPerson: args.handleStartChatWithPerson,
           forwardMessage: args.onForwardMessage,
-        })}>
+        }) }}>
         <ChatDetailPanel
           isNativeShell={args.isNativeShell}
           activeDetailTab={args.activeDetailTab}

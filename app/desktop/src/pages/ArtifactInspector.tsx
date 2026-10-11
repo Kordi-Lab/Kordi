@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Braces, ChevronLeft, FileText, FolderOpen, Globe2, LoaderCircle, Maximize2, X } from 'lucide-react';
 import { MarkdownCodeBlock, MarkdownContent, MermaidDiagram } from '@/kordi-app/components';
-import type { DesktopArtifactDirectory, DesktopArtifactDirectoryEntry, DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
+import type { DesktopArtifactDirectory, DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
 import { fetchDesktopChatArtifactDirectory, fetchDesktopChatArtifactPreview } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 import { ArtifactDocumentSection } from '@/features/documents/ArtifactDocumentSection';
-import { isDocumentReaderArtifact } from '@/features/documents/documentReaderModel';
+import { documentFormatForPath, isDocumentReaderArtifact } from '@/features/documents/documentReaderModel';
+import { openArtifactInCompanion } from '@/features/documents/companionDocument';
+import { useDocumentReaderHost } from '@/features/documents/documentReaderHost';
 import { artifactPreviewDocumentSource, type ArtifactPreviewMode } from './artifactPreviewDocument';
 import { ArtifactDataTable } from './artifactDataTable';
-import { ARTIFACT_MARKDOWN_PREVIEW_CLASS, formattedJsonSource } from './artifactPreviewText';
+import { ARTIFACT_MARKDOWN_PREVIEW_CLASS, artifactFromDirectoryEntry, formattedJsonSource, formatFileSize } from './artifactPreviewText';
 
 type ArtifactInspectorProps = {
   isNativeShell: boolean;
@@ -170,25 +172,6 @@ function previewErrorCopy(error: string, artifact: SessionArtifact | null) {
   };
 }
 
-function formatFileSize(value?: number | null) {
-  if (!value) return 'File';
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function artifactFromDirectoryEntry(entry: DesktopArtifactDirectoryEntry): SessionArtifact {
-  return {
-    id: `folder:${entry.path}`,
-    path: entry.path,
-    name: entry.name,
-    kind: entry.kind === 'directory' ? 'file' : entry.kind,
-    category: 'related',
-    summary: `Project folder file • ${formatFileSize(entry.sizeBytes)}`,
-    timeLabel: 'Folder',
-  };
-}
-
 function artifactCategory(artifact: SessionArtifact): NonNullable<SessionArtifact['category']> {
   return artifact.category ?? 'artifact';
 }
@@ -344,6 +327,15 @@ export function ArtifactInspector({
     [activeArtifactId, artifacts, generatedArtifacts, relatedArtifacts],
   );
   const previewArtifact = browserSelectedArtifact ?? activeArtifact;
+  // In chats, Markdown and HTML open in the companion pane instead of inline.
+  const documentsInCompanion = Boolean(useDocumentReaderHost().opensDocumentsInCompanion);
+  const opensInCompanion = documentsInCompanion && Boolean(documentFormatForPath(previewArtifact?.path));
+  const selectListArtifact = (artifactId: string) => {
+    setBrowserSelectedArtifact(null);
+    onSelectArtifact(artifactId);
+    const artifact = artifacts.find((entry) => entry.id === artifactId);
+    if (artifact && documentsInCompanion) openArtifactInCompanion(artifact, artifact.pinned ? null : previewBaseRoot);
+  };
   const effectivePreviewBaseRoot = previewArtifact?.pinned ? null : previewBaseRoot;
   const activePreviewKey = previewArtifact
     ? `${effectivePreviewBaseRoot ?? ''}:${previewArtifact.id}:${previewArtifact.timeLabel ?? ''}:${previewArtifact.live ? 'live' : 'ready'}`
@@ -424,7 +416,7 @@ export function ArtifactInspector({
   useEffect(() => {
     setPreviewError(null);
 
-    if (!previewArtifact?.id || !activePreviewKey || !isNativeShell || cachedPreview) {
+    if (!previewArtifact?.id || !activePreviewKey || !isNativeShell || cachedPreview || opensInCompanion) {
       setIsPreviewLoading(false);
       return;
     }
@@ -453,7 +445,7 @@ export function ArtifactInspector({
     return () => {
       cancelled = true;
     };
-  }, [activePreviewKey, cachedPreview, effectivePreviewBaseRoot, isNativeShell, previewArtifact?.id, previewArtifact?.path]);
+  }, [activePreviewKey, cachedPreview, effectivePreviewBaseRoot, isNativeShell, opensInCompanion, previewArtifact?.id, previewArtifact?.path]);
 
   return (
     <div data-artifact-inspector="true" className="flex h-full min-h-0 flex-col">
@@ -507,6 +499,7 @@ export function ArtifactInspector({
                         return;
                       }
                       setBrowserSelectedArtifact(artifactFromDirectoryEntry(entry));
+                      if (documentsInCompanion) openArtifactInCompanion(artifactFromDirectoryEntry(entry), null);
                     }}
                     className={cn(
                       'app-inspector-source-row w-full text-left transition',
@@ -542,20 +535,14 @@ export function ArtifactInspector({
             section="generated"
             artifacts={generatedArtifacts}
             activeArtifact={activeArtifact}
-            onSelect={(artifactId) => {
-              setBrowserSelectedArtifact(null);
-              onSelectArtifact(artifactId);
-            }}
+            onSelect={selectListArtifact}
           />
           <ArtifactListSection
             title="Related changed files"
             section="related"
             artifacts={relatedArtifacts}
             activeArtifact={activeArtifact}
-            onSelect={(artifactId) => {
-              setBrowserSelectedArtifact(null);
-              onSelectArtifact(artifactId);
-            }}
+            onSelect={selectListArtifact}
           />
           </>
         ) : (
@@ -566,7 +553,7 @@ export function ArtifactInspector({
         )}
       </div>
 
-      {previewArtifact && isDocumentReaderArtifact(previewArtifact, cachedPreview) ? (
+      {opensInCompanion ? null : previewArtifact && isDocumentReaderArtifact(previewArtifact, cachedPreview) ? (
         <ArtifactDocumentSection artifact={previewArtifact} preview={cachedPreview} />
       ) : previewArtifact ? (
         <section data-artifact-preview-section="true" className="app-detail-section flex min-h-0 flex-1 flex-col border-t border-[color:var(--app-divider)] pt-[18px] pb-0">

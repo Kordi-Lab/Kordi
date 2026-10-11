@@ -35,38 +35,11 @@ import {
 } from '@/pages/chatsPage.model';
 
 import { ChatCompanionLayout } from './chatsPage.companionLayout';
+import { CompanionDocumentPane } from './chatsPage.companionDocument';
+import { useCompanionDocument, useCompanionDocumentRequests } from '@/features/documents/useCompanionDocument';
+import { documentReaderHostForConversation } from '@/features/documents/documentReaderHost';
 
-export {
-  chatHeaderSubtitle,
-  isGenericChatHeaderSubtitle,
-  localAgentComposerConfigTargetSessionId,
-  selfAgentSessionIdForTitleRename,
-  shouldUseCompactModelRouteMenu,
-} from '@/pages/chatsPage.header';
-export {
-  PinActivityNotice,
-  PinMessageDialog,
-  PinnedMessageBar,
-} from '@/pages/chatsPage.pins';
-export {
-  buildAskAgentSessionReferenceContext,
-  buildAskAgentSessionReferenceContextMessage,
-  canonicalHistorySessionIdForConversation,
-  chatCompanionCandidates,
-  chatCompanionSideForPaneKinds,
-  chatCompanionSideFromDropPosition,
-  chatSideAgentConversationForOpenRequest,
-  forkSnapshotBoundaryIndexForMessages,
-  forkSourceMessageIds,
-  humanSideForCompanionSide,
-  pairedCompanionConversation,
-  parseAskAgentTriggerCommand,
-} from '@/pages/chatsPage.model';
-export { transcriptHumanParticipant } from '@/pages/chatSenderProfileModel';
-export {
-  COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS,
-  COLLABORATION_ROUTING_NOTICE_EXIT_MS,
-} from '@/pages/chatsPage.constants';
+export * from '@/pages/chatsPage.reexports';
 const EMPTY_CONVERSATIONS: Conversation[] = [];
 
 export function ChatsPage({
@@ -193,7 +166,9 @@ export function ChatsPage({
     companionConversationId: companionConversation?.id ?? null,
   });
   const [panelState, setPanelState] = useState<{ conversationId: string; view: CompanionView }>({ conversationId: activeConv.id, view: 'chat' });
-  const companionView = panelState.conversationId === activeConv.id ? panelState.view : 'chat';
+  const companionDocument = useCompanionDocument(activeConv.id);
+  const requestedView = panelState.conversationId === activeConv.id ? panelState.view : 'chat';
+  const companionView = requestedView === 'document' && !companionDocument.document ? 'chat' : requestedView;
   const setCompanionView = (view: CompanionView) => setPanelState({ conversationId: activeConv.id, view });
   const companionLayout = useChatCompanionLayout({
     pageConversationId: activeConv.id,
@@ -202,6 +177,7 @@ export function ChatsPage({
     activePaneKind,
     companionConversation,
   });
+  useCompanionDocumentRequests((document) => { companionDocument.open(document); setCompanionView('document'); companionLayout.placeCompanion('right'); companionLayout.setFolded(false); destinations.main.select('messages'); });
   const {
     containerRef: splitContainerRef,
     side: companionSide,
@@ -419,12 +395,15 @@ export function ChatsPage({
     companionLayout.placeCompanion('right');
     companionLayout.setFolded(false);
   };
+  const hideCompanion = () => { companionLayout.setFolded(true); if (companionView === 'document') companionDocument.close(); };
   return (
     <AgentSubsessionNavigationContext.Provider value={(id) => openRelatedAgentSession(id, true)}>
     <ChatSenderProfileContext.Provider value={senderProfiles.openParticipant}>
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         <ChatCompanionLayout containerRef={splitContainerRef} layout={companionLayout} view={companionView}
-          accountId={cloudAccount?.accountId} companionPane={companionPane}>
+          accountId={cloudAccount?.accountId} companionPane={companionPane}
+          documentPane={companionDocument.document ? <CompanionDocumentPane document={companionDocument.document} onClose={hideCompanion} host={documentReaderHostForConversation({
+            account: cloudAccount, conversation: activeConv, contacts: senderProfiles.contacts, isNativeShell, startChatWithPerson: onMessageContact, forwardMessage: composer.onForwardMessage })} /> : null}>
           <ChatMainWorkspace
             layout={layout}
             session={session}
@@ -462,8 +441,9 @@ export function ChatsPage({
                 isOpen: showCompanionPane,
                 canOpenChat: canOpenSideAgentPanel || companionSession.sessionOptions.some((option) => option.selectable),
                 hasChat: Boolean(companionConversation),
+                hasDocument: Boolean(companionDocument.document),
                 onSelect: selectCompanionView,
-                onHide: () => companionLayout.setFolded(true),
+                onHide: hideCompanion,
               },
               open: openSideAgentPanel,
               openSession: openRelatedAgentSession,

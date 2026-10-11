@@ -24,6 +24,8 @@ export type DocumentReaderHost = {
   messageAccount?: (accountId: string) => void;
   sendAttachment?: (attachment: MessageAttachment) => void;
   revealPath?: (path: string) => Promise<unknown> | void;
+  /** Set where a chat companion pane can host the reader (the chat Artifacts tab). */
+  opensDocumentsInCompanion?: boolean;
 };
 
 const EMPTY_HOST: DocumentReaderHost = { viewer: null, sessionId: null, agentName: null, people: [] };

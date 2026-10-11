@@ -12,7 +12,7 @@ import { companionAgendaDays } from './chatsPage.companionCalendarModel';
 import type { CompanionView } from './chatsPage.companionToolbar';
 import { CompanionTitlebar } from './CompanionTitlebar';
 
-type OverviewView = Exclude<CompanionView, 'chat'>;
+type OverviewView = Exclude<CompanionView, 'chat' | 'document'>;
 type Props = { accountId?: string; view: OverviewView; onClose: () => void };
 
 export default function CompanionOverview({ accountId, view, onClose }: Props) {

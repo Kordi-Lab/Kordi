@@ -30,11 +30,11 @@ export function documentShareTokenFromUrl(value: string | null | undefined): str
 export function openDocumentShareLink(href: string): boolean {
   const token = documentShareTokenFromUrl(href);
   if (!token || typeof window === 'undefined') return false;
-  window.dispatchEvent(new CustomEvent<string>(DOCUMENT_SHARE_OPEN_EVENT, { detail: token }));
+  window.dispatchEvent(new window.CustomEvent<string>(DOCUMENT_SHARE_OPEN_EVENT, { detail: token }));
   return true;
 }
 
 export function dispatchDocumentSessionOpen(sessionId: string) {
   if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent<string>(DOCUMENT_SESSION_OPEN_EVENT, { detail: sessionId }));
+  window.dispatchEvent(new window.CustomEvent<string>(DOCUMENT_SESSION_OPEN_EVENT, { detail: sessionId }));
 }

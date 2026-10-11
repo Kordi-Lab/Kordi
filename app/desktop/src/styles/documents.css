@@ -416,3 +416,6 @@ button.app-document-menu-row:hover,
   .app-document-switch,
   .app-document-switch::after { transition: none; }
 }
+
+/* The reader inside the chat companion pane fills it edge to edge. */
+.app-companion-document .app-document-reader-pane { border: 0; border-radius: 0; }
