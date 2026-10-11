@@ -253,11 +253,10 @@ pub(super) async fn prepare_desktop_session_for_send(
     // that has not started yet (such as a per-request group session) rebuilds
     // its memory section so the first prompt is complete; a started one gets
     // the missing memories as an update note instead.
-    let group_alias_learned = [prompt_session_id.as_str(), runtime.session_id()]
-        .into_iter()
-        .fold(false, |learned, session_id| {
-            super::memory::remember_group_scope_alias_for_session(session_id) || learned
-        });
+    let mut group_alias_learned = false;
+    for session_id in [prompt_session_id.as_str(), runtime.session_id()] {
+        group_alias_learned |= super::memory::remember_group_scope_alias_for_session(session_id);
+    }
     if group_alias_learned || runtime.has_not_started().unwrap_or(false) {
         runtime.refresh_memory_prompt_section();
     }
