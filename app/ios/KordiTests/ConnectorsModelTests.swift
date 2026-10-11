@@ -113,22 +113,29 @@ final class ConnectorsModelTests: XCTestCase {
         let client = PreviewConnectorsClient(latency: 0)
         let gmail = ConnectorsModel.definition(.gmail)
 
-        let connected = try await client.connect(.gmail, scopeIds: gmail.readScopes.map(\.id))
+        XCTAssertEqual(ConnectorsModel.connectScopes(gmail), gmail.readScopes + gmail.actScopes)
+        let connected = try await client.connect(.gmail, scopeIds: ConnectorsModel.connectScopes(gmail).map(\.id))
         XCTAssertEqual(connected.status, .connected)
-        XCTAssertEqual(connected.grantedScopeIds, gmail.readScopes.map(\.id))
-        XCTAssertFalse(connected.actEnabled)
+        XCTAssertTrue(ConnectorsModel.hasGrantedActScopes(definition: gmail, state: connected))
+        XCTAssertTrue(connected.actEnabled, "Connect grants read and act together")
         XCTAssertEqual(connected.agentIds, ["agent-default"])
 
-        do {
-            _ = try await client.setActEnabled(.gmail, enabled: true)
-            XCTFail("Service connectors need the act grant first")
-        } catch let error as ConnectorsClientError {
-            XCTAssertEqual(error.message, "Grant act access to Gmail first.")
-        }
+        // Acting turns off and on again without another grant.
+        let off = try await client.setActEnabled(.gmail, enabled: false)
+        XCTAssertFalse(off.actEnabled)
+        let on = try await client.setActEnabled(.gmail, enabled: true)
+        XCTAssertTrue(on.actEnabled)
 
-        let granted = try await client.grantAct(.gmail)
+        // The sample GitHub row has read scopes only, so acting needs the act grant.
+        do {
+            _ = try await client.setActEnabled(.github, enabled: true)
+            XCTFail("Service connectors without act scopes need the act grant first")
+        } catch let error as ConnectorsClientError {
+            XCTAssertEqual(error.message, "Grant act access to GitHub first.")
+        }
+        let granted = try await client.grantAct(.github)
         XCTAssertTrue(granted.actEnabled)
-        XCTAssertTrue(ConnectorsModel.hasGrantedActScopes(definition: gmail, state: granted))
+        XCTAssertTrue(ConnectorsModel.hasGrantedActScopes(definition: ConnectorsModel.definition(.github), state: granted))
 
         try await client.disconnect(.gmail)
         let list = try await client.list()
@@ -142,6 +149,18 @@ final class ConnectorsModelTests: XCTestCase {
         try await client.disconnect(.googleCalendar)
         let afterDisconnect = try await client.auditLog(.googleCalendar)
         XCTAssertTrue(afterDisconnect.isEmpty)
+    }
+
+    func testConnectConsentAsksForReadAndAct() {
+        let github = ConnectorsModel.definition(.github)
+        let consent = ConnectorConsent.connect(github, reauth: false)
+        XCTAssertEqual(
+            consent.message,
+            "Kordi asks GitHub for the access your agent needs to read and act here. You can turn acting off at any time from this page."
+        )
+        XCTAssertEqual(consent.scopes.map(\.id), (github.readScopes + github.actScopes).map(\.id))
+        let local = ConnectorConsent.connect(ConnectorsModel.definition(.macCalendar), reauth: false)
+        XCTAssertEqual(local.scopes.map(\.id), ConnectorsModel.definition(.macCalendar).readScopes.map(\.id))
     }
 
     func testLocalConnectorActTurnsOnDirectly() async throws {
