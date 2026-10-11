@@ -70,7 +70,7 @@ fn target_for_ids(
     }
     let default = format!("cloud-agent:{owner}");
     let agent = if agent == format!("cloud-self:{owner}")
-        || (agent == "cloud-local-agent" && owner == sender)
+        || (super::authorization::is_local_default_agent_alias(agent) && owner == sender)
     {
         &default
     } else {
