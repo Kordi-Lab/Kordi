@@ -179,9 +179,9 @@ let connectorCatalog: [ConnectorDefinition] = [
             read("github.pulls.read", "Pull request state and reviews"),
         ],
         actScopes: [
-            act("github.comments.write", "Comment on issues and pull requests"),
+            act("github.comments.write", "Comment on issues and pull requests, with write access to your private repositories"),
         ],
-        actDescription: "Your agent can comment on issues and pull requests. GitHub grants this as write access to all your private repositories.",
+        actDescription: "Your agent can comment on issues and pull requests. The GitHub grant includes write access to all your private repositories.",
         availability: .available
     ),
     ConnectorDefinition(
@@ -300,6 +300,13 @@ enum ConnectorsModel {
         guard state.status == .connected else { return [] }
         if !state.actEnabled || !startedByPerson { return [.read] }
         return [.read, .act]
+    }
+
+    /// Scopes the connect step asks for. A service connect grants read and act
+    /// together so the service is usable at once; acting can be turned off
+    /// later. Device-local sources are read only.
+    static func connectScopes(_ definition: ConnectorDefinition) -> [ConnectorScope] {
+        definition.kind == .service ? definition.readScopes + definition.actScopes : definition.readScopes
     }
 
     static func hasGrantedActScopes(definition: ConnectorDefinition, state: ConnectorState) -> Bool {
