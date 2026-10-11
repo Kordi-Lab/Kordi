@@ -580,7 +580,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         reflection: reflection_runtime_for_settings(
             &settings.memory,
             sibling_conn.clone(),
-            artifacts_dir.clone(),
+            memory::ReflectionTarget::new(&artifacts_dir, &session_id, &effective_cwd),
             memory_remote.clone(),
         ),
         session_observation: None,

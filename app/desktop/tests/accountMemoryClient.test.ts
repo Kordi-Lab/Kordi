@@ -107,6 +107,10 @@ function fakeDesktop(native = true, local: DesktopLocalMemory[] = []) {
       calls.push(['listLocal']);
       return local;
     },
+    async forgetLocal() {
+      calls.push(['forgetLocal']);
+      return local.length;
+    },
   };
   return { desktop, calls };
 }
@@ -231,7 +235,8 @@ test('update, delete, and forget call the account routes and record the sync tim
   ]);
   assert.equal(auth.calls.filter(([name]) => name === 'me').length, 1);
   await settle();
-  assert.deepEqual(native.calls, [['sync'], ['sync'], ['sync']]);
+  // Forget clears the pending memories on this Mac before the sync could upload them.
+  assert.deepEqual(native.calls, [['sync'], ['sync'], ['forgetLocal'], ['sync']]);
 });
 
 test('a server rejection reaches the panel as the error message', async () => {

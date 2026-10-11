@@ -131,3 +131,67 @@ async fn global_memory_with_another_scope_id_is_refused_before_saving() {
         "{message}"
     );
 }
+
+async fn scripted_save(run: &CloudAgentRun, scope: &str, scope_id: &str) -> (MemoryClient, Value) {
+    let client = MemoryClient::new(FetchBehavior::Context(context(true, Vec::new())));
+    let provider = ScriptedProvider::new(vec![ModelProviderResponse::ToolCalls(vec![
+        ModelToolCall {
+            id: "call_1".into(),
+            name: "reflection".into(),
+            arguments: json!({
+                "scope": scope,
+                "scopeId": scope_id,
+                "source": "user_correction",
+                "lesson": "Always answer in British English.",
+            }),
+        },
+    ])]);
+    run_model_loop(&client, &provider, run, &sandbox(), auth_material())
+        .await
+        .expect("memory problems never fail the run");
+    let message = tool_message(&provider);
+    (client, message)
+}
+
+#[tokio::test]
+async fn saves_outside_the_runs_scopes_are_refused_before_saving() {
+    let mut other_request = run();
+    other_request.requester_account_id = "acct_member".into();
+    for (run, scope, scope_id) in [
+        (other_request.clone(), "global", "account"),
+        (run(), "conversation", "session:group:grp_other"),
+        (run(), "group", "grp_other"),
+        (run(), "project", "proj_1"),
+    ] {
+        let (client, message) = scripted_save(&run, scope, scope_id).await;
+        assert!(client.saved.lock().unwrap().is_empty(), "{scope}");
+        let message = message.as_str().unwrap();
+        assert!(
+            message.starts_with("Memories from this run can only be saved in these scopes:"),
+            "{message}"
+        );
+        assert!(message.contains("conversation `session:group:grp_alpha`"));
+        assert!(message.contains("group `grp_alpha`"));
+        assert_eq!(
+            message.contains("global `account`"),
+            run.requester_account_id == run.owner_account_id
+        );
+    }
+
+    // A member's request still saves into the run's group.
+    let (client, _) = scripted_save(&other_request, "group", "grp_alpha").await;
+    assert_eq!(client.saved.lock().unwrap().len(), 1);
+    // And the prompt offers no global scope to a member's request.
+    let section = memory_prompt_section(
+        &other_request,
+        &RunMemory {
+            enabled: true,
+            exclude_sensitive: true,
+            memories: Vec::new(),
+        },
+    )
+    .unwrap();
+    assert!(section.contains(
+        "Scope ids for this run: conversation `session:group:grp_alpha`, group `grp_alpha`."
+    ));
+}

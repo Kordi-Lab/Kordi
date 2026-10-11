@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 use std::time::Duration;
 
-const CURRENT_VERSION: i32 = 11;
+const CURRENT_VERSION: i32 = 12;
 pub(crate) const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 const SCHEMA_V1: &str = r#"
@@ -198,6 +198,9 @@ CREATE INDEX IF NOT EXISTS idx_reflection_lessons_pending_upload
     ON reflection_lessons(pending_upload, archived_at);
 "#;
 
+/// The account a pending memory was saved for, so it never uploads to another.
+const MIGRATION_V12: &str = "ALTER TABLE reflection_lessons ADD COLUMN owner_account_id TEXT;";
+
 /// Initialize database schema, applying migrations as needed.
 pub fn init_schema(conn: &Connection) -> Result<()> {
     conn.busy_timeout(SQLITE_BUSY_TIMEOUT)?;
@@ -284,6 +287,11 @@ fn apply_pending_migrations(conn: &Connection) -> Result<()> {
     if current < 11 {
         conn.execute_batch(MIGRATION_V11)?;
         set_version(conn, 11)?;
+    }
+
+    if current < 12 {
+        conn.execute_batch(MIGRATION_V12)?;
+        set_version(conn, 12)?;
     }
 
     Ok(())

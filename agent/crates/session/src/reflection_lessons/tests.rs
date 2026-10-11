@@ -68,6 +68,7 @@ fn explicit_ids_and_times_are_kept() {
             created_at: Some("2026-01-02T03:04:05+00:00".to_string()),
             scope_label: Some("repo".to_string()),
             remote_memory_id: Some("remote-1".to_string()),
+            owner_account_id: Some("acct_a".to_string()),
             ..lesson("s1", "Keep ids.", false)
         },
     )
@@ -79,6 +80,7 @@ fn explicit_ids_and_times_are_kept() {
     assert_eq!(rows[0].updated_at, "2026-01-02T03:04:05+00:00");
     assert_eq!(rows[0].scope_label.as_deref(), Some("repo"));
     assert_eq!(rows[0].remote_memory_id.as_deref(), Some("remote-1"));
+    assert_eq!(rows[0].owner_account_id.as_deref(), Some("acct_a"));
     assert!(!rows[0].pending_upload);
 }
 

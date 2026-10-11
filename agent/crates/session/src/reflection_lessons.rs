@@ -83,6 +83,9 @@ pub struct NewReflectionLesson {
     pub created_at: Option<String>,
     /// Explicit update time (RFC 3339). The creation time when absent.
     pub updated_at: Option<String>,
+    /// The signed-in account the memory was saved for. A pending row uploads
+    /// only to this account; `None` uploads to whichever account syncs.
+    pub owner_account_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -100,6 +103,7 @@ pub struct ReflectionLesson {
     pub scope_label: Option<String>,
     pub remote_memory_id: Option<String>,
     pub pending_upload: bool,
+    pub owner_account_id: Option<String>,
 }
 
 /// Generate a local memory id. It fits the account `clientMemoryId` format
@@ -138,8 +142,8 @@ fn insert_reflection_lesson(conn: &Connection, lesson: NewReflectionLesson) -> R
     conn.execute(
         "INSERT OR REPLACE INTO reflection_lessons (
              lesson_id, scope, scope_id, artifact_path, source, created_at, updated_at, archived_at,
-             lesson_text, remote_memory_id, pending_upload, scope_label
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9, ?10, ?11)",
+             lesson_text, remote_memory_id, pending_upload, scope_label, owner_account_id
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9, ?10, ?11, ?12)",
         params![
             lesson_id,
             lesson.scope.as_str(),
@@ -152,13 +156,15 @@ fn insert_reflection_lesson(conn: &Connection, lesson: NewReflectionLesson) -> R
             lesson.remote_memory_id,
             lesson.pending_upload,
             lesson.scope_label,
+            lesson.owner_account_id,
         ],
     )?;
     Ok(lesson_id)
 }
 
 const LESSON_COLUMNS: &str = "lesson_id, scope, scope_id, artifact_path, source, created_at, \
-     updated_at, archived_at, lesson_text, scope_label, remote_memory_id, pending_upload";
+     updated_at, archived_at, lesson_text, scope_label, remote_memory_id, pending_upload, \
+     owner_account_id";
 
 fn query_lessons(
     conn: &Connection,
@@ -180,6 +186,7 @@ fn query_lessons(
             row.get::<_, Option<String>>(9)?,
             row.get::<_, Option<String>>(10)?,
             row.get::<_, i64>(11)?,
+            row.get::<_, Option<String>>(12)?,
         ))
     })?;
 
@@ -198,6 +205,7 @@ fn query_lessons(
             scope_label,
             remote_memory_id,
             pending_upload,
+            owner_account_id,
         ) = row?;
         lessons.push(ReflectionLesson {
             lesson_id,
@@ -212,6 +220,7 @@ fn query_lessons(
             scope_label,
             remote_memory_id,
             pending_upload: pending_upload != 0,
+            owner_account_id,
         });
     }
     Ok(lessons)

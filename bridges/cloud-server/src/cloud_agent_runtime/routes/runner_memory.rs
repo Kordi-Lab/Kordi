@@ -1,8 +1,8 @@
 //! Runner access to the run owner's account memories (#1710).
 //!
 //! The runner reads and saves memories as the account that owns the run, only
-//! while it holds the run's lease. The same guards and settings apply as for
-//! the signed-in account routes.
+//! while it holds the run's lease. Saves are limited to the run's own scopes.
+//! The same guards and settings apply as for the signed-in account routes.
 
 use std::sync::Arc;
 
@@ -32,12 +32,12 @@ pub(super) struct RunnerSaveMemoryRequest {
     memory: SaveMemoryRequest,
 }
 
-async fn run_owner(
+async fn leased_run(
     state: &ServerState,
     headers: &HeaderMap,
     run_id: &str,
     runner_id: Option<&str>,
-) -> Result<String, Box<Response>> {
+) -> Result<memory_store::LeasedRun, Box<Response>> {
     if !super::runner_authorized(headers) {
         return Err(Box::new(runner_unauthorized()));
     }
@@ -48,8 +48,8 @@ async fn run_owner(
             StatusCode::BAD_REQUEST,
         )));
     };
-    match memory_store::leased_run_owner(state.db_pool(), run_id, runner_id).await {
-        Ok(Some(owner)) => Ok(owner),
+    match memory_store::leased_run(state.db_pool(), run_id, runner_id).await {
+        Ok(Some(run)) => Ok(run),
         Ok(None) => Err(Box::new(error_response(
             "agent_run_not_found",
             "Cloud agent run was not found for this runner.",
@@ -65,8 +65,8 @@ pub(super) async fn list(
     Path(run_id): Path<String>,
     Query(input): Query<RunnerMemoryQuery>,
 ) -> Response {
-    let owner = match run_owner(&state, &headers, &run_id, input.runner_id.as_deref()).await {
-        Ok(owner) => owner,
+    let owner = match leased_run(&state, &headers, &run_id, input.runner_id.as_deref()).await {
+        Ok(run) => run.owner_account_id,
         Err(response) => return *response,
     };
     match memory_store::list(state.db_pool(), &owner).await {
@@ -81,10 +81,16 @@ pub(super) async fn save(
     Path(run_id): Path<String>,
     Json(input): Json<RunnerSaveMemoryRequest>,
 ) -> Response {
-    let owner = match run_owner(&state, &headers, &run_id, input.runner_id.as_deref()).await {
-        Ok(owner) => owner,
+    let run = match leased_run(&state, &headers, &run_id, input.runner_id.as_deref()).await {
+        Ok(run) => run,
         Err(response) => return *response,
     };
+    // The agent saves only into the run's own conversation and group, and
+    // into global only when the owner made the request.
+    if let Err(error) = run.check_save_scope(&input.memory.scope, &input.memory.scope_id) {
+        return error.into_response();
+    }
+    let owner = run.owner_account_id;
     let outcome = match memory_store::save(state.db_pool(), &owner, &input.memory).await {
         Ok(outcome) => outcome,
         Err(error) => return error.into_response(),

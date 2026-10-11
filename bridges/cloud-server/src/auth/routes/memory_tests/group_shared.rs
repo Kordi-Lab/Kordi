@@ -2,16 +2,16 @@
 
 use super::*;
 
-struct Group {
-    a: Fixture,
-    b: Fixture,
-    c: Fixture,
-    group_id: String,
+pub(super) struct Group {
+    pub(super) a: Fixture,
+    pub(super) b: Fixture,
+    pub(super) c: Fixture,
+    pub(super) group_id: String,
     a_name: String,
 }
 
 /// Three accounts: A and B are active members of a new group, C is not.
-async fn group() -> Option<Group> {
+pub(super) async fn group() -> Option<Group> {
     let a = fixture().await?;
     let b = fixture().await?;
     let c = fixture().await?;
@@ -56,7 +56,7 @@ async fn group() -> Option<Group> {
 }
 
 impl Group {
-    fn body(&self, text: &str) -> Value {
+    pub(super) fn body(&self, text: &str) -> Value {
         json!({
             "scope": "group",
             "scopeId": self.group_id,
@@ -66,9 +66,14 @@ impl Group {
         })
     }
 
+    /// The group's session id, as cloud runs in the group carry it.
+    pub(super) fn session_id(&self) -> String {
+        format!("session:group:{}", self.group_id)
+    }
+
     /// Removes the group, its runs, and the three fixture accounts with their
     /// memories, sessions, and audit rows.
-    async fn cleanup(self) {
+    pub(super) async fn cleanup(self) {
         let pool = &self.a.pool;
         let accounts = [&self.a.account_id, &self.b.account_id, &self.c.account_id];
         query("DELETE FROM cloud_chat_conversations WHERE conversation_id = $1::uuid")
@@ -88,7 +93,7 @@ impl Group {
     }
 }
 
-fn ids(list: &Value) -> Vec<String> {
+pub(super) fn ids(list: &Value) -> Vec<String> {
     list["memories"]
         .as_array()
         .unwrap()
@@ -241,7 +246,9 @@ async fn runner_list_includes_group_memories_of_other_members() {
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", RUNNER_TOKEN);
     let runner_auth = format!("Bearer {RUNNER_TOKEN}");
     let runner_id = format!("runner_{}", uuid::Uuid::new_v4().simple());
-    let run_id = g.b.leased_run(&runner_id).await;
+    let run_id =
+        g.b.leased_run_in(&runner_id, &g.session_id(), &g.b.account_id)
+            .await;
     let (_, saved) =
         g.a.send(
             "POST",
@@ -263,7 +270,7 @@ async fn runner_list_includes_group_memories_of_other_members() {
     assert_eq!(ids(&list), vec![memory_id]);
     assert_eq!(list["memories"][0]["ownerName"], g.a_name.as_str());
 
-    // The runner saves as B, and only into groups B belongs to.
+    // The runner saves as B, and only into the run's own group.
     let mut save = g.body("Tag releases on main");
     save["runnerId"] = json!(runner_id);
     let (status, saved) =
@@ -286,7 +293,7 @@ async fn runner_list_includes_group_memories_of_other_members() {
         )
         .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    assert_eq!(error["errorCode"], "not_a_group_member");
+    assert_eq!(error["errorCode"], "memory_scope_not_allowed");
 
     g.cleanup().await;
 }

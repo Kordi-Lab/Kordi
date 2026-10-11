@@ -264,6 +264,21 @@ The `MemoryClient` interface is the contract for PR 4:
   right text, source, and order.
 - Tests cover the write-through, the refresh replacing a stale cache, the
   signed-out queue, and the one-time upload running once.
+- Scope and owner checks: each desktop turn records the scopes the
+  `reflection` tool may write (this conversation's ids, its cloud group id,
+  its project root, and `global` only for the owner's own request), and any
+  other scope id is refused with the allowed ids; the CLI may write only its
+  own session and the project of its working directory. A memory saved while
+  signed in keeps that account id and a pending row uploads only to that
+  account, and "Forget everything" also archives every row cached on the Mac,
+  pending ones included, before the next sync.
+- A group memory whose local group id has no known cloud id stays under
+  `session:group:<id>` and pending, so the agent still reads it; once the
+  cloud id is known, the sync moves it and uploads it.
+- The `## Memories` section and the hidden update notes tell the agent never
+  to reveal, quote, or summarise the owner's global, conversation, or project
+  memories to anyone else; a group's shared memories may be discussed with
+  that group's members.
 
 ## PR 3: harness enforcement
 

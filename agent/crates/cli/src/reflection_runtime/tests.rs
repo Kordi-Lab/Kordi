@@ -11,7 +11,7 @@ async fn reflection_runtime_writes_lesson_text_to_artifact_and_metadata_to_db() 
     ));
     let runtime = build_reflection_runtime(
         conn.clone(),
-        artifacts_dir.path().to_path_buf(),
+        ReflectionTarget::new(artifacts_dir.path(), "session-123", artifacts_dir.path()),
         ReflectionGuards {
             exclude_sensitive: true,
             protected_texts: Vec::new(),
@@ -84,7 +84,7 @@ fn guarded_runtime(
     ));
     let runtime = build_reflection_runtime(
         conn.clone(),
-        artifacts_dir.path().to_path_buf(),
+        ReflectionTarget::new(artifacts_dir.path(), "session-guard", artifacts_dir.path()),
         ReflectionGuards {
             exclude_sensitive: true,
             protected_texts,
@@ -150,4 +150,20 @@ async fn reflection_runtime_saves_eleven_word_near_miss() {
             .contains("Move the launch to next Thursday because the vendor contract is pending")
     );
     assert_eq!(saved_lesson_count(&conn).await, 1);
+}
+
+#[tokio::test]
+async fn reflection_runtime_refuses_a_scope_the_session_may_not_write() {
+    let (artifacts_dir, conn, runtime) = guarded_runtime(Vec::new());
+    let mut other = request("Use tabs.");
+    other.scope_id = "another-session".to_string();
+    match (runtime.save_lesson)(other).await {
+        Err(kordi_core::error::KordiError::Tool(message)) => {
+            assert!(message.contains("`session-guard`"), "{message}");
+        }
+        Err(other) => panic!("unexpected error: {other:?}"),
+        Ok(_) => panic!("another conversation must be refused"),
+    }
+    assert!(!artifacts_dir.path().join("reflection-lessons").exists());
+    assert_eq!(saved_lesson_count(&conn).await, 0);
 }

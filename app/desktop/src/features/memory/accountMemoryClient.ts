@@ -8,6 +8,7 @@ import { CloudMemoryClient, type CloudMemorySettings } from '@/features/cloud/cl
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { loadSession, type StoredSession } from '@/features/cloud/session';
 import {
+  desktopMemoryForgetLocal,
   desktopMemoryListLocal,
   desktopMemorySettings,
   desktopMemorySync,
@@ -40,6 +41,7 @@ export type AccountMemoryDesktop = {
   updateSettings(patch: Partial<DesktopMemorySettings>): Promise<DesktopMemorySettings>;
   sync(): Promise<unknown>;
   listLocal(): Promise<DesktopLocalMemory[]>;
+  forgetLocal(): Promise<unknown>;
 };
 
 export type AccountMemoryClientOptions = {
@@ -67,6 +69,7 @@ const nativeDesktop: AccountMemoryDesktop = {
   updateSettings: desktopMemoryUpdateSettings,
   sync: desktopMemorySync,
   listLocal: desktopMemoryListLocal,
+  forgetLocal: desktopMemoryForgetLocal,
 };
 
 function toLesson(entry: {
@@ -246,6 +249,8 @@ export function createAccountMemoryClient(options: AccountMemoryClientOptions = 
       const stored = await requireSession();
       const result = await memory().forgetAll(stored.token);
       markSynced(stored);
+      // Pending memories on this Mac would upload again on the next sync.
+      if (desktop.isNativeShell()) await desktop.forgetLocal();
       syncDesktop();
       return { archived: result.archived };
     },

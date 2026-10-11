@@ -123,7 +123,7 @@ async fn sync_archives_a_local_row_whose_text_the_cloud_scope_already_holds() {
 }
 
 #[tokio::test]
-async fn sync_archives_an_unmapped_group_row_the_account_refuses() {
+async fn sync_keeps_an_unmapped_group_row_pending() {
     let harness = Harness::new();
     cache_local_group_row(
         &harness,
@@ -135,6 +135,9 @@ async fn sync_archives_an_unmapped_group_row_the_account_refuses() {
 
     let report = harness.sync().await;
 
-    assert_eq!(report.rejected, 1);
-    assert!(group_rows(&harness.rows().await).is_empty());
+    assert_eq!((report.uploaded, report.rejected), (0, 0));
+    assert_eq!(
+        group_rows(&harness.rows().await),
+        vec![("session:group:local-unmapped", true)]
+    );
 }

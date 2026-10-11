@@ -278,7 +278,7 @@ pub(crate) async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
             connector_tools: &run.connectors.tools,
         };
         return match executor
-            .execute_reflection(client, &run.run_id, request, &call.arguments)
+            .execute_reflection(client, run, request, &call.arguments)
             .await
         {
             Ok(output) => format_tool_output(output),

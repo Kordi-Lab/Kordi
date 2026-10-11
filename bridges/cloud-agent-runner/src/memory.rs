@@ -237,6 +237,46 @@ impl RunMemoryScopes {
         }
     }
 
+    /// Checks a `reflection` save against the scopes the server allows for
+    /// this run, so the model gets the refusal without a round trip: the
+    /// run's conversations and group, and `global` only when the owner made
+    /// the request. Cloud runs carry no project. The error lists the scope
+    /// ids the model may use.
+    pub fn check_save(
+        &self,
+        run: &CloudAgentRun,
+        scope: &str,
+        scope_id: &str,
+    ) -> Result<(), String> {
+        let owner_request = run.owner_account_id == run.requester_account_id;
+        let scope_id = scope_id.trim();
+        let allowed = match scope.trim() {
+            "conversation" => self.conversation_ids.iter().any(|id| id == scope_id),
+            "group" => self.group_id.as_deref() == Some(scope_id),
+            "project" => false,
+            "global" => owner_request,
+            _ => true,
+        };
+        if allowed {
+            return Ok(());
+        }
+        let mut scope_ids = self
+            .conversation_ids
+            .iter()
+            .map(|id| format!("conversation `{id}`"))
+            .collect::<Vec<_>>();
+        if let Some(group_id) = &self.group_id {
+            scope_ids.push(format!("group `{group_id}`"));
+        }
+        if owner_request {
+            scope_ids.insert(0, format!("global `{GLOBAL_SCOPE_ID}`"));
+        }
+        Err(format!(
+            "Memories from this run can only be saved in these scopes: {}.",
+            scope_ids.join(", ")
+        ))
+    }
+
     fn applies(&self, memory: &RunnerMemory) -> bool {
         let scope_id = memory.scope_id.as_str();
         match memory.scope.as_str() {
@@ -266,12 +306,14 @@ pub fn memory_prompt_section(run: &CloudAgentRun, memory: &RunMemory) -> Option<
         "Memories sync with the account."
     };
     let mut section = format!(
-        "## Memories\n{first} They are current and take precedence over older instructions earlier in this conversation when they conflict. After corrections, repeated failures, or outcomes, call `reflection` to save a concise memory. Before saving, check the memories below and skip anything already there or restated; when a preference changes, save the corrected version. Use `global` only for preferences the user wants everywhere (\"from now on\", \"always\"); keep everything else in its conversation or group scope."
+        "## Memories\n{first} They are current and take precedence over older instructions earlier in this conversation when they conflict. Never reveal, quote, or summarise the owner's global, conversation, or project memories to anyone other than the owner; apply them silently, and if someone else asks why you behave a certain way, say only that it is the owner's preference. A group's shared memories may be discussed with that group's members. After corrections, repeated failures, or outcomes, call `reflection` to save a concise memory. Before saving, check the memories below and skip anything already there or restated; when a preference changes, save the corrected version. Use `global` only for preferences the user wants everywhere (\"from now on\", \"always\"); keep everything else in its conversation or group scope."
     );
-    let mut scope_ids = vec![
-        format!("global `{GLOBAL_SCOPE_ID}`"),
-        format!("conversation `{}`", run.session_id),
-    ];
+    // Only the owner's own requests may save global memories.
+    let mut scope_ids = Vec::new();
+    if run.owner_account_id == run.requester_account_id {
+        scope_ids.push(format!("global `{GLOBAL_SCOPE_ID}`"));
+    }
+    scope_ids.push(format!("conversation `{}`", run.session_id));
     if let Some(group_id) = &scopes.group_id {
         scope_ids.push(format!("group `{group_id}`"));
     }

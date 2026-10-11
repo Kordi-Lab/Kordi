@@ -15,12 +15,17 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+mod edit;
 mod groups;
 mod runs;
 mod types;
 
+pub(crate) use edit::{archive, update_text};
+
 pub(crate) use groups::is_active_group_member;
-pub(crate) use runs::{clear_omp_state, leased_run_owner, omp_state_count, write_memory_audit};
+pub(crate) use runs::{
+    clear_omp_state, leased_run, omp_state_count, write_memory_audit, LeasedRun,
+};
 pub(crate) use types::{
     MemoryEnvelope, MemoryError, MemoryListResponse, MemoryResponse, MemoryResult,
     MemorySettingsResponse, SaveMemoryRequest, SaveOutcome, UpdateMemoryRequest,
@@ -98,6 +103,26 @@ pub(crate) async fn protected_texts_for_scope(
     Ok(Vec::new())
 }
 
+/// Guard settings for a write into `scope`. Group memories are shared, so
+/// they are always checked with the sensitive filter on, whatever the
+/// writer's own setting.
+fn guard_settings(mut settings: MemorySettingsResponse, scope: &str) -> MemorySettingsResponse {
+    if scope == "group" {
+        settings.exclude_sensitive = true;
+    }
+    settings
+}
+
+/// Advisory lock key that serializes writes of one scope's texts. A group's
+/// memories are shared, so its writes share one lock.
+fn scope_lock_key(owner_account_id: &str, scope: &str, scope_id: &str) -> String {
+    if scope == "group" {
+        format!("memory:group:{scope_id}")
+    } else {
+        format!("memory:{owner_account_id}:{scope}:{scope_id}")
+    }
+}
+
 fn guard_text(
     text: &str,
     settings: MemorySettingsResponse,
@@ -167,12 +192,17 @@ pub(crate) async fn update_settings(
 /// The account's own memories plus the group memories of every group the
 /// account is an active member of, whoever saved them.
 pub(crate) async fn list(pool: &PgPool, account_id: &str) -> MemoryResult<MemoryListResponse> {
+    // Two branches, each served by an index: the owner's rows, and the rows
+    // of the account's groups by scope id. UNION removes the overlap.
     let rows: Vec<MemoryRow> = query_as(&format!(
-        "WITH m AS (SELECT * FROM cloud_account_memories \
-           WHERE archived_at IS NULL \
-             AND (owner_account_id = $1 OR (scope = 'group' AND {})) ) \
+        "WITH m AS ( \
+           SELECT * FROM cloud_account_memories \
+           WHERE archived_at IS NULL AND owner_account_id = $1 \
+           UNION \
+           SELECT * FROM cloud_account_memories \
+           WHERE archived_at IS NULL AND scope = 'group' AND scope_id IN ({})) \
          {MEMORY_SELECT} ORDER BY m.updated_at DESC, m.memory_id",
-        groups::active_member_condition("cloud_account_memories.scope_id", "$1")
+        groups::active_group_ids("$1")
     ))
     .bind(account_id)
     .fetch_all(pool)
@@ -264,7 +294,7 @@ pub(crate) async fn save(
         ));
     }
     let protected = protected_texts_for_scope(pool, account_id, scope, scope_id).await?;
-    let text = guard_text(&input.text, settings, &protected)?;
+    let text = guard_text(&input.text, guard_settings(settings, scope), &protected)?;
 
     // A retry of an earlier save with the same clientMemoryId returns that row
     // unchanged.
@@ -294,14 +324,8 @@ pub(crate) async fn save(
 
     let mut transaction = pool.begin().await?;
     // Serialize saves for one scope so two identical saves cannot both insert.
-    // A group's memories are shared, so its saves share one lock.
-    let lock_key = if scope == "group" {
-        format!("memory:group:{scope_id}")
-    } else {
-        format!("memory:{account_id}:{scope}:{scope_id}")
-    };
     query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
-        .bind(lock_key)
+        .bind(scope_lock_key(account_id, scope, scope_id))
         .execute(&mut *transaction)
         .await?;
     // The same text in the same scope is the same memory: touch it, fill a
@@ -362,43 +386,6 @@ fn client_id_conflict() -> MemoryError {
         "memory_id_conflict",
         "A memory with this clientMemoryId already exists.",
     )
-}
-
-pub(crate) async fn update_text(
-    pool: &PgPool,
-    account_id: &str,
-    memory_id: &str,
-    text: &str,
-) -> MemoryResult<MemoryResponse> {
-    let (scope, scope_id) = groups::authorize_change(pool, account_id, memory_id).await?;
-    let settings = settings(pool, account_id).await?;
-    let protected = protected_texts_for_scope(pool, account_id, &scope, &scope_id).await?;
-    let text = guard_text(text, settings, &protected)?;
-    let row: Option<MemoryRow> = query_as(&format!(
-        "WITH m AS (UPDATE cloud_account_memories SET text = $2, updated_at = now() \
-         WHERE memory_id = $1 AND archived_at IS NULL \
-         RETURNING *) {MEMORY_SELECT}"
-    ))
-    .bind(memory_id)
-    .bind(&text)
-    .fetch_optional(pool)
-    .await?;
-    row.map(memory_from_row).ok_or_else(MemoryError::not_found)
-}
-
-pub(crate) async fn archive(pool: &PgPool, account_id: &str, memory_id: &str) -> MemoryResult<()> {
-    groups::authorize_change(pool, account_id, memory_id).await?;
-    let result = query(
-        "UPDATE cloud_account_memories SET archived_at = now(), updated_at = now() \
-         WHERE memory_id = $1 AND archived_at IS NULL",
-    )
-    .bind(memory_id)
-    .execute(pool)
-    .await?;
-    if result.rows_affected() == 0 {
-        return Err(MemoryError::not_found());
-    }
-    Ok(())
 }
 
 /// Archives the memories the account saved. Group memories saved by other

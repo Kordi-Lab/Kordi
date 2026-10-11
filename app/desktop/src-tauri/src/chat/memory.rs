@@ -1,9 +1,9 @@
 //! Account memory on the Mac (#1710): the cloud remote for the `reflection`
 //! tool and the Memory settings commands.
 use kordi_cli::memory_remote::{
-    canonical_group_scope_id, group_session_part, label_from_message, remember_group_scope_alias,
-    remember_scope_label, sync_memories_with_remote, MemoryRemote, MemoryRemoteError,
-    NewRemoteMemory, RemoteMemory, RemoteMemoryList,
+    canonical_group_scope_id, forget_local_memories, group_session_part, label_from_message,
+    remember_group_scope_alias, remember_scope_label, sync_memories_with_remote, MemoryRemote,
+    MemoryRemoteError, NewRemoteMemory, RemoteMemory, RemoteMemoryList,
 };
 use kordi_core::settings::{MemorySettings, Settings};
 use serde::{Deserialize, Serialize};
@@ -340,6 +340,19 @@ pub async fn desktop_memory_sync() -> Result<DesktopMemorySyncResult, String> {
         rejected: report.rejected,
         settings,
     })
+}
+
+/// Archive every memory cached on this Mac, pending ones included, after the
+/// account forgot every memory. Returns how many rows were archived.
+#[tauri::command]
+pub async fn desktop_memory_forget_local() -> Result<usize, String> {
+    tokio::task::spawn_blocking(|| {
+        let (conn, artifacts_dir) = open_session_db()?;
+        forget_local_memories(&conn, &artifacts_dir)
+            .map_err(|error| format!("Unable to forget memories on this Mac: {error}"))
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

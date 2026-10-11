@@ -10,8 +10,8 @@ use kordi_tools::{
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
-use crate::client::CloudAgentRunClient;
-use crate::memory::{MemoryRequestError, NewRunnerMemory};
+use crate::client::{CloudAgentRun, CloudAgentRunClient};
+use crate::memory::{MemoryRequestError, NewRunnerMemory, RunMemoryScopes};
 use crate::sandbox_client::{BashOutput, SandboxBackendHandle, SandboxClientError};
 use crate::tool_policy::{decide_runner_tool, RunnerToolDecision, RunnerToolRequest};
 
@@ -54,11 +54,11 @@ impl CloudToolExecutor {
     }
 
     /// Runs the `reflection` tool, saving the lesson as an account memory
-    /// through the run-scoped server route.
+    /// through the run-scoped server route, only into the run's own scopes.
     pub async fn execute_reflection<C: CloudAgentRunClient + Sync>(
         &self,
         client: &C,
-        run_id: &str,
+        run: &CloudAgentRun,
         request: RunnerToolRequest<'_>,
         arguments: &Value,
     ) -> Result<CloudToolOutput, CloudToolExecutionError> {
@@ -96,7 +96,7 @@ impl CloudToolExecutor {
             tokio::select! {
                 result = &mut tool => break result,
                 Some((request, reply)) = receiver.recv() => {
-                    let _ = reply.send(save_lesson_as_memory(client, run_id, request).await);
+                    let _ = reply.send(save_lesson_as_memory(client, run, request).await);
                 }
             }
         };
@@ -206,9 +206,14 @@ pub fn memory_artifact_path(scope: &str, scope_id: &str) -> String {
 
 async fn save_lesson_as_memory<C: CloudAgentRunClient + Sync>(
     client: &C,
-    run_id: &str,
+    run: &CloudAgentRun,
     request: ReflectionLessonRequest,
 ) -> kordi_core::error::KordiResult<ReflectionLessonResponse> {
+    // The server enforces the same rule; checking here saves a round trip
+    // and tells the model which scope ids it may use.
+    RunMemoryScopes::for_run(run)
+        .check_save(run, &request.scope, &request.scope_id)
+        .map_err(KordiError::Tool)?;
     let client_memory_id = format!("mem_{}", uuid::Uuid::new_v4().simple());
     let memory = NewRunnerMemory {
         scope: request.scope.trim().to_string(),
@@ -218,7 +223,7 @@ async fn save_lesson_as_memory<C: CloudAgentRunClient + Sync>(
         text: request.lesson.trim().to_string(),
         client_memory_id: Some(client_memory_id.clone()),
     };
-    match client.save_memory(run_id, memory).await {
+    match client.save_memory(&run.run_id, memory).await {
         // A new memory takes this save's fresh clientMemoryId as its id. When
         // the scope already holds the text, the server returns that memory,
         // whose id differs.

@@ -94,7 +94,7 @@ fn v10_placeholder_greetings_use_code_points() {
 }
 
 #[test]
-fn v11_migration_keeps_existing_reflection_rows() {
+fn v11_and_v12_migrations_keep_existing_reflection_rows() {
     let conn = Connection::open_in_memory().unwrap();
     conn.execute_batch(SCHEMA_V1).unwrap();
     set_version(&conn, 1).unwrap();
@@ -123,14 +123,21 @@ fn v11_migration_keeps_existing_reflection_rows() {
 
     init_schema(&conn).unwrap();
 
-    let row: (Option<String>, Option<String>, i64, Option<String>) = conn
+    type Row = (
+        Option<String>,
+        Option<String>,
+        i64,
+        Option<String>,
+        Option<String>,
+    );
+    let row: Row = conn
         .query_row(
-            "SELECT lesson_text, remote_memory_id, pending_upload, scope_label FROM reflection_lessons WHERE lesson_id = 'old'",
+            "SELECT lesson_text, remote_memory_id, pending_upload, scope_label, owner_account_id FROM reflection_lessons WHERE lesson_id = 'old'",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
         )
         .unwrap();
-    assert_eq!(row, (None, None, 0, None));
+    assert_eq!(row, (None, None, 0, None, None));
 }
 
 #[test]

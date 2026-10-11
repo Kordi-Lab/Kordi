@@ -13,6 +13,7 @@ mod global;
 mod group_shared;
 mod isolation;
 mod runs;
+mod scope_rules;
 
 const RUNNER_TOKEN: &str = "memory-tests-runner-token";
 
@@ -138,23 +139,47 @@ impl Fixture {
 
     /// Inserts a cloud run leased by `runner_id` and owned by this account.
     async fn leased_run(&self, runner_id: &str) -> String {
+        self.leased_run_in(runner_id, "memory-test-session", &self.account_id)
+            .await
+    }
+
+    /// Inserts a cloud run in `session_id`, owned by this account, requested
+    /// by `requester`, and leased by `runner_id`.
+    async fn leased_run_in(&self, runner_id: &str, session_id: &str, requester: &str) -> String {
         let run_id = format!("run_memory_{}", uuid::Uuid::new_v4().simple());
         let now = Utc::now();
         query(
             "INSERT INTO cloud_agent_fallback_runs \
              (run_id, idempotency_key, request_message_id, session_id, owner_account_id, \
               requester_account_id, status, prompt, claimed_by, lease_expires_at, created_at, updated_at) \
-             VALUES ($1, $1, $1, 'memory-test-session', $2, $2, 'leased', 'hello', $3, $4, $5, $5)",
+             VALUES ($1, $1, $1, $6, $2, $7, 'leased', 'hello', $3, $4, $5, $5)",
         )
         .bind(&run_id)
         .bind(&self.account_id)
         .bind(runner_id)
         .bind((now + ChronoDuration::minutes(10)).to_rfc3339())
         .bind(now.to_rfc3339())
+        .bind(session_id)
+        .bind(requester)
         .execute(&self.pool)
         .await
         .unwrap();
         run_id
+    }
+
+    /// Removes the account with its runs, audit rows, and memories.
+    async fn cleanup(self) {
+        for sql in [
+            "DELETE FROM cloud_agent_fallback_runs WHERE owner_account_id = $1",
+            "DELETE FROM cloud_audit_events WHERE account_id = $1",
+            "DELETE FROM cloud_accounts WHERE account_id = $1",
+        ] {
+            query(sql)
+                .bind(&self.account_id)
+                .execute(&self.pool)
+                .await
+                .unwrap();
+        }
     }
 }
 

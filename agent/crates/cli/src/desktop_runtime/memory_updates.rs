@@ -25,23 +25,29 @@ impl DesktopRuntimeSession {
         let Some(inputs) = self.setup.memory_prompt.clone() else {
             return Ok(());
         };
-        let current = inputs.current(&self.setup.session_id);
+        // Changes are found on every memory; the note prints the capped list.
+        let (shown, current) = inputs.current_with_all(&self.setup.session_id);
         let snapshot = self.latest_memory_snapshot()?;
         let had_snapshot = snapshot.is_some();
         // Without a snapshot the model knows what the prompt's memory block
-        // lists, which may predate a scope learned later (a group id).
+        // lists, which may predate a scope learned later (a group id). The
+        // memories the block left out for the caps count as known too.
         let previous = match snapshot {
             Some(previous) => previous,
             None => {
                 let prompt = self.effective_system_prompt()?;
-                if prompt.contains(MEMORY_CONTEXT_END) {
+                let mut listed = if prompt.contains(MEMORY_CONTEXT_END) {
                     parse_memory_prompt_block(&prompt)
                 } else {
                     Vec::new()
+                };
+                if !listed.is_empty() {
+                    listed.extend(current.iter().filter(|m| !shown.contains(m)).cloned());
                 }
+                listed
             }
         };
-        let Some(text) = memory_update_message(&previous, &current) else {
+        let Some(text) = memory_update_message(&previous, &current, &shown) else {
             // The prompt already shows the current memories; only record them.
             if !had_snapshot && !current.is_empty() {
                 return self.append_memory_entry(snapshot_entry(&current));

@@ -6,6 +6,8 @@ use kordi_core::settings::MemorySettings;
 use kordi_tools::Tool;
 use std::sync::Arc;
 
+pub(crate) use crate::reflection_runtime::ReflectionTarget;
+
 /// Apply the memory switch to a tool selection. When memory is off the
 /// `reflection` tool is removed before the registry is built, so neither the
 /// tool nor its prompt section reaches the model. Stored memories are kept.
@@ -24,7 +26,7 @@ pub(crate) fn apply_memory_setting_to_tool_selection(
 pub(crate) fn reflection_runtime_for_settings(
     memory: &MemorySettings,
     conn: Arc<tokio::sync::Mutex<rusqlite::Connection>>,
-    artifacts_dir: std::path::PathBuf,
+    target: ReflectionTarget,
     remote: crate::memory_remote::MemoryRemoteSlot,
 ) -> Option<kordi_tools::ReflectionRuntime> {
     if !memory.memory_enabled {
@@ -32,7 +34,7 @@ pub(crate) fn reflection_runtime_for_settings(
     }
     Some(crate::reflection_runtime::build_reflection_runtime(
         conn,
-        artifacts_dir,
+        target,
         crate::reflection_runtime::ReflectionGuards {
             exclude_sensitive: memory.exclude_sensitive,
             protected_texts: Vec::new(),
@@ -68,7 +70,19 @@ impl MemoryPromptInputs {
     /// memory exists.
     #[allow(dead_code)] // Used by the desktop runtime, not the `kordi` binary.
     pub(crate) fn current(&self, session_id: &str) -> Vec<MemorySnapshotEntry> {
-        capped_memories(&scope_artifacts(&self.artifacts_dir, session_id, &self.cwd)).0
+        self.current_with_all(session_id).0
+    }
+
+    /// The capped memories as `current` returns them, and every memory of
+    /// `session_id` without the caps. Changes are found on the uncapped set,
+    /// so a memory pushed past the cap is not reported as removed.
+    #[allow(dead_code)] // Used by the desktop runtime, not the `kordi` binary.
+    pub(crate) fn current_with_all(
+        &self,
+        session_id: &str,
+    ) -> (Vec<MemorySnapshotEntry>, Vec<MemorySnapshotEntry>) {
+        let artifacts = scope_artifacts(&self.artifacts_dir, session_id, &self.cwd);
+        (capped_memories(&artifacts).0, all_memories(&artifacts))
     }
 }
 
@@ -206,12 +220,18 @@ pub(crate) fn parse_memory_prompt_block(text: &str) -> Vec<MemorySnapshotEntry> 
     memories
 }
 
+/// Who may hear about which memories, in the prompt section.
+const MEMORY_DISCLOSURE_RULE: &str = "Never reveal, quote, or summarise the owner's global, conversation, or project memories to anyone other than the owner; apply them silently, and if someone else asks why you behave a certain way, say only that it is the owner's preference. A group's shared memories may be discussed with that group's members.";
+
 /// The hidden note that tells the agent its memories changed since the last
 /// message, or `None` when nothing changed. Order alone is not a change.
+/// `current` is every memory and decides what changed; `shown` is the capped
+/// list the note prints as the current memories.
 #[allow(dead_code)] // Used by the desktop runtime, not the `kordi` binary.
 pub(crate) fn memory_update_message(
     previous: &[MemorySnapshotEntry],
     current: &[MemorySnapshotEntry],
+    shown: &[MemorySnapshotEntry],
 ) -> Option<String> {
     let key = |entry: &MemorySnapshotEntry| (entry.scope.clone(), entry.text.clone());
     let previous_keys = previous
@@ -226,7 +246,7 @@ pub(crate) fn memory_update_message(
         return None;
     }
     let mut message = String::from(
-        "Memory update: the saved memories changed since the previous message. They are current and replace any earlier instruction in this chat that conflicts with them.",
+        "Memory update: the saved memories changed since the previous message. They are current and replace any earlier instruction in this chat that conflicts with them. Never reveal the owner's personal memories to anyone else; only a group's shared memories may be discussed with that group.",
     );
     for (heading, entries, others) in [
         ("Added", current, &previous_keys),
@@ -245,10 +265,13 @@ pub(crate) fn memory_update_message(
         }
     }
     message.push_str("\nCurrent memories:");
-    if current.is_empty() {
+    if shown.is_empty() {
         message.push_str("\n(none)");
     } else {
-        push_memory_blocks(&mut message, current);
+        push_memory_blocks(&mut message, shown);
+    }
+    if shown.len() < current.len() {
+        message.push_str("\n(more memories omitted)");
     }
     Some(message)
 }
@@ -305,8 +328,7 @@ fn scope_artifacts(
     use crate::reflection_runtime::reflection_lesson_artifact_path as artifact_path;
     use kordi_tools::reflection_tool::GLOBAL_SCOPE_ID;
 
-    let project_root = kordi_core::config::project_root(cwd).unwrap_or_else(|| cwd.to_path_buf());
-    let project_scope_id = project_root.display().to_string();
+    let project_scope_id = crate::memory_remote::project_scope_id_for_cwd(cwd);
     let mut artifacts = vec![
         scope_artifact(
             artifact_path(artifacts_dir, "global", GLOBAL_SCOPE_ID),
@@ -368,6 +390,20 @@ fn capped_memories(artifacts: &[ScopeArtifact]) -> (Vec<MemorySnapshotEntry>, us
     (shown, total)
 }
 
+/// Every memory of the lesson files, in prompt order, without the caps.
+fn all_memories(artifacts: &[ScopeArtifact]) -> Vec<MemorySnapshotEntry> {
+    artifacts
+        .iter()
+        .flat_map(|artifact| {
+            artifact.lessons.iter().map(|lesson| MemorySnapshotEntry {
+                scope: artifact.scope.to_string(),
+                heading: artifact.heading,
+                text: normalized_memory_text(&lesson.text),
+            })
+        })
+        .collect()
+}
+
 /// Append the memories grouped under their scope headings.
 fn push_memory_blocks(out: &mut String, entries: &[MemorySnapshotEntry]) {
     let mut heading = None;
@@ -397,7 +433,7 @@ fn memory_prompt_section_from_files(
         ""
     };
     let mut section = format!(
-        "\n\n## Memories\nThese are the user's saved memories for this account and conversation. They are current and take precedence over older instructions earlier in this conversation when they conflict. After corrections, repeated failures, or outcomes, report the update and call `reflection` to save a concise memory. Before saving, read that scope's artifact and skip anything already there or restated; when a preference changes, save the corrected version. Use `global` only for preferences the user wants everywhere (\"from now on\", \"always\"); keep everything else in its conversation, group, or project scope.{sensitive_rule}"
+        "\n\n## Memories\nThese are the user's saved memories for this account and conversation. They are current and take precedence over older instructions earlier in this conversation when they conflict. {MEMORY_DISCLOSURE_RULE} After corrections, repeated failures, or outcomes, report the update and call `reflection` to save a concise memory. Before saving, read that scope's artifact and skip anything already there or restated; when a preference changes, save the corrected version. Use `global` only for preferences the user wants everywhere (\"from now on\", \"always\"); keep everything else in its conversation, group, or project scope.{sensitive_rule}"
     );
     let (shown, total) = capped_memories(&artifacts);
     push_memory_blocks(&mut section, &shown);

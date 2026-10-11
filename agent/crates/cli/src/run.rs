@@ -155,7 +155,11 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         reflection: crate::session_bootstrap::reflection_runtime_for_settings(
             &settings.memory,
             sibling_conn.clone(),
-            artifacts_dir.clone(),
+            crate::session_bootstrap::memory::ReflectionTarget::new(
+                &artifacts_dir,
+                &session_id,
+                &cwd,
+            ),
             crate::memory_remote::empty_memory_remote_slot(),
         ),
         session_observation: None,

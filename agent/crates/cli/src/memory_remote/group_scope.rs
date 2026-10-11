@@ -51,15 +51,27 @@ pub fn remember_group_scope_alias(local_session_id: &str, cloud_group_id: &str) 
 
 /// The scope id of a group memory: the cloud group id behind `raw`. Accepts a
 /// bare id, `session:group:<id>`, and the cloud-agent runtime form. A local id
-/// with a recorded alias maps to its cloud id; any other id (including an id
-/// that already is a cloud group id) is returned stripped and trimmed.
+/// with a recorded alias maps to its cloud id. A group session id without a
+/// known alias keeps the `session:group:<id>` form, so the row stays local
+/// until the cloud id is known; a bare id is returned trimmed.
 pub fn canonical_group_scope_id(raw: &str) -> String {
-    let id = group_session_part(raw).unwrap_or(raw.trim());
+    let session_part = group_session_part(raw);
+    let id = session_part.unwrap_or(raw.trim());
     let aliases = match GROUP_ALIASES.read() {
         Ok(aliases) => aliases,
         Err(poisoned) => poisoned.into_inner(),
     };
-    aliases.get(id).cloned().unwrap_or_else(|| id.to_string())
+    match (aliases.get(id), session_part) {
+        (Some(cloud), _) => cloud.clone(),
+        (None, Some(local)) => format!("{GROUP_MARKER}{local}"),
+        (None, None) => id.to_string(),
+    }
+}
+
+/// True when a group scope id is still a local group session id, which the
+/// account server does not know.
+pub fn is_local_group_scope_id(scope_id: &str) -> bool {
+    scope_id.trim().starts_with(GROUP_MARKER)
 }
 
 #[cfg(test)]
@@ -67,20 +79,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn strips_group_session_forms() {
-        assert_eq!(canonical_group_scope_id("session:group:gs-bare"), "gs-bare");
+    fn keeps_unmapped_group_session_forms_local() {
+        assert_eq!(
+            canonical_group_scope_id("session:group:gs-bare"),
+            "session:group:gs-bare"
+        );
         assert_eq!(
             canonical_group_scope_id("cloud-agent:acct_a:session:group:gs-runtime:request:msg_1"),
-            "gs-runtime"
+            "session:group:gs-runtime"
         );
         assert_eq!(
             canonical_group_scope_id("cloud-agent:acct_a:session:group:gs-no-request"),
-            "gs-no-request"
+            "session:group:gs-no-request"
         );
         assert_eq!(
             canonical_group_scope_id("  session:group:gs-space  "),
-            "gs-space"
+            "session:group:gs-space"
         );
+        assert!(is_local_group_scope_id("session:group:gs-bare"));
+        assert!(!is_local_group_scope_id("gs-cloud"));
         assert_eq!(group_session_part("session:group:"), None);
         assert_eq!(group_session_part("session-123"), None);
     }
@@ -112,5 +129,9 @@ mod tests {
         assert!(!remember_group_scope_alias("", "gs-cloud-3"));
         assert!(!remember_group_scope_alias("gs-local-3", "  "));
         assert_eq!(canonical_group_scope_id("gs-local-3"), "gs-local-3");
+        assert_eq!(
+            canonical_group_scope_id("session:group:gs-local-3"),
+            "session:group:gs-local-3"
+        );
     }
 }

@@ -100,6 +100,7 @@ async fn runner_reads_and_saves_memories_for_a_leased_run() {
     );
 
     let mut save = memory_body("Run the smoke test before deploys");
+    save["scopeId"] = json!("memory-test-session");
     save["source"] = json!("repeated_failure");
     save["runnerId"] = json!(runner_id);
     let (status, saved) = fx

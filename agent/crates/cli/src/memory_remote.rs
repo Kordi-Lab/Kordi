@@ -10,7 +10,8 @@ use std::sync::Arc;
 
 use kordi_session::reflection_lessons::{
     NewReflectionLesson, ReflectionLesson, ReflectionScope, ReflectionSource,
-    archive_reflection_lesson, find_active_reflection_lesson_by_text, list_all_reflection_lessons,
+    archive_all_reflection_lessons, archive_reflection_lesson,
+    find_active_reflection_lesson_by_text, list_all_reflection_lessons,
     list_pending_upload_reflection_lessons, list_reflection_lessons,
     mark_reflection_lesson_uploaded, move_reflection_lesson_scope,
     replace_reflection_lessons_from_remote, save_reflection_lesson,
@@ -34,7 +35,16 @@ mod group_scope;
     reason = "the desktop library uses this; the CLI binary does not"
 )]
 pub use group_scope::remember_group_scope_alias;
-pub use group_scope::{canonical_group_scope_id, group_session_part};
+pub use group_scope::{canonical_group_scope_id, group_session_part, is_local_group_scope_id};
+
+#[path = "memory_remote/allowed_scopes.rs"]
+mod allowed_scopes;
+#[allow(
+    unused_imports,
+    reason = "the desktop library uses these; the CLI binary does not"
+)]
+pub use allowed_scopes::{AllowedMemoryScopes, set_allowed_memory_scopes};
+pub(crate) use allowed_scopes::{check_memory_scope, project_scope_id_for_cwd};
 
 use crate::reflection_runtime::{
     parse_lesson_artifact, parse_lesson_artifact_scope_id, reflection_lesson_artifact_path,
@@ -194,6 +204,7 @@ pub(crate) fn import_unlisted_artifact_lines(
                 lesson_id: Some(format!("mem_{base}_{index:05}")),
                 created_at: Some(line.created_at),
                 updated_at: None,
+                owner_account_id: None,
             },
         )?;
         added += 1;
@@ -293,6 +304,7 @@ fn remote_rows(artifacts_dir: &Path, memories: Vec<RemoteMemory>) -> Vec<NewRefl
                 lesson_id: Some(memory.memory_id),
                 created_at: Some(memory.created_at),
                 updated_at: Some(memory.updated_at),
+                owner_account_id: None,
             })
         })
         .collect()
@@ -302,8 +314,7 @@ fn remote_rows(artifacts_dir: &Path, memories: Vec<RemoteMemory>) -> Vec<NewRefl
 /// `session:group:<local id>`) to the cloud group id and rewrite both lesson
 /// files. Returns the row to upload, or `None` when the cloud scope already
 /// holds the same text and the row was archived. A row whose id has no known
-/// cloud id only loses the `session:group:` prefix; when the account refuses
-/// it, the rejection handling archives it.
+/// cloud id keeps its `session:group:` id and stays pending.
 fn canonicalise_pending_group_row(
     conn: &rusqlite::Connection,
     artifacts_dir: &Path,
@@ -350,19 +361,31 @@ pub async fn sync_memories_with_remote(
     let mut report = MemorySyncReport::default();
 
     // (1) One-time upload of files written before the account owned memories.
-    backfill_existing_files(conn, artifacts_dir, &remote.account_id()).await?;
+    let account_id = remote.account_id();
+    backfill_existing_files(conn, artifacts_dir, &account_id).await?;
 
-    // (2) Upload pending rows.
+    // (2) Upload pending rows saved for this account or for no account.
     let pending = {
         let conn = conn.lock().await;
         list_pending_upload_reflection_lessons(&conn)?
     };
     for row in pending {
+        if row
+            .owner_account_id
+            .as_deref()
+            .is_some_and(|owner| owner != account_id)
+        {
+            tracing::debug!(lesson_id = %row.lesson_id, "memory kept for another account");
+            continue;
+        }
         let row = {
             let conn = conn.lock().await;
             canonicalise_pending_group_row(&conn, artifacts_dir, row)?
         };
-        let Some(row) = row else {
+        // A group row without a known cloud id waits for the alias.
+        let Some(row) = row.filter(|row| {
+            row.scope != ReflectionScope::Group || !is_local_group_scope_id(&row.scope_id)
+        }) else {
             continue;
         };
         let Some(text) = row.lesson_text.clone() else {
@@ -418,6 +441,18 @@ pub async fn sync_memories_with_remote(
     // (4) Rewrite the lesson files from the cache.
     rewrite_all_lesson_artifacts(&conn, artifacts_dir)?;
     Ok(report)
+}
+
+/// Archive every memory cached on this Mac, pending ones included, and rewrite
+/// the lesson files. Used after the account forgot every memory, so a later
+/// sync has nothing to upload again. Returns how many rows were archived.
+pub fn forget_local_memories(
+    conn: &rusqlite::Connection,
+    artifacts_dir: &Path,
+) -> anyhow::Result<usize> {
+    let archived = archive_all_reflection_lessons(conn)?;
+    rewrite_all_lesson_artifacts(conn, artifacts_dir)?;
+    Ok(archived)
 }
 
 /// Group cache rows that carry text by (scope, scope id).

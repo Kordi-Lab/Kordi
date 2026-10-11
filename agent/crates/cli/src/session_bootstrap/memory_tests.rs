@@ -75,7 +75,10 @@ fn memory_prompt_inlines_lessons_newest_first_with_artifact_paths() {
     assert!(section.contains("\n## Memories\n"));
     assert!(!section.contains("Scoped lesson artifacts"));
     assert!(section.contains(
-        "They are current and take precedence over older instructions earlier in this conversation when they conflict."
+        "They are current and take precedence over older instructions earlier in this conversation when they conflict. Never reveal, quote, or summarise the owner's global, conversation, or project memories to anyone other than the owner;"
+    ));
+    assert!(section.contains(
+        "A group's shared memories may be discussed with that group's members. After corrections"
     ));
     assert!(section.contains(
         "\nThis conversation:\n- End every reply with the word mongo.\n- End every reply with PINEAPPLE.\n"
@@ -202,7 +205,7 @@ fn memory_surface_prompt(
     let runtime = super::reflection_runtime_for_settings(
         memory,
         conn,
-        artifacts_dir.path().to_path_buf(),
+        super::memory::ReflectionTarget::new(artifacts_dir.path(), "session-123", cwd.path()),
         crate::memory_remote::empty_memory_remote_slot(),
     );
     (active, system_prompt, runtime.is_some())
@@ -255,7 +258,8 @@ fn memory_off_removes_reflection_from_explicit_tool_lists() {
 fn group_scope_id_is_derived_only_from_group_sessions() {
     assert_eq!(
         crate::session_bootstrap::memory::group_scope_id_for_session("session:group:abc-123"),
-        Some("abc-123".to_string())
+        // No cloud id is known for this group, so it keeps the local form.
+        Some("session:group:abc-123".to_string())
     );
     assert_eq!(
         crate::session_bootstrap::memory::group_scope_id_for_session("session:group:"),
@@ -290,7 +294,7 @@ fn scoped_lesson_artifact_prompt_lists_group_scope_when_file_exists() {
     let group_path = crate::reflection_runtime::reflection_lesson_artifact_path(
         artifacts_dir.path(),
         "group",
-        "abc-123",
+        session_id,
     );
     std::fs::create_dir_all(group_path.parent().expect("parent")).expect("mkdir");
     std::fs::write(&group_path, "# lessons").expect("lesson file");
@@ -302,10 +306,9 @@ fn scoped_lesson_artifact_prompt_lists_group_scope_when_file_exists() {
         cwd.path(),
         true,
     );
-    assert!(
-        section
-            .contains("- Group scope `abc-123` (pass this exact scopeId to save a group memory): ")
-    );
+    assert!(section.contains(
+        "- Group scope `session:group:abc-123` (pass this exact scopeId to save a group memory): "
+    ));
     assert!(section.contains(group_path.to_str().expect("group path")));
 }
 
@@ -449,47 +452,4 @@ fn current_memories_follow_the_section_order_and_caps() {
     );
     assert_eq!(current[0], snapshot("global", "Use bullet points."));
     assert_eq!(current[1].text, "Lesson number 40.");
-}
-
-#[test]
-fn memory_update_message_lists_added_removed_and_current_memories() {
-    let previous = vec![
-        snapshot("global", "Reply in bullet points unless asked for prose."),
-        snapshot(
-            "conversation",
-            "End every reply in this conversation with the single word PINEAPPLE.",
-        ),
-    ];
-    let current = vec![
-        snapshot("global", "Reply in bullet points unless asked for prose."),
-        snapshot(
-            "conversation",
-            "From now on, end every reply in this conversation with the single word mongo.",
-        ),
-    ];
-    assert_eq!(
-        super::memory::memory_update_message(&current, &current),
-        None
-    );
-    let reordered = current.iter().rev().cloned().collect::<Vec<_>>();
-    assert_eq!(
-        super::memory::memory_update_message(&reordered, &current),
-        None
-    );
-    assert_eq!(super::memory::memory_update_message(&[], &[]), None);
-
-    assert_eq!(
-        super::memory::memory_update_message(&previous, &current).expect("update"),
-        "Memory update: the saved memories changed since the previous message. They are current and replace any earlier instruction in this chat that conflicts with them.\nAdded:\n- (This conversation) From now on, end every reply in this conversation with the single word mongo.\nRemoved:\n- (This conversation) End every reply in this conversation with the single word PINEAPPLE.\nCurrent memories:\nGlobal:\n- Reply in bullet points unless asked for prose.\nThis conversation:\n- From now on, end every reply in this conversation with the single word mongo."
-    );
-
-    let added_only = super::memory::memory_update_message(&[], &current).expect("update");
-    assert!(added_only.contains("\nAdded:\n- (Global) Reply in bullet points"));
-    assert!(!added_only.contains("Removed:"));
-
-    let removed_only = super::memory::memory_update_message(&previous[..1], &[]).expect("update");
-    assert!(!removed_only.contains("Added:"));
-    assert!(removed_only.ends_with(
-        "\nRemoved:\n- (Global) Reply in bullet points unless asked for prose.\nCurrent memories:\n(none)"
-    ));
 }

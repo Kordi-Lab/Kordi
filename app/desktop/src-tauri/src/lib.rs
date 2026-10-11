@@ -225,6 +225,7 @@ pub fn run() {
             chat::memory::desktop_memory_update_settings,
             chat::memory::desktop_memory_sync,
             chat::memory::desktop_memory_list_local,
+            chat::memory::desktop_memory_forget_local,
             project::desktop_project_settings,
             project::desktop_project_create_from_folder,
             project::desktop_project_create_new,

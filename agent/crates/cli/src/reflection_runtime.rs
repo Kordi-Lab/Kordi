@@ -15,7 +15,8 @@ use tokio::sync::Mutex;
 
 use crate::memory_remote::{
     MemoryRemoteError, MemoryRemoteSlot, NewRemoteMemory, canonical_group_scope_id,
-    current_memory_remote, group_lessons_by_scope, import_unlisted_artifact_lines, scope_label_for,
+    check_memory_scope, current_memory_remote, group_lessons_by_scope,
+    import_unlisted_artifact_lines, scope_label_for,
 };
 
 const LESSON_ARTIFACT_TITLE: &str = "# Scoped reflection lessons";
@@ -49,23 +50,45 @@ pub(crate) struct ReflectionGuards {
     pub protected_texts: Vec<String>,
 }
 
+/// Where a session's memories are written, and which session saves them.
+#[derive(Clone, Debug)]
+pub(crate) struct ReflectionTarget {
+    pub artifacts_dir: PathBuf,
+    /// The runtime session id: the key of the allowed-scope registry.
+    pub session_id: String,
+    /// The working directory, whose project a CLI session may save into.
+    pub cwd: PathBuf,
+}
+
+impl ReflectionTarget {
+    pub(crate) fn new(artifacts_dir: &Path, session_id: &str, cwd: &Path) -> Self {
+        Self {
+            artifacts_dir: artifacts_dir.to_path_buf(),
+            session_id: session_id.to_string(),
+            cwd: cwd.to_path_buf(),
+        }
+    }
+}
+
 fn tool_error(err: impl std::fmt::Display) -> kordi_core::error::KordiError {
     kordi_core::error::KordiError::Tool(err.to_string())
 }
 
 pub(crate) fn build_reflection_runtime(
     conn: Arc<Mutex<rusqlite::Connection>>,
-    artifacts_dir: PathBuf,
+    target: ReflectionTarget,
     guards: ReflectionGuards,
     remote: MemoryRemoteSlot,
 ) -> ReflectionRuntime {
     let guards = Arc::new(guards);
+    let target = Arc::new(target);
     let save_lesson: SaveReflectionLessonFn = Arc::new(move |request: ReflectionLessonRequest| {
         let conn = conn.clone();
-        let artifacts_dir = artifacts_dir.clone();
+        let target = target.clone();
         let guards = guards.clone();
         let remote = current_memory_remote(&remote);
         Box::pin(async move {
+            let artifacts_dir = &target.artifacts_dir;
             let scope = parse_scope(&request.scope)?;
             let source = parse_source(&request.source)?;
             let lesson_text = check_memory_text(
@@ -83,9 +106,11 @@ pub(crate) fn build_reflection_runtime(
             } else {
                 request.scope_id.trim().to_string()
             };
+            check_memory_scope(&target.session_id, &target.cwd, &scope, &scope_id)
+                .map_err(tool_error)?;
             let scope_label = scope_label_for(&scope, &scope_id);
             let artifact_path =
-                reflection_lesson_artifact_path(&artifacts_dir, &request.scope, &scope_id);
+                reflection_lesson_artifact_path(artifacts_dir, &request.scope, &scope_id);
             let artifact_path_text = artifact_path.display().to_string();
             let saved = |lesson_id: String, already_saved: bool| ReflectionLessonResponse {
                 lesson_id,
@@ -120,6 +145,8 @@ pub(crate) fn build_reflection_runtime(
             // The account answers a save of text it already holds with that
             // memory, whose id differs from the id this save proposed.
             let mut already_on_account = false;
+            // A pending row uploads only to the account it was saved for.
+            let owner_account_id = remote.as_ref().map(|remote| remote.account_id());
             if let Some(remote) = remote {
                 match remote
                     .save(NewRemoteMemory {
@@ -178,6 +205,7 @@ pub(crate) fn build_reflection_runtime(
                         lesson_id: Some(lesson_id),
                         created_at,
                         updated_at,
+                        owner_account_id,
                     },
                 )
                 .map_err(tool_error)?;

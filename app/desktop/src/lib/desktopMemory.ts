@@ -38,3 +38,8 @@ export function desktopMemorySync(): Promise<DesktopMemorySyncResult> {
 export function desktopMemoryListLocal(): Promise<DesktopLocalMemory[]> {
   return invokeDesktop<DesktopLocalMemory[]>('desktop_memory_list_local');
 }
+
+/** Archives every memory cached on this Mac, pending ones included. */
+export function desktopMemoryForgetLocal(): Promise<number> {
+  return invokeDesktop<number>('desktop_memory_forget_local');
+}

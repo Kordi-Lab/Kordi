@@ -215,7 +215,7 @@ async fn memory_changes_are_recorded_as_hidden_update_notes() -> Result<()> {
     assert_eq!(
         entries[1].1,
         format!(
-            "Memory update: the saved memories changed since the previous message. They are current and replace any earlier instruction in this chat that conflicts with them.\nAdded:\n- (This conversation) {MONGO}\nRemoved:\n- (This conversation) {PINEAPPLE}\nCurrent memories:\nThis conversation:\n- {MONGO}"
+            "Memory update: the saved memories changed since the previous message. They are current and replace any earlier instruction in this chat that conflicts with them. Never reveal the owner's personal memories to anyone else; only a group's shared memories may be discussed with that group.\nAdded:\n- (This conversation) {MONGO}\nRemoved:\n- (This conversation) {PINEAPPLE}\nCurrent memories:\nThis conversation:\n- {MONGO}"
         )
     );
     assert_eq!(entries[2].0, "memory_snapshot");
@@ -343,7 +343,7 @@ async fn global_only_group_runtime(
     runtime.refresh_memory_prompt_section();
     assert!(runtime.setup.system_prompt.contains(GLOBAL_MEMORY));
     assert!(!runtime.setup.system_prompt.contains("This group:"));
-    Ok((runtime, lesson("group", "gs-memory-test")))
+    Ok((runtime, lesson("group", "session:group:gs-memory-test")))
 }
 
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]

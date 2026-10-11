@@ -116,6 +116,14 @@ impl MemoryError {
         )
     }
 
+    pub(crate) fn scope_not_allowed() -> Self {
+        Self::new(
+            StatusCode::FORBIDDEN,
+            "memory_scope_not_allowed",
+            "Agents can only save memories in the current conversation's scopes.",
+        )
+    }
+
     pub(crate) fn server(message: &str) -> Self {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, "server_error", message)
     }
