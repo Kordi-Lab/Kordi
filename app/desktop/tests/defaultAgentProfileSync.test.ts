@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  cloudAgentId,
   legacyDefaultAgentProfileMigrationOwner,
   legacyDefaultAgentProfileUpdate,
   markLegacyDefaultAgentProfileMigrated,
@@ -42,4 +43,9 @@ test('legacy default-agent profile migration records its owning Cloud account', 
   markLegacyDefaultAgentProfileMigrated(storage, 'acct_first');
   assert.equal(legacyDefaultAgentProfileMigrationOwner(storage), 'acct_first');
   assert.equal(shouldMigrateLegacyDefaultAgentProfile(storage), false);
+});
+
+test('local delegate ids normalize to the owner default agent', () => {
+  assert.equal(cloudAgentId('local:060c69e6f296f6acea5df9d653cc305c', 'acct_me'), 'cloud-agent:acct_me');
+  assert.equal(cloudAgentId('local:', 'acct_me'), 'local:');
 });
