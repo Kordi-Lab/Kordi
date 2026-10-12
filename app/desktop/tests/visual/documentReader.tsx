@@ -33,7 +33,21 @@ const reader: DocumentReaderHost = {
   viewer: { accountId: 'acct_example_theo', displayName: 'Theo', kordiId: '555123456', avatarUrl: null },
 };
 
-const ownerDocument = sampleDocument('owner');
+// Every block type the reader styles, after the sample, so one page reviews them all.
+const SHOWCASE = [
+  '### Next steps',
+  '- [x] Collect the interview notes\n- [ ] Draft the turn-taking section',
+  '> Each person keeps their own agent; the group sees what the agents share.',
+  '```ts\nconst turn = await room.nextSpeaker({ agents, people });\n```',
+  '```\n```',
+  '---',
+];
+const sample = sampleDocument('owner');
+const ownerDocument = {
+  ...sample,
+  blocks: [...sample.blocks, ...SHOWCASE.map((source, index) => ({ id: `b${sample.blocks.length + index}`, source, html: '' }))],
+};
+const OWNER_MARKDOWN = [SAMPLE_MARKDOWN, ...SHOWCASE].join('\n\n');
 const { api, calls } = createMemoryDocumentApi(state === 'public' ? sampleDocument('public') : ownerDocument, 400);
 // The review page records what the mock server received (saves, comments, reactions) for end-to-end checks.
 Object.assign(window, { __documentReaderCalls: calls });
@@ -42,12 +56,12 @@ installCopySurfaceSelectionTracking(document);
 
 function Panel({ shareOpen }: { shareOpen: boolean }) {
   if (state === 'local') {
-    return <DocumentReader path="/Users/example/notes/related-work.md" localSource={SAMPLE_MARKDOWN} dateLabel="Oct 9, 2026" api={api} initialShareOpen={shareOpen} />;
+    return <DocumentReader path="/Users/example/notes/related-work.md" localSource={OWNER_MARKDOWN} dateLabel="Oct 9, 2026" api={api} initialShareOpen={shareOpen} />;
   }
   if (state === 'public') {
     return <DocumentReader shareToken={SAMPLE_TOKEN} api={api} />;
   }
-  return <DocumentReader path="/Users/example/notes/related-work.md" localSource={SAMPLE_MARKDOWN} attachmentId={ownerDocument.attachmentId} initialDocument={ownerDocument} api={api} initialShareOpen={shareOpen} />;
+  return <DocumentReader path="/Users/example/notes/related-work.md" localSource={OWNER_MARKDOWN} attachmentId={ownerDocument.attachmentId} initialDocument={ownerDocument} api={api} initialShareOpen={shareOpen} />;
 }
 
 const live = params.get('attachmentId') && params.get('token') && params.get('accountId')

@@ -45,11 +45,11 @@ test('the reader shows the header, blocks, reaction pills, and open comment thre
     const host_ = await mount(withHost(createElement(DocumentReader, { attachmentId: document.attachmentId, initialDocument: document, api })));
 
     await waitForReactCondition(() => Boolean(host_.querySelector('.ProseMirror > h1')), 'the editor loads');
-    assert.equal(host_.querySelector('.app-document-title'), null, 'the document heading is the title');
+    assert.equal(host_.querySelector('.app-document-header-title')?.textContent, 'Kordi related work', 'the header carries the title');
     assert.equal(host_.querySelector('.ProseMirror > h1')?.textContent, 'Kordi related work');
     assert.match(host_.querySelector('.app-document-pill')?.textContent ?? '', /Oct 9, 2026/);
     assert.equal(host_.querySelector('.app-document-mention')?.textContent, '@Alex Morgan');
-    assert.equal(host_.querySelector('.app-document-badge')?.textContent, 'In Kordi');
+    assert.equal(host_.querySelector('.app-document-badge'), null, 'cloud documents carry no badge');
     const topLevel = host_.querySelectorAll('.ProseMirror > [data-id], .ProseMirror > .tableWrapper > table[data-id]');
     assert.equal(topLevel.length, document.blocks.length, 'every block is in the editor');
 
@@ -115,7 +115,7 @@ test('the Share popover offers the link switch and confirms before turning the l
   });
 });
 
-test('a Mac-hosted document offers Upload to Kordi and then shows In Kordi', async () => {
+test('a Mac-hosted document offers Upload to Kordi and then drops the On this Mac badge', async () => {
   await withJsdomRoot(async (mount) => {
     const { api, calls } = createMemoryDocumentApi(sampleDocument('owner'));
     const path = '/Users/example/notes/upload-test.md';
@@ -133,7 +133,7 @@ test('a Mac-hosted document offers Upload to Kordi and then shows In Kordi', asy
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
     assert.deepEqual(calls.find((call) => call.method === 'uploadDocument')?.args, [path, 'text/markdown']);
     assert.deepEqual(calls.find((call) => call.method === 'createShare')?.args, ['att_example_doc', { sessionId: 'session_example', readersCanAskAgent: true }]);
-    assert.equal(root.querySelector('.app-document-badge')?.textContent, 'In Kordi');
+    assert.equal(root.querySelector('.app-document-badge'), null);
   });
 });
 

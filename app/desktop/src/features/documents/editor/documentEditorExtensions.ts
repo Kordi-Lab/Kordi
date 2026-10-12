@@ -8,6 +8,7 @@ import CollaborationCaret from '@tiptap/extension-collaboration-caret';
 import { Markdown } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
 
+import { DocumentCodeBlocks } from './documentCodeBlocks';
 import { DocumentHighlight, DocumentUnderline } from './documentEditorMarks';
 import { ROOM_FIELD, type CollabUser, type DocumentRoom } from './documentRoom';
 import { newBlockId } from '../newBlockId';
@@ -43,6 +44,7 @@ export function documentEditorExtensions(extra: AnyExtension[] = [], collab: { r
     }),
     DocumentUnderline,
     DocumentHighlight,
+    DocumentCodeBlocks,
     TaskList,
     TaskItem.configure({ nested: true }),
     TableKit.configure({ table: { resizable: false } }),

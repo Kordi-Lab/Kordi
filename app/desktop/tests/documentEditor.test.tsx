@@ -183,3 +183,22 @@ test('a block-by-id merge keeps local edits, takes remote ones, and keeps the bl
   const elsewhere = merge.mergeBlocks(base, local, remote, 'k:a');
   assert.equal(elsewhere.blocks[2].source, 'C remote', 'a block changed on both sides away from the caret takes the remote text');
 });
+
+test('code blocks show their language and a copy button outside the content, and an empty one shows a placeholder', () => {
+  const editor = editorWith('```ts\nconst answer = 42;\n```\n\n```\n```');
+  try {
+    const blocks = [...editor.view.dom.querySelectorAll('pre')];
+    assert.equal(blocks.length, 2);
+    assert.equal(blocks[0].querySelector('.app-document-code-language')?.textContent, 'ts');
+    assert.equal(blocks[0].querySelector('.app-document-code-copy')?.getAttribute('aria-label'), 'Copy code');
+    assert.equal(blocks[0].classList.contains('is-empty'), false);
+    assert.equal(blocks[1].classList.contains('is-empty'), true);
+    assert.equal(blocks[1].getAttribute('data-placeholder'), 'Code');
+    assert.equal(blocks[1].querySelector('.app-document-code-language'), null);
+    assert.equal(editor.state.doc.child(1).textContent, '', 'the placeholder is not content');
+    assert.ok(withoutIds(markdownOf(editor)).startsWith('```ts\nconst answer = 42;\n```\n\n```'));
+    assert.doesNotMatch(markdownOf(editor), /Copy/, 'the chrome is not serialized');
+  } finally {
+    editor.destroy();
+  }
+});

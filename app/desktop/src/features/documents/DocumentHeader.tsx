@@ -6,11 +6,21 @@ import type { DocumentReaderPerson } from './documentReaderHost';
 import { PeopleCard } from './PeopleCard';
 import { useOutsideDismiss } from './useOutsideDismiss';
 
-export type DocumentBadge = 'local' | 'cloud' | null;
+/** Only a file that lives on this Mac (no cloud copy) is marked. */
+export type DocumentBadge = 'local' | null;
 
-/** Top bar of the reader: file name, where the file lives, and the Share popover. */
+const MAX_PRESENCE = 4;
+
+/**
+ * Top bar of the reader in one row: the document title, the date, the
+ * `@author` chip, who else is editing, and Share.
+ */
 export function DocumentHeader({
-  fileName,
+  title,
+  dateLabel,
+  author,
+  canMessageAuthor,
+  onMessageAuthor,
   badge,
   shareOpen,
   onToggleShare,
@@ -18,7 +28,11 @@ export function DocumentHeader({
   presence = [],
   onOpenSession,
 }: {
-  fileName: string;
+  title: string;
+  dateLabel: string | null;
+  author: DocumentReaderPerson | null;
+  canMessageAuthor: boolean;
+  onMessageAuthor?: () => void;
   badge: DocumentBadge;
   shareOpen: boolean;
   onToggleShare?: () => void;
@@ -29,13 +43,16 @@ export function DocumentHeader({
 }) {
   return (
     <div className="app-document-header">
-      <div className="app-document-header-name">
-        <span className="app-document-file-name" title={fileName}>{fileName}</span>
-        {badge ? (
-          <span className="app-document-badge" data-cloud={badge === 'cloud' ? 'true' : undefined}>
-            {badge === 'cloud' ? 'In Kordi' : 'On this Mac'}
+      <h1 className="app-document-header-title" title={title}>{title}</h1>
+      <div className="app-document-header-meta">
+        {dateLabel ? (
+          <span className="app-document-pill app-document-date">
+            <CalendarDays aria-hidden="true" />
+            {dateLabel}
           </span>
         ) : null}
+        {author ? <AuthorChip author={author} canMessage={canMessageAuthor} onMessage={onMessageAuthor} /> : null}
+        {badge === 'local' ? <span className="app-document-badge">On this Mac</span> : null}
       </div>
       <div className="app-document-header-actions">
         {presence.length > 0 ? <DocumentPresence peers={presence} /> : null}
@@ -63,6 +80,28 @@ export function DocumentHeader({
   );
 }
 
+/** The `@author` chip; it opens the People card. */
+function AuthorChip({ author, canMessage, onMessage }: { author: DocumentReaderPerson; canMessage: boolean; onMessage?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useOutsideDismiss(ref, open, close);
+  return (
+    <span className="app-document-author" ref={ref}>
+      <button
+        type="button"
+        className="app-document-mention"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen((value) => !value)}
+      >
+        @{author.displayName}
+      </button>
+      {open ? <PeopleCard person={author} onMessage={canMessage && onMessage ? () => { close(); onMessage(); } : undefined} /> : null}
+    </span>
+  );
+}
+
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?';
@@ -70,7 +109,7 @@ function initials(name: string) {
 
 /** Who else is editing, one colored initials circle each (their caret color). */
 function DocumentPresence({ peers }: { peers: DocumentPresencePeer[] }) {
-  const shown = peers.slice(0, 4);
+  const shown = peers.slice(0, MAX_PRESENCE);
   const names = peers.map((peer) => peer.name).join(', ');
   return (
     <div className="app-document-presence" role="group" aria-label={`Editing: ${names}`} title={names}>
@@ -81,57 +120,5 @@ function DocumentPresence({ peers }: { peers: DocumentPresencePeer[] }) {
       ))}
       {peers.length > shown.length ? <span className="app-document-presence-more">+{peers.length - shown.length}</span> : null}
     </div>
-  );
-}
-
-/** Title, date pill, and the `@author` chip that opens the People card. */
-export function DocumentTitleMeta({
-  title,
-  dateLabel,
-  author,
-  canMessageAuthor,
-  onMessageAuthor,
-}: {
-  /** Null when the document's own first heading is the title. */
-  title: string | null;
-  dateLabel: string | null;
-  author: DocumentReaderPerson | null;
-  canMessageAuthor: boolean;
-  onMessageAuthor?: () => void;
-}) {
-  const [peopleOpen, setPeopleOpen] = useState(false);
-  const metaRef = useRef<HTMLDivElement>(null);
-  const close = useCallback(() => setPeopleOpen(false), []);
-  useOutsideDismiss(metaRef, peopleOpen, close);
-  return (
-    <>
-      {title ? <h1 className="app-document-title">{title}</h1> : null}
-      <div className="app-document-meta" ref={metaRef}>
-        {dateLabel ? (
-          <span className="app-document-pill">
-            <CalendarDays aria-hidden="true" />
-            {dateLabel}
-          </span>
-        ) : null}
-        {dateLabel && author ? <span className="app-document-meta-dot" aria-hidden="true">·</span> : null}
-        {author ? (
-          <button
-            type="button"
-            className="app-document-mention"
-            aria-expanded={peopleOpen}
-            aria-haspopup="dialog"
-            onClick={() => setPeopleOpen((open) => !open)}
-          >
-            @{author.displayName}
-          </button>
-        ) : null}
-        {peopleOpen && author ? (
-          <PeopleCard
-            person={author}
-            onMessage={canMessageAuthor && onMessageAuthor ? () => { close(); onMessageAuthor(); } : undefined}
-          />
-        ) : null}
-      </div>
-    </>
   );
 }

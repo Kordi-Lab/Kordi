@@ -27,7 +27,7 @@ export function DocumentSwitch({ checked, label, onChange, disabled }: { checked
   );
 }
 
-/** `Tab 1` dropdown, plus insert tools where the viewer can edit. Each tool adds a block after the current one. */
+/** `Tab 1` dropdown on the left, insert tools on the right where the viewer can edit. Each tool adds a block after the current one. */
 export function DocumentTabBar({ editing, canInsert, onInsert }: {
   editing: DocumentEditing;
   canInsert: boolean;
@@ -53,8 +53,7 @@ export function DocumentTabBar({ editing, canInsert, onInsert }: {
         <ChevronDown className="app-document-caret" aria-hidden="true" />
       </button>
       {canInsert ? (
-        <>
-          <span className="app-document-tabbar-separator" aria-hidden="true" />
+        <div className="app-document-tools" role="group" aria-label="Insert">
           {TOOLS.map((entry, index) => (entry === 'separator'
             ? <span key={`separator-${index}`} className="app-document-tabbar-separator" aria-hidden="true" />
             : (
@@ -70,7 +69,7 @@ export function DocumentTabBar({ editing, canInsert, onInsert }: {
                 <entry.icon aria-hidden="true" />
               </button>
             )))}
-        </>
+        </div>
       ) : null}
       {menu === 'tabs' ? (
         <div className="app-document-menu app-document-tab-menu" role="menu">

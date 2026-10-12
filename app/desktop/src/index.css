@@ -13,7 +13,9 @@
 @import './styles/shell-popovers.css';
 @import './styles/shell-profile-popovers.css';
 @import './styles/shell-group-invitations.css';
-@import './styles/documents.css';
+@import './styles/document-reader.css';
+@import './styles/document-blocks.css';
+@import './styles/document-annotations.css';
 @import './styles/document-collab.css';
 @import './styles/shell-calls.css';
 @import './styles/shell-bubbles.css';

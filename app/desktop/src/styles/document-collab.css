@@ -1,15 +1,17 @@
 /* Shared documents: people editing together (issue 1741). Uses the app tokens. */
 
-.app-document-presence { display: flex; align-items: center; margin-right: 4px; }
+.app-document-presence { display: flex; align-items: center; margin-right: 2px; }
 
 .app-document-presence-avatar,
 .app-document-presence-more {
   display: inline-flex;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
   align-items: center;
   justify-content: center;
   border: 2px solid var(--app-main-bg);
+  background-clip: padding-box;
   border-radius: 999px;
   color: #fff;
   font-size: 10px;
@@ -40,13 +42,14 @@
   position: absolute;
   bottom: 100%;
   left: -1px;
-  padding: 1px 6px;
-  border-radius: 6px 6px 6px 0;
+  padding: 0 5px;
+  box-shadow: none;
+  border-radius: 4px;
   color: #fff;
   font-size: 11px;
   font-style: normal;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 16px;
   user-select: none;
   white-space: nowrap;
 }

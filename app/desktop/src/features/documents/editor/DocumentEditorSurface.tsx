@@ -230,4 +230,3 @@ export function DocumentEditorSurface(props: SurfaceProps) {
     </div>
   );
 }
-

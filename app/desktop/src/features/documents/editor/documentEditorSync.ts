@@ -1,5 +1,5 @@
 import type { Editor, JSONContent } from '@tiptap/core';
-import { TextSelection } from '@tiptap/pm/state';
+import { Selection, TextSelection } from '@tiptap/pm/state';
 
 import { parseBlocks, serializeBlocks, type SourceBlock } from './documentBlockIds';
 import { mergeBlocks } from './documentBlockMerge';
@@ -33,6 +33,9 @@ export function replaceDocument(editor: Editor, doc: JSONContent) {
       const clamp = (value: number) => Math.max(start + 1, Math.min(start + size - 1, start + value));
       transaction.setSelection(TextSelection.between(transaction.doc.resolve(clamp(anchor.from)), transaction.doc.resolve(clamp(anchor.to))));
     }
+  } else {
+    // Without a caret to keep, start at the top; a mapped selection can land on a trailing rule or image as a node selection.
+    transaction.setSelection(Selection.atStart(transaction.doc));
   }
   editor.view.dispatch(transaction);
 }

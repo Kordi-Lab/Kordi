@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 
 import { DocumentBlockAnnotations, DocumentBlockView, type DocumentBlockThreadProps } from './DocumentBlock';
 import type { DocumentMentionOption } from './DocumentComments';
-import { DocumentHeader, DocumentTitleMeta, type DocumentBadge } from './DocumentHeader';
+import { DocumentHeader, type DocumentBadge } from './DocumentHeader';
 import { markdownDocumentTitle } from './documentBlocks';
 import { useDocumentReaderHost } from './documentReaderHost';
 import {
@@ -44,11 +44,6 @@ export type DocumentReaderProps = DocumentReaderSource & {
   collabTransport?: { createProvider: ProviderFactory; timing?: DocumentRoomOptions['timing'] };
 };
 
-function isLevelOneHeading(source: string, title: string) {
-  const match = /^ {0,3}#(?!#)\s+(.+?)\s*#*\s*$/.exec(source);
-  return Boolean(match && match[1].trim() === title.trim());
-}
-
 export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, initialShareOpen = false, className, onEditor, collabTransport, ...source }: DocumentReaderProps) {
   const api = useMemo(() => apiOverride ?? documentShareApiForEnvironment(), [apiOverride]);
   const host = useDocumentReaderHost();
@@ -74,7 +69,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
   const author = document?.author ?? (mode === 'local' ? host.viewer : null);
   const agentName = document?.agent?.displayName ?? host.agentName;
   const viewerIsOwner = mode === 'local' || document?.viewer === 'owner';
-  const badge: DocumentBadge = mode === 'local' ? 'local' : mode === 'uploaded' ? 'cloud' : null;
+  const badge: DocumentBadge = mode === 'local' ? 'local' : null;
   const askAgent = mode !== 'public' || Boolean(document?.viewerCan.askAgent);
 
   const mentionOptions = useMemo<DocumentMentionOption[]>(() => [
@@ -82,8 +77,6 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
     ...(mode === 'public' ? [] : host.people.map((name) => ({ name, kind: 'person' as const }))),
   ], [agentName, askAgent, host.people, mode]);
 
-  // The page title is the document's level-1 heading; the editor shows it, so the header shows only date and author.
-  const titleInDocument = editing.currentTab === 0 && Boolean(reader.editorBlocks[0]) && isLevelOneHeading(reader.editorBlocks[0]?.source ?? '', title);
 
   const blockShared = useMemo<DocumentBlockThreadProps>(() => ({
     agentName: askAgent ? agentName : null,
@@ -151,7 +144,11 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
     <section ref={sectionRef} className={cn('app-document-reader', className)} data-document-mode={mode} aria-label={title}>
       <div ref={headerRef} className="app-document-header-wrap">
         <DocumentHeader
-          fileName={fileName}
+          title={title}
+          dateLabel={formatDocumentDate(document?.createdAt) ?? dateLabel ?? null}
+          author={author}
+          canMessageAuthor={Boolean(author?.accountId && author.accountId !== host.viewer?.accountId && host.canMessageAccount?.(author.accountId))}
+          onMessageAuthor={author?.accountId ? () => host.messageAccount?.(author.accountId ?? '') : undefined}
           badge={badge}
           shareOpen={shareOpen}
           onToggleShare={reader.canShare ? () => setShareOpen((open) => !open) : undefined}
@@ -191,15 +188,6 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
         ) : (
           <article className={cn('app-document-article', htmlFrame && 'is-html')}>
             <DocumentTabStrip editing={editing} />
-            {editing.currentTab === 0 ? (
-              <DocumentTitleMeta
-                title={titleInDocument ? null : title}
-                dateLabel={formatDocumentDate(document?.createdAt) ?? dateLabel ?? null}
-                author={author}
-                canMessageAuthor={Boolean(author?.accountId && author.accountId !== host.viewer?.accountId && host.canMessageAccount?.(author.accountId))}
-                onMessageAuthor={author?.accountId ? () => host.messageAccount?.(author.accountId ?? '') : undefined}
-              />
-            ) : null}
             {htmlFrame ? <div className="app-document-block is-frame" data-document-block="b0">{htmlFrame}</div> : null}
             {htmlFrame ? null : (
               <Suspense fallback={<div className="app-document-empty"><LoaderCircle className="animate-spin" aria-hidden="true" />Loading</div>}>
