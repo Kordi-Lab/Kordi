@@ -17,10 +17,16 @@ function withBlock(document: DocumentResponse, blockId: string, source: string, 
 }
 
 async function mountEdits(api: ReturnType<typeof createMemoryDocumentApi>['api'], initial: DocumentResponse) {
-  const view: { edits: Edits | null; document: DocumentResponse } = { edits: null, document: initial };
+  const view: { edits: Edits | null; document: DocumentResponse; annotations: number } = { edits: null, document: initial, annotations: 0 };
   let rerender: () => Promise<void> = async () => undefined;
   function Harness() {
-    view.edits = useCloudDocumentEdits({ api, document: view.document, enabled: true, onDocument: (next) => { view.document = next; } });
+    view.edits = useCloudDocumentEdits({
+      api,
+      document: view.document,
+      enabled: true,
+      onDocument: (next) => { view.document = next; },
+      onAnnotations: (reactions, comments) => { view.annotations += 1; view.document = { ...view.document, reactions, comments }; },
+    });
     return null;
   }
   return {
@@ -76,7 +82,9 @@ test('a 409 rebases block edits onto the server document and retries once', asyn
   });
 });
 
-test('document.updated with a newer revision refetches the document', async () => {
+const settle = (ms: number) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
+
+test('document.updated events refetch once per burst; a newer revision merges content', async () => {
   await withJsdomRoot(async (mount) => {
     const document = sampleDocument('member');
     const { api, calls } = createMemoryDocumentApi(document);
@@ -84,17 +92,40 @@ test('document.updated with a newer revision refetches the document', async () =
     const harness = await mountEdits(api, document);
     await harness.start(mount);
     await act(async () => {
-      notifyDocumentSyncEvents([{ eventType: 'document.updated', payload: { attachmentId: 'att_example_doc', revision: 3 } }]);
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      for (let count = 0; count < 3; count += 1) {
+        notifyDocumentSyncEvents([{ eventType: 'document.updated', payload: { attachmentId: 'att_example_doc', revision: 4, change: 'content' } }]);
+      }
     });
-    assert.equal(calls.filter((call) => call.method === 'getDocument').length, 0, 'the shown revision is not older');
-    await act(async () => {
-      notifyDocumentSyncEvents([{ eventType: 'document.updated', payload: { attachmentId: 'att_example_doc', revision: 4 } }]);
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    });
-    assert.equal(calls.filter((call) => call.method === 'getDocument').length, 1);
+    await settle(100);
+    assert.equal(calls.filter((call) => call.method === 'getDocument').length, 0, 'debounced');
+    await settle(350);
+    assert.equal(calls.filter((call) => call.method === 'getDocument').length, 1, 'one refetch for the burst');
     assert.equal(harness.view.document.revision, 4);
     assert.equal(harness.view.document.blocks.find((block) => block.id === 'b2')?.source, 'Changed on another Mac.');
+  });
+});
+
+test('annotation events refresh reactions and comments without touching a pending edit', async () => {
+  await withJsdomRoot(async (mount) => {
+    const document = sampleDocument('owner');
+    const { api, calls } = createMemoryDocumentApi(document);
+    const remoteComment = { ...document.comments[0], commentId: 'doccmt_remote', body: 'Added on the iPhone', blockId: 'b2' };
+    api.setStored({ ...document, comments: [...document.comments, remoteComment], reactions: [] });
+    const harness = await mountEdits(api, document);
+    await harness.start(mount);
+    await act(async () => { harness.view.edits!.editBlock('b2', 'My unsaved paragraph.'); });
+    await act(async () => {
+      notifyDocumentSyncEvents([{ eventType: 'document.updated', payload: { attachmentId: 'att_example_doc', revision: 3, change: 'annotations' } }]);
+    });
+    await settle(400);
+    assert.equal(calls.filter((call) => call.method === 'getDocument').length, 1, 'same revision still refetches');
+    assert.equal(harness.view.annotations, 1);
+    assert.ok(harness.view.document.comments.some((comment) => comment.body === 'Added on the iPhone'));
+    await harness.rerender();
+    assert.equal(harness.view.edits!.edits.b2, 'My unsaved paragraph.', 'the pending edit stays');
+    assert.equal(harness.view.edits!.blocks.find((block) => block.id === 'b2')?.source, 'My unsaved paragraph.');
+    // Settle the pending save before the window goes away.
+    await act(async () => { await harness.view.edits!.flush(); });
   });
 });
 

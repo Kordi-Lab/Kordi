@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type { DocumentShareApi } from './documentShareApi';
-import type { DocumentResponse } from './documentShareTypes';
+import type { DocumentComment, DocumentReaction, DocumentResponse } from './documentShareTypes';
 import { subscribeDocumentUpdates } from './documentSyncEvents';
 
 export const SAVE_DEBOUNCE_MS = 800;
+/** `document.updated` events within this window cause one refetch. */
+export const REFRESH_DEBOUNCE_MS = 300;
 export const UPDATED_ELSEWHERE = 'Updated elsewhere';
 
 type Edits = Record<string, string>;
@@ -43,17 +45,20 @@ export function useCloudDocumentEdits({
   document,
   enabled,
   onDocument,
+  onAnnotations,
 }: {
   api: DocumentShareApi;
   document: DocumentResponse | null;
   enabled: boolean;
   onDocument: (next: DocumentResponse) => void;
+  /** Replaces reactions and comments only, leaving the blocks being edited alone. */
+  onAnnotations: (reactions: DocumentReaction[], comments: DocumentComment[]) => void;
 }) {
   const [edits, setEdits] = useState<Edits>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const latest = useRef({ document, edits, onDocument, saving: false });
-  useLayoutEffect(() => { latest.current = { ...latest.current, document, edits, onDocument }; });
+  const latest = useRef({ document, edits, onDocument, onAnnotations, saving: false });
+  useLayoutEffect(() => { latest.current = { ...latest.current, document, edits, onDocument, onAnnotations }; });
 
   const adoptRemote = useCallback((remote: DocumentResponse, base: DocumentResponse, pending: Edits) => {
     const rebased = rebaseBlockEdits(base, remote, pending);
@@ -121,16 +126,36 @@ export function useCloudDocumentEdits({
     };
   }, [enabled, flush]);
 
+  // Keyed by the canonical attachment, so the original and every forwarded copy refresh together.
   const attachmentId = document?.attachmentId ?? null;
   useEffect(() => {
     if (!attachmentId) return undefined;
-    return subscribeDocumentUpdates(attachmentId, ({ revision }) => {
-      const base = latest.current.document;
-      if (!base || latest.current.saving || revision <= (base.revision ?? 0)) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
+    const refresh = () => {
+      timer = null;
       void api.getDocument(attachmentId)
-        .then((remote) => { adoptRemote(remote, base, latest.current.edits); })
+        .then((remote) => {
+          const base = latest.current.document;
+          if (disposed || !base) return;
+          // A newer revision is a content change: merge unsaved block edits (unless our own save is in flight).
+          if ((remote.revision ?? 0) > (base.revision ?? 0) && !latest.current.saving) {
+            adoptRemote(remote, base, latest.current.edits);
+          } else {
+            latest.current.onAnnotations(remote.reactions, remote.comments);
+          }
+        })
         .catch(() => undefined);
+    };
+    const unsubscribe = subscribeDocumentUpdates(attachmentId, () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(refresh, REFRESH_DEBOUNCE_MS);
     });
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+    };
   }, [adoptRemote, api, attachmentId]);
 
   const editBlock = useCallback((blockId: string, source: string) => {

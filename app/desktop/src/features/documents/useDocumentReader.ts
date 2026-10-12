@@ -142,7 +142,15 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
   const tabBlocks = useMemo(() => splitMarkdownBlocks(editing.currentSource).map(({ id, source: text }) => ({ id, source: text })), [editing.currentSource]);
   const replaceDocument = useCallback((next: DocumentResponse) => setLoaded(loadedFrom(requestKey, next)), [requestKey]);
   const canEditCloud = mode === 'uploaded' && format === 'markdown' && Boolean(document?.viewerCan.edit);
-  const cloud = useCloudDocumentEdits({ api, document, enabled: canEditCloud, onDocument: replaceDocument });
+  const replaceAnnotations = useCallback((nextReactions: DocumentReaction[], nextComments: DocumentComment[]) => {
+    update(() => ({ reactions: nextReactions, comments: nextComments }));
+  }, [update]);
+  const cloud = useCloudDocumentEdits({ api, document, enabled: canEditCloud, onDocument: replaceDocument, onAnnotations: replaceAnnotations });
+  // A forwarded copy opens its canonical document; remember that id for this file.
+  const canonicalId = document?.attachmentId ?? null;
+  useEffect(() => {
+    if (path && canonicalId && mode === 'uploaded' && localSource !== null) rememberUploadedDocument(path, canonicalId);
+  }, [canonicalId, localSource, mode, path]);
   const onCloudTab = editing.currentTab === 0 && mode !== 'local';
   const blocks = onCloudTab ? (canEditCloud ? cloud.blocks : serverBlocks) : tabBlocks;
   const canEdit = format === 'markdown' && (!onCloudTab || canEditCloud);

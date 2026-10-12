@@ -107,6 +107,24 @@ export async function deleteCloudDocumentComment(client: CloudRequestClient, tok
   await client.request(`/v1/cloud/documents/comments/${segment(commentId)}`, authorized(token, 'DELETE'), 'Could not delete the comment.');
 }
 
+/**
+ * Points a forwarded copy at the document it was forwarded from, so both show
+ * one set of reactions, comments, edits, and links. Call after the copy's
+ * upload finalizes and before the message is sent.
+ */
+export function linkCloudDocumentSource(
+  client: CloudRequestClient,
+  token: string,
+  copyAttachmentId: string,
+  sourceAttachmentId: string,
+): Promise<DocumentResponse> {
+  return client.request(
+    `/v1/cloud/documents/${segment(copyAttachmentId)}/source`,
+    authorized(token, 'POST', { sourceAttachmentId }),
+    'Could not link the forwarded document.',
+  );
+}
+
 export function getPublicDocument(client: CloudRequestClient, shareToken: string): Promise<DocumentResponse> {
   return client.request(`/v1/cloud/public/documents/${segment(shareToken)}`, anonymous('GET'), 'This link is off');
 }

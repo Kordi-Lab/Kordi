@@ -74,7 +74,10 @@ export type DocumentViewerCan = {
 };
 
 export type DocumentResponse = {
+  /** Canonical attachment of the document; forwarded copies resolve to it. */
   attachmentId: string;
+  /** The id the document was opened with, when it is a forwarded copy of `attachmentId`. */
+  requestedAttachmentId?: string | null;
   title: string;
   fileName: string;
   format: DocumentFormat;
@@ -136,6 +139,8 @@ export type SaveDocumentContentResult =
 export type DocumentUpdatedEvent = {
   attachmentId: string;
   revision: number;
+  /** `content` for saves, `annotations` for reactions and comments. */
+  change?: 'content' | 'annotations';
 };
 
 /** Identity a reader without an account writes under on the public routes. */

@@ -15,6 +15,8 @@ export type CloudGroupOutboxAttachmentSource = {
   sizeBytes?: number | null;
   widthPixels?: number | null;
   heightPixels?: number | null;
+  /** Original of a forwarded Markdown or HTML document; the upload links the copy to it. */
+  sourceAttachmentId?: string | null;
 };
 
 function cleanText(value: unknown) {
@@ -58,6 +60,7 @@ export function normalizedCloudGroupOutboxPendingAttachments(value: unknown): Cl
     const kind = record.kind === 'image' || record.kind === 'file' ? record.kind : null;
     if (!path || !name || !kind) return [];
     const id = cleanText(record.id) || `pending-attachment:${index}:${path}`;
+    const sourceAttachmentId = cleanText(record.sourceAttachmentId);
     const dimensions = normalizedImagePixelDimensions(record.widthPixels, record.heightPixels);
     return [{
       id,
@@ -71,6 +74,7 @@ export function normalizedCloudGroupOutboxPendingAttachments(value: unknown): Cl
       sizeBytes: typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) ? record.sizeBytes : null,
       ...(dimensions ?? {}),
       ...(normalizedLivePhotoFiles(record.livePhotoFiles) ? { livePhotoFiles: normalizedLivePhotoFiles(record.livePhotoFiles) } : {}),
+      ...(sourceAttachmentId ? { sourceAttachmentId } : {}),
     }];
   });
   return attachments.length > 0 ? attachments : undefined;

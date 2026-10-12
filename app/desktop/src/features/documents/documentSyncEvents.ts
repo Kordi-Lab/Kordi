@@ -19,8 +19,9 @@ export function subscribeDocumentUpdates(attachmentId: string, listener: Listene
 export function notifyDocumentSyncEvents(events: ReadonlyArray<{ eventType?: string; payload?: unknown }>) {
   for (const event of events) {
     if (event.eventType !== 'document.updated' || !event.payload || typeof event.payload !== 'object') continue;
-    const { attachmentId, revision } = event.payload as { attachmentId?: unknown; revision?: unknown };
+    const { attachmentId, revision, change } = event.payload as { attachmentId?: unknown; revision?: unknown; change?: unknown };
     if (typeof attachmentId !== 'string' || typeof revision !== 'number') continue;
-    for (const listener of [...(listenersByAttachment.get(attachmentId) ?? [])]) listener({ attachmentId, revision });
+    const kind = change === 'annotations' || change === 'content' ? change : undefined;
+    for (const listener of [...(listenersByAttachment.get(attachmentId) ?? [])]) listener({ attachmentId, revision, ...(kind ? { change: kind } : {}) });
   }
 }

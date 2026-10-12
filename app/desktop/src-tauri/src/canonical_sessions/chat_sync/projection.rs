@@ -210,6 +210,7 @@ pub(super) fn apply_event(
             | "task.upsert"
             | "artifact.upsert"
             | "artifact.archived"
+            | "document.updated"
             | "session.pin.updated"
             | "session.hidden"
             | "session.unhidden"
