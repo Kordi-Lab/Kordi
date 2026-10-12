@@ -5,9 +5,11 @@
 //! sanitized HTML is empty, so ids stay stable for clients that compute them
 //! from the same source.
 
+use std::ops::Range;
+
 use pulldown_cmark::{html, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
-use super::block_ids::{assign_ids, remove_block_comments, split_block_id};
+use super::block_ids::{assign_ids, remove_block_comments, split_block_id, standalone_block_id};
 use super::inline_formats::{apply_inline_formats, is_allowed_inline_html};
 use super::model::{DocumentBlock, DocumentFormat};
 
@@ -17,11 +19,12 @@ fn markdown_options() -> Options {
     Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS
 }
 
-/// Splits `source` into top-level blocks with sanitized HTML. A block whose
-/// last line ends with `<!-- k:... -->` takes that stable id (see
-/// [`super::block_ids`]); every other block keeps `b{index}`.
+/// Splits `source` into top-level blocks with sanitized HTML. A block takes
+/// a stable id from `<!-- k:... -->` at the end of its last line or on its
+/// own line right after it (see [`super::block_ids`]); every other block
+/// keeps `b{index}`.
 pub(crate) fn markdown_blocks(source: &str) -> Vec<DocumentBlock> {
-    let mut raw: Vec<(String, Option<String>, String)> = Vec::new();
+    let mut raw: Vec<RawBlock> = Vec::new();
     let mut depth = 0usize;
     let mut current: Vec<Event<'_>> = Vec::new();
     let mut start = 0usize;
@@ -40,20 +43,20 @@ pub(crate) fn markdown_blocks(source: &str) -> Vec<DocumentBlock> {
                 current.push(event);
                 if depth == 0 {
                     let end = range.end.max(start);
-                    raw.push(raw_block(&source[start..end], &current));
+                    push_block(&mut raw, source, start..end, &current);
                     current.clear();
                 }
             }
             _ if depth == 0 => {
-                raw.push(raw_block(&source[range], &[event]));
+                push_block(&mut raw, source, range, &[event]);
             }
             _ => current.push(event),
         }
     }
-    let html: Vec<String> = raw.iter().map(|(_, _, html)| html.clone()).collect();
+    let html: Vec<String> = raw.iter().map(|block| block.html.clone()).collect();
     assign_ids(
         raw.into_iter()
-            .map(|(source, id, _)| (source, id))
+            .map(|block| (block.source, block.id))
             .collect(),
     )
     .into_iter()
@@ -62,9 +65,35 @@ pub(crate) fn markdown_blocks(source: &str) -> Vec<DocumentBlock> {
     .collect()
 }
 
-fn raw_block(source: &str, events: &[Event<'_>]) -> (String, Option<String>, String) {
-    let (clean, id) = split_block_id(source.trim_end_matches(['\n', '\r']));
-    (clean, id, sanitized_html(events))
+struct RawBlock {
+    source: String,
+    id: Option<String>,
+    html: String,
+    /// Byte offset just after the block's last non-whitespace character.
+    content_end: usize,
+}
+
+/// Adds a top-level block, or, when the block is only a block-id comment,
+/// gives that id to the block right before it (no blank line between). Such
+/// a comment is never a block of its own and never takes an index.
+fn push_block(raw: &mut Vec<RawBlock>, source: &str, range: Range<usize>, events: &[Event<'_>]) {
+    let text = &source[range.clone()];
+    if let Some(id) = standalone_block_id(text) {
+        if let Some(previous) = raw.last_mut() {
+            let gap = &source[previous.content_end..range.start];
+            if gap.matches('\n').count() <= 1 && previous.id.is_none() {
+                previous.id = Some(id);
+            }
+        }
+        return;
+    }
+    let (clean, id) = split_block_id(text.trim_end_matches(['\n', '\r']));
+    raw.push(RawBlock {
+        source: clean,
+        id,
+        html: sanitized_html(events),
+        content_end: range.start + text.trim_end().len(),
+    });
 }
 
 pub(crate) fn link_is_allowed(destination: &str) -> bool {

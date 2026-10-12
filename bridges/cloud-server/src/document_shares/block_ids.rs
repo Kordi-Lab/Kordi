@@ -1,8 +1,11 @@
 //! Stable block ids written by the document editor.
 //!
-//! The editor stamps a top-level block with a trailing HTML comment on its
-//! last line, `<!-- k:7f3a9c2d -->` (`k:` plus 4 to 32 characters of
-//! `[A-Za-z0-9_-]`). The block's id is then `k:7f3a9c2d` instead of its
+//! The editor stamps a top-level block with an HTML comment,
+//! `<!-- k:7f3a9c2d -->` (`k:` plus 4 to 32 characters of `[A-Za-z0-9_-]`),
+//! either at the end of its last line (paragraphs and headings) or on its
+//! own line right after the block with no blank line between (every block
+//! type; Markdown parses that line as an HTML block, which is folded into
+//! the block before it). The block's id is then `k:7f3a9c2d` instead of its
 //! index id `b{index}`. Block sources and rendered HTML never contain these
 //! comments; the stored document source keeps them.
 
@@ -115,6 +118,17 @@ pub(crate) fn split_block_id(source: &str) -> (String, Option<String>) {
         })
         .map(|(_, _, id)| id.clone());
     (remove_block_comments(source).trim_end().to_string(), id)
+}
+
+/// The id when `text` is nothing but one block-id comment, the form the
+/// editor writes on its own line after a code fence, table, divider, or
+/// list.
+pub(crate) fn standalone_block_id(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    match comment_spans(trimmed).as_slice() {
+        [(0, end, id)] if *end == trimmed.len() => Some(id.clone()),
+        _ => None,
+    }
 }
 
 /// Gives each block its stable id unless an earlier block already used it,

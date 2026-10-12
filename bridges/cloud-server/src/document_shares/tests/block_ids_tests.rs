@@ -188,3 +188,89 @@ fn annotations_follow_stamps_stable_ids_and_sources() {
     );
     assert!(targets(&new, &[], &[]).iter().all(|(_, to)| to == "b0"));
 }
+
+fn blocks(source: &str) -> Vec<(String, String)> {
+    markdown_blocks(source)
+        .into_iter()
+        .map(|block| (block.id, block.source))
+        .collect()
+}
+
+fn pairs(expected: &[(&str, &str)]) -> Vec<(String, String)> {
+    expected
+        .iter()
+        .map(|(id, source)| (id.to_string(), source.to_string()))
+        .collect()
+}
+
+#[test]
+fn own_line_comments_name_the_block_before_them() {
+    let source = "# Title\n\
+        \n\
+        Intro paragraph.\n\
+        <!-- k:intro001 -->\n\
+        \n\
+        ```rust\n\
+        fn main() {}\n\
+        ```\n\
+        <!-- k:code0001 -->\n\
+        \n\
+        | a | b |\n\
+        |---|---|\n\
+        | 1 | 2 |\n\
+        <!-- k:table001 -->\n\
+        \n\
+        ---\n\
+        <!-- k:rule0001 -->\n\
+        \n\
+        - one\n\
+        \n\
+        - two\n\
+        <!-- k:list0001 -->\n\
+        \n\
+        Closing paragraph.\n";
+    assert_eq!(
+        blocks(source),
+        pairs(&[
+            ("b0", "# Title"),
+            ("k:intro001", "Intro paragraph."),
+            ("k:code0001", "```rust\nfn main() {}\n```"),
+            ("k:table001", "| a | b |\n|---|---|\n| 1 | 2 |"),
+            ("k:rule0001", "---"),
+            ("k:list0001", "- one\n\n- two"),
+            ("b6", "Closing paragraph."),
+        ])
+    );
+    let rendered = markdown_blocks(source);
+    assert!(rendered
+        .iter()
+        .all(|block| !block.source.contains("<!--") && !block.html.contains("k:")));
+    assert!(rendered[3].html.starts_with("<table>"));
+    assert_eq!(
+        rendered[5].html.matches("<li>").count(),
+        2,
+        "a loose list is one block"
+    );
+}
+
+#[test]
+fn comment_lines_never_count_as_blocks() {
+    assert_eq!(
+        blocks("<!-- k:stray001 -->\n\nFirst.\n\nSecond.\n<!-- k:second01 -->\n\nThird.\n"),
+        pairs(&[
+            ("b0", "First."),
+            ("k:second01", "Second."),
+            ("b2", "Third.")
+        ])
+    );
+    // Separated by a blank line, a comment line names nothing and is dropped.
+    assert_eq!(
+        blocks("First.\n\n<!-- k:detached -->\n\nSecond.\n"),
+        pairs(&[("b0", "First."), ("b1", "Second.")])
+    );
+    // A trailing comment wins over a following own-line comment.
+    assert_eq!(
+        blocks("Para <!-- k:trailing -->\n<!-- k:ownline1 -->\n"),
+        pairs(&[("k:trailing", "Para")])
+    );
+}
