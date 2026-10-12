@@ -323,7 +323,7 @@ button.app-document-menu-row:hover,
 .app-document-share-row.is-action:hover:not(:disabled) { background: var(--app-transient-hover-bg); }
 .app-document-share-row:disabled { opacity: 0.45; }
 .app-document-share-label { flex: 1; min-width: 0; }
-.app-document-share-url { min-width: 0; flex: 1; overflow: hidden; color: var(--app-document-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.app-document-share-url { min-width: 0; flex: 1; overflow: hidden; color: var(--app-document-muted); font-family: inherit; font-size: 12.5px; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
 .app-document-share-copy { color: var(--app-chat-accent); font-size: 12.5px; font-weight: 600; }
 .app-document-share-icon { display: grid; width: 24px; height: 24px; flex: none; place-items: center; border-radius: 6px; color: #fff; }
 .app-document-share .app-document-share-icon svg { width: 14px; height: 14px; }

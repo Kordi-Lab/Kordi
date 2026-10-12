@@ -95,7 +95,7 @@ export function DocumentSharePopover({
           {share ? (
             <>
               <div className="app-document-share-row">
-                <code className="app-document-share-url" title={share.shareUrl}>{displayUrl(share.shareUrl)}</code>
+                <span className="app-document-share-url" title={share.shareUrl}>{displayUrl(share.shareUrl)}</span>
                 <button type="button" className="app-document-share-copy" onClick={copyLink}>{copied ? 'Copied' : 'Copy'}</button>
               </div>
               <div className="app-document-share-row">
