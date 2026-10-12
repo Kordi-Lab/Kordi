@@ -34,10 +34,11 @@ test('a fenced code block keeps blank lines until the closing fence', () => {
 });
 
 test('a list with indented continuation lines is one block', () => {
-  const list = '- First item\n  continues here\n- Second item\n\n  still the second item\n1. Numbered';
-  assert.deepEqual(blocks(`${list}\n\nAfter the list`), [
+  const list = '- First item\n  continues here\n- Second item\n\n  still the second item';
+  assert.deepEqual(blocks(`${list}\n1. Numbered\n\nAfter the list`), [
     { id: 'b0', kind: 'list', source: list },
-    { id: 'b1', kind: 'paragraph', source: 'After the list' },
+    { id: 'b1', kind: 'list', source: '1. Numbered' },
+    { id: 'b2', kind: 'paragraph', source: 'After the list' },
   ]);
 });
 
@@ -62,4 +63,28 @@ test('the first level-1 heading is the title', () => {
   assert.equal(markdownDocumentTitle('Intro\n\n## Section\n\n# Kordi related work\n'), 'Kordi related work');
   assert.equal(markdownDocumentTitle('No heading here'), null);
   assert.deepEqual(splitMarkdownBlocks(''), []);
+});
+
+test('a loose list (items of the same kind separated by blank lines) is one block; another marker kind starts a new list', () => {
+  assert.deepEqual(blocks('- one\n\n- two\n\n  more of two\n\n- three\n\n1. first\n\n2. second\n\n* star'), [
+    { id: 'b0', kind: 'list', source: '- one\n\n- two\n\n  more of two\n\n- three' },
+    { id: 'b1', kind: 'list', source: '1. first\n\n2. second' },
+    { id: 'b2', kind: 'list', source: '* star' },
+  ]);
+});
+
+test('an id comment on its own line belongs to the block above it, for every block type', () => {
+  const source = [
+    '# Title\n<!-- k:aaaa1111 -->',
+    'Paragraph line\n<!-- k:bbbb2222 -->',
+    '- one\n\n- two\n<!-- k:cccc3333 -->',
+    '```ts\ncode\n```\n<!-- k:dddd4444 -->',
+    '| A | B |\n| --- | --- |\n| 1 | 2 |\n<!-- k:eeee5555 -->',
+    '---\n<!-- k:ffff6666 -->',
+    '> quote\n<!-- k:gggg7777 -->',
+  ].join('\n\n');
+  const result = blocks(source);
+  assert.deepEqual(result.map((block) => block.kind), ['heading', 'paragraph', 'list', 'code', 'table', 'rule', 'quote']);
+  result.forEach((block) => assert.match(block.source, /\n<!-- k:[a-z0-9]{8} -->$/));
+  assert.deepEqual(blocks('<!-- k:orphan12 -->\n\nText'), [{ id: 'b0', kind: 'paragraph', source: 'Text' }], 'a lone comment is not a block');
 });

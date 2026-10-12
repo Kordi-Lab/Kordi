@@ -32,12 +32,12 @@ export function parseBlocks(manager: MarkdownManager, blocks: readonly SourceBlo
   return { doc: { type: 'doc', content }, legacyIds };
 }
 
-/** One top-level node as Markdown, with its id comment on the last line. */
+/** One top-level node as Markdown, with its id comment on its own line right after it (valid CommonMark for every block type). */
 export function serializeBlock(manager: MarkdownManager, node: JSONContent) {
   const markdown = manager.serialize({ type: 'doc', content: [node] }).replace(/^(?:[ \t]*\n)+/, '').replace(/\s+$/, '');
   const id = typeof node.attrs?.id === 'string' && node.attrs.id.startsWith('k:') ? node.attrs.id : null;
   if (!markdown.trim()) return '';
-  return id ? `${markdown} <!-- ${id} -->` : markdown;
+  return id ? `${markdown}\n<!-- ${id} -->` : markdown;
 }
 
 /** Top-level blocks of a document: id and Markdown (with the id comment). */

@@ -39,7 +39,7 @@ async function mountEdits(api: ReturnType<typeof createMemoryDocumentApi>['api']
   };
 }
 
-const EDITED = '# Kordi related work <!-- k:aaaaaaaa -->\n\nAn edited paragraph. <!-- k:bbbbbbbb -->';
+const EDITED = '# Kordi related work\n<!-- k:aaaaaaaa -->\n\nAn edited paragraph.\n<!-- k:bbbbbbbb -->';
 
 test('a save sends the editor Markdown with the revision it was based on and the first stamped ids', async () => {
   await withJsdomRoot(async (mount) => {

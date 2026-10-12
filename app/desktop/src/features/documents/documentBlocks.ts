@@ -19,6 +19,18 @@ const QUOTE = /^ {0,3}>/;
 const LIST_ITEM = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]+|$)/;
 const TABLE_SEPARATOR = /^[\s|:-]*-[\s|:-]*$/;
 const INDENTED = /^(?: {2,}|\t)\S/;
+/** A block id comment on its own line; it belongs to the block right above it. */
+const ID_COMMENT_LINE = /^[ \t]*<!--\s*k:[A-Za-z0-9_-]{4,32}\s*-->[ \t]*$/;
+
+export function isIdCommentLine(line: string | undefined) {
+  return line !== undefined && ID_COMMENT_LINE.test(line);
+}
+
+/** Bullet character, or the ordered-list delimiter: items of the same kind form one CommonMark list. */
+function listKind(line: string) {
+  const match = /^ {0,3}(?:([-*+])|\d{1,9}([.)]))(?:[ \t]+|$)/.exec(line);
+  return match ? match[1] ?? match[2] : null;
+}
 
 function isBlank(line: string | undefined) {
   return line === undefined || line.trim() === '';
@@ -45,8 +57,7 @@ function fenceEnd(lines: string[], start: number) {
   const opening = FENCE.exec(lines[start])?.[1] ?? '```';
   const marker = opening[0];
   for (let index = start + 1; index < lines.length; index += 1) {
-    // A closing fence may carry the block's id comment (`<!-- k:… -->`).
-    const closing = /^ {0,3}(`{3,}|~{3,})[ \t]*(?:<!--\s*k:[A-Za-z0-9_-]{4,32}\s*-->[ \t]*)?$/.exec(lines[index])?.[1];
+    const closing = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(lines[index])?.[1];
     if (closing && closing[0] === marker && closing.length >= opening.length) return index + 1;
   }
   return lines.length;
@@ -54,25 +65,32 @@ function fenceEnd(lines: string[], start: number) {
 
 function runEnd(lines: string[], start: number, belongs: (line: string) => boolean) {
   let index = start + 1;
-  while (index < lines.length && !isBlank(lines[index]) && belongs(lines[index])) index += 1;
+  while (index < lines.length && !isBlank(lines[index]) && !isIdCommentLine(lines[index]) && belongs(lines[index])) index += 1;
   return index;
 }
 
 function listEnd(lines: string[], start: number) {
+  const kind = listKind(lines[start]);
   let index = start + 1;
   while (index < lines.length) {
     const line = lines[index];
+    if (isIdCommentLine(line)) return index;
     if (isBlank(line)) {
-      // A blank line ends the list unless an indented continuation line follows.
+      // CommonMark: after blank lines the list goes on with an indented line or another item of the same kind (a loose list).
       let next = index + 1;
       while (next < lines.length && isBlank(lines[next])) next += 1;
-      if (next < lines.length && INDENTED.test(lines[next])) {
+      if (next < lines.length && (INDENTED.test(lines[next]) || (LIST_ITEM.test(lines[next]) && listKind(lines[next]) === kind))) {
         index = next;
         continue;
       }
       return index;
     }
-    if (LIST_ITEM.test(line) || INDENTED.test(line)) {
+    if (INDENTED.test(line)) {
+      index += 1;
+      continue;
+    }
+    if (LIST_ITEM.test(line)) {
+      if (listKind(line) !== kind) return index;
       index += 1;
       continue;
     }
@@ -85,7 +103,7 @@ function listEnd(lines: string[], start: number) {
 
 function paragraphEnd(lines: string[], start: number) {
   let index = start + 1;
-  while (index < lines.length && !isBlank(lines[index]) && blockKindAt(lines, index) === 'paragraph') index += 1;
+  while (index < lines.length && !isBlank(lines[index]) && !isIdCommentLine(lines[index]) && blockKindAt(lines, index) === 'paragraph') index += 1;
   return index;
 }
 
@@ -100,12 +118,13 @@ export function splitMarkdownBlocks(source: string): DocumentBlock[] {
   const blocks: DocumentBlock[] = [];
   let index = 0;
   while (index < lines.length) {
-    if (isBlank(lines[index])) {
+    // Blank lines, and an id comment with no block above it, are not blocks.
+    if (isBlank(lines[index]) || isIdCommentLine(lines[index])) {
       index += 1;
       continue;
     }
     const kind = blockKindAt(lines, index);
-    const end = kind === 'code'
+    const blockEnd = kind === 'code'
       ? fenceEnd(lines, index)
       : kind === 'table'
         ? runEnd(lines, index + 1, (line) => line.includes('|'))
@@ -116,6 +135,8 @@ export function splitMarkdownBlocks(source: string): DocumentBlock[] {
             : kind === 'list'
               ? listEnd(lines, index)
               : paragraphEnd(lines, index);
+    // The id comment on the line right after a block is part of that block.
+    const end = isIdCommentLine(lines[blockEnd]) ? blockEnd + 1 : blockEnd;
     blocks.push({
       id: `b${blocks.length}`,
       kind,

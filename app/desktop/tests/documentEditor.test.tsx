@@ -33,7 +33,7 @@ function editorWith(markdown: string) {
 }
 
 const markdownOf = (editor: TiptapEditor) => ids.sourceOfBlocks(ids.serializeBlocks(editor.markdown!, editor.getJSON()));
-const withoutIds = (markdown: string) => markdown.replace(/ <!-- k:[A-Za-z0-9_-]+ -->/g, '');
+const withoutIds = (markdown: string) => markdown.replace(/\n<!-- k:[A-Za-z0-9_-]+ -->/g, '');
 
 const EVERYTHING = [
   '# Title',
@@ -57,18 +57,37 @@ test('every node and mark round-trips through Markdown, and every block gets an 
   const markdown = markdownOf(editor);
   const blocks = markdown.split('\n\n');
   assert.equal(blocks.length, 14);
-  for (const block of blocks) assert.match(block, /<!-- k:[a-z0-9]{8} -->$/, `id comment on the last line of: ${block}`);
+  for (const block of blocks) {
+    const lines = block.split('\n');
+    assert.match(lines[lines.length - 1], /^<!-- k:[a-z0-9]{8} -->$/, `id comment on its own line after: ${block}`);
+    assert.doesNotMatch(lines.slice(0, -1).join('\n'), /<!--/, 'no comment inside the block');
+  }
+  // Fences, tables, and dividers end on their own syntax, then the comment.
+  assert.match(markdown, /const answer = 42;\n```\n<!-- k:[a-z0-9]{8} -->/);
+  assert.match(markdown, /\| One\s*\| Survey\s*\|\n<!-- k:[a-z0-9]{8} -->/);
+  assert.match(markdown, /(?:^|\n)---\n<!-- k:[a-z0-9]{8} -->/);
+  assert.match(markdown, /- two\n<!-- k:[a-z0-9]{8} -->/);
   const plain = withoutIds(markdown);
   for (const expected of ['# Title', '## Section', '### Detail', '**bold**', '*italic*', '<u>underline</u>', '~~strike~~', '`code`', '==highlight==', '[link](https://kordi.ai/)', '> A quote', '- one\n- two', '1. first\n2. second', '- [ ] open task\n- [x] done task', '```ts\nconst answer = 42;\n```', '![diagram](https://kordi.ai/diagram.png)', '---', 'a == b == c']) {
     assert.ok(plain.includes(expected), `keeps ${JSON.stringify(expected)}`);
   }
   assert.match(plain, /\| Paper\s*\| Method\s*\|/);
-  assert.match(markdown, /Kept id <!-- k:abcd1234 -->/, 'an existing id survives');
+  assert.match(markdown, /Kept id\n<!-- k:abcd1234 -->/, 'an id in the older trailing form survives and is written in the own-line form');
   // Parsing the output again changes nothing, ids included.
   const again = editorWith(markdown);
   assert.equal(markdownOf(again), markdown);
   editor.destroy();
   again.destroy();
+});
+
+test('a loose list is one block with one id after the whole list', () => {
+  const editor = editorWith('- one\n\n- two\n\n- three\n<!-- k:list1234 -->\n\nAfter.');
+  const blocks = ids.serializeBlocks(editor.markdown!, editor.getJSON());
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[0].id, 'k:list1234');
+  assert.match(blocks[0].source, /one[\s\S]*two[\s\S]*three\n<!-- k:list1234 -->$/);
+  assert.equal(editor.state.doc.child(0).childCount, 3, 'three items in one list');
+  editor.destroy();
 });
 
 test('highlight and underline keep spaces outside their markers', () => {
