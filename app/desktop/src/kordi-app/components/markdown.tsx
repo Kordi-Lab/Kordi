@@ -584,7 +584,7 @@ function MarkdownContent({
                   ? 'app-markdown-muted-heading text-[0.92rem] font-medium text-slate-400'
                   : 'text-[0.92rem] font-semibold text-slate-100';
           return (
-            <div key={`heading-${index}`} data-kordi-copy-block="true" className={cn(headingClass, 'min-w-0 break-words [overflow-wrap:anywhere]')}>
+            <div key={`heading-${index}`} data-kordi-copy-block="true" data-markdown-heading={block.level} className={cn(headingClass, 'min-w-0 break-words [overflow-wrap:anywhere]')}>
               <MarkdownInlineContent text={block.text} {...inlineOptions} />
             </div>
           );

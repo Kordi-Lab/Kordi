@@ -139,20 +139,12 @@ export function appendMention(draft: string, name: string) {
   return `${prefix}@${name} `;
 }
 
-export type DocumentInsertTool = 'draw' | 'code' | 'table' | 'image' | 'checklist' | 'heading' | 'quote' | 'rule';
+export type DocumentInsertTool = 'code' | 'table' | 'image' | 'checklist';
 
-export const DOCUMENT_INSERT_SNIPPETS: Record<DocumentInsertTool, string> = {
-  draw: '```mermaid\nflowchart LR\n  A --> B\n```',
-  code: '```\n\n```',
-  table: '| Column | Column |\n| --- | --- |\n|  |  |',
-  image: '![](https://)',
-  checklist: '- [ ] ',
-  heading: '## Heading',
-  quote: '> ',
-  rule: '---',
-};
-
-export function appendMarkdownBlock(source: string, snippet: string) {
-  const trimmed = source.replace(/\s+$/, '');
-  return trimmed ? `${trimmed}\n\n${snippet}\n` : `${snippet}\n`;
+/** Markdown each insert tool adds as a new block after the current one. The image tool asks for a URL first. */
+export function documentInsertSnippet(tool: DocumentInsertTool, url = '') {
+  if (tool === 'code') return '```\ncode\n```';
+  if (tool === 'table') return '| Column | Column |\n| --- | --- |\n| Cell | Cell |';
+  if (tool === 'image') return `![](${url.trim()})`;
+  return '- [ ] Task';
 }

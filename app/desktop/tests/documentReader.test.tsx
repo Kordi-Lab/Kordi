@@ -215,29 +215,76 @@ function selectionMenuButtons(root: HTMLElement) {
   return Array.from(menu.querySelectorAll('button')).map((entry) => entry.getAttribute('aria-label'));
 }
 
-test('an uploaded document selection menu offers only comment and react', async () => {
+/** Selects `text` inside a block the way a mouse drag does, then fires `selectionchange`. */
+async function selectText(root: HTMLElement, blockId: string, text: string, collapsed = false) {
+  const block = root.querySelector(`[data-document-block="${blockId}"] .app-document-markdown`) as HTMLElement;
+  const walker = block.ownerDocument.createTreeWalker(block, 4);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const at = node.nodeValue?.indexOf(text) ?? -1;
+    if (at < 0) continue;
+    const range = block.ownerDocument.createRange();
+    range.setStart(node, at);
+    range.setEnd(node, collapsed ? at : at + text.length);
+    const selection = block.ownerDocument.defaultView!.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    await act(async () => { block.ownerDocument.dispatchEvent(new block.ownerDocument.defaultView!.Event('selectionchange')); });
+    return;
+  }
+  assert.fail(`text "${text}" in ${blockId}`);
+}
+
+const FORMAT_LABELS = ['Text style', 'Bold', 'Italic', 'Underline', 'Strikethrough', 'Code', 'Highlight', 'List', 'Link'];
+
+test('a click without a range opens no menu, and a read-only viewer gets comment and react only', async () => {
   await withJsdomRoot(async (mount) => {
-    const document = sampleDocument('owner');
+    const document = { ...sampleDocument('member'), viewerCan: { share: false, react: true, comment: true, askAgent: true, edit: false } };
     const { api } = createMemoryDocumentApi(document);
     const root = await mount(withHost(createElement(DocumentReader, { attachmentId: document.attachmentId, initialDocument: document, api })));
-    await click(root.querySelector('[data-document-block="b2"] .app-document-markdown') as HTMLElement);
+    await selectText(root, 'b3', 'clearest niche', true);
+    assert.equal(root.querySelector('[aria-label="Selection"]'), null);
+    await selectText(root, 'b3', 'clearest niche');
     assert.deepEqual(selectionMenuButtons(root), ['Comment', 'React']);
-    assert.doesNotMatch(root.innerHTML, /Editing lives on the Mac/);
-    assert.equal(root.querySelector('[data-document-block="b2"]')?.getAttribute('aria-selected'), 'true');
+    assert.equal(root.querySelector('.app-document-block.is-selected'), null, 'no whole-block highlight');
+    assert.equal(root.querySelector('[aria-label="Code block"]'), null, 'no insert tools for read-only documents');
   });
 });
 
-test('a Mac-hosted document selection menu keeps the formatting group', async () => {
+test('an editable cloud document formats the selected text, restores the selection, and saves', async () => {
+  await withJsdomRoot(async (mount) => {
+    const document = sampleDocument('owner');
+    const { api, calls } = createMemoryDocumentApi(document);
+    const root = await mount(withHost(createElement(DocumentReader, { attachmentId: document.attachmentId, initialDocument: document, api })));
+    await selectText(root, 'b3', 'clearest niche');
+    const labels = selectionMenuButtons(root);
+    assert.deepEqual(labels.slice(0, 2), ['Comment', 'React']);
+    for (const label of FORMAT_LABELS) assert.ok(labels.includes(label), `${label} is in the menu`);
+
+    await click(root.querySelector('[aria-label="Bold"]') as HTMLElement);
+    assert.ok(root.querySelector('[data-document-block="b3"] strong'), 'the bold text renders');
+    assert.equal(root.ownerDocument.defaultView!.getSelection()!.toString(), 'clearest niche', 'the same text stays selected');
+    assert.equal(root.querySelector('[aria-label="Bold"]')?.getAttribute('aria-pressed'), 'true');
+
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 900)); });
+    const save = calls.find((call) => call.method === 'saveDocumentContent');
+    const input = save?.args[1] as { baseRevision: number; source: string };
+    assert.equal(input.baseRevision, 3);
+    assert.match(input.source, /the \*\*clearest niche\*\* for Kordi/);
+  });
+});
+
+test('a Mac-hosted draft keeps the full menu and Aa changes the block style', async () => {
   await withJsdomRoot(async (mount) => {
     const { api } = createMemoryDocumentApi(sampleDocument('owner'));
     const root = await mount(withHost(createElement(DocumentReader, { path: '/Users/example/notes/format-test.md', localSource: SAMPLE_MARKDOWN, api })));
-    await click(root.querySelector('[data-document-block="b2"] .app-document-markdown') as HTMLElement);
+    await selectText(root, 'b2', 'end-to-end');
     const labels = selectionMenuButtons(root);
-    assert.deepEqual(labels.slice(0, 2), ['Comment', 'React']);
-    for (const label of ['Text style', 'Bold', 'Italic', 'Underline', 'Strikethrough', 'Code', 'Highlight', 'List', 'Link']) {
-      assert.ok(labels.includes(label), `${label} is in the menu`);
-    }
-    await click(root.querySelector('[aria-label="Bold"]') as HTMLElement);
-    assert.equal(root.querySelector('[data-document-block="b2"]')?.classList.contains('is-bold'), true);
+    for (const label of FORMAT_LABELS) assert.ok(labels.includes(label), `${label} is in the menu`);
+    await click(root.querySelector('[aria-label="Text style"]') as HTMLElement);
+    await click(Array.from(root.querySelectorAll('[role="menuitemradio"]')).find((entry) => entry.textContent?.includes('Heading 2')) as HTMLElement);
+    assert.equal(root.querySelector('[data-document-block="b2"] .app-document-markdown > div')?.className.includes('font-semibold'), true);
+
+    await click(root.querySelector('[aria-label="Checklist"]') as HTMLElement);
+    assert.match(root.querySelector('[data-document-block="b3"]')?.textContent ?? '', /Task/, 'checklist lands after the current block');
   });
 });

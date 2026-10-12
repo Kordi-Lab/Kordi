@@ -1,4 +1,6 @@
 import type {
+  SaveDocumentContentInput,
+  SaveDocumentContentResult,
   CreateDocumentShareInput,
   DocumentComment,
   DocumentCommentInput,
@@ -146,4 +148,34 @@ export async function getCloudDocumentRaw(
   const response = await fetchImpl(`${baseUrl}/v1/cloud/documents/${segment(attachmentId)}/raw`, authorized(token, 'GET'));
   if (!response.ok) throw new Error('Could not open the document.');
   return response.text();
+}
+
+function documentFromBody(body: unknown): DocumentResponse | null {
+  if (!body || typeof body !== 'object') return null;
+  const record = body as { attachmentId?: unknown; document?: unknown };
+  if (typeof record.attachmentId === 'string') return body as DocumentResponse;
+  return record.document && typeof record.document === 'object' ? record.document as DocumentResponse : null;
+}
+
+/**
+ * Saves the whole Markdown source. A 409 carries the current document to rebase onto,
+ * which the JSON request client would drop, so this reads the response itself.
+ */
+export async function saveCloudDocumentContent(
+  fetchImpl: CloudTextFetch,
+  baseUrl: string,
+  token: string,
+  attachmentId: string,
+  input: SaveDocumentContentInput,
+): Promise<SaveDocumentContentResult> {
+  const response = await fetchImpl(`${baseUrl}/v1/cloud/documents/${segment(attachmentId)}/content`, authorized(token, 'PUT', input));
+  const text = await response.text();
+  let body: unknown = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+  const document = documentFromBody(body);
+  if (response.status === 409 && document) return { status: 'conflict', document };
+  if (!response.ok || !document) {
+    throw new Error(response.status === 413 ? 'This document is too large to save.' : response.status === 403 ? 'You can\'t edit this document.' : 'Could not save the document.');
+  }
+  return { status: 'saved', document };
 }

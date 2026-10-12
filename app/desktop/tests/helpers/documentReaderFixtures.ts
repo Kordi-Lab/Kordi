@@ -92,9 +92,10 @@ export function sampleDocument(viewer: DocumentResponse['viewer'] = 'owner'): Do
       comment({ commentId: 'doccmt_3', blockId: 'b6', parentCommentId: 'doccmt_2', body: 'Yes, 16 interviews.', createdAt: '2026-10-09T10:20:00Z' }),
       comment({ commentId: 'doccmt_4', blockId: 'b1', body: 'Resolved thread', resolvedAt: '2026-10-09T10:30:00Z' }),
     ],
+    revision: 3,
     share: viewer === 'owner' ? sampleShare() : null,
     viewer,
-    viewerCan: { share: viewer === 'owner', react: true, comment: true, askAgent: true },
+    viewerCan: { share: viewer === 'owner', react: true, comment: true, askAgent: true, edit: viewer !== 'public' },
   };
 }
 
@@ -110,20 +111,42 @@ export function sampleHtmlDocument(viewer: DocumentResponse['viewer'] = 'owner')
     rawPath: viewer === 'public' ? `/d/${SAMPLE_TOKEN}/raw` : '/v1/cloud/documents/att_example_html/raw',
     reactions: [],
     comments: [],
+    viewerCan: { share: viewer === 'owner', react: true, comment: true, askAgent: true, edit: false },
   };
 }
 
 export type RecordedCall = { method: string; args: unknown[] };
 
-/** In-memory document routes with recorded calls. */
-export function createMemoryDocumentApi(document: DocumentResponse = sampleDocument(), latencyMs = 0) {
+export type MemoryDocumentApiOptions = {
+  /** Server-side document the next save conflicts with (409), once. */
+  conflictWith?: DocumentResponse;
+};
+
+/** In-memory document routes with recorded calls. Saves bump the revision and re-split the blocks. */
+export function createMemoryDocumentApi(document: DocumentResponse = sampleDocument(), latencyMs = 0, options: MemoryDocumentApiOptions = {}) {
   const calls: RecordedCall[] = [];
+  let stored = document;
+  let conflict = options.conflictWith ?? null;
   let reactions = [...document.reactions];
   let share: DocumentShare | null = document.share;
   const wait = () => new Promise<void>((resolve) => { setTimeout(resolve, latencyMs); });
   const record = (method: string, ...args: unknown[]) => { calls.push({ method, args }); };
-  const api: DocumentShareApi = {
-    async getDocument(attachmentId) { record('getDocument', attachmentId); await wait(); return { ...document, reactions, share }; },
+  const api = {
+    async getDocument(attachmentId) { record('getDocument', attachmentId); await wait(); return { ...stored, reactions, share }; },
+    async saveDocumentContent(attachmentId, input) {
+      record('saveDocumentContent', attachmentId, input);
+      await wait();
+      if (conflict) {
+        stored = conflict;
+        conflict = null;
+        return { status: 'conflict' as const, document: stored };
+      }
+      if (input.baseRevision !== (stored.revision ?? 0)) return { status: 'conflict' as const, document: stored };
+      const blocks = splitMarkdownBlocks(input.source).map((block) => ({ id: block.id, source: block.source, html: '' }));
+      stored = { ...stored, blocks, revision: (stored.revision ?? 0) + 1 };
+      return { status: 'saved' as const, document: { ...stored, reactions, share } };
+    },
+    setStored(next: DocumentResponse) { stored = next; },
     async getPublicDocument(token) { record('getPublicDocument', token); await wait(); return { ...document, viewer: 'public', share: null, viewerCan: { share: false, react: true, comment: true, askAgent: true } }; },
     async getDocumentRaw(attachmentId) { record('getDocumentRaw', attachmentId); await wait(); return SAMPLE_HTML; },
     async getPublicDocumentRaw(rawPath) { record('getPublicDocumentRaw', rawPath); await wait(); return SAMPLE_HTML; },
@@ -150,7 +173,7 @@ export function createMemoryDocumentApi(document: DocumentResponse = sampleDocum
     },
     async deleteComment(commentId) { record('deleteComment', commentId); },
     async uploadDocument(path, contentType) { record('uploadDocument', path, contentType); await wait(); return { attachmentId: 'att_example_doc', sizeBytes: 18_400 }; },
-    rawDocumentUrl: (rawPath) => `https://kordi.example${rawPath}`,
-  };
+    rawDocumentUrl: (rawPath: string) => `https://kordi.example${rawPath}`,
+  } satisfies DocumentShareApi & { setStored(next: DocumentResponse): void };
   return { api, calls };
 }

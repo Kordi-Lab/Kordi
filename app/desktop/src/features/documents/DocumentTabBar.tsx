@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Code2, FileText, Image, ListChecks, PenLine, Plus, Table2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Code2, FileText, Image, ListChecks, Plus, Table2 } from 'lucide-react';
 import { useCallback, useRef, useState, type ComponentType } from 'react';
 
 import type { DocumentInsertTool } from './documentReaderModel';
@@ -6,18 +6,11 @@ import type { DocumentEditing } from './useDocumentEditing';
 import { useOutsideDismiss } from './useOutsideDismiss';
 
 const TOOLS: Array<{ tool: DocumentInsertTool; label: string; icon: ComponentType<{ className?: string }> } | 'separator'> = [
-  { tool: 'draw', label: 'Draw', icon: PenLine },
   { tool: 'code', label: 'Code block', icon: Code2 },
   'separator',
   { tool: 'table', label: 'Table', icon: Table2 },
   { tool: 'image', label: 'Image', icon: Image },
   { tool: 'checklist', label: 'Checklist', icon: ListChecks },
-];
-
-const MORE_TOOLS: Array<{ tool: DocumentInsertTool; label: string }> = [
-  { tool: 'heading', label: 'Heading' },
-  { tool: 'quote', label: 'Quote' },
-  { tool: 'rule', label: 'Divider' },
 ];
 
 export function DocumentSwitch({ checked, label, onChange, disabled }: { checked: boolean; label: string; onChange: (next: boolean) => void; disabled?: boolean }) {
@@ -34,9 +27,14 @@ export function DocumentSwitch({ checked, label, onChange, disabled }: { checked
   );
 }
 
-/** `Tab 1` dropdown, plus insert tools for a file on this Mac (the only documents this app edits). */
-export function DocumentTabBar({ editing, canInsert }: { editing: DocumentEditing; canInsert: boolean }) {
-  const [menu, setMenu] = useState<'tabs' | 'more' | null>(null);
+/** `Tab 1` dropdown, plus insert tools where the viewer can edit. Each tool adds a block after the current one. */
+export function DocumentTabBar({ editing, canInsert, onInsert }: {
+  editing: DocumentEditing;
+  canInsert: boolean;
+  onInsert: (tool: DocumentInsertTool, url?: string) => void;
+}) {
+  const [menu, setMenu] = useState<'tabs' | 'image' | null>(null);
+  const [imageUrl, setImageUrl] = useState('');
   const barRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setMenu(null), []);
   useOutsideDismiss(barRef, menu !== null, close);
@@ -66,23 +64,12 @@ export function DocumentTabBar({ editing, canInsert }: { editing: DocumentEditin
                 className="app-document-tool"
                 aria-label={entry.label}
                 title={entry.label}
-                onClick={() => editing.insert(entry.tool)}
+                aria-expanded={entry.tool === 'image' ? menu === 'image' : undefined}
+                onClick={() => (entry.tool === 'image' ? setMenu(menu === 'image' ? null : 'image') : onInsert(entry.tool))}
               >
                 <entry.icon aria-hidden="true" />
               </button>
             )))}
-          <button
-            type="button"
-            className="app-document-tool"
-            aria-label="More blocks"
-            title="More blocks"
-            aria-haspopup="menu"
-            aria-expanded={menu === 'more'}
-            onClick={() => setMenu(menu === 'more' ? null : 'more')}
-          >
-            <Plus aria-hidden="true" />
-            <ChevronDown className="app-document-caret" aria-hidden="true" />
-          </button>
         </>
       ) : null}
       {menu === 'tabs' ? (
@@ -111,14 +98,14 @@ export function DocumentTabBar({ editing, canInsert }: { editing: DocumentEditin
           </button>
         </div>
       ) : null}
-      {menu === 'more' ? (
-        <div className="app-document-menu app-document-more-menu" role="menu">
-          {MORE_TOOLS.map((entry) => (
-            <button key={entry.tool} type="button" role="menuitem" className="app-document-menu-row" onClick={() => { editing.insert(entry.tool); close(); }}>
-              <span className="app-document-menu-label">{entry.label}</span>
-            </button>
-          ))}
-        </div>
+      {menu === 'image' ? (
+        <form
+          className="app-document-menu app-document-image-form"
+          onSubmit={(event) => { event.preventDefault(); if (imageUrl.trim()) { onInsert('image', imageUrl); setImageUrl(''); close(); } }}
+        >
+          <input autoFocus type="url" value={imageUrl} placeholder="https://" aria-label="Image URL" onChange={(event) => setImageUrl(event.target.value)} />
+          <button type="submit" disabled={!imageUrl.trim()}>Add</button>
+        </form>
       ) : null}
     </div>
   );

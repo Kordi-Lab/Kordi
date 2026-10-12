@@ -11,6 +11,7 @@ import {
   deleteCloudDocumentComment,
   getCloudDocument,
   getCloudDocumentRaw,
+  saveCloudDocumentContent,
   getPublicDocument,
   listCloudDocumentShares,
   revokeCloudDocumentShare,
@@ -22,6 +23,8 @@ import {
   type CloudTextFetch,
 } from './documentShareClient';
 import type {
+  SaveDocumentContentInput,
+  SaveDocumentContentResult,
   CreateDocumentShareInput,
   DocumentComment,
   DocumentCommentInput,
@@ -47,6 +50,8 @@ export type DocumentShareApi = {
   getPublicDocument(token: string): Promise<DocumentResponse>;
   /** HTML of an uploaded `html` document for its owner or members. */
   getDocumentRaw(attachmentId: string): Promise<string>;
+  /** Saves the whole Markdown source against the revision it was based on. */
+  saveDocumentContent(attachmentId: string, input: SaveDocumentContentInput): Promise<SaveDocumentContentResult>;
   /** HTML behind a public `rawPath` such as `/d/<token>/raw`; no sign-in. */
   getPublicDocumentRaw(rawPath: string): Promise<string>;
   listShares(attachmentId: string): Promise<DocumentShare[]>;
@@ -88,6 +93,7 @@ export function createDocumentShareApi(options: DocumentShareApiOptions = {}): D
   return {
     getDocument: (attachmentId) => withToken((token) => getCloudDocument(client, token, attachmentId)),
     getPublicDocument: (token) => getPublicDocument(client, token),
+    saveDocumentContent: (attachmentId, input) => withToken((token) => saveCloudDocumentContent(fetchText, baseUrl(), token, attachmentId, input)),
     getPublicDocumentRaw: async (rawPath) => {
       const response = await fetchText(`${baseUrl()}${rawPath}`, { method: 'GET' });
       if (!response.ok) throw new Error('This link is off');

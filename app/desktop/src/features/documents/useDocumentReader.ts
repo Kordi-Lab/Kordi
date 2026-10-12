@@ -12,6 +12,7 @@ import {
 } from './documentReaderModel';
 import type { DocumentComment, DocumentReaction, DocumentResponse, DocumentShare } from './documentShareTypes';
 import { useDocumentEditing } from './useDocumentEditing';
+import { useCloudDocumentEdits } from './useCloudDocumentEdits';
 
 /** local: a file on this Mac with no cloud copy; uploaded: a cloud attachment; public: opened from a share link. */
 export type DocumentReaderMode = 'local' | 'uploaded' | 'public' | 'unavailable';
@@ -139,7 +140,27 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
 
   const serverBlocks = useMemo(() => (document?.blocks ?? []).map((block) => ({ id: block.id, source: block.source })), [document]);
   const tabBlocks = useMemo(() => splitMarkdownBlocks(editing.currentSource).map(({ id, source: text }) => ({ id, source: text })), [editing.currentSource]);
-  const blocks = editing.currentTab === 0 && mode !== 'local' ? serverBlocks : tabBlocks;
+  const replaceDocument = useCallback((next: DocumentResponse) => setLoaded(loadedFrom(requestKey, next)), [requestKey]);
+  const canEditCloud = mode === 'uploaded' && format === 'markdown' && Boolean(document?.viewerCan.edit);
+  const cloud = useCloudDocumentEdits({ api, document, enabled: canEditCloud, onDocument: replaceDocument });
+  const onCloudTab = editing.currentTab === 0 && mode !== 'local';
+  const blocks = onCloudTab ? (canEditCloud ? cloud.blocks : serverBlocks) : tabBlocks;
+  const canEdit = format === 'markdown' && (!onCloudTab || canEditCloud);
+
+  /** Edits a block of what is on screen: the cloud document, the local draft, or a scratch tab. */
+  const editBlock = useCallback((blockId: string, next: string) => {
+    if (onCloudTab) cloud.editBlock(blockId, next);
+    else editing.replaceBlock(blockId, next);
+  }, [cloud, editing, onCloudTab]);
+
+  const insertBlock = useCallback((afterBlockId: string | null, snippet: string) => {
+    if (!onCloudTab) {
+      editing.insertBlock(afterBlockId, snippet);
+      return;
+    }
+    const target = blocks.find((block) => block.id === afterBlockId) ?? blocks[blocks.length - 1];
+    if (target) cloud.editBlock(target.id, `${target.source}\n\n${snippet}`);
+  }, [blocks, cloud, editing, onCloudTab]);
 
   const viewerName = host.viewer?.displayName?.trim() || null;
   const loadedAttachmentId = document?.attachmentId ?? null;
@@ -223,14 +244,23 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
   const uploadToKordi = useCallback(async () => {
     if (!path || mode !== 'local') return;
     setUploading(true);
-    const uploaded = await run(() => api.uploadDocument(path, documentContentType(path)), 'Could not upload the document.');
+    const draft = editing.draftSource;
+    const uploaded = await run(async () => {
+      const result = await api.uploadDocument(path, documentContentType(path));
+      // The upload sends the file; local edits made in the reader follow as the first save.
+      if (draft.trim() !== (localSource ?? '').trim()) {
+        const stored = await api.getDocument(result.attachmentId);
+        await api.saveDocumentContent(result.attachmentId, { baseRevision: stored.revision ?? 0, source: draft });
+      }
+      return result;
+    }, 'Could not upload the document.');
     if (uploaded) {
       rememberUploadedDocument(path, uploaded.attachmentId);
       setUploadedId(uploaded.attachmentId);
       await turnLinkOn(uploaded.attachmentId);
     }
     setUploading(false);
-  }, [api, mode, path, run, turnLinkOn]);
+  }, [api, editing.draftSource, localSource, mode, path, run, turnLinkOn]);
 
   return {
     mode,
@@ -253,6 +283,12 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
     canReact: Boolean(writeTarget && document?.viewerCan.react),
     canShare: mode === 'local' || Boolean(document?.viewerCan.share),
     editing,
+    canEdit,
+    editBlock,
+    insertBlock,
+    saveNotice: cloud.notice,
+    clearSaveNotice: cloud.clearNotice,
+    flushEdits: cloud.flush,
     toggleReaction,
     postComment,
     editComment,

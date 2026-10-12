@@ -1,5 +1,5 @@
 import { LoaderCircle } from 'lucide-react';
-import { useCallback, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -17,6 +17,10 @@ import {
 } from './documentReaderModel';
 import { documentShareApiForEnvironment, type DocumentShareApi } from './documentShareApi';
 import { DocumentSelectionMenu } from './DocumentSelectionMenu';
+import { blockStyleOf, isInlineFormatActive, isList, linkAt, setBlockStyle, toggleInlineFormat, toggleLink, toggleList, type InlineFormat } from './documentFormat';
+import { documentInsertSnippet } from './documentReaderModel';
+import { locateSelection, type SourceRange } from './documentSourceMap';
+import { useDocumentSelection } from './useDocumentSelection';
 import { DocumentSharePopover } from './DocumentSharePopover';
 import { DocumentTabBar, DocumentTabStrip } from './DocumentTabBar';
 import { useDocumentReader, type DocumentReaderSource } from './useDocumentReader';
@@ -33,13 +37,7 @@ export type DocumentReaderProps = DocumentReaderSource & {
   className?: string;
 };
 
-type Selection = { blockId: string; top: number; placement: 'above' | 'below'; text: string };
-
-/** Height of the selection bar plus its border, and the gap it keeps from the block. */
-const MENU_HEIGHT = 40;
-const MENU_GAP = 8;
-
-const INTERACTIVE = 'button, a, input, textarea, select, label, .app-document-thread, .app-document-reactions';
+const INLINE_FORMATS: InlineFormat[] = ['bold', 'italic', 'underline', 'strike', 'code', 'highlight'];
 
 function isLevelOneHeading(source: string, title: string) {
   const match = /^ {0,3}#(?!#)\s+(.+?)\s*#*\s*$/.exec(source);
@@ -52,15 +50,15 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
   const reader = useDocumentReader(source, api);
   const { document, editing, mode } = reader;
   const [shareOpen, setShareOpen] = useState(initialShareOpen);
-  const [selection, setSelection] = useState<Selection | null>(null);
   const [composingBlock, setComposingBlock] = useState<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
   const theme = useDocumentTheme(sectionRef);
   const headerRef = useRef<HTMLDivElement>(null);
-  const clearSelection = useCallback(() => setSelection(null), []);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const textSelection = useDocumentSelection(bodyRef, menuRef);
+  const { selection } = textSelection;
   const closeShare = useCallback(() => setShareOpen(false), []);
-  useOutsideDismiss(bodyRef, Boolean(selection), clearSelection);
   useOutsideDismiss(headerRef, shareOpen, closeShare);
 
   const path = source.path?.trim() || '';
@@ -73,7 +71,6 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
   const agentName = document?.agent?.displayName ?? host.agentName;
   const viewerIsOwner = mode === 'local' || document?.viewer === 'owner';
   const badge: DocumentBadge = mode === 'local' ? 'local' : mode === 'uploaded' ? 'cloud' : null;
-  const canFormat = mode === 'local';
   const askAgent = mode !== 'public' || Boolean(document?.viewerCan.askAgent);
 
   const mentionOptions = useMemo<DocumentMentionOption[]>(() => [
@@ -106,26 +103,22 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
     onCancelComposer: () => setComposingBlock(null),
   }), [agentName, askAgent, mentionOptions, reader, viewerIsOwner]);
 
-  const selectBlock = (target: HTMLElement, text: string) => {
-    const block = target.closest<HTMLElement>('[data-document-block]');
-    const blockId = block?.dataset.documentBlock;
-    if (!block || !blockId) return false;
-    if (selection?.blockId === blockId && !text) {
-      setSelection(null);
-      return true;
-    }
-    // Directly above the block; below it when the block sits at the top of the pane.
-    const above = block.offsetTop - MENU_HEIGHT - MENU_GAP;
-    const fitsAbove = above >= (bodyRef.current?.scrollTop ?? 0);
-    setSelection({ blockId, top: fitsAbove ? above : block.offsetTop + block.offsetHeight + MENU_GAP, placement: fitsAbove ? 'above' : 'below', text });
-    return true;
+  // The selected text inside its block's Markdown source; formatting needs both.
+  const selectedBlock = selection ? reader.blocks.find((block) => block.id === selection.blockId) ?? null : null;
+  const selectedRange: SourceRange | null = selection && selectedBlock ? locateSelection(selectedBlock.source, selection.text, selection.occurrence) : null;
+  const canFormat = reader.canEdit && Boolean(selectedRange);
+  const active = {
+    formats: selectedBlock && selectedRange ? INLINE_FORMATS.filter((format) => isInlineFormatActive(selectedBlock.source, selectedRange, format)) : [],
+    list: selectedBlock ? isList(selectedBlock.source) : false,
+    link: Boolean(selectedBlock && selectedRange && linkAt(selectedBlock.source, selectedRange)),
+    style: selectedBlock ? blockStyleOf(selectedBlock.source) : 'text' as const,
   };
-
-  const onBodyClick = (event: MouseEvent<HTMLDivElement>) => {
-    const target = event.target as HTMLElement;
-    if (target.closest(INTERACTIVE) || target.closest('.app-document-selection')) return;
-    const text = globalThis.getSelection?.()?.toString().trim() ?? '';
-    if (!selectBlock(target, text)) setSelection(null);
+  const editSelection = (change: (source: string, range: SourceRange) => string) => {
+    if (!selection || !selectedBlock || !selectedRange) return;
+    const next = change(selectedBlock.source, selectedRange);
+    if (next === selectedBlock.source) return;
+    textSelection.restoreAfterRender(selection);
+    reader.editBlock(selectedBlock.id, next);
   };
 
   const sendInKordi = reader.attachmentId && host.sendAttachment
@@ -168,7 +161,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
           fileName={fileName}
           badge={badge}
           shareOpen={shareOpen}
-          onToggleShare={reader.canShare ? () => { setSelection(null); setShareOpen((open) => !open); } : undefined}
+          onToggleShare={reader.canShare ? () => { textSelection.clear(); setShareOpen((open) => !open); } : undefined}
           onOpenSession={memberSessionId && onOpenSession ? () => onOpenSession(memberSessionId) : undefined}
           sharePopover={(
             <DocumentSharePopover
@@ -189,8 +182,12 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
           )}
         />
       </div>
-      <DocumentTabBar editing={editing} canInsert={canFormat} />
-      <div ref={bodyRef} className="app-document-body" onClick={onBodyClick}>
+      <DocumentTabBar
+        editing={editing}
+        canInsert={reader.canEdit}
+        onInsert={(tool, url) => reader.insertBlock(textSelection.currentBlockId ?? selection?.blockId ?? null, documentInsertSnippet(tool, url))}
+      />
+      <div ref={bodyRef} className="app-document-body" onBlur={() => { void reader.flushEdits(); }}>
         {reader.loading && !document ? (
           <div className="app-document-empty"><LoaderCircle className="animate-spin" aria-hidden="true" />Loading</div>
         ) : reader.error && !document ? (
@@ -215,8 +212,6 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
                 key={`${editing.currentTab}:${block.id}`}
                 id={block.id}
                 source={block.source}
-                selected={selection?.blockId === block.id}
-                styles={editing.blockStyles(block.id)}
                 pills={editing.currentTab === 0 ? reactionPillsForBlock(reader.reactions, block.id) : []}
                 threads={editing.currentTab === 0 ? commentThreadsForBlock(reader.comments, block.id) : []}
                 composing={composingBlock === block.id}
@@ -227,8 +222,6 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
               <DocumentBlockView
                 id="b0"
                 source=""
-                selected={false}
-                styles={[]}
                 pills={reactionPillsForBlock(reader.reactions, 'b0')}
                 threads={commentThreadsForBlock(reader.comments, 'b0')}
                 composing={composingBlock === 'b0'}
@@ -244,22 +237,28 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
             ) : null}
           </article>
         )}
-        {selection ? (
+        {selection && textSelection.position ? (
           <DocumentSelectionMenu
-            top={selection.top}
-            placement={selection.placement}
+            menuRef={menuRef}
+            position={textSelection.position}
             canComment={reader.canComment && editing.currentTab === 0}
             canReact={reader.canReact && editing.currentTab === 0}
             canFormat={canFormat}
             writeDisabledTitle={mode === 'local' ? 'Upload to Kordi first' : 'Comments are off'}
-            activeStyles={editing.blockStyles(selection.blockId)}
-            onComment={() => { setComposingBlock(selection.blockId); setSelection(null); }}
-            onReact={(reaction) => { void reader.toggleReaction(selection.blockId, reaction); setSelection(null); }}
-            onFormat={(action) => editing.format(selection.blockId, action, selection.text)}
+            active={active}
+            onComment={() => { setComposingBlock(selection.blockId); textSelection.clear(); }}
+            onReact={(reaction) => { void reader.toggleReaction(selection.blockId, reaction); textSelection.clear(); }}
+            onFormat={(format) => editSelection((text, range) => toggleInlineFormat(text, range, format))}
+            onList={() => editSelection((text) => toggleList(text))}
+            onBlockStyle={(style) => editSelection((text) => setBlockStyle(text, style))}
+            onLink={(url) => editSelection((text, range) => toggleLink(text, range, url))}
           />
         ) : null}
       </div>
       {reader.actionError && !shareOpen ? <div className="app-document-error" role="alert">{reader.actionError}</div> : null}
+      {reader.saveNotice ? (
+        <div className="app-document-toast" role="status">{reader.saveNotice}</div>
+      ) : null}
     </section>
   );
 }

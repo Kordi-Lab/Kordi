@@ -66,6 +66,8 @@ export type DocumentComment = {
 
 export type DocumentViewerCan = {
   share: boolean;
+  /** Owner and active members of a Markdown document; never for HTML or public readers. */
+  edit?: boolean;
   react: boolean;
   comment: boolean;
   askAgent: boolean;
@@ -80,6 +82,8 @@ export type DocumentResponse = {
   sizeBytes: number | null;
   createdAt: string;
   updatedAt: string;
+  /** Revision of the stored source; a save names the revision it was based on. */
+  revision?: number;
   sessionId: string | null;
   sessionTitle: string | null;
   author: DocumentAuthor;
@@ -116,6 +120,22 @@ export type DocumentCommentInput = {
 export type UpdateDocumentCommentInput = {
   body?: string;
   resolved?: boolean;
+};
+
+export type SaveDocumentContentInput = {
+  baseRevision: number;
+  source: string;
+};
+
+/** A save either lands, or the server answers 409 with the current document to rebase onto. */
+export type SaveDocumentContentResult =
+  | { status: 'saved'; document: DocumentResponse }
+  | { status: 'conflict'; document: DocumentResponse };
+
+/** Payload of the `document.updated` user sync event. */
+export type DocumentUpdatedEvent = {
+  attachmentId: string;
+  revision: number;
 };
 
 /** Identity a reader without an account writes under on the public routes. */

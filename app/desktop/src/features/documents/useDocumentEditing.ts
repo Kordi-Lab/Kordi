@@ -1,98 +1,57 @@
 import { useCallback, useState } from 'react';
 
 import { splitMarkdownBlocks } from './documentBlocks';
-import { appendMarkdownBlock, DOCUMENT_INSERT_SNIPPETS, type DocumentInsertTool } from './documentReaderModel';
-
-export type DocumentBlockStyle = 'bold' | 'italic' | 'underline' | 'strike' | 'code' | 'highlight';
-export type DocumentFormatAction = DocumentBlockStyle | 'heading' | 'list' | 'link';
 
 type DocumentTab = { name: string; source: string };
 
-const BLOCK_STYLES = new Set<DocumentFormatAction>(['bold', 'italic', 'underline', 'strike', 'code', 'highlight']);
-const LIST_PREFIX = /^(\s*)(?:[-*+]|\d+[.)])\s+/;
-
-function cycleHeading(source: string) {
-  const match = /^(#{1,6})\s+/.exec(source);
-  if (!match) return `## ${source}`;
-  const rest = source.slice(match[0].length);
-  return match[1].length >= 3 ? rest : `${match[1]}# ${rest}`;
+/** Replaces one block of a Markdown source by id; blocks keep their order and blank-line separation. */
+export function replaceSourceBlock(source: string, blockId: string, next: string) {
+  return splitMarkdownBlocks(source).map((block) => (block.id === blockId ? next : block.source)).join('\n\n');
 }
 
-function toggleList(source: string) {
-  const lines = source.split('\n');
-  return lines.every((line) => !line.trim() || LIST_PREFIX.test(line))
-    ? lines.map((line) => line.replace(LIST_PREFIX, '$1')).join('\n')
-    : lines.map((line) => (line.trim() ? `- ${line}` : line)).join('\n');
-}
-
-function addLink(source: string, selection: string) {
-  const target = selection.trim();
-  if (target && source.includes(target)) return source.replace(target, `[${target}](https://)`);
-  return `[${source}](https://)`;
+/** Inserts a Markdown block after `afterBlockId`, or at the end. */
+export function insertSourceBlock(source: string, afterBlockId: string | null, snippet: string) {
+  const blocks = splitMarkdownBlocks(source).map((block) => ({ id: block.id, source: block.source }));
+  const index = afterBlockId ? blocks.findIndex((block) => block.id === afterBlockId) : -1;
+  const at = index >= 0 ? index + 1 : blocks.length;
+  return [...blocks.slice(0, at).map((block) => block.source), snippet, ...blocks.slice(at).map((block) => block.source)].join('\n\n');
 }
 
 /**
- * Local drafts of a Mac-hosted document: tabs, inserted blocks, and formatting.
- * Nothing here is saved to the file or the server.
+ * Tabs and the local draft of a Mac-hosted file (tab 1), plus scratch tabs.
+ * The draft of a local file is what **Upload to Kordi** sends.
  */
 export function useDocumentEditing(initialSource: string) {
   const [baseSource, setBaseSource] = useState(initialSource);
   const [tabs, setTabs] = useState<DocumentTab[]>([{ name: 'Tab 1', source: initialSource }]);
   const [currentTab, setCurrentTab] = useState(0);
   const [showTabs, setShowTabs] = useState(false);
-  const [styles, setStyles] = useState<Record<string, DocumentBlockStyle[]>>({});
 
   if (baseSource !== initialSource) {
     setBaseSource(initialSource);
     setTabs((current) => [{ ...current[0], source: initialSource }, ...current.slice(1)]);
   }
 
-  const currentSource = tabs[currentTab]?.source ?? '';
+  const updateCurrent = useCallback((update: (source: string) => string) => {
+    setTabs((current) => current.map((tab, index) => (index === currentTab ? { ...tab, source: update(tab.source) } : tab)));
+  }, [currentTab]);
 
   const newTab = useCallback(() => {
     setTabs((current) => [...current, { name: `Tab ${current.length + 1}`, source: '' }]);
     setCurrentTab(tabs.length);
   }, [tabs.length]);
 
-  const updateCurrentSource = useCallback((update: (source: string) => string) => {
-    setTabs((current) => current.map((tab, index) => (index === currentTab ? { ...tab, source: update(tab.source) } : tab)));
-  }, [currentTab]);
-
-  const insert = useCallback((tool: DocumentInsertTool) => {
-    updateCurrentSource((source) => appendMarkdownBlock(source, DOCUMENT_INSERT_SNIPPETS[tool]));
-  }, [updateCurrentSource]);
-
-  const blockStyles = useCallback((blockId: string) => styles[`${currentTab}:${blockId}`] ?? [], [currentTab, styles]);
-
-  const format = useCallback((blockId: string, action: DocumentFormatAction, selection = '') => {
-    if (BLOCK_STYLES.has(action)) {
-      const key = `${currentTab}:${blockId}`;
-      const style = action as DocumentBlockStyle;
-      setStyles((current) => {
-        const active = current[key] ?? [];
-        return { ...current, [key]: active.includes(style) ? active.filter((entry) => entry !== style) : [...active, style] };
-      });
-      return;
-    }
-    updateCurrentSource((source) => splitMarkdownBlocks(source).map((block) => {
-      if (block.id !== blockId) return block.source;
-      if (action === 'heading') return cycleHeading(block.source);
-      if (action === 'list') return toggleList(block.source);
-      return addLink(block.source, selection);
-    }).join('\n\n'));
-  }, [currentTab, updateCurrentSource]);
-
   return {
     tabNames: tabs.map((tab) => tab.name),
     currentTab,
-    currentSource,
+    currentSource: tabs[currentTab]?.source ?? '',
+    draftSource: tabs[0]?.source ?? '',
     showTabs,
     setShowTabs,
     selectTab: setCurrentTab,
     newTab,
-    insert,
-    format,
-    blockStyles,
+    replaceBlock: useCallback((blockId: string, next: string) => updateCurrent((source) => replaceSourceBlock(source, blockId, next)), [updateCurrent]),
+    insertBlock: useCallback((afterBlockId: string | null, snippet: string) => updateCurrent((source) => insertSourceBlock(source, afterBlockId, snippet)), [updateCurrent]),
   };
 }
 

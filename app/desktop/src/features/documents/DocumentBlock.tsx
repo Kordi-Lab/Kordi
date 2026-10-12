@@ -1,11 +1,9 @@
 import { memo } from 'react';
 
 import { MarkdownContent } from '@/kordi-app/components';
-import { cn } from '@/lib/utils';
 
 import { DocumentCommentComposer, DocumentThread, type DocumentMentionOption, type DocumentThreadActions } from './DocumentComments';
 import type { CommentThread, ReactionPill } from './documentReaderModel';
-import type { DocumentBlockStyle } from './useDocumentEditing';
 
 export type DocumentBlockThreadProps = {
   agentName: string | null;
@@ -23,8 +21,6 @@ export type DocumentBlockThreadProps = {
 export const DocumentBlockView = memo(function DocumentBlockView({
   id,
   source,
-  selected,
-  styles,
   pills,
   threads,
   composing,
@@ -32,8 +28,6 @@ export const DocumentBlockView = memo(function DocumentBlockView({
 }: {
   id: string;
   source: string;
-  selected: boolean;
-  styles: DocumentBlockStyle[];
   pills: ReactionPill[];
   threads: CommentThread[];
   composing: boolean;
@@ -42,9 +36,8 @@ export const DocumentBlockView = memo(function DocumentBlockView({
   return (
     <>
       <div
-        className={cn('app-document-block', selected && 'is-selected', styles.map((style) => `is-${style}`))}
+        className="app-document-block"
         data-document-block={id}
-        aria-selected={selected}
       >
         <MarkdownContent text={source} tone="inherit" copySurface="document" className="app-document-markdown" />
       </div>
