@@ -38,7 +38,9 @@
 .app-document-comment-name span { margin-left: 6px; color: var(--app-document-muted); font-size: 11px; font-weight: 400; }
 .app-document-comment-body { margin: 4px 0 0 30px; font-size: 13px; line-height: 20px; white-space: pre-wrap; }
 .app-document-comment-mention { color: var(--app-chat-accent); font-weight: 600; }
-.app-document-comment-menu { top: 28px; right: 0; }
+.app-document-comment-menu { top: 28px; right: 0; bottom: auto; display: block; height: auto; min-width: 148px; padding: 4px; border-radius: 10px; }
+.app-document-comment-menu .app-document-menu-row { height: 28px; min-height: 28px; padding: 0 8px; border-radius: 6px; font-size: 12.5px; line-height: 18px; }
+.app-document-comment-menu hr { margin: 3px 6px; }
 
 .app-document-agent-working { display: flex; align-items: center; gap: 8px; margin: 8px 0 0 30px; color: var(--app-document-muted); font-size: 12px; line-height: 16px; }
 .app-document-working-dots { display: inline-flex; gap: 3px; }
