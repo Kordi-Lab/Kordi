@@ -6,7 +6,7 @@ import { DocumentReader } from '../src/features/documents/DocumentReader';
 import { DocumentReaderHostContext, type DocumentReaderHost } from '../src/features/documents/documentReaderHost';
 import { createMemoryDocumentApi, SAMPLE_HTML, SAMPLE_MARKDOWN, sampleDocument, sampleHtmlDocument } from './helpers/documentReaderFixtures';
 import { createDocumentShareApi } from '../src/features/documents/documentShareApi';
-import { resolveDocumentTheme } from '../src/features/documents/documentTheme';
+import { hasAuthorPageBackground, resolveDocumentTheme, themedDocumentSource, FALLBACK_DOCUMENT_THEME } from '../src/features/documents/documentTheme';
 import { withJsdomRoot } from './helpers/mountWithJsdom';
 import { waitForReactCondition } from './helpers/waitForReactCondition';
 
@@ -50,6 +50,7 @@ test('the reader shows the header, blocks, reaction pills, and open comment thre
     assert.match(host_.querySelector('.app-document-pill')?.textContent ?? '', /Oct 9, 2026/);
     assert.equal(host_.querySelector('.app-document-mention')?.textContent, '@Alex Morgan');
     assert.equal(host_.querySelector('.app-document-badge'), null, 'cloud documents carry no badge');
+    assert.equal(host_.querySelector('.app-document-format'), null, 'Markdown carries no format chip');
     const topLevel = host_.querySelectorAll('.ProseMirror > [data-id], .ProseMirror > .tableWrapper > table[data-id]');
     assert.equal(topLevel.length, document.blocks.length, 'every block is in the editor');
 
@@ -167,7 +168,7 @@ test('an uploaded HTML document loads the authenticated raw route into a sandbox
   });
 });
 
-test('HTML documents carry the app theme: one transparent surface, app colors, and the color scheme', async () => {
+test('HTML documents fit the app: color scheme, app text and links at zero specificity, nothing wider than the pane', async () => {
   await withJsdomRoot(async (mount) => {
     const document = sampleHtmlDocument('member');
     const { api } = createMemoryDocumentApi(document);
@@ -182,10 +183,15 @@ test('HTML documents carry the app theme: one transparent surface, app colors, a
     assert.match(srcdoc, /data-kordi-document-theme/);
     assert.match(srcdoc, /color-scheme: light;/);
     assert.match(srcdoc, /<meta name="color-scheme" content="light">/);
-    assert.match(srcdoc, /html, body \{ background: transparent !important;/);
+    assert.match(srcdoc, /:where\(html, body\) \{ background: transparent; color: rgb\(17, 24, 39\);/);
+    assert.match(srcdoc, /:where\(a:link, a:visited\) \{ color: rgb\(37, 99, 235\); \}/);
+    assert.match(srcdoc, /overflow-x: hidden !important/);
+    const theme_ = srcdoc.slice(srcdoc.indexOf('data-kordi-document-theme'));
+    assert.doesNotMatch(theme_, /grid-template-columns|flex-wrap|button|pre|table|background: transparent !important/, 'the author design is not flattened');
     assert.ok(srcdoc.indexOf('data-kordi-artifact-rail-fit') < srcdoc.indexOf('data-kordi-document-theme'), 'the theme follows the rail-fit rules');
     assert.equal(frame.style.background, 'transparent');
     assert.equal(frame.getAttribute('allowtransparency'), 'true');
+    assert.equal(root.querySelector('.app-document-header .app-document-format')?.textContent, 'HTML');
 
     const section = root.querySelector('.app-document-reader') as HTMLElement;
     section.style.setProperty('--utility-foreground', 'rgb(17, 24, 39)');
@@ -195,6 +201,25 @@ test('HTML documents carry the app theme: one transparent surface, app colors, a
     assert.equal(theme.foreground, 'rgb(17, 24, 39)');
     assert.equal(theme.link, 'rgb(37, 99, 235)');
   });
+});
+
+test('an author design survives: a card background and grid stay, and a page with its own background gets no app colors', async () => {
+  const card = '<!doctype html><html><head><style>.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .card { background: #fafafa; padding: 12px; }</style></head><body><div class="grid"><div class="card">One</div><div class="card">Two</div></div></body></html>';
+  const themed = themedDocumentSource(card, FALLBACK_DOCUMENT_THEME);
+  assert.equal(hasAuthorPageBackground(card), false);
+  const { JSDOM } = await import('jsdom');
+  const view = new JSDOM(themed).window;
+  const first = view.document.querySelector('.card') as HTMLElement;
+  assert.equal(view.getComputedStyle(first).backgroundColor, 'rgb(250, 250, 250)', 'the author card background survives');
+  assert.equal(view.getComputedStyle(view.document.querySelector('.grid') as HTMLElement).gridTemplateColumns, '1fr 1fr', 'the author grid survives');
+  view.close();
+
+  const whitePage = '<!doctype html><html><head><style>body { background: #fff; }</style></head><body><p>Report</p></body></html>';
+  assert.equal(hasAuthorPageBackground(whitePage), true);
+  assert.equal(hasAuthorPageBackground('<body style="background-color: white"><p>x</p></body>'), true);
+  const themedWhite = themedDocumentSource(whitePage, FALLBACK_DOCUMENT_THEME);
+  assert.doesNotMatch(themedWhite, /:where\(html, body\)|color-scheme/, 'its own surface and colors stay');
+  assert.match(themedWhite, /overflow-x: hidden !important/, 'it still fits the pane');
 });
 
 test('a public HTML link renders through srcdoc from the share raw path', async () => {

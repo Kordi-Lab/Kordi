@@ -6,10 +6,7 @@ import { artifactPreviewDocumentSource } from '@/pages/artifactPreviewDocument';
 export type DocumentTheme = {
   scheme: 'dark' | 'light';
   foreground: string;
-  muted: string;
   link: string;
-  codeBackground: string;
-  divider: string;
   fontFamily: string;
 };
 
@@ -18,10 +15,7 @@ const SYSTEM_FONT = '"SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetic
 export const FALLBACK_DOCUMENT_THEME: DocumentTheme = {
   scheme: 'dark',
   foreground: 'rgba(255, 255, 255, 0.92)',
-  muted: 'rgba(255, 255, 255, 0.62)',
   link: '#60a5fa',
-  codeBackground: 'rgba(255, 255, 255, 0.06)',
-  divider: 'rgba(255, 255, 255, 0.08)',
   fontFamily: SYSTEM_FONT,
 };
 
@@ -41,39 +35,43 @@ export function resolveDocumentTheme(element: Element | null): DocumentTheme {
   return {
     scheme: light ? 'light' : 'dark',
     foreground: token('--utility-foreground', FALLBACK_DOCUMENT_THEME.foreground),
-    muted: token('--utility-muted-text', FALLBACK_DOCUMENT_THEME.muted),
     link: token('--app-markdown-link', FALLBACK_DOCUMENT_THEME.link),
-    codeBackground: token('--app-control-bg', FALLBACK_DOCUMENT_THEME.codeBackground),
-    divider: token('--app-divider', FALLBACK_DOCUMENT_THEME.divider),
     fontFamily: cssValue(styles.fontFamily, SYSTEM_FONT),
   };
 }
 
-/** Stylesheet that puts an HTML document on the app surface: one background, app text, app links. */
-export function documentThemeHead(theme: DocumentTheme) {
-  return `<meta name="color-scheme" content="${theme.scheme}">
-<style data-kordi-document-theme>
+/** True when the author paints the page itself (a `body` or `html` background), e.g. the common white page. */
+export function hasAuthorPageBackground(source: string) {
+  const styleRule = /(?:^|[\s,}>])(?:html|body)(?:[\s.#:[][^{]*)?\{[^}]*\bbackground(?:-color)?\s*:/i;
+  const styles = [...source.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((match) => match[1]).join('\n');
+  const inline = /<(?:html|body)\b[^>]*\b(?:style\s*=\s*["'][^"']*\bbackground(?:-color)?\s*:|bgcolor\s*=)/i;
+  return styleRule.test(styles) || inline.test(source);
+}
+
+/**
+ * Stylesheet that fits an HTML document into the app without restyling it.
+ * Only the fit is enforced: nothing wider than the pane, no sideways page
+ * scroll. On a page without its own background, the app's color scheme, text
+ * color, font and link color fill in at zero specificity, so the author's own
+ * `<style>` and inline rules still win. A page with its own background keeps
+ * it as its surface and gets no app colors.
+ */
+export function documentThemeHead(theme: DocumentTheme, authorSurface = false) {
+  const colors = authorSurface ? '' : `
   :root { color-scheme: ${theme.scheme}; }
-  html, body { background: transparent !important; color: ${theme.foreground} !important; font-family: ${theme.fontFamily} !important; margin: 0 !important; padding: 0 !important; max-width: 100% !important; overflow-x: hidden !important; }
-  body { font-size: 13.5px; line-height: 1.5; }
-  :is(html, body, main, article, section, div, header, footer, aside, nav, table, tr, td, th) { background: transparent !important; }
-  :is(h1, h2, h3, h4, h5, h6, p, li, dt, dd, td, th, span, small, strong, em, label, blockquote, figcaption) { color: inherit !important; }
-  :is(blockquote, figcaption, small) { color: ${theme.muted} !important; }
-  :is(pre, code, kbd, samp) { background: ${theme.codeBackground} !important; color: inherit !important; border-radius: 6px; }
-  pre { padding: 10px 12px; }
-  a { color: ${theme.link} !important; }
-  :is(table, th, td, hr) { border-color: ${theme.divider} !important; }
-  :is(button, input, select, textarea) { background: transparent !important; color: inherit !important; border: 1px solid ${theme.divider} !important; border-radius: 8px; font: inherit; }
-  :is(img, video, canvas, svg, iframe) { max-width: 100% !important; height: auto; }
-  /* Fixed-width grids and rows wrap to the pane width instead of running off its edge. */
-  body * { min-width: 0 !important; max-width: 100% !important; box-shadow: none !important; flex-wrap: wrap !important; grid-template-columns: minmax(0, 1fr) !important; }
+  :where(html, body) { background: transparent; color: ${theme.foreground}; font-family: ${theme.fontFamily}; }
+  :where(a:link, a:visited) { color: ${theme.link}; }`;
+  return `${authorSurface ? '' : `<meta name="color-scheme" content="${theme.scheme}">\n`}<style data-kordi-document-theme>${colors}
+  html, body { max-width: 100% !important; overflow-x: hidden !important; }
+  body * { min-width: 0 !important; }
+  :is(img, video, iframe, canvas, svg) { max-width: 100% !important; height: auto; }
 </style>`;
 }
 
-/** The HTML with the rail-fit rules and then the app theme in its head. */
+/** The HTML with the rail-fit rules and then the app fit (and colors, unless it paints its own page) in its head. */
 export function themedDocumentSource(source: string, theme: DocumentTheme) {
   const fitted = artifactPreviewDocumentSource(source, 'rail');
-  return fitted.replace(/<\/head>/i, `${documentThemeHead(theme)}</head>`);
+  return fitted.replace(/<\/head>/i, `${documentThemeHead(theme, hasAuthorPageBackground(source))}</head>`);
 }
 
 /** Theme of the element behind `ref`, updated when the app root or body switches its theme class. */

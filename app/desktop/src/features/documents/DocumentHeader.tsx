@@ -23,6 +23,7 @@ export function DocumentHeader({
   canMessageAuthor,
   onMessageAuthor,
   badge,
+  isHtml = false,
   shareOpen,
   onToggleShare,
   sharePopover,
@@ -36,6 +37,8 @@ export function DocumentHeader({
   canMessageAuthor: boolean;
   onMessageAuthor?: () => void;
   badge: DocumentBadge;
+  /** An HTML document says so next to its date; Markdown says nothing. */
+  isHtml?: boolean;
   shareOpen: boolean;
   onToggleShare?: () => void;
   sharePopover?: ReactNode;
@@ -53,6 +56,7 @@ export function DocumentHeader({
             {dateLabel}
           </span>
         ) : null}
+        {isHtml ? <span className="app-document-format">HTML</span> : null}
         {author ? <AuthorChip author={author} canMessage={canMessageAuthor} onMessage={onMessageAuthor} /> : null}
         {badge === 'local' ? <span className="app-document-badge">On this Mac</span> : null}
       </div>

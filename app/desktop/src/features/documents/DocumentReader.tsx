@@ -155,6 +155,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
           canMessageAuthor={Boolean(author?.accountId && author.accountId !== host.viewer?.accountId && host.canMessageAccount?.(author.accountId))}
           onMessageAuthor={author?.accountId ? () => host.messageAccount?.(author.accountId ?? '') : undefined}
           badge={badge}
+          isHtml={reader.format === 'html'}
           shareOpen={shareOpen}
           onToggleShare={reader.canShare ? () => setShareOpen((open) => !open) : undefined}
           presence={collab && collabState.status === 'connected' ? collabState.peers : []}

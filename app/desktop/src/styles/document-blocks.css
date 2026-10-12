@@ -21,6 +21,16 @@
 .app-document-editor-shell { position: relative; }
 .app-document-prose { outline: none; font-size: 14px; line-height: 24px; }
 
+/* The document is a writing surface: the caret marks focus, never a ring around the whole page (any engine, any global rule).
+   Buttons, inputs and menu items inside the reader keep their own rings. */
+.app-document-reader .ProseMirror,
+.app-document-reader .ProseMirror:is(:focus, :focus-visible, :focus-within),
+.app-document-reader .app-document-editor-shell:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .app-document-prose p,
 .app-document-prose ul,
 .app-document-prose ol,

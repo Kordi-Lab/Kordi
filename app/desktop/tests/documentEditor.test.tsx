@@ -202,3 +202,14 @@ test('code blocks show their language and a copy button outside the content, and
     editor.destroy();
   }
 });
+
+test('the document editor draws no focus ring around the page; controls keep theirs', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(new URL('../src/styles/document-blocks.css', import.meta.url), 'utf8');
+  const rule = /\.app-document-reader \.ProseMirror,\s*\.app-document-reader \.ProseMirror:is\(:focus, :focus-visible, :focus-within\),\s*\.app-document-reader \.app-document-editor-shell:focus-within \{[^}]*outline: none !important;[^}]*box-shadow: none !important;/;
+  assert.match(css, rule);
+  const block = css.match(rule)![0];
+  assert.doesNotMatch(block, /button|input|menu/, 'the rule targets only the editing surface');
+  const index = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
+  assert.match(index, /@import '\.\/styles\/document-blocks\.css';/);
+});
