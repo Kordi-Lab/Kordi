@@ -4,8 +4,6 @@ import type { DocumentComment, DocumentFormat, DocumentReaction } from './docume
 
 export const DOCUMENT_REACTIONS = ['❤️', '👍', '🔥', '👀', '🤔', '🎉'] as const;
 
-export const EDITING_LIVES_ON_HOST = 'Editing lives on the Mac that hosts this session';
-
 const DOCUMENT_EXTENSIONS: Record<string, DocumentFormat> = {
   md: 'markdown',
   markdown: 'markdown',

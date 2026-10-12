@@ -4,7 +4,7 @@
   --app-document-line: var(--app-divider);
   --app-document-muted: var(--utility-muted-text);
   --app-document-chip-bg: color-mix(in srgb, var(--utility-foreground) 7%, transparent);
-  --app-document-selected-bg: var(--app-copy-selection-bg);
+  --app-document-selected-bg: var(--app-copy-selection-surface-bg, rgb(96 165 250 / 0.18));
   --app-document-highlight-bg: rgb(252 181 38 / 0.28);
   position: relative;
   display: flex;
@@ -216,7 +216,7 @@ button.app-document-menu-row:hover,
 .app-document-avatar { width: 34px !important; height: 34px !important; flex: none; }
 .app-document-avatar-small { width: 22px !important; height: 22px !important; flex: none; }
 
-.app-document-block { margin: 0 -6px; padding: 0 6px; border-radius: 6px; cursor: text; }
+.app-document-block { margin: 0 -6px; padding: 0 6px; border-radius: 10px; cursor: text; }
 .app-document-block.is-selected { background: var(--app-document-selected-bg); }
 .app-document-block.is-bold { font-weight: 700; }
 .app-document-block.is-italic { font-style: italic; }
@@ -326,11 +326,14 @@ button.app-document-menu-row:hover,
   padding: 4px;
   border: 1px solid var(--app-transient-border);
   border-radius: 11px;
-  background: var(--app-transient-surface-bg);
-  box-shadow: var(--app-transient-shadow);
+  /* Opaque, like dialogs: nothing shows through and no blur over the text behind it. */
+  background: var(--app-transient-surface-fallback, var(--app-main-bg));
+  box-shadow: var(--app-shadow-soft);
+  backdrop-filter: none;
 }
 
 .app-document-emoji-row { position: absolute; bottom: 46px; left: 0; }
+.app-document-selection[data-placement='below'] .app-document-emoji-row { top: 46px; bottom: auto; }
 .app-document-emoji-row button { width: 32px; height: 32px; border-radius: 8px; font-size: 17px; }
 .app-document-emoji-row button:hover { background: var(--app-transient-hover-bg); }
 

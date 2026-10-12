@@ -33,7 +33,11 @@ export type DocumentReaderProps = DocumentReaderSource & {
   className?: string;
 };
 
-type Selection = { blockId: string; top: number; text: string };
+type Selection = { blockId: string; top: number; placement: 'above' | 'below'; text: string };
+
+/** Height of the selection bar plus its border, and the gap it keeps from the block. */
+const MENU_HEIGHT = 40;
+const MENU_GAP = 8;
 
 const INTERACTIVE = 'button, a, input, textarea, select, label, .app-document-thread, .app-document-reactions';
 
@@ -110,7 +114,10 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
       setSelection(null);
       return true;
     }
-    setSelection({ blockId, top: Math.max(0, block.offsetTop - 46), text });
+    // Directly above the block; below it when the block sits at the top of the pane.
+    const above = block.offsetTop - MENU_HEIGHT - MENU_GAP;
+    const fitsAbove = above >= (bodyRef.current?.scrollTop ?? 0);
+    setSelection({ blockId, top: fitsAbove ? above : block.offsetTop + block.offsetHeight + MENU_GAP, placement: fitsAbove ? 'above' : 'below', text });
     return true;
   };
 
@@ -240,6 +247,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
         {selection ? (
           <DocumentSelectionMenu
             top={selection.top}
+            placement={selection.placement}
             canComment={reader.canComment && editing.currentTab === 0}
             canReact={reader.canReact && editing.currentTab === 0}
             canFormat={canFormat}

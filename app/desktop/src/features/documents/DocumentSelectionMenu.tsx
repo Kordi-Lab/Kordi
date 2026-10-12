@@ -1,7 +1,7 @@
 import { Braces, ChevronDown, Highlighter, Link2, List, MessageSquarePlus, SmilePlus } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 
-import { DOCUMENT_REACTIONS, EDITING_LIVES_ON_HOST } from './documentReaderModel';
+import { DOCUMENT_REACTIONS } from './documentReaderModel';
 import type { DocumentBlockStyle, DocumentFormatAction } from './useDocumentEditing';
 
 type MenuButton = { action: DocumentFormatAction; label: string; content: ReactNode; className?: string };
@@ -15,9 +15,10 @@ const STYLE_BUTTONS: MenuButton[] = [
   { action: 'highlight', label: 'Highlight', content: <Highlighter aria-hidden="true" /> },
 ];
 
-/** Floating menu over the selected block: comment and react for everyone, formatting on the hosting Mac only. */
+/** Floating menu at the selected block: comment and react for everyone; formatting only for a file on this Mac. */
 export function DocumentSelectionMenu({
   top,
+  placement,
   canComment,
   canReact,
   canFormat,
@@ -28,6 +29,7 @@ export function DocumentSelectionMenu({
   onFormat,
 }: {
   top: number;
+  placement: 'above' | 'below';
   canComment: boolean;
   canReact: boolean;
   canFormat: boolean;
@@ -38,16 +40,14 @@ export function DocumentSelectionMenu({
   onFormat: (action: DocumentFormatAction) => void;
 }) {
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const formatTitle = (label: string) => (canFormat ? label : EDITING_LIVES_ON_HOST);
   const formatButton = ({ action, label, content, className }: MenuButton) => (
     <button
       key={action}
       type="button"
       className={className}
       aria-label={label}
-      title={formatTitle(label)}
+      title={label}
       aria-pressed={activeStyles.includes(action as DocumentBlockStyle) || undefined}
-      disabled={!canFormat}
       onClick={() => onFormat(action)}
     >
       {content}
@@ -57,6 +57,7 @@ export function DocumentSelectionMenu({
   return (
     <div
       className="app-document-selection"
+      data-placement={placement}
       style={{ top }}
       role="toolbar"
       aria-label="Selection"
@@ -85,17 +86,21 @@ export function DocumentSelectionMenu({
         >
           <SmilePlus aria-hidden="true" />
         </button>
-        <span className="app-document-selection-separator" aria-hidden="true" />
-        <button type="button" aria-label="Text style" title={formatTitle('Text style')} disabled={!canFormat} onClick={() => onFormat('heading')}>
-          Aa
-          <ChevronDown className="app-document-caret" aria-hidden="true" />
-        </button>
-        <span className="app-document-selection-separator" aria-hidden="true" />
-        {STYLE_BUTTONS.map(formatButton)}
-        <span className="app-document-selection-separator" aria-hidden="true" />
-        {formatButton({ action: 'list', label: 'List', content: <><List aria-hidden="true" /><ChevronDown className="app-document-caret" aria-hidden="true" /></> })}
-        <span className="app-document-selection-separator" aria-hidden="true" />
-        {formatButton({ action: 'link', label: 'Link', content: <Link2 aria-hidden="true" /> })}
+        {canFormat ? (
+          <>
+            <span className="app-document-selection-separator" aria-hidden="true" />
+            <button type="button" aria-label="Text style" title="Text style" onClick={() => onFormat('heading')}>
+              Aa
+              <ChevronDown className="app-document-caret" aria-hidden="true" />
+            </button>
+            <span className="app-document-selection-separator" aria-hidden="true" />
+            {STYLE_BUTTONS.map(formatButton)}
+            <span className="app-document-selection-separator" aria-hidden="true" />
+            {formatButton({ action: 'list', label: 'List', content: <><List aria-hidden="true" /><ChevronDown className="app-document-caret" aria-hidden="true" /></> })}
+            <span className="app-document-selection-separator" aria-hidden="true" />
+            {formatButton({ action: 'link', label: 'Link', content: <Link2 aria-hidden="true" /> })}
+          </>
+        ) : null}
       </div>
     </div>
   );

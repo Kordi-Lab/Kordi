@@ -208,3 +208,36 @@ test('the raw route is fetched with the bearer token', async () => {
   assert.equal(requests[0]?.url, 'https://cloud.example/v1/cloud/documents/att_example_html/raw');
   assert.deepEqual(requests[0]?.init.headers, { authorization: 'Bearer token_example' });
 });
+
+function selectionMenuButtons(root: HTMLElement) {
+  const menu = root.querySelector('[role="toolbar"][aria-label="Selection"] .app-document-selection-bar');
+  assert.ok(menu, 'the selection menu is open');
+  return Array.from(menu.querySelectorAll('button')).map((entry) => entry.getAttribute('aria-label'));
+}
+
+test('an uploaded document selection menu offers only comment and react', async () => {
+  await withJsdomRoot(async (mount) => {
+    const document = sampleDocument('owner');
+    const { api } = createMemoryDocumentApi(document);
+    const root = await mount(withHost(createElement(DocumentReader, { attachmentId: document.attachmentId, initialDocument: document, api })));
+    await click(root.querySelector('[data-document-block="b2"] .app-document-markdown') as HTMLElement);
+    assert.deepEqual(selectionMenuButtons(root), ['Comment', 'React']);
+    assert.doesNotMatch(root.innerHTML, /Editing lives on the Mac/);
+    assert.equal(root.querySelector('[data-document-block="b2"]')?.getAttribute('aria-selected'), 'true');
+  });
+});
+
+test('a Mac-hosted document selection menu keeps the formatting group', async () => {
+  await withJsdomRoot(async (mount) => {
+    const { api } = createMemoryDocumentApi(sampleDocument('owner'));
+    const root = await mount(withHost(createElement(DocumentReader, { path: '/Users/example/notes/format-test.md', localSource: SAMPLE_MARKDOWN, api })));
+    await click(root.querySelector('[data-document-block="b2"] .app-document-markdown') as HTMLElement);
+    const labels = selectionMenuButtons(root);
+    assert.deepEqual(labels.slice(0, 2), ['Comment', 'React']);
+    for (const label of ['Text style', 'Bold', 'Italic', 'Underline', 'Strikethrough', 'Code', 'Highlight', 'List', 'Link']) {
+      assert.ok(labels.includes(label), `${label} is in the menu`);
+    }
+    await click(root.querySelector('[aria-label="Bold"]') as HTMLElement);
+    assert.equal(root.querySelector('[data-document-block="b2"]')?.classList.contains('is-bold'), true);
+  });
+});

@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight, Code2, FileText, Image, ListChecks, PenLine, Plus, Table2 } from 'lucide-react';
 import { useCallback, useRef, useState, type ComponentType } from 'react';
 
-import { EDITING_LIVES_ON_HOST, type DocumentInsertTool } from './documentReaderModel';
+import type { DocumentInsertTool } from './documentReaderModel';
 import type { DocumentEditing } from './useDocumentEditing';
 import { useOutsideDismiss } from './useOutsideDismiss';
 
@@ -34,13 +34,12 @@ export function DocumentSwitch({ checked, label, onChange, disabled }: { checked
   );
 }
 
-/** `Tab 1` dropdown and insert tools. Inserting only works on a Mac-hosted file. */
+/** `Tab 1` dropdown, plus insert tools for a file on this Mac (the only documents this app edits). */
 export function DocumentTabBar({ editing, canInsert }: { editing: DocumentEditing; canInsert: boolean }) {
   const [menu, setMenu] = useState<'tabs' | 'more' | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setMenu(null), []);
   useOutsideDismiss(barRef, menu !== null, close);
-  const disabledTitle = canInsert ? undefined : EDITING_LIVES_ON_HOST;
 
   return (
     <div className="app-document-tabbar" ref={barRef}>
@@ -55,36 +54,37 @@ export function DocumentTabBar({ editing, canInsert }: { editing: DocumentEditin
         {editing.tabNames[editing.currentTab]}
         <ChevronDown className="app-document-caret" aria-hidden="true" />
       </button>
-      <span className="app-document-tabbar-separator" aria-hidden="true" />
-      {TOOLS.map((entry, index) => (entry === 'separator'
-        ? <span key={`separator-${index}`} className="app-document-tabbar-separator" aria-hidden="true" />
-        : (
+      {canInsert ? (
+        <>
+          <span className="app-document-tabbar-separator" aria-hidden="true" />
+          {TOOLS.map((entry, index) => (entry === 'separator'
+            ? <span key={`separator-${index}`} className="app-document-tabbar-separator" aria-hidden="true" />
+            : (
+              <button
+                key={entry.tool}
+                type="button"
+                className="app-document-tool"
+                aria-label={entry.label}
+                title={entry.label}
+                onClick={() => editing.insert(entry.tool)}
+              >
+                <entry.icon aria-hidden="true" />
+              </button>
+            )))}
           <button
-            key={entry.tool}
             type="button"
             className="app-document-tool"
-            aria-label={entry.label}
-            title={disabledTitle ?? entry.label}
-            disabled={!canInsert}
-            onClick={() => editing.insert(entry.tool)}
+            aria-label="More blocks"
+            title="More blocks"
+            aria-haspopup="menu"
+            aria-expanded={menu === 'more'}
+            onClick={() => setMenu(menu === 'more' ? null : 'more')}
           >
-            <entry.icon aria-hidden="true" />
+            <Plus aria-hidden="true" />
+            <ChevronDown className="app-document-caret" aria-hidden="true" />
           </button>
-        )))}
-      <button
-        type="button"
-        className="app-document-tool"
-        aria-label="More blocks"
-        title={disabledTitle ?? 'More blocks'}
-        aria-haspopup="menu"
-        aria-expanded={menu === 'more'}
-        disabled={!canInsert}
-        onClick={() => setMenu(menu === 'more' ? null : 'more')}
-      >
-        <Plus aria-hidden="true" />
-        <ChevronDown className="app-document-caret" aria-hidden="true" />
-      </button>
-
+        </>
+      ) : null}
       {menu === 'tabs' ? (
         <div className="app-document-menu app-document-tab-menu" role="menu">
           <div className="app-document-menu-row">
