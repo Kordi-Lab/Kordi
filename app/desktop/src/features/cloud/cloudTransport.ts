@@ -6,6 +6,8 @@
 // PAC/PAD is never handed to a stack that cannot evaluate it, and loopback
 // stays direct. Requests also fail through the caller's abort deadline
 // instead of waiting on an unreachable proxy inside the WebView.
+// `nativeCloudFetch` drives the plugin so that every native request and
+// response resource is released; see that module for the leak it prevents.
 //
 // Browser previews use platform fetch. Tests that emulate the native shell
 // must supply the HTTP plugin commands or inject a client's fetchImpl.
@@ -35,7 +37,7 @@ export function cloudFetchImpl(): typeof fetch {
     return globalThis.fetch.bind(globalThis);
   }
   return async (input: RequestInfo | URL, init?: RequestInit) => {
-    const { fetch: nativeFetch } = await import('@tauri-apps/plugin-http');
-    return nativeFetch(input, init);
+    const { nativeCloudFetch } = await import('./nativeCloudFetch');
+    return nativeCloudFetch(input, init);
   };
 }
