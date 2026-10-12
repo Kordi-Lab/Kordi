@@ -57,21 +57,28 @@
   min-width: 0;
   height: 100%;
   margin-right: var(--app-native-detail-width, 0px);
-  /* Match the conversation inset without restoring a full-height divider. */
+  /* The conversation's titlebar column shares its surface and its divider. */
   padding-inline-start: 1px;
+  background: var(--app-native-main-bg);
   transition-property: grid-template-columns;
   transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
 }
-.app-native-titlebar-workspace::before {
+/* No divider segment in the titlebar: the sidebar tint against the
+   conversation's surface already marks the boundary. The full-height line
+   starts at the titlebar's bottom edge, on the conversation's left edge. */
+/* The 1px line that continues the session list's top edge across the
+   conversation and companion columns; above the columns, since the companion
+   header paints its own surface. */
+html.kordi-native-shell .app-native-titlebar-workspace::after {
   content: '';
   position: absolute;
-  top: 50%;
-  inset-inline-start: var(--app-native-navigation-overhang, 0px);
-  width: 1px;
-  height: 18px;
+  inset-inline: 0;
+  /* One row below the titlebar, on the same row as the session list's top edge. */
+  bottom: -1px;
+  height: 1px;
   background: var(--app-nav-rail-glass-border);
-  transform: translateY(-50%);
   pointer-events: none;
+  z-index: 1;
 }
 .app-native-titlebar-main { display: flex; align-items: center; min-width: 0; grid-column: 1; grid-row: 1; }
 .app-native-titlebar-workspace[data-companion-side="left"] > .app-native-titlebar-main { grid-column: 3; }
@@ -85,6 +92,20 @@
 }
 .app-native-companion-titlebar[data-side="right"] { grid-column: 3; }
 .app-native-companion-titlebar[data-side="left"] { grid-column: 1; }
+/* The companion's edge line continues the split divider below it through the
+   titlebar, as the conversation's left line does. */
+html.kordi-native-shell .app-native-companion-titlebar[data-open="true"]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--app-chat-pane-divider, var(--app-nav-rail-glass-border));
+  pointer-events: none;
+}
+/* The split divider is its own 1px grid track beside the companion column. */
+html.kordi-native-shell .app-native-companion-titlebar[data-side="right"][data-open="true"]::before { left: -1px; }
+html.kordi-native-shell .app-native-companion-titlebar[data-side="left"][data-open="true"]::before { right: -1px; }
 .app-native-companion-titlebar[data-open="false"] { overflow: hidden; pointer-events: none; }
 .app-native-companion-titlebar-surface { height: 100%; }
 .app-native-companion-titlebar[data-side="left"] .app-native-companion-titlebar-surface { float: right; }
@@ -117,7 +138,6 @@
   background: transparent;
 }
 .app-native-companion-titlebar :is(.app-chat-pane-metadata-row, .app-companion-overview-header p) { display: none; }
-html.kordi-native-shell .app-native-titlebar-workspace { margin-right: calc(var(--app-native-detail-width, 0px) + 6px); }
 
 .app-native-titlebar-actions {
   display: flex;
@@ -229,23 +249,16 @@ html.kordi-native-shell .app-native-titlebar-workspace { margin-right: calc(var(
   .app-native-titlebar-workspace { transition-duration: 0s !important; }
 }
 
+/* The conversation is flat: flush on every side, no corners, with one 1px
+   divider on its left that the titlebar continues to the top of the window. */
 html.kordi-native-shell .kordi-app .app-shell-content {
-  margin: 0 6px 6px 0;
-  border-radius: 0 12px 12px 0;
+  margin: 0;
+  border: 0;
+  border-left: 1px solid var(--app-nav-rail-glass-border);
+  border-radius: 0;
 }
 
 
-/* A folded sidebar leaves the icon rail beside the workspace. Hide the
-   titlebar divider instead of floating it past the conversation's edge. */
-html.kordi-native-shell .app-shell[data-sidebar-collapsed='true'] > .app-shell-layout-grid > .app-shell-content {
-  border-left-width: 0;
-}
-html.kordi-native-shell .app-shell[data-sidebar-collapsed='true'] > .app-native-titlebar > .app-native-titlebar-workspace {
-  padding-inline-start: 0;
-}
-html.kordi-native-shell .app-shell[data-sidebar-collapsed='true'] > .app-native-titlebar > .app-native-titlebar-workspace::before {
-  content: none;
-}
 
 .app-native-viewport {
   --app-native-titlebar-layout-height: max(var(--app-native-titlebar-height), calc(var(--app-native-titlebar-height) / var(--app-interface-zoom, 1)));
