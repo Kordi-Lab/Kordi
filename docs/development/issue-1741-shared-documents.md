@@ -119,3 +119,29 @@ The public page uses the system font stack, the title, a date pill, and the `@au
 ## Deploy
 
 The server only answers under `/v1/cloud/*`, `/i/*`, and `/g/*` today. The product reverse proxy needs `/d/*` forwarded to the server. This is a product-server change and runs only with explicit authorization on the product machine.
+
+## Editing (added 2026-10-11 after live testing)
+
+Cloud documents are editable by the owner and by active members, with document-level synchronization: a save carries the whole Markdown source and the revision it was based on; the server rejects stale saves and tells every member to reload.
+
+### Data
+
+Migration `0123_cloud_document_contents.sql`: `cloud_document_contents` with `attachment_id` (PK, cascade), `source` (text), `revision` (bigint, starts at 1), `updated_by_account_id`, `updated_at`. The first read of a Markdown document copies the attachment bytes into this table at revision 1; from then on the stored source is canonical for the authenticated routes, the public page, and the public JSON. HTML documents are not editable in this round (`viewerCan.edit` is false for them).
+
+### Routes
+
+| Method and path | Body | Response |
+|---|---|---|
+| `PUT /v1/cloud/documents/:attachment_id/content` | `{ "baseRevision": number, "source": string }` | `DocumentResponse` with the new `revision`; `409 document_revision_conflict` with the current `DocumentResponse` in the body when `baseRevision` is behind; `403 document_edit_forbidden` for viewers without `viewerCan.edit`; `413` above 1 MiB |
+
+`DocumentResponse` gains `revision: number` and `viewerCan.edit: bool`. Public responses carry the revision too.
+
+On every accepted save the server publishes the user sync event `document.updated` with payload `{ "attachmentId", "revision", "sessionId", "updatedByAccountId" }` to the owner and the active members of every conversation that carries the attachment. Clients that show the document refetch it on that event; a client with unsaved local changes rebases them onto the new revision (block by block; a block edited on both sides keeps the remote text and shows "Updated elsewhere" once).
+
+### Block identity across edits
+
+Blocks keep index ids (`b0..bn`). In the same transaction as a save the server remaps reactions and comments: a block whose trimmed source still exists in the new document keeps its annotations at the new index (first unmatched occurrence in order); annotations on a block that disappeared move to the nearest preceding block that survived, or to `b0`.
+
+### Inline formats
+
+The selection menu applies Markdown to the selected text inside one block: `**bold**`, `*italic*`, `<u>underline</u>`, `~~strikethrough~~`, `` `code` ``, `==highlight==`, list (prefix every line of the block with `- `, or remove it), link (`[text](https://…)` after asking for the URL), and Aa (block style: paragraph, heading 1 to 3, quote). Renderers accept `<u>` and `<mark>` as the only inline HTML and render `==text==` as `<mark>`. Comment and react anchor to the block that contains the selection.
