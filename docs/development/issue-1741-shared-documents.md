@@ -166,3 +166,27 @@ The Mac editor stamps every top-level block with an id and serializes it as a tr
 - On save, the index remap runs only for annotations whose block id is index-based; ids with the `k:` prefix follow their block wherever it moves, and annotations whose `k:` block no longer exists move to the nearest preceding surviving block by document order (or `b0` / the first block).
 - When a document without ids is first saved by an editor that stamps ids, the save carries the mapping `{ "blockIds": { "b3": "k:…" } }` next to `source`, and the server rewrites the annotations' block ids in the same transaction.
 - The public page and the JSON routes expose the resolved ids; clients never see the comments.
+
+## Collaborative editing with Yjs (added 2026-10-12, editor proposal phase 2)
+
+Keystroke-level co-editing follows Tiptap's collaboration setup: the Mac editor loads `@tiptap/extension-collaboration` (with `undoRedo: false` in StarterKit, since Collaboration brings its own history), `@tiptap/extension-collaboration-caret`, `yjs`, and the `y-websocket` provider. The server speaks the same wire protocol as `y-websocket` (y-protocols sync v1 plus awareness) using the `yrs` and `y-sync` crates, so no Node service is needed. Markdown stays the exchange format: snapshots feed the public page, the iPhone reader, search, and the agent.
+
+### Rooms and transport
+
+- One room per canonical attachment, held in memory by the server process and loaded on first join from `cloud_document_collab` (migration `0126_cloud_document_collab.sql`: `attachment_id` PK, `state` bytea, `state_vector` bytea, `seq` bigint, `initialized_at`, `updated_at`) plus `cloud_document_collab_updates` (`attachment_id`, `seq`, `update` bytea, `created_at`) appended after `seq`. Every client update is appended; the room compacts into `state` every 200 updates or 5 minutes and on the last disconnect, then deletes updates at or below the new `seq`. Single replica today; fan-out through NATS is a later step.
+- `POST /v1/cloud/documents/:attachment_id/collab/ticket` (authenticated; owner or active member of a family conversation; HTML documents answer `409 document_not_collaborative`) issues a single-use, session-bound ticket with a 60 second lifetime and an allowed origin, like the chat realtime ticket, under a per-account budget `document-collab-ticket` of 60 per minute. Response `{ "ticket", "url" }` where `url` is the socket path `/v1/cloud/documents/:attachment_id/collab`.
+- `GET /v1/cloud/documents/:attachment_id/collab?ticket=…` upgrades to a WebSocket. Binary frames only; message types sync (0) and awareness (1) exactly as `y-websocket` sends them; the server answers sync step 1 with step 2, broadcasts updates and awareness to the other members of the room, and closes with 4401 on a bad ticket, 4403 when access was revoked, 4409 for unsupported messages.
+- Awareness state from clients is `{ "user": { "name", "color", "accountId" } }` plus the caret the extension adds; the server forwards it unchanged and clears a client's awareness on disconnect.
+
+### Seeding and snapshots
+
+- `POST /v1/cloud/documents/:attachment_id/collab/init` answers `{ "initialize": true, "revision" }` to exactly one caller while `initialized_at` is null (compare-and-set with a 30 second grant that expires if no update arrives); everyone else gets `{ "initialize": false }` and waits for sync. The grantee builds the Y document from the Markdown at that revision (block ids included), and the first update the room applies sets `initialized_at`.
+- While a room is in use, Markdown snapshots are written with `PUT /v1/cloud/documents/:attachment_id/content` and `"mode": "snapshot"`: no `baseRevision` check, the revision increments only when the source differs from the stored one, annotations are remapped as for a save, and `document.updated` carries `"change": "content"`. The connected editor with the smallest awareness client id writes the snapshot, debounced 2 seconds after the last update and on disconnect; duplicates from other editors are harmless.
+- A save with `baseRevision` from a client that is not in the room (older build, offline edit) is still accepted and applied to the Y document by the server: it rebuilds nothing itself; instead it marks the room `stale_revision` and the next connected editor reconciles by replacing blocks whose Markdown changed. This keeps the Y document authoritative while a room exists.
+
+### Clients
+
+- Mac: the reader joins the room when the document is editable and the viewer is signed in; the Collaboration extension binds the editor to the room's `Y.XmlFragment` named `document`; carets show other editors with their name and color; the header shows the connected people. Without a socket (offline, ticket refused) the editor falls back to revisioned saves as before and rejoins when possible.
+- iPhone: snapshots only in this phase; it refreshes on `document.updated` as today.
+- Public page: snapshots only.
+- The session agent edits through the room in a later phase.
