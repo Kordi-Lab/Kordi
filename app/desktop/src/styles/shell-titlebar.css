@@ -199,6 +199,18 @@ html.kordi-native-shell .app-native-companion-titlebar[data-side="left"][data-op
   color: var(--utility-foreground);
 }
 
+/* The title and its status share the titlebar row: the title takes only the
+   width it needs and the status follows it. */
+.app-native-titlebar-title:has(.app-chat-header-title) { display: flex; align-items: center; gap: 8px; }
+.app-native-titlebar-title > .app-chat-header-title { flex: 0 1 auto; width: auto; min-width: 0; }
+.app-native-titlebar-title > .app-chat-header-title > h2 { width: auto; }
+/* The rename button hangs 4px left of the heading, so a shrink-wrapped heading
+   is 4px narrower than the button; allow for it or the title always truncates. */
+.app-native-titlebar-title > .app-chat-header-title > h2 > button { max-width: calc(100% + 4px); }
+/* The rename field keeps the full row while editing. */
+.app-native-titlebar-title > .app-chat-header-title:has(input) { flex: 1 1 auto; }
+.app-native-titlebar-title > .app-chat-pane-metadata-row { flex: 0 0 auto; max-width: 50%; min-width: 0; height: 28px; min-height: 0; -webkit-app-region: no-drag; }
+
 .app-native-titlebar-title :is(h2, input, button) {
   font-size: 13px;
   font-weight: 500;
