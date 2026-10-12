@@ -43,12 +43,28 @@ test('thread layout renders the queued message as a left thread row', async () =
   }
 });
 
-test('non-thread layout keeps the bubble with sentence-case label', async () => {
-  const { host, root } = await render({}, [], []);
+test('non-thread layout renders a pending outgoing bubble with a quiet status line', async () => {
+  const edits: string[] = [];
+  const cancels: string[] = [];
+  const { host, root } = await render({}, edits, cancels);
   try {
     assert.equal(host.querySelector('.app-thread-message-row'), null);
-    assert.ok(host.textContent?.includes('Queued next'));
-    assert.ok(!host.querySelector('.app-queued-message-label')?.className.includes('uppercase'));
+    const bubble = host.querySelector('.app-queued-message');
+    assert.ok(bubble);
+    assert.match(bubble.className, /app-message-bubble-own/);
+    assert.match(bubble.className, /app-chat-bubble-user/);
+    assert.match(bubble.className, /app-message-bubble-queued/);
+    assert.ok(!host.textContent?.includes('Queued next'));
+    const meta = bubble.querySelector('.app-queued-message-meta');
+    assert.ok(meta);
+    assert.equal(meta.querySelector('.app-queued-message-label')?.textContent, 'Queued');
+    assert.ok(!meta.textContent?.includes('07:26'), 'the clock time stays on hover like sent messages');
+    assert.ok(meta.querySelector('.app-queued-message-actions'));
+    assert.ok(!meta.className.includes('uppercase'));
+    await act(async () => (host.querySelector('.app-queued-message-edit') as HTMLButtonElement).click());
+    await act(async () => (host.querySelector('.app-queued-message-cancel') as HTMLButtonElement).click());
+    assert.deepEqual(edits, ['q1']);
+    assert.deepEqual(cancels, ['q1']);
   } finally {
     await act(async () => root.unmount());
   }

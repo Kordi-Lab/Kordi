@@ -215,7 +215,7 @@ test('subsession has a bounded transcript, visible composer, and explicit identi
   await expect(panel.getByText('Agent thread · Planet research', { exact: true })).toBeVisible();
   await expect(panel.getByText(/Shared with chat members/)).toBeVisible();
   await expect(panel.getByText(/Only you/)).toHaveCount(0);
-  await expect(panel.getByText('Queued next', { exact: true })).toHaveCount(2);
+  await expect(panel.getByText('Queued', { exact: true })).toHaveCount(2);
   await expect(panel.locator('.app-queued-message').filter({ hasText: 'Owner queued follow' })).toContainText('Alex');
   await expect(field).toBeVisible();
   const bounds = await field.boundingBox();

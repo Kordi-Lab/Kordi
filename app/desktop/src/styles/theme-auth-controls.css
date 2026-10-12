@@ -215,13 +215,6 @@
   color: rgb(85 47 12) !important;
 }
 
-.kordi-app.theme-light .app-queued-message {
-  --app-message-bubble-fill: rgba(245, 158, 11, 0.18);
-  --app-message-bubble-stroke: rgba(180, 83, 9, 0.34);
-  background: transparent;
-  color: rgb(85 47 12) !important;
-}
-
 .kordi-app.theme-light .app-auth-notice-title {
   color: rgb(63 42 13) !important;
 }
@@ -253,16 +246,11 @@
 }
 
 .kordi-app.theme-light .app-compression-title,
-.kordi-app.theme-light .app-compression-detail,
-.kordi-app.theme-light .app-queued-message-label,
-.kordi-app.theme-light .app-queued-message-text,
-.kordi-app.theme-light .app-queued-message-meta {
+.kordi-app.theme-light .app-compression-detail {
   color: inherit !important;
 }
 
-.kordi-app.theme-light .app-compression-detail,
-.kordi-app.theme-light .app-queued-message-label,
-.kordi-app.theme-light .app-queued-message-meta {
+.kordi-app.theme-light .app-compression-detail {
   opacity: 0.82;
 }
 
