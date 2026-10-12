@@ -78,15 +78,31 @@ pub(crate) async fn publish_document_updated(
         .flatten()
         .map(|(id, _)| id);
     let payload = update_payload(record, revision, session_id.as_deref(), change, updated_by);
-    if let Err(error) = crate::chat_sync::store::publish_user_sync_events(
-        pool,
-        &recipients,
-        "document.updated",
-        None,
-        payload,
-    )
-    .await
-    {
+    if let Err(error) = publish_noncritical(pool, &recipients, &payload).await {
         eprintln!("[documents] publish document.updated failed: {error:?}");
     }
+}
+
+/// Older clients reject unknown critical events and stall sync, so this
+/// event is non-critical: clients that do not know it skip it.
+async fn publish_noncritical(
+    pool: &PgPool,
+    recipients: &[String],
+    payload: &serde_json::Value,
+) -> Result<(), crate::chat_sync::store::StoreError> {
+    let mut transaction = pool.begin().await?;
+    for recipient in recipients {
+        crate::chat_sync::store::insert_noncritical_sync_event(
+            &mut transaction,
+            recipient,
+            "document.updated",
+            None,
+            None,
+            None,
+            payload,
+        )
+        .await?;
+    }
+    transaction.commit().await?;
+    Ok(())
 }

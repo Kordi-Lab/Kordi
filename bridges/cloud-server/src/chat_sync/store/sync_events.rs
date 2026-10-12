@@ -21,7 +21,7 @@ pub(super) async fn insert_sync_event(
     .await
 }
 
-pub(super) async fn insert_noncritical_sync_event(
+pub(crate) async fn insert_noncritical_sync_event(
     transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
     event_type: &str,
