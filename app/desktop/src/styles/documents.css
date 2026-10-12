@@ -450,3 +450,29 @@ button.app-document-menu-row:hover,
   .app-document-selection-bar,
   .app-document-selection-panel { background: var(--app-transient-surface-fallback, var(--app-main-bg)); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+
+/* The block being typed into shows its Markdown in place, in the block's own type. */
+.app-document-block.is-editing { cursor: text; }
+.app-document-editor {
+  display: block;
+  /* Same box as the rendered block, so opening or closing the editor does not move the text around it. */
+  width: calc(100% + 12px);
+  min-height: 1.5em;
+  margin: 0 -6px 10px;
+  padding: 0 6px;
+  overflow: hidden;
+  resize: none;
+  border: 0;
+  border-radius: 8px;
+  outline: 1px solid color-mix(in srgb, var(--app-chat-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--utility-foreground) 4%, transparent);
+  color: inherit;
+  font: inherit;
+  /* Rendered paragraphs are 14px on a 24px line. */
+  font-size: 14px;
+  line-height: 24px;
+  white-space: pre-wrap;
+}
+.app-document-editor[data-block-style='h1'] { font-size: 20px; font-weight: 700; line-height: 1.3; }
+.app-document-editor[data-block-style='h2'] { font-size: 16px; font-weight: 600; }
+.app-document-editor[data-block-style='h3'] { font-weight: 600; }

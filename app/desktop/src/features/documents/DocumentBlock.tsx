@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
 
 import { MarkdownContent } from '@/kordi-app/components';
 
@@ -25,6 +25,7 @@ export const DocumentBlockView = memo(function DocumentBlockView({
   threads,
   composing,
   shared,
+  editor,
 }: {
   id: string;
   source: string;
@@ -32,14 +33,16 @@ export const DocumentBlockView = memo(function DocumentBlockView({
   threads: CommentThread[];
   composing: boolean;
   shared: DocumentBlockThreadProps;
+  /** The Markdown editor shown instead of the rendered block while it is being typed into. */
+  editor?: ReactNode;
 }) {
   return (
     <>
       <div
-        className="app-document-block"
+        className={editor ? 'app-document-block is-editing' : 'app-document-block'}
         data-document-block={id}
       >
-        <MarkdownContent text={source} tone="inherit" copySurface="document" className="app-document-markdown" />
+        {editor ?? <MarkdownContent text={source} tone="inherit" copySurface="document" className="app-document-markdown" />}
       </div>
       {pills.length > 0 ? (
         <div className="app-document-reactions">

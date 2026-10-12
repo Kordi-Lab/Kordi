@@ -11,7 +11,7 @@ import {
   upsertComment,
 } from './documentReaderModel';
 import type { DocumentComment, DocumentReaction, DocumentResponse, DocumentShare } from './documentShareTypes';
-import { useDocumentEditing } from './useDocumentEditing';
+import { insertSourceBlock, replaceSourceBlock, useDocumentEditing } from './useDocumentEditing';
 import { useCloudDocumentEdits } from './useCloudDocumentEdits';
 
 /** local: a file on this Mac with no cloud copy; uploaded: a cloud attachment; public: opened from a share link. */
@@ -155,20 +155,12 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
   const blocks = onCloudTab ? (canEditCloud ? cloud.blocks : serverBlocks) : tabBlocks;
   const canEdit = format === 'markdown' && (!onCloudTab || canEditCloud);
 
-  /** Edits a block of what is on screen: the cloud document, the local draft, or a scratch tab. */
-  const editBlock = useCallback((blockId: string, next: string) => {
-    if (onCloudTab) cloud.editBlock(blockId, next);
-    else editing.replaceBlock(blockId, next);
-  }, [cloud, editing, onCloudTab]);
-
-  const insertBlock = useCallback((afterBlockId: string | null, snippet: string) => {
-    if (!onCloudTab) {
-      editing.insertBlock(afterBlockId, snippet);
-      return;
-    }
-    const target = blocks.find((block) => block.id === afterBlockId) ?? blocks[blocks.length - 1];
-    if (target) cloud.editBlock(target.id, `${target.source}\n\n${snippet}`);
-  }, [blocks, cloud, editing, onCloudTab]);
+  /** Changes the Markdown on screen: the cloud draft, the local draft, or a scratch tab. */
+  const updateSource = onCloudTab ? cloud.updateSource : editing.updateCurrentSource;
+  const editBlock = useCallback((blockId: string, next: string) => updateSource((current) => replaceSourceBlock(current, blockId, next)), [updateSource]);
+  const insertBlock = useCallback((afterBlockId: string | null, snippet: string) => updateSource((current) => insertSourceBlock(current, afterBlockId, snippet)), [updateSource]);
+  /** Replaces the whole list of block sources (typing edits); empty blocks drop out. */
+  const writeBlocks = useCallback((sources: string[]) => updateSource(() => sources.filter((text) => text.trim()).join('\n\n')), [updateSource]);
 
   const viewerName = host.viewer?.displayName?.trim() || null;
   const loadedAttachmentId = document?.attachmentId ?? null;
@@ -294,6 +286,7 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
     canEdit,
     editBlock,
     insertBlock,
+    writeBlocks,
     saveNotice: cloud.notice,
     clearSaveNotice: cloud.clearNotice,
     flushEdits: cloud.flush,

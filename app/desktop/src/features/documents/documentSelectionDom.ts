@@ -1,4 +1,4 @@
-import { nthOccurrence, occurrencesBefore, stripWhitespace } from './documentSourceMap';
+import { nthOccurrence, occurrencesBefore, stripWhitespace, type SourceRange } from './documentSourceMap';
 
 /** A text range inside one block, kept as text plus occurrence so it survives re-rendering. */
 export type DocumentTextSelection = {
@@ -6,7 +6,22 @@ export type DocumentTextSelection = {
   text: string;
   occurrence: number;
   rect: { top: number; bottom: number; left: number; width: number };
+  /** Set when the text is selected in the block's Markdown editor: offsets into its source. */
+  sourceRange?: SourceRange;
 };
+
+/** Reads a text range selected inside the block editor (a textarea showing the block's Markdown). */
+export function readEditorSelection(editor: HTMLTextAreaElement): DocumentSelectionRead {
+  const blockId = editor.closest<HTMLElement>('[data-document-block]')?.dataset.documentBlock;
+  if (!blockId) return null;
+  const { selectionStart: start, selectionEnd: end, value } = editor;
+  if (start === end) return { kind: 'caret', blockId };
+  const box = editor.getBoundingClientRect();
+  return {
+    kind: 'range',
+    selection: { blockId, text: value.slice(start, end), occurrence: 0, rect: { top: box.top, bottom: box.bottom, left: box.left, width: box.width }, sourceRange: { start, end } },
+  };
+}
 
 export type DocumentSelectionRead =
   | { kind: 'range'; selection: DocumentTextSelection }

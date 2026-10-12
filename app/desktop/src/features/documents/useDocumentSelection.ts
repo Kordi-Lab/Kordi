@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 
-import { readDocumentSelection, restoreDocumentSelection, type DocumentTextSelection } from './documentSelectionDom';
+import { readDocumentSelection, readEditorSelection, restoreDocumentSelection, type DocumentTextSelection } from './documentSelectionDom';
 import type { SelectionMenuPosition } from './DocumentSelectionMenu';
 
 const MENU_HEIGHT = 40;
@@ -47,7 +47,8 @@ export function useDocumentSelection(bodyRef: RefObject<HTMLElement | null>, men
     const active = body.ownerDocument.activeElement;
     // Typing a link URL moves focus into the menu; the text selection stays as it was.
     if (menuRef.current && active && menuRef.current.contains(active)) return;
-    const read = readDocumentSelection(body);
+    const editor = active?.tagName === 'TEXTAREA' && (active as HTMLTextAreaElement).dataset.documentEditor && body.contains(active) ? active as HTMLTextAreaElement : null;
+    const read = editor ? readEditorSelection(editor) : readDocumentSelection(body);
     if (!read) {
       setState(null);
       return;

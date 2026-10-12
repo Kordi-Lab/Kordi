@@ -50,6 +50,7 @@ export function useDocumentEditing(initialSource: string) {
     setShowTabs,
     selectTab: setCurrentTab,
     newTab,
+    updateCurrentSource: updateCurrent,
     replaceBlock: useCallback((blockId: string, next: string) => updateCurrent((source) => replaceSourceBlock(source, blockId, next)), [updateCurrent]),
     insertBlock: useCallback((afterBlockId: string | null, snippet: string) => updateCurrent((source) => insertSourceBlock(source, afterBlockId, snippet)), [updateCurrent]),
   };
