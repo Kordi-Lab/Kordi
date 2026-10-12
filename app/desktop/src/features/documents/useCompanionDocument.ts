@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import { COMPANION_DOCUMENT_OPEN_EVENT, type CompanionDocument } from './companionDocument';
+import { COMPANION_DOCUMENT_OPEN_EVENT, takePendingCompanionDocument, type CompanionDocument } from './companionDocument';
 
 /** The document open in a conversation's companion pane. */
 export function useCompanionDocument(conversationId: string) {
@@ -11,7 +11,7 @@ export function useCompanionDocument(conversationId: string) {
   return { document, open, close };
 }
 
-/** Handles open requests from the Artifacts tab and transcript attachment chips. */
+/** Handles open requests from the Artifacts tab and transcript attachments, including one made before this page mounted. */
 export function useCompanionDocumentRequests(onRequest: (document: CompanionDocument) => void) {
   const onRequestRef = useRef(onRequest);
   useLayoutEffect(() => { onRequestRef.current = onRequest; });
@@ -24,6 +24,9 @@ export function useCompanionDocumentRequests(onRequest: (document: CompanionDocu
       onRequestRef.current(detail);
     };
     window.addEventListener(COMPANION_DOCUMENT_OPEN_EVENT, handle);
+    // A request made while no chat page was listening opens now.
+    const pending = takePendingCompanionDocument();
+    if (pending) onRequestRef.current(pending);
     return () => window.removeEventListener(COMPANION_DOCUMENT_OPEN_EVENT, handle);
   }, []);
 }

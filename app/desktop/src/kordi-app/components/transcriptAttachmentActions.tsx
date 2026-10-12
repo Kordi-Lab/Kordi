@@ -8,6 +8,7 @@ import {
   persistCloudAttachmentBytes,
 } from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { loadSession } from '@/features/cloud/session';
+import { openAttachmentInCompanion } from '@/features/documents/companionDocument';
 import {
   downloadDesktopAttachment,
   openDesktopExternalUrl,
@@ -56,6 +57,8 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
   }
 
   async function handleDownload() {
+    // Markdown and HTML cloud attachments open in the chat's document pane instead.
+    if (openAttachmentInCompanion(attachment)) return;
     setIsDownloading(true);
     setError(null);
     try {
@@ -77,6 +80,7 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
   }
 
   async function handleOpen() {
+    if (openAttachmentInCompanion(attachment)) return;
     const target = downloadedPath ?? attachment.localPath;
     if (!target) return;
     setError(null);
@@ -88,6 +92,7 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
   }
 
   async function handleOpenOriginal() {
+    if (openAttachmentInCompanion(attachment)) return;
     setIsDownloading(true);
     setError(null);
     try {
