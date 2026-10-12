@@ -29,7 +29,10 @@ use crate::server::ServerState;
 
 pub(crate) mod access;
 mod comments;
+pub(crate) mod contents;
 mod documents;
+mod editing;
+pub(crate) mod inline_formats;
 pub mod model;
 mod public_page;
 mod reactions;
@@ -76,6 +79,12 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
         .route(
             "/v1/cloud/documents/:attachment_id",
             get(documents::get_document),
+        )
+        .route(
+            "/v1/cloud/documents/:attachment_id/content",
+            axum::routing::put(editing::save_content).layer(axum::extract::DefaultBodyLimit::max(
+                4 * editing::MAX_EDIT_BYTES,
+            )),
         )
         .route(
             "/v1/cloud/documents/:attachment_id/raw",
@@ -261,7 +270,7 @@ pub(crate) async fn require_block(
     let exists = match record.format {
         model::DocumentFormat::Html => block_id == "b0",
         model::DocumentFormat::Markdown => {
-            let source = access::document_source(state, record).await?;
+            let source = contents::document_source(state, record).await?.text;
             let index: usize = block_id[1..].parse().map_err(|_| invalid())?;
             index < render::markdown_blocks(&source).len()
         }

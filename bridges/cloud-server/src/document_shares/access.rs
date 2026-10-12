@@ -341,26 +341,43 @@ pub(crate) async fn document_session(
     .await
 }
 
-/// Fetches and decodes the document source.
-pub(crate) async fn document_source(
-    state: &ServerState,
-    record: &DocumentRecord,
-) -> Result<String, Box<Response>> {
-    if record
-        .size_bytes
-        .is_some_and(|size| size > MAX_DOCUMENT_BYTES as i64)
-    {
-        return Err(Box::new(err(
-            "document_too_large",
-            "This document is too large to open.",
-            StatusCode::PAYLOAD_TOO_LARGE,
-        )));
-    }
-    let bytes = crate::attachments::fetch::fetch_attachment_bytes(
-        state,
-        &record.object_key,
-        MAX_DOCUMENT_BYTES,
+/// Whether `account_id` is an active member of a conversation that carries
+/// the attachment.
+pub(crate) async fn is_active_member(
+    pool: &PgPool,
+    attachment_id: &str,
+    account_id: &str,
+) -> Result<bool, sqlx_core::Error> {
+    let (member,): (bool,) = query_as(
+        "SELECT EXISTS ( \
+           SELECT 1 FROM cloud_chat_message_attachments link \
+           JOIN cloud_chat_messages message ON message.message_id = link.message_id \
+           JOIN cloud_chat_conversation_members member \
+             ON member.conversation_id = message.conversation_id \
+           WHERE link.attachment_id = $1 AND member.account_id = $2 \
+             AND member.membership_state = 'active')",
     )
+    .bind(attachment_id)
+    .bind(account_id)
+    .fetch_one(pool)
     .await?;
-    Ok(String::from_utf8_lossy(&bytes).into_owned())
+    Ok(member)
+}
+
+/// `viewerCan.edit`: Markdown documents, for the owner and for active members
+/// of a conversation that carries them.
+pub(crate) async fn can_edit(
+    pool: &PgPool,
+    record: &DocumentRecord,
+    viewer: Viewer,
+    account_id: &str,
+) -> Result<bool, sqlx_core::Error> {
+    if record.format != DocumentFormat::Markdown {
+        return Ok(false);
+    }
+    match viewer {
+        Viewer::Owner => Ok(true),
+        Viewer::Member => is_active_member(pool, &record.attachment_id, account_id).await,
+        Viewer::Public => Ok(false),
+    }
 }

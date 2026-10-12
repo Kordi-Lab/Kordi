@@ -7,6 +7,7 @@
 
 use pulldown_cmark::{html, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
+use super::inline_formats::{apply_inline_formats, is_allowed_inline_html};
 use super::model::{DocumentBlock, DocumentFormat};
 
 const MAX_TITLE_CHARS: usize = 200;
@@ -67,7 +68,7 @@ pub(crate) fn image_is_allowed(destination: &str) -> bool {
     lower.starts_with("https://") || lower.starts_with("data:image/")
 }
 
-/// Renders `events` after dropping raw HTML, links with schemes other than
+/// Renders `events` after dropping raw HTML other than `<u>` and `<mark>`, links with schemes other than
 /// http, https, and mailto (their text stays), and images whose source is
 /// not https or `data:image/` (with their alt text). Links that remain get
 /// `rel="noopener noreferrer"`.
@@ -85,6 +86,7 @@ fn sanitized_html(events: &[Event<'_>]) -> String {
             continue;
         }
         match event {
+            Event::InlineHtml(html) if is_allowed_inline_html(html) => kept.push(event.clone()),
             Event::Html(_) | Event::InlineHtml(_) => {}
             Event::Start(Tag::HtmlBlock) | Event::End(TagEnd::HtmlBlock) => {}
             Event::Start(Tag::Link { dest_url, .. }) if !link_is_allowed(dest_url) => {
@@ -98,7 +100,7 @@ fn sanitized_html(events: &[Event<'_>]) -> String {
         }
     }
     let mut out = String::new();
-    html::push_html(&mut out, kept.into_iter());
+    html::push_html(&mut out, apply_inline_formats(kept).into_iter());
     // Raw HTML is gone and text is escaped, so every `<a href` is a link tag.
     out.replace("<a href=\"", "<a rel=\"noopener noreferrer\" href=\"")
 }
@@ -199,4 +201,39 @@ pub(crate) fn document_format(content_type: &str, file_name: &str) -> Option<Doc
     } else {
         None
     }
+}
+
+/// Where each old block's annotations go after an edit, given the old and
+/// new block sources. A block whose trimmed source still exists keeps its
+/// annotations at the first unmatched occurrence in order; `None` means the
+/// block disappeared (see [`resolve_remap`]).
+pub(crate) fn remap_block_ids(old_blocks: &[String], new_blocks: &[String]) -> Vec<Option<usize>> {
+    let mut available: std::collections::HashMap<&str, std::collections::VecDeque<usize>> =
+        std::collections::HashMap::new();
+    for (index, source) in new_blocks.iter().enumerate() {
+        available.entry(source.trim()).or_default().push_back(index);
+    }
+    old_blocks
+        .iter()
+        .map(|source| {
+            available
+                .get_mut(source.trim())
+                .and_then(std::collections::VecDeque::pop_front)
+        })
+        .collect()
+}
+
+/// Final target for each old block: its match, else the target of the
+/// nearest preceding block that survived, else `0`.
+pub(crate) fn resolve_remap(mapping: &[Option<usize>]) -> Vec<usize> {
+    let mut last_survivor: Option<usize> = None;
+    mapping
+        .iter()
+        .map(|target| {
+            if let Some(target) = target {
+                last_survivor = Some(*target);
+            }
+            target.or(last_survivor).unwrap_or(0)
+        })
+        .collect()
 }

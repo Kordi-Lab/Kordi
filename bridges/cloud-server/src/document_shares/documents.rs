@@ -10,10 +10,10 @@ use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 
 use super::access::{
-    authorized_document, document_session, document_source, public_document, DocumentRecord,
-    ShareRow,
+    authorized_document, can_edit, document_session, public_document, DocumentRecord, ShareRow,
 };
 use super::comments::list_comments;
+use super::contents::{document_source, DocumentSource};
 use super::model::{
     DocumentAgent, DocumentFormat, DocumentResponse, PublicReadQuery, Viewer, ViewerCan,
 };
@@ -37,13 +37,14 @@ pub(crate) const RAW_HTML_CSP: &str = "sandbox; default-src 'none'; img-src data
 pub(crate) async fn document_response(
     state: &ServerState,
     record: &DocumentRecord,
-    source: &str,
+    document: &DocumentSource,
     viewer: Viewer,
     caller: &Caller,
     share: Option<&ShareRow>,
     raw_path: Option<String>,
 ) -> Result<DocumentResponse, Box<Response>> {
     let pool = state.db_pool();
+    let source = document.text.as_str();
     let session = match viewer {
         Viewer::Public => Ok(None),
         Viewer::Owner => document_session(pool, &record.attachment_id, None).await,
@@ -71,6 +72,12 @@ pub(crate) async fn document_response(
         _ => None,
     };
     let readers_can_ask_agent = share.is_some_and(|row| row.readers_can_ask_agent);
+    let edit = match caller {
+        Caller::Account(account) => can_edit(pool, record, viewer, account)
+            .await
+            .map_err(|_| db_error())?,
+        Caller::Reader(_) => false,
+    };
     let (session_id, session_title) = session.map_or((None, None), |(id, title)| (Some(id), title));
     Ok(DocumentResponse {
         attachment_id: record.attachment_id.clone(),
@@ -80,7 +87,10 @@ pub(crate) async fn document_response(
         content_type: record.content_type.clone(),
         size_bytes: record.size_bytes,
         created_at: record.created_at.clone(),
-        updated_at: record.created_at.clone(),
+        updated_at: document
+            .updated_at
+            .clone()
+            .unwrap_or_else(|| record.created_at.clone()),
         session_id,
         session_title,
         author,
@@ -92,6 +102,7 @@ pub(crate) async fn document_response(
         raw_path: (record.format == DocumentFormat::Html)
             .then_some(raw_path)
             .flatten(),
+        revision: document.revision,
         reactions,
         comments,
         share: owner_share,
@@ -101,6 +112,7 @@ pub(crate) async fn document_response(
             react: true,
             comment: true,
             ask_agent: viewer != Viewer::Public || readers_can_ask_agent,
+            edit,
         },
     })
 }
@@ -119,30 +131,42 @@ pub(crate) async fn get_document(
         Ok(source) => source,
         Err(response) => return *response,
     };
+    match signed_in_response(&state, &session, &record, viewer, &source).await {
+        Ok(response) => Json(response).into_response(),
+        Err(response) => *response,
+    }
+}
+
+/// The response a signed-in viewer gets for `source`, with the owner's live
+/// share when the viewer owns the document.
+pub(crate) async fn signed_in_response(
+    state: &ServerState,
+    session: &CloudSession,
+    record: &DocumentRecord,
+    viewer: Viewer,
+    source: &DocumentSource,
+) -> Result<DocumentResponse, Box<Response>> {
     let share = if viewer == Viewer::Owner {
-        match live_shares(state.db_pool(), &session.account_id, &record.attachment_id).await {
-            Ok(rows) => rows.into_iter().next(),
-            Err(_) => return db_error(),
-        }
+        live_shares(state.db_pool(), &session.account_id, &record.attachment_id)
+            .await
+            .map_err(|_| db_error())?
+            .into_iter()
+            .next()
     } else {
         None
     };
     let caller = Caller::Account(session.account_id.clone());
     let raw_path = format!("/v1/cloud/documents/{}/raw", record.attachment_id);
-    match document_response(
-        &state,
-        &record,
-        &source,
+    document_response(
+        state,
+        record,
+        source,
         viewer,
         &caller,
         share.as_ref(),
         Some(raw_path),
     )
     .await
-    {
-        Ok(response) => Json(response).into_response(),
-        Err(response) => *response,
-    }
 }
 
 /// `GET /v1/cloud/public/documents/:token`
@@ -211,7 +235,7 @@ pub(crate) async fn raw_html_response(state: &ServerState, record: &DocumentReco
         Ok(source) => source,
         Err(response) => return *response,
     };
-    let mut response = source.into_response();
+    let mut response = source.text.into_response();
     let headers = response.headers_mut();
     headers.insert(
         header::CONTENT_TYPE,

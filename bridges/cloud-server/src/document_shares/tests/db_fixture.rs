@@ -21,7 +21,7 @@ use crate::attachments::S3Config;
 use crate::events::EventBus;
 use crate::server::ServerState;
 
-const DOCUMENT: &str = "# Field notes\n\nFirst paragraph.\n\nSecond paragraph.\n";
+pub(super) const DOCUMENT: &str = "# Field notes\n\nFirst paragraph.\n\nSecond paragraph.\n";
 
 pub(super) async fn pool() -> Option<PgPool> {
     let skip_requested = std::env::var("KORDI_CONNECTOR_DB_TESTS").as_deref() == Ok("skip");
@@ -104,7 +104,9 @@ pub(super) struct Fixture {
     pub(super) attachment_id: String,
     pub(super) owner: String,
     pub(super) owner_token: String,
+    pub(super) member: String,
     pub(super) member_token: String,
+    pub(super) outsider: String,
     pub(super) outsider_token: String,
 }
 
@@ -114,7 +116,7 @@ pub(super) async fn fixture() -> Option<Fixture> {
     let pool = pool().await?;
     let (owner, owner_token) = signed_in_account(&pool, "owner").await;
     let (member, member_token) = signed_in_account(&pool, "member").await;
-    let (_, outsider_token) = signed_in_account(&pool, "outsider").await;
+    let (outsider, outsider_token) = signed_in_account(&pool, "outsider").await;
     let attachment_id = format!("att_doc_{}", Uuid::new_v4().simple());
     let now = Utc::now().to_rfc3339();
     query(
@@ -186,7 +188,9 @@ pub(super) async fn fixture() -> Option<Fixture> {
         attachment_id,
         owner,
         owner_token,
+        member,
         member_token,
+        outsider,
         outsider_token,
     })
 }

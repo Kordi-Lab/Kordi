@@ -14,7 +14,8 @@ use axum::Extension;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::RngCore;
 
-use super::access::{document_source, public_document, DocumentRecord};
+use super::access::{public_document, DocumentRecord};
+use super::contents::document_source;
 use super::documents::raw_html_response;
 use super::model::{DocumentAuthor, DocumentFormat};
 use super::render::{document_blocks, document_title, markdown_title};
@@ -263,7 +264,7 @@ pub(crate) async fn page(
     let input = PageInput {
         token: &token,
         record: &record,
-        source: &source,
+        source: &source.text,
     };
     html_response(StatusCode::OK, &nonce, document_page(&input, &nonce))
 }

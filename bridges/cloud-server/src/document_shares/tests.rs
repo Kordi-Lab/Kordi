@@ -10,6 +10,8 @@ use super::validate::*;
 
 mod db;
 mod db_fixture;
+mod editing_db;
+mod formats;
 
 #[test]
 fn share_tokens_have_the_invitation_shape_and_hash_stably() {

@@ -19,6 +19,7 @@ pub struct DocumentResponse {
     pub agent: Option<DocumentAgent>,
     pub blocks: Vec<DocumentBlock>,
     pub raw_path: Option<String>,
+    pub revision: i64,
     pub reactions: Vec<DocumentReaction>,
     pub comments: Vec<DocumentComment>,
     pub share: Option<DocumentShare>,
@@ -80,6 +81,7 @@ pub struct ViewerCan {
     pub react: bool,
     pub comment: bool,
     pub ask_agent: bool,
+    pub edit: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -202,6 +204,24 @@ pub struct PublicCommentRequest {
 pub struct PatchCommentRequest {
     pub body: Option<String>,
     pub resolved: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveContentRequest {
+    pub base_revision: i64,
+    pub source: String,
+}
+
+/// `409 document_revision_conflict`: the error fields plus the current
+/// document, so a client can rebase without another request.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevisionConflict {
+    pub error_code: &'static str,
+    pub message: &'static str,
+    #[serde(flatten)]
+    pub document: DocumentResponse,
 }
 
 /// Optional `?readerKey=` on the public read so `mine` is set for the caller.
