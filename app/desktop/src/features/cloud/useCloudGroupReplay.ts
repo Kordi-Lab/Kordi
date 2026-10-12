@@ -289,7 +289,7 @@ export function useCloudGroupReplay({
             error instanceof Error ? error.message : String(error);
           reportWarningRef.current(
             '[cloud-group] sync failed; retry scheduled',
-            { attempt, retryDelayMs, failure, error },
+            `${failure} (attempt ${attempt}, retry in ${retryDelayMs} ms)`,
           );
         },
       });

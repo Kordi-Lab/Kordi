@@ -34,7 +34,7 @@ pub(in crate::canonical_sessions) fn open_or_create_session_in_db(
                 [&id],
                 |row| {
                     Ok((
-                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(0)?,
                         row.get::<_, i64>(1)?,
                         row.get::<_, i64>(2)?,
                     ))
@@ -42,7 +42,11 @@ pub(in crate::canonical_sessions) fn open_or_create_session_in_db(
             )
             .optional()
             .map_err(|error| error.to_string())?
-            .filter(|(title, _, _)| !title.trim().is_empty())
+            .and_then(|(title, revision, updated_at_ms)| {
+                title
+                    .filter(|title| !title.trim().is_empty())
+                    .map(|title| (title, revision, updated_at_ms))
+            })
         {
             default_title = title.trim().to_string();
             let metadata =

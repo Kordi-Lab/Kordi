@@ -206,10 +206,10 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
     stroke var(--app-motion-fast) var(--app-motion-ease);
 }
 
-.app-message-bubble-queued {
-  --app-message-bubble-fill: rgba(251, 191, 36, 0.1);
-  --app-message-bubble-stroke: rgba(251, 191, 36, 0.26);
-  --app-message-bubble-shadow: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.12));
+/* A queued message is an outgoing bubble that has not been sent yet: the same surface,
+ * thinned out. */
+.app-message-bubble-queued .app-message-bubble-shape-fill {
+  fill-opacity: 0.7;
 }
 
 @keyframes app-support-contact-typing-pulse {
@@ -457,18 +457,21 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
   font-weight: 400;
 }
 
-.app-queued-message {
-  border: 0;
-  background: transparent;
-  color: rgb(254 243 199);
-  box-shadow: none;
+.app-queued-message-actions {
+  opacity: 0;
+  transition: opacity var(--app-motion-fast) var(--app-motion-ease);
 }
 
-.app-queued-message-label,
-.app-queued-message-meta {
-  color: rgba(254, 243, 199, 0.64);
+:is(.app-queued-message, .app-queued-message-thread):is(:hover, :focus-within) .app-queued-message-actions {
+  opacity: 1;
 }
 
-.app-queued-message-text {
-  color: rgba(255, 251, 235, 0.96);
+@media (hover: none) {
+  .app-queued-message-actions {
+    opacity: 1;
+  }
+}
+
+.kordi-app .app-queued-message-action {
+  color: inherit;
 }

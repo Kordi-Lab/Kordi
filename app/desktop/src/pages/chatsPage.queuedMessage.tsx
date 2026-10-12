@@ -7,9 +7,12 @@ import {
 } from '@/features/chat/messageBubbleShape';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { MessageInlineContent } from '@/kordi-app/components/messageInlineContent';
+import { MessageHoverTime } from '@/kordi-app/components/transcriptMessageTime';
 import type { QueuedDesktopChatMessage } from '@/kordi-app/types';
 import { generatedAvatarSeedForLabel, selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
+
+const queuedActionButtonClass = 'app-button-quiet app-queued-message-action -my-1 inline-flex h-5 w-5 items-center justify-center rounded-full p-0';
 
 export function QueuedMessageBubble({
   message,
@@ -29,36 +32,38 @@ export function QueuedMessageBubble({
   threadLayout?: boolean;
 }) {
   const profileAvatarSeed = useLocalProfileAvatarSeed();
-  const statusLabel = isCompressionActive ? 'Queued during compression' : 'Queued next';
+  const statusLabel = isCompressionActive ? 'Queued during compression' : 'Queued';
   const actions = onEdit || onCancel ? (
-    <div
-      className="app-queued-message-actions flex shrink-0 items-center gap-1 self-center"
-      aria-label="Queued message actions"
-    >
+    <span className="app-queued-message-actions inline-flex shrink-0 items-center" role="group" aria-label="Queued message actions">
       {onEdit ? <button
         type="button"
-        className="app-button-quiet app-queued-message-edit inline-flex h-7 w-7 items-center justify-center rounded-full p-0"
+        className={cn(queuedActionButtonClass, 'app-queued-message-edit')}
         aria-label={`Edit queued message: ${message.text.slice(0, 48)}`}
         title="Edit queued message"
         onClick={() => onEdit?.(message.sessionId, message.id)}
       >
-        <SquarePen className="h-3.5 w-3.5" aria-hidden="true" />
+        <SquarePen className="h-3 w-3" aria-hidden="true" />
       </button> : null}
       {onCancel ? <button
         type="button"
-        className="app-button-quiet app-queued-message-cancel inline-flex h-7 w-7 items-center justify-center rounded-full p-0"
+        className={cn(queuedActionButtonClass, 'app-queued-message-cancel')}
         aria-label={`Cancel queued message: ${message.text.slice(0, 48)}`}
         title="Cancel queued message"
         onClick={() => onCancel?.(message.sessionId, message.id)}
       >
-        <X className="h-3.5 w-3.5" aria-hidden="true" />
+        <X className="h-3 w-3" aria-hidden="true" />
       </button> : null}
+    </span>
+  ) : null;
+  const attachmentsLine = message.attachments.length > 0 ? (
+    <div className="app-message-footer app-queued-message-attachments mt-1 text-[10px] leading-none">
+      {message.attachments.length} attachment{message.attachments.length === 1 ? '' : 's'} waiting
     </div>
   ) : null;
   if (threadLayout) {
     const name = selfDisplayName(sender ?? 'Me', own);
     return (
-      <div className="flex w-full flex-col gap-1 app-thread-message-row pt-0.5 pb-0.5" data-message-layout="threads">
+      <div className="app-queued-message-thread flex w-full flex-col gap-1 app-thread-message-row pt-0.5 pb-0.5" data-message-layout="threads">
         <div className="flex w-full max-w-full app-thread-message-main items-start gap-2">
           <IdentityAvatar
             kind="human"
@@ -72,60 +77,65 @@ export function QueuedMessageBubble({
               <span className="app-thread-message-author">{name}</span>
               <span className="app-thread-message-queued">
                 <Clock3 className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
-                <span>{isCompressionActive ? 'Queued during compression' : 'Queued'}</span>
+                <span>{statusLabel}</span>
               </span>
               <time className="app-thread-message-time">{message.time}</time>
-            </div>
-            <div className="flex items-start gap-2">
-              <div className="app-queued-message-text min-w-0 flex-1 whitespace-pre-wrap break-words text-[14px] leading-5" data-kordi-copy-surface="message">
-                <MessageInlineContent text={message.text} />
-              </div>
               {actions}
             </div>
-            {message.attachments.length > 0 ? (
-              <div className="app-queued-message-meta mt-1 text-[10px] leading-none">
-                {message.attachments.length} attachment
-                {message.attachments.length === 1 ? '' : 's'} waiting
-              </div>
-            ) : null}
+            <div className="app-queued-message-text min-w-0 whitespace-pre-wrap break-words text-[14px] leading-5" data-kordi-copy-surface="message">
+              <MessageInlineContent text={message.text} />
+            </div>
+            {attachmentsLine}
           </div>
         </div>
       </div>
     );
   }
+  // Single-line text keeps the status inline after the text, like a sent message's receipt.
+  const inline = !/\r?\n/.test(message.text) && message.attachments.length === 0;
+  const meta = (
+    <span
+      className={cn(
+        'app-message-footer app-queued-message-meta items-center gap-1 whitespace-nowrap text-[10px] leading-none',
+        inline ? 'ml-3 inline-flex translate-y-[1px]' : 'mt-1.5 flex justify-end',
+      )}
+    >
+      <Clock3 className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+      <span className="app-queued-message-label">{statusLabel}</span>
+      {actions}
+    </span>
+  );
+  const text = (
+    <span className="app-queued-message-text whitespace-pre-wrap break-words" data-kordi-copy-surface="message">
+      <MessageInlineContent text={message.text} />
+    </span>
+  );
   return (
-    <div className={cn('flex py-0.5', own ? 'justify-end' : 'justify-start')}>
-      <div
-        className={cn(
-          'app-queued-message max-w-[min(72%,34rem)] px-3 py-2 text-right',
-          own ? queuedMessageBubbleShapeClass : cn(humanMessageBubbleShapeClass('peer'), 'app-message-bubble-queued'),
-        )}
-      >
-        <MessageBubbleShapeBackdrop side={own ? 'own' : 'peer'} />
-        <div className="min-w-0 text-left">
-          {sender ? <div className="mb-1 text-xs">{sender}</div> : null}
-          <div className="mb-0.5 flex items-center justify-between gap-3">
-            <div className="app-queued-message-label inline-flex min-w-0 items-center gap-1.5 text-[11px] font-medium">
-              <Clock3 className="h-2.5 w-2.5 shrink-0" />
-              <span className="truncate">{statusLabel}</span>
-            </div>
-            <div className="app-queued-message-meta shrink-0 text-[10px] leading-none">
-              {message.time}
-            </div>
-          </div>
-          <div className="mt-0.5 flex items-center gap-2">
-            <div className="app-queued-message-text min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-5" data-kordi-copy-surface="message">
-              <MessageInlineContent text={message.text} />
-            </div>
-            {actions}
-          </div>
+    <div className={cn('flex w-full flex-col pt-0.5 pb-0.5', own ? 'items-end' : 'items-start')}>
+      <div className={cn('flex w-full max-w-full items-end gap-2', own ? 'flex-row-reverse' : 'flex-row')}>
+        <span className="app-message-avatar-spacer h-8 w-8 shrink-0" aria-hidden="true" />
+        <div
+          className={cn(
+            'app-queued-message app-message-hover-time-trigger w-fit min-w-0 max-w-[52rem] px-4 py-2.5 text-[14px]',
+            own
+              ? cn(queuedMessageBubbleShapeClass, 'app-chat-bubble-user')
+              : cn(humanMessageBubbleShapeClass('peer'), 'app-message-bubble-queued app-chat-bubble-peer'),
+          )}
+          data-queued-message="true"
+        >
+          <MessageBubbleShapeBackdrop side={own ? 'own' : 'peer'} tail={false} />
+          {sender ? <div className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4">{sender}</div> : null}
+          {inline ? (
+            <div className="leading-[1.45]">{text}{meta}</div>
+          ) : (
+            <>
+              <div className="leading-[1.45]">{text}</div>
+              {attachmentsLine}
+              {meta}
+            </>
+          )}
         </div>
-        {message.attachments.length > 0 ? (
-          <div className="app-queued-message-meta mt-1 text-[10px] leading-none">
-            {message.attachments.length} attachment
-            {message.attachments.length === 1 ? '' : 's'} waiting
-          </div>
-        ) : null}
+        <MessageHoverTime msg={{ role: own ? 'user' : 'person', sender: sender ?? 'Me', text: message.text, time: message.time }} side={own ? 'own' : 'peer'} />
       </div>
     </div>
   );
