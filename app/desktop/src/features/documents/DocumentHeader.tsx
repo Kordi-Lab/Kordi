@@ -1,6 +1,7 @@
 import { CalendarDays, ExternalLink, Share } from 'lucide-react';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 
+import type { DocumentPresencePeer } from './documentPresence';
 import type { DocumentReaderPerson } from './documentReaderHost';
 import { PeopleCard } from './PeopleCard';
 import { useOutsideDismiss } from './useOutsideDismiss';
@@ -14,6 +15,7 @@ export function DocumentHeader({
   shareOpen,
   onToggleShare,
   sharePopover,
+  presence = [],
   onOpenSession,
 }: {
   fileName: string;
@@ -21,6 +23,8 @@ export function DocumentHeader({
   shareOpen: boolean;
   onToggleShare?: () => void;
   sharePopover?: ReactNode;
+  /** Other people editing in the collaboration room. */
+  presence?: DocumentPresencePeer[];
   onOpenSession?: () => void;
 }) {
   return (
@@ -34,6 +38,7 @@ export function DocumentHeader({
         ) : null}
       </div>
       <div className="app-document-header-actions">
+        {presence.length > 0 ? <DocumentPresence peers={presence} /> : null}
         {onOpenSession ? (
           <button type="button" className="app-document-header-button" onClick={onOpenSession}>
             <ExternalLink aria-hidden="true" />
@@ -54,6 +59,27 @@ export function DocumentHeader({
         ) : null}
       </div>
       {shareOpen ? sharePopover : null}
+    </div>
+  );
+}
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?';
+}
+
+/** Who else is editing, one colored initials circle each (their caret color). */
+function DocumentPresence({ peers }: { peers: DocumentPresencePeer[] }) {
+  const shown = peers.slice(0, 4);
+  const names = peers.map((peer) => peer.name).join(', ');
+  return (
+    <div className="app-document-presence" role="group" aria-label={`Editing: ${names}`} title={names}>
+      {shown.map((peer) => (
+        <span key={peer.clientId} className="app-document-presence-avatar" style={{ backgroundColor: peer.color }} data-account-id={peer.accountId ?? undefined}>
+          {initials(peer.name)}
+        </span>
+      ))}
+      {peers.length > shown.length ? <span className="app-document-presence-more">+{peers.length - shown.length}</span> : null}
     </div>
   );
 }

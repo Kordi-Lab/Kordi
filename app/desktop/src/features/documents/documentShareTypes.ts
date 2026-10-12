@@ -126,8 +126,11 @@ export type UpdateDocumentCommentInput = {
 };
 
 export type SaveDocumentContentInput = {
-  baseRevision: number;
+  /** Required for revisioned saves; snapshots from the collaboration room have none. */
+  baseRevision?: number;
   source: string;
+  /** `snapshot`: written by the room's snapshot writer, no revision check. */
+  mode?: 'snapshot';
   /** On a document's first save with stamped ids: index ids (`b3`) to the `k:` ids that replace them. */
   blockIds?: Record<string, string>;
 };
@@ -136,6 +139,20 @@ export type SaveDocumentContentInput = {
 export type SaveDocumentContentResult =
   | { status: 'saved'; document: DocumentResponse }
   | { status: 'conflict'; document: DocumentResponse };
+
+/** A single-use ticket for the document's collaboration socket. */
+export type DocumentCollabTicket = {
+  ticket: string;
+  /** Socket path, `/v1/cloud/documents/<id>/collab`. */
+  url: string;
+  /** Single use, bound to the session, the document, and the page origin. */
+  expiresInSeconds?: number;
+  /** A revisioned save landed outside the room; reconcile changed blocks after sync. */
+  staleRevision?: boolean;
+};
+
+/** Answer to the seeding request: exactly one caller builds the room from Markdown. */
+export type DocumentCollabInit = { initialize: boolean; revision?: number };
 
 /** Payload of the `document.updated` user sync event. */
 export type DocumentUpdatedEvent = {

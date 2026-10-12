@@ -76,3 +76,26 @@ export function applyRemoteBlocks(editor: Editor, sync: SyncState, blocks: reado
   }
   return { sync: { base: remote, legacyIds }, conflict: merged.conflict, localChanges: !same(merged.blocks, remote) };
 }
+
+/**
+ * The room's content brought in line with the latest snapshot after a
+ * revisioned save changed it outside the room: blocks whose Markdown differs
+ * take the snapshot's version by id, snapshot blocks the room lacks are
+ * inserted after their predecessor, and blocks only the room has stay.
+ */
+export function reconciledContent(editor: Editor, room: JSONContent, blocks: readonly SourceBlock[]): JSONContent {
+  const manager = editor.markdown!;
+  const snapshot = parseBlocks(manager, blocks).doc.content ?? [];
+  const content = [...(room.content ?? [])];
+  const sourceOf = (node: JSONContent) => serializeBlocks(manager, { type: 'doc', content: [node] })[0]?.source;
+  const indexOf = (id: unknown) => content.findIndex((node) => node.attrs?.id === id);
+  let previous: unknown = null;
+  for (const node of snapshot) {
+    const id: unknown = node.attrs?.id;
+    const at = indexOf(id);
+    if (at >= 0 && sourceOf(content[at]) !== sourceOf(node)) content[at] = node;
+    if (at < 0) content.splice(previous === null ? 0 : indexOf(previous) + 1, 0, node);
+    previous = id;
+  }
+  return { ...room, content };
+}

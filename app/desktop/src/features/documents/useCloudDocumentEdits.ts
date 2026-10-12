@@ -14,18 +14,23 @@ export const UPDATED_ELSEWHERE = 'Updated elsewhere';
  * was based on: debounced, flushed on blur and close. A 409 or a
  * `document.updated` hands the newer document to the editor, which merges it
  * block by block and reports its Markdown again; the next save then uses the
- * newer revision.
+ * newer revision. While the document's collaboration room is connected the
+ * room carries the content: no revisioned saves, and `document.updated` only
+ * refreshes reactions and comments.
  */
 export function useCloudDocumentEdits({
   api,
   document,
-  enabled,
+  enabled: editable,
+  collaborating = false,
   onDocument,
   onAnnotations,
 }: {
   api: DocumentShareApi;
   document: DocumentResponse | null;
   enabled: boolean;
+  /** The collaboration room is connected. */
+  collaborating?: boolean;
   onDocument: (next: DocumentResponse) => void;
   /** Replaces reactions and comments only, leaving the blocks being edited alone. */
   onAnnotations: (reactions: DocumentReaction[], comments: DocumentComment[]) => void;
@@ -33,8 +38,9 @@ export function useCloudDocumentEdits({
   const [draft, setDraftState] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const latest = useRef({ document, draft, onDocument, onAnnotations, saving: false, blockIds: null as Record<string, string> | null });
-  useLayoutEffect(() => { latest.current = { ...latest.current, document, draft, onDocument, onAnnotations }; });
+  const enabled = editable && !collaborating;
+  const latest = useRef({ document, draft, onDocument, onAnnotations, collaborating, saving: false, blockIds: null as Record<string, string> | null });
+  useLayoutEffect(() => { latest.current = { ...latest.current, document, draft, onDocument, onAnnotations, collaborating }; });
 
   const setDraft = useCallback((next: string | null) => {
     latest.current = { ...latest.current, draft: next };
@@ -103,7 +109,7 @@ export function useCloudDocumentEdits({
         .then((remote) => {
           const base = latest.current.document;
           if (disposed || !base) return;
-          if ((remote.revision ?? 0) > (base.revision ?? 0) && !latest.current.saving) {
+          if ((remote.revision ?? 0) > (base.revision ?? 0) && !latest.current.saving && !latest.current.collaborating) {
             latest.current = { ...latest.current, document: remote };
             latest.current.onDocument(remote);
           } else {

@@ -10,7 +10,7 @@ const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIS
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;
 // The document editor (Tiptap, ProseMirror, Markdown parser) is one lazy chunk that loads with the
 // first opened document. It gets its own cap, like the atlases, without relaxing the app budget.
-const MAX_DOCUMENT_EDITOR_BYTES = 650_000;
+const MAX_DOCUMENT_EDITOR_BYTES = 750_000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const assetsDir = process.argv[2]

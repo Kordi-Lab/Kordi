@@ -1,4 +1,6 @@
 import type {
+  DocumentCollabInit,
+  DocumentCollabTicket,
   SaveDocumentContentInput,
   SaveDocumentContentResult,
   CreateDocumentShareInput,
@@ -196,4 +198,12 @@ export async function saveCloudDocumentContent(
     throw new Error(response.status === 413 ? 'This document is too large to save.' : response.status === 403 ? 'You can\'t edit this document.' : 'Could not save the document.');
   }
   return { status: 'saved', document };
+}
+
+export function requestCloudDocumentCollabTicket(client: CloudRequestClient, token: string, attachmentId: string): Promise<DocumentCollabTicket> {
+  return client.request(`/v1/cloud/documents/${segment(attachmentId)}/collab/ticket`, authorized(token, 'POST', {}), 'Could not join the document.');
+}
+
+export function initCloudDocumentCollab(client: CloudRequestClient, token: string, attachmentId: string): Promise<DocumentCollabInit> {
+  return client.request(`/v1/cloud/documents/${segment(attachmentId)}/collab/init`, authorized(token, 'POST', {}), 'Could not prepare the document.');
 }

@@ -24,6 +24,8 @@ import { themedDocumentSource, useDocumentTheme } from './documentTheme';
 import { useOutsideDismiss } from './useOutsideDismiss';
 import { UPDATED_ELSEWHERE } from './useCloudDocumentEdits';
 import type { DocumentEditorHandle } from './editor/DocumentEditor';
+import type { DocumentRoomOptions, ProviderFactory } from './editor/documentRoom';
+import { presenceColor, type DocumentCollabState } from './documentPresence';
 
 // Tiptap loads with the first document, not with the app.
 const DocumentEditor = lazy(() => import('./editor/DocumentEditor'));
@@ -38,6 +40,8 @@ export type DocumentReaderProps = DocumentReaderSource & {
   className?: string;
   /** Exposes the Tiptap editor (tests and the review page). */
   onEditor?: (editor: Editor | null) => void;
+  /** Replaces the collaboration socket and its waits (tests). */
+  collabTransport?: { createProvider: ProviderFactory; timing?: DocumentRoomOptions['timing'] };
 };
 
 function isLevelOneHeading(source: string, title: string) {
@@ -45,10 +49,11 @@ function isLevelOneHeading(source: string, title: string) {
   return Boolean(match && match[1].trim() === title.trim());
 }
 
-export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, initialShareOpen = false, className, onEditor, ...source }: DocumentReaderProps) {
+export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, initialShareOpen = false, className, onEditor, collabTransport, ...source }: DocumentReaderProps) {
   const api = useMemo(() => apiOverride ?? documentShareApiForEnvironment(), [apiOverride]);
   const host = useDocumentReaderHost();
-  const reader = useDocumentReader(source, api);
+  const [collabState, setCollabState] = useState<DocumentCollabState>({ status: 'offline', peers: [] });
+  const reader = useDocumentReader(source, api, collabState.status === 'connected');
   const { document, editing, mode } = reader;
   const [shareOpen, setShareOpen] = useState(initialShareOpen);
   const [composingBlock, setComposingBlock] = useState<string | null>(null);
@@ -117,6 +122,14 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
   const showInFinder = hasLocalFile && path && host.revealPath ? () => { void host.revealPath?.(path); } : undefined;
   const memberSessionId = reader.memberSessionId;
 
+  // Editable cloud documents join their collaboration room as the signed-in viewer.
+  const viewerId = host.viewer?.accountId ?? null;
+  const viewerName = host.viewer?.displayName ?? '';
+  const roomId = reader.canEditCloud && reader.onCloudTab && viewerId ? document?.attachmentId ?? null : null;
+  const collab = useMemo(() => (roomId && viewerId
+    ? { api, attachmentId: roomId, user: { name: viewerName, color: presenceColor(viewerId), accountId: viewerId } }
+    : null), [api, roomId, viewerId, viewerName]);
+
   // HTML never runs scripts here (empty sandbox, no same origin) and sits on the app surface in the app theme.
   const htmlSource = hasLocalFile ? source.localSource ?? '' : reader.rawHtml;
   const htmlFrame = reader.format === 'html' && editing.currentTab === 0
@@ -142,6 +155,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
           badge={badge}
           shareOpen={shareOpen}
           onToggleShare={reader.canShare ? () => setShareOpen((open) => !open) : undefined}
+          presence={collab && collabState.status === 'connected' ? collabState.peers : []}
           onOpenSession={memberSessionId && onOpenSession ? () => onOpenSession(memberSessionId) : undefined}
           sharePopover={(
             <DocumentSharePopover
@@ -191,6 +205,11 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
               <Suspense fallback={<div className="app-document-empty"><LoaderCircle className="animate-spin" aria-hidden="true" />Loading</div>}>
                 <DocumentEditor
                   key={`${editing.currentTab}:${reader.attachmentId ?? source.path ?? ''}`}
+                  collab={collab}
+                  onCollab={setCollabState}
+                  onSnapshot={reader.replaceDocument}
+                  createProvider={collabTransport?.createProvider}
+                  roomTiming={collabTransport?.timing}
                   blocks={reader.editorBlocks}
                   revisionKey={reader.editorRevision}
                   editable={reader.canEdit}

@@ -2,6 +2,8 @@ import { splitMarkdownBlocks } from '../../src/features/documents/documentBlocks
 import { blocksFromSource } from '../../src/features/documents/documentBlockSource';
 import type { DocumentShareApi, DocumentWriteTarget } from '../../src/features/documents/documentShareApi';
 import type {
+  DocumentCollabInit,
+  DocumentCollabTicket,
   DocumentComment,
   DocumentReaction,
   DocumentResponse,
@@ -121,6 +123,10 @@ export type RecordedCall = { method: string; args: unknown[] };
 export type MemoryDocumentApiOptions = {
   /** Server-side document the next save conflicts with (409), once. */
   conflictWith?: DocumentResponse;
+  /** Collaboration ticket route; refused (no room) when absent. */
+  collabTicket?: (attachmentId: string) => Promise<DocumentCollabTicket>;
+  /** Collaboration seeding route; `{ initialize: false }` when absent. */
+  collabInit?: (attachmentId: string) => Promise<DocumentCollabInit>;
 };
 
 /** In-memory document routes with recorded calls. Saves bump the revision and re-split the blocks. */
@@ -142,13 +148,14 @@ export function createMemoryDocumentApi(document: DocumentResponse = sampleDocum
         conflict = null;
         return { status: 'conflict' as const, document: stored };
       }
-      if (input.baseRevision !== (stored.revision ?? 0)) return { status: 'conflict' as const, document: stored };
+      if (input.mode !== 'snapshot' && input.baseRevision !== (stored.revision ?? 0)) return { status: 'conflict' as const, document: stored };
       // Like the server: ids come from the `<!-- k:… -->` comments, sources come back without them,
       // and a first stamped save moves annotations from index ids to the new ids.
       const blocks = blocksFromSource(input.source).map((block) => ({ id: block.id, source: block.source, html: '' }));
       const remap = (blockId: string) => input.blockIds?.[blockId] ?? blockId;
       reactions = reactions.map((entry) => ({ ...entry, blockId: remap(entry.blockId) }));
-      stored = { ...stored, blocks, revision: (stored.revision ?? 0) + 1, comments: stored.comments.map((entry) => ({ ...entry, blockId: remap(entry.blockId) })) };
+      const unchanged = input.mode === 'snapshot' && blocks.length === stored.blocks.length && blocks.every((block, index) => block.id === stored.blocks[index].id && block.source === stored.blocks[index].source);
+      stored = { ...stored, blocks, revision: (stored.revision ?? 0) + (unchanged ? 0 : 1), comments: stored.comments.map((entry) => ({ ...entry, blockId: remap(entry.blockId) })) };
       return { status: 'saved' as const, document: { ...stored, reactions, share } };
     },
     setStored(next: DocumentResponse) { stored = next; },
@@ -179,6 +186,18 @@ export function createMemoryDocumentApi(document: DocumentResponse = sampleDocum
     async deleteComment(commentId) { record('deleteComment', commentId); },
     async uploadDocument(path, contentType) { record('uploadDocument', path, contentType); await wait(); return { attachmentId: 'att_example_doc', sizeBytes: 18_400 }; },
     rawDocumentUrl: (rawPath: string) => `https://kordi.example${rawPath}`,
+    async requestCollabTicket(attachmentId) {
+      record('requestCollabTicket', attachmentId);
+      await wait();
+      if (!options.collabTicket) throw new Error('Collaboration is not available.');
+      return options.collabTicket(attachmentId);
+    },
+    async initCollab(attachmentId) {
+      record('initCollab', attachmentId);
+      await wait();
+      return options.collabInit ? options.collabInit(attachmentId) : { initialize: false };
+    },
+    socketBaseUrl: () => 'wss://kordi.example',
   } satisfies DocumentShareApi & { setStored(next: DocumentResponse): void };
   return { api, calls };
 }

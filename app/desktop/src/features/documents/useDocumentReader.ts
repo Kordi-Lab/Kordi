@@ -54,7 +54,7 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-export function useDocumentReader(source: DocumentReaderSource, api: DocumentShareApi) {
+export function useDocumentReader(source: DocumentReaderSource, api: DocumentShareApi, collaborating = false) {
   const host = useDocumentReaderHost();
   const path = source.path?.trim() || null;
   const [uploadedId, setUploadedId] = useState<string | null>(() => (path ? uploadedAttachmentByPath.get(path) ?? null : null));
@@ -143,7 +143,7 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
   const replaceAnnotations = useCallback((nextReactions: DocumentReaction[], nextComments: DocumentComment[]) => {
     update(() => ({ reactions: nextReactions, comments: nextComments }));
   }, [update]);
-  const cloud = useCloudDocumentEdits({ api, document, enabled: canEditCloud, onDocument: replaceDocument, onAnnotations: replaceAnnotations });
+  const cloud = useCloudDocumentEdits({ api, document, enabled: canEditCloud, collaborating, onDocument: replaceDocument, onAnnotations: replaceAnnotations });
   // A forwarded copy opens its canonical document; remember that id for this file.
   const canonicalId = document?.attachmentId ?? null;
   useEffect(() => {
@@ -293,6 +293,9 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
     editorBlocks,
     editorRevision,
     onEditorChange,
+    canEditCloud,
+    onCloudTab,
+    replaceDocument,
     saveNotice: cloud.notice,
     showSaveNotice: cloud.showNotice,
     clearSaveNotice: cloud.clearNotice,

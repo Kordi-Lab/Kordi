@@ -12,6 +12,8 @@ import {
   getCloudDocument,
   getCloudDocumentRaw,
   saveCloudDocumentContent,
+  requestCloudDocumentCollabTicket,
+  initCloudDocumentCollab,
   getPublicDocument,
   listCloudDocumentShares,
   revokeCloudDocumentShare,
@@ -23,6 +25,8 @@ import {
   type CloudTextFetch,
 } from './documentShareClient';
 import type {
+  DocumentCollabInit,
+  DocumentCollabTicket,
   SaveDocumentContentInput,
   SaveDocumentContentResult,
   CreateDocumentShareInput,
@@ -52,6 +56,12 @@ export type DocumentShareApi = {
   getDocumentRaw(attachmentId: string): Promise<string>;
   /** Saves the whole Markdown source against the revision it was based on. */
   saveDocumentContent(attachmentId: string, input: SaveDocumentContentInput): Promise<SaveDocumentContentResult>;
+  /** Single-use ticket for the collaboration socket. */
+  requestCollabTicket(attachmentId: string): Promise<DocumentCollabTicket>;
+  /** Asks to seed an empty room from Markdown; only one caller is granted. */
+  initCollab(attachmentId: string): Promise<DocumentCollabInit>;
+  /** WebSocket origin for socket paths (`wss://…`). */
+  socketBaseUrl(): string;
   /** HTML behind a public `rawPath` such as `/d/<token>/raw`; no sign-in. */
   getPublicDocumentRaw(rawPath: string): Promise<string>;
   listShares(attachmentId: string): Promise<DocumentShare[]>;
@@ -94,6 +104,9 @@ export function createDocumentShareApi(options: DocumentShareApiOptions = {}): D
     getDocument: (attachmentId) => withToken((token) => getCloudDocument(client, token, attachmentId)),
     getPublicDocument: (token) => getPublicDocument(client, token),
     saveDocumentContent: (attachmentId, input) => withToken((token) => saveCloudDocumentContent(fetchText, baseUrl(), token, attachmentId, input)),
+    requestCollabTicket: (attachmentId) => withToken((token) => requestCloudDocumentCollabTicket(client, token, attachmentId)),
+    initCollab: (attachmentId) => withToken((token) => initCloudDocumentCollab(client, token, attachmentId)),
+    socketBaseUrl: () => baseUrl().replace(/^http/i, 'ws'),
     getPublicDocumentRaw: async (rawPath) => {
       const response = await fetchText(`${baseUrl()}${rawPath}`, { method: 'GET' });
       if (!response.ok) throw new Error('This link is off');
