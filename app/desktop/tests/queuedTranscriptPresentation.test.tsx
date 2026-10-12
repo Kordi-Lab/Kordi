@@ -32,7 +32,7 @@ test('synced queued requests show the queue card without a processing placeholde
   const root = createRoot(container);
   try {
     await act(async () => { root.render(<Transcript messages={[request, response]} />); });
-    assert.match(container.textContent ?? '', /Queued next/);
+    assert.equal(container.querySelector('.app-queued-message-label')?.textContent, 'Queued');
     assert.equal(container.querySelectorAll('.app-queued-message').length, 1);
     assert.equal(container.querySelectorAll('.app-agent-waiting-wave').length, 0);
     assert.equal(container.querySelectorAll('.app-queued-message-actions').length, 0);
