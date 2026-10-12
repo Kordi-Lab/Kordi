@@ -2365,6 +2365,7 @@ final class AppModel: ObservableObject {
                 progress: uploadProgress
             )
             let uploadedAttachments = try await attachmentUpload
+            await DocumentForwarding.linkSources(api: api, token: token, drafts: outgoingAttachments, uploaded: uploadedAttachments)
             await attachmentFileStore.cacheUploadedOriginals(
                 drafts: outgoingAttachments, uploaded: uploadedAttachments, accountId: account.accountId
             )
@@ -2621,7 +2622,7 @@ final class AppModel: ObservableObject {
                 let fallback = message.text.nonEmpty ?? Self.attachmentSummary(message.attachments)
                 let prepared: [PendingAttachment]?
                 if let saved = pendingAttachmentDraftsByMessageId[localID] { prepared = saved }
-                else { prepared = await forwardingAttachments(message.attachments) }
+                else { prepared = await forwardingAttachments(message.attachments).map { DocumentForwarding.register($0, sources: message.attachments) } }
                 guard let attachments = prepared else { return false }
                 guard self.account?.accountId == accountID else {
                     attachments.forEach { $0.discardOwnedFile() }

@@ -23,6 +23,11 @@ struct DocumentResponse: Codable, Equatable {
     var share: DocumentShare?
     let viewer: DocumentViewer
     let viewerCan: DocumentViewerCapabilities
+    /// Content revision; absent from servers that predate editing.
+    var revision: Int64? = nil
+    /// The id the document was opened with, when it is a forwarded copy of
+    /// `attachmentId` (the canonical document).
+    var requestedAttachmentId: String? = nil
 }
 
 enum DocumentFormat: String, Codable, Equatable {
@@ -58,6 +63,8 @@ struct DocumentViewerCapabilities: Codable, Equatable {
     let react: Bool
     let comment: Bool
     let askAgent: Bool
+    /// Absent from servers that predate editing.
+    var edit: Bool? = nil
 }
 
 struct DocumentShare: Codable, Equatable, Identifiable {
@@ -144,6 +151,11 @@ struct DocumentCommentCreateRequest: Encodable {
     var parentCommentId: String? = nil
     var readerKey: String? = nil
     var readerName: String? = nil
+}
+
+/// Links a forwarded copy to the document it was forwarded from.
+struct DocumentSourceLinkRequest: Encodable, Equatable {
+    let sourceAttachmentId: String
 }
 
 /// Omitted fields keep their current value on the server.

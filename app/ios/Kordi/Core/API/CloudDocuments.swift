@@ -24,6 +24,20 @@ extension CloudAPIClient {
         )
     }
 
+    /// Points a forwarded copy at the document it came from, so both share
+    /// one set of reactions, comments, revision, and link. Answers the
+    /// canonical document.
+    @discardableResult
+    func linkDocumentSource(token: String, attachmentId: String, sourceAttachmentId: String) async throws -> DocumentResponse {
+        try await send(
+            path: "/v1/cloud/documents/\(Self.pathComponent(attachmentId))/source",
+            method: "POST",
+            token: token,
+            body: DocumentSourceLinkRequest(sourceAttachmentId: sourceAttachmentId),
+            fallback: "Could not link the forwarded document."
+        )
+    }
+
     /// Returns the live share when one exists, otherwise creates it.
     func createDocumentShare(token: String, attachmentId: String, sessionId: String?) async throws -> DocumentShare {
         try await send(

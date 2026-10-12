@@ -33,13 +33,23 @@ final class SharedDocumentModelTests: XCTestCase {
       ],
       "share": %SHARE%,
       "viewer": "%VIEWER%",
-      "viewerCan": { "share": true, "react": true, "comment": true, "askAgent": false }
+      "viewerCan": { "share": true, "react": true, "comment": true, "askAgent": false%EDIT% }%EXTRA%
     }
     """
 
-    private func decode(share: String, viewer: String = "owner", agentNull: Bool = false) throws -> DocumentResponse {
+    private func decode(
+        share: String,
+        viewer: String = "owner",
+        agentNull: Bool = false,
+        editing: Bool = false
+    ) throws -> DocumentResponse {
         var json = fixture.replacingOccurrences(of: "%SHARE%", with: share)
             .replacingOccurrences(of: "%VIEWER%", with: viewer)
+            .replacingOccurrences(of: "%EDIT%", with: editing ? #", "edit": true"# : "")
+            .replacingOccurrences(
+                of: "%EXTRA%",
+                with: editing ? #", "revision": 7, "requestedAttachmentId": "att_copy""# : ""
+            )
         if agentNull {
             json = json.replacingOccurrences(of: #"{ "displayName": "Lab agent" }"#, with: "null")
         }
@@ -85,6 +95,19 @@ final class SharedDocumentModelTests: XCTestCase {
         XCTAssertNil(document.share)
         XCTAssertNil(document.agent)
         XCTAssertEqual(document.viewer, .public)
+    }
+
+    func testDecodesEditingFieldsAndTheForwardedCopyId() throws {
+        let edited = try decode(share: "null", viewer: "member", editing: true)
+        XCTAssertEqual(edited.revision, 7)
+        XCTAssertEqual(edited.viewerCan.edit, true)
+        XCTAssertEqual(edited.requestedAttachmentId, "att_copy")
+        XCTAssertEqual(edited.attachmentId, "att_example")
+
+        let older = try decode(share: "null", viewer: "member")
+        XCTAssertNil(older.revision)
+        XCTAssertNil(older.viewerCan.edit)
+        XCTAssertNil(older.requestedAttachmentId)
     }
 
     func testGroupsReactionsAndHidesResolvedThreads() throws {

@@ -133,6 +133,7 @@ struct DocumentReaderView: View {
             .padding(.bottom, 32)
         }
         .scrollDismissesKeyboard(.interactively)
+        .refreshable { await reader.refresh() }
         .safeAreaInset(edge: .top, spacing: 0) {
             DocumentTabBar(tabs: $tabs)
         }

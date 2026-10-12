@@ -22,10 +22,68 @@ final class DocumentReaderModel: ObservableObject {
     /// The signed-in account's name, used on public writes before asking for one.
     var accountDisplayName: String?
 
+    private var updateObserver: NSObjectProtocol?
+    private var pendingReload: Task<Void, Never>?
+
     init(request: DocumentReaderRequest, service: any DocumentService, defaults: UserDefaults = .standard) {
         self.request = request
         self.service = service
         self.defaults = defaults
+        updateObserver = NotificationCenter.default.addObserver(
+            forName: .kordiDocumentUpdated, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let update = notification.object as? DocumentUpdate else { return }
+            MainActor.assumeIsolated { self?.receive(update) }
+        }
+    }
+
+    deinit {
+        if let updateObserver { NotificationCenter.default.removeObserver(updateObserver) }
+        pendingReload?.cancel()
+    }
+
+    /// The canonical document id once loaded. A forwarded copy resolves to
+    /// the document it came from, so every copy shares one state.
+    var canonicalAttachmentId: String? { document?.attachmentId }
+
+    /// Reloads go to the canonical document; public readers keep the link.
+    private var refreshSource: DocumentSource {
+        guard let document, document.viewer != .public else { return request.source }
+        return .attachment(document.attachmentId)
+    }
+
+    /// Reloads after a `document.updated` event for this document. Events
+    /// that arrive within 300 ms share one reload.
+    func receive(_ update: DocumentUpdate) {
+        guard let canonical = canonicalAttachmentId,
+              update.attachmentId == canonical || update.attachmentId == document?.requestedAttachmentId else { return }
+        if let revision = update.revision, let current = document?.revision,
+           update.change == .content, revision <= current { return }
+        pendingReload?.cancel()
+        pendingReload = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            await self?.refresh()
+        }
+    }
+
+    /// Fetches the document again without clearing what is on screen.
+    func refresh() async {
+        guard document != nil else { return await load() }
+        do {
+            let loaded = try await service.load(refreshSource)
+            if loaded.format == .html, loaded.revision != document?.revision || htmlData == nil {
+                htmlData = try await service.rawContent(loaded)
+            }
+            document = loaded
+        } catch is CancellationError {
+            return
+        } catch let error as CloudAPIError where error.code == "document_link_off" {
+            document = nil
+            loadError = "This link is off"
+        } catch {
+            // Keep the last loaded document; the next event or pull retries.
+        }
     }
 
     /// The share token when the document was opened through the public route.

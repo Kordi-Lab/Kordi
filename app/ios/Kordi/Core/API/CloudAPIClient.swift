@@ -2741,7 +2741,7 @@ actor CloudAPIClient {
         }
         let knownNonChatEvents: Set<String> = [
             "task.upsert", "artifact.upsert", "artifact.archived",
-            "session-forked"
+            "session-forked", "document.updated"
         ]
         if ["device.added", "device.confirmed", "device.revoked", "device.renamed"]
             .contains(event.eventType) {
@@ -2760,7 +2760,7 @@ actor CloudAPIClient {
                 occurredAt: event.occurredAt
             )]
         }
-        if knownNonChatEvents.contains(event.eventType) { return [] }
+        if knownNonChatEvents.contains(event.eventType) { CloudDocumentEvents.publish(event); return [] }
         if event.critical {
             throw CloudAPIError(code: "CLIENT_UPDATE_REQUIRED", message: "Update Kordi to continue reliable chat sync.", statusCode: 0)
         }
