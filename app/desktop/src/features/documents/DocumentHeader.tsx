@@ -13,7 +13,8 @@ const MAX_PRESENCE = 4;
 
 /**
  * Top bar of the reader in one row: the document title, the date, the
- * `@author` chip, who else is editing, and Share.
+ * `@author` chip, who else is editing, and Share. A document that opens with
+ * its own level-1 heading shows no title here.
  */
 export function DocumentHeader({
   title,
@@ -28,7 +29,8 @@ export function DocumentHeader({
   presence = [],
   onOpenSession,
 }: {
-  title: string;
+  /** Null when the document's first heading is its title. */
+  title: string | null;
   dateLabel: string | null;
   author: DocumentReaderPerson | null;
   canMessageAuthor: boolean;
@@ -42,8 +44,8 @@ export function DocumentHeader({
   onOpenSession?: () => void;
 }) {
   return (
-    <div className="app-document-header">
-      <h1 className="app-document-header-title" title={title}>{title}</h1>
+    <div className={title ? 'app-document-header has-title' : 'app-document-header'}>
+      {title ? <h1 className="app-document-header-title" title={title}>{title}</h1> : null}
       <div className="app-document-header-meta">
         {dateLabel ? (
           <span className="app-document-pill app-document-date">

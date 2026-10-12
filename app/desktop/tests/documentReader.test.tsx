@@ -45,7 +45,7 @@ test('the reader shows the header, blocks, reaction pills, and open comment thre
     const host_ = await mount(withHost(createElement(DocumentReader, { attachmentId: document.attachmentId, initialDocument: document, api })));
 
     await waitForReactCondition(() => Boolean(host_.querySelector('.ProseMirror > h1')), 'the editor loads');
-    assert.equal(host_.querySelector('.app-document-header-title')?.textContent, 'Kordi related work', 'the header carries the title');
+    assert.equal(host_.querySelector('.app-document-header-title'), null, 'the document heading is the title; the header shows none');
     assert.equal(host_.querySelector('.ProseMirror > h1')?.textContent, 'Kordi related work');
     assert.match(host_.querySelector('.app-document-pill')?.textContent ?? '', /Oct 9, 2026/);
     assert.equal(host_.querySelector('.app-document-mention')?.textContent, '@Alex Morgan');
@@ -112,6 +112,19 @@ test('the Share popover offers the link switch and confirms before turning the l
     await click(button(dialog, 'Turn off'));
     assert.deepEqual(calls.find((call) => call.method === 'revokeShare')?.args, ['docshare_example']);
     assert.equal(root.querySelector('[role="switch"][aria-label="Anyone with the link"]')?.getAttribute('aria-checked'), 'false');
+  });
+});
+
+test('a document without a leading heading shows its file-name title in the header', async () => {
+  await withJsdomRoot(async (mount) => {
+    const base = sampleDocument('owner');
+    const document = { ...base, title: 'meeting-notes', fileName: 'meeting-notes.md', blocks: base.blocks.slice(2) };
+    const { api } = createMemoryDocumentApi(document);
+    const root = await mount(withHost(createElement(DocumentReader, { attachmentId: document.attachmentId, initialDocument: document, api })));
+    await waitForReactCondition(() => Boolean(root.querySelector('.ProseMirror > p')), 'the editor loads');
+    assert.equal(root.querySelector('.app-document-header-title')?.textContent, 'meeting-notes');
+    assert.ok(root.querySelector('.app-document-header.has-title'));
+    assert.match(root.querySelector('.app-document-pill')?.textContent ?? '', /Oct 9, 2026/);
   });
 });
 

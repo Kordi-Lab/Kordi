@@ -84,7 +84,7 @@ test('selecting a document artifact opens the reader in the companion pane, and 
     assert.equal(page.dataset.open, 'true');
     const pane = root.querySelector('[aria-label="Document panel"]');
     assert.ok(pane?.querySelector('.app-document-reader'), 'the reader renders in the companion pane');
-    assert.ok(pane?.querySelector('.app-document-header-title')?.textContent, 'the header shows the document title');
+    assert.ok(pane?.querySelector('.app-document-header'), 'the reader header renders in the pane');
     assert.equal(root.querySelector('[data-artifact-preview-section="true"]'), null, 'no inline document preview');
     assert.equal(row(root, 'related-work.md').className.includes('bg-white/[0.05]'), true, 'the list row stays selected');
     const documentButton = root.querySelector('[aria-label="Document"]');

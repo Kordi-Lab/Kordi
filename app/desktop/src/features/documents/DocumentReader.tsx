@@ -44,6 +44,11 @@ export type DocumentReaderProps = DocumentReaderSource & {
   collabTransport?: { createProvider: ProviderFactory; timing?: DocumentRoomOptions['timing'] };
 };
 
+/** A level-1 Markdown heading (`# Title`) opens the document. */
+function startsWithLevelOneHeading(source: string | undefined) {
+  return /^ {0,3}#(?!#)\s+\S/.test(source ?? '');
+}
+
 export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, initialShareOpen = false, className, onEditor, collabTransport, ...source }: DocumentReaderProps) {
   const api = useMemo(() => apiOverride ?? documentShareApiForEnvironment(), [apiOverride]);
   const host = useDocumentReaderHost();
@@ -144,7 +149,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
     <section ref={sectionRef} className={cn('app-document-reader', className)} data-document-mode={mode} aria-label={title}>
       <div ref={headerRef} className="app-document-header-wrap">
         <DocumentHeader
-          title={title}
+          title={startsWithLevelOneHeading(reader.editorBlocks[0]?.source) ? null : title}
           dateLabel={formatDocumentDate(document?.createdAt) ?? dateLabel ?? null}
           author={author}
           canMessageAuthor={Boolean(author?.accountId && author.accountId !== host.viewer?.accountId && host.canMessageAccount?.(author.accountId))}

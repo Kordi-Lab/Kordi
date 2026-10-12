@@ -53,12 +53,16 @@
 .app-document-author { position: relative; display: inline-flex; }
 .app-document-header-actions { display: flex; flex: none; align-items: center; gap: 6px; margin-left: auto; }
 
-/* Narrow panes keep the title readable: the date icon goes first, then the date. */
+/* Narrow panes keep a header title readable: the date icon goes first, then the date. Without a title the date stays down to 360px. */
 @container (max-width: 560px) {
-  .app-document-reader .app-document-date svg { display: none; }
+  .app-document-reader .has-title .app-document-date svg { display: none; }
 }
 
 @container (max-width: 440px) {
+  .has-title .app-document-date { display: none !important; }
+}
+
+@container (max-width: 360px) {
   .app-document-date { display: none !important; }
 }
 
