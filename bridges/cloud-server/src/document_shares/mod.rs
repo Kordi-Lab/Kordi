@@ -28,6 +28,7 @@ use crate::auth::rate_limit::{
 use crate::server::ServerState;
 
 pub(crate) mod access;
+pub(crate) mod block_ids;
 pub(crate) mod canonical;
 mod comments;
 pub(crate) mod contents;
@@ -265,8 +266,8 @@ pub(crate) async fn observe_public_address(
     }
 }
 
-/// Checks that `block_id` names a block of the document: `b0` for HTML, an
-/// existing top-level block for Markdown.
+/// Checks that `block_id` names a block of the document: `b0` for HTML, the
+/// index or stable id of a current top-level block for Markdown.
 pub(crate) async fn require_block(
     state: &ServerState,
     record: &access::DocumentRecord,
@@ -286,8 +287,9 @@ pub(crate) async fn require_block(
         model::DocumentFormat::Html => block_id == "b0",
         model::DocumentFormat::Markdown => {
             let source = contents::document_source(state, record).await?.text;
-            let index: usize = block_id[1..].parse().map_err(|_| invalid())?;
-            index < render::markdown_blocks(&source).len()
+            render::markdown_blocks(&source)
+                .iter()
+                .any(|block| block.id == block_id)
         }
     };
     if exists {

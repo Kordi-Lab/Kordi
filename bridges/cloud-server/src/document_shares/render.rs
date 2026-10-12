@@ -7,6 +7,7 @@
 
 use pulldown_cmark::{html, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
+use super::block_ids::{assign_ids, remove_block_comments, split_block_id};
 use super::inline_formats::{apply_inline_formats, is_allowed_inline_html};
 use super::model::{DocumentBlock, DocumentFormat};
 
@@ -16,9 +17,11 @@ fn markdown_options() -> Options {
     Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS
 }
 
-/// Splits `source` into top-level blocks with sanitized HTML.
+/// Splits `source` into top-level blocks with sanitized HTML. A block whose
+/// last line ends with `<!-- k:... -->` takes that stable id (see
+/// [`super::block_ids`]); every other block keeps `b{index}`.
 pub(crate) fn markdown_blocks(source: &str) -> Vec<DocumentBlock> {
-    let mut blocks = Vec::new();
+    let mut raw: Vec<(String, Option<String>, String)> = Vec::new();
     let mut depth = 0usize;
     let mut current: Vec<Event<'_>> = Vec::new();
     let mut start = 0usize;
@@ -37,25 +40,31 @@ pub(crate) fn markdown_blocks(source: &str) -> Vec<DocumentBlock> {
                 current.push(event);
                 if depth == 0 {
                     let end = range.end.max(start);
-                    blocks.push(block(blocks.len(), &source[start..end], &current));
+                    raw.push(raw_block(&source[start..end], &current));
                     current.clear();
                 }
             }
             _ if depth == 0 => {
-                blocks.push(block(blocks.len(), &source[range], &[event]));
+                raw.push(raw_block(&source[range], &[event]));
             }
             _ => current.push(event),
         }
     }
-    blocks
+    let html: Vec<String> = raw.iter().map(|(_, _, html)| html.clone()).collect();
+    assign_ids(
+        raw.into_iter()
+            .map(|(source, id, _)| (source, id))
+            .collect(),
+    )
+    .into_iter()
+    .zip(html)
+    .map(|((id, source), html)| DocumentBlock { id, source, html })
+    .collect()
 }
 
-fn block(index: usize, source: &str, events: &[Event<'_>]) -> DocumentBlock {
-    DocumentBlock {
-        id: format!("b{index}"),
-        source: source.trim_end_matches(['\n', '\r']).to_string(),
-        html: sanitized_html(events),
-    }
+fn raw_block(source: &str, events: &[Event<'_>]) -> (String, Option<String>, String) {
+    let (clean, id) = split_block_id(source.trim_end_matches(['\n', '\r']));
+    (clean, id, sanitized_html(events))
 }
 
 pub(crate) fn link_is_allowed(destination: &str) -> bool {
@@ -87,6 +96,18 @@ fn sanitized_html(events: &[Event<'_>]) -> String {
         }
         match event {
             Event::InlineHtml(html) if is_allowed_inline_html(html) => kept.push(event.clone()),
+            Event::Text(text) if text.contains("<!--") => {
+                kept.push(Event::Text(remove_block_comments(text).into()));
+            }
+            Event::Code(text) if text.contains("<!--") => {
+                kept.push(Event::Code(remove_block_comments(text).into()));
+            }
+            Event::InlineHtml(html) if remove_block_comments(html).trim().is_empty() => {
+                // A block-id comment: drop it with the space that led up to it.
+                if let Some(Event::Text(text)) = kept.last_mut() {
+                    *text = text.trim_end_matches([' ', '\t']).to_string().into();
+                }
+            }
             Event::Html(_) | Event::InlineHtml(_) => {}
             Event::Start(Tag::HtmlBlock) | Event::End(TagEnd::HtmlBlock) => {}
             Event::Start(Tag::Link { dest_url, .. }) if !link_is_allowed(dest_url) => {
@@ -206,7 +227,7 @@ pub(crate) fn document_format(content_type: &str, file_name: &str) -> Option<Doc
 /// Where each old block's annotations go after an edit, given the old and
 /// new block sources. A block whose trimmed source still exists keeps its
 /// annotations at the first unmatched occurrence in order; `None` means the
-/// block disappeared (see [`resolve_remap`]).
+/// block disappeared (see [`super::block_ids::annotation_targets`]).
 pub(crate) fn remap_block_ids(old_blocks: &[String], new_blocks: &[String]) -> Vec<Option<usize>> {
     let mut available: std::collections::HashMap<&str, std::collections::VecDeque<usize>> =
         std::collections::HashMap::new();
@@ -219,21 +240,6 @@ pub(crate) fn remap_block_ids(old_blocks: &[String], new_blocks: &[String]) -> V
             available
                 .get_mut(source.trim())
                 .and_then(std::collections::VecDeque::pop_front)
-        })
-        .collect()
-}
-
-/// Final target for each old block: its match, else the target of the
-/// nearest preceding block that survived, else `0`.
-pub(crate) fn resolve_remap(mapping: &[Option<usize>]) -> Vec<usize> {
-    let mut last_survivor: Option<usize> = None;
-    mapping
-        .iter()
-        .map(|target| {
-            if let Some(target) = target {
-                last_survivor = Some(*target);
-            }
-            target.or(last_survivor).unwrap_or(0)
         })
         .collect()
 }

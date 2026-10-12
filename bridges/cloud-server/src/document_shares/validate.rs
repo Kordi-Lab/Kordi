@@ -8,8 +8,13 @@ pub(crate) const MAX_READER_NAME_CHARS: usize = 40;
 pub(crate) const MIN_READER_KEY_LEN: usize = 16;
 pub(crate) const MAX_READER_KEY_LEN: usize = 64;
 
-/// `^b\d{1,5}$`.
+/// `^b\d{1,5}$` (index ids) or `^k:[A-Za-z0-9_-]{4,32}$` (stable ids).
 pub(crate) fn is_valid_block_id(value: &str) -> bool {
+    is_index_block_id(value) || super::block_ids::is_stable_block_id(value)
+}
+
+/// `^b\d{1,5}$`.
+pub(crate) fn is_index_block_id(value: &str) -> bool {
     let Some(digits) = value.strip_prefix('b') else {
         return false;
     };

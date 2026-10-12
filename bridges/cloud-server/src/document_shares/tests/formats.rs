@@ -2,7 +2,7 @@
 
 use super::super::canonical::resolve_chain;
 use super::super::inline_formats::split_highlights;
-use super::super::render::{markdown_blocks, remap_block_ids, resolve_remap};
+use super::super::render::{markdown_blocks, remap_block_ids};
 
 fn blocks(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| value.to_string()).collect()
@@ -47,14 +47,6 @@ fn repeated_blocks_take_the_first_unmatched_occurrence() {
         remap_block_ids(&old, &blocks(&["A", "---"])),
         [Some(1), Some(0), None]
     );
-}
-
-#[test]
-fn vanished_blocks_go_to_the_nearest_surviving_block_before_them() {
-    assert_eq!(resolve_remap(&[Some(0), None, Some(1)]), [0, 0, 1]);
-    assert_eq!(resolve_remap(&[None, None, Some(3)]), [0, 0, 3]);
-    assert_eq!(resolve_remap(&[Some(2), None, None]), [2, 2, 2]);
-    assert!(resolve_remap(&[]).is_empty());
 }
 
 #[test]

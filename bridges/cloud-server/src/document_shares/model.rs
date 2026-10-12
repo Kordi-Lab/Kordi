@@ -215,6 +215,10 @@ pub struct PatchCommentRequest {
 pub struct SaveContentRequest {
     pub base_revision: i64,
     pub source: String,
+    /// Index ids of the saved-over document mapped to the stable ids the
+    /// editor stamped in this save, e.g. `{ "b3": "k:7f3a9c2d" }`.
+    #[serde(default)]
+    pub block_ids: std::collections::HashMap<String, String>,
 }
 
 /// `409 document_revision_conflict`: the error fields plus the current

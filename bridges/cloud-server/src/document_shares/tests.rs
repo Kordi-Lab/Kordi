@@ -8,11 +8,13 @@ use super::render::*;
 use super::tokens::*;
 use super::validate::*;
 
+mod block_ids_tests;
 mod db;
 mod db_fixture;
 mod editing_db;
 mod formats;
 mod sources_db;
+mod stable_ids_db;
 
 #[test]
 fn share_tokens_have_the_invitation_shape_and_hash_stably() {

@@ -201,3 +201,39 @@ async fn upgrade_from_123_adds_document_sources() {
         "a deleted source leaves the copy as its own document"
     );
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_124_relaxes_block_ids() {
+    let pool = fixture(124).await;
+    execute(&pool, "INSERT INTO cloud_attachments(attachment_id,owner_account_id,object_key,content_type,size_bytes,created_at,finalized_at) VALUES('att-doc','fixture-owner','attachments/fixture-owner/att-doc','text/markdown',10,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')").await;
+    execute(&pool, "INSERT INTO cloud_document_reactions(reaction_id,attachment_id,block_id,reaction,actor_account_id,created_at) VALUES('rx-old','att-doc','b2','\u{1f44d}','fixture-peer','2026-01-02T00:00:00Z')").await;
+    execute(&pool, "INSERT INTO cloud_document_comments(comment_id,attachment_id,block_id,author_account_id,author_name,body,created_at) VALUES('doccmt_old','att-doc','b3','fixture-peer','Peer','Old','2026-01-02T00:00:00Z')").await;
+    assert!(sqlx_core::raw_sql::raw_sql("INSERT INTO cloud_document_comments(comment_id,attachment_id,block_id,author_account_id,author_name,body,created_at) VALUES('doccmt_early','att-doc','k:abcd','fixture-peer','Peer','x','2026-01-02T00:00:00Z')").execute(&pool).await.is_err(), "stable ids need migration 125");
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let (reaction, comment): (String, String) = query_as(
+        "SELECT (SELECT block_id FROM cloud_document_reactions WHERE reaction_id='rx-old'), \
+                (SELECT block_id FROM cloud_document_comments WHERE comment_id='doccmt_old')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        (reaction.as_str(), comment.as_str()),
+        ("b2", "b3"),
+        "existing ids are kept"
+    );
+    execute(&pool, "INSERT INTO cloud_document_reactions(reaction_id,attachment_id,block_id,reaction,actor_account_id,created_at) VALUES('rx-new','att-doc','k:7f3a9c2d','\u{1f44d}','fixture-peer','2026-01-03T00:00:00Z')").await;
+    execute(&pool, "INSERT INTO cloud_document_comments(comment_id,attachment_id,block_id,author_account_id,author_name,body,created_at) VALUES('doccmt_new','att-doc','k:A-b_9','fixture-peer','Peer','New','2026-01-03T00:00:00Z')").await;
+    for invalid in ["k:abc", "k:a b c d", "x1", "b123456"] {
+        for sql in [
+            format!("INSERT INTO cloud_document_reactions(reaction_id,attachment_id,block_id,reaction,actor_account_id,created_at) VALUES('rx-bad','att-doc','{invalid}','\u{1f525}','fixture-peer','2026-01-03T00:00:00Z')"),
+            format!("INSERT INTO cloud_document_comments(comment_id,attachment_id,block_id,author_account_id,author_name,body,created_at) VALUES('doccmt_bad','att-doc','{invalid}','fixture-peer','Peer','x','2026-01-03T00:00:00Z')"),
+        ] {
+            assert!(sqlx_core::raw_sql::raw_sql(&sql).execute(&pool).await.is_err(), "{sql}");
+        }
+    }
+}

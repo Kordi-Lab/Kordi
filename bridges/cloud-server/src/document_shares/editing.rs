@@ -7,7 +7,7 @@
 //! Afterwards every member is told to reload through `document.updated`
 //! (see [`super::events`]).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
@@ -21,12 +21,14 @@ use sqlx_core::transaction::Transaction;
 use sqlx_postgres::{PgPool, Postgres};
 
 use super::access::{authorized_document, DocumentRecord};
+use super::block_ids::{annotation_targets, is_stable_block_id};
 use super::canonical::can_edit;
 use super::contents::{document_source, DocumentSource};
 use super::documents::signed_in_response;
 use super::events::{publish_document_updated, DocumentChange};
 use super::model::{RevisionConflict, SaveContentRequest};
-use super::render::{markdown_blocks, remap_block_ids, resolve_remap};
+use super::render::markdown_blocks;
+use super::validate::is_index_block_id;
 use super::{db_error, err};
 use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
@@ -78,7 +80,23 @@ pub(crate) async fn save_content(
         return *response;
     }
     let text = super::contents::decode_source(req.source.as_bytes());
-    let outcome = match save(pool, &record, &session.account_id, req.base_revision, &text).await {
+    if !stamped_ids_are_valid(&req.block_ids, &text) {
+        return err(
+            "invalid_block_ids",
+            "blockIds must map index ids to stable ids in the saved document.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    let outcome = match save(
+        pool,
+        &record,
+        &session.account_id,
+        req.base_revision,
+        &text,
+        &req.block_ids,
+    )
+    .await
+    {
         Ok(outcome) => outcome,
         Err(_) => return db_error(),
     };
@@ -120,6 +138,7 @@ async fn save(
     account_id: &str,
     base_revision: i64,
     text: &str,
+    stamped: &HashMap<String, String>,
 ) -> Result<SaveOutcome, sqlx_core::Error> {
     let mut tx = pool.begin().await?;
     let (old_text, revision, updated_at): (String, i64, String) = query_as(
@@ -149,13 +168,7 @@ async fn save(
     .bind(&now)
     .fetch_one(&mut *tx)
     .await?;
-    let sources = |value: &str| -> Vec<String> {
-        markdown_blocks(value)
-            .into_iter()
-            .map(|block| block.source)
-            .collect()
-    };
-    let targets = resolve_remap(&remap_block_ids(&sources(&old_text), &sources(text)));
+    let targets = annotation_targets(&markdown_blocks(&old_text), &markdown_blocks(text), stamped);
     remap_annotations(&mut tx, &record.attachment_id, &targets, &now).await?;
     tx.commit().await?;
     Ok(SaveOutcome::Saved(DocumentSource {
@@ -165,10 +178,18 @@ async fn save(
     }))
 }
 
-/// The block index an annotation on `block_id` moves to.
-fn target_block(block_id: &str, targets: &[usize]) -> Option<usize> {
-    let index: usize = block_id.strip_prefix('b')?.parse().ok()?;
-    Some(targets.get(index).copied().unwrap_or(index))
+/// `blockIds` entries map an index id to a stable id that a block of the
+/// saved source carries.
+fn stamped_ids_are_valid(stamped: &HashMap<String, String>, text: &str) -> bool {
+    if stamped.is_empty() {
+        return true;
+    }
+    let blocks = markdown_blocks(text);
+    stamped.iter().all(|(from, to)| {
+        is_index_block_id(from)
+            && is_stable_block_id(to)
+            && blocks.iter().any(|block| block.id == *to)
+    })
 }
 
 /// Moves comments and live reactions with their blocks. Reactions that would
@@ -177,14 +198,12 @@ fn target_block(block_id: &str, targets: &[usize]) -> Option<usize> {
 async fn remap_annotations(
     tx: &mut Transaction<'_, Postgres>,
     attachment_id: &str,
-    targets: &[usize],
+    targets: &HashMap<String, String>,
     now: &str,
 ) -> Result<(), sqlx_core::Error> {
     let (old, new): (Vec<String>, Vec<String>) = targets
         .iter()
-        .enumerate()
-        .filter(|(index, target)| index != *target)
-        .map(|(index, target)| (format!("b{index}"), format!("b{target}")))
+        .map(|(from, to)| (from.clone(), to.clone()))
         .unzip();
     if old.is_empty() {
         return Ok(());
@@ -214,10 +233,10 @@ async fn remap_annotations(
     let mut duplicates = Vec::new();
     let (mut moved_ids, mut moved_blocks) = (Vec::new(), Vec::new());
     for (reaction_id, block_id, reaction, account, reader) in live {
-        let Some(target) = target_block(&block_id, targets) else {
-            continue;
-        };
-        let target_id = format!("b{target}");
+        let target_id = targets
+            .get(&block_id)
+            .cloned()
+            .unwrap_or_else(|| block_id.clone());
         if !seen.insert((target_id.clone(), reaction, account, reader)) {
             duplicates.push(reaction_id);
         } else if target_id != block_id {
