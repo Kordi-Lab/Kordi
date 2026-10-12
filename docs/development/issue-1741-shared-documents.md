@@ -145,3 +145,14 @@ Blocks keep index ids (`b0..bn`). In the same transaction as a save the server r
 ### Inline formats
 
 The selection menu applies Markdown to the selected text inside one block: `**bold**`, `*italic*`, `<u>underline</u>`, `~~strikethrough~~`, `` `code` ``, `==highlight==`, list (prefix every line of the block with `- `, or remove it), link (`[text](https://…)` after asking for the URL), and Aa (block style: paragraph, heading 1 to 3, quote). Renderers accept `<u>` and `<mark>` as the only inline HTML and render `==text==` as `<mark>`. Comment and react anchor to the block that contains the selection.
+
+## Forwarded copies and live annotations (added 2026-10-12 after live testing)
+
+Forwarding a message re-uploads its attachments under the sender's account (the chat store only links attachments the sender owns), so a forwarded document got its own reactions, comments, revision, and link. Documents are identified by their canonical attachment instead:
+
+- Migration `0124_cloud_document_sources.sql` adds `cloud_attachments.document_source_attachment_id` (nullable, references `cloud_attachments`, set null on delete) with an index. The canonical attachment of a document is the end of that chain (one hop in practice).
+- `POST /v1/cloud/documents/:attachment_id/source` with `{ "sourceAttachmentId": string }`: the caller must own `:attachment_id`, must be able to read `sourceAttachmentId` under the attachment access rule, both must be finalized Markdown or HTML documents of the same format, and `:attachment_id` must have no content row, reactions, comments, or shares of its own yet. Answers the canonical `DocumentResponse`. Clients call it right after uploading a forwarded document attachment and before sending the message; the message still carries the copy's id.
+- Every document route (`GET /v1/cloud/documents/:id`, `/raw`, `/content`, `/shares`, `/reactions`, `/comments`, and the artifact lookups behind them) resolves `:id` to the canonical attachment first and operates there. `DocumentResponse.attachmentId` is the canonical id; it also carries `requestedAttachmentId` when the two differ. Access is checked on the requested id (the caller can read the copy they were sent), then everything is read from and written to the canonical document.
+- The audience of `document.updated` is the owner plus the active members of every conversation carrying the canonical attachment or any copy that points at it.
+- Reactions and comments publish `document.updated` too, with `"change": "annotations"` and the current `revision`; saves publish `"change": "content"`. Clients that show the document refetch on both; a client with unsaved edits merges as before.
+- Clients: the Mac and iPhone forward flows call the source route for Markdown and HTML attachments after the upload. Readers key their state by the canonical `attachmentId` from the response.
