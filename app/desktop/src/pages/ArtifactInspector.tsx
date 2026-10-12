@@ -192,52 +192,33 @@ function ArtifactListSection({ title, section, description, artifacts, activeArt
     <section className="app-detail-section" data-artifact-section={section}>
       {title ? <div className="app-detail-kicker">{title}</div> : null}
       {description ? <div className="mb-2 text-[11px] leading-5 text-[color:var(--utility-muted-text)]">{description}</div> : null}
-      <div className="overflow-hidden rounded-[12px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)]/45">
-        <div className="divide-y divide-[color:var(--app-divider)]">
-          {artifacts.map((artifact) => {
-            const displayName = artifact.name || fileNameFromPath(artifact.path);
-            const Icon = artifactIcon(artifact.kind, artifact.path);
-            const isActive = activeArtifact?.id === artifact.id;
-            const location = compactArtifactLocation(artifact.path, displayName);
+      <div className="-mx-2 flex flex-col gap-px">
+        {artifacts.map((artifact) => {
+          const displayName = artifact.name || fileNameFromPath(artifact.path);
+          const Icon = artifactIcon(artifact.kind, artifact.path);
+          const isActive = activeArtifact?.id === artifact.id;
+          const location = compactArtifactLocation(artifact.path, displayName);
+          const meta = [location, artifact.summary, artifact.live ? 'Live' : artifact.timeLabel].filter(Boolean).join(' · ');
 
-            return (
-              <button
-                key={artifact.id}
-                type="button"
-                data-artifact-file-row="true"
-                onClick={() => onSelect(artifact.id)}
-                className={cn(
-                  'grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2.5 py-1.5 text-left transition',
-                  isActive ? 'bg-white/[0.05]' : 'hover:bg-white/[0.025]',
-                )}
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/[0.035] text-slate-300">
-                    <Icon className="h-3 w-3" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <div className="min-w-0 truncate text-[12px] font-medium leading-4 text-[color:var(--utility-foreground)]">{displayName}</div>
-                      {artifact.pinned ? (
-                        <span className="shrink-0 rounded-md border border-amber-300/20 bg-amber-300/10 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-amber-100">
-                          pinned
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="flex min-w-0 items-center gap-1.5 text-[10.5px] leading-3 text-[color:var(--utility-muted-text)]">
-                      {location ? <span className="truncate">{location}</span> : null}
-                      {location && artifact.summary ? <span className="shrink-0 text-slate-600">•</span> : null}
-                      {artifact.summary ? <span className="truncate">{artifact.summary}</span> : null}
-                    </div>
-                  </div>
-                </div>
-                <div className="shrink-0 text-[9.5px] text-slate-500">
-                  {artifact.live ? 'Live' : artifact.timeLabel ?? 'Ready'}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+          return (
+            <button
+              key={artifact.id}
+              type="button"
+              data-artifact-file-row="true"
+              aria-current={isActive ? 'true' : undefined}
+              onClick={() => onSelect(artifact.id)}
+              className={cn(
+                'flex h-[34px] w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-left transition-colors',
+                isActive ? 'bg-[color:var(--app-control-bg)]' : 'hover:bg-[color:var(--app-control-hover)]',
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0 text-[color:var(--utility-muted-text)]" />
+              <span className="min-w-0 shrink truncate text-[13px] font-medium leading-5 text-[color:var(--utility-foreground)]">{displayName}</span>
+              {artifact.pinned ? <span className="shrink-0 rounded-md bg-amber-400/15 px-1.5 text-[10.5px] leading-4 text-amber-600">Pinned</span> : null}
+              <span className="ml-auto min-w-0 shrink-[2] truncate pl-3 text-right text-[11.5px] leading-5 text-[color:var(--utility-muted-text)]">{meta}</span>
+            </button>
+          );
+        })}
       </div>
     </section>
   );

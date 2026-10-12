@@ -88,7 +88,7 @@ test('selecting a document artifact opens the reader in the companion pane, and 
     assert.ok(pane?.querySelector('.app-document-reader'), 'the reader renders in the companion pane');
     assert.ok(pane?.querySelector('.app-document-header'), 'the reader header renders in the pane');
     assert.equal(root.querySelector('[data-artifact-preview-section="true"]'), null, 'no inline document preview');
-    assert.equal(row(root, 'related-work.md').className.includes('bg-white/[0.05]'), true, 'the list row stays selected');
+    assert.equal(row(root, 'related-work.md').getAttribute('aria-current'), 'true', 'the list row stays selected');
     const documentButton = root.querySelector('[aria-label="Document"]');
     assert.equal(documentButton?.getAttribute('aria-pressed'), 'true');
 
