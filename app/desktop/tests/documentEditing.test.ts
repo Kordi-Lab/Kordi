@@ -88,6 +88,11 @@ test('Aa changes the block marker between text, headings, and quote', () => {
   assert.equal(blockStyleOf('> quoted'), 'quote');
 });
 
+test('a literal == between spaces stays in the projection', () => {
+  assert.equal(projectMarkdown('a == b == c').text, 'a==b==c');
+  assert.equal(projectMarkdown('a ==b== c').text, 'abc');
+});
+
 test('drafts replace a block or insert a new one after it', () => {
   const source = '# Title\n\nFirst\n\nSecond';
   assert.equal(replaceSourceBlock(source, 'b1', 'First, edited'), '# Title\n\nFirst, edited\n\nSecond');

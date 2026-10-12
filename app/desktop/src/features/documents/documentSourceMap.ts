@@ -45,7 +45,9 @@ function projectInline(line: string, lineStart: number, from: number, out: Sourc
       index += link[0].length;
       continue;
     }
-    if (rest.startsWith('~~') || rest.startsWith('==')) { index += 2; continue; }
+    if (rest.startsWith('~~')) { index += 2; continue; }
+    // `==` marks a highlight only when it touches text; `a == b` stays literal, as the renderer shows it.
+    if (rest.startsWith('==') && (/\S/.test(line[index + 2] ?? ' ') || /\S/.test(line[index - 1] ?? ' '))) { index += 2; continue; }
     if (character === '*' || character === '`' || character === '|') { index += 1; continue; }
     if (character === '_' && !(isWordCharacter(line[index - 1]) && isWordCharacter(line[index + 1]))) { index += 1; continue; }
     if (!/\s/.test(character)) {

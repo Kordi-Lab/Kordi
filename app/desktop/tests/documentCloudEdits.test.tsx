@@ -113,4 +113,36 @@ test('Markdown renders <u>, ~~, ==, and <mark> and no other inline HTML', () => 
   assert.match(markup, /<mark class="app-markdown-mark">tagged<\/mark>/);
   assert.match(markup, /&lt;b&gt;raw&lt;\/b&gt;/);
   assert.match(renderToStaticMarkup(createElement(MarkdownContent, { text: 'x == y', tone: 'inherit' })), /x == y/);
+  const literal = renderToStaticMarkup(createElement(MarkdownContent, { text: 'a == b == c', tone: 'inherit' }));
+  assert.match(literal, /a == b == c/);
+  assert.doesNotMatch(literal, /<mark/);
+  assert.doesNotMatch(renderToStaticMarkup(createElement(MarkdownContent, { text: 'a ==b == c', tone: 'inherit' })), /<mark/);
+});
+
+test('pressing the selection menu keeps the text selection the app would otherwise clear', async () => {
+  const { installCopySurfaceSelectionTracking } = await import('../src/features/contentSelection');
+  await withJsdomRoot(async (mount) => {
+    const root = await mount(createElement('div', null,
+      createElement('p', { 'data-kordi-copy-surface': 'document' }, 'Selected words here'),
+      createElement('div', { 'data-kordi-keeps-selection': 'true' }, createElement('button', { type: 'button', id: 'bold' }, 'B')),
+      createElement('button', { type: 'button', id: 'elsewhere' }, 'Other')));
+    const ownerDocument = root.ownerDocument;
+    const stop = installCopySurfaceSelectionTracking(ownerDocument);
+    const selectWords = () => {
+      const range = ownerDocument.createRange();
+      range.selectNodeContents(root.querySelector('p')!);
+      ownerDocument.defaultView!.getSelection()!.removeAllRanges();
+      ownerDocument.defaultView!.getSelection()!.addRange(range);
+    };
+    const press = (id: string) => root.querySelector(`#${id}`)!.dispatchEvent(new ownerDocument.defaultView!.MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+    try {
+      selectWords();
+      press('bold');
+      assert.equal(ownerDocument.defaultView!.getSelection()!.toString(), 'Selected words here');
+      press('elsewhere');
+      assert.equal(ownerDocument.defaultView!.getSelection()!.toString(), '');
+    } finally {
+      stop();
+    }
+  });
 });

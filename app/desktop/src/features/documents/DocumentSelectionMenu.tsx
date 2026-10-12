@@ -71,6 +71,7 @@ export function DocumentSelectionMenu({
     <div
       ref={menuRef}
       className="app-document-selection"
+      data-kordi-keeps-selection="true"
       data-placement={position.placement}
       data-panels={position.panels}
       style={{ top: position.top, left: position.left }}

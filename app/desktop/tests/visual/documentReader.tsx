@@ -1,5 +1,7 @@
 import { createRoot } from 'react-dom/client';
 
+import { installCopySurfaceSelectionTracking } from '../../src/features/contentSelection';
+
 import { DocumentReader } from '../../src/features/documents/DocumentReader';
 import { DocumentReaderHostContext, type DocumentReaderHost } from '../../src/features/documents/documentReaderHost';
 import { createMemoryDocumentApi, SAMPLE_MARKDOWN, SAMPLE_TOKEN, sampleDocument } from '../helpers/documentReaderFixtures';
@@ -30,7 +32,11 @@ const reader: DocumentReaderHost = {
 };
 
 const ownerDocument = sampleDocument('owner');
-const { api } = createMemoryDocumentApi(state === 'public' ? sampleDocument('public') : ownerDocument, 400);
+const { api, calls } = createMemoryDocumentApi(state === 'public' ? sampleDocument('public') : ownerDocument, 400);
+// The review page records what the mock server received (saves, comments, reactions) for end-to-end checks.
+Object.assign(window, { __documentReaderCalls: calls });
+// The app installs this at startup; the review page does too so selection behaves as in the app.
+installCopySurfaceSelectionTracking(document);
 
 function Panel({ shareOpen }: { shareOpen: boolean }) {
   if (state === 'local') {

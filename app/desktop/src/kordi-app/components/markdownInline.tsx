@@ -121,7 +121,8 @@ const WRAPPED_INLINE: Array<{ type: 'underline' | 'strike' | 'mark'; pattern: Re
   { type: 'underline', pattern: /^<u>([\s\S]+?)<\/u>/i },
   { type: 'mark', pattern: /^<mark>([\s\S]+?)<\/mark>/i },
   { type: 'strike', pattern: /^~~(?!~)([\s\S]+?)~~/ },
-  { type: 'mark', pattern: /^==(?!=)([\s\S]+?)==/ },
+  // Like the server: the opening `==` is followed by, and the closing `==` preceded by, a non-space character.
+  { type: 'mark', pattern: /^==(?=[^\s=])([\s\S]*?\S)==/ },
 ];
 
 function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
