@@ -6,6 +6,11 @@
 //! comments move with their blocks (see [`super::render::remap_block_ids`]).
 //! Afterwards every member is told to reload through `document.updated`
 //! (see [`super::events`]).
+//!
+//! While a collaboration room is in use, editors write Markdown snapshots
+//! with `"mode": "snapshot"` instead: no base check, and a new revision only
+//! when the source changed. A revisioned save marks the room stale so the
+//! next editor reconciles the Y document with the new Markdown.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -44,9 +49,19 @@ fn edit_forbidden() -> Response {
     )
 }
 
+#[derive(Debug, Clone, Copy)]
+enum SaveMode {
+    /// A save based on `baseRevision`; stale bases conflict.
+    Revision(i64),
+    /// A collaboration room snapshot: no base check, and no new revision
+    /// when the source did not change.
+    Snapshot,
+}
+
 enum SaveOutcome {
     Saved(DocumentSource),
     Conflict(DocumentSource),
+    Unchanged(DocumentSource),
 }
 
 /// `PUT /v1/cloud/documents/:attachment_id/content`
@@ -87,11 +102,22 @@ pub(crate) async fn save_content(
             StatusCode::BAD_REQUEST,
         );
     }
+    let mode = match (req.mode.as_deref(), req.base_revision) {
+        (Some("snapshot"), _) => SaveMode::Snapshot,
+        (None, Some(base)) => SaveMode::Revision(base),
+        _ => {
+            return err(
+                "invalid_save",
+                "Send baseRevision, or \"mode\": \"snapshot\".",
+                StatusCode::BAD_REQUEST,
+            )
+        }
+    };
     let outcome = match save(
         pool,
         &record,
         &session.account_id,
-        req.base_revision,
+        mode,
         &text,
         &req.block_ids,
     )
@@ -115,7 +141,21 @@ pub(crate) async fn save_content(
                 Err(response) => *response,
             }
         }
+        SaveOutcome::Unchanged(current) => {
+            match signed_in_response(&state, &session, &record, viewer, &current).await {
+                Ok(document) => Json(document).into_response(),
+                Err(response) => *response,
+            }
+        }
         SaveOutcome::Saved(saved) => {
+            if let SaveMode::Revision(_) = mode {
+                // A revisioned save while a room exists: the next editor reconciles.
+                if let Err(error) =
+                    super::collab::store::mark_stale(pool, &record.attachment_id).await
+                {
+                    eprintln!("[documents] mark collab room stale: {error}");
+                }
+            }
             publish_document_updated(
                 pool,
                 &record,
@@ -136,7 +176,7 @@ async fn save(
     pool: &PgPool,
     record: &DocumentRecord,
     account_id: &str,
-    base_revision: i64,
+    mode: SaveMode,
     text: &str,
     stamped: &HashMap<String, String>,
 ) -> Result<SaveOutcome, sqlx_core::Error> {
@@ -148,13 +188,22 @@ async fn save(
     .bind(&record.attachment_id)
     .fetch_one(&mut *tx)
     .await?;
-    if revision != base_revision {
-        tx.rollback().await?;
-        return Ok(SaveOutcome::Conflict(DocumentSource {
-            text: old_text,
-            revision,
-            updated_at: (revision > 1).then_some(updated_at),
-        }));
+    let current = |text: String| DocumentSource {
+        text,
+        revision,
+        updated_at: (revision > 1).then_some(updated_at.clone()),
+    };
+    match mode {
+        SaveMode::Revision(base) if base != revision => {
+            tx.rollback().await?;
+            return Ok(SaveOutcome::Conflict(current(old_text)));
+        }
+        // Snapshots of an unchanged document keep the revision.
+        SaveMode::Snapshot if old_text == text => {
+            tx.rollback().await?;
+            return Ok(SaveOutcome::Unchanged(current(old_text)));
+        }
+        _ => {}
     }
     let now = Utc::now().to_rfc3339();
     let (new_revision,): (i64,) = query_as(

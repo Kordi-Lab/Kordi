@@ -50,6 +50,8 @@ redis = { version = "0.27", default-features = false, features = ["tokio-comp", 
 rusty-s3 = "0.7"
 url = "2"
 pulldown-cmark = "0.12"
+# Yjs CRDT and its y-protocols sync/awareness module (`yrs::sync`, formerly the y-sync crate).
+yrs = { version = "0.26", features = ["sync"] }
 unicode-normalization = "0.1"
 unicode-properties = "0.1"
 unicode-segmentation.workspace = true

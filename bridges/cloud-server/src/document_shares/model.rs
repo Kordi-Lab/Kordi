@@ -213,8 +213,11 @@ pub struct PatchCommentRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveContentRequest {
-    pub base_revision: i64,
+    /// Required for revisioned saves; ignored for `"mode": "snapshot"`.
+    pub base_revision: Option<i64>,
     pub source: String,
+    /// `"snapshot"` for Markdown snapshots of a collaboration room.
+    pub mode: Option<String>,
     /// Index ids of the saved-over document mapped to the stable ids the
     /// editor stamped in this save, e.g. `{ "b3": "k:7f3a9c2d" }`.
     #[serde(default)]

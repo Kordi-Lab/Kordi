@@ -9,6 +9,7 @@ use super::tokens::*;
 use super::validate::*;
 
 mod block_ids_tests;
+mod collab_db;
 mod db;
 mod db_fixture;
 mod editing_db;

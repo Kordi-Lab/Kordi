@@ -58,6 +58,7 @@ tests=(
   document_share_tests::upgrade_from_122_adds_document_contents
   document_share_tests::upgrade_from_123_adds_document_sources
   document_share_tests::upgrade_from_124_relaxes_block_ids
+  document_share_tests::upgrade_from_125_adds_document_collab
 )
 index=0
 for test_name in "${tests[@]}"; do

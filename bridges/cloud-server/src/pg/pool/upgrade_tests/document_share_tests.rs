@@ -237,3 +237,73 @@ async fn upgrade_from_124_relaxes_block_ids() {
         }
     }
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_125_adds_document_collab() {
+    let pool = fixture(125).await;
+    execute(&pool, "INSERT INTO cloud_attachments(attachment_id,owner_account_id,object_key,content_type,size_bytes,created_at,finalized_at) VALUES('att-doc','fixture-owner','attachments/fixture-owner/att-doc','text/markdown',10,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')").await;
+    execute(&pool, "INSERT INTO cloud_document_contents(attachment_id,source,updated_at) VALUES('att-doc','# Notes','2026-01-02T00:00:00Z')").await;
+    let before: Vec<(Value,)> = query_as("SELECT to_jsonb(c) FROM cloud_document_contents c")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let after: Vec<(Value,)> = query_as("SELECT to_jsonb(c) FROM cloud_document_contents c")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    assert_eq!(before, after, "document sources are untouched");
+    let (rooms,): (i64,) = query_as("SELECT COUNT(*)::BIGINT FROM cloud_document_collab")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(rooms, 0, "rooms are created on first use");
+
+    execute(
+        &pool,
+        "INSERT INTO cloud_document_collab(attachment_id) VALUES('att-doc')",
+    )
+    .await;
+    let (seq, state, stale, initialized): (i64, Vec<u8>, bool, bool) = query_as(
+        "SELECT seq, state, stale_revision, initialized_at IS NOT NULL FROM cloud_document_collab",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!((seq, state.len(), stale, initialized), (0, 0, false, false));
+    execute(&pool, "INSERT INTO cloud_document_collab_updates(attachment_id,seq,update) VALUES('att-doc',1,'\\x0000')").await;
+    execute(&pool, "INSERT INTO cloud_document_collab_tickets(ticket_hash,attachment_id,requested_attachment_id,account_id,device_id,session_token_id,expires_at) VALUES('hash','att-doc','att-doc','fixture-peer','dev','tok',now())").await;
+    for invalid in [
+        "INSERT INTO cloud_document_collab_updates(attachment_id,seq,update) VALUES('att-doc',1,'\\x00')",
+        "INSERT INTO cloud_document_collab_updates(attachment_id,seq,update) VALUES('att-doc',0,'\\x00')",
+        "INSERT INTO cloud_document_collab_updates(attachment_id,seq,update) VALUES('missing',2,'\\x00')",
+        "UPDATE cloud_document_collab SET seq=-1",
+    ] {
+        assert!(sqlx_core::raw_sql::raw_sql(invalid).execute(&pool).await.is_err(), "{invalid}");
+    }
+    execute(
+        &pool,
+        "DELETE FROM cloud_accounts WHERE account_id='fixture-peer'",
+    )
+    .await;
+    execute(
+        &pool,
+        "DELETE FROM cloud_accounts WHERE account_id='fixture-owner'",
+    )
+    .await;
+    for table in [
+        "cloud_document_collab",
+        "cloud_document_collab_updates",
+        "cloud_document_collab_tickets",
+    ] {
+        let (rows,): (i64,) = query_as(&format!("SELECT COUNT(*)::BIGINT FROM {table}"))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(rows, 0, "{table} rows go with the document");
+    }
+}

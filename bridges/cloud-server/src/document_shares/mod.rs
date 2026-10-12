@@ -30,6 +30,7 @@ use crate::server::ServerState;
 pub(crate) mod access;
 pub(crate) mod block_ids;
 pub(crate) mod canonical;
+pub mod collab;
 mod comments;
 pub(crate) mod contents;
 mod documents;
@@ -53,6 +54,7 @@ pub use model::{
 };
 
 pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> Router {
+    let state_for_sockets = state.clone();
     let public = Router::new()
         .route("/d/:token", get(public_page::page))
         .route("/d/:token/raw", get(public_page::raw))
@@ -110,6 +112,7 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
             "/v1/cloud/documents/:attachment_id/comments",
             post(comments::comment),
         )
+        .merge(collab::protected_routes())
         .layer(Extension(rate_limiter))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
@@ -117,7 +120,9 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
         ))
         .with_state(state);
 
-    public.merge(protected)
+    public
+        .merge(protected)
+        .merge(collab::socket_routes(state_for_sockets))
 }
 
 /// Who is asking: a signed-in account, or a public reader with the

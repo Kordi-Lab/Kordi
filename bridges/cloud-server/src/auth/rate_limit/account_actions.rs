@@ -36,6 +36,13 @@ pub const DOCUMENT_PUBLIC_WRITE_LIMIT: AccountActionLimit = AccountActionLimit {
     window: Duration::from_secs(60),
 };
 
+/// Collaboration socket tickets for shared documents, per account.
+pub const DOCUMENT_COLLAB_TICKET_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "document-collab-ticket",
+    limit: 60,
+    window: Duration::from_secs(60),
+};
+
 /// Contact additions and contact requests, which share one budget.
 pub const CONTACT_ADD_LIMIT: AccountActionLimit = AccountActionLimit {
     action: "contact-add",
