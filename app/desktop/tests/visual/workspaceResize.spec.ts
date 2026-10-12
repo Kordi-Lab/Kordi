@@ -140,14 +140,15 @@ test('workspace reflows its columns and transcript without scaling text, icons, 
     expect(metrics.root.height).toBe(size.height);
     expect(metrics.shell.height).toBe(size.height);
     expect(metrics.panel.top).toBe(40);
-    expect(metrics.panel.bottom).toBe(size.height - 6);
-    expect(metrics.panel.right).toBe(size.width - 6);
-    expect(metrics.composer.bottom).toBe(size.height - 6);
+    // The conversation and the session list are flush with the window: no gutter on any side.
+    expect(metrics.panel.bottom).toBe(size.height);
+    expect(metrics.panel.right).toBe(size.width);
+    expect(metrics.composer.bottom).toBe(size.height);
     expect(metrics.messages.bottom).toBe(metrics.composer.top);
     expect(metrics.icon.width).toBe(24);
     expect(metrics.nav.width).toBe(48);
     expect(metrics.sessions.top).toBe(40);
-    expect(metrics.sessions.bottom).toBe(size.height - 6);
+    expect(metrics.sessions.bottom).toBe(size.height);
     expect(metrics.sessionCorner).toBe('14px');
     expect(metrics.font).toBe('15px');
     if (size.width === 1480) wideMessageHeight = metrics.message.height;
@@ -175,8 +176,8 @@ test('vertical native growth updates the complete height chain while browser vie
       };
     }, height);
     expect(measurements.viewport).toBe(760);
-    expect(measurements.heights).toEqual([760, 760, 760, height, height, height - 46]);
-    expect(measurements.composerBottom, JSON.stringify(measurements.ancestorScroll)).toBe(height - 6);
+    expect(measurements.heights).toEqual([760, 760, 760, height, height, height - 40]);
+    expect(measurements.composerBottom, JSON.stringify(measurements.ancestorScroll)).toBe(height);
     expect(measurements.pageScroll).toBe(0);
   }
 });

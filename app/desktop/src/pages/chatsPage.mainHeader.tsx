@@ -193,13 +193,49 @@ export function MainChatHeader({
     </div>
   );
   const hasMetadata = Boolean(metadata.subtitle || metadata.forkSourceSessionId);
+  const metadataRow = hasMetadata ? (
+    <div
+      className="app-chat-pane-metadata-row flex min-w-0 items-center gap-1 text-[11px] leading-5 text-slate-400"
+      data-chat-session-metadata="true"
+    >
+      {metadata.subtitle ? (
+        <span
+          data-chat-session-subtitle="true"
+          className="min-w-0 truncate"
+          title={metadata.subtitle}
+        >
+          {metadata.subtitle}
+        </span>
+      ) : null}
+      {metadata.subtitle && metadata.forkSourceSessionId ? (
+        <span className="shrink-0 opacity-50" aria-hidden="true">·</span>
+      ) : null}
+      {metadata.forkSourceSessionId ? (
+        <button
+          type="button"
+          onClick={() => metadata.onOpenForkSource?.(metadata.forkSourceSessionId!)}
+          disabled={!metadata.onOpenForkSource}
+          className="app-button-quiet app-fork-source-link inline-flex h-6 min-w-0 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium"
+          title={`Forked from "${metadata.forkSourceTitle}" — open the source session`}
+          aria-label={`Open source session ${metadata.forkSourceTitle}`}
+          data-kordi-window-drag="false"
+        >
+          <Split className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="max-w-[18rem] truncate">
+            Forked from {metadata.forkSourceTitle}
+          </span>
+        </button>
+      ) : null}
+    </div>
+  ) : null;
   return (
     <>
-      {nativeTitlebar?.title ? createPortal(title, nativeTitlebar.title) : null}
+      {/* In the native titlebar the status sits beside the title rather than on its own row. */}
+      {nativeTitlebar?.title ? createPortal(<>{title}{metadataRow}</>, nativeTitlebar.title) : null}
       {nativeTitlebar?.actions ? createPortal(actions, nativeTitlebar.actions) : null}
       <div
         className={`app-page-header app-chat-pane-header relative flex shrink-0 items-start justify-between gap-3${nativeTitlebar ? ' app-chat-native-metadata-header' : ''}`}
-        data-has-metadata={hasMetadata || undefined}
+        data-has-metadata={(hasMetadata && !nativeTitlebar) || undefined}
         data-has-destinations={layout.showDestinations || undefined}
       >
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -220,41 +256,7 @@ export function MainChatHeader({
           ) : null}
           <div className="min-w-0 flex-1">
             {!nativeTitlebar ? title : null}
-            {metadata.subtitle || metadata.forkSourceSessionId ? (
-              <div
-                className="app-chat-pane-metadata-row flex min-w-0 items-center gap-1 text-[11px] leading-5 text-slate-400"
-                data-chat-session-metadata="true"
-              >
-                {metadata.subtitle ? (
-                  <span
-                    data-chat-session-subtitle="true"
-                    className="min-w-0 truncate"
-                    title={metadata.subtitle}
-                  >
-                    {metadata.subtitle}
-                  </span>
-                ) : null}
-                {metadata.subtitle && metadata.forkSourceSessionId ? (
-                  <span className="shrink-0 opacity-50" aria-hidden="true">·</span>
-                ) : null}
-                {metadata.forkSourceSessionId ? (
-                  <button
-                    type="button"
-                    onClick={() => metadata.onOpenForkSource?.(metadata.forkSourceSessionId!)}
-                    disabled={!metadata.onOpenForkSource}
-                    className="app-button-quiet app-fork-source-link inline-flex h-6 min-w-0 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium"
-                    title={`Forked from "${metadata.forkSourceTitle}" — open the source session`}
-                    aria-label={`Open source session ${metadata.forkSourceTitle}`}
-                    data-kordi-window-drag="false"
-                  >
-                    <Split className="h-3 w-3 shrink-0" aria-hidden="true" />
-                    <span className="max-w-[18rem] truncate">
-                      Forked from {metadata.forkSourceTitle}
-                    </span>
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
+            {!nativeTitlebar ? metadataRow : null}
           </div>
         </div>
         {!nativeTitlebar ? actions : null}

@@ -211,9 +211,13 @@ test('native titlebar keeps rename and panel actions working and clears them whe
     await act(() => titlebar.querySelector<HTMLButtonElement>('[aria-label="Calendar"]')!.click());
     assert.equal(selected, 'calendar');
     assert.equal(document.querySelector('main h2'), null);
-    assert.match(document.querySelector('main')!.textContent!, /Maya, you.*Forked from Original/);
+    // The status and fork link sit beside the title in the titlebar, not on a row of their own below it.
+    assert.match(titlebar.querySelector('.app-native-titlebar-title')!.textContent!, /Maya, you.*Forked from Original/);
+    assert.equal(document.querySelector('main [data-chat-session-metadata]'), null);
+    assert.equal(document.querySelector('main .app-chat-pane-header')!.hasAttribute('data-has-metadata'), false);
     await act(() => root.render(<Harness inChat={false} />));
     assert.equal(titlebar.querySelector('.app-chat-header-title'), null);
+    assert.equal(titlebar.querySelector('[data-chat-session-metadata]'), null);
     assert.equal(titlebar.querySelector('.app-companion-toolbar'), null);
     assert.equal(titlebar.querySelector('.app-native-titlebar-fallback')?.textContent, 'Kordi');
   } finally { await cleanup(); }

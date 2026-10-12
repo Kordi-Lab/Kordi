@@ -17,8 +17,9 @@ export function assembleOverlaySlots(args: OverlayShellArgs) {
   const onEnterChat = (preferredModelValue?: string, route?: DesktopChatMessageRoute) => openLocalAgentChatFromArgs(args, preferredModelValue, route);
 
   const authGate = args.showAuthGate ? (
+    // Must sit above the native titlebar (z-index 70) so the sidebar toggle and window title do not show over the gate.
     <div
-      className="app-auth-gate-overlay absolute inset-0 z-50 overflow-hidden"
+      className="app-auth-gate-overlay absolute inset-0 z-[80] overflow-hidden"
       style={{ WebkitAppRegion: 'no-drag' as const }}
     >
       <AuthPage
