@@ -26,6 +26,7 @@ use crate::server::ServerState;
 
 const PAGE_CSS: &str = include_str!("assets/page.css");
 const PAGE_JS: &str = include_str!("assets/page.js");
+const PAGE_MENU_JS: &str = include_str!("assets/page-menu.js");
 const KORDI_HOMEPAGE_URL: &str = "https://kordi.ai/";
 const KORDI_FAVICON_URL: &str = "/assets/favicon.png";
 
@@ -112,7 +113,7 @@ pub(crate) struct PageInput<'a> {
 fn document_body(input: &PageInput<'_>, title: &str) -> String {
     match input.record.format {
         DocumentFormat::Html => format!(
-            r#"<div class="block" data-block="b0"><iframe class="frame" sandbox src="{}" title="{}"></iframe></div><div class="annot" data-for="b0"></div>"#,
+            r#"<div class="block" data-block="b0"><iframe class="frame" sandbox src="{}" title="{}"></iframe></div><div class="frame-actions"><button type="button" data-frame-act="comment">Comment</button><button type="button" data-frame-act="react">React</button></div><div class="annot" data-for="b0"></div>"#,
             escape_html(&public_raw_path(input.token)),
             escape_html(title),
         ),
@@ -168,12 +169,14 @@ pub(crate) fn document_page(input: &PageInput<'_>, nonce: &str) -> String {
 <div class="meta"><span class="pill">{calendar}{date}</span><span class="dot">&middot;</span><button class="mention" id="authorChip" aria-expanded="false" aria-controls="people">@{name}</button>
 <div class="people" id="people" hidden><div class="cap">People</div><div class="prow">{avatar}<div class="who"><div class="name">{name}</div>{kordi_id}</div><a class="pact" href="{home}">Add on Kordi</a></div></div></div>
 <div id="content">{body}</div>
-<div class="tb" id="tb" hidden><button data-act="comment" aria-label="Comment">{comment_icon}</button><button data-act="react" aria-label="React">{react_icon}</button></div>
-<div class="emo" id="emo" hidden></div>
 <footer class="docfoot">Shared by <b>{name}</b></footer>
 </main>
+<div class="menu" id="menu" role="toolbar" aria-label="Selection" hidden><button type="button" data-act="comment" aria-label="Comment" title="Comment">{comment_icon}</button><button type="button" data-act="react" aria-label="React" title="React">{react_icon}</button></div>
+<div class="emo" id="emo" role="toolbar" aria-label="Reactions" hidden></div>
+<template id="composer-template"><div class="cmtbox"><input class="nm" name="name" placeholder="Your name" maxlength="40" autocomplete="name"><input class="tx" placeholder="Add a comment" maxlength="4000"><button type="button" class="post">Post</button></div></template>
 <div class="toast" id="toast" role="status" hidden></div>
 <script nonce="{nonce}">{js}</script>
+<script nonce="{nonce}">{menu_js}</script>
 </body>
 </html>"#,
         favicon = KORDI_FAVICON_URL,
@@ -190,6 +193,7 @@ pub(crate) fn document_page(input: &PageInput<'_>, nonce: &str) -> String {
         comment_icon = COMMENT_ICON,
         react_icon = REACT_ICON,
         js = PAGE_JS,
+        menu_js = PAGE_MENU_JS,
     )
 }
 

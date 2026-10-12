@@ -4,7 +4,9 @@
   --ink: #000000; --ink-2: #3c3c43; --ink-3: #8e8e93;
   --rule: #e5e5ea; --rule-2: #c7c7cc;
   --blue: #2563eb; --blue-wash: #e2ebf5; --violet: #847ac4;
-  --sel: rgba(37,99,235,.18); --chip: #eef1f7; --chip-ring: #c3d2f3;
+  --chip: #eef1f7; --chip-ring: #c3d2f3;
+  --glass: rgba(255,255,255,.72); --glass-line: rgba(0,0,0,.08); --hover: rgba(0,0,0,.06);
+  --menu-shadow: 0 8px 24px rgba(0,0,0,.12), 0 1px 3px rgba(0,0,0,.08);
   --pop-shadow: 0 10px 30px rgba(0,0,0,.16), 0 1px 3px rgba(0,0,0,.08);
   --toast-bg: #1c1c1e; --toast-fg: #fff;
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -15,7 +17,9 @@
     --paper: #000000; --paper-2: #1c1c1e; --paper-3: #2c2c2e;
     --ink: #ffffff; --ink-2: #ebebf5; --ink-3: #8e8e93; --rule: #38383a; --rule-2: #48484a;
     --blue: #7ea2ff; --blue-wash: #2d425b; --violet: #a39bdc;
-    --sel: rgba(126,162,255,.26); --chip: #2a2d35; --chip-ring: #4b5a7a;
+    --chip: #2a2d35; --chip-ring: #4b5a7a;
+    --glass: rgba(36,36,40,.72); --glass-line: rgba(255,255,255,.1); --hover: rgba(255,255,255,.08);
+    --menu-shadow: 0 10px 28px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.3);
     --pop-shadow: 0 10px 30px rgba(0,0,0,.5), 0 1px 3px rgba(0,0,0,.4);
     --toast-bg: #f2f2f7; --toast-fg: #1c1c1e;
   }
@@ -53,17 +57,20 @@ svg.i { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-widt
 .dot { color: var(--ink-3); }
 .mention { display: inline-flex; align-items: center; height: 26px; padding: 0 9px; border-radius: 7px; background: var(--chip); color: var(--ink); font-weight: 600; border: 1px solid transparent; }
 .mention[aria-expanded="true"] { border-color: var(--blue); box-shadow: 0 0 0 2px var(--chip-ring); }
-.people { position: absolute; top: 32px; left: 0; z-index: 6; width: min(320px, 100%); background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; box-shadow: var(--pop-shadow); padding: 8px; }
+.people { position: fixed; top: 0; left: 0; z-index: 26; width: min(320px, calc(100vw - 16px)); background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; box-shadow: var(--pop-shadow); padding: 8px; }
 .people .cap { font-size: 12.5px; color: var(--ink-3); padding: 2px 8px 6px; }
 .prow { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 10px; background: var(--paper-2); }
 .who { flex: 1; min-width: 0; }
 .name { font-weight: 600; font-size: 15px; line-height: 1.2; }
-.sub { font-size: 12.5px; color: var(--ink-3); font-family: var(--mono); white-space: nowrap; }
-.pact { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 9px; background: var(--blue); color: #fff; font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.sub { margin-top: 2px; font-size: 12.5px; color: var(--ink-3); white-space: nowrap; }
+.doc .pact, .pact { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 9px; background: var(--blue); color: #fff; font: 600 13px/1 var(--sans); text-decoration: none; white-space: nowrap; }
+.doc .pact:hover { filter: brightness(1.08); }
 .av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 600; color: #fff; background: var(--violet); flex: none; overflow: hidden; }
 .av img { width: 100%; height: 100%; object-fit: cover; }
-.block { position: relative; border-radius: 6px; margin: 0 -6px; padding: 0 6px; cursor: pointer; }
-.block.sel { background: var(--sel); }
+.block { position: relative; }
+.doc ::selection { background: rgba(37,99,235,.22); }
+.frame-actions { display: flex; gap: 6px; margin: 8px 0 12px; }
+.frame-actions button { height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--rule-2); font-size: 13px; font-weight: 500; color: var(--ink-2); }
 .frame { display: block; width: 100%; height: 75vh; border: 1px solid var(--rule); border-radius: 8px; background: #fff; }
 .reacts { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 12px; }
 .react { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 14px; border: 1px solid var(--rule-2); font-size: 13px; font-weight: 500; color: var(--ink-2); background: var(--paper); }
@@ -82,13 +89,16 @@ svg.i { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-widt
 .cf input, .cmtbox input { flex: 1; min-width: 0; height: 36px; border-radius: 18px; border: 1px solid var(--rule-2); padding: 0 14px; font-size: 15px; background: var(--paper); }
 .cmtbox input.nm { flex: 0 1 140px; }
 .cf button, .cmtbox button { color: var(--blue); font-weight: 600; font-size: 15px; height: 36px; padding: 0 6px; }
-.tb, .emo { position: absolute; z-index: 12; display: flex; gap: 2px; padding: 4px; background: var(--paper); box-shadow: var(--pop-shadow); border: 1px solid var(--rule); }
-.tb { left: 20px; border-radius: 12px; }
-.tb button { height: 36px; min-width: 36px; border-radius: 8px; display: grid; place-items: center; }
-.tb svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.emo { left: 20px; border-radius: 22px; }
-.emo button { width: 40px; height: 40px; border-radius: 50%; font-size: 22px; }
-.tb button:hover, .emo button:hover { background: var(--paper-2); }
+.menu, .emo { position: fixed; z-index: 25; display: flex; align-items: center; gap: 2px; padding: 1px 2px; border: 1px solid var(--glass-line); background: var(--glass); box-shadow: var(--menu-shadow); -webkit-backdrop-filter: saturate(180%) blur(18px); backdrop-filter: saturate(180%) blur(18px); }
+.menu { height: 32px; border-radius: 10px; }
+.menu button { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: var(--ink-2); }
+.menu svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.emo { height: 40px; border-radius: 20px; padding: 0 4px; }
+.emo button { width: 34px; height: 34px; border-radius: 50%; font-size: 20px; line-height: 1; }
+.menu button:hover, .emo button:hover, .menu button:focus-visible, .emo button:focus-visible { background: var(--hover); color: var(--ink); }
+.replyto { margin: 6px 0 0 34px; font-size: 13px; font-weight: 500; color: var(--ink-3); }
+.replyto:hover { color: var(--ink); }
+.react[aria-pressed="true"] { border-color: var(--blue); }
 .docfoot { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--ink-3); }
 .docfoot b { color: var(--ink-2); font-weight: 500; }
 .gone { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; color: var(--ink-2); }

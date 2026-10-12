@@ -1,11 +1,12 @@
 (function () {
   'use strict';
+  // Reactions and comments for the public document page. The selection menu
+  // lives in page-menu.js and calls window.KordiDoc.
   var doc = document.getElementById('doc');
   if (!doc) return;
   var token = doc.getAttribute('data-token');
   var api = '/v1/cloud/public/documents/' + encodeURIComponent(token);
-  var EMOJI = ['\u2764\uFE0F', '\uD83D\uDC4D', '\uD83D\uDD25', '\uD83D\uDC40', '\uD83E\uDD14', '\uD83C\uDF89'];
-  var state = { reactions: [], comments: [], agent: null, askAgent: false, sel: null, composing: null };
+  var state = { reactions: [], comments: [], agent: null, askAgent: false, composing: null, replying: null };
 
   function store(name, value) {
     try {
@@ -94,13 +95,49 @@
     var row = el('div', 'reacts');
     order.forEach(function (e) {
       var b = el('button', 'react' + (groups[e].mine ? ' mine' : ''), e + ' ' + groups[e].n);
-      b.setAttribute('aria-label', groups[e].n + ' ' + e);
-      b.addEventListener('click', function (ev) { ev.stopPropagation(); react(blockId, e); });
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(groups[e].mine));
+      b.setAttribute('aria-label', e + ' ' + groups[e].n);
+      b.addEventListener('click', function () { react(blockId, e); });
       row.appendChild(b);
     });
     host.appendChild(row);
   }
-  function commentLine(c, cls) {
+
+  // A composer from the page template; the name field only until a name is stored.
+  function composer(blockId, parentId) {
+    var box = document.getElementById('composer-template').content.firstElementChild.cloneNode(true);
+    var name = box.querySelector('.nm');
+    var input = box.querySelector('.tx');
+    var post = box.querySelector('.post');
+    if (readerName()) { name.remove(); name = null; }
+    var agent = state.agent && state.agent.displayName;
+    input.placeholder = parentId ? 'Reply' : (state.askAgent && agent ? 'Add a comment, or @' + agent : 'Add a comment');
+    function submit() {
+      if (name) {
+        var given = name.value.trim();
+        if (!given) { name.focus(); return; }
+        store('kordi.document.readerName', given.slice(0, 40));
+      }
+      var body = input.value.trim();
+      if (!body) { input.focus(); return; }
+      post.disabled = true;
+      postComment(blockId, body, parentId).then(function (ok) { post.disabled = false; if (!ok) input.focus(); });
+    }
+    post.addEventListener('click', submit);
+    box.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); submit(); }
+      if (ev.key === 'Escape') { ev.preventDefault(); closeComposer(); }
+    });
+    return { box: box, focus: function () { (name || input).focus(); } };
+  }
+  function closeComposer() {
+    state.composing = null;
+    state.replying = null;
+    renderAll();
+  }
+
+  function line(c, cls) {
     var head = el('div', cls);
     head.appendChild(avatar(c.author));
     var n = el('div', 'n', c.author.displayName);
@@ -108,69 +145,50 @@
     return { head: head, name: n };
   }
   function renderComments(host, blockId) {
-    var top = state.comments.filter(function (c) { return c.blockId === blockId && !c.parentCommentId && !c.resolvedAt; });
-    top.forEach(function (c) {
+    var focus = null;
+    state.comments.filter(function (c) { return c.blockId === blockId && !c.parentCommentId && !c.resolvedAt; }).forEach(function (c) {
       var box = el('div', 'cmt');
-      var line = commentLine(c, 'ch');
-      line.head.appendChild(line.name);
-      box.appendChild(line.head);
+      var top = line(c, 'ch');
+      top.head.appendChild(top.name);
+      box.appendChild(top.head);
       box.appendChild(el('div', 'x', c.body));
-      state.comments.filter(function (r) { return r.parentCommentId === c.commentId; }).forEach(function (r) {
-        var reply = commentLine(r, 'cr');
+      state.comments.filter(function (r) { return r.parentCommentId === c.commentId && !r.resolvedAt; }).forEach(function (r) {
+        var reply = line(r, 'cr');
         var body = el('div');
         body.appendChild(reply.name);
         body.appendChild(el('div', 'x', r.body));
         reply.head.appendChild(body);
         box.appendChild(reply.head);
       });
-      var form = el('div', 'cf');
-      var input = el('input');
-      input.placeholder = 'Reply';
-      input.maxLength = 4000;
-      var post = el('button', null, 'Post');
-      post.addEventListener('click', function () { postComment(blockId, input.value, c.commentId); });
-      input.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') post.click(); });
-      form.appendChild(input); form.appendChild(post); box.appendChild(form);
-      box.addEventListener('click', function (ev) { ev.stopPropagation(); });
+      if (state.replying === c.commentId) {
+        var replyBox = composer(blockId, c.commentId);
+        replyBox.box.classList.add('cf');
+        box.appendChild(replyBox.box);
+        focus = replyBox;
+      } else {
+        var open = el('button', 'replyto', 'Reply');
+        open.type = 'button';
+        open.addEventListener('click', function () { state.replying = c.commentId; state.composing = null; renderAll(); });
+        box.appendChild(open);
+      }
       host.appendChild(box);
     });
-    if (state.composing === blockId) host.appendChild(composer(blockId));
-  }
-  function composer(blockId) {
-    var box = el('div', 'cmtbox');
-    box.addEventListener('click', function (ev) { ev.stopPropagation(); });
-    var name = null;
-    if (!readerName()) {
-      name = el('input', 'nm');
-      name.placeholder = 'Your name';
-      name.maxLength = 40;
-      box.appendChild(name);
+    if (state.composing === blockId) {
+      var fresh = composer(blockId, null);
+      host.appendChild(fresh.box);
+      focus = fresh;
     }
-    var input = el('input');
-    var agent = state.agent && state.agent.displayName;
-    input.placeholder = state.askAgent && agent ? 'Add a comment, or @' + agent : 'Add a comment';
-    input.maxLength = 4000;
-    var post = el('button', null, 'Post');
-    post.addEventListener('click', function () {
-      if (name) {
-        var v = name.value.trim();
-        if (!v) { name.focus(); return; }
-        store('kordi.document.readerName', v.slice(0, 40));
-      }
-      postComment(blockId, input.value, null);
-    });
-    input.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') post.click(); });
-    box.appendChild(input); box.appendChild(post);
-    setTimeout(function () { (name || input).focus(); }, 0);
-    return box;
+    return focus;
   }
   function renderAll() {
+    var focus = null;
     doc.querySelectorAll('.annot').forEach(function (host) {
       var id = host.getAttribute('data-for');
       host.textContent = '';
       renderReacts(host, id);
-      renderComments(host, id);
+      focus = renderComments(host, id) || focus;
     });
+    if (focus) focus.focus();
   }
 
   function react(blockId, emoji) {
@@ -180,68 +198,68 @@
         renderAll();
       }).catch(function (e) { toast(e.message); });
   }
-  function postComment(blockId, text, parentId) {
-    var body = String(text || '').trim();
-    if (!body) return;
+  function postComment(blockId, body, parentId) {
     var payload = { blockId: blockId, body: body, readerKey: readerKey(), readerName: readerName() || 'Reader' };
     if (parentId) payload.parentCommentId = parentId;
-    request('/comments', payload).then(function (comment) {
+    return request('/comments', payload).then(function (comment) {
       state.comments.push(comment);
       state.composing = null;
+      state.replying = null;
       renderAll();
       toast('Comment posted');
-    }).catch(function (e) { toast(e.message); });
+      return true;
+    }).catch(function (e) { toast(e.message); return false; });
   }
 
-  var tb = document.getElementById('tb');
-  var emo = document.getElementById('emo');
-  EMOJI.forEach(function (e) {
-    var b = el('button', null, e);
-    b.setAttribute('aria-label', 'React ' + e);
-    b.addEventListener('click', function (ev) { ev.stopPropagation(); var id = state.sel; clearSel(); react(id, e); });
-    emo.appendChild(b);
+  // HTML documents render in a frame; their actions sit under it.
+  doc.querySelectorAll('[data-frame-act]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var act = button.getAttribute('data-frame-act');
+      if (act === 'comment') window.KordiDoc.openComposer('b0');
+      else window.KordiDoc.showEmoji(button, 'b0');
+    });
   });
-  function clearSel() {
-    doc.querySelectorAll('.block.sel').forEach(function (b) { b.classList.remove('sel'); });
-    tb.hidden = true; emo.hidden = true; state.sel = null;
-  }
-  doc.addEventListener('click', function (ev) {
-    var block = ev.target.closest('.block');
-    if (!block || ev.target.closest('a')) return;
-    ev.stopPropagation();
-    var id = block.getAttribute('data-block');
-    if (state.sel === id) { clearSel(); return; }
-    clearSel();
-    state.sel = id;
-    block.classList.add('sel');
-    var top = block.offsetTop;
-    tb.style.top = Math.max(0, top - 50) + 'px';
-    emo.style.top = Math.max(0, top - 100) + 'px';
-    tb.hidden = false;
-  });
-  tb.addEventListener('click', function (ev) {
-    var btn = ev.target.closest('[data-act]');
-    if (!btn) return;
-    ev.stopPropagation();
-    if (btn.getAttribute('data-act') === 'react') { emo.hidden = !emo.hidden; return; }
-    state.composing = state.sel;
-    clearSel();
-    renderAll();
-  });
-  emo.addEventListener('click', function (ev) { ev.stopPropagation(); });
-  document.addEventListener('click', function () { clearSel(); closePeople(); });
 
+  // The People card under the @author chip, clamped to the viewport.
   var chip = document.getElementById('authorChip');
   var people = document.getElementById('people');
-  function closePeople() { if (chip) { chip.setAttribute('aria-expanded', 'false'); people.hidden = true; } }
+  function placePeople() {
+    var rect = chip.getBoundingClientRect();
+    var width = people.offsetWidth;
+    var left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+    var top = rect.bottom + 6;
+    if (top + people.offsetHeight > window.innerHeight - 8) top = Math.max(8, rect.top - people.offsetHeight - 6);
+    people.style.left = left + 'px';
+    people.style.top = top + 'px';
+  }
+  function closePeople() {
+    if (!chip || people.hidden) return;
+    people.hidden = true;
+    chip.setAttribute('aria-expanded', 'false');
+  }
   if (chip) {
     chip.addEventListener('click', function (ev) {
       ev.stopPropagation();
-      var open = people.hidden;
-      people.hidden = !open;
-      chip.setAttribute('aria-expanded', String(open));
+      if (!people.hidden) { closePeople(); return; }
+      if (window.KordiDoc.hideMenu) window.KordiDoc.hideMenu();
+      people.hidden = false;
+      chip.setAttribute('aria-expanded', 'true');
+      placePeople();
     });
     people.addEventListener('click', function (ev) { ev.stopPropagation(); });
+    document.addEventListener('click', closePeople);
+    document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closePeople(); });
+    window.addEventListener('resize', function () { if (!people.hidden) placePeople(); });
+    window.addEventListener('scroll', function () { if (!people.hidden) placePeople(); }, { passive: true });
   }
+
+  window.KordiDoc = {
+    react: react,
+    toast: toast,
+    openComposer: function (blockId) { state.composing = blockId; state.replying = null; renderAll(); },
+    showEmoji: function () {},
+    hideMenu: null,
+    closePeople: closePeople
+  };
   load();
 })();

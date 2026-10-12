@@ -337,3 +337,76 @@ async fn public_writes_are_limited_per_address_while_reads_continue() {
         "documents leave the sign-in budget alone"
     );
 }
+
+#[test]
+fn public_page_has_the_selection_menu_and_composer_template() {
+    let token = format!("kordi_ds_{}", "C".repeat(43));
+    let record = sample_record(DocumentFormat::Markdown, "Alex Morgan");
+    let page = document_page(
+        &PageInput {
+            token: &token,
+            record: &record,
+            source: "# Plan\n\nBody text.\n",
+        },
+        "n3",
+    );
+    for element in [
+        r#"<div class="menu" id="menu" role="toolbar""#,
+        r#"data-act="comment""#,
+        r#"data-act="react""#,
+        r#"<div class="emo" id="emo""#,
+        r#"<template id="composer-template">"#,
+        r#"<input class="nm" name="name" placeholder="Your name""#,
+        r#"<button type="button" class="post">Post</button>"#,
+    ] {
+        assert!(page.contains(element), "{element}");
+    }
+    assert_eq!(
+        page.matches(r#"<script nonce="n3">"#).count(),
+        2,
+        "core and menu scripts"
+    );
+    assert!(page.contains("selectionchange"));
+    assert!(page.contains("backdrop-filter"));
+    for highlight in [".block.sel", "classList.add('sel')", "--sel"] {
+        assert!(!page.contains(highlight), "{highlight}");
+    }
+    let html = document_page(
+        &PageInput {
+            token: &token,
+            record: &sample_record(DocumentFormat::Html, "Alex Morgan"),
+            source: "<title>Report</title>",
+        },
+        "n4",
+    );
+    assert!(
+        html.contains(r#"data-frame-act="comment""#) && html.contains(r#"data-frame-act="react""#)
+    );
+}
+
+#[test]
+fn people_card_labels_its_action_and_shows_the_kordi_id_plainly() {
+    let token = format!("kordi_ds_{}", "D".repeat(43));
+    let mut record = sample_record(DocumentFormat::Markdown, "Alex Morgan");
+    record.author.kordi_id = "889224039".into();
+    let page = document_page(
+        &PageInput {
+            token: &token,
+            record: &record,
+            source: "Body.\n",
+        },
+        "n5",
+    );
+    let card = &page[page
+        .find(r#"<div class="people" id="people" hidden>"#)
+        .unwrap()..];
+    let card = &card[..card.find("</main>").unwrap()];
+    assert!(card.contains(r#"<a class="pact" href="https://kordi.ai/">Add on Kordi</a>"#));
+    assert!(card.contains(r#"<div class="sub">Kordi 889 224 039</div>"#));
+    assert!(card.contains(r#"<span class="av">AM</span>"#));
+    assert!(
+        page.contains(".doc .pact, .pact {"),
+        "the label is not recolored by .doc a"
+    );
+    assert!(!page.contains("font-family: var(--mono); white-space: nowrap"));
+}
