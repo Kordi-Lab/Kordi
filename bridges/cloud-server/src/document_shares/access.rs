@@ -9,6 +9,7 @@ use axum::response::Response;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+use super::canonical::{canonical_attachment_id, readable_family_attachment, FAMILY_CTE};
 use super::model::{DocumentAuthor, DocumentFormat, Viewer};
 use super::tokens::{hash_share_token, is_well_formed_token};
 use super::{db_error, err, link_off};
@@ -22,7 +23,10 @@ pub(crate) const MAX_DOCUMENT_BYTES: usize = MAX_ARTIFACT_EXPORT_BYTES;
 
 #[derive(Debug, Clone)]
 pub(crate) struct DocumentRecord {
+    /// The canonical attachment.
     pub attachment_id: String,
+    /// The id the caller asked for; a forwarded copy or the canonical id.
+    pub requested_attachment_id: String,
     pub object_key: String,
     pub owner_account_id: String,
     pub content_type: String,
@@ -102,66 +106,88 @@ pub(crate) async fn public_document(
         .await
         .map_err(|_| db_error())?
         .ok_or_else(link_off)?;
+    let canonical = canonical_attachment_id(pool, &share.attachment_id)
+        .await
+        .map_err(|_| db_error())?;
+    let facts = attachment_facts(pool, &canonical)
+        .await?
+        .ok_or_else(link_off)?;
+    if facts.owner_account_id != share.owner_account_id {
+        return Err(Box::new(link_off()));
+    }
+    let mut record = load_record(pool, facts).await?.ok_or_else(link_off)?;
+    record.requested_attachment_id = record.attachment_id.clone();
+    Ok((share, record))
+}
+
+/// A finalized attachment's facts, or `None`.
+async fn attachment_facts(
+    pool: &PgPool,
+    attachment_id: &str,
+) -> Result<Option<AttachmentFacts>, Box<Response>> {
     let row: Option<AttachmentTuple> = query_as(
         "SELECT object_key, owner_account_id, content_type, detected_content_type, \
-                    size_bytes, finalized_at \
-             FROM cloud_attachments WHERE attachment_id = $1 AND finalized_at IS NOT NULL",
+                size_bytes, finalized_at \
+         FROM cloud_attachments WHERE attachment_id = $1 AND finalized_at IS NOT NULL",
     )
-    .bind(&share.attachment_id)
+    .bind(attachment_id)
     .fetch_optional(pool)
     .await
     .map_err(|_| db_error())?;
-    let Some((object_key, owner, content_type, detected, size_bytes, finalized_at)) = row else {
-        return Err(Box::new(link_off()));
-    };
-    if owner != share.owner_account_id {
-        return Err(Box::new(link_off()));
-    }
-    let record = load_record(
-        pool,
-        AttachmentFacts {
-            attachment_id: share.attachment_id.clone(),
+    Ok(row.map(
+        |(object_key, owner, content_type, detected, size_bytes, finalized_at)| AttachmentFacts {
+            attachment_id: attachment_id.to_string(),
             object_key,
             owner_account_id: owner,
             content_type: content_type.or(detected),
             size_bytes,
             created_at: finalized_at,
         },
-    )
-    .await?
-    .ok_or_else(link_off)?;
-    Ok((share, record))
+    ))
 }
 
-/// The document for a signed-in viewer, with whether they own it.
+/// The canonical document for a signed-in viewer of `attachment_id`.
+/// Access is checked on the requested id (a forwarded copy the caller was
+/// sent counts), then the canonical document is loaded. Only the owner of
+/// the canonical attachment is `owner`; the owner of a forwarded copy is a
+/// member.
 pub(crate) async fn authorized_document(
     state: &ServerState,
     session: &CloudSession,
     attachment_id: &str,
 ) -> Result<(DocumentRecord, Viewer), Box<Response>> {
-    let (object_key, owner, finalized_at, content_type, detected, size_bytes, _) =
-        attachment_access_row(state, session, attachment_id)
-            .await
-            .map_err(|response| *response)?;
-    let viewer = if owner == session.account_id {
+    attachment_access_row(state, session, attachment_id)
+        .await
+        .map_err(|response| *response)?;
+    let pool = state.db_pool();
+    let canonical = canonical_attachment_id(pool, attachment_id)
+        .await
+        .map_err(|_| db_error())?;
+    let facts = attachment_facts(pool, &canonical)
+        .await?
+        .ok_or_else(|| err("not_found", "Attachment not found.", StatusCode::NOT_FOUND))?;
+    let viewer = if facts.owner_account_id == session.account_id {
         Viewer::Owner
     } else {
         Viewer::Member
     };
-    let record = load_record(
-        state.db_pool(),
-        AttachmentFacts {
-            attachment_id: attachment_id.to_string(),
-            object_key,
-            owner_account_id: owner,
-            content_type: content_type.or(detected),
-            size_bytes,
-            created_at: finalized_at.unwrap_or_default(),
-        },
-    )
-    .await?
-    .ok_or_else(unsupported)?;
+    let mut record = load_record(pool, facts).await?.ok_or_else(unsupported)?;
+    record.requested_attachment_id = attachment_id.to_string();
     Ok((record, viewer))
+}
+
+/// Like [`authorized_document`] for routes that only know the canonical id
+/// (comment edits): the caller may reach it through any copy they can read.
+pub(crate) async fn authorized_canonical_document(
+    state: &ServerState,
+    session: &CloudSession,
+    canonical: &str,
+) -> Result<(DocumentRecord, Viewer), Box<Response>> {
+    let readable = readable_family_attachment(state.db_pool(), canonical, &session.account_id)
+        .await
+        .map_err(|_| db_error())?
+        .unwrap_or_else(|| canonical.to_string());
+    authorized_document(state, session, &readable).await
 }
 
 fn unsupported() -> Response {
@@ -240,6 +266,7 @@ async fn load_record(
         },
         size_bytes: facts.size_bytes,
         created_at: facts.created_at,
+        requested_attachment_id: String::new(),
         file_name: named.unwrap_or_else(|| format.default_file_name().to_string()),
         format,
         author,
@@ -314,70 +341,30 @@ pub(crate) fn syncable_avatar_url(value: &str) -> Option<String> {
     .then(|| value.to_string())
 }
 
-/// The session that carries the attachment. Members only see a session they
-/// belong to; the owner sees the first session the file was sent in.
+/// The session that carries the document or a copy of it. Members only see
+/// a session they belong to; with no member filter, the first session the
+/// canonical file was sent in.
 pub(crate) async fn document_session(
     pool: &PgPool,
-    attachment_id: &str,
+    canonical: &str,
     member_account_id: Option<&str>,
 ) -> Result<Option<(String, Option<String>)>, sqlx_core::Error> {
-    query_as(
-        "SELECT COALESCE(conversation.legacy_session_id, conversation.conversation_id::text), \
+    query_as(&format!(
+        "{FAMILY_CTE} SELECT COALESCE(conversation.legacy_session_id, conversation.conversation_id::text), \
                 conversation.shared_title \
          FROM cloud_chat_message_attachments link \
          JOIN cloud_chat_messages message ON message.message_id = link.message_id \
          JOIN cloud_chat_conversations conversation \
            ON conversation.conversation_id = message.conversation_id \
-         WHERE link.attachment_id = $1 \
+         WHERE link.attachment_id IN (SELECT attachment_id FROM family) \
            AND ($2::text IS NULL OR EXISTS ( \
                 SELECT 1 FROM cloud_chat_conversation_members member \
                 WHERE member.conversation_id = conversation.conversation_id \
                   AND member.account_id = $2 AND member.membership_state = 'active')) \
-         ORDER BY message.created_at ASC LIMIT 1",
-    )
-    .bind(attachment_id)
+         ORDER BY (link.attachment_id = $1) DESC, message.created_at ASC LIMIT 1"
+    ))
+    .bind(canonical)
     .bind(member_account_id)
     .fetch_optional(pool)
     .await
-}
-
-/// Whether `account_id` is an active member of a conversation that carries
-/// the attachment.
-pub(crate) async fn is_active_member(
-    pool: &PgPool,
-    attachment_id: &str,
-    account_id: &str,
-) -> Result<bool, sqlx_core::Error> {
-    let (member,): (bool,) = query_as(
-        "SELECT EXISTS ( \
-           SELECT 1 FROM cloud_chat_message_attachments link \
-           JOIN cloud_chat_messages message ON message.message_id = link.message_id \
-           JOIN cloud_chat_conversation_members member \
-             ON member.conversation_id = message.conversation_id \
-           WHERE link.attachment_id = $1 AND member.account_id = $2 \
-             AND member.membership_state = 'active')",
-    )
-    .bind(attachment_id)
-    .bind(account_id)
-    .fetch_one(pool)
-    .await?;
-    Ok(member)
-}
-
-/// `viewerCan.edit`: Markdown documents, for the owner and for active members
-/// of a conversation that carries them.
-pub(crate) async fn can_edit(
-    pool: &PgPool,
-    record: &DocumentRecord,
-    viewer: Viewer,
-    account_id: &str,
-) -> Result<bool, sqlx_core::Error> {
-    if record.format != DocumentFormat::Markdown {
-        return Ok(false);
-    }
-    match viewer {
-        Viewer::Owner => Ok(true),
-        Viewer::Member => is_active_member(pool, &record.attachment_id, account_id).await,
-        Viewer::Public => Ok(false),
-    }
 }

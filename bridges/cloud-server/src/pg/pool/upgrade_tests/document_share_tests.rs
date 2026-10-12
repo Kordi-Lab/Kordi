@@ -6,7 +6,7 @@ async fn upgrade_from_121_adds_document_shares() {
     let pool = fixture(121).await;
     execute(&pool, "INSERT INTO cloud_attachments(attachment_id,owner_account_id,object_key,content_type,size_bytes,created_at,finalized_at) VALUES('att-doc','fixture-owner','attachments/fixture-owner/att-doc','text/markdown',10,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')").await;
     let before: Vec<(Value,)> =
-        query_as("SELECT to_jsonb(a) FROM cloud_attachments a ORDER BY attachment_id")
+        query_as("SELECT to_jsonb(a) - 'document_source_attachment_id' FROM cloud_attachments a ORDER BY attachment_id")
             .fetch_all(&pool)
             .await
             .unwrap();
@@ -15,7 +15,7 @@ async fn upgrade_from_121_adds_document_shares() {
     b.unwrap();
     latest_version(&pool).await;
     let after: Vec<(Value,)> =
-        query_as("SELECT to_jsonb(a) FROM cloud_attachments a ORDER BY attachment_id")
+        query_as("SELECT to_jsonb(a) - 'document_source_attachment_id' FROM cloud_attachments a ORDER BY attachment_id")
             .fetch_all(&pool)
             .await
             .unwrap();
@@ -150,4 +150,54 @@ async fn upgrade_from_122_adds_document_contents() {
         .await
         .unwrap();
     assert_eq!(left, 0, "the source goes with its attachment");
+}
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_123_adds_document_sources() {
+    let pool = fixture(123).await;
+    execute(&pool, "INSERT INTO cloud_attachments(attachment_id,owner_account_id,object_key,content_type,size_bytes,created_at,finalized_at) VALUES('att-doc','fixture-owner','attachments/fixture-owner/att-doc','text/markdown',10,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'),('att-copy','fixture-peer','attachments/fixture-peer/att-copy','text/markdown',10,'2026-01-02T00:00:00Z','2026-01-02T00:00:00Z')").await;
+    let before: Vec<(Value,)> =
+        query_as("SELECT to_jsonb(a) FROM cloud_attachments a ORDER BY attachment_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let after: Vec<(Value, Option<String>)> = query_as(
+        "SELECT to_jsonb(a) - 'document_source_attachment_id', document_source_attachment_id \
+         FROM cloud_attachments a ORDER BY attachment_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        before.into_iter().map(|(row,)| row).collect::<Vec<_>>(),
+        after.iter().map(|(row, _)| row.clone()).collect::<Vec<_>>(),
+        "existing attachments keep every value"
+    );
+    assert!(
+        after.iter().all(|(_, source)| source.is_none()),
+        "no copy is linked by the migration"
+    );
+
+    execute(&pool, "UPDATE cloud_attachments SET document_source_attachment_id='att-doc' WHERE attachment_id='att-copy'").await;
+    assert!(sqlx_core::raw_sql::raw_sql("UPDATE cloud_attachments SET document_source_attachment_id='missing' WHERE attachment_id='att-copy'").execute(&pool).await.is_err());
+    execute(
+        &pool,
+        "DELETE FROM cloud_accounts WHERE account_id='fixture-owner'",
+    )
+    .await;
+    let (source,): (Option<String>,) = query_as(
+        "SELECT document_source_attachment_id FROM cloud_attachments WHERE attachment_id='att-copy'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        source, None,
+        "a deleted source leaves the copy as its own document"
+    );
 }

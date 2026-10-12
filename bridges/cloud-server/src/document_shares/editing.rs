@@ -4,7 +4,8 @@
 //! base revision answers `409 document_revision_conflict` with the current
 //! document. In the same transaction as an accepted save, reactions and
 //! comments move with their blocks (see [`super::render::remap_block_ids`]).
-//! Afterwards every member is told to reload through `document.updated`.
+//! Afterwards every member is told to reload through `document.updated`
+//! (see [`super::events`]).
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -19,9 +20,11 @@ use sqlx_core::query_as::query_as;
 use sqlx_core::transaction::Transaction;
 use sqlx_postgres::{PgPool, Postgres};
 
-use super::access::{authorized_document, can_edit, document_session, DocumentRecord};
+use super::access::{authorized_document, DocumentRecord};
+use super::canonical::can_edit;
 use super::contents::{document_source, DocumentSource};
 use super::documents::signed_in_response;
+use super::events::{publish_document_updated, DocumentChange};
 use super::model::{RevisionConflict, SaveContentRequest};
 use super::render::{markdown_blocks, remap_block_ids, resolve_remap};
 use super::{db_error, err};
@@ -95,7 +98,14 @@ pub(crate) async fn save_content(
             }
         }
         SaveOutcome::Saved(saved) => {
-            publish_update(pool, &record, saved.revision, &session.account_id).await;
+            publish_document_updated(
+                pool,
+                &record,
+                Some(saved.revision),
+                DocumentChange::Content,
+                Some(&session.account_id),
+            )
+            .await;
             match signed_in_response(&state, &session, &record, viewer, &saved).await {
                 Ok(document) => Json(document).into_response(),
                 Err(response) => *response,
@@ -240,45 +250,4 @@ async fn remap_annotations(
     .execute(&mut **tx)
     .await?;
     Ok(())
-}
-
-/// Publishes `document.updated` to the owner and the active members of every
-/// conversation that carries the attachment. Delivery failures do not undo
-/// the save; clients also refetch when they reopen the document.
-async fn publish_update(pool: &PgPool, record: &DocumentRecord, revision: i64, updated_by: &str) {
-    let members: Result<Vec<(String,)>, _> = query_as(
-        "SELECT DISTINCT member.account_id \
-         FROM cloud_chat_message_attachments link \
-         JOIN cloud_chat_messages message ON message.message_id = link.message_id \
-         JOIN cloud_chat_conversation_members member \
-           ON member.conversation_id = message.conversation_id \
-         WHERE link.attachment_id = $1 AND member.membership_state = 'active'",
-    )
-    .bind(&record.attachment_id)
-    .fetch_all(pool)
-    .await;
-    let mut recipients = vec![record.owner_account_id.clone()];
-    recipients.extend(members.unwrap_or_default().into_iter().map(|(id,)| id));
-    let session_id = document_session(pool, &record.attachment_id, None)
-        .await
-        .ok()
-        .flatten()
-        .map(|(id, _)| id);
-    let payload = serde_json::json!({
-        "attachmentId": record.attachment_id,
-        "revision": revision,
-        "sessionId": session_id,
-        "updatedByAccountId": updated_by,
-    });
-    if let Err(error) = crate::chat_sync::store::publish_user_sync_events(
-        pool,
-        &recipients,
-        "document.updated",
-        None,
-        payload,
-    )
-    .await
-    {
-        eprintln!("[documents] publish document.updated failed: {error:?}");
-    }
 }

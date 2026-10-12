@@ -14,10 +14,13 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use super::access::{
-    authorized_document, clean_display_name, public_document, syncable_avatar_url, DocumentRecord,
+    authorized_canonical_document, authorized_document, clean_display_name, public_document,
+    syncable_avatar_url, DocumentRecord,
 };
+use super::events::{publish_document_updated, DocumentChange};
 use super::model::{
     CommentAuthor, CommentRequest, DocumentComment, PatchCommentRequest, PublicCommentRequest,
+    Viewer,
 };
 use super::validate::{clean_body, clean_reader_name, is_valid_reader_key, mentions_agent};
 use super::{db_error, err, observe_public, require_block, Caller, PublicAccess};
@@ -207,6 +210,14 @@ async fn create(
     if inserted.is_err() {
         return db_error();
     }
+    publish_document_updated(
+        pool,
+        record,
+        None,
+        DocumentChange::Annotations,
+        caller.account_id(),
+    )
+    .await;
     match load_comment(pool, &comment_id, &record.owner_account_id, caller).await {
         Ok(Some(comment)) => Json(comment).into_response(),
         Ok(None) | Err(_) => db_error(),
@@ -283,7 +294,7 @@ async fn comment_for_caller(
     state: &ServerState,
     session: &CloudSession,
     comment_id: &str,
-) -> Result<(DocumentRecord, Option<String>), Box<Response>> {
+) -> Result<(DocumentRecord, Viewer, Option<String>), Box<Response>> {
     let row: Option<(String, Option<String>)> = query_as(
         "SELECT attachment_id, author_account_id FROM cloud_document_comments \
          WHERE comment_id = $1 AND deleted_at IS NULL",
@@ -294,10 +305,10 @@ async fn comment_for_caller(
     .map_err(|_| db_error())?;
     let not_found = || err("not_found", "Comment not found.", StatusCode::NOT_FOUND);
     let (attachment_id, author) = row.ok_or_else(not_found)?;
-    let (record, _) = authorized_document(state, session, &attachment_id)
+    let (record, viewer) = authorized_canonical_document(state, session, &attachment_id)
         .await
         .map_err(|_| not_found())?;
-    Ok((record, author))
+    Ok((record, viewer, author))
 }
 
 fn forbidden() -> Response {
@@ -315,12 +326,12 @@ pub(crate) async fn patch_comment(
     Path(comment_id): Path<String>,
     Json(req): Json<PatchCommentRequest>,
 ) -> Response {
-    let (record, author) = match comment_for_caller(&state, &session, &comment_id).await {
+    let (record, viewer, author) = match comment_for_caller(&state, &session, &comment_id).await {
         Ok(value) => value,
         Err(response) => return *response,
     };
     let is_author = author.as_deref() == Some(session.account_id.as_str());
-    let is_owner = record.owner_account_id == session.account_id;
+    let is_owner = viewer == Viewer::Owner;
     let body = match req.body.as_deref() {
         Some(_) if !is_author => return forbidden(),
         Some(value) => match clean_body(value) {
@@ -361,6 +372,14 @@ pub(crate) async fn patch_comment(
     if updated.is_err() {
         return db_error();
     }
+    publish_document_updated(
+        state.db_pool(),
+        &record,
+        None,
+        DocumentChange::Annotations,
+        Some(&session.account_id),
+    )
+    .await;
     let caller = Caller::Account(session.account_id.clone());
     match load_comment(
         state.db_pool(),
@@ -382,7 +401,7 @@ pub(crate) async fn delete_comment(
     Extension(session): Extension<CloudSession>,
     Path(comment_id): Path<String>,
 ) -> Response {
-    let (_, author) = match comment_for_caller(&state, &session, &comment_id).await {
+    let (record, _, author) = match comment_for_caller(&state, &session, &comment_id).await {
         Ok(value) => value,
         Err(response) => return *response,
     };
@@ -398,7 +417,17 @@ pub(crate) async fn delete_comment(
     .execute(state.db_pool())
     .await
     {
-        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Ok(_) => {
+            publish_document_updated(
+                state.db_pool(),
+                &record,
+                None,
+                DocumentChange::Annotations,
+                Some(&session.account_id),
+            )
+            .await;
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(_) => db_error(),
     }
 }

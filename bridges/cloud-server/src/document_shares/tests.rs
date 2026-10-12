@@ -12,6 +12,7 @@ mod db;
 mod db_fixture;
 mod editing_db;
 mod formats;
+mod sources_db;
 
 #[test]
 fn share_tokens_have_the_invitation_shape_and_hash_stably() {
@@ -194,6 +195,7 @@ fn agent_mentions_use_the_agent_name_or_at_agent() {
 fn sample_record(format: DocumentFormat, author_name: &str) -> DocumentRecord {
     DocumentRecord {
         attachment_id: "att_example".into(),
+        requested_attachment_id: "att_example".into(),
         object_key: "attachments/acct_example/att_example".into(),
         owner_account_id: "acct_example".into(),
         content_type: "text/markdown".into(),

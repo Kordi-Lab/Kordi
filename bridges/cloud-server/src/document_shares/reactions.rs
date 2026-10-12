@@ -14,6 +14,7 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use super::access::{authorized_document, clean_display_name, public_document, DocumentRecord};
+use super::events::{publish_document_updated, DocumentChange};
 use super::model::{
     DocumentReaction, DocumentReactionList, PublicReactionRequest, ReactionActor, ReactionRequest,
 };
@@ -167,7 +168,16 @@ async fn toggle_and_list(
     )
     .await
     {
-        Ok(Ok(())) => {}
+        Ok(Ok(())) => {
+            publish_document_updated(
+                pool,
+                record,
+                None,
+                DocumentChange::Annotations,
+                caller.account_id(),
+            )
+            .await;
+        }
         Ok(Err(response)) => return response,
         Err(_) => return db_error(),
     }

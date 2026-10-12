@@ -1,5 +1,6 @@
 //! Pure tests for block remapping and inline formats.
 
+use super::super::canonical::resolve_chain;
 use super::super::inline_formats::split_highlights;
 use super::super::render::{markdown_blocks, remap_block_ids, resolve_remap};
 
@@ -114,4 +115,35 @@ fn highlight_splitting_leaves_unmatched_markers_literal() {
         ]
     );
     assert_eq!(split_highlights("====x"), [(false, "====x".to_string())]);
+}
+
+fn link(id: &str, source: Option<&str>) -> (String, Option<String>) {
+    (id.to_string(), source.map(str::to_string))
+}
+
+#[test]
+fn copies_resolve_to_the_end_of_their_source_chain() {
+    assert_eq!(
+        resolve_chain("att_root", &[link("att_root", None)]),
+        "att_root"
+    );
+    assert_eq!(resolve_chain("att_unknown", &[]), "att_unknown");
+    let chain = [
+        link("att_copy2", Some("att_copy")),
+        link("att_copy", Some("att_root")),
+        link("att_root", None),
+    ];
+    assert_eq!(resolve_chain("att_copy2", &chain), "att_root");
+    assert_eq!(resolve_chain("att_copy", &chain), "att_root");
+    // A source that no longer exists ends the chain at the last known copy.
+    assert_eq!(
+        resolve_chain("att_copy", &[link("att_copy", Some("att_gone"))]),
+        "att_copy"
+    );
+    let cycle = [link("att_a", Some("att_b")), link("att_b", Some("att_a"))];
+    assert_eq!(resolve_chain("att_a", &cycle), "att_b");
+    let long: Vec<_> = (0..=20)
+        .map(|index| (format!("att_{index}"), Some(format!("att_{}", index + 1))))
+        .collect();
+    assert_eq!(resolve_chain("att_0", &long), "att_8", "at most eight hops");
 }

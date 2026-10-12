@@ -5,7 +5,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentResponse {
+    /// The canonical attachment.
     pub attachment_id: String,
+    /// The forwarded copy the caller asked for, when it differs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_attachment_id: Option<String>,
     pub title: String,
     pub file_name: String,
     pub format: DocumentFormat,
@@ -222,6 +226,12 @@ pub struct RevisionConflict {
     pub message: &'static str,
     #[serde(flatten)]
     pub document: DocumentResponse,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkSourceRequest {
+    pub source_attachment_id: String,
 }
 
 /// Optional `?readerKey=` on the public read so `mine` is set for the caller.

@@ -10,8 +10,9 @@ use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 
 use super::access::{
-    authorized_document, can_edit, document_session, public_document, DocumentRecord, ShareRow,
+    authorized_document, document_session, public_document, DocumentRecord, ShareRow,
 };
+use super::canonical::can_edit;
 use super::comments::list_comments;
 use super::contents::{document_source, DocumentSource};
 use super::model::{
@@ -45,17 +46,23 @@ pub(crate) async fn document_response(
 ) -> Result<DocumentResponse, Box<Response>> {
     let pool = state.db_pool();
     let source = document.text.as_str();
-    let session = match viewer {
-        Viewer::Public => Ok(None),
-        Viewer::Owner => document_session(pool, &record.attachment_id, None).await,
-        Viewer::Member => match caller {
-            Caller::Account(account) => {
-                document_session(pool, &record.attachment_id, Some(account)).await
+    let session = match (viewer, caller) {
+        (Viewer::Public, _) | (_, Caller::Reader(_)) => None,
+        (_, Caller::Account(account)) => {
+            let own = document_session(pool, &record.attachment_id, Some(account))
+                .await
+                .map_err(|_| db_error())?;
+            match own {
+                Some(found) => Some(found),
+                None if viewer == Viewer::Owner => {
+                    document_session(pool, &record.attachment_id, None)
+                        .await
+                        .map_err(|_| db_error())?
+                }
+                None => None,
             }
-            Caller::Reader(_) => Ok(None),
-        },
-    }
-    .map_err(|_| db_error())?;
+        }
+    };
     let reactions = list_reactions(pool, &record.attachment_id, None, caller)
         .await
         .map_err(|_| db_error())?;
@@ -81,6 +88,9 @@ pub(crate) async fn document_response(
     let (session_id, session_title) = session.map_or((None, None), |(id, title)| (Some(id), title));
     Ok(DocumentResponse {
         attachment_id: record.attachment_id.clone(),
+        requested_attachment_id: (record.requested_attachment_id != record.attachment_id
+            && !record.requested_attachment_id.is_empty())
+        .then(|| record.requested_attachment_id.clone()),
         title: document_title(record.format, source, &record.file_name),
         file_name: record.file_name.clone(),
         format: record.format,
@@ -156,7 +166,7 @@ pub(crate) async fn signed_in_response(
         None
     };
     let caller = Caller::Account(session.account_id.clone());
-    let raw_path = format!("/v1/cloud/documents/{}/raw", record.attachment_id);
+    let raw_path = format!("/v1/cloud/documents/{}/raw", record.requested_attachment_id);
     document_response(
         state,
         record,

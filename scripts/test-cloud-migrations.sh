@@ -56,6 +56,7 @@ tests=(
   connectors_tests::upgrade_from_116_labels_existing_runs_as_shared
   document_share_tests::upgrade_from_121_adds_document_shares
   document_share_tests::upgrade_from_122_adds_document_contents
+  document_share_tests::upgrade_from_123_adds_document_sources
 )
 index=0
 for test_name in "${tests[@]}"; do

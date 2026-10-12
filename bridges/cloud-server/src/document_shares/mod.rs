@@ -28,16 +28,19 @@ use crate::auth::rate_limit::{
 use crate::server::ServerState;
 
 pub(crate) mod access;
+pub(crate) mod canonical;
 mod comments;
 pub(crate) mod contents;
 mod documents;
 mod editing;
+pub(crate) mod events;
 pub(crate) mod inline_formats;
 pub mod model;
 mod public_page;
 mod reactions;
 pub(crate) mod render;
 mod shares;
+mod sources;
 pub(crate) mod tokens;
 pub(crate) mod validate;
 
@@ -87,6 +90,10 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
             )),
         )
         .route(
+            "/v1/cloud/documents/:attachment_id/source",
+            post(sources::link_source),
+        )
+        .route(
             "/v1/cloud/documents/:attachment_id/raw",
             get(documents::get_raw),
         )
@@ -131,6 +138,14 @@ impl Caller {
             Self::Account(own) => account_id == Some(own.as_str()),
             Self::Reader(Some(own)) => reader_key == Some(own.as_str()),
             Self::Reader(None) => false,
+        }
+    }
+
+    /// The signed-in account, or `None` for public readers.
+    pub(crate) fn account_id(&self) -> Option<&str> {
+        match self {
+            Self::Account(own) => Some(own.as_str()),
+            Self::Reader(_) => None,
         }
     }
 
