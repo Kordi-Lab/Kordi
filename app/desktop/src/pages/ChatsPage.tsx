@@ -402,7 +402,7 @@ export function ChatsPage({
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         <ChatCompanionLayout containerRef={splitContainerRef} layout={companionLayout} view={companionView}
           accountId={cloudAccount?.accountId} companionPane={companionPane}
-          documentPane={companionDocument.document ? <CompanionDocumentPane document={companionDocument.document} onClose={hideCompanion} host={documentReaderHostForConversation({
+          documentPane={companionDocument.document ? <CompanionDocumentPane tabs={companionDocument} onClose={hideCompanion} host={documentReaderHostForConversation({
             account: cloudAccount, conversation: activeConv, contacts: senderProfiles.contacts, isNativeShell, startChatWithPerson: onMessageContact, forwardMessage: composer.onForwardMessage })} /> : null}>
           <ChatMainWorkspace
             layout={layout}

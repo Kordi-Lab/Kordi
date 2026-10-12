@@ -119,11 +119,14 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
 
   // HTML that is not on this Mac comes from the raw route: authenticated for owners and members, the share path for link readers.
   const [raw, setRaw] = useState<{ key: string; html: string | null } | null>(null);
+  const [rawReloads, setRawReloads] = useState(0);
+  const reloadRaw = useCallback(() => setRawReloads((count) => count + 1), []);
   const publicRawPath = mode === 'public' && format === 'html' ? document?.rawPath ?? null : null;
   const uploadedRawId = mode === 'uploaded' && format === 'html' && localSource === null && document && document.viewer !== 'public'
     ? document.attachmentId
     : null;
-  const rawKey = uploadedRawId ? `attachment:${uploadedRawId}` : publicRawPath ? `public:${publicRawPath}` : null;
+  const rawSource = uploadedRawId ? `attachment:${uploadedRawId}` : publicRawPath ? `public:${publicRawPath}` : null;
+  const rawKey = rawSource ? `${rawSource}:${rawReloads}` : null;
   useEffect(() => {
     if (!rawKey) return undefined;
     let cancelled = false;
@@ -149,25 +152,26 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
   useEffect(() => {
     if (path && canonicalId && mode === 'uploaded' && localSource !== null) rememberUploadedDocument(path, canonicalId);
   }, [canonicalId, localSource, mode, path]);
-  const onCloudTab = editing.currentTab === 0 && mode !== 'local';
-  const canEdit = format === 'markdown' && (!onCloudTab || canEditCloud);
+  const onCloud = mode !== 'local';
+  const canEdit = format === 'markdown' && (!onCloud || canEditCloud);
 
-  // What the editor loads: the server's blocks, the Mac-hosted file, or a scratch tab. The editor reads them
-  // on mount and when the revision key changes; a scratch tab's own edits keep its key, so they never reload it.
-  const tabSource = editing.currentTab === 0 ? localSource ?? '' : editing.currentSource;
+  // What the editor loads: the server's blocks or the Mac-hosted file. The editor reads them
+  // on mount and when the revision key changes.
+  const fileSource = localSource ?? '';
   const editorBlocks = useMemo<SourceBlock[]>(
-    () => (onCloudTab ? (document?.blocks ?? []).map((block) => ({ id: block.id, source: block.source })) : blocksFromSource(tabSource)),
-    [document, onCloudTab, tabSource],
+    () => (onCloud ? (document?.blocks ?? []).map((block) => ({ id: block.id, source: block.source })) : blocksFromSource(fileSource)),
+    [document, fileSource, onCloud],
   );
-  const editorRevision = onCloudTab
+  const editorRevision = onCloud
     ? `${document?.attachmentId ?? ''}:${document?.revision ?? 0}:${document?.updatedAt ?? ''}`
-    : `${editing.currentTab}:${editing.currentTab === 0 ? tabSource.length : 0}:${editing.currentTab === 0 ? tabSource.slice(0, 64) : ''}`;
+    : `local:${fileSource.length}:${fileSource.slice(0, 64)}`;
 
-  /** The editor's Markdown, into the cloud draft (saved) or the local draft (uploaded) or a scratch tab. */
+  /** The editor's Markdown, into the cloud draft (saved) or the local draft (uploaded). */
+  const { setDraftSource } = editing;
   const onEditorChange = useCallback((markdown: string, blockIds: Record<string, string> | null) => {
-    if (onCloudTab) cloud.updateSource(markdown, blockIds);
-    else editing.updateCurrentSource(() => markdown);
-  }, [cloud, editing, onCloudTab]);
+    if (onCloud) cloud.updateSource(markdown, blockIds);
+    else setDraftSource(markdown);
+  }, [cloud, onCloud, setDraftSource]);
 
   const viewerName = host.viewer?.displayName?.trim() || null;
   const loadedAttachmentId = document?.attachmentId ?? null;
@@ -285,16 +289,16 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
     memberSessionId,
     rawHtml,
     rawPending,
+    reloadRaw,
     canComment: Boolean(writeTarget && document?.viewerCan.comment),
     canReact: Boolean(writeTarget && document?.viewerCan.react),
     canShare: mode === 'local' || Boolean(document?.viewerCan.share),
-    editing,
     canEdit,
     editorBlocks,
     editorRevision,
     onEditorChange,
     canEditCloud,
-    onCloudTab,
+    onCloud,
     replaceDocument,
     saveNotice: cloud.notice,
     showSaveNotice: cloud.showNotice,

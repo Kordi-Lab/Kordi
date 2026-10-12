@@ -4,7 +4,7 @@ import { act, createElement } from 'react';
 
 import { DocumentReader } from '../src/features/documents/DocumentReader';
 import { DocumentReaderHostContext, type DocumentReaderHost } from '../src/features/documents/documentReaderHost';
-import { createMemoryDocumentApi, SAMPLE_HTML, SAMPLE_MARKDOWN, sampleDocument, sampleHtmlDocument } from './helpers/documentReaderFixtures';
+import { comment, createMemoryDocumentApi, reaction, SAMPLE_HTML, SAMPLE_MARKDOWN, sampleDocument, sampleHtmlDocument } from './helpers/documentReaderFixtures';
 import { createDocumentShareApi } from '../src/features/documents/documentShareApi';
 import { hasAuthorPageBackground, resolveDocumentTheme, themedDocumentSource, FALLBACK_DOCUMENT_THEME } from '../src/features/documents/documentTheme';
 import { withJsdomRoot } from './helpers/mountWithJsdom';
@@ -50,7 +50,10 @@ test('the reader shows the header, blocks, reaction pills, and open comment thre
     assert.match(host_.querySelector('.app-document-pill')?.textContent ?? '', /Oct 9, 2026/);
     assert.equal(host_.querySelector('.app-document-mention')?.textContent, '@Alex Morgan');
     assert.equal(host_.querySelector('.app-document-badge'), null, 'cloud documents carry no badge');
-    assert.equal(host_.querySelector('.app-document-format'), null, 'Markdown carries no format chip');
+    assert.doesNotMatch(host_.textContent ?? '', /Tab 1/, 'no in-document tabs');
+    assert.equal(Boolean(host_.querySelector('.app-document-insertbar [aria-haspopup="menu"]')), false, 'no tab dropdown');
+    assert.ok(host_.querySelector('.app-document-insertbar [aria-label="Table"]'), 'the insert tools stay');
+    assert.equal(host_.querySelector('.app-document-address'), null, 'Markdown has no browser bar');
     const topLevel = host_.querySelectorAll('.ProseMirror > [data-id], .ProseMirror > .tableWrapper > table[data-id]');
     assert.equal(topLevel.length, document.blocks.length, 'every block is in the editor');
 
@@ -168,7 +171,7 @@ test('an uploaded HTML document loads the authenticated raw route into a sandbox
   });
 });
 
-test('HTML documents fit the app: color scheme, app text and links at zero specificity, nothing wider than the pane', async () => {
+test('HTML documents show as in a browser: app colors at zero specificity, a viewport, no forced widths', async () => {
   await withJsdomRoot(async (mount) => {
     const document = sampleHtmlDocument('member');
     const { api } = createMemoryDocumentApi(document);
@@ -185,13 +188,19 @@ test('HTML documents fit the app: color scheme, app text and links at zero speci
     assert.match(srcdoc, /<meta name="color-scheme" content="light">/);
     assert.match(srcdoc, /:where\(html, body\) \{ background: transparent; color: rgb\(17, 24, 39\);/);
     assert.match(srcdoc, /:where\(a:link, a:visited\) \{ color: rgb\(37, 99, 235\); \}/);
-    assert.match(srcdoc, /overflow-x: hidden !important/);
+    assert.match(srcdoc, /<meta name="viewport" content="width=device-width, initial-scale=1">/);
+    assert.doesNotMatch(srcdoc, /overflow-x|min-width|!important/, 'nothing clips or forces the page');
+    assert.doesNotMatch(srcdoc, /data-kordi-artifact/, 'no rail-fit rules');
     const theme_ = srcdoc.slice(srcdoc.indexOf('data-kordi-document-theme'));
-    assert.doesNotMatch(theme_, /grid-template-columns|flex-wrap|button|pre|table|background: transparent !important/, 'the author design is not flattened');
-    assert.ok(srcdoc.indexOf('data-kordi-artifact-rail-fit') < srcdoc.indexOf('data-kordi-document-theme'), 'the theme follows the rail-fit rules');
+    assert.match(theme_, /:where\(img, video\) \{ max-width: 100%;/);
+    assert.doesNotMatch(theme_, /grid-template-columns|flex-wrap|button|pre|table/, 'the author design is not flattened');
+    assert.equal(frame.getAttribute('sandbox'), '');
     assert.equal(frame.style.background, 'transparent');
     assert.equal(frame.getAttribute('allowtransparency'), 'true');
-    assert.equal(root.querySelector('.app-document-header .app-document-format')?.textContent, 'HTML');
+    assert.equal(frame.closest('.app-document-article'), null, 'the page is not inside the padded article');
+    assert.equal(frame.parentElement?.className, 'app-document-body is-html');
+    assert.equal(root.querySelector('.app-document-insertbar'), null, 'no toolbar under the browser bar');
+    assert.doesNotMatch(root.textContent ?? '', /Tab 1/);
 
     const section = root.querySelector('.app-document-reader') as HTMLElement;
     section.style.setProperty('--utility-foreground', 'rgb(17, 24, 39)');
@@ -219,7 +228,76 @@ test('an author design survives: a card background and grid stay, and a page wit
   assert.equal(hasAuthorPageBackground('<body style="background-color: white"><p>x</p></body>'), true);
   const themedWhite = themedDocumentSource(whitePage, FALLBACK_DOCUMENT_THEME);
   assert.doesNotMatch(themedWhite, /:where\(html, body\)|color-scheme/, 'its own surface and colors stay');
-  assert.match(themedWhite, /overflow-x: hidden !important/, 'it still fits the pane');
+  assert.doesNotMatch(themedWhite, /overflow-x/);
+  assert.match(themedWhite, /<meta name="viewport"/);
+
+  const withViewport = '<html><head><meta name="viewport" content="width=600"></head><body><p>x</p></body></html>';
+  assert.equal(themedDocumentSource(withViewport, FALLBACK_DOCUMENT_THEME).match(/name="viewport"/g)?.length, 1, 'an author viewport is kept as the only one');
+  assert.match(themedDocumentSource('<p>Fragment</p>', FALLBACK_DOCUMENT_THEME), /^<!doctype html><html><head><meta name="viewport"[\s\S]*<body><p>Fragment<\/p><\/body><\/html>$/);
+});
+
+test('the browser bar shows the file name and reloads the page from the raw route', async () => {
+  await withJsdomRoot(async (mount) => {
+    const document = sampleHtmlDocument('member');
+    const { api, calls } = createMemoryDocumentApi(document);
+    const root = await mount(withHost(createElement(DocumentReader, { attachmentId: document.attachmentId, initialDocument: document, api })));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+    const rawCalls = () => calls.filter((call) => call.method === 'getDocumentRaw').length;
+
+    const bar = root.querySelector('.app-document-header.is-browser') as HTMLElement;
+    assert.ok(bar, 'the header is a browser bar');
+    assert.equal(bar.querySelector('.app-document-address')?.textContent, 'lab-notes.html');
+    assert.equal(bar.querySelector('.app-document-header-title'), null);
+    assert.equal(bar.querySelector('.app-document-mention')?.textContent, '@Alex Morgan');
+    assert.match(bar.querySelector('.app-document-pill')?.textContent ?? '', /Oct 9, 2026/);
+    assert.equal(rawCalls(), 1);
+
+    const before = root.querySelector('iframe.app-document-frame');
+    await click(button(bar, 'Reload'));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+    assert.equal(rawCalls(), 2, 'reload fetches the raw HTML again');
+    const after = root.querySelector('iframe.app-document-frame') as HTMLIFrameElement;
+    assert.ok(after && after !== before, 'the frame renders again');
+    assert.match(after.getAttribute('srcdoc') ?? '', /Shared as HTML\./);
+  });
+});
+
+test('reactions and comments of an HTML document sit in the bottom bar', async () => {
+  await withJsdomRoot(async (mount) => {
+    const document = {
+      ...sampleHtmlDocument('member'),
+      reactions: [reaction('b0', '👍', 'Theo'), reaction('b0', '👍', 'Priya', true)],
+      comments: [
+        comment({ commentId: 'doccmt_html_1', blockId: 'b0', body: 'The second card needs a source.' }),
+        comment({ commentId: 'doccmt_html_2', blockId: 'b0', parentCommentId: 'doccmt_html_1', body: 'Added.', createdAt: '2026-10-09T10:20:00Z' }),
+      ],
+    };
+    const { api, calls } = createMemoryDocumentApi(document);
+    const root = await mount(withHost(createElement(DocumentReader, { attachmentId: document.attachmentId, initialDocument: document, api })));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+
+    const bar = root.querySelector('.app-document-annotation-bar') as HTMLElement;
+    assert.ok(bar, 'the bar renders under the page');
+    assert.equal(bar.previousElementSibling?.className, 'app-document-body is-html');
+    assert.equal(root.querySelector('.app-document-body .app-document-reaction'), null, 'nothing in the page flow');
+    assert.equal(button(bar, '👍 2').getAttribute('aria-pressed'), 'true');
+    assert.equal(bar.querySelector('.app-document-annotation-popover'), null);
+    assert.doesNotMatch(root.textContent ?? '', /The second card needs a source\./);
+
+    await click(button(bar, '👍 2'));
+    assert.deepEqual(calls.find((call) => call.method === 'toggleReaction')?.args, [{ kind: 'attachment', attachmentId: 'att_example_html' }, { blockId: 'b0', reaction: '👍' }]);
+
+    const toggle = button(bar, 'Comments 2');
+    await click(toggle);
+    const popover = bar.querySelector('.app-document-annotation-popover') as HTMLElement;
+    assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+    assert.match(popover.textContent ?? '', /The second card needs a source\./);
+    assert.match(popover.textContent ?? '', /Added\./);
+    assert.ok(popover.querySelector('.app-document-thread.is-new input'), 'a new comment can start here');
+
+    await click(toggle);
+    assert.equal(bar.querySelector('.app-document-annotation-popover'), null);
+  });
 });
 
 test('a public HTML link renders through srcdoc from the share raw path', async () => {

@@ -1,7 +1,5 @@
 import { memo } from 'react';
 
-import { MarkdownContent } from '@/kordi-app/components';
-
 import { DocumentCommentComposer, DocumentThread, type DocumentMentionOption, type DocumentThreadActions } from './DocumentComments';
 import type { CommentThread, ReactionPill } from './documentReaderModel';
 
@@ -79,15 +77,3 @@ export const DocumentBlockAnnotations = memo(function DocumentBlockAnnotations({
     </>
   );
 });
-
-/** A block rendered from Markdown with its annotations (HTML documents keep their reactions on `b0`). */
-export function DocumentBlockView({ source, ...annotations }: AnnotationProps & { source: string }) {
-  return (
-    <>
-      <div className="app-document-block" data-document-block={annotations.id}>
-        {source ? <MarkdownContent text={source} tone="inherit" copySurface="document" className="app-document-markdown" /> : null}
-      </div>
-      <DocumentBlockAnnotations {...annotations} />
-    </>
-  );
-}

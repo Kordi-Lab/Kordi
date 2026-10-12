@@ -27,7 +27,7 @@ export const SAMPLE_MARKDOWN = [
 
 const ALEX = { accountId: 'acct_example_alex', displayName: 'Alex Morgan', kordiId: '123456789', avatarUrl: null };
 
-function reaction(blockId: string, emoji: string, name: string, mine = false): DocumentReaction {
+export function reaction(blockId: string, emoji: string, name: string, mine = false): DocumentReaction {
   return {
     reactionId: `react_${blockId}_${name}`,
     blockId,
@@ -38,7 +38,7 @@ function reaction(blockId: string, emoji: string, name: string, mine = false): D
   };
 }
 
-function comment(overrides: Partial<DocumentComment> & Pick<DocumentComment, 'commentId' | 'blockId' | 'body'>): DocumentComment {
+export function comment(overrides: Partial<DocumentComment> & Pick<DocumentComment, 'commentId' | 'blockId' | 'body'>): DocumentComment {
   return {
     parentCommentId: null,
     author: { accountId: 'acct_example_priya', displayName: 'Priya', kordiId: null, avatarUrl: null },

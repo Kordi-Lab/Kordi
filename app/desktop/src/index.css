@@ -17,6 +17,7 @@
 @import './styles/document-blocks.css';
 @import './styles/document-annotations.css';
 @import './styles/document-collab.css';
+@import './styles/document-tabs.css';
 @import './styles/shell-calls.css';
 @import './styles/shell-bubbles.css';
 @import './styles/plan-card.css';

@@ -14,16 +14,17 @@ const MAX_PRESENCE = 4;
 /**
  * Top bar of the reader in one row: the document title, the date, the
  * `@author` chip, who else is editing, and Share. A document that opens with
- * its own level-1 heading shows no title here.
+ * its own level-1 heading shows no title here. An HTML document shows browser
+ * controls (`leading`) in place of the title.
  */
 export function DocumentHeader({
   title,
+  leading,
   dateLabel,
   author,
   canMessageAuthor,
   onMessageAuthor,
   badge,
-  isHtml = false,
   shareOpen,
   onToggleShare,
   sharePopover,
@@ -32,13 +33,13 @@ export function DocumentHeader({
 }: {
   /** Null when the document's first heading is its title. */
   title: string | null;
+  /** Browser controls of an HTML document: reload and the address. */
+  leading?: ReactNode;
   dateLabel: string | null;
   author: DocumentReaderPerson | null;
   canMessageAuthor: boolean;
   onMessageAuthor?: () => void;
   badge: DocumentBadge;
-  /** An HTML document says so next to its date; Markdown says nothing. */
-  isHtml?: boolean;
   shareOpen: boolean;
   onToggleShare?: () => void;
   sharePopover?: ReactNode;
@@ -47,8 +48,8 @@ export function DocumentHeader({
   onOpenSession?: () => void;
 }) {
   return (
-    <div className={title ? 'app-document-header has-title' : 'app-document-header'}>
-      {title ? <h1 className="app-document-header-title" title={title}>{title}</h1> : null}
+    <div className={leading ? 'app-document-header has-title is-browser' : title ? 'app-document-header has-title' : 'app-document-header'}>
+      {leading ?? (title ? <h1 className="app-document-header-title" title={title}>{title}</h1> : null)}
       <div className="app-document-header-meta">
         {dateLabel ? (
           <span className="app-document-pill app-document-date">
@@ -56,7 +57,6 @@ export function DocumentHeader({
             {dateLabel}
           </span>
         ) : null}
-        {isHtml ? <span className="app-document-format">HTML</span> : null}
         {author ? <AuthorChip author={author} canMessage={canMessageAuthor} onMessage={onMessageAuthor} /> : null}
         {badge === 'local' ? <span className="app-document-badge">On this Mac</span> : null}
       </div>

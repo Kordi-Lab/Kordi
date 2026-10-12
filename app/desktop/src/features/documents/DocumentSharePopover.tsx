@@ -5,7 +5,7 @@ import { AppDialog, AppDialogActions, AppDialogDescription, AppDialogTitle } fro
 import { Button } from '@/components/ui/button';
 
 import type { DocumentShare } from './documentShareTypes';
-import { DocumentSwitch } from './DocumentTabBar';
+import { DocumentSwitch } from './DocumentSwitch';
 
 export type DocumentSharePopoverProps = {
   /** True until the Mac-hosted file has a cloud copy. */

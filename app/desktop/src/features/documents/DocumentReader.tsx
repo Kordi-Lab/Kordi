@@ -1,12 +1,14 @@
 import { LoaderCircle } from 'lucide-react';
-import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
 
 import { cn } from '@/lib/utils';
 
-import { DocumentBlockAnnotations, DocumentBlockView, type DocumentBlockThreadProps } from './DocumentBlock';
+import { DocumentBlockAnnotations, type DocumentBlockThreadProps } from './DocumentBlock';
 import type { DocumentMentionOption } from './DocumentComments';
 import { DocumentHeader, type DocumentBadge } from './DocumentHeader';
+import { DocumentAnnotationBar, DocumentBrowserLead, DocumentHtmlFrame } from './DocumentHtmlView';
+import { DocumentInsertBar } from './DocumentInsertBar';
 import { markdownDocumentTitle } from './documentBlocks';
 import { useDocumentReaderHost } from './documentReaderHost';
 import {
@@ -14,13 +16,13 @@ import {
   documentFileName,
   documentNameWithoutExtension,
   formatDocumentDate,
+  htmlDocumentTitle,
   reactionPillsForBlock,
 } from './documentReaderModel';
 import { documentShareApiForEnvironment, type DocumentShareApi } from './documentShareApi';
 import { DocumentSharePopover } from './DocumentSharePopover';
-import { DocumentTabBar, DocumentTabStrip } from './DocumentTabBar';
 import { useDocumentReader, type DocumentReaderSource } from './useDocumentReader';
-import { themedDocumentSource, useDocumentTheme } from './documentTheme';
+import { useDocumentTheme } from './documentTheme';
 import { useOutsideDismiss } from './useOutsideDismiss';
 import { UPDATED_ELSEWHERE } from './useCloudDocumentEdits';
 import type { DocumentEditorHandle } from './editor/DocumentEditor';
@@ -38,6 +40,10 @@ export type DocumentReaderProps = DocumentReaderSource & {
   /** Opens the Share popover on mount (visual review page). */
   initialShareOpen?: boolean;
   className?: string;
+  /** Reports the document's own title (the cloud record's, a Markdown heading, an HTML `<title>`) for a tab label. */
+  onTitle?: (title: string) => void;
+  /** Runs with the browser bar's reload, so the host can read a Mac-hosted file again. */
+  onReload?: () => void;
   /** Exposes the Tiptap editor (tests and the review page). */
   onEditor?: (editor: Editor | null) => void;
   /** Replaces the collaboration socket and its waits (tests). */
@@ -49,15 +55,16 @@ function startsWithLevelOneHeading(source: string | undefined) {
   return /^ {0,3}#(?!#)\s+\S/.test(source ?? '');
 }
 
-export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, initialShareOpen = false, className, onEditor, collabTransport, ...source }: DocumentReaderProps) {
+export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, initialShareOpen = false, className, onTitle, onReload, onEditor, collabTransport, ...source }: DocumentReaderProps) {
   const api = useMemo(() => apiOverride ?? documentShareApiForEnvironment(), [apiOverride]);
   const host = useDocumentReaderHost();
   const [collabState, setCollabState] = useState<DocumentCollabState>({ status: 'offline', peers: [] });
   const reader = useDocumentReader(source, api, collabState.status === 'connected');
-  const { document, editing, mode } = reader;
+  const { document, mode } = reader;
+  const isHtml = reader.format === 'html';
   const [shareOpen, setShareOpen] = useState(initialShareOpen);
   const [composingBlock, setComposingBlock] = useState<string | null>(null);
-  const bodyRef = useRef<HTMLDivElement>(null);
+  const [frameReloads, setFrameReloads] = useState(0);
   const sectionRef = useRef<HTMLElement>(null);
   const theme = useDocumentTheme(sectionRef);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -68,9 +75,10 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
   const path = source.path?.trim() || '';
   const hasLocalFile = source.localSource !== null && source.localSource !== undefined;
   const fileName = document?.fileName ?? (path ? documentFileName(path) : 'Document');
-  const title = document?.title
-    ?? (source.localSource ? markdownDocumentTitle(source.localSource) : null)
-    ?? documentNameWithoutExtension(fileName);
+  const ownTitle = document?.title
+    ?? (source.localSource ? (isHtml ? htmlDocumentTitle(source.localSource) : markdownDocumentTitle(source.localSource)) : null);
+  const title = ownTitle ?? documentNameWithoutExtension(fileName);
+  useEffect(() => { if (ownTitle) onTitle?.(ownTitle); }, [onTitle, ownTitle]);
   const author = document?.author ?? (mode === 'local' ? host.viewer : null);
   const agentName = document?.agent?.displayName ?? host.agentName;
   const viewerIsOwner = mode === 'local' || document?.viewer === 'owner';
@@ -81,7 +89,6 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
     ...(agentName && askAgent ? [{ name: agentName, kind: 'agent' as const }] : []),
     ...(mode === 'public' ? [] : host.people.map((name) => ({ name, kind: 'person' as const }))),
   ], [agentName, askAgent, host.people, mode]);
-
 
   const blockShared = useMemo<DocumentBlockThreadProps>(() => ({
     agentName: askAgent ? agentName : null,
@@ -123,39 +130,33 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
   // Editable cloud documents join their collaboration room as the signed-in viewer.
   const viewerId = host.viewer?.accountId ?? null;
   const viewerName = host.viewer?.displayName ?? '';
-  const roomId = reader.canEditCloud && reader.onCloudTab && viewerId ? document?.attachmentId ?? null : null;
+  const roomId = reader.canEditCloud && viewerId ? document?.attachmentId ?? null : null;
   const collab = useMemo(() => (roomId && viewerId
     ? { api, attachmentId: roomId, user: { name: viewerName, color: presenceColor(viewerId), accountId: viewerId } }
     : null), [api, roomId, viewerId, viewerName]);
 
-  // HTML never runs scripts here (empty sandbox, no same origin) and sits on the app surface in the app theme.
+  // HTML never runs scripts here (empty sandbox, no same origin); it is shown as a browser would, at the pane's width.
   const htmlSource = hasLocalFile ? source.localSource ?? '' : reader.rawHtml;
-  const htmlFrame = reader.format === 'html' && editing.currentTab === 0
-    ? htmlSource !== null
-      ? (
-        <iframe
-          title={`${fileName} preview`}
-          sandbox=""
-          srcDoc={themedDocumentSource(htmlSource, theme)}
-          className="app-document-frame"
-          style={{ background: 'transparent', colorScheme: theme.scheme }}
-          {...{ allowtransparency: 'true' }}
-        />
-      )
-      : <div className="app-document-empty">{reader.rawPending ? 'Loading' : 'No preview'}</div>
-    : null;
+  const reload = () => { reader.reloadRaw(); setFrameReloads((count) => count + 1); onReload?.(); };
+  const empty = reader.loading && !document
+    ? <div className="app-document-empty"><LoaderCircle className="animate-spin" aria-hidden="true" />Loading</div>
+    : reader.error && !document
+      ? <div className="app-document-empty" role="alert">{mode === 'public' ? 'This link is off' : reader.error}</div>
+      : mode === 'unavailable'
+        ? <div className="app-document-empty">Not on this Mac</div>
+        : null;
 
   return (
     <section ref={sectionRef} className={cn('app-document-reader', className)} data-document-mode={mode} aria-label={title}>
       <div ref={headerRef} className="app-document-header-wrap">
         <DocumentHeader
-          title={startsWithLevelOneHeading(reader.editorBlocks[0]?.source) ? null : title}
+          title={isHtml || startsWithLevelOneHeading(reader.editorBlocks[0]?.source) ? null : title}
+          leading={isHtml ? <DocumentBrowserLead fileName={fileName} linkOn={mode === 'public' || Boolean(reader.share)} onReload={reload} /> : undefined}
           dateLabel={formatDocumentDate(document?.createdAt) ?? dateLabel ?? null}
           author={author}
           canMessageAuthor={Boolean(author?.accountId && author.accountId !== host.viewer?.accountId && host.canMessageAccount?.(author.accountId))}
           onMessageAuthor={author?.accountId ? () => host.messageAccount?.(author.accountId ?? '') : undefined}
           badge={badge}
-          isHtml={reader.format === 'html'}
           shareOpen={shareOpen}
           onToggleShare={reader.canShare ? () => setShareOpen((open) => !open) : undefined}
           presence={collab && collabState.status === 'connected' ? collabState.peers : []}
@@ -179,76 +180,64 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
           )}
         />
       </div>
-      <DocumentTabBar
-        editing={editing}
-        canInsert={reader.canEdit}
-        onInsert={(tool, url) => editorHandle?.insert(tool, url)}
-      />
-      <div ref={bodyRef} className="app-document-body">
-        {reader.loading && !document ? (
-          <div className="app-document-empty"><LoaderCircle className="animate-spin" aria-hidden="true" />Loading</div>
-        ) : reader.error && !document ? (
-          <div className="app-document-empty" role="alert">{mode === 'public' ? 'This link is off' : reader.error}</div>
-        ) : mode === 'unavailable' ? (
-          <div className="app-document-empty">Not on this Mac</div>
+      {reader.canEdit && !empty ? <DocumentInsertBar onInsert={(tool, url) => editorHandle?.insert(tool, url)} /> : null}
+      <div className={cn('app-document-body', isHtml && 'is-html')}>
+        {empty ?? (isHtml ? (
+          htmlSource !== null
+            ? <DocumentHtmlFrame key={frameReloads} fileName={fileName} source={htmlSource} theme={theme} />
+            : <div className="app-document-empty">{reader.rawPending ? 'Loading' : 'No preview'}</div>
         ) : (
-          <article className={cn('app-document-article', htmlFrame && 'is-html')}>
-            <DocumentTabStrip editing={editing} />
-            {htmlFrame ? <div className="app-document-block is-frame" data-document-block="b0">{htmlFrame}</div> : null}
-            {htmlFrame ? null : (
-              <Suspense fallback={<div className="app-document-empty"><LoaderCircle className="animate-spin" aria-hidden="true" />Loading</div>}>
-                <DocumentEditor
-                  key={`${editing.currentTab}:${reader.attachmentId ?? source.path ?? ''}`}
-                  collab={collab}
-                  onCollab={setCollabState}
-                  onSnapshot={reader.replaceDocument}
-                  createProvider={collabTransport?.createProvider}
-                  roomTiming={collabTransport?.timing}
-                  blocks={reader.editorBlocks}
-                  revisionKey={reader.editorRevision}
-                  editable={reader.canEdit}
-                  canComment={reader.canComment && editing.currentTab === 0}
-                  canReact={reader.canReact && editing.currentTab === 0}
-                  reactions={editing.currentTab === 0 ? reader.reactions : []}
-                  comments={editing.currentTab === 0 ? reader.comments : []}
-                  composingBlock={composingBlock}
-                  renderAnnotations={(blockId) => (
-                    <DocumentBlockAnnotations
-                      id={blockId}
-                      pills={reactionPillsForBlock(reader.reactions, blockId)}
-                      threads={commentThreadsForBlock(reader.comments, blockId)}
-                      composing={composingBlock === blockId}
-                      shared={blockShared}
-                    />
-                  )}
-                  onChange={reader.onEditorChange}
-                  onComment={(blockId) => setComposingBlock(blockId)}
-                  onReact={(blockId, reaction) => { void reader.toggleReaction(blockId, reaction); }}
-                  onUpdatedElsewhere={() => reader.showSaveNotice(UPDATED_ELSEWHERE)}
-                  onReady={setEditorHandle}
-                  onEditor={onEditor}
-                />
-              </Suspense>
-            )}
-            {htmlFrame && editing.currentTab === 0 ? (
-              <DocumentBlockView
-                id="b0"
-                source=""
-                pills={reactionPillsForBlock(reader.reactions, 'b0')}
-                threads={commentThreadsForBlock(reader.comments, 'b0')}
-                composing={composingBlock === 'b0'}
-                shared={blockShared}
+          <article className="app-document-article">
+            <Suspense fallback={<div className="app-document-empty"><LoaderCircle className="animate-spin" aria-hidden="true" />Loading</div>}>
+              <DocumentEditor
+                key={reader.attachmentId ?? source.path ?? ''}
+                collab={collab}
+                onCollab={setCollabState}
+                onSnapshot={reader.replaceDocument}
+                createProvider={collabTransport?.createProvider}
+                roomTiming={collabTransport?.timing}
+                blocks={reader.editorBlocks}
+                revisionKey={reader.editorRevision}
+                editable={reader.canEdit}
+                canComment={reader.canComment}
+                canReact={reader.canReact}
+                reactions={reader.reactions}
+                comments={reader.comments}
+                composingBlock={composingBlock}
+                renderAnnotations={(blockId) => (
+                  <DocumentBlockAnnotations
+                    id={blockId}
+                    pills={reactionPillsForBlock(reader.reactions, blockId)}
+                    threads={commentThreadsForBlock(reader.comments, blockId)}
+                    composing={composingBlock === blockId}
+                    shared={blockShared}
+                  />
+                )}
+                onChange={reader.onEditorChange}
+                onComment={(blockId) => setComposingBlock(blockId)}
+                onReact={(blockId, reaction) => { void reader.toggleReaction(blockId, reaction); }}
+                onUpdatedElsewhere={() => reader.showSaveNotice(UPDATED_ELSEWHERE)}
+                onReady={setEditorHandle}
+                onEditor={onEditor}
               />
-            ) : null}
-            {editing.currentTab === 0 && (agentName || document?.sessionTitle) ? (
+            </Suspense>
+            {agentName || document?.sessionTitle ? (
               <div className="app-document-foot">
                 {agentName ? <span>From <b>{agentName}</b></span> : null}
                 {document?.sessionTitle ? <span>Session <b>{document.sessionTitle}</b></span> : null}
               </div>
             ) : null}
           </article>
-        )}
+        ))}
       </div>
+      {isHtml && !empty ? (
+        <DocumentAnnotationBar
+          blockId="b0"
+          pills={reactionPillsForBlock(reader.reactions, 'b0')}
+          threads={commentThreadsForBlock(reader.comments, 'b0')}
+          shared={blockShared}
+        />
+      ) : null}
       {reader.actionError && !shareOpen ? <div className="app-document-error" role="alert">{reader.actionError}</div> : null}
       {reader.saveNotice ? (
         <div className="app-document-toast" role="status">{reader.saveNotice}</div>

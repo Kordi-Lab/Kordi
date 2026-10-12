@@ -1,7 +1,5 @@
 import { useCallback, useSyncExternalStore, type RefObject } from 'react';
 
-import { artifactPreviewDocumentSource } from '@/pages/artifactPreviewDocument';
-
 /** App colors and type resolved for an HTML document, which cannot see the app's CSS variables. */
 export type DocumentTheme = {
   scheme: 'dark' | 'light';
@@ -48,30 +46,35 @@ export function hasAuthorPageBackground(source: string) {
   return styleRule.test(styles) || inline.test(source);
 }
 
+const VIEWPORT_META = '<meta name="viewport" content="width=device-width, initial-scale=1">';
+
 /**
- * Stylesheet that fits an HTML document into the app without restyling it.
- * Only the fit is enforced: nothing wider than the pane, no sideways page
- * scroll. On a page without its own background, the app's color scheme, text
- * color, font and link color fill in at zero specificity, so the author's own
- * `<style>` and inline rules still win. A page with its own background keeps
- * it as its surface and gets no app colors.
+ * What the reader adds to an HTML document's head, and nothing more: a
+ * viewport when the page has none, and media that stays inside its container
+ * unless the page says otherwise. On a page without its own background, the
+ * app's color scheme, text color, font and link color fill in. Every rule has
+ * zero specificity, so the author's own `<style>` and inline rules win. The
+ * page is laid out at the pane's width as a browser would: a responsive page
+ * reflows and a fixed-width page scrolls sideways inside the frame.
  */
-export function documentThemeHead(theme: DocumentTheme, authorSurface = false) {
+export function documentThemeHead(theme: DocumentTheme, authorSurface = false, hasViewport = false) {
   const colors = authorSurface ? '' : `
   :root { color-scheme: ${theme.scheme}; }
   :where(html, body) { background: transparent; color: ${theme.foreground}; font-family: ${theme.fontFamily}; }
   :where(a:link, a:visited) { color: ${theme.link}; }`;
-  return `${authorSurface ? '' : `<meta name="color-scheme" content="${theme.scheme}">\n`}<style data-kordi-document-theme>${colors}
-  html, body { max-width: 100% !important; overflow-x: hidden !important; }
-  body * { min-width: 0 !important; }
-  :is(img, video, iframe, canvas, svg) { max-width: 100% !important; height: auto; }
+  const metas = `${hasViewport ? '' : `${VIEWPORT_META}\n`}${authorSurface ? '' : `<meta name="color-scheme" content="${theme.scheme}">\n`}`;
+  return `${metas}<style data-kordi-document-theme>${colors}
+  :where(img, video) { max-width: 100%; height: auto; }
 </style>`;
 }
 
-/** The HTML with the rail-fit rules and then the app fit (and colors, unless it paints its own page) in its head. */
+/** The HTML with the reader's head additions (and app colors, unless it paints its own page). */
 export function themedDocumentSource(source: string, theme: DocumentTheme) {
-  const fitted = artifactPreviewDocumentSource(source, 'rail');
-  return fitted.replace(/<\/head>/i, `${documentThemeHead(theme, hasAuthorPageBackground(source))}</head>`);
+  const head = documentThemeHead(theme, hasAuthorPageBackground(source), /<meta\b[^>]*\bname\s*=\s*["']?viewport\b/i.test(source));
+  if (/<\/head>/i.test(source)) return source.replace(/<\/head>/i, () => `${head}</head>`);
+  const htmlOpeningTag = /<html(?:\s[^>]*)?>/i;
+  if (htmlOpeningTag.test(source)) return source.replace(htmlOpeningTag, (tag) => `${tag}<head>${head}</head>`);
+  return `<!doctype html><html><head>${head}</head><body>${source}</body></html>`;
 }
 
 /** Theme of the element behind `ref`, updated when the app root or body switches its theme class. */

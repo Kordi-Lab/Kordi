@@ -42,6 +42,14 @@ export function documentNameWithoutExtension(path: string) {
   return dot > 0 ? name.slice(0, dot) : name;
 }
 
+const TITLE_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
+
+/** The `<title>` of an HTML document, when it has one. */
+export function htmlDocumentTitle(source: string): string | null {
+  const text = /<title[^>]*>([^<]*)<\/title>/i.exec(source)?.[1] ?? '';
+  return text.replace(/&(amp|lt|gt|quot|#39);/g, (_, name: string) => TITLE_ENTITIES[name]).replace(/\s+/g, ' ').trim() || null;
+}
+
 export function formatDocumentDate(value: string | null | undefined) {
   const parsed = value ? Date.parse(value) : Number.NaN;
   if (!Number.isFinite(parsed)) return null;

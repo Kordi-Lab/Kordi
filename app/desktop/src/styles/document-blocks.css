@@ -3,7 +3,6 @@
 .app-document-block { margin: 0; padding: 0; border-radius: 10px; cursor: text; }
 .app-document-block,
 .app-document-markdown { min-width: 0; max-width: 100%; }
-.app-document-block.is-frame { display: flex; width: auto; min-width: 0; flex: 1 1 auto; cursor: default; }
 
 /* Rendered Markdown outside the editor (read-only views). */
 .app-document-markdown { color: inherit; font-size: 14px; line-height: 24px; }

@@ -78,17 +78,6 @@
   white-space: nowrap;
 }
 
-.app-document-format {
-  flex: none;
-  padding: 0 7px;
-  border-radius: 6px;
-  background: var(--app-document-chip-bg);
-  color: var(--app-document-muted);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 20px;
-}
-
 .app-document-header-button {
   display: inline-flex;
   height: 28px;
@@ -107,19 +96,43 @@
 .app-document-header-button[aria-expanded='true'] { background: var(--app-control-hover); }
 .app-document-reader .app-document-header-button svg { width: 14px; height: 14px; color: var(--app-document-muted); }
 
-/* Thin toolbar under the header: `Tab 1` left, insert tools right. */
-.app-document-tabbar {
+/* An HTML document's header is a browser bar: reload, the file name as the address, then date, author and Share. */
+.app-document-header.is-browser { min-height: 40px; gap: 8px; padding: 5px 10px 5px 8px; }
+.app-document-header.is-browser .app-document-share { top: 38px; }
+
+.app-document-browser-button { display: grid; width: 28px; height: 28px; flex: none; place-items: center; border-radius: 7px; color: var(--app-document-muted); }
+.app-document-browser-button:hover { background: var(--app-control-hover); color: var(--utility-foreground); }
+
+.app-document-address {
+  display: flex;
+  min-width: 72px;
+  height: 28px;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--app-document-chip-bg);
+  font-size: 12.5px;
+  line-height: 16px;
+}
+
+.app-document-address span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-document-reader .app-document-address svg { width: 13px; height: 13px; color: var(--app-document-muted); }
+
+/* Thin toolbar under a Markdown document's header: the insert tools, right-aligned. */
+.app-document-insertbar {
   position: relative;
   display: flex;
   flex: none;
   align-items: center;
-  gap: 2px;
-  padding: 4px 12px 4px calc(var(--app-document-gutter) - 8px);
+  justify-content: flex-end;
+  padding: 4px 12px;
 }
 
-.app-document-tools { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.app-document-tools { display: flex; align-items: center; gap: 2px; }
 
-.app-document-tabbar button {
+.app-document-insertbar button {
   display: inline-flex;
   height: 28px;
   min-width: 28px;
@@ -132,13 +145,12 @@
   font-size: 12.5px;
 }
 
-.app-document-reader .app-document-tabbar svg { width: 16px; height: 16px; }
-.app-document-tabbar button:hover:not(:disabled),
-.app-document-tabbar button[aria-expanded='true'] { background: var(--app-control-hover); color: var(--utility-foreground); }
-.app-document-tabbar button:disabled { opacity: 0.4; cursor: default; }
-.app-document-tab-current { color: var(--utility-foreground) !important; font-weight: 600; }
+.app-document-reader .app-document-insertbar svg { width: 16px; height: 16px; }
+.app-document-insertbar button:hover:not(:disabled),
+.app-document-insertbar button[aria-expanded='true'] { background: var(--app-control-hover); color: var(--utility-foreground); }
+.app-document-insertbar button:disabled { opacity: 0.4; cursor: default; }
 .app-document-reader .app-document-caret { width: 10px; height: 10px; }
-.app-document-tabbar-separator { width: 1px; height: 16px; margin: 0 4px; background: var(--app-document-line); }
+.app-document-insertbar-separator { width: 1px; height: 16px; margin: 0 4px; background: var(--app-document-line); }
 
 .app-document-menu {
   position: absolute;
@@ -171,8 +183,6 @@ button.app-document-menu-row:hover,
 .app-document-menu-row[aria-checked='true'] { font-weight: 600; }
 .app-document-menu-row.is-danger { color: var(--app-transient-danger-text); }
 .app-document-menu-label { flex: 1; min-width: 0; }
-.app-document-tab-menu { top: 34px; left: 8px; width: 240px; }
-.app-document-more-menu { top: 34px; left: 220px; }
 .app-document-image-form { top: 34px; right: 12px; display: flex; align-items: center; gap: 6px; min-width: 0; padding: 6px; }
 
 .app-document-switch {
@@ -206,10 +216,6 @@ button.app-document-menu-row:hover,
 
 /* Content column: 680px of text with a 20px gutter, centered when the pane is wider. */
 .app-document-article { box-sizing: border-box; max-width: calc(680px + 2 * var(--app-document-gutter)); margin: 0 auto; padding: 12px var(--app-document-gutter) 48px; }
-
-.app-document-tabstrip { display: flex; gap: 4px; margin: 0 0 12px; }
-.app-document-tabstrip button { padding: 4px 10px; border-radius: 999px; color: var(--app-document-muted); font-size: 12px; }
-.app-document-tabstrip button[aria-selected='true'] { background: var(--app-document-chip-bg); color: var(--utility-foreground); font-weight: 600; }
 
 .app-document-pill,
 .app-document-mention {
@@ -252,10 +258,51 @@ button.app-document-menu-row:hover,
 .app-document-avatar { width: 34px !important; height: 34px !important; flex: none; }
 .app-document-avatar-small { width: 22px !important; height: 22px !important; flex: none; }
 
-.app-document-frame { display: block; width: 100%; min-width: 0; max-width: 100%; height: 100%; min-height: 24rem; flex: 1 1 auto; box-sizing: border-box; border: 0; background: transparent; }
+/* An HTML document fills the rest of the pane edge to edge and scrolls inside its own frame. */
+.app-document-body.is-html { display: flex; flex-direction: column; overflow: hidden; }
+.app-document-frame { display: block; width: 100%; height: 100%; min-height: 0; flex: 1 1 auto; border: 0; background: transparent; }
 
-/* An HTML document fills the reader and sits on its surface, wrapping at the pane width. */
-.app-document-article.is-html { display: flex; max-width: none; min-width: 0; min-height: 100%; flex-direction: column; }
+/* Its reactions and comments sit in a slim bar under the page; the threads open in a popover above the bar. */
+.app-document-annotation-bar { position: relative; display: flex; min-height: 36px; flex: none; align-items: center; gap: 8px; padding: 5px 10px; border-top: 1px solid var(--app-document-line); }
+.app-document-annotation-bar-reactions { min-width: 0; flex: 1 1 auto; overflow-x: auto; scrollbar-width: none; }
+.app-document-annotation-bar-reactions::-webkit-scrollbar { display: none; }
+.app-document-annotation-bar .app-document-reactions { flex-wrap: nowrap; margin: 0; }
+
+.app-document-comment-toggle {
+  display: inline-flex;
+  height: 26px;
+  min-width: 28px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--app-document-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.app-document-comment-toggle:hover,
+.app-document-comment-toggle[aria-expanded='true'] { background: var(--app-control-hover); color: var(--utility-foreground); }
+
+.app-document-annotation-popover {
+  position: absolute;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  z-index: 25;
+  box-sizing: border-box;
+  width: min(340px, calc(100% - 16px));
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid var(--app-transient-border);
+  border-radius: 14px;
+  background: var(--app-transient-surface-bg);
+  box-shadow: var(--app-transient-shadow);
+}
+
+.app-document-annotation-popover > :last-child { margin-bottom: 0; }
 
 .app-document-share {
   position: absolute;
