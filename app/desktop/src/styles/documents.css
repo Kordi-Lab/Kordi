@@ -241,7 +241,11 @@ button.app-document-menu-row:hover,
 .app-document-markdown th,
 .app-document-markdown td { min-width: 6rem; }
 
-.app-document-frame { width: 100%; height: min(70vh, 36rem); border: 1px solid var(--app-document-line); border-radius: 12px; background: #fff; }
+.app-document-frame { display: block; width: 100%; min-width: 0; max-width: 100%; height: 100%; min-height: 24rem; flex: 1 1 auto; box-sizing: border-box; border: 0; background: transparent; }
+
+/* An HTML document fills the reader and sits on its surface, wrapping at the pane width. */
+.app-document-article.is-html { display: flex; min-width: 0; min-height: 100%; flex-direction: column; box-sizing: border-box; }
+.app-document-block.is-frame { display: flex; width: auto; min-width: 0; flex: 1 1 auto; cursor: default; }
 
 .app-document-reactions { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
 

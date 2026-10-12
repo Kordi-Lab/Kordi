@@ -2,7 +2,6 @@ import { LoaderCircle } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState, type MouseEvent } from 'react';
 
 import { cn } from '@/lib/utils';
-import { artifactPreviewDocumentSource } from '@/pages/artifactPreviewDocument';
 
 import { DocumentBlockView, type DocumentBlockThreadProps } from './DocumentBlock';
 import type { DocumentMentionOption } from './DocumentComments';
@@ -21,6 +20,7 @@ import { DocumentSelectionMenu } from './DocumentSelectionMenu';
 import { DocumentSharePopover } from './DocumentSharePopover';
 import { DocumentTabBar, DocumentTabStrip } from './DocumentTabBar';
 import { useDocumentReader, type DocumentReaderSource } from './useDocumentReader';
+import { themedDocumentSource, useDocumentTheme } from './documentTheme';
 import { useOutsideDismiss } from './useOutsideDismiss';
 
 export type DocumentReaderProps = DocumentReaderSource & {
@@ -51,6 +51,8 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
   const [selection, setSelection] = useState<Selection | null>(null);
   const [composingBlock, setComposingBlock] = useState<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  const theme = useDocumentTheme(sectionRef);
   const headerRef = useRef<HTMLDivElement>(null);
   const clearSelection = useCallback(() => setSelection(null), []);
   const closeShare = useCallback(() => setShareOpen(false), []);
@@ -135,18 +137,25 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
   const showInFinder = hasLocalFile && path && host.revealPath ? () => { void host.revealPath?.(path); } : undefined;
   const memberSessionId = reader.memberSessionId;
 
-  // HTML never runs scripts here: an empty sandbox, no same origin.
+  // HTML never runs scripts here (empty sandbox, no same origin) and sits on the app surface in the app theme.
   const htmlSource = hasLocalFile ? source.localSource ?? '' : reader.rawHtml;
   const htmlFrame = reader.format === 'html' && editing.currentTab === 0
     ? htmlSource !== null
-      ? <iframe title={`${fileName} preview`} sandbox="" srcDoc={artifactPreviewDocumentSource(htmlSource, 'rail')} className="app-document-frame" />
-      : mode === 'public' && document?.rawPath
-        ? <iframe title={`${fileName} preview`} sandbox="" src={api.rawDocumentUrl(document.rawPath)} className="app-document-frame" />
-        : <div className="app-document-empty">{reader.rawPending ? 'Loading' : 'No preview'}</div>
+      ? (
+        <iframe
+          title={`${fileName} preview`}
+          sandbox=""
+          srcDoc={themedDocumentSource(htmlSource, theme)}
+          className="app-document-frame"
+          style={{ background: 'transparent', colorScheme: theme.scheme }}
+          {...{ allowtransparency: 'true' }}
+        />
+      )
+      : <div className="app-document-empty">{reader.rawPending ? 'Loading' : 'No preview'}</div>
     : null;
 
   return (
-    <section className={cn('app-document-reader', className)} data-document-mode={mode} aria-label={title}>
+    <section ref={sectionRef} className={cn('app-document-reader', className)} data-document-mode={mode} aria-label={title}>
       <div ref={headerRef} className="app-document-header-wrap">
         <DocumentHeader
           fileName={fileName}
@@ -182,7 +191,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
         ) : mode === 'unavailable' ? (
           <div className="app-document-empty">Not on this Mac</div>
         ) : (
-          <article className="app-document-article">
+          <article className={cn('app-document-article', htmlFrame && 'is-html')}>
             <DocumentTabStrip editing={editing} />
             {editing.currentTab === 0 ? (
               <DocumentTitleMeta
@@ -193,7 +202,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
                 onMessageAuthor={author?.accountId ? () => host.messageAccount?.(author.accountId ?? '') : undefined}
               />
             ) : null}
-            {htmlFrame ? <div className="app-document-block" data-document-block="b0">{htmlFrame}</div> : null}
+            {htmlFrame ? <div className="app-document-block is-frame" data-document-block="b0">{htmlFrame}</div> : null}
             {(htmlFrame ? [] : visibleBlocks).map((block) => (
               <DocumentBlockView
                 key={`${editing.currentTab}:${block.id}`}

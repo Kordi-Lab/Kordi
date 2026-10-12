@@ -126,6 +126,7 @@ export function createMemoryDocumentApi(document: DocumentResponse = sampleDocum
     async getDocument(attachmentId) { record('getDocument', attachmentId); await wait(); return { ...document, reactions, share }; },
     async getPublicDocument(token) { record('getPublicDocument', token); await wait(); return { ...document, viewer: 'public', share: null, viewerCan: { share: false, react: true, comment: true, askAgent: true } }; },
     async getDocumentRaw(attachmentId) { record('getDocumentRaw', attachmentId); await wait(); return SAMPLE_HTML; },
+    async getPublicDocumentRaw(rawPath) { record('getPublicDocumentRaw', rawPath); await wait(); return SAMPLE_HTML; },
     async listShares(attachmentId) { record('listShares', attachmentId); return share ? [share] : []; },
     async createShare(attachmentId, input) { record('createShare', attachmentId, input); await wait(); share = sampleShare({ attachmentId }); return share; },
     async updateShare(shareId, input) { record('updateShare', shareId, input); share = sampleShare({ ...share, ...input }); return share; },

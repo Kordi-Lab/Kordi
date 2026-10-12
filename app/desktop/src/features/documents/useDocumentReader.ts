@@ -116,22 +116,25 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
 
   const format = document?.format ?? documentFormatForPath(path) ?? 'markdown';
 
-  // Uploaded HTML that is not on this Mac comes from the authenticated raw route.
-  const [raw, setRaw] = useState<{ attachmentId: string; html: string | null } | null>(null);
-  const rawAttachmentId = mode === 'uploaded' && format === 'html' && localSource === null && document && document.viewer !== 'public'
+  // HTML that is not on this Mac comes from the raw route: authenticated for owners and members, the share path for link readers.
+  const [raw, setRaw] = useState<{ key: string; html: string | null } | null>(null);
+  const publicRawPath = mode === 'public' && format === 'html' ? document?.rawPath ?? null : null;
+  const uploadedRawId = mode === 'uploaded' && format === 'html' && localSource === null && document && document.viewer !== 'public'
     ? document.attachmentId
     : null;
+  const rawKey = uploadedRawId ? `attachment:${uploadedRawId}` : publicRawPath ? `public:${publicRawPath}` : null;
   useEffect(() => {
-    if (!rawAttachmentId) return undefined;
+    if (!rawKey) return undefined;
     let cancelled = false;
-    api.getDocumentRaw(rawAttachmentId)
-      .then((html) => { if (!cancelled) setRaw({ attachmentId: rawAttachmentId, html }); })
-      .catch(() => { if (!cancelled) setRaw({ attachmentId: rawAttachmentId, html: null }); });
+    const request = uploadedRawId ? api.getDocumentRaw(uploadedRawId) : api.getPublicDocumentRaw(publicRawPath ?? '');
+    request
+      .then((html) => { if (!cancelled) setRaw({ key: rawKey, html }); })
+      .catch(() => { if (!cancelled) setRaw({ key: rawKey, html: null }); });
     return () => { cancelled = true; };
-  }, [api, rawAttachmentId]);
-  const rawResult = raw && raw.attachmentId === rawAttachmentId ? raw : null;
+  }, [api, publicRawPath, rawKey, uploadedRawId]);
+  const rawResult = raw && raw.key === rawKey ? raw : null;
   const rawHtml = rawResult?.html ?? null;
-  const rawPending = Boolean(rawAttachmentId) && !rawResult;
+  const rawPending = Boolean(rawKey) && !rawResult;
   const editing = useDocumentEditing(mode === 'local' ? localSource ?? '' : '');
 
   const serverBlocks = useMemo(() => (document?.blocks ?? []).map((block) => ({ id: block.id, source: block.source })), [document]);

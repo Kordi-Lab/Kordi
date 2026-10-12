@@ -6,6 +6,7 @@ import { DocumentReader } from '../src/features/documents/DocumentReader';
 import { DocumentReaderHostContext, type DocumentReaderHost } from '../src/features/documents/documentReaderHost';
 import { createMemoryDocumentApi, SAMPLE_HTML, SAMPLE_MARKDOWN, sampleDocument, sampleHtmlDocument } from './helpers/documentReaderFixtures';
 import { createDocumentShareApi } from '../src/features/documents/documentShareApi';
+import { resolveDocumentTheme } from '../src/features/documents/documentTheme';
 import { withJsdomRoot } from './helpers/mountWithJsdom';
 
 const host: DocumentReaderHost = {
@@ -146,6 +147,49 @@ test('an uploaded HTML document loads the authenticated raw route into a sandbox
     assert.equal(frame.hasAttribute('src'), false);
     assert.match(frame.getAttribute('srcdoc') ?? '', /Shared as HTML\./);
     assert.doesNotMatch(root.textContent ?? '', /No preview/);
+  });
+});
+
+test('HTML documents carry the app theme: one transparent surface, app colors, and the color scheme', async () => {
+  await withJsdomRoot(async (mount) => {
+    const document = sampleHtmlDocument('member');
+    const { api } = createMemoryDocumentApi(document);
+    const root = await mount(createElement('div', {
+      className: 'kordi-app theme-light',
+      style: { '--utility-foreground': 'rgb(17, 24, 39)', '--app-markdown-link': 'rgb(37, 99, 235)' },
+    }, withHost(createElement(DocumentReader, { attachmentId: document.attachmentId, initialDocument: document, api }))));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+
+    const frame = root.querySelector('iframe.app-document-frame') as HTMLIFrameElement;
+    const srcdoc = frame.getAttribute('srcdoc') ?? '';
+    assert.match(srcdoc, /data-kordi-document-theme/);
+    assert.match(srcdoc, /color-scheme: light;/);
+    assert.match(srcdoc, /<meta name="color-scheme" content="light">/);
+    assert.match(srcdoc, /html, body \{ background: transparent !important;/);
+    assert.ok(srcdoc.indexOf('data-kordi-artifact-rail-fit') < srcdoc.indexOf('data-kordi-document-theme'), 'the theme follows the rail-fit rules');
+    assert.equal(frame.style.background, 'transparent');
+    assert.equal(frame.getAttribute('allowtransparency'), 'true');
+
+    const section = root.querySelector('.app-document-reader') as HTMLElement;
+    section.style.setProperty('--utility-foreground', 'rgb(17, 24, 39)');
+    section.style.setProperty('--app-markdown-link', 'rgb(37, 99, 235)');
+    const theme = resolveDocumentTheme(section);
+    assert.equal(theme.scheme, 'light');
+    assert.equal(theme.foreground, 'rgb(17, 24, 39)');
+    assert.equal(theme.link, 'rgb(37, 99, 235)');
+  });
+});
+
+test('a public HTML link renders through srcdoc from the share raw path', async () => {
+  await withJsdomRoot(async (mount) => {
+    const document = sampleHtmlDocument('public');
+    const { api, calls } = createMemoryDocumentApi(document);
+    const root = await mount(withHost(createElement(DocumentReader, { shareToken: 'kordi_ds_EXAMPLEtokenEXAMPLEtokenEXAMPLEtoken0', initialDocument: document, api })));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+    assert.deepEqual(calls.find((call) => call.method === 'getPublicDocumentRaw')?.args, [document.rawPath]);
+    const frame = root.querySelector('iframe.app-document-frame') as HTMLIFrameElement;
+    assert.equal(frame.hasAttribute('src'), false);
+    assert.match(frame.getAttribute('srcdoc') ?? '', /Shared as HTML\./);
   });
 });
 

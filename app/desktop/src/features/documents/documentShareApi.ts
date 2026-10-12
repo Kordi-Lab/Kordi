@@ -47,6 +47,8 @@ export type DocumentShareApi = {
   getPublicDocument(token: string): Promise<DocumentResponse>;
   /** HTML of an uploaded `html` document for its owner or members. */
   getDocumentRaw(attachmentId: string): Promise<string>;
+  /** HTML behind a public `rawPath` such as `/d/<token>/raw`; no sign-in. */
+  getPublicDocumentRaw(rawPath: string): Promise<string>;
   listShares(attachmentId: string): Promise<DocumentShare[]>;
   createShare(attachmentId: string, input?: CreateDocumentShareInput): Promise<DocumentShare>;
   updateShare(shareId: string, input: UpdateDocumentShareInput): Promise<DocumentShare>;
@@ -86,6 +88,11 @@ export function createDocumentShareApi(options: DocumentShareApiOptions = {}): D
   return {
     getDocument: (attachmentId) => withToken((token) => getCloudDocument(client, token, attachmentId)),
     getPublicDocument: (token) => getPublicDocument(client, token),
+    getPublicDocumentRaw: async (rawPath) => {
+      const response = await fetchText(`${baseUrl()}${rawPath}`, { method: 'GET' });
+      if (!response.ok) throw new Error('This link is off');
+      return response.text();
+    },
     getDocumentRaw: (attachmentId) => withToken((token) => getCloudDocumentRaw(fetchText, baseUrl(), token, attachmentId)),
     listShares: (attachmentId) => withToken((token) => listCloudDocumentShares(client, token, attachmentId)),
     createShare: (attachmentId, input) => withToken((token) => createCloudDocumentShare(client, token, attachmentId, input)),
