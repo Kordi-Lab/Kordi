@@ -1,4 +1,5 @@
 import { splitMarkdownBlocks } from '../../src/features/documents/documentBlocks';
+import { blocksFromSource } from '../../src/features/documents/documentBlockSource';
 import type { DocumentShareApi, DocumentWriteTarget } from '../../src/features/documents/documentShareApi';
 import type {
   DocumentComment,
@@ -142,8 +143,12 @@ export function createMemoryDocumentApi(document: DocumentResponse = sampleDocum
         return { status: 'conflict' as const, document: stored };
       }
       if (input.baseRevision !== (stored.revision ?? 0)) return { status: 'conflict' as const, document: stored };
-      const blocks = splitMarkdownBlocks(input.source).map((block) => ({ id: block.id, source: block.source, html: '' }));
-      stored = { ...stored, blocks, revision: (stored.revision ?? 0) + 1 };
+      // Like the server: ids come from the `<!-- k:… -->` comments, sources come back without them,
+      // and a first stamped save moves annotations from index ids to the new ids.
+      const blocks = blocksFromSource(input.source).map((block) => ({ id: block.id, source: block.source, html: '' }));
+      const remap = (blockId: string) => input.blockIds?.[blockId] ?? blockId;
+      reactions = reactions.map((entry) => ({ ...entry, blockId: remap(entry.blockId) }));
+      stored = { ...stored, blocks, revision: (stored.revision ?? 0) + 1, comments: stored.comments.map((entry) => ({ ...entry, blockId: remap(entry.blockId) })) };
       return { status: 'saved' as const, document: { ...stored, reactions, share } };
     },
     setStored(next: DocumentResponse) { stored = next; },

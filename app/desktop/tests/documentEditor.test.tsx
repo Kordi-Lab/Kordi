@@ -1,0 +1,166 @@
+import assert from 'node:assert/strict';
+import { after, before, test } from 'node:test';
+
+import type { Editor as TiptapEditor } from '@tiptap/core';
+
+import { installEditorDom } from './helpers/editorDom';
+
+let restore: () => void = () => undefined;
+let Editor: typeof import('@tiptap/core').Editor;
+let TextSelection: typeof import('@tiptap/pm/state').TextSelection;
+let extensions: typeof import('../src/features/documents/editor/documentEditorExtensions');
+let ids: typeof import('../src/features/documents/editor/documentBlockIds');
+let commands: typeof import('../src/features/documents/editor/documentEditorCommands');
+let slash: typeof import('../src/features/documents/editor/documentSlashItems');
+let merge: typeof import('../src/features/documents/editor/documentBlockMerge');
+
+before(async () => {
+  restore = installEditorDom();
+  ({ Editor } = await import('@tiptap/core'));
+  ({ TextSelection } = await import('@tiptap/pm/state'));
+  extensions = await import('../src/features/documents/editor/documentEditorExtensions');
+  ids = await import('../src/features/documents/editor/documentBlockIds');
+  commands = await import('../src/features/documents/editor/documentEditorCommands');
+  slash = await import('../src/features/documents/editor/documentSlashItems');
+  merge = await import('../src/features/documents/editor/documentBlockMerge');
+});
+after(() => restore());
+
+function editorWith(markdown: string) {
+  const editor = new Editor({ extensions: extensions.documentEditorExtensions() });
+  editor.commands.setContent(ids.parseBlocks(editor.markdown!, ids.blocksFromSource(markdown)).doc);
+  return editor;
+}
+
+const markdownOf = (editor: TiptapEditor) => ids.sourceOfBlocks(ids.serializeBlocks(editor.markdown!, editor.getJSON()));
+const withoutIds = (markdown: string) => markdown.replace(/ <!-- k:[A-Za-z0-9_-]+ -->/g, '');
+
+const EVERYTHING = [
+  '# Title',
+  '## Section',
+  '### Detail',
+  'Plain **bold** *italic* <u>underline</u> ~~strike~~ `code` ==highlight== [link](https://kordi.ai/).',
+  '> A quote',
+  '- one\n- two',
+  '1. first\n2. second',
+  '- [ ] open task\n- [x] done task',
+  '```ts\nconst answer = 42;\n```',
+  '| Paper | Method |\n| --- | --- |\n| One | Survey |',
+  '![diagram](https://kordi.ai/diagram.png)',
+  '---',
+  'Kept id <!-- k:abcd1234 -->',
+  'a == b == c',
+].join('\n\n');
+
+test('every node and mark round-trips through Markdown, and every block gets an id comment', () => {
+  const editor = editorWith(EVERYTHING);
+  const markdown = markdownOf(editor);
+  const blocks = markdown.split('\n\n');
+  assert.equal(blocks.length, 14);
+  for (const block of blocks) assert.match(block, /<!-- k:[a-z0-9]{8} -->$/, `id comment on the last line of: ${block}`);
+  const plain = withoutIds(markdown);
+  for (const expected of ['# Title', '## Section', '### Detail', '**bold**', '*italic*', '<u>underline</u>', '~~strike~~', '`code`', '==highlight==', '[link](https://kordi.ai/)', '> A quote', '- one\n- two', '1. first\n2. second', '- [ ] open task\n- [x] done task', '```ts\nconst answer = 42;\n```', '![diagram](https://kordi.ai/diagram.png)', '---', 'a == b == c']) {
+    assert.ok(plain.includes(expected), `keeps ${JSON.stringify(expected)}`);
+  }
+  assert.match(plain, /\| Paper\s*\| Method\s*\|/);
+  assert.match(markdown, /Kept id <!-- k:abcd1234 -->/, 'an existing id survives');
+  // Parsing the output again changes nothing, ids included.
+  const again = editorWith(markdown);
+  assert.equal(markdownOf(again), markdown);
+  editor.destroy();
+  again.destroy();
+});
+
+test('highlight and underline keep spaces outside their markers', () => {
+  const editor = editorWith('one two three');
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 4, 9)));
+  commands.toggleFormat(editor, 'highlight');
+  assert.match(markdownOf(editor), /^one ==two== three/);
+  editor.destroy();
+});
+
+function selectWord(editor: TiptapEditor, word: string) {
+  let from = -1;
+  editor.state.doc.descendants((node, position) => {
+    if (from < 0 && node.isText && node.text?.includes(word)) from = position + node.text.indexOf(word);
+  });
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, from + word.length)));
+}
+
+const BUTTONS: Array<[import('../src/features/documents/editor/documentEditorCommands').InlineFormat, string]> = [
+  ['bold', '**clearest**'],
+  ['italic', '*clearest*'],
+  ['underline', '<u>clearest</u>'],
+  ['strike', '~~clearest~~'],
+  ['code', '`clearest`'],
+  ['highlight', '==clearest=='],
+];
+
+for (const [format, marked] of BUTTONS) {
+  test(`${format} applies to the selection and toggles off`, () => {
+    const editor = editorWith('That is the clearest niche.');
+    selectWord(editor, 'clearest');
+    commands.toggleFormat(editor, format);
+    assert.ok(withoutIds(markdownOf(editor)).includes(`the ${marked} niche`));
+    assert.ok(commands.activeFormats(editor).includes(format));
+    commands.toggleFormat(editor, format);
+    assert.equal(withoutIds(markdownOf(editor)), 'That is the clearest niche.');
+    editor.destroy();
+  });
+}
+
+test('Aa, list, and link change the block and the selection', () => {
+  const editor = editorWith('That is the clearest niche.');
+  selectWord(editor, 'clearest');
+  for (const [style, prefix] of [['h1', '# '], ['h2', '## '], ['h3', '### '], ['quote', '> '], ['text', '']] as const) {
+    commands.setBlockStyle(editor, style);
+    assert.equal(commands.activeBlockStyle(editor), style);
+    assert.equal(withoutIds(markdownOf(editor)), `${prefix}That is the clearest niche.`);
+  }
+  commands.toggleList(editor);
+  assert.equal(withoutIds(markdownOf(editor)), '- That is the clearest niche.');
+  commands.toggleList(editor);
+  selectWord(editor, 'clearest');
+  commands.setLink(editor, 'https://kordi.ai/review');
+  assert.equal(withoutIds(markdownOf(editor)), 'That is the [clearest](https://kordi.ai/review) niche.');
+  commands.setLink(editor, '');
+  assert.equal(withoutIds(markdownOf(editor)), 'That is the clearest niche.');
+  editor.destroy();
+});
+
+test('the slash menu and the insert tools add real blocks at the caret', () => {
+  const editor = editorWith('First paragraph.\n\n/tab\n\nLast paragraph.');
+  let slashEnd = 0;
+  editor.state.doc.forEach((node, offset) => { if (node.textContent === '/tab') slashEnd = offset + node.nodeSize - 1; });
+  editor.commands.setTextSelection(slashEnd);
+  const found = slash.slashQuery(editor);
+  assert.deepEqual(found && { query: found.query }, { query: 'tab' });
+  const [table] = slash.slashMatches(found!.query);
+  assert.equal(table.id, 'table');
+  editor.chain().deleteRange({ from: found!.from, to: found!.to }).run();
+  table.run(editor);
+  assert.equal(editor.state.doc.child(1).type.name, 'table');
+  for (const [tool, type] of [['code', 'codeBlock'], ['checklist', 'taskList']] as const) {
+    editor.commands.focus('end');
+    commands.insertBlock(editor, tool);
+    let found_ = false;
+    editor.state.doc.forEach((node) => { if (node.type.name === type) found_ = true; });
+    assert.ok(found_, `${tool} inserts a ${type}`);
+  }
+  editor.commands.focus('end');
+  commands.insertBlock(editor, 'image', 'https://kordi.ai/x.png');
+  assert.match(markdownOf(editor), /!\[\]\(https:\/\/kordi\.ai\/x\.png\)/);
+  editor.destroy();
+});
+
+test('a block-by-id merge keeps local edits, takes remote ones, and keeps the block being typed into', () => {
+  const block = (id: string, source: string) => ({ id, source });
+  const base = [block('k:a', 'A'), block('k:b', 'B'), block('k:c', 'C')];
+  const local = [block('k:a', 'A local'), block('k:b', 'B'), block('k:c', 'C local'), block('k:new', 'New')];
+  const remote = [block('k:a', 'A'), block('k:b', 'B remote'), block('k:c', 'C remote')];
+  const typingInC = merge.mergeBlocks(base, local, remote, 'k:c');
+  assert.deepEqual(typingInC.blocks.map((entry) => entry.source), ['A local', 'B remote', 'C local', 'New']);
+  assert.equal(typingInC.conflict, true);
+  const elsewhere = merge.mergeBlocks(base, local, remote, 'k:a');
+  assert.equal(elsewhere.blocks[2].source, 'C remote', 'a block changed on both sides away from the caret takes the remote text');
+});

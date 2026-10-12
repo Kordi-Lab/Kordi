@@ -8,6 +8,7 @@ import { createMemoryDocumentApi, SAMPLE_HTML, SAMPLE_MARKDOWN, sampleDocument, 
 import { createDocumentShareApi } from '../src/features/documents/documentShareApi';
 import { resolveDocumentTheme } from '../src/features/documents/documentTheme';
 import { withJsdomRoot } from './helpers/mountWithJsdom';
+import { waitForReactCondition } from './helpers/waitForReactCondition';
 
 const host: DocumentReaderHost = {
   viewer: { accountId: 'acct_example_viewer', displayName: 'Priya', kordiId: '987654321', avatarUrl: null },
@@ -43,11 +44,14 @@ test('the reader shows the header, blocks, reaction pills, and open comment thre
     const { api, calls } = createMemoryDocumentApi(document);
     const host_ = await mount(withHost(createElement(DocumentReader, { attachmentId: document.attachmentId, initialDocument: document, api })));
 
-    assert.equal(host_.querySelector('.app-document-title')?.textContent, 'Kordi related work');
+    await waitForReactCondition(() => Boolean(host_.querySelector('.ProseMirror > h1')), 'the editor loads');
+    assert.equal(host_.querySelector('.app-document-title'), null, 'the document heading is the title');
+    assert.equal(host_.querySelector('.ProseMirror > h1')?.textContent, 'Kordi related work');
     assert.match(host_.querySelector('.app-document-pill')?.textContent ?? '', /Oct 9, 2026/);
     assert.equal(host_.querySelector('.app-document-mention')?.textContent, '@Alex Morgan');
     assert.equal(host_.querySelector('.app-document-badge')?.textContent, 'In Kordi');
-    assert.equal(host_.querySelectorAll('[data-document-block]').length, document.blocks.length - 1, 'the title heading is the page title');
+    const topLevel = host_.querySelectorAll('.ProseMirror > [data-id], .ProseMirror > .tableWrapper > table[data-id]');
+    assert.equal(topLevel.length, document.blocks.length, 'every block is in the editor');
 
     const thumbs = button(host_, '👍 2');
     assert.equal(thumbs.getAttribute('aria-pressed'), 'true');
@@ -207,84 +211,4 @@ test('the raw route is fetched with the bearer token', async () => {
   assert.equal(await api.getDocumentRaw('att_example_html'), SAMPLE_HTML);
   assert.equal(requests[0]?.url, 'https://cloud.example/v1/cloud/documents/att_example_html/raw');
   assert.deepEqual(requests[0]?.init.headers, { authorization: 'Bearer token_example' });
-});
-
-function selectionMenuButtons(root: HTMLElement) {
-  const menu = root.querySelector('[role="toolbar"][aria-label="Selection"] .app-document-selection-bar');
-  assert.ok(menu, 'the selection menu is open');
-  return Array.from(menu.querySelectorAll('button')).map((entry) => entry.getAttribute('aria-label'));
-}
-
-/** Selects `text` inside a block the way a mouse drag does, then fires `selectionchange`. */
-async function selectText(root: HTMLElement, blockId: string, text: string, collapsed = false) {
-  const block = root.querySelector(`[data-document-block="${blockId}"] .app-document-markdown`) as HTMLElement;
-  const walker = block.ownerDocument.createTreeWalker(block, 4);
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const at = node.nodeValue?.indexOf(text) ?? -1;
-    if (at < 0) continue;
-    const range = block.ownerDocument.createRange();
-    range.setStart(node, at);
-    range.setEnd(node, collapsed ? at : at + text.length);
-    const selection = block.ownerDocument.defaultView!.getSelection()!;
-    selection.removeAllRanges();
-    selection.addRange(range);
-    await act(async () => { block.ownerDocument.dispatchEvent(new block.ownerDocument.defaultView!.Event('selectionchange')); });
-    return;
-  }
-  assert.fail(`text "${text}" in ${blockId}`);
-}
-
-const FORMAT_LABELS = ['Text style', 'Bold', 'Italic', 'Underline', 'Strikethrough', 'Code', 'Highlight', 'List', 'Link'];
-
-test('a click without a range opens no menu, and a read-only viewer gets comment and react only', async () => {
-  await withJsdomRoot(async (mount) => {
-    const document = { ...sampleDocument('member'), viewerCan: { share: false, react: true, comment: true, askAgent: true, edit: false } };
-    const { api } = createMemoryDocumentApi(document);
-    const root = await mount(withHost(createElement(DocumentReader, { attachmentId: document.attachmentId, initialDocument: document, api })));
-    await selectText(root, 'b3', 'clearest niche', true);
-    assert.equal(root.querySelector('[aria-label="Selection"]'), null);
-    await selectText(root, 'b3', 'clearest niche');
-    assert.deepEqual(selectionMenuButtons(root), ['Comment', 'React']);
-    assert.equal(root.querySelector('.app-document-block.is-selected'), null, 'no whole-block highlight');
-    assert.equal(root.querySelector('[aria-label="Code block"]'), null, 'no insert tools for read-only documents');
-  });
-});
-
-test('an editable cloud document formats the selected text, restores the selection, and saves', async () => {
-  await withJsdomRoot(async (mount) => {
-    const document = sampleDocument('owner');
-    const { api, calls } = createMemoryDocumentApi(document);
-    const root = await mount(withHost(createElement(DocumentReader, { attachmentId: document.attachmentId, initialDocument: document, api })));
-    await selectText(root, 'b3', 'clearest niche');
-    const labels = selectionMenuButtons(root);
-    assert.deepEqual(labels.slice(0, 2), ['Comment', 'React']);
-    for (const label of FORMAT_LABELS) assert.ok(labels.includes(label), `${label} is in the menu`);
-
-    await click(root.querySelector('[aria-label="Bold"]') as HTMLElement);
-    assert.ok(root.querySelector('[data-document-block="b3"] strong'), 'the bold text renders');
-    assert.equal(root.ownerDocument.defaultView!.getSelection()!.toString(), 'clearest niche', 'the same text stays selected');
-    assert.equal(root.querySelector('[aria-label="Bold"]')?.getAttribute('aria-pressed'), 'true');
-
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 900)); });
-    const save = calls.find((call) => call.method === 'saveDocumentContent');
-    const input = save?.args[1] as { baseRevision: number; source: string };
-    assert.equal(input.baseRevision, 3);
-    assert.match(input.source, /the \*\*clearest niche\*\* for Kordi/);
-  });
-});
-
-test('a Mac-hosted draft keeps the full menu and Aa changes the block style', async () => {
-  await withJsdomRoot(async (mount) => {
-    const { api } = createMemoryDocumentApi(sampleDocument('owner'));
-    const root = await mount(withHost(createElement(DocumentReader, { path: '/Users/example/notes/format-test.md', localSource: SAMPLE_MARKDOWN, api })));
-    await selectText(root, 'b2', 'end-to-end');
-    const labels = selectionMenuButtons(root);
-    for (const label of FORMAT_LABELS) assert.ok(labels.includes(label), `${label} is in the menu`);
-    await click(root.querySelector('[aria-label="Text style"]') as HTMLElement);
-    await click(Array.from(root.querySelectorAll('[role="menuitemradio"]')).find((entry) => entry.textContent?.includes('Heading 2')) as HTMLElement);
-    assert.equal(root.querySelector('[data-document-block="b2"] .app-document-markdown > div')?.className.includes('font-semibold'), true);
-
-    await click(root.querySelector('[aria-label="Checklist"]') as HTMLElement);
-    assert.match(root.querySelector('[data-document-block="b3"]')?.textContent ?? '', /Task/, 'checklist lands after the current block');
-  });
 });

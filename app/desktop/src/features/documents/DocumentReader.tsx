@@ -1,9 +1,10 @@
 import { LoaderCircle } from 'lucide-react';
-import { useCallback, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
+import type { Editor } from '@tiptap/core';
 
 import { cn } from '@/lib/utils';
 
-import { DocumentBlockView, type DocumentBlockThreadProps } from './DocumentBlock';
+import { DocumentBlockAnnotations, DocumentBlockView, type DocumentBlockThreadProps } from './DocumentBlock';
 import type { DocumentMentionOption } from './DocumentComments';
 import { DocumentHeader, DocumentTitleMeta, type DocumentBadge } from './DocumentHeader';
 import { markdownDocumentTitle } from './documentBlocks';
@@ -16,18 +17,16 @@ import {
   reactionPillsForBlock,
 } from './documentReaderModel';
 import { documentShareApiForEnvironment, type DocumentShareApi } from './documentShareApi';
-import { DocumentSelectionMenu } from './DocumentSelectionMenu';
-import { blockStyleOf, isInlineFormatActive, isList, linkAt, setBlockStyle, toggleInlineFormat, toggleLink, toggleList, type InlineFormat } from './documentFormat';
-import { documentInsertSnippet } from './documentReaderModel';
-import { locateSelection, stripWhitespace, type SourceRange } from './documentSourceMap';
-import { caretSourceOffset } from './documentBlockEditing';
-import { useBlockEditing } from './useBlockEditing';
-import { useDocumentSelection } from './useDocumentSelection';
 import { DocumentSharePopover } from './DocumentSharePopover';
 import { DocumentTabBar, DocumentTabStrip } from './DocumentTabBar';
 import { useDocumentReader, type DocumentReaderSource } from './useDocumentReader';
 import { themedDocumentSource, useDocumentTheme } from './documentTheme';
 import { useOutsideDismiss } from './useOutsideDismiss';
+import { UPDATED_ELSEWHERE } from './useCloudDocumentEdits';
+import type { DocumentEditorHandle } from './editor/DocumentEditor';
+
+// Tiptap loads with the first document, not with the app.
+const DocumentEditor = lazy(() => import('./editor/DocumentEditor'));
 
 export type DocumentReaderProps = DocumentReaderSource & {
   api?: DocumentShareApi;
@@ -37,16 +36,16 @@ export type DocumentReaderProps = DocumentReaderSource & {
   /** Opens the Share popover on mount (visual review page). */
   initialShareOpen?: boolean;
   className?: string;
+  /** Exposes the Tiptap editor (tests and the review page). */
+  onEditor?: (editor: Editor | null) => void;
 };
-
-const INLINE_FORMATS: InlineFormat[] = ['bold', 'italic', 'underline', 'strike', 'code', 'highlight'];
 
 function isLevelOneHeading(source: string, title: string) {
   const match = /^ {0,3}#(?!#)\s+(.+?)\s*#*\s*$/.exec(source);
   return Boolean(match && match[1].trim() === title.trim());
 }
 
-export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, initialShareOpen = false, className, ...source }: DocumentReaderProps) {
+export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, initialShareOpen = false, className, onEditor, ...source }: DocumentReaderProps) {
   const api = useMemo(() => apiOverride ?? documentShareApiForEnvironment(), [apiOverride]);
   const host = useDocumentReaderHost();
   const reader = useDocumentReader(source, api);
@@ -57,9 +56,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
   const sectionRef = useRef<HTMLElement>(null);
   const theme = useDocumentTheme(sectionRef);
   const headerRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const textSelection = useDocumentSelection(bodyRef, menuRef);
-  const { selection } = textSelection;
+  const [editorHandle, setEditorHandle] = useState<DocumentEditorHandle | null>(null);
   const closeShare = useCallback(() => setShareOpen(false), []);
   useOutsideDismiss(headerRef, shareOpen, closeShare);
 
@@ -80,16 +77,8 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
     ...(mode === 'public' ? [] : host.people.map((name) => ({ name, kind: 'person' as const }))),
   ], [agentName, askAgent, host.people, mode]);
 
-  const {
-    slot,
-    editorRef: blockEditorRef,
-    begin: beginBlockEdit,
-    end: endBlockEdit,
-    change: changeBlockText,
-    onKeyDown: onBlockEditorKeyDown,
-  } = useBlockEditing({ blocks: reader.blocks, writeBlocks: reader.writeBlocks, enabled: reader.canEdit });
-  // The level-1 heading that is the page title shows once, as the title, unless it is being edited.
-  const hideTitleBlock = editing.currentTab === 0 && Boolean(reader.blocks[0]) && isLevelOneHeading(reader.blocks[0]?.source ?? '', title) && slot?.index !== 0;
+  // The page title is the document's level-1 heading; the editor shows it, so the header shows only date and author.
+  const titleInDocument = editing.currentTab === 0 && Boolean(reader.editorBlocks[0]) && isLevelOneHeading(reader.editorBlocks[0]?.source ?? '', title);
 
   const blockShared = useMemo<DocumentBlockThreadProps>(() => ({
     agentName: askAgent ? agentName : null,
@@ -111,99 +100,6 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
     onPostComment: (blockId, body) => reader.postComment(blockId, body),
     onCancelComposer: () => setComposingBlock(null),
   }), [agentName, askAgent, mentionOptions, reader, viewerIsOwner]);
-
-  // The selected text inside its block's Markdown source; formatting needs both. In the editor the range is the source itself.
-  const inEditor = Boolean(selection?.sourceRange && slot);
-  const selectedBlock = selection && slot && inEditor
-    ? { id: selection.blockId, source: slot.text }
-    : selection ? reader.blocks.find((block) => block.id === selection.blockId) ?? null : null;
-  const selectedRange: SourceRange | null = selection?.sourceRange && inEditor
-    ? selection.sourceRange
-    : selection && selectedBlock ? locateSelection(selectedBlock.source, selection.text, selection.occurrence) : null;
-  const selectedBlockSaved = Boolean(selection && reader.blocks.some((block) => block.id === selection.blockId));
-  const canFormat = reader.canEdit && Boolean(selectedRange);
-  const active = {
-    formats: selectedBlock && selectedRange ? INLINE_FORMATS.filter((format) => isInlineFormatActive(selectedBlock.source, selectedRange, format)) : [],
-    list: selectedBlock ? isList(selectedBlock.source) : false,
-    link: Boolean(selectedBlock && selectedRange && linkAt(selectedBlock.source, selectedRange)),
-    style: selectedBlock ? blockStyleOf(selectedBlock.source) : 'text' as const,
-  };
-  const editSelection = (change: (source: string, range: SourceRange) => string) => {
-    if (!selection || !selectedBlock || !selectedRange) return;
-    const next = change(selectedBlock.source, selectedRange);
-    if (next === selectedBlock.source) return;
-    if (inEditor) {
-      // Keep the same text selected in the editor around its new markers.
-      const at = next.indexOf(selection.text, Math.max(0, selectedRange.start - 8));
-      changeBlockText(next, at >= 0 ? { start: at, end: at + selection.text.length } : null);
-      return;
-    }
-    textSelection.restoreAfterRender(selection);
-    reader.editBlock(selectedBlock.id, next);
-  };
-
-  /** A click that leaves a caret (no range) in an editable block opens it for typing at that spot. */
-  const onBodyClick = (event: MouseEvent<HTMLDivElement>) => {
-    const target = event.target as HTMLElement;
-    if (!reader.canEdit || target.closest('a, button, input, textarea, select, .app-document-thread, .app-document-reactions, .app-document-selection')) return;
-    const element = target.closest<HTMLElement>('[data-document-block]');
-    const index = element ? reader.blocks.findIndex((block) => block.id === element.dataset.documentBlock) : -1;
-    const caretSelection = element?.ownerDocument.defaultView?.getSelection();
-    if (!element || index < 0 || (caretSelection && !caretSelection.isCollapsed)) return;
-    const root = element.querySelector('.app-document-markdown');
-    let caret: number | null = null;
-    if (root && caretSelection?.anchorNode && root.contains(caretSelection.anchorNode)) {
-      const prefix = element.ownerDocument.createRange();
-      prefix.setStart(root, 0);
-      prefix.setEnd(caretSelection.anchorNode, caretSelection.anchorOffset);
-      caret = caretSourceOffset(reader.blocks[index].source, stripWhitespace(prefix.toString()).length);
-    }
-    beginBlockEdit(index, caret);
-  };
-
-  const blockView = (block: { id: string; source: string }, editor?: ReactNode) => (
-    <DocumentBlockView
-      // The block being edited keeps one key, so its editor survives emptying or splitting the block.
-      key={editor ? `${editing.currentTab}:editing` : `${editing.currentTab}:${block.id}`}
-      id={block.id}
-      source={block.source}
-      pills={editing.currentTab === 0 ? reactionPillsForBlock(reader.reactions, block.id) : []}
-      threads={editing.currentTab === 0 ? commentThreadsForBlock(reader.comments, block.id) : []}
-      composing={composingBlock === block.id}
-      shared={blockShared}
-      editor={editor}
-    />
-  );
-  const editorView = slot ? (
-    <textarea
-      ref={blockEditorRef}
-      data-document-editor="true"
-      data-block-style={blockStyleOf(slot.text)}
-      className="app-document-editor"
-      aria-label="Edit block"
-      rows={1}
-      spellCheck
-      value={slot.text}
-      onChange={(event) => changeBlockText(event.target.value)}
-      onKeyDown={onBlockEditorKeyDown}
-      onSelect={textSelection.update}
-      onBlur={(event) => {
-        if (menuRef.current && event.relatedTarget instanceof Node && menuRef.current.contains(event.relatedTarget)) return;
-        endBlockEdit();
-        void reader.flushEdits();
-      }}
-    />
-  ) : null;
-  const renderedBlocks: ReactNode[] = [];
-  reader.blocks.forEach((block, index) => {
-    if (slot && index === slot.index) {
-      renderedBlocks.push(slot.span > 0 ? blockView(block, editorView) : blockView({ id: `new-${index}`, source: '' }, editorView));
-    }
-    if (slot && index >= slot.index && index < slot.index + slot.span) return;
-    if (index === 0 && hideTitleBlock) return;
-    renderedBlocks.push(blockView(block));
-  });
-  if (slot && slot.index >= reader.blocks.length) renderedBlocks.push(blockView({ id: `new-${slot.index}`, source: '' }, editorView));
 
   const sendInKordi = reader.attachmentId && host.sendAttachment
     ? () => {
@@ -245,7 +141,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
           fileName={fileName}
           badge={badge}
           shareOpen={shareOpen}
-          onToggleShare={reader.canShare ? () => { textSelection.clear(); setShareOpen((open) => !open); } : undefined}
+          onToggleShare={reader.canShare ? () => setShareOpen((open) => !open) : undefined}
           onOpenSession={memberSessionId && onOpenSession ? () => onOpenSession(memberSessionId) : undefined}
           sharePopover={(
             <DocumentSharePopover
@@ -269,9 +165,9 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
       <DocumentTabBar
         editing={editing}
         canInsert={reader.canEdit}
-        onInsert={(tool, url) => reader.insertBlock(textSelection.currentBlockId ?? selection?.blockId ?? null, documentInsertSnippet(tool, url))}
+        onInsert={(tool, url) => editorHandle?.insert(tool, url)}
       />
-      <div ref={bodyRef} className="app-document-body" onClick={onBodyClick}>
+      <div ref={bodyRef} className="app-document-body">
         {reader.loading && !document ? (
           <div className="app-document-empty"><LoaderCircle className="animate-spin" aria-hidden="true" />Loading</div>
         ) : reader.error && !document ? (
@@ -283,7 +179,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
             <DocumentTabStrip editing={editing} />
             {editing.currentTab === 0 ? (
               <DocumentTitleMeta
-                title={title}
+                title={titleInDocument ? null : title}
                 dateLabel={formatDocumentDate(document?.createdAt) ?? dateLabel ?? null}
                 author={author}
                 canMessageAuthor={Boolean(author?.accountId && author.accountId !== host.viewer?.accountId && host.canMessageAccount?.(author.accountId))}
@@ -291,7 +187,36 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
               />
             ) : null}
             {htmlFrame ? <div className="app-document-block is-frame" data-document-block="b0">{htmlFrame}</div> : null}
-            {htmlFrame ? null : renderedBlocks}
+            {htmlFrame ? null : (
+              <Suspense fallback={<div className="app-document-empty"><LoaderCircle className="animate-spin" aria-hidden="true" />Loading</div>}>
+                <DocumentEditor
+                  key={`${editing.currentTab}:${reader.attachmentId ?? source.path ?? ''}`}
+                  blocks={reader.editorBlocks}
+                  revisionKey={reader.editorRevision}
+                  editable={reader.canEdit}
+                  canComment={reader.canComment && editing.currentTab === 0}
+                  canReact={reader.canReact && editing.currentTab === 0}
+                  reactions={editing.currentTab === 0 ? reader.reactions : []}
+                  comments={editing.currentTab === 0 ? reader.comments : []}
+                  composingBlock={composingBlock}
+                  renderAnnotations={(blockId) => (
+                    <DocumentBlockAnnotations
+                      id={blockId}
+                      pills={reactionPillsForBlock(reader.reactions, blockId)}
+                      threads={commentThreadsForBlock(reader.comments, blockId)}
+                      composing={composingBlock === blockId}
+                      shared={blockShared}
+                    />
+                  )}
+                  onChange={reader.onEditorChange}
+                  onComment={(blockId) => setComposingBlock(blockId)}
+                  onReact={(blockId, reaction) => { void reader.toggleReaction(blockId, reaction); }}
+                  onUpdatedElsewhere={() => reader.showSaveNotice(UPDATED_ELSEWHERE)}
+                  onReady={setEditorHandle}
+                  onEditor={onEditor}
+                />
+              </Suspense>
+            )}
             {htmlFrame && editing.currentTab === 0 ? (
               <DocumentBlockView
                 id="b0"
@@ -302,7 +227,6 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
                 shared={blockShared}
               />
             ) : null}
-            {editing.currentTab !== 0 && reader.blocks.length === 0 ? <div className="app-document-empty">Empty tab</div> : null}
             {editing.currentTab === 0 && (agentName || document?.sessionTitle) ? (
               <div className="app-document-foot">
                 {agentName ? <span>From <b>{agentName}</b></span> : null}
@@ -311,23 +235,6 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
             ) : null}
           </article>
         )}
-        {selection && textSelection.position ? (
-          <DocumentSelectionMenu
-            menuRef={menuRef}
-            position={textSelection.position}
-            canComment={reader.canComment && editing.currentTab === 0 && selectedBlockSaved}
-            canReact={reader.canReact && editing.currentTab === 0 && selectedBlockSaved}
-            canFormat={canFormat}
-            writeDisabledTitle={mode === 'local' ? 'Upload to Kordi first' : 'Comments are off'}
-            active={active}
-            onComment={() => { setComposingBlock(selection.blockId); textSelection.clear(); }}
-            onReact={(reaction) => { void reader.toggleReaction(selection.blockId, reaction); textSelection.clear(); }}
-            onFormat={(format) => editSelection((text, range) => toggleInlineFormat(text, range, format))}
-            onList={() => editSelection((text) => toggleList(text))}
-            onBlockStyle={(style) => editSelection((text) => setBlockStyle(text, style))}
-            onLink={(url) => editSelection((text, range) => toggleLink(text, range, url))}
-          />
-        ) : null}
       </div>
       {reader.actionError && !shareOpen ? <div className="app-document-error" role="alert">{reader.actionError}</div> : null}
       {reader.saveNotice ? (

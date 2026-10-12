@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { documentReaderKey, type DocumentShareApi, type DocumentWriteTarget } from './documentShareApi';
-import { splitMarkdownBlocks } from './documentBlocks';
 import { useDocumentReaderHost } from './documentReaderHost';
 import {
   documentContentType,
@@ -11,7 +10,8 @@ import {
   upsertComment,
 } from './documentReaderModel';
 import type { DocumentComment, DocumentReaction, DocumentResponse, DocumentShare } from './documentShareTypes';
-import { insertSourceBlock, replaceSourceBlock, useDocumentEditing } from './useDocumentEditing';
+import { useDocumentEditing } from './useDocumentEditing';
+import { blocksFromSource, type SourceBlock } from './documentBlockSource';
 import { useCloudDocumentEdits } from './useCloudDocumentEdits';
 
 /** local: a file on this Mac with no cloud copy; uploaded: a cloud attachment; public: opened from a share link. */
@@ -138,8 +138,6 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
   const rawPending = Boolean(rawKey) && !rawResult;
   const editing = useDocumentEditing(mode === 'local' ? localSource ?? '' : '');
 
-  const serverBlocks = useMemo(() => (document?.blocks ?? []).map((block) => ({ id: block.id, source: block.source })), [document]);
-  const tabBlocks = useMemo(() => splitMarkdownBlocks(editing.currentSource).map(({ id, source: text }) => ({ id, source: text })), [editing.currentSource]);
   const replaceDocument = useCallback((next: DocumentResponse) => setLoaded(loadedFrom(requestKey, next)), [requestKey]);
   const canEditCloud = mode === 'uploaded' && format === 'markdown' && Boolean(document?.viewerCan.edit);
   const replaceAnnotations = useCallback((nextReactions: DocumentReaction[], nextComments: DocumentComment[]) => {
@@ -152,15 +150,24 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
     if (path && canonicalId && mode === 'uploaded' && localSource !== null) rememberUploadedDocument(path, canonicalId);
   }, [canonicalId, localSource, mode, path]);
   const onCloudTab = editing.currentTab === 0 && mode !== 'local';
-  const blocks = onCloudTab ? (canEditCloud ? cloud.blocks : serverBlocks) : tabBlocks;
   const canEdit = format === 'markdown' && (!onCloudTab || canEditCloud);
 
-  /** Changes the Markdown on screen: the cloud draft, the local draft, or a scratch tab. */
-  const updateSource = onCloudTab ? cloud.updateSource : editing.updateCurrentSource;
-  const editBlock = useCallback((blockId: string, next: string) => updateSource((current) => replaceSourceBlock(current, blockId, next)), [updateSource]);
-  const insertBlock = useCallback((afterBlockId: string | null, snippet: string) => updateSource((current) => insertSourceBlock(current, afterBlockId, snippet)), [updateSource]);
-  /** Replaces the whole list of block sources (typing edits); empty blocks drop out. */
-  const writeBlocks = useCallback((sources: string[]) => updateSource(() => sources.filter((text) => text.trim()).join('\n\n')), [updateSource]);
+  // What the editor loads: the server's blocks, the Mac-hosted file, or a scratch tab. The editor reads them
+  // on mount and when the revision key changes; a scratch tab's own edits keep its key, so they never reload it.
+  const tabSource = editing.currentTab === 0 ? localSource ?? '' : editing.currentSource;
+  const editorBlocks = useMemo<SourceBlock[]>(
+    () => (onCloudTab ? (document?.blocks ?? []).map((block) => ({ id: block.id, source: block.source })) : blocksFromSource(tabSource)),
+    [document, onCloudTab, tabSource],
+  );
+  const editorRevision = onCloudTab
+    ? `${document?.attachmentId ?? ''}:${document?.revision ?? 0}:${document?.updatedAt ?? ''}`
+    : `${editing.currentTab}:${editing.currentTab === 0 ? tabSource.length : 0}:${editing.currentTab === 0 ? tabSource.slice(0, 64) : ''}`;
+
+  /** The editor's Markdown, into the cloud draft (saved) or the local draft (uploaded) or a scratch tab. */
+  const onEditorChange = useCallback((markdown: string, blockIds: Record<string, string> | null) => {
+    if (onCloudTab) cloud.updateSource(markdown, blockIds);
+    else editing.updateCurrentSource(() => markdown);
+  }, [cloud, editing, onCloudTab]);
 
   const viewerName = host.viewer?.displayName?.trim() || null;
   const loadedAttachmentId = document?.attachmentId ?? null;
@@ -266,7 +273,6 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
     mode,
     format,
     document,
-    blocks,
     reactions,
     comments,
     share,
@@ -284,10 +290,11 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
     canShare: mode === 'local' || Boolean(document?.viewerCan.share),
     editing,
     canEdit,
-    editBlock,
-    insertBlock,
-    writeBlocks,
+    editorBlocks,
+    editorRevision,
+    onEditorChange,
     saveNotice: cloud.notice,
+    showSaveNotice: cloud.showNotice,
     clearSaveNotice: cloud.clearNotice,
     flushEdits: cloud.flush,
     toggleReaction,

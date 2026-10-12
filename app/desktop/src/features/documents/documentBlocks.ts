@@ -45,7 +45,8 @@ function fenceEnd(lines: string[], start: number) {
   const opening = FENCE.exec(lines[start])?.[1] ?? '```';
   const marker = opening[0];
   for (let index = start + 1; index < lines.length; index += 1) {
-    const closing = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(lines[index])?.[1];
+    // A closing fence may carry the block's id comment (`<!-- k:… -->`).
+    const closing = /^ {0,3}(`{3,}|~{3,})[ \t]*(?:<!--\s*k:[A-Za-z0-9_-]{4,32}\s*-->[ \t]*)?$/.exec(lines[index])?.[1];
     if (closing && closing[0] === marker && closing.length >= opening.length) return index + 1;
   }
   return lines.length;
@@ -62,9 +63,10 @@ function listEnd(lines: string[], start: number) {
   while (index < lines.length) {
     const line = lines[index];
     if (isBlank(line)) {
+      // A blank line ends the list unless an indented continuation line follows.
       let next = index + 1;
       while (next < lines.length && isBlank(lines[next])) next += 1;
-      if (next < lines.length && (INDENTED.test(lines[next]) || LIST_ITEM.test(lines[next]))) {
+      if (next < lines.length && INDENTED.test(lines[next])) {
         index = next;
         continue;
       }

@@ -11,6 +11,7 @@ import { DocumentReader } from '../src/features/documents/DocumentReader';
 import { notifyDocumentSyncEvents } from '../src/features/documents/documentSyncEvents';
 import { createMemoryDocumentApi, sampleDocument } from './helpers/documentReaderFixtures';
 import { withJsdomRoot } from './helpers/mountWithJsdom';
+import { waitForReactCondition } from './helpers/waitForReactCondition';
 
 const forwardedDocument: AttachmentItem = {
   id: 'att_original',
@@ -92,7 +93,8 @@ test('the reader keys reactions and live updates by the canonical attachment, no
     const canonical = { ...sampleDocument('member'), requestedAttachmentId: 'att_copy' };
     const { api, calls } = createMemoryDocumentApi(canonical);
     const root = await mount(createElement(DocumentReader, { attachmentId: 'att_copy', api }));
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+    // The editor loads lazily; its reaction pills render once it has.
+    await waitForReactCondition(() => Boolean(root.querySelector('.app-document-annotations .app-document-reaction')), 'reaction pills render');
     assert.deepEqual(calls.find((call) => call.method === 'getDocument')?.args, ['att_copy']);
 
     const thumbs = Array.from(root.querySelectorAll('button')).find((entry) => entry.getAttribute('aria-label')?.startsWith('👍'));

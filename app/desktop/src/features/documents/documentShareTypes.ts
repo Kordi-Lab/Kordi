@@ -128,6 +128,8 @@ export type UpdateDocumentCommentInput = {
 export type SaveDocumentContentInput = {
   baseRevision: number;
   source: string;
+  /** On a document's first save with stamped ids: index ids (`b3`) to the `k:` ids that replace them. */
+  blockIds?: Record<string, string>;
 };
 
 /** A save either lands, or the server answers 409 with the current document to rebase onto. */

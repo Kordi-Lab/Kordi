@@ -5,8 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { notifyDocumentSyncEvents } from '../src/features/documents/documentSyncEvents';
 import type { DocumentResponse } from '../src/features/documents/documentShareTypes';
-import { documentSourceOf, rebaseDraft, UPDATED_ELSEWHERE, useCloudDocumentEdits } from '../src/features/documents/useCloudDocumentEdits';
-import { replaceSourceBlock } from '../src/features/documents/useDocumentEditing';
+import { useCloudDocumentEdits } from '../src/features/documents/useCloudDocumentEdits';
 import { MarkdownContent } from '../src/kordi-app/components';
 import { createMemoryDocumentApi, sampleDocument } from './helpers/documentReaderFixtures';
 import { withJsdomRoot } from './helpers/mountWithJsdom';
@@ -40,46 +39,42 @@ async function mountEdits(api: ReturnType<typeof createMemoryDocumentApi>['api']
   };
 }
 
-test('a save sends the whole source with the revision it was based on', async () => {
+const EDITED = '# Kordi related work <!-- k:aaaaaaaa -->\n\nAn edited paragraph. <!-- k:bbbbbbbb -->';
+
+test('a save sends the editor Markdown with the revision it was based on and the first stamped ids', async () => {
   await withJsdomRoot(async (mount) => {
     const document = sampleDocument('owner');
     const { api, calls } = createMemoryDocumentApi(document);
     const harness = await mountEdits(api, document);
     await harness.start(mount);
-    await act(async () => { harness.view.edits!.updateSource((source) => replaceSourceBlock(source, 'b2', 'An edited paragraph.')); });
+    await act(async () => { harness.view.edits!.updateSource(EDITED, { b0: 'k:aaaaaaaa', b2: 'k:bbbbbbbb' }); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 900)); });
     const save = calls.find((call) => call.method === 'saveDocumentContent');
     assert.ok(save, 'the edit is saved after the debounce');
-    const [attachmentId, input] = save.args as [string, { baseRevision: number; source: string }];
+    const [attachmentId, input] = save.args as [string, { baseRevision: number; source: string; blockIds?: Record<string, string> }];
     assert.equal(attachmentId, 'att_example_doc');
-    assert.equal(input.baseRevision, 3);
-    assert.equal(input.source, document.blocks.map((block) => (block.id === 'b2' ? 'An edited paragraph.' : block.source)).join('\n\n'));
+    assert.deepEqual(input, { baseRevision: 3, source: EDITED, blockIds: { b0: 'k:aaaaaaaa', b2: 'k:bbbbbbbb' } });
     assert.equal(harness.view.document.revision, 4);
+    assert.deepEqual(harness.view.document.blocks.map((block) => block.id), ['k:aaaaaaaa', 'k:bbbbbbbb'], 'the server reads ids from the comments');
     assert.equal(harness.view.edits!.draft, null);
   });
 });
 
-test('a 409 rebases block edits onto the server document and retries once', async () => {
+test('a 409 hands the newer document over and saves again on its revision', async () => {
   await withJsdomRoot(async (mount) => {
     const document = sampleDocument('owner');
-    const remote = withBlock(document, 'b4', '## Coordination theory, revised', 5);
+    const remote = { ...document, revision: 5 };
     const { api, calls } = createMemoryDocumentApi(document, 0, { conflictWith: remote });
     const harness = await mountEdits(api, document);
     await harness.start(mount);
-    await act(async () => {
-      harness.view.edits!.updateSource((source) => replaceSourceBlock(source, 'b2', 'Mine, untouched remotely.'));
-      harness.view.edits!.updateSource((source) => replaceSourceBlock(source, 'b4', '## Also changed here'));
-    });
+    await act(async () => { harness.view.edits!.updateSource(EDITED); });
     await act(async () => { await harness.view.edits!.flush(); });
-    const saves = calls.filter((call) => call.method === 'saveDocumentContent');
-    assert.equal(saves.length, 2, 'one retry after the conflict');
-    const retry = saves[1].args[1] as { baseRevision: number; source: string };
-    assert.equal(retry.baseRevision, 5);
-    assert.match(retry.source, /Mine, untouched remotely\./);
-    assert.match(retry.source, /## Coordination theory, revised/, 'a block changed on both sides keeps the remote text');
-    assert.doesNotMatch(retry.source, /Also changed here/);
+    assert.equal(harness.view.document.revision, 5, 'the editor gets the newer document to merge');
+    assert.equal(harness.view.edits!.draft, EDITED, 'the draft waits for the merge');
     await harness.rerender();
-    assert.equal(harness.view.edits!.notice, UPDATED_ELSEWHERE);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 900)); });
+    const saves = calls.filter((call) => call.method === 'saveDocumentContent').map((call) => call.args[1] as { baseRevision: number });
+    assert.deepEqual(saves.map((save) => save.baseRevision), [3, 5]);
   });
 });
 
@@ -114,7 +109,7 @@ test('annotation events refresh reactions and comments without touching a pendin
     api.setStored({ ...document, comments: [...document.comments, remoteComment], reactions: [] });
     const harness = await mountEdits(api, document);
     await harness.start(mount);
-    await act(async () => { harness.view.edits!.updateSource((source) => replaceSourceBlock(source, 'b2', 'My unsaved paragraph.')); });
+    await act(async () => { harness.view.edits!.updateSource(EDITED); });
     await act(async () => {
       notifyDocumentSyncEvents([{ eventType: 'document.updated', payload: { attachmentId: 'att_example_doc', revision: 3, change: 'annotations' } }]);
     });
@@ -123,25 +118,10 @@ test('annotation events refresh reactions and comments without touching a pendin
     assert.equal(harness.view.annotations, 1);
     assert.ok(harness.view.document.comments.some((comment) => comment.body === 'Added on the iPhone'));
     await harness.rerender();
-    assert.match(harness.view.edits!.draft ?? '', /My unsaved paragraph\./, 'the pending edit stays');
-    assert.equal(harness.view.edits!.blocks.find((block) => block.id === 'b2')?.source, 'My unsaved paragraph.');
+    assert.equal(harness.view.edits!.draft, EDITED, 'the pending edit stays');
     // Settle the pending save before the window goes away.
     await act(async () => { await harness.view.edits!.flush(); });
   });
-});
-
-test('rebasing keeps edits on blocks the remote left alone', () => {
-  const base = sampleDocument('owner');
-  const remote = withBlock(base, 'b4', 'remote', 4);
-  const draftOf = (changes: Record<string, string>) => documentSourceOf(base.blocks.map((block) => ({ source: changes[block.id] ?? block.source })));
-  const merged = rebaseDraft(base.blocks, remote.blocks, draftOf({ b2: 'mine', b4: 'mine too' }));
-  assert.equal(merged.conflict, true);
-  assert.equal(merged.draft, documentSourceOf(remote.blocks.map((block) => ({ source: block.id === 'b2' ? 'mine' : block.source }))));
-  assert.deepEqual(rebaseDraft(base.blocks, base.blocks, draftOf({ b2: 'mine' })), { draft: draftOf({ b2: 'mine' }), conflict: false });
-  // A draft that added a block survives only an unchanged remote.
-  const withNewBlock = `${draftOf({})}\n\nA new paragraph.`;
-  assert.deepEqual(rebaseDraft(base.blocks, base.blocks, withNewBlock), { draft: withNewBlock, conflict: false });
-  assert.deepEqual(rebaseDraft(base.blocks, remote.blocks, withNewBlock), { draft: null, conflict: true });
 });
 
 test('Markdown renders <u>, ~~, ==, and <mark> and no other inline HTML', () => {

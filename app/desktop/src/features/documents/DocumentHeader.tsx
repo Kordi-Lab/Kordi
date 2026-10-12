@@ -66,7 +66,8 @@ export function DocumentTitleMeta({
   canMessageAuthor,
   onMessageAuthor,
 }: {
-  title: string;
+  /** Null when the document's own first heading is the title. */
+  title: string | null;
   dateLabel: string | null;
   author: DocumentReaderPerson | null;
   canMessageAuthor: boolean;
@@ -78,7 +79,7 @@ export function DocumentTitleMeta({
   useOutsideDismiss(metaRef, peopleOpen, close);
   return (
     <>
-      <h1 className="app-document-title">{title}</h1>
+      {title ? <h1 className="app-document-title">{title}</h1> : null}
       <div className="app-document-meta" ref={metaRef}>
         {dateLabel ? (
           <span className="app-document-pill">

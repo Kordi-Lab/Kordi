@@ -2,8 +2,6 @@ import type { DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types'
 
 import type { DocumentComment, DocumentFormat, DocumentReaction } from './documentShareTypes';
 
-export const DOCUMENT_REACTIONS = ['❤️', '👍', '🔥', '👀', '🤔', '🎉'] as const;
-
 const DOCUMENT_EXTENSIONS: Record<string, DocumentFormat> = {
   md: 'markdown',
   markdown: 'markdown',
@@ -140,11 +138,3 @@ export function appendMention(draft: string, name: string) {
 }
 
 export type DocumentInsertTool = 'code' | 'table' | 'image' | 'checklist';
-
-/** Markdown each insert tool adds as a new block after the current one. The image tool asks for a URL first. */
-export function documentInsertSnippet(tool: DocumentInsertTool, url = '') {
-  if (tool === 'code') return '```\ncode\n```';
-  if (tool === 'table') return '| Column | Column |\n| --- | --- |\n| Cell | Cell |';
-  if (tool === 'image') return `![](${url.trim()})`;
-  return '- [ ] Task';
-}

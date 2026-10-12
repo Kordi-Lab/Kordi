@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from 'react';
+import { memo } from 'react';
 
 import { MarkdownContent } from '@/kordi-app/components';
 
@@ -18,32 +18,19 @@ export type DocumentBlockThreadProps = {
   onCancelComposer: () => void;
 };
 
-export const DocumentBlockView = memo(function DocumentBlockView({
-  id,
-  source,
-  pills,
-  threads,
-  composing,
-  shared,
-  editor,
-}: {
+type AnnotationProps = {
+  /** Block id the server knows (index `b3` or stamped `k:…`); reactions and comments post to it. */
   id: string;
-  source: string;
   pills: ReactionPill[];
   threads: CommentThread[];
   composing: boolean;
   shared: DocumentBlockThreadProps;
-  /** The Markdown editor shown instead of the rendered block while it is being typed into. */
-  editor?: ReactNode;
-}) {
+};
+
+/** Reaction pills, comment threads, and the new-comment field under one block. */
+export const DocumentBlockAnnotations = memo(function DocumentBlockAnnotations({ id, pills, threads, composing, shared }: AnnotationProps) {
   return (
     <>
-      <div
-        className={editor ? 'app-document-block is-editing' : 'app-document-block'}
-        data-document-block={id}
-      >
-        {editor ?? <MarkdownContent text={source} tone="inherit" copySurface="document" className="app-document-markdown" />}
-      </div>
       {pills.length > 0 ? (
         <div className="app-document-reactions">
           {pills.map((pill) => (
@@ -92,3 +79,15 @@ export const DocumentBlockView = memo(function DocumentBlockView({
     </>
   );
 });
+
+/** A block rendered from Markdown with its annotations (HTML documents keep their reactions on `b0`). */
+export function DocumentBlockView({ source, ...annotations }: AnnotationProps & { source: string }) {
+  return (
+    <>
+      <div className="app-document-block" data-document-block={annotations.id}>
+        {source ? <MarkdownContent text={source} tone="inherit" copySurface="document" className="app-document-markdown" /> : null}
+      </div>
+      <DocumentBlockAnnotations {...annotations} />
+    </>
+  );
+}

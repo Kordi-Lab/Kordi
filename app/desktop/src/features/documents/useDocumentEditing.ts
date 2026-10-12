@@ -1,21 +1,6 @@
 import { useCallback, useState } from 'react';
 
-import { splitMarkdownBlocks } from './documentBlocks';
-
 type DocumentTab = { name: string; source: string };
-
-/** Replaces one block of a Markdown source by id; blocks keep their order and blank-line separation. */
-export function replaceSourceBlock(source: string, blockId: string, next: string) {
-  return splitMarkdownBlocks(source).map((block) => (block.id === blockId ? next : block.source)).join('\n\n');
-}
-
-/** Inserts a Markdown block after `afterBlockId`, or at the end. */
-export function insertSourceBlock(source: string, afterBlockId: string | null, snippet: string) {
-  const blocks = splitMarkdownBlocks(source).map((block) => ({ id: block.id, source: block.source }));
-  const index = afterBlockId ? blocks.findIndex((block) => block.id === afterBlockId) : -1;
-  const at = index >= 0 ? index + 1 : blocks.length;
-  return [...blocks.slice(0, at).map((block) => block.source), snippet, ...blocks.slice(at).map((block) => block.source)].join('\n\n');
-}
 
 /**
  * Tabs and the local draft of a Mac-hosted file (tab 1), plus scratch tabs.
@@ -51,8 +36,6 @@ export function useDocumentEditing(initialSource: string) {
     selectTab: setCurrentTab,
     newTab,
     updateCurrentSource: updateCurrent,
-    replaceBlock: useCallback((blockId: string, next: string) => updateCurrent((source) => replaceSourceBlock(source, blockId, next)), [updateCurrent]),
-    insertBlock: useCallback((afterBlockId: string | null, snippet: string) => updateCurrent((source) => insertSourceBlock(source, afterBlockId, snippet)), [updateCurrent]),
   };
 }
 
