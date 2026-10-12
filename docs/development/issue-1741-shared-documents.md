@@ -156,3 +156,13 @@ Forwarding a message re-uploads its attachments under the sender's account (the 
 - The audience of `document.updated` is the owner plus the active members of every conversation carrying the canonical attachment or any copy that points at it.
 - Reactions and comments publish `document.updated` too, with `"change": "annotations"` and the current `revision`; saves publish `"change": "content"`. Clients that show the document refetch on both; a client with unsaved edits merges as before.
 - Clients: the Mac and iPhone forward flows call the source route for Markdown and HTML attachments after the upload. Readers key their state by the canonical `attachmentId` from the response.
+
+## Stable block ids (added 2026-10-12, editor proposal phase 1)
+
+The Mac editor stamps every top-level block with an id and serializes it as a trailing HTML comment on the block's last line: `<!-- k:7f3a9c2d -->` (`k:` plus 4 to 32 characters of `[A-Za-z0-9_-]`). Rules:
+
+- `DocumentBlock.id` is the comment's value when the block carries one (`k:7f3a9c2d`), else `b{index}` as before. `DocumentBlock.source` never contains the comment; the server strips it before rendering and before returning the source, and re-attaches nothing. The stored document source keeps the comments.
+- Migration `0125_cloud_document_block_ids.sql` relaxes the `block_id` checks on `cloud_document_reactions` and `cloud_document_comments` to `^(b[0-9]{1,5}|k:[A-Za-z0-9_-]{4,32})$`.
+- On save, the index remap runs only for annotations whose block id is index-based; ids with the `k:` prefix follow their block wherever it moves, and annotations whose `k:` block no longer exists move to the nearest preceding surviving block by document order (or `b0` / the first block).
+- When a document without ids is first saved by an editor that stamps ids, the save carries the mapping `{ "blockIds": { "b3": "k:…" } }` next to `source`, and the server rewrites the annotations' block ids in the same transaction.
+- The public page and the JSON routes expose the resolved ids; clients never see the comments.
