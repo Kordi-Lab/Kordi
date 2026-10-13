@@ -43,6 +43,12 @@
 .app-document-comment-menu hr { margin: 3px 6px; }
 
 .app-document-agent-working { display: flex; align-items: center; gap: 8px; margin: 8px 0 0 30px; color: var(--app-document-muted); font-size: 12px; line-height: 16px; }
+.app-document-comment-name .app-document-agent-tag { padding: 1px 6px; border-radius: 999px; background: var(--app-document-chip-bg); font-weight: 500; }
+.app-document-comment-system,
+.app-document-agent-edited { margin: 10px 0 0 30px; color: var(--app-document-muted); font-size: 12px; line-height: 16px; }
+.app-document-agent-failed { display: flex; align-items: center; gap: 8px; margin: 8px 0 0 30px; color: var(--app-document-muted); font-size: 12px; line-height: 16px; }
+.app-document-agent-failed button { color: var(--app-chat-accent); font-weight: 600; }
+.app-document-agent-failed button:disabled { opacity: 0.4; }
 .app-document-working-dots { display: inline-flex; gap: 3px; }
 .app-document-working-dots i { width: 4px; height: 4px; border-radius: 999px; background: currentColor; animation: app-document-dot 1.2s infinite ease-in-out; }
 .app-document-working-dots i:nth-child(2) { animation-delay: 0.15s; }
@@ -55,6 +61,10 @@
 
 .app-document-composer { position: relative; display: flex; align-items: center; gap: 6px; margin-top: 12px; }
 .app-document-thread.is-new .app-document-composer { margin-top: 0; }
+.app-document-composer.has-offer { flex-wrap: wrap; }
+.app-document-composer-offer { flex: 0 0 100%; }
+.app-document-composer-offer button { color: var(--app-document-muted); font-size: 12px; line-height: 16px; }
+.app-document-composer-offer button:hover { color: var(--utility-foreground); }
 
 .app-document-composer input {
   min-width: 0;

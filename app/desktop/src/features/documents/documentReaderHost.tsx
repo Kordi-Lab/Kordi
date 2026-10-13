@@ -20,6 +20,8 @@ export type DocumentReaderHost = {
   agentName: string | null;
   /** Other people in the session, offered in the comment `@` picker. */
   people: string[];
+  /** Agents in the session for the `@` picker; `mine` are the viewer's own and come first. */
+  agents?: { name: string; mine: boolean }[];
   canMessageAccount?: (accountId: string) => boolean;
   messageAccount?: (accountId: string) => void;
   sendAttachment?: (attachment: MessageAttachment) => void;
@@ -60,6 +62,16 @@ export function documentReaderHostForConversation({
 }): DocumentReaderHost {
   const participants = conversation.canonicalParticipants ?? [];
   const agentName = participants.find((participant) => participant.kind === 'agent')?.name?.trim() || null;
+  const accountId = account?.accountId ?? null;
+  const selfIds = new Set(participants.filter((participant) => participant.role === 'self').map((participant) => participant.id));
+  const agents = new Map<string, boolean>();
+  for (const participant of participants) {
+    const name = participant.kind === 'agent' ? participant.name.trim() : '';
+    if (!name) continue;
+    const ownerId = participant.ownerIdentityId?.trim() || null;
+    const mine = participant.role === 'owned-agent' || Boolean(ownerId && (ownerId === accountId || selfIds.has(ownerId)));
+    agents.set(name, agents.get(name) || mine);
+  }
   const people = participants
     .filter((participant) => participant.kind !== 'agent' && participant.role !== 'self')
     .map((participant) => participant.name.trim())
@@ -72,6 +84,7 @@ export function documentReaderHostForConversation({
     sessionId,
     agentName,
     people: [...new Set(people)],
+    agents: [...agents].map(([name, mine]) => ({ name, mine })),
     canMessageAccount: startChatWithPerson ? (accountId) => Boolean(cloudContactForAccount(contacts, accountId)) : undefined,
     messageAccount: startChatWithPerson
       ? (accountId) => {

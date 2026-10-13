@@ -33,7 +33,7 @@ export function useCloudDocumentEdits({
   collaborating?: boolean;
   onDocument: (next: DocumentResponse) => void;
   /** Replaces reactions and comments only, leaving the blocks being edited alone. */
-  onAnnotations: (reactions: DocumentReaction[], comments: DocumentComment[]) => void;
+  onAnnotations: (reactions: DocumentReaction[], comments: DocumentComment[], remote?: DocumentResponse) => void;
 }) {
   const [draft, setDraftState] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -113,7 +113,7 @@ export function useCloudDocumentEdits({
             latest.current = { ...latest.current, document: remote };
             latest.current.onDocument(remote);
           } else {
-            latest.current.onAnnotations(remote.reactions, remote.comments);
+            latest.current.onAnnotations(remote.reactions, remote.comments, remote);
           }
         })
         .catch(() => undefined);

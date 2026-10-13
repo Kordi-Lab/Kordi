@@ -5,11 +5,11 @@ import type { Editor } from '@tiptap/core';
 import { cn } from '@/lib/utils';
 
 import { DocumentBlockAnnotations, type DocumentBlockThreadProps } from './DocumentBlock';
-import type { DocumentMentionOption } from './DocumentComments';
 import { DocumentHeader, type DocumentBadge } from './DocumentHeader';
 import { DocumentAnnotationBar, DocumentBrowserLead, DocumentHtmlFrame } from './DocumentHtmlView';
 import { DocumentInsertBar } from './DocumentInsertBar';
 import { markdownDocumentTitle } from './documentBlocks';
+import { documentMentionOptions } from './documentAgentThreads';
 import { useDocumentReaderHost } from './documentReaderHost';
 import {
   commentThreadsForBlock,
@@ -85,17 +85,20 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
   const badge: DocumentBadge = mode === 'local' ? 'local' : null;
   const askAgent = mode !== 'public' || Boolean(document?.viewerCan.askAgent);
 
-  const mentionOptions = useMemo<DocumentMentionOption[]>(() => [
-    ...(agentName && askAgent ? [{ name: agentName, kind: 'agent' as const }] : []),
-    ...(mode === 'public' ? [] : host.people.map((name) => ({ name, kind: 'person' as const }))),
-  ], [agentName, askAgent, host.people, mode]);
+  const mentionOptions = useMemo(
+    () => documentMentionOptions({ agentName: askAgent ? agentName : null, agents: host.agents, people: host.people, isPublic: mode === 'public' }),
+    [agentName, askAgent, host.agents, host.people, mode],
+  );
 
+  const canAskEdit = Boolean(document?.viewerCan.edit);
   const blockShared = useMemo<DocumentBlockThreadProps>(() => ({
     agentName: askAgent ? agentName : null,
     mentionOptions,
     viewerIsOwner,
     canComment: reader.canComment,
     canReact: reader.canReact,
+    canAskEdit,
+    agentEdits: reader.agentEdits,
     shareUrl: reader.share?.shareUrl ?? null,
     actions: {
       onReply: (rootId, body) => {
@@ -109,7 +112,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
     onToggleReaction: (blockId, reaction) => { void reader.toggleReaction(blockId, reaction); },
     onPostComment: (blockId, body) => reader.postComment(blockId, body),
     onCancelComposer: () => setComposingBlock(null),
-  }), [agentName, askAgent, mentionOptions, reader, viewerIsOwner]);
+  }), [agentName, askAgent, canAskEdit, mentionOptions, reader, viewerIsOwner]);
 
   const sendInKordi = reader.attachmentId && host.sendAttachment
     ? () => {
@@ -165,7 +168,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
             <DocumentSharePopover
               local={mode === 'local'}
               share={reader.share}
-              agentName={agentName}
+              agentName={document?.agent?.displayName?.trim() || null}
               title={title}
               uploading={reader.uploading}
               busy={reader.shareBusy}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { documentReaderKey, type DocumentShareApi, type DocumentWriteTarget } from './documentShareApi';
 import { useDocumentReaderHost } from './documentReaderHost';
+import { advanceAgentThreads, EMPTY_AGENT_THREADS, type AgentThreadState } from './documentAgentThreads';
 import {
   documentContentType,
   documentFormatForPath,
@@ -40,13 +41,20 @@ type LoadedDocument = {
   comments: DocumentComment[];
   share: DocumentShare | null;
   error: string | null;
+  /** Agent runs followed while the document is open, for the "Edited by" line. */
+  agentThreads: AgentThreadState;
 };
 
-const EMPTY_LOADED: LoadedDocument = { key: null, document: null, reactions: [], comments: [], share: null, error: null };
+const EMPTY_LOADED: LoadedDocument = { key: null, document: null, reactions: [], comments: [], share: null, error: null, agentThreads: EMPTY_AGENT_THREADS };
+
+/** Run state for a document as it arrives: its revision is the baseline, so only later edits are announced. */
+function agentThreadsFrom(document: DocumentResponse, now: number) {
+  return advanceAgentThreads({ ...EMPTY_AGENT_THREADS, revision: document.revision ?? 0 }, { comments: document.comments }, now);
+}
 
 function loadedFrom(key: string | null, document: DocumentResponse | null): LoadedDocument {
   return document
-    ? { key, document, reactions: document.reactions, comments: document.comments, share: document.share, error: null }
+    ? { key, document, reactions: document.reactions, comments: document.comments, share: document.share, error: null, agentThreads: agentThreadsFrom(document, Date.now()) }
     : { ...EMPTY_LOADED, key: null };
 }
 
@@ -76,6 +84,7 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
   if (requestKey && requestKey === initialKey && loaded.key !== requestKey) setLoaded(loadedFrom(initialKey, initial));
   const current = loaded.key === requestKey ? loaded : EMPTY_LOADED;
   const { document, reactions, comments, share } = current;
+  const agentEdits = current.agentThreads.edits;
   const loading = Boolean(requestKey) && loaded.key !== requestKey;
   const error = current.error;
   const [actionError, setActionError] = useState<string | null>(null);
@@ -86,7 +95,13 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
     setLoaded((value) => ({ ...value, ...change(value) }));
   }, []);
   const setReactions = useCallback((next: (value: DocumentReaction[]) => DocumentReaction[]) => update((value) => ({ reactions: next(value.reactions) })), [update]);
-  const setComments = useCallback((next: (value: DocumentComment[]) => DocumentComment[]) => update((value) => ({ comments: next(value.comments) })), [update]);
+  const setComments = useCallback((next: (value: DocumentComment[]) => DocumentComment[]) => {
+    const now = Date.now();
+    update((value) => {
+      const comments = next(value.comments);
+      return { comments, agentThreads: advanceAgentThreads(value.agentThreads, { comments }, now) };
+    });
+  }, [update]);
   const setShare = useCallback((next: DocumentShare | null) => update(() => ({ share: next })), [update]);
 
   useEffect(() => {
@@ -141,10 +156,24 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
   const rawPending = Boolean(rawKey) && !rawResult;
   const editing = useDocumentEditing(mode === 'local' ? localSource ?? '' : '');
 
-  const replaceDocument = useCallback((next: DocumentResponse) => setLoaded(loadedFrom(requestKey, next)), [requestKey]);
+  const replaceDocument = useCallback((next: DocumentResponse) => {
+    const now = Date.now();
+    setLoaded((value) => ({
+      ...loadedFrom(requestKey, next),
+      agentThreads: value.key === requestKey
+        ? advanceAgentThreads(value.agentThreads, { comments: next.comments, revision: next.revision, updatedByAgentName: next.updatedByAgentName }, now)
+        : agentThreadsFrom(next, now),
+    }));
+  }, [requestKey]);
   const canEditCloud = mode === 'uploaded' && format === 'markdown' && Boolean(document?.viewerCan.edit);
-  const replaceAnnotations = useCallback((nextReactions: DocumentReaction[], nextComments: DocumentComment[]) => {
-    update(() => ({ reactions: nextReactions, comments: nextComments }));
+  // `remote` is the refetched document: its blocks stay out, its revision and editing agent are read.
+  const replaceAnnotations = useCallback((nextReactions: DocumentReaction[], nextComments: DocumentComment[], remote?: DocumentResponse) => {
+    const now = Date.now();
+    update((value) => ({
+      reactions: nextReactions,
+      comments: nextComments,
+      agentThreads: advanceAgentThreads(value.agentThreads, { comments: nextComments, revision: remote?.revision, updatedByAgentName: remote?.updatedByAgentName }, now),
+    }));
   }, [update]);
   const cloud = useCloudDocumentEdits({ api, document, enabled: canEditCloud, collaborating, onDocument: replaceDocument, onAnnotations: replaceAnnotations });
   // A forwarded copy opens its canonical document; remember that id for this file.
@@ -279,6 +308,7 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
     document,
     reactions,
     comments,
+    agentEdits,
     share,
     loading,
     error,

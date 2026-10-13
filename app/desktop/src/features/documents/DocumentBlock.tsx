@@ -9,6 +9,10 @@ export type DocumentBlockThreadProps = {
   viewerIsOwner: boolean;
   canComment: boolean;
   canReact: boolean;
+  /** The viewer may edit, so threads with an agent reply offer "Ask <Agent> to edit". */
+  canAskEdit?: boolean;
+  /** Thread root id to the agent whose edit arrived during that thread's run. */
+  agentEdits?: Record<string, string>;
   shareUrl: string | null;
   actions: DocumentThreadActions;
   onToggleReaction: (blockId: string, reaction: string) => void;
@@ -55,6 +59,8 @@ export const DocumentBlockAnnotations = memo(function DocumentBlockAnnotations({
           mentionOptions={shared.mentionOptions}
           viewerIsOwner={shared.viewerIsOwner}
           canReply={shared.canComment}
+          canAskEdit={shared.canAskEdit}
+          editedBy={shared.agentEdits?.[thread.root.commentId] ?? null}
           shareUrl={shared.shareUrl}
           actions={shared.actions}
         />

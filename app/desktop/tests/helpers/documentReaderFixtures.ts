@@ -51,6 +51,38 @@ export function comment(overrides: Partial<DocumentComment> & Pick<DocumentComme
   };
 }
 
+/** An agent's answer in a thread. */
+export function agentReply(overrides: Partial<DocumentComment> & Pick<DocumentComment, 'commentId' | 'blockId' | 'parentCommentId' | 'body'>): DocumentComment {
+  return comment({
+    kind: 'agent',
+    author: { accountId: null, displayName: 'Lab agent', kordiId: null, avatarUrl: null, agentId: 'agent_example_lab', ownerAccountId: ALEX.accountId },
+    createdAt: '2026-10-09T10:25:00Z',
+    ...overrides,
+  });
+}
+
+/** The one-line notice the server leaves when a run fails. */
+export function systemReply(overrides: Partial<DocumentComment> & Pick<DocumentComment, 'commentId' | 'blockId' | 'parentCommentId' | 'body'>): DocumentComment {
+  return comment({
+    kind: 'system',
+    author: { accountId: null, displayName: '', kordiId: null, avatarUrl: null },
+    createdAt: '2026-10-09T10:26:00Z',
+    ...overrides,
+  });
+}
+
+/** Three threads: a running mention, an answered one, and a failed one. */
+export function agentThreadComments(): DocumentComment[] {
+  const mine = { author: { accountId: ALEX.accountId, displayName: 'Alex Morgan', kordiId: '123456789', avatarUrl: null }, mine: true, mentionsAgent: true };
+  return [
+    comment({ commentId: 'doccmt_run', blockId: 'b2', body: '@Lab agent which studies cover several agents?', agentRun: { status: 'running' }, ...mine }),
+    comment({ commentId: 'doccmt_ask', blockId: 'b3', body: '@Lab agent what does "clearest niche" mean here?', agentRun: { status: 'completed' }, ...mine }),
+    agentReply({ commentId: 'doccmt_answer', blockId: 'b3', parentCommentId: 'doccmt_ask', body: 'No published study covers one agent per person in a shared conversation.' }),
+    comment({ commentId: 'doccmt_fail', blockId: 'b7', body: '@Lab agent shorten this sentence', agentRun: { status: 'failed' }, ...mine }),
+    systemReply({ commentId: 'doccmt_notice', blockId: 'b7', parentCommentId: 'doccmt_fail', body: 'Lab agent could not answer.' }),
+  ];
+}
+
 export function sampleShare(overrides: Partial<DocumentShare> = {}): DocumentShare {
   return {
     shareId: 'docshare_example',

@@ -55,6 +55,9 @@ export type DocumentComment = {
     displayName: string;
     kordiId: string | null;
     avatarUrl: string | null;
+    /** Set on agent replies. */
+    agentId?: string | null;
+    ownerAccountId?: string | null;
   };
   body: string;
   mentionsAgent: boolean;
@@ -62,7 +65,13 @@ export type DocumentComment = {
   createdAt: string;
   editedAt: string | null;
   resolvedAt: string | null;
+  /** `agent`: the answer of a mentioned agent; `system`: a one-line notice. Absent for people. */
+  kind?: 'agent' | 'system';
+  /** On the comment that mentions an agent. Absent on servers without document agent runs. */
+  agentRun?: DocumentAgentRun | null;
 };
+
+export type DocumentAgentRun = { status: 'queued' | 'running' | 'completed' | 'failed' };
 
 export type DocumentViewerCan = {
   share: boolean;
@@ -87,6 +96,8 @@ export type DocumentResponse = {
   updatedAt: string;
   /** Revision of the stored source; a save names the revision it was based on. */
   revision?: number;
+  /** Agent whose edit produced this revision, when one did. */
+  updatedByAgentName?: string | null;
   sessionId: string | null;
   sessionTitle: string | null;
   author: DocumentAuthor;

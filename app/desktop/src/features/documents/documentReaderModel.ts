@@ -106,11 +106,6 @@ export function commentThreadsForBlock(comments: DocumentComment[], blockId: str
   }));
 }
 
-/** A comment that asks the agent waits for its answer until the thread has a reply. */
-export function threadAwaitsAgent(thread: CommentThread) {
-  return (thread.replies[thread.replies.length - 1] ?? thread.root).mentionsAgent;
-}
-
 export function upsertComment(comments: DocumentComment[], next: DocumentComment) {
   return comments.some((comment) => comment.commentId === next.commentId)
     ? comments.map((comment) => (comment.commentId === next.commentId ? next : comment))

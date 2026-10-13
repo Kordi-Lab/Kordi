@@ -5,14 +5,14 @@ import { installCopySurfaceSelectionTracking } from '../../src/features/contentS
 import { DocumentReader } from '../../src/features/documents/DocumentReader';
 import { DocumentReaderHostContext, type DocumentReaderHost } from '../../src/features/documents/documentReaderHost';
 import { createDocumentShareApi } from '../../src/features/documents/documentShareApi';
-import { createMemoryDocumentApi, SAMPLE_MARKDOWN, SAMPLE_TOKEN, sampleDocument, sampleHtmlDocument } from '../helpers/documentReaderFixtures';
+import { agentThreadComments, createMemoryDocumentApi, SAMPLE_MARKDOWN, SAMPLE_TOKEN, sampleDocument, sampleHtmlDocument } from '../helpers/documentReaderFixtures';
 import '../../src/index.css';
 
-// Login-free review page: ?state=local | uploaded | public | html, optional ?theme=dark.
+// Login-free review page: ?state=local | uploaded | public | html | agent, optional ?theme=dark.
 // Live mode against the configured cloud API (local test stacks only): ?attachmentId=&token=&accountId=&name=.
 const params = new URLSearchParams(location.search);
 const requested = params.get('state');
-const state = requested === 'local' || requested === 'public' || requested === 'html' ? requested : 'uploaded';
+const state = requested === 'local' || requested === 'public' || requested === 'html' || requested === 'agent' ? requested : 'uploaded';
 const theme = params.get('theme') === 'light' ? 'theme-light' : 'theme-dark';
 document.body.classList.add('kordi-native-shell', theme);
 document.body.dataset.kordiChatTheme = 'quiet';
@@ -23,6 +23,7 @@ const owner: DocumentReaderHost = {
   sessionId: 'session_example',
   agentName: 'Lab agent',
   people: ['Priya', 'Theo'],
+  agents: [{ name: 'Lab agent', mine: true }, { name: 'Field agent', mine: false }],
   canMessageAccount: () => true,
   messageAccount: () => undefined,
   sendAttachment: () => undefined,
@@ -46,6 +47,7 @@ const SHOWCASE = [
 const sample = sampleDocument('owner');
 const ownerDocument = {
   ...sample,
+  ...(state === 'agent' ? { comments: agentThreadComments(), reactions: [] } : {}),
   blocks: [...sample.blocks, ...SHOWCASE.map((source, index) => ({ id: `b${sample.blocks.length + index}`, source, html: '' }))],
 };
 const OWNER_MARKDOWN = [SAMPLE_MARKDOWN, ...SHOWCASE].join('\n\n');

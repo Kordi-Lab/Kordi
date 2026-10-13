@@ -3,11 +3,11 @@ import { useCallback, useRef, useState } from 'react';
 
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 
+import { agentRunLine, canDeleteAgentReply, mentionedAgentName, prefixMention, threadAgentName } from './documentAgentThreads';
 import {
   appendMention,
   formatCommentTime,
   mentionSegments,
-  threadAwaitsAgent,
   type CommentThread,
 } from './documentReaderModel';
 import type { DocumentComment } from './documentShareTypes';
@@ -42,6 +42,7 @@ export function DocumentCommentComposer({
   mentionOptions,
   initialValue = '',
   submitLabel = 'Post',
+  offerAgent,
   onSubmit,
   onCancel,
   autoFocus,
@@ -50,6 +51,8 @@ export function DocumentCommentComposer({
   mentionOptions: DocumentMentionOption[];
   initialValue?: string;
   submitLabel?: string;
+  /** Agent the field offers to ask for an edit; the offer starts the reply with its mention. */
+  offerAgent?: string | null;
   onSubmit: (body: string) => Promise<boolean>;
   onCancel?: () => void;
   autoFocus?: boolean;
@@ -73,9 +76,22 @@ export function DocumentCommentComposer({
   return (
     <form
       ref={formRef}
-      className="app-document-composer"
+      className={offerAgent ? 'app-document-composer has-offer' : 'app-document-composer'}
       onSubmit={(event) => { event.preventDefault(); void submit(); }}
     >
+      {offerAgent ? (
+        <div className="app-document-composer-offer">
+          <button
+            type="button"
+            onClick={() => {
+              setDraft((current) => prefixMention(current, offerAgent));
+              inputRef.current?.focus();
+            }}
+          >
+            Ask {offerAgent} to edit
+          </button>
+        </div>
+      ) : null}
       {mentionOptions.length > 0 ? (
         <button
           type="button"
@@ -125,6 +141,7 @@ export function DocumentCommentComposer({
 
 function CommentHeader({
   comment,
+  canManage,
   canResolve,
   shareUrl,
   onEdit,
@@ -132,6 +149,8 @@ function CommentHeader({
   onResolve,
 }: {
   comment: DocumentComment;
+  /** Opens the menu: the author of a comment, or whoever may delete an agent reply. */
+  canManage: boolean;
   canResolve: boolean;
   shareUrl: string | null;
   onEdit: () => void;
@@ -142,14 +161,18 @@ function CommentHeader({
   const menuRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setMenuOpen(false), []);
   useOutsideDismiss(menuRef, menuOpen, close);
+  const isAgent = comment.kind === 'agent';
   return (
     <div className="app-document-comment-head" ref={menuRef}>
-      <IdentityAvatar kind="human" seed={comment.author.accountId || comment.author.displayName} name={comment.author.displayName} imageUrl={comment.author.avatarUrl} className="app-document-avatar-small" />
+      {isAgent
+        ? <IdentityAvatar kind="agent" seed={comment.author.agentId || comment.author.displayName} name={comment.author.displayName} imageUrl={comment.author.avatarUrl} className="app-document-avatar-small" />
+        : <IdentityAvatar kind="human" seed={comment.author.accountId || comment.author.displayName} name={comment.author.displayName} imageUrl={comment.author.avatarUrl} className="app-document-avatar-small" />}
       <div className="app-document-comment-name">
         {comment.author.displayName}
+        {isAgent ? <span className="app-document-agent-tag">Agent</span> : null}
         <span>{formatCommentTime(comment.createdAt)}</span>
       </div>
-      {comment.mine ? (
+      {canManage ? (
         <button type="button" aria-label="More" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
           <MoreHorizontal aria-hidden="true" />
         </button>
@@ -166,14 +189,50 @@ function CommentHeader({
               <span className="app-document-menu-label">Copy link</span>
             </button>
           ) : null}
-          <button type="button" role="menuitem" className="app-document-menu-row" onClick={() => { onEdit(); close(); }}>
-            <span className="app-document-menu-label">Edit</span>
-          </button>
-          <hr />
+          {isAgent ? null : (
+            <button type="button" role="menuitem" className="app-document-menu-row" onClick={() => { onEdit(); close(); }}>
+              <span className="app-document-menu-label">Edit</span>
+            </button>
+          )}
+          {isAgent && !shareUrl ? null : <hr />}
           <button type="button" role="menuitem" className="app-document-menu-row is-danger" onClick={() => { onDelete(); close(); }}>
             <span className="app-document-menu-label">Delete comment</span>
           </button>
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** "<Agent> is working", or "Could not answer" with Retry, under the comment that asked. */
+function AgentRunStatus({ line, agentName, onRetry }: {
+  line: 'working' | 'failed';
+  agentName: string;
+  onRetry?: () => Promise<boolean>;
+}) {
+  const [retrying, setRetrying] = useState(false);
+  if (line === 'working') {
+    return (
+      <div className="app-document-agent-working" role="status">
+        <span className="app-document-working-dots" aria-hidden="true"><i /><i /><i /></span>
+        {agentName} is working
+      </div>
+    );
+  }
+  return (
+    <div className="app-document-agent-failed" role="status">
+      Could not answer
+      {onRetry ? (
+        <button
+          type="button"
+          disabled={retrying}
+          onClick={() => {
+            setRetrying(true);
+            void onRetry().finally(() => setRetrying(false));
+          }}
+        >
+          Retry
+        </button>
       ) : null}
     </div>
   );
@@ -186,6 +245,8 @@ export function DocumentThread({
   mentionOptions,
   viewerIsOwner,
   canReply,
+  canAskEdit = false,
+  editedBy = null,
   shareUrl,
   actions,
 }: {
@@ -194,53 +255,71 @@ export function DocumentThread({
   mentionOptions: DocumentMentionOption[];
   viewerIsOwner: boolean;
   canReply: boolean;
+  /** The viewer may edit the document, so an agent can be asked to. */
+  canAskEdit?: boolean;
+  /** Agent whose edit arrived during this thread's run. */
+  editedBy?: string | null;
   shareUrl: string | null;
   actions: DocumentThreadActions;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const names = mentionOptions.map((option) => option.name);
-  const renderComment = (comment: DocumentComment, isRoot: boolean) => (
-    <div key={comment.commentId} id={comment.commentId} className={isRoot ? 'app-document-comment-root' : 'app-document-comment-reply'}>
-      <CommentHeader
-        comment={comment}
-        canResolve={isRoot && (viewerIsOwner || comment.mine)}
-        shareUrl={shareUrl}
-        onEdit={() => setEditingId(comment.commentId)}
-        onDelete={() => actions.onDelete(comment.commentId)}
-        onResolve={isRoot ? () => actions.onResolve(comment.commentId) : undefined}
-      />
-      {editingId === comment.commentId ? (
-        <DocumentCommentComposer
-          placeholder="Edit comment"
-          mentionOptions={mentionOptions}
-          initialValue={comment.body}
-          submitLabel="Save"
-          autoFocus
-          onCancel={() => setEditingId(null)}
-          onSubmit={async (body) => {
-            const saved = await actions.onEdit(comment.commentId, body);
-            if (saved) setEditingId(null);
-            return saved;
-          }}
+  const agentNames = mentionOptions.filter((option) => option.kind === 'agent').map((option) => option.name);
+  const answeredBy = threadAgentName(thread);
+  const renderComment = (comment: DocumentComment, isRoot: boolean) => {
+    if (comment.kind === 'system') {
+      return <div key={comment.commentId} id={comment.commentId} className="app-document-comment-system">{comment.body}</div>;
+    }
+    const line = agentRunLine(thread, comment);
+    // Without run statuses the line needs an agent the viewer can ask, as before.
+    const runAgent = mentionedAgentName(comment.body, agentNames) ?? agentName ?? (comment.agentRun ? 'The agent' : null);
+    return (
+      <div key={comment.commentId} id={comment.commentId} className={isRoot ? 'app-document-comment-root' : 'app-document-comment-reply'}>
+        <CommentHeader
+          comment={comment}
+          canManage={comment.kind === 'agent' ? canDeleteAgentReply(thread, comment, viewerIsOwner) : comment.mine}
+          canResolve={isRoot && (viewerIsOwner || comment.mine)}
+          shareUrl={shareUrl}
+          onEdit={() => setEditingId(comment.commentId)}
+          onDelete={() => actions.onDelete(comment.commentId)}
+          onResolve={isRoot ? () => actions.onResolve(comment.commentId) : undefined}
         />
-      ) : <CommentBody body={comment.body} names={names} />}
-    </div>
-  );
+        {editingId === comment.commentId ? (
+          <DocumentCommentComposer
+            placeholder="Edit comment"
+            mentionOptions={mentionOptions}
+            initialValue={comment.body}
+            submitLabel="Save"
+            autoFocus
+            onCancel={() => setEditingId(null)}
+            onSubmit={async (body) => {
+              const saved = await actions.onEdit(comment.commentId, body);
+              if (saved) setEditingId(null);
+              return saved;
+            }}
+          />
+        ) : <CommentBody body={comment.body} names={names} />}
+        {line && runAgent ? (
+          <AgentRunStatus
+            line={line}
+            agentName={runAgent}
+            onRetry={canReply ? () => actions.onReply(thread.root.commentId, comment.body) : undefined}
+          />
+        ) : null}
+      </div>
+    );
+  };
 
   return (
     <div className="app-document-thread">
       {renderComment(thread.root, true)}
       {thread.replies.map((reply) => renderComment(reply, false))}
-      {agentName && threadAwaitsAgent(thread) ? (
-        <div className="app-document-agent-working" role="status">
-          <span className="app-document-working-dots" aria-hidden="true"><i /><i /><i /></span>
-          {agentName} is working
-        </div>
-      ) : null}
+      {editedBy ? <div className="app-document-agent-edited">Edited by {editedBy}</div> : null}
       {canReply ? (
         <DocumentCommentComposer
           placeholder={agentName ? `Reply, or @${agentName}` : 'Reply'}
           mentionOptions={mentionOptions}
+          offerAgent={canAskEdit ? answeredBy : null}
           onSubmit={(body) => actions.onReply(thread.root.commentId, body)}
         />
       ) : null}
