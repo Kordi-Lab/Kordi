@@ -122,6 +122,17 @@ test('a system reply is one muted line without an avatar', async () => {
   });
 });
 
+test('the system reply after a failed run is not shown: Could not answer is the only failure line', async () => {
+  await withJsdomRoot(async (mount) => {
+    const notice = systemReply({ commentId: 'doccmt_notice', blockId: 'b3', parentCommentId: 'doccmt_ask', body: 'Lab agent could not answer.' });
+    const root = await mount(threadElement([mention('failed'), notice], 'b3'));
+    assert.equal(Boolean(root.querySelector('#doccmt_notice')), false);
+    assert.equal(root.querySelectorAll('.app-document-comment-system').length, 0);
+    assert.match(root.querySelector('#doccmt_ask .app-document-agent-failed')?.textContent ?? '', /^Could not answer/);
+    assert.equal(buttonLabels(root).includes('Retry'), true);
+  });
+});
+
 test('the working line follows the run status: queued and running show it, completed does not', async () => {
   await withJsdomRoot(async (mount, reactRoot) => {
     const root = await mount(threadElement([mention('queued')], 'b3'));

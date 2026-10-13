@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 
-import { agentRunLine, canDeleteAgentReply, mentionedAgentName, prefixMention, threadAgentName } from './documentAgentThreads';
+import { agentRunLine, canDeleteAgentReply, isFailedRunNotice, mentionedAgentName, prefixMention, threadAgentName } from './documentAgentThreads';
 import {
   appendMention,
   formatCommentTime,
@@ -267,6 +267,7 @@ export function DocumentThread({
   const agentNames = mentionOptions.filter((option) => option.kind === 'agent').map((option) => option.name);
   const answeredBy = threadAgentName(thread);
   const renderComment = (comment: DocumentComment, isRoot: boolean) => {
+    if (isFailedRunNotice(thread, comment)) return null;
     if (comment.kind === 'system') {
       return <div key={comment.commentId} id={comment.commentId} className="app-document-comment-system">{comment.body}</div>;
     }

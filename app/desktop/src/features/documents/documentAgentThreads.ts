@@ -30,6 +30,14 @@ export function agentRunLine(thread: CommentThread, comment: DocumentComment): A
   return later.some((entry) => isPersonComment(entry) && entry.body === comment.body) ? null : 'failed';
 }
 
+/** The server's notice after a failed run repeats the "Could not answer" line of the comment that asked. */
+export function isFailedRunNotice(thread: CommentThread, comment: DocumentComment) {
+  if (comment.kind !== 'system') return false;
+  const comments = threadComments(thread);
+  const asked = comments.slice(0, comments.indexOf(comment)).reverse().find(isPersonComment);
+  return asked?.agentRun?.status === 'failed';
+}
+
 /** The agent a comment mentions first, out of the known agent names. */
 export function mentionedAgentName(body: string, agentNames: string[]) {
   let found: { name: string; index: number } | null = null;
