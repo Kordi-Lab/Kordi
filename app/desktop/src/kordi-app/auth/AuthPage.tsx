@@ -402,7 +402,7 @@ export function AuthPage({
           </div>
         ) : (
           <div className="app-auth-gate-shell flex h-full min-h-0 w-full justify-center overflow-y-auto rounded-none border-0 bg-transparent px-5 py-10 shadow-none sm:px-8 sm:py-16">
-            <div className="w-full max-w-[600px]">
+            <div className="flex min-h-0 w-full max-w-[600px] flex-col">
               <div className="mb-7 flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <h1 className="text-[30px] font-semibold leading-tight tracking-[-0.035em] text-white">
