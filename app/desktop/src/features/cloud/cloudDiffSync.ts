@@ -1,5 +1,6 @@
 import { sessionPinMessageIds } from './cloudSessionPinTypes';
 import { notifyDocumentSyncEvents } from '@/features/documents/documentSyncEvents';
+import { notifyDocumentAgentRequests } from '@/features/documents/documentAgentRequests';
 import { mergePinHistory, type CloudPinHistoryEvent } from './cloudPinHistory';
 import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSessionPin, CloudSessionTitle, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
 import { applyCloudAgentSyncEvents, type CloudAgentDefinition } from './cloudAgents';
@@ -468,6 +469,7 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
     events,
   );
   notifyDocumentSyncEvents(events);
+  notifyDocumentAgentRequests(events);
   const sessionForksById = applyCloudSyncEventsToSessionForks(input.sessionForksById ?? {}, events);
   const sessionPinsById = applyCloudSyncEventsToSessionPins(input.sessionPinsById ?? {}, events);
   const sessionTitlesById = applyCloudSyncEventsToSessionTitles(input.sessionTitlesById ?? {}, events);
