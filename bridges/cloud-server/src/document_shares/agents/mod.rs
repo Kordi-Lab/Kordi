@@ -10,6 +10,7 @@
 //! - [`prompt`] builds the run's prompt from the thread and nearby blocks.
 //! - [`delivery`] turns the run's answer into a reply comment, never a chat
 //!   message.
+//! - [`desktop`] routes a run to the owner's ready Mac like a chat run.
 //! - [`tools`] puts the two tools on the run's lease next to connector tools
 //!   and executes them under the lease; [`operations`] applies block edits.
 //!
@@ -18,6 +19,7 @@
 
 pub(crate) mod annotate;
 pub(crate) mod delivery;
+pub(crate) mod desktop;
 mod edit;
 pub(crate) mod gating;
 pub(crate) mod mentions;

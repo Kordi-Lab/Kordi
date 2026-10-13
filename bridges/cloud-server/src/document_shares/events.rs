@@ -1,4 +1,4 @@
-//! `document.updated` user sync events.
+//! `document.updated` and `document.agent_request` user sync events.
 //!
 //! Saves publish `"change": "content"`; reactions and comments publish
 //! `"change": "annotations"`. Clients that show the document refetch on
@@ -78,15 +78,31 @@ pub(crate) async fn publish_document_updated(
         .flatten()
         .map(|(id, _)| id);
     let payload = update_payload(record, revision, session_id.as_deref(), change, updated_by);
-    if let Err(error) = publish_noncritical(pool, &recipients, &payload).await {
+    if let Err(error) = publish_noncritical(pool, "document.updated", &recipients, &payload).await {
         eprintln!("[documents] publish document.updated failed: {error:?}");
     }
 }
 
-/// Older clients reject unknown critical events and stall sync, so this
-/// event is non-critical: clients that do not know it skip it.
+/// `document.agent_request`: a comment run waits for the agent owner's Mac.
+pub(crate) const AGENT_REQUEST_EVENT: &str = "document.agent_request";
+
+/// Publishes `document.agent_request` to the agent owner's devices only.
+pub(crate) async fn publish_agent_request(
+    pool: &PgPool,
+    owner_account_id: &str,
+    payload: &serde_json::Value,
+) {
+    let recipients = [owner_account_id.to_string()];
+    if let Err(error) = publish_noncritical(pool, AGENT_REQUEST_EVENT, &recipients, payload).await {
+        eprintln!("[documents] publish {AGENT_REQUEST_EVENT} failed: {error:?}");
+    }
+}
+
+/// Older clients reject unknown critical events and stall sync, so these
+/// events are non-critical: clients that do not know them skip them.
 async fn publish_noncritical(
     pool: &PgPool,
+    event_type: &str,
     recipients: &[String],
     payload: &serde_json::Value,
 ) -> Result<(), crate::chat_sync::store::StoreError> {
@@ -95,7 +111,7 @@ async fn publish_noncritical(
         crate::chat_sync::store::insert_noncritical_sync_event(
             &mut transaction,
             recipient,
-            "document.updated",
+            event_type,
             None,
             None,
             None,

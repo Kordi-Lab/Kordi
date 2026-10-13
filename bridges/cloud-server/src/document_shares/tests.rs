@@ -9,6 +9,7 @@ use super::tokens::*;
 use super::validate::*;
 
 mod agents_db;
+mod agents_desktop_db;
 mod agents_fixture;
 mod agents_tools_db;
 mod block_ids_tests;

@@ -60,6 +60,7 @@ tests=(
   document_share_tests::upgrade_from_124_relaxes_block_ids
   document_share_tests::upgrade_from_125_adds_document_collab
   document_share_tests::upgrade_from_126_adds_document_agent_runs
+  document_share_tests::upgrade_from_127_adds_desktop_preference
 )
 index=0
 for test_name in "${tests[@]}"; do

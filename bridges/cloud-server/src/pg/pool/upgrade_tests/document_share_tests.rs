@@ -389,3 +389,52 @@ async fn upgrade_from_126_adds_document_agent_runs() {
         (1, None, "doccmt:doccmt_ask")
     );
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_127_adds_desktop_preference() {
+    let pool = fixture(127).await;
+    execute(&pool, "INSERT INTO cloud_attachments(attachment_id,owner_account_id,object_key,content_type,size_bytes,created_at,finalized_at) VALUES('att-doc','fixture-owner','attachments/fixture-owner/att-doc','text/markdown',10,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')").await;
+    execute(&pool, "INSERT INTO cloud_document_comments(comment_id,attachment_id,block_id,author_account_id,author_name,body,mentions_agent,created_at) VALUES('doccmt_ask','att-doc','b0','fixture-peer','Peer','@Kordi shorter?',true,'2026-01-02T00:00:00Z')").await;
+    execute(&pool, "INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at) VALUES('car_old','key-old','msg-old','session:one','fixture-owner','fixture-owner','completed','Hello','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')").await;
+    execute(&pool, "INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at,document_comment_id) VALUES('car_doc','key-doc','doccmt:doccmt_ask','session:one','fixture-owner','fixture-peer','queued','Hello','2026-01-02T00:00:00Z','2026-01-02T00:00:00Z','doccmt_ask')").await;
+    let runs_before = historical_runs(&pool).await;
+    assert!(
+        sqlx_core::raw_sql::raw_sql(
+            "UPDATE cloud_agent_fallback_runs SET desktop_preferred_until = now()"
+        )
+        .execute(&pool)
+        .await
+        .is_err(),
+        "the desktop preference needs migration 128"
+    );
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    assert_eq!(
+        runs_before,
+        historical_runs(&pool).await,
+        "runs are untouched"
+    );
+    // Runs queued before the upgrade stay leasable by the cloud at once.
+    let (waiting,): (i64,) = query_as(
+        "SELECT COUNT(*)::BIGINT FROM cloud_agent_fallback_runs \
+         WHERE desktop_preferred_until IS NOT NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(waiting, 0, "the new column starts empty");
+
+    execute(&pool, "UPDATE cloud_agent_fallback_runs SET desktop_preferred_until = now() + interval '35 seconds' WHERE run_id='car_doc'").await;
+    let (held, free): (i64, i64) = query_as(
+        "SELECT COUNT(*) FILTER (WHERE desktop_preferred_until > now())::BIGINT, \
+                COUNT(*) FILTER (WHERE desktop_preferred_until IS NULL)::BIGINT \
+         FROM cloud_agent_fallback_runs",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!((held, free), (1, 1));
+}

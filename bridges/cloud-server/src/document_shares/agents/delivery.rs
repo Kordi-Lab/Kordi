@@ -41,6 +41,40 @@ enum Outcome<'a> {
     Failed { code: &'a str, message: &'a str },
 }
 
+/// Who ends the run. Each holder must still own it.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Holder<'a> {
+    /// The cloud runner that holds the lease.
+    Runner(&'a str),
+    /// The owner's desktop that holds the lease, by its executor id.
+    Desktop(&'a str),
+    /// A desktop whose turn ended without its lease; a `claimed_by` pattern
+    /// for the device. The run only has to be unfinished.
+    LostDesktop(&'a str),
+}
+
+impl Holder<'_> {
+    fn condition(&self) -> &'static str {
+        match self {
+            Self::Runner(_) => {
+                "run.claimed_by = $2 AND run.execution_backend = 'cloud' \
+                 AND run.lease_expires_at::timestamptz > now()"
+            }
+            Self::Desktop(_) => {
+                "run.claimed_by = $2 AND run.execution_backend = 'desktop' \
+                 AND run.lease_expires_at::timestamptz > now()"
+            }
+            Self::LostDesktop(_) => "run.claimed_by LIKE $2 AND run.execution_backend = 'desktop'",
+        }
+    }
+
+    fn claimed_by(&self) -> &str {
+        match self {
+            Self::Runner(id) | Self::Desktop(id) | Self::LostDesktop(id) => id,
+        }
+    }
+}
+
 async fn request_id(pool: &PgPool, run_id: &str) -> RunResult<Option<String>> {
     let row: Option<(String,)> =
         query_as("SELECT request_message_id FROM cloud_agent_fallback_runs WHERE run_id = $1")
@@ -92,7 +126,7 @@ async fn insert_reply(
 async fn finish(
     pool: &PgPool,
     run_id: &str,
-    runner_id: &str,
+    holder: Holder<'_>,
     outcome: Outcome<'_>,
 ) -> RunResult<bool> {
     let Some(request_id) = request_id(pool, run_id).await? else {
@@ -102,12 +136,12 @@ async fn finish(
     let run: Option<(String, String)> = query_as(&format!(
         "SELECT run.execution_agent_id, {AGENT_NAME_SQL} \
          FROM cloud_agent_fallback_runs run \
-         WHERE run.run_id = $1 AND run.claimed_by = $2 AND run.execution_backend = 'cloud' \
-           AND run.status IN ('leased', 'running') \
-           AND run.lease_expires_at::timestamptz > now() FOR UPDATE OF run"
+         WHERE run.run_id = $1 AND {} AND run.status IN ('leased', 'running') \
+         FOR UPDATE OF run",
+        holder.condition()
     ))
     .bind(run_id)
-    .bind(runner_id)
+    .bind(holder.claimed_by())
     .fetch_optional(&mut *tx)
     .await?;
     let (agent_id, agent_name) = run.ok_or(RunError::NotFound)?;
@@ -161,13 +195,24 @@ pub(crate) async fn complete_comment_run(
     runner_id: &str,
     response_text: &str,
 ) -> RunResult<bool> {
+    complete_held(pool, run_id, Holder::Runner(runner_id), response_text).await
+}
+
+/// [`complete_comment_run`] for any holder: the cloud runner or the owner's
+/// desktop. Both deliver the same reply.
+pub(crate) async fn complete_held(
+    pool: &PgPool,
+    run_id: &str,
+    holder: Holder<'_>,
+    response_text: &str,
+) -> RunResult<bool> {
     if request_id(pool, run_id).await?.is_none() {
         return Ok(false);
     }
     if response_text.trim().is_empty() {
         return Err(RunError::NotFound);
     }
-    finish(pool, run_id, runner_id, Outcome::Completed(response_text)).await
+    finish(pool, run_id, holder, Outcome::Completed(response_text)).await
 }
 
 /// Fails a comment run: the thread gets the short system reply. Returns
@@ -179,9 +224,20 @@ pub(crate) async fn fail_comment_run(
     error_code: &str,
     message: &str,
 ) -> RunResult<bool> {
+    fail_held(pool, run_id, Holder::Runner(runner_id), error_code, message).await
+}
+
+/// [`fail_comment_run`] for any holder.
+pub(crate) async fn fail_held(
+    pool: &PgPool,
+    run_id: &str,
+    holder: Holder<'_>,
+    error_code: &str,
+    message: &str,
+) -> RunResult<bool> {
     let outcome = Outcome::Failed {
         code: error_code,
         message,
     };
-    finish(pool, run_id, runner_id, outcome).await
+    finish(pool, run_id, holder, outcome).await
 }

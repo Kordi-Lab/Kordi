@@ -274,4 +274,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "document agent runs",
         "0127_cloud_document_agent_runs.sql"
     ),
+    migration!(
+        128,
+        "document agent desktop preference",
+        "0128_cloud_document_agent_desktop_preference.sql"
+    ),
 ];

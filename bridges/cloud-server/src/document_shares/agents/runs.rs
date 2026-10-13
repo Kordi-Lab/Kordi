@@ -5,7 +5,8 @@
 //! requester's agent-run budget (the document owner's for a public reader),
 //! refusing with `429` like every other agent run. [`start`] runs after the
 //! comment exists and queues one run per comment and agent in
-//! `cloud_agent_fallback_runs` for the cloud runner.
+//! `cloud_agent_fallback_runs`, for the owner's ready Mac first ([`desktop`])
+//! and the cloud runner otherwise.
 
 use axum::http::StatusCode;
 use axum::response::Response;
@@ -16,9 +17,11 @@ use sqlx_postgres::PgPool;
 
 use super::super::access::{document_session, DocumentRecord, ShareRow};
 use super::super::contents::document_source;
+use super::super::events::publish_agent_request;
 use super::super::render::{document_blocks, document_title};
 use super::super::{db_error, err, Caller};
 use super::comment_request_id;
+use super::desktop;
 use super::gating::{offered_tools, ToolGate};
 use super::mentions::{
     candidates_for_account, candidates_for_reader, resolve_mention, ResolvedAgent,
@@ -264,15 +267,22 @@ pub(crate) async fn start(
         ensure_sandbox_for_run(pool, &plan.session_id, owner, &plan.requester_account_id).await?;
     let request_id = comment_request_id(comment_id);
     let now = Utc::now().to_rfc3339();
+    // Routed like a chat run: a ready Mac of the owner gets the first chance
+    // and the cloud runner waits until `desktop_preferred_until`.
+    let agent_id = &plan.agent.agent_id;
+    let prefer_desktop =
+        desktop::prefer_desktop(pool, owner, agent_id, &plan.session_id, plan.public_reader)
+            .await?;
+    let preferred_until = prefer_desktop.then(desktop::desktop_preferred_until);
     // Other accounts read the reply, so the run gets no connector tools.
-    query(
+    let inserted = query(
         "INSERT INTO cloud_agent_fallback_runs ( \
             run_id, idempotency_key, request_message_id, session_id, owner_account_id, \
             requester_account_id, status, prompt, system_prompt, sandbox_id, runtime_route_json, \
             created_at, updated_at, execution_backend, execution_agent_id, run_trigger, \
-            connector_audience, document_comment_id \
+            connector_audience, document_comment_id, desktop_preferred_until \
          ) VALUES ($1, $2, $3, $4, $5, $6, 'queued', $7, $8, $9, $10, $11, $11, 'cloud', $12, \
-                   $13, $14, $15) \
+                   $13, $14, $15, $16) \
          ON CONFLICT DO NOTHING",
     )
     .bind(format!("car_{}", uuid::Uuid::new_v4().simple()))
@@ -290,8 +300,24 @@ pub(crate) async fn start(
     .bind(trigger.as_str())
     .bind(ConnectorAudience::Shared.as_str())
     .bind(comment_id)
+    .bind(preferred_until)
     .execute(pool)
     .await?;
+    if prefer_desktop && inserted.rows_affected() == 1 {
+        // The Mac runs its own agent definition, so the guidance a cloud run
+        // gets as its system prompt travels in the prompt.
+        let guidance = build_system_prompt(&plan.agent.name, None, can_edit);
+        let request = desktop::AgentRequest {
+            comment_id,
+            attachment_id: &record.attachment_id,
+            session_id: &plan.session_id,
+            requester_account_id: &plan.requester_account_id,
+            agent_id,
+            prompt: &format!("{guidance}\n\n{user_prompt}"),
+        };
+        let payload = desktop::agent_request_payload(&request);
+        publish_agent_request(pool, owner, &payload).await;
+    }
     let (run_id,): (String,) = query_as(
         "SELECT run_id FROM cloud_agent_fallback_runs \
          WHERE owner_account_id = $1 AND execution_agent_id = $2 AND request_message_id = $3 \
