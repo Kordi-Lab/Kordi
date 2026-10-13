@@ -258,6 +258,8 @@ export function cloudArtifactToSessionArtifact(artifact: CloudArtifactActivity):
     kind: artifactKind(artifact.kind),
     category: artifactCategory(artifact.category),
     summary: artifact.summary ?? `Cloud artifact from ${artifact.createdByAccountId}`,
+    ...(artifact.attachmentId ? { attachmentId: artifact.attachmentId } : {}),
+    ...(artifact.createdByAccountId ? { createdByAccountId: artifact.createdByAccountId } : {}),
     ...(Number.isFinite(updatedAtMs) ? { timeLabel: formatDesktopLastActiveLabel(updatedAtMs) } : {}),
   };
 }

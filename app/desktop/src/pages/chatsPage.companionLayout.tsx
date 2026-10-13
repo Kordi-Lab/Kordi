@@ -14,11 +14,13 @@ type Props = {
   view: CompanionView;
   accountId?: string;
   companionPane: ReactNode;
+  /** Reader shown for the `document` view. */
+  documentPane?: ReactNode;
   children: ReactNode;
 };
 
 /** Own the split geometry and keep companion content alive through its exit. */
-export function ChatCompanionLayout({ containerRef, layout, view, accountId, companionPane, children }: Props) {
+export function ChatCompanionLayout({ containerRef, layout, view, accountId, companionPane, documentPane, children }: Props) {
   const setTitlebarLayout = useContext(NativeChatTitlebarContext)?.setCompanionLayout;
   const { gridColumns, side, motionDuration } = layout;
   useLayoutEffect(() => {
@@ -54,7 +56,8 @@ export function ChatCompanionLayout({ containerRef, layout, view, accountId, com
           <Activity mode={layout.isPresent && view === 'chat' ? 'visible' : 'hidden'}>
             {companionPane}
           </Activity>
-          {layout.isPresent && view !== 'chat' ? <Suspense fallback={<aside className="app-companion-overview" role="status">Loading panel…</aside>}>
+          {layout.isPresent && view === 'document' ? documentPane : null}
+          {layout.isPresent && view !== 'chat' && view !== 'document' ? <Suspense fallback={<aside className="app-companion-overview" role="status">Loading panel…</aside>}>
             <CompanionOverview accountId={accountId} view={view} onClose={() => layout.setFolded(true)} />
           </Suspense> : null}
         </CompanionTitlebarContext>

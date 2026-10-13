@@ -31,6 +31,7 @@ export function cloudGroupOutboxAttachmentSources(
     sizeBytes: attachment.sizeBytes ?? null,
     widthPixels: attachment.widthPixels ?? null,
     heightPixels: attachment.heightPixels ?? null,
+    ...(attachment.sourceAttachmentId ? { sourceAttachmentId: attachment.sourceAttachmentId } : {}),
   }));
 }
 

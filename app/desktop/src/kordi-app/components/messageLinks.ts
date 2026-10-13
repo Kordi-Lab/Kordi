@@ -4,6 +4,7 @@ import { openDesktopExternalUrl } from '@/lib/desktop';
 import { blobEmojiById, type BlobEmoji } from '@/features/emoji/blobEmoji';
 import { notoEmojiRanges, type NotoEmoji } from '@/features/emoji/notoEmoji';
 import { messageMentionsForText } from '@/features/chat/messageMentions';
+import { openDocumentShareLink } from '@/features/documents/documentShareToken';
 import type { MessageMention } from '../types';
 
 type ExternalMessageLinkClickEvent = Pick<ReactMouseEvent<HTMLAnchorElement>, 'preventDefault'> & {
@@ -281,6 +282,8 @@ export function openExternalMessageLink(
   }
 
   event.preventDefault();
+  // Shared document links open in the reader instead of the browser.
+  if (openDocumentShareLink(safeHref)) return true;
   try {
     void Promise.resolve(openExternalUrl(safeHref)).catch(() => undefined);
   } catch {

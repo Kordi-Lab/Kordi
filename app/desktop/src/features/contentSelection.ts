@@ -129,7 +129,8 @@ export function installCopySurfaceSelectionTracking(root: Document) {
   const clearSelectionFromOutsidePointer = (event: PointerEvent) => {
     if (event.button !== 0 || isEditableSelectionTarget(event.target)) return;
     const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest(COPY_SURFACE_SELECTOR)) return;
+    // Controls that act on the current selection (the document selection menu) keep it.
+    if (target?.closest(`${COPY_SURFACE_SELECTOR}, [data-kordi-keeps-selection]`)) return;
     clearNativeTextSelection();
   };
   root.addEventListener('selectionchange', syncSelection);

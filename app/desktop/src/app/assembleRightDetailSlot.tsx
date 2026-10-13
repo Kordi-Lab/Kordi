@@ -2,6 +2,7 @@ import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { Brain, CheckCircle2, FolderOpen, Info, Layers3 } from 'lucide-react';
 
 import { ChatDetailPanel } from '@/pages/ChatDetailPanel';
+import { DocumentReaderHostContext, documentReaderHostForConversation } from '@/features/documents/documentReaderHost';
 import { ProjectDetailPanel } from '@/pages/ProjectDetailPanel';
 import { RightDetailRail } from '@/pages/RightDetailRail';
 import { navigateToTranscriptMessageOrScrollBottom } from '@/features/chat/transcriptNavigation';
@@ -73,6 +74,14 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
           onNavigateToResponse={navigateToResponse}
         />
       ) : (
+        <DocumentReaderHostContext.Provider value={{ opensDocumentsInCompanion: true, ...documentReaderHostForConversation({
+          account: args.cloudSession?.account ?? null,
+          conversation: args.activeConv,
+          contacts: args.displayedContacts ?? [],
+          isNativeShell: args.isNativeShell,
+          startChatWithPerson: args.handleStartChatWithPerson,
+          forwardMessage: args.onForwardMessage,
+        }) }}>
         <ChatDetailPanel
           isNativeShell={args.isNativeShell}
           activeDetailTab={args.activeDetailTab}
@@ -101,6 +110,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
             args.setActiveConvId(conversationId);
           }}
         />
+        </DocumentReaderHostContext.Provider>
       )}
     </RightDetailRail>
   );

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { focusCompanionToggleFromPanel, useCompanionPanelPresence } from './useCompanionPanelPresence';
 import type {
   DragEvent,
@@ -54,7 +54,24 @@ export function useChatCompanionLayout({
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const side = chatCompanionSideForPaneKinds(activePaneKind, humanPaneSide);
-  const isVisible = Boolean((companionConversation || hasOverview) && !isFolded);
+  const wantsVisible = Boolean((companionConversation || hasOverview) && !isFolded);
+  // Opening on the other side swaps the two columns. Settle the closed pane on
+  // its new side without motion first, then open, so the chat does not collapse
+  // and regrow while the pane slides in.
+  const [settled, setSettled] = useState({ side, visible: wantsVisible });
+  const flippingWhileClosed = settled.side !== side && !settled.visible;
+  const isVisible = flippingWhileClosed ? false : wantsVisible;
+  useLayoutEffect(() => {
+    if (settled.side === side && settled.visible === wantsVisible) return undefined;
+    const next = { side, visible: flippingWhileClosed ? false : wantsVisible };
+    // The next frame where there is one; a timer elsewhere (tests have no frames).
+    if (typeof requestAnimationFrame !== 'function') {
+      const timer = setTimeout(() => setSettled(next), 0);
+      return () => clearTimeout(timer);
+    }
+    const frame = requestAnimationFrame(() => setSettled(next));
+    return () => cancelAnimationFrame(frame);
+  }, [flippingWhileClosed, settled.side, settled.visible, side, wantsVisible]);
   const panelMotion = useCompanionPanelPresence(isVisible, pageConversationId);
 
   const placeCompanion = (nextSide: CompanionSide) => {
@@ -133,7 +150,7 @@ export function useChatCompanionLayout({
     side,
     isVisible,
     isPresent: panelMotion.present,
-    motionDuration: isResizing ? 0 : panelMotion.duration,
+    motionDuration: isResizing || flippingWhileClosed ? 0 : panelMotion.duration,
     isFolded,
     isDragging,
     dropPreviewSide,
