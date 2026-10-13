@@ -110,6 +110,7 @@ struct KordiApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(hasTopAccessory: showsPreviewThemeControls || callCoordinator.isMinimized)
+                .kordiLinkHandling(openConnectors: openConnectorsSettings) // Connectors and shared document links
                 .environmentObject(model)
                 .environmentObject(callCoordinator)
                 .environmentObject(notificationCoordinator)
@@ -139,15 +140,6 @@ struct KordiApp: App {
                     .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.28), value: callCoordinator.isMinimized)
                 }
                 .preferredColorScheme(preferredColorScheme)
-                // Agent-shared Connectors links open account settings in the app.
-                .environment(\.openURL, OpenURLAction { url in
-                    guard let link = ConnectorsSettingsLink.parse(url) else { return .systemAction }
-                    openConnectorsSettings(link)
-                    return .handled
-                })
-                .onOpenURL { url in
-                    if let link = ConnectorsSettingsLink.parse(url) { openConnectorsSettings(link) }
-                }
                 // Opens on Connectors and the link's provider; a new link while
                 // the sheet is up navigates within it.
                 .sheet(isPresented: $showsConnectorsSettings) {
@@ -413,6 +405,8 @@ private struct RootView: View {
             ProfileSettingsPreview()
         } else if ConnectorsAvailability.isPreviewRequested() {
             ConnectorsSettingsPreview()
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-shared-document") {
+            SharedDocumentPreviewHost()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-memory") {
             MemorySettingsPreview()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-devices") {

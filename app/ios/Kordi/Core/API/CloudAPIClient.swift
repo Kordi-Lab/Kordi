@@ -2741,7 +2741,7 @@ actor CloudAPIClient {
         }
         let knownNonChatEvents: Set<String> = [
             "task.upsert", "artifact.upsert", "artifact.archived",
-            "session-forked"
+            "session-forked", "document.updated"
         ]
         if ["device.added", "device.confirmed", "device.revoked", "device.renamed"]
             .contains(event.eventType) {
@@ -2760,7 +2760,7 @@ actor CloudAPIClient {
                 occurredAt: event.occurredAt
             )]
         }
-        if knownNonChatEvents.contains(event.eventType) { return [] }
+        if knownNonChatEvents.contains(event.eventType) { CloudDocumentEvents.publish(event); return [] }
         if event.critical {
             throw CloudAPIError(code: "CLIENT_UPDATE_REQUIRED", message: "Update Kordi to continue reliable chat sync.", statusCode: 0)
         }
@@ -2935,7 +2935,7 @@ actor CloudAPIClient {
         }
     }
 
-    private func transportData(
+    func transportData(
         for request: URLRequest,
         fallback: String
     ) async throws -> (Data, URLResponse) {
@@ -3059,7 +3059,7 @@ actor CloudAPIClient {
         }
     }
 
-    private func makeRequest(
+    func makeRequest(
         path: String,
         method: String,
         token: String?,
@@ -3087,7 +3087,7 @@ actor CloudAPIClient {
         return request
     }
 
-    private func validate(response: URLResponse, data: Data, fallback: String) throws {
+    func validate(response: URLResponse, data: Data, fallback: String) throws {
         guard let http = response as? HTTPURLResponse else {
             throw CloudAPIError(code: "network_error", message: fallback, statusCode: 0)
         }
