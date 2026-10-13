@@ -8,6 +8,7 @@ import {
   publishDesktopRelease,
   redactPublisherText,
   releaseTreeScanArguments,
+  vendoredRuntimeScanArguments,
   createS3ReleaseStore,
   createPublicHttpAdapter,
   parsePublisherArguments,
@@ -86,6 +87,23 @@ test('privacy scanning includes ignored build outputs and every mounted release 
   assert.ok(args.includes('--hidden'));
   assert.ok(args.includes('--text'));
   assert.equal(args.at(-1), '/tmp/Kordi.app');
+});
+
+test('privacy scanning checks the vendored agent runtime against the build host home directory', () => {
+  const tree = releaseTreeScanArguments('/tmp/Kordi.app');
+  assert.ok(tree.includes('/Users/'));
+  assert.ok(tree.includes('!**/Contents/MacOS/kordi-omp'));
+  assert.ok(tree.includes('!**/Contents/MacOS/pi_natives.*.node'));
+
+  const vendored = vendoredRuntimeScanArguments('/tmp/Kordi.app', { homeDirectory: '/srv/build.host' });
+  assert.ok(vendored.includes('**/Contents/MacOS/kordi-omp'));
+  assert.ok(vendored.includes('**/Contents/MacOS/pi_natives.*.node'));
+  assert.ok(vendored.includes('/srv/build\\.host'));
+  assert.ok(vendored.includes('/var/folders'));
+  assert.ok(vendored.includes('primaryEmail'));
+  assert.ok(!vendored.includes('/Users/'));
+  assert.ok(!vendored.includes('sessionToken'));
+  assert.equal(vendored.at(-1), '/tmp/Kordi.app');
 });
 
 test('release bundle scanning requires the canonical kordi.ai product origin', () => {

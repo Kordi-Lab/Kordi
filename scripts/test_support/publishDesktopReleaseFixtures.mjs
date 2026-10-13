@@ -18,6 +18,7 @@ import {
   redactPublisherText,
   releaseTreeScanArguments,
   rollbackDesktopBetaChannel,
+  vendoredRuntimeScanArguments,
   verifyTauriUpdaterSignature,
 } from '../lib/desktop-release.mjs';
 import { MACOS_NOTIFICATION_BUNDLE_MARKERS } from '../lib/macos-notification-release.mjs';
@@ -453,6 +454,7 @@ export {
   redactPublisherText,
   releaseTreeScanArguments,
   rollbackDesktopBetaChannel,
+  vendoredRuntimeScanArguments,
   verifyTauriUpdaterSignature,
   createS3ReleaseStore,
   createPublicHttpAdapter,

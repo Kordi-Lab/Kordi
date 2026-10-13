@@ -13,7 +13,7 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -56,6 +56,16 @@ const SENSITIVE_PATTERNS = [
   '35\\.188\\.85\\.31',
   'sslip\\.io',
 ];
+// The bundled agent runtime is third-party code whose own source text and upstream
+// build paths contain these generic strings. Its files get every other pattern plus
+// the build host's home directory, which is what a real leak from this build would carry.
+const VENDORED_RUNTIME_SOURCE_PATTERNS = new Set([
+  '/Users/',
+  '/private/tmp',
+  'accountId["\x27]?\\s*[:=]\\s*["\x27][^"\x27]+',
+  'sessionToken',
+]);
+const VENDORED_RUNTIME_GLOBS = ['**/Contents/MacOS/kordi-omp', '**/Contents/MacOS/pi_natives.*.node'];
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 
 function requireString(value, label) {
@@ -991,6 +1001,18 @@ export function assertAppBundleContract(run, appBundle, {
 export function releaseTreeScanArguments(root) {
   const args = ['--text', '--hidden', '--no-ignore', '--no-messages', '-n'];
   for (const pattern of SENSITIVE_PATTERNS) args.push('-e', pattern);
+  for (const glob of VENDORED_RUNTIME_GLOBS) args.push('--glob', `!${glob}`);
+  args.push(root);
+  return args;
+}
+
+export function vendoredRuntimeScanArguments(root, { homeDirectory = homedir() } = {}) {
+  const args = ['--text', '--hidden', '--no-ignore', '--no-messages', '-n'];
+  for (const pattern of SENSITIVE_PATTERNS) {
+    if (!VENDORED_RUNTIME_SOURCE_PATTERNS.has(pattern)) args.push('-e', pattern);
+  }
+  if (homeDirectory.length > 1) args.push('-e', homeDirectory.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  for (const glob of VENDORED_RUNTIME_GLOBS) args.push('--glob', glob);
   args.push(root);
   return args;
 }
@@ -1000,10 +1022,11 @@ export function productOriginScanArguments(root) {
 }
 
 function scanReleaseTree(run, root) {
-  const args = releaseTreeScanArguments(root);
-  const privacy = run('rg', args);
-  if (privacy.status === 0) throw new Error('Release privacy scan found a forbidden value');
-  if (privacy.status !== 1) throw new Error('Release privacy scan could not inspect the application bundle');
+  for (const args of [releaseTreeScanArguments(root), vendoredRuntimeScanArguments(root)]) {
+    const privacy = run('rg', args);
+    if (privacy.status === 0) throw new Error('Release privacy scan found a forbidden value');
+    if (privacy.status !== 1) throw new Error('Release privacy scan could not inspect the application bundle');
+  }
   requireRun(
     run,
     'rg',
