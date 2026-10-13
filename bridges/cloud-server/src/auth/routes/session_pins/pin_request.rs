@@ -1,6 +1,8 @@
 //! Applies one pin request to a scope's ordered pin list. The last entry is
 //! the latest pin, which is also the single pin older clients display.
 
+pub(super) const MAX_SCOPE_PINS: usize = 5;
+
 /// Returns the next pin list and the message the request acted on.
 ///
 /// Current clients name an `action`. Clients released before pin stacks send
@@ -24,9 +26,14 @@ pub(super) fn apply_pin_request(
             Some(id.to_string())
         }
         // An older client expects the message it pinned to be the one it shows.
+        // It used to replace the pin, so a full scope drops its oldest pin
+        // instead of refusing.
         (None, Some(id)) => {
             next.retain(|pinned| pinned != id);
             next.push(id.to_string());
+            if next.len() > MAX_SCOPE_PINS {
+                next.remove(0);
+            }
             Some(id.to_string())
         }
         (None, None) => next.pop(),
@@ -87,6 +94,18 @@ mod tests {
         assert_eq!(
             apply_pin_request(&pins, None, Some("three")),
             (pins.clone(), Some("three".to_string()))
+        );
+    }
+
+    #[test]
+    fn older_client_pin_on_a_full_scope_drops_the_oldest_pin() {
+        let pins = ids(&["one", "two", "three", "four", "five"]);
+        assert_eq!(
+            apply_pin_request(&pins, None, Some("legacy")),
+            (
+                ids(&["two", "three", "four", "five", "legacy"]),
+                Some("legacy".to_string())
+            )
         );
     }
 

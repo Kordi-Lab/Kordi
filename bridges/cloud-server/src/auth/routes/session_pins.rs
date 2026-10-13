@@ -328,7 +328,7 @@ pub(super) async fn update_cloud_session_pin(
             .collect::<std::collections::HashSet<_>>()
             .len()
     };
-    let exceeds_limit = next_ids.len() > 5
+    let exceeds_limit = next_ids.len() > pin_request::MAX_SCOPE_PINS
         || if scope == "shared" {
             participants.iter().any(|account_id| {
                 let private = private_rows
