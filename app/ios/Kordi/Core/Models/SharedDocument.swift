@@ -28,6 +28,8 @@ struct DocumentResponse: Codable, Equatable {
     /// The id the document was opened with, when it is a forwarded copy of
     /// `attachmentId` (the canonical document).
     var requestedAttachmentId: String? = nil
+    /// The agent that made the latest edit, when an agent did.
+    var updatedByAgentName: String? = nil
 }
 
 enum DocumentFormat: String, Codable, Equatable {
@@ -116,6 +118,10 @@ struct DocumentComment: Codable, Equatable, Identifiable {
     let createdAt: String
     var editedAt: String?
     var resolvedAt: String?
+    /// Absent from servers that predate agents in documents.
+    var kind: DocumentCommentKind? = nil
+    /// Set on a comment whose mention started an agent run.
+    var agentRun: DocumentAgentRun? = nil
 
     var id: String { commentId }
 }
@@ -125,6 +131,9 @@ struct DocumentCommentAuthor: Codable, Equatable {
     let displayName: String
     let kordiId: String?
     let avatarUrl: String?
+    /// Agent authors only; public routes send the name alone.
+    var agentId: String? = nil
+    var ownerAccountId: String? = nil
 }
 
 // MARK: Request bodies

@@ -67,9 +67,9 @@ struct DocumentBlockRow<Content: View>: View {
             ForEach(document.openThreads(blockId: block.id)) { comment in
                 DocumentCommentThread(
                     comment: comment,
-                    replies: document.replies(to: comment.commentId),
-                    agentName: document.agent?.displayName,
+                    document: document,
                     mentionCandidates: mentionCandidates,
+                    editedByAgentName: reader.agentEditNotices[comment.commentId],
                     canReply: document.viewerCan.comment,
                     canResolve: reader.canResolve(comment),
                     link: reader.shareURL,

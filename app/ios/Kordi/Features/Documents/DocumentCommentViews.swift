@@ -1,20 +1,14 @@
 import SwiftUI
 import UIKit
 
-/// Someone the comment composer can mention.
-struct DocumentMentionCandidate: Hashable, Identifiable {
-    let name: String
-    let isAgent: Bool
-    var id: String { (isAgent ? "agent:" : "person:") + name }
-}
-
-/// One open comment thread under a block: the comment, its replies, a reply
-/// field, and the author's actions.
+/// One open comment thread under a block: the comment, its replies, what
+/// the mentioned agent is doing, a reply field, and the author's actions.
 struct DocumentCommentThread: View {
     let comment: DocumentComment
-    let replies: [DocumentComment]
-    let agentName: String?
+    let document: DocumentResponse
     let mentionCandidates: [DocumentMentionCandidate]
+    /// Set after an agent edited the document for this thread.
+    let editedByAgentName: String?
     let canReply: Bool
     let canResolve: Bool
     let link: URL?
@@ -26,34 +20,62 @@ struct DocumentCommentThread: View {
     @State private var replyDraft = ""
     @State private var editing: DocumentComment?
     @State private var editDraft = ""
+    @FocusState private var replyFocused: Bool
+
+    private var entries: [DocumentThreadEntry] {
+        document.threadEntries(for: comment, agentNames: DocumentMentionCandidates.agentNames(mentionCandidates))
+    }
+
+    private var mentionNames: [String] {
+        mentionCandidates.map(\.mention) + entries.map(\.comment).filter(\.isAgentReply).map(\.author.displayName)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            entry(comment, isReply: false)
-            ForEach(replies) { reply in
-                entry(reply, isReply: true)
-                    .padding(.leading, 30)
-            }
-            if comment.mentionsAgent, replies.isEmpty, let agentName {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.mini)
-                    Text("\(agentName) is working")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            ForEach(entries) { item in
+                if item.comment.isSystemReply {
+                    DocumentThreadNoticeLine(text: item.comment.body)
+                        .padding(.leading, 30)
+                } else {
+                    entry(item.comment, isReply: item.isReply)
+                        .padding(.leading, item.isReply ? 30 : 0)
                 }
-                .padding(.leading, 30)
-                .accessibilityElement(children: .combine)
+                switch item.run {
+                case .none:
+                    EmptyView()
+                case .working(let agentName):
+                    DocumentAgentWorkingLine(agentName: agentName)
+                        .padding(.leading, 30)
+                case .failed:
+                    DocumentAgentFailedLine(
+                        onRetry: canReply && item.comment.mine ? { onReply(item.comment.body) } : nil
+                    )
+                    .padding(.leading, 30)
+                }
+            }
+            if let editedByAgentName {
+                DocumentThreadNoticeLine(text: "Edited by \(editedByAgentName)")
+                    .padding(.leading, 30)
             }
             if canReply {
                 DocumentCommentField(
                     placeholder: "Reply",
                     text: $replyDraft,
-                    mentionCandidates: mentionCandidates
+                    mentionCandidates: mentionCandidates,
+                    focus: $replyFocused
                 ) {
                     onReply(replyDraft)
                     replyDraft = ""
                 }
                 .padding(.leading, 30)
+                if let agentName = document.editAgentName(inThread: comment.commentId),
+                   !replyDraft.hasPrefix("@\(agentName)") {
+                    DocumentAskAgentToEditButton(agentName: agentName) {
+                        replyDraft = "@\(agentName) " + replyDraft
+                        replyFocused = true
+                    }
+                    .padding(.leading, 30)
+                }
             }
         }
         .padding(12)
@@ -68,24 +90,31 @@ struct DocumentCommentThread: View {
         }
     }
 
+    private func hasActions(_ item: DocumentComment, isReply: Bool) -> Bool {
+        document.canEdit(item) || document.canDelete(item) || (!isReply && canResolve)
+    }
+
     private func entry(_ item: DocumentComment, isReply: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 IdentityAvatar(
                     name: item.author.displayName,
                     imageSource: item.author.avatarUrl,
-                    kind: .person,
+                    kind: item.isAgentReply ? .agent : .person,
                     size: 22,
-                    seed: item.author.accountId
+                    seed: item.isAgentReply
+                        ? item.author.agentId?.nonEmpty ?? item.author.displayName
+                        : item.author.accountId
                 )
                 Text(item.author.displayName)
                     .font(.footnote.weight(.semibold))
                     .lineLimit(1)
+                if item.isAgentReply { DocumentAgentTag() }
                 Text(DocumentDates.short(item.createdAt))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 4)
-                if item.mine || (!isReply && canResolve) {
+                if hasActions(item, isReply: isReply) {
                     Menu {
                         actions(for: item, isReply: isReply)
                     } label: {
@@ -108,13 +137,13 @@ struct DocumentCommentThread: View {
                     .accessibilityLabel("Resolve")
                 }
             }
-            DocumentMentionText(text: item.body, names: mentionCandidates.map(\.name))
+            DocumentMentionText(text: item.body, names: mentionNames)
                 .font(.subheadline)
                 .padding(.leading, 30)
         }
         .contentShape(Rectangle())
         .contextMenu {
-            if item.mine || (!isReply && canResolve) {
+            if hasActions(item, isReply: isReply) {
                 actions(for: item, isReply: isReply)
             }
         }
@@ -122,7 +151,7 @@ struct DocumentCommentThread: View {
 
     @ViewBuilder
     private func actions(for item: DocumentComment, isReply: Bool) -> some View {
-        if item.mine {
+        if document.canEdit(item) {
             if let link {
                 Button {
                     UIPasteboard.general.url = URL(string: "\(link.absoluteString.split(separator: "#").first ?? "")#\(item.commentId)")
@@ -140,7 +169,7 @@ struct DocumentCommentThread: View {
         if !isReply, canResolve {
             Button(action: onResolve) { Label("Resolve", systemImage: "checkmark.circle") }
         }
-        if item.mine {
+        if document.canDelete(item) {
             Button(role: .destructive) { onDelete(item) } label: {
                 Label("Delete comment", systemImage: "trash")
             }
@@ -153,6 +182,7 @@ struct DocumentCommentField: View {
     let placeholder: String
     @Binding var text: String
     let mentionCandidates: [DocumentMentionCandidate]
+    var focus: FocusState<Bool>.Binding? = nil
     let onPost: () -> Void
 
     var body: some View {
@@ -161,7 +191,7 @@ struct DocumentCommentField: View {
                 Menu {
                     ForEach(mentionCandidates) { candidate in
                         Button {
-                            insertMention(candidate.name)
+                            insertMention(candidate.mention)
                         } label: {
                             Label(candidate.name, systemImage: candidate.isAgent ? "sparkles" : "person")
                         }
@@ -174,7 +204,7 @@ struct DocumentCommentField: View {
                 }
                 .accessibilityLabel("Mention")
             }
-            TextField(placeholder, text: $text, axis: .vertical)
+            field
                 .font(.subheadline)
                 .lineLimit(1...4)
                 .padding(.horizontal, 10)
@@ -184,6 +214,12 @@ struct DocumentCommentField: View {
                 .font(.subheadline.weight(.semibold))
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
+    }
+
+    @ViewBuilder
+    private var field: some View {
+        let field = TextField(placeholder, text: $text, axis: .vertical)
+        if let focus { field.focused(focus) } else { field }
     }
 
     private func insertMention(_ name: String) {

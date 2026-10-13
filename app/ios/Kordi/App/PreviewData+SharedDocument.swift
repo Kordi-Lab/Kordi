@@ -39,11 +39,26 @@ extension PreviewData {
                 mine: mine, createdAt: stamp
             )
         }
-        func comment(_ id: String, _ block: String, _ name: String, _ body: String, parent: String? = nil, agent: Bool = false) -> DocumentComment {
+        func comment(
+            _ id: String, _ block: String, _ name: String, _ body: String, parent: String? = nil,
+            agent: Bool = false, mine: Bool = false, run: DocumentAgentRun.Status? = nil
+        ) -> DocumentComment {
             DocumentComment(
                 commentId: id, blockId: block, parentCommentId: parent,
-                author: DocumentCommentAuthor(accountId: "acct_\(name.lowercased())", displayName: name, kordiId: nil, avatarUrl: nil),
-                body: body, mentionsAgent: agent, mine: false, createdAt: stamp, editedAt: nil, resolvedAt: nil
+                author: DocumentCommentAuthor(
+                    accountId: mine ? sharedDocumentViewerAccountId : "acct_\(name.lowercased())",
+                    displayName: name, kordiId: nil, avatarUrl: nil
+                ),
+                body: body, mentionsAgent: agent, mine: mine, createdAt: stamp, editedAt: nil, resolvedAt: nil,
+                kind: .person, agentRun: run.map(DocumentAgentRun.init(status:))
+            )
+        }
+        func agentReply(_ id: String, _ block: String, _ body: String, parent: String, kind: DocumentCommentKind = .agent) -> DocumentComment {
+            DocumentComment(
+                commentId: id, blockId: block, parentCommentId: parent,
+                author: sharedDocumentAgentAuthor,
+                body: body, mentionsAgent: false, mine: false, createdAt: stamp, editedAt: nil, resolvedAt: nil,
+                kind: kind
             )
         }
         return DocumentResponse(
@@ -67,15 +82,32 @@ extension PreviewData {
                 reaction("docrx_3", "b2", "❤️", "Priya"),
             ],
             comments: [
-                comment("doccmt_1", "b2", "Priya", "@Lab agent what does \"defensible niche\" mean here?", agent: true),
+                comment("doccmt_4", "b1", "Priya", "@Lab agent what does \"end-to-end\" mean here?", agent: true, run: .completed),
+                agentReply("doccmt_5", "b1", "No paper follows the per-person-agent setup from design through evaluation with real groups.", parent: "doccmt_4"),
+                comment("doccmt_1", "b2", "Priya", "@Lab agent what does \"defensible niche\" mean here?", agent: true, run: .running),
+                comment("doccmt_6", "b4", "Alex Morgan", "@Lab agent add one example for grounding.", agent: true, mine: true, run: .failed),
+                agentReply("doccmt_7", "b4", "Lab agent could not answer.", parent: "doccmt_6", kind: .system),
                 comment("doccmt_2", "b7", "Theo", "Worth adding the turn-taking benchmark here."),
                 comment("doccmt_3", "b7", "Priya", "Agreed, I'll find the link.", parent: "doccmt_2"),
             ],
             share: sharedDocumentShare(),
             viewer: .owner,
-            viewerCan: DocumentViewerCapabilities(share: true, react: true, comment: true, askAgent: true)
+            viewerCan: DocumentViewerCapabilities(share: true, react: true, comment: true, askAgent: true, edit: true),
+            revision: 1
         )
     }
+
+    static let sharedDocumentAgentName = "Lab agent"
+    static let sharedDocumentAgentAuthor = DocumentCommentAuthor(
+        accountId: nil, displayName: sharedDocumentAgentName, kordiId: nil, avatarUrl: nil,
+        agentId: "agent_preview_lab", ownerAccountId: sharedDocumentViewerAccountId
+    )
+
+    /// What the comment composer offers: the viewer's agent, another
+    /// member's agent, then the people.
+    static let sharedDocumentMentionCandidates =
+        [sharedDocumentAgentName, "Review agent"].map { DocumentMentionCandidate(name: $0, isAgent: true) }
+        + sharedDocumentPeople.map { DocumentMentionCandidate(name: $0, isAgent: false) }
 
     /// The people the comment composer offers besides the agent.
     static let sharedDocumentPeople = ["Priya", "Theo"]

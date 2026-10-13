@@ -224,24 +224,27 @@ struct DocumentReaderView: View {
         }
     }
 
-    /// The session agent, when readers may ask it, and the session's people.
+    /// Agents first (the viewer's own, then the session's), then people.
     private func mentionCandidates(_ document: DocumentResponse) -> [DocumentMentionCandidate] {
-        var candidates: [DocumentMentionCandidate] = []
-        if let agent = document.agent, document.viewerCan.askAgent {
-            candidates.append(DocumentMentionCandidate(name: agent.displayName, isAgent: true))
+        if model.isPreviewMode { return PreviewData.sharedDocumentMentionCandidates }
+        guard document.viewer != .public else {
+            return DocumentMentionCandidates.list(document: document, ownAccountId: nil, targets: [])
         }
-        guard document.viewer != .public else { return candidates }
         let ownId = model.account?.accountId
-        var names: [String] = []
-        if let conversation = reader.request.conversation ?? sessionTarget {
-            names = conversation.groupParticipants.filter { $0.accountId != ownId }.map(\.displayName)
-            if names.isEmpty, conversation.kind == .person { names = [conversation.displayName] }
+        let conversation = reader.request.conversation ?? sessionTarget ?? document.sessionId?.nonEmpty.flatMap { id in
+            model.conversations.first { $0.sessionId == id }
         }
-        if model.isPreviewMode { names = PreviewData.sharedDocumentPeople }
-        for name in names where !name.isEmpty {
-            candidates.append(DocumentMentionCandidate(name: name, isAgent: false))
+        var people: [String] = []
+        if let conversation {
+            people = conversation.groupParticipants.filter { $0.accountId != ownId }.map(\.displayName)
+            if people.isEmpty, conversation.kind == .person { people = [conversation.displayName] }
         }
-        return candidates
+        return DocumentMentionCandidates.list(
+            document: document,
+            ownAccountId: ownId,
+            targets: conversation.map { model.mentionTargets(for: $0).filter { $0.kind != .all } } ?? [],
+            fallbackPeople: people
+        )
     }
 
     /// The session to open from a link, when the viewer is a member and the

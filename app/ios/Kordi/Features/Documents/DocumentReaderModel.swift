@@ -11,7 +11,12 @@ final class DocumentReaderModel: ObservableObject {
     private let service: any DocumentService
     private let defaults: UserDefaults
 
-    @Published private(set) var document: DocumentResponse?
+    @Published private(set) var document: DocumentResponse? {
+        didSet { updateAgentPolling() }
+    }
+    /// "Edited by <Agent>" notices, by the root comment of the thread whose
+    /// run made the edit.
+    @Published private(set) var agentEditNotices: [String: String] = [:]
     @Published private(set) var htmlData: Data?
     @Published private(set) var isLoading = false
     @Published private(set) var loadError: String?
@@ -24,11 +29,25 @@ final class DocumentReaderModel: ObservableObject {
 
     private var updateObserver: NSObjectProtocol?
     private var pendingReload: Task<Void, Never>?
+    private var agentPoll: Task<Void, Never>?
+    private var agentPollDeadline = Date.distantPast
+    private var polledThreadIds: Set<String> = []
+    private var runFinishedAt: [String: Date] = [:]
+    private let agentPollInterval: Duration
+    private let agentPollLimit: TimeInterval
 
-    init(request: DocumentReaderRequest, service: any DocumentService, defaults: UserDefaults = .standard) {
+    init(
+        request: DocumentReaderRequest,
+        service: any DocumentService,
+        defaults: UserDefaults = .standard,
+        agentPollInterval: Duration = .seconds(4),
+        agentPollLimit: TimeInterval = 120
+    ) {
         self.request = request
         self.service = service
         self.defaults = defaults
+        self.agentPollInterval = agentPollInterval
+        self.agentPollLimit = agentPollLimit
         updateObserver = NotificationCenter.default.addObserver(
             forName: .kordiDocumentUpdated, object: nil, queue: .main
         ) { [weak self] notification in
@@ -40,6 +59,7 @@ final class DocumentReaderModel: ObservableObject {
     deinit {
         if let updateObserver { NotificationCenter.default.removeObserver(updateObserver) }
         pendingReload?.cancel()
+        agentPoll?.cancel()
     }
 
     /// The canonical document id once loaded. A forwarded copy resolves to
@@ -75,6 +95,7 @@ final class DocumentReaderModel: ObservableObject {
             if loaded.format == .html, loaded.revision != document?.revision || htmlData == nil {
                 htmlData = try await service.rawContent(loaded)
             }
+            noteAgentChanges(from: document, to: loaded)
             document = loaded
         } catch is CancellationError {
             return
@@ -84,6 +105,51 @@ final class DocumentReaderModel: ObservableObject {
         } catch {
             // Keep the last loaded document; the next event or pull retries.
         }
+    }
+
+    // MARK: Agent runs
+
+    /// While a thread waits for an agent, reloads every few seconds on top
+    /// of `document.updated`. Stops when no thread waits, and two minutes
+    /// after the latest run appeared.
+    private func updateAgentPolling() {
+        let active = document?.activeAgentRunThreadIds ?? []
+        guard !active.isEmpty else {
+            polledThreadIds = []
+            agentPoll?.cancel()
+            agentPoll = nil
+            return
+        }
+        if !active.isSubset(of: polledThreadIds) {
+            agentPollDeadline = Date().addingTimeInterval(agentPollLimit)
+        }
+        polledThreadIds = active
+        guard agentPoll == nil, Date() < agentPollDeadline else { return }
+        let interval = agentPollInterval
+        agentPoll = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: interval)
+                guard !Task.isCancelled, let self else { return }
+                guard self.document?.hasActiveAgentRun == true, Date() < self.agentPollDeadline else {
+                    self.agentPoll = nil
+                    return
+                }
+                await self.refresh()
+            }
+        }
+    }
+
+    /// Marks the threads whose run was active, or ended within the last
+    /// 30 seconds, when a reload brings a new revision edited by an agent.
+    private func noteAgentChanges(from old: DocumentResponse?, to new: DocumentResponse, now: Date = Date()) {
+        guard let old else { return }
+        let wasActive = old.activeAgentRunThreadIds
+        let isActive = new.activeAgentRunThreadIds
+        for id in wasActive.subtracting(isActive) { runFinishedAt[id] = now }
+        runFinishedAt = runFinishedAt.filter { now.timeIntervalSince($0.value) < 30 }
+        guard let agent = new.updatedByAgentName?.nonEmpty,
+              let before = old.revision, let after = new.revision, before != after else { return }
+        for id in wasActive.union(isActive).union(runFinishedAt.keys) { agentEditNotices[id] = agent }
     }
 
     /// The share token when the document was opened through the public route.
@@ -148,7 +214,7 @@ final class DocumentReaderModel: ObservableObject {
 
     func editComment(_ comment: DocumentComment, body: String) {
         let text = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard comment.mine, !text.isEmpty, text != comment.body else { return }
+        guard document?.canEdit(comment) == true, !text.isEmpty, text != comment.body else { return }
         perform { [weak self] in
             guard let self else { return }
             self.document?.upsert(try await self.service.updateComment(comment.commentId, body: text, resolved: nil))
@@ -156,7 +222,7 @@ final class DocumentReaderModel: ObservableObject {
     }
 
     func deleteComment(_ comment: DocumentComment) {
-        guard comment.mine else { return }
+        guard document?.canDelete(comment) == true else { return }
         perform { [weak self] in
             guard let self else { return }
             try await self.service.deleteComment(comment.commentId)

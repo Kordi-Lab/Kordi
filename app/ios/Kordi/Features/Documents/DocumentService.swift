@@ -117,7 +117,21 @@ final class PreviewDocumentService: DocumentService {
 
     private var viewerAccountId: String? { PreviewData.sharedDocumentViewerAccountId }
 
-    func load(_ source: DocumentSource) async throws -> DocumentResponse { document }
+    /// A mention posted in the preview is answered on the next reload.
+    func load(_ source: DocumentSource) async throws -> DocumentResponse {
+        for comment in document.comments where comment.agentRun?.status == .queued {
+            var answered = comment
+            answered.agentRun = DocumentAgentRun(status: .completed)
+            document.upsert(answered)
+            document.upsert(DocumentComment(
+                commentId: nextId("doccmt_"), blockId: comment.blockId,
+                parentCommentId: comment.parentCommentId ?? comment.commentId,
+                author: PreviewData.sharedDocumentAgentAuthor, body: "Here is a short answer for the preview.",
+                mentionsAgent: false, mine: false, createdAt: now, editedAt: nil, resolvedAt: nil, kind: .agent
+            ))
+        }
+        return document
+    }
 
     func rawContent(_ document: DocumentResponse) async throws -> Data { Data() }
 
@@ -142,11 +156,13 @@ final class PreviewDocumentService: DocumentService {
     }
 
     func postComment(_ document: DocumentResponse, publicToken: String?, blockId: String, body: String, parentCommentId: String?, reader: DocumentReaderIdentity?) async throws -> DocumentComment {
+        let mentionsAgent = document.agent.map { body.contains("@\($0.displayName)") } ?? false
         let comment = DocumentComment(
             commentId: nextId("doccmt_"), blockId: blockId, parentCommentId: parentCommentId,
             author: DocumentCommentAuthor(accountId: viewerAccountId, displayName: PreviewData.sharedDocumentViewerName, kordiId: nil, avatarUrl: nil),
-            body: body, mentionsAgent: document.agent.map { body.contains("@\($0.displayName)") } ?? false,
-            mine: true, createdAt: now, editedAt: nil, resolvedAt: nil
+            body: body, mentionsAgent: mentionsAgent,
+            mine: true, createdAt: now, editedAt: nil, resolvedAt: nil,
+            kind: .person, agentRun: mentionsAgent ? DocumentAgentRun(status: .queued) : nil
         )
         self.document.upsert(comment)
         return comment
