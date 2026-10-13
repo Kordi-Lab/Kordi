@@ -27,6 +27,8 @@ export type SessionArtifact = {
   pinned?: boolean;
   /** Cloud attachment of the file, once it has been uploaded. */
   attachmentId?: string | null;
+  /** Account that created a cloud artifact. */
+  createdByAccountId?: string | null;
 };
 
 export type ChangedFileRow = {

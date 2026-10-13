@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Braces, ChevronLeft, FileText, FolderOpen, Globe2, LoaderCircle, Maximize2, X } from 'lucide-react';
 import { MarkdownCodeBlock, MarkdownContent, MermaidDiagram } from '@/kordi-app/components';
-import type { DesktopArtifactDirectory, DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
+import type { ConversationParticipant, DesktopArtifactDirectory, DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
 import { fetchDesktopChatArtifactDirectory, fetchDesktopChatArtifactPreview } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 import { ArtifactDocumentSection } from '@/features/documents/ArtifactDocumentSection';
@@ -10,6 +10,7 @@ import { openArtifactInCompanion } from '@/features/documents/companionDocument'
 import { useDocumentReaderHost } from '@/features/documents/documentReaderHost';
 import { artifactPreviewDocumentSource, type ArtifactPreviewMode } from './artifactPreviewDocument';
 import { ArtifactDataTable } from './artifactDataTable';
+import { ArtifactListRow } from './ArtifactListRow';
 import { ARTIFACT_MARKDOWN_PREVIEW_CLASS, artifactFromDirectoryEntry, formattedJsonSource, formatFileSize } from './artifactPreviewText';
 
 type ArtifactInspectorProps = {
@@ -21,6 +22,8 @@ type ArtifactInspectorProps = {
   previewBaseRoot?: string | null;
   folderBrowserRoot?: string | null;
   footer?: ReactNode;
+  /** People of the conversation, to show who created an artifact. */
+  participants?: ConversationParticipant[];
 };
 
 function fileNameFromPath(path: string) {
@@ -183,9 +186,10 @@ type ArtifactListSectionProps = {
   artifacts: SessionArtifact[];
   activeArtifact: SessionArtifact | null;
   onSelect: (artifactId: string) => void;
+  participants?: ConversationParticipant[];
 };
 
-function ArtifactListSection({ title, section, description, artifacts, activeArtifact, onSelect }: ArtifactListSectionProps) {
+function ArtifactListSection({ title, section, description, artifacts, activeArtifact, onSelect, participants }: ArtifactListSectionProps) {
   if (artifacts.length === 0) return null;
 
   return (
@@ -193,32 +197,16 @@ function ArtifactListSection({ title, section, description, artifacts, activeArt
       {title ? <div className="app-detail-kicker">{title}</div> : null}
       {description ? <div className="mb-2 text-[11px] leading-5 text-[color:var(--utility-muted-text)]">{description}</div> : null}
       <div className="-mx-2 flex flex-col gap-px">
-        {artifacts.map((artifact) => {
-          const displayName = artifact.name || fileNameFromPath(artifact.path);
-          const Icon = artifactIcon(artifact.kind, artifact.path);
-          const isActive = activeArtifact?.id === artifact.id;
-          const location = compactArtifactLocation(artifact.path, displayName);
-          const meta = [location, artifact.summary, artifact.live ? 'Live' : artifact.timeLabel].filter(Boolean).join(' · ');
-
-          return (
-            <button
-              key={artifact.id}
-              type="button"
-              data-artifact-file-row="true"
-              aria-current={isActive ? 'true' : undefined}
-              onClick={() => onSelect(artifact.id)}
-              className={cn(
-                'flex h-[34px] w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-left transition-colors',
-                isActive ? 'bg-[color:var(--app-control-bg)]' : 'hover:bg-[color:var(--app-control-hover)]',
-              )}
-            >
-              <Icon className="h-4 w-4 shrink-0 text-[color:var(--utility-muted-text)]" />
-              <span className="min-w-0 shrink truncate text-[13px] font-medium leading-5 text-[color:var(--utility-foreground)]">{displayName}</span>
-              {artifact.pinned ? <span className="shrink-0 rounded-md bg-amber-400/15 px-1.5 text-[10.5px] leading-4 text-amber-600">Pinned</span> : null}
-              <span className="ml-auto min-w-0 shrink-[2] truncate pl-3 text-right text-[11.5px] leading-5 text-[color:var(--utility-muted-text)]">{meta}</span>
-            </button>
-          );
-        })}
+        {artifacts.map((artifact) => (
+          <ArtifactListRow
+            key={artifact.id}
+            artifact={{ ...artifact, name: artifact.name || fileNameFromPath(artifact.path) }}
+            location={compactArtifactLocation(artifact.path, artifact.name || fileNameFromPath(artifact.path))}
+            isActive={activeArtifact?.id === artifact.id}
+            participants={participants ?? []}
+            onSelect={() => onSelect(artifact.id)}
+          />
+        ))}
       </div>
     </section>
   );
@@ -282,6 +270,7 @@ export function ArtifactInspector({
   previewBaseRoot,
   folderBrowserRoot,
   footer,
+  participants,
 }: ArtifactInspectorProps) {
   const [previewCache, setPreviewCache] = useState<Record<string, DesktopArtifactPreview>>({});
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -516,6 +505,7 @@ export function ArtifactInspector({
             section="generated"
             artifacts={generatedArtifacts}
             activeArtifact={activeArtifact}
+            participants={participants}
             onSelect={selectListArtifact}
           />
           <ArtifactListSection
@@ -523,6 +513,7 @@ export function ArtifactInspector({
             section="related"
             artifacts={relatedArtifacts}
             activeArtifact={activeArtifact}
+            participants={participants}
             onSelect={selectListArtifact}
           />
           </>
