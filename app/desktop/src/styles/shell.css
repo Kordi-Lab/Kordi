@@ -176,14 +176,22 @@ html.kordi-native-shell .kordi-app .app-left-glass {
   -webkit-backdrop-filter: none;
 }
 
+/* The session list is a surface on the window backing with a rounded top-left
+ * corner against the icon rail. A 1px edge on its top and left separates it
+ * from the titlebar and the rail (both sides of the corner carry it, so the
+ * stroke stays even through the curve); it runs flush to the bottom and to the
+ * divider before the conversation. */
 html.kordi-native-shell .kordi-app .app-session-panel {
-  margin-block: 0 6px;
+  margin: 0;
   padding-top: 0;
-  border-radius: 14px 0 0 14px;
+  border: 1px solid var(--app-nav-rail-glass-border);
+  border-right-width: 0;
+  border-bottom-width: 0;
+  border-radius: 14px 0 0 0;
   background:
     linear-gradient(var(--app-native-session-surface), var(--app-native-session-surface)),
     var(--app-native-session-bg);
-  box-shadow: inset 1px 0 0 var(--app-nav-rail-glass-border);
+  box-shadow: none;
 }
 
 html.kordi-native-shell .kordi-app .app-main-panel {

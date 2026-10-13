@@ -37,7 +37,7 @@ test('first-run auth gate receives an enter-chat shortcut handler', () => {
   const gateShell = slots.authGate as never as { props: { className: string; children: { props: Record<string, unknown> } } };
   const authPage = gateShell.props.children;
 
-  assert.equal(gateShell.props.className, 'app-auth-gate-overlay absolute inset-0 z-50 overflow-hidden');
+  assert.equal(gateShell.props.className, 'app-auth-gate-overlay absolute inset-0 z-[80] overflow-hidden');
   assert.equal(typeof authPage.props.onEnterChat, 'function');
 });
 

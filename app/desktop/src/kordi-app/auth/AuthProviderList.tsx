@@ -70,7 +70,7 @@ export function AuthProviderList({
   );
 
   return (
-    <div className={variant === 'gate' ? 'flex w-full flex-col gap-4' : 'flex h-full min-h-0 w-full flex-col gap-4'}>
+    <div className={variant === 'gate' ? 'flex min-h-0 w-full flex-1 flex-col gap-4' : 'flex h-full min-h-0 w-full flex-col gap-4'}>
       <div className="grid gap-1.5">
         <div className="flex items-center gap-2">
           <label className="relative min-w-0 flex-1">
@@ -93,7 +93,7 @@ export function AuthProviderList({
         {notice ? <p role="note" data-auth-page-notice="" className="m-0 px-1 text-[12px] leading-5 text-slate-400">{notice}</p> : null}
       </div>
 
-      <div className={variant === 'gate' ? 'flex h-[min(60vh,530px)] min-h-0 gap-3' : 'flex min-h-0 flex-1 gap-3'}>
+      <div className={variant === 'gate' ? 'flex min-h-[240px] flex-1 gap-3' : 'flex min-h-0 flex-1 gap-3'}>
         <ScrollArea className="min-h-0 min-w-0 flex-1">
           <div className="px-2 pb-3">
             {connected.length > 0 ? (
