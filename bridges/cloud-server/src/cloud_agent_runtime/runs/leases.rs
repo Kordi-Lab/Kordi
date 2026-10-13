@@ -135,7 +135,8 @@ async fn lease_run(
     // A project chat may wait for its Mac but never falls back to another
     // filesystem: the cloud leases a project run only while the project Mac is
     // offline, and never one a desktop claimed. A lapsed desktop lease on a
-    // project run ends through the lost-desktop sweep instead.
+    // project run ends through the lost-desktop sweep instead. A comment run
+    // that prefers the owner's Mac waits until `desktop_preferred_until`.
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'leased', execution_backend = 'cloud', claimed_by = $1, lease_expires_at = $2, updated_at = $3 \
@@ -149,6 +150,7 @@ async fn lease_run(
                 )) \
              AND NOT EXISTS(SELECT 1 FROM cloud_project_devices p JOIN cloud_devices d USING(device_id), jsonb_array_elements(p.projects) project WHERE p.account_id=candidate.owner_account_id AND (project->'sessions') ? candidate.session_id AND d.revoked_at IS NULL AND (candidate.execution_backend='desktop' OR p.updated_at>now()-make_interval(secs=>$5))) \
              AND NOT candidate.legacy_duplicate AND candidate.cancel_requested_at IS NULL \
+             AND (candidate.desktop_preferred_until IS NULL OR candidate.desktop_preferred_until <= now()) \
              AND ($4::text IS NULL OR candidate.run_id=$4) \
              AND (NOT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat q WHERE q.run_id=candidate.run_id) OR ( \
                  NOT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs earlier LEFT JOIN cloud_agent_subsession_chat e ON e.run_id=earlier.run_id JOIN cloud_agent_subsession_chat current ON current.run_id=candidate.run_id WHERE earlier.subsession_id=candidate.subsession_id AND earlier.run_id<>candidate.run_id AND earlier.status IN ('queued','leased','running') AND (e.sequence IS NULL OR e.sequence<current.sequence)) \

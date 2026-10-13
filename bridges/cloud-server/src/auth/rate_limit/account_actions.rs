@@ -21,6 +21,28 @@ pub const MESSAGE_SEND_LIMIT: AccountActionLimit = AccountActionLimit {
     window: Duration::from_secs(60),
 };
 
+/// Public shared-document reads (the page, the raw HTML view, and the JSON
+/// read), keyed by client address. A page view costs two reads.
+pub const DOCUMENT_PUBLIC_READ_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "document-public-read",
+    limit: 120,
+    window: Duration::from_secs(60),
+};
+
+/// Public shared-document reactions and comments, keyed by client address.
+pub const DOCUMENT_PUBLIC_WRITE_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "document-public-write",
+    limit: 30,
+    window: Duration::from_secs(60),
+};
+
+/// Collaboration socket tickets for shared documents, per account.
+pub const DOCUMENT_COLLAB_TICKET_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "document-collab-ticket",
+    limit: 60,
+    window: Duration::from_secs(60),
+};
+
 /// Contact additions and contact requests, which share one budget.
 pub const CONTACT_ADD_LIMIT: AccountActionLimit = AccountActionLimit {
     action: "contact-add",

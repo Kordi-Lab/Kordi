@@ -19,6 +19,7 @@
 pub(crate) mod access;
 pub(crate) mod content;
 mod content_type;
+pub(crate) mod fetch;
 pub(crate) mod playback;
 pub(crate) mod preview;
 mod response;
