@@ -24,9 +24,18 @@ export function CompanionDocumentTabs({ documents, activeId, titles, onActivate,
 
   useEffect(() => {
     const active = listRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
-    active?.parentElement?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    // Scroll the strip only. `scrollIntoView` also scrolls every clipped
+    // ancestor, which shifts the whole window while the pane is still sliding in.
+    const list = listRef.current;
+    const item = active?.parentElement;
+    if (list && item) {
+      const itemStart = item.offsetLeft;
+      const itemEnd = itemStart + item.offsetWidth;
+      if (itemStart < list.scrollLeft) list.scrollLeft = itemStart;
+      else if (itemEnd > list.scrollLeft + list.clientWidth) list.scrollLeft = itemEnd - list.clientWidth;
+    }
     // After a keyboard close, focus follows to the tab that took over.
-    if (focusActive.current) active?.focus();
+    if (focusActive.current) active?.focus({ preventScroll: true });
     focusActive.current = false;
   }, [activeId, documents.length]);
 
@@ -35,7 +44,7 @@ export function CompanionDocumentTabs({ documents, activeId, titles, onActivate,
     const index = tabs.findIndex((tab) => tab === event.target);
     const id = documents[index]?.artifact.id;
     if (!id) return;
-    const move = (next: number) => tabs[(next + tabs.length) % tabs.length]?.focus();
+    const move = (next: number) => tabs[(next + tabs.length) % tabs.length]?.focus({ preventScroll: true });
     if (event.key === 'ArrowRight') move(index + 1);
     else if (event.key === 'ArrowLeft') move(index - 1);
     else if (event.key === 'Home') move(0);
