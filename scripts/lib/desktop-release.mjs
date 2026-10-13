@@ -13,7 +13,7 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,7 +35,10 @@ import {
   verifyUnpublishedChannelWithConvergence as verifyUnpublishedChannel,
 } from './desktop-release-public.mjs';
 import { releaseNotesForPublication } from './desktop-release-notes.mjs';
+import { releaseTreeScanArguments, vendoredRuntimeScanArguments } from './desktop-release-privacy-scan.mjs';
 import { VERSION_PATTERN, MANIFEST_KEY_PATTERN } from './desktop-release-version.mjs';
+
+export { releaseTreeScanArguments, vendoredRuntimeScanArguments };
 
 export { PRODUCT_ORIGIN } from './desktop-release-public.mjs';
 export const TAURI_UPDATER_PUBLIC_KEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY3N0JBRkMwRDRDNzFEOUIKUldTYkhjZlV3Szk3WjVXWWVmNzZGanNDakFlRkxTZ3UwZ1dLelpJenl3NnY3YmkvZCtEcUxxUWcK';
@@ -43,29 +46,6 @@ export const TAURI_UPDATER_PUBLIC_KEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB
 const REPO_ROOT = dirname(fileURLToPath(new URL('../../package.json', import.meta.url)));
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 const SAFE_CHANNELS = new Set(['beta', 'acceptance']);
-const SENSITIVE_PATTERNS = [
-  'pi-clipboard',
-  '/var/folders',
-  '/Users/',
-  '/private/tmp',
-  'accountId["\x27]?\\s*[:=]\\s*["\x27][^"\x27]+',
-  'displayName["\x27]?\\s*[:=]\\s*["\x27]111',
-  'primaryEmail',
-  'sessionToken',
-  'korde-product',
-  '35\\.188\\.85\\.31',
-  'sslip\\.io',
-];
-// The bundled agent runtime is third-party code whose own source text and upstream
-// build paths contain these generic strings. Its files get every other pattern plus
-// the build host's home directory, which is what a real leak from this build would carry.
-const VENDORED_RUNTIME_SOURCE_PATTERNS = new Set([
-  '/Users/',
-  '/private/tmp',
-  'accountId["\x27]?\\s*[:=]\\s*["\x27][^"\x27]+',
-  'sessionToken',
-]);
-const VENDORED_RUNTIME_GLOBS = ['**/Contents/MacOS/kordi-omp', '**/Contents/MacOS/pi_natives.*.node'];
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 
 function requireString(value, label) {
@@ -996,25 +976,6 @@ export function assertAppBundleContract(run, appBundle, {
   }
   assertMacOSNotificationBundleContract(run, appBundle);
   return trust;
-}
-
-export function releaseTreeScanArguments(root) {
-  const args = ['--text', '--hidden', '--no-ignore', '--no-messages', '-n'];
-  for (const pattern of SENSITIVE_PATTERNS) args.push('-e', pattern);
-  for (const glob of VENDORED_RUNTIME_GLOBS) args.push('--glob', `!${glob}`);
-  args.push(root);
-  return args;
-}
-
-export function vendoredRuntimeScanArguments(root, { homeDirectory = homedir() } = {}) {
-  const args = ['--text', '--hidden', '--no-ignore', '--no-messages', '-n'];
-  for (const pattern of SENSITIVE_PATTERNS) {
-    if (!VENDORED_RUNTIME_SOURCE_PATTERNS.has(pattern)) args.push('-e', pattern);
-  }
-  if (homeDirectory.length > 1) args.push('-e', homeDirectory.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  for (const glob of VENDORED_RUNTIME_GLOBS) args.push('--glob', glob);
-  args.push(root);
-  return args;
 }
 
 export function productOriginScanArguments(root) {
