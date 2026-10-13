@@ -22,6 +22,7 @@ use uuid::Uuid;
 
 #[path = "desktop_claim.rs"]
 mod claim;
+pub(crate) use claim::agent_desktop_ready;
 pub(super) use claim::claim;
 #[path = "desktop_interrupted.rs"]
 mod interrupted;
@@ -75,11 +76,7 @@ pub(super) async fn prefer_ready_desktop(
     // A ready owner Mac executes regardless of where the selected provider
     // account is stored. Hosted credentials are resolved for its claimed run.
     let agent = execution_agent_id(pool, input).await?;
-    // Fresh capability and presence are the admission boundary. If the Mac
-    // stops heartbeating, Cloud may claim the same request after they expire.
-    let row: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities r JOIN cloud_devices d USING(device_id) JOIN cloud_device_presence p USING(device_id) WHERE d.account_id=$1 AND d.revoked_at IS NULL AND r.agent_id=$2 AND r.updated_at>now()-interval '35 seconds' AND p.state='online' AND p.last_heartbeat_at::timestamptz>now()-interval '35 seconds')")
-        .bind(&input.owner_account_id).bind(agent).fetch_one(pool).await?;
-    Ok(row.0)
+    Ok(agent_desktop_ready(pool, &input.owner_account_id, &agent).await?)
 }
 
 #[derive(Deserialize)]
@@ -381,6 +378,24 @@ pub(super) async fn progress(
                 error,
             )
         }
+    }
+    // A comment run's answer goes to its document thread, never to chat.
+    let executor_id = executor(&session, input.claim_id);
+    let comment = crate::document_shares::agents::desktop::progress;
+    match comment(
+        state.db_pool(),
+        &run_id,
+        &session.account_id,
+        &executor_id,
+        phase,
+        &response,
+    )
+    .await
+    {
+        Ok(Some(value)) => return Json(value).into_response(),
+        Ok(None) => {}
+        Err(super::runs::RunError::NotFound) => return expired(),
+        Err(e) => return run_error_response("comment reply", "Could not post the reply.", e),
     }
     let result = async {
         let mut tx = state.db_pool().begin().await?;

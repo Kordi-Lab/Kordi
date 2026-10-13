@@ -260,4 +260,23 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "shared group memories",
         "0121_shared_group_memories.sql"
     ),
+    migration!(122, "document shares", "0122_cloud_document_shares.sql"),
+    migration!(123, "document contents", "0123_cloud_document_contents.sql"),
+    migration!(124, "document sources", "0124_cloud_document_sources.sql"),
+    migration!(
+        125,
+        "document block ids",
+        "0125_cloud_document_block_ids.sql"
+    ),
+    migration!(126, "document collab", "0126_cloud_document_collab.sql"),
+    migration!(
+        127,
+        "document agent runs",
+        "0127_cloud_document_agent_runs.sql"
+    ),
+    migration!(
+        128,
+        "document agent desktop preference",
+        "0128_cloud_document_agent_desktop_preference.sql"
+    ),
 ];

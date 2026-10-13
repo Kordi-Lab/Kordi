@@ -32,6 +32,7 @@ pub struct ServerState {
     notifications: Option<PushNotificationService>,
     signup_email: Option<crate::auth::signup_email::SignupEmailService>,
     connectors: crate::connectors::ConnectorRuntime,
+    document_rooms: Arc<crate::document_shares::collab::RoomRegistry>,
 }
 
 impl ServerState {
@@ -48,6 +49,7 @@ impl ServerState {
             notifications: None,
             signup_email: None,
             connectors: crate::connectors::ConnectorRuntime::from_env(),
+            document_rooms: crate::document_shares::collab::RoomRegistry::new(),
         }
     }
 
@@ -109,6 +111,10 @@ impl ServerState {
 
     pub fn connectors(&self) -> &crate::connectors::ConnectorRuntime {
         &self.connectors
+    }
+
+    pub(crate) fn document_rooms(&self) -> &crate::document_shares::collab::RoomRegistry {
+        &self.document_rooms
     }
 
     pub fn db_pool(&self) -> &PgPool {
@@ -201,6 +207,10 @@ pub fn router_with_shared_rate_limiter(
         .merge(crate::calls::routes(state.clone()))
         .merge(crate::cloud_agents::routes::routes(state.clone()))
         .merge(crate::connectors::routes::routes(state.clone()))
+        .merge(crate::document_shares::routes(
+            state.clone(),
+            rate_limiter.clone(),
+        ))
         .merge(
             crate::cloud_agent_runtime::routes::routes(state.clone())
                 .layer(axum::Extension(rate_limiter.clone())),

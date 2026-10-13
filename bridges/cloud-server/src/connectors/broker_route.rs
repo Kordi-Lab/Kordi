@@ -97,6 +97,13 @@ pub(super) async fn broker_call(
         Ok(holder) => holder,
         Err(response) => return *response,
     };
+    // Document tools arrive on the same lease and are executed by the
+    // document module; they involve no connector and no credential.
+    if input.connector_id.trim() == crate::document_shares::agents::DOCUMENT_CONNECTOR_ID {
+        let (status, response) =
+            crate::document_shares::agents::tools::call(&state, &holder, &input).await;
+        return (status, Json(response)).into_response();
+    }
     // A decline only writes the audit row; the tool never runs.
     let response = if input.declined_by_owner {
         declined::record_on_lease(state.db_pool(), state.connectors(), &holder, &input).await
