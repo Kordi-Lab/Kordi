@@ -96,6 +96,23 @@ svg.i { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-widt
 .emo { height: 40px; border-radius: 20px; padding: 0 4px; }
 .emo button { width: 34px; height: 34px; border-radius: 50%; font-size: 20px; line-height: 1; }
 .menu button:hover, .emo button:hover, .menu button:focus-visible, .emo button:focus-visible { background: var(--hover); color: var(--ink); }
+.av.agent { background: var(--blue-wash); color: var(--blue); }
+.av.agent svg { width: 62%; height: 62%; fill: currentColor; }
+.n .tag { margin-left: 6px; padding: 1px 6px; border-radius: 5px; background: var(--blue-wash); color: var(--blue); font-size: 11px; font-weight: 600; }
+.cb { flex: 1; min-width: 0; }
+.sys { margin-top: 10px; padding: 10px 0 0 34px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--ink-3); overflow-wrap: anywhere; }
+.work, .fail { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; color: var(--ink-3); }
+.work.in, .fail.in { margin-left: 34px; }
+.dots { display: inline-flex; gap: 3px; }
+.dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: dot 1.2s ease-in-out infinite; }
+.dots i:nth-child(2) { animation-delay: .2s; }
+.dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes dot { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .dots i { animation: none; opacity: .6; } }
+.fail .retry { color: var(--blue); font-weight: 600; }
+.fail .retry:disabled { opacity: .5; cursor: default; }
+.cf input.tx, .cmtbox input.tx { min-width: 150px; }
+.cf button.at, .cmtbox button.at { height: 28px; max-width: 45%; padding: 0 10px; border-radius: 14px; background: var(--chip); color: var(--ink-2); font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .replyto { margin: 6px 0 0 34px; font-size: 13px; font-weight: 500; color: var(--ink-3); }
 .replyto:hover { color: var(--ink); }
 .react[aria-pressed="true"] { border-color: var(--blue); }

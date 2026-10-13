@@ -18,6 +18,7 @@ mod db;
 mod db_fixture;
 mod editing_db;
 mod formats;
+mod public_page_agents;
 mod sources_db;
 mod stable_ids_db;
 
@@ -367,8 +368,8 @@ fn public_page_has_the_selection_menu_and_composer_template() {
     }
     assert_eq!(
         page.matches(r#"<script nonce="n3">"#).count(),
-        2,
-        "core and menu scripts"
+        3,
+        "agent, core, and menu scripts"
     );
     assert!(page.contains("selectionchange"));
     assert!(page.contains("backdrop-filter"));
