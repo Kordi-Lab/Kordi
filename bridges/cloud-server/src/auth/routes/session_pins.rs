@@ -1,5 +1,7 @@
 use super::*;
 
+mod pin_request;
+
 type PinSummaryRow = (
     Option<String>,
     Option<String>,
@@ -317,18 +319,8 @@ pub(super) async fn update_cloud_session_pin(
     } else {
         &private_ids
     };
-    let mut next_ids = previous_ids.clone();
-    match action {
-        Some("pin") => {
-            let id = message_id.as_ref().unwrap();
-            if !next_ids.contains(id) {
-                next_ids.push(id.clone());
-            }
-        }
-        Some("unpin") => next_ids.retain(|id| Some(id) != message_id.as_ref()),
-        // Older clients still replace or clear their single-pin projection.
-        _ => next_ids = message_id.iter().cloned().collect(),
-    }
+    let (next_ids, target_message_id) =
+        pin_request::apply_pin_request(previous_ids, action, message_id.as_deref());
     let visible_count = |shared: &[String], private: &[String]| {
         shared
             .iter()
@@ -424,7 +416,7 @@ pub(super) async fn update_cloud_session_pin(
         "sessionId": &session_id,
         "messageId": next_ids.last(),
         "messageIds": &next_ids,
-        "targetMessageId": &message_id,
+        "targetMessageId": &target_message_id,
         "kind": if action == Some("unpin") || message_id.is_none() { "unpinned" } else { "pinned" },
         "scope": &scope,
         "updatedByAccountId": &session.account_id,
