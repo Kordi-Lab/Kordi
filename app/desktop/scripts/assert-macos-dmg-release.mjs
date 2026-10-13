@@ -7,7 +7,13 @@ import { spawnSync } from 'node:child_process';
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = dirname(scriptDir);
 const workspaceRoot = resolve(desktopRoot, '..', '..');
-const expectedCloudExecutables = new Set(['kordi-desktop', 'kordi']);
+const ompSidecarName = 'kordi-omp';
+const ompSidecarStartTimeoutMs = 30_000;
+
+// The OMP runtime ships as a compiled sidecar plus the native addon it loads from the same directory.
+export function expectedCloudExecutables(arch = process.arch) {
+  return new Set(['kordi-desktop', 'kordi', ompSidecarName, `pi_natives.darwin-${arch}.node`]);
+}
 
 export function defaultDmgBundleDir({ cargoTargetDir = process.env.CARGO_TARGET_DIR ?? '' } = {}) {
   if (cargoTargetDir) {
@@ -38,9 +44,11 @@ export function validateDmgVolumeLayout(volumePath, { appName }) {
   }
 
   validateCloudAppExecutables(appBundlePath);
+  return appBundlePath;
 }
 
-export function validateCloudAppExecutables(appBundlePath) {
+export function validateCloudAppExecutables(appBundlePath, { arch = process.arch } = {}) {
+  const expected = expectedCloudExecutables(arch);
   const executableDir = join(appBundlePath, 'Contents', 'MacOS');
   if (!existsSync(executableDir) || !lstatSync(executableDir).isDirectory()) {
     throw new Error(`Missing Contents/MacOS in app bundle: ${appBundlePath}`);
@@ -52,14 +60,32 @@ export function validateCloudAppExecutables(appBundlePath) {
       return entry.isFile() || entry.isSymbolicLink();
     })
     .sort();
-  const missing = [...expectedCloudExecutables].filter((name) => !executableNames.includes(name));
-  const unexpected = executableNames.filter((name) => !expectedCloudExecutables.has(name));
+  const missing = [...expected].filter((name) => !executableNames.includes(name));
+  const unexpected = executableNames.filter((name) => !expected.has(name));
 
   if (missing.length > 0) {
     throw new Error(`Cloud app bundle is missing expected executables: ${missing.join(', ')}`);
   }
   if (unexpected.length > 0) {
     throw new Error(`Cloud app bundle contains unexpected executables: ${unexpected.join(', ')}`);
+  }
+}
+
+// A hardened-runtime signature without the JIT entitlement lets the sidecar pass
+// notarization and then fail on its first line, so start the bundled binary itself.
+export function assertOmpSidecarStarts(appBundlePath, { timeoutMs = ompSidecarStartTimeoutMs } = {}) {
+  const sidecarPath = join(appBundlePath, 'Contents', 'MacOS', ompSidecarName);
+  const started = spawnSync(sidecarPath, [], { input: '', encoding: 'utf8', timeout: timeoutMs });
+  const firstLine = (started.stdout ?? '').split('\n')[0];
+  let ready = false;
+  try {
+    ready = JSON.parse(firstLine).type === 'ready';
+  } catch {
+    ready = false;
+  }
+  if (!ready) {
+    const detail = (started.stderr || started.error?.message || `exit status ${started.status}`).trim();
+    throw new Error(`Bundled ${ompSidecarName} did not report ready: ${detail.split('\n')[0]}`);
   }
 }
 
@@ -149,7 +175,7 @@ export function verifyDmgArtifact({ dmgPath, bundleDir, appName }) {
   const artifact = dmgPath ? resolve(dmgPath) : findNewestDmg(bundleDir, { appName });
   const mounted = mountDmg(artifact);
   try {
-    validateDmgVolumeLayout(mounted.mountPoint, { appName });
+    assertOmpSidecarStarts(validateDmgVolumeLayout(mounted.mountPoint, { appName }));
   } finally {
     detachDmg(mounted.device);
   }
@@ -161,7 +187,7 @@ async function main() {
   const artifact = verifyDmgArtifact(options);
   console.log(`[kordi] Verified macOS DMG installer: ${artifact}`);
   console.log(
-    `[kordi] DMG contains ${options.appName}.app, only the expected Cloud executables, and an /Applications drag target.`,
+    `[kordi] DMG contains ${options.appName}.app, only the expected Cloud executables, a working agent sidecar, and an /Applications drag target.`,
   );
 }
 
