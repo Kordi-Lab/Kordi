@@ -233,3 +233,12 @@ Points the sections above left open, as built in `document_shares/agents/`:
 - Threads render agent replies with the agent's avatar and name and an "Agent" tag; the mentioning comment shows "<Agent> is working" while `agentRun.status` is queued or running, and "Could not answer" with Retry (re-post) on failed.
 - The reply field under a thread that has an agent reply offers **Ask <Agent> to edit**, which prefixes the reply with the mention; edits arrive through the normal document update path with a one-line "Edited by <Agent>" notice in the thread.
 - The Share switch **Readers can ask <Agent>** now controls real behavior.
+
+### Routing of comment runs (added 2026-10-13, replaces "cloud only")
+
+A comment run is routed exactly like a chat run for the same agent, so the agent that answers in a document is the one that answers in the main chat:
+
+- When the agent owner's Mac is online and ready (the same `prefer_ready_desktop` decision the chat claim route uses, including the project device binding), the run is created awaiting a desktop claim and the server publishes the non-critical user sync event `document.agent_request` to the owner's devices with `{ runRequestId: "doccmt:<commentId>", commentId, attachmentId, sessionId, requesterAccountId, agentId, prompt }`. The owner's Mac claims it through the existing desktop claim route, which accepts `doccmt:` request ids for runs whose owner is the signed-in account, executes it with its local runtime (same agent definition, model sign-in, memory, and tools as chat), and completes or fails it through the existing desktop completion routes; delivery to the comment thread is unchanged.
+- When no ready Mac exists, or none claims within the presence timeout, the run falls back to the cloud runner, as chat does. A run is executed once: the desktop claim and the cloud lease exclude each other the way they do for chat.
+- Lease tools on the Mac: `read_document` is delivered to every run that may read the document, including turns another member started on the owner's Mac (it is read-only and gated by the server). `edit_document` stays limited to person-started runs whose requester owns the agent and can edit.
+- `agentRun.status` is `queued` while waiting for a claim, `running` once leased by either side.
