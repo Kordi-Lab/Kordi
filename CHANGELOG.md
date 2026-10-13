@@ -4,11 +4,40 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ## [Unreleased]
 
+## [0.0.2-beta.4] - 2026-10-13
+
+### Added
+
+- Added shared documents. Markdown and HTML documents open in a native reader
+  on Mac and iPhone, with an author card, a selection menu, reactions, and
+  comments. On Mac, documents open in tabs beside the chat with a rich editor
+  and live co-editing with named cursors. Owners can share a public
+  `kordi.ai/d/` link, and a mention in a comment asks an agent to reply or,
+  when delegated, edit the document ([#1741]).
+- Added connectors for Google Calendar, Gmail, GitHub, and Slack, with consent
+  and approval prompts before an agent acts ([#1712]).
+- Added account memory with review, edit, delete, and switch-off controls, and
+  shared group memories on Mac, iPhone, and cloud ([#1742]).
+- Added chat projects and a separate Agent Chats area ([#1638], [#1698]).
+- Added a compact Threads message layout, stacked message pins, square avatars,
+  and custom group images on iOS and macOS ([#1669], [#1660], [#1667]).
+- Added provider accounts and sign-in flows for agent model providers on Mac
+  and iPhone, and a current-time line in Digest calendar views.
+- Added email verification at signup and for existing accounts, and grouped
+  active sessions by device ([#1672], [#1708]).
+
 ### Changed
 
 - Simplified message forwarding on macOS and iOS with searchable people, groups,
   and agents, recent activity ordering, visible group context, compact layouts,
   and brief translucent success confirmations.
+- Rendered links in messages as contextual chips with file references beside
+  compact attachments on desktop and iOS.
+- Unified agent execution on one runtime so routing, stop, queueing, and
+  background sessions behave the same on Mac, iPhone, and cloud ([#1724]).
+- Showed queued messages as pending bubbles and refreshed the macOS workspace
+  with a flat native frame, unified theme colors, and refined iOS headers
+  ([#1745], [#1754]).
 
 ### Fixed
 
@@ -26,6 +55,15 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
   Above-screen height changes now preserve the reading point through the list's
   layout origin during wheel gestures, with one scroll correction after settling.
   Improved height estimates for grouped messages, emoji, and wrapped text.
+
+- Released network resources after every cloud request on Mac, reducing memory
+  growth during long sessions ([#1752]).
+- Fixed large calendar synchronization, desktop sync of groups without a shared
+  title or decodable history, and timezone refresh.
+- Fixed desktop OAuth cancellation, unread state for visible agent replies in
+  the companion panel, and Markdown emphasis around links.
+- Retried failed requests in owned-agent sessions and fixed self-agent history,
+  first sends, and selector stability.
 
 ## [0.0.2-beta.3] - 2026-09-20
 
@@ -632,7 +670,8 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta3...HEAD
+[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta4...HEAD
+[0.0.2-beta.4]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta3...V0.0.2.beta4
 [0.0.2-beta.3]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta2...V0.0.2.beta3
 [0.0.2-beta.2]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta1...V0.0.2.beta2
 [0.0.2-beta.1]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1...V0.0.2.beta1
@@ -883,3 +922,17 @@ This release is the comparison baseline for beta.8. See the
 [#1509]: https://github.com/Kordi-Lab/Kordi/pull/1509
 [#1521]: https://github.com/Kordi-Lab/Kordi/issues/1521
 [#1528]: https://github.com/Kordi-Lab/Kordi/issues/1528
+[#1638]: https://github.com/Kordi-Lab/Kordi/pull/1638
+[#1660]: https://github.com/Kordi-Lab/Kordi/pull/1660
+[#1667]: https://github.com/Kordi-Lab/Kordi/pull/1667
+[#1669]: https://github.com/Kordi-Lab/Kordi/pull/1669
+[#1672]: https://github.com/Kordi-Lab/Kordi/pull/1672
+[#1698]: https://github.com/Kordi-Lab/Kordi/pull/1698
+[#1708]: https://github.com/Kordi-Lab/Kordi/pull/1708
+[#1712]: https://github.com/Kordi-Lab/Kordi/issues/1712
+[#1724]: https://github.com/Kordi-Lab/Kordi/pull/1724
+[#1741]: https://github.com/Kordi-Lab/Kordi/issues/1741
+[#1742]: https://github.com/Kordi-Lab/Kordi/pull/1742
+[#1745]: https://github.com/Kordi-Lab/Kordi/pull/1745
+[#1752]: https://github.com/Kordi-Lab/Kordi/pull/1752
+[#1754]: https://github.com/Kordi-Lab/Kordi/pull/1754
