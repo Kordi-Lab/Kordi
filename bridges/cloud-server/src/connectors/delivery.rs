@@ -167,6 +167,9 @@ async fn compute_and_store(
     } else {
         Vec::new()
     };
+    // Document tools ride the same lease field; their own gate decides them.
+    let mut tools = tools;
+    tools.extend(crate::document_shares::agents::tools::lease_tools(pool, run_id).await?);
     let json = serde_json::to_value(&tools).unwrap_or_else(|_| Value::Array(Vec::new()));
     // A concurrent first delivery may have won; keep whichever set was
     // stored first and return that one.
@@ -190,9 +193,13 @@ fn for_backend(tools: Vec<LeaseConnectorTool>, backend: &str) -> Vec<LeaseConnec
     if backend == "desktop" {
         return tools;
     }
+    // `edit_document` is gated by the server per run, not by an approval card.
     tools
         .into_iter()
-        .filter(|tool| tool.group != ConnectorToolGroup::Act)
+        .filter(|tool| {
+            tool.group != ConnectorToolGroup::Act
+                || crate::document_shares::agents::tools::is_document_tool(tool)
+        })
         .collect()
 }
 

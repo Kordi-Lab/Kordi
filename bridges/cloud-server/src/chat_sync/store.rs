@@ -254,7 +254,8 @@ pub use support::{
     append_user_sync_events_in_transaction, identity_sync_recipient_ids, publish_user_sync_events,
 };
 pub use sync_events::append_account_hint;
-use sync_events::{insert_noncritical_sync_event, insert_sync_event, insert_sync_event_fanout};
+pub(crate) use sync_events::insert_noncritical_sync_event;
+use sync_events::{insert_sync_event, insert_sync_event_fanout};
 pub use titles::{update_personal_title, update_shared_title};
 
 mod thread_attention;

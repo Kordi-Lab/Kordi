@@ -89,6 +89,13 @@ pub(in crate::cloud_agent_runtime) async fn interrupted(
         let Some((run_id,)) = run else {
             return Ok::<_, runs::RunError>(None);
         };
+        // A comment run ends in its document thread, never in chat.
+        if crate::document_shares::agents::is_comment_request(&request_id) {
+            let device = format!("desktop:{}:%", session.device_id);
+            let end = crate::document_shares::agents::desktop::interrupted;
+            let closed = end(state.db_pool(), &run_id, &device, status, text).await?;
+            return Ok(Some((closed, None)));
+        }
         // A user stop records the request, so the short notice reads as a stop.
         let closed = query(
             "UPDATE cloud_agent_fallback_runs SET status = $3, \

@@ -11,3 +11,5 @@ pub mod sandboxes;
 mod shared_threads;
 pub(crate) mod subsession_execution;
 mod sync_events;
+
+pub(crate) use desktop::agent_desktop_ready;
