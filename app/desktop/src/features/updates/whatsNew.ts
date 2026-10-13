@@ -40,6 +40,32 @@ export type WhatsNewRuntime = {
 };
 
 const CURATED_RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly WhatsNewHighlight[]>> = {
+  '0.0.2-beta.4': [
+    {
+      category: 'Shared documents',
+      title: 'Read, edit, and share documents together',
+      detail: 'Markdown and HTML documents open beside the chat with live co-editing, comments, reactions, and public links.',
+      kind: 'collaboration',
+    },
+    {
+      category: 'Agents',
+      title: 'Connect your tools and ask agents in place',
+      detail: 'Connectors bring Google Calendar, Gmail, GitHub, and Slack to your agents, and a mention in a document comment gets a reply or an edit.',
+      kind: 'general',
+    },
+    {
+      category: 'Memory',
+      title: 'Review what Kordi remembers',
+      detail: 'Account memory can be reviewed, edited, deleted, or switched off, and groups can keep shared memories.',
+      kind: 'general',
+    },
+    {
+      category: 'Organization',
+      title: 'Projects, Threads layout, and stacked pins',
+      detail: 'Group chats into projects, switch to a compact Threads layout, and keep several pinned messages in view.',
+      kind: 'collaboration',
+    },
+  ],
   '0.0.2-beta.3': [
     {
       category: 'Group planning',
