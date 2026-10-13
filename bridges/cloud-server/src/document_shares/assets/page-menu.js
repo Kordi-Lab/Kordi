@@ -127,6 +127,8 @@
   });
 
   window.KordiDoc.hideMenu = function () { hideAll(true); };
+  // Annotations under a block changed height; follow the selection.
+  window.KordiDoc.placeMenu = place;
 
   window.KordiDoc.showEmoji = function (anchor, blockId) {
     emojiBlock = blockId;

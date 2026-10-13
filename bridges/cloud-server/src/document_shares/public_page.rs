@@ -26,6 +26,7 @@ use crate::server::ServerState;
 
 const PAGE_CSS: &str = include_str!("assets/page.css");
 const PAGE_JS: &str = include_str!("assets/page.js");
+const PAGE_AGENT_JS: &str = include_str!("assets/page-agent.js");
 const PAGE_MENU_JS: &str = include_str!("assets/page-menu.js");
 const KORDI_HOMEPAGE_URL: &str = "https://kordi.ai/";
 const KORDI_FAVICON_URL: &str = "/assets/favicon.png";
@@ -173,8 +174,9 @@ pub(crate) fn document_page(input: &PageInput<'_>, nonce: &str) -> String {
 </main>
 <div class="menu" id="menu" role="toolbar" aria-label="Selection" hidden><button type="button" data-act="comment" aria-label="Comment" title="Comment">{comment_icon}</button><button type="button" data-act="react" aria-label="React" title="React">{react_icon}</button></div>
 <div class="emo" id="emo" role="toolbar" aria-label="Reactions" hidden></div>
-<template id="composer-template"><div class="cmtbox"><input class="nm" name="name" placeholder="Your name" maxlength="40" autocomplete="name"><input class="tx" placeholder="Add a comment" maxlength="4000"><button type="button" class="post">Post</button></div></template>
+<template id="composer-template"><div class="cmtbox"><input class="nm" name="name" placeholder="Your name" maxlength="40" autocomplete="name"><input class="tx" placeholder="Add a comment" maxlength="4000"><button type="button" class="at" hidden></button><button type="button" class="post">Post</button></div></template>
 <div class="toast" id="toast" role="status" hidden></div>
+<script nonce="{nonce}">{agent_js}</script>
 <script nonce="{nonce}">{js}</script>
 <script nonce="{nonce}">{menu_js}</script>
 </body>
@@ -192,6 +194,7 @@ pub(crate) fn document_page(input: &PageInput<'_>, nonce: &str) -> String {
         body = document_body(input, &title),
         comment_icon = COMMENT_ICON,
         react_icon = REACT_ICON,
+        agent_js = PAGE_AGENT_JS,
         js = PAGE_JS,
         menu_js = PAGE_MENU_JS,
     )
