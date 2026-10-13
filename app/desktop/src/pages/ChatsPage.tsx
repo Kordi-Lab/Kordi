@@ -177,7 +177,7 @@ export function ChatsPage({
     activePaneKind,
     companionConversation,
   });
-  useCompanionDocumentRequests((document) => { companionDocument.open(document); setCompanionView('document'); companionLayout.placeCompanion('right'); companionLayout.setFolded(false); destinations.main.select('messages'); });
+  useCompanionDocumentRequests((document) => { companionDocument.open(document); setCompanionView('document'); companionLayout.placeCompanion('right'); companionLayout.setFolded(false); });
   const {
     containerRef: splitContainerRef,
     side: companionSide,
