@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(test)]
+mod legacy_signup_tests;
 mod login;
 mod signup_avatar;
 pub(super) use login::login;
@@ -24,16 +26,24 @@ pub(super) async fn signup(
     if let Err(policy_err) = validate_password_strength(&req.password) {
         return map_password_policy(policy_err);
     }
-    let (Some(verification_id), Some(verification_code)) = (
+    // Clients released before emailed codes send neither field. They may still
+    // sign up, unverified, while the transition window is open.
+    let email_proof = match (
         req.verification_id.as_deref(),
         req.verification_code.as_deref(),
-    ) else {
-        return err("email_verification_required", "Verify your email with the code sent to your inbox before creating an account. Update Kordi if the code field is unavailable.", StatusCode::BAD_REQUEST);
-    };
-    let Some(email_service) = state.signup_email() else {
-        return super::signup_email_handlers::signup_code_error(
-            crate::auth::signup_email::SignupCodeError::Unavailable,
-        );
+    ) {
+        (Some(verification_id), Some(verification_code)) => {
+            let Some(email_service) = state.signup_email() else {
+                return super::signup_email_handlers::signup_code_error(
+                    crate::auth::signup_email::SignupCodeError::Unavailable,
+                );
+            };
+            Some((email_service, verification_id, verification_code))
+        }
+        (None, None) if state.legacy_signup_is_open() => None,
+        _ => {
+            return err("email_verification_required", "Verify your email with the code sent to your inbox before creating an account. Update Kordi if the code field is unavailable.", StatusCode::BAD_REQUEST);
+        }
     };
 
     let display_name = req
@@ -148,30 +158,34 @@ pub(super) async fn signup(
         }
     };
 
-    if let Err(error) = crate::auth::signup_email::consume_signup_code(
-        &mut tx,
-        email_service,
-        &normalized_email,
-        verification_id,
-        verification_code,
-    )
-    .await
-    {
-        // Failed guesses must survive; no account or device has been inserted yet.
-        if tx.commit().await.is_err() {
-            return super::signup_email_handlers::signup_code_error(
-                crate::auth::signup_email::SignupCodeError::Database,
-            );
+    if let Some((email_service, verification_id, verification_code)) = email_proof {
+        if let Err(error) = crate::auth::signup_email::consume_signup_code(
+            &mut tx,
+            email_service,
+            &normalized_email,
+            verification_id,
+            verification_code,
+        )
+        .await
+        {
+            // Failed guesses must survive; no account or device has been inserted yet.
+            if tx.commit().await.is_err() {
+                return super::signup_email_handlers::signup_code_error(
+                    crate::auth::signup_email::SignupCodeError::Database,
+                );
+            }
+            return super::signup_email_handlers::signup_code_error(error);
         }
-        return super::signup_email_handlers::signup_code_error(error);
     }
+    // Only an emailed code proves ownership; a legacy signup stays unverified.
+    let email_verified_at = email_proof.is_some().then_some(&now);
 
     if query(
         "INSERT INTO cloud_accounts \
          (account_id, display_name, primary_email, avatar_url, created_at, updated_at, \
           password_hash, password_algorithm, password_updated_at, avatar_source, avatar_style, \
           avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at, primary_email_verified_at) \
-         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $5, $8, $9, $10, $11, $12, $5, $5)",
+         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $5, $8, $9, $10, $11, $12, $5, $13)",
     )
     .bind(&account_id)
     .bind(display_name.as_deref())
@@ -185,6 +199,7 @@ pub(super) async fn signup(
     .bind(&avatar.seed)
     .bind(&avatar.renderer_version)
     .bind(avatar.version)
+    .bind(email_verified_at)
     .execute(&mut *tx)
     .await
     .is_err()
@@ -229,6 +244,10 @@ pub(super) async fn signup(
 
     // Audit row inside the same tx so signup is atomic.
     let event_id = format!("evt_{}", uuid::Uuid::new_v4().simple());
+    let mut audit_metadata = serde_json::json!({"ip": peer_ip.map(|ip| ip.to_string())});
+    if email_proof.is_none() {
+        audit_metadata["legacySignup"] = serde_json::json!(true);
+    }
     let _ = query(
         "INSERT INTO cloud_audit_events \
          (event_id, account_id, device_id, event_type, metadata_json, created_at) \
@@ -238,7 +257,7 @@ pub(super) async fn signup(
     .bind(&account_id)
     .bind(&device_id)
     .bind("account.created")
-    .bind(serde_json::json!({"ip": peer_ip.map(|ip| ip.to_string())}).to_string())
+    .bind(audit_metadata.to_string())
     .bind(&now)
     .execute(&mut *tx)
     .await;
@@ -269,6 +288,11 @@ pub(super) async fn signup(
         );
     }
 
+    if email_proof.is_none() {
+        eprintln!(
+            "[auth] legacy signup without email code created unverified account {account_id}"
+        );
+    }
     apply_deferred_signup_avatar(&state, &account_id, &avatar, &now, deferred_avatar_bytes).await;
     rate_limiter
         .record_login_success(&normalized_email, peer_ip)

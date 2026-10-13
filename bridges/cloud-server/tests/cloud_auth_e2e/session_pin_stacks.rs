@@ -149,17 +149,37 @@ async fn pin_stacks_limit_concurrent_adds_and_unpin_one_without_leaking_private_
         history.0, 6,
         "failed sixth pin and repeated unpin cannot create history"
     );
-    // A legacy client still replaces its scalar projection during a rolling upgrade.
-    let legacy = read_json(
-        router
-            .oneshot(put_json_with_token(
-                &path,
-                &owner_token,
-                json!({"messageId":"legacy","scope":"shared"}),
-            ))
-            .await
-            .unwrap(),
+    // A client released before pin stacks sends no action. Its pin and unpin
+    // change only the single pin it displays and keep every other pin.
+    let legacy = |message_id: serde_json::Value| {
+        router.clone().oneshot(put_json_with_token(
+            &path,
+            &owner_token,
+            json!({"messageId":message_id,"scope":"shared"}),
+        ))
+    };
+    let pinned = read_json(legacy(json!("legacy")).await.unwrap()).await;
+    let mut expected = remaining.clone();
+    expected.push(json!("legacy"));
+    assert_eq!(pinned["pin"]["sharedMessageIds"], json!(expected));
+    assert_eq!(pinned["pin"]["sharedMessageId"], "legacy");
+    assert_eq!(pinned["pin"]["privateMessageIds"], json!(["personal"]));
+    let unpinned = read_json(legacy(serde_json::Value::Null).await.unwrap()).await;
+    assert_eq!(unpinned["pin"]["sharedMessageIds"], json!(remaining));
+    assert_eq!(unpinned["pin"]["sharedMessageId"], remaining[2]);
+    assert_eq!(unpinned["pin"]["privateMessageIds"], json!(["personal"]));
+    let (target, kind): (Option<String>, String) = query_as(
+        "SELECT payload->>'targetMessageId', payload->>'kind' FROM cloud_chat_user_sync_events \
+         WHERE account_id=$1 AND conversation_id=$2 AND event_type='session.pin.updated' \
+         ORDER BY stream_seq DESC LIMIT 1",
     )
-    .await;
-    assert_eq!(legacy["pin"]["sharedMessageIds"], json!(["legacy"]));
+    .bind(&owner)
+    .bind(conversation)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        (target.as_deref(), kind.as_str()),
+        (Some("legacy"), "unpinned")
+    );
 }

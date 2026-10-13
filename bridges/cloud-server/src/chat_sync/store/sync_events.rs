@@ -1,3 +1,4 @@
+use super::legacy_client_events::critical_for_released_clients;
 use super::*;
 
 pub(super) async fn insert_sync_event(
@@ -57,6 +58,7 @@ pub(super) async fn insert_sync_event_fanout(
     if payloads.is_empty() {
         return Ok(());
     }
+    let critical = critical_for_released_clients(event_type, true);
     let account_ids = payloads.keys().cloned().collect::<Vec<_>>();
     query(
         "INSERT INTO cloud_chat_user_sync_heads(account_id, last_seq, min_seq) \
@@ -120,7 +122,7 @@ pub(super) async fn insert_sync_event_fanout(
                 .push_bind(conversation_id)
                 .push_bind(entity_id)
                 .push_bind(entity_version)
-                .push_bind(true)
+                .push_bind(critical)
                 .push_bind(payload);
         },
     );
@@ -142,6 +144,7 @@ async fn insert_sync_event_with_critical(
     event: (&Value, bool),
 ) -> Result<i64, StoreError> {
     let (payload, critical) = event;
+    let critical = critical_for_released_clients(event_type, critical);
     query(
         "INSERT INTO cloud_chat_user_sync_heads(account_id, last_seq, min_seq) \
          VALUES ($1, 0, 0) ON CONFLICT (account_id) DO NOTHING",

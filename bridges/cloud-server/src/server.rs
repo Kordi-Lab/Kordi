@@ -31,6 +31,7 @@ pub struct ServerState {
     call_media: Option<CallMediaConfig>,
     notifications: Option<PushNotificationService>,
     signup_email: Option<crate::auth::signup_email::SignupEmailService>,
+    legacy_signup_until: Option<chrono::DateTime<chrono::Utc>>,
     connectors: crate::connectors::ConnectorRuntime,
     document_rooms: Arc<crate::document_shares::collab::RoomRegistry>,
 }
@@ -48,6 +49,7 @@ impl ServerState {
             call_media: None,
             notifications: None,
             signup_email: None,
+            legacy_signup_until: None,
             connectors: crate::connectors::ConnectorRuntime::from_env(),
             document_rooms: crate::document_shares::collab::RoomRegistry::new(),
         }
@@ -68,6 +70,19 @@ impl ServerState {
 
     pub fn signup_email(&self) -> Option<&crate::auth::signup_email::SignupEmailService> {
         self.signup_email.as_ref()
+    }
+
+    /// Opens code-less password signup for older clients until `deadline`.
+    pub fn with_legacy_signup_until(mut self, deadline: chrono::DateTime<chrono::Utc>) -> Self {
+        self.legacy_signup_until = Some(deadline);
+        self
+    }
+
+    pub fn legacy_signup_is_open(&self) -> bool {
+        crate::auth::legacy_signup::legacy_signup_is_open(
+            self.legacy_signup_until,
+            chrono::Utc::now(),
+        )
     }
 
     pub fn with_release_store(mut self, release_store: ReleaseCatalogStore) -> Self {
@@ -331,6 +346,13 @@ pub async fn run(
         println!("Kordi signup email verification is configured");
     } else {
         println!("Kordi password signup is unavailable until signup email delivery is configured");
+    }
+    if let Some(deadline) = crate::auth::legacy_signup::legacy_signup_until_from_env() {
+        state = state.with_legacy_signup_until(deadline);
+        println!(
+            "Kordi legacy password signup without an email code is open until {}",
+            deadline.to_rfc3339()
+        );
     }
     if let Some(call_media) = CallMediaConfig::from_env().map_err(RunError::CallMedia)? {
         println!("Kordi call media is configured");
