@@ -35,7 +35,10 @@ import {
   verifyUnpublishedChannelWithConvergence as verifyUnpublishedChannel,
 } from './desktop-release-public.mjs';
 import { releaseNotesForPublication } from './desktop-release-notes.mjs';
+import { releaseTreeScanArguments, vendoredRuntimeScanArguments } from './desktop-release-privacy-scan.mjs';
 import { VERSION_PATTERN, MANIFEST_KEY_PATTERN } from './desktop-release-version.mjs';
+
+export { releaseTreeScanArguments, vendoredRuntimeScanArguments };
 
 export { PRODUCT_ORIGIN } from './desktop-release-public.mjs';
 export const TAURI_UPDATER_PUBLIC_KEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY3N0JBRkMwRDRDNzFEOUIKUldTYkhjZlV3Szk3WjVXWWVmNzZGanNDakFlRkxTZ3UwZ1dLelpJenl3NnY3YmkvZCtEcUxxUWcK';
@@ -43,19 +46,6 @@ export const TAURI_UPDATER_PUBLIC_KEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB
 const REPO_ROOT = dirname(fileURLToPath(new URL('../../package.json', import.meta.url)));
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 const SAFE_CHANNELS = new Set(['beta', 'acceptance']);
-const SENSITIVE_PATTERNS = [
-  'pi-clipboard',
-  '/var/folders',
-  '/Users/',
-  '/private/tmp',
-  'accountId["\x27]?\\s*[:=]\\s*["\x27][^"\x27]+',
-  'displayName["\x27]?\\s*[:=]\\s*["\x27]111',
-  'primaryEmail',
-  'sessionToken',
-  'korde-product',
-  '35\\.188\\.85\\.31',
-  'sslip\\.io',
-];
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 
 function requireString(value, label) {
@@ -988,22 +978,16 @@ export function assertAppBundleContract(run, appBundle, {
   return trust;
 }
 
-export function releaseTreeScanArguments(root) {
-  const args = ['--text', '--hidden', '--no-ignore', '--no-messages', '-n'];
-  for (const pattern of SENSITIVE_PATTERNS) args.push('-e', pattern);
-  args.push(root);
-  return args;
-}
-
 export function productOriginScanArguments(root) {
   return ['--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F', PRODUCT_ORIGIN, root];
 }
 
 function scanReleaseTree(run, root) {
-  const args = releaseTreeScanArguments(root);
-  const privacy = run('rg', args);
-  if (privacy.status === 0) throw new Error('Release privacy scan found a forbidden value');
-  if (privacy.status !== 1) throw new Error('Release privacy scan could not inspect the application bundle');
+  for (const args of [releaseTreeScanArguments(root), vendoredRuntimeScanArguments(root)]) {
+    const privacy = run('rg', args);
+    if (privacy.status === 0) throw new Error('Release privacy scan found a forbidden value');
+    if (privacy.status !== 1) throw new Error('Release privacy scan could not inspect the application bundle');
+  }
   requireRun(
     run,
     'rg',
