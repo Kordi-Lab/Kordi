@@ -190,3 +190,34 @@ Keystroke-level co-editing follows Tiptap's collaboration setup: the Mac editor 
 - iPhone: snapshots only in this phase; it refreshes on `document.updated` as today.
 - Public page: snapshots only.
 - The session agent edits through the room in a later phase.
+
+## Agents in documents (added 2026-10-12)
+
+Agents read shared documents, answer when mentioned in a comment, and edit the document when the person who owns the agent delegates the edit. Policy lives on the server; nothing here depends on prompt wording.
+
+### Who can ask which agent
+
+- A signed-in member mentions an agent in a comment or reply with `@<agent name>`. Mentions resolve with the same rules as group mentions (`runs/group_mentions.rs`): the commenter's own default or named agent, or another member's agent that is shared into the document's session. An ambiguous or unknown name is not a mention.
+- A public reader's mention only reaches the document owner's default agent, only while the share's `readersCanAskAgent` is on, and runs on the owner's quota.
+- Every run is charged to `observe_agent_run` for the requester (the owner for public readers) and refused with `429` like other agent runs.
+
+### Run
+
+- A comment that mentions an agent creates one run in `cloud_agent_fallback_runs` with `request_message_id = "doccmt:<commentId>"`, the document's session as `session_id`, the agent's owner, the requester, and a new nullable column `document_comment_id` (migration `0127_cloud_document_agent_runs.sql`, which also adds `author_agent_id` and `author_agent_name` to `cloud_document_comments` and relaxes its author check so exactly one of account, reader key, or agent is set). Idempotent per comment and agent.
+- Execution follows the existing routing (the owner's Mac when it claims the run, else the cloud runner). The run's trigger is person-started only when the requester owns the agent, exactly as `RunTrigger::for_person_message` decides for chat.
+- The prompt is built by the server: the document title, the Markdown of the block the thread is on with the two blocks before and after, the thread so far, and the request. The full document is not inlined; the agent reads it with the tool below.
+- On completion the response text becomes a reply comment in the same thread with the agent as author (`author: { displayName, agentId, ownerAccountId }`, `kind: "agent"` on `DocumentComment`), not a chat message, and `document.updated` with `"change": "annotations"` is published. On failure the thread gets a short system reply ("<Agent> could not answer.") so the "is working" state ends. `DocumentComment` gains `agentRun: { status: "queued" | "running" | "completed" | "failed" } | null` on the mentioning comment so clients show "is working" from data.
+
+### Tools
+
+Delivered to both runtimes the way connector tools are (host tools carried in `request.tools`, executed by the server under the run lease; no token reaches the run):
+
+- `read_document` (always): `{ attachmentId?, includeComments? }` returns the current revision, title, and blocks `[{ id, markdown }]`, optionally the open threads. Defaults to the run's document. Also available to ordinary chat runs in a session that carries a document, so agents can read shared documents outside comments; access requires the agent's owner and the requester to be active members of a conversation carrying the document family. HTML documents return extracted text in one block, capped at 200 kB.
+- `edit_document` (only in person-started runs where the requester can edit the document; never for public readers, never for background or scheduled runs): `{ baseRevision, operations: [{ op: "replace" | "insert_after" | "delete", blockId, markdown? }] }`. The server applies the operations to the stored Markdown in one transaction with the revision check, keeps block ids of untouched blocks, stamps new blocks, remaps annotations, records `updated_by_account_id` as the requester and `updated_by_agent_id`, marks the collaboration room stale so connected editors reconcile, and publishes `document.updated` content. A stale `baseRevision` returns the current blocks so the agent can retry once. At most 20 operations and 200 kB per call.
+- The agent's reply says what it changed; the server appends nothing on its own.
+
+### Clients
+
+- Threads render agent replies with the agent's avatar and name and an "Agent" tag; the mentioning comment shows "<Agent> is working" while `agentRun.status` is queued or running, and "Could not answer" with Retry (re-post) on failed.
+- The reply field under a thread that has an agent reply offers **Ask <Agent> to edit**, which prefixes the reply with the mention; edits arrive through the normal document update path with a one-line "Edited by <Agent>" notice in the thread.
+- The Share switch **Readers can ask <Agent>** now controls real behavior.
