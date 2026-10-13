@@ -127,6 +127,31 @@ adding the gateway, roll that configuration out on the product host:
 Avatar rendering uses its own throttle, which follows a private proxy's
 `X-Real-IP`.
 
+### Temporary signup window for older clients
+
+Clients released before password signup required an emailed code cannot send
+one. `KORDI_AUTH_LEGACY_SIGNUP_UNTIL` keeps password signup working for them
+during a client transition:
+
+```bash
+KORDI_AUTH_LEGACY_SIGNUP_UNTIL=2026-01-31T00:00:00Z
+```
+
+- The value is an RFC 3339 timestamp. Until that instant, a signup request
+  that carries neither `verificationId` nor `verificationCode` creates an
+  account whose email is not verified. A request that sends a code is always
+  verified, inside or outside the window.
+- The window is closed by default. An unset, malformed, or past value keeps
+  the strict behavior, so a mistake in the value cannot open signup.
+- The window does not need signup email delivery, and the per-address signup
+  rate limit still applies.
+- Accounts created this way stay unverified until their owner verifies the
+  email, so protections for unverified accounts, such as refusing to link a
+  Google or GitHub identity by email, continue to apply. Each one is recorded
+  with `legacySignup` in its `account.created` audit event.
+- The server reads the value at startup. Remove the variable and roll the
+  server once the transition ends; do not leave a far-future deadline in place.
+
 Production provider callback URLs:
 
 - `https://kordi.ai/v1/cloud/auth/oauth/google/callback`
