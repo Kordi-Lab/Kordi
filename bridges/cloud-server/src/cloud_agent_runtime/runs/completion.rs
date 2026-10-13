@@ -135,6 +135,11 @@ pub async fn complete_run_with_state(
         crate::pip::store::complete(pool, run_id, runner_id, response_text).await?;
         return digest_run_response(pool, run_id).await;
     }
+    if crate::document_shares::agents::complete_comment_run(pool, run_id, runner_id, response_text)
+        .await?
+    {
+        return digest_run_response(pool, run_id).await;
+    }
     let trimmed = response_text.trim();
     if trimmed.is_empty() {
         return Err(RunError::NotFound);
@@ -307,6 +312,10 @@ pub async fn fail_run(
     }
     if run_id.starts_with(crate::pip::RUN_PREFIX) {
         crate::pip::store::fail(pool, run_id, Some(runner_id), error_code).await?;
+        return digest_run_response(pool, run_id).await;
+    }
+    let comments = crate::document_shares::agents::fail_comment_run;
+    if comments(pool, run_id, runner_id, error_code, message).await? {
         return digest_run_response(pool, run_id).await;
     }
     let mut tx = pool.begin().await?;

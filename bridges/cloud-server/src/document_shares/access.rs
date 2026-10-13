@@ -190,6 +190,25 @@ pub(crate) async fn authorized_canonical_document(
     authorized_document(state, session, &readable).await
 }
 
+/// The canonical document behind `attachment_id` with no viewer: for agent
+/// runs, whose access is checked against the run's accounts by the caller.
+pub(crate) async fn canonical_record(
+    pool: &PgPool,
+    attachment_id: &str,
+) -> Result<Option<DocumentRecord>, Box<Response>> {
+    let canonical = canonical_attachment_id(pool, attachment_id)
+        .await
+        .map_err(|_| db_error())?;
+    let Some(facts) = attachment_facts(pool, &canonical).await? else {
+        return Ok(None);
+    };
+    let record = load_record(pool, facts).await?;
+    Ok(record.map(|mut record| {
+        record.requested_attachment_id = attachment_id.to_string();
+        record
+    }))
+}
+
 fn unsupported() -> Response {
     err(
         "document_unsupported",

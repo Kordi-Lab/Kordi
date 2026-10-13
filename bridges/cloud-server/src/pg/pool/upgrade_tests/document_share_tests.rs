@@ -85,7 +85,8 @@ async fn upgrade_from_122_adds_document_contents() {
         let pool = pool.clone();
         async move {
             query_as::<_, (Value,)>(&format!(
-                "SELECT to_jsonb(t) FROM {table} t ORDER BY 1::text"
+                "SELECT to_jsonb(t) - ARRAY['author_agent_id','author_agent_name'] \
+                 FROM {table} t ORDER BY 1::text"
             ))
             .fetch_all(&pool)
             .await
@@ -244,18 +245,20 @@ async fn upgrade_from_125_adds_document_collab() {
     let pool = fixture(125).await;
     execute(&pool, "INSERT INTO cloud_attachments(attachment_id,owner_account_id,object_key,content_type,size_bytes,created_at,finalized_at) VALUES('att-doc','fixture-owner','attachments/fixture-owner/att-doc','text/markdown',10,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')").await;
     execute(&pool, "INSERT INTO cloud_document_contents(attachment_id,source,updated_at) VALUES('att-doc','# Notes','2026-01-02T00:00:00Z')").await;
-    let before: Vec<(Value,)> = query_as("SELECT to_jsonb(c) FROM cloud_document_contents c")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    let before: Vec<(Value,)> =
+        query_as("SELECT to_jsonb(c) - 'updated_by_agent_id' FROM cloud_document_contents c")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
     let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
     a.unwrap();
     b.unwrap();
     latest_version(&pool).await;
-    let after: Vec<(Value,)> = query_as("SELECT to_jsonb(c) FROM cloud_document_contents c")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    let after: Vec<(Value,)> =
+        query_as("SELECT to_jsonb(c) - 'updated_by_agent_id' FROM cloud_document_contents c")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
     assert_eq!(before, after, "document sources are untouched");
     let (rooms,): (i64,) = query_as("SELECT COUNT(*)::BIGINT FROM cloud_document_collab")
         .fetch_one(&pool)
@@ -306,4 +309,83 @@ async fn upgrade_from_125_adds_document_collab() {
             .unwrap();
         assert_eq!(rows, 0, "{table} rows go with the document");
     }
+}
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_126_adds_document_agent_runs() {
+    let pool = fixture(126).await;
+    execute(&pool, "INSERT INTO cloud_attachments(attachment_id,owner_account_id,object_key,content_type,size_bytes,created_at,finalized_at) VALUES('att-doc','fixture-owner','attachments/fixture-owner/att-doc','text/markdown',10,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')").await;
+    execute(&pool, "INSERT INTO cloud_document_contents(attachment_id,source,updated_by_account_id,updated_at) VALUES('att-doc','# Notes','fixture-owner','2026-01-02T00:00:00Z')").await;
+    execute(&pool, "INSERT INTO cloud_document_comments(comment_id,attachment_id,block_id,author_account_id,author_name,body,mentions_agent,created_at) VALUES('doccmt_ask','att-doc','b0','fixture-peer','Peer','@Kordi shorter?',true,'2026-01-02T00:00:00Z')").await;
+    execute(&pool, "INSERT INTO cloud_document_comments(comment_id,attachment_id,block_id,author_reader_key,author_name,body,created_at) VALUES('doccmt_reader','att-doc','b0','reader-key-0123456789','Priya','Nice','2026-01-02T00:01:00Z')").await;
+    execute(&pool, "INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at) VALUES('car_old','key-old','msg-old','session:one','fixture-owner','fixture-owner','completed','Hello','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')").await;
+    let comments_before: Vec<(Value,)> = query_as(
+        "SELECT to_jsonb(c) - ARRAY['author_agent_id','author_agent_name'] FROM cloud_document_comments c ORDER BY comment_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let runs_before = historical_runs(&pool).await;
+    assert!(sqlx_core::raw_sql::raw_sql("INSERT INTO cloud_document_comments(comment_id,attachment_id,block_id,author_agent_id,author_agent_name,author_name,body,created_at) VALUES('doccmt_early','att-doc','b0','cloud-agent:fixture-owner','Kordi','Kordi','x','2026-01-02T00:00:00Z')").execute(&pool).await.is_err(), "agent authors need migration 127");
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let comments_after: Vec<(Value,)> = query_as(
+        "SELECT to_jsonb(c) - ARRAY['author_agent_id','author_agent_name'] FROM cloud_document_comments c ORDER BY comment_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(comments_before, comments_after, "comments are untouched");
+    assert_eq!(
+        runs_before,
+        historical_runs(&pool).await,
+        "runs are untouched"
+    );
+    let (run_comment, edited_by): (Option<String>, Option<String>) = query_as(
+        "SELECT (SELECT document_comment_id FROM cloud_agent_fallback_runs WHERE run_id='car_old'), \
+                (SELECT updated_by_agent_id FROM cloud_document_contents WHERE attachment_id='att-doc')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        (run_comment, edited_by),
+        (None, None),
+        "new columns start empty"
+    );
+
+    execute(&pool, "INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at,document_comment_id) VALUES('car_doc','key-doc','doccmt:doccmt_ask','session:one','fixture-owner','fixture-peer','queued','Hello','2026-01-02T00:00:00Z','2026-01-02T00:00:00Z','doccmt_ask')").await;
+    execute(&pool, "INSERT INTO cloud_document_comments(comment_id,attachment_id,block_id,parent_comment_id,author_agent_id,author_agent_name,author_name,body,created_at) VALUES('doccmt_agent','att-doc','b0','doccmt_ask','cloud-agent:fixture-owner','Kordi','Kordi','Shorter now.','2026-01-02T00:02:00Z')").await;
+    execute(&pool, "UPDATE cloud_document_contents SET updated_by_agent_id='cloud-agent:fixture-owner' WHERE attachment_id='att-doc'").await;
+    for invalid in [
+        // No author, two authors, and an agent without a name.
+        "INSERT INTO cloud_document_comments(comment_id,attachment_id,block_id,author_name,body,created_at) VALUES('doccmt_none','att-doc','b0','Nobody','x','2026-01-03T00:00:00Z')",
+        "INSERT INTO cloud_document_comments(comment_id,attachment_id,block_id,author_account_id,author_agent_id,author_agent_name,author_name,body,created_at) VALUES('doccmt_two','att-doc','b0','fixture-peer','cloud-agent:fixture-peer','Kordi','Peer','x','2026-01-03T00:00:00Z')",
+        "INSERT INTO cloud_document_comments(comment_id,attachment_id,block_id,author_reader_key,author_agent_id,author_agent_name,author_name,body,created_at) VALUES('doccmt_mix','att-doc','b0','reader-key-0123456789','cloud-agent:fixture-peer','Kordi','Priya','x','2026-01-03T00:00:00Z')",
+        "INSERT INTO cloud_document_comments(comment_id,attachment_id,block_id,author_agent_id,author_name,body,created_at) VALUES('doccmt_unnamed','att-doc','b0','cloud-agent:fixture-peer','Kordi','x','2026-01-03T00:00:00Z')",
+        "INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at,document_comment_id) VALUES('car_bad','key-bad','doccmt:doccmt_missing','session:one','fixture-owner','fixture-peer','queued','Hello','2026-01-02T00:00:00Z','2026-01-02T00:00:00Z','doccmt_missing')",
+    ] {
+        assert!(sqlx_core::raw_sql::raw_sql(invalid).execute(&pool).await.is_err(), "{invalid}");
+    }
+
+    // A removed comment takes its replies; the run keeps its history.
+    execute(
+        &pool,
+        "DELETE FROM cloud_document_comments WHERE comment_id='doccmt_ask'",
+    )
+    .await;
+    let (comments, run_comment, run_request): (i64, Option<String>, String) = query_as(
+        "SELECT (SELECT COUNT(*) FROM cloud_document_comments)::BIGINT, document_comment_id, \
+                request_message_id FROM cloud_agent_fallback_runs WHERE run_id='car_doc'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        (comments, run_comment, run_request.as_str()),
+        (1, None, "doccmt:doccmt_ask")
+    );
 }

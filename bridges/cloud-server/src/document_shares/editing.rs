@@ -50,7 +50,7 @@ fn edit_forbidden() -> Response {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum SaveMode {
+pub(super) enum SaveMode {
     /// A save based on `baseRevision`; stale bases conflict.
     Revision(i64),
     /// A collaboration room snapshot: no base check, and no new revision
@@ -58,7 +58,7 @@ enum SaveMode {
     Snapshot,
 }
 
-enum SaveOutcome {
+pub(super) enum SaveOutcome {
     Saved(DocumentSource),
     Conflict(DocumentSource),
     Unchanged(DocumentSource),
@@ -113,16 +113,14 @@ pub(crate) async fn save_content(
             )
         }
     };
-    let outcome = match save(
-        pool,
-        &record,
-        &session.account_id,
+    let input = SaveInput {
+        account_id: &session.account_id,
+        agent_id: None,
         mode,
-        &text,
-        &req.block_ids,
-    )
-    .await
-    {
+        text: &text,
+        stamped: &req.block_ids,
+    };
+    let outcome = match save(pool, &record, input).await {
         Ok(outcome) => outcome,
         Err(_) => return db_error(),
     };
@@ -148,22 +146,7 @@ pub(crate) async fn save_content(
             }
         }
         SaveOutcome::Saved(saved) => {
-            if let SaveMode::Revision(_) = mode {
-                // A revisioned save while a room exists: the next editor reconciles.
-                if let Err(error) =
-                    super::collab::store::mark_stale(pool, &record.attachment_id).await
-                {
-                    eprintln!("[documents] mark collab room stale: {error}");
-                }
-            }
-            publish_document_updated(
-                pool,
-                &record,
-                Some(saved.revision),
-                DocumentChange::Content,
-                Some(&session.account_id),
-            )
-            .await;
+            announce_save(pool, &record, mode, saved.revision, &session.account_id).await;
             match signed_in_response(&state, &session, &record, viewer, &saved).await {
                 Ok(document) => Json(document).into_response(),
                 Err(response) => *response,
@@ -172,14 +155,52 @@ pub(crate) async fn save_content(
     }
 }
 
-async fn save(
+/// After an accepted save: a revisioned save marks the collaboration room
+/// stale so the next editor reconciles, and every member hears about it.
+pub(super) async fn announce_save(
     pool: &PgPool,
     record: &DocumentRecord,
-    account_id: &str,
     mode: SaveMode,
-    text: &str,
-    stamped: &HashMap<String, String>,
+    revision: i64,
+    account_id: &str,
+) {
+    if let SaveMode::Revision(_) = mode {
+        if let Err(error) = super::collab::store::mark_stale(pool, &record.attachment_id).await {
+            eprintln!("[documents] mark collab room stale: {error}");
+        }
+    }
+    publish_document_updated(
+        pool,
+        record,
+        Some(revision),
+        DocumentChange::Content,
+        Some(account_id),
+    )
+    .await;
+}
+
+/// One save: who is saving (and through which agent, for agent edits), how,
+/// and the new source with the ids the editor stamped.
+pub(super) struct SaveInput<'a> {
+    pub account_id: &'a str,
+    pub agent_id: Option<&'a str>,
+    pub mode: SaveMode,
+    pub text: &'a str,
+    pub stamped: &'a HashMap<String, String>,
+}
+
+pub(super) async fn save(
+    pool: &PgPool,
+    record: &DocumentRecord,
+    input: SaveInput<'_>,
 ) -> Result<SaveOutcome, sqlx_core::Error> {
+    let SaveInput {
+        account_id,
+        agent_id,
+        mode,
+        text,
+        stamped,
+    } = input;
     let mut tx = pool.begin().await?;
     let (old_text, revision, updated_at): (String, i64, String) = query_as(
         "SELECT source, revision, updated_at FROM cloud_document_contents \
@@ -208,13 +229,15 @@ async fn save(
     let now = Utc::now().to_rfc3339();
     let (new_revision,): (i64,) = query_as(
         "UPDATE cloud_document_contents \
-         SET source = $2, revision = revision + 1, updated_by_account_id = $3, updated_at = $4 \
+         SET source = $2, revision = revision + 1, updated_by_account_id = $3, updated_at = $4, \
+             updated_by_agent_id = $5 \
          WHERE attachment_id = $1 RETURNING revision",
     )
     .bind(&record.attachment_id)
     .bind(text)
     .bind(account_id)
     .bind(&now)
+    .bind(agent_id)
     .fetch_one(&mut *tx)
     .await?;
     let targets = annotation_targets(&markdown_blocks(&old_text), &markdown_blocks(text), stamped);

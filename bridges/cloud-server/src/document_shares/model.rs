@@ -145,6 +145,34 @@ pub struct DocumentComment {
     pub created_at: String,
     pub edited_at: Option<String>,
     pub resolved_at: Option<String>,
+    /// `agent` for an agent's reply, `system` for the notice that an agent
+    /// could not answer, else `person`.
+    pub kind: CommentKind,
+    /// The run this comment started by mentioning an agent, else `null`.
+    pub agent_run: Option<AgentRunState>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CommentKind {
+    Person,
+    Agent,
+    System,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRunState {
+    pub status: AgentRunStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentRunStatus {
+    Queued,
+    Running,
+    Completed,
+    Failed,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -154,6 +182,12 @@ pub struct CommentAuthor {
     pub display_name: String,
     pub kordi_id: Option<String>,
     pub avatar_url: Option<String>,
+    /// Set for agent authors on signed-in routes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    /// The account that owns the agent; signed-in routes only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_account_id: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]

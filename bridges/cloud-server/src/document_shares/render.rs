@@ -24,6 +24,17 @@ fn markdown_options() -> Options {
 /// own line right after it (see [`super::block_ids`]); every other block
 /// keeps `b{index}`.
 pub(crate) fn markdown_blocks(source: &str) -> Vec<DocumentBlock> {
+    markdown_block_spans(source)
+        .into_iter()
+        .map(|(block, _)| block)
+        .collect()
+}
+
+/// [`markdown_blocks`] with the byte range each block occupies in `source`,
+/// from its first character to the end of its content or of the block-id
+/// comment that names it. Text between ranges (blank lines, link reference
+/// definitions) belongs to no block.
+pub(crate) fn markdown_block_spans(source: &str) -> Vec<(DocumentBlock, Range<usize>)> {
     let mut raw: Vec<RawBlock> = Vec::new();
     let mut depth = 0usize;
     let mut current: Vec<Event<'_>> = Vec::new();
@@ -53,15 +64,18 @@ pub(crate) fn markdown_blocks(source: &str) -> Vec<DocumentBlock> {
             _ => current.push(event),
         }
     }
-    let html: Vec<String> = raw.iter().map(|block| block.html.clone()).collect();
+    let rest: Vec<(String, Range<usize>)> = raw
+        .iter()
+        .map(|block| (block.html.clone(), block.start..block.end))
+        .collect();
     assign_ids(
         raw.into_iter()
             .map(|block| (block.source, block.id))
             .collect(),
     )
     .into_iter()
-    .zip(html)
-    .map(|((id, source), html)| DocumentBlock { id, source, html })
+    .zip(rest)
+    .map(|((id, source), (html, range))| (DocumentBlock { id, source, html }, range))
     .collect()
 }
 
@@ -69,8 +83,11 @@ struct RawBlock {
     source: String,
     id: Option<String>,
     html: String,
+    start: usize,
     /// Byte offset just after the block's last non-whitespace character.
     content_end: usize,
+    /// `content_end`, or the end of the block-id comment on the next line.
+    end: usize,
 }
 
 /// Adds a top-level block, or, when the block is only a block-id comment,
@@ -83,16 +100,20 @@ fn push_block(raw: &mut Vec<RawBlock>, source: &str, range: Range<usize>, events
             let gap = &source[previous.content_end..range.start];
             if gap.matches('\n').count() <= 1 && previous.id.is_none() {
                 previous.id = Some(id);
+                previous.end = range.start + text.trim_end().len();
             }
         }
         return;
     }
     let (clean, id) = split_block_id(text.trim_end_matches(['\n', '\r']));
+    let content_end = range.start + text.trim_end().len();
     raw.push(RawBlock {
         source: clean,
         id,
         html: sanitized_html(events),
-        content_end: range.start + text.trim_end().len(),
+        start: range.start,
+        content_end,
+        end: content_end,
     });
 }
 

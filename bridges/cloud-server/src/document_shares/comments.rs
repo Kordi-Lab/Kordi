@@ -15,12 +15,14 @@ use sqlx_postgres::PgPool;
 
 use super::access::{
     authorized_canonical_document, authorized_document, clean_display_name, public_document,
-    syncable_avatar_url, DocumentRecord,
+    syncable_avatar_url, DocumentRecord, ShareRow,
 };
+use super::agents::annotate::annotate_comments;
+use super::agents::runs::MentionContext;
 use super::events::{publish_document_updated, DocumentChange};
 use super::model::{
-    CommentAuthor, CommentRequest, DocumentComment, PatchCommentRequest, PublicCommentRequest,
-    Viewer,
+    CommentAuthor, CommentKind, CommentRequest, DocumentComment, PatchCommentRequest,
+    PublicCommentRequest, Viewer,
 };
 use super::validate::{clean_body, clean_reader_name, is_valid_reader_key, mentions_agent};
 use super::{db_error, err, observe_public, require_block, Caller, PublicAccess};
@@ -69,16 +71,18 @@ pub(crate) async fn list_comments(
     .bind(&record.attachment_id)
     .fetch_all(pool)
     .await?;
-    Ok(rows
+    let mut comments: Vec<DocumentComment> = rows
         .into_iter()
         .map(|row| comment_from_row(row, &record.owner_account_id, caller))
-        .collect())
+        .collect();
+    annotate_comments(pool, &record.attachment_id, None, &mut comments, caller).await?;
+    Ok(comments)
 }
 
 async fn load_comment(
     pool: &PgPool,
     comment_id: &str,
-    owner_account_id: &str,
+    record: &DocumentRecord,
     caller: &Caller,
 ) -> Result<Option<DocumentComment>, sqlx_core::Error> {
     let row: Option<CommentRow> = query_as(&format!(
@@ -87,7 +91,13 @@ async fn load_comment(
     .bind(comment_id)
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|row| comment_from_row(row, owner_account_id, caller)))
+    let mut comment: Vec<DocumentComment> = row
+        .map(|row| comment_from_row(row, &record.owner_account_id, caller))
+        .into_iter()
+        .collect();
+    let canonical = &record.attachment_id;
+    annotate_comments(pool, canonical, Some(comment_id), &mut comment, caller).await?;
+    Ok(comment.pop())
 }
 
 /// Public responses carry no account ids, and a Kordi ID only for the
@@ -105,12 +115,16 @@ fn comment_from_row(row: CommentRow, document_owner: &str, caller: &Caller) -> D
                 .filter(|_| !caller.is_public() || account == document_owner)
                 .map(|value| value.to_string()),
             avatar_url: avatar.as_deref().and_then(syncable_avatar_url),
+            agent_id: None,
+            owner_account_id: None,
         },
         None => CommentAuthor {
             account_id: None,
             display_name: clean_display_name(Some(&author_name)),
             kordi_id: None,
             avatar_url: None,
+            agent_id: None,
+            owner_account_id: None,
         },
     };
     DocumentComment {
@@ -124,6 +138,8 @@ fn comment_from_row(row: CommentRow, document_owner: &str, caller: &Caller) -> D
         created_at: row.11,
         edited_at: row.12,
         resolved_at: row.13,
+        kind: CommentKind::Person,
+        agent_run: None,
     }
 }
 
@@ -132,6 +148,9 @@ struct NewComment<'a> {
     body: &'a str,
     parent_comment_id: Option<&'a str>,
     author_name: &'a str,
+    /// The share a public reader came through.
+    share: Option<&'a ShareRow>,
+    rate_limiter: &'a CloudRateLimiter,
 }
 
 async fn create(
@@ -187,6 +206,20 @@ async fn create(
             Err(_) => return db_error(),
         }
     }
+    // A mention is resolved and charged before the comment is stored, so a
+    // refused run leaves nothing behind.
+    let mention = MentionContext {
+        record,
+        caller,
+        share: input.share,
+        body: &body,
+        block_id: input.block_id,
+        parent_comment_id: input.parent_comment_id,
+    };
+    let planned = match super::agents::runs::plan(state, input.rate_limiter, &mention).await {
+        Ok(planned) => planned,
+        Err(response) => return *response,
+    };
     let comment_id = format!("doccmt_{}", uuid::Uuid::new_v4().simple());
     let (account_id, reader_key) = caller.columns();
     let inserted = query(
@@ -203,12 +236,17 @@ async fn create(
     .bind(reader_key)
     .bind(input.author_name)
     .bind(&body)
-    .bind(mentions_agent(&body, record.agent_name.as_deref()))
+    .bind(planned.is_some() || mentions_agent(&body, record.agent_name.as_deref()))
     .bind(Utc::now().to_rfc3339())
     .execute(pool)
     .await;
     if inserted.is_err() {
         return db_error();
+    }
+    if let Some(planned) = &planned {
+        if let Err(error) = super::agents::runs::start(state, record, &comment_id, planned).await {
+            eprintln!("[documents] start agent run for {comment_id}: {error}");
+        }
     }
     publish_document_updated(
         pool,
@@ -218,7 +256,7 @@ async fn create(
         caller.account_id(),
     )
     .await;
-    match load_comment(pool, &comment_id, &record.owner_account_id, caller).await {
+    match load_comment(pool, &comment_id, record, caller).await {
         Ok(Some(comment)) => Json(comment).into_response(),
         Ok(None) | Err(_) => db_error(),
     }
@@ -228,6 +266,7 @@ async fn create(
 pub(crate) async fn comment(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Path(attachment_id): Path<String>,
     Json(req): Json<CommentRequest>,
 ) -> Response {
@@ -245,6 +284,8 @@ pub(crate) async fn comment(
         body: &req.body,
         parent_comment_id: req.parent_comment_id.as_deref(),
         author_name: &author.display_name,
+        share: None,
+        rate_limiter: &rate_limiter,
     };
     create(&state, &record, &caller, input, None).await
 }
@@ -274,7 +315,7 @@ pub(crate) async fn comment_public(
     let Some(reader_name) = clean_reader_name(&req.reader_name) else {
         return super::invalid_reader_name();
     };
-    let (_, record) = match public_document(&state, &token).await {
+    let (share, record) = match public_document(&state, &token).await {
         Ok(value) => value,
         Err(response) => return *response,
     };
@@ -284,6 +325,8 @@ pub(crate) async fn comment_public(
         body: &req.body,
         parent_comment_id: req.parent_comment_id.as_deref(),
         author_name: &reader_name,
+        share: Some(&share),
+        rate_limiter: &rate_limiter,
     };
     create(&state, &record, &caller, input, Some(MAX_LIVE_COMMENTS)).await
 }
@@ -381,14 +424,7 @@ pub(crate) async fn patch_comment(
     )
     .await;
     let caller = Caller::Account(session.account_id.clone());
-    match load_comment(
-        state.db_pool(),
-        &comment_id,
-        &record.owner_account_id,
-        &caller,
-    )
-    .await
-    {
+    match load_comment(state.db_pool(), &comment_id, &record, &caller).await {
         Ok(Some(comment)) => Json(comment).into_response(),
         Ok(None) => err("not_found", "Comment not found.", StatusCode::NOT_FOUND),
         Err(_) => db_error(),

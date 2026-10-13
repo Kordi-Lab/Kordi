@@ -28,6 +28,7 @@ use crate::auth::rate_limit::{
 use crate::server::ServerState;
 
 pub(crate) mod access;
+pub(crate) mod agents;
 pub(crate) mod block_ids;
 pub(crate) mod canonical;
 pub mod collab;

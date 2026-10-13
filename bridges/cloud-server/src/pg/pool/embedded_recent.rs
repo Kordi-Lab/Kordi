@@ -269,4 +269,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "0125_cloud_document_block_ids.sql"
     ),
     migration!(126, "document collab", "0126_cloud_document_collab.sql"),
+    migration!(
+        127,
+        "document agent runs",
+        "0127_cloud_document_agent_runs.sql"
+    ),
 ];
