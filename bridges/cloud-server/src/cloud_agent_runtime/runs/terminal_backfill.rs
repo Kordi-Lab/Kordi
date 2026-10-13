@@ -167,7 +167,9 @@ pub async fn publish_terminal_response(
     else {
         return Ok(None);
     };
+    // A comment run answers in its document thread, never in chat.
     if is_scheduled_run_request_id(&request_id)
+        || crate::document_shares::agents::is_comment_request(&request_id)
         || run_id.starts_with(crate::digest::RUN_PREFIX)
         || run_id.starts_with(crate::pip::RUN_PREFIX)
         || terminal_response_state(

@@ -45,7 +45,10 @@ test('provider gate uses the flat shared light workspace surface without modal b
   assert.match(authPage, /app-auth-gate-shell/);
   assert.match(authPage, /app-auth-gate-shell flex h-full min-h-0 w-full justify-center overflow-y-auto rounded-none border-0 bg-transparent/);
   assert.doesNotMatch(authPage, /app-modal-panel flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-\[30px\] border border-white\/10/);
-  assert.match(authGateOverlay, /app-auth-gate-overlay absolute inset-0 z-50 overflow-hidden/);
+  assert.match(authGateOverlay, /app-auth-gate-overlay absolute inset-0 z-\[80\] overflow-hidden/);
+  const titlebarCss = readFileSync(new URL('../src/styles/shell-titlebar.css', import.meta.url), 'utf8');
+  const titlebarZIndex = Number(titlebarCss.match(/\.app-native-titlebar \{[^}]*?z-index:\s*(\d+);/)?.[1]);
+  assert.ok(80 > titlebarZIndex, 'provider gate must stack above the native titlebar');
   assert.doesNotMatch(authGateOverlay, /\bapp-overlay\b|\bp-3\b|\bsm:p-4\b|backdrop-blur/);
 
   const gateLightRule = themeOverrides.match(/\.kordi-app\.theme-light \.app-auth-gate-overlay,[\s\S]*?\.kordi-app\.theme-light \.app-auth-gate-shell \{[\s\S]*?\n\}/)?.[0] ?? '';

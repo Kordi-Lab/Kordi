@@ -8,6 +8,9 @@ const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIS
 // Offline picker artwork replaces hundreds of runtime image requests. Give
 // these four known atlases a separate cap without relaxing the app/code budget.
 const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;
+// The document editor (Tiptap, ProseMirror, Markdown parser) is one lazy chunk that loads with the
+// first opened document. It gets its own cap, like the atlases, without relaxing the app budget.
+const MAX_DOCUMENT_EDITOR_BYTES = 750_000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const assetsDir = process.argv[2]
@@ -64,7 +67,12 @@ try {
   if (atlasBytes > MAX_NOTO_THUMBNAIL_BYTES || atlasFiles.length > 4) {
     throw new Error('Bundled Noto thumbnails exceed their separate 2.6 MB budget.');
   }
-  if (distBytes - atlasBytes > MAX_DESKTOP_DIST_BYTES) {
+  const editorChunks = chunks.filter((chunk) => /^document-editor-[\w-]+\.js$/.test(chunk.name));
+  const editorBytes = editorChunks.reduce((total, chunk) => total + chunk.bytes, 0);
+  if (editorBytes > MAX_DOCUMENT_EDITOR_BYTES || editorChunks.length > 1) {
+    throw new Error(`The document editor chunk exceeds its separate ${formatKb(MAX_DOCUMENT_EDITOR_BYTES)} budget (${formatKb(editorBytes)}).`);
+  }
+  if (distBytes - atlasBytes - editorBytes > MAX_DESKTOP_DIST_BYTES) {
     console.error(`Desktop web bundle budget exceeded. Maximum allowed size is ${formatKb(MAX_DESKTOP_DIST_BYTES)}.`);
     console.error(`- dist: ${formatKb(distBytes)}`);
     process.exit(1);
@@ -72,6 +80,7 @@ try {
   console.log(`JavaScript chunk budget ok: ${chunks.length} chunks, largest ${largestChunk.name} at ${formatKb(largestChunk.bytes)}.`);
   console.log(`Desktop web bundle budget ok: ${formatKb(distBytes)} total.`);
   if (atlasBytes) console.log(`Bundled Noto thumbnails: ${formatKb(atlasBytes)} of ${formatKb(MAX_NOTO_THUMBNAIL_BYTES)}.`);
+  if (editorBytes) console.log(`Document editor chunk: ${formatKb(editorBytes)} of ${formatKb(MAX_DOCUMENT_EDITOR_BYTES)}.`);
 } catch (error) {
   if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
     console.error(`No built JavaScript chunks found in ${assetsDir}. Run pnpm --dir app/desktop build first.`);

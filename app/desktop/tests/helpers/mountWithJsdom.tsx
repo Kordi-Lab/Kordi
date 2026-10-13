@@ -18,6 +18,7 @@ export async function withJsdomRoot(run: (mount: (element: ReactElement) => Prom
     HTMLElement: dom.window.HTMLElement,
     Element: dom.window.Element,
     Node: dom.window.Node,
+    getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
     IS_REACT_ACT_ENVIRONMENT: true,
   };
   const previous = new Map(Object.keys(replacements).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -37,6 +38,8 @@ export async function withJsdomRoot(run: (mount: (element: ReactElement) => Prom
   } finally {
     await act(async () => {
       root.unmount();
+      // Editors (Tiptap) tear down on a timer after unmount; let it run while the window still exists.
+      await new Promise((resolve) => setTimeout(resolve, 20));
     });
     previous.forEach((descriptor, key) => {
       if (descriptor) Object.defineProperty(target, key, descriptor);

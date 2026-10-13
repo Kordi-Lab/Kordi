@@ -1,0 +1,57 @@
+/* Shared documents: people editing together (issue 1741). Uses the app tokens. */
+
+.app-document-presence { display: flex; align-items: center; margin-right: 2px; }
+
+.app-document-presence-avatar,
+.app-document-presence-more {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--app-main-bg);
+  background-clip: padding-box;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.app-document-presence-avatar + .app-document-presence-avatar,
+.app-document-presence-avatar + .app-document-presence-more { margin-left: -6px; }
+
+.app-document-presence-more {
+  background: var(--app-document-chip-bg);
+  color: var(--app-document-muted);
+}
+
+/* Carets and selections drawn by the collaboration caret extension; colors come from each person's awareness state. */
+.app-document-reader .collaboration-carets__caret {
+  position: relative;
+  margin-right: -1px;
+  margin-left: -1px;
+  border-right: 1px solid transparent;
+  border-left: 1px solid transparent;
+  pointer-events: none;
+  word-break: normal;
+}
+
+.app-document-reader .collaboration-carets__label {
+  position: absolute;
+  bottom: 100%;
+  left: -1px;
+  padding: 0 5px;
+  box-shadow: none;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 16px;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.app-document-reader .collaboration-carets__selection { border-radius: 2px; }

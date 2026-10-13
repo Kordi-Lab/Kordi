@@ -46,6 +46,8 @@ export type AttachmentItem = MessageAttachment & {
   livePhotoFiles?: LivePhotoFiles;
   expressiveMedia?: boolean;
   voiceMessage?: MessageVoiceDraft;
+  /** Original attachment of a forwarded Markdown or HTML document; the upload links the copy to it. */
+  sourceAttachmentId?: string | null;
 };
 export type MinimalModelOption = {
   value: string;

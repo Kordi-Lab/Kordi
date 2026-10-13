@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Copy, Download, FolderOpen, LoaderCircle, X } from 'lucide-react';
+import { Check, Copy, Download, ExternalLink, FolderOpen, LoaderCircle, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -20,6 +20,7 @@ import { loadSession } from '@/features/cloud/session';
 import { attachmentFileFamily, attachmentFileTileLabel, splitAttachmentName } from '@/features/chat/attachmentFileFamily';
 import { revealDesktopAttachment, saveDesktopAttachmentAs } from '@/features/chat/attachmentDesktopActions';
 import { isMp4VideoAttachment } from '@/features/chat/attachmentMediaGallery';
+import { openAttachmentInCompanion } from '@/features/documents/companionDocument';
 import { attachmentFormatLabel } from '@/features/chat/composerAttachments';
 import {
   downloadDesktopAttachment,
@@ -188,7 +189,14 @@ export function TranscriptFileAttachmentLink({
     return storeDesktopChatAttachment(attachment.name || 'attachment.bin', bytes);
   }
 
+  /** Click or menu Open: documents go to the reader; other files open when local, else download. */
+  async function handlePrimary() {
+    if (openAttachmentInCompanion(attachment)) return;
+    await (canOpen ? handleOpen() : handleDownload());
+  }
+
   async function handleDownload() {
+    if (openAttachmentInCompanion(attachment)) return;
     setIsDownloading(true);
     setError(null);
     try {
@@ -204,6 +212,7 @@ export function TranscriptFileAttachmentLink({
   }
 
   async function handleOpen() {
+    if (openAttachmentInCompanion(attachment)) return;
     const target = downloadedPath ?? attachment.localPath;
     if (!target) return;
     setError(null);
@@ -349,7 +358,7 @@ export function TranscriptFileAttachmentLink({
           data-attachment-file-chip="true"
           data-file-family={family}
           data-downloaded={downloadedPath ? 'true' : undefined}
-          onClick={() => void (canOpen ? handleOpen() : handleDownload())}
+          onClick={() => { void handlePrimary(); }}
           onContextMenu={openMenu}
           disabled={isDownloading}
           className="app-attachment-file-chip"
@@ -379,6 +388,13 @@ export function TranscriptFileAttachmentLink({
             onContextMenu={(event) => event.preventDefault()}
           >
             <div className="flex min-w-[180px] flex-col">
+              {isActionable ? (
+                <FileMenuAction
+                  icon={ExternalLink}
+                  label="Open"
+                  onClick={() => { closeMenu(); void handlePrimary(); }}
+                />
+              ) : null}
               <FileMenuAction
                 icon={FolderOpen}
                 label="Show in Finder"

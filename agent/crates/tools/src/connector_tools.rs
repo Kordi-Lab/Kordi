@@ -46,9 +46,19 @@ pub struct ConnectorToolDescriptor {
     pub input_schema: Value,
 }
 
+/// The `provider` of the document tools (`read_document`, `edit_document`).
+pub const DOCUMENT_TOOLS_PROVIDER: &str = "kordi_documents";
+
 impl ConnectorToolDescriptor {
     pub fn is_act(&self) -> bool {
         self.group == ConnectorToolGroup::Act
+    }
+
+    /// A read-only document tool. It reads a document shared into the
+    /// conversation, never the owner's connected services, and the server
+    /// gates every call, so a turn another member requested may use it.
+    pub fn is_shared_document_read(&self) -> bool {
+        self.provider == DOCUMENT_TOOLS_PROVIDER && self.group == ConnectorToolGroup::Read
     }
 }
 
@@ -171,6 +181,24 @@ pub struct ConnectorToolsRuntime {
 }
 
 impl ConnectorToolsRuntime {
+    /// What a turn requested by someone other than the owner keeps: the
+    /// read-only document tools and nothing else. `None` when the lease
+    /// carries none.
+    pub fn for_shared_turn(&self) -> Option<Self> {
+        let descriptors = self
+            .descriptors
+            .iter()
+            .filter(|descriptor| descriptor.is_shared_document_read())
+            .cloned()
+            .collect::<Vec<_>>();
+        (!descriptors.is_empty()).then(|| Self {
+            descriptors,
+            call: self.call.clone(),
+            report_declined: None,
+            offer_request_connect: false,
+        })
+    }
+
     pub fn descriptor(&self, name: &str) -> Option<&ConnectorToolDescriptor> {
         self.descriptors
             .iter()
@@ -223,6 +251,10 @@ impl Tool for ConnectorTool {
 
     fn parameters_schema(&self) -> Value {
         self.descriptor.input_schema.clone()
+    }
+
+    fn allows_shared_requests(&self) -> bool {
+        self.descriptor.is_shared_document_read()
     }
 
     fn metadata(&self) -> ToolMetadata {

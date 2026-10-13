@@ -1,4 +1,5 @@
 import type { AttachmentItem } from '@/features/chat/composerController.types';
+import { documentFormatForPath } from '@/features/documents/documentReaderModel';
 import { isAnimatedGifAttachment } from '@/features/chat/attachmentMediaGallery';
 import type { MessageAttachment } from '@/kordi-app/types';
 import { isNativeDesktopShell, storeDesktopChatAttachment } from '@/lib/desktop';
@@ -347,6 +348,7 @@ export async function resolveForwardAttachmentItems({
     return [{
       ...attachment,
       ...(attachmentId ? { attachmentId } : {}),
+      ...(attachmentId && documentFormatForPath(attachment.name) ? { sourceAttachmentId: attachmentId } : {}),
       localPath: path,
       id: attachmentId || `forward-attachment:${index}:${attachment.name}`,
       path,

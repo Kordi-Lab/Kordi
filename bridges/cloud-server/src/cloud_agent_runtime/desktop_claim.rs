@@ -3,6 +3,19 @@ use super::*;
 use crate::cloud_agent_runtime::{runs, subsession_execution};
 use runs::{claim_run_for_desktop, validate_shared_cloud_agent_claim};
 
+/// Whether a Mac of `owner` is online and ready to run `agent`.
+pub(crate) async fn agent_desktop_ready(
+    pool: &PgPool,
+    owner: &str,
+    agent: &str,
+) -> Result<bool, sqlx_core::Error> {
+    // Fresh capability and presence are the admission boundary. If the Mac
+    // stops heartbeating, Cloud may claim the same request after they expire.
+    let row: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities r JOIN cloud_devices d USING(device_id) JOIN cloud_device_presence p USING(device_id) WHERE d.account_id=$1 AND d.revoked_at IS NULL AND r.agent_id=$2 AND r.updated_at>now()-interval '35 seconds' AND p.state='online' AND p.last_heartbeat_at::timestamptz>now()-interval '35 seconds')")
+        .bind(owner).bind(agent).fetch_one(pool).await?;
+    Ok(row.0)
+}
+
 pub(in crate::cloud_agent_runtime) async fn claim(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -29,6 +42,16 @@ pub(in crate::cloud_agent_runtime) async fn claim(
             )
         }
         _ => {}
+    }
+    // A comment run exists before its claim and has no chat message.
+    if crate::document_shares::agents::is_comment_request(&input.run.request_message_id) {
+        let owner = executor(&session, input.claim_id);
+        let claim = crate::document_shares::agents::desktop::claim;
+        return match claim(state.db_pool(), &session.device_id, &owner, &input.run).await {
+            Ok(Some(value)) => context_scope_response(&state, value).await,
+            Ok(None) => denied(),
+            Err(e) => run_error_response("desktop claim", "Could not claim agent execution.", e),
+        };
     }
     match subsession_execution::claim(
         state.db_pool(),

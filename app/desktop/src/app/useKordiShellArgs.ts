@@ -346,6 +346,10 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         activeSessionProject: args.activeSessionProject,
         activeQueuedDesktopMessages: args.activeQueuedDesktopMessages,
         chatTranscriptScrollRef: args.chatTranscriptScrollRef,
+        cloudSession: args.cloudSession,
+        displayedContacts: args.displayedContacts,
+        handleStartChatWithPerson: args.handleStartChatWithPerson,
+        onForwardMessage: args.onForwardMessage,
       },
       overlay: {
         showAuthGate: args.showAuthGate,

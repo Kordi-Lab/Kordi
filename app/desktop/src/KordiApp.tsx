@@ -46,6 +46,7 @@ import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
 import type { ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
 import type { Conversation } from '@/kordi-app/types';
 import { GroupInvitationDialog } from '@/pages/GroupInvitationDialog';
+import { DocumentShareLinkHost } from '@/features/documents/DocumentShareLinkDialog';
 
 export { CloudStartingScreen } from '@/features/cloud/CloudStartingScreen';
 
@@ -349,6 +350,7 @@ function KordiAppShell({
         />
       </CloudCallProvider>
       {windowReady ? <WhatsNewLaunchWindow /> : null}
+      {windowReady ? <DocumentShareLinkHost account={cloudSession?.account ?? null} /> : null}
       {windowReady && pendingGroupInvitation.token ? (
         <GroupInvitationDialog
           key={pendingGroupInvitation.token}

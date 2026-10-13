@@ -7,3 +7,11 @@
   .app-markdown-code-content-with-actions { margin-right: 7rem; }
   .app-markdown-code-extra-actions { right: 3.5rem; }
 }
+
+/* `==text==` and `<mark>` in Markdown: a quiet highlight on the app's selection surface. */
+.app-markdown-mark {
+  border-radius: 3px;
+  padding: 0 1px;
+  background: var(--app-copy-selection-surface-bg, rgb(96 165 250 / 0.18));
+  color: inherit;
+}
