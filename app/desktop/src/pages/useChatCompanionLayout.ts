@@ -64,6 +64,11 @@ export function useChatCompanionLayout({
   useLayoutEffect(() => {
     if (settled.side === side && settled.visible === wantsVisible) return undefined;
     const next = { side, visible: flippingWhileClosed ? false : wantsVisible };
+    // The next frame where there is one; a timer elsewhere (tests have no frames).
+    if (typeof requestAnimationFrame !== 'function') {
+      const timer = setTimeout(() => setSettled(next), 0);
+      return () => clearTimeout(timer);
+    }
     const frame = requestAnimationFrame(() => setSettled(next));
     return () => cancelAnimationFrame(frame);
   }, [flippingWhileClosed, settled.side, settled.visible, side, wantsVisible]);
