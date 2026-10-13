@@ -347,6 +347,7 @@ function ChatDetailPanelView({
           activeArtifactId={activeArtifactId}
           onSelectArtifact={onSelectArtifact}
           previewBaseRoot={artifactPreviewBaseRoot}
+          participants={activeConv.canonicalParticipants}
           emptyMessage={activeConversationUsesCollaboration ? 'No generated code or docs in this chat yet.' : 'No generated code or docs in this session yet.'}
         />
       </div>

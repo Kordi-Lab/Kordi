@@ -19,6 +19,9 @@ type MarkdownInlinePart =
   | { type: 'strong'; value: string }
   | { type: 'em'; value: string }
   | { type: 'strongEm'; value: string }
+  | { type: 'underline'; value: string }
+  | { type: 'strike'; value: string }
+  | { type: 'mark'; value: string }
   | { type: 'link'; label: string; href: string }
   | { type: 'settingsLink'; label: string; href: string };
 
@@ -32,7 +35,7 @@ export type MarkdownInlineOptions = {
 };
 
 function nextInlineTokenIndex(slice: string) {
-  return ['[', '`', '*', '_', '\\'].map((token) => slice.indexOf(token)).concat(slice.search(bareHttpUrlStartPattern), slice.search(connectorsLinkStartPattern))
+  return ['[', '`', '*', '_', '\\', '<', '~', '='].map((token) => slice.indexOf(token)).concat(slice.search(bareHttpUrlStartPattern), slice.search(connectorsLinkStartPattern))
     .filter((value) => value >= 0)
     .sort((left, right) => left - right)[0];
 }
@@ -113,6 +116,15 @@ function emphasisMatches(text: string) {
   return matches;
 }
 
+// `<u>` and `<mark>` are the only inline HTML; `~~` strikes through and `==` highlights.
+const WRAPPED_INLINE: Array<{ type: 'underline' | 'strike' | 'mark'; pattern: RegExp }> = [
+  { type: 'underline', pattern: /^<u>([\s\S]+?)<\/u>/i },
+  { type: 'mark', pattern: /^<mark>([\s\S]+?)<\/mark>/i },
+  { type: 'strike', pattern: /^~~(?!~)([\s\S]+?)~~/ },
+  // Like the server: the opening `==` is followed by, and the closing `==` preceded by, a non-space character.
+  { type: 'mark', pattern: /^==(?=[^\s=])([\s\S]*?\S)==/ },
+];
+
 function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
   const parts: MarkdownInlinePart[] = [];
   const emphasisByStart = emphasisMatches(text);
@@ -136,6 +148,12 @@ function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
     if (markdownLink) {
       parts.push({ type: 'link', label: markdownLink.label, href: markdownLink.href });
       index += markdownLink.matchedLength;
+      continue;
+    }
+    const wrapped = WRAPPED_INLINE.map((entry) => ({ type: entry.type, match: entry.pattern.exec(slice) })).find((entry) => entry.match);
+    if (wrapped?.match) {
+      parts.push({ type: wrapped.type, value: wrapped.match[1] });
+      index += wrapped.match[0].length;
       continue;
     }
     const emphasis = emphasisByStart.get(index);
@@ -226,6 +244,12 @@ export function MarkdownInlineContent({
           <MarkdownInlineContent text={part.value} tone={tone} mentions={mentions} onOpenMention={onOpenMention} showLinkIcons={showLinkIcons} />
         </em>
       );
+    }
+    if (part.type === 'underline' || part.type === 'strike' || part.type === 'mark') {
+      const content = <MarkdownInlineContent text={part.value} tone={tone} mentions={mentions} onOpenMention={onOpenMention} showLinkIcons={showLinkIcons} />;
+      if (part.type === 'underline') return <u key={`u-${index}`} className="underline underline-offset-2">{content}</u>;
+      if (part.type === 'strike') return <s key={`s-${index}`} className="line-through">{content}</s>;
+      return <mark key={`mark-${index}`} className="app-markdown-mark">{content}</mark>;
     }
     if (part.type === 'settingsLink') {
       return <ConnectorsSettingsMessageLink key={`settings-link-${index}`} href={part.href} tone={tone === 'muted' ? 'muted' : 'default'}>{part.label}</ConnectorsSettingsMessageLink>;

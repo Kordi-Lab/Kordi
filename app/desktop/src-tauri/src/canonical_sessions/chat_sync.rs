@@ -339,6 +339,7 @@ mod tests {
             "task.upsert",
             "artifact.upsert",
             "artifact.archived",
+            "document.updated",
             "session.pin.updated",
             "session.hidden",
             "session.unhidden",

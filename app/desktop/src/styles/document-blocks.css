@@ -1,0 +1,140 @@
+/* Shared documents (issue 1741): the document body. 14/24 text, 12px paragraph rhythm, 24px above headings. */
+
+.app-document-block { margin: 0; padding: 0; border-radius: 10px; cursor: text; }
+.app-document-block,
+.app-document-markdown { min-width: 0; max-width: 100%; }
+
+/* Rendered Markdown outside the editor (read-only views). */
+.app-document-markdown { color: inherit; font-size: 14px; line-height: 24px; }
+.app-document-markdown [data-markdown-heading='1'] { font-size: 22px; font-weight: 700; line-height: 28px; }
+.app-document-markdown [data-markdown-heading='2'] { font-size: 17px; font-weight: 600; line-height: 24px; }
+.app-document-markdown [data-markdown-heading='3'] { font-size: 15px; font-weight: 600; line-height: 22px; }
+.app-document-markdown p { margin: 0 0 12px; }
+.app-document-markdown a { color: var(--app-markdown-link); }
+.app-document-markdown [role='region'] { max-width: 100%; overflow-x: auto; }
+.app-document-markdown table { width: 100%; min-width: 0 !important; }
+.app-document-markdown th,
+.app-document-markdown td { min-width: 6rem; }
+
+/* The Tiptap editor: the document itself. */
+.app-document-editor-shell { position: relative; }
+.app-document-prose { outline: none; font-size: 14px; line-height: 24px; }
+
+/* The document is a writing surface: the caret marks focus, never a ring around the whole page (any engine, any global rule).
+   Buttons, inputs and menu items inside the reader keep their own rings. */
+.app-document-reader .ProseMirror,
+.app-document-reader .ProseMirror:is(:focus, :focus-visible, :focus-within),
+.app-document-reader .app-document-editor-shell:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-document-prose p,
+.app-document-prose ul,
+.app-document-prose ol,
+.app-document-prose blockquote,
+.app-document-prose pre,
+.app-document-prose .tableWrapper { margin: 0 0 12px; }
+
+.app-document-prose h1,
+.app-document-prose h2,
+.app-document-prose h3 { margin: 24px 0 8px; font-weight: 600; }
+.app-document-prose h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.015em; line-height: 28px; }
+.app-document-prose h2 { font-size: 17px; letter-spacing: -0.005em; line-height: 24px; }
+.app-document-prose h3 { font-size: 15px; line-height: 22px; }
+.app-document-prose > :first-child { margin-top: 0; }
+
+.app-document-prose ul,
+.app-document-prose ol { padding-left: 22px; }
+.app-document-prose ul { list-style: disc; }
+.app-document-prose ol { list-style: decimal; }
+.app-document-prose li + li { margin-top: 4px; }
+.app-document-prose li > p,
+.app-document-prose li > div > p,
+.app-document-prose blockquote > p:last-child,
+.app-document-prose td > p,
+.app-document-prose th > p { margin: 0; }
+.app-document-prose a { color: var(--app-markdown-link); text-decoration: underline; text-underline-offset: 2px; }
+
+/* Task list: a 16px box on the first line, done items muted and struck through. */
+.app-document-prose ul[data-type='taskList'] { padding-left: 0; list-style: none; }
+.app-document-prose ul[data-type='taskList'] li { display: flex; align-items: flex-start; gap: 8px; }
+.app-document-prose ul[data-type='taskList'] li > label { display: flex; height: 24px; flex: none; align-items: center; }
+.app-document-prose ul[data-type='taskList'] input[type='checkbox'] { width: 16px; height: 16px; margin: 0; accent-color: var(--app-chat-accent); cursor: pointer; }
+.app-document-prose ul[data-type='taskList'] li > div { min-width: 0; flex: 1; }
+.app-document-prose ul[data-type='taskList'] li[data-checked='true'] > div { color: var(--app-document-muted); text-decoration: line-through; }
+
+.app-document-prose blockquote { padding-left: 12px; border-left: 2px solid var(--app-chat-accent); color: var(--app-document-muted); }
+.app-document-prose hr { margin: 16px 0; border: 0; border-top: 1px solid var(--app-document-line); }
+.app-document-prose img { max-width: 100%; border-radius: 10px; }
+.app-document-prose img.ProseMirror-selectednode { outline: 2px solid var(--app-chat-accent); }
+
+/* Code: the app's code surface, label and copy in the top strip, scrolling sideways inside. */
+.app-document-prose code { padding: 1px 4px; border-radius: 4px; background: var(--app-document-chip-bg); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
+
+.app-document-prose pre {
+  position: relative;
+  overflow-x: auto;
+  padding: 30px 14px 12px;
+  border: 1px solid var(--app-document-line);
+  border-radius: 10px;
+  background: var(--app-code-bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 20px;
+}
+
+.app-document-reader .app-document-prose pre,
+.app-document-reader .app-document-prose pre code { white-space: pre; overflow-wrap: normal; }
+.app-document-prose pre code { display: block; min-width: max-content; padding: 0; border-radius: 0; background: none; font-size: inherit; }
+.app-document-prose pre.is-empty::after { position: absolute; top: 31px; left: 15px; color: var(--app-document-muted); content: attr(data-placeholder); pointer-events: none; }
+
+.app-document-code-chrome {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  display: flex;
+  height: 22px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  font-family: inherit;
+  user-select: none;
+}
+
+.app-document-code-language { order: 2; color: var(--app-document-muted); font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; }
+
+.app-document-code-copy {
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 5px;
+  color: var(--app-document-muted);
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity var(--app-motion-fast, 120ms) ease;
+}
+
+.app-document-prose pre:hover .app-document-code-copy,
+.app-document-code-copy:focus-visible { opacity: 1; }
+.app-document-code-copy:hover { background: var(--app-control-hover); color: var(--utility-foreground); }
+
+/* Tables: full width, a subtle header row, divider rows, no outer frame; columns past the first share the rest. */
+.app-document-prose .tableWrapper { overflow-x: auto; }
+.app-document-prose table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
+.app-document-prose th,
+.app-document-prose td { min-width: 10rem; padding: 10px; border: 0; border-bottom: 1px solid var(--app-document-line); vertical-align: top; text-align: left; }
+.app-document-prose th { background: var(--app-document-chip-bg); font-weight: 600; }
+.app-document-prose th:first-child { border-top-left-radius: 8px; }
+.app-document-prose th:last-child { border-top-right-radius: 8px; }
+.app-document-prose .selectedCell { background: var(--app-copy-selection-surface-bg, rgb(96 165 250 / 0.18)); }
+
+.app-document-prose p.is-editor-empty:first-child::before { float: left; height: 0; color: var(--app-document-muted); content: attr(data-placeholder); pointer-events: none; }
+.app-document-annotations { margin: 0 0 12px; cursor: default; user-select: text; }
+.app-document-slash-menu { min-width: 200px; max-height: 280px; overflow-y: auto; }
+.app-document-slash-menu [aria-selected='true'] { background: var(--app-transient-hover-bg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .app-document-code-copy { transition: none; }
+}

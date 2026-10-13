@@ -275,3 +275,64 @@ fn approval_map_skips_built_in_names_bad_shapes_and_read_tools() {
     assert!(lease_tool(&descriptors, "bash").is_none());
     assert!(lease_tool(&descriptors, "gmail_send").is_some());
 }
+
+fn document_descriptor(name: &str, group: ConnectorToolGroup) -> ConnectorToolDescriptor {
+    ConnectorToolDescriptor {
+        connector_id: "kordi-documents".into(),
+        provider: DOCUMENT_TOOLS_PROVIDER.into(),
+        ..descriptor(name, group)
+    }
+}
+
+#[tokio::test]
+async fn a_shared_turn_keeps_only_the_read_only_document_tool() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut lease = runtime(calls.clone());
+    lease.offer_request_connect = true;
+    // A lease without document tools leaves a shared turn nothing.
+    assert!(lease.for_shared_turn().is_none());
+    lease.descriptors.extend([
+        document_descriptor("read_document", ConnectorToolGroup::Read),
+        document_descriptor("edit_document", ConnectorToolGroup::Act),
+    ]);
+    let shared = lease.for_shared_turn().expect("the read tool stays");
+    let tools = shared.tools();
+    let names: Vec<&str> = tools.iter().map(|tool| tool.name()).collect();
+    assert_eq!(names, ["read_document"]);
+    assert!(!shared.offer_request_connect);
+    assert!(shared.report_declined.is_none());
+
+    // The read tool runs under the shared policy; a connector read does not,
+    // even when its descriptor is forced into the runtime.
+    let read = ConnectorTool::new(document_descriptor(
+        "read_document",
+        ConnectorToolGroup::Read,
+    ));
+    assert!(read.allows_shared_requests());
+    let edit = ConnectorTool::new(document_descriptor(
+        "edit_document",
+        ConnectorToolGroup::Act,
+    ));
+    assert!(!edit.allows_shared_requests());
+    let mut ctx = context(Some(shared), None);
+    ctx.execution_policy = ExecutionPolicy::Shared;
+    read.execute(json!({}), &ctx, CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(*calls.lock().unwrap(), ["read_document:{}"]);
+    assert!(
+        edit.execute(json!({}), &ctx, CancellationToken::new())
+            .await
+            .is_err()
+    );
+    let mut ctx = context(Some(lease), None);
+    ctx.execution_policy = ExecutionPolicy::Shared;
+    let search = ConnectorTool::new(descriptor("gmail_search", ConnectorToolGroup::Read));
+    assert!(
+        search
+            .execute(json!({}), &ctx, CancellationToken::new())
+            .await
+            .is_err()
+    );
+    assert_eq!(calls.lock().unwrap().len(), 1);
+}

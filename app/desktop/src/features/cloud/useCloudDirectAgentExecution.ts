@@ -66,6 +66,7 @@ import {
 import { cloudSessionIdForCollaborationSend } from './cloudCollaborationState';
 import { loadSession } from './session';
 import { createCloudSharedAgentProgress } from './cloudSharedAgentProgress';
+import { useDocumentAgentRequests } from '@/features/documents/useDocumentAgentRequests';
 
 export function useCloudDirectAgentExecution({
   account,
@@ -107,6 +108,12 @@ export function useCloudDirectAgentExecution({
   reportWarning: (message: string, error: unknown) => void;
 }) {
   const voiceGate = useVoiceAgentRequestGate();
+  // Comment requests in shared documents run on this Mac like chat mentions.
+  useDocumentAgentRequests({
+    account, client, agentDefinitionsById: cloudAgentDefinitionsById,
+    routesBySessionId: cloudAgentRuntimeRoutesBySessionId,
+    defaultRoute: defaultCloudAgentRuntimeRoute, runtimeReady, reportWarning,
+  });
   useEffect(() => {
     if (!account || !initialMessagesSettled || !runtimeReady) return;
     for (const [peerId, messages] of cloudMessageIndex.byPeerId) {

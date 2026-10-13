@@ -18,6 +18,18 @@ import {
   uploadNativeCloudAttachment,
 } from './cloudAttachmentUpload';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachmentPreviewUrl';
+import { linkCloudDocumentSource } from '@/features/documents/documentShareClient';
+
+type DocumentSourceLinker = (token: string, copyAttachmentId: string, sourceAttachmentId: string) => Promise<unknown>;
+
+/** Fired when a forwarded document could not be linked to its original; the message is still sent. */
+export const DOCUMENT_LINK_FAILED_EVENT = 'kordi-document-link-failed';
+
+function logDocumentLinkFailure(error: unknown) {
+  if (typeof window === 'undefined') return;
+  const message = error instanceof Error ? error.message : String(error);
+  window.dispatchEvent(new window.CustomEvent(DOCUMENT_LINK_FAILED_EVENT, { detail: { message } }));
+}
 
 type PreviewGenerator = (
   blob: Blob,
@@ -38,16 +50,23 @@ export async function uploadComposerAttachments({
   nativeUpload = uploadNativeCloudAttachment,
   useNativeUpload = isNativeAttachmentUploadAvailable(),
   persistAttachmentPath = persistCloudAttachmentPath,
+  linkDocumentSource = client.request
+    ? (sessionToken, copyId, sourceId) => linkCloudDocumentSource({ request: client.request!.bind(client) }, sessionToken, copyId, sourceId)
+    : undefined,
+  reportLinkFailure = logDocumentLinkFailure,
 }: {
   token: string;
   client: Pick<CloudAuthClient, 'uploadAttachment'>
-    & Partial<Pick<CloudAuthClient, 'updateAttachmentPreview'>>;
+    & Partial<Pick<CloudAuthClient, 'updateAttachmentPreview' | 'request'>>;
   attachments: AttachmentItem[];
   readAttachment?: (path: string) => Promise<number[]>;
   createPreviewDataUrl?: PreviewGenerator;
   nativeUpload?: typeof uploadNativeCloudAttachment;
   useNativeUpload?: boolean;
   persistAttachmentPath?: typeof persistCloudAttachmentPath;
+  /** Links a forwarded document copy to its original; a failure is logged and the send goes on. */
+  linkDocumentSource?: DocumentSourceLinker;
+  reportLinkFailure?: (error: unknown) => void;
 }): Promise<SendCloudMessageAttachmentInput[]> {
   const uploaded: SendCloudMessageAttachmentInput[] = [];
   for (const attachment of attachments) {
@@ -122,6 +141,10 @@ export async function uploadComposerAttachments({
         const video = await uploadResource(attachment.livePhotoFiles.videoPath, 'Live.mov', 'video/quicktime');
         const playback = await uploadResource(attachment.livePhotoFiles.playbackPath, 'Live.mp4', 'video/mp4');
         livePhoto = { video, playback };
+      }
+      const sourceAttachmentId = attachment.sourceAttachmentId?.trim();
+      if (sourceAttachmentId && linkDocumentSource && sourceAttachmentId !== summary.attachmentId) {
+        await linkDocumentSource(token, summary.attachmentId, sourceAttachmentId).catch(reportLinkFailure);
       }
       liveUpload?.check();
       uploaded.push({
