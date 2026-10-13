@@ -79,6 +79,12 @@ pub(crate) async fn desktop_set_window_backdrop(
                         let mut navigation = bounds;
                         navigation.size.width =
                             navigation_width.min(sidebar_width).min(bounds.size.width);
+                        // The session tint backs the sidebar column below the
+                        // titlebar. The workspace backing is the flat
+                        // conversation plane: from the sidebar's edge to the
+                        // right edge, from the top of the window to the bottom,
+                        // so the titlebar column above the conversation shares
+                        // its surface.
                         let mut sessions = bounds;
                         sessions.origin.x += navigation.size.width;
                         sessions.size.width =
@@ -94,15 +100,10 @@ pub(crate) async fn desktop_set_window_backdrop(
                             sessions,
                             session_background,
                             16,
-                            false,
                         )?;
-                        let inset = 6.0_f64.min((bounds.size.height - titlebar_height).max(0.0));
                         let mut workspace = bounds;
                         workspace.origin.x += sidebar_width.min(bounds.size.width);
-                        workspace.origin.y += if is_flipped { titlebar_height } else { inset };
-                        workspace.size.width = (bounds.size.width - sidebar_width - inset).max(0.0);
-                        workspace.size.height =
-                            (bounds.size.height - titlebar_height - inset).max(0.0);
+                        workspace.size.width = (bounds.size.width - sidebar_width).max(0.0);
                         set_tint(
                             parent,
                             webview,
@@ -110,7 +111,6 @@ pub(crate) async fn desktop_set_window_backdrop(
                             workspace,
                             [background[0], background[1], background[2], 255],
                             18,
-                            true,
                         )?;
                     }
                     Ok::<(), String>(())
@@ -144,7 +144,6 @@ unsafe fn set_tint(
     frame: objc2_foundation::NSRect,
     rgba: [u8; 4],
     autoresizing_mask: usize,
-    round_right_corners: bool,
 ) -> Result<(), String> {
     use objc2::{class, msg_send, rc::Retained, runtime::AnyObject};
     use objc2_foundation::NSString;
@@ -183,11 +182,5 @@ unsafe fn set_tint(
     let cg_color: *const std::ffi::c_void = msg_send![color, CGColor];
     let layer: *const AnyObject = msg_send![&*tint, layer];
     let _: () = msg_send![layer, setBackgroundColor: cg_color];
-    if round_right_corners {
-        let _: () = msg_send![layer, setCornerRadius: 12.0_f64];
-        // The two MaxX corners remain the right corners in either coordinate system.
-        let _: () = msg_send![layer, setMaskedCorners: 10_usize];
-        let _: () = msg_send![layer, setMasksToBounds: true];
-    }
     Ok(())
 }
