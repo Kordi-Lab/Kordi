@@ -81,10 +81,10 @@ final class MessageLayoutUITests: ProviderUITestCase {
 
     func testThreadsPersistsAndKeepsQuoteAndMessageActions() {
         var app = launch("--preview-appearance")
-        let picker = app.segmentedControls["message-layout-picker"]
-        XCTAssertTrue(picker.waitForExistence(timeout: 15))
-        picker.buttons["Threads"].tap()
-        XCTAssertTrue(picker.buttons["Threads"].isSelected)
+        let threads = element("appearance-option-threads", in: app)
+        XCTAssertTrue(threads.waitForExistence(timeout: 15))
+        threads.tap()
+        XCTAssertTrue(threads.isSelected)
         capture("Threads selected in Appearance", app: app)
         app.terminate()
 
@@ -117,10 +117,10 @@ final class MessageLayoutUITests: ProviderUITestCase {
         app.terminate()
 
         app = launch("--preview-appearance")
-        let restored = app.segmentedControls["message-layout-picker"]
+        let restored = element("appearance-option-threads", in: app)
         XCTAssertTrue(restored.waitForExistence(timeout: 15))
-        XCTAssertTrue(restored.buttons["Threads"].isSelected)
-        restored.buttons["Chat"].tap()
+        XCTAssertTrue(restored.isSelected)
+        element("appearance-option-chat", in: app).tap()
         app.terminate()
     }
 
@@ -229,31 +229,27 @@ final class NativeChromeUITests: ProviderUITestCase {
         app.navigationBars.buttons.firstMatch.tap()
         XCTAssertTrue(app.tabBars.buttons["Account"].waitForExistence(timeout: 5))
         app.tabBars.buttons["Account"].tap()
-        XCTAssertTrue(element("settings-message-display", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(element("settings-appearance", in: app).waitForExistence(timeout: 5))
         capture("Compact Settings in the complete app", app: app)
         app.terminate()
     }
 
     func testSettingsShowsAndPersistsInlinePreferences() {
         var app = launch("--preview-native-design", "--preview-account")
-        XCTAssertTrue(element("settings-color-mode", in: app).waitForExistence(timeout: 15))
+        XCTAssertTrue(element("settings-appearance", in: app).waitForExistence(timeout: 15))
 
-        choose("color-mode", option: "dark", in: app)
-        choose("message-display", option: "threads", in: app)
-        choose("chat-theme", option: "sand", in: app)
-        assertPreference("color-mode", contains: "Dark", in: app)
-        assertPreference("message-display", contains: "Threads", in: app)
-        assertPreference("chat-theme", contains: "Warm Sand", in: app)
+        choose(["dark", "threads", "sand"], in: app)
+        assertSelected(["dark", "threads", "sand"], in: app)
+        closeAppearance(in: app)
         app.terminate()
 
         app = launch("--preview-native-design", "--preview-account")
-        XCTAssertTrue(element("settings-color-mode", in: app).waitForExistence(timeout: 15))
-        assertPreference("color-mode", contains: "Dark", in: app)
-        assertPreference("message-display", contains: "Threads", in: app)
-        assertPreference("chat-theme", contains: "Warm Sand", in: app)
-        choose("color-mode", option: "system", in: app)
-        choose("message-display", option: "chat", in: app)
-        choose("chat-theme", option: "quiet", in: app)
+        XCTAssertTrue(element("settings-appearance", in: app).waitForExistence(timeout: 15))
+        openAppearance(in: app)
+        assertSelected(["dark", "threads", "sand"], in: app)
+        closeAppearance(in: app)
+        choose(["system", "chat", "quiet"], in: app)
+        closeAppearance(in: app)
 
         tap(element("settings-notifications", in: app), in: app)
         XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 5))
@@ -302,33 +298,51 @@ final class NativeChromeUITests: ProviderUITestCase {
 
     func testAccessibilitySettingsKeepsValuesAndDestinationsReachable() {
         let app = launch("--preview-native-design", "--preview-account", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL")
-        let row = element("settings-message-display", in: app)
+        let row = element("settings-appearance", in: app)
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         XCTAssertTrue(reveal(row, in: app))
         XCTAssertGreaterThan(row.frame.height, 48)
-        choose("message-display", option: "threads", in: app)
-        assertPreference("message-display", contains: "Threads", in: app)
-        for route in ["profile", "notifications", "color-mode", "chat-theme", "active-sessions", "authentication"] {
+        choose(["threads"], in: app)
+        openAppearance(in: app)
+        assertSelected(["threads"], in: app)
+        closeAppearance(in: app)
+        for route in ["profile", "notifications", "appearance", "active-sessions", "authentication"] {
             XCTAssertTrue(reveal(element("settings-\(route)", in: app), in: app))
         }
-        choose("message-display", option: "chat", in: app)
+        choose(["chat"], in: app)
+        closeAppearance(in: app)
         capture("Settings expands for accessibility text sizes", app: app)
         app.terminate()
     }
 
-    private func choose(_ route: String, option: String, in app: XCUIApplication) {
-        tap(element("settings-\(route)", in: app), in: app)
-        let selection = element("appearance-option-\(option)", in: app)
-        XCTAssertTrue(selection.waitForExistence(timeout: 5))
-        tap(selection, in: app)
-        XCTAssertTrue(selection.isSelected)
-        app.navigationBars.buttons.firstMatch.tap()
-        XCTAssertTrue(element("settings-\(route)", in: app).waitForExistence(timeout: 5))
+    /// Opens Appearance, selects each option, and stays on the screen.
+    private func choose(_ options: [String], in app: XCUIApplication) {
+        openAppearance(in: app)
+        for option in options {
+            let selection = element("appearance-option-\(option)", in: app)
+            XCTAssertTrue(selection.waitForExistence(timeout: 5))
+            tap(selection, in: app)
+            XCTAssertTrue(selection.isSelected)
+        }
     }
 
-    private func assertPreference(_ route: String, contains value: String, in app: XCUIApplication) {
-        let row = element("settings-\(route)", in: app)
-        XCTAssertTrue(reveal(row, in: app))
-        XCTAssertTrue(row.label.contains(value), "The saved preference should be visible in Settings.")
+    private func assertSelected(_ options: [String], in app: XCUIApplication) {
+        for option in options {
+            let selection = element("appearance-option-\(option)", in: app)
+            XCTAssertTrue(reveal(selection, in: app))
+            XCTAssertTrue(selection.isSelected, "The saved preference should stay selected in Appearance.")
+        }
+    }
+
+    private func openAppearance(in app: XCUIApplication) {
+        if app.navigationBars["Appearance"].exists { return }
+        tap(element("settings-appearance", in: app), in: app)
+        XCTAssertTrue(app.navigationBars["Appearance"].waitForExistence(timeout: 5))
+    }
+
+    private func closeAppearance(in app: XCUIApplication) {
+        guard app.navigationBars["Appearance"].exists else { return }
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(element("settings-appearance", in: app).waitForExistence(timeout: 5))
     }
 }
