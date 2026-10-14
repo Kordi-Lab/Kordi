@@ -33,9 +33,8 @@ import {
 import {
   cloudAgentNativeContextMessagesFromDirectCloudSession,
   cloudDirectAgentReplyThreadAction,
-  cloudAgentNoProviderNoticeText,
+  cloudAgentProviderFailureNotice,
   encodeCloudAgentResponse,
-  isCloudAgentNoProviderConfiguredError,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
 import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
@@ -360,11 +359,8 @@ export function useCloudDirectAgentExecution({
               ? finalTurn.assistantText.trim()
               : finalTurn.status === 'cancelled'
                 ? 'Request stopped.'
-              : isCloudAgentNoProviderConfiguredError(
-                finalTurn.error || finalTurn.message,
-              )
-                ? cloudAgentNoProviderNoticeText()
-                : `Failed: ${
+              : cloudAgentProviderFailureNotice(finalTurn.error || finalTurn.message)
+                ?? `Failed: ${
                   finalTurn.error
                   || finalTurn.message
                   || 'Cloud agent returned no text response'

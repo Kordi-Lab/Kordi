@@ -10,7 +10,7 @@ import { resolvedPublishedAgentRuntimeRoute } from '@/features/chat/agentSession
 import { cloudAgentContextMessagesFromConversation } from '@/features/chat/chatCreateFlows';
 import { persistQueuedDesktopMessage } from '@/features/chat/queuedDesktopMessages';
 import { restoredSelfAgentContextMessages } from './restoredSelfAgentContext';
-import { cloudAgentNoProviderNoticeText,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentNoProviderNoticeText,cloudAgentProviderFailureNotice,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import {
@@ -582,7 +582,7 @@ export function useChatMessageActions({
         setDesktopChatError(null);
         return;
       }
-      const failureDetail = error instanceof Error ? error.message : 'Unable to send chat message';
+      const failureDetail = cloudAgentProviderFailureNotice(error) ?? (error instanceof Error ? error.message : 'Unable to send chat message');
       setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
         current,
         canonicalSessionId,

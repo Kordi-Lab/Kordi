@@ -6,7 +6,8 @@ import { completeKordiCloudChatRequest, currentKordiCloudChatRequest } from '../
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
 import { cloudRunRuntimeRoute, routeRunsOnKordiCloud } from '../src/features/cloud/cloudAgentRuntimeRoute';
 import { encodeCloudDirectMessageEnvelope, parseCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
-import { setHostedAccountChoices, setLocalAccountChoices } from '../src/features/cloud/hostedAccountRegistry';
+import { registeredAccountChoices, setHostedAccountChoices, setLocalAccountChoices } from '../src/features/cloud/hostedAccountRegistry';
+import { isHostedOnlyAccountChoice } from '../src/features/cloud/routeAccountChoice';
 import { publishCloudSelfAgentOperations } from '../src/features/cloud/cloudSelfAgentForwardExecution';
 import { cloudSelfAgentForwardMessageKind } from '../src/features/cloud/cloudSelfAgentForwardPolicy';
 import type { CloudSelfAgentSyncOperation } from '../src/features/cloud/cloudSelfAgentForwardSync';
@@ -43,6 +44,23 @@ test('a sign-in published from another Mac runs on Kordi Cloud until this Mac ha
     assert.equal(routeRunsOnKordiCloud({ ...localRoute, authChoice: 'profile:key' }), false);
     setLocalAccountChoices(['profile:key', 'profile:other-mac']);
     assert.equal(routeRunsOnKordiCloud(copied), false);
+  } finally {
+    setHostedAccountChoices([]);
+    setLocalAccountChoices([]);
+  }
+});
+
+test('a device alias published by an older build stays a local turn', () => {
+  // Builds up to 0.0.2-beta.3 published this Mac's sign-in under the alias itself.
+  setHostedAccountChoices(['local-active-oauth', 'local-active-api-key', 'cloud-login:team']);
+  setLocalAccountChoices(['profile:key']);
+  try {
+    for (const authChoice of ['local-active-oauth', 'local-active-api-key']) {
+      assert.equal(isHostedOnlyAccountChoice(authChoice, registeredAccountChoices()), false, authChoice);
+      assert.equal(routeRunsOnKordiCloud({ ...localRoute, authChoice }), false, authChoice);
+    }
+    assert.equal(isHostedOnlyAccountChoice('cloud-login:team', registeredAccountChoices()), true);
+    assert.equal(routeRunsOnKordiCloud({ ...localRoute, authChoice: 'cloud-login:team' }), true);
   } finally {
     setHostedAccountChoices([]);
     setLocalAccountChoices([]);

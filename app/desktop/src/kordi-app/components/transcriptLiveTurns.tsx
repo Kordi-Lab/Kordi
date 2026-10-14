@@ -26,7 +26,7 @@ import {
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
 import { desktopTurnWorkDurationLabel } from '@/features/chat/desktopLiveTurns';
 import { useVisibleLiveTurn } from '@/features/chat/useVisibleLiveTurn';
-import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentProviderFailureNeedsAuthentication, cloudAgentProviderFailureNotice } from '@/features/cloud/cloudAgentMessages';
 import { cn } from '@/lib/utils';
 import { AgentWaitingWave } from './AgentWaitingWave';
 import { SourceMessageQuoteRow } from './transcriptReplyAttribution';
@@ -574,8 +574,8 @@ function LiveChatTurnCardView({
   const liveTurnActive = !historical && !visibleTurn.completed;
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
   const changedFileRows = changedFileRowsFromTurn(visibleTurn);
-  const noProviderConfiguredError = Boolean(visibleTurn.error && isCloudAgentNoProviderConfiguredError(visibleTurn.error));
-  const displayedError = ending ? null : noProviderConfiguredError ? cloudAgentNoProviderNoticeText() : cancelledContent ? cancelledContent.error : visibleTurn.error;
+  const providerFailureNotice = visibleTurn.error ? cloudAgentProviderFailureNotice(visibleTurn.error) : null;
+  const displayedError = ending ? null : providerFailureNotice ?? (cancelledContent ? cancelledContent.error : visibleTurn.error);
   const cancellationNotice = cancelledContent?.notice;
   const shouldShowSourceQuote = !plainAgentResponse && Boolean(visibleTurn.sourceMessage);
   const hasResponseSurface = Boolean( // A failed quoted turn keeps its answer surface; the quote sits below it.
@@ -588,7 +588,7 @@ function LiveChatTurnCardView({
       || changedFileRows.length > 0,
   );
   const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error); const statusOnly = showLiveStatusHeader && !isCompressionStatus && !hasTimelineActivity && !hasAssistant && !cancellationNotice && !displayedError && changedFileRows.length === 0;
-  const showOpenAuthAction = Boolean(onOpenAuthSettings && noProviderConfiguredError);
+  const showOpenAuthAction = Boolean(onOpenAuthSettings && visibleTurn.error && cloudAgentProviderFailureNeedsAuthentication(visibleTurn.error));
   if (!canDisplayAgentTurn(visibleTurn)) return null;
   return (
     <div data-live-turn-status={visibleTurn.status} className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { CloudAccount } from '../src/features/cloud/authClient';
+import { cloudAgentLocalFailureMessage } from '../src/features/cloud/cloudAgentLocalExecution';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
   cloudAgentFallbackErrorNotice,
@@ -14,7 +15,10 @@ import {
   cloudMessageMentionsNamedAgent,
   encodeCloudAgentCancel,
   encodeCloudAgentResponse,
+  cloudAgentProviderFailureNeedsAuthentication,
+  cloudAgentProviderFailureNotice,
   isCloudAgentNoProviderConfiguredError,
+  isCloudAgentStoredNoProviderFailure,
   isCloudAgentControlMessage,
   isCloudAgentRuntimeSessionId,
   parseCloudAgentCancel,
@@ -356,8 +360,40 @@ test('cloud agent no-provider detector recognizes sidecar auth failures', () => 
   assert.equal(isCloudAgentNoProviderConfiguredError(new Error('No OpenAI credentials are available. Add OPENAI_API_KEY or sign in with ChatGPT account access.')), true);
   assert.equal(isCloudAgentNoProviderConfiguredError('No Anthropic credentials are available. Add ANTHROPIC_API_KEY.'), true);
   assert.equal(isCloudAgentNoProviderConfiguredError('LM Studio local endpoint is not reachable'), true);
-  assert.equal(isCloudAgentNoProviderConfiguredError('Unknown model: openai/gpt-5.4'), true);
+  assert.equal(isCloudAgentNoProviderConfiguredError('Unknown model: openai/gpt-5.4'), false);
   assert.equal(isCloudAgentNoProviderConfiguredError(new Error('network disconnected while sending cloud message')), false);
+});
+
+test('an unknown model is a model failure, not a missing provider', () => {
+  const error = new Error('Unknown model: openai/gpt-5.4');
+  assert.equal(cloudAgentProviderFailureNotice(error), 'This model is not available for the selected account.');
+  assert.equal(cloudAgentProviderFailureNeedsAuthentication(error), false);
+  assert.equal(cloudAgentLocalFailureMessage(error), 'This model is not available for the selected account.');
+  // The notice is recognized again once it is stored as the failed reply text.
+  assert.equal(cloudAgentProviderFailureNotice('This model is not available for the selected account.'), 'This model is not available for the selected account.');
+  assert.equal(isCloudAgentStoredNoProviderFailure(error), true, 'history stored by older builds keeps its failed state');
+});
+
+test('an unusable saved sign-in asks to sign in again and opens authentication', () => {
+  for (const error of [
+    'Claude OAuth credentials are not usable. The saved Claude subscription token is expired or could not be refreshed; sign in to Claude again, or switch this provider to an Anthropic API key.',
+    'ChatGPT OAuth credentials are not usable. Sign in to ChatGPT again, or switch this provider to an OpenAI API key.',
+    'Sign in again to use this account.',
+  ]) {
+    assert.equal(cloudAgentProviderFailureNotice(error), 'Sign in again to use this account.', error);
+    assert.equal(cloudAgentProviderFailureNeedsAuthentication(error), true, error);
+    assert.equal(isCloudAgentNoProviderConfiguredError(error), false, error);
+  }
+  assert.equal(cloudAgentLocalFailureMessage(new Error('ChatGPT OAuth credentials are not usable. Sign in to ChatGPT again, or switch this provider to an OpenAI API key.')), 'Sign in again to use this account.');
+});
+
+test('provider failure notices leave missing accounts and unrelated errors unchanged', () => {
+  const missing = 'No OpenAI credentials are available. Add OPENAI_API_KEY or sign in with ChatGPT account access.';
+  assert.equal(cloudAgentProviderFailureNotice(missing), 'No provider configured yet.');
+  assert.equal(cloudAgentProviderFailureNeedsAuthentication(missing), true);
+  assert.equal(cloudAgentProviderFailureNotice(new Error('network disconnected while sending cloud message')), null);
+  assert.equal(cloudAgentProviderFailureNeedsAuthentication('network disconnected while sending cloud message'), false);
+  assert.equal(cloudAgentLocalFailureMessage(new Error('network disconnected')), 'network disconnected');
 });
 
 test('cloud agent mentions keep the current request native and sync prior cloud messages as context entries', () => {

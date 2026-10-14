@@ -1,6 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
-import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentNoProviderNoticeText, cloudAgentProviderFailureNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { routeRunsOnKordiCloud } from '@/features/cloud/cloudAgentRuntimeRoute';
 import { hostedRequestContextContent } from '@/features/cloud/cloudAgentRequestContext';
 import type { CanonicalSessionState, DesktopChatTurnSnapshot } from '@/kordi-app/types';
@@ -216,7 +216,7 @@ export function dispatchLocalAgentVoiceTurn(
         context.setDesktopChatError(null);
         return;
       }
-      context.setDesktopChatError(error instanceof Error ? error.message : 'Unable to start the agent for this voice message');
+      context.setDesktopChatError(cloudAgentProviderFailureNotice(error) ?? (error instanceof Error ? error.message : 'Unable to start the agent for this voice message'));
     } finally {
       // Messages sent while this voice request waited were queued behind it; never strand them.
       if (!turnStarted) session.flushQueue();
