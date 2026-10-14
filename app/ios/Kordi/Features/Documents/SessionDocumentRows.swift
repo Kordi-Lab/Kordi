@@ -1,5 +1,55 @@
 import SwiftUI
 
+/// Shared geometry of the file rows in the session Files tab.
+enum SessionFileRowMetrics {
+    static let iconWidth: CGFloat = 30
+    static let spacing: CGFloat = 12
+    /// Leading inset of the separators, so they start at the row text.
+    static var textInset: CGFloat { SessionDetailMetrics.rowHorizontalInset + iconWidth + spacing }
+}
+
+/// SF Symbol and colour for a file, picked from its extension or MIME type.
+enum SessionFileIcon {
+    static func symbol(name: String, mimeType: String?, isImage: Bool = false) -> (name: String, color: Color) {
+        let ext = URL(fileURLWithPath: name).pathExtension.lowercased()
+        let mime = mimeType?.lowercased() ?? ""
+        if isImage || mime.hasPrefix("image/") { return ("photo", .blue) }
+        if ext == "pdf" || mime == "application/pdf" { return ("doc.text", .red) }
+        if ["xls", "xlsx", "csv", "tsv", "numbers"].contains(ext) || mime.contains("spreadsheet") || mime == "text/csv" {
+            return ("tablecells", .green)
+        }
+        if ["ppt", "pptx", "key"].contains(ext) || mime.contains("presentation") {
+            return ("rectangle.on.rectangle", .orange)
+        }
+        if ["zip", "gz", "tgz", "tar", "rar", "7z"].contains(ext) || mime.contains("zip") || mime.contains("compressed") {
+            return ("doc.zipper", .gray)
+        }
+        if mime.hasPrefix("video/") || ["mp4", "mov", "m4v"].contains(ext) { return ("film", .purple) }
+        if mime.hasPrefix("audio/") || ["mp3", "m4a", "wav", "aac"].contains(ext) { return ("waveform", .pink) }
+        if ["swift", "js", "ts", "tsx", "py", "rs", "json", "yaml", "yml", "sh"].contains(ext) {
+            return ("chevron.left.forwardslash.chevron.right", .gray)
+        }
+        if ["md", "markdown", "txt", "rtf", "html", "htm", "doc", "docx", "pages"].contains(ext)
+            || mime.hasPrefix("text/") || mime.contains("word") {
+            return ("doc.text", .blue)
+        }
+        return ("doc", .gray)
+    }
+}
+
+/// Leading document symbol of a file row.
+struct SessionFileIconView: View {
+    let symbol: (name: String, color: Color)
+
+    var body: some View {
+        Image(systemName: symbol.name)
+            .font(.title3)
+            .foregroundStyle(symbol.color)
+            .frame(width: SessionFileRowMetrics.iconWidth, height: SessionFileRowMetrics.iconWidth)
+            .accessibilityHidden(true)
+    }
+}
+
 /// A generated artifact in the session Files tab. Documents with a cloud
 /// attachment open in the reader; artifacts without one stay on the Mac that
 /// hosts the session and show **On this Mac**.
@@ -13,27 +63,32 @@ struct CloudArtifactRow: View {
     var body: some View {
         if let onOpen {
             Button(action: onOpen) { row.contentShape(Rectangle()) }
-                .buttonStyle(.plain)
+                .buttonStyle(SessionRowButtonStyle())
                 .accessibilityHint("Opens the document")
         } else {
             row
         }
     }
 
+    private var symbol: (name: String, color: Color) {
+        artifact.kind == "document"
+            ? SessionFileIcon.symbol(name: artifact.name, mimeType: artifact.contentType)
+            : ("shippingbox", .gray)
+    }
+
     private var row: some View {
-        HStack(spacing: 12) {
-            Image(systemName: artifact.kind == "document" ? "doc.text.fill" : "shippingbox.fill")
-                .foregroundStyle(KordiTheme.signalBlue)
-                .frame(width: 38, height: 38)
-                .background(KordiTheme.signalBlue.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: SessionFileRowMetrics.spacing) {
+            SessionFileIconView(symbol: symbol)
+            VStack(alignment: .leading, spacing: 1) {
                 Text(DocumentTitles.shared.displayName(attachmentId: artifact.attachmentId, fileName: artifact.name))
-                    .font(.headline)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
                     .loadsDocumentTitle(attachmentId: artifact.attachmentId, name: artifact.name, contentType: artifact.contentType)
                 Text(artifact.summary.nonEmpty ?? artifact.path)
-                    .font(.subheadline)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(1)
             }
             Spacer(minLength: 4)
             if isOnMac {
@@ -42,7 +97,10 @@ struct CloudArtifactRow: View {
                 SettingsChevron()
             }
         }
-        .padding(.vertical, 3)
+        .padding(.leading, SessionDetailMetrics.rowHorizontalInset)
+        .padding(.trailing, 14)
+        .padding(.vertical, 8)
+        .frame(minHeight: SessionDetailMetrics.fileRowMinHeight)
     }
 }
 
@@ -66,26 +124,38 @@ struct SessionDetailFileRow: View {
     let onReview: () -> Void
     let onDownload: () -> Void
 
+    private var sharedBy: String {
+        item.message.author == .me ? "You" : item.message.authorName
+    }
+
+    private var detail: String {
+        [item.attachment.sizeLabel, sharedBy].compactMap { $0 }.joined(separator: " · ")
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: item.attachment.kind == .image ? "photo.fill" : "doc.text.fill")
-                .foregroundStyle(item.attachment.kind == .image ? KordiTheme.signalBlue : .secondary)
-                .frame(width: 38, height: 38)
-                .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: SessionFileRowMetrics.spacing) {
+            SessionFileIconView(symbol: SessionFileIcon.symbol(
+                name: item.attachment.name,
+                mimeType: item.attachment.mimeType,
+                isImage: item.attachment.kind == .image
+            ))
+            VStack(alignment: .leading, spacing: 1) {
                 Text(DocumentTitles.shared.displayName(for: item.attachment))
-                    .font(.headline)
+                    .font(.body)
                     .lineLimit(1)
+                    .truncationMode(.middle)
                     .loadsDocumentTitle(
                         attachmentId: item.attachment.attachmentId,
                         name: item.attachment.name,
                         contentType: item.attachment.mimeType
                     )
-                Text([item.attachment.formatLabel, item.attachment.sizeLabel].compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.secondary)
-                Text("Shared by \(item.message.authorName)")
-                    .font(.caption2).foregroundStyle(.tertiary)
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityValue("\(item.attachment.formatLabel), shared by \(sharedBy)")
             Spacer(minLength: 4)
             if isLoading {
                 ProgressView().frame(width: 44, height: 44)
@@ -94,14 +164,15 @@ struct SessionDetailFileRow: View {
                     Button(action: onReview) { Label("Review", systemImage: "eye") }
                     Button(action: onDownload) { Label("Download / Save to Files", systemImage: "arrow.down.circle") }
                 } label: {
-                    Image(systemName: "ellipsis")
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                    SessionEllipsisCircleLabel()
                 }
                 .contentShape(Rectangle())
                 .accessibilityLabel("More actions for \(item.attachment.name)")
             }
         }
-        .padding(.vertical, 3)
+        .padding(.leading, SessionDetailMetrics.rowHorizontalInset)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        .frame(minHeight: SessionDetailMetrics.fileRowMinHeight)
     }
 }

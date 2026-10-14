@@ -216,7 +216,7 @@ struct SessionDetailView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 20) {
+            LazyVStack(spacing: 16) {
                 SessionProfileHero(
                     conversation: currentConversation,
                     displayName: profileDisplayName,
@@ -241,7 +241,7 @@ struct SessionDetailView: View {
 
                 profileSummary
 
-                VStack(spacing: 14) {
+                VStack(spacing: 16) {
                     Picker("Session content", selection: $tab) {
                         ForEach(availableTabs) { item in
                             Text(item.rawValue).tag(item)
@@ -252,6 +252,7 @@ struct SessionDetailView: View {
                     tabContent
                 }
                 .padding(.horizontal, 16)
+                .padding(.top, 6)
                 .padding(.bottom, 28)
             }
         }
@@ -263,18 +264,7 @@ struct SessionDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .topLeading) {
-            Button(action: closeDetails) {
-                Image(systemName: "chevron.left")
-                    .font(.title3.weight(.semibold))
-                    .frame(width: 50, height: 50)
-                    .background(.thinMaterial, in: Circle())
-                    .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.primary)
-            .padding(.leading, 18)
-            .safeAreaPadding(.top, 8)
-            .accessibilityLabel("Back")
+            SessionDetailBackButton(action: closeDetails)
         }
         .tint(heroTint)
         .sensoryFeedback(.selection, trigger: notificationsMuted)
@@ -354,8 +344,11 @@ struct SessionDetailView: View {
     @ViewBuilder
     private var profileSummary: some View {
         if currentConversation.kind == .group {
-            SessionGroupSettingsButton(action: openGroupSettings)
-                .padding(.horizontal, 16)
+            SessionDetailSection {
+                SessionSettingsRow(title: "Group settings", systemImage: "slider.horizontal.3", action: openGroupSettings)
+            }
+            .accessibilityHint("Opens group name and membership settings")
+            .padding(.horizontal, 16)
         } else if !facts.isEmpty {
             SessionFactsSection(facts: facts)
                 .padding(.horizontal, 16)
@@ -393,11 +386,7 @@ struct SessionDetailView: View {
     @ViewBuilder
     private var mediaPage: some View {
         if mediaAttachments.isEmpty {
-            SessionDetailEmptyState(
-                title: "No media yet",
-                symbol: "photo.on.rectangle.angled",
-                description: "Images shared in this conversation will appear here."
-            )
+            SessionDetailEmptyState(title: "No media yet", symbol: "photo.on.rectangle.angled")
         } else {
             LazyVGrid(
                 columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 3),
@@ -409,31 +398,27 @@ struct SessionDetailView: View {
                     }
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: SessionDetailMetrics.sectionCornerRadius, style: .continuous))
         }
     }
 
     @ViewBuilder
     private var filesPage: some View {
         if fileAttachments.isEmpty && (activity?.artifacts.isEmpty ?? true) {
-            SessionDetailEmptyState(
-                title: "No files yet",
-                symbol: "folder",
-                description: "Generated documents and shared files will appear here."
-            )
+            SessionDetailEmptyState(title: "No files yet", symbol: "folder")
         } else {
             VStack(spacing: 16) {
                 if let artifacts = activity?.artifacts, !artifacts.isEmpty {
-                    SessionDetailCard(title: "Generated") {
+                    SessionDetailSection(title: "Generated") {
                         ForEach(Array(artifacts.enumerated()), id: \.element.id) { index, artifact in
                             CloudArtifactRow(artifact: artifact, onOpen: documentOpener(for: artifact))
-                            if index < artifacts.count - 1 { Divider() }
+                            if index < artifacts.count - 1 { SessionDetailSeparator(leading: SessionFileRowMetrics.textInset) }
                         }
                     }
                 }
 
                 if !fileAttachments.isEmpty {
-                    SessionDetailCard(title: "Shared files") {
+                    SessionDetailSection {
                         ForEach(Array(fileAttachments.enumerated()), id: \.element.id) { index, item in
                             SessionDetailFileRow(
                                 item: item,
@@ -441,7 +426,7 @@ struct SessionDetailView: View {
                                 onReview: { review(item) },
                                 onDownload: { prepare(item.attachment, forSharing: true) }
                             )
-                            if index < fileAttachments.count - 1 { Divider() }
+                            if index < fileAttachments.count - 1 { SessionDetailSeparator(leading: SessionFileRowMetrics.textInset) }
                         }
                     }
                 }
@@ -453,43 +438,26 @@ struct SessionDetailView: View {
     private var todoPage: some View {
         if agentThreadError {
             Text("Could not refresh Agent threads. Check access or try again.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.footnote).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
         }
         if !agentThreads.isEmpty {
-            SessionDetailCard(title: "Agent threads") {
-                ForEach(agentThreads) { task in
-                    Button { selectedAgentThread = task } label: {
-                        HStack(alignment: .top, spacing: 12) {
-                            IdentityAvatar(name: task.agentDisplayName, imageSource: task.agentAvatarUrl,
-                                kind: .agent, size: 28, seed: task.agentId)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(task.title).font(.headline)
-                                Text("\(task.agentDisplayName) · Owner · \(task.ownerDisplayName)")
-                                    .font(.caption).foregroundStyle(.secondary)
-                                TimelineView(.animation(minimumInterval: 1, paused: !task.live || task.status != "running")) { context in
-                                    Text([task.statusLabel, task.elapsedLabel(at: context.date), task.executionBackend == "desktop" ? "Mac runtime" : "Cloud runtime"].compactMap { $0 }.joined(separator: " · "))
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                            Spacer(minLength: 4)
-                            Image(systemName: "chevron.right")
-                        }.padding(.vertical, 4)
-                    }.buttonStyle(.plain)
+            SessionDetailSection(title: "Agent threads") {
+                ForEach(Array(agentThreads.enumerated()), id: \.element.id) { index, task in
+                    SessionAgentThreadRow(task: task) { selectedAgentThread = task }
+                    if index < agentThreads.count - 1 { SessionDetailSeparator(leading: 56) }
                 }
             }
         }
         if legacyTasks.isEmpty && agentThreads.isEmpty && !agentThreadError {
-            SessionDetailEmptyState(
-                title: "No task activity yet",
-                symbol: "checkmark.circle",
-                description: "Planning and execution tasks for this session will appear here."
-            )
+            SessionDetailEmptyState(title: "No task activity yet", symbol: "checkmark.circle")
         } else if !legacyTasks.isEmpty {
-            SessionDetailCard(title: "Session tasks") {
+            SessionDetailSection {
                 let tasks = legacyTasks
                 ForEach(Array(tasks.enumerated()), id: \.element.id) { index, task in
                     SessionTaskRow(task: task)
-                    if index < tasks.count - 1 { Divider() }
+                    if index < tasks.count - 1 { SessionDetailSeparator(leading: 56) }
                 }
             }
         }
@@ -498,11 +466,7 @@ struct SessionDetailView: View {
     @ViewBuilder
     private var groupsPage: some View {
         if mutualGroupSpaces.isEmpty {
-            SessionDetailEmptyState(
-                title: "No shared groups",
-                symbol: "person.2",
-                description: "Groups that include both of you will appear here."
-            )
+            SessionDetailEmptyState(title: "No shared groups", symbol: "person.2")
         } else {
             SessionRelatedGroupsSection(
                 spaces: mutualGroupSpaces,
@@ -641,95 +605,6 @@ struct SessionDetailView: View {
     }
 }
 
-private struct SessionProfileHero<Actions: View>: View {
-    let conversation: ConversationSummary
-    let displayName: String
-    let participants: [CloudGroupParticipant]
-    let statusText: String
-    let tint: Color
-    private let actions: Actions
-    @ScaledMetric(relativeTo: .largeTitle) private var avatarSize = 108.0
-
-    init(
-        conversation: ConversationSummary,
-        displayName: String,
-        participants: [CloudGroupParticipant],
-        statusText: String,
-        tint: Color,
-        @ViewBuilder actions: () -> Actions
-    ) {
-        self.conversation = conversation
-        self.displayName = displayName
-        self.participants = participants
-        self.statusText = statusText
-        self.tint = tint
-        self.actions = actions()
-    }
-
-    var body: some View {
-        VStack(spacing: 18) {
-            avatar
-                .shadow(color: .black.opacity(0.1), radius: 12, y: 5)
-
-            VStack(spacing: 4) {
-                Text(displayName)
-                    .font(.title2.weight(.bold))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-
-                Text(statusText)
-                    .font(.subheadline)
-                    .foregroundStyle(Color.primary.opacity(0.62))
-                    .multilineTextAlignment(.center)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(displayName), \(statusText)")
-
-            actions
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 8)
-        .padding(.bottom, 24)
-        .padding(.horizontal, 16)
-    }
-
-    @ViewBuilder
-    private var avatar: some View {
-        if conversation.kind == .group {
-            GroupAvatarStack(participants: participants, size: avatarSize, imageSource: conversation.avatarSource)
-        } else {
-            IdentityAvatar(
-                name: conversation.displayName,
-                imageSource: conversation.avatarSource,
-                kind: conversation.kind,
-                size: avatarSize,
-                seed: conversation.agentId ?? conversation.peerAccountId
-            )
-        }
-    }
-}
-
-private struct SessionDetailBackground: View {
-    let tint: Color
-
-    var body: some View {
-        ZStack {
-            Color(uiColor: .systemGroupedBackground)
-
-            LinearGradient(
-                stops: [
-                    .init(color: tint.opacity(0.25), location: 0),
-                    .init(color: tint.opacity(0.18), location: 0.28),
-                    .init(color: tint.opacity(0.07), location: 0.52),
-                    .init(color: .clear, location: 0.70)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-    }
-}
-
 private struct SessionHeroActions: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let kind: ConversationKind
@@ -752,8 +627,8 @@ private struct SessionHeroActions: View {
                 }
             } else {
                 LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4),
-                    spacing: 8
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4),
+                    spacing: 10
                 ) {
                     actionButtons
                 }
@@ -839,420 +714,10 @@ private struct SessionHeroActions: View {
     }
 }
 
-private enum SessionHeroAction: String, Identifiable {
-    case chat
-    case call
-    case video
-    case mute
-    case search
-    case more
-
-    var id: Self { self }
-}
-
-private enum SessionMoreAction: String, Identifiable {
-    case addMembers
-    case groupSettings
-    case copyGroupName
-    case copyKordiID
-    case backToChat
-
-    var id: Self { self }
-
-    var title: String {
-        switch self {
-        case .addMembers: "Add members"
-        case .groupSettings: "Group settings"
-        case .copyGroupName: "Copy group name"
-        case .copyKordiID: "Copy Kordi ID"
-        case .backToChat: "Back to chat"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .addMembers: "person.badge.plus"
-        case .groupSettings: "slider.horizontal.3"
-        case .copyGroupName, .copyKordiID: "doc.on.doc"
-        case .backToChat: "bubble.left"
-        }
-    }
-}
-
-private struct SessionProfileActionLabel: View {
-    let title: String
-    let symbol: String
-    let tint: Color
-    let isSelected: Bool
-
-    var body: some View {
-        VStack(spacing: 7) {
-            Image(systemName: symbol)
-                .font(.title3.weight(.semibold))
-            Text(title)
-                .font(.caption.weight(.medium))
-                .lineLimit(2)
-                .minimumScaleFactor(0.82)
-        }
-        .foregroundStyle(tint)
-        .frame(maxWidth: .infinity, minHeight: 72)
-        .background(
-            isSelected
-                ? tint.opacity(0.18)
-                : Color(uiColor: .secondarySystemGroupedBackground).opacity(0.90),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-        .contentShape(Rectangle())
-    }
-}
-
-private struct SessionProfileActionButton: View {
-    let title: String
-    let symbol: String
-    let tint: Color
-    var isSelected = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            SessionProfileActionLabel(
-                title: title,
-                symbol: symbol,
-                tint: tint,
-                isSelected: isSelected
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
-private struct SessionDetailFact: Identifiable {
-    let id: String
-    let label: String
-    let value: String
-}
-
-private struct SessionGroupSettingsButton: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.headline)
-                    .foregroundStyle(KordiTheme.signalBlue)
-                    .frame(width: 40, height: 40)
-                    .background(
-                        KordiTheme.signalBlue.opacity(0.12),
-                        in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    )
-
-                Text("Group settings")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.primary)
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 14)
-            .frame(minHeight: 62)
-            .background(
-                Color(uiColor: .secondarySystemGroupedBackground),
-                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint("Opens group name and membership settings")
-    }
-}
-
-private struct SessionFactsSection: View {
-    let facts: [SessionDetailFact]
-
-    var body: some View {
-        SessionDetailCard(title: "About") {
-            ForEach(Array(facts.enumerated()), id: \.element.id) { index, fact in
-                LabeledContent(fact.label) {
-                    Text(fact.value)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.trailing)
-                }
-                .font(.body)
-                .padding(.vertical, 2)
-
-                if index < facts.count - 1 { Divider() }
-            }
-        }
-    }
-}
-
-private struct SessionParticipantsSection: View {
-    let participants: [CloudGroupParticipant]
-    let selfAccountId: String?
-    let onAddMember: () -> Void
-    let onOpenParticipant: (CloudGroupParticipant) -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Button(action: onAddMember) {
-                Label("Add members", systemImage: "person.badge.plus")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(KordiTheme.signalBlue)
-                    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            if !participants.isEmpty {
-                Divider().padding(.leading, 52)
-            }
-
-            ForEach(Array(participants.enumerated()), id: \.element.id) { index, participant in
-                HStack(spacing: 12) {
-                    if selfAccountId == nil || participant.accountId == selfAccountId {
-                        participantAvatar(participant)
-                    } else {
-                        Button { onOpenParticipant(participant) } label: {
-                            participantAvatar(participant)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Open profile for \(participant.displayName)")
-                    }
-                    Text(participant.displayName)
-                        .font(.body)
-                        .lineLimit(2)
-                    Spacer(minLength: 8)
-                    Text(roleLabel(participant))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(minHeight: 56)
-
-                if index < participants.count - 1 { Divider().padding(.leading, 52) }
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 4)
-        .background(
-            Color(uiColor: .secondarySystemGroupedBackground),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-    }
-
-    private func participantAvatar(_ participant: CloudGroupParticipant) -> some View {
-        IdentityAvatar(
-            name: participant.displayName,
-            imageSource: participant.avatarUrl.nonEmpty,
-            kind: .person,
-            size: 40,
-            seed: participant.accountId
-        )
-        .frame(width: 44, height: 44)
-    }
-
-    private func roleLabel(_ participant: CloudGroupParticipant) -> String {
-        if participant.accountId == selfAccountId { return "You" }
-        if let role = participant.role?.lowercased(), ["owner", "admin"].contains(role) {
-            return "Admin"
-        }
-        return "Member"
-    }
-}
-
-private struct SessionRelatedGroupsSection: View {
-    let spaces: [GroupSpaceSummary]
-    let onOpen: (GroupSpaceSummary) -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(spaces.enumerated()), id: \.element.id) { index, space in
-                Button { onOpen(space) } label: {
-                    HStack(spacing: 12) {
-                        GroupAvatarStack(participants: space.participants, size: 44, imageSource: space.avatarSource)
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(space.displayName)
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                            Text(groupDetail(space))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-
-                        Spacer(minLength: 8)
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .frame(minHeight: 60)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Open \(space.displayName), \(groupDetail(space))")
-
-                if index < spaces.count - 1 { Divider().padding(.leading, 56) }
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 4)
-        .background(
-            Color(uiColor: .secondarySystemGroupedBackground),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-    }
-
-    private func groupDetail(_ space: GroupSpaceSummary) -> String {
-        let participantCount = space.participants.count
-        let sessionCount = space.sessions.count
-        return "\(participantCount) members · \(sessionCount) \(sessionCount == 1 ? "session" : "sessions")"
-    }
-}
-
-private struct SessionDetailCard<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
-
-            VStack(spacing: 10) {
-                content
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-struct SessionDetailEmptyState: View {
-    let title: String
-    let symbol: String
-    let description: String
-
-    var body: some View {
-        ContentUnavailableView(
-            title,
-            systemImage: symbol,
-            description: Text(description)
-        )
-        .frame(maxWidth: .infinity, minHeight: 210)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-}
-
 struct SessionDetailAttachment: Identifiable {
     let message: ChatMessage
     let attachment: ChatAttachment
     var id: String { "\(message.id):\(attachment.id)" }
-}
-
-private struct SessionMediaThumbnail: View {
-    @EnvironmentObject private var model: AppModel
-    let item: SessionDetailAttachment
-    let onOpen: () -> Void
-    @State private var image: UIImage?
-    @State private var hasFailed = false
-
-    var body: some View {
-        Button(action: onOpen) {
-            Color(uiColor: .secondarySystemGroupedBackground)
-                .overlay {
-                    if let image {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                    } else if hasFailed {
-                        Image(systemName: "photo.badge.exclamationmark")
-                            .font(.title2)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ProgressView()
-                    }
-                }
-                .aspectRatio(1, contentMode: .fit)
-                .clipped()
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .task(id: item.attachment.id) { await loadImage() }
-        .accessibilityLabel("Review \(item.attachment.name)")
-    }
-
-    private func loadImage() async {
-        if let source = item.attachment.previewURL,
-           let preview = await AvatarImageLoader.image(from: source) {
-            guard !Task.isCancelled else { return }
-            image = preview
-            return
-        }
-
-        guard let url = await model.prepareAttachmentForPresentation(item.attachment) else {
-            guard !Task.isCancelled else { return }
-            hasFailed = true
-            return
-        }
-        let loaded = await Task.detached(priority: .utility) {
-            UIImage(contentsOfFile: url.path)
-        }.value
-        guard !Task.isCancelled else { return }
-        image = loaded
-        hasFailed = loaded == nil
-    }
-}
-
-private struct SessionTaskRow: View {
-    let task: CloudSessionTaskActivity
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: symbol)
-                .foregroundStyle(tint)
-                .frame(width: 28, height: 28)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(task.title).font(.headline)
-                if let summary = task.summary.nonEmpty {
-                    Text(summary).font(.subheadline).foregroundStyle(.secondary)
-                }
-                Text(["active", "running", "processing"].contains(task.status.lowercased())
-                    ? "Last reported as running · Status unverified"
-                    : task.status.replacingOccurrences(of: "_", with: " ").capitalized)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(tint)
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var symbol: String {
-        switch task.status.lowercased() {
-        case "completed", "done": "checkmark.circle.fill"
-        case "failed", "blocked": "exclamationmark.triangle.fill"
-        default: "circle.dotted"
-        }
-    }
-
-    private var tint: Color {
-        switch task.status.lowercased() {
-        case "completed", "done": .green
-        case "failed", "blocked": .orange
-        default: KordiTheme.signalBlue
-        }
-    }
 }
 
 enum SessionRelatedGroupCatalog {
