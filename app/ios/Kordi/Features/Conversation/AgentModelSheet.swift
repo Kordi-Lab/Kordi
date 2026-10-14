@@ -312,8 +312,8 @@ struct AgentModelPicker: View {
         let catalogModels = model.ompProviderCatalog
             .first { $0.id == catalogProvider }?.models ?? []
         // Long catalogs are capped, so the current models listed above come first.
-        let current = (Self.modelNamesByProvider[canonicalProvider] ?? []).filter(catalogModels.contains)
-        let ordered = current + catalogModels.filter { !current.contains($0) }
+        let preferred = (Self.modelNamesByProvider[canonicalProvider] ?? []).filter(catalogModels.contains)
+        let ordered = preferred + catalogModels.filter { !preferred.contains($0) }
         let names = (catalogModels.isEmpty ? nil : Array(ordered.prefix(30)))
             ?? Self.modelNamesByProvider[canonicalProvider]
             ?? model.authenticationProviderDefinitions
