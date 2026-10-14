@@ -166,6 +166,7 @@ fn desktop_reveal_in_finder(path: String) -> Result<String, String> {
 }
 
 pub fn run() {
+    chat::interrupted_requests::record_process_start();
     system_proxy::install_native_proxy_environment();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
@@ -380,6 +381,7 @@ pub fn run() {
             chat::desktop_chat_turn_state,
             chat::turns::desktop_chat_active_turns,
             chat::turns::desktop_chat_session_active_turn,
+            chat::interrupted_requests::desktop_chat_close_interrupted_request,
             skill_library::desktop_skill_library_list,
             skill_library::desktop_skill_library_detail,
             skill_library::desktop_skill_library_read_file,
