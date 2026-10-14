@@ -15,7 +15,7 @@ struct ThreadMessageHeader: View {
 
     private var author: some View {
         HStack(spacing: 5) {
-            Text(authorName).font(.footnote.weight(.semibold))
+            Text(authorName).font(.body.weight(.semibold))
             if KordiPipIdentity.matches(name: authorName, seed: avatarSeed) {
                 Text(KordiPipIdentity.tag).font(.caption2.weight(.medium)).foregroundStyle(.secondary)
             }
