@@ -4,6 +4,7 @@ import {
   markCloudVoiceTranscriptSettled,
   persistCloudVoiceTranscript,
 } from '@/features/cloud/cloudVoiceTranscriptPersistence';
+import { VOICE_AGENT_TRANSCRIPT_WAIT_MS } from '@/features/cloud/cloudVoiceAgentGate';
 
 import type { AttachmentItem } from '../composerController.types';
 import {
@@ -58,13 +59,31 @@ export function attachmentsWithVoiceTranscription(
   ));
 }
 
-/** Waits for the background transcript before an agent turn is dispatched. */
+export const AGENT_VOICE_TRANSCRIPT_TIMEOUT_ERROR = 'Transcription did not finish in time.';
+
+/**
+ * Bounds how long an agent turn waits for the words. A late result fails the turn's
+ * attempt only; the job keeps running and the bubble still shows its transcript.
+ */
+export function agentVoiceTranscriptionWithin(
+  transcription: Promise<VoiceTranscriptionOutcome>,
+  timeoutMs = VOICE_AGENT_TRANSCRIPT_WAIT_MS,
+): Promise<VoiceTranscriptionOutcome> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<VoiceTranscriptionOutcome>((resolve) => {
+    timer = setTimeout(() => resolve({ status: 'failed', error: AGENT_VOICE_TRANSCRIPT_TIMEOUT_ERROR }), timeoutMs);
+  });
+  return Promise.race([transcription, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** Waits, within the bounded agent wait, for the background transcript before an agent turn is dispatched. */
 export async function transcribeAgentVoiceAttachments(
   attachments: readonly AttachmentItem[],
   transcription = startAgentVoiceTranscription(attachments),
+  timeoutMs = VOICE_AGENT_TRANSCRIPT_WAIT_MS,
 ): Promise<{ attachments: readonly AttachmentItem[]; outcome: VoiceTranscriptionOutcome | null }> {
   if (!transcription) return { attachments, outcome: null };
-  const outcome = await transcription;
+  const outcome = await agentVoiceTranscriptionWithin(transcription, timeoutMs);
   return { attachments: attachmentsWithVoiceTranscription(attachments, outcome), outcome };
 }
 
@@ -96,8 +115,13 @@ export async function persistSentAgentVoiceTranscript(
 /** A queued local agent message takes its background transcript before its turn starts. */
 export async function queuedMessageWithAgentTranscript<T extends { text: string; attachments: AttachmentItem[] }>(
   message: T,
+  timeoutMs = VOICE_AGENT_TRANSCRIPT_WAIT_MS,
 ): Promise<T> {
-  const { attachments, outcome } = await transcribeAgentVoiceAttachments(message.attachments);
+  const { attachments, outcome } = await transcribeAgentVoiceAttachments(
+    message.attachments,
+    startAgentVoiceTranscription(message.attachments),
+    timeoutMs,
+  );
   if (!outcome) return message;
   return {
     ...message,

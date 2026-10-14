@@ -9,8 +9,9 @@ import tarfile
 
 # Every image the bundle carries. Development runs all of them from the bundle.
 SERVICES = ("cloud-server", "cloud-agent-runner", "omp-route-worker")
-# Production (k3s) has no OMP route worker deployment yet, so promotion applies only these.
-PRODUCTION_SERVICES = ("cloud-server", "cloud-agent-runner")
+# Production (k3s) promotes every bundled image, in this order. The route worker goes
+# first so a new server never runs against an older worker; a restore runs in reverse.
+PRODUCTION_SERVICES = ("omp-route-worker", "cloud-server", "cloud-agent-runner")
 SHA = re.compile(r"^[0-9a-f]{40}$")
 
 

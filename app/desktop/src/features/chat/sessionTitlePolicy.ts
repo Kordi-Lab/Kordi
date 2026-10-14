@@ -108,7 +108,7 @@ export function isLowInformationSessionSeed(value: string) {
   return new Set([
     'hi', 'hii', 'hiii', 'hiiii', 'hello', 'helloo', 'hey', 'heyy', 'yo', 'sup',
     'test', 'testing', 'testmessage', 'testreply', 'ok', 'okay', 'k', 'yes', 'yep', 'sure',
-    'thanks', 'thankyou', 'gotit', 'kordi', 'mykordi', 'myagent', 'newchat', 'newsession',
+    'thanks', 'thankyou', 'gotit', 'kordi', 'mykordi', 'myagent', 'newchat', 'newsession', 'voicemessage',
     'hithere', 'hellothere', 'howareyou', 'hihowareyou', 'hellohowareyou',
     'howcanihelp', 'hihowcanihelp', 'hellohowcanihelp',
     '\u4F60\u597D', '\u60A8\u597D', '\u55E8', '\u6D4B\u8BD5',
@@ -138,11 +138,18 @@ function knownSemanticTitle(value: string) {
   return null;
 }
 
+// Older desktop builds displayed this for a session without a title seed; it
+// never describes the conversation, so a derived title may replace it.
+function isDatedFallbackSessionTitle(value: string) {
+  return /^Chat with Kordi · (?:recently|[A-Za-z]{3} \d{1,2})$/u.test(value.trim());
+}
+
 export function isKnownLegacyAutoTitle(value: string) {
   const trimmed = value.trim();
   const semantic = knownSemanticTitle(trimmed);
   return isLowInformationSessionSeed(trimmed)
     || isAttachmentBoilerplate(trimmed)
+    || isDatedFallbackSessionTitle(trimmed)
     || (semantic !== null && semantic.toLocaleLowerCase() !== trimmed.toLocaleLowerCase());
 }
 
@@ -150,8 +157,19 @@ function capitalizeFirstAscii(value: string) {
   return /^[a-z]/u.test(value) ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
 }
 
+// Only the spoken transcript of a voice message may name a session.
+function withoutVoiceProvenance(value: string): string | null {
+  const trimmed = value.trimStart();
+  if (trimmed.startsWith('[Voice message:')) return null;
+  if (!trimmed.startsWith('[Voice transcript;')) return value;
+  const end = trimmed.indexOf(']');
+  return end < 0 ? '' : trimmed.slice(end + 1);
+}
+
 function deriveSessionTitleUncached(value: string): string | null {
-  const withoutContext = withoutReplyAndCodeContext(value);
+  const spoken = withoutVoiceProvenance(value);
+  if (spoken === null) return null;
+  const withoutContext = withoutReplyAndCodeContext(spoken);
   if (isAttachmentBoilerplate(withoutContext)) return null;
   const cleaned = removeTransportNoise(withoutContext)
     .replace(/^[\s.,:;!?。，：；！？_`'"()[\]{}-]+|[\s.,:;!?。，：；！？_`'"()[\]{}-]+$/gu, '')

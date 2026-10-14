@@ -1,0 +1,181 @@
+# OMP route worker for the Cloud server (provider sign-in, key checks, route
+# tests, and the provider catalog). Only kordi-cloud-server may reach it, and
+# it may reach only cluster DNS and public addresses.
+#
+# First-time bootstrap: deploy-omp-route-worker.sh. Later image changes go
+# through the protected production promotion, which changes only the image.
+#
+# Keep one replica: sign-in sessions live in the worker's memory.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: kordi-omp-route-worker
+  namespace: kordi-cloud
+  labels:
+    app.kubernetes.io/name: kordi-omp-route-worker
+    app.kubernetes.io/component: omp-route-worker
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kordi-omp-route-worker
+  ports:
+    - name: http
+      port: 17331
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kordi-omp-route-worker
+  namespace: kordi-cloud
+  labels:
+    app.kubernetes.io/name: kordi-omp-route-worker
+    app.kubernetes.io/component: omp-route-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kordi-omp-route-worker
+  strategy:
+    # A broken image never replaces the running worker. Sign-ins in progress
+    # on the old pod are lost when it stops; users start them again.
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kordi-omp-route-worker
+        app.kubernetes.io/component: omp-route-worker
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        # The image runs as the `bun` user (uid and gid 1000). A numeric user
+        # lets the kubelet enforce runAsNonRoot.
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: kordi-omp-route-worker:dev
+          # Images are imported into the node's containerd, never pulled.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 17331
+              protocol: TCP
+          env:
+            - name: KORDI_OMP_ROUTE_WORKER_HOST
+              value: "0.0.0.0"
+            - name: KORDI_OMP_ROUTE_WORKER_PORT
+              value: "17331"
+            - name: KORDI_OMP_ROUTE_WORKER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-omp-route-worker
+                  key: token
+            # OMP keeps its logs and runtime files under the home directory.
+            - name: HOME
+              value: /home/bun
+            - name: TMPDIR
+              value: /tmp
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          volumeMounts:
+            - name: home
+              mountPath: /home/bun
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: home
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kordi-omp-route-worker
+  namespace: kordi-cloud
+  labels:
+    app.kubernetes.io/name: kordi-omp-route-worker
+    app.kubernetes.io/component: omp-route-worker
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kordi-omp-route-worker
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kordi-cloud-server
+      ports:
+        - port: 17331
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Provider sign-in, key checks, and route tests call public HTTPS
+    # endpoints, and a custom endpoint may use any port. Private, link-local
+    # (including instance metadata), shared, and loopback ranges stay closed.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 100.64.0.0/10
+              - 127.0.0.0/8
+              - 169.254.0.0/16
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP

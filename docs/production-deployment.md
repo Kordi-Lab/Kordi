@@ -36,8 +36,8 @@ The preflight accepts only a completed successful `backend-delivery.yml` run in 
 repository on `main`. It selects immutable artifact IDs from the current run attempt.
 Missing, expired, duplicated, or previous-attempt artifacts are rejected.
 
-The development result must report success for the same revision, build run, and both image
-digests. Archive checksums, image config IDs, OCI manifest digests, platform, and revision
+The development result must report success for the same revision, build run, and every image
+digest. Archive checksums, image config IDs, OCI manifest digests, platform, and revision
 labels are verified before transport and again on the host. Both `CI required` and
 `Post-merge CI required` must have successful latest evidence for the exact revision from
 trusted main push workflows. Branch ancestry alone is insufficient.
@@ -51,11 +51,16 @@ Every mutation runs on the corresponding production machine:
 
 1. Acquire the shared host-wide `flock` in the configured host lock directory.
 2. Verify the bundle and backup receipt before changing running services.
-3. Capture both previous images as immutable digests and preserve their local references.
-4. Import both approved OCI images and verify their digests in the host image store.
-5. Change only the server and runner deployment images, using digest-pinned references.
-6. Wait for both rollouts and validate the canonical `https://kordi.ai/health` endpoint.
+3. Confirm that every production Deployment exists, then capture each previous image as an
+   immutable digest and preserve its local reference.
+4. Import every approved OCI image and verify its digest in the host image store.
+5. Change only the route worker, server, and runner deployment images, in that order, using
+   digest-pinned references. Each rollout finishes before the next image changes.
+6. Recheck every rollout and validate the canonical `https://kordi.ai/health` endpoint.
 7. Write a durable host record and a safe workflow result before releasing the lock.
+
+The route worker changes first so a new server never runs against an older worker. Keep
+worker route changes additive, so the previous server keeps working until the server rolls.
 
 This path does not rebuild source, reconcile unrelated storage/media manifests, or run
 from a laptop lock. Manual operators must use the same host lock directory. Provision it
@@ -63,9 +68,18 @@ with a shared operator group, setgid ownership, and group-writable lock files so
 operator identities actually contend for the same lock.
 
 If rollout or health fails after images were applied and the schema was declared
-`backward-compatible`, the helper restores and verifies both previous images. For
+`backward-compatible`, the helper restores and verifies every previous image in reverse
+order: runner, server, then route worker. For
 `forward-only`, it records that a forward fix is required. Database restoration is always
 a separate approved operation; application rollback never claims to restore a database.
+
+## OMP route worker
+
+Promotion never creates a Deployment, Secret, or NetworkPolicy. Before the first promotion
+that includes the route worker, run its one-time bootstrap from
+[the k3s guide](../bridges/cloud-server/deploy/k3s/README.md#omp-route-worker). Until then,
+promotion stops at `capture previous images` before importing or changing any image, and
+the workflow result's `operatorAction` names the missing Deployment.
 
 ## Backup receipt
 
