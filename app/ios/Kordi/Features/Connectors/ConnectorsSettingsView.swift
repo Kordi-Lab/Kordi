@@ -102,6 +102,7 @@ struct ConnectorsSettingsView: View {
     @StateObject private var store: ConnectorsStore
     // A settings link, or a debug preview, can open one connector's detail directly.
     @State private var openedProviderId: ConnectorProviderId?
+    @State private var consent: ConnectorConsent?
     private let request: ConnectorsSettingsRequest?
 
     init(client: any ConnectorsClient, isPreview: Bool, request: ConnectorsSettingsRequest? = nil) {
@@ -119,60 +120,34 @@ struct ConnectorsSettingsView: View {
     private var catalog: [ConnectorDefinition] { ConnectorsModel.iPhoneCatalog }
 
     var body: some View {
-        List {
-            Section {
-                EmptyView()
-            } footer: {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Connect the services you use so your agent can read updates from them and, with your approval, act in them. Kordi keeps each sign-in on its servers and only shares results with your agent.")
-                    if store.isPreview {
-                        Text("Showing sample connectors. Nothing here is connected to a real account.")
-                    }
-                }
+        SettingsPage {
+            if store.isPreview {
+                SettingsCaption("Showing sample connectors. Nothing here is connected to a real account.")
             }
 
             if let error = store.errorMessage?.nonEmpty {
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label(error, systemImage: "exclamationmark.circle.fill")
-                            .foregroundStyle(.red)
-                        if !store.hasLoaded {
-                            Button("Try again") { Task { await store.refresh() } }
-                                .font(.subheadline.weight(.semibold))
-                                .frame(minHeight: 32)
-                                .disabled(store.isLoading)
-                        }
-                    }
+                SettingsErrorLabel(error)
+                if !store.hasLoaded {
+                    Button("Try again") { Task { await store.refresh() } }
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: SettingsMetrics.textRowMinHeight)
+                        .disabled(store.isLoading)
                 }
             }
 
             if !store.hasLoaded {
                 if store.isLoading {
-                    Section {
-                        HStack(spacing: 10) {
-                            ProgressView()
-                            Text("Loading connectors…")
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(minHeight: 44)
-                        .accessibilityElement(children: .combine)
-                    }
+                    SettingsLoadingRow("Loading connectors…")
                 }
             } else {
-                Section("Services") {
-                    ForEach(catalog.filter { $0.kind == .service }) { row($0) }
-                }
-                Section {
-                    ForEach(catalog.filter { $0.kind == .macLocal }) { row($0) }
-                } header: {
-                    Text("On this iPhone")
-                } footer: {
-                    Text("These use iPhone permissions. Kordi asks iOS before your agent can read them.")
-                }
+                SettingsSectionTitle("Services")
+                SettingsGroup(items: catalog.filter { $0.kind == .service }) { row($0) }
+                SettingsSectionTitle("On this iPhone")
+                    .padding(.top, 14)
+                SettingsGroup(items: catalog.filter { $0.kind == .macLocal }) { row($0) }
             }
         }
-        .listStyle(.insetGrouped)
-        .environment(\.defaultMinListRowHeight, 44)
+        .connectorConsent($consent, store: store)
         .navigationTitle("Connectors")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -206,47 +181,164 @@ struct ConnectorsSettingsView: View {
 
     @ViewBuilder
     private func row(_ definition: ConnectorDefinition) -> some View {
-        let value = ConnectorsModel.listValue(definition: definition, state: store.states[definition.providerId])
-        if definition.availability == .available {
+        let identifier = "connector-\(definition.providerId.rawValue)"
+        switch ConnectorsModel.listTrailing(
+            definition: definition,
+            state: store.states[definition.providerId],
+            busy: store.busyProviderId == definition.providerId
+        ) {
+        case .connect:
+            // Connecting starts here; the consent step still explains read and act first.
+            Button {
+                consent = .connect(definition, reauth: false)
+            } label: {
+                SettingsRow {
+                    ConnectorRowLabel(definition: definition)
+                } trailing: {
+                    ConnectorRowValue(text: "Connect", systemImage: "arrow.up.right.square")
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Connect \(definition.name)")
+            .accessibilityIdentifier(identifier)
+        case .busy:
+            SettingsRow {
+                ConnectorRowLabel(definition: definition)
+            } trailing: {
+                ProgressView().controlSize(.small)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier(identifier)
+        case .open(let value):
             NavigationLink {
                 ConnectorDetailView(definition: definition, store: store)
             } label: {
-                ConnectorRowLabel(definition: definition, value: value)
+                SettingsRow {
+                    ConnectorRowLabel(definition: definition)
+                } trailing: {
+                    ConnectorRowValue(text: value, systemImage: nil)
+                    SettingsChevron()
+                }
+                .accessibilityElement(children: .combine)
             }
-            .accessibilityIdentifier("connector-\(definition.providerId.rawValue)")
-        } else {
-            ConnectorRowLabel(definition: definition, value: value)
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("connector-\(definition.providerId.rawValue)")
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(identifier)
+        case .comingLater:
+            SettingsRow {
+                ConnectorRowLabel(definition: definition)
+            } trailing: {
+                ConnectorRowValue(text: "Coming later", systemImage: nil)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier(identifier)
         }
     }
 }
 
+/// Logo and name of a connector in the list.
 private struct ConnectorRowLabel: View {
     let definition: ConnectorDefinition
-    let value: String
 
     var body: some View {
-        HStack(spacing: 8) {
-            CompactSettingsLabel(title: definition.name, systemImage: ConnectorsModel.systemImage(definition.providerId), value: value, titleLineLimit: 1)
-            if definition.experimental {
-                ConnectorCapsule(text: "Experimental", tint: .orange)
+        HStack(spacing: 12) {
+            ConnectorLogo(providerId: definition.providerId, size: 24)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(definition.name)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                if definition.experimental {
+                    Text("Experimental").font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
     }
 }
 
-/// Small rounded label used for "Experimental", "Read", and "Act".
-struct ConnectorCapsule: View {
+/// Grey trailing text of a connector row, with an optional icon after it.
+private struct ConnectorRowValue: View {
     let text: String
-    let tint: Color?
+    let systemImage: String?
 
     var body: some View {
-        Text(text)
-            .font(.caption2.weight(.medium))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .foregroundStyle(tint ?? .secondary)
-            .background((tint ?? .secondary).opacity(0.14), in: Capsule())
+        HStack(spacing: 6) {
+            Text(text)
+                .lineLimit(1)
+                .fixedSize()
+            if let systemImage {
+                Image(systemName: systemImage).accessibilityHidden(true)
+            }
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+    }
+}
+
+/// The service's own logo, or for an iPhone source its SF Symbol in the
+/// system colour of the matching app.
+struct ConnectorLogo: View {
+    let providerId: ConnectorProviderId
+    var size: CGFloat = 24
+
+    var body: some View {
+        Group {
+            switch providerId {
+            // Gmail, Google Calendar, and Slack marks: simple-icons 16.35.0, CC0-1.0.
+            case .gmail: Image("GmailLogo").resizable().renderingMode(.original)
+            case .googleCalendar: Image("GoogleCalendarLogo").resizable().renderingMode(.original)
+            case .slack: Image("SlackLogo").resizable().renderingMode(.original)
+            case .github: Image("GitHubMark").resizable().renderingMode(.template).foregroundStyle(.primary)
+            case .outlook: symbol("envelope.fill", .blue)
+            case .macCalendar: symbol("calendar", .red)
+            case .macContacts: symbol("person.crop.circle.fill", .gray)
+            case .macNotificationCenter: symbol("bell.badge.fill", .red)
+            }
+        }
+        .scaledToFit()
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+
+    private func symbol(_ name: String, _ color: Color) -> some View {
+        Image(systemName: name)
+            .resizable()
+            .symbolRenderingMode(.monochrome)
+            .foregroundStyle(color)
+    }
+}
+
+/// What the right side of a connector row shows and does.
+enum ConnectorListTrailing: Equatable {
+    /// Grey "Connect" with an external-link icon; the row starts connecting.
+    case connect
+    /// A call for this connector is running.
+    case busy
+    /// A short grey state and a chevron; the row opens the detail screen.
+    case open(String)
+    /// Not tappable yet.
+    case comingLater
+}
+
+extension ConnectorsModel {
+    static func listTrailing(definition: ConnectorDefinition, state: ConnectorState?, busy: Bool) -> ConnectorListTrailing {
+        if definition.availability == .comingLater { return .comingLater }
+        if busy { return .busy }
+        switch state?.status ?? .notConnected {
+        case .notConnected: return .connect
+        case .connected: return .open("Connected")
+        case .needsReauth: return .open("Sign in again")
+        case .permissionMissing: return .open("Allow access")
+        }
+    }
+
+    /// One short word or two for the detail header.
+    static func detailState(definition: ConnectorDefinition, state: ConnectorState?) -> String {
+        if definition.availability == .comingLater { return "Not yet available" }
+        switch state?.status ?? .notConnected {
+        case .notConnected: return "Not connected"
+        case .connected: return "Connected"
+        case .needsReauth: return "Sign in again"
+        case .permissionMissing: return definition.requiresFullDiskAccess ? "Needs Full Disk Access" : "Needs permission"
+        }
     }
 }
