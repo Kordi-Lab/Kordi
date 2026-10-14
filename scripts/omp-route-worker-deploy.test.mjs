@@ -83,7 +83,7 @@ test('route worker bootstrap pins the approved digest and never prints the token
 
   assert.match(script, /scripts\/backend_artifact\.py" verify/);
   assert.match(script, /KORDI_BACKEND_LOCK_DIR:\?/);
-  assert.match(script, /flock --wait 1800 9/);
+  assert.match(script, /sudo flock --wait 1800 .*host-wide\.lock.* bash -s/);
   assert.match(script, /host-wide\.lock/);
   assert.match(script, /k3s ctr --namespace k8s\.io/);
   assert.match(script, /images import/);
