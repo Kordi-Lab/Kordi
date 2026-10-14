@@ -22,18 +22,36 @@ export function cachedCloudAttachmentLocalPath(attachmentId: string) {
   return path;
 }
 
-export function cacheCloudAttachmentLocalPath(attachmentId: string, path: string) {
-  paths.delete(attachmentId);
-  paths.set(attachmentId, path);
-  while (paths.size > MAX_MEMORY_PATHS) {
-    const oldest = paths.keys().next().value;
+function setBounded(map: Map<string, string>, key: string, value: string) {
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > MAX_MEMORY_PATHS) {
+    const oldest = map.keys().next().value;
     if (typeof oldest !== 'string') break;
-    paths.delete(oldest);
+    map.delete(oldest);
   }
+}
+
+export function cacheCloudAttachmentLocalPath(attachmentId: string, path: string) {
+  setBounded(paths, attachmentId, path);
+}
+
+// The cache above points at the cached copy once an upload is persisted; this keeps the file that was sent.
+const uploadedIdsBySourcePath = new Map<string, string>();
+
+/** Records that the file at `sourcePath` on this Mac was uploaded as `attachmentId`. */
+export function rememberUploadedAttachmentSource(sourcePath: string, attachmentId: string) {
+  setBounded(uploadedIdsBySourcePath, sourcePath, attachmentId);
+}
+
+/** Cloud id of the upload of the file at `sourcePath`, when this window uploaded it. */
+export function uploadedAttachmentIdForSource(sourcePath: string) {
+  return uploadedIdsBySourcePath.get(sourcePath) ?? null;
 }
 
 export function clearCloudAttachmentLocalPathCache() {
   paths.clear();
+  uploadedIdsBySourcePath.clear();
 }
 
 export async function loadCachedCloudAttachmentLocalPath(
