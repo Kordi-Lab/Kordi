@@ -25,6 +25,7 @@ const portForwardServicePath = new URL(
 const deployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh', import.meta.url);
 const cloudServerDockerfilePath = new URL('../bridges/cloud-server/Dockerfile.runtime', import.meta.url);
 const runnerDeployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-cloud-agent-runner.sh', import.meta.url);
+const workerDeployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-omp-route-worker.sh', import.meta.url);
 const releaseCredentialsScriptPath = new URL('../bridges/cloud-server/deploy/k3s/create-release-credentials.sh', import.meta.url);
 const cloudServerManifestPath = new URL('../bridges/cloud-server/deploy/k3s/manifests/cloud-server-deployment.yaml', import.meta.url);
 const livekitManifestPath = new URL('../bridges/cloud-server/deploy/k3s/manifests/livekit.yaml', import.meta.url);
@@ -55,6 +56,7 @@ test('all remote deployment helpers require an explicit GCP project', async () =
     bootstrapScriptPath,
     deployScriptPath,
     runnerDeployScriptPath,
+    workerDeployScriptPath,
     releaseCredentialsScriptPath,
     updaterCdnScriptPath,
   ].map((path) => readFile(path, 'utf8')));
