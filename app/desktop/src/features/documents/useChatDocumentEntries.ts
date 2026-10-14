@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { composerAttachmentItemFromFile } from '@/features/chat/composerAttachments';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
+import { uploadedAttachmentIdForSource } from '@/features/cloud/cloudAttachmentLocalPathCache';
 import type { Message, MessageAttachment, SessionArtifact } from '@/kordi-app/types';
 
 import {
@@ -28,6 +29,8 @@ export type ChatDocumentEntriesOptions = {
   store?: (file: File) => Promise<AttachmentItem>;
   open?: (attachment: MessageAttachment) => unknown;
   timeoutMs?: number;
+  /** Cloud id a stored file was uploaded under. */
+  uploadedId?: (sourcePath: string) => string | null;
 };
 
 /**
@@ -43,30 +46,46 @@ export function useChatDocumentEntries({
   store = composerAttachmentItemFromFile,
   open = openAttachmentInCompanion,
   timeoutMs = SENT_DOCUMENT_TIMEOUT_MS,
+  uploadedId = uploadedAttachmentIdForSource,
 }: ChatDocumentEntriesOptions) {
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingDocument | null>(null);
-  const [arrived, setArrived] = useState<MessageAttachment | null>(null);
+  const [arrived, setArrived] = useState<{ path: string; attachment: MessageAttachment } | null>(null);
   const [failure, setFailure] = useState<{ conversationId: string } | null>(null);
   const sendingRef = useRef(false);
-  const openedRef = useRef<MessageAttachment | null>(null);
+  const openedRef = useRef<{ path: string; attachment: MessageAttachment } | null>(null);
+  const conversationRef = useRef(conversationId);
+  useEffect(() => { conversationRef.current = conversationId; }, [conversationId]);
 
   const addFile = useCallback(async (file: File) => {
     if (!addDocument || sendingRef.current) return;
     sendingRef.current = true;
     setSending(true);
     setFailure(null);
+    let path: string | null = null;
     try {
       const attachment = await chatDocumentAttachment(file, store);
+      path = attachment.path;
+      // Wait from the start: a send can resolve well after the chat shows the document.
+      setPending({ conversationId, path, deadline: Date.now() + timeoutMs });
       await addDocument(attachment);
-      setPending({ conversationId, path: attachment.path, deadline: Date.now() + timeoutMs });
+      // The send is done, so the server has the message. If the loaded rows still do not
+      // show it with a cloud id, open the upload directly rather than wait for them.
+      const attachmentId = uploadedId(path);
+      if (attachmentId && openedRef.current?.path !== path && conversationRef.current === conversationId) {
+        setPending(null);
+        setArrived({ path, attachment: { kind: 'file', name: attachment.name, mimeType: attachment.mimeType ?? null, localPath: path, attachmentId } });
+      }
     } catch {
+      // A send that fails after its document opened (say, one group member still pending) reports in the chat.
+      if (path && openedRef.current?.path === path) return;
+      setPending(null);
       setFailure({ conversationId });
     } finally {
       sendingRef.current = false;
       setSending(false);
     }
-  }, [addDocument, conversationId, store, timeoutMs]);
+  }, [addDocument, conversationId, store, timeoutMs, uploadedId]);
 
   const createDocument = useCallback(() => (
     addFile(blankDocumentFile(nextUntitledDocumentName(chatDocumentNames(artifacts, messages))))
@@ -74,17 +93,17 @@ export function useChatDocumentEntries({
 
   // A document sent from another chat is not this chat's to open.
   const awaited = pending?.conversationId === conversationId ? pending : null;
-  const sent = useMemo(() => (awaited ? sentChatDocument(messages, awaited.path) : null), [awaited, messages]);
-  if (sent) {
+  const sent = useMemo(() => (awaited ? sentChatDocument(messages, awaited.path, uploadedId) : null), [awaited, messages, uploadedId]);
+  if (sent && awaited) {
     // The chat has the document: stop waiting, and open it once below.
     setPending(null);
-    setArrived(sent);
+    setArrived({ path: awaited.path, attachment: sent });
   }
 
   useEffect(() => {
     if (!arrived || openedRef.current === arrived) return;
     openedRef.current = arrived;
-    open(arrived);
+    open(arrived.attachment);
   }, [arrived, open]);
 
   useEffect(() => {

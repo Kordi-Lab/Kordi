@@ -8,6 +8,10 @@ use kordi_session::store;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use super::interrupted_requests::{
+    append_interrupted_request_note, unanswered_request_stored_at_ms,
+};
+
 fn next_entry_base(conn: &rusqlite::Connection, session_id: &str) -> EntryBase {
     EntryBase {
         id: EntryId::generate(),
@@ -120,7 +124,11 @@ pub(crate) async fn append_custom_message(
     Ok(())
 }
 
-fn assistant_error_entry(parent_id: Option<EntryId>, model: &Model, message: &str) -> SessionEntry {
+pub(super) fn assistant_error_entry(
+    parent_id: Option<EntryId>,
+    model: &Model,
+    message: &str,
+) -> SessionEntry {
     SessionEntry::Message {
         base: EntryBase {
             id: EntryId::generate(),
@@ -178,41 +186,17 @@ pub(crate) async fn append_assistant_cancelled_message(
 // This source is compiled into both the CLI binary and the desktop-runtime
 // library; only the latter runs interruption recovery outside tests.
 #[cfg_attr(not(test), allow(dead_code))]
-fn active_path_has_unanswered_user_request(
-    conn: &rusqlite::Connection,
-    session_id: &str,
-) -> Result<bool> {
-    let mut pending_user_request = false;
-    for row in kordi_session::tree::active_path(conn, session_id)? {
-        let entry = store::parse_entry(&row)?;
-        let SessionEntry::Message { message, .. } = entry else {
-            continue;
-        };
-        match message {
-            AgentMessage::User(_) => pending_user_request = true,
-            AgentMessage::Assistant(assistant) if assistant.stop_reason != StopReason::ToolUse => {
-                pending_user_request = false;
-            }
-            _ => {}
-        }
-    }
-    Ok(pending_user_request)
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) async fn append_interrupted_unanswered_request_if_needed(
     conn: &Arc<Mutex<rusqlite::Connection>>,
     session_id: &str,
     model: &Model,
 ) -> Result<bool> {
     let conn = conn.lock().await;
-    if !active_path_has_unanswered_user_request(&conn, session_id)? {
+    if unanswered_request_stored_at_ms(&conn, session_id)?.is_none() {
         return Ok(false);
     }
 
-    let message = "Previous request was interrupted before an answer was produced because the desktop app was refreshed or restarted.";
-    let assistant_entry = assistant_error_entry(get_leaf_raw(&conn, session_id), model, message);
-    store::append_entry(&conn, session_id, &assistant_entry)?;
+    append_interrupted_request_note(&conn, session_id, model)?;
     Ok(true)
 }
 

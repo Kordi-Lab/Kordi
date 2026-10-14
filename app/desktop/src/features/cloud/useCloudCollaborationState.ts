@@ -461,7 +461,7 @@ export function useCloudCollaborationState({
     account, canonicalState: canonicalSessionState,
     client,
     messageIndex: cloudMessageIndex,
-    initialMessagesSettled: executionMessagesReady,
+    initialMessagesSettled: executionMessagesReady, hydrateSessionPage: hydrateCanonicalSessionPage,
     runtimeReady: defaultCloudAgentRuntimeReady,
     routesBySessionId: cloudAgentRuntimeRoutesBySessionId,
     defaultRoute: defaultCloudAgentRuntimeRoute,
