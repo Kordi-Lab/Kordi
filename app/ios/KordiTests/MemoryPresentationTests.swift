@@ -70,7 +70,8 @@ final class MemoryPresentationTests: XCTestCase {
         XCTAssertEqual(MemoryPresentation.sourceLabel(.userCorrection), "From a correction")
         XCTAssertEqual(MemoryPresentation.sourceLabel(.repeatedFailure), "From a repeated failure")
         XCTAssertEqual(MemoryPresentation.sourceLabel(.outcome), "From an outcome")
-        XCTAssertEqual(MemoryPresentation.sourceLabel(.manual), "Added by hand")
+        XCTAssertEqual(MemoryPresentation.sourceLabel(.manual), "Added by you")
+        XCTAssertEqual(MemoryPresentation.sourceLabel(.manual, addedBy: "Priya"), "Added by Priya")
     }
 
     func testDetailAndDateLabels() {
@@ -80,7 +81,7 @@ final class MemoryPresentationTests: XCTestCase {
         let older = MemoryPresentation.dateLabel("2026-09-01T10:00:00Z", now: now, calendar: calendar, locale: Locale(identifier: "en_US"))
         XCTAssertEqual(older, "Sep 1, 2026")
         let unlabeled = memory("b", .project, updatedAt: "2026-10-07T08:00:00Z", label: nil)
-        XCTAssertEqual(MemoryPresentation.detail(unlabeled, now: now, calendar: calendar), "Added by hand · Today")
+        XCTAssertEqual(MemoryPresentation.detail(unlabeled, now: now, calendar: calendar), "Added by you · Today")
     }
 
     func testForgetConsequencesSingularAndPlural() {

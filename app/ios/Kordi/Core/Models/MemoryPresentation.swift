@@ -22,12 +22,13 @@ enum MemoryPresentation {
         (capabilities?.memoryVersion ?? 0) >= 1
     }
 
-    static func sourceLabel(_ source: CloudMemorySource) -> String {
+    /// A memory someone typed names who added it; the others name where they came from.
+    static func sourceLabel(_ source: CloudMemorySource, addedBy: String? = nil) -> String {
         switch source {
         case .userCorrection: "From a correction"
         case .repeatedFailure: "From a repeated failure"
         case .outcome: "From an outcome"
-        case .manual: "Added by hand"
+        case .manual: addedBy?.nonEmptyMemoryText.map { "Added by \($0)" } ?? "Added by you"
         case .other: "Saved memory"
         }
     }
@@ -121,7 +122,7 @@ enum MemoryPresentation {
     /// "From a correction · Today". Settings list only global memories and each
     /// conversation lists its own, so the scope label is left out.
     static func detail(_ memory: CloudMemory, now: Date = Date(), calendar: Calendar = .current) -> String {
-        [sourceLabel(memory.source), dateLabel(memory.updatedAt, now: now, calendar: calendar).nonEmptyMemoryText]
+        [sourceLabel(memory.source, addedBy: memory.ownerName), dateLabel(memory.updatedAt, now: now, calendar: calendar).nonEmptyMemoryText]
             .compactMap { $0 }
             .joined(separator: " · ")
     }
@@ -139,6 +140,8 @@ enum MemoryPresentation {
     /// "Saved by Priya" for a group memory another member saved, otherwise nil.
     static func ownerCaption(_ memory: CloudMemory, viewerAccountId: String?) -> String? {
         guard memory.scope == .group, !isOwn(memory, viewerAccountId: viewerAccountId) else { return nil }
+        // A memory typed by hand already names who added it in its source label.
+        guard memory.source != .manual else { return nil }
         return "Saved by \(memory.ownerName?.nonEmptyMemoryText ?? "a group member")"
     }
 
