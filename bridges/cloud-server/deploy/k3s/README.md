@@ -463,6 +463,85 @@ KORDI_RELEASE_S3_ACCESS_KEY=<from kordi-release-reader>
 KORDI_RELEASE_S3_SECRET_KEY=<from kordi-release-reader>
 ```
 
+## OMP route worker
+
+The OMP route worker handles provider sign-in, API key checks, route tests,
+and the provider catalog for the Cloud server. Without it, those requests
+return `provider_auth_not_configured` and the desktop reports that OMP is not
+available on this backend. `manifests/omp-route-worker-deployment.yaml`
+defines a one-replica Deployment, a ClusterIP Service on port 17331, and a
+NetworkPolicy: only `kordi-cloud-server` pods may connect, and the worker may
+reach only cluster DNS and public addresses. Keep one replica, because
+sign-in sessions live in the worker's memory.
+
+The worker and server share a bearer token in Secret `kordi-omp-route-worker`
+(key `token`). The worker requires it. The server reads it with
+`optional: true`, so a host without the Secret still starts:
+
+```text
+KORDI_OMP_ROUTE_WORKER_URL=http://kordi-omp-route-worker:17331
+KORDI_OMP_ROUTE_WORKER_TOKEN=<from kordi-omp-route-worker>
+```
+
+### First-time bootstrap
+
+Production promotion changes only images, so it fails safely until the worker
+Deployment exists. Bootstrap once from a trusted operator machine with a
+verified Backend delivery bundle, preferably the build production runs or is
+about to promote:
+
+```bash
+gh run download <BUILD_RUN_ID> --name backend-bundle --dir <BUNDLE_DIR>
+
+export KORDI_CLOUD_SSH_TARGET="<PRODUCT_GCE_INSTANCE>"
+export KORDI_CLOUD_SSH_ZONE="<PRODUCT_GCP_ZONE>"
+export KORDI_CLOUD_GCP_PROJECT="<PRODUCT_GCP_PROJECT>"
+export KORDI_BACKEND_LOCK_DIR="<HOST_DEPLOY_LOCK_DIR>"
+KORDI_OMP_ROUTE_WORKER_BUNDLE="<BUNDLE_DIR>" \
+KORDI_OMP_ROUTE_WORKER_SHA="<BUNDLE_SHA>" \
+KORDI_OMP_ROUTE_WORKER_RUN_ID="<BUILD_RUN_ID>" \
+  bash bridges/cloud-server/deploy/k3s/deploy-omp-route-worker.sh
+```
+
+Under the shared host deployment lock, the helper imports the worker archive,
+checks its approved digest, creates the Secret with a token generated on the
+host when it is missing (the token is never printed), applies the manifest,
+checks `/health` and bearer enforcement in the pod, and adds the two variables
+to `kordi-cloud-server`. Rerunning keeps the existing token. The next
+production promotion then replaces the worker image like the other services.
+
+### Verify
+
+```bash
+kubectl -n kordi-cloud get deployment,service,networkpolicy kordi-omp-route-worker
+kubectl -n kordi-cloud get secret kordi-omp-route-worker
+# Saved provider credentials are encrypted with this key; without it they cannot be stored.
+kubectl -n kordi-cloud get secret kordi-cloud-provider-auth
+curl --fail --silent --show-error https://kordi.ai/v1/cloud/agent-provider-auth/catalog >/dev/null
+```
+
+The catalog returns `200`. Signed in to the desktop, provider sign-in and key
+verification no longer report `provider_auth_not_configured`. A catalog
+`503` with `omp_unavailable` means the server has the URL but cannot reach a
+ready worker.
+
+### Rollback
+
+Removing the two server variables returns the server to "not configured"
+without data loss. Saved provider credentials live in the server database,
+not in the worker:
+
+```bash
+kubectl -n kordi-cloud set env deployment/kordi-cloud-server \
+  KORDI_OMP_ROUTE_WORKER_URL- KORDI_OMP_ROUTE_WORKER_TOKEN-
+kubectl -n kordi-cloud rollout status deployment/kordi-cloud-server --timeout=180s
+```
+
+Applying `cloud-server-deployment.yaml` adds them again. To also stop the
+worker, scale `deployment/kordi-omp-route-worker` to zero replicas rather than
+deleting it: promotion keeps updating its image, but fails while the
+Deployment is missing.
+
 ## Coexistence with old systemd deploys
 
 If a legacy systemd Cloud server is running on the same host, stop it before running the cluster Cloud server so two services do not compete for the same port.

@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import re
+import subprocess
 
 from backend_artifact import PRODUCTION_SERVICES, verify_bundle
 from backend_backup import verify_backup
@@ -11,8 +12,13 @@ from backend_backup_create import create_backup
 from backend_deploy_common import health, lock, run, write_failure, write_record, write_state
 
 KUBECTL = ["sudo", "k3s", "kubectl", "--namespace", "kordi-cloud"]
-CONTAINERS = {"cloud-server": "server", "cloud-agent-runner": "runner"}
+CONTAINERS = {"omp-route-worker": "worker", "cloud-server": "server", "cloud-agent-runner": "runner"}
 CTR = ["sudo", "k3s", "ctr", "--namespace", "k8s.io"]
+BOOTSTRAP = "bridges/cloud-server/deploy/k3s/README.md"
+
+
+class MissingDeployment(ValueError):
+    """A production service has no Deployment yet; its first-time bootstrap is an operator step."""
 
 
 def reference(service, digest):
@@ -24,14 +30,29 @@ def image_store():
             if len(columns := line.split()) >= 3 and re.fullmatch(r"sha256:[0-9a-f]{64}", columns[2])}
 
 
+def current_container(service):
+    try:
+        deployment = json.loads(run(KUBECTL + ["get", "deployment", "kordi-" + service, "-o", "json"]))
+    except subprocess.CalledProcessError as error:
+        if "NotFound" not in (error.output or ""):
+            raise
+        raise MissingDeployment(f"Deployment kordi-{service} does not exist. Complete its first-time "
+                                f"bootstrap in {BOOTSTRAP}, then promote again.") from error
+    containers = deployment["spec"]["template"]["spec"]["containers"]
+    container = next((item for item in containers if item["name"] == CONTAINERS[service]), None)
+    if container is None:
+        raise MissingDeployment(f"Deployment kordi-{service} has no container named {CONTAINERS[service]}. "
+                                f"Reapply its manifest as described in {BOOTSTRAP}, then promote again.")
+    return container
+
+
 def capture_previous():
     stored = image_store()
+    # Check every Deployment before tagging anything, so a missing one changes nothing.
+    containers = {service: current_container(service) for service in PRODUCTION_SERVICES}
     previous = {}
     for service in PRODUCTION_SERVICES:
-        deployment = json.loads(run(KUBECTL + ["get", "deployment", "kordi-" + service, "-o", "json"]))
-        containers = deployment["spec"]["template"]["spec"]["containers"]
-        container = next(item for item in containers if item["name"] == CONTAINERS[service])
-        old = container["image"]
+        old = containers[service]["image"]
         canonical = "docker.io/library/" + old if "/" not in old else old
         digest = stored.get(canonical)
         if not digest:
@@ -43,9 +64,11 @@ def capture_previous():
     return previous
 
 
-def apply_images(images):
-    for service in PRODUCTION_SERVICES:
+def apply_images(images, restore=False):
+    # Each rollout finishes before the next service changes. A restore runs in reverse.
+    for service in reversed(PRODUCTION_SERVICES) if restore else PRODUCTION_SERVICES:
         run(KUBECTL + ["set", "image", "deployment/kordi-" + service, CONTAINERS[service] + "=" + images[service]])
+        run(KUBECTL + ["rollout", "status", "deployment/kordi-" + service, "--timeout=180s"])
 
 
 def verify_running(images):
@@ -97,9 +120,11 @@ def deploy(args):
             write_state(args.state / "current.json", bundle)
         except Exception as error:
             write_failure(args.state, error)
+            if isinstance(error, MissingDeployment):
+                record["operatorAction"] = str(error)
             if applied and previous and args.schema_compatibility == "backward-compatible":
                 try:
-                    apply_images(previous)
+                    apply_images(previous, restore=True)
                     verify_running(previous)
                     record["rollback"] = "previous images restored and verified"
                 except Exception:
