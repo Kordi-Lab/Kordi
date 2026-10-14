@@ -40,6 +40,24 @@ pub(super) fn builtin_models() -> Vec<Model> {
             cost(10.0, 50.0, 1.0, 12.5),
         ),
         model(
+            "gpt-6-sol",
+            "GPT-6 Sol",
+            "openai",
+            ApiType::OpenaiResponses,
+            (1_050_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.openai.com/v1"),
+            cost(2.0, 10.0, 0.2, 2.5),
+        ),
+        model(
+            "gpt-6-luna",
+            "GPT-6 Luna",
+            "openai",
+            ApiType::OpenaiResponses,
+            (1_050_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.openai.com/v1"),
+            cost(0.1, 0.5, 0.01, 0.125),
+        ),
+        model(
             "gpt-5.5",
             "GPT-5.5",
             "openai",
@@ -185,6 +203,20 @@ mod tests {
         assert!(matches!(model.api, super::ApiType::OpenaiResponses));
         assert_eq!(model.cost.input, 10.0);
         assert_eq!(model.cost.output, 50.0);
+    }
+
+    #[test]
+    fn gpt_6_sol_and_luna_share_the_family_limits_with_their_own_prices() {
+        let models = builtin_models();
+        for (id, input, output) in [("gpt-6-sol", 2.0, 10.0), ("gpt-6-luna", 0.1, 0.5)] {
+            let model = models.iter().find(|model| model.id == id).unwrap();
+            assert_eq!(model.context_window, 1_050_000);
+            assert_eq!(model.max_tokens, 128_000);
+            assert!(model.reasoning);
+            assert!(matches!(model.api, super::ApiType::OpenaiResponses));
+            assert_eq!(model.cost.input, input);
+            assert_eq!(model.cost.output, output);
+        }
     }
 
     #[test]

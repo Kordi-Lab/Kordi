@@ -123,6 +123,8 @@ async fn desktop_model_options_filter_openai_codex_oauth_models_and_do_not_readd
             .collect::<Vec<_>>(),
         vec![
             "openai/gpt-6-astra",
+            "openai/gpt-6-sol",
+            "openai/gpt-6-luna",
             "openai/gpt-5.6-luna",
             "openai/gpt-5.6-sol",
             "openai/gpt-5.6-terra",

@@ -150,6 +150,8 @@ fn openai_codex_oauth_candidates_exclude_platform_only_models() {
         model_ids,
         [
             "gpt-6-astra",
+            "gpt-6-sol",
+            "gpt-6-luna",
             "gpt-5.6-luna",
             "gpt-5.6-sol",
             "gpt-5.6-terra",
@@ -320,7 +322,7 @@ fn anthropic_catalog_rank_uses_shared_subscription_order() {
         model_catalog_rank("anthropic", "CLAUDE-OPUS-4-8"),
         usize::MAX
     );
-    assert_eq!(model_catalog_rank("openai", "GPT-5.5"), 4);
+    assert_eq!(model_catalog_rank("openai", "GPT-5.5"), 6);
     assert_eq!(model_catalog_rank("google", "claude-opus-4-8"), usize::MAX);
 }
 

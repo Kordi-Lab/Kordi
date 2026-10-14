@@ -6,6 +6,8 @@ use std::collections::HashSet;
 
 const OPENAI_CODEX_OAUTH_MODEL_IDS: &[&str] = &[
     "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
     "gpt-5.6-luna",
     "gpt-5.6-sol",
     "gpt-5.6-terra",

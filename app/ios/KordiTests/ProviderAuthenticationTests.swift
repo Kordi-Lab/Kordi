@@ -247,9 +247,10 @@ struct ModelReleaseTests {
     @Test func releasedModelsSortFirstAndNormalizeThinking() {
         #expect(AgentModelPicker.modelNamesByProvider["openai"]?.contains("gpt-6-astra") == true)
         #expect(AgentModelPicker.modelNamesByProvider["anthropic"]?.contains("claude-fable-5-1") == true)
+        #expect(AgentModelPicker.modelNamesByProvider["openai"]?.prefix(3) == ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"])
         #expect(AgentModelPicker.modelNamesByProvider["openai"]?.first == "gpt-6-astra")
         #expect(AgentModelPicker.modelNamesByProvider["anthropic"]?.first == "claude-fable-5-1")
-        for route in ["gpt-6-astra", "openai/gpt-6-astra", "openai-codex/gpt-6-astra"] {
+        for route in ["gpt-6-astra", "openai/gpt-6-astra", "openai-codex/gpt-6-astra", "openai/gpt-6-sol", "openai-codex/gpt-6-luna"] {
             #expect(AgentModelPicker.thinkingLevels(for: route) == ["default", "low", "medium", "high", "xhigh", "max"])
             #expect(AgentModelPicker.normalizedThinking("off", for: route) == "low")
             #expect(AgentModelPicker.normalizedThinking("minimal", for: route) == "low")
