@@ -42,6 +42,8 @@ export type DocumentReaderProps = DocumentReaderSource & {
   className?: string;
   /** Reports the document's own title (the cloud record's, a Markdown heading, an HTML `<title>`) for a tab label. */
   onTitle?: (title: string) => void;
+  /** Reports how to rename the document from elsewhere (a tab label), or null when the viewer cannot. */
+  onRenameAvailable?: (rename: ((title: string) => void) | null) => void;
   /** Runs with the browser bar's reload, so the host can read a Mac-hosted file again. */
   onReload?: () => void;
   /** Exposes the Tiptap editor (tests and the review page). */
@@ -55,7 +57,7 @@ function startsWithLevelOneHeading(source: string | undefined) {
   return /^ {0,3}#(?!#)\s+\S/.test(source ?? '');
 }
 
-export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, initialShareOpen = false, className, onTitle, onReload, onEditor, collabTransport, ...source }: DocumentReaderProps) {
+export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, initialShareOpen = false, className, onTitle, onRenameAvailable, onReload, onEditor, collabTransport, ...source }: DocumentReaderProps) {
   const api = useMemo(() => apiOverride ?? documentShareApiForEnvironment(), [apiOverride]);
   const host = useDocumentReaderHost();
   const [collabState, setCollabState] = useState<DocumentCollabState>({ status: 'offline', peers: [] });
@@ -79,6 +81,15 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
     ?? (source.localSource ? (isHtml ? htmlDocumentTitle(source.localSource) : markdownDocumentTitle(source.localSource)) : null);
   const title = ownTitle ?? documentNameWithoutExtension(fileName);
   useEffect(() => { if (ownTitle) onTitle?.(ownTitle); }, [onTitle, ownTitle]);
+  // Editors rename a cloud Markdown document whose title shows above the body; a leading heading is edited in the body.
+  const leadingHeading = startsWithLevelOneHeading(reader.editorBlocks[0]?.source);
+  const canRename = reader.canEditCloud && !leadingHeading;
+  const { rename } = reader;
+  const renameTitle = useMemo(() => (canRename ? (next: string) => { void rename(next); } : null), [canRename, rename]);
+  useEffect(() => {
+    onRenameAvailable?.(renameTitle);
+    return () => onRenameAvailable?.(null);
+  }, [onRenameAvailable, renameTitle]);
   const author = document?.author ?? (mode === 'local' ? host.viewer : null);
   const agentName = document?.agent?.displayName ?? host.agentName;
   const viewerIsOwner = mode === 'local' || document?.viewer === 'owner';
@@ -153,7 +164,8 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
     <section ref={sectionRef} className={cn('app-document-reader', className)} data-document-mode={mode} aria-label={title}>
       <div ref={headerRef} className="app-document-header-wrap">
         <DocumentHeader
-          title={isHtml || startsWithLevelOneHeading(reader.editorBlocks[0]?.source) ? null : title}
+          title={isHtml || leadingHeading ? null : title}
+          onRename={renameTitle ?? undefined}
           leading={isHtml ? <DocumentBrowserLead fileName={fileName} linkOn={mode === 'public' || Boolean(reader.share)} onReload={reload} /> : undefined}
           dateLabel={formatDocumentDate(document?.createdAt) ?? dateLabel ?? null}
           author={author}

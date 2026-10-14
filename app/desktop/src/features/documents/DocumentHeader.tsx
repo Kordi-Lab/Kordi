@@ -3,6 +3,7 @@ import { useCallback, useRef, useState, type ReactNode } from 'react';
 
 import type { DocumentPresencePeer } from './documentPresence';
 import type { DocumentReaderPerson } from './documentReaderHost';
+import { DocumentTitleField } from './DocumentTitleField';
 import { PeopleCard } from './PeopleCard';
 import { useOutsideDismiss } from './useOutsideDismiss';
 
@@ -15,7 +16,8 @@ const MAX_PRESENCE = 4;
  * Top bar of the reader in one row: the document title, the date, the
  * `@author` chip, who else is editing, and Share. A document that opens with
  * its own level-1 heading shows no title here. An HTML document shows browser
- * controls (`leading`) in place of the title.
+ * controls (`leading`) in place of the title. With `onRename`, a double click
+ * renames the title in place.
  */
 export function DocumentHeader({
   title,
@@ -30,6 +32,7 @@ export function DocumentHeader({
   sharePopover,
   presence = [],
   onOpenSession,
+  onRename,
 }: {
   /** Null when the document's first heading is its title. */
   title: string | null;
@@ -46,10 +49,26 @@ export function DocumentHeader({
   /** Other people editing in the collaboration room. */
   presence?: DocumentPresencePeer[];
   onOpenSession?: () => void;
+  /** Present when the viewer may rename the document. */
+  onRename?: (title: string) => void;
 }) {
+  const [renaming, setRenaming] = useState(false);
+  const titleNode = title && renaming && onRename
+    ? <DocumentTitleField value={title} className="app-document-header-title app-document-title-field" label="Title" onSave={onRename} onClose={() => setRenaming(false)} />
+    : title
+      ? <h1
+          className="app-document-header-title"
+          title={title}
+          // A double click renames; it must not reach the window as a title bar zoom.
+          data-kordi-window-drag={onRename ? 'false' : undefined}
+          onDoubleClick={onRename ? () => setRenaming(true) : undefined}
+        >
+          {title}
+        </h1>
+      : null;
   return (
     <div className={leading ? 'app-document-header has-title is-browser' : title ? 'app-document-header has-title' : 'app-document-header'}>
-      {leading ?? (title ? <h1 className="app-document-header-title" title={title}>{title}</h1> : null)}
+      {leading ?? titleNode}
       <div className="app-document-header-meta">
         {dateLabel ? (
           <span className="app-document-pill app-document-date">

@@ -21,6 +21,7 @@ mod formats;
 mod public_page_agents;
 mod sources_db;
 mod stable_ids_db;
+mod title_db;
 
 #[test]
 fn share_tokens_have_the_invitation_shape_and_hash_stably() {
@@ -111,8 +112,9 @@ fn markdown_rendering_drops_raw_html_and_unsafe_links() {
 
 #[test]
 fn titles_come_from_the_document_or_the_file_name() {
+    let title = |format, source, file_name| document_title(format, source, None, file_name);
     assert_eq!(
-        document_title(
+        title(
             DocumentFormat::Markdown,
             "intro\n\n# Field `notes`\n",
             "x.md"
@@ -120,11 +122,11 @@ fn titles_come_from_the_document_or_the_file_name() {
         "Field notes"
     );
     assert_eq!(
-        document_title(DocumentFormat::Markdown, "## Only h2\n", "Weekly plan.md"),
+        title(DocumentFormat::Markdown, "## Only h2\n", "Weekly plan.md"),
         "Weekly plan"
     );
     assert_eq!(
-        document_title(
+        title(
             DocumentFormat::Html,
             "<html><head><TITLE> Q3 &amp; Q4 </TITLE></head></html>",
             "report.html"
@@ -132,13 +134,58 @@ fn titles_come_from_the_document_or_the_file_name() {
         "Q3 & Q4"
     );
     assert_eq!(
-        document_title(DocumentFormat::Html, "<p>no title</p>", "report.html"),
+        title(DocumentFormat::Html, "<p>no title</p>", "report.html"),
         "report"
     );
     let html_blocks = document_blocks(DocumentFormat::Html, "<p>x</p>");
     assert_eq!(html_blocks.len(), 1);
     assert_eq!(html_blocks[0].id, "b0");
     assert!(html_blocks[0].source.is_empty() && html_blocks[0].html.is_empty());
+}
+
+#[test]
+fn a_renamed_title_follows_the_leading_heading_and_wins_over_the_file_name() {
+    let markdown =
+        |source, stored| document_title(DocumentFormat::Markdown, source, stored, "Untitled.md");
+    assert_eq!(markdown("\n", Some("Field notes")), "Field notes");
+    assert_eq!(markdown("Body.\n", Some("  ")), "Untitled");
+    assert_eq!(
+        markdown("# Heading\n\nBody.\n", Some("Field notes")),
+        "Heading"
+    );
+    assert_eq!(markdown("\n", None), "Untitled");
+    assert_eq!(
+        document_title(
+            DocumentFormat::Html,
+            "<p>x</p>",
+            Some("Renamed"),
+            "report.html"
+        ),
+        "report"
+    );
+    let mut record = sample_record(DocumentFormat::Markdown, "Alex");
+    record.stored_title = Some("Q4 plan".into());
+    assert_eq!(record.title("Body.\n"), "Q4 plan");
+}
+
+#[test]
+fn renamed_titles_are_trimmed_collapsed_and_bounded() {
+    assert_eq!(
+        valid_document_title("  Q4 \n  plan "),
+        Some("Q4 plan".into())
+    );
+    assert_eq!(valid_document_title(" \t\n"), None);
+    assert_eq!(valid_document_title(""), None);
+    assert_eq!(
+        valid_document_title(&"a".repeat(200)),
+        Some("a".repeat(200))
+    );
+    assert_eq!(valid_document_title(&"a".repeat(201)), None);
+    assert_eq!(
+        valid_document_title("é".repeat(200).as_str()).map(|t| t.chars().count()),
+        Some(200)
+    );
+    assert_eq!(valid_document_title("bad\u{0}title"), None);
 }
 
 #[test]
@@ -211,6 +258,7 @@ fn sample_record(format: DocumentFormat, author_name: &str) -> DocumentRecord {
         created_at: "2026-10-09T10:15:00Z".into(),
         format,
         file_name: "notes.md".into(),
+        stored_title: None,
         author: DocumentAuthor {
             account_id: "acct_example".into(),
             display_name: author_name.into(),

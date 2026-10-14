@@ -42,6 +42,12 @@ export function documentNameWithoutExtension(path: string) {
   return dot > 0 ? name.slice(0, dot) : name;
 }
 
+/** A title as a rename saves it: whitespace collapsed, at most 200 characters, or null when nothing is left. */
+export function cleanDocumentTitle(value: string): string | null {
+  const title = value.split(/\s+/).filter(Boolean).join(' ');
+  return title ? title.slice(0, 200) : null;
+}
+
 const TITLE_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
 
 /** The `<title>` of an HTML document, when it has one. */

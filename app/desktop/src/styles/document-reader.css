@@ -49,6 +49,18 @@
   white-space: nowrap;
 }
 
+/* Renaming keeps the title's font and place. */
+.app-document-header-title.app-document-title-field {
+  width: min(100%, 420px);
+  flex: 0 1 420px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  outline: none;
+}
+
 .app-document-header-meta { display: flex; flex: none; align-items: center; gap: 6px; }
 .app-document-author { position: relative; display: inline-flex; }
 .app-document-header-actions { display: flex; flex: none; align-items: center; gap: 6px; margin-left: auto; }

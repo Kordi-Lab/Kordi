@@ -34,8 +34,22 @@ pub(crate) struct DocumentRecord {
     pub created_at: String,
     pub format: DocumentFormat,
     pub file_name: String,
+    /// The title a member renamed the document to, if any.
+    pub stored_title: Option<String>,
     pub author: DocumentAuthor,
     pub agent_name: Option<String>,
+}
+
+impl DocumentRecord {
+    /// The title readers see for `source` (see [`super::render::document_title`]).
+    pub(crate) fn title(&self, source: &str) -> String {
+        super::render::document_title(
+            self.format,
+            source,
+            self.stored_title.as_deref(),
+            &self.file_name,
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +72,7 @@ type AttachmentTuple = (
     Option<String>,
     Option<i64>,
     String,
+    Option<String>,
 );
 
 pub(crate) const SHARE_COLUMNS: &str = "share_id, attachment_id, owner_account_id, access_mode, \
@@ -127,7 +142,7 @@ async fn attachment_facts(
 ) -> Result<Option<AttachmentFacts>, Box<Response>> {
     let row: Option<AttachmentTuple> = query_as(
         "SELECT object_key, owner_account_id, content_type, detected_content_type, \
-                size_bytes, finalized_at \
+                size_bytes, finalized_at, document_title \
          FROM cloud_attachments WHERE attachment_id = $1 AND finalized_at IS NOT NULL",
     )
     .bind(attachment_id)
@@ -135,13 +150,16 @@ async fn attachment_facts(
     .await
     .map_err(|_| db_error())?;
     Ok(row.map(
-        |(object_key, owner, content_type, detected, size_bytes, finalized_at)| AttachmentFacts {
-            attachment_id: attachment_id.to_string(),
-            object_key,
-            owner_account_id: owner,
-            content_type: content_type.or(detected),
-            size_bytes,
-            created_at: finalized_at,
+        |(object_key, owner, content_type, detected, size_bytes, finalized_at, document_title)| {
+            AttachmentFacts {
+                attachment_id: attachment_id.to_string(),
+                object_key,
+                owner_account_id: owner,
+                content_type: content_type.or(detected),
+                size_bytes,
+                created_at: finalized_at,
+                document_title,
+            }
         },
     ))
 }
@@ -224,6 +242,7 @@ pub(crate) struct AttachmentFacts {
     pub content_type: Option<String>,
     pub size_bytes: Option<i64>,
     pub created_at: String,
+    pub document_title: Option<String>,
 }
 
 /// Loads file name, author, and agent. `None` when the attachment is not a
@@ -287,6 +306,7 @@ async fn load_record(
         created_at: facts.created_at,
         requested_attachment_id: String::new(),
         file_name: named.unwrap_or_else(|| format.default_file_name().to_string()),
+        stored_title: facts.document_title,
         format,
         author,
         agent_name: artifact.map(|(_, agent)| agent),

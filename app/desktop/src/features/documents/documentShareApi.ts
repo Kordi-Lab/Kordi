@@ -11,6 +11,7 @@ import {
   deleteCloudDocumentComment,
   getCloudDocument,
   getCloudDocumentRaw,
+  renameCloudDocument,
   saveCloudDocumentContent,
   requestCloudDocumentCollabTicket,
   initCloudDocumentCollab,
@@ -56,6 +57,8 @@ export type DocumentShareApi = {
   getDocumentRaw(attachmentId: string): Promise<string>;
   /** Saves the whole Markdown source against the revision it was based on. */
   saveDocumentContent(attachmentId: string, input: SaveDocumentContentInput): Promise<SaveDocumentContentResult>;
+  /** Renames the document for everyone; answers the renamed document. */
+  renameDocument(attachmentId: string, title: string): Promise<DocumentResponse>;
   /** Single-use ticket for the collaboration socket. */
   requestCollabTicket(attachmentId: string): Promise<DocumentCollabTicket>;
   /** Asks to seed an empty room from Markdown; only one caller is granted. */
@@ -104,6 +107,7 @@ export function createDocumentShareApi(options: DocumentShareApiOptions = {}): D
     getDocument: (attachmentId) => withToken((token) => getCloudDocument(client, token, attachmentId)),
     getPublicDocument: (token) => getPublicDocument(client, token),
     saveDocumentContent: (attachmentId, input) => withToken((token) => saveCloudDocumentContent(fetchText, baseUrl(), token, attachmentId, input)),
+    renameDocument: (attachmentId, title) => withToken((token) => renameCloudDocument(client, token, attachmentId, title)),
     requestCollabTicket: (attachmentId) => withToken((token) => requestCloudDocumentCollabTicket(client, token, attachmentId)),
     initCollab: (attachmentId) => withToken((token) => initCloudDocumentCollab(client, token, attachmentId)),
     socketBaseUrl: () => baseUrl().replace(/^http/i, 'ws'),

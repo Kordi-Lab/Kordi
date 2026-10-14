@@ -279,4 +279,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "document agent desktop preference",
         "0128_cloud_document_agent_desktop_preference.sql"
     ),
+    migration!(129, "document title", "0129_cloud_document_title.sql"),
 ];
