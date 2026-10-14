@@ -35,7 +35,6 @@ export function ParticipantSpaceAvatarStack({
           imageUrl: null,
         },
       ];
-  const showPresenceLight = true;
 
   if (avatars.length === 1) {
     const avatar = avatars[0];
@@ -48,12 +47,6 @@ export function ParticipantSpaceAvatarStack({
           name={space.title}
           imageUrl={avatar.imageUrl ?? undefined}
           className="h-9 w-9"
-          presenceStatus={showPresenceLight ? avatar.presenceStatus : null}
-          presenceLabel={
-            showPresenceLight && avatar.presenceStatus
-              ? `${space.title} is ${avatar.presenceStatus === 'online' ? 'online' : 'offline'}`
-              : null
-          }
         />
       </div>
     );
@@ -74,12 +67,6 @@ export function ParticipantSpaceAvatarStack({
             name={space.title}
             imageUrl={avatar.imageUrl ?? undefined}
             className="h-7 w-7"
-            presenceStatus={showPresenceLight ? avatar.presenceStatus : null}
-            presenceLabel={
-              showPresenceLight && avatar.presenceStatus
-                ? `${space.title} member is ${avatar.presenceStatus === 'online' ? 'online' : 'offline'}`
-                : null
-            }
           />
         </span>
       ))}

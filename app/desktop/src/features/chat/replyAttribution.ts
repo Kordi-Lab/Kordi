@@ -1,4 +1,4 @@
-import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { isCloudAgentStoredNoProviderFailure } from '@/features/cloud/cloudAgentMessages';
 import type {
   Conversation,
   DesktopChatTurnSnapshot,
@@ -290,7 +290,7 @@ function agentReplyLifecycleKey(message: Message) {
 
 function noProviderReplyDedupeKey(message: Message, sourceMessage: MessageSourceReference) {
   const errorText = cleanText(message.turn?.error) || cleanText(message.text);
-  if (!isCloudAgentNoProviderConfiguredError(errorText)) return null;
+  if (!isCloudAgentStoredNoProviderFailure(errorText)) return null;
   return [
     sourceMessage.messageId,
     cleanText(message.sender),

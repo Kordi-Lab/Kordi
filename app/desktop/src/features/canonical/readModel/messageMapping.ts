@@ -2,7 +2,7 @@ import { cancelledTurnContent } from '@/features/chat/cancellation';
 import { canonicalMessageRole } from './messageRole';
 export { canonicalMessageRole } from './messageRole';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
-import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentFallbackErrorNotice, isCloudAgentStoredNoProviderFailure } from '@/features/cloud/cloudAgentMessages';
 import { cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { storedVoiceMessage, withoutVoiceAttachment } from '@/features/cloud/cloudVoiceMessage';
@@ -316,7 +316,7 @@ export function mapCanonicalMessage(
     ? 'queued'
     : stringValue(content.deliveryState)?.trim().toLowerCase();
   const cancelled = message.status === 'cancelled' || deliveryState === 'cancelled';
-  const noProviderFailure = isAgentTurn && isCloudAgentNoProviderConfiguredError(contentText || stringValue(content.error) || stringValue(content.detail));
+  const noProviderFailure = isAgentTurn && isCloudAgentStoredNoProviderFailure(contentText || stringValue(content.error) || stringValue(content.detail));
   const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled || noProviderFailure; if (failed && storedContent[RETIRED_BY_RETRY_CONTENT_KEY] === true) return null;
   const legacyCollaborationAgentFailure = isAgentTurn && failed && sourceTransport.startsWith('desktop-bridge');
   const sourceConversationId = compatibleSourceConversationId(content)?.trim();

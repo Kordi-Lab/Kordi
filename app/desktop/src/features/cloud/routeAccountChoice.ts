@@ -31,6 +31,8 @@ export function hasHostedOnlyPrefix(choice?: string | null) {
  * `profile:` sign-in published from another Mac) with no local counterpart.
  * A null `localChoices` means this Mac's accounts have not loaded yet; a hosted
  * copy then never counts as hosted-only, so it cannot leave this Mac by mistake.
+ * A device-active alias always resolves on this device, even when an older
+ * build published a snapshot under it.
  */
 export function isHostedOnlyAccountChoice(
   choice?: string | null,
@@ -38,7 +40,8 @@ export function isHostedOnlyAccountChoice(
 ) {
   const value = choice?.trim() ?? '';
   if (hasHostedOnlyPrefix(value)) return true;
-  if (!value || !accounts.hostedChoices || accounts.localChoices === null) return false;
+  if (!value || DEVICE_ACTIVE_CHOICES.has(value)) return false;
+  if (!accounts.hostedChoices || accounts.localChoices === null) return false;
   const hosted = new Set(accounts.hostedChoices);
   const local = new Set(accounts.localChoices ?? []);
   return hosted.has(value) && !local.has(value);

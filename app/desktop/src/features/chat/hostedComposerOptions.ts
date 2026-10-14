@@ -1,7 +1,7 @@
 import { canonicalCloudProviderId } from '@/features/cloud/providerAuthSnapshot';
 import { routeRunsOnKordiCloud } from '@/features/cloud/cloudAgentRuntimeRoute';
 import type { HostedAccount } from '@/features/cloud/hostedAccounts';
-import { hasHostedOnlyPrefix } from '@/features/cloud/routeAccountChoice';
+import { DEVICE_ACTIVE_CHOICES, hasHostedOnlyPrefix } from '@/features/cloud/routeAccountChoice';
 import { ompProviderIdFor, ompProviderName, type OmpCatalogEntry } from '@/kordi-app/auth/ompCatalog';
 import { providerShortName } from '@/kordi-app/auth/providerCopy';
 import type { ComposerAuthOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
@@ -35,7 +35,8 @@ function catalogProviderId(account: HostedAccount, ids: ReadonlySet<string>) {
 /**
  * Hosted accounts without a counterpart on this Mac, as the composer offers
  * them. While this Mac's accounts have not loaded (`localChoices` null), only
- * accounts whose choice is hosted-only by prefix are offered.
+ * accounts whose choice is hosted-only by prefix are offered. A snapshot an
+ * older build published under a device-active alias is never offered.
  */
 export function hostedRouteAccounts(
   accounts: HostedAccount[],
@@ -43,7 +44,7 @@ export function hostedRouteAccounts(
   localChoices: ReadonlySet<string> | null = new Set(),
 ): HostedRouteAccount[] {
   const ids = new Set(catalog.map((entry) => entry.id));
-  const offered = (account: HostedAccount) => (localChoices === null
+  const offered = (account: HostedAccount) => !DEVICE_ACTIVE_CHOICES.has(account.authChoice.trim()) && (localChoices === null
     ? hasHostedOnlyPrefix(account.authChoice)
     : !localChoices.has(account.authChoice));
   return accounts.filter(offered).map((account) => {
