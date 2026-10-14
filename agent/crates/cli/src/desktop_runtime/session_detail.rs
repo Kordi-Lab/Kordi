@@ -237,7 +237,7 @@ pub(super) fn build_detail_from_setup(
     let title = if let Some(row) = session_row.as_ref() {
         repair_session_title_from_history(&setup.conn, row)?
             .or_else(|| session_title_from_messages(&messages))
-            .unwrap_or_else(|| fallback_session_display_title(row))
+            .unwrap_or_else(fallback_session_display_title)
     } else {
         "New chat".to_string()
     };

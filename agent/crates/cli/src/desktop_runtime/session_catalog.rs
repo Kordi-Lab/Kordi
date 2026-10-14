@@ -454,14 +454,10 @@ fn format_db_timestamp(value: &str) -> String {
     }
 }
 
-pub(super) fn fallback_session_display_title(row: &kordi_session::store::SessionRow) -> String {
-    if row.entry_count <= 0 {
-        return "New chat".to_string();
-    }
-    let date = chrono::DateTime::parse_from_rfc3339(&row.created_at)
-        .map(|value| value.with_timezone(&Local).format("%b %-d").to_string())
-        .unwrap_or_else(|_| "recently".to_string());
-    format!("Chat with Kordi · {date}")
+/// A session without a usable user message keeps the placeholder, so the
+/// first meaningful message (here or in the canonical store) can still name it.
+pub(super) fn fallback_session_display_title() -> String {
+    "New chat".to_string()
 }
 
 pub(super) fn truncate_chars(value: &str, max_chars: usize) -> String {
@@ -551,32 +547,6 @@ mod tests {
             ..row
         };
         assert_eq!(session_row_display_name(&row), None);
-    }
-
-    #[test]
-    fn fallback_title_is_human_readable_and_never_exposes_the_session_id() {
-        let row = kordi_session::store::SessionRow {
-            session_id: "e2b79cd7-70c0-4cee-ae1b-9bc8cb28da83".to_string(),
-            cwd: "/tmp/kordi".to_string(),
-            created_at: "2026-07-15T12:00:00Z".to_string(),
-            updated_at: "2026-07-15T12:00:00Z".to_string(),
-            name: None,
-            title_source: kordi_session::store::SessionTitleSource::Placeholder,
-            title_revision: 0,
-            title_policy_version: 1,
-            title_generated_from_entry_id: None,
-            title_updated_at: None,
-            leaf_id: None,
-            entry_count: 2,
-            parent_session_id: None,
-            parent_session_message_id: None,
-            session_scope: "chat".to_string(),
-            project_root: None,
-        };
-
-        let title = fallback_session_display_title(&row);
-        assert!(title.starts_with("Chat with Kordi · "));
-        assert!(!title.contains(&row.session_id));
     }
 
     #[test]

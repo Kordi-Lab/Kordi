@@ -201,3 +201,65 @@ test('canonical external group titles win over message-derived fallbacks', () =>
     { preferFallback: sessionPrefersPersistedTitle(groupSession) },
   ), 'Mutation Test Group');
 });
+
+test('a stored dated fallback title yields to the first meaningful user message', () => {
+  const session = {
+    id: 'session:project:failed-first-turns',
+    kind: 'project',
+    title: 'Chat with Kordi · Oct 13',
+    status: 'active',
+    createdByIdentityId: 'human:me',
+    createdAtMs: 1,
+    updatedAtMs: 2,
+    metadata: { sessionTitleSource: 'auto', sessionTitleRevision: 1 },
+  } as const;
+  const messages = [
+    { role: 'user' as const, text: 'hi', timeLabel: '10:00' },
+    { role: 'owned-agent' as const, text: 'Provider is unavailable.', timeLabel: '10:00' },
+    { role: 'user' as const, text: 'check this worktree', timeLabel: '10:01' },
+    { role: 'owned-agent' as const, text: 'Provider is unavailable.', timeLabel: '10:01' },
+    { role: 'user' as const, text: 'which model are you using', timeLabel: '10:02' },
+  ];
+
+  assert.equal(isGenericSessionTitle('Chat with Kordi · Oct 13'), true);
+  assert.equal(isGenericSessionTitle('Chat with Kordi about release dates'), false);
+  assert.equal(titleSourceFromMetadata(session.metadata, session.title), 'placeholder');
+  assert.equal(sessionPrefersPersistedTitle(session), false);
+  assert.equal(sessionConversationDisplayTitle(
+    session,
+    [],
+    messages,
+    session.title,
+    { preferFallback: sessionPrefersPersistedTitle(session) },
+  ), 'Check this worktree');
+  assert.equal(incomingSessionTitleWins(
+    { titleSource: titleSourceFromMetadata(session.metadata, session.title), titleRevision: 1, updatedAtMs: 2 },
+    { titleSource: 'auto', titleRevision: 1, updatedAtMs: 3 },
+  ), true);
+
+  const manual = { ...session, title: 'Trust review', metadata: { sessionTitleSource: 'manual' } };
+  assert.equal(sessionPrefersPersistedTitle(manual), true);
+  assert.equal(sessionConversationDisplayTitle(
+    manual,
+    [],
+    messages,
+    manual.title,
+    { preferFallback: sessionPrefersPersistedTitle(manual) },
+  ), 'Trust review');
+});
+
+test('voice messages name a session only from their transcript', () => {
+  assert.equal(
+    deriveSessionTitle('[Voice transcript; audio was not provided. Tone, speaker identity, and background sounds are unknown.]\nplan the launch checklist'),
+    'Plan the launch checklist',
+  );
+  assert.equal(
+    deriveSessionTitle('[Voice message: Transcription pending. No spoken content or audio was provided to the agent.]'),
+    null,
+  );
+  assert.equal(deriveSessionTitle('Voice message'), null);
+  assert.equal(sessionDisplayTitle([
+    { role: 'user', text: '[Voice message: Transcription failed. No spoken content or audio was provided to the agent.]', timeLabel: '10:00' },
+    { role: 'user', text: 'review the trust policy', timeLabel: '10:01' },
+  ], 'New chat'), 'Review the trust policy');
+});
