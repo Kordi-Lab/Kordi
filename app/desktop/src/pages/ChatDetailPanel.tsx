@@ -1,4 +1,4 @@
-import { memo, useContext, useEffect, type ReactNode } from 'react';
+import { memo, useContext, useEffect, useMemo, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
@@ -12,6 +12,8 @@ import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfO
 import { ChatSenderProfileContext } from '@/pages/useChatSenderProfiles';
 import { conversationIsGroupChat } from '@/pages/chatsPage.model';
 import { displayCanonicalParticipants } from '@/features/canonical/readModel/participantPresentation';
+import { ChatDocumentEntries } from '@/features/documents/ChatDocumentEntries';
+import { withChatDocumentArtifacts } from '@/features/documents/chatDocuments';
 
 type ActiveConversation = Conversation;
 
@@ -186,6 +188,8 @@ function ChatDetailPanelView({
     activeSessionProjectRoot: activeSessionProject?.root,
     activeSessionWorkspaceRoot: activeConv.localSessionCwd,
   });
+  // Markdown and HTML sent in the chat are documents of the chat, listed with what agents produced.
+  const listedArtifacts = useMemo(() => withChatDocumentArtifacts(artifacts, activeConv.messages), [artifacts, activeConv.messages]);
   const scheduledTasks = useScheduledTasks({ enabled: true });
   const openSenderProfile = useContext(ChatSenderProfileContext);
 
@@ -341,15 +345,18 @@ function ChatDetailPanelView({
   if (activeDetailTab === 'artifacts') {
     return (
       <div className="app-detail-sheet flex h-full min-h-0 flex-col overflow-hidden">
-        <ArtifactInspector
-          isNativeShell={isNativeShell}
-          artifacts={artifacts}
-          activeArtifactId={activeArtifactId}
-          onSelectArtifact={onSelectArtifact}
-          previewBaseRoot={artifactPreviewBaseRoot}
-          participants={activeConv.canonicalParticipants}
-          emptyMessage={activeConversationUsesCollaboration ? 'No generated code or docs in this chat yet.' : 'No generated code or docs in this session yet.'}
-        />
+        <ChatDocumentEntries conversationId={activeConv.id} messages={activeConv.messages} artifacts={listedArtifacts} />
+        <div className="min-h-0 flex-1">
+          <ArtifactInspector
+            isNativeShell={isNativeShell}
+            artifacts={listedArtifacts}
+            activeArtifactId={activeArtifactId}
+            onSelectArtifact={onSelectArtifact}
+            previewBaseRoot={artifactPreviewBaseRoot}
+            participants={activeConv.canonicalParticipants}
+            emptyMessage={activeConversationUsesCollaboration ? 'No generated code or docs in this chat yet.' : 'No generated code or docs in this session yet.'}
+          />
+        </div>
       </div>
     );
   }
