@@ -1,6 +1,6 @@
 import { Braces, FileText, Globe2, type LucideIcon } from 'lucide-react';
 
-import { documentShareApiForEnvironment } from '@/features/documents/documentShareApi';
+import { fetchDocumentTitleFromServer } from '@/features/documents/documentPreviewTitles';
 import { documentDisplayName, useDocumentTitle, type DocumentTitleFetch } from '@/features/documents/documentTitles';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { ConversationParticipant, SessionArtifact } from '@/kordi-app/types';
@@ -39,14 +39,12 @@ function artifactPeople(artifact: Pick<SessionArtifact, 'createdByAccountId'>, p
   return { creator, others: creator ? people.filter((participant) => participant !== creator) : [] };
 }
 
-const fetchDocumentTitle: DocumentTitleFetch = (attachmentId) => documentShareApiForEnvironment().getDocument(attachmentId);
-
 function PersonAvatar({ participant, className }: { participant: ConversationParticipant; className: string }) {
   const name = participant.publicName?.trim() || participant.name;
   return <IdentityAvatar kind="human" seed={participant.avatarKey ?? participant.humanId ?? participant.id} name={name} imageUrl={participant.profileImageUrl} className={className} />;
 }
 
-export function ArtifactListRow({ artifact, location, isActive, participants, onSelect, fetchTitle = fetchDocumentTitle }: {
+export function ArtifactListRow({ artifact, location, isActive, participants, onSelect, fetchTitle = fetchDocumentTitleFromServer }: {
   artifact: SessionArtifact;
   location: string;
   isActive: boolean;
