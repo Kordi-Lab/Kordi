@@ -19,7 +19,7 @@ use super::model::{
     DocumentAgent, DocumentFormat, DocumentResponse, PublicReadQuery, Viewer, ViewerCan,
 };
 use super::reactions::list_reactions;
-use super::render::{document_blocks, document_title};
+use super::render::document_blocks;
 use super::shares::{live_shares, share_response};
 use super::tokens::{public_raw_path, share_secret};
 use super::validate::is_valid_reader_key;
@@ -91,7 +91,7 @@ pub(crate) async fn document_response(
         requested_attachment_id: (record.requested_attachment_id != record.attachment_id
             && !record.requested_attachment_id.is_empty())
         .then(|| record.requested_attachment_id.clone()),
-        title: document_title(record.format, source, &record.file_name),
+        title: record.title(source),
         file_name: record.file_name.clone(),
         format: record.format,
         content_type: record.content_type.clone(),

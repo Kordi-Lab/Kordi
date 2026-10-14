@@ -60,6 +60,17 @@
   cursor: default;
 }
 
+.app-document-tab-title-field {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
 .app-document-tab > [role='tab'] > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-document-tab > [role='tab']:focus-visible { outline: 2px solid var(--app-nav-rail-focus-ring); outline-offset: -2px; }
 .app-document-tab svg { width: 14px; height: 14px; flex: none; }

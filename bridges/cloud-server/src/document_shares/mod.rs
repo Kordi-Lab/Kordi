@@ -44,6 +44,7 @@ mod reactions;
 pub(crate) mod render;
 mod shares;
 mod sources;
+mod title;
 pub(crate) mod tokens;
 pub(crate) mod validate;
 
@@ -85,7 +86,7 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
         )
         .route(
             "/v1/cloud/documents/:attachment_id",
-            get(documents::get_document),
+            get(documents::get_document).patch(title::rename_document),
         )
         .route(
             "/v1/cloud/documents/:attachment_id/content",

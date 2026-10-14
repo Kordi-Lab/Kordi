@@ -159,6 +159,8 @@ export type MemoryDocumentApiOptions = {
   collabTicket?: (attachmentId: string) => Promise<DocumentCollabTicket>;
   /** Collaboration seeding route; `{ initialize: false }` when absent. */
   collabInit?: (attachmentId: string) => Promise<DocumentCollabInit>;
+  /** Renames answer an error. */
+  renameFails?: boolean;
 };
 
 /** In-memory document routes with recorded calls. Saves bump the revision and re-split the blocks. */
@@ -189,6 +191,13 @@ export function createMemoryDocumentApi(document: DocumentResponse = sampleDocum
       const unchanged = input.mode === 'snapshot' && blocks.length === stored.blocks.length && blocks.every((block, index) => block.id === stored.blocks[index].id && block.source === stored.blocks[index].source);
       stored = { ...stored, blocks, revision: (stored.revision ?? 0) + (unchanged ? 0 : 1), comments: stored.comments.map((entry) => ({ ...entry, blockId: remap(entry.blockId) })) };
       return { status: 'saved' as const, document: { ...stored, reactions, share } };
+    },
+    async renameDocument(attachmentId, title) {
+      record('renameDocument', attachmentId, title);
+      await wait();
+      if (options.renameFails) throw new Error('Could not rename the document.');
+      stored = { ...stored, title };
+      return { ...stored, reactions, share };
     },
     setStored(next: DocumentResponse) { stored = next; },
     async getPublicDocument(token) { record('getPublicDocument', token); await wait(); return { ...document, viewer: 'public', share: null, viewerCan: { share: false, react: true, comment: true, askAgent: true } }; },

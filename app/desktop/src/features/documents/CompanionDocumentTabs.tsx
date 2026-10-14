@@ -1,26 +1,31 @@
 import { FileText, Globe, X } from 'lucide-react';
-import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 import type { CompanionDocument } from './companionDocument';
 import { companionDocumentTabIds } from './companionTabsState';
 import { documentFormatForPath } from './documentReaderModel';
+import { DocumentTitleField } from './DocumentTitleField';
 
 /**
  * The companion pane's strip of open documents, one tab each, like a browser's.
  * Arrow keys move between tabs, Enter activates, Delete or Backspace closes; a
- * middle click closes too.
+ * middle click closes too. A double click renames a document its reader lets
+ * the viewer rename.
  */
-export function CompanionDocumentTabs({ documents, activeId, titles, onActivate, onCloseTab, onHide }: {
+export function CompanionDocumentTabs({ documents, activeId, titles, renames = {}, onActivate, onCloseTab, onHide }: {
   documents: CompanionDocument[];
   activeId: string | null;
   /** Titles the readers resolved, by artifact id; the file name shows until then. */
   titles: Record<string, string>;
+  /** Rename actions the readers offer, by artifact id. */
+  renames?: Partial<Record<string, (title: string) => void>>;
   onActivate: (id: string) => void;
   onCloseTab: (id: string) => void;
   onHide: () => void;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const focusActive = useRef(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
 
   useEffect(() => {
     const active = listRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
@@ -63,6 +68,7 @@ export function CompanionDocumentTabs({ documents, activeId, titles, onActivate,
           const title = titles[artifact.id] ?? artifact.name;
           const ids = companionDocumentTabIds(artifact.id);
           const Icon = documentFormatForPath(artifact.path) === 'html' ? Globe : FileText;
+          const rename = renames[artifact.id];
           return (
             <div
               key={artifact.id}
@@ -73,19 +79,27 @@ export function CompanionDocumentTabs({ documents, activeId, titles, onActivate,
               onMouseDown={(event) => { if (event.button === 1) event.preventDefault(); }}
               onAuxClick={(event) => { if (event.button === 1) onCloseTab(artifact.id); }}
             >
-              <button
-                type="button"
-                role="tab"
-                id={ids.tab}
-                aria-selected={active}
-                aria-controls={ids.panel}
-                tabIndex={active ? 0 : -1}
-                title={title}
-                onClick={() => onActivate(artifact.id)}
-              >
-                <Icon aria-hidden="true" />
-                <span>{title}</span>
-              </button>
+              {rename && renamingId === artifact.id ? (
+                <div role="tab" id={ids.tab} aria-selected={active} aria-controls={ids.panel}>
+                  <Icon aria-hidden="true" />
+                  <DocumentTitleField value={title} className="app-document-tab-title-field" label="Title" onSave={rename} onClose={() => setRenamingId(null)} />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  role="tab"
+                  id={ids.tab}
+                  aria-selected={active}
+                  aria-controls={ids.panel}
+                  tabIndex={active ? 0 : -1}
+                  title={title}
+                  onClick={() => onActivate(artifact.id)}
+                  onDoubleClick={rename ? () => setRenamingId(artifact.id) : undefined}
+                >
+                  <Icon aria-hidden="true" />
+                  <span>{title}</span>
+                </button>
+              )}
               <button type="button" className="app-document-tab-close" aria-label={`Close ${title}`} title="Close" tabIndex={-1} onClick={() => onCloseTab(artifact.id)}>
                 <X aria-hidden="true" />
               </button>
