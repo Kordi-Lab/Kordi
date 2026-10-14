@@ -2683,15 +2683,9 @@ private struct MessageFileAttachmentCard: View {
                         .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 0) {
-                            Text(nameBase)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                            Text(nameExtension)
-                                .fixedSize()
-                        }
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
+                        AttachmentCardFileName(attachment: attachment)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
                         HStack(spacing: 4) {
                             Text(attachment.formatLabel)
                                 .fontWeight(.bold)
@@ -2709,7 +2703,7 @@ private struct MessageFileAttachmentCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Review \(attachment.name)")
+            .accessibilityLabel("Review \(DocumentTitles.shared.displayName(for: attachment))")
 
             Menu {
                 Button(action: onOpen) {
@@ -2738,15 +2732,6 @@ private struct MessageFileAttachmentCard: View {
 
     private var family: KordiFileFamily {
         KordiFileFamily.forFile(name: attachment.name, mimeType: attachment.mimeType)
-    }
-
-    private var nameExtension: String {
-        let ext = URL(fileURLWithPath: attachment.name).pathExtension
-        return ext.isEmpty ? "" : ".\(ext)"
-    }
-
-    private var nameBase: String {
-        String(attachment.name.dropLast(nameExtension.count))
     }
 }
 

@@ -24,6 +24,17 @@ extension CloudAPIClient {
         )
     }
 
+    /// Renames a document; answers the full document with its new title.
+    func renameDocument(token: String, attachmentId: String, title: String) async throws -> DocumentResponse {
+        try await send(
+            path: "/v1/cloud/documents/\(Self.pathComponent(attachmentId))",
+            method: "PATCH",
+            token: token,
+            body: DocumentRenameRequest(title: title),
+            fallback: "Could not rename the document."
+        )
+    }
+
     /// Points a forwarded copy at the document it came from, so both share
     /// one set of reactions, comments, revision, and link. Answers the
     /// canonical document.

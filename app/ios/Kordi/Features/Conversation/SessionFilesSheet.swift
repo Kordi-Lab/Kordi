@@ -171,14 +171,19 @@ private struct SessionFileRow: View {
                 .frame(width: 48, height: 48)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Review \(item.attachment.name)")
+            .accessibilityLabel("Review \(displayName)")
 
             Button(action: onReview) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(item.attachment.name)
+                    Text(displayName)
                         .font(.body.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
+                        .loadsDocumentTitle(
+                            attachmentId: item.attachment.attachmentId,
+                            name: item.attachment.name,
+                            contentType: item.attachment.mimeType
+                        )
                     Text(fileSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -212,6 +217,9 @@ private struct SessionFileRow: View {
         }
         .padding(.vertical, 4)
     }
+
+    /// A renamed document's title; the file name otherwise.
+    private var displayName: String { DocumentTitles.shared.displayName(for: item.attachment) }
 
     private var fileSubtitle: String {
         [item.attachment.formatLabel, item.attachment.sizeLabel]

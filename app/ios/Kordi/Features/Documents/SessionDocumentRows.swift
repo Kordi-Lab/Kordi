@@ -27,7 +27,9 @@ struct CloudArtifactRow: View {
                 .frame(width: 38, height: 38)
                 .background(KordiTheme.signalBlue.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 3) {
-                Text(artifact.name).font(.headline)
+                Text(DocumentTitles.shared.displayName(attachmentId: artifact.attachmentId, fileName: artifact.name))
+                    .font(.headline)
+                    .loadsDocumentTitle(attachmentId: artifact.attachmentId, name: artifact.name, contentType: artifact.contentType)
                 Text(artifact.summary.nonEmpty ?? artifact.path)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -71,7 +73,14 @@ struct SessionDetailFileRow: View {
                 .frame(width: 38, height: 38)
                 .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.attachment.name).font(.headline).lineLimit(1)
+                Text(DocumentTitles.shared.displayName(for: item.attachment))
+                    .font(.headline)
+                    .lineLimit(1)
+                    .loadsDocumentTitle(
+                        attachmentId: item.attachment.attachmentId,
+                        name: item.attachment.name,
+                        contentType: item.attachment.mimeType
+                    )
                 Text([item.attachment.formatLabel, item.attachment.sizeLabel].compactMap { $0 }.joined(separator: " · "))
                     .font(.caption).foregroundStyle(.secondary)
                 Text("Shared by \(item.message.authorName)")

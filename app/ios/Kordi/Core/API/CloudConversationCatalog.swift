@@ -932,15 +932,13 @@ enum CloudConversationCatalog {
 
     private static func previewAttachment(_ message: CloudMessageDTO?) -> ChatAttachment? {
         guard let message else { return nil }
-        return message.attachments
-            .first(where: { $0.inferredChatAttachmentKind == .image })?
+        return message.attachments.chatListPreviewAttachment?
             .chatAttachment(messageKind: CloudMessageCodec.canonicalMessageKind(message))
     }
 
     private static func previewAttachment(_ message: CloudGroupMessagePayload?) -> ChatAttachment? {
         guard let message else { return nil }
-        return message.attachments?
-            .first(where: { $0.inferredChatAttachmentKind == .image })?
+        return message.attachments?.chatListPreviewAttachment?
             .chatAttachment(messageKind: message.messageKind)
     }
 

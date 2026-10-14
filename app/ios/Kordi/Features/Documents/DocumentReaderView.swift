@@ -26,6 +26,8 @@ struct DocumentReaderView: View {
     @State private var sessionConversation: ConversationSummary?
     @State private var htmlHeight: CGFloat = 320
     @State private var readerNameDraft = ""
+    @State private var showsRename = false
+    @State private var renameDraft = ""
 
     init(
         request: DocumentReaderRequest,
@@ -68,6 +70,16 @@ struct DocumentReaderView: View {
                     }
                     .accessibilityLabel("Share")
                 }
+                if reader.canRename {
+                    Menu {
+                        Button(action: beginRename) {
+                            Label("Rename", systemImage: "pencil")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("More")
+                }
             }
         }
         .task {
@@ -98,6 +110,12 @@ struct DocumentReaderView: View {
             TextField("Name", text: $readerNameDraft)
             Button("Continue") { reader.saveReaderName(readerNameDraft) }
             Button("Cancel", role: .cancel) { reader.pendingNamedAction = nil }
+        }
+        .alert("Rename document", isPresented: $showsRename) {
+            TextField("Title", text: $renameDraft)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") { reader.rename(to: renameDraft) }
+                .disabled(DocumentRename.validTitle(renameDraft) == nil)
         }
         .alert("Could not finish", isPresented: Binding(
             get: { reader.actionError != nil },
@@ -208,6 +226,11 @@ struct DocumentReaderView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private func beginRename() {
+        renameDraft = reader.document?.title ?? ""
+        showsRename = true
     }
 
     private func toggleSelection(_ blockId: String) {
