@@ -82,9 +82,8 @@ pub(crate) async fn desktop_set_window_backdrop(
                         // The session tint backs the sidebar column below the
                         // titlebar. The workspace backing is the flat
                         // conversation plane: from the sidebar's edge to the
-                        // right edge, from the top of the window to the bottom,
-                        // so the titlebar column above the conversation shares
-                        // its surface.
+                        // right edge, below the titlebar, so the whole titlebar
+                        // shares the sidebar's material across the window.
                         let mut sessions = bounds;
                         sessions.origin.x += navigation.size.width;
                         sessions.size.width =
@@ -104,6 +103,10 @@ pub(crate) async fn desktop_set_window_backdrop(
                         let mut workspace = bounds;
                         workspace.origin.x += sidebar_width.min(bounds.size.width);
                         workspace.size.width = (bounds.size.width - sidebar_width).max(0.0);
+                        workspace.size.height -= titlebar_height;
+                        if is_flipped {
+                            workspace.origin.y += titlebar_height;
+                        }
                         set_tint(
                             parent,
                             webview,
