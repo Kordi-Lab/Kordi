@@ -1,4 +1,4 @@
-import { composerAgentRequestStop } from '@/features/chat/agentRequestStop';
+import { composerAgentRequestStop, sidePaneTurnStop } from '@/features/chat/agentRequestStop';
 import { useCompanionReadPresentation } from '@/pages/useCompanionReadPresentation';
 import { useCompanionHistorySession } from '@/pages/useCompanionHistorySession';
 import { importLivePhotos } from '@/features/chat/importLivePhotos';
@@ -214,6 +214,7 @@ export function ChatCompanionWorkspace({
 
   const canonicalHistorySessionId =
     canonicalHistorySessionIdForConversation(conversation);
+  const stopPanelTurn = sidePaneTurnStop(conversation, presentation.liveTurn, runtime.onStopDesktopChatTurn);
   const transcriptMessages = session.transcript.isLoading && !hasKnownTranscriptContent(presentation.messages)
     ? [transcriptLoadingNotice()]
     : session.transcript.loadError
@@ -302,7 +303,7 @@ export function ChatCompanionWorkspace({
           onOpenMessageDetail: conversation.agentSubsessionId ? undefined : composer.onSelectMessage,
           onStopCollaborationAgentRequest:
             runtime.onStopCollaborationAgentRequest,
-          onStopActiveTurn: conversation.agentSubsessionId ? undefined : runtime.onStopDesktopChatTurn,
+          onStopActiveTurn: stopPanelTurn,
           onRequestCollaborationContact:
             runtime.onRequestCollaborationContact,
           onOpenSenderProfile: senderProfiles.openCompanion,
@@ -425,8 +426,7 @@ export function ChatCompanionWorkspace({
           stop={composerAgentRequestStop({
             messages: presentation.messages,
             liveTurn: presentation.liveTurn,
-            // The desktop turn stop acts on the main pane's chat, so this pane
-            // offers Stop only for outreach requests that name their own target.
+            onStopActiveTurn: stopPanelTurn,
             onStopCollaborationAgentRequest: runtime.onStopCollaborationAgentRequest,
           })}
           onSend={(targetConversation, mentions) => {

@@ -1,5 +1,7 @@
 import type { DesktopArtifactPreview, MessageAttachment, SessionArtifact } from '@/kordi-app/types';
 
+import { uploadedAttachmentIdForSource } from '@/features/cloud/cloudAttachmentLocalPathCache';
+
 import { documentFormatForPath } from './documentReaderModel';
 
 /** A document shown in the chat companion pane. */
@@ -43,6 +45,24 @@ export function isReaderAttachment(attachment: Pick<MessageAttachment, 'attachme
   return Boolean(attachment.attachmentId?.trim() && documentFormatForPath(attachment.name));
 }
 
+export type UploadedAttachmentId = (sourcePath: string) => string | null;
+
+/**
+ * A group send shows its own local row (`cloud-group-ui`), whose attachment
+ * points at the stored file and has no cloud id, until the server echo
+ * replaces it, which can come late or not at all. The id this window uploaded
+ * the file under fills the gap.
+ */
+export function withUploadedAttachmentId(
+  attachment: MessageAttachment,
+  uploadedId: UploadedAttachmentId = uploadedAttachmentIdForSource,
+): MessageAttachment {
+  if (attachment.attachmentId?.trim()) return attachment;
+  const localPath = attachment.localPath?.trim();
+  const attachmentId = localPath ? uploadedId(localPath) : null;
+  return attachmentId ? { ...attachment, attachmentId } : attachment;
+}
+
 function attachmentDocument(attachment: MessageAttachment): CompanionDocument {
   const attachmentId = attachment.attachmentId?.trim() ?? '';
   return {
@@ -66,7 +86,8 @@ function attachmentDocument(attachment: MessageAttachment): CompanionDocument {
  * waits for the next one rather than falling back to a download. Other files
  * return false and keep their open or download action.
  */
-export function openAttachmentInCompanion(attachment: MessageAttachment): boolean {
+export function openAttachmentInCompanion(sent: MessageAttachment): boolean {
+  const attachment = withUploadedAttachmentId(sent);
   if (!isReaderAttachment(attachment)) return false;
   const document = attachmentDocument(attachment);
   if (!openCompanionDocument(document)) pendingDocument = document;

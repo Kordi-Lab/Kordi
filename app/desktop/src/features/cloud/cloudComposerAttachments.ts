@@ -11,6 +11,7 @@ import {
   cacheCloudAttachmentLocalPath,
   persistCloudAttachmentPreviewDataUrl,
   persistCloudAttachmentPath,
+  rememberUploadedAttachmentSource,
 } from './cloudAttachmentLocalPathCache';
 import {
   isNativeAttachmentUploadAvailable,
@@ -106,6 +107,7 @@ export async function uploadComposerAttachments({
         summary = await client.uploadAttachment(token, blob);
       }
       cacheCloudAttachmentLocalPath(summary.attachmentId, attachment.path);
+      rememberUploadedAttachmentSource(attachment.path, summary.attachmentId);
       await persistAttachmentPath(summary.attachmentId, attachment.name, attachment.path);
       if (attachment.expressiveMedia) {
         cacheCloudAttachmentLocalPath(summary.attachmentId, attachment.path);

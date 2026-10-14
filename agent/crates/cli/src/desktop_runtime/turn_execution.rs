@@ -54,6 +54,21 @@ impl DesktopRuntimeTurn {
 }
 
 impl DesktopRuntimeSession {
+    /// Closes this session's unanswered request when an app process that
+    /// started before `process_started_at_ms` stored it: that process and its
+    /// turn are gone. Returns whether the interruption note was added.
+    pub fn close_request_interrupted_before(&self, process_started_at_ms: i64) -> Result<bool> {
+        if !self.setup.session_created {
+            return Ok(false);
+        }
+        turn_runner::close_request_interrupted_before(
+            &self.setup.conn,
+            &self.setup.session_id,
+            &self.setup.model,
+            process_started_at_ms,
+        )
+    }
+
     /// Connector tools delivered on this turn's cloud lease; `None` for local
     /// turns. Rebuilt by the host before every turn.
     pub fn set_connector_tools_runtime(
