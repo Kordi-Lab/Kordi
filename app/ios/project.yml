@@ -51,6 +51,12 @@ targets:
       - path: Kordi/Resources/Assets.xcassets
       - path: Kordi/Supporting/Preview Content
         optional: true
+    # The document editor page: the Mac's Tiptap editor, built from
+    # app/desktop/src/ios-document-editor into DocumentEditor/ on every build.
+    preBuildScripts:
+      - name: Build document editor page
+        script: bash "$SRCROOT/../../scripts/prepare-ios-document-editor.sh" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+        basedOnDependencyAnalysis: false
     entitlements:
       path: Kordi/Supporting/Kordi.entitlements
       properties:

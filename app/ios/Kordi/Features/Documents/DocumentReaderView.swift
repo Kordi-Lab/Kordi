@@ -28,16 +28,20 @@ struct DocumentReaderView: View {
     @State private var readerNameDraft = ""
     @State private var showsRename = false
     @State private var renameDraft = ""
+    @State private var editorSession: DocumentEditorSession?
+    private let opensEditor: Bool
 
     init(
         request: DocumentReaderRequest,
         service: any DocumentService,
         showsShareSheet: Bool = false,
-        selectedBlockId: String? = nil
+        selectedBlockId: String? = nil,
+        opensEditor: Bool = false
     ) {
         _reader = StateObject(wrappedValue: DocumentReaderModel(request: request, service: service))
         _showsShareSheet = State(initialValue: showsShareSheet)
         _selectedBlockId = State(initialValue: selectedBlockId)
+        self.opensEditor = opensEditor
     }
 
     var body: some View {
@@ -64,6 +68,12 @@ struct DocumentReaderView: View {
                 if let sessionTarget {
                     Button("Open in session") { sessionConversation = sessionTarget }
                 }
+                if reader.canEdit {
+                    Button(action: openEditor) {
+                        Image(systemName: "square.and.pencil")
+                    }
+                    .accessibilityLabel("Edit")
+                }
                 if reader.document != nil {
                     Button { showsShareSheet = true } label: {
                         Image(systemName: "square.and.arrow.up")
@@ -85,6 +95,10 @@ struct DocumentReaderView: View {
         .task {
             reader.accountDisplayName = model.account?.displayName
             if reader.document == nil { await reader.load() }
+            if opensEditor { openEditor() }
+        }
+        .fullScreenCover(item: $editorSession, onDismiss: { Task { await reader.refresh() } }) { session in
+            DocumentEditorView(session: session)
         }
         .sheet(isPresented: Binding(get: { showsShareSheet && reader.document != nil }, set: { showsShareSheet = $0 })) {
             DocumentShareSheet(reader: reader, request: reader.request)
@@ -226,6 +240,13 @@ struct DocumentReaderView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private func openEditor() {
+        let user = DocumentEditorUser(name: model.account?.displayName ?? "", accountId: model.account?.accountId ?? "")
+        guard let session = reader.makeEditorSession(user: user) else { return }
+        session.accentHex = UIColor.tintColor.documentEditorHex(for: UITraitCollection.current)
+        editorSession = session
     }
 
     private func beginRename() {
