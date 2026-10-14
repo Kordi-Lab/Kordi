@@ -46,21 +46,27 @@ export function useChatDocumentEntries({
 }: ChatDocumentEntriesOptions) {
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingDocument | null>(null);
-  const [arrived, setArrived] = useState<MessageAttachment | null>(null);
+  const [arrived, setArrived] = useState<{ path: string; attachment: MessageAttachment } | null>(null);
   const [failure, setFailure] = useState<{ conversationId: string } | null>(null);
   const sendingRef = useRef(false);
-  const openedRef = useRef<MessageAttachment | null>(null);
+  const openedRef = useRef<{ path: string; attachment: MessageAttachment } | null>(null);
 
   const addFile = useCallback(async (file: File) => {
     if (!addDocument || sendingRef.current) return;
     sendingRef.current = true;
     setSending(true);
     setFailure(null);
+    let path: string | null = null;
     try {
       const attachment = await chatDocumentAttachment(file, store);
+      path = attachment.path;
+      // Wait from the start: a send can resolve well after the chat shows the document.
+      setPending({ conversationId, path, deadline: Date.now() + timeoutMs });
       await addDocument(attachment);
-      setPending({ conversationId, path: attachment.path, deadline: Date.now() + timeoutMs });
     } catch {
+      // A send that fails after its document opened (say, one group member still pending) reports in the chat.
+      if (path && openedRef.current?.path === path) return;
+      setPending(null);
       setFailure({ conversationId });
     } finally {
       sendingRef.current = false;
@@ -75,16 +81,16 @@ export function useChatDocumentEntries({
   // A document sent from another chat is not this chat's to open.
   const awaited = pending?.conversationId === conversationId ? pending : null;
   const sent = useMemo(() => (awaited ? sentChatDocument(messages, awaited.path) : null), [awaited, messages]);
-  if (sent) {
+  if (sent && awaited) {
     // The chat has the document: stop waiting, and open it once below.
     setPending(null);
-    setArrived(sent);
+    setArrived({ path: awaited.path, attachment: sent });
   }
 
   useEffect(() => {
     if (!arrived || openedRef.current === arrived) return;
     openedRef.current = arrived;
-    open(arrived);
+    open(arrived.attachment);
   }, [arrived, open]);
 
   useEffect(() => {

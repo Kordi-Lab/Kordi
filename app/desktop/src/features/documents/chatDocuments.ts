@@ -1,5 +1,5 @@
 import type { AttachmentItem } from '@/features/chat/composerController.types';
-import { cachedCloudAttachmentLocalPath } from '@/features/cloud/cloudAttachmentLocalPathCache';
+import { uploadedAttachmentIdForSource } from '@/features/cloud/cloudAttachmentLocalPathCache';
 import type { Message, MessageAttachment, SessionArtifact } from '@/kordi-app/types';
 
 import { isReaderAttachment } from './companionDocument';
@@ -81,17 +81,19 @@ export function withChatDocumentArtifacts(artifacts: SessionArtifact[], messages
 
 /**
  * The sent copy of a file stored at `path`: the attachment of a loaded message
- * that has a cloud id and came from that file on this Mac.
+ * that has the cloud id this file was uploaded under. The message itself
+ * points at the upload's cached copy, not at `path`, so the id is the match.
  */
 export function sentChatDocument(
   messages: Message[],
   path: string,
-  cachedPath: (attachmentId: string) => string | null = cachedCloudAttachmentLocalPath,
+  uploadedId: (sourcePath: string) => string | null = uploadedAttachmentIdForSource,
 ): MessageAttachment | null {
+  const expectedId = uploadedId(path);
   const sent = messageAttachments(messages).reverse().find(({ attachment }) => {
     const attachmentId = attachment.attachmentId?.trim();
     if (!attachmentId || !isReaderAttachment(attachment)) return false;
-    return attachment.localPath?.trim() === path || cachedPath(attachmentId) === path;
+    return attachmentId === expectedId || attachment.localPath?.trim() === path;
   });
   return sent?.attachment ?? null;
 }

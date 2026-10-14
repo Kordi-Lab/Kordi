@@ -419,7 +419,7 @@ export function ArtifactInspector({
 
   return (
     <div data-artifact-inspector="true" className="flex h-full min-h-0 flex-col">
-      <div data-artifact-file-list="true" className="shrink-0 overflow-y-auto pr-1 max-h-[38%]">
+      <div data-artifact-file-list="true" className="shrink-0 overflow-y-auto overflow-x-hidden pr-1 max-h-[38%]">
         {folderBrowserRootPath ? (
           <section className="app-detail-section">
           <div className="app-detail-kicker">Project folder</div>

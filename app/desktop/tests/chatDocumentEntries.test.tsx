@@ -7,7 +7,15 @@ import { assembleRightDetailSlot } from '../src/app/assembleRightDetailSlot';
 import type { RightDetailShellArgs } from '../src/app/kordiShellSlots.types';
 import type { AttachmentItem } from '../src/features/chat/composerController.types';
 import { EMPTY_CHAT_SELECTION_ID } from '../src/features/chat/draftSessions';
+import { uploadComposerAttachments } from '../src/features/cloud/cloudComposerAttachments';
+import {
+  cachedCloudAttachmentLocalPath,
+  clearCloudAttachmentLocalPathCache,
+  persistCloudAttachmentPath,
+  rememberUploadedAttachmentSource,
+} from '../src/features/cloud/cloudAttachmentLocalPathCache';
 import { ChatDocumentEntries } from '../src/features/documents/ChatDocumentEntries';
+import { COMPANION_DOCUMENT_OPEN_EVENT, openAttachmentInCompanion, type CompanionDocument } from '../src/features/documents/companionDocument';
 import {
   ADD_DOCUMENT_ACCEPT,
   ADD_DOCUMENT_FAILED,
@@ -22,11 +30,14 @@ import {
 } from '../src/features/documents/chatDocuments';
 import { DocumentReaderHostContext, documentReaderHostForConversation, type DocumentReaderHost } from '../src/features/documents/documentReaderHost';
 import type { Message, MessageAttachment, SessionArtifact } from '../src/kordi-app/types';
+import { ArtifactInspector } from '../src/pages/ArtifactInspector';
 import { ChatDetailPanel } from '../src/pages/ChatDetailPanel';
 import { withJsdomRoot } from './helpers/mountWithJsdom';
 import { waitForReactCondition } from './helpers/waitForReactCondition';
 
 const STORED_PATH = '/tmp/kordi-attachments/Untitled-1.md';
+// Where the upload persists its copy; sent messages point here, not at the stored file.
+const CACHED_COPY_PATH = '/tmp/kordi-cloud-attachments/att_new/Untitled.md';
 const account = { accountId: 'acct_example_alex', displayName: 'Alex Morgan', kordiId: '123456789', avatarUrl: null };
 const conversation = { id: 'session:group:example', canonicalSessionId: 'session:group:example', canonicalParticipants: [] };
 
@@ -169,7 +180,7 @@ test('documents sent in the chat are listed once, and the sent copy of a stored 
 
   assert.equal(sentChatDocument(messages, STORED_PATH, () => null)?.attachmentId, 'att_page');
   assert.equal(sentChatDocument(messages, '/tmp/draft.md', () => null), null, 'not uploaded yet');
-  assert.equal(sentChatDocument(messages, '/tmp/plan.md', (id) => (id === 'att_plan' ? '/tmp/plan.md' : null))?.attachmentId, 'att_plan');
+  assert.equal(sentChatDocument(messages, '/tmp/plan.md', (path) => (path === '/tmp/plan.md' ? 'att_plan' : null))?.attachmentId, 'att_plan', 'found by the id its upload got');
 });
 
 test('New document sends a blank Markdown file through the chat attachment send, then opens the sent copy', async () => {
@@ -178,7 +189,7 @@ test('New document sends a blank Markdown file through the chat attachment send,
     const sent: AttachmentItem[] = [];
     const opened: MessageAttachment[] = [];
     const artifacts: SessionArtifact[] = [{ id: 'notes/Untitled.md', path: 'notes/Untitled.md', name: 'Untitled.md', kind: 'document', category: 'artifact', summary: 'Created' }];
-    const host = hostWith((attachment) => { sent.push(attachment); });
+    const host = hostWith((attachment) => { sent.push(attachment); rememberUploadedAttachmentSource(attachment.path, 'att_new'); });
     const entries = (messages: Message[]) => createElement(DocumentReaderHostContext.Provider, { value: host },
       createElement(ChatDocumentEntries, {
         conversationId: conversation.id,
@@ -202,7 +213,7 @@ test('New document sends a blank Markdown file through the chat attachment send,
     // The optimistic message has no cloud id yet; the delivered one does.
     await mount(entries([attachmentMessage('m1', { name: 'Untitled 2.md', localPath: STORED_PATH })]));
     assert.equal(opened.length, 0);
-    await mount(entries([attachmentMessage('m1', { name: 'Untitled 2.md', localPath: STORED_PATH, attachmentId: 'att_new' })]));
+    await mount(entries([attachmentMessage('m1', { name: 'Untitled 2.md', localPath: CACHED_COPY_PATH, attachmentId: 'att_new' })]));
     assert.deepEqual(opened.map((attachment) => [attachment.name, attachment.attachmentId]), [['Untitled 2.md', 'att_new']]);
     assert.equal(button(root, 'New document').disabled, false);
     assert.equal(root.querySelector('[role="alert"]'), null);
@@ -250,5 +261,103 @@ test('Add file sends the picked document the same way, and a failed send says so
     await pick(new File(['x'], 'notes.txt', { type: 'text/plain' }));
     assert.equal(sent.length, 1, 'a file that is not a document is not sent');
     assert.equal(root.querySelector('[role="alert"]')?.textContent, 'Could not add the document.');
+  });
+});
+
+test('the upload records the stored file it sent, though the message points at the cached copy', async () => {
+  clearCloudAttachmentLocalPathCache();
+  const [uploaded] = await uploadComposerAttachments({
+    token: 'kordi_cs_example',
+    client: {} as never,
+    attachments: [storedItem(new File([BLANK_DOCUMENT_BODY], 'Untitled.md', { type: 'text/markdown' }))],
+    useNativeUpload: true,
+    nativeUpload: async () => ({ attachmentId: 'att_new', objectKey: 'attachments/acct/att_new', sizeBytes: 1, contentType: 'text/markdown', sha256Hex: 'a'.repeat(64), finalizedAt: '2026-10-14T00:00:00Z' }),
+    persistAttachmentPath: (attachmentId, name, path) => persistCloudAttachmentPath(attachmentId, name, path, async () => CACHED_COPY_PATH),
+  });
+  assert.equal(uploaded.attachmentId, 'att_new');
+  // The path the old match looked for is gone from both the message and the cache.
+  assert.equal(cachedCloudAttachmentLocalPath('att_new'), CACHED_COPY_PATH);
+  const delivered = [attachmentMessage('m1', { name: 'Untitled.md', attachmentId: 'att_new', localPath: CACHED_COPY_PATH })];
+  assert.equal(sentChatDocument(delivered, STORED_PATH)?.attachmentId, 'att_new');
+  clearCloudAttachmentLocalPathCache();
+});
+
+for (const chat of [
+  // A group send goes through the outbox and its message carries the cached copy.
+  { kind: 'group', delivered: { localPath: CACHED_COPY_PATH } },
+  // A direct send merges the server message, which may carry no local path at all.
+  { kind: 'direct', delivered: { localPath: null } },
+] as const) {
+  test(`New document opens the editor in a ${chat.kind} chat as soon as the uploaded copy is in the chat`, async () => {
+    clearCloudAttachmentLocalPathCache();
+    await withJsdomRoot(async (mount) => {
+      const opened: CompanionDocument[] = [];
+      const listen = (event: Event) => { opened.push((event as CustomEvent<CompanionDocument>).detail); event.preventDefault(); };
+      window.addEventListener(COMPANION_DOCUMENT_OPEN_EVENT, listen);
+      let finishSend: () => void = () => {};
+      // The send resolves only after delivery and sync, later than the message shows up.
+      const host = hostWith((attachment) => new Promise<void>((resolve) => {
+        rememberUploadedAttachmentSource(attachment.path, 'att_new');
+        finishSend = resolve;
+      }));
+      const entries = (messages: Message[]) => createElement(DocumentReaderHostContext.Provider, { value: host },
+        createElement(ChatDocumentEntries, { conversationId: conversation.id, messages, artifacts: [], store: async (file: File) => storedItem(file), open: openAttachmentInCompanion }));
+
+      const root = await mount(entries([]));
+      await click(button(root, 'New document'));
+      await mount(entries([attachmentMessage('m1', { name: 'Untitled.md', localPath: STORED_PATH })]));
+      assert.equal(opened.length, 0, 'the optimistic copy has no cloud id yet');
+      await mount(entries([attachmentMessage('m1', { name: 'Untitled.md', attachmentId: 'att_new', ...chat.delivered })]));
+      assert.deepEqual(opened.map((document) => [document.artifact.id, document.artifact.attachmentId]), [['attachment:att_new', 'att_new']]);
+
+      await act(async () => { finishSend(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+      assert.equal(opened.length, 1, 'opened once');
+      assert.equal(root.querySelector('[role="alert"]'), null);
+      assert.equal(button(root, 'New document').disabled, false);
+      window.removeEventListener(COMPANION_DOCUMENT_OPEN_EVENT, listen);
+    });
+    clearCloudAttachmentLocalPathCache();
+  });
+}
+
+test('the listed Untitled.md row opens the same editor tab as New document', async () => {
+  await withJsdomRoot(async (mount) => {
+    const opened: CompanionDocument[] = [];
+    const listen = (event: Event) => { opened.push((event as CustomEvent<CompanionDocument>).detail); event.preventDefault(); };
+    window.addEventListener(COMPANION_DOCUMENT_OPEN_EVENT, listen);
+    const delivered = attachmentMessage('m1', { name: 'Untitled.md', attachmentId: 'att_new', localPath: CACHED_COPY_PATH });
+    const root = await mount(createElement(DocumentReaderHostContext.Provider, { value: hostWith() },
+      createElement(ArtifactInspector, {
+        isNativeShell: false,
+        artifacts: withChatDocumentArtifacts([], [delivered]),
+        activeArtifactId: null,
+        onSelectArtifact: () => {},
+        emptyMessage: 'No generated code or docs in this chat yet.',
+      })));
+    const row = root.querySelector('[data-artifact-file-row="true"]') as HTMLElement;
+    assert.match(row.textContent ?? '', /Untitled\.md/);
+    await click(row);
+    const [attachment] = delivered.attachments ?? [];
+    assert.ok(attachment);
+    openAttachmentInCompanion(attachment);
+    assert.deepEqual(opened.map((document) => [document.artifact.id, document.artifact.attachmentId]), [
+      ['attachment:att_new', 'att_new'],
+      ['attachment:att_new', 'att_new'],
+    ], 'the row and the transcript open one tab');
+    window.removeEventListener(COMPANION_DOCUMENT_OPEN_EVENT, listen);
+  });
+});
+
+test('the Artifacts tab shows the entries and the list, with nothing under the list', async () => {
+  const delivered = attachmentMessage('m1', { name: 'Untitled.md', attachmentId: 'att_new', localPath: CACHED_COPY_PATH });
+  await withJsdomRoot(async (mount) => {
+    const root = await mount(artifactsPanel(hostWith(() => {}), [], [delivered]));
+    const inspector = root.querySelector('[data-artifact-inspector="true"]');
+    assert.ok(inspector);
+    assert.deepEqual(Array.from(inspector.children).map((child) => child.getAttribute('data-artifact-file-list')), ['true'], 'no preview or document section under the list');
+    const list = inspector.children[0];
+    // The rows bleed 8px past the list on each side; the list must not scroll sideways for that.
+    assert.match(list.className, /\boverflow-x-hidden\b/);
+    assert.equal(list.querySelectorAll('[data-artifact-file-row="true"]').length, 1);
   });
 });
