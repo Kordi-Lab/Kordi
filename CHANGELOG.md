@@ -4,9 +4,10 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ## [Unreleased]
 
-## [0.0.2-beta.5] - 2026-10-13
+## [0.0.2-beta.5.1] - 2026-10-14
 
-This release replaces `0.0.2-beta.4`, which was built but never released.
+This release replaces `0.0.2-beta.4` and `0.0.2-beta.5`, which were built
+but never released.
 
 ### Added
 
@@ -27,6 +28,10 @@ This release replaces `0.0.2-beta.4`, which was built but never released.
   and iPhone, and a current-time line in Digest calendar views.
 - Added GPT-6 Sol and GPT-6 Luna to the model picker for OpenAI accounts
   ([#1763]).
+- Added New document and Add file to a chat's Artifacts tab on Mac, and listed
+  the chat's Markdown and HTML attachments there ([#1767]).
+- Added provider sign-in, key verification, and route tests on Kordi's hosted
+  service ([#1768]).
 - Added email verification at signup and for existing accounts, and grouped
   active sessions by device ([#1672], [#1708]).
 
@@ -42,6 +47,13 @@ This release replaces `0.0.2-beta.4`, which was built but never released.
 - Showed queued messages as pending bubbles and refreshed the macOS workspace
   with a flat native frame, unified theme colors, and refined iOS headers
   ([#1745], [#1754]).
+- Redesigned the iPhone connector screens: connect from the list with service
+  logos, and open each connector with its logo and a clear Connect action
+  ([#1766]).
+- Combined chat theme, message display, and color mode into one Appearance
+  screen with small previews on iPhone.
+- Removed the presence dot from sidebar chat avatars on Mac; status and last
+  seen stay in the chat header ([#1765]).
 
 ### Fixed
 
@@ -68,6 +80,14 @@ This release replaces `0.0.2-beta.4`, which was built but never released.
   the companion panel, and Markdown emphasis around links.
 - Retried failed requests in owned-agent sessions and fixed self-agent history,
   first sends, and selector stability.
+- Ran agents on this Mac again for accounts saved by earlier versions, and
+  reported agent failures by cause, asking to sign in again when a provider
+  sign-in has expired ([#1765]).
+- Let a group that is no longer listed for you be archived on Mac ([#1765]).
+- Gave agents the transcript of a voice message before their turn starts
+  ([#1769]).
+- Named chats from their first message instead of a dated fallback title
+  ([#1770]).
 
 ## [0.0.2-beta.3] - 2026-09-20
 
@@ -675,7 +695,7 @@ This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
 [Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta4...HEAD
-[0.0.2-beta.5]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta3...V0.0.2.beta5
+[0.0.2-beta.5.1]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta3...V0.0.2.beta5.1
 [0.0.2-beta.3]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta2...V0.0.2.beta3
 [0.0.2-beta.2]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta1...V0.0.2.beta2
 [0.0.2-beta.1]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1...V0.0.2.beta1
@@ -941,3 +961,9 @@ This release is the comparison baseline for beta.8. See the
 [#1752]: https://github.com/Kordi-Lab/Kordi/pull/1752
 [#1754]: https://github.com/Kordi-Lab/Kordi/pull/1754
 [#1763]: https://github.com/Kordi-Lab/Kordi/pull/1763
+[#1765]: https://github.com/Kordi-Lab/Kordi/pull/1765
+[#1766]: https://github.com/Kordi-Lab/Kordi/pull/1766
+[#1767]: https://github.com/Kordi-Lab/Kordi/pull/1767
+[#1768]: https://github.com/Kordi-Lab/Kordi/pull/1768
+[#1769]: https://github.com/Kordi-Lab/Kordi/pull/1769
+[#1770]: https://github.com/Kordi-Lab/Kordi/pull/1770
