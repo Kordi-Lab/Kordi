@@ -2,10 +2,7 @@ import {
   fetchDesktopChatTurnState,
 } from '@/lib/desktop';
 import type { DesktopChatTurnSnapshot } from '@/kordi-app/types';
-import {
-  cloudAgentNoProviderNoticeText,
-  isCloudAgentNoProviderConfiguredError,
-} from './cloudAgentMessages';
+import { cloudAgentProviderFailureNotice } from './cloudAgentMessages';
 import type {
   CloudAccount,
   CloudAuthClient,
@@ -25,9 +22,8 @@ import {
 export const CLOUD_AGENT_TURN_POLL_MS = 500;
 
 export function cloudAgentLocalFailureMessage(error: unknown): string {
-  if (isCloudAgentNoProviderConfiguredError(error)) {
-    return cloudAgentNoProviderNoticeText();
-  }
+  const notice = cloudAgentProviderFailureNotice(error);
+  if (notice) return notice;
   if (error instanceof Error && error.message.trim()) {
     return error.message.trim();
   }

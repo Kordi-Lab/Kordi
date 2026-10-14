@@ -23,8 +23,7 @@ import { publishModelSubsessions } from './agentSubsessionSync';
 import { registerCloudBackgroundFollowUpPublisher } from './cloudBackgroundFollowUps';
 import { cloudAgentPublicBackgroundToolsFromTurn } from './cloudAgentBackgroundSessions';
 import {
-  cloudAgentNoProviderNoticeText,
-  isCloudAgentNoProviderConfiguredError,
+  cloudAgentProviderFailureNotice,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
 import {
@@ -349,13 +348,10 @@ export async function respondToCloudGroupAgentMention(
   const responseText = succeeded ? finalTurn.assistantText.trim() : '';
   const failureMessage = succeeded
     ? null
-    : isCloudAgentNoProviderConfiguredError(
-        finalTurn.error || finalTurn.message,
-      )
-      ? cloudAgentNoProviderNoticeText()
-      : finalTurn.error?.trim()
+    : cloudAgentProviderFailureNotice(finalTurn.error || finalTurn.message)
+      ?? (finalTurn.error?.trim()
         || finalTurn.message?.trim()
-        || 'Cloud agent returned no text response';
+        || 'Cloud agent returned no text response');
   const responseDeliveryState: 'complete' | 'failed' = succeeded
     ? 'complete'
     : 'failed';

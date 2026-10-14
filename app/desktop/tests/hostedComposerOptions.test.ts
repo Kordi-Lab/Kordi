@@ -220,6 +220,25 @@ test('hosted-only accounts: every hosted prefix, and hosted copies with no local
   assert.equal(isHostedOnlyAccountChoice('profile:unknown', { hostedChoices: [], localChoices: [] }), false);
 });
 
+test('a snapshot published under a device alias is not offered as a saved account', () => {
+  const legacy = [
+    ...snapshots,
+    snapshot('local-active-oauth', 'Legacy sign-in', 'openai-codex', 'gpt-5.5'),
+    snapshot('local-active-api-key', 'Legacy key', 'cerebras', null),
+  ];
+  for (const localChoices of [new Set(['profile:work']), null]) {
+    const offered = hostedRouteAccounts(hostedAccountsFromSnapshots(legacy), catalog, localChoices);
+    const choices = offered.map((item) => item.authChoice);
+    assert.equal(choices.some((choice) => choice.startsWith('local-active-')), false);
+    assert.ok(choices.includes('cloud-login:team') && choices.includes('cloud-api-key:research'));
+    assert.equal(hostedAuthOptions(offered, null).some((option) => option.label.startsWith('Legacy ')), false);
+    assert.equal(hostedProviderOptions(offered, null).some((option) => option.label.startsWith('Legacy ')), false);
+    assert.deepEqual(hostedModelOptions(offered), hostedModelOptions(hostedRouteAccounts(hostedAccountsFromSnapshots(snapshots), catalog, localChoices)));
+  }
+  assert.equal(isHostedOnlyAccountChoice('local-active-oauth', { hostedChoices: ['local-active-oauth'], localChoices: ['profile:work'] }), false);
+  assert.equal(isHostedOnlyAccountChoice('local-active-api-key', { hostedChoices: ['local-active-api-key'], localChoices: [] }), false);
+});
+
 test('until this Mac has loaded its accounts, no hosted copy of them counts as hosted-only', () => {
   // The desktop auth state is null (a load error, or the reload after a Kordi session change).
   assert.equal(isHostedOnlyAccountChoice('profile:work', { hostedChoices: ['profile:work'], localChoices: null }), false);
