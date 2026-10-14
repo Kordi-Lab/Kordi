@@ -137,7 +137,9 @@ test('a Mac-hosted file keeps edits in the draft that Upload to Kordi saves afte
     const share = Array.from(root.querySelectorAll('button')).find((entry) => entry.textContent?.trim() === 'Share')!;
     await act(async () => { share.click(); });
     const upload = Array.from(root.querySelectorAll('button')).find((entry) => entry.textContent?.trim() === 'Upload to Kordi')!;
-    await act(async () => { upload.click(); await new Promise((resolve) => setTimeout(resolve, 20)); });
+    await act(async () => { upload.click(); });
+    // The upload resolves through several promise hops; wait for the save instead of a fixed delay.
+    await waitForReactCondition(() => calls.some((call) => call.method === 'saveDocumentContent'), 'the draft is saved after the upload');
     assert.ok(calls.some((call) => call.method === 'uploadDocument'));
     const save = calls.find((call) => call.method === 'saveDocumentContent')?.args[1] as { source: string };
     assert.match(save.source, /the \*clearest\* niche/);

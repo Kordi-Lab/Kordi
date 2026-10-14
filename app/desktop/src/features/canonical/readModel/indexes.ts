@@ -3,7 +3,7 @@ import { sortedCanonicalMessages, type SortableCanonicalMessage } from './messag
 import { isPipIdentity } from '@/features/pip/pipIdentity';
 import { transcriptEntries } from './planCardEntries';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
-import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { isCloudAgentStoredNoProviderFailure } from '@/features/cloud/cloudAgentMessages';
 import type {
   CanonicalIdentity,
   CanonicalSessionMessage,
@@ -368,7 +368,7 @@ function noProviderRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
     if (message.sourceTransport !== 'desktop-chat-ui') continue;
     if (message.messageKind !== 'agent-turn' || message.status !== 'failed') continue;
     const content = contentRecord(message.content);
-    if (!isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail))) continue;
+    if (!isCloudAgentStoredNoProviderFailure(message.contentText || stringValue(content.error) || stringValue(content.detail))) continue;
     for (const requestId of requestIdsForMessage(message)) {
       const failureIds = syntheticFailureIdsByRequestId.get(requestId) ?? new Set<string>();
       failureIds.add(message.id);
@@ -382,7 +382,7 @@ function noProviderRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
   for (const message of messages) {
     if (message.sourceTransport === 'desktop-chat' && message.messageKind === 'agent-turn') {
       const content = contentRecord(message.content);
-      if (isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail))) {
+      if (isCloudAgentStoredNoProviderFailure(message.contentText || stringValue(content.error) || stringValue(content.detail))) {
         if (requestIdsForMessage(message).some((requestId) => syntheticRequestIds.has(requestId))) {
           duplicateIds.add(message.id);
         }
@@ -406,7 +406,7 @@ function noProviderRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
       || deliveryState === 'cancelled'
       || deliveryState === 'processing_failed';
     const errorText = message.contentText || stringValue(content.error) || stringValue(content.detail);
-    if (isUnsuccessful || !message.contentText.trim() || isCloudAgentNoProviderConfiguredError(errorText)) continue;
+    if (isUnsuccessful || !message.contentText.trim() || isCloudAgentStoredNoProviderFailure(errorText)) continue;
     for (const requestId of requestIdsForMessage(message)) {
       for (const failureId of syntheticFailureIdsByRequestId.get(requestId) ?? []) {
         duplicateIds.add(failureId);

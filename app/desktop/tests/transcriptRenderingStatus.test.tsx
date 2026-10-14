@@ -249,7 +249,7 @@ test('no-provider failed agent turn renders red inline text with authentication 
   assert.doesNotMatch(markup, /rounded-full border border-rose/);
 });
 
-test('unknown-model provider failures render as the compact authentication notice', () => {
+test('unknown-model failures render as a model notice without the authentication link', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-unknown-model',
     sessionId: 'session-1',
@@ -270,9 +270,36 @@ test('unknown-model provider failures render as the compact authentication notic
     onOpenAuthSettings: () => undefined,
   }));
 
-  assert.match(markup, /No provider configured yet/);
-  assert.match(markup, />Open authentication</);
+  assert.match(markup, /This model is not available for the selected account\./);
+  assert.doesNotMatch(markup, /No provider configured yet/);
+  assert.doesNotMatch(markup, />Open authentication</);
   assert.doesNotMatch(markup, /Unknown model: openai\/gpt-5\.4/);
+});
+
+test('an unusable saved sign-in renders the sign-in notice with the authentication link', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-sign-in-again',
+    sessionId: 'session-1',
+    prompt: 'hello',
+    status: 'failed',
+    message: 'Failed',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: false,
+    error: 'ChatGPT OAuth credentials are not usable. Sign in to ChatGPT again, or switch this provider to an OpenAI API key.',
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true,
+    turn,
+    historical: true,
+    onOpenAuthSettings: () => undefined,
+  }));
+
+  assert.match(markup, /Sign in again to use this account\./);
+  assert.match(markup, />Open authentication</);
+  assert.doesNotMatch(markup, /OAuth credentials are not usable/);
 });
 
 test('no-provider live turn keeps the source quote so reply context stays stable', () => {

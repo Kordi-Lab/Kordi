@@ -98,7 +98,7 @@ test('cloud presence hydrates fallback direct chat participants by account id', 
   assert.equal(buildParticipantSpaces(hydrated)[0]?.avatarStack[0]?.presenceStatus, 'offline');
 });
 
-test('WorkspaceSidebar shows participant presence lights in direct chat rows only', () => {
+test('WorkspaceSidebar leaves presence to the chat header and shows no light on direct chat rows', () => {
   const chatConversations = [conversation({
     canonicalParticipants: [
       { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me', presenceStatus: 'online' },
@@ -118,8 +118,8 @@ test('WorkspaceSidebar shows participant presence lights in direct chat rows onl
     initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
   }) as never));
 
-  assert.match(markup, /class="app-presence-light"/);
-  assert.match(markup, /data-presence-status="online"/);
+  assert.doesNotMatch(markup, /class="app-presence-light"/);
+  assert.doesNotMatch(markup, /data-presence-status=/);
 });
 
 test('WorkspaceSidebar hides presence lights on group row avatar stacks', () => {

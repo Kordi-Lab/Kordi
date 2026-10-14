@@ -476,10 +476,11 @@ export function useKordiChatSessionActions({
   ) => {
     if (!isNativeShell) return;
     await runChatListAction(
-      () => setCloudGroupSpaceArchived(groupSpaceId, sessionIds, archived),
+      // A stale group is archived locally; the refresh drops its canonical session from the list.
+      () => setCloudGroupSpaceArchived(groupSpaceId, sessionIds, archived).then(() => (archived ? refreshCanonicalState() : undefined)),
       archived ? 'Unable to archive group' : 'Unable to restore group',
     );
-  }, [isNativeShell, runChatListAction, setCloudGroupSpaceArchived]);
+  }, [isNativeShell, refreshCanonicalState, runChatListAction, setCloudGroupSpaceArchived]);
 
   return {
     renameSession,
