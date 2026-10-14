@@ -20,6 +20,7 @@ pub(crate) mod attachments;
 pub(crate) mod background_tasks;
 pub(crate) mod canonical_sync;
 mod hosted_provider_auth;
+pub(crate) mod interrupted_requests;
 pub(crate) mod memory;
 mod message_execution;
 pub(crate) mod message_route;
@@ -66,6 +67,7 @@ use cloud_scheduled_runtime::{
 };
 
 use canonical_sync::sync_completed_desktop_session_to_canonical;
+use interrupted_requests::close_and_sync_interrupted_request;
 use message_route::apply_desktop_chat_message_route;
 use model_options::ensure_provider_ready_for_send;
 pub(super) use session_actions::expand_home_project_path;
@@ -166,6 +168,7 @@ pub async fn desktop_chat_session_detail(
             .cloned()
             .ok_or_else(|| "Session is unavailable".to_string())?
     };
+    close_and_sync_interrupted_request(&manager, &cwd, &target_session_id, &session).await;
     let session = session.lock().await;
     session.detail().map_err(|err| err.to_string())
 }
