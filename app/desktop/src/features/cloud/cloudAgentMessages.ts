@@ -60,6 +60,8 @@ export type {
 } from './cloudAgentExecutionSnapshot';
 
 export const CLOUD_AGENT_NO_PROVIDER_NOTICE = 'No provider configured yet.';
+export const CLOUD_AGENT_MODEL_UNAVAILABLE_NOTICE = 'This model is not available for the selected account.';
+export const CLOUD_AGENT_SIGN_IN_AGAIN_NOTICE = 'Sign in again to use this account.';
 
 export type CloudAgentFallbackRunStatus = 'queued' | 'leased' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
 
@@ -109,9 +111,13 @@ export function cloudAgentFallbackErrorNotice(input: { code?: string | null; mes
   return message?.trim() || 'Kordi could not finish this reply. Try again.';
 }
 
-export function isCloudAgentNoProviderConfiguredError(value: unknown): boolean {
+function normalizedErrorText(value: unknown): string {
   const message = value instanceof Error ? value.message : String(value ?? '');
-  const normalized = message.trim().toLowerCase();
+  return message.trim().toLowerCase();
+}
+
+export function isCloudAgentNoProviderConfiguredError(value: unknown): boolean {
+  const normalized = normalizedErrorText(value);
   if (!normalized) return false;
   return (
     /no\s+\w+\s+credentials\s+are\s+available/.test(normalized)
@@ -121,7 +127,6 @@ export function isCloudAgentNoProviderConfiguredError(value: unknown): boolean {
     || normalized.includes('no provider configured')
     || normalized.includes('no usable provider credential')
     || normalized.includes('no saved accounts or keys')
-    || normalized.includes('unknown model:')
     || normalized.includes('add openai_api_key')
     || normalized.includes('add anthropic_api_key')
     || normalized.includes('lm studio local endpoint is not reachable')
@@ -131,6 +136,35 @@ export function isCloudAgentNoProviderConfiguredError(value: unknown): boolean {
 
 export function cloudAgentNoProviderNoticeText(): string {
   return CLOUD_AGENT_NO_PROVIDER_NOTICE;
+}
+
+/** The runtime could not resolve the route's model for the account it runs on. */
+export function isCloudAgentModelUnavailableError(value: unknown): boolean {
+  const normalized = normalizedErrorText(value);
+  return normalized.includes('unknown model:') || normalized === CLOUD_AGENT_MODEL_UNAVAILABLE_NOTICE.toLowerCase();
+}
+
+/** A saved sign-in exists but is expired or could not be refreshed. */
+export function isCloudAgentSignInAgainError(value: unknown): boolean {
+  const normalized = normalizedErrorText(value);
+  return normalized.includes('oauth credentials are not usable') || normalized === CLOUD_AGENT_SIGN_IN_AGAIN_NOTICE.toLowerCase();
+}
+
+/** Older builds stored an unknown model as a no-provider failure; stored history still reads that way. */
+export function isCloudAgentStoredNoProviderFailure(value: unknown): boolean {
+  return isCloudAgentNoProviderConfiguredError(value) || isCloudAgentModelUnavailableError(value);
+}
+
+/** The short notice for an account or model failure, or null for any other error. */
+export function cloudAgentProviderFailureNotice(value: unknown): string | null {
+  if (isCloudAgentSignInAgainError(value)) return CLOUD_AGENT_SIGN_IN_AGAIN_NOTICE;
+  if (isCloudAgentModelUnavailableError(value)) return CLOUD_AGENT_MODEL_UNAVAILABLE_NOTICE;
+  return isCloudAgentNoProviderConfiguredError(value) ? CLOUD_AGENT_NO_PROVIDER_NOTICE : null;
+}
+
+/** Failures the Authentication page can fix: a missing account or an expired sign-in. */
+export function cloudAgentProviderFailureNeedsAuthentication(value: unknown): boolean {
+  return isCloudAgentSignInAgainError(value) || isCloudAgentNoProviderConfiguredError(value);
 }
 
 export type CloudAgentCancelEnvelope = {

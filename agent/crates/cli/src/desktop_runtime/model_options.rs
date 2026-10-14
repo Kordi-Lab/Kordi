@@ -296,6 +296,10 @@ pub(super) fn resolve_model_candidate(
         if !login::model_id_allowed_for_active_auth(settings, provider, model_id) {
             bail!("Model is not available for the active {provider} auth method: {model_id}");
         }
+        // A provider with no sign-in on this Mac is a credential problem, not a model problem.
+        if !login::provider_configured_for_settings(settings, provider) {
+            bail!("No usable provider credential for {provider} on this Mac.");
+        }
         return registry
             .find(provider, model_id)
             .cloned()

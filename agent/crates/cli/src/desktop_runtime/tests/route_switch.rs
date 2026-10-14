@@ -274,3 +274,36 @@ async fn assert_runtime_request_model_context(
     );
     Ok(())
 }
+
+#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
+#[tokio::test]
+async fn selecting_a_provider_without_a_sign_in_reports_a_credential_problem() -> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let cwd = tempfile::tempdir().expect("cwd tempdir");
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+    let _anthropic = EnvVarGuard::unset("ANTHROPIC_API_KEY");
+    let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
+    Settings {
+        default_provider: Some("openai".to_string()),
+        default_model: Some("gpt-5.5".to_string()),
+        ..Settings::default()
+    }
+    .save_global()?;
+
+    let mut runtime = DesktopRuntimeSession::create_with_id(
+        cwd.path().to_path_buf(),
+        "session:self-agent:missing-sign-in",
+    )
+    .await?;
+    let error = runtime
+        .set_model("anthropic/claude-opus-4-8")
+        .expect_err("a provider with no sign-in cannot be selected");
+    assert!(
+        error
+            .to_string()
+            .contains("No usable provider credential for anthropic"),
+        "{error}"
+    );
+    Ok(())
+}

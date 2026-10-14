@@ -354,19 +354,6 @@ enum ConnectorsModel {
         guard let state else { return "Not connected" }
         return state.actEnabled ? "Connected · Can act" : "Connected · Read only"
     }
-
-    static func systemImage(_ providerId: ConnectorProviderId) -> String {
-        switch providerId {
-        case .googleCalendar: "calendar"
-        case .gmail: "envelope"
-        case .github: "arrow.triangle.branch"
-        case .slack: "number"
-        case .outlook: "envelope"
-        case .macCalendar: "calendar.badge.clock"
-        case .macContacts: "person.crop.circle"
-        case .macNotificationCenter: "bell.badge"
-        }
-    }
 }
 
 /// Decides whether the Connectors settings row exists. The server announces

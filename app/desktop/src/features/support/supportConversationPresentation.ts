@@ -1,5 +1,5 @@
 import type { Conversation, Message } from '@/kordi-app/types';
-import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { isCloudAgentStoredNoProviderFailure } from '@/features/cloud/cloudAgentMessages';
 import {
   isKordiSupportConversation,
   KORDI_SUPPORT_ACCOUNT_ID,
@@ -15,7 +15,7 @@ function isStaleLocalProviderFailure(message: Message): boolean {
     message.turn?.assistantText,
     message.detail,
     message.text,
-  ].some((value) => isCloudAgentNoProviderConfiguredError(value));
+  ].some((value) => isCloudAgentStoredNoProviderFailure(value));
 }
 
 function supportContactResponseText(message: Message): string {
