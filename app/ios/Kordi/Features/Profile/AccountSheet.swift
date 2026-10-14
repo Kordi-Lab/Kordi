@@ -9,17 +9,13 @@ enum AccountSettingsRoute: String, Hashable {
     case notifications
     case connectors
     case memory
-    case colorMode = "color-mode"
-    case messageDisplay = "message-display"
-    case chatTheme = "chat-theme"
+    case appearance
 }
 
 struct AccountSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: AppModel
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
-    @AppStorage(MessageLayout.storageKey) private var messageLayoutRawValue = MessageLayout.chat.rawValue
-    @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
     @State private var path: [AccountSettingsRoute]
     // Sample connectors for the debug preview argument; nil otherwise.
     @State private var previewConnectorsClient: (any ConnectorsClient)? = ConnectorsAvailability.makeClient()
@@ -108,14 +104,8 @@ struct AccountSheet: View {
                 }
 
                 SettingsSectionTitle("Appearance")
-                settingsLink(.colorMode) {
-                    CompactSettingsLabel(title: "Color mode", systemImage: "circle.lefthalf.filled", value: (AppAppearance(rawValue: appearanceRawValue) ?? .system).label)
-                }
-                settingsLink(.messageDisplay) {
-                    CompactSettingsLabel(title: "Message display", systemImage: "text.bubble", value: MessageLayout.resolve(messageLayoutRawValue).title)
-                }
-                settingsLink(.chatTheme) {
-                    CompactSettingsLabel(title: "Chat theme", systemImage: "paintbrush", value: (KordiChatTheme(rawValue: chatThemeRawValue) ?? .quiet).label)
+                settingsLink(.appearance) {
+                    CompactSettingsLabel(title: "Appearance", systemImage: "paintbrush")
                 }
                 SettingsDivider()
 
@@ -179,8 +169,8 @@ struct AccountSheet: View {
                     ),
                     viewerAccountId: model.account?.accountId
                 )
-            case .colorMode, .messageDisplay, .chatTheme:
-                CompactAppearanceSettingsView(route: route)
+            case .appearance:
+                AppearanceSettingsView()
             }
         }
         .task { await model.refreshMemoryCapabilities() }
@@ -196,11 +186,7 @@ struct AccountSheet: View {
     }
 
     private var preferredColorScheme: ColorScheme? {
-        switch AppAppearance(rawValue: appearanceRawValue) ?? .system {
-        case .system: nil
-        case .light: .light
-        case .dark: .dark
-        }
+        AppearanceSettingsSelection.preferredColorScheme(appearanceRawValue)
     }
 
     private var accountHeader: some View {
@@ -239,71 +225,6 @@ struct AccountSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("settings-\(route.rawValue)")
-    }
-}
-
-private struct CompactAppearanceSettingsView: View {
-    let route: AccountSettingsRoute
-    @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
-    @AppStorage(MessageLayout.storageKey) private var messageLayoutRawValue = MessageLayout.chat.rawValue
-    @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
-
-    var body: some View {
-        List {
-            switch route {
-            case .colorMode:
-                ForEach(AppAppearance.allCases) { appearance in
-                    option(appearance.label, identifier: appearance.rawValue, icon: appearance.systemImage, selected: appearanceRawValue == appearance.rawValue) {
-                        appearanceRawValue = appearance.rawValue
-                    }
-                }
-            case .messageDisplay:
-                ForEach(MessageLayout.allCases) { layout in
-                    option(layout.title, identifier: layout.rawValue, detail: layout == .chat ? "Messages in familiar chat bubbles" : "A compact, continuous conversation", icon: layout == .chat ? "bubble.left.and.bubble.right" : "text.alignleft", selected: messageLayoutRawValue == layout.rawValue) {
-                        messageLayoutRawValue = layout.rawValue
-                    }
-                }
-            case .chatTheme:
-                ForEach(KordiChatTheme.allCases) { theme in
-                    option(theme.label, identifier: theme.rawValue, detail: theme.detail, icon: theme.systemImage, selected: chatThemeRawValue == theme.rawValue) {
-                        chatThemeRawValue = theme.rawValue
-                    }
-                }
-            default:
-                EmptyView()
-            }
-        }
-        .listStyle(.plain)
-        .environment(\.defaultMinListRowHeight, 48)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .sensoryFeedback(.selection, trigger: appearanceRawValue + messageLayoutRawValue + chatThemeRawValue)
-    }
-
-    private var title: String {
-        switch route {
-        case .colorMode: "Color mode"
-        case .messageDisplay: "Message display"
-        default: "Chat theme"
-        }
-    }
-
-    private func option(_ title: String, identifier: String, detail: String? = nil, icon: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack {
-                CompactSettingsLabel(title: title, subtitle: detail, systemImage: icon, titleLineLimit: 1)
-                Spacer(minLength: 8)
-                if selected {
-                    Image(systemName: "checkmark").foregroundStyle(KordiTheme.signalBlue)
-                }
-            }
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("appearance-option-\(identifier)")
-        .accessibilityValue(selected ? "Selected" : "")
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -1065,402 +986,6 @@ private struct ProfileSettingsView: View {
     }
 }
 
-private struct AppearanceSettingsView: View {
-    @AppStorage(MessageLayout.storageKey) private var messageLayoutRawValue = MessageLayout.chat.rawValue
-    @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
-    @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var selectedAppearance: AppAppearance {
-        AppAppearance(rawValue: appearanceRawValue) ?? .system
-    }
-
-    private var selectedChatTheme: KordiChatTheme {
-        KordiChatTheme(rawValue: chatThemeRawValue) ?? .quiet
-    }
-
-    private var appearanceColumns: [GridItem] {
-        if dynamicTypeSize.isAccessibilitySize {
-            return [GridItem(.flexible())]
-        }
-        return Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
-    }
-
-    private var chatThemeColumns: [GridItem] {
-        if dynamicTypeSize.isAccessibilitySize {
-            return [GridItem(.flexible())]
-        }
-        return Array(repeating: GridItem(.flexible(), spacing: 12), count: 2)
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Choose how Kordi looks on this iPhone.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Message layout").font(.headline)
-                    Picker("Message layout", selection: $messageLayoutRawValue) {
-                        ForEach(MessageLayout.allCases) { layout in
-                            Text(layout.title).tag(layout.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .accessibilityIdentifier("message-layout-picker")
-                    Text("Chat uses bubbles. Threads uses a compact, continuous list.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
-                Divider()
-
-                Text("App appearance")
-                    .font(.headline)
-
-                LazyVGrid(columns: appearanceColumns, spacing: 12) {
-                    ForEach(AppAppearance.allCases) { appearance in
-                        AppearanceOptionButton(
-                            appearance: appearance,
-                            isSelected: appearance == selectedAppearance,
-                            usesWideLayout: dynamicTypeSize.isAccessibilitySize
-                        ) {
-                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-                                appearanceRawValue = appearance.rawValue
-                            }
-                        }
-                    }
-                }
-
-                Label(selectedAppearance.detail, systemImage: selectedAppearance.systemImage)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
-                    .contentTransition(.opacity)
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Chat theme")
-                        .font(.headline)
-                    Text("Changes conversation backgrounds and message colors on this iPhone.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
-                LazyVGrid(columns: chatThemeColumns, spacing: 12) {
-                    ForEach(KordiChatTheme.allCases) { theme in
-                        ChatThemeOptionButton(
-                            theme: theme,
-                            isSelected: theme == selectedChatTheme,
-                            usesWideLayout: dynamicTypeSize.isAccessibilitySize
-                        ) {
-                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-                                chatThemeRawValue = theme.rawValue
-                            }
-                        }
-                    }
-                }
-
-                Label(selectedChatTheme.detail, systemImage: selectedChatTheme.systemImage)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
-                    .contentTransition(.opacity)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 20)
-        }
-        .background(Color(uiColor: .systemGroupedBackground))
-        .preferredColorScheme(preferredColorScheme)
-        .navigationTitle("Appearance")
-        .navigationBarTitleDisplayMode(.inline)
-        .sensoryFeedback(.selection, trigger: appearanceRawValue + ":" + chatThemeRawValue)
-    }
-
-    private var preferredColorScheme: ColorScheme? {
-        switch selectedAppearance {
-        case .system: nil
-        case .light: .light
-        case .dark: .dark
-        }
-    }
-}
-
-private struct ChatThemeOptionButton: View {
-    let theme: KordiChatTheme
-    let isSelected: Bool
-    let usesWideLayout: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Group {
-                if usesWideLayout {
-                    HStack(spacing: 14) {
-                        ChatThemePreviewThumbnail(theme: theme)
-                            .frame(width: 112, height: 80)
-                        selectionLabel
-                    }
-                } else {
-                    VStack(spacing: 10) {
-                        ChatThemePreviewThumbnail(theme: theme)
-                            .aspectRatio(4 / 3, contentMode: .fit)
-                        selectionLabel
-                    }
-                }
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                isSelected
-                    ? theme.accent.opacity(0.09)
-                    : Color(uiColor: .secondarySystemGroupedBackground),
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(
-                        isSelected ? theme.accent : Color(uiColor: .separator).opacity(0.45),
-                        lineWidth: isSelected ? 2 : 0.5
-                    )
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(theme.label) chat theme")
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-    }
-
-    private var selectionLabel: some View {
-        HStack(spacing: 6) {
-            Text(theme.label)
-                .font(.subheadline.weight(isSelected ? .semibold : .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-            Spacer(minLength: 0)
-            if isSelected {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(theme.accent)
-                    .accessibilityHidden(true)
-            }
-        }
-    }
-}
-
-private struct ChatThemePreviewThumbnail: View {
-    let theme: KordiChatTheme
-
-    var body: some View {
-        KordiChatWallpaper(theme: theme)
-            .overlay {
-                VStack(spacing: 7) {
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(KordiTheme.agentViolet)
-                            .frame(width: 12, height: 12)
-                        Capsule()
-                            .fill(theme.peerText.opacity(0.45))
-                            .frame(width: 34, height: 4)
-                        Spacer(minLength: 0)
-                    }
-                    HStack {
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(theme.peerBubble)
-                            .frame(width: 44, height: 13)
-                        Spacer(minLength: 0)
-                    }
-                    HStack {
-                        Spacer(minLength: 0)
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(theme.ownBubble)
-                            .frame(width: 58, height: 13)
-                    }
-                }
-                .padding(8)
-            }
-            .compositingGroup()
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color(uiColor: .separator).opacity(0.55), lineWidth: 0.5)
-            }
-    }
-}
-
-private struct AppearanceOptionButton: View {
-    let appearance: AppAppearance
-    let isSelected: Bool
-    let usesWideLayout: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Group {
-                if usesWideLayout {
-                    HStack(spacing: 14) {
-                        AppearancePreviewThumbnail(appearance: appearance)
-                            .frame(width: 112, height: 80)
-                        selectionLabel
-                    }
-                } else {
-                    VStack(spacing: 10) {
-                        AppearancePreviewThumbnail(appearance: appearance)
-                            .aspectRatio(4 / 3, contentMode: .fit)
-                        selectionLabel
-                    }
-                }
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                isSelected
-                    ? KordiTheme.signalBlue.opacity(0.09)
-                    : Color(uiColor: .secondarySystemGroupedBackground),
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(
-                        isSelected ? KordiTheme.signalBlue : Color(uiColor: .separator).opacity(0.45),
-                        lineWidth: isSelected ? 2 : 0.5
-                    )
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(appearance.label) appearance")
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-    }
-
-    private var selectionLabel: some View {
-        HStack(spacing: 6) {
-            Text(appearance.label)
-                .font(.subheadline.weight(isSelected ? .semibold : .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-            Spacer(minLength: 0)
-            if isSelected {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(KordiTheme.signalBlue)
-                    .accessibilityHidden(true)
-            }
-        }
-    }
-}
-
-private struct AppearancePreviewThumbnail: View {
-    @Environment(\.colorScheme) private var systemColorScheme
-    let appearance: AppAppearance
-
-    var body: some View {
-        AppearancePreviewCanvas()
-            .environment(\.colorScheme, previewColorScheme)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color(uiColor: .separator).opacity(0.55), lineWidth: 0.5)
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if appearance == .system {
-                    Image(systemName: "circle.lefthalf.filled")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .padding(5)
-                        .background(.thinMaterial, in: Circle())
-                        .padding(5)
-                        .accessibilityHidden(true)
-                }
-            }
-    }
-
-    private var previewColorScheme: ColorScheme {
-        switch appearance {
-        case .system: systemColorScheme
-        case .light: .light
-        case .dark: .dark
-        }
-    }
-}
-
-private struct AppearancePreviewCanvas: View {
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 5) {
-                Circle()
-                    .fill(Color(uiColor: .systemGray4))
-                    .frame(width: 12, height: 12)
-                Spacer(minLength: 0)
-                HStack(spacing: 2) {
-                    ForEach(0..<3, id: \.self) { index in
-                        Circle()
-                            .fill(markColors[index])
-                            .frame(width: 4, height: 4)
-                    }
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "plus")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.primary)
-            }
-
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(Color(uiColor: .tertiarySystemFill))
-                .frame(height: 9)
-
-            conversationRow(accent: KordiTheme.brandCyan, primaryWidth: 29, secondaryWidth: 38)
-            conversationRow(accent: KordiTheme.agentViolet, primaryWidth: 35, secondaryWidth: 27)
-        }
-        .padding(8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: .systemBackground))
-    }
-
-    private var markColors: [Color] {
-        if colorScheme == .dark {
-            return [Color(uiColor: .systemGray), Color(uiColor: .systemGray3), .white]
-        }
-        return [KordiTheme.brandPink, KordiTheme.brandCyan, KordiTheme.brandAmber]
-    }
-
-    private func conversationRow(
-        accent: Color,
-        primaryWidth: CGFloat,
-        secondaryWidth: CGFloat
-    ) -> some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(accent.opacity(0.78))
-                .frame(width: 12, height: 12)
-            VStack(alignment: .leading, spacing: 3) {
-                Capsule()
-                    .fill(Color.primary.opacity(0.68))
-                    .frame(width: primaryWidth, height: 3)
-                Capsule()
-                    .fill(Color.secondary.opacity(0.42))
-                    .frame(width: secondaryWidth, height: 3)
-            }
-            Spacer(minLength: 0)
-        }
-    }
-}
-
-private extension AppAppearance {
-    var detail: String {
-        switch self {
-        case .system: "Matches your iPhone appearance automatically."
-        case .light: "Keeps Kordi light in every environment."
-        case .dark: "Keeps Kordi dark in every environment."
-        }
-    }
-}
-
 #Preview("Account settings") {
     AccountSheet()
         .environmentObject(AppModel(previewMode: true))
@@ -1500,10 +1025,13 @@ struct AccountAuthenticationDetailPreview: View {
 }
 
 struct AppearanceSettingsPreview: View {
+    @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
+
     var body: some View {
         NavigationStack {
             AppearanceSettingsView()
         }
+        .preferredColorScheme(AppearanceSettingsSelection.preferredColorScheme(appearanceRawValue))
         .tint(KordiTheme.signalBlue)
     }
 }

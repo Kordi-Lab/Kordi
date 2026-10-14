@@ -126,15 +126,6 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
         }
     }
 
-    var detail: String {
-        switch self {
-        case .quiet: "Calm neutrals with restrained blue signals."
-        case .midnight: "Deep violet surfaces with a subtle star field."
-        case .sand: "Low-glare earth tones with warm message color."
-        case .ocean: "Cool mineral surfaces with a quiet ripple pattern."
-        }
-    }
-
     var systemImage: String {
         switch self {
         case .quiet: "message.fill"
