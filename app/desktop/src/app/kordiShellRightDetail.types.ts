@@ -35,4 +35,5 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'displayedContacts'
   | 'handleStartChatWithPerson'
   | 'onForwardMessage'
+  | 'handleSendChatMessage'
 >;

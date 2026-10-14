@@ -1,4 +1,5 @@
 import { isChatNavigation } from '@/features/chat/chatNavigation';
+import { isEmptyChatSelectionId } from '@/features/chat/draftSessions';
 import { Brain, CheckCircle2, FolderOpen, Info, Layers3 } from 'lucide-react';
 
 import { ChatDetailPanel } from '@/pages/ChatDetailPanel';
@@ -81,6 +82,10 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
           isNativeShell: args.isNativeShell,
           startChatWithPerson: args.handleStartChatWithPerson,
           forwardMessage: args.onForwardMessage,
+          // Cloud chats take a document the way the composer sends one: an attachment-only message.
+          sendAttachmentMessage: args.activeConversationUsesCollaboration && !isEmptyChatSelectionId(args.activeConv.id)
+            ? (attachment) => args.handleSendChatMessage('', undefined, undefined, [attachment])
+            : undefined,
         }) }}>
         <ChatDetailPanel
           isNativeShell={args.isNativeShell}
