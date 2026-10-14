@@ -1,5 +1,7 @@
 import { Braces, FileText, Globe2, type LucideIcon } from 'lucide-react';
 
+import { documentShareApiForEnvironment } from '@/features/documents/documentShareApi';
+import { documentDisplayName, useDocumentTitle, type DocumentTitleFetch } from '@/features/documents/documentTitles';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { ConversationParticipant, SessionArtifact } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
@@ -37,18 +39,25 @@ function artifactPeople(artifact: Pick<SessionArtifact, 'createdByAccountId'>, p
   return { creator, others: creator ? people.filter((participant) => participant !== creator) : [] };
 }
 
+const fetchDocumentTitle: DocumentTitleFetch = (attachmentId) => documentShareApiForEnvironment().getDocument(attachmentId);
+
 function PersonAvatar({ participant, className }: { participant: ConversationParticipant; className: string }) {
   const name = participant.publicName?.trim() || participant.name;
   return <IdentityAvatar kind="human" seed={participant.avatarKey ?? participant.humanId ?? participant.id} name={name} imageUrl={participant.profileImageUrl} className={className} />;
 }
 
-export function ArtifactListRow({ artifact, location, isActive, participants, onSelect }: {
+export function ArtifactListRow({ artifact, location, isActive, participants, onSelect, fetchTitle = fetchDocumentTitle }: {
   artifact: SessionArtifact;
   location: string;
   isActive: boolean;
   participants: ConversationParticipant[];
   onSelect: () => void;
+  /** Asks the server for the title of a cloud document none of the readers reported yet. */
+  fetchTitle?: DocumentTitleFetch;
 }) {
+  // A renamed cloud document shows its title; the file name stays in the tooltip.
+  const title = useDocumentTitle(artifact.attachmentId, artifact.name, fetchTitle);
+  const label = documentDisplayName(artifact.name, title);
   const badge = artifactFileBadge(artifact);
   const BadgeIcon = badge.icon;
   const { creator, others } = artifactPeople(artifact, participants);
@@ -70,7 +79,7 @@ export function ArtifactListRow({ artifact, location, isActive, participants, on
       <span className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-md', badge.className)} title={badge.label}>
         <BadgeIcon className="h-3.5 w-3.5" aria-hidden="true" />
       </span>
-      <span className="min-w-0 shrink truncate text-[13px] font-medium leading-5 text-[color:var(--utility-foreground)]">{artifact.name}</span>
+      <span className="min-w-0 shrink truncate text-[13px] font-medium leading-5 text-[color:var(--utility-foreground)]" title={label === artifact.name ? undefined : artifact.name}>{label}</span>
       {artifact.pinned ? <span className="shrink-0 rounded-md bg-amber-400/15 px-1.5 text-[10.5px] leading-4 text-amber-600">Pinned</span> : null}
       <span className="ml-auto flex min-w-0 shrink-[2] items-center gap-2 pl-3 text-[11.5px] leading-5 text-[color:var(--utility-muted-text)]">
         {creator && creatorName ? (

@@ -20,7 +20,8 @@ import { loadSession } from '@/features/cloud/session';
 import { attachmentFileFamily, attachmentFileTileLabel, splitAttachmentName } from '@/features/chat/attachmentFileFamily';
 import { revealDesktopAttachment, saveDesktopAttachmentAs } from '@/features/chat/attachmentDesktopActions';
 import { isMp4VideoAttachment } from '@/features/chat/attachmentMediaGallery';
-import { openAttachmentInCompanion } from '@/features/documents/companionDocument';
+import { openAttachmentInCompanion, withUploadedAttachmentId } from '@/features/documents/companionDocument';
+import { documentDisplayName, useDocumentTitle } from '@/features/documents/documentTitles';
 import { attachmentFormatLabel } from '@/features/chat/composerAttachments';
 import {
   downloadDesktopAttachment,
@@ -306,7 +307,12 @@ export function TranscriptFileAttachmentLink({
   const tileLabel = attachmentFileTileLabel(typeLabel);
   const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
   const busy = isSending || isDownloading;
-  const { base: nameBase, extension: nameExtension } = splitAttachmentName(attachment.name);
+  // A renamed Markdown or HTML document shows its title, without the extension; downloads keep the file name.
+  const documentTitle = useDocumentTitle(withUploadedAttachmentId(attachment).attachmentId, attachment.name);
+  const visibleName = documentDisplayName(attachment.name, documentTitle);
+  const { base: nameBase, extension: nameExtension } = visibleName === attachment.name
+    ? splitAttachmentName(attachment.name)
+    : { base: visibleName, extension: '' };
   const chipContent = (
     <>
       <span className="app-attachment-file-tile" aria-hidden="true">{tileLabel}</span>
