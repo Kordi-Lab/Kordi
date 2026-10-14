@@ -17,6 +17,8 @@ struct AgentModelPicker: View {
     static let modelNamesByProvider = [
         "openai": [
             "gpt-6-astra",
+            "gpt-6-sol",
+            "gpt-6-luna",
             "gpt-5.6-sol",
             "gpt-5.6-terra",
             "gpt-5.6-luna",
@@ -41,7 +43,7 @@ struct AgentModelPicker: View {
     ]
     static func thinkingLevels(for model: String) -> [String] {
         switch model.split(separator: "/").last.map(String.init) {
-        case "gpt-6-astra":
+        case "gpt-6-astra", "gpt-6-sol", "gpt-6-luna":
             return ["default", "low", "medium", "high", "xhigh", "max"]
         case "claude-fable-5-1":
             return ["default", "minimal", "low", "medium", "high", "xhigh", "max"]
@@ -52,7 +54,8 @@ struct AgentModelPicker: View {
 
     static func normalizedThinking(_ thinking: String, for model: String) -> String {
         guard !thinkingLevels(for: model).contains(thinking) else { return thinking }
-        return model.split(separator: "/").last == "gpt-6-astra" ? "low" : "default"
+        let name = model.split(separator: "/").last.map(String.init) ?? ""
+        return ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"].contains(name) ? "low" : "default"
     }
 
     private var thinkingLevels: [String] { Self.thinkingLevels(for: selectedModel) }
@@ -308,7 +311,10 @@ struct AgentModelPicker: View {
         let catalogProvider = selectedAccount?.provider == "openai-codex" ? "openai-codex" : canonicalProvider
         let catalogModels = model.ompProviderCatalog
             .first { $0.id == catalogProvider }?.models ?? []
-        let names = (catalogModels.isEmpty ? nil : Array(catalogModels.prefix(30)))
+        // Long catalogs are capped, so the current models listed above come first.
+        let current = (Self.modelNamesByProvider[canonicalProvider] ?? []).filter(catalogModels.contains)
+        let ordered = current + catalogModels.filter { !current.contains($0) }
+        let names = (catalogModels.isEmpty ? nil : Array(ordered.prefix(30)))
             ?? Self.modelNamesByProvider[canonicalProvider]
             ?? model.authenticationProviderDefinitions
                 .first(where: { ProviderAuthenticationDefinition.canonicalID($0.id) == canonicalProvider })?

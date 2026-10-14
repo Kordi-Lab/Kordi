@@ -18,7 +18,7 @@ It is the reference for:
 | Provider | Auth Method | Models |
 |----------|-------------|--------|
 | **Anthropic** | OAuth or `ANTHROPIC_API_KEY` | Claude Fable 5.1, Fable 5, Opus, Sonnet, Haiku |
-| **OpenAI** | OAuth or `OPENAI_API_KEY` | GPT-6 Astra, GPT-5.6 variants, and earlier API models |
+| **OpenAI** | OAuth or `OPENAI_API_KEY` | GPT-6 Astra, Sol, and Luna, GPT-5.6 variants, and earlier API models |
 | **LM Studio** | No key for local server; optional `LM_STUDIO_API_KEY` | Models loaded in the LM Studio app (`http://localhost:1234/v1`) |
 | **Ollama** | No key for local server; optional `OLLAMA_API_KEY` | Installed Ollama models (`http://localhost:11434/v1`) |
 | **GitHub Copilot** | OAuth/device flow or `GH_COPILOT_TOKEN` | Copilot chat models |
@@ -104,9 +104,10 @@ kordi login    # Shows ✓/✗ for each provider
 
 ### September 2026 models
 
-Select `openai/gpt-6-astra` or `anthropic/claude-fable-5-1` in the desktop or iPhone model picker. Existing defaults are unchanged; provider account access still applies. These IDs are included in the built-in fallback catalogs when live discovery is unavailable.
+Select `openai/gpt-6-astra`, `openai/gpt-6-sol`, `openai/gpt-6-luna`, or `anthropic/claude-fable-5-1` in the desktop or iPhone model picker. Existing defaults are unchanged; provider account access still applies. These IDs are included in the built-in fallback catalogs when live discovery is unavailable.
 
 - [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra) uses Responses for OpenAI API tool calls. Its effort levels are `low`, `medium`, `high`, `xhigh`, and `max`; saved `off` or `minimal` settings become `low`.
+- GPT-6 Sol and GPT-6 Luna use the same Responses route and effort levels as GPT-6 Astra. Their limits and prices follow the pinned OMP catalog.
 - [Claude Fable 5.1](https://platform.claude.com/docs/en/models/fable-5-1/migration-guide) uses always-on adaptive thinking. The legacy `minimal` setting maps to `low`; a saved `off` setting omits the thinking override rather than disabling thinking. Kordi leaves tool choice automatic. Its runtime transcript contains text and tool calls/results, without replaying signed thinking blocks that may be bound to an earlier conversation prefix.
 
 Registry costs use standard short-context rates. GPT-6 Astra's [long-context and service-tier pricing](https://developers.openai.com/api/docs/pricing) is not represented by the flat registry cost fields.

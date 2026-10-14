@@ -14,7 +14,7 @@ pub(super) fn should_use_responses_api(
     request: &CompletionRequest,
     options: &RequestOptions,
 ) -> bool {
-    (request.model.starts_with("gpt-5") || request.model == "gpt-6-astra")
+    (request.model.starts_with("gpt-5") || super::capabilities::is_gpt_6_variant(&request.model))
         && is_standard_openai_api_base(&options.base_url)
 }
 

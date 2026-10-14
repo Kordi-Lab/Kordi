@@ -54,13 +54,17 @@ fn normalized_model_id(model_id: &str) -> String {
         .to_ascii_lowercase()
 }
 
+pub fn is_gpt_6_variant(model_id: &str) -> bool {
+    matches!(model_id, "gpt-6-astra" | "gpt-6-sol" | "gpt-6-luna")
+}
+
 fn is_gpt_56_variant(model_id: &str) -> bool {
     matches!(model_id, "gpt-5.6-luna" | "gpt-5.6-sol" | "gpt-5.6-terra")
 }
 
 pub fn thinking_levels(model_id: &str, route: OpenAiAuthRoute) -> &'static [ThinkingLevel] {
     let model_id = normalized_model_id(model_id);
-    if model_id == "gpt-6-astra" {
+    if is_gpt_6_variant(&model_id) {
         return &GPT_6_LEVELS;
     }
     if is_gpt_56_variant(&model_id) {
@@ -152,21 +156,29 @@ mod tests {
 
     #[test]
     fn gpt_6_preserves_supported_effort_and_migrates_disabled_thinking() {
-        for route in [OpenAiAuthRoute::Api, OpenAiAuthRoute::CodexOAuth] {
+        for (model, route) in ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]
+            .into_iter()
+            .flat_map(|model| {
+                [
+                    (model, OpenAiAuthRoute::Api),
+                    (model, OpenAiAuthRoute::CodexOAuth),
+                ]
+            })
+        {
             assert_eq!(
-                thinking_levels("openai/gpt-6-astra", route)
+                thinking_levels(&format!("openai/{model}"), route)
                     .iter()
                     .map(|level| level.as_str())
                     .collect::<Vec<_>>(),
                 ["low", "medium", "high", "xhigh", "max"]
             );
             for effort in ["low", "medium", "high", "xhigh", "max"] {
-                assert_eq!(reasoning_effort("gpt-6-astra", route, effort), Some(effort));
+                assert_eq!(reasoning_effort(model, route, effort), Some(effort));
             }
             for effort in ["off", "minimal"] {
-                assert_eq!(reasoning_effort("gpt-6-astra", route, effort), Some("low"));
+                assert_eq!(reasoning_effort(model, route, effort), Some("low"));
             }
-            assert_eq!(reasoning_effort("gpt-6-astra", route, "default"), None);
+            assert_eq!(reasoning_effort(model, route, "default"), None);
         }
     }
 
