@@ -3,6 +3,7 @@ import { createContext, useContext } from 'react';
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/cloudContactMapping';
 import type { CloudAccount } from '@/features/cloud/cloudIdentityTypes';
 import { revealDesktopAttachment } from '@/features/chat/attachmentDesktopActions';
+import type { AttachmentItem } from '@/features/chat/composerController.types';
 import type { Contact, Conversation, Message, MessageAttachment } from '@/kordi-app/types';
 
 export type DocumentReaderPerson = {
@@ -25,6 +26,8 @@ export type DocumentReaderHost = {
   canMessageAccount?: (accountId: string) => boolean;
   messageAccount?: (accountId: string) => void;
   sendAttachment?: (attachment: MessageAttachment) => void;
+  /** Sends a file stored on this Mac into this chat as an attachment message; set only where the chat can take one. */
+  addDocument?: (attachment: AttachmentItem) => Promise<void> | void;
   revealPath?: (path: string) => Promise<unknown> | void;
   /** Set where a chat companion pane can host the reader (the chat Artifacts tab). */
   opensDocumentsInCompanion?: boolean;
@@ -52,6 +55,7 @@ export function documentReaderHostForConversation({
   isNativeShell,
   startChatWithPerson,
   forwardMessage,
+  sendAttachmentMessage,
 }: {
   account: CloudAccount | null;
   conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'canonicalParticipants'>;
@@ -59,6 +63,8 @@ export function documentReaderHostForConversation({
   isNativeShell: boolean;
   startChatWithPerson?: (contact: Contact) => Promise<void> | void;
   forwardMessage?: (message: Message) => void;
+  /** The composer's attachment send for this conversation, when it is a signed-in chat that takes attachments. */
+  sendAttachmentMessage?: (attachment: AttachmentItem) => Promise<void> | void;
 }): DocumentReaderHost {
   const participants = conversation.canonicalParticipants ?? [];
   const agentName = participants.find((participant) => participant.kind === 'agent')?.name?.trim() || null;
@@ -103,6 +109,7 @@ export function documentReaderHostForConversation({
           attachments: [attachment],
         })
       : undefined,
+    addDocument: account && isNativeShell ? sendAttachmentMessage : undefined,
     revealPath: isNativeShell ? (path) => revealDesktopAttachment(path) : undefined,
   };
 }

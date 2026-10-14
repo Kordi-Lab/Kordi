@@ -350,6 +350,7 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         displayedContacts: args.displayedContacts,
         handleStartChatWithPerson: args.handleStartChatWithPerson,
         onForwardMessage: args.onForwardMessage,
+        handleSendChatMessage: args.handleSendChatMessage,
       },
       overlay: {
         showAuthGate: args.showAuthGate,
