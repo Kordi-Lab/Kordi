@@ -40,7 +40,7 @@ export type WhatsNewRuntime = {
 };
 
 const CURATED_RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly WhatsNewHighlight[]>> = {
-  '0.0.2-beta.4': [
+  '0.0.2-beta.5': [
     {
       category: 'Shared documents',
       title: 'Read, edit, and share documents together',
