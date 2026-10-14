@@ -74,7 +74,7 @@ All field names are camelCase.
 ```
 DocumentResponse {
   attachmentId: string,
-  title: string,                    // first level-1 heading, else <title>, else file name without extension
+  title: string,                    // first level-1 heading, else <title>, else the renamed title (Markdown), else file name without extension
   fileName: string,
   format: "markdown" | "html",
   contentType: string,
@@ -249,3 +249,11 @@ A comment run is routed exactly like a chat run for the same agent, so the agent
 - When no ready Mac exists, or none claims within the presence timeout, the run falls back to the cloud runner, as chat does. A run is executed once: the desktop claim and the cloud lease exclude each other the way they do for chat.
 - Lease tools on the Mac: `read_document` is delivered to every run that may read the document, including turns another member started on the owner's Mac (it is read-only and gated by the server). `edit_document` stays limited to person-started runs whose requester owns the agent and can edit.
 - `agentRun.status` is `queued` while waiting for a claim, `running` once leased by either side.
+
+## Renaming (added 2026-10-14)
+
+- Migration `0129_cloud_document_title.sql` adds a nullable `cloud_attachments.document_title`, written only on the canonical attachment. The file name never changes, so downloads, the Artifacts list and chat attachment cards keep showing it.
+- `title` for Markdown is the first level-1 heading, else the stored title, else the file name without its extension. HTML is unchanged (`<title>`, else the file name). A document that opens with a level-1 heading keeps that heading as its title; it is renamed by editing the heading.
+- `PATCH /v1/cloud/documents/:attachment_id` with `{ "title": string }`. Whitespace is collapsed and trimmed; 1 to 200 characters, else `400 document_title_invalid`. The same viewers who may save content may rename (`viewerCan.edit`), else `403 document_edit_forbidden`; viewers without read access get `404`. Returns the `DocumentResponse`. The public page, the agent tools and the reader all use the new title.
+- A rename that changes the stored title publishes the non-critical `document.updated` with `"change": "title"`, the current `revision`, and `"title"`, to the same audience as saves. Older clients that do not know the change refetch the document as for any other change.
+- Mac: a double click on the reader header title or on the companion tab label turns it into a text field in place. Enter or leaving the field saves, Escape cancels, an empty title reverts. Only editors of a cloud Markdown document whose title shows in the header can rename; the new title shows at once and reverts with an inline error if the save fails.

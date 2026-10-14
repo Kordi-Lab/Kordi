@@ -16,10 +16,11 @@ import { CompanionTitlebar } from './CompanionTitlebar';
 type LoadedPreview = { key: string; preview: DesktopArtifactPreview | null };
 
 /** One open document: its reader, fed from the file on this Mac when there is one. */
-function CompanionDocumentReader({ document, api, onTitle }: {
+function CompanionDocumentReader({ document, api, onTitle, onRenameAvailable }: {
   document: CompanionDocument;
   api?: DocumentShareApi;
   onTitle: (id: string, title: string) => void;
+  onRenameAvailable: (id: string, rename: ((title: string) => void) | null) => void;
 }) {
   const { artifact } = document;
   const [reloads, setReloads] = useState(0);
@@ -35,6 +36,7 @@ function CompanionDocumentReader({ document, api, onTitle }: {
     return () => { cancelled = true; };
   }, [artifact.path, canReadLocally, document.previewBaseRoot, key, reloads]);
   const reportTitle = useCallback((title: string) => onTitle(artifact.id, title), [artifact.id, onTitle]);
+  const reportRename = useCallback((rename: ((title: string) => void) | null) => onRenameAvailable(artifact.id, rename), [artifact.id, onRenameAvailable]);
   const reload = useCallback(() => setReloads((count) => count + 1), []);
 
   const preview = document.preview ?? (loaded?.key === key ? loaded.preview : null);
@@ -52,6 +54,7 @@ function CompanionDocumentReader({ document, api, onTitle }: {
       dateLabel={artifact.timeLabel ?? null}
       onOpenSession={dispatchDocumentSessionOpen}
       onTitle={reportTitle}
+      onRenameAvailable={reportRename}
       onReload={reload}
     />
   );
@@ -74,11 +77,21 @@ export function CompanionDocumentPane({ tabs, host, onClose, api }: {
   const setTitle = useCallback((id: string, title: string) => {
     setTitles((current) => (current[id] === title ? current : { ...current, [id]: title }));
   }, []);
+  const [renames, setRenames] = useState<Record<string, (title: string) => void>>({});
+  const setRename = useCallback((id: string, rename: ((title: string) => void) | null) => {
+    setRenames((current) => {
+      if ((current[id] ?? null) === rename) return current;
+      const next = { ...current };
+      if (rename) next[id] = rename;
+      else delete next[id];
+      return next;
+    });
+  }, []);
   const closeTab = (id: string) => (documents.length <= 1 ? onClose() : tabs.closeTab(id));
 
   return <aside className="app-companion-overview app-companion-document" aria-label="Document panel">
     <CompanionTitlebar>
-      <CompanionDocumentTabs documents={documents} activeId={activeId} titles={titles} onActivate={tabs.activate} onCloseTab={closeTab} onHide={onClose} />
+      <CompanionDocumentTabs documents={documents} activeId={activeId} titles={titles} renames={renames} onActivate={tabs.activate} onCloseTab={closeTab} onHide={onClose} />
     </CompanionTitlebar>
     <DocumentReaderHostContext.Provider value={host}>
       <div className="app-companion-document-panels">
@@ -86,7 +99,7 @@ export function CompanionDocumentPane({ tabs, host, onClose, api }: {
           const ids = companionDocumentTabIds(document.artifact.id);
           return (
             <div key={document.artifact.id} id={ids.panel} className="app-companion-document-panel" role="tabpanel" aria-labelledby={ids.tab} hidden={document.artifact.id !== activeId}>
-              <CompanionDocumentReader document={document} api={api} onTitle={setTitle} />
+              <CompanionDocumentReader document={document} api={api} onTitle={setTitle} onRenameAvailable={setRename} />
             </div>
           );
         })}

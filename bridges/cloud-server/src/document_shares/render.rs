@@ -229,13 +229,28 @@ pub(crate) fn file_stem(file_name: &str) -> String {
 }
 
 /// Title for a document: the first level-1 heading (Markdown) or `<title>`
-/// (HTML), else the file name without its extension.
-pub(crate) fn document_title(format: DocumentFormat, source: &str, file_name: &str) -> String {
+/// (HTML), then the title someone renamed a Markdown document to, else the
+/// file name without its extension. A leading heading wins over a rename
+/// because readers show it as the title in the body.
+pub(crate) fn document_title(
+    format: DocumentFormat,
+    source: &str,
+    stored: Option<&str>,
+    file_name: &str,
+) -> String {
     let found = match format {
-        DocumentFormat::Markdown => markdown_title(source),
+        DocumentFormat::Markdown => markdown_title(source).or_else(|| stored.and_then(clean_title)),
         DocumentFormat::Html => html_title(source),
     };
     found.unwrap_or_else(|| file_stem(file_name))
+}
+
+/// A renamed title: whitespace collapsed, 1 to 200 characters.
+pub(crate) fn valid_document_title(value: &str) -> Option<String> {
+    let collapsed = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let chars = collapsed.chars().count();
+    (chars > 0 && chars <= MAX_TITLE_CHARS && !collapsed.chars().any(char::is_control))
+        .then_some(collapsed)
 }
 
 /// Blocks for either format. An HTML document is the single block `b0`.

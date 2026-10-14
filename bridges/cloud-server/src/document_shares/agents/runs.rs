@@ -18,7 +18,7 @@ use sqlx_postgres::PgPool;
 use super::super::access::{document_session, DocumentRecord, ShareRow};
 use super::super::contents::document_source;
 use super::super::events::publish_agent_request;
-use super::super::render::{document_blocks, document_title};
+use super::super::render::document_blocks;
 use super::super::{db_error, err, Caller};
 use super::comment_request_id;
 use super::desktop;
@@ -220,7 +220,7 @@ pub(crate) async fn start(
         })
         .collect();
     let blocks = document_blocks(record.format, &source.text);
-    let title = document_title(record.format, &source.text, &record.file_name);
+    let title = record.title(&source.text);
     let user_prompt = build_prompt(&PromptInput {
         title: &title,
         attachment_id: &record.attachment_id,

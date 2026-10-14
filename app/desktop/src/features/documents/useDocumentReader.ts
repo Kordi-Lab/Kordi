@@ -166,10 +166,11 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
     }));
   }, [requestKey]);
   const canEditCloud = mode === 'uploaded' && format === 'markdown' && Boolean(document?.viewerCan.edit);
-  // `remote` is the refetched document: its blocks stay out, its revision and editing agent are read.
+  // `remote` is the refetched document: its blocks stay out, its revision, editing agent and title are read.
   const replaceAnnotations = useCallback((nextReactions: DocumentReaction[], nextComments: DocumentComment[], remote?: DocumentResponse) => {
     const now = Date.now();
     update((value) => ({
+      document: value.document && remote ? { ...value.document, title: remote.title } : value.document,
       reactions: nextReactions,
       comments: nextComments,
       agentThreads: advanceAgentThreads(value.agentThreads, { comments: nextComments, revision: remote?.revision, updatedByAgentName: remote?.updatedByAgentName }, now),
@@ -275,6 +276,20 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
     setShareBusy(false);
   }, [api, run, setShare, share]);
 
+  /** Shows `title` at once and keeps it when the server agrees; a refusal restores the old title. */
+  const rename = useCallback(async (title: string) => {
+    const target = document?.attachmentId;
+    const previous = document?.title;
+    if (!target || previous === undefined || title === previous) return false;
+    const setTitle = (next: string) => update((value) => (value.document?.attachmentId === target
+      ? { document: { ...value.document, title: next } }
+      : {}));
+    setTitle(title);
+    const renamed = await run(() => api.renameDocument(target, title), 'Could not rename the document.');
+    setTitle(renamed ? renamed.title : previous);
+    return Boolean(renamed);
+  }, [api, document?.attachmentId, document?.title, run, update]);
+
   const setReadersCanAskAgent = useCallback(async (value: boolean) => {
     if (!share) return;
     const updated = await run(() => api.updateShare(share.shareId, { readersCanAskAgent: value }), 'Could not update the link.');
@@ -343,6 +358,7 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
     turnLinkOff,
     setReadersCanAskAgent,
     uploadToKordi,
+    rename,
   };
 }
 
