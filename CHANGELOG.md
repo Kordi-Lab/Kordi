@@ -4,10 +4,10 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ## [Unreleased]
 
-## [0.0.2-beta.5.1] - 2026-10-14
+## [0.0.2-beta.5.2] - 2026-10-14
 
-This release replaces `0.0.2-beta.4` and `0.0.2-beta.5`, which were built
-but never released.
+This release replaces `0.0.2-beta.4`, `0.0.2-beta.5`, and `0.0.2-beta.5.1`,
+which were built but never released.
 
 ### Added
 
@@ -54,6 +54,8 @@ but never released.
   screen with small previews on iPhone.
 - Removed the presence dot from sidebar chat avatars on Mac; status and last
   seen stay in the chat header ([#1765]).
+- Showed sender names larger than message text in the iPhone Threads layout
+  ([#1773]).
 
 ### Fixed
 
@@ -695,7 +697,7 @@ This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
 [Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta4...HEAD
-[0.0.2-beta.5.1]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta3...V0.0.2.beta5.1
+[0.0.2-beta.5.2]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta3...V0.0.2.beta5.2
 [0.0.2-beta.3]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta2...V0.0.2.beta3
 [0.0.2-beta.2]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta1...V0.0.2.beta2
 [0.0.2-beta.1]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1...V0.0.2.beta1
@@ -967,3 +969,4 @@ This release is the comparison baseline for beta.8. See the
 [#1768]: https://github.com/Kordi-Lab/Kordi/pull/1768
 [#1769]: https://github.com/Kordi-Lab/Kordi/pull/1769
 [#1770]: https://github.com/Kordi-Lab/Kordi/pull/1770
+[#1773]: https://github.com/Kordi-Lab/Kordi/pull/1773
