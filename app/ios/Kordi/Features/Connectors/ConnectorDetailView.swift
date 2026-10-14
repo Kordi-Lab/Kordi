@@ -6,7 +6,6 @@ struct ConnectorDetailView: View {
     @ObservedObject var store: ConnectorsStore
 
     @State private var consent: ConnectorConsent?
-    @State private var consentBusy = false
     @State private var showsDisconnect = false
 
     private var state: ConnectorState? { store.states[definition.providerId] }
@@ -14,14 +13,7 @@ struct ConnectorDetailView: View {
 
     var body: some View {
         SettingsPage {
-            CompactSettingsLabel(
-                title: "Status",
-                subtitle: definition.experimental ? "Experimental, read-only, best effort." : nil,
-                systemImage: ConnectorsModel.systemImage(definition.providerId),
-                value: ConnectorsModel.statusLabel(definition: definition, state: state, agents: store.agents)
-            )
-            .frame(minHeight: SettingsMetrics.rowMinHeight)
-
+            header
             primaryAction
 
             if let error = store.errorMessage?.nonEmpty {
@@ -35,14 +27,7 @@ struct ConnectorDetailView: View {
         .navigationTitle(definition.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { store.errorMessage = nil }
-        .sheet(item: $consent) { consent in
-            ConnectorConsentSheet(consent: consent, busy: consentBusy) {
-                Task { await confirm(consent) }
-            } onCancel: {
-                self.consent = nil
-            }
-            .interactiveDismissDisabled(consentBusy)
-        }
+        .connectorConsent($consent, store: store)
         .confirmationDialog(
             "Disconnect \(definition.name)?",
             isPresented: $showsDisconnect,
@@ -59,17 +44,39 @@ struct ConnectorDetailView: View {
         }
     }
 
+    /// Larger logo, the name, and one short grey state.
+    private var header: some View {
+        HStack(spacing: 14) {
+            ConnectorLogo(providerId: definition.providerId, size: 40)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(definition.name)
+                    .font(.title3.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                Text(ConnectorsModel.detailState(definition: definition, state: state))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                if definition.experimental {
+                    Text("Experimental, read-only, best effort.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+    }
+
     @ViewBuilder
     private var primaryAction: some View {
         switch state?.status ?? .notConnected {
         case .connected:
             EmptyView()
         case .needsReauth:
-            actionRow("Sign in again", systemImage: "key", opensSheet: true, accessibilityLabel: "Sign in to \(definition.name) again") {
+            prominentAction("Sign in again", accessibilityLabel: "Sign in to \(definition.name) again") {
                 consent = .connect(definition, reauth: true)
             }
         case .permissionMissing:
-            actionRow(busy ? "Checking…" : "Check again", systemImage: "arrow.clockwise", opensSheet: false, accessibilityLabel: "Check \(definition.name) permission again") {
+            prominentAction("Check again", accessibilityLabel: "Check \(definition.name) permission again") {
                 Task {
                     await store.perform(definition.providerId, fallback: "Could not update this connector. Try again.") {
                         try await store.client.recheckPermission(definition.providerId)
@@ -77,33 +84,33 @@ struct ConnectorDetailView: View {
                 }
             }
         case .notConnected:
-            actionRow("Connect", systemImage: "link", opensSheet: true, accessibilityLabel: "Connect \(definition.name)") {
+            prominentAction("Connect", accessibilityLabel: "Connect \(definition.name)") {
                 consent = .connect(definition, reauth: false)
             }
         }
     }
 
-    /// The one action of a connector that is not connected, as a full-width row.
-    private func actionRow(
+    /// The one action of a connector that is not connected, as a filled button.
+    private func prominentAction(
         _ title: String,
-        systemImage: String,
-        opensSheet: Bool,
         accessibilityLabel: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            SettingsRow {
-                CompactSettingsLabel(title: title, systemImage: systemImage)
-            } trailing: {
+            Group {
                 if busy {
                     ProgressView()
-                } else if opensSheet {
-                    SettingsChevron()
+                } else {
+                    Text(title)
                 }
             }
+            .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
         .disabled(busy)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
         .accessibilityLabel(accessibilityLabel)
     }
 
@@ -191,20 +198,6 @@ struct ConnectorDetailView: View {
             }
         )
     }
-
-    private func confirm(_ consent: ConnectorConsent) async {
-        consentBusy = true
-        defer {
-            consentBusy = false
-            self.consent = nil
-        }
-        switch consent.kind {
-        case .connect:
-            _ = await store.connect(definition)
-        case .grant:
-            _ = await store.grantAct(definition)
-        }
-    }
 }
 
 /// A consent step: the connection, which grants read and act together for a
@@ -213,6 +206,7 @@ struct ConnectorConsent: Identifiable {
     enum Kind { case connect, grant }
 
     let kind: Kind
+    let definition: ConnectorDefinition
     let title: String
     let message: String
     let scopes: [ConnectorScope]
@@ -227,6 +221,7 @@ struct ConnectorConsent: Identifiable {
         if definition.kind == .service {
             return ConnectorConsent(
                 kind: .connect,
+                definition: definition,
                 title: reauth ? "Sign in to \(definition.name) again" : "Connect \(definition.name)",
                 message: "Kordi asks \(definition.providerName) for the access your agent needs to read and act here. You can turn acting off at any time from this page.",
                 scopes: ConnectorsModel.connectScopes(definition),
@@ -238,6 +233,7 @@ struct ConnectorConsent: Identifiable {
         }
         return ConnectorConsent(
             kind: .connect,
+            definition: definition,
             title: "Allow access to \(definition.name)",
             message: "iOS will ask you to allow Kordi to read \(definition.name). Your agent only sees results, never your whole library.",
             scopes: definition.readScopes,
@@ -251,6 +247,7 @@ struct ConnectorConsent: Identifiable {
     static func grant(_ definition: ConnectorDefinition) -> ConnectorConsent {
         ConnectorConsent(
             kind: .grant,
+            definition: definition,
             title: "Let your agent act in \(definition.name)",
             message: "\(definition.providerName) did not grant this when you connected. Your agent will be able to:",
             scopes: definition.actScopes,
@@ -259,6 +256,44 @@ struct ConnectorConsent: Identifiable {
             confirmTitle: definition.kind == .service ? "Continue to \(definition.providerName)" : "Allow",
             waitingText: "Waiting for \(definition.providerName)…"
         )
+    }
+}
+
+/// Presents the consent step and runs the connect or act grant it confirms.
+private struct ConnectorConsentPresenter: ViewModifier {
+    @Binding var consent: ConnectorConsent?
+    @ObservedObject var store: ConnectorsStore
+    @State private var busy = false
+
+    func body(content: Content) -> some View {
+        content.sheet(item: $consent) { consent in
+            ConnectorConsentSheet(consent: consent, busy: busy) {
+                Task { await confirm(consent) }
+            } onCancel: {
+                self.consent = nil
+            }
+            .interactiveDismissDisabled(busy)
+        }
+    }
+
+    private func confirm(_ consent: ConnectorConsent) async {
+        busy = true
+        defer {
+            busy = false
+            self.consent = nil
+        }
+        switch consent.kind {
+        case .connect:
+            _ = await store.connect(consent.definition)
+        case .grant:
+            _ = await store.grantAct(consent.definition)
+        }
+    }
+}
+
+extension View {
+    func connectorConsent(_ consent: Binding<ConnectorConsent?>, store: ConnectorsStore) -> some View {
+        modifier(ConnectorConsentPresenter(consent: consent, store: store))
     }
 }
 

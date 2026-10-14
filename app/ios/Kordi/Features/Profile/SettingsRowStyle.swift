@@ -153,6 +153,31 @@ extension SettingsRow where Trailing == EmptyView {
     }
 }
 
+/// One subtle rounded container for a list of rows, with thin inset dividers
+/// between them. Used where a screen lists services to pick from.
+struct SettingsGroup<Item: Identifiable, Row: View>: View {
+    let items: [Item]
+    /// Leading inset of the dividers, so they line up with the row titles.
+    var dividerInset: CGFloat = 36
+    @ViewBuilder var row: (Item) -> Row
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                if index > 0 {
+                    Divider().padding(.leading, dividerInset)
+                }
+                row(item)
+            }
+        }
+        .padding(.horizontal, 14)
+        .background(
+            Color(uiColor: .secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+    }
+}
+
 /// Destructive action shown as a plain red text row.
 struct SettingsDestructiveRow: View {
     let title: String

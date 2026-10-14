@@ -87,6 +87,34 @@ final class ConnectorsModelTests: XCTestCase {
         )
     }
 
+    func testListTrailingConnectsFromTheRow() {
+        let gmail = ConnectorsModel.definition(.gmail)
+        XCTAssertEqual(ConnectorsModel.listTrailing(definition: gmail, state: nil, busy: false), .connect)
+        XCTAssertEqual(ConnectorsModel.listTrailing(definition: gmail, state: state(.gmail, status: .notConnected), busy: false), .connect)
+        XCTAssertEqual(ConnectorsModel.listTrailing(definition: gmail, state: nil, busy: true), .busy)
+        XCTAssertEqual(ConnectorsModel.listTrailing(definition: gmail, state: state(.gmail), busy: false), .open("Connected"))
+        XCTAssertEqual(ConnectorsModel.listTrailing(definition: gmail, state: state(.gmail, status: .needsReauth), busy: false), .open("Sign in again"))
+        XCTAssertEqual(
+            ConnectorsModel.listTrailing(definition: ConnectorsModel.definition(.macContacts), state: state(.macContacts, status: .permissionMissing), busy: false),
+            .open("Allow access")
+        )
+        XCTAssertEqual(ConnectorsModel.listTrailing(definition: ConnectorsModel.definition(.outlook), state: nil, busy: true), .comingLater)
+    }
+
+    func testDetailStateIsShort() {
+        let gmail = ConnectorsModel.definition(.gmail)
+        XCTAssertEqual(ConnectorsModel.detailState(definition: gmail, state: nil), "Not connected")
+        XCTAssertEqual(ConnectorsModel.detailState(definition: gmail, state: state(.gmail, actEnabled: true)), "Connected")
+        XCTAssertEqual(ConnectorsModel.detailState(definition: gmail, state: state(.gmail, status: .needsReauth)), "Sign in again")
+        XCTAssertEqual(ConnectorsModel.detailState(definition: ConnectorsModel.definition(.outlook), state: nil), "Not yet available")
+    }
+
+    func testConsentCarriesItsConnector() {
+        let slack = ConnectorsModel.definition(.slack)
+        XCTAssertEqual(ConnectorConsent.connect(slack, reauth: false).definition, slack)
+        XCTAssertEqual(ConnectorConsent.grant(slack).definition, slack)
+    }
+
     func testStatusLabels() {
         let calendar = ConnectorsModel.definition(.googleCalendar)
         XCTAssertEqual(ConnectorsModel.statusLabel(definition: calendar, state: nil, agents: agents), "Not connected")
