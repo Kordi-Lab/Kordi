@@ -45,6 +45,16 @@ export function isOwnMemory(lesson: Pick<MemoryLesson, 'ownerAccountId'>, viewer
   return !lesson.ownerAccountId || !viewerAccountId || lesson.ownerAccountId === viewerAccountId;
 }
 
+/** Who to name for a memory typed by hand: the owner's name, nothing ("you") for the viewer's own, or "a group member". */
+export function memoryAddedBy(
+  lesson: Pick<MemoryLesson, 'ownerAccountId' | 'ownerName'>,
+  viewerAccountId: string | null | undefined,
+): string | null {
+  const name = lesson.ownerName?.trim();
+  if (name) return name;
+  return isOwnMemory(lesson, viewerAccountId) ? null : 'a group member';
+}
+
 /** "Saved by …" for a group memory another member saved, otherwise null. */
 export function memoryOwnerCaption(
   lesson: Pick<MemoryLesson, 'scope' | 'ownerAccountId' | 'ownerName'> & Partial<Pick<MemoryLesson, 'source'>>,
