@@ -119,60 +119,33 @@ struct ConnectorsSettingsView: View {
     private var catalog: [ConnectorDefinition] { ConnectorsModel.iPhoneCatalog }
 
     var body: some View {
-        List {
-            Section {
-                EmptyView()
-            } footer: {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Connect the services you use so your agent can read updates from them and, with your approval, act in them. Kordi keeps each sign-in on its servers and only shares results with your agent.")
-                    if store.isPreview {
-                        Text("Showing sample connectors. Nothing here is connected to a real account.")
-                    }
-                }
+        SettingsPage {
+            if store.isPreview {
+                SettingsCaption("Showing sample connectors. Nothing here is connected to a real account.")
             }
 
             if let error = store.errorMessage?.nonEmpty {
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label(error, systemImage: "exclamationmark.circle.fill")
-                            .foregroundStyle(.red)
-                        if !store.hasLoaded {
-                            Button("Try again") { Task { await store.refresh() } }
-                                .font(.subheadline.weight(.semibold))
-                                .frame(minHeight: 32)
-                                .disabled(store.isLoading)
-                        }
-                    }
+                SettingsErrorLabel(error)
+                if !store.hasLoaded {
+                    Button("Try again") { Task { await store.refresh() } }
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: SettingsMetrics.textRowMinHeight)
+                        .disabled(store.isLoading)
                 }
             }
 
             if !store.hasLoaded {
                 if store.isLoading {
-                    Section {
-                        HStack(spacing: 10) {
-                            ProgressView()
-                            Text("Loading connectors…")
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(minHeight: 44)
-                        .accessibilityElement(children: .combine)
-                    }
+                    SettingsLoadingRow("Loading connectors…")
                 }
             } else {
-                Section("Services") {
-                    ForEach(catalog.filter { $0.kind == .service }) { row($0) }
-                }
-                Section {
-                    ForEach(catalog.filter { $0.kind == .macLocal }) { row($0) }
-                } header: {
-                    Text("On this iPhone")
-                } footer: {
-                    Text("These use iPhone permissions. Kordi asks iOS before your agent can read them.")
-                }
+                SettingsSectionTitle("Services")
+                ForEach(catalog.filter { $0.kind == .service }) { row($0) }
+                SettingsDivider()
+                SettingsSectionTitle("On this iPhone")
+                ForEach(catalog.filter { $0.kind == .macLocal }) { row($0) }
             }
         }
-        .listStyle(.insetGrouped)
-        .environment(\.defaultMinListRowHeight, 44)
         .navigationTitle("Connectors")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -206,47 +179,28 @@ struct ConnectorsSettingsView: View {
 
     @ViewBuilder
     private func row(_ definition: ConnectorDefinition) -> some View {
-        let value = ConnectorsModel.listValue(definition: definition, state: store.states[definition.providerId])
+        let label = CompactSettingsLabel(
+            title: definition.name,
+            subtitle: definition.experimental ? "Experimental" : nil,
+            systemImage: ConnectorsModel.systemImage(definition.providerId),
+            value: ConnectorsModel.listValue(definition: definition, state: store.states[definition.providerId]),
+            titleLineLimit: 1
+        )
         if definition.availability == .available {
             NavigationLink {
                 ConnectorDetailView(definition: definition, store: store)
             } label: {
-                ConnectorRowLabel(definition: definition, value: value)
+                SettingsRow {
+                    label
+                } trailing: {
+                    SettingsChevron()
+                }
             }
+            .buttonStyle(.plain)
             .accessibilityIdentifier("connector-\(definition.providerId.rawValue)")
         } else {
-            ConnectorRowLabel(definition: definition, value: value)
-                .foregroundStyle(.secondary)
+            SettingsRow { label }
                 .accessibilityIdentifier("connector-\(definition.providerId.rawValue)")
         }
-    }
-}
-
-private struct ConnectorRowLabel: View {
-    let definition: ConnectorDefinition
-    let value: String
-
-    var body: some View {
-        HStack(spacing: 8) {
-            CompactSettingsLabel(title: definition.name, systemImage: ConnectorsModel.systemImage(definition.providerId), value: value, titleLineLimit: 1)
-            if definition.experimental {
-                ConnectorCapsule(text: "Experimental", tint: .orange)
-            }
-        }
-    }
-}
-
-/// Small rounded label used for "Experimental", "Read", and "Act".
-struct ConnectorCapsule: View {
-    let text: String
-    let tint: Color?
-
-    var body: some View {
-        Text(text)
-            .font(.caption2.weight(.medium))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .foregroundStyle(tint ?? .secondary)
-            .background((tint ?? .secondary).opacity(0.14), in: Capsule())
     }
 }

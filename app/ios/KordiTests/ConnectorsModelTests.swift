@@ -163,6 +163,42 @@ final class ConnectorsModelTests: XCTestCase {
         XCTAssertEqual(local.scopes.map(\.id), ConnectorsModel.definition(.macCalendar).readScopes.map(\.id))
     }
 
+    func testAllowedScopesListReadThenGrantedActWhileActingIsOn() {
+        let gmail = ConnectorsModel.definition(.gmail)
+        let all = (gmail.readScopes + gmail.actScopes).map(\.id)
+
+        // No granted read scope reported: every read scope is listed.
+        XCTAssertEqual(
+            ConnectorsModel.allowedScopes(definition: gmail, state: state(.gmail)).map(\.id),
+            gmail.readScopes.map(\.id)
+        )
+        // Only the granted read scopes once the server reports them.
+        XCTAssertEqual(
+            ConnectorsModel.allowedScopes(definition: gmail, state: state(.gmail, grantedScopeIds: ["gmail.labels.read"])).map(\.id),
+            ["gmail.labels.read"]
+        )
+        // Act scopes stay hidden while acting is off, even when granted.
+        XCTAssertEqual(
+            ConnectorsModel.allowedScopes(definition: gmail, state: state(.gmail, grantedScopeIds: all)).map(\.id),
+            gmail.readScopes.map(\.id)
+        )
+        XCTAssertEqual(
+            ConnectorsModel.allowedScopes(definition: gmail, state: state(.gmail, actEnabled: true, grantedScopeIds: all)).map(\.id),
+            all
+        )
+        // Acting on without the act grant lists nothing it was not given.
+        XCTAssertEqual(
+            ConnectorsModel.allowedScopes(definition: gmail, state: state(.gmail, actEnabled: true)).map(\.id),
+            gmail.readScopes.map(\.id)
+        )
+    }
+
+    func testScopeIconsSeparateReadFromAct() {
+        let gmail = ConnectorsModel.definition(.gmail)
+        XCTAssertEqual(gmail.readScopes.map(\.systemImage), ["eye", "eye"])
+        XCTAssertEqual(gmail.actScopes.map(\.systemImage), ["hand.tap"])
+    }
+
     func testLocalConnectorActTurnsOnDirectly() async throws {
         let client = PreviewConnectorsClient(latency: 0)
         let state = try await client.setActEnabled(.macCalendar, enabled: true)
