@@ -6,6 +6,7 @@ use std::sync::Arc;
 use kordi_cli::desktop_runtime::DesktopRuntimeSession;
 
 use super::canonical_sync::{desktop_state_for_canonical_sync, is_cloud_agent_runtime_session_id};
+use super::interrupted_requests::close_interrupted_request;
 use super::model_options::authenticated_model_options_with_local_runtime;
 use super::transient_drafts::{
     build_transient_draft_chat_state, filter_blank_draft_projects, is_blank_draft_summary,
@@ -226,6 +227,8 @@ pub(super) async fn build_chat_state(
             .ok_or_else(|| "Active session is unavailable".to_string())?
     };
 
+    // The canonical sync below carries the interruption note.
+    close_interrupted_request(manager, &active_session_id, &active_runtime).await;
     let (active_session, local_agent, slash_commands) = {
         let active_runtime = active_runtime.lock().await;
         (
