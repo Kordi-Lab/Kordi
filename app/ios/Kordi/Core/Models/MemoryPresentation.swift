@@ -22,12 +22,13 @@ enum MemoryPresentation {
         (capabilities?.memoryVersion ?? 0) >= 1
     }
 
-    static func sourceLabel(_ source: CloudMemorySource) -> String {
+    /// A memory someone typed names who added it; the others name where they came from.
+    static func sourceLabel(_ source: CloudMemorySource, addedBy: String? = nil) -> String {
         switch source {
         case .userCorrection: "From a correction"
         case .repeatedFailure: "From a repeated failure"
         case .outcome: "From an outcome"
-        case .manual: "Added by hand"
+        case .manual: addedBy?.nonEmptyMemoryText.map { "Added by \($0)" } ?? "Added by you"
         case .other: "Saved memory"
         }
     }
@@ -120,8 +121,8 @@ enum MemoryPresentation {
 
     /// "From a correction · Today". Settings list only global memories and each
     /// conversation lists its own, so the scope label is left out.
-    static func detail(_ memory: CloudMemory, now: Date = Date(), calendar: Calendar = .current) -> String {
-        [sourceLabel(memory.source), dateLabel(memory.updatedAt, now: now, calendar: calendar).nonEmptyMemoryText]
+    static func detail(_ memory: CloudMemory, viewerAccountId: String? = nil, now: Date = Date(), calendar: Calendar = .current) -> String {
+        [sourceLabel(memory.source, addedBy: addedBy(memory, viewerAccountId: viewerAccountId)), dateLabel(memory.updatedAt, now: now, calendar: calendar).nonEmptyMemoryText]
             .compactMap { $0 }
             .joined(separator: " · ")
     }
@@ -139,7 +140,16 @@ enum MemoryPresentation {
     /// "Saved by Priya" for a group memory another member saved, otherwise nil.
     static func ownerCaption(_ memory: CloudMemory, viewerAccountId: String?) -> String? {
         guard memory.scope == .group, !isOwn(memory, viewerAccountId: viewerAccountId) else { return nil }
+        // A memory typed by hand already names who added it in its source label.
+        guard memory.source != .manual else { return nil }
         return "Saved by \(memory.ownerName?.nonEmptyMemoryText ?? "a group member")"
+    }
+
+    /// Who to name for a memory typed by hand: the owner's name, or nil (shown as "you")
+    /// for the viewer's own memory, or "a group member" when another member has no name.
+    static func addedBy(_ memory: CloudMemory, viewerAccountId: String?) -> String? {
+        if let name = memory.ownerName?.nonEmptyMemoryText { return name }
+        return isOwn(memory, viewerAccountId: viewerAccountId) ? nil : "a group member"
     }
 
     /// Collapses whitespace runs to single spaces and trims the ends.

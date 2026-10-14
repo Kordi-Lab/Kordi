@@ -174,7 +174,9 @@ test('a group chat Memory tab lists shared group memories and who saved the ones
       caption.closest('[data-memory-lesson]')?.getAttribute('data-memory-lesson'),
       caption.textContent,
     ]);
-    assert.deepEqual(owners, [['lesson-10', 'Saved by Priya']]);
+    // A memory Priya typed names her in its source label instead of a separate caption.
+    assert.deepEqual(owners, []);
+    assert.match(host.querySelector('[data-memory-lesson="lesson-10"]')?.textContent ?? '', /Added by Priya/);
     // Every group memory can be edited and deleted; the server checks membership.
     for (const id of ['lesson-10', 'lesson-7']) {
       assert.ok(host.querySelector(`[data-memory-lesson="${id}"] button[aria-label^="Edit memory"]`));
