@@ -14,6 +14,9 @@ use super::{
 mod cloud_reconcile;
 mod message_enrichment;
 mod session_metadata;
+mod session_title;
+#[cfg(test)]
+pub(crate) use session_title::desktop_session_title_with_canonical_seed;
 
 pub(crate) use message_enrichment::*;
 pub(crate) use session_metadata::*;
@@ -257,12 +260,18 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
             summary.forked_from_session_id.as_deref(),
             summary.forked_from_message_id.as_deref(),
         )?;
+        let (title, metadata) = session_title::desktop_session_title_with_canonical_seed(
+            &conn,
+            &summary.id,
+            &summary.title,
+            metadata,
+        )?;
         open_or_create_session_in_db(
             &conn,
             OpenCanonicalSessionRequest {
                 id: Some(summary.id.clone()),
                 kind: "self-agent".to_string(),
-                title: Some(summary.title.clone()),
+                title: Some(title),
                 status: Some(if summary.draft { "draft" } else { "active" }.to_string()),
                 created_by_identity_id: human_identity_id.clone(),
                 primary_identity_id: Some(agent_identity_id.clone()),
@@ -294,12 +303,18 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
                 summary.forked_from_session_id.as_deref(),
                 summary.forked_from_message_id.as_deref(),
             )?;
+            let (title, metadata) = session_title::desktop_session_title_with_canonical_seed(
+                &conn,
+                &summary.id,
+                &summary.title,
+                metadata,
+            )?;
             open_or_create_session_in_db(
                 &conn,
                 OpenCanonicalSessionRequest {
                     id: Some(summary.id.clone()),
                     kind: "project".to_string(),
-                    title: Some(summary.title.clone()),
+                    title: Some(title),
                     status: Some(if summary.draft { "draft" } else { "active" }.to_string()),
                     created_by_identity_id: human_identity_id.clone(),
                     primary_identity_id: Some(agent_identity_id.clone()),
@@ -353,6 +368,12 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
                 active.forked_from_session_id.as_deref(),
                 active.forked_from_message_id.as_deref(),
             )?;
+            let (title, metadata) = session_title::desktop_session_title_with_canonical_seed(
+                &conn,
+                &active.id,
+                &active.title,
+                metadata,
+            )?;
             open_or_create_session_in_db(
                 &conn,
                 OpenCanonicalSessionRequest {
@@ -362,7 +383,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
                     } else {
                         "self-agent".to_string()
                     },
-                    title: Some(active.title.clone()),
+                    title: Some(title),
                     status: Some(if active.draft { "draft" } else { "active" }.to_string()),
                     created_by_identity_id: human_identity_id.clone(),
                     primary_identity_id: Some(agent_identity_id.clone()),

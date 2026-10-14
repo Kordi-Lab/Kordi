@@ -220,13 +220,14 @@ pub fn is_low_information_session_seed(value: &str) -> bool {
             | "myagent"
             | "newchat"
             | "newsession"
-            | "你好"
-            | "您好"
-            | "嗨"
-            | "测试"
-            | "收到"
-            | "好的"
-            | "谢谢"
+            | "voicemessage"
+            | "\u{4F60}\u{597D}"
+            | "\u{60A8}\u{597D}"
+            | "\u{55E8}"
+            | "\u{6D4B}\u{8BD5}"
+            | "\u{6536}\u{5230}"
+            | "\u{597D}\u{7684}"
+            | "\u{8C22}\u{8C22}"
             | "hithere"
             | "hellothere"
             | "howareyou"
@@ -235,8 +236,8 @@ pub fn is_low_information_session_seed(value: &str) -> bool {
             | "howcanihelp"
             | "hihowcanihelp"
             | "hellohowcanihelp"
-            | "你好吗"
-            | "你好嗎"
+            | "\u{4F60}\u{597D}\u{5417}"
+            | "\u{4F60}\u{597D}\u{55CE}"
     ) || ["test", "testreply", "testmessage"].iter().any(|prefix| {
         probe
             .strip_prefix(prefix)
@@ -246,11 +247,13 @@ pub fn is_low_information_session_seed(value: &str) -> bool {
 
 fn semantic_known_title(value: &str) -> Option<&'static str> {
     let lower = value.to_lowercase();
-    if lower.contains('模')
-        && lower.contains("模型")
-        && (lower.contains('谁') || lower.contains("身份") || lower.contains("你是"))
+    if lower.contains('\u{6A21}')
+        && lower.contains("\u{6A21}\u{578B}")
+        && (lower.contains('\u{8C01}')
+            || lower.contains("\u{8EAB}\u{4EFD}")
+            || lower.contains("\u{4F60}\u{662F}"))
     {
-        return Some("模型与身份");
+        return Some("\u{6A21}\u{578B}\u{4E0E}\u{8EAB}\u{4EFD}");
     }
     if lower.contains("model")
         && (lower.contains("who are you")
@@ -274,7 +277,47 @@ pub fn is_known_legacy_auto_title(value: &str) -> bool {
     let trimmed = value.trim();
     is_low_information_session_seed(trimmed)
         || is_attachment_boilerplate(trimmed)
+        || is_dated_fallback_session_title(trimmed)
         || semantic_known_title(trimmed).is_some_and(|title| !title.eq_ignore_ascii_case(trimmed))
+}
+
+/// Older desktop builds displayed `Chat with Kordi · <date>` for a session
+/// whose runtime history had no title seed, and that value could be mirrored
+/// into other stores. It never describes the conversation, so it is treated
+/// as a generated placeholder that a derived title may replace.
+fn is_dated_fallback_session_title(value: &str) -> bool {
+    let Some(suffix) = value.trim().strip_prefix("Chat with Kordi · ") else {
+        return false;
+    };
+    let suffix = suffix.trim();
+    if suffix == "recently" {
+        return true;
+    }
+    let mut parts = suffix.split(' ');
+    matches!(
+        (parts.next(), parts.next(), parts.next()),
+        (Some(month), Some(day), None)
+            if month.len() == 3
+                && month.chars().all(|character| character.is_ascii_alphabetic())
+                && (1..=2).contains(&day.len())
+                && day.chars().all(|character| character.is_ascii_digit())
+    )
+}
+
+/// Voice messages reach the agent with a provenance header. Only the spoken
+/// transcript may name a session; a message without a transcript has no seed.
+fn without_voice_provenance(value: &str) -> Option<&str> {
+    let trimmed = value.trim_start();
+    if trimmed.starts_with("[Voice message:") {
+        return None;
+    }
+    match trimmed.strip_prefix("[Voice transcript;") {
+        Some(rest) => Some(
+            rest.split_once(']')
+                .map_or("", |(_, transcript)| transcript),
+        ),
+        None => Some(value),
+    }
 }
 
 pub fn truncate_session_title(value: &str) -> String {
@@ -304,7 +347,7 @@ fn capitalize_first_ascii(value: &str) -> String {
 
 /// Derive a stable local title from meaningful user-authored text.
 pub fn derive_session_title(value: &str) -> Option<String> {
-    let without_context = remove_reply_and_code_context(value);
+    let without_context = remove_reply_and_code_context(without_voice_provenance(value)?);
     if is_attachment_boilerplate(&without_context) {
         return None;
     }
@@ -381,116 +424,4 @@ pub fn is_placeholder_or_weak_legacy_title(value: &str, session_id: &str) -> boo
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn low_information_seeds_wait_for_a_topic() {
-        for value in [
-            "hi",
-            "hiiii",
-            "hello!",
-            "hi, how are you?",
-            "Hi! How can I help?",
-            "test",
-            "test reply 11",
-            "111",
-            "👍🏽",
-            "@MyKordi",
-            "你好",
-        ] {
-            assert_eq!(derive_session_title(value), None, "{value}");
-        }
-    }
-
-    #[test]
-    fn meaningful_titles_remove_transport_noise_and_preserve_language() {
-        assert_eq!(
-            derive_session_title("@MyKordi help diagnose high Node CPU usage").as_deref(),
-            Some("Diagnose high Node CPU")
-        );
-        assert_eq!(
-            derive_session_title("which model are you").as_deref(),
-            Some("Model and identity")
-        );
-        assert_eq!(
-            derive_session_title("你是谁你在使用什么模型").as_deref(),
-            Some("模型与身份")
-        );
-    }
-
-    #[test]
-    fn reply_code_url_and_command_context_do_not_become_titles() {
-        assert_eq!(
-            derive_session_title(
-                "> old answer\n/retry @MyKordi plan release validation https://example.com"
-            )
-            .as_deref(),
-            Some("Plan release validation")
-        );
-        assert_eq!(derive_session_title("```rust\nfn main() {}\n```"), None);
-        assert_eq!(
-            derive_session_title("Attached private-report.pdf please diagnose memory usage")
-                .as_deref(),
-            Some("Diagnose memory usage")
-        );
-        assert_eq!(
-            derive_session_title("[attachment: private-report.pdf] diagnose memory usage")
-                .as_deref(),
-            Some("Diagnose memory usage")
-        );
-    }
-
-    #[test]
-    fn titles_are_capped_by_graphemes_without_splitting_emoji() {
-        let title = derive_session_title(
-            "organize this deliberately very long conversation topic with enough extra words to overflow",
-        )
-        .unwrap();
-        assert!(UnicodeSegmentation::graphemes(title.as_str(), true).count() <= 48);
-    }
-
-    #[test]
-    fn attachment_titles_never_depend_on_local_filenames() {
-        assert_eq!(derive_session_title("Attached private-report.pdf"), None);
-        assert_eq!(derive_session_title("Attachment: private-report.pdf"), None);
-        assert_eq!(
-            attachment_session_title(1, true).as_deref(),
-            Some("Image attachment")
-        );
-        assert_eq!(
-            attachment_session_title(1, false).as_deref(),
-            Some("File attachment")
-        );
-        assert_eq!(
-            attachment_session_title(3, true).as_deref(),
-            Some("3 attachments")
-        );
-    }
-
-    #[test]
-    fn title_source_precedence_is_explicit() {
-        assert!(SessionTitleSource::Placeholder.can_be_replaced_by(SessionTitleSource::Auto));
-        assert!(SessionTitleSource::Auto.can_be_replaced_by(SessionTitleSource::Manual));
-        assert!(!SessionTitleSource::Manual.can_be_replaced_by(SessionTitleSource::Auto));
-        assert!(!SessionTitleSource::Imported.can_be_replaced_by(SessionTitleSource::Auto));
-    }
-
-    #[test]
-    fn legacy_backfill_only_targets_known_generated_shapes() {
-        assert!(is_known_legacy_auto_title("which model are you"));
-        assert!(is_known_legacy_auto_title("Attached private-report.pdf"));
-        assert!(is_known_legacy_auto_title("hello"));
-        assert!(!is_known_legacy_auto_title("Release validation plan"));
-        assert!(!is_known_legacy_auto_title("Model and identity"));
-    }
-
-    #[test]
-    fn raw_identifiers_are_recognized_without_matching_normal_titles() {
-        let id = "e2b79cd7-70c0-4cee-ae1b-9bc8cb28da83";
-        assert!(is_raw_session_identifier(id, id));
-        assert!(is_raw_session_identifier("session:self-agent:test", id));
-        assert!(is_raw_session_identifier("Session e2b79cd7", id));
-        assert!(!is_raw_session_identifier("Release validation plan", id));
-    }
-}
+mod tests;
