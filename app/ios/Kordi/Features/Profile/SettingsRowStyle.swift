@@ -107,3 +107,132 @@ struct CompactSettingsLabel: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+/// Sizes shared by the plain settings screens.
+enum SettingsMetrics {
+    static let rowMinHeight: CGFloat = 48
+    static let textRowMinHeight: CGFloat = 44
+    static let pageInsets = EdgeInsets(top: 12, leading: 20, bottom: 24, trailing: 20)
+}
+
+/// Scrolling body of a plain settings screen: flat background, no cards.
+struct SettingsPage<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(SettingsMetrics.pageInsets)
+        }
+        .background(Color(uiColor: .systemBackground))
+    }
+}
+
+/// Full-width row with an optional trailing control, tappable across its width.
+struct SettingsRow<Content: View, Trailing: View>: View {
+    @ViewBuilder var content: Content
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: 10) {
+            content
+            Spacer(minLength: 0)
+            trailing
+        }
+        .frame(minHeight: SettingsMetrics.rowMinHeight)
+        .contentShape(Rectangle())
+    }
+}
+
+extension SettingsRow where Trailing == EmptyView {
+    init(@ViewBuilder content: () -> Content) {
+        self.init(content: content, trailing: { EmptyView() })
+    }
+}
+
+/// One subtle rounded container for a list of rows, with thin inset dividers
+/// between them. Used where a screen lists services to pick from.
+struct SettingsGroup<Item: Identifiable, Row: View>: View {
+    let items: [Item]
+    /// Leading inset of the dividers, so they line up with the row titles.
+    var dividerInset: CGFloat = 36
+    @ViewBuilder var row: (Item) -> Row
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                if index > 0 {
+                    Divider().padding(.leading, dividerInset)
+                }
+                row(item)
+            }
+        }
+        .padding(.horizontal, 14)
+        .background(
+            Color(uiColor: .secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+    }
+}
+
+/// Destructive action shown as a plain red text row.
+struct SettingsDestructiveRow: View {
+    let title: String
+    let action: () -> Void
+
+    init(_ title: String, action: @escaping () -> Void) {
+        self.title = title
+        self.action = action
+    }
+
+    var body: some View {
+        Button(role: .destructive, action: action) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, minHeight: SettingsMetrics.textRowMinHeight, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Spinner with a few words, for a screen that has nothing to show yet.
+struct SettingsLoadingRow: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(minHeight: SettingsMetrics.rowMinHeight)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Error text in the settings screens.
+struct SettingsErrorLabel: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Label(text, systemImage: "exclamationmark.circle")
+            .font(.subheadline)
+            .foregroundStyle(.red)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 8)
+    }
+}

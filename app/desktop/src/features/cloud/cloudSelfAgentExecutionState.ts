@@ -14,6 +14,8 @@ import { cloudDirectMessageAction } from './cloudDirectMessages';
 import { routeRunsOnKordiCloud } from './cloudAgentRuntimeRoute';
 import { cloudMessageActionAllowsAgentTrigger } from './cloudAgentTriggerPolicy';
 import type { CloudMessageIndex } from './cloudMessageIndex';
+import type { CloudVoiceMessage } from './cloudAttachmentTypes';
+import { cloudVoiceDraftMetadataOnly } from './cloudVoiceMessage';
 import { cloudSyncedLocalAgentSessionIds } from './cloudSelfAgentSessionIdentity';
 
 const CLOUD_SELF_AGENT_LOCAL_EXECUTION_WINDOW_MS = 10 * 60_000;
@@ -86,6 +88,27 @@ export function cloudSelfAgentTerminalOrLocalRequestIds(
       ? [message.messageId]
       : []),
   ]);
+}
+
+/**
+ * The voice of a Kordi Cloud request this Mac sent from a local agent session. Forward sync
+ * publishes only the request text, so the executor reads the transcript state from the local
+ * message and the agent gets the same transcript provenance as any other voice request.
+ */
+export function localSelfAgentRequestVoice(
+  state: CanonicalSessionState | null | undefined,
+  request: Pick<CloudMessage, 'clientMessageId'>,
+): CloudVoiceMessage | null {
+  const clientMessageId = request.clientMessageId?.trim();
+  if (!state || !clientMessageId) return null;
+  const local = state.messages.find((message) => (
+    message.senderRole === 'user'
+    && !message.sourceTransport?.startsWith('cloud-')
+    && Boolean((message.content as { voiceMessage?: unknown } | null)?.voiceMessage)
+    && cloudSelfAgentRequestClientMessageId(message.sessionId, message.id) === clientMessageId
+  ));
+  const voice = cloudVoiceDraftMetadataOnly((local?.content as { voiceMessage?: unknown } | null)?.voiceMessage);
+  return voice ? { ...voice, mediaId: voice.mediaId ?? '' } : null;
 }
 
 export function pendingCloudSelfAgentExecutionRequests({

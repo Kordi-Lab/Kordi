@@ -8,31 +8,23 @@ struct ConnectorActivityView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        List {
-            Section {
-                if let errorMessage {
-                    Label(errorMessage, systemImage: "exclamationmark.circle.fill")
-                        .foregroundStyle(.red)
-                }
-                if let entries {
-                    if entries.isEmpty {
-                        Text("No activity yet.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(entries) { ConnectorAuditRow(entry: $0) }
-                    }
+        SettingsPage {
+            if let errorMessage {
+                SettingsErrorLabel(errorMessage)
+            }
+            if let entries {
+                if entries.isEmpty {
+                    SettingsCaption("No activity yet.")
                 } else {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        Text("Loading activity…").foregroundStyle(.secondary)
+                    ForEach(entries) { entry in
+                        if entry.id != entries.first?.id { Divider() }
+                        ConnectorAuditRow(entry: entry)
                     }
-                    .accessibilityElement(children: .combine)
                 }
-            } footer: {
-                Text("Every read and act call your agents made, newest first.")
+            } else {
+                SettingsLoadingRow("Loading activity…")
             }
         }
-        .listStyle(.insetGrouped)
         .navigationTitle("\(definition.name) activity")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }
@@ -60,7 +52,7 @@ private struct ConnectorAuditRow: View {
                 Text("·").accessibilityHidden(true)
                 Text(entry.agentName)
                 Spacer(minLength: 4)
-                ConnectorCapsule(text: entry.group == .act ? "Act" : "Read", tint: entry.group == .act ? .orange : nil)
+                Text(entry.group == .act ? "Act" : "Read")
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -78,7 +70,8 @@ private struct ConnectorAuditRow: View {
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 10)
         .accessibilityElement(children: .combine)
     }
 }

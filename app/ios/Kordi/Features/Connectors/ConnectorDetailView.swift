@@ -6,57 +6,28 @@ struct ConnectorDetailView: View {
     @ObservedObject var store: ConnectorsStore
 
     @State private var consent: ConnectorConsent?
-    @State private var consentBusy = false
     @State private var showsDisconnect = false
 
     private var state: ConnectorState? { store.states[definition.providerId] }
     private var busy: Bool { store.busyProviderId == definition.providerId }
 
     var body: some View {
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 8) {
-                        CompactSettingsLabel(
-                            title: ConnectorsModel.statusLabel(definition: definition, state: state, agents: store.agents),
-                            subtitle: definition.experimental
-                                ? "\(definition.summary) Experimental, read-only, best effort."
-                                : definition.summary,
-                            systemImage: ConnectorsModel.systemImage(definition.providerId),
-                            titleLineLimit: 1
-                        )
-                        if definition.experimental {
-                            ConnectorCapsule(text: "Experimental", tint: .orange)
-                        }
-                    }
-                    primaryAction
-                }
-            }
+        SettingsPage {
+            header
+            primaryAction
 
             if let error = store.errorMessage?.nonEmpty {
-                Section {
-                    Label(error, systemImage: "exclamationmark.circle.fill")
-                        .foregroundStyle(.red)
-                }
+                SettingsErrorLabel(error)
             }
 
             if let state, state.status == .connected {
                 connectedSections(state)
             }
         }
-        .listStyle(.insetGrouped)
-        .environment(\.defaultMinListRowHeight, 44)
         .navigationTitle(definition.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { store.errorMessage = nil }
-        .sheet(item: $consent) { consent in
-            ConnectorConsentSheet(consent: consent, busy: consentBusy) {
-                Task { await confirm(consent) }
-            } onCancel: {
-                self.consent = nil
-            }
-            .interactiveDismissDisabled(consentBusy)
-        }
+        .connectorConsent($consent, store: store)
         .confirmationDialog(
             "Disconnect \(definition.name)?",
             isPresented: $showsDisconnect,
@@ -73,17 +44,39 @@ struct ConnectorDetailView: View {
         }
     }
 
+    /// Larger logo, the name, and one short grey state.
+    private var header: some View {
+        HStack(spacing: 14) {
+            ConnectorLogo(providerId: definition.providerId, size: 40)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(definition.name)
+                    .font(.title3.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                Text(ConnectorsModel.detailState(definition: definition, state: state))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                if definition.experimental {
+                    Text("Experimental, read-only, best effort.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+    }
+
     @ViewBuilder
     private var primaryAction: some View {
         switch state?.status ?? .notConnected {
         case .connected:
             EmptyView()
         case .needsReauth:
-            actionButton("Sign in again", accessibilityLabel: "Sign in to \(definition.name) again") {
+            prominentAction("Sign in again", accessibilityLabel: "Sign in to \(definition.name) again") {
                 consent = .connect(definition, reauth: true)
             }
         case .permissionMissing:
-            actionButton(busy ? "Checking…" : "Check again", accessibilityLabel: "Check \(definition.name) permission again") {
+            prominentAction("Check again", accessibilityLabel: "Check \(definition.name) permission again") {
                 Task {
                     await store.perform(definition.providerId, fallback: "Could not update this connector. Try again.") {
                         try await store.client.recheckPermission(definition.providerId)
@@ -91,95 +84,95 @@ struct ConnectorDetailView: View {
                 }
             }
         case .notConnected:
-            actionButton("Connect", accessibilityLabel: "Connect \(definition.name)") {
+            prominentAction("Connect", accessibilityLabel: "Connect \(definition.name)") {
                 consent = .connect(definition, reauth: false)
             }
         }
     }
 
-    private func actionButton(_ title: String, accessibilityLabel: String, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .disabled(busy)
-            .padding(.leading, 34)
-            .accessibilityLabel(accessibilityLabel)
+    /// The one action of a connector that is not connected, as a filled button.
+    private func prominentAction(
+        _ title: String,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Group {
+                if busy {
+                    ProgressView()
+                } else {
+                    Text(title)
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .disabled(busy)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
+        .accessibilityLabel(accessibilityLabel)
     }
 
     @ViewBuilder
     private func connectedSections(_ state: ConnectorState) -> some View {
-        let grantedRead = definition.readScopes.filter { state.grantedScopeIds.contains($0.id) }
-        let grantedAct = definition.actScopes.filter { state.grantedScopeIds.contains($0.id) }
-        let chips = (grantedRead.isEmpty ? definition.readScopes : grantedRead) + (state.actEnabled ? grantedAct : [])
-
-        Section {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Allowed").font(.subheadline)
-                FlowLayout(spacing: 6) {
-                    ForEach(chips) { ConnectorScopeChip(scope: $0) }
-                }
+        SettingsDivider()
+        SettingsSectionTitle("Access")
+        ForEach(ConnectorsModel.allowedScopes(definition: definition, state: state)) { scope in
+            CompactSettingsLabel(title: scope.label, systemImage: scope.systemImage)
+                .frame(minHeight: SettingsMetrics.textRowMinHeight)
+                .accessibilityLabel("Allowed: \(scope.label)")
+        }
+        if !definition.actScopes.isEmpty {
+            Toggle(isOn: actBinding(state)) {
+                CompactSettingsLabel(
+                    title: "Let my agent act here",
+                    // Kept: says what acting allows and that approvals still apply.
+                    subtitle: state.actEnabled
+                        ? "\(definition.actDescription) Anything on your Ask me before list still waits for your approval."
+                        : nil,
+                    systemImage: "bolt"
+                )
             }
-            .padding(.vertical, 4)
-            .accessibilityElement(children: .combine)
-
-            if !definition.actScopes.isEmpty {
-                Toggle(isOn: actBinding(state)) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Let my agent act here").font(.subheadline)
-                        Text(state.actEnabled
-                            ? "\(definition.actDescription) Anything on your Ask me before list still waits for your approval."
-                            : "Your agent can only read from \(definition.name).")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .disabled(busy)
-                .accessibilityIdentifier("connector-act-toggle")
-            }
-        } header: {
-            Text("Access")
-        } footer: {
-            Text("Background runs: digests and scheduled work can only read. They never get act tools.")
+            .frame(minHeight: SettingsMetrics.rowMinHeight)
+            .disabled(busy)
+            .accessibilityIdentifier("connector-act-toggle")
         }
 
-        Section("Agents") {
+        if !store.agents.isEmpty {
+            SettingsDivider()
+            SettingsSectionTitle("Agents")
             ForEach(store.agents) { agent in
                 Toggle(isOn: agentBinding(agent, state: state)) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(agent.name).font(.subheadline)
-                        if agent.isDefault {
-                            Text("Default agent").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
+                    CompactSettingsLabel(
+                        title: agent.name,
+                        subtitle: agent.isDefault ? "Default agent" : nil,
+                        systemImage: "sparkles"
+                    )
                 }
+                .frame(minHeight: SettingsMetrics.rowMinHeight)
                 .disabled(busy)
                 .accessibilityLabel("Let \(agent.name) use \(definition.name)")
             }
         }
 
-        Section {
-            NavigationLink {
-                ConnectorActivityView(definition: definition, client: store.client)
-            } label: {
-                CompactSettingsLabel(title: "Activity log", subtitle: "Every read and act call is recorded.", systemImage: "list.bullet.rectangle")
+        SettingsDivider()
+        SettingsSectionTitle("Activity")
+        NavigationLink {
+            ConnectorActivityView(definition: definition, client: store.client)
+        } label: {
+            SettingsRow {
+                CompactSettingsLabel(title: "Activity log", systemImage: "list.bullet.rectangle")
+            } trailing: {
+                SettingsChevron()
             }
-        } header: {
-            Text("Activity")
         }
+        .buttonStyle(.plain)
 
-        Section {
-            Button(role: .destructive) {
-                showsDisconnect = true
-            } label: {
-                Text("Disconnect")
-            }
+        SettingsDivider()
+        SettingsDestructiveRow("Disconnect") { showsDisconnect = true }
             .disabled(busy)
             .accessibilityLabel("Disconnect \(definition.name)")
-        } header: {
-            Text("Remove")
-        } footer: {
-            Text("Removes the sign-in and stored events from \(definition.name).")
-        }
     }
 
     private func actBinding(_ state: ConnectorState) -> Binding<Bool> {
@@ -205,20 +198,6 @@ struct ConnectorDetailView: View {
             }
         )
     }
-
-    private func confirm(_ consent: ConnectorConsent) async {
-        consentBusy = true
-        defer {
-            consentBusy = false
-            self.consent = nil
-        }
-        switch consent.kind {
-        case .connect:
-            _ = await store.connect(definition)
-        case .grant:
-            _ = await store.grantAct(definition)
-        }
-    }
 }
 
 /// A consent step: the connection, which grants read and act together for a
@@ -227,6 +206,7 @@ struct ConnectorConsent: Identifiable {
     enum Kind { case connect, grant }
 
     let kind: Kind
+    let definition: ConnectorDefinition
     let title: String
     let message: String
     let scopes: [ConnectorScope]
@@ -241,6 +221,7 @@ struct ConnectorConsent: Identifiable {
         if definition.kind == .service {
             return ConnectorConsent(
                 kind: .connect,
+                definition: definition,
                 title: reauth ? "Sign in to \(definition.name) again" : "Connect \(definition.name)",
                 message: "Kordi asks \(definition.providerName) for the access your agent needs to read and act here. You can turn acting off at any time from this page.",
                 scopes: ConnectorsModel.connectScopes(definition),
@@ -252,6 +233,7 @@ struct ConnectorConsent: Identifiable {
         }
         return ConnectorConsent(
             kind: .connect,
+            definition: definition,
             title: "Allow access to \(definition.name)",
             message: "iOS will ask you to allow Kordi to read \(definition.name). Your agent only sees results, never your whole library.",
             scopes: definition.readScopes,
@@ -265,6 +247,7 @@ struct ConnectorConsent: Identifiable {
     static func grant(_ definition: ConnectorDefinition) -> ConnectorConsent {
         ConnectorConsent(
             kind: .grant,
+            definition: definition,
             title: "Let your agent act in \(definition.name)",
             message: "\(definition.providerName) did not grant this when you connected. Your agent will be able to:",
             scopes: definition.actScopes,
@@ -273,6 +256,44 @@ struct ConnectorConsent: Identifiable {
             confirmTitle: definition.kind == .service ? "Continue to \(definition.providerName)" : "Allow",
             waitingText: "Waiting for \(definition.providerName)…"
         )
+    }
+}
+
+/// Presents the consent step and runs the connect or act grant it confirms.
+private struct ConnectorConsentPresenter: ViewModifier {
+    @Binding var consent: ConnectorConsent?
+    @ObservedObject var store: ConnectorsStore
+    @State private var busy = false
+
+    func body(content: Content) -> some View {
+        content.sheet(item: $consent) { consent in
+            ConnectorConsentSheet(consent: consent, busy: busy) {
+                Task { await confirm(consent) }
+            } onCancel: {
+                self.consent = nil
+            }
+            .interactiveDismissDisabled(busy)
+        }
+    }
+
+    private func confirm(_ consent: ConnectorConsent) async {
+        busy = true
+        defer {
+            busy = false
+            self.consent = nil
+        }
+        switch consent.kind {
+        case .connect:
+            _ = await store.connect(consent.definition)
+        case .grant:
+            _ = await store.grantAct(consent.definition)
+        }
+    }
+}
+
+extension View {
+    func connectorConsent(_ consent: Binding<ConnectorConsent?>, store: ConnectorsStore) -> some View {
+        modifier(ConnectorConsentPresenter(consent: consent, store: store))
     }
 }
 
@@ -294,7 +315,7 @@ private struct ConnectorConsentSheet: View {
                         .foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(consent.scopes) { scope in
-                            Label(scope.label, systemImage: scope.group == .act ? "hand.tap" : "eye")
+                            Label(scope.label, systemImage: scope.systemImage)
                                 .font(.subheadline)
                         }
                     }
@@ -336,15 +357,18 @@ private struct ConnectorConsentSheet: View {
     }
 }
 
-private struct ConnectorScopeChip: View {
-    let scope: ConnectorScope
+extension ConnectorScope {
+    /// Outline icon shared by the consent sheet and the Access rows.
+    var systemImage: String { group == .act ? "hand.tap" : "eye" }
+}
 
-    var body: some View {
-        Text(scope.label)
-            .font(.caption)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .foregroundStyle(scope.group == .act ? Color.orange : Color.secondary)
-            .background((scope.group == .act ? Color.orange : Color.secondary).opacity(0.14), in: Capsule())
+extension ConnectorsModel {
+    /// Scopes the detail screen lists under Access: what was granted to read
+    /// (or everything the connector reads, when the server reports none), plus
+    /// the granted act scopes while acting is on.
+    static func allowedScopes(definition: ConnectorDefinition, state: ConnectorState) -> [ConnectorScope] {
+        let grantedRead = definition.readScopes.filter { state.grantedScopeIds.contains($0.id) }
+        let grantedAct = definition.actScopes.filter { state.grantedScopeIds.contains($0.id) }
+        return (grantedRead.isEmpty ? definition.readScopes : grantedRead) + (state.actEnabled ? grantedAct : [])
     }
 }

@@ -187,6 +187,12 @@ class BackendTests(unittest.TestCase):
         compose = (ROOT / "deploy/dev/compose.yaml").read_text()
         worker = compose[compose.index("  omp-route-worker:"):]
         self.assertIn("http://127.0.0.1:17331/health", worker[:worker.index("restart:")])
+        # Production runs the same image on the same port with the same health route.
+        production = (ROOT / "bridges/cloud-server/deploy/k3s/manifests/omp-route-worker-deployment.yaml").read_text()
+        self.assertIn("containerPort: 17331", production)
+        self.assertEqual(production.count("path: /health"), 2)
+        server = (ROOT / "bridges/cloud-server/deploy/k3s/manifests/cloud-server-deployment.yaml").read_text()
+        self.assertIn('value: "http://kordi-omp-route-worker:17331"', server)
 
 
 if __name__ == "__main__":

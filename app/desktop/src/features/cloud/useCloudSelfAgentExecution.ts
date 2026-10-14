@@ -19,6 +19,7 @@ import {
   omitTerminalCloudSelfAgentLocalTurns,
   pendingCloudSelfAgentExecutionRequests,
   localSelfAgentRequestClientMessageIds,
+  localSelfAgentRequestVoice,
 } from './cloudSelfAgentExecutionState';
 import {
   executeCloudSelfAgentRequest,
@@ -177,7 +178,7 @@ export function useCloudSelfAgentExecution({
         syncMessages,
         reportWarning,
         request,
-        voice,
+        voice: voice ?? localSelfAgentRequestVoice(canonicalState, request),
         selfMessages,
         candidateRuntimeSessionId,
         effectiveRoutesBySessionId,

@@ -3,15 +3,18 @@ from argparse import Namespace
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from backend_artifact import PRODUCTION_SERVICES, digest_file
+from backend_artifact import PRODUCTION_SERVICES, SERVICES, digest_file
 from backend_backup import verify_backup
 from backend_deploy_common import lock
-from backend_deploy_production import capture_previous, deploy
-from test_backend_deploy import SHA, bundle
+from backend_deploy_production import CONTAINERS, MissingDeployment, apply_images, capture_previous, deploy
+from test_backend_deploy import ROOT, SHA, bundle
+
+MANIFESTS = ROOT / "bridges/cloud-server/deploy/k3s/manifests"
 
 
 class ProductionTests(unittest.TestCase):
@@ -109,19 +112,72 @@ class ProductionTests(unittest.TestCase):
         self.assertEqual(apply.call_count, 1)
         self.assertIn("forward fix required", self.result()["rollback"])
 
-    def test_previous_images_use_the_real_server_and_runner_container_names(self):
+    def deployment_command(self, missing=(), calls=None):
         def command(arguments):
-            service = "cloud-agent-runner" if "kordi-cloud-agent-runner" in arguments else "cloud-server"
-            name = "runner" if service == "cloud-agent-runner" else "server"
+            if calls is not None:
+                calls.append(arguments)
             if "get" in arguments:
+                service = arguments[arguments.index("deployment") + 1][len("kordi-"):]
+                if service in missing:
+                    raise subprocess.CalledProcessError(1, arguments, output=f'deployments.apps "kordi-{service}" not found (NotFound)')
                 return json.dumps({"spec": {"template": {"spec": {"containers": [
-                    {"name": name, "image": f"kordi-{service}:old"}]}}}})
+                    {"name": CONTAINERS[service], "image": f"kordi-{service}:old"}]}}}})
             return ""
+        return command
+
+    def test_previous_images_use_the_real_worker_server_and_runner_container_names(self):
+        self.assertEqual(CONTAINERS, {"omp-route-worker": "worker", "cloud-server": "server", "cloud-agent-runner": "runner"})
         store = {f"docker.io/library/kordi-{s}:old": "sha256:" + "b" * 64 for s in PRODUCTION_SERVICES}
-        with patch("backend_deploy_production.run", side_effect=command), patch("backend_deploy_production.image_store", return_value=store):
+        with patch("backend_deploy_production.run", side_effect=self.deployment_command()), \
+             patch("backend_deploy_production.image_store", return_value=store):
             self.assertEqual(capture_previous(), self.previous)
 
-    def test_promotion_applies_only_production_services(self):
+    def test_every_production_manifest_names_the_promoted_container(self):
+        for service in PRODUCTION_SERVICES:
+            manifest = (MANIFESTS / f"{service}-deployment.yaml").read_text()
+            self.assertIn(f"kind: Deployment\nmetadata:\n  name: kordi-{service}\n", manifest)
+            self.assertIn(f"        - name: {CONTAINERS[service]}\n          image: kordi-{service}:dev\n", manifest)
+
+    def test_missing_worker_deployment_fails_before_any_image_changes(self):
+        calls = []
+        store = {f"docker.io/library/kordi-{s}:old": "sha256:" + "b" * 64 for s in PRODUCTION_SERVICES}
+        with patch("backend_deploy_production.run", side_effect=self.deployment_command({"omp-route-worker"}, calls)), \
+             patch("backend_deploy_production.image_store", return_value=store), \
+             patch("backend_deploy_production.apply_images") as apply:
+            with self.assertRaises(MissingDeployment):
+                deploy(self.args())
+        apply.assert_not_called()
+        self.assertFalse(any(word in call for call in calls for word in ("import", "tag", "set")))
+        result = self.result()
+        self.assertEqual((result["stage"], result["rollback"]), ("capture previous images", "not attempted"))
+        self.assertIn("kordi-omp-route-worker does not exist", result["operatorAction"])
+        self.assertIn("bridges/cloud-server/deploy/k3s/README.md", result["operatorAction"])
+
+    def test_other_kubectl_failures_are_not_reported_as_a_missing_deployment(self):
+        def command(arguments):
+            raise subprocess.CalledProcessError(1, arguments, output="connection refused")
+        with patch("backend_deploy_production.run", side_effect=command), \
+             patch("backend_deploy_production.image_store", return_value={}):
+            with self.assertRaises(subprocess.CalledProcessError):
+                capture_previous()
+
+    def test_worker_rolls_out_before_the_server_and_restores_after_it(self):
+        self.assertEqual(set(PRODUCTION_SERVICES), set(SERVICES))
+        calls = []
+        with patch("backend_deploy_production.run", side_effect=lambda arguments: calls.append(arguments) or ""):
+            apply_images(self.previous)
+            forward, calls[:] = list(calls), []
+            apply_images(self.previous, restore=True)
+        order = ["omp-route-worker", "cloud-server", "cloud-agent-runner"]
+        expected = []
+        for service in order:
+            expected.append(["set", "image", f"deployment/kordi-{service}", f"{CONTAINERS[service]}={self.previous[service]}"])
+            expected.append(["rollout", "status", f"deployment/kordi-{service}", "--timeout=180s"])
+        self.assertEqual([call[5:] for call in forward], expected)
+        restored = [pair for index in range(len(order) - 1, -1, -1) for pair in expected[2 * index:2 * index + 2]]
+        self.assertEqual([call[5:] for call in calls], restored)
+
+    def test_promotion_applies_every_production_service(self):
         calls = []
 
         def command(arguments):
@@ -135,7 +191,11 @@ class ProductionTests(unittest.TestCase):
             deploy(self.args())
         self.assertEqual(self.result()["outcome"], "success")
         self.assertEqual(sorted(self.result()["images"]), sorted(PRODUCTION_SERVICES))
-        self.assertFalse(any("omp-route-worker" in " ".join(call) for call in calls))
+        imported = [call[-1] for call in calls if "import" in call]
+        self.assertEqual(imported, [str(self.directory / f"{service}.oci.tar") for service in PRODUCTION_SERVICES])
+        changed = [call[-1] for call in calls if "set" in call]
+        self.assertEqual(changed, [f"{CONTAINERS[service]}=docker.io/library/kordi-{service}@"
+                                   f"{self.manifest['images'][service]['digest']}" for service in PRODUCTION_SERVICES])
 
     def test_independent_deployments_contend_for_the_same_host_lock(self):
         with lock("host-wide", self.directory / "locks", timeout=0):

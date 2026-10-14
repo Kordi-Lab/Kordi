@@ -152,8 +152,10 @@ export function localAgentNoProviderCompletion(
 }
 
 /**
- * A voice message is delivered to its local agent session as soon as it is stored. Only the agent turn
- * waits for the words, in the background, so the bubble never returns to "sending".
+ * A voice message to a native local agent is delivered as soon as it is stored; only the agent turn
+ * waits for the words, in the background, so the bubble never returns to "sending". A Kordi Cloud
+ * route is different: its delivery is the execution request that forward sync publishes, so it is
+ * delivered only once the transcript (or the bounded wait's failure) is on the message.
  */
 export function dispatchLocalAgentVoiceTurn(
   context: LocalAgentTurnContext,
@@ -161,14 +163,16 @@ export function dispatchLocalAgentVoiceTurn(
   attachments: readonly AttachmentItem[],
   transcription: Promise<VoiceTranscriptionOutcome>,
   session: { clearInFlight: () => void; flushQueue: () => void; waitForHostedRequest: (requestMessageId: string) => void },
+  transcriptTimeoutMs?: number,
 ) {
   const delivered = deliveredCanonicalMessage(context, prepared);
-  const deliveryWrite = markLocalAgentMessageDelivered(context, prepared);
+  const deliveredWithRequest = routeRunsOnKordiCloud(context.route);
+  const deliveryWrite = deliveredWithRequest ? Promise.resolve() : markLocalAgentMessageDelivered(context, prepared);
   void (async () => {
     let turnStarted = false;
     try {
       const [agentVoice] = await Promise.all([
-        transcribeAgentVoiceAttachments(attachments, transcription),
+        transcribeAgentVoiceAttachments(attachments, transcription, transcriptTimeoutMs),
         deliveryWrite,
       ]);
       let dispatchedCanonicalMessage = delivered;
@@ -180,7 +184,8 @@ export function dispatchLocalAgentVoiceTurn(
         );
         dispatchedCanonicalMessage = transcribedMessage;
         context.setCanonicalSessionState((current) => replaceOptimisticCanonicalMessageContent(current, transcribedMessage));
-        if (transcribedMessage) {
+        // A Kordi Cloud request stores its transcript with its delivery below.
+        if (transcribedMessage && !deliveredWithRequest) {
           // Storing the transcript only updates what is displayed; the agent receives the words directly.
           await upsertCanonicalMessageFast(transcribedMessage.request).catch((error: unknown) => {
             context.setDesktopChatError(error instanceof Error ? error.message : 'Unable to save the voice transcript');

@@ -87,6 +87,34 @@ final class ConnectorsModelTests: XCTestCase {
         )
     }
 
+    func testListTrailingConnectsFromTheRow() {
+        let gmail = ConnectorsModel.definition(.gmail)
+        XCTAssertEqual(ConnectorsModel.listTrailing(definition: gmail, state: nil, busy: false), .connect)
+        XCTAssertEqual(ConnectorsModel.listTrailing(definition: gmail, state: state(.gmail, status: .notConnected), busy: false), .connect)
+        XCTAssertEqual(ConnectorsModel.listTrailing(definition: gmail, state: nil, busy: true), .busy)
+        XCTAssertEqual(ConnectorsModel.listTrailing(definition: gmail, state: state(.gmail), busy: false), .open("Connected"))
+        XCTAssertEqual(ConnectorsModel.listTrailing(definition: gmail, state: state(.gmail, status: .needsReauth), busy: false), .open("Sign in again"))
+        XCTAssertEqual(
+            ConnectorsModel.listTrailing(definition: ConnectorsModel.definition(.macContacts), state: state(.macContacts, status: .permissionMissing), busy: false),
+            .open("Allow access")
+        )
+        XCTAssertEqual(ConnectorsModel.listTrailing(definition: ConnectorsModel.definition(.outlook), state: nil, busy: true), .comingLater)
+    }
+
+    func testDetailStateIsShort() {
+        let gmail = ConnectorsModel.definition(.gmail)
+        XCTAssertEqual(ConnectorsModel.detailState(definition: gmail, state: nil), "Not connected")
+        XCTAssertEqual(ConnectorsModel.detailState(definition: gmail, state: state(.gmail, actEnabled: true)), "Connected")
+        XCTAssertEqual(ConnectorsModel.detailState(definition: gmail, state: state(.gmail, status: .needsReauth)), "Sign in again")
+        XCTAssertEqual(ConnectorsModel.detailState(definition: ConnectorsModel.definition(.outlook), state: nil), "Not yet available")
+    }
+
+    func testConsentCarriesItsConnector() {
+        let slack = ConnectorsModel.definition(.slack)
+        XCTAssertEqual(ConnectorConsent.connect(slack, reauth: false).definition, slack)
+        XCTAssertEqual(ConnectorConsent.grant(slack).definition, slack)
+    }
+
     func testStatusLabels() {
         let calendar = ConnectorsModel.definition(.googleCalendar)
         XCTAssertEqual(ConnectorsModel.statusLabel(definition: calendar, state: nil, agents: agents), "Not connected")
@@ -161,6 +189,42 @@ final class ConnectorsModelTests: XCTestCase {
         XCTAssertEqual(consent.scopes.map(\.id), (github.readScopes + github.actScopes).map(\.id))
         let local = ConnectorConsent.connect(ConnectorsModel.definition(.macCalendar), reauth: false)
         XCTAssertEqual(local.scopes.map(\.id), ConnectorsModel.definition(.macCalendar).readScopes.map(\.id))
+    }
+
+    func testAllowedScopesListReadThenGrantedActWhileActingIsOn() {
+        let gmail = ConnectorsModel.definition(.gmail)
+        let all = (gmail.readScopes + gmail.actScopes).map(\.id)
+
+        // No granted read scope reported: every read scope is listed.
+        XCTAssertEqual(
+            ConnectorsModel.allowedScopes(definition: gmail, state: state(.gmail)).map(\.id),
+            gmail.readScopes.map(\.id)
+        )
+        // Only the granted read scopes once the server reports them.
+        XCTAssertEqual(
+            ConnectorsModel.allowedScopes(definition: gmail, state: state(.gmail, grantedScopeIds: ["gmail.labels.read"])).map(\.id),
+            ["gmail.labels.read"]
+        )
+        // Act scopes stay hidden while acting is off, even when granted.
+        XCTAssertEqual(
+            ConnectorsModel.allowedScopes(definition: gmail, state: state(.gmail, grantedScopeIds: all)).map(\.id),
+            gmail.readScopes.map(\.id)
+        )
+        XCTAssertEqual(
+            ConnectorsModel.allowedScopes(definition: gmail, state: state(.gmail, actEnabled: true, grantedScopeIds: all)).map(\.id),
+            all
+        )
+        // Acting on without the act grant lists nothing it was not given.
+        XCTAssertEqual(
+            ConnectorsModel.allowedScopes(definition: gmail, state: state(.gmail, actEnabled: true)).map(\.id),
+            gmail.readScopes.map(\.id)
+        )
+    }
+
+    func testScopeIconsSeparateReadFromAct() {
+        let gmail = ConnectorsModel.definition(.gmail)
+        XCTAssertEqual(gmail.readScopes.map(\.systemImage), ["eye", "eye"])
+        XCTAssertEqual(gmail.actScopes.map(\.systemImage), ["hand.tap"])
     }
 
     func testLocalConnectorActTurnsOnDirectly() async throws {

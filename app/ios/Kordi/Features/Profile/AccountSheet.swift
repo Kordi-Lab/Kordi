@@ -570,15 +570,8 @@ private struct DevicesSettingsView: View {
     }
 
     private func destructiveRow(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(role: .destructive, action: action) {
-            Text(title)
-                .font(.subheadline)
-                .foregroundStyle(.red)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(isMutating)
+        SettingsDestructiveRow(title, action: action)
+            .disabled(isMutating)
     }
 
     private func revokeButton(title: String, action: @escaping () -> Void) -> some View {

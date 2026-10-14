@@ -232,6 +232,17 @@ spec:
                   name: kordi-cloud-runner
                   key: runner-token
                   optional: true
+            # OMP route worker (omp-route-worker-deployment.yaml). Without the
+            # kordi-omp-route-worker Secret the server still starts, and
+            # provider sign-in reports provider_auth_not_configured.
+            - name: KORDI_OMP_ROUTE_WORKER_URL
+              value: "http://kordi-omp-route-worker:17331"
+            - name: KORDI_OMP_ROUTE_WORKER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-omp-route-worker
+                  key: token
+                  optional: true
             - name: KORDI_AUTH_SMTP_HOST
               valueFrom:
                 secretKeyRef:
