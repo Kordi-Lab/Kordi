@@ -18,7 +18,7 @@ use super::access::{public_document, DocumentRecord};
 use super::contents::document_source;
 use super::documents::raw_html_response;
 use super::model::{DocumentAuthor, DocumentFormat};
-use super::render::{document_blocks, document_title, markdown_title};
+use super::render::{document_blocks, markdown_title};
 use super::tokens::{public_raw_path, share_deep_link};
 use super::{observe_public, PublicAccess};
 use crate::auth::rate_limit::CloudRateLimiter;
@@ -141,7 +141,7 @@ fn document_body(input: &PageInput<'_>, title: &str) -> String {
 
 pub(crate) fn document_page(input: &PageInput<'_>, nonce: &str) -> String {
     let record = input.record;
-    let title = document_title(record.format, input.source, &record.file_name);
+    let title = record.title(input.source);
     let author = &record.author;
     let name = escape_html(&author.display_name);
     let kordi_id = if author.kordi_id.is_empty() {

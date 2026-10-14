@@ -1,8 +1,8 @@
 //! `document.updated` and `document.agent_request` user sync events.
 //!
 //! Saves publish `"change": "content"`; reactions and comments publish
-//! `"change": "annotations"`. Clients that show the document refetch on
-//! both. Delivery failures are logged and never undo the write.
+//! `"change": "annotations"`; renames publish `"change": "title"` with the
+//! new `title`. Clients that show the document refetch on all of them. Delivery failures are logged and never undo the write.
 
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
@@ -14,6 +14,8 @@ use super::canonical::family_audience;
 pub(crate) enum DocumentChange {
     Content,
     Annotations,
+    /// A rename; the payload carries the new title.
+    Title,
 }
 
 impl DocumentChange {
@@ -21,6 +23,7 @@ impl DocumentChange {
         match self {
             Self::Content => "content",
             Self::Annotations => "annotations",
+            Self::Title => "title",
         }
     }
 }
@@ -42,13 +45,17 @@ pub(crate) fn update_payload(
     change: DocumentChange,
     updated_by: Option<&str>,
 ) -> serde_json::Value {
-    serde_json::json!({
+    let mut payload = serde_json::json!({
         "attachmentId": record.attachment_id,
         "revision": revision,
         "sessionId": session_id,
         "updatedByAccountId": updated_by,
         "change": change.as_str(),
-    })
+    });
+    if change == DocumentChange::Title {
+        payload["title"] = serde_json::json!(record.stored_title);
+    }
+    payload
 }
 
 /// Publishes `document.updated` to the owner and the active members of every

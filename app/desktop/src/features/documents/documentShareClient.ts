@@ -42,6 +42,11 @@ export function getCloudDocument(client: CloudRequestClient, token: string, atta
   return client.request(`/v1/cloud/documents/${segment(attachmentId)}`, authorized(token, 'GET'), 'Could not open the document.');
 }
 
+/** Renames a document for everyone who can see it; the file name stays. */
+export function renameCloudDocument(client: CloudRequestClient, token: string, attachmentId: string, title: string): Promise<DocumentResponse> {
+  return client.request(`/v1/cloud/documents/${segment(attachmentId)}`, authorized(token, 'PATCH', { title }), 'Could not rename the document.');
+}
+
 export function createCloudDocumentShare(
   client: CloudRequestClient,
   token: string,

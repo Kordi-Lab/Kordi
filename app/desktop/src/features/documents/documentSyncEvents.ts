@@ -21,7 +21,7 @@ export function notifyDocumentSyncEvents(events: ReadonlyArray<{ eventType?: str
     if (event.eventType !== 'document.updated' || !event.payload || typeof event.payload !== 'object') continue;
     const { attachmentId, revision, change } = event.payload as { attachmentId?: unknown; revision?: unknown; change?: unknown };
     if (typeof attachmentId !== 'string' || typeof revision !== 'number') continue;
-    const kind = change === 'annotations' || change === 'content' ? change : undefined;
+    const kind = change === 'annotations' || change === 'content' || change === 'title' ? change : undefined;
     for (const listener of [...(listenersByAttachment.get(attachmentId) ?? [])]) listener({ attachmentId, revision, ...(kind ? { change: kind } : {}) });
   }
 }

@@ -258,6 +258,11 @@ pub struct SaveContentRequest {
     pub block_ids: std::collections::HashMap<String, String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct RenameDocumentRequest {
+    pub title: String,
+}
+
 /// `409 document_revision_conflict`: the error fields plus the current
 /// document, so a client can rebase without another request.
 #[derive(Debug, Serialize)]

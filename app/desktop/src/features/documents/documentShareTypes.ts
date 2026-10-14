@@ -169,8 +169,8 @@ export type DocumentCollabInit = { initialize: boolean; revision?: number };
 export type DocumentUpdatedEvent = {
   attachmentId: string;
   revision: number;
-  /** `content` for saves, `annotations` for reactions and comments. */
-  change?: 'content' | 'annotations';
+  /** `content` for saves, `annotations` for reactions and comments, `title` for renames. */
+  change?: 'content' | 'annotations' | 'title';
 };
 
 /** Identity a reader without an account writes under on the public routes. */

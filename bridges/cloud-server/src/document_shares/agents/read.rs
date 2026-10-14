@@ -14,7 +14,7 @@ use super::super::access::{canonical_record, DocumentRecord};
 use super::super::canonical::{canonical_attachment_id, is_family_member};
 use super::super::contents::document_source;
 use super::super::model::DocumentFormat;
-use super::super::render::{document_format, document_title, markdown_blocks};
+use super::super::render::{document_format, markdown_blocks};
 use super::gating::RunFacts;
 use super::threads::{load_comments, open_threads};
 use super::tools::{tool_blocks, ToolError};
@@ -179,7 +179,7 @@ pub(super) async fn execute(
     };
     let mut result = json!({
         "attachmentId": record.attachment_id,
-        "title": document_title(record.format, &source.text, &record.file_name),
+        "title": record.title(&source.text),
         "format": record.format,
         "revision": source.revision,
         "blocks": blocks,
