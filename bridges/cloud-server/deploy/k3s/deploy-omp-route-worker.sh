@@ -53,19 +53,17 @@ trap cleanup EXIT
 "${GCLOUD_SCP[@]}" "${BUNDLE}/omp-route-worker.oci.tar" "${REPO_ROOT}/${MANIFEST}" "${SSH_TARGET}:${REMOTE}/"
 
 echo "[worker-deploy] bootstrapping under the host deployment lock"
-printf -v REMOTE_ARGS '%q ' "${REMOTE}" "${IMAGE_TAG}" "${IMAGE_DIGEST}" "${LOCK_DIR}"
-"${GCLOUD_SSH[@]}" --command "bash -s -- ${REMOTE_ARGS}" <<'REMOTE_SCRIPT'
+printf -v REMOTE_ARGS '%q ' "${REMOTE}" "${IMAGE_TAG}" "${IMAGE_DIGEST}"
+# The lock directory belongs to the deployment group, so the lock is taken through sudo.
+"${GCLOUD_SSH[@]}" --command "sudo flock --wait 1800 $(printf %q "${LOCK_DIR}/host-wide.lock") bash -s -- ${REMOTE_ARGS}" <<'REMOTE_SCRIPT'
 set -euo pipefail
 remote="$1"
 tag="$2"
 digest="$3"
-lock_dir="$4"
 kubectl=(sudo k3s kubectl --namespace kordi-cloud)
 ctr=(sudo k3s ctr --namespace k8s.io)
 reference="docker.io/library/kordi-omp-route-worker@${digest}"
 
-exec 9>>"${lock_dir}/host-wide.lock"
-flock --wait 1800 9 || { echo "Another deployment still holds the host lock" >&2; exit 1; }
 
 "${ctr[@]}" images import "${remote}/omp-route-worker.oci.tar" >/dev/null
 stored="$("${ctr[@]}" images list | awk -v ref="${tag}" '$1 == ref { print $3 }')"
