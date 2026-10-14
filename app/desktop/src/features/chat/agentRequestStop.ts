@@ -8,6 +8,29 @@ export type AgentRequestStopTarget =
 /** Resolves true when something was stopped; false or nothing lets the control offer Stop again. */
 export type AgentRequestStopHandler = () => Promise<boolean | void> | boolean | void;
 
+/** A side pane's session, so its Stop acts on that session instead of the main pane's. */
+export type DesktopChatTurnStopTarget = {
+  sessionId: string;
+  liveTurn?: DesktopChatTurnSnapshot | null;
+};
+
+/** Stops the main pane's running turn, or the target session's when one is given. */
+export type DesktopChatTurnStopHandler = (target?: DesktopChatTurnStopTarget) => Promise<boolean> | void;
+
+/**
+ * A side pane's Stop: acts on that pane's session and live turn, never on the
+ * main pane's. Agent subsessions have no turn this Mac can stop.
+ */
+export function sidePaneTurnStop(
+  conversation: { id: string; canonicalSessionId?: string | null; agentSubsessionId?: string | null },
+  liveTurn: DesktopChatTurnSnapshot | null | undefined,
+  onStopDesktopChatTurn: DesktopChatTurnStopHandler,
+): (() => Promise<boolean> | void) | undefined {
+  if (conversation.agentSubsessionId) return undefined;
+  const sessionId = conversation.canonicalSessionId?.trim() || conversation.id;
+  return () => onStopDesktopChatTurn({ sessionId, liveTurn });
+}
+
 const TERMINAL_TURN_STATUSES = new Set(['complete', 'completed', 'cancelled', 'failed']);
 
 function messageIsViewersAgent(message: Pick<Message, 'role' | 'senderOwnerName'>) {

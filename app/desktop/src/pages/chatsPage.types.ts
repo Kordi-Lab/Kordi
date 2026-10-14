@@ -201,7 +201,7 @@ export type ChatsPageRuntime = {
   composerProviderOptions: ComposerProviderOption[];
   chatModelOptions?: ComposerModelOption[];
   isDesktopChatSending: boolean;
-  onStopDesktopChatTurn: () => Promise<boolean> | void;
+  onStopDesktopChatTurn: import('@/features/chat/agentRequestStop').DesktopChatTurnStopHandler;
   onStopCollaborationAgentRequest: NonNullable<
     ComponentProps<typeof MessageBubble>['onStopCollaborationAgentRequest']
   >;

@@ -29,9 +29,11 @@ export function TurnStopButton({
         event.stopPropagation();
         event.preventDefault();
         setStopping(true);
-        void Promise.resolve(onStop()).catch(() => {
-          setStopping(false);
-        });
+        // A stop that found nothing to stop offers Stop again instead of
+        // waiting for a terminal state that will not come.
+        void Promise.resolve()
+          .then(onStop)
+          .then((stopped) => { if (stopped === false) setStopping(false); }, () => setStopping(false));
       }}
     >
       <Square className="h-2 w-2 fill-current" aria-hidden="true" />
