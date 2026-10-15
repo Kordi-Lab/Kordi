@@ -44,7 +44,7 @@ const CURATED_RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly WhatsNewHighl
     {
       category: 'Shared documents',
       title: 'Read, edit, and share documents together',
-      detail: 'Markdown and HTML documents open beside the chat with live co-editing, comments, reactions, and public links.',
+      detail: 'Markdown and HTML documents open beside the chat with live co-editing on Mac and iPhone, renaming, comments, reactions, and public links.',
       kind: 'collaboration',
     },
     {
@@ -56,7 +56,7 @@ const CURATED_RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly WhatsNewHighl
     {
       category: 'Memory',
       title: 'Review what Kordi remembers',
-      detail: 'Account memory can be reviewed, edited, deleted, or switched off, and groups can keep shared memories.',
+      detail: 'Account memory can be reviewed, added by hand, edited, deleted, or switched off, and groups can keep shared memories.',
       kind: 'general',
     },
     {
