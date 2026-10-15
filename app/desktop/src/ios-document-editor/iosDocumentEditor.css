@@ -1,0 +1,94 @@
+/* The iPhone app's document editor page: the Mac's document styles with iPhone tokens and type. */
+
+:root {
+  color-scheme: light dark;
+  --utility-foreground: rgb(0 0 0 / 0.88);
+  --app-main-bg: #fff;
+  --app-chat-accent: #2563eb;
+  --app-markdown-link: var(--app-chat-accent);
+  --app-document-muted: rgb(60 60 67 / 0.6);
+  --app-document-line: rgb(60 60 67 / 0.18);
+  --app-document-chip-bg: rgb(118 118 128 / 0.12);
+  --app-code-bg: #f2f2f7;
+  --app-control-hover: rgb(118 118 128 / 0.12);
+  --app-transient-hover-bg: rgb(118 118 128 / 0.14);
+  --app-transient-border: rgb(60 60 67 / 0.14);
+  --app-transient-surface-bg: #fff;
+  --app-transient-shadow: 0 8px 28px rgb(0 0 0 / 0.14);
+  --app-copy-selection-surface-bg: rgb(37 99 235 / 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --utility-foreground: rgb(255 255 255 / 0.92);
+    --app-main-bg: #000;
+    --app-document-muted: rgb(235 235 245 / 0.6);
+    --app-document-line: rgb(84 84 88 / 0.65);
+    --app-document-chip-bg: rgb(118 118 128 / 0.24);
+    --app-code-bg: #1c1c1e;
+    --app-control-hover: rgb(118 118 128 / 0.24);
+    --app-transient-hover-bg: rgb(118 118 128 / 0.28);
+    --app-transient-border: rgb(84 84 88 / 0.6);
+    --app-transient-surface-bg: #2c2c2e;
+    --app-transient-shadow: 0 8px 28px rgb(0 0 0 / 0.5);
+  }
+}
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html,
+body {
+  margin: 0;
+  background: var(--app-main-bg);
+  color: var(--utility-foreground);
+  font-family: -apple-system, system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+button,
+input { font: inherit; color: inherit; }
+button { border: 0; background: none; padding: 0; }
+
+#editor { min-height: 100vh; padding: 12px 20px 40px; }
+
+/* The whole page is the writing surface: a tap anywhere below the text lands in it. */
+.app-document-editor-shell,
+.app-document-editor-shell > div,
+.app-document-prose { min-height: calc(100vh - 52px); }
+
+/* iPhone reading size: 16/26 body, larger headings. */
+.app-document-prose { font-size: 16px; line-height: 26px; -webkit-user-select: text; user-select: text; }
+.app-document-prose h1 { font-size: 24px; line-height: 30px; }
+.app-document-prose h2 { font-size: 19px; line-height: 26px; }
+.app-document-prose h3 { font-size: 17px; line-height: 24px; }
+.app-document-prose pre { font-size: 13px; }
+.app-document-prose ul[data-type='taskList'] li > label { height: 26px; }
+
+/* The app's toolbar formats; the selection bubble stays off so it does not cover the system menu. */
+.app-document-selection { display: none !important; }
+
+/* The `/` menu, as on the Mac (`document-reader.css`), with touch-sized rows. */
+.app-document-menu {
+  position: absolute;
+  z-index: 20;
+  min-width: 200px;
+  max-width: calc(100vw - 40px);
+  padding: 5px;
+  border: 1px solid var(--app-transient-border);
+  border-radius: 12px;
+  background: var(--app-transient-surface-bg);
+  box-shadow: var(--app-transient-shadow);
+}
+
+.app-document-menu-row { display: flex; width: 100%; min-height: 40px; align-items: center; padding: 0 10px; border-radius: 8px; font-size: 15px; text-align: left; }
+.app-document-menu-label { flex: 1; min-width: 0; }
+.app-document-link-form { display: flex; gap: 6px; padding: 4px; }
+.app-document-link-form input { min-width: 0; flex: 1; padding: 6px 8px; border: 1px solid var(--app-document-line); border-radius: 8px; background: transparent; }
+.app-document-link-form button { padding: 0 10px; color: var(--app-chat-accent); font-weight: 600; }
+
+/* Code blocks: the copy button shows without hover. */
+.app-document-code-copy { opacity: 1; }
+
+.ios-editor-empty { padding: 40px 0; color: var(--app-document-muted); text-align: center; }

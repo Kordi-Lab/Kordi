@@ -2,8 +2,9 @@
 import SwiftUI
 
 /// `--preview-shared-document`: the reader with synthetic data and no
-/// backend. `--preview-document-share` also opens Share, and
-/// `--preview-document-selection` selects a paragraph.
+/// backend. `--preview-document-share` also opens Share,
+/// `--preview-document-selection` selects a paragraph, and
+/// `--preview-document-editor` opens the content editor.
 struct SharedDocumentPreviewHost: View {
     @EnvironmentObject private var model: AppModel
 
@@ -15,7 +16,8 @@ struct SharedDocumentPreviewHost: View {
                 request: request,
                 service: PreviewDocumentService(),
                 showsShareSheet: arguments.contains("--preview-document-share"),
-                selectedBlockId: arguments.contains("--preview-document-selection") ? "b2" : nil
+                selectedBlockId: arguments.contains("--preview-document-selection") ? "b2" : nil,
+                opensEditor: arguments.contains("--preview-document-editor")
             )
         }
     }

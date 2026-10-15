@@ -203,6 +203,14 @@ final class DocumentReaderModel: ObservableObject {
     /// heading in its body; that heading is edited in the body.
     var canRename: Bool { document.map(DocumentRename.isAvailable) ?? false }
 
+    var canEdit: Bool { document.map(DocumentEditing.isAvailable) ?? false }
+
+    /// Editors open the content editor; nil when this document is not editable here.
+    func makeEditorSession(user: DocumentEditorUser) -> DocumentEditorSession? {
+        guard let document, DocumentEditing.isAvailable(for: document), let transport = service.editorTransport() else { return nil }
+        return DocumentEditorSession(attachmentId: document.attachmentId, title: document.title, user: user, transport: transport)
+    }
+
     /// Shows the new title at once and keeps the server's answer; a refusal
     /// restores the old title. Returns false when the title is invalid.
     @discardableResult
