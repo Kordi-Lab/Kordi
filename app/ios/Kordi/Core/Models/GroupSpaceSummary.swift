@@ -19,6 +19,8 @@ struct GroupSpaceSummary: Identifiable, Hashable {
     let sessions: [ConversationSummary]
     /// Includes every canonical session used for group membership fanout.
     let membershipSessions: [ConversationSummary]
+    /// The latest session's last attachment, so a lone document shows its title.
+    var lastAttachment: ChatAttachment? = nil
 
     var avatarSource: String? { membershipSessions.first?.avatarSource }
 
@@ -115,7 +117,8 @@ enum GroupSpaceCatalog {
                 unreadMentionCount: sessions.reduce(0) { $0 + $1.unreadMentionCount },
                 participants: participants,
                 sessions: sessions,
-                membershipSessions: membershipSessions
+                membershipSessions: membershipSessions,
+                lastAttachment: latest.lastAttachment
             )
         }
         .sorted {

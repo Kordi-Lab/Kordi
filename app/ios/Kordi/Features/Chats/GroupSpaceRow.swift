@@ -26,7 +26,8 @@ struct GroupSpaceRow: View {
                     ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
                 }
 
-                BlobEmojiPreviewText(text: space.lastMessage)
+                BlobEmojiPreviewText(text: DocumentTitles.shared.previewText(space.lastMessage, attachment: space.lastAttachment))
+                    .loadsPreviewDocumentTitle(space.lastAttachment)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
@@ -148,7 +149,8 @@ struct GroupSessionRow: View {
                     ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
                 }
 
-                BlobEmojiPreviewText(text: session.lastMessage.nonEmpty ?? "No messages yet")
+                BlobEmojiPreviewText(text: DocumentTitles.shared.previewText(session.lastMessage, attachment: session.lastAttachment).nonEmpty ?? "No messages yet")
+                    .loadsPreviewDocumentTitle(session.lastAttachment)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)

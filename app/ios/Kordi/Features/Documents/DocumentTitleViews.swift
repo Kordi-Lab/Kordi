@@ -32,6 +32,16 @@ struct AttachmentCardFileName: View {
 }
 
 extension View {
+    /// Chat list rows: fetch the title of a lone document preview while visible.
+    @ViewBuilder
+    func loadsPreviewDocumentTitle(_ attachment: ChatAttachment?) -> some View {
+        if let attachment, attachment.kind != .image {
+            loadsDocumentTitle(attachmentId: attachment.attachmentId, name: attachment.name, contentType: attachment.mimeType)
+        } else {
+            self
+        }
+    }
+
     /// Fetches the title of a cloud document while this view is on screen,
     /// so a renamed document shows its title instead of the file name.
     func loadsDocumentTitle(attachmentId: String?, name: String, contentType: String?) -> some View {
