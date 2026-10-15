@@ -11,7 +11,9 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use super::AgentRuntimeRoute;
-use crate::cloud_agent_runtime::provider_auth::snapshot_available_for_route;
+use crate::cloud_agent_runtime::provider_auth::{
+    snapshot_available_for_route, snapshot_status, READY,
+};
 
 const CANDIDATE_LIMIT: i64 = 16;
 
@@ -38,6 +40,46 @@ pub(crate) async fn fill_cloud_route(
         }
     }
     Ok(route)
+}
+
+/// The route a background run, such as the digest, runs with. It has no
+/// claim to carry a route, and an empty route only resolves while the owner
+/// holds exactly one saved account. It reuses the owner's latest route that a
+/// hosted account can serve, then falls back to the most recently connected
+/// account that is ready. `None` means no saved account can run it.
+pub(crate) async fn background_route(
+    pool: &PgPool,
+    owner_account_id: &str,
+    session_id: &str,
+) -> Result<Option<AgentRuntimeRoute>, sqlx_core::Error> {
+    let route = fill_cloud_route(
+        pool,
+        owner_account_id,
+        session_id,
+        AgentRuntimeRoute::default(),
+    )
+    .await?;
+    if route.default_model.is_some() {
+        return Ok(Some(route));
+    }
+    let rows: Vec<(String, String, bool, Option<i64>)> = query_as(
+        "SELECT provider, auth_choice, refreshable, expires_at_ms \
+         FROM cloud_agent_provider_auth_snapshots \
+         WHERE account_id = $1 AND revoked_at IS NULL ORDER BY created_at DESC",
+    )
+    .bind(owner_account_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .find(|(_, _, refreshable, expires_at_ms)| {
+            snapshot_status(*refreshable, *expires_at_ms) == READY
+        })
+        .map(|(provider, auth_choice, _, _)| AgentRuntimeRoute {
+            default_auth_provider: Some(provider),
+            default_auth_choice: Some(auth_choice),
+            ..AgentRuntimeRoute::default()
+        }))
 }
 
 async fn recent_route(

@@ -207,6 +207,15 @@ pub async fn publish_snapshot(
     .fetch_one(&mut *tx)
     .await?;
     insert_audit_in_tx(&mut tx, &snapshot_id, account_id, None, "created", &now).await?;
+    // A digest waiting for a usable account updates on its next check.
+    query(
+        "UPDATE cloud_account_digests SET retry_after = now(), failure_count = 0, \
+         dirty_since = COALESCE(dirty_since, now()) \
+         WHERE account_id = $1 AND error_code IN ('missing_provider_auth', 'provider_auth_rejected')",
+    )
+    .bind(account_id)
+    .execute(&mut *tx)
+    .await?;
     append_user_sync_events_in_transaction(
         &mut tx,
         &[account_id.to_string()],

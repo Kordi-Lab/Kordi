@@ -280,4 +280,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "0128_cloud_document_agent_desktop_preference.sql"
     ),
     migration!(129, "document title", "0129_cloud_document_title.sql"),
+    migration!(
+        130,
+        "digest provider route retry",
+        "0130_digest_provider_route_retry.sql"
+    ),
 ];
