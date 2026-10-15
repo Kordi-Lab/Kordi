@@ -15,6 +15,7 @@ pub(crate) use provider_family::equivalent_provider_ids;
 pub use publish_request::{
     NormalizedProviderAuthSnapshotInput, PublishProviderAuthSnapshotRequest, MAX_PAYLOAD_BYTES,
 };
+pub(crate) use readiness::{snapshot_status, READY};
 pub use resolve::{
     provider_auth_for_account_route, provider_auth_for_run, ProviderAuthForRunResult,
 };

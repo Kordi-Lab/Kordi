@@ -12,6 +12,7 @@ use super::source_reader::source_page;
 #[cfg(test)]
 pub use super::source_reader::visible_text;
 pub use super::source_reader::{authorized, sources};
+use crate::cloud_agent_runtime::runs::route_fill::background_route;
 
 pub async fn initialize_preferences(
     pool: &PgPool,
@@ -291,11 +292,20 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
             .bind(account).bind(serde_json::to_value(Output::default()).unwrap()).bind(serde_json::to_value(&input).unwrap()).bind(&hash).execute(pool).await?;
         return Ok(());
     }
-    let auth:Option<(String,)>=query_as("SELECT snapshot_id FROM cloud_agent_provider_auth_snapshots WHERE account_id=$1 AND revoked_at IS NULL LIMIT 1").bind(account).fetch_optional(pool).await?;
-    if auth.is_none() {
-        query("UPDATE cloud_account_digests SET error_code='missing_provider_auth',retry_after=now()+interval '30 seconds' WHERE account_id=$1").bind(account).execute(pool).await?;
+    // The run names the account it uses, so the runner resolves the same one
+    // this check found even when the owner holds several saved accounts.
+    let session = format!("digest:{account}");
+    let Some(route) = background_route(pool, account, &session).await? else {
+        // Saved accounts that all need reconnecting are a sign-in problem, not a missing provider.
+        let (live,):(i64,)=query_as("SELECT COUNT(*) FROM cloud_agent_provider_auth_snapshots WHERE account_id=$1 AND revoked_at IS NULL").bind(account).fetch_one(pool).await?;
+        let code = if live > 0 {
+            "provider_auth_rejected"
+        } else {
+            "missing_provider_auth"
+        };
+        query("UPDATE cloud_account_digests SET error_code=$2,retry_after=now()+interval '30 seconds' WHERE account_id=$1").bind(account).bind(code).execute(pool).await?;
         return Ok(());
-    }
+    };
     let mut tx = pool.begin().await?;
     let run = format!("{}{}", super::RUN_PREFIX, Uuid::new_v4().simple());
     let changed=query("UPDATE cloud_account_digests SET active_run_id=$2,input_hash=$3,input_json=$4,error_code=NULL WHERE account_id=$1 AND active_run_id IS NULL AND input_hash<>$3")
@@ -306,8 +316,8 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     // Digest runs are background runs (read-only connector tools) whose
     // output only the owner reads.
-    query("INSERT INTO cloud_agent_fallback_runs (run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,system_prompt,runtime_route_json,created_at,updated_at,run_trigger,connector_audience) VALUES($1,$1,$1,$2,$3,$3,'queued',$4,$5,'{}',$6,$6,'background','owner_private')")
-        .bind(&run).bind(format!("digest:{account}")).bind(account).bind(serde_json::to_string(&input).unwrap()).bind(super::SYSTEM_PROMPT).bind(now).execute(&mut *tx).await?;
+    query("INSERT INTO cloud_agent_fallback_runs (run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,system_prompt,runtime_route_json,created_at,updated_at,run_trigger,connector_audience) VALUES($1,$1,$1,$2,$3,$3,'queued',$4,$5,$6,$7,$7,'background','owner_private')")
+        .bind(&run).bind(&session).bind(account).bind(serde_json::to_string(&input).unwrap()).bind(super::SYSTEM_PROMPT).bind(serde_json::to_value(&route).unwrap()).bind(now).execute(&mut *tx).await?;
     tx.commit().await
 }
 
