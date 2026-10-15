@@ -6,6 +6,7 @@ import type { MemoryClient } from './memoryClient';
 import {
   memoryErrorMessage,
   syncStatusLabel,
+  type MemoryAddTarget,
   type MemoryLesson,
   type MemorySyncState,
 } from './memoryModel';
@@ -13,12 +14,22 @@ import {
 /**
  * A conversation's Memory tab: memories saved for the chat, its project, or its
  * group (shared by every member). `scopes` is `null` while they still resolve.
+ * Memories are added to `addTarget` while memory is on.
  */
-export function ConversationMemoryPanel({ client, scopes }: { client: MemoryClient; scopes: ConversationMemoryScopes | null }) {
+export function ConversationMemoryPanel({
+  client,
+  scopes,
+  addTarget = null,
+}: {
+  client: MemoryClient;
+  scopes: ConversationMemoryScopes | null;
+  addTarget?: MemoryAddTarget | null;
+}) {
   const [lessons, setLessons] = useState<MemoryLesson[] | null>(null);
   const [sync, setSync] = useState<MemorySyncState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewerAccountId, setViewerAccountId] = useState<string | null>(null);
+  const [memoryEnabled, setMemoryEnabled] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -35,6 +46,8 @@ export function ConversationMemoryPanel({ client, scopes }: { client: MemoryClie
     // A failed sync or account lookup only hides the captions.
     client.syncState().then((next) => { if (active) setSync(next); }, () => undefined);
     client.viewerAccountId?.().then((next) => { if (active) setViewerAccountId(next); }, () => undefined);
+    // The server refuses new memories while memory is off, so the add row waits for the setting.
+    client.settings().then((next) => { if (active) setMemoryEnabled(next.lessonsEnabled); }, () => undefined);
     return () => { active = false; };
   }, [client]);
 
@@ -59,6 +72,7 @@ export function ConversationMemoryPanel({ client, scopes }: { client: MemoryClie
           emptyLabel="No memories yet."
           onChanged={refreshSync}
           viewerAccountId={viewerAccountId}
+          addTarget={memoryEnabled ? addTarget : null}
         />
       )}
     </section>

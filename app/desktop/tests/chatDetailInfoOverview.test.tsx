@@ -33,8 +33,7 @@ test('chat detail info shows one row for an owner agent with cloud and local ide
   });
 
   assert.equal(markup.match(/Owner: /g)?.length, 1);
-  assert.match(markup, /Participants<\/span><span class="app-inspector-meta-value">2</);
-  assert.match(markup, /Messages<\/span><span class="app-inspector-meta-value">4</);
+  assert.match(markup, /data-chat-info-summary="">2 participants · 4 messages · Active /);
   assert.equal(markup.match(/data-presence-status="online"/g)?.length, 2);
   assert.doesNotMatch(markup, /Canonical graph|Context cache|delegation|snapshot/);
 });
@@ -42,5 +41,5 @@ test('chat detail info shows one row for an owner agent with cloud and local ide
 test('chat detail info shows syncing history while the projection is pending', () => {
   const markup = renderInfoPanel({ canonicalProjectionPending: true, canonicalMessageCount: 1 });
 
-  assert.match(markup, /Messages<\/span><span class="app-inspector-meta-value">Syncing history…</);
+  assert.match(markup, /data-chat-info-summary="">3 participants · Syncing history… · Active /);
 });
