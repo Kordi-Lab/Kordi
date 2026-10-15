@@ -191,6 +191,10 @@ final class MemorySettingsModel: ObservableObject {
     /// The memories Forget everything deletes: every one this account saved.
     var ownMemories: [CloudMemory] { memories.filter { MemoryPresentation.isOwn($0, viewerAccountId: viewerAccountId) } }
 
+    func detail(_ memory: CloudMemory) -> String {
+        MemoryPresentation.detail(memory, viewerAccountId: viewerAccountId)
+    }
+
     func ownerCaption(_ memory: CloudMemory) -> String? {
         MemoryPresentation.ownerCaption(memory, viewerAccountId: viewerAccountId)
     }

@@ -25,6 +25,8 @@ export type CloudSelfAgentExecutionInput = {
   mergeMessage: (message: CloudMessage) => void;
   syncMessages: () => Promise<void>;
   reportWarning: (message: string, error: unknown) => void;
+  /** Reloads a session's latest canonical page, for rows the native side wrote. */
+  hydrateSessionPage?: (sessionId: string, options?: { force?: boolean }) => Promise<unknown>;
 };
 
 export function useDesktopAgentReadiness({
