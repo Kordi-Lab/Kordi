@@ -17,6 +17,7 @@ import {
   forgetConsequences,
   isGlobalMemory,
   lessonSourceLabel,
+  memoryAddedBy,
   validateLessonText,
   type MemoryLesson,
 } from '../src/features/memory/memoryModel';
@@ -92,7 +93,13 @@ test('source labels and forget copy read plainly', () => {
   assert.equal(lessonSourceLabel('user_correction'), 'From a correction');
   assert.equal(lessonSourceLabel('repeated_failure'), 'From a repeated failure');
   assert.equal(lessonSourceLabel('outcome'), 'From an outcome');
-  assert.equal(lessonSourceLabel('manual'), 'Added by hand');
+  assert.equal(lessonSourceLabel('manual'), 'Added by you');
+  assert.equal(lessonSourceLabel('manual', 'Shu Yang'), 'Added by Shu Yang');
+  assert.equal(lessonSourceLabel('manual', '  '), 'Added by you');
+  assert.equal(lessonSourceLabel('outcome', 'Shu Yang'), 'From an outcome');
+  assert.equal(memoryAddedBy({ ownerAccountId: 'acct-2', ownerName: null }, 'acct-1'), 'a group member');
+  assert.equal(memoryAddedBy({ ownerAccountId: 'acct-1', ownerName: null }, 'acct-1'), null);
+  assert.equal(memoryAddedBy({ ownerAccountId: 'acct-2', ownerName: 'Priya' }, 'acct-1'), 'Priya');
   assert.equal(
     forgetConsequences(7),
     'This deletes 7 memories from your account and every signed-in device. It cannot be undone.',

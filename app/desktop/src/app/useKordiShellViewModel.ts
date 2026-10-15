@@ -9,6 +9,7 @@ import type {
   AttachmentItem,
   ComposerConfigTargetOverride,
 } from '@/features/chat/composerController.types';
+import type { DesktopChatTurnStopHandler, DesktopChatTurnStopTarget } from '@/features/chat/agentRequestStop';
 import { transcriptIsAtLatest } from '@/features/cloud/activeConversationReadPolicy';
 
 type UseKordiShellViewModelArgs = {
@@ -24,7 +25,7 @@ type UseKordiShellViewModelArgs = {
   selectComposerValue: (scope: ComposerScope, type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, configTargetOverride?: ComposerConfigTargetOverride) => Promise<void>;
   selectComposerAuthChoice: (scope: ComposerScope, providerId: string, choice: string, configTargetOverride?: ComposerConfigTargetOverride) => Promise<void>;
   selectComposerProviderChoice: (scope: ComposerScope, option: ComposerProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => Promise<void>;
-  handleStopDesktopChatTurn: () => Promise<boolean> | void;
+  handleStopDesktopChatTurn: DesktopChatTurnStopHandler;
   handleSendProjectMessage: (draftOverride?: string) => Promise<void> | void;
   handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[], attachmentOverride?: AttachmentItem[], quoteOverride?: ComposerQuoteState | null) => Promise<void> | void;
   handleRetryChatMessage: (message: Message) => Promise<void> | void;
@@ -83,8 +84,8 @@ export function useKordiShellViewModel({
     void selectComposerProviderChoice(scope, option, configTargetOverride);
   }, [selectComposerProviderChoice]);
 
-  const wrappedStopDesktopChatTurn = useCallback(() => (
-    Promise.resolve(handleStopDesktopChatTurn()).then(Boolean, () => false)
+  const wrappedStopDesktopChatTurn = useCallback((target?: DesktopChatTurnStopTarget) => (
+    Promise.resolve(handleStopDesktopChatTurn(target)).then(Boolean, () => false)
   ), [handleStopDesktopChatTurn]);
 
   const wrappedSendProjectMessage = useCallback((draftOverride?: string) => {

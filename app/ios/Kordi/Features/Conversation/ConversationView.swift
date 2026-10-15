@@ -1486,7 +1486,8 @@ struct ConversationView: View {
         proxy: ScrollViewProxy
     ) -> some View {
         let message = row.message
-        let avatar = avatarIdentity(for: message)
+        let avatar = avatarIdentity(for: message, mentionTargets: mentionTargets)
+        let replySource = message.quotedReplyMessageId.flatMap { messagesByID[$0] }
         let backgroundSessions = message.backgroundAgentSessions.map {
             BackgroundAgentSessionPresentation(
                 session: $0,
@@ -1514,7 +1515,8 @@ struct ConversationView: View {
                             && message.author == .person
                             && !presentation.groupedWithPrevious),
                     showAvatar: presentation.showsAvatar,
-                    replySourceMessage: message.quotedReplyMessageId.flatMap { messagesByID[$0] },
+                    replySourceMessage: replySource,
+                    replySourceAvatar: replySource.map { avatarIdentity(for: $0, mentionTargets: mentionTargets) },
                     isHighlighted: highlightedMessageID == message.id,
                     isActionPresented: messageLayout == .chat && messageActionMessage?.id == message.id && messageActionImage == nil,
                     pendingSendEntrance: stagedMessageIDs.contains(message.clientMessageId ?? message.id),
@@ -1535,9 +1537,7 @@ struct ConversationView: View {
                     quoteReplyCount: conversation.kind.supportsQuotedReplies ? quoteReplyIDs.count : 0,
                     selfDisplayName: model.account?.displayName,
                     showsAvatarSlot: message.author != .agent,
-                    authorAvatarName: avatar.name,
-                    authorAvatarSource: avatar.source,
-                    authorAvatarSeed: avatar.seed,
+                    authorAvatar: avatar,
                     ownAccountId: model.account?.accountId,
                     automaticallyPresentsActions: (
                         ProcessInfo.processInfo.arguments.contains("--preview-message-actions")
@@ -2617,7 +2617,7 @@ struct ConversationView: View {
         }
     }
 
-    private func avatarIdentity(for message: ChatMessage) -> ConversationAvatarIdentity {
+    private func avatarIdentity(for message: ChatMessage, mentionTargets: [ComposerMentionTarget]) -> ConversationAvatarIdentity {
         if let id = conversation.subsessionId, let snapshot = model.subsessions[id] {
             if message.author == .agent {
                 return ConversationAvatarIdentity(name: snapshot.agentDisplayName,
@@ -2630,38 +2630,7 @@ struct ConversationView: View {
                 source: member?.avatarUrl ?? (message.author == .me ? model.account?.avatar.imageSource : nil),
                 seed: member?.avatarSeed ?? senderId)
         }
-        if message.author == .me {
-            let participant = conversation.groupParticipants.first {
-                $0.accountId == model.account?.accountId || $0.role == "self"
-            }
-            return ConversationAvatarIdentity(
-                name: model.account?.preferredName.nonEmpty
-                    ?? participant?.displayName.nonEmpty
-                    ?? message.authorName,
-                source: model.account?.avatar.imageSource ?? participant?.avatarUrl?.nonEmpty,
-                seed: model.account?.avatar.seed.nonEmpty ?? participant?.accountId.nonEmpty
-            )
-        }
-
-        let participant = conversation.groupParticipants.first {
-            $0.displayName.localizedCaseInsensitiveCompare(message.authorName) == .orderedSame
-        }
-        // PiP posts in the chat without being a member, so it is never in
-        // groupParticipants; keep its own mark instead of the group's.
-        if participant == nil, conversation.kind == .group, KordiPipIdentity.isPipName(message.authorName) {
-            return ConversationAvatarIdentity(
-                name: KordiPipIdentity.displayName,
-                source: nil,
-                seed: KordiPipIdentity.accountId
-            )
-        }
-        return ConversationAvatarIdentity(
-            name: participant?.displayName.nonEmpty
-                ?? conversation.displayName.nonEmpty
-                ?? message.authorName,
-            source: participant?.avatarUrl?.nonEmpty ?? conversation.avatarSource?.nonEmpty,
-            seed: participant?.accountId.nonEmpty ?? conversation.peerAccountId.nonEmpty
-        )
+        return MessageAuthorIdentity.resolve(message, in: conversation, account: model.account, mentionTargets: mentionTargets)
     }
 
     @ToolbarContentBuilder
@@ -3587,12 +3556,6 @@ enum ConversationTimestampFormatter {
         }
         return "\(dayLabel) \(time)"
     }
-}
-
-private struct ConversationAvatarIdentity {
-    let name: String
-    let source: String?
-    let seed: String?
 }
 
 private struct SystemNoticeRow: View {
