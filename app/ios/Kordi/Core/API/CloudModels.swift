@@ -1566,11 +1566,11 @@ struct CloudChatEventPayload: Codable, Hashable {
     let updatedAt: String?
     let updatedByAccountId: String?
     let deviceId: String?
-    var attachmentId: String? = nil, revision: Int64? = nil, change: String? = nil // `document.updated`
+    var attachmentId: String? = nil, revision: Int64? = nil, change: String? = nil, title: String? = nil // `document.updated`
 
     enum CodingKeys: String, CodingKey {
         case conversation, message, preferences, cursor, call, pinHistoryEvent, messageIds, kind, targetMessageId
-        case sessionId, messageId, scope, updatedAt, updatedByAccountId, attachmentId, revision, change
+        case sessionId, messageId, scope, updatedAt, updatedByAccountId, attachmentId, revision, change, title
         case deviceId = "deviceId"
     }
 }
