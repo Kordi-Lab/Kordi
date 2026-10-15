@@ -209,8 +209,8 @@ for (const appearance of ['light', 'dark'] as const) {
     });
     expect(rows.tabs).toBeLessThan(1);
     expect(rows.titles).toBeLessThan(1);
-    // Both title rows are painted by the one titlebar column over the conversation, which shares the
-    // conversation's surface, at the same height.
+    // Both title rows are painted by the window titlebar, which shares the sidebar's material across
+    // the conversation column, at the same height.
     const titleRows = await page.evaluate(() => {
       const describe = (selector: string) => {
         const row = document.querySelector<HTMLElement>(selector)!;
@@ -225,7 +225,7 @@ for (const appearance of ['light', 'dark'] as const) {
       };
     });
     expect(titleRows.panel).toEqual(titleRows.main);
-    expect(titleRows.main.painter).toBe('app-native-titlebar-workspace');
+    expect(titleRows.main.painter?.split(/\s+/)).toContain('app-native-titlebar');
     expect(titleRows.main.own).toBe('rgba(0, 0, 0, 0)');
     await expectContinuousDivider(page, '.app-chat-native-metadata-header');
     await expectTabHoverParity(page);

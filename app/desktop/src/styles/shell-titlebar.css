@@ -57,9 +57,9 @@
   min-width: 0;
   height: 100%;
   margin-right: var(--app-native-detail-width, 0px);
-  /* The conversation's titlebar column shares its surface and its divider. */
+  /* The titlebar keeps the sidebar's material across the conversation column. */
   padding-inline-start: 1px;
-  background: var(--app-native-main-bg);
+  background: transparent;
   transition-property: grid-template-columns;
   transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
 }
