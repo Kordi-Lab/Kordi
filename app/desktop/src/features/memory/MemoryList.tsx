@@ -1,3 +1,4 @@
+import { Plus } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,7 @@ import {
   memoryAddedBy,
   memoryOwnerCaption,
   validateLessonText,
+  type MemoryAddTarget,
   type MemoryLesson,
 } from './memoryModel';
 
@@ -29,7 +31,8 @@ const dialogMuted = 'text-[color:var(--app-transient-muted-text)]';
 export const quietButtonClass = 'h-8 rounded-lg px-3 text-[12px]';
 export const destructiveConfirmClass = 'app-transient-danger-button rounded-full px-4 font-semibold';
 
-type LessonEdit = { lessonId: string; draft: string; error: string | null; busy: boolean };
+/** The memory being edited; `lessonId` is null while a new memory is typed. */
+type LessonEdit = { lessonId: string | null; draft: string; error: string | null; busy: boolean };
 
 export type MemoryListProps = {
   client: MemoryClient;
@@ -41,6 +44,8 @@ export type MemoryListProps = {
   onChanged?: () => void;
   /** The signed-in account; group memories other members saved show who saved them. */
   viewerAccountId?: string | null;
+  /** Where a memory added from this list is saved. Without it the list has no Add memory row. */
+  addTarget?: MemoryAddTarget | null;
 };
 
 function lessonPrefix(text: string): string {
@@ -55,6 +60,7 @@ export function MemoryList({
   emptyLabel,
   onChanged,
   viewerAccountId,
+  addTarget,
 }: MemoryListProps) {
   const [edit, setEdit] = useState<LessonEdit | null>(null);
   const [pendingDelete, setPendingDelete] = useState<MemoryLesson | null>(null);
@@ -71,12 +77,21 @@ export function MemoryList({
       return;
     }
     const lessonId = edit.lessonId;
+    const target = lessonId === null ? addTarget : null;
+    if (lessonId === null && !target) return;
     setEdit({ ...edit, busy: true, error: null });
     try {
-      const updated = await client.updateLesson(lessonId, validation.text);
-      onLessonsChange((current) => current.map((entry) => (entry.lessonId === lessonId ? updated : entry)));
+      if (target) {
+        const created = await client.createLesson(target, validation.text);
+        // Saving text the scope already has returns that memory, so replace it instead of listing it twice.
+        onLessonsChange((current) => [created, ...current.filter((entry) => entry.lessonId !== created.lessonId)]);
+        setStatusMessage('Memory added.');
+      } else if (lessonId !== null) {
+        const updated = await client.updateLesson(lessonId, validation.text);
+        onLessonsChange((current) => current.map((entry) => (entry.lessonId === lessonId ? updated : entry)));
+        setStatusMessage('Memory saved.');
+      }
       setEdit(null);
-      setStatusMessage('Memory saved.');
       onChanged?.();
     } catch (caught) {
       setEdit((current) => (current?.lessonId === lessonId
@@ -106,14 +121,14 @@ export function MemoryList({
     }
   };
 
-  const renderEditor = (lesson: MemoryLesson, current: LessonEdit, meta: string) => {
-    const editorId = `${idPrefix}-edit-${lesson.lessonId}`;
+  const renderEditor = (lesson: MemoryLesson | null, current: LessonEdit, meta: string) => {
+    const editorId = `${idPrefix}-edit-${lesson?.lessonId ?? 'new'}`;
     const errorId = `${editorId}-error`;
     const editor = (
       <>
         <textarea
           id={editorId}
-          aria-label={`Edit memory: ${lessonPrefix(lesson.text)}`}
+          aria-label={lesson ? `Edit memory: ${lessonPrefix(lesson.text)}` : 'New memory'}
           aria-invalid={current.error ? true : undefined}
           aria-describedby={current.error ? errorId : undefined}
           value={current.draft}
@@ -141,12 +156,23 @@ export function MemoryList({
         </div>
       </>
     );
-    return (
-      <div key={lesson.lessonId} data-memory-lesson={lesson.lessonId}>
-        <SettingsRow title={<span className="font-normal text-slate-400">{meta}</span>}>{editor}</SettingsRow>
+    const row = <SettingsRow title={<span className="font-normal text-slate-400">{meta}</span>}>{editor}</SettingsRow>;
+    return lesson
+      ? <div key={lesson.lessonId} data-memory-lesson={lesson.lessonId}>{row}</div>
+      : <div data-memory-new="">{row}</div>;
+  };
+
+  const startAdd = () => setEdit({ lessonId: null, draft: '', error: null, busy: false });
+  const addRow: ReactNode = !addTarget ? null : edit?.lessonId === null
+    ? renderEditor(null, edit, 'New memory')
+    : (
+      <div data-memory-add="" className="my-1">
+        <Button type="button" variant="quiet" className={cn(quietButtonClass, 'gap-1.5 px-2')} onClick={startAdd}>
+          <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+          Add memory
+        </Button>
       </div>
     );
-  };
 
   const renderLesson = (lesson: MemoryLesson) => {
     // Settings list only global memories and each conversation lists its own, so rows leave out the scope label.
@@ -187,6 +213,7 @@ export function MemoryList({
           {error}
         </p>
       ) : null}
+      {addRow}
       {rows}
       {pendingDelete ? (
         <AppDialog

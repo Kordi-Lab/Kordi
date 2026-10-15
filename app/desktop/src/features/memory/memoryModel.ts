@@ -17,6 +17,12 @@ export type MemoryLesson = {
 
 export type MemorySettings = { lessonsEnabled: boolean; excludeSensitive: boolean };
 
+/** Where a memory typed on a Memory page is saved: the scope of the page it was added from. */
+export type MemoryAddTarget = { scope: MemoryLessonScope; scopeId: string; scopeLabel?: string | null };
+
+/** Account settings add global memories, which always use the `account` scope id. */
+export const GLOBAL_MEMORY_TARGET: MemoryAddTarget = { scope: 'global', scopeId: 'account' };
+
 export const LESSON_MAX_CHARS = 500;
 
 const sourceLabels: Record<MemoryLessonSource, string> = {

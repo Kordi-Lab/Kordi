@@ -116,6 +116,47 @@ struct CloudMemoryUpdateRequest: Encodable {
     let text: String
 }
 
+/// Where a memory typed on a Memory screen is saved: the scope of the screen it was added from.
+struct MemoryAddTarget: Equatable {
+    let scope: CloudMemoryScope
+    let scopeId: String
+    var scopeLabel: String? = nil
+
+    /// Settings add global memories, which always use the `account` scope id.
+    static let global = MemoryAddTarget(scope: .global, scopeId: "account")
+}
+
+/// A memory the person typed. The server returns the existing memory when the
+/// scope already has this text.
+struct CloudMemoryCreateRequest: Encodable {
+    let scope: CloudMemoryScope
+    let scopeId: String
+    let scopeLabel: String?
+    let source: CloudMemorySource
+    let text: String
+
+    init(target: MemoryAddTarget, text: String) {
+        scope = target.scope
+        scopeId = target.scopeId
+        scopeLabel = target.scopeLabel
+        source = .manual
+        self.text = text
+    }
+}
+
+extension CloudAPIClient {
+    func createMemory(token: String, target: MemoryAddTarget, text: String) async throws -> CloudMemory {
+        let response: CloudMemoryResponse = try await send(
+            path: "/v1/cloud/memory",
+            method: "POST",
+            token: token,
+            body: CloudMemoryCreateRequest(target: target, text: text),
+            fallback: "Could not save this memory. Try again."
+        )
+        return response.memory
+    }
+}
+
 /// Omitted fields keep their current value on the server.
 struct CloudMemorySettingsUpdateRequest: Encodable {
     var memoryEnabled: Bool?
