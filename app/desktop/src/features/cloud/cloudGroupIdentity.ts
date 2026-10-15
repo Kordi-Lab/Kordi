@@ -2,6 +2,7 @@ import type { UpsertCanonicalIdentityRequest } from '@/kordi-app/types';
 
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import type { CloudAccount } from './authClient';
+import { cloudAgentId } from './cloudAgentIdentity';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 import type { CloudGroupParticipant } from './cloudGroupMessages';
 import { normalizeKordiId } from './kordiId';
@@ -34,4 +35,14 @@ export function cloudGroupIdentityRequest(
       defaultAgentAvatarSeed: participant.agentAvatarSeed ?? participant.agentId ?? `cloud-agent:${participant.accountId}`,
     },
   };
+}
+
+/** The picture a member configured for their default agent, for that agent's replies only. */
+export function cloudGroupAgentProfileImageUrl(
+  participant: Pick<CloudGroupParticipant, 'accountId' | 'agentId' | 'agentAvatarUrl'> | null | undefined,
+  senderAgentId: string,
+): string | null {
+  if (!participant) return null;
+  const memberAgentId = cloudAgentId(participant.agentId, participant.accountId);
+  return memberAgentId === senderAgentId ? cloudAvatarImageUrl(participant.agentAvatarUrl) : null;
 }
