@@ -70,7 +70,8 @@ final class MemoryPresentationTests: XCTestCase {
         XCTAssertEqual(MemoryPresentation.sourceLabel(.userCorrection), "From a correction")
         XCTAssertEqual(MemoryPresentation.sourceLabel(.repeatedFailure), "From a repeated failure")
         XCTAssertEqual(MemoryPresentation.sourceLabel(.outcome), "From an outcome")
-        XCTAssertEqual(MemoryPresentation.sourceLabel(.manual), "Added by hand")
+        XCTAssertEqual(MemoryPresentation.sourceLabel(.manual), "Added by you")
+        XCTAssertEqual(MemoryPresentation.sourceLabel(.manual, addedBy: "Priya"), "Added by Priya")
     }
 
     func testDetailAndDateLabels() {
@@ -80,7 +81,7 @@ final class MemoryPresentationTests: XCTestCase {
         let older = MemoryPresentation.dateLabel("2026-09-01T10:00:00Z", now: now, calendar: calendar, locale: Locale(identifier: "en_US"))
         XCTAssertEqual(older, "Sep 1, 2026")
         let unlabeled = memory("b", .project, updatedAt: "2026-10-07T08:00:00Z", label: nil)
-        XCTAssertEqual(MemoryPresentation.detail(unlabeled, now: now, calendar: calendar), "Added by hand · Today")
+        XCTAssertEqual(MemoryPresentation.detail(unlabeled, now: now, calendar: calendar), "Added by you · Today")
     }
 
     func testForgetConsequencesSingularAndPlural() {
@@ -174,7 +175,10 @@ final class MemoryPresentationTests: XCTestCase {
         let decoded = try JSONDecoder().decode(CloudMemory.self, from: Data(json.utf8))
         XCTAssertEqual(decoded.ownerAccountId, "acct_priya")
         XCTAssertNil(decoded.ownerName)
-        XCTAssertEqual(MemoryPresentation.ownerCaption(decoded, viewerAccountId: "acct_me"), "Saved by a group member")
+        // A memory typed by hand names who added it in its detail instead of an owner caption.
+        XCTAssertNil(MemoryPresentation.ownerCaption(decoded, viewerAccountId: "acct_me"))
+        XCTAssertTrue(MemoryPresentation.detail(decoded, viewerAccountId: "acct_me", now: now, calendar: calendar).hasPrefix("Added by a group member"))
+        XCTAssertTrue(MemoryPresentation.detail(decoded, viewerAccountId: "acct_priya", now: now, calendar: calendar).hasPrefix("Added by you"))
         XCTAssertNil(MemoryPresentation.ownerCaption(decoded, viewerAccountId: "acct_priya"))
         XCTAssertNil(MemoryPresentation.ownerCaption(decoded, viewerAccountId: nil))
         XCTAssertNil(MemoryPresentation.ownerCaption(memory("m2", .group, updatedAt: "2026-10-06T10:00:00Z"), viewerAccountId: "acct_me"))
@@ -182,7 +186,8 @@ final class MemoryPresentationTests: XCTestCase {
         let model = MemorySettingsModel(service: PreviewMemoryService(now: now, latency: .zero), accountLabel: nil, viewerAccountId: "acct_me")
         await model.load()
         let shared = try XCTUnwrap(model.memories.first { $0.memoryId == "lesson-10" })
-        XCTAssertEqual(model.ownerCaption(shared), "Saved by Priya")
+        XCTAssertNil(model.ownerCaption(shared))
+        XCTAssertTrue(model.detail(shared).hasPrefix("Added by Priya"))
         XCTAssertNil(model.ownerCaption(try XCTUnwrap(model.memories.first { $0.memoryId == "lesson-7" })))
         XCTAssertEqual(model.ownMemories.count, 9)
         await model.forgetAll()
