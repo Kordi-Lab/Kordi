@@ -21,6 +21,12 @@ protocol DocumentService: AnyObject {
     func createShare(attachmentId: String, sessionId: String?) async throws -> DocumentShare
     func updateShare(_ shareId: String, readersCanAskAgent: Bool) async throws -> DocumentShare
     func deleteShare(_ shareId: String) async throws
+    /// How the content editor reaches the server; nil where editing is not offered.
+    func editorTransport() -> (any DocumentEditorTransport)?
+}
+
+extension DocumentService {
+    func editorTransport() -> (any DocumentEditorTransport)? { nil }
 }
 
 @MainActor
@@ -106,6 +112,10 @@ final class CloudDocumentService: DocumentService {
 
     func deleteShare(_ shareId: String) async throws {
         try await api.deleteDocumentShare(token: token(), shareId: shareId)
+    }
+
+    func editorTransport() -> (any DocumentEditorTransport)? {
+        CloudDocumentEditorTransport(api: api, tokenProvider: tokenProvider)
     }
 }
 
@@ -207,5 +217,9 @@ final class PreviewDocumentService: DocumentService {
 
     func deleteShare(_ shareId: String) async throws {
         document.share = nil
+    }
+
+    func editorTransport() -> (any DocumentEditorTransport)? {
+        PreviewDocumentEditorTransport(document: document)
     }
 }
