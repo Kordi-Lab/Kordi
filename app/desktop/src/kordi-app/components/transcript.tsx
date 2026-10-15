@@ -2,6 +2,7 @@ import { useMessageLayout } from '@/app/messageLayoutPreference';
 import { ThreadMessageHeader } from './ThreadMessageHeader';
 import { ContactRequestFailureNotice } from './contactRequestFailureNotice';
 import { beginChatPerformanceSpan, finishChatPerformanceSpan } from '@/features/performance/chatPerformance';
+import { agentMessageAvatarSeed } from '@/features/chat/agentMessageAvatar';
 import { attachmentsAreOnlyMp4Videos } from '@/features/chat/attachmentMediaGallery';
 import { messageDeliveryVisual,shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
 import { humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
@@ -559,7 +560,7 @@ function MessageBubbleView({
         ) : null}
         {threadLayout && !plainAgentResponse && (msg.sourceMessage ?? msg.turn.sourceMessage) ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage ?? msg.turn.sourceMessage} onNavigateToMessage={onNavigateToMessage} className="app-thread-quote-row" /> : null}
         <div className={cn("flex w-fit max-w-full items-end gap-2", threadLayout && "app-thread-message-main")}>
-          {threadLayout ? <IdentityAvatar kind="agent" seed={msg.senderAvatarSeed || currentLocalAgentAvatarSeed} name={msg.sender} imageUrl={msg.senderProfileImageUrl} className="h-7 w-7 shrink-0" /> : null}
+          {threadLayout ? <IdentityAvatar kind="agent" seed={agentMessageAvatarSeed(msg, currentLocalAgentAvatarSeed)} name={msg.sender} imageUrl={msg.senderProfileImageUrl} className="h-7 w-7 shrink-0" /> : null}
           <div className="app-message-hover-time-trigger min-w-0 w-fit max-w-[58rem]">
             <div className="flex min-h-[18px] w-full items-center gap-1.5">
               {threadLayout ? <ThreadMessageHeader msg={msg} name={msg.sender || "Agent"} ownerName={agentOwnerName} /> : null}
@@ -632,8 +633,7 @@ function MessageBubbleView({
   const avatarName = selfDisplayName(msg.sender || (isOwnHumanMessage ? 'Me' : avatarKind === 'agent' ? 'Agent' : 'Person'), isOwnHumanMessage);
   const avatarSeed = isOwnHumanMessage
     ? currentLocalProfileAvatarSeed
-    : msg.role === 'owned-agent'
-      ? currentLocalAgentAvatarSeed
+    : isAgentMessage ? agentMessageAvatarSeed(msg, currentLocalAgentAvatarSeed, avatarName)
       : msg.senderAvatarSeed?.trim() || generatedAvatarSeedForLabel(avatarKind, avatarName);
   const showInlineHumanSender = Boolean(!threadLayout && !hideHumanSenderForCompactDensity && !isAgentMessage && msg.showSenderMeta && msg.sender && !isGroupedWithPrevious);
   const showContactRequestAction = Boolean(

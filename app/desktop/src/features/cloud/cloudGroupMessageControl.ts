@@ -16,6 +16,7 @@ import {
   cloudAgentDisplayName,
   cloudAgentId,
 } from './cloudAgentIdentity';
+import { cloudGroupAgentProfileImageUrl } from './cloudGroupIdentity';
 import { cloudGroupAgentConversationId } from './cloudGroupMessages';
 import { cloudGroupCanonicalMessageSource } from './cloudMessageIndex';
 import type {
@@ -173,7 +174,7 @@ export async function applyCloudGroupMessageControl({
       humanId: message.senderAccountId,
       agentId: senderAgentId,
       avatarKey: senderAgentId,
-      profileImageUrl: null,
+      profileImageUrl: cloudGroupAgentProfileImageUrl(participantByAccount.get(message.senderAccountId), senderAgentId ?? ''),
       metadata: { accountId: message.senderAccountId, cloudGroupAgent: true },
     });
     nextState = stateOps.upsertIdentity(nextState, senderIdentity) ?? nextState;
