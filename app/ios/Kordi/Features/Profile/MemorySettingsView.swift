@@ -115,6 +115,9 @@ struct MemorySettingsView: View {
         SettingsSectionTitle(MemoryPresentation.globalMemoriesTitle(count: memories.count))
         if !settings.memoryEnabled {
             SettingsCaption("Memory is off. These are kept but not read.")
+        } else {
+            // The server refuses new memories while memory is off.
+            MemoryAddRow(model: model, target: .global)
         }
         if memories.isEmpty {
             SettingsCaption("No global memories yet.")
