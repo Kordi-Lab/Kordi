@@ -10,9 +10,13 @@ final class DocumentReaderModel: ObservableObject {
     let request: DocumentReaderRequest
     private let service: any DocumentService
     private let defaults: UserDefaults
+    private let titles: DocumentTitles
 
     @Published private(set) var document: DocumentResponse? {
-        didSet { updateAgentPolling() }
+        didSet {
+            updateAgentPolling()
+            if let document, document.title != oldValue?.title { titles.record(document) }
+        }
     }
     /// "Edited by <Agent>" notices, by the root comment of the thread whose
     /// run made the edit.
@@ -40,12 +44,14 @@ final class DocumentReaderModel: ObservableObject {
         request: DocumentReaderRequest,
         service: any DocumentService,
         defaults: UserDefaults = .standard,
+        titles: DocumentTitles = .shared,
         agentPollInterval: Duration = .seconds(4),
         agentPollLimit: TimeInterval = 120
     ) {
         self.request = request
         self.service = service
         self.defaults = defaults
+        self.titles = titles
         self.agentPollInterval = agentPollInterval
         self.agentPollLimit = agentPollLimit
         updateObserver = NotificationCenter.default.addObserver(
@@ -73,10 +79,15 @@ final class DocumentReaderModel: ObservableObject {
     }
 
     /// Reloads after a `document.updated` event for this document. Events
-    /// that arrive within 300 ms share one reload.
+    /// that arrive within 300 ms share one reload. A rename shows at once;
+    /// the reload confirms the title readers see.
     func receive(_ update: DocumentUpdate) {
         guard let canonical = canonicalAttachmentId,
               update.attachmentId == canonical || update.attachmentId == document?.requestedAttachmentId else { return }
+        if update.change == .title, let title = update.title?.nonEmpty, document?.format == .markdown,
+           document.map(DocumentRename.hasLevelOneHeading) == false {
+            document?.title = title
+        }
         if let revision = update.revision, let current = document?.revision,
            update.change == .content, revision <= current { return }
         pendingReload?.cancel()
@@ -184,6 +195,37 @@ final class DocumentReaderModel: ObservableObject {
         } catch {
             loadError = (error as? CloudAPIError)?.message ?? "Could not open this document."
         }
+    }
+
+    // MARK: Rename
+
+    /// Editors rename a Markdown document whose title is not a level-1
+    /// heading in its body; that heading is edited in the body.
+    var canRename: Bool { document.map(DocumentRename.isAvailable) ?? false }
+
+    /// Shows the new title at once and keeps the server's answer; a refusal
+    /// restores the old title. Returns false when the title is invalid.
+    @discardableResult
+    func rename(to draft: String) -> Bool {
+        guard let document, canRename else { return false }
+        guard let title = DocumentRename.validTitle(draft) else {
+            actionError = DocumentRename.invalidTitleMessage
+            return false
+        }
+        guard title != document.title else { return true }
+        let previous = document.title
+        self.document?.title = title
+        Task {
+            do {
+                let renamed = try await service.rename(attachmentId: document.attachmentId, title: title)
+                if self.document?.title == title { self.document?.title = renamed.title }
+            } catch {
+                if self.document?.title == title { self.document?.title = previous }
+                if error is CancellationError { return }
+                actionError = (error as? CloudAPIError)?.message ?? "Could not rename the document."
+            }
+        }
+        return true
     }
 
     // MARK: Reactions and comments

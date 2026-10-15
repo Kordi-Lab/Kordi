@@ -5,7 +5,7 @@ import Foundation
 /// `docs/development/issue-1741-shared-documents.md`.
 struct DocumentResponse: Codable, Equatable {
     let attachmentId: String
-    let title: String
+    var title: String
     let fileName: String
     let format: DocumentFormat
     let contentType: String
@@ -145,6 +145,11 @@ struct DocumentShareCreateRequest: Encodable {
 
 struct DocumentShareUpdateRequest: Encodable {
     let readersCanAskAgent: Bool
+}
+
+/// `PATCH /v1/cloud/documents/:attachment_id` renames a document.
+struct DocumentRenameRequest: Encodable {
+    let title: String
 }
 
 struct DocumentReactionRequest: Encodable {

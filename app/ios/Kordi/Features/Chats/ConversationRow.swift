@@ -128,7 +128,7 @@ struct ConversationRow: View {
                             if let attachment = conversation.lastAttachment {
                                 ConversationAttachmentThumbnail(attachment: attachment)
                             }
-                            BlobEmojiPreviewText(text: conversation.previewText)
+                            BlobEmojiPreviewText(text: previewText)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                         }
@@ -144,7 +144,7 @@ struct ConversationRow: View {
                     if let attachment = conversation.lastAttachment {
                         ConversationAttachmentThumbnail(attachment: attachment)
                     }
-                    BlobEmojiPreviewText(text: conversation.previewText)
+                    BlobEmojiPreviewText(text: previewText)
                 }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -185,6 +185,11 @@ struct ConversationRow: View {
             .foregroundStyle(.secondary)
         + Text(label)
             .foregroundStyle(KordiTheme.agentViolet)
+    }
+
+    /// A lone document shows its renamed title instead of its file name.
+    private var previewText: String {
+        DocumentTitles.shared.previewText(conversation.previewText, attachment: conversation.lastAttachment)
     }
 
     private var relativeTimestamp: String {

@@ -102,6 +102,7 @@ struct MessageBubble: View, Equatable {
     let showAuthor: Bool
     let showAvatar: Bool
     let replySourceMessage: ChatMessage?
+    var replySourceAvatar: ConversationAvatarIdentity? = nil
     let isHighlighted: Bool
     let isActionPresented: Bool
     var pendingSendEntrance = false
@@ -120,9 +121,7 @@ struct MessageBubble: View, Equatable {
     var quoteReplyCount = 0
     var selfDisplayName: String? = nil
     let showsAvatarSlot: Bool
-    let authorAvatarName: String
-    let authorAvatarSource: String?
-    let authorAvatarSeed: String?
+    let authorAvatar: ConversationAvatarIdentity
     let ownAccountId: String?
     let automaticallyPresentsActions: Bool
     let backgroundSessions: [BackgroundAgentSessionPresentation]
@@ -188,6 +187,7 @@ struct MessageBubble: View, Equatable {
             && lhs.showAuthor == rhs.showAuthor
             && lhs.showAvatar == rhs.showAvatar
             && lhs.replySourceMessage == rhs.replySourceMessage
+            && lhs.replySourceAvatar == rhs.replySourceAvatar
             && lhs.isHighlighted == rhs.isHighlighted
             && lhs.isActionPresented == rhs.isActionPresented
             && lhs.deletingAttachmentID == rhs.deletingAttachmentID
@@ -211,9 +211,7 @@ struct MessageBubble: View, Equatable {
             && lhs.quoteReplyCount == rhs.quoteReplyCount
             && lhs.selfDisplayName == rhs.selfDisplayName
             && lhs.showsAvatarSlot == rhs.showsAvatarSlot
-            && lhs.authorAvatarName == rhs.authorAvatarName
-            && lhs.authorAvatarSource == rhs.authorAvatarSource
-            && lhs.authorAvatarSeed == rhs.authorAvatarSeed
+            && lhs.authorAvatar == rhs.authorAvatar
             && lhs.ownAccountId == rhs.ownAccountId
             && lhs.automaticallyPresentsActions == rhs.automaticallyPresentsActions
             && lhs.backgroundSessions == rhs.backgroundSessions
@@ -230,11 +228,11 @@ struct MessageBubble: View, Equatable {
                             .frame(width: 44, height: 44)
                             .overlay(alignment: isThreadLayout || usesBorderlessMediaSurface ? .top : .bottom) {
                                 IdentityAvatar(
-                                    name: authorAvatarName,
-                                    imageSource: authorAvatarSource,
+                                    name: authorAvatar.name,
+                                    imageSource: authorAvatar.source,
                                     kind: message.author == .agent ? .agent : .person,
                                     size: 28,
-                                    seed: authorAvatarSeed ?? authorAvatarName
+                                    seed: authorAvatar.seed ?? authorAvatar.name
                                 )
                             }
                             .contentShape(Rectangle())
@@ -243,7 +241,7 @@ struct MessageBubble: View, Equatable {
                     .disabled(selectionMode)
                     .opacity(selectionMode ? 0 : 1)
                     .accessibilityHidden(selectionMode)
-                    .accessibilityLabel("Open profile for \(authorAvatarName)")
+                    .accessibilityLabel("Open profile for \(authorAvatar.name)")
                     .padding(.bottom, 2)
                     .padding(.top, isThreadLayout && visibleReplySource != nil ? 32 : 0)
                 } else {
@@ -260,7 +258,7 @@ struct MessageBubble: View, Equatable {
                 if isThreadLayout {
                     if let source = visibleReplySource { quoteLine(source) }
                     if !groupedWithPrevious || visibleReplySource != nil {
-                        ThreadMessageHeader(message: message, authorName: authorAvatarName, avatarSeed: authorAvatarSeed)
+                        ThreadMessageHeader(message: message, authorName: authorAvatar.name, avatarSeed: authorAvatar.seed)
                     }
                 }
                 if let position = message.agentQueuePosition {
@@ -443,11 +441,11 @@ struct MessageBubble: View, Equatable {
                 Group {
                     if showAvatar && outgoingAvatarGroupID == nil {
                         IdentityAvatar(
-                            name: authorAvatarName,
-                            imageSource: authorAvatarSource,
+                            name: authorAvatar.name,
+                            imageSource: authorAvatar.source,
                             kind: .person,
                             size: 28,
-                            seed: authorAvatarSeed ?? authorAvatarName
+                            seed: authorAvatar.seed ?? authorAvatar.name
                         )
                     } else {
                         Color.clear.frame(width: 28, height: 28)
@@ -711,7 +709,7 @@ struct MessageBubble: View, Equatable {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(chatTheme.accent)
                 .lineLimit(1)
-            if KordiPipIdentity.matches(name: message.authorName, seed: authorAvatarSeed) {
+            if KordiPipIdentity.matches(name: message.authorName, seed: authorAvatar.seed) {
                 Text(KordiPipIdentity.tag)
                     .font(.caption2.weight(.medium))
                     .padding(.horizontal, 6)
@@ -1191,9 +1189,9 @@ struct MessageBubble: View, Equatable {
         } label: {
             HStack(spacing: 6) {
                 if isThreadLayout {
-                    IdentityAvatar(name: senderLabel, imageSource: nil,
+                    IdentityAvatar(name: senderLabel, imageSource: replySourceAvatar?.source,
                                    kind: replySourceMessage?.author == .agent ? .agent : .person,
-                                   size: 16, seed: replySourceMessage?.authorName ?? senderLabel)
+                                   size: 16, seed: replySourceAvatar?.seed ?? replySourceMessage?.authorName ?? senderLabel)
                 } else if !isOwn { MessageQuoteBar() }
                 BlobEmojiPreviewText(text: isThreadLayout ? "@\(senderLabel) \(previewText)" : "\(senderLabel): \(previewText)")
                     .font(.caption)
@@ -2683,15 +2681,9 @@ private struct MessageFileAttachmentCard: View {
                         .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 0) {
-                            Text(nameBase)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                            Text(nameExtension)
-                                .fixedSize()
-                        }
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
+                        AttachmentCardFileName(attachment: attachment)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
                         HStack(spacing: 4) {
                             Text(attachment.formatLabel)
                                 .fontWeight(.bold)
@@ -2709,7 +2701,7 @@ private struct MessageFileAttachmentCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Review \(attachment.name)")
+            .accessibilityLabel("Review \(DocumentTitles.shared.displayName(for: attachment))")
 
             Menu {
                 Button(action: onOpen) {
@@ -2738,15 +2730,6 @@ private struct MessageFileAttachmentCard: View {
 
     private var family: KordiFileFamily {
         KordiFileFamily.forFile(name: attachment.name, mimeType: attachment.mimeType)
-    }
-
-    private var nameExtension: String {
-        let ext = URL(fileURLWithPath: attachment.name).pathExtension
-        return ext.isEmpty ? "" : ".\(ext)"
-    }
-
-    private var nameBase: String {
-        String(attachment.name.dropLast(nameExtension.count))
     }
 }
 

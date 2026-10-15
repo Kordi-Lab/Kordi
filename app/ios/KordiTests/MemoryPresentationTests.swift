@@ -320,6 +320,70 @@ extension MemoryPresentationTests {
     }
 }
 
+extension MemoryPresentationTests {
+    func testAddTargetMatchesWhereTheTabIsOpened() {
+        let chat = directConversation(sessionId: " chat-1 ")
+        XCTAssertEqual(MemoryPresentation.addTarget(for: chat, cloudConversationIds: ["cloud-1"]),
+                       MemoryAddTarget(scope: .conversation, scopeId: "chat-1", scopeLabel: "My Kordi"))
+        let group = groupConversation(sessionId: "session:group:local-1", groupSpaceId: nil)
+        XCTAssertEqual(MemoryPresentation.addTarget(for: group, cloudConversationIds: [" ", "cloud-group-1"]),
+                       MemoryAddTarget(scope: .group, scopeId: "cloud-group-1"))
+        // Without a cloud group id the group has no shared memories to add to.
+        XCTAssertNil(MemoryPresentation.addTarget(for: group, cloudConversationIds: []))
+        XCTAssertEqual(MemoryAddTarget.global, MemoryAddTarget(scope: .global, scopeId: "account"))
+    }
+
+    func testCreateRequestSavesATypedMemory() throws {
+        let data = try JSONEncoder().encode(CloudMemoryCreateRequest(target: .global, text: "Use metric units."))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: String])
+        XCTAssertEqual(json, ["scope": "global", "scopeId": "account", "source": "manual", "text": "Use metric units."])
+    }
+
+    @MainActor
+    func testAddingAMemoryValidatesAndListsItFirst() async throws {
+        let model = MemorySettingsModel(service: PreviewMemoryService(now: now, latency: .zero), accountLabel: nil, viewerAccountId: "acct_me")
+        await model.load()
+        let empty = await model.add(to: .global, draft: "   ")
+        XCTAssertEqual(empty, "Enter a memory.")
+        let tooLong = await model.add(to: .global, draft: String(repeating: "a", count: 501))
+        XCTAssertEqual(tooLong, "Memories are 500 characters or fewer.")
+        XCTAssertEqual(model.memories.count, 10)
+
+        let added = await model.add(to: .global, draft: "  Use   metric units. ")
+        XCTAssertNil(added)
+        let created = try XCTUnwrap(model.memories.first)
+        XCTAssertEqual([created.text, created.scopeId], ["Use metric units.", "account"])
+        XCTAssertEqual(created.source, .manual)
+        XCTAssertEqual(model.globalMemories.first?.memoryId, created.memoryId)
+        XCTAssertTrue(model.detail(created).hasPrefix("Added by you"))
+
+        // Text the scope already has is listed once.
+        let again = await model.add(to: .global, draft: "Use metric units.")
+        XCTAssertNil(again)
+        XCTAssertEqual(model.memories.count, 11)
+
+        let chat = directConversation(sessionId: "conv-launch-copy")
+        let target = try XCTUnwrap(MemoryPresentation.addTarget(for: chat, cloudConversationIds: []))
+        let inChat = await model.add(to: target, draft: "Ship the launch post on Tuesday.")
+        XCTAssertNil(inChat)
+        let listed = model.memories(for: MemoryPresentation.conversationScopes(for: chat))
+        XCTAssertEqual(listed.count, 3)
+        XCTAssertTrue(listed.contains { $0.text == "Ship the launch post on Tuesday." && $0.scope == .conversation })
+    }
+
+    @MainActor
+    func testAddingAMemoryShowsTheServerError() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MemoryErrorURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let model = MemorySettingsModel(service: CloudMemoryService(api: CloudAPIClient(session: session)) { "token" }, accountLabel: nil)
+        let inline = await model.add(to: .global, draft: "Use metric units.")
+        XCTAssertEqual(inline, "Memory is off for this account.")
+        XCTAssertTrue(model.memories.isEmpty)
+    }
+}
+
 private extension MemoryPresentation.Validation {
     var isValid: Bool {
         if case .valid = self { return true }

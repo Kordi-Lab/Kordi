@@ -13,6 +13,7 @@ struct DocumentReaderIdentity: Equatable {
 protocol DocumentService: AnyObject {
     func load(_ source: DocumentSource) async throws -> DocumentResponse
     func rawContent(_ document: DocumentResponse) async throws -> Data
+    func rename(attachmentId: String, title: String) async throws -> DocumentResponse
     func toggleReaction(_ document: DocumentResponse, publicToken: String?, blockId: String, reaction: String, reader: DocumentReaderIdentity?) async throws -> [DocumentReaction]
     func postComment(_ document: DocumentResponse, publicToken: String?, blockId: String, body: String, parentCommentId: String?, reader: DocumentReaderIdentity?) async throws -> DocumentComment
     func updateComment(_ commentId: String, body: String?, resolved: Bool?) async throws -> DocumentComment
@@ -59,6 +60,10 @@ final class CloudDocumentService: DocumentService {
             throw CloudAPIError(code: "invalid_response", message: "Could not open this document.", statusCode: 0)
         }
         return try await api.documentRawContent(token: document.viewer == .public ? nil : token(), rawPath: rawPath)
+    }
+
+    func rename(attachmentId: String, title: String) async throws -> DocumentResponse {
+        try await api.renameDocument(token: token(), attachmentId: attachmentId, title: title)
     }
 
     func toggleReaction(_ document: DocumentResponse, publicToken: String?, blockId: String, reaction: String, reader: DocumentReaderIdentity?) async throws -> [DocumentReaction] {
@@ -134,6 +139,11 @@ final class PreviewDocumentService: DocumentService {
     }
 
     func rawContent(_ document: DocumentResponse) async throws -> Data { Data() }
+
+    func rename(attachmentId: String, title: String) async throws -> DocumentResponse {
+        document.title = title
+        return document
+    }
 
     private func nextId(_ prefix: String) -> String {
         counter += 1
