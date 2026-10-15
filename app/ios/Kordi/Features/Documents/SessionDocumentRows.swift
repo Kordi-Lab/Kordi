@@ -133,6 +133,32 @@ struct SessionDetailFileRow: View {
     }
 
     var body: some View {
+        HStack(spacing: 4) {
+            // Tapping the row opens the file; the ellipsis keeps the other actions.
+            Button(action: onReview) { label.contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+                .disabled(isLoading)
+                .accessibilityHint("Opens the file")
+            if isLoading {
+                ProgressView().frame(width: 44, height: 44)
+            } else {
+                Menu {
+                    Button(action: onReview) { Label("Review", systemImage: "eye") }
+                    Button(action: onDownload) { Label("Download / Save to Files", systemImage: "arrow.down.circle") }
+                } label: {
+                    SessionEllipsisCircleLabel()
+                }
+                .contentShape(Rectangle())
+                .accessibilityLabel("More actions for \(item.attachment.name)")
+            }
+        }
+        .padding(.leading, SessionDetailMetrics.rowHorizontalInset)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        .frame(minHeight: SessionDetailMetrics.fileRowMinHeight)
+    }
+
+    private var label: some View {
         HStack(spacing: SessionFileRowMetrics.spacing) {
             SessionFileIconView(symbol: SessionFileIcon.symbol(
                 name: item.attachment.name,
@@ -156,23 +182,8 @@ struct SessionDetailFileRow: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityValue("\(item.attachment.formatLabel), shared by \(sharedBy)")
-            Spacer(minLength: 4)
-            if isLoading {
-                ProgressView().frame(width: 44, height: 44)
-            } else {
-                Menu {
-                    Button(action: onReview) { Label("Review", systemImage: "eye") }
-                    Button(action: onDownload) { Label("Download / Save to Files", systemImage: "arrow.down.circle") }
-                } label: {
-                    SessionEllipsisCircleLabel()
-                }
-                .contentShape(Rectangle())
-                .accessibilityLabel("More actions for \(item.attachment.name)")
-            }
+            Spacer(minLength: 0)
         }
-        .padding(.leading, SessionDetailMetrics.rowHorizontalInset)
-        .padding(.trailing, 6)
-        .padding(.vertical, 6)
-        .frame(minHeight: SessionDetailMetrics.fileRowMinHeight)
+        .frame(maxHeight: .infinity)
     }
 }
