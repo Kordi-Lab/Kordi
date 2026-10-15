@@ -5,6 +5,7 @@ import Foundation
 @MainActor
 protocol MemoryService: AnyObject {
     func list() async throws -> CloudMemoryListResponse
+    func create(target: MemoryAddTarget, text: String) async throws -> CloudMemory
     func update(memoryId: String, text: String) async throws -> CloudMemory
     func delete(memoryId: String) async throws
     func forgetAll() async throws -> Int
@@ -38,6 +39,10 @@ final class CloudMemoryService: MemoryService {
         try await api.listMemories(token: token())
     }
 
+    func create(target: MemoryAddTarget, text: String) async throws -> CloudMemory {
+        try await api.createMemory(token: token(), target: target, text: text)
+    }
+
     func update(memoryId: String, text: String) async throws -> CloudMemory {
         try await api.updateMemory(token: token(), memoryId: memoryId, text: text)
     }
@@ -69,6 +74,7 @@ final class CloudMemoryService: MemoryService {
 final class PreviewMemoryService: MemoryService {
     private var memories: [CloudMemory]
     private var settings = CloudMemorySettings(memoryEnabled: true, excludeSensitive: true)
+    private var addedCount = 0
     private let latency: Duration
 
     init(now: Date = Date(), latency: Duration = .milliseconds(300)) {
@@ -128,6 +134,25 @@ final class PreviewMemoryService: MemoryService {
     func list() async throws -> CloudMemoryListResponse {
         try await wait()
         return CloudMemoryListResponse(memories: memories, settings: settings)
+    }
+
+    func create(target: MemoryAddTarget, text: String) async throws -> CloudMemory {
+        try await wait()
+        guard case .valid(let normalized) = MemoryPresentation.validate(text) else {
+            throw CloudAPIError(code: "memory_rejected", message: "Memories are \(MemoryPresentation.maxCharacters) characters or fewer.", statusCode: 422)
+        }
+        // Like the server, the same text in the same scope returns the memory already saved.
+        if let existing = memories.first(where: { $0.scope == target.scope && $0.scopeId == target.scopeId && $0.text == normalized }) {
+            return existing
+        }
+        addedCount += 1
+        let at = ISO8601DateFormatter().string(from: Date())
+        let created = CloudMemory(
+            memoryId: "lesson-added-\(addedCount)", scope: target.scope, scopeId: target.scopeId,
+            scopeLabel: target.scopeLabel, source: .manual, text: normalized, createdAt: at, updatedAt: at
+        )
+        memories.append(created)
+        return created
     }
 
     func update(memoryId: String, text: String) async throws -> CloudMemory {
@@ -260,6 +285,25 @@ final class MemorySettingsModel: ObservableObject {
         do {
             let updated = try await service.update(memoryId: memoryId, text: text)
             memories = memories.map { $0.memoryId == memoryId ? updated : $0 }
+            lastSyncedAt = Date()
+            return nil
+        } catch {
+            return Self.message(for: error, fallback: "Could not save this memory. Try again.")
+        }
+    }
+
+    /// Adds a memory the person typed and returns an error message to show inline,
+    /// or nil on success. The new memory is listed first at once.
+    func add(to target: MemoryAddTarget, draft: String) async -> String? {
+        let text: String
+        switch MemoryPresentation.validate(draft) {
+        case .invalid(let reason): return reason
+        case .valid(let normalized): text = normalized
+        }
+        do {
+            let created = try await service.create(target: target, text: text)
+            // Text the scope already has comes back as that memory, so it is listed once.
+            memories = [created] + memories.filter { $0.memoryId != created.memoryId }
             lastSyncedAt = Date()
             return nil
         } catch {

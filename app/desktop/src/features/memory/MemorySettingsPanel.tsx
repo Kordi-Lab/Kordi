@@ -12,6 +12,7 @@ import { SettingsRow, SettingsSection, SettingsSwitch } from '@/kordi-app/compon
 import { MemoryList, destructiveConfirmClass } from './MemoryList';
 import type { MemoryClient } from './memoryClient';
 import {
+  GLOBAL_MEMORY_TARGET,
   forgetConsequences,
   isGlobalMemory,
   isOwnMemory,
@@ -194,6 +195,7 @@ export function MemorySettingsPanel({
                 onLessonsChange={setLessons}
                 emptyLabel="No global memories yet."
                 onChanged={refreshSync}
+                addTarget={settings.lessonsEnabled ? GLOBAL_MEMORY_TARGET : null}
               />
               {ownCount > 0 ? (
                 <SettingsSection size="compact">

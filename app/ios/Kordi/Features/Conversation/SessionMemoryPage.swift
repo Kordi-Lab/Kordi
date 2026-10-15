@@ -58,6 +58,11 @@ struct SessionMemoryPage: View {
                         }
                     }
                 }
+                // The server refuses new memories while memory is off.
+                if model.settings?.memoryEnabled == true,
+                   let target = MemoryPresentation.addTarget(for: conversation, cloudConversationIds: cloudGroupIds ?? []) {
+                    MemoryAddRow(model: model, target: target)
+                }
                 if memories.isEmpty {
                     SettingsCaption("No memories yet.")
                 } else {
