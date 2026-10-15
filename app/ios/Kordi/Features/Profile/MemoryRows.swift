@@ -14,6 +14,7 @@ struct MemoryRowsView: View {
             ForEach(memories) { memory in
                 MemoryRow(
                     memory: memory,
+                    detail: model.detail(memory),
                     ownerCaption: model.ownerCaption(memory),
                     edit: { editing = memory },
                     delete: { deleteTarget = memory }
@@ -22,7 +23,7 @@ struct MemoryRowsView: View {
             }
         }
         .sheet(item: $editing) { memory in
-            MemoryEditSheet(memory: memory) { draft in
+            MemoryEditSheet(memory: memory, detail: model.detail(memory)) { draft in
                 await model.save(memoryId: memory.memoryId, draft: draft)
             }
         }
@@ -43,6 +44,7 @@ struct MemoryRowsView: View {
 
 private struct MemoryRow: View {
     let memory: CloudMemory
+    let detail: String
     /// "Saved by …" on a group memory another member saved.
     let ownerCaption: String?
     let edit: () -> Void
@@ -53,7 +55,7 @@ private struct MemoryRow: View {
             HStack(spacing: 10) {
                 CompactSettingsLabel(
                     title: memory.text,
-                    subtitle: [MemoryPresentation.detail(memory), ownerCaption].compactMap { $0 }.joined(separator: "\n"),
+                    subtitle: [detail, ownerCaption].compactMap { $0 }.joined(separator: "\n"),
                     systemImage: nil,
                     titleLineLimit: 3
                 )
@@ -78,14 +80,16 @@ private struct MemoryRow: View {
 private struct MemoryEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     let memory: CloudMemory
+    let detail: String
     let save: (String) async -> String?
     @State private var draft: String
     @State private var error: String?
     @State private var isSaving = false
     @FocusState private var focused: Bool
 
-    init(memory: CloudMemory, save: @escaping (String) async -> String?) {
+    init(memory: CloudMemory, detail: String, save: @escaping (String) async -> String?) {
         self.memory = memory
+        self.detail = detail
         self.save = save
         _draft = State(initialValue: memory.text)
     }
@@ -107,7 +111,7 @@ private struct MemoryEditSheet: View {
                         .accessibilityLabel("Memory text")
 
                     HStack(alignment: .firstTextBaseline) {
-                        Text(MemoryPresentation.detail(memory))
+                        Text(detail)
                             .foregroundStyle(.secondary)
                         Spacer(minLength: 8)
                         Text(MemoryPresentation.counter(draft))

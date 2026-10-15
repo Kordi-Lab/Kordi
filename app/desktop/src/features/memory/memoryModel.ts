@@ -23,11 +23,14 @@ const sourceLabels: Record<MemoryLessonSource, string> = {
   user_correction: 'From a correction',
   repeated_failure: 'From a repeated failure',
   outcome: 'From an outcome',
-  manual: 'Added by hand',
+  manual: 'Added by you',
 };
 
-export function lessonSourceLabel(source: MemoryLessonSource): string {
-  return sourceLabels[source];
+/** A memory someone typed names who added it; the others name where they came from. */
+export function lessonSourceLabel(source: MemoryLessonSource, addedBy?: string | null): string {
+  if (source !== 'manual') return sourceLabels[source];
+  const name = addedBy?.trim();
+  return name ? `Added by ${name}` : 'Added by you';
 }
 
 /** Account settings list only global memories; the rest show on each conversation's Memory tab. */
@@ -42,12 +45,24 @@ export function isOwnMemory(lesson: Pick<MemoryLesson, 'ownerAccountId'>, viewer
   return !lesson.ownerAccountId || !viewerAccountId || lesson.ownerAccountId === viewerAccountId;
 }
 
+/** Who to name for a memory typed by hand: the owner's name, nothing ("you") for the viewer's own, or "a group member". */
+export function memoryAddedBy(
+  lesson: Pick<MemoryLesson, 'ownerAccountId' | 'ownerName'>,
+  viewerAccountId: string | null | undefined,
+): string | null {
+  const name = lesson.ownerName?.trim();
+  if (name) return name;
+  return isOwnMemory(lesson, viewerAccountId) ? null : 'a group member';
+}
+
 /** "Saved by …" for a group memory another member saved, otherwise null. */
 export function memoryOwnerCaption(
-  lesson: Pick<MemoryLesson, 'scope' | 'ownerAccountId' | 'ownerName'>,
+  lesson: Pick<MemoryLesson, 'scope' | 'ownerAccountId' | 'ownerName'> & Partial<Pick<MemoryLesson, 'source'>>,
   viewerAccountId: string | null | undefined,
 ): string | null {
   if (lesson.scope !== 'group' || isOwnMemory(lesson, viewerAccountId)) return null;
+  // A memory typed by hand already names who added it in its source label.
+  if ('source' in lesson && lesson.source === 'manual') return null;
   return `Saved by ${lesson.ownerName?.trim() || 'a group member'}`;
 }
 

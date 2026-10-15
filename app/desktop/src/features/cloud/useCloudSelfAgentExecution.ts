@@ -5,7 +5,8 @@ import {
   useEffect,
   useRef,
 } from 'react';
-import { cancelDesktopChatTurn } from '@/lib/desktop';
+import { cancelDesktopChatTurn, isNativeDesktopShell } from '@/lib/desktop';
+import { useCloudSelfAgentInterruptedTurnRecovery } from './cloudSelfAgentInterruptedTurns';
 import {
   cloudAgentRuntimeRouteAfterModelChange,
   cloudAgentRuntimeSessionId,
@@ -52,6 +53,7 @@ export function useCloudSelfAgentExecution({
   mergeMessage,
   syncMessages,
   reportWarning,
+  hydrateSessionPage,
 }: CloudSelfAgentExecutionInput) {
   const supersededRequestIdsRef = useRef<Set<string>>(new Set());
   // Requests this Mac executes, by request message ID, with how to stop each.
@@ -62,6 +64,15 @@ export function useCloudSelfAgentExecution({
   useEffect(() => {
     latestRef.current = { account, client, messageIndex, setLocalTurns, syncMessages, reportWarning };
   }, [account, client, messageIndex, setLocalTurns, syncMessages, reportWarning]);
+  useCloudSelfAgentInterruptedTurnRecovery({
+    enabled: Boolean(account && initialMessagesSettled && isNativeDesktopShell()),
+    canonicalState,
+    client,
+    processedRequestIdsRef,
+    hydrateSessionPage,
+    syncMessages,
+    reportWarning,
+  });
   const voiceGate = useVoiceAgentRequestGate();
   const executionReady = useDesktopAgentReadiness({ account, client, runtimeReady, cloudAgentDefinitionsById, reportWarning });
   const activeAccountIdRef = useRef<string | null>(
