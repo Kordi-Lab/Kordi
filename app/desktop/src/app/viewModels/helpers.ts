@@ -253,13 +253,12 @@ export function localOwnedAgentSenderLabel(
   ));
   if (canonicalAgent) return localOwnedAgentDisplayName(canonicalAgent.name);
 
-  const recentOwnedAgentMessage = [...conversation.messages]
-    .reverse()
-    .find((message) => message.role === 'owned-agent' && message.sender?.trim());
+  const recentOwnedAgentMessage = [...conversation.messages].reverse().find((message) => message.role === 'owned-agent' && message.sender?.trim());
   if (recentOwnedAgentMessage?.sender?.trim()) return localOwnedAgentDisplayName(recentOwnedAgentMessage.sender);
 
-  const participantName = nonSelfParticipantNames(conversation.participants)
-    .find((participant) => !/^kordi$/i.test(participant));
+  // Group members are people; the agent is never named after one of them.
+  const humanNames = new Set((conversation.canonicalParticipants ?? []).filter((participant) => participant.kind === 'human').map((participant) => participant.name.trim()));
+  const participantName = nonSelfParticipantNames(conversation.participants).find((participant) => !/^kordi$/i.test(participant) && !humanNames.has(participant));
   return localOwnedAgentDisplayName(participantName ?? fallback);
 }
 

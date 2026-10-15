@@ -121,5 +121,5 @@
 .kordi-app .app-thread-turn .app-live-turn-response-panel { max-width: 100%; }
 .kordi-app .app-thread-turn .app-live-assistant-answer-surface { padding: 0; border-radius: 0; background: transparent; }
 .kordi-app .app-thread-message-row :where(p, li, blockquote, td, th) { font-size: 13px; line-height: 1.4; }
-.kordi-app .app-thread-message-row [data-kordi-copy-surface="message"] > :not(:first-child),
+.kordi-app .app-thread-message-row [data-kordi-copy-surface="message"] > :is(div, p, ul, ol, blockquote, pre, table, hr):not(:first-child),
 .kordi-app .app-thread-turn .app-live-assistant-answer-markdown > :not(:first-child) { margin-top: 6px; }
