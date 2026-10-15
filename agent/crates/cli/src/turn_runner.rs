@@ -100,6 +100,7 @@ mod hooks;
     reason = "the CLI binary shares this module with the desktop runtime library"
 )]
 pub(crate) use hooks::send_extension_event_safe;
+mod interrupted_requests;
 mod omp_tools;
 mod panic;
 mod persistence;
@@ -114,6 +115,8 @@ mod tools;
 )]
 pub(crate) use omp_tools::execute_omp_tool_call;
 
+#[allow(unused_imports)]
+pub(crate) use interrupted_requests::close_request_interrupted_before;
 #[allow(unused_imports)]
 pub(crate) use persistence::{
     append_assistant_cancelled_message, append_assistant_error_message, append_custom_message,

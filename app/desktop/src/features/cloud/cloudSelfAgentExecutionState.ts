@@ -18,7 +18,8 @@ import type { CloudVoiceMessage } from './cloudAttachmentTypes';
 import { cloudVoiceDraftMetadataOnly } from './cloudVoiceMessage';
 import { cloudSyncedLocalAgentSessionIds } from './cloudSelfAgentSessionIdentity';
 
-const CLOUD_SELF_AGENT_LOCAL_EXECUTION_WINDOW_MS = 10 * 60_000;
+/** How long after a request this app may still start executing it. */
+export const CLOUD_SELF_AGENT_LOCAL_EXECUTION_WINDOW_MS = 10 * 60_000;
 
 export function cloudSelfAgentHasTerminalResponse(
   requestMessageId: string,

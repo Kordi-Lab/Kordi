@@ -1,4 +1,5 @@
 import type { DocumentUpdatedEvent } from './documentShareTypes';
+import { rememberDocumentTitle } from './documentTitles';
 
 type Listener = (event: DocumentUpdatedEvent) => void;
 
@@ -15,12 +16,13 @@ export function subscribeDocumentUpdates(attachmentId: string, listener: Listene
   };
 }
 
-/** Hands `document.updated` events from the cloud sync stream to open readers. */
+/** Hands `document.updated` events from the cloud sync stream to open readers; a rename also updates the known titles. */
 export function notifyDocumentSyncEvents(events: ReadonlyArray<{ eventType?: string; payload?: unknown }>) {
   for (const event of events) {
     if (event.eventType !== 'document.updated' || !event.payload || typeof event.payload !== 'object') continue;
-    const { attachmentId, revision, change } = event.payload as { attachmentId?: unknown; revision?: unknown; change?: unknown };
+    const { attachmentId, revision, change, title } = event.payload as { attachmentId?: unknown; revision?: unknown; change?: unknown; title?: unknown };
     if (typeof attachmentId !== 'string' || typeof revision !== 'number') continue;
+    if (change === 'title' && typeof title === 'string') rememberDocumentTitle(attachmentId, title);
     const kind = change === 'annotations' || change === 'content' || change === 'title' ? change : undefined;
     for (const listener of [...(listenersByAttachment.get(attachmentId) ?? [])]) listener({ attachmentId, revision, ...(kind ? { change: kind } : {}) });
   }

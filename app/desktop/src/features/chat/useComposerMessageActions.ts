@@ -5,6 +5,7 @@ import { isCloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMess
 import type { CollaborationAgentRequestControl, ComposerScope } from '@/kordi-app/types';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import { cancelDesktopChatTurn } from '@/lib/desktop';
+import type { DesktopChatTurnStopTarget } from './agentRequestStop';
 import { releaseHostedRequestWait } from './messageActions/hostedRequestWait';
 
 import type { UseComposerControllerArgs } from './composerController.types';
@@ -294,8 +295,46 @@ export function useComposerMessageActions({
     await stopCollaborationOutreach(request.conversationId, request.requestId);
   }, [stopCollaborationOutreach]);
 
+  /**
+   * Stops a side pane's session: its native turn when this Mac runs one,
+   * otherwise its hosted request. Resolves false when nothing was running.
+   */
+  const stopDesktopChatSessionTurn = useCallback(async ({ sessionId, liveTurn }: DesktopChatTurnStopTarget): Promise<boolean> => {
+    const turn = liveTurn && !liveTurn.completed ? liveTurn : null;
+    setDesktopChatError(null);
+    if (!turn) {
+      if (!stopCloudSelfAgentRequest) return false;
+      try {
+        if (await stopCloudSelfAgentRequest(sessionId)) return true;
+        releaseHostedRequestWait(sessionId);
+      } catch (error) {
+        setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop request');
+      }
+      return false;
+    }
+    userCancelledTurnIdsRef.current.add(turn.id);
+    if (localChatSendInFlightRef.current?.sessionId === turn.sessionId) {
+      localChatSendInFlightRef.current = null;
+      setIsDesktopChatSending(false);
+    }
+    setDesktopLiveTurnsBySession((current) => {
+      if (!current[turn.sessionId]) return current;
+      const { [turn.sessionId]: _removed, ...rest } = current;
+      return rest;
+    });
+    try {
+      await cancelDesktopChatTurn(turn.id);
+      void refreshDesktopChat(turn.sessionId).catch(() => {});
+      return true;
+    } catch (error) {
+      setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop chat turn');
+      return false;
+    }
+  }, [refreshDesktopChat, setDesktopChatError, setDesktopLiveTurnsBySession, setIsDesktopChatSending, stopCloudSelfAgentRequest]);
+
   /** Resolves true when something was stopped, so the Stop control can offer a retry otherwise. */
-  const handleStopDesktopChatTurn = useCallback(async (): Promise<boolean> => {
+  const handleStopDesktopChatTurn = useCallback(async (target?: DesktopChatTurnStopTarget): Promise<boolean> => {
+    if (target?.sessionId?.trim()) return stopDesktopChatSessionTurn(target);
     const pendingOutreach = pendingCollaborationOutreachRef.current;
     if (pendingOutreach) {
       try {
@@ -350,7 +389,7 @@ export function useComposerMessageActions({
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop chat turn');
       return false;
     }
-  }, [activeConvCanonicalSessionId, activeConvId, desktopLiveTurn, isDesktopChatSending, refreshDesktopChat, setDesktopChatError, setDesktopLiveTurnsBySession, setIsDesktopChatSending, stopCloudSelfAgentRequest, stopCollaborationOutreach]);
+  }, [activeConvCanonicalSessionId, activeConvId, desktopLiveTurn, isDesktopChatSending, refreshDesktopChat, setDesktopChatError, setDesktopLiveTurnsBySession, setIsDesktopChatSending, stopCloudSelfAgentRequest, stopCollaborationOutreach, stopDesktopChatSessionTurn]);
 
   return {
     handleSendChatMessage,
