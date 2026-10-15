@@ -56,6 +56,10 @@ function fakeAuth(overrides: Partial<FakeAuth> = {}) {
         settings,
       };
     },
+    async create(token, input) {
+      calls.push(['createMemory', token, input]);
+      return memory({ memoryId: 'mem-new', ...input, scopeLabel: input.scopeLabel ?? null, ownerAccountId: 'acct-1', ownerName: 'Taylor' });
+    },
     async update(token, memoryId, text) {
       calls.push(['updateMemory', token, memoryId, text]);
       return memory({ memoryId, text, scopeLabel: null });
@@ -239,6 +243,27 @@ test('update, delete, and forget call the account routes and record the sync tim
   assert.deepEqual(native.calls, [['sync'], ['sync'], ['forgetLocal'], ['sync']]);
 });
 
+test('adding a memory saves it as typed by hand in the given scope', async () => {
+  const auth = fakeAuth();
+  const native = fakeDesktop();
+  const client = createAccountMemoryClient({ ...wire(auth.client), loadSession: async () => session, desktop: native.desktop, now: () => NOW });
+  const created = await client.createLesson({ scope: 'group', scopeId: 'group-1', scopeLabel: '  ' }, 'Post notes before Friday.');
+  assert.deepEqual(
+    [created.lessonId, created.scope, created.scopeId, created.scopeLabel, created.source, created.ownerName],
+    ['mem-new', 'group', 'group-1', 'Group', 'manual', 'Taylor'],
+  );
+  assert.deepEqual(auth.calls.filter(([name]) => name === 'createMemory'), [['createMemory', 'token-1', {
+    scope: 'group', scopeId: 'group-1', scopeLabel: null, source: 'manual', text: 'Post notes before Friday.',
+  }]]);
+  assert.equal((await client.syncState()).lastSyncedAt, new Date(NOW).toISOString());
+  await settle();
+  assert.deepEqual(native.calls, [['sync']]);
+
+  const notMember = fakeAuth({ async create() { throw new CloudAuthError('not_a_group_member', 'Not a member.', 403); } });
+  const outsider = createAccountMemoryClient({ ...wire(notMember.client), loadSession: async () => session, desktop: fakeDesktop(false).desktop });
+  await assert.rejects(outsider.createLesson({ scope: 'group', scopeId: 'group-1' }, 'Hi.'), { message: NOT_A_GROUP_MEMBER_MESSAGE });
+});
+
 test('a server rejection reaches the panel as the error message', async () => {
   const auth = fakeAuth({
     async update() {
@@ -292,6 +317,7 @@ test('signed out, edits ask the person to sign in', async () => {
   const auth = fakeAuth();
   const client = createAccountMemoryClient({ ...wire(auth.client), loadSession: async () => null, desktop: fakeDesktop().desktop });
   await assert.rejects(client.updateLesson('mem-1', 'New text.'), { message: SIGN_IN_TO_EDIT_MEMORIES });
+  await assert.rejects(client.createLesson({ scope: 'global', scopeId: 'account' }, 'New text.'), { message: SIGN_IN_TO_EDIT_MEMORIES });
   await assert.rejects(client.archiveLesson('mem-1'), { message: SIGN_IN_TO_EDIT_MEMORIES });
   await assert.rejects(client.forgetAll(), { message: SIGN_IN_TO_EDIT_MEMORIES });
   assert.equal(SIGN_IN_TO_EDIT_MEMORIES, 'Sign in to edit memories.');
@@ -325,6 +351,9 @@ test('the auth client calls the memory routes with the session token', async () 
     if (url.pathname === '/v1/cloud/memory/mem-group' && init?.method === 'PATCH') {
       return json(403, { errorCode: 'not_a_group_member', message: 'Not a member of this group.' });
     }
+    if (url.pathname === '/v1/cloud/memory' && init?.method === 'POST') {
+      return json(201, { memory: { memoryId: 'mem-3', ...(body as object), createdAt: 'now', updatedAt: 'now' } });
+    }
     if (init?.method === 'DELETE' && url.pathname.startsWith('/v1/cloud/memory/')) return new Response(null, { status: 204 });
     if (url.pathname === '/v1/cloud/memory' && init?.method === 'DELETE') return json(200, { archived: 2 });
     if (url.pathname === '/v1/cloud/memory') return json(200, { memories: [], settings: { memoryEnabled: true, excludeSensitive: true } });
@@ -340,6 +369,8 @@ test('the auth client calls the memory routes with the session token', async () 
   assert.deepEqual(await client.forgetAll('tok'), { archived: 2 });
   assert.deepEqual(await client.settings('tok'), { memoryEnabled: false, excludeSensitive: true });
   await client.updateSettings('tok', { memoryEnabled: false });
+  const added = { scope: 'global' as const, scopeId: 'account', source: 'manual' as const, text: 'Use the 24-hour clock.' };
+  assert.equal((await client.create('tok', added)).memoryId, 'mem-3');
   assert.deepEqual(calls.map(({ method, path }) => `${method} ${path}`), [
     'GET /v1/cloud/memory',
     'PATCH /v1/cloud/memory/mem%2F1',
@@ -348,8 +379,10 @@ test('the auth client calls the memory routes with the session token', async () 
     'DELETE /v1/cloud/memory',
     'GET /v1/cloud/memory/settings',
     'PUT /v1/cloud/memory/settings',
+    'POST /v1/cloud/memory',
   ]);
   assert.ok(calls.every((call) => call.auth === 'Bearer tok'));
   assert.deepEqual(calls[1].body, { text: 'token=abc' });
   assert.deepEqual(calls[6].body, { memoryEnabled: false });
+  assert.deepEqual(calls[7].body, added);
 });

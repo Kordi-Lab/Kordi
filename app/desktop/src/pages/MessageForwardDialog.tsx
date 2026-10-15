@@ -4,6 +4,7 @@ import { Bot, Check, Forward, Search, Users, X } from 'lucide-react';
 import { AppDialog } from '@/components/ui/dialog';
 import { filterForwardDestinations, forwardDestinationPath, type ForwardDestination } from '@/features/chat/messageForwarding';
 import type { ForwardMessageSource } from '@/features/chat/messageActionMetadata';
+import { useMessageDocumentPreviewText } from '@/features/documents/documentPreviewTitles';
 import { formatDesktopLastActiveLabel } from '@/lib/time';
 
 export type MessageForwardDialogProps = {
@@ -18,6 +19,10 @@ const filters = [['all', 'All'], ['person', 'People'], ['group', 'Groups'], ['ag
 
 function sourcePreview(source: ForwardMessageSource) {
   return source.textPreview || (source.voiceMessage ? 'Voice message' : `${source.attachmentCount} attachment${source.attachmentCount === 1 ? '' : 's'}`);
+}
+
+function SourcePreview({ source }: { source: ForwardMessageSource }) {
+  return <>{useMessageDocumentPreviewText(sourcePreview(source), source)}</>;
 }
 
 function DestinationAvatar({ destination }: { destination: ForwardDestination }) {
@@ -99,7 +104,7 @@ export function MessageForwardDialog({ sources, destinations, sourceLabel, onClo
         </header>
         {!isBatch && sources[0] ? <section className="forward-source" aria-label="Message being forwarded">
           {sourceLabel ? <div className="forward-source-path"><Forward aria-hidden="true" /><span>From {sourceLabel}</span></div> : null}
-          <p>{sources[0].senderLabel}: {sourcePreview(sources[0])}</p>
+          <p>{sources[0].senderLabel}: <SourcePreview source={sources[0]} /></p>
         </section> : null}
         <div className="forward-picker">
           <label className="sr-only" htmlFor="forward-search">Send to</label>

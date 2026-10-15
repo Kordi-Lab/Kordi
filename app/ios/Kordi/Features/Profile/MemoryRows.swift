@@ -42,6 +42,33 @@ struct MemoryRowsView: View {
     }
 }
 
+/// The Add memory row at the top of a memory list. It opens the same sheet as
+/// Edit, empty, and saves the memory in `target`, the scope of the screen.
+struct MemoryAddRow: View {
+    @ObservedObject var model: MemorySettingsModel
+    let target: MemoryAddTarget
+    @State private var isAdding = false
+
+    var body: some View {
+        Button { isAdding = true } label: {
+            HStack(spacing: 10) {
+                CompactSettingsLabel(title: "Add memory", systemImage: "plus")
+                Spacer(minLength: 0)
+            }
+            .frame(minHeight: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isMutating)
+        .accessibilityIdentifier("memory-add")
+        .sheet(isPresented: $isAdding) {
+            MemoryEditSheet(memory: nil, detail: "") { draft in
+                await model.add(to: target, draft: draft)
+            }
+        }
+    }
+}
+
 private struct MemoryRow: View {
     let memory: CloudMemory
     let detail: String
@@ -79,7 +106,8 @@ private struct MemoryRow: View {
 
 private struct MemoryEditSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let memory: CloudMemory
+    /// The memory being edited, or nil for a new memory.
+    let memory: CloudMemory?
     let detail: String
     let save: (String) async -> String?
     @State private var draft: String
@@ -87,11 +115,11 @@ private struct MemoryEditSheet: View {
     @State private var isSaving = false
     @FocusState private var focused: Bool
 
-    init(memory: CloudMemory, detail: String, save: @escaping (String) async -> String?) {
+    init(memory: CloudMemory?, detail: String, save: @escaping (String) async -> String?) {
         self.memory = memory
         self.detail = detail
         self.save = save
-        _draft = State(initialValue: memory.text)
+        _draft = State(initialValue: memory?.text ?? "")
     }
 
     var body: some View {
@@ -134,7 +162,7 @@ private struct MemoryEditSheet: View {
             }
             .background(Color(uiColor: .systemBackground))
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Edit memory")
+            .navigationTitle(memory == nil ? "New memory" : "Edit memory")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

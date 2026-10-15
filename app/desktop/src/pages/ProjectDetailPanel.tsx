@@ -151,7 +151,13 @@ export function ProjectDetailPanel({
   const projectArtifacts = mergeArtifacts(artifacts, relatedProjectArtifacts(activeProject));
 
   if (activeDetailTab === 'memory') {
-    return <ChatMemoryTab conversation={{ id: activeProjectSession.id }} projectRoot={activeProject.root} />;
+    return (
+      <ChatMemoryTab
+        conversation={{ id: activeProjectSession.id }}
+        projectRoot={activeProject.root}
+        project={{ name: activeProject.name, root: activeProject.root }}
+      />
+    );
   }
 
   if (activeDetailTab === 'info') {

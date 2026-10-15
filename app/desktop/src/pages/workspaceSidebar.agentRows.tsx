@@ -4,7 +4,6 @@ import { BellOff, Bookmark, ChevronRight, Paperclip, Pin, Split } from 'lucide-r
 import { attachmentPreviewUrl } from '@/features/chat/attachmentMediaGallery';
 import { attachmentOnlyMessagePreview } from '@/features/chat/participantConversationState';
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
-import { BlobEmojiInlineText } from '@/features/emoji/BlobEmojiInlineText';
 import { cn } from '@/lib/utils';
 import type { ChatSidebarRow } from '@/pages/sidebar/chatSidebarRows';
 import {
@@ -13,6 +12,7 @@ import {
   sessionContextMenuTargetForConversation,
 } from '@/pages/workspaceSidebar.chatHelpers';
 import type { WorkspaceChatSidebarModel } from '@/pages/workspaceSidebar.chatModel';
+import { SidebarPreviewText } from '@/pages/workspaceSidebar.chatPrimitives';
 import { SidebarSessionMetaColumn } from '@/pages/workspaceSidebar.shared';
 import type { SessionContextMenuTarget } from '@/pages/SessionActionOverlays';
 
@@ -175,7 +175,7 @@ export function AgentSidebarRow({
             ) : savedMessageAttachmentPreview?.kind === 'file' ? (
               <Paperclip className="h-3 w-3 shrink-0" aria-hidden="true" />
             ) : null}
-            <span className="min-w-0 truncate"><BlobEmojiInlineText text={subtitleLine} /></span>
+            <span className="min-w-0 truncate"><SidebarPreviewText text={subtitleLine} conversations={[conversation]} /></span>
           </div>
         </div>
         <div className="app-agent-session-side">
