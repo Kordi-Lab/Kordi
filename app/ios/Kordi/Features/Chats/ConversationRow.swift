@@ -129,6 +129,7 @@ struct ConversationRow: View {
                                 ConversationAttachmentThumbnail(attachment: attachment)
                             }
                             BlobEmojiPreviewText(text: previewText)
+                        .loadsPreviewDocumentTitle(conversation.lastAttachment)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                         }
@@ -145,6 +146,7 @@ struct ConversationRow: View {
                         ConversationAttachmentThumbnail(attachment: attachment)
                     }
                     BlobEmojiPreviewText(text: previewText)
+                        .loadsPreviewDocumentTitle(conversation.lastAttachment)
                 }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
