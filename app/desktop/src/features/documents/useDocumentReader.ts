@@ -14,6 +14,7 @@ import type { DocumentComment, DocumentReaction, DocumentResponse, DocumentShare
 import { useDocumentEditing } from './useDocumentEditing';
 import { blocksFromSource, type SourceBlock } from './documentBlockSource';
 import { useCloudDocumentEdits } from './useCloudDocumentEdits';
+import { rememberDocumentTitle } from './documentTitles';
 
 /** local: a file on this Mac with no cloud copy; uploaded: a cloud attachment; public: opened from a share link. */
 export type DocumentReaderMode = 'local' | 'uploaded' | 'public' | 'unavailable';
@@ -182,6 +183,13 @@ export function useDocumentReader(source: DocumentReaderSource, api: DocumentSha
   useEffect(() => {
     if (path && canonicalId && mode === 'uploaded' && localSource !== null) rememberUploadedDocument(path, canonicalId);
   }, [canonicalId, localSource, mode, path]);
+  // Lists show the title the reader has, under the id it opened and the canonical one; a rename shows at once.
+  const documentTitle = document?.title ?? null;
+  useEffect(() => {
+    if (!documentTitle || mode !== 'uploaded') return;
+    rememberDocumentTitle(canonicalId, documentTitle);
+    rememberDocumentTitle(attachmentId, documentTitle);
+  }, [attachmentId, canonicalId, documentTitle, mode]);
   const onCloud = mode !== 'local';
   const canEdit = format === 'markdown' && (!onCloud || canEditCloud);
 

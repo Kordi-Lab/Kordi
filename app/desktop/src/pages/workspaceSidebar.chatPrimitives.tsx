@@ -1,5 +1,8 @@
 import { Bookmark } from 'lucide-react';
 
+import { useDocumentPreviewText } from '@/features/documents/documentPreviewTitles';
+import { BlobEmojiInlineText } from '@/features/emoji/BlobEmojiInlineText';
+import type { Conversation } from '@/kordi-app/types';
 import { GroupAvatar } from '@/kordi-app/components/GroupAvatar';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { WorkspaceSidebarParticipantSpace as ParticipantSpaceItem } from '@/pages/workspaceSidebar.types';
@@ -72,4 +75,15 @@ export function ParticipantSpaceAvatarStack({
       ))}
     </div>
   );
+}
+
+/** A row's preview line; a renamed document it ends with shows under its title. */
+export function SidebarPreviewText({
+  text,
+  conversations,
+}: {
+  text: string;
+  conversations: ReadonlyArray<Conversation>;
+}) {
+  return <BlobEmojiInlineText text={useDocumentPreviewText(text, conversations)} />;
 }

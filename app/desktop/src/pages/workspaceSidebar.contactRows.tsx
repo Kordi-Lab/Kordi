@@ -2,7 +2,6 @@ import { BellOff, ChevronDown, MoreHorizontal, Paperclip, Pin, Plus } from 'luci
 
 import { attachmentPreviewUrl } from '@/features/chat/attachmentMediaGallery';
 import { isBlankParticipantSpaceSession } from '@/features/chat/participantSpaces';
-import { BlobEmojiInlineText } from '@/features/emoji/BlobEmojiInlineText';
 import { cn } from '@/lib/utils';
 import type { ChatSidebarRow } from '@/pages/sidebar/chatSidebarRows';
 import {
@@ -17,7 +16,7 @@ import {
   sessionContextMenuTargetForConversation,
 } from '@/pages/workspaceSidebar.chatHelpers';
 import type { WorkspaceChatSidebarModel } from '@/pages/workspaceSidebar.chatModel';
-import { ParticipantSpaceAvatarStack } from '@/pages/workspaceSidebar.chatPrimitives';
+import { ParticipantSpaceAvatarStack, SidebarPreviewText } from '@/pages/workspaceSidebar.chatPrimitives';
 import { SidebarSessionMetaColumn } from '@/pages/workspaceSidebar.shared';
 import type { WorkspaceSidebarParticipantSpace as ParticipantSpaceItem } from '@/pages/workspaceSidebar.types';
 import type { GroupContextMenuTarget, SessionContextMenuTarget } from '@/pages/SessionActionOverlays';
@@ -115,7 +114,7 @@ function ParticipantSpaceSessionRow({
               && 'app-participant-space-session-preview-live',
           )}
         >
-          <BlobEmojiInlineText text={sessionPreview} />
+          <SidebarPreviewText text={sessionPreview} conversations={[conversation]} />
         </div>
       </div>
       <div className="app-participant-space-session-side">
@@ -288,7 +287,10 @@ function ParticipantSpaceRow({
                 <Paperclip className="h-3 w-3 shrink-0" aria-hidden="true" />
               ) : null}
               <span className="min-w-0 truncate">
-                <BlobEmojiInlineText text={space.preview || `${participantSpaceKindText(space)} space`} />
+                <SidebarPreviewText
+                  text={space.preview || `${participantSpaceKindText(space)} space`}
+                  conversations={space.sessions.map((entry) => entry.conversation)}
+                />
               </span>
             </div>
           </div>
