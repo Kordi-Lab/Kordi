@@ -31,7 +31,7 @@ export type AccountMemoryAuthClient = Pick<CloudAuthClient, 'request' | 'me'>;
 /** The account memory routes the client calls. */
 export type AccountMemoryRoutes = Pick<
   CloudMemoryClient,
-  'list' | 'update' | 'remove' | 'forgetAll' | 'settings' | 'updateSettings'
+  'list' | 'create' | 'update' | 'remove' | 'forgetAll' | 'settings' | 'updateSettings'
 >;
 
 /** Memory commands of the desktop shell. They only exist in the native shell. */
@@ -231,6 +231,19 @@ export function createAccountMemoryClient(options: AccountMemoryClientOptions = 
       const listing = listLessons();
       pendingList = listing;
       return listing;
+    },
+    async createLesson(target, text) {
+      const stored = await requireSession();
+      const { memoryId, ...rest } = await asGroupMember(memory().create(stored.token, {
+        scope: target.scope,
+        scopeId: target.scopeId,
+        scopeLabel: target.scopeLabel?.trim() || null,
+        source: 'manual',
+        text,
+      }));
+      markSynced(stored);
+      syncDesktop();
+      return toLesson({ lessonId: memoryId, ...rest });
     },
     async updateLesson(lessonId, text) {
       const stored = await requireSession();

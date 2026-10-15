@@ -1,4 +1,4 @@
-import type { MemoryLesson } from './memoryModel';
+import type { MemoryAddTarget, MemoryLesson } from './memoryModel';
 
 const SPACE_PREFIX = 'group:';
 const GROUP_SESSION_PREFIX = 'session:group:';
@@ -68,4 +68,36 @@ export function isMemoryForConversation(
   if (memory.scope === 'global') return false;
   const scopeId = memory.scopeId.trim();
   return Boolean(scopeId) && scopes[memory.scope].includes(scopeId);
+}
+
+export type ConversationMemoryAddInput = {
+  /** The chat's session ids, the canonical session id first. */
+  sessionIds: readonly MaybeId[];
+  /** The cloud group conversation ids of a group chat. */
+  cloudConversationIds: readonly MaybeId[];
+  /** The tab belongs to a project, so its memories are saved under the project root. */
+  project?: { root: MaybeId };
+  /** The chat or project name the memory is saved with. */
+  label?: MaybeId;
+};
+
+/**
+ * Where a memory added from a Memory tab is saved: the project for a project's
+ * tab, the group (shared by its members) for a group chat, otherwise the chat
+ * under its canonical session id. A group chat without a cloud group id has no
+ * shared memories yet, so it cannot add one.
+ */
+export function conversationMemoryAddTarget(input: ConversationMemoryAddInput): MemoryAddTarget | null {
+  const label = input.label?.trim() || null;
+  if (input.project) {
+    const root = input.project.root?.trim();
+    return root ? { scope: 'project', scopeId: root, scopeLabel: label ?? root } : null;
+  }
+  const sessionIds = present(input.sessionIds);
+  if (sessionIds.some((id) => id.startsWith(GROUP_SESSION_PREFIX))) {
+    const [groupId] = present(input.cloudConversationIds);
+    return groupId ? { scope: 'group', scopeId: groupId, scopeLabel: label } : null;
+  }
+  const [sessionId] = sessionIds;
+  return sessionId ? { scope: 'conversation', scopeId: sessionId, scopeLabel: label } : null;
 }

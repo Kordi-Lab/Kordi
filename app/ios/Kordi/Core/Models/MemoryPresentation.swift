@@ -72,6 +72,19 @@ enum MemoryPresentation {
         return scopes
     }
 
+    /// Where a memory added from a conversation's Memory tab is saved: the group,
+    /// shared by its members, for a group, otherwise the conversation under its
+    /// cloud session id. A group without a cloud group id has no shared memories yet.
+    static func addTarget(for conversation: ConversationSummary, cloudConversationIds: [String]) -> MemoryAddTarget? {
+        if conversation.kind == .group {
+            return cloudConversationIds.lazy.compactMap(\.nonEmptyMemoryText).first
+                .map { MemoryAddTarget(scope: .group, scopeId: $0) }
+        }
+        return conversation.sessionId.nonEmptyMemoryText.map {
+            MemoryAddTarget(scope: .conversation, scopeId: $0, scopeLabel: conversation.displayName.nonEmptyMemoryText)
+        }
+    }
+
     /// The memories of one conversation, its group, or its project, newest first.
     /// Global memories never appear here.
     static func memories(_ memories: [CloudMemory], for scopes: ConversationScopes) -> [CloudMemory] {

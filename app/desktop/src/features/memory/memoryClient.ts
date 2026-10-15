@@ -1,6 +1,7 @@
 import { createAccountMemoryClient } from './accountMemoryClient';
 import {
   validateLessonText,
+  type MemoryAddTarget,
   type MemoryLesson,
   type MemorySettings,
   type MemorySyncState,
@@ -10,6 +11,8 @@ export type MemoryClient = {
   settings(): Promise<MemorySettings>;
   updateSettings(patch: Partial<MemorySettings>): Promise<MemorySettings>;
   listLessons(): Promise<MemoryLesson[]>;
+  /** Saves a memory the person typed, in the scope of the page it was added from. */
+  createLesson(target: MemoryAddTarget, text: string): Promise<MemoryLesson>;
   updateLesson(lessonId: string, text: string): Promise<MemoryLesson>;
   archiveLesson(lessonId: string): Promise<void>;
   forgetAll(): Promise<{ archived: number }>;
@@ -96,6 +99,7 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
       ownerName: 'Priya',
     },
   ];
+  let addedCount = 0;
   const isOwn = (entry: MemoryLesson) => !entry.ownerAccountId || entry.ownerAccountId === PREVIEW_VIEWER_ACCOUNT_ID;
 
   const wait = () => new Promise<void>((resolve) => { setTimeout(resolve, latencyMs); });
@@ -115,6 +119,30 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
     async listLessons() {
       await wait();
       return copyLessons();
+    },
+    async createLesson(target, text) {
+      await wait();
+      const validation = validateLessonText(text);
+      if (!validation.ok) throw new Error(validation.reason);
+      const at = new Date(now()).toISOString();
+      // Like the server, the same text in the same scope returns the memory already saved.
+      const existing = lessons.find((entry) => entry.scope === target.scope
+        && entry.scopeId === target.scopeId && entry.text === validation.text);
+      if (existing) return { ...existing };
+      addedCount += 1;
+      const created: MemoryLesson = {
+        lessonId: `lesson-added-${addedCount}`,
+        scope: target.scope,
+        scopeId: target.scopeId,
+        scopeLabel: target.scopeLabel?.trim() || 'Global',
+        source: 'manual',
+        text: validation.text,
+        createdAt: at,
+        updatedAt: at,
+      };
+      lessons = [...lessons, created];
+      markSynced();
+      return { ...created };
     },
     async updateLesson(lessonId, text) {
       await wait();
