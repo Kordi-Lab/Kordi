@@ -34,6 +34,14 @@ which were built but never released.
   service ([#1768]).
 - Added email verification at signup and for existing accounts, and grouped
   active sessions by device ([#1672], [#1708]).
+- Added document editing on iPhone with the same rich editor as Mac, a
+  formatting toolbar above the keyboard, and live co-editing with Mac
+  ([#1789]).
+- Added document renaming: double-click the title on Mac, or use the reader
+  menu on iPhone. Renamed titles show in the Artifacts list, attachment cards,
+  and chat previews on both ([#1777], [#1779], [#1783], [#1787], [#1792]).
+- Added Add memory on the Memory pages on Mac and iPhone, so a memory can be
+  typed by hand ([#1786]).
 
 ### Changed
 
@@ -56,6 +64,13 @@ which were built but never released.
   seen stay in the chat header ([#1765]).
 - Showed sender names larger than message text in the iPhone Threads layout
   ([#1773]).
+- Redesigned the iPhone conversation info page in the native iOS style, with
+  glass actions, a segmented tab control, and compact file rows that open on
+  tap ([#1791]).
+- Matched the conversation title bar on Mac to the sidebar, and summarized a
+  chat's Info overview in one line ([#1788], [#1790]).
+- Named the person who added a memory by hand instead of "Added by hand"
+  ([#1781]).
 
 ### Fixed
 
@@ -90,6 +105,14 @@ which were built but never released.
   ([#1769]).
 - Named chats from their first message instead of a dated fallback title
   ([#1770]).
+- Opened a new document in the editor and listed documents created in group
+  channels in the Artifacts tab on Mac ([#1775]).
+- Marked agent replies cut off by an app restart as interrupted instead of
+  leaving them processing ([#1778]).
+- Let Stop in the Ask Agent panel stop the panel's own turn ([#1780]).
+- Showed each agent's own name and avatar on its replies on Mac and iPhone
+  ([#1782], [#1785]).
+- Aligned emoji with text in the Threads layout on Mac ([#1784]).
 
 ## [0.0.2-beta.3] - 2026-09-20
 
@@ -970,3 +993,20 @@ This release is the comparison baseline for beta.8. See the
 [#1769]: https://github.com/Kordi-Lab/Kordi/pull/1769
 [#1770]: https://github.com/Kordi-Lab/Kordi/pull/1770
 [#1773]: https://github.com/Kordi-Lab/Kordi/pull/1773
+[#1775]: https://github.com/Kordi-Lab/Kordi/pull/1775
+[#1777]: https://github.com/Kordi-Lab/Kordi/pull/1777
+[#1778]: https://github.com/Kordi-Lab/Kordi/pull/1778
+[#1779]: https://github.com/Kordi-Lab/Kordi/pull/1779
+[#1780]: https://github.com/Kordi-Lab/Kordi/pull/1780
+[#1781]: https://github.com/Kordi-Lab/Kordi/pull/1781
+[#1782]: https://github.com/Kordi-Lab/Kordi/pull/1782
+[#1783]: https://github.com/Kordi-Lab/Kordi/pull/1783
+[#1784]: https://github.com/Kordi-Lab/Kordi/pull/1784
+[#1785]: https://github.com/Kordi-Lab/Kordi/pull/1785
+[#1786]: https://github.com/Kordi-Lab/Kordi/pull/1786
+[#1787]: https://github.com/Kordi-Lab/Kordi/pull/1787
+[#1788]: https://github.com/Kordi-Lab/Kordi/pull/1788
+[#1789]: https://github.com/Kordi-Lab/Kordi/pull/1789
+[#1790]: https://github.com/Kordi-Lab/Kordi/pull/1790
+[#1791]: https://github.com/Kordi-Lab/Kordi/pull/1791
+[#1792]: https://github.com/Kordi-Lab/Kordi/pull/1792
