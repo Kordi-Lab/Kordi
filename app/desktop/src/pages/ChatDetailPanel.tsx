@@ -134,19 +134,8 @@ type ChatDetailPanelProps = {
   onOpenOutreachThread?: (conversationId: string) => void;
 };
 
-type MetaRowProps = {
-  label: string;
-  value?: ReactNode;
-  valueClassName?: string;
-};
-
-function MetaRow({ label, value, valueClassName }: MetaRowProps) {
-  return (
-    <div className="app-inspector-meta-row">
-      <span className="app-inspector-meta-label">{label}</span>
-      <span className={['app-inspector-meta-value', valueClassName].filter(Boolean).join(' ')}>{value ?? '—'}</span>
-    </div>
-  );
+function countLabel(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
 function EmphasisBlock({ title, children, className = '' }: { title?: string; children: ReactNode; className?: string }) {
@@ -206,12 +195,14 @@ function ChatDetailPanelView({
             <div className="min-w-0">
               <div className="app-inspector-heading">{activeConv.name}</div>
             </div>
-            <div className="app-inspector-meta-list">
-              <MetaRow label="Participants" value={participantCount} />
-              <MetaRow label="Messages" value={messageSummary} />
-              {activeConv.canonicalPresenceSummary ? <MetaRow label="Presence" value={activeConv.canonicalPresenceSummary} /> : null}
-              <MetaRow label="Last active" value={activeLastMessage?.time} />
-            </div>
+            <p className="app-inspector-meta-label m-0 mt-1" data-chat-info-summary="">
+              {[
+                countLabel(participantCount, 'participant'),
+                canonicalProjectionPending ? messageSummary : countLabel(messageCount, 'message'),
+                activeConv.canonicalPresenceSummary,
+                activeLastMessage?.time ? `Active ${activeLastMessage.time}` : null,
+              ].filter(Boolean).join(' · ')}
+            </p>
           </div>
         </section>
 
