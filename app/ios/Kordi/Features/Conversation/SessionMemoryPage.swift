@@ -26,52 +26,60 @@ struct SessionMemoryPage: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let error = model.errorMessage {
-                Label(error, systemImage: "exclamationmark.circle.fill")
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .padding(.vertical, 6)
-            }
-
-            if !model.hasLoaded || cloudGroupIds == nil {
-                if model.errorMessage == nil {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        Text("Loading memory…")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 56)
-                    .accessibilityElement(children: .combine)
-                } else {
-                    Button("Try again") { Task { await model.load() } }
-                        .font(.subheadline.weight(.semibold))
-                        .frame(minHeight: 32)
-                        .disabled(model.isLoading)
+        VStack(alignment: .leading, spacing: 8) {
+            Group {
+                if let error = model.errorMessage {
+                    Label(error, systemImage: "exclamationmark.circle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .padding(.vertical, 6)
                 }
-            } else {
-                if model.accountLabel != nil {
-                    TimelineView(.periodic(from: .now, by: 30)) { context in
-                        if let caption = model.syncCaption(now: context.date) {
-                            SettingsCaption(caption)
+
+                if !model.hasLoaded || cloudGroupIds == nil {
+                    if model.errorMessage == nil {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Loading memory…")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 56)
+                        .accessibilityElement(children: .combine)
+                    } else {
+                        Button("Try again") { Task { await model.load() } }
+                            .font(.subheadline.weight(.semibold))
+                            .frame(minHeight: 32)
+                            .disabled(model.isLoading)
+                    }
+                } else {
+                    if model.accountLabel != nil {
+                        TimelineView(.periodic(from: .now, by: 30)) { context in
+                            if let caption = model.syncCaption(now: context.date) {
+                                SettingsCaption(caption)
+                            }
                         }
                     }
+                    // The server refuses new memories while memory is off.
+                    if model.settings?.memoryEnabled == true,
+                       let target = MemoryPresentation.addTarget(for: conversation, cloudConversationIds: cloudGroupIds ?? []) {
+                        MemoryAddRow(model: model, target: target)
+                    }
+                    if memories.isEmpty {
+                        SettingsCaption("No memories yet.")
+                    }
                 }
-                // The server refuses new memories while memory is off.
-                if model.settings?.memoryEnabled == true,
-                   let target = MemoryPresentation.addTarget(for: conversation, cloudConversationIds: cloudGroupIds ?? []) {
-                    MemoryAddRow(model: model, target: target)
-                }
-                if memories.isEmpty {
-                    SettingsCaption("No memories yet.")
-                } else {
+            }
+            .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
+
+            if model.hasLoaded, cloudGroupIds != nil, !memories.isEmpty {
+                SessionDetailSection {
                     MemoryRowsView(model: model, memories: memories)
+                        .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
+                        .padding(.vertical, 4)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 4)
         .task { await model.load() }
         .task(id: conversation.sessionId) {
             cloudGroupIds = await model.cloudGroupConversationIds(for: conversation)
