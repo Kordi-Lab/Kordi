@@ -593,7 +593,7 @@ function LiveChatTurnCardView({
   return (
     <div data-live-turn-status={visibleTurn.status} className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
-        <div data-live-turn-pending={statusOnly ? 'true' : undefined} className={cn('app-live-turn-response-panel', hasResponseSurface && !plainAgentResponse && 'app-live-assistant-answer-surface', statusOnly ? 'w-fit' : 'w-full', 'max-w-[min(100%,58rem)] space-y-2.5')}>
+        <div data-live-turn-pending={statusOnly ? 'true' : undefined} className={cn('app-live-turn-response-panel', hasResponseSurface && !plainAgentResponse && 'app-live-assistant-answer-surface', !hasAssistant && !isCompressionStatus && changedFileRows.length === 0 ? 'w-fit' : 'w-full', 'max-w-[min(100%,58rem)] space-y-2.5')}>
           {showLiveStatusHeader ? (
             <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
               {visibleTurn.status === 'cancelling' || visibleTurn.status === 'retrying' ? (
