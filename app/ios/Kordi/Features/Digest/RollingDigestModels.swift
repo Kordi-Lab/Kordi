@@ -58,6 +58,11 @@ struct RollingDigestResponse: Codable, Equatable {
     let errorCode: String?
     let feedback: [RollingDigestFeedback]
     var timezone: String? = nil
+    /// The saved account to reconnect when the provider refused its sign-in.
+    var errorProvider: String? = nil
+    var reconnectProviderName: String? {
+        errorProvider.map { ProviderAuthenticationDefinition.definition(for: $0)?.name ?? $0 }
+    }
 
     private var dismissedItemIDs: Set<String> {
         Set(feedback.filter { $0.status == "dismissed" }.map(\.id))
