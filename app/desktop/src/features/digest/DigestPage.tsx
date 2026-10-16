@@ -18,6 +18,7 @@ import { DigestRelatedLinks } from './DigestRelatedLinks';
 import { DigestSplit } from './DigestSplit';
 import { useCalendarPreview } from './useCalendarPreview';
 import { MarkdownContent } from '@/kordi-app/components/markdown';
+import { providerDisplayLabel } from '@/kordi-app/components/composerModelSelection';
 
 const timeLabel=(value:string)=>new Date(value).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
 const localInput=(value?:string|null)=>{if(!value)return '';const d=new Date(value);return `${dateKey(d)}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;};
@@ -74,6 +75,7 @@ export default function DigestPage({accountId,onOpenProviderSettings,renderConte
   // One status for the whole page: the header says how fresh the brief is,
   // and a digest without a brief explains itself once, in its own card.
   const needsProvider=digest?.errorCode==='missing_provider_auth';
+  const reconnect=digest?.errorProvider?`Reconnect ${providerDisplayLabel(digest.errorProvider)}`:null;
   const unavailable:DigestUnavailableState|null=!digest?(digestError?'unreachable':'loading')
     :output?null
     :digest.status==='updating'||digest.status==='loading'?'preparing'
@@ -91,10 +93,10 @@ export default function DigestPage({accountId,onOpenProviderSettings,renderConte
     :unavailable==='unreachable'?<>Couldn't reach Kordi{statusAction('Try again',()=>void retryReads())}</>
     :unavailable==='preparing'?<>Preparing your digest…</>
     :unavailable==='needsProvider'?<>Connect a model provider to get your digest{settingsAction}</>
-    :unavailable==='providerRejected'?<>Your model provider sign-in didn't work{settingsAction}</>
+    :unavailable==='providerRejected'?<>{reconnect??"Your model provider sign-in didn't work"}{settingsAction}</>
     :unavailable==='providerUnavailable'?<>Your model provider is unavailable right now{statusAction('Try again',retryGeneration)}</>
     :unavailable==='failed'?<>Your digest couldn't be prepared{statusAction('Try again',retryGeneration)}</>
-    :<><span title="Updates a few minutes after your conversations go quiet">{digest?.updatedAt?`Updated ${timeLabel(digest.updatedAt)}`:'Up to date'}</span>{digest?.status==='updating'?<> · Updating…</>:needsProvider?<> · Connect a model provider{settingsAction}</>:digest?.errorCode==='provider_auth_rejected'?<> · Provider sign-in didn't work{settingsAction}</>:digest?.errorCode==='provider_unavailable'?<> · Provider unavailable{statusAction('Retry',retryGeneration)}</>:digest?.errorCode?<> · Last update failed{statusAction('Retry',retryGeneration)}</>:null}</>;
+    :<><span title="Updates a few minutes after your conversations go quiet">{digest?.updatedAt?`Updated ${timeLabel(digest.updatedAt)}`:'Up to date'}</span>{digest?.status==='updating'?<> · Updating…</>:needsProvider?<> · Connect a model provider{settingsAction}</>:digest?.errorCode==='provider_auth_rejected'?<> · {reconnect??"Provider sign-in didn't work"}{settingsAction}</>:digest?.errorCode==='provider_unavailable'?<> · Provider unavailable{statusAction('Retry',retryGeneration)}</>:digest?.errorCode?<> · Last update failed{statusAction('Retry',retryGeneration)}</>:null}</>;
   const digestStatus=unavailable?<div className="digest-placeholder" aria-hidden="true"/>:null;
   const calendarStatus=!calendarLoaded?<DigestReadStatus label="Calendar" failed={!!calendarError} busy={busy} onRetry={()=>void retryReads()}/>:null;
   const selectedSources=sources.filter(s=>(Array.isArray(sourceId)?sourceId:[sourceId]).includes(s.id)).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
