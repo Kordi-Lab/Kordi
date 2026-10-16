@@ -73,10 +73,12 @@ impl FailRunRequest {
 
 fn cloud_agent_failure_response_text(error_code: &str, is_support_agent: bool) -> &'static str {
     match error_code {
-        "missing_provider_auth" if is_support_agent => {
+        "missing_provider_auth" | "provider_auth_rejected" if is_support_agent => {
             "Kordi Support is temporarily unavailable. Try again shortly."
         }
         "missing_provider_auth" => "No provider configured yet.",
+        // Desktop clients match this text to offer "Open authentication".
+        "provider_auth_rejected" => "Sign in again to use this account.",
         "model_provider_error" => {
             "Cloud fallback could not complete this request because the configured provider/model failed."
         }

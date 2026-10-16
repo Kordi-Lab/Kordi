@@ -285,4 +285,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "digest provider route retry",
         "0130_digest_provider_route_retry.sql"
     ),
+    migration!(
+        131,
+        "provider auth unknown expiry",
+        "0131_provider_auth_unknown_expiry.sql"
+    ),
 ];

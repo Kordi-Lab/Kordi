@@ -6,6 +6,7 @@ const DESKTOP_AUTH_UPDATED_MESSAGE_TYPE = 'auth-updated';
 
 export type DesktopAuthUpdateReason =
   | 'active-choice-changed'
+  | 'credential-refresh'
   | 'api-key-saved'
   | 'oauth-completed'
   | 'profile-removed'

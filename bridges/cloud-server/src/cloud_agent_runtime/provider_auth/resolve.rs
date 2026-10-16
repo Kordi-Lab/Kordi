@@ -11,7 +11,9 @@ use sqlx_postgres::{PgPool, Postgres};
 
 use super::cipher::ProviderAuthCipher;
 use super::codex_refresh::{codex_payload_needs_refresh, refresh_codex_payload, CodexRefreshError};
-use super::readiness::{payload_expiry, payload_refreshable, snapshot_status, READY};
+use super::readiness::{
+    access_token_without_expiry, payload_expiry, payload_refreshable, snapshot_status, READY,
+};
 use super::service::{
     service_provider_auth_for_run, RunnerProviderAuthMaterial, ServiceProviderAuth,
 };
@@ -189,9 +191,11 @@ async fn stored_readiness_confirmed(
     snapshot_id: &str,
     snapshot: &LiveSnapshot,
 ) -> Result<bool, sqlx_core::Error> {
+    // A legacy access token with no known expiry is treated as expired.
     let expires_at_ms = snapshot
         .stored_expiry
-        .or_else(|| payload_expiry(&snapshot.payload));
+        .or_else(|| payload_expiry(&snapshot.payload))
+        .or_else(|| access_token_without_expiry(&snapshot.payload).then_some(0));
     let refreshable = payload_refreshable(&snapshot.payload)
         && (snapshot.stored_expiry.is_none() || snapshot.stored_refreshable);
     if expires_at_ms == snapshot.stored_expiry && refreshable == snapshot.stored_refreshable {

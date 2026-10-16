@@ -38,30 +38,31 @@ pub(crate) fn desktop_cloud_provider_auth_snapshot_payload(
                 .unwrap_or_else(|| "local-active-api-key".to_string()),
             json!({ "apiKey": auth.credential, "model": model }),
         ),
-        kordi_cli::login::ProviderAuthMethod::OAuth => match auth.credential_provider.as_str() {
-            "openai-codex" => {
-                let profile_id = selected_choice
-                    .as_deref()
-                    .and_then(|choice| choice.strip_prefix("profile:"))
-                    .map(str::to_string)
-                    .or_else(|| {
-                        if auth.source != kordi_cli::login::AuthSource::KordiAuth {
-                            return None;
-                        }
-                        kordi_cli::login::stored_auth_profiles(provider)
-                            .into_iter()
-                            .find(|profile| {
-                                profile.active
-                                    && profile.method == kordi_cli::login::ProviderAuthMethod::OAuth
-                            })
-                            .map(|profile| profile.profile_id)
-                    });
-                // Only the access token's expiry leaves this Mac; the refresh
-                // token stays local so it is never rotated in two places.
-                let expires_at_ms = profile_id
-                    .as_deref()
-                    .and_then(|id| kordi_cli::login::stored_oauth_expiry(provider, id));
-                (
+        kordi_cli::login::ProviderAuthMethod::OAuth => {
+            let profile_id = selected_choice
+                .as_deref()
+                .and_then(|choice| choice.strip_prefix("profile:"))
+                .map(str::to_string)
+                .or_else(|| {
+                    if auth.source != kordi_cli::login::AuthSource::KordiAuth {
+                        return None;
+                    }
+                    kordi_cli::login::stored_auth_profiles(provider)
+                        .into_iter()
+                        .find(|profile| {
+                            profile.active
+                                && profile.method == kordi_cli::login::ProviderAuthMethod::OAuth
+                        })
+                        .map(|profile| profile.profile_id)
+                });
+            // Only the access token's expiry leaves this Mac; the refresh
+            // token stays local so it is never rotated in two places. The
+            // server stops using the copy at that expiry (issue 1802).
+            let expires_at_ms = profile_id
+                .as_deref()
+                .and_then(|id| kordi_cli::login::stored_oauth_expiry(provider, id));
+            match auth.credential_provider.as_str() {
+                "openai-codex" => (
                     "openai-codex".to_string(),
                     selected_choice
                         .clone()
@@ -72,25 +73,26 @@ pub(crate) fn desktop_cloud_provider_auth_snapshot_payload(
                         auth.account_id.as_deref(),
                         &model,
                     ),
-                )
-            }
-            "anthropic-oauth" => (
-                "anthropic".to_string(),
-                selected_choice
-                    .clone()
-                    .unwrap_or_else(|| "local-active-oauth".to_string()),
-                json!({
-                    "apiMode": "anthropic-oauth",
-                    "accessToken": auth.credential,
-                    "model": model,
-                }),
-            ),
-            other => {
-                return Err(format!(
+                ),
+                "anthropic-oauth" => (
+                    "anthropic".to_string(),
+                    selected_choice
+                        .clone()
+                        .unwrap_or_else(|| "local-active-oauth".to_string()),
+                    json!({
+                        "apiMode": "anthropic-oauth",
+                        "accessToken": auth.credential,
+                        "expiresAtMs": expires_at_ms,
+                        "model": model,
+                    }),
+                ),
+                other => {
+                    return Err(format!(
                     "Cloud fallback provider-auth sync does not support OAuth credentials from {other}"
                 ));
+                }
             }
-        },
+        }
     };
     Ok(json!({
         "provider": provider,

@@ -31,6 +31,28 @@ pub fn payload_expiry(payload: &Value) -> Option<i64> {
     })
 }
 
+/// How long an access token the server cannot refresh is trusted when its
+/// sender did not say when it expires. Desktops republish well within this.
+pub const UNKNOWN_EXPIRY_LIFETIME_MS: i64 = 60 * 60 * 1000;
+
+/// An access token the server cannot refresh and whose expiry is unknown.
+/// Treating it as never expiring kept expired tokens in use (issue 1802).
+pub fn access_token_without_expiry(payload: &Value) -> bool {
+    payload
+        .get("accessToken")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+        && payload_expiry(payload).is_none()
+        && !payload_refreshable(payload)
+}
+
+/// The expiry stored for a newly published payload.
+pub fn publish_expiry(payload: &Value, now_ms: i64) -> Option<i64> {
+    payload_expiry(payload).or_else(|| {
+        access_token_without_expiry(payload).then_some(now_ms + UNKNOWN_EXPIRY_LIFETIME_MS)
+    })
+}
+
 /// Credential modes whose tokens the server itself refreshes (see
 /// `codex_refresh`). Every other refresh token stays unused on the server.
 const SERVER_REFRESHED_API_MODES: [&str; 1] = ["openai-codex-oauth"];
@@ -62,6 +84,25 @@ mod tests {
         assert_eq!(snapshot_status(false, Some(now + 60_000)), NEEDS_RECONNECT);
         assert_eq!(snapshot_status(false, Some(now - 60_000)), NEEDS_RECONNECT);
         assert_eq!(snapshot_status(true, Some(now - 60_000)), READY);
+    }
+
+    #[test]
+    fn access_tokens_without_expiry_get_a_bounded_lifetime() {
+        let now = 1_000;
+        let oauth = json!({ "apiMode": "anthropic-oauth", "accessToken": "synthetic" });
+        assert_eq!(
+            publish_expiry(&oauth, now),
+            Some(now + UNKNOWN_EXPIRY_LIFETIME_MS)
+        );
+        let dated = json!({ "accessToken": "synthetic", "expiresAtMs": 42 });
+        assert_eq!(publish_expiry(&dated, now), Some(42));
+        assert_eq!(publish_expiry(&json!({ "apiKey": "synthetic" }), now), None);
+        let refreshable = json!({
+            "apiMode": "openai-codex-oauth",
+            "accessToken": "synthetic",
+            "refreshToken": "synthetic",
+        });
+        assert_eq!(publish_expiry(&refreshable, now), None);
     }
 
     #[test]
