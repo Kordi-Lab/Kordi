@@ -13,7 +13,7 @@ export type RunRequest = {
   hooks?: ('context' | 'before_provider_request')[];
   capabilities?: { ownerLocal: boolean; computer: boolean; browser: boolean };
   compaction?: { enabled: boolean; reserveTokens: number; keepRecentTokens: number; thresholdTokens?: number };
-  limits: { timeoutMs: number; maxOutputBytes: number; maxToolCalls: number; maxSteps: number };
+  limits: { timeoutMs: number; maxOutputBytes: number; maxToolCalls?: number; maxSteps?: number };
 };
 export type ToolResult = { ok: boolean; content: JsonObject[]; details?: unknown };
 export type WorkerCommand = RunRequest | {
@@ -44,8 +44,12 @@ export function parseCommand(line: string): WorkerCommand {
       !['api_key', 'oauth', 'none'].includes(value.auth?.kind) ||
       (value.auth.kind !== 'none' && (typeof value.auth.credential !== 'string' || !value.auth.credential)) ||
       typeof value.prompt?.text !== 'string' || !Array.isArray(value.messages) || !Array.isArray(value.tools)) throw invalid();
-  for (const key of ['timeoutMs', 'maxOutputBytes', 'maxToolCalls', 'maxSteps']) {
+  for (const key of ['timeoutMs', 'maxOutputBytes']) {
     if (!Number.isSafeInteger(value.limits?.[key]) || value.limits[key] <= 0) throw invalid();
+  }
+  // Step and tool-call caps are optional; Kordi hosts leave them unset.
+  for (const key of ['maxToolCalls', 'maxSteps']) {
+    if (value.limits[key] !== undefined && (!Number.isSafeInteger(value.limits[key]) || value.limits[key] <= 0)) throw invalid();
   }
   if (value.hooks && (!Array.isArray(value.hooks) || value.hooks.some((name: unknown) => !['context', 'before_provider_request'].includes(name as string)))) throw invalid();
   if (value.prompt.trailingMessages && (!Array.isArray(value.prompt.trailingMessages) || value.prompt.trailingMessages.some((message: any) => message?.role !== 'custom'))) throw invalid();

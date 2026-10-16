@@ -355,7 +355,10 @@ impl OmpRuntime {
                     if call_id.trim().is_empty()
                         || !tool_calls.insert(call_id.clone())
                         || hook_calls.contains(&call_id)
-                        || tool_calls.len() > request.limits.max_tool_calls
+                        || request
+                            .limits
+                            .max_tool_calls
+                            .is_some_and(|max| tool_calls.len() > max)
                         || !request.tools.iter().any(|tool| tool.name == name)
                     {
                         return Err(RuntimeError::Protocol);
@@ -396,7 +399,10 @@ impl OmpRuntime {
                     if call_id.trim().is_empty()
                         || tool_calls.contains(&call_id)
                         || !hook_calls.insert(call_id.clone())
-                        || hook_calls.len() > request.limits.max_steps.saturating_mul(4).max(64)
+                        || request
+                            .limits
+                            .max_steps
+                            .is_some_and(|max| hook_calls.len() > max.saturating_mul(4).max(64))
                         || !matches!(name.as_str(), "context" | "before_provider_request")
                         || !request.hooks.iter().any(|hook| hook == &name)
                     {

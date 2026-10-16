@@ -104,9 +104,11 @@ pub(crate) fn validate_request(request: &RunRequest) -> Result<(), RuntimeError>
         || request.limits.timeout_ms > 3_600_000
         || request.limits.max_output_bytes == 0
         || request.limits.max_output_bytes > 32 * 1024 * 1024
-        || request.limits.max_tool_calls > 128
-        || request.limits.max_steps == 0
-        || request.limits.max_steps > 128
+        || request.limits.max_tool_calls.is_some_and(|max| max > 128)
+        || request
+            .limits
+            .max_steps
+            .is_some_and(|max| max == 0 || max > 128)
     {
         return Err(RuntimeError::InvalidRequest);
     }
