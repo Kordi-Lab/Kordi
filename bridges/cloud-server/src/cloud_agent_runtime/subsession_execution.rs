@@ -157,11 +157,24 @@ pub(super) async fn publish(
 }
 
 pub(crate) fn public_activity(value: &Value) -> Value {
-    let tools:Vec<Value>=value["tools"].as_array().into_iter().flatten().take(24).map(|tool|json!({
+    use crate::cloud_agent_runtime::runs::subsession_lifecycle::activity::ACTIVITY_TOOL_LIMIT;
+    let all = value["tools"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let total = value["toolCount"]
+        .as_u64()
+        .unwrap_or(0)
+        .max(all.len() as u64);
+    // Keep the most recent calls, matching cloud-executed progress.
+    let tools:Vec<Value>=all[all.len().saturating_sub(ACTIVITY_TOOL_LIMIT)..].iter().map(|tool|json!({
         "id":tool["id"].as_str().unwrap_or_default().chars().take(128).collect::<String>(),
         "name":tool["name"].as_str().unwrap_or_default().chars().filter(|c|c.is_ascii_alphanumeric()||*c=='_').take(64).collect::<String>(),
         "status":match tool["status"].as_str() {Some("completed"|"done")=>"completed",Some("failed"|"error")=>"failed",Some("cancelled")=>"cancelled",_=>"running"},"arguments":"","liveOutput":"","isError":tool["isError"].as_bool().unwrap_or(false)
     })).collect();
+    if total > tools.len() as u64 {
+        return json!({"tools":tools,"toolCount":total});
+    }
     json!({"tools":tools})
 }
 
@@ -175,6 +188,9 @@ pub(crate) async fn history(pool: &PgPool, run: &str) -> RunResult<Vec<Value>> {
         .as_array()
         .into_iter()
         .flatten()
+        // Older runs stored tool progress labels as messages. They are UI
+        // status, not model turns, and replaying them invites repetition.
+        .filter(|m| !m["id"].as_str().is_some_and(|id| id.starts_with("tool:")))
         .filter_map(|m| {
             Some(
                 json!({"role":m["role"].as_str()?,"content":m["text"].as_str()?,"entryId":m["id"]}),

@@ -26,7 +26,10 @@ extension CloudAgentSubsession {
     func chatMessages(accountId: String) -> [ChatMessage] {
         var result: [ChatMessage] = []
         var queuePosition = 0
-        for message in messages {
+        let isLive = state == .running && live != false
+        let (rows, legacyTools) = Self.collapsingLegacyToolMessages(messages,
+            live: isLive && hasFollowupExecution != true)
+        for message in rows {
             let assistant = message.role == "assistant"
             let agent = assistant || message.senderAgentId == agentId
             if assistant && ["queued", "pending", "leased"].contains(message.requestState ?? "") { continue }
@@ -42,6 +45,9 @@ extension CloudAgentSubsession {
             let execution = phase.map { phase in
                 AgentExecutionSnapshot(phase: phase, summary: "", steps: [], tools: message.activity?.tools,
                     startedAtMs: nil, updatedAtMs: Double(message.timestampMs), completed: phase != .usingTool)
+            } ?? legacyTools[message.id].map { tools in
+                AgentExecutionSnapshot(phase: .complete, summary: "", steps: [], tools: tools,
+                    startedAtMs: nil, updatedAtMs: Double(message.timestampMs), completed: true)
             }
             var row = ChatMessage(id: message.id, conversationId: conversation.id, author: author,
                 authorName: agent ? agentDisplayName : author == .me ? "You" : message.senderDisplayName ?? "Task",
@@ -55,14 +61,18 @@ extension CloudAgentSubsession {
             }
             result.append(row)
         }
-        if state == .running && live != false && hasFollowupExecution != true {
-            let progress = AgentExecutionSnapshot(phase: .usingTool, summary: "", steps: [], tools: activity?.tools,
-                startedAtMs: nil, updatedAtMs: 0, completed: false)
-            let lastAnswer = messages.last { $0.role == "assistant" && $0.requestId == nil }
-            if let index = result.lastIndex(where: { $0.id == lastAnswer?.id }) {
+        let runTools = activity?.tools ?? []
+        if isLive && hasFollowupExecution != true || !isLive && !runTools.isEmpty {
+            let lastAnswer = rows.last { $0.role == "assistant" && $0.requestId == nil }
+            let answerIndex = result.lastIndex(where: { $0.id == lastAnswer?.id })
+            let earlier = answerIndex.flatMap { result[$0].agentExecution?.tools } ?? []
+            let settled = isLive ? runTools : runTools.map(Self.settled)
+            let progress = AgentExecutionSnapshot(phase: isLive ? .usingTool : .complete, summary: "", steps: [],
+                tools: earlier + settled, startedAtMs: nil, updatedAtMs: 0, completed: !isLive)
+            if let index = answerIndex {
                 result[index].agentExecution = progress
             } else {
-                let taskBrief = messages.last { $0.senderAgentId == agentId }
+                let taskBrief = rows.last { $0.senderAgentId == agentId }
                 let insertionIndex = result.lastIndex { $0.id == taskBrief?.id }.map { $0 + 1 } ?? 0
                 result.insert(ChatMessage(id: "runtime:\(sessionId)", conversationId: conversation.id,
                     author: .agent, authorName: agentDisplayName,
@@ -72,5 +82,57 @@ extension CloudAgentSubsession {
             }
         }
         return result
+    }
+
+    private static func settled(_ tool: AgentExecutionTool) -> AgentExecutionTool {
+        guard tool.state == .running else { return tool }
+        return AgentExecutionTool(id: tool.id, name: tool.name, status: "completed", arguments: tool.arguments,
+            liveOutput: tool.liveOutput, resultText: tool.resultText, detail: tool.detail,
+            toolLayer: tool.toolLayer, isError: tool.isError)
+    }
+
+    /// Older Cloud runs stored one "Using <tool>…" message per tool call. Each
+    /// consecutive run folds into the following answer, or into one summary row.
+    static func collapsingLegacyToolMessages(_ messages: [Message], live: Bool)
+        -> (messages: [Message], tools: [String: [AgentExecutionTool]]) {
+        let prefix = "tool:"
+        var rows: [Message] = []
+        var tools: [String: [AgentExecutionTool]] = [:]
+        var pending: [Message] = []
+        func flush(into target: Message?) {
+            guard let first = pending.first else { return }
+            let entries = pending.map { message in
+                let label = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                let name = label.hasPrefix("Using ") && label.hasSuffix("…")
+                    ? String(label.dropFirst("Using ".count).dropLast()) : "tool"
+                return AgentExecutionTool(id: String(message.id.dropFirst(prefix.count)), name: name,
+                    status: "completed", arguments: "", liveOutput: "", resultText: nil, detail: nil,
+                    toolLayer: nil, isError: false)
+            }
+            let row = target ?? Message(id: "tools:\(first.id.dropFirst(prefix.count))", role: "assistant",
+                text: "", timestampMs: first.timestampMs)
+            if target == nil { rows.append(row) }
+            tools[row.id] = entries
+            pending = []
+        }
+        for message in messages {
+            if message.role == "assistant" && message.id.hasPrefix(prefix) {
+                pending.append(message)
+            } else if message.role == "assistant" && message.requestId == nil {
+                flush(into: message)
+                rows.append(message)
+            } else {
+                flush(into: nil)
+                rows.append(message)
+            }
+        }
+        let trailing = !pending.isEmpty
+        flush(into: nil)
+        if trailing, live, let id = rows.last?.id, var entries = tools[id], let last = entries.last {
+            entries[entries.count - 1] = AgentExecutionTool(id: last.id, name: last.name, status: "running",
+                arguments: "", liveOutput: "", resultText: nil, detail: nil, toolLayer: nil, isError: false)
+            tools[id] = entries
+        }
+        return (rows, tools)
     }
 }
