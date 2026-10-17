@@ -8,6 +8,7 @@ use super::render::*;
 use super::tokens::*;
 use super::validate::*;
 
+mod agents_create_db;
 mod agents_db;
 mod agents_desktop_db;
 mod agents_fixture;

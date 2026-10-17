@@ -135,13 +135,14 @@ async fn connector_tools_reach_only_runs_the_owner_alone_can_read() {
             .collect::<Vec<_>>();
         groups_by_label.push((label, lease["run"]["connectorAudience"].clone(), groups));
     }
-    // A cloud lease never carries `act`: only a desktop claim does.
+    // A cloud lease never carries a connector `act` tool: only a desktop
+    // claim does. A group run gets the server-gated `create_document`.
     let read = vec!["read".to_string()];
     assert_eq!(
         groups_by_label,
         [
             ("person", json!("owner_private"), read.clone()),
-            ("group", json!("shared"), Vec::new()),
+            ("group", json!("shared"), vec!["act".to_string()]),
             ("contact", json!("shared"), Vec::new()),
             ("scheduled", json!("owner_private"), read),
         ]

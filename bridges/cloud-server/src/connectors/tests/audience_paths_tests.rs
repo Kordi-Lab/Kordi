@@ -84,7 +84,7 @@ async fn claims_record_the_audience_of_their_conversation() {
     assert_eq!(audience_of(&pool, &scheduled.run_id).await, "shared");
 
     // The desktop claim: private gets read and act on the Mac lease; a group
-    // gets nothing.
+    // gets no connector tool, only the server-gated `create_document`.
     let private = conversation(&pool, "ai", &owner, &[]).await;
     let group = conversation(&pool, "group", &owner, &[&contact]).await;
     let mut groups = Vec::new();
@@ -106,7 +106,7 @@ async fn claims_record_the_audience_of_their_conversation() {
                 "owner_private".to_string(),
                 vec![ConnectorToolGroup::Read, ConnectorToolGroup::Act]
             ),
-            ("shared".to_string(), Vec::new()),
+            ("shared".to_string(), vec![ConnectorToolGroup::Act]),
         ]
     );
 }

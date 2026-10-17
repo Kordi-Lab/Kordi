@@ -587,12 +587,8 @@ function MessageBubbleView({
               onOpenArtifact={onOpenArtifact}
               onOpenAuthSettings={onOpenAuthSettings}
             />
-            <RelatedAgentSessionLinks
-              sessions={relatedAgentSessions}
-              agentName={msg.sender}
-              statusBySessionId={relatedAgentSessionStatusById}
-              onOpen={onOpenForkSession}
-            />
+            <RelatedAgentSessionLinks sessions={relatedAgentSessions} agentName={msg.sender} statusBySessionId={relatedAgentSessionStatusById} onOpen={onOpenForkSession} />
+            {msg.attachments?.length ? <div className="mt-1.5"><AttachmentPreview msg={msg} /></div> : null}
           </div>
           <MessageHoverTime msg={msg} side="peer" />
         </div>

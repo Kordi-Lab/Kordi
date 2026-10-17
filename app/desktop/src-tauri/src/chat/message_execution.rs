@@ -203,9 +203,13 @@ pub(super) async fn start_message(
                     );
                     return;
                 }
+                // A resource message may carry only a document lease.
                 let directory = context_messages
                     .iter()
-                    .find(|message| message.context_role.as_deref() == Some("resource"))
+                    .find(|message| {
+                        message.context_role.as_deref() == Some("resource")
+                            && !message.text.trim().is_empty()
+                    })
                     .map(|message| message.text.clone());
                 let synced = if shared_context {
                     session.sync_shared_context_messages(&context_messages)

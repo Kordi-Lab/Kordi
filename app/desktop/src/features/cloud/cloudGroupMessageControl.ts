@@ -328,6 +328,8 @@ export async function applyCloudGroupMessageControl({
         timestampMs: message.createdAtMs,
         deliveryState: agentDeliveryState,
         cloudGroupMessageId: message.id,
+        // A document the agent created for the group (issue 1808) rides its message.
+        ...(mappedAttachments.length > 0 ? { attachments: mappedAttachments } : {}),
         sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
         requestId: messageReplyToId,
         replyToMessageId: messageReplyToId,
