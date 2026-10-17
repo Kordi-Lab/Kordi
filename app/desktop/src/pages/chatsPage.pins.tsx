@@ -2,7 +2,7 @@ import type { PinActivity } from '@/pages/chatsPage.pinActivity';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { formatDesktopTranscriptTimeLabel } from '@/lib/time';
 import { revealPinActivity } from '@/pages/pinActivityMotion';
-import { List, Pin, X } from 'lucide-react';
+import { List, Pin, PinOff, X } from 'lucide-react';
 
 import type { Message } from '@/kordi-app/types';
 import type { PinnedMessageItem } from '@/pages/chatsPage.pinModel';
@@ -29,6 +29,10 @@ function pinnedMessageSenderLabel(message: Message) {
   const sender = message.sender?.trim();
   if (sender && sender.toLowerCase() !== 'me') return sender;
   return sourceLabel || sender || '';
+}
+
+function pinnedMessageTimeLabel(message: Message) {
+  return message.timestampMs ? formatDesktopTranscriptTimeLabel(message.timestampMs) : message.time?.trim() || '';
 }
 
 export function PinnedMessageBar({
@@ -70,18 +74,22 @@ export function PinnedMessageBar({
           <span className="app-pin-stack-preview" key={itemKey(activeItem)}>{pinnedMessagePreview(activeItem.message)}</span>
         </span>
       </button>
-      <button type="button" className="app-pin-stack-list-button" onClick={() => listRef.current?.showModal()}
+      <button type="button" className="app-pin-stack-list-button" onClick={() => {
+        // Focus the dialog itself so opening it does not draw a focus ring on the close button.
+        listRef.current?.showModal();
+        listRef.current?.focus();
+      }}
         aria-label={`View all ${items.length} pinned messages`} title="View pinned messages">
         <Pin size={21} aria-hidden="true" /><List size={18} aria-hidden="true" />
       </button>
-      <dialog ref={listRef} aria-label="Pinned messages" className="app-pin-list-dialog" onClick={(event) => {
+      <dialog ref={listRef} aria-label="Pinned messages" className="app-pin-list-dialog" tabIndex={-1} onClick={(event) => {
         if (event.target !== event.currentTarget) return;
         const bounds = event.currentTarget.getBoundingClientRect();
         if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) listRef.current?.close();
       }}>
         <header className="app-pin-list-header">
           <h2>Pinned messages</h2>
-          <button type="button" onClick={() => listRef.current?.close()} aria-label="Close pinned messages"><X size={20} /></button>
+          <button type="button" className="app-pin-list-close" onClick={() => listRef.current?.close()} aria-label="Close pinned messages"><X size={16} aria-hidden="true" /></button>
         </header>
         <div className="app-pin-list-items">
           {items.map((item) => <div className="app-pin-list-row" key={itemKey(item)}>
@@ -90,13 +98,17 @@ export function PinnedMessageBar({
               listRef.current?.close();
               onOpenMessage(item.message);
             }}>
-              <span className="app-pin-list-sender">{pinnedMessageSenderLabel(item.message) || 'Message'}<span>{item.scope === 'shared' ? 'Everyone' : 'Only you'}</span></span>
-              <span>{pinnedMessagePreview(item.message)}</span>
+              <span className="app-pin-list-meta">
+                <b>{pinnedMessageSenderLabel(item.message) || 'Message'}</b>
+                {pinnedMessageTimeLabel(item.message) ? <span>{pinnedMessageTimeLabel(item.message)}</span> : null}
+                {item.scope === 'shared' ? null : <span>Only you</span>}
+              </span>
+              <span className="app-pin-list-preview">{pinnedMessagePreview(item.message)}</span>
             </button>
-            <button type="button" className="app-pin-list-unpin" aria-label={`Unpin ${pinnedMessagePreview(item.message)}`} onClick={() => {
+            <button type="button" className="app-pin-list-unpin" aria-label="Unpin" title="Unpin" onClick={() => {
               listRef.current?.close();
               onRequestUnpin(item);
-            }}><X size={16} aria-hidden="true" /></button>
+            }}><PinOff size={15} aria-hidden="true" /></button>
           </div>)}
         </div>
       </dialog>
