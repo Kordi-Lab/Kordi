@@ -63,6 +63,7 @@ pub(crate) async fn send_message_in_transaction(
         }
         attachment_ids.push(attachment_id.to_string());
     }
+    strip_shared_agent_reply(transaction, conversation_id, &mut request.content).await?;
     let group_projection =
         normalize_group_envelope(transaction, conversation_id, &mut request.content).await?;
     let subtyped_attachments = subtyped_attachment_metadata(&request.content, &attachment_ids)?;
