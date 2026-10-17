@@ -110,13 +110,20 @@ export function routingSelectionForCollaborationAgent(agent: LocalCollaborationA
 
 export function collaborationAgentWithSessionRoute(
   agent: LocalCollaborationAgentRoutingOption | null,
-  route: { model?: string | null; thinking?: string | null } | null | undefined,
+  route: { model?: string | null; thinking?: string | null; authProvider?: string | null; authChoice?: string | null } | null | undefined,
 ) {
   if (!agent) return null;
+  // The session's own account wins when it names one, so a picked account
+  // shows as soon as the session route holds it.
+  const authChoice = compactModelValue(route?.authChoice);
   return {
     ...agent,
     defaultModel: compactModelValue(route?.model) ?? agent.defaultModel,
     thinking: compactModelValue(route?.thinking) ?? agent.thinking,
+    ...(authChoice ? {
+      defaultAuthProvider: compactModelValue(route?.authProvider) ?? agent.defaultAuthProvider,
+      defaultAuthChoice: authChoice,
+    } : {}),
   };
 }
 

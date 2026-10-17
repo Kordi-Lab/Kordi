@@ -30,18 +30,22 @@ export {
   normalizeComposerThinkingLevels,
 } from './composerThinking';
 export { ComposerMentionMenu } from './composerMentionMenu';
+export { ComposerRuntimeStatus } from './composerRuntimeStatus';
 import {
+  composerModelsForProvider,
+  composerSignInRequired,
   normalizeComposerProviderId,
   providerDisplayLabel,
   resolveComposerModelSelection,
+  resolveComposerRoutePick,
   type ComposerModelOption,
   type ComposerProviderOption,
+  type ComposerRoute,
 } from './composerModelSelection';
 import { composerModeOptions, composerModelOptions, composerThinkingOptions } from '../data';
 import type {
   ComposerScope,
   ComposerSelectorType,
-  DesktopChatContextWindowStatus,
   DesktopChatSlashCommand,
 } from '../types';
 
@@ -207,6 +211,7 @@ export function CompactComposerModelMenu({
     selectedModelOption,
     selectedProviderOption,
     selectedProviderValue,
+    initialProviderValue,
   } = resolveComposerModelSelection({ selection, providerOptions, modelOptions });
 
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -214,22 +219,22 @@ export function CompactComposerModelMenu({
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
   const [menuThemeClass, setMenuThemeClass] = useState('');
-  const [stagedProviderValue, setStagedProviderValue] = useState(selectedProviderOption?.value ?? '');
+  const [stagedProviderValue, setStagedProviderValue] = useState(initialProviderValue);
   const [stagedModel, setStagedModel] = useState(selection.model);
   const [stagedThinking, setStagedThinking] = useState(selection.thinking);
 
   useEffect(() => {
-    setStagedProviderValue(selectedProviderOption?.value ?? '');
+    setStagedProviderValue(initialProviderValue);
     setStagedModel(selection.model);
     setStagedThinking(selection.thinking);
-  }, [selectedProviderOption?.value, selection.model, selection.thinking]);
+  }, [initialProviderValue, selection.model, selection.thinking]);
 
   const stagedProviderOption = providerOptions.find((option) => option.value === stagedProviderValue) ?? selectedProviderOption ?? null;
   const stagedProviderId = stagedProviderOption?.providerId
     ? normalizeComposerProviderId(stagedProviderOption.providerId)
     : selectedProviderValue;
   const visibleModelOptions = stagedProviderId
-    ? modelOptions.filter((option) => (option.provider ?? stagedProviderId) === stagedProviderId)
+    ? composerModelsForProvider(stagedProviderId, modelOptions)
     : modelOptions;
   const stagedModelOption = modelOptions.find((option) => option.value === stagedModel) ?? selectedModelOption ?? visibleModelOptions[0] ?? null;
   const stagedThinkingLevels = composerThinkingLevelsIncludingCurrent(
@@ -283,9 +288,9 @@ export function CompactComposerModelMenu({
 
   const chooseProvider = (option: ComposerProviderOption) => {
     const providerId = normalizeComposerProviderId(option.providerId);
-    const firstProviderModel = modelOptions.find((model) => (model.provider ?? providerId) === providerId);
+    const firstProviderModel = composerModelsForProvider(providerId, modelOptions)[0];
     setStagedProviderValue(option.value);
-    if (firstProviderModel && (stagedModelOption?.provider ?? '') !== providerId) {
+    if (firstProviderModel && normalizeComposerProviderId(stagedModelOption?.provider ?? '') !== providerId) {
       setStagedModel(firstProviderModel.value);
       setStagedThinking(fallbackComposerThinkingValue(firstProviderModel.thinkingLevels ?? [], stagedThinking));
     }
@@ -297,7 +302,7 @@ export function CompactComposerModelMenu({
   };
 
   const cancel = () => {
-    setStagedProviderValue(selectedProviderOption?.value ?? '');
+    setStagedProviderValue(initialProviderValue);
     setStagedModel(selection.model);
     setStagedThinking(selection.thinking);
     setIsOpen(false);
@@ -305,7 +310,18 @@ export function CompactComposerModelMenu({
   };
 
   const save = () => {
-    onSave({ providerOption: stagedProviderOption, model: stagedModel, thinking: stagedThinkingValue });
+    // A staged model the account does not offer saves as the account's default model.
+    const route = stagedProviderOption ? resolveComposerRoutePick({
+      selection: { model: stagedModel, thinking: stagedThinkingValue },
+      providerOptions,
+      modelOptions,
+      pick: { type: 'provider', option: stagedProviderOption },
+    }) : null;
+    onSave({
+      providerOption: route?.providerOption ?? stagedProviderOption,
+      model: route?.model ?? stagedModel,
+      thinking: route?.thinking ?? stagedThinkingValue,
+    });
     setIsOpen(false);
     queueMicrotask(() => triggerRef.current?.focus());
   };
@@ -313,7 +329,7 @@ export function CompactComposerModelMenu({
   useEffect(() => {
     if (!isOpen || typeof document === 'undefined') return undefined;
     const closeWithoutSaving = () => {
-      setStagedProviderValue(selectedProviderOption?.value ?? '');
+      setStagedProviderValue(initialProviderValue);
       setStagedModel(selection.model);
       setStagedThinking(selection.thinking);
       setIsOpen(false);
@@ -337,7 +353,7 @@ export function CompactComposerModelMenu({
       document.removeEventListener('pointerdown', handlePointerDown, true);
       document.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [isOpen, selectedProviderOption?.value, selection.model, selection.thinking]);
+  }, [initialProviderValue, isOpen, selection.model, selection.thinking]);
 
   const renderMenu = () => (
     <div
@@ -496,6 +512,8 @@ export function ComposerModelControls({
   providerOptions = [],
   modelOptions = composerModelOptions.map((option) => ({ value: option, label: option })),
   compact = false,
+  onSelectRoute,
+  onSignIn,
 }: {
   scope: ComposerScope;
   selection: { mode: string; model: string; thinking: string; authProvider?: string | null; authChoice?: string | null };
@@ -509,6 +527,14 @@ export function ComposerModelControls({
   providerOptions?: ComposerProviderOption[];
   modelOptions?: ComposerModelOption[];
   compact?: boolean;
+  /**
+   * Receives every pick as one complete route: an unusable account falls back
+   * to a signed-in account of the same provider, and the model and thinking
+   * level fall back to values that account offers.
+   */
+  onSelectRoute?: (scope: ComposerScope, route: ComposerRoute, type: 'provider' | 'model' | 'thinking') => void;
+  /** Shown in place of the controls when no account is signed in. */
+  onSignIn?: () => void;
 }) {
   const requestedSelector = openSelector?.scope === scope ? openSelector.type : null;
   const selectorTriggerRefs = useRef<Partial<Record<ComposerSelectorType, HTMLButtonElement | null>>>({});
@@ -521,12 +547,13 @@ export function ComposerModelControls({
     selectedProviderOption,
     selectedProviderValue,
   } = resolveComposerModelSelection({ selection, providerOptions, modelOptions });
-  const activeSelector = requestedSelector === 'provider' || selectedProviderValue ? requestedSelector : null;
+  const signInRequired = Boolean(onSignIn) && composerSignInRequired(providerOptions);
+  const activeSelector = requestedSelector && !signInRequired ? requestedSelector : null;
   const selectedProviderLabel = selectedProviderOption?.selectionLabel
     ?? (selectedProviderOption ? [selectedProviderOption.label, selectedProviderOption.detail].filter(Boolean).join(' · ') : null)
-    ?? (selectedProviderValue ? selectedModelOption?.providerLabel ?? providerDisplayLabel(selectedProviderValue) : 'No Provider');
+    ?? (selectedProviderValue ? selectedModelOption?.providerLabel ?? providerDisplayLabel(selectedProviderValue) : 'Choose account');
   const filteredModelOptions = selectedProviderValue
-    ? modelOptions.filter((option) => (option.provider ?? selectedProviderValue) === selectedProviderValue)
+    ? composerModelsForProvider(selectedProviderValue, modelOptions)
     : modelOptions;
   const selectedThinkingLevels = composerThinkingLevelsIncludingCurrent(
     selectedModelOption?.thinkingLevels?.length
@@ -544,9 +571,11 @@ export function ComposerModelControls({
     : activeSelector === 'model'
       ? filteredModelOptions
       : thinkingOptions;
-  const selectedModel = selectedProviderValue ? selectedModelOption?.label ?? fallbackModelLabel : '-';
+  // Every control names a value; a model without an account still shows its
+  // name, and picking any value resolves a complete route.
+  const selectedModel = selectedModelOption?.label ?? (fallbackModelLabel || 'Model');
   const selectedThinkingValue = fallbackComposerThinkingValue(selectedThinkingLevels, selection.thinking);
-  const selectedThinkingLabel = selectedProviderValue ? composerThinkingLabel(selectedThinkingValue) : '-';
+  const selectedThinkingLabel = composerThinkingLabel(selectedThinkingValue);
 
   const updateSelectorMenuPosition = useCallback((selectorType: ComposerSelectorType | null = activeSelector) => {
     if (typeof window === 'undefined' || !selectorType || selectorType === 'mode') return;
@@ -572,7 +601,7 @@ export function ComposerModelControls({
       maxHeight: `min(28rem, ${availableAbove}px)`,
       transform: 'translateY(calc(-100% - 0.5rem))',
     });
-  }, [activeSelector]);
+  }, [activeSelector, setSelectorMenuStyle, setSelectorMenuThemeClass]);
 
   useEffect(() => {
     if (!activeSelector || activeSelector === 'mode') return undefined;
@@ -606,6 +635,14 @@ export function ComposerModelControls({
       document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [activeSelector, onToggleSelector, scope]);
+
+  const pickRoute = (type: 'provider' | 'model' | 'thinking', pick: Parameters<typeof resolveComposerRoutePick>[0]['pick']) => {
+    if (!onSelectRoute) return false;
+    const route = resolveComposerRoutePick({ selection, providerOptions, modelOptions, pick });
+    if (!route) return false;
+    onSelectRoute(scope, route, type);
+    return true;
+  };
 
   const renderSelectorMenu = () => (
     <div ref={selectorMenuRef} className={cn('app-transient-surface app-transient-scroll app-composer-model-menu-layer fixed z-[2147483000] overflow-y-auto rounded-[16px] border px-3 py-3 text-[12px] leading-[1.38]', selectorMenuThemeClass)} style={selectorMenuStyle}>
@@ -665,7 +702,9 @@ export function ComposerModelControls({
               <button
                 key={option.value}
                 type="button" disabled={Boolean(option.disabled)} title={option.disabledReason}
-                onClick={() => onSelectProviderChoice(scope, option)}
+                onClick={() => {
+                  if (!pickRoute('provider', { type: 'provider', option })) onSelectProviderChoice(scope, option);
+                }}
                 className={cn(
                   'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
                   isSelected ? 'app-composer-popover-item-active' : '',
@@ -690,7 +729,9 @@ export function ComposerModelControls({
                   type="button"
                   onClick={() => {
                     if (activeSelector === 'model' || activeSelector === 'thinking') {
-                      onSelectValue(scope, activeSelector, option.value);
+                      if (!pickRoute(activeSelector, { type: activeSelector, value: option.value })) {
+                        onSelectValue(scope, activeSelector, option.value);
+                      }
                     }
                   }}
                   className={cn(
@@ -714,6 +755,18 @@ export function ComposerModelControls({
     </div>
   );
 
+  if (signInRequired) {
+    return (
+      <div className={cn('relative flex min-w-0 max-w-full items-center justify-end gap-1.5', compact ? 'w-[18rem]' : 'w-[27rem]')} data-composer-model-controls={scope} data-composer-sign-in="true">
+        <span className="min-w-0 truncate text-[12px] text-[color:var(--utility-muted-text)]">No account</span>
+        <button type="button" onClick={onSignIn} className="app-button-quiet inline-flex shrink-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium">
+          <LogIn className="h-3.5 w-3.5" aria-hidden="true" />
+          Sign in
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className={cn('relative flex min-w-0 max-w-full items-center gap-1.5', compact ? 'w-[18rem] flex-nowrap justify-end' : 'w-[27rem]')} data-composer-model-controls={scope}>
       <button
@@ -730,7 +783,7 @@ export function ComposerModelControls({
       </button>
       <button
         ref={(node) => { selectorTriggerRefs.current.model = node; }}
-        type="button" disabled={!selectedProviderValue}
+        type="button"
         onClick={() => {
           updateSelectorMenuPosition('model');
           onToggleSelector(scope, 'model');
@@ -738,11 +791,11 @@ export function ComposerModelControls({
         className="app-button-quiet inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium" aria-expanded={activeSelector === 'model'} title={selectedModel}
       >
         <span className="min-w-0 flex-1 truncate text-left">{selectedModel}</span>
-        {selectedProviderValue ? <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'model' ? 'rotate-180 text-slate-300' : '')} /> : null}
+        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'model' ? 'rotate-180 text-slate-300' : '')} />
       </button>
       <button
         ref={(node) => { selectorTriggerRefs.current.thinking = node; }}
-        type="button" disabled={!selectedProviderValue}
+        type="button"
         onClick={() => {
           updateSelectorMenuPosition('thinking');
           onToggleSelector(scope, 'thinking');
@@ -750,120 +803,11 @@ export function ComposerModelControls({
         className="app-button-quiet inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium" aria-expanded={activeSelector === 'thinking'} title={selectedThinkingLabel}
       >
         <span className="min-w-0 flex-1 truncate text-left">{selectedThinkingLabel}</span>
-        {selectedProviderValue ? <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'thinking' ? 'rotate-180 text-slate-300' : '')} /> : null}
+        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'thinking' ? 'rotate-180 text-slate-300' : '')} />
       </button>
       {activeSelector && activeSelector !== 'mode'
         ? (typeof document !== 'undefined' ? createPortal(renderSelectorMenu(), document.body) : renderSelectorMenu())
         : null}
-    </div>
-  );
-}
-
-function formatCompactTokenCount(value: number) {
-  if (value < 1_000) return `${value}`;
-  if (value < 10_000) return `${(value / 1_000).toFixed(1)}k`;
-  if (value < 1_000_000) return `${Math.round(value / 1_000)}k`;
-  if (value < 10_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  return `${Math.round(value / 1_000_000)}M`;
-}
-
-function deriveComposerContextPercent(status?: DesktopChatContextWindowStatus | null) {
-  if (!status) return null;
-  if (typeof status.usedTokens === 'number' && status.contextWindow > 0) {
-    return Math.max(0, Math.min(100, (status.usedTokens / status.contextWindow) * 100));
-  }
-  if (typeof status.usedPercent === 'number') {
-    return Math.max(0, Math.min(100, status.usedPercent));
-  }
-  return null;
-}
-
-function deriveComposerContextUsedTokens(status?: DesktopChatContextWindowStatus | null) {
-  if (!status) return null;
-  if (typeof status.usedTokens === 'number') {
-    return Math.max(0, status.usedTokens);
-  }
-  if (typeof status.usedPercent === 'number' && status.contextWindow > 0) {
-    return Math.round((status.usedPercent / 100) * status.contextWindow);
-  }
-  return null;
-}
-
-export function ComposerRuntimeStatus({
-  contextStatus,
-  cacheText,
-}: {
-  contextStatus?: DesktopChatContextWindowStatus | null;
-  cacheText?: string | null;
-}) {
-  const contextPercent = deriveComposerContextPercent(contextStatus);
-  const usedTokens = deriveComposerContextUsedTokens(contextStatus);
-  const totalTokens = contextStatus?.contextWindow ?? 0;
-  const usedPercentLabel = contextPercent === null ? '—' : `${Math.round(contextPercent)}%`;
-  const leftPercentLabel = contextPercent === null ? '—' : `${Math.max(0, Math.round(100 - contextPercent))}%`;
-  const thresholdPercent = contextStatus?.compactionThresholdPercent ?? 90;
-  const isCompressionReady = contextPercent !== null && contextPercent >= thresholdPercent;
-  const isNearCompression = contextPercent !== null && contextPercent >= Math.max(0, thresholdPercent - 10);
-  const ringColor = isCompressionReady
-    ? 'color-mix(in oklab, #f97316 88%, var(--utility-foreground))'
-    : isNearCompression
-      ? 'color-mix(in oklab, #facc15 82%, var(--utility-foreground))'
-      : 'color-mix(in oklab, var(--utility-muted-text) 92%, transparent)';
-  const ringStyle = contextPercent === null
-    ? { background: 'color-mix(in oklab, var(--utility-muted-text) 20%, transparent)' }
-    : {
-        background: `conic-gradient(${ringColor} ${contextPercent * 3.6}deg, color-mix(in oklab, var(--utility-muted-text) 20%, transparent) 0deg)`,
-      };
-
-  if (!contextStatus) {
-    return <div className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />;
-  }
-
-  return (
-    <div className="flex shrink-0 items-center overflow-visible text-[11px] text-[color:var(--utility-muted-text)]">
-      <div className="group relative shrink-0">
-        <button
-          type="button"
-          className="app-button-quiet inline-flex h-[18px] w-[18px] items-center justify-center rounded-full p-0"
-          aria-label="Context window"
-        >
-          <span className="relative h-3.5 w-3.5 shrink-0 rounded-full" style={ringStyle}>
-            <span className="absolute inset-[2.15px] rounded-full bg-[color:var(--app-main-bg)]" />
-            <span className="absolute inset-0 rounded-full ring-1 ring-[color:var(--app-divider)]" />
-          </span>
-        </button>
-        <div className="app-transient-surface pointer-events-none invisible absolute bottom-full left-1/2 z-30 mb-2 w-[264px] -translate-x-1/2 rounded-[16px] border px-4 py-3 text-[12px] leading-[1.38] opacity-0 transition duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
-          <div className="font-medium text-[color:var(--utility-foreground)]">Context window:</div>
-          <div className="mt-1 text-[11px] text-[color:var(--utility-foreground)]">{usedPercentLabel} used ({leftPercentLabel} left)</div>
-          <div className="mt-1 text-[11px] text-[color:var(--utility-foreground)]">
-            {usedTokens === null ? '—' : formatCompactTokenCount(usedTokens)} / {formatCompactTokenCount(totalTokens)} tokens used
-          </div>
-          {contextStatus.autoCompaction ? (
-            <div className="mt-3 space-y-1 text-[11px] text-[color:var(--utility-foreground)]">
-              <div>Auto-compresses before Kordi responds once usage reaches {thresholdPercent}%.</div>
-              {isCompressionReady ? (
-                <div className="rounded-md border border-orange-400/35 bg-orange-400/10 px-2 py-1 text-orange-200">
-                  Send your next message to compress this conversation first.
-                </div>
-              ) : isNearCompression ? (
-                <div className="rounded-md border border-yellow-400/30 bg-yellow-400/10 px-2 py-1 text-yellow-100">
-                  Near the compression threshold. Kordi will compress before a future response.
-                </div>
-              ) : (
-                <div className="text-[color:var(--utility-muted-text)]">Plenty of context remains.</div>
-              )}
-            </div>
-          ) : (
-            <div className="mt-3 text-[11px] text-[color:var(--utility-foreground)]">Automatic compaction is off</div>
-          )}
-          {cacheText ? (
-            <div className="mt-3 border-t border-[color:var(--app-divider)] pt-3 text-[11px] leading-[1.45] text-[color:var(--utility-muted-text)]">
-              <div className="mb-1 font-medium text-[color:var(--utility-foreground)]">Cache hit rate:</div>
-              <div>{cacheText}</div>
-            </div>
-          ) : null}
-        </div>
-      </div>
     </div>
   );
 }

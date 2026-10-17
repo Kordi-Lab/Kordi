@@ -40,6 +40,7 @@ type CollaborationRoutingControlsProps = {
     agentSelectorOpen: boolean;
     compact: boolean;
   };
+  onSignIn?: () => void;
   options: {
     authLabel: string;
     authOptions: ComposerAuthOption[];
@@ -60,6 +61,7 @@ type CollaborationRoutingControlsProps = {
 export function CollaborationRoutingControls({
   model,
   menu,
+  onSignIn,
   options,
   actions,
 }: CollaborationRoutingControlsProps) {
@@ -146,6 +148,23 @@ export function CollaborationRoutingControls({
         authLabel={authLabel}
         authOptions={authOptions}
         onSelectAuthChoice={() => {}}
+        onSignIn={onSignIn}
+        onSelectRoute={(_scope, route, selectorType) => {
+          // One pick saves one complete route: its account, a model that
+          // account offers, and a thinking level that model offers.
+          actions.onUpdate({
+            defaultModel: route.model,
+            defaultAuthProvider: route.providerOption?.providerId ?? selectedAgent.defaultAuthProvider ?? null,
+            defaultAuthChoice: route.providerOption
+              ? authChoiceFromProviderOption(route.providerOption)
+              : selectedAgent.defaultAuthChoice ?? null,
+            fallbackModel: selectedAgent.fallbackModel ?? null,
+            fallbackAuthProvider: selectedAgent.fallbackAuthProvider ?? null,
+            fallbackAuthChoice: selectedAgent.fallbackAuthChoice ?? null,
+            thinking: route.thinking,
+            selectorType,
+          });
+        }}
         onSelectProviderChoice={(_scope, option) => {
           const nextModel = firstModelForProvider(option.providerId, modelOptions);
           if (!nextModel) return;

@@ -117,10 +117,15 @@ test('model config completion preserves a concurrent send, reading position, and
     let newerRoute!: Promise<void>;
     await act(async () => { olderRoute = actions.selectComposerValue('chat', 'thinking', 'low', 'project-session'); });
     await act(async () => { newerRoute = actions.selectComposerValue('chat', 'thinking', 'high', 'project-session'); });
-    await waitForRequests(routeRequests, 2);
+    // Saves for one session run in order in the background; both choices returned at once.
+    await act(async () => { await olderRoute; await newerRoute; });
+    assert.equal(selections.chat.thinking, 'high', 'The newer choice shows before either save settles');
+    await waitForRequests(routeRequests, 1);
     assert.equal(routeRequests[0].input.sessionId, 'project-session', 'A hosted route must honor the composer target override');
-    await act(async () => { routeRequests[1].resolve(); await newerRoute; });
-    await act(async () => { routeRequests[0].reject(new Error('Older update failed')); await olderRoute; });
+    await act(async () => { routeRequests[0].reject(new Error('Older update failed')); });
+    await waitForRequests(routeRequests, 2);
+    await act(async () => { routeRequests[1].resolve(); });
+    assert.equal(routeRequests[1].input.thinking, 'high', 'The newer save runs after the older one');
     assert.equal(selections.chat.thinking, 'high', 'An older route failure must not roll back a newer choice');
   } finally {
     await act(async () => root.unmount());
@@ -176,6 +181,12 @@ test('panel account, model, and thinking changes keep their route without modify
     return null;
   }
   const target = () => ({ sessionId: 'panel-session', selection: panel, onSelectionChange: setPanel });
+  // Route saves run in the background after the choice shows.
+  const savedRoute = async (expected: (route: DesktopChatMessageRoute | undefined) => boolean) => {
+    await act(async () => {
+      for (let attempt = 0; !expected(routes.get('panel-session')) && attempt < 400; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+    });
+  };
   try {
     await act(async () => root.render(createElement(Harness)));
     const originalMain = main;
@@ -192,9 +203,11 @@ test('panel account, model, and thinking changes keep their route without modify
     assert.equal(routes.get('panel-session')?.authChoice, 'cloud-login:panel');
     assert.equal(routes.get('panel-session')?.thinking, 'low');
     await act(async () => { await actions.selectComposerAuthChoice('chat', 'openai-codex', 'profile:local', target()); });
+    await savedRoute((route) => route?.authChoice === 'profile:local');
     assert.deepEqual(authenticated, [], 'The panel route selects a saved local account without changing the device active account');
     assert.equal(routes.get('panel-session')?.authChoice, 'profile:local');
     await act(async () => { await actions.selectComposerValue('chat', 'model', 'openai/second', target()); });
+    await savedRoute((route) => route?.model === 'openai/second');
     assert.equal(routes.get('panel-session')?.model, 'openai/second');
     assert.equal(routes.get('panel-session')?.authChoice, 'profile:local', 'Later choices keep the panel account');
     assert.equal(main, originalMain);
