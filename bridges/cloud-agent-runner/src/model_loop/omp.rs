@@ -152,7 +152,10 @@ async fn run_omp_with_config<C: CloudAgentRunClient + Sync>(
             CancellationToken::new(),
         )
         .await
-        .map_err(|error| ModelLoopError::Provider(error.to_string()))?;
+        .map_err(|error| {
+            tracing::warn!(code = error.diagnostic_code(), "OMP run failed");
+            ModelLoopError::Provider(error.to_string())
+        })?;
     if result.context_messages.is_empty() {
         return Err(ModelLoopError::Provider(
             "OMP worker returned no durable context".into(),

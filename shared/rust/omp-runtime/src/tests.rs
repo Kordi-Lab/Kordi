@@ -119,7 +119,7 @@ printf '%s\n' '{"type":"result","schemaVersion":1,"runId":"run-1","attemptId":"o
         OmpRuntime::new(command)
             .run_turn(&request(), &EchoTool, &NoEvents, CancellationToken::new())
             .await,
-        Err(RuntimeError::Protocol)
+        Err(RuntimeError::Protocol(ProtocolViolation::RunMismatch))
     ));
 }
 
@@ -300,7 +300,7 @@ printf '%s\n' '{"type":"result","schemaVersion":1,"runId":"run-1","attemptId":"a
         OmpRuntime::new(command)
             .run_turn(&denied, &EchoTool, &NoEvents, CancellationToken::new())
             .await,
-        Err(RuntimeError::Protocol)
+        Err(RuntimeError::Protocol(ProtocolViolation::UnknownHook))
     ));
 }
 
