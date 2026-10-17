@@ -52,6 +52,7 @@ fn sample_runner_run(connector_tools: Vec<LeaseConnectorTool>) -> RunnerRunRespo
         sandbox_id: None,
         runtime_route: Default::default(),
         provider_auth_available: false,
+        provider_auth_needs_reconnect: false,
         response_message_id: None,
         error_code: None,
         error_message: None,

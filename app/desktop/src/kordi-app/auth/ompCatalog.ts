@@ -1,4 +1,5 @@
 import { canonicalCloudProviderId } from '@/features/cloud/providerAuthSnapshot';
+import { DEVICE_ACTIVE_CHOICES } from '@/features/cloud/routeAccountChoice';
 import type { CloudProviderAuthSnapshot } from '@/features/cloud/cloudAgentRuntimeTypes';
 import type { OmpLoginKind, OmpLoginSpec } from '@/features/cloud/providerLogin';
 import type { DesktopAuthProvider, DesktopAuthState } from '@/kordi-app/types';
@@ -208,7 +209,10 @@ export function mergeOmpAuthState(
     }
   }
   const savedChoices = new Set([...providers.values()].flatMap((provider) => provider.options.map((option) => option.value)));
-  for (const snapshot of snapshots) {
+  // A device's copy of its own active account is not an account here: chats
+  // cannot select it, so listing it disagreed with "No provider connected yet".
+  const accounts = snapshots.filter((snapshot) => !DEVICE_ACTIVE_CHOICES.has(snapshot.authChoice.trim()));
+  for (const snapshot of accounts) {
     if (savedChoices.has(snapshot.authChoice)) continue;
     const targetId = snapshotTarget(snapshot, new Set(providers.keys())) ?? snapshot.provider;
     const provider = providers.get(targetId) ?? ompProvider({ id: targetId, models: [] }, []);
@@ -230,7 +234,7 @@ export function mergeOmpAuthState(
       provider.preferredModel = `${targetId}/${snapshot.modelHint}`;
     }
   }
-  return { ...authState, providers: [...providers.values()], hasAnyAuth: authState.hasAnyAuth || snapshots.length > 0 };
+  return { ...authState, providers: [...providers.values()], hasAnyAuth: authState.hasAnyAuth || accounts.length > 0 };
 }
 
 /** Hooks whose OMP flow shows a one-time device code. */

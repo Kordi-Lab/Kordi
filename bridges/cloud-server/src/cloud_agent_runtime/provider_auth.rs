@@ -25,13 +25,13 @@ pub use service::{
     RunnerProviderAuthMaterial, RunnerProviderAuthMaterialEnvelope, ServiceProviderAuth,
 };
 pub(crate) use snapshots::live_snapshot_for_route;
-pub(crate) use snapshots::snapshot_available_for_route;
 pub use snapshots::{
     current_snapshot, list_snapshots, publish_snapshot, record_snapshot_used, revoke_snapshot,
     snapshot_capacity_available, CurrentProviderAuthSnapshotQuery,
     CurrentProviderAuthSnapshotResponse, ProviderAuthSnapshotResponse,
     ProviderAuthSnapshotsResponse, PublishSnapshotError, MAX_LIVE_SNAPSHOTS_PER_ACCOUNT,
 };
+pub(crate) use snapshots::{snapshot_available_for_route, snapshot_needs_reconnect_for_route};
 
 #[cfg(test)]
 mod tests {

@@ -193,13 +193,18 @@ where
     }
 
     if !run.provider_auth_available {
-        client
-            .fail_run(
-                &run.run_id,
+        let (code, message) = if run.provider_auth_needs_reconnect {
+            (
+                "provider_auth_rejected",
+                "Cloud fallback cannot run because the owner's saved sign-in expired.",
+            )
+        } else {
+            (
                 "missing_provider_auth",
                 "Cloud fallback cannot run because the owner has not enabled a provider-auth snapshot.",
             )
-            .await?;
+        };
+        client.fail_run(&run.run_id, code, message).await?;
         return Ok(RunnerStepOutcome::FailedMissingProviderAuth { run_id: run.run_id });
     }
 
@@ -380,11 +385,12 @@ where
     let response = match result {
         Ok(response) => response,
         Err(err) => {
+            let message = err.to_string();
             client
                 .fail_run(
                     &run.run_id,
-                    "model_provider_error",
-                    &format!("Cloud fallback model loop failed: {err}"),
+                    model_failure_code(&message),
+                    &format!("Cloud fallback model loop failed: {message}"),
                 )
                 .await?;
             return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
@@ -405,9 +411,50 @@ where
     Ok(RunnerStepOutcome::Completed { run_id: run.run_id })
 }
 
+/// A provider that refused the saved sign-in is something the owner can fix by
+/// signing in again, so it gets its own code instead of a generic failure.
+fn model_failure_code(message: &str) -> &'static str {
+    let lower = message.to_ascii_lowercase();
+    let rejected = [
+        "sign-in needs attention",
+        "401",
+        "unauthorized",
+        "invalid api key",
+        "invalid x-api-key",
+        "oauth credentials are not usable",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle));
+    if rejected {
+        "provider_auth_rejected"
+    } else {
+        "model_provider_error"
+    }
+}
+
 #[cfg(test)]
 #[path = "runtime_connector_tests.rs"]
 mod connector_tests;
 #[cfg(test)]
 #[path = "runtime_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod failure_code_tests {
+    #[test]
+    fn rejected_sign_ins_are_reported_as_reconnectable() {
+        let code = super::model_failure_code;
+        assert_eq!(
+            code("provider error: The provider sign-in needs attention. Reconnect this account."),
+            "provider_auth_rejected"
+        );
+        assert_eq!(
+            code("provider error: 401 Unauthorized"),
+            "provider_auth_rejected"
+        );
+        assert_eq!(
+            code("provider error: The provider is busy or rate-limited."),
+            "model_provider_error"
+        );
+    }
+}

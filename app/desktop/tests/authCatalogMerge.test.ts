@@ -240,3 +240,10 @@ test('a failed catalog chunk falls back to the server catalog with a notice', as
   assert.equal(shown, pinnedOmpCatalog, 'the pinned catalog shows before the refresh');
   assert.deepEqual(pinned, { catalog: pinnedOmpCatalog, notice: null });
 });
+
+test('device copies of a Mac account are not listed as saved accounts', () => {
+  const merged = mergeOmpAuthState(authState([]), [snapshot('openai-codex', 'local-active-oauth', 'ChatGPT')], pinnedOmpCatalog.providers);
+  const codex = merged?.providers.find((provider) => provider.id === 'openai-codex');
+  assert.deepEqual(codex?.options ?? [], []);
+  assert.equal(merged?.hasAnyAuth, false);
+});

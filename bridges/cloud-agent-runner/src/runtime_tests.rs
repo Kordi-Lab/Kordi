@@ -147,6 +147,7 @@ fn leased_run(run_id: &str, provider_auth_available: bool) -> CloudAgentRun {
         sandbox_id: Some("cas_test".to_string()),
         runtime_route: Default::default(),
         provider_auth_available,
+        provider_auth_needs_reconnect: false,
         connectors: Default::default(),
     }
 }
@@ -210,6 +211,7 @@ async fn scheduled_reminder_runs_complete_without_model_or_provider_auth() {
     let client = FakeClient::with_run(CloudAgentRun {
         prompt: "Remind 111 and 222: dinner time for us.".to_string(),
         provider_auth_available: false,
+        provider_auth_needs_reconnect: false,
         sandbox_id: None,
         ..leased_run("car_reminder", false)
     });
