@@ -50,6 +50,7 @@ pub(crate) async fn send_message_in_transaction(
     conversation_id: Uuid,
     mut request: SendMessageRequest,
 ) -> Result<InsertOutcome<MessageSnapshot>, StoreError> {
+    prepare_agent_reply(transaction, account_id, conversation_id, &mut request).await?;
     let message_kind = request.kind.trim();
     if message_kind.is_empty() || message_kind.chars().count() > 64 {
         return Err(StoreError::InvalidInput("message kind is invalid"));
@@ -63,7 +64,6 @@ pub(crate) async fn send_message_in_transaction(
         }
         attachment_ids.push(attachment_id.to_string());
     }
-    strip_shared_agent_reply(transaction, conversation_id, &mut request.content).await?;
     let group_projection =
         normalize_group_envelope(transaction, conversation_id, &mut request.content).await?;
     let subtyped_attachments = subtyped_attachment_metadata(&request.content, &attachment_ids)?;

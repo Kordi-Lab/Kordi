@@ -366,6 +366,11 @@ pub fn spawn(pool: PgPool) {
                 {
                     eprintln!("[cloud_agent_runtime] terminal reply sweep: {error}");
                 }
+                // Documents no reply took are posted by the agent (issue 1808).
+                let documents = crate::document_shares::agents::create::fallback::post_unattached;
+                if let Err(error) = documents(&pool).await {
+                    eprintln!("[cloud_agent_runtime] agent document sweep: {error}");
+                }
             } else if let Err(error) = release_lost_desktop_runs(&pool).await {
                 eprintln!("[cloud_agent_runtime] lost desktop run sweep: {error}");
             }
