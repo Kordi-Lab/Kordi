@@ -19,8 +19,6 @@ pub(crate) struct Job<'a> {
     pub resume: bool,
     pub tools: Vec<Value>,
     pub timeout_ms: u64,
-    pub max_steps: usize,
-    pub max_tool_calls: usize,
 }
 
 pub(crate) fn worker_command() -> Result<WorkerCommand, RuntimeError> {
@@ -94,8 +92,8 @@ impl Job<'_> {
             limits: RunLimits {
                 timeout_ms: self.timeout_ms,
                 max_output_bytes: 16 * 1024 * 1024,
-                max_steps: self.max_steps,
-                max_tool_calls: self.max_tool_calls,
+                max_steps: None,
+                max_tool_calls: None,
             },
         })
     }

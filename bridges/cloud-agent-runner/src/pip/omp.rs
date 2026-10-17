@@ -30,8 +30,6 @@ pub(crate) async fn run<C: CloudAgentRunClient + Sync>(
             resume: false,
             tools: tools(),
             timeout_ms: if backup.is_some() { 90_000 } else { 290_000 },
-            max_steps: MAX_MODEL_CALLS,
-            max_tool_calls: MAX_TOOL_CALLS,
         },
         &host,
         &journal,
@@ -40,7 +38,6 @@ pub(crate) async fn run<C: CloudAgentRunClient + Sync>(
     let result = match (result, backup) {
         (Err(error), Some(backup)) if can_use_fallback(&error) => {
             let messages = journal.completed_context()?;
-            let (max_steps, max_tool_calls) = journal.remaining_budget()?;
             // The second worker continues after completed tool results. It must
             // not start again with the original prompt and replay mutations.
             crate::omp_job::run(
@@ -52,8 +49,6 @@ pub(crate) async fn run<C: CloudAgentRunClient + Sync>(
                     resume: true,
                     tools: tools(),
                     timeout_ms: 190_000,
-                    max_steps,
-                    max_tool_calls,
                 },
                 &host,
                 &journal,
@@ -72,17 +67,9 @@ fn can_use_fallback(error: &RuntimeError) -> bool {
 }
 
 #[derive(Default)]
-struct Journal(Mutex<Vec<Value>>, Mutex<(usize, usize)>);
+struct Journal(Mutex<Vec<Value>>);
 
 impl Journal {
-    fn remaining_budget(&self) -> Result<(usize, usize), ModelLoopError> {
-        let (steps, calls) = *self.1.lock().expect("budget lock");
-        if steps >= MAX_MODEL_CALLS || calls >= MAX_TOOL_CALLS {
-            return Err(ModelLoopError::LimitExceeded);
-        }
-        Ok((MAX_MODEL_CALLS - steps, MAX_TOOL_CALLS - calls))
-    }
-
     fn completed_context(&self) -> Result<Vec<Value>, ModelLoopError> {
         let messages = self.0.lock().expect("journal lock").clone();
         let results = messages
@@ -109,14 +96,6 @@ impl Journal {
 #[async_trait::async_trait]
 impl EventSink for Journal {
     async fn on_event(&self, event: RuntimeEvent) -> Result<(), String> {
-        if matches!(event.kind.as_str(), "turn_start" | "tool_start") {
-            let mut budget = self.1.lock().map_err(|_| "PiP budget unavailable")?;
-            if event.kind == "turn_start" {
-                budget.0 += 1;
-            } else {
-                budget.1 += 1;
-            }
-        }
         if event.kind == "message_end" {
             if let Some(message) = event.data.get("message") {
                 self.0
@@ -154,13 +133,10 @@ mod tests {
     use super::*;
     #[test]
     fn fallback_requires_completed_actions_and_only_provider_failures() {
-        let journal = Journal(
-            Mutex::new(vec![
-                json!({"role":"user","content":[]}),
-                json!({"role":"assistant","content":[{"type":"toolCall","id":"applied"}]}),
-            ]),
-            Mutex::new((1, 1)),
-        );
+        let journal = Journal(Mutex::new(vec![
+            json!({"role":"user","content":[]}),
+            json!({"role":"assistant","content":[{"type":"toolCall","id":"applied"}]}),
+        ]));
         assert!(journal.completed_context().is_err());
         journal
             .0

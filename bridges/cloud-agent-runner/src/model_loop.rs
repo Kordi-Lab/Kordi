@@ -17,9 +17,6 @@ use crate::sandbox_client::SandboxBackendHandle;
 use crate::tool_policy::RunnerToolRequest;
 use crate::tools::{CloudToolExecutor, CloudToolOutput};
 
-pub const MAX_MODEL_CALLS: usize = 8;
-pub const MAX_TOOL_CALLS: usize = 12;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelToolCall {
     pub id: String,
@@ -37,8 +34,6 @@ pub enum ModelProviderResponse {
 pub enum ModelLoopError {
     #[error("provider error: {0}")]
     Provider(String),
-    #[error("tool loop limit exceeded")]
-    LimitExceeded,
     #[error("runner client error: {0}")]
     Client(#[from] RunnerClientError),
 }
@@ -141,9 +136,8 @@ where
         messages.push(identity.provider_message());
     }
     messages.push(json!({ "role": "user", "content": run.prompt }));
-    let mut tool_calls_used = 0usize;
-
-    for _ in 0..MAX_MODEL_CALLS {
+    // No step or tool-call cap: the run deadline and user stop end long runs.
+    loop {
         match provider.next_response(&auth, &messages, &tools).await? {
             ModelProviderResponse::FinalText(text) => return Ok(text),
             ModelProviderResponse::ToolCalls(calls) => {
@@ -153,10 +147,6 @@ where
                     ));
                 }
                 for call in calls {
-                    tool_calls_used += 1;
-                    if tool_calls_used > MAX_TOOL_CALLS {
-                        return Err(ModelLoopError::LimitExceeded);
-                    }
                     if run.subsession_id.is_some()
                         && matches!(
                             call.name.as_str(),
@@ -198,8 +188,6 @@ where
             }
         }
     }
-
-    Err(ModelLoopError::LimitExceeded)
 }
 
 pub(crate) async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
