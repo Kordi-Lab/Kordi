@@ -15,7 +15,7 @@ import type {
 } from './authClient';
 import { createCloudProviderAuthApi } from './providerAuthClient';
 import { createProviderAuthPublishGate, type ProviderAuthPublishGate } from './providerAuthPublishGate';
-import { useCloudProviderAuthFreshness } from './providerAuthFreshness';
+import { liveCloudCopies } from './providerAuthCloudCopies';
 import { publishableAccountLabel } from './routeAccountChoice';
 import {
   canonicalCloudProviderId,
@@ -152,6 +152,7 @@ export async function reconcileCloudProviderAuthSnapshots({
   const explicitChoice = intent.reason === 'oauth-completed' || intent.reason === 'api-key-saved'
     ? (intent.profileId ? `profile:${intent.profileId}` : target.authChoice)
     : null;
+  const cloudCopies = intent.reason === 'credential-refresh' ? await liveCloudCopies(client, session.token) : null;
   let published = false;
   for (const authChoice of choices) {
     const built = await buildSnapshotPayload({
@@ -164,6 +165,10 @@ export async function reconcileCloudProviderAuthSnapshots({
       continue;
     }
     const input = { ...built, label: publishableAccountLabel(built.label ?? null) };
+    if (cloudCopies && !cloudCopies.mayRefresh(session.accountId, input, publishGate)) {
+      published = true;
+      continue;
+    }
     const decision = await publishGate.shouldPublish(session.accountId, input, authChoice === explicitChoice);
     if (!isCurrent()) return 'stale';
     if (decision.publish) {
@@ -223,7 +228,6 @@ export function useCloudProviderAuthSnapshotSync({
   initialMessagesSettled: boolean;
   reportWarning: (message: string, error: unknown) => void;
 }) {
-  useCloudProviderAuthFreshness({ account, client, route, desktopAuthState, reportWarning });
   const syncGateRef = useRef<CloudProviderAuthSnapshotSyncGate | null>(null);
   if (syncGateRef.current == null) {
     syncGateRef.current = new CloudProviderAuthSnapshotSyncGate();
