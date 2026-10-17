@@ -257,3 +257,23 @@ A comment run is routed exactly like a chat run for the same agent, so the agent
 - `PATCH /v1/cloud/documents/:attachment_id` with `{ "title": string }`. Whitespace is collapsed and trimmed; 1 to 200 characters, else `400 document_title_invalid`. The same viewers who may save content may rename (`viewerCan.edit`), else `403 document_edit_forbidden`; viewers without read access get `404`. Returns the `DocumentResponse`. The public page, the agent tools and the reader all use the new title.
 - A rename that changes the stored title publishes the non-critical `document.updated` with `"change": "title"`, the current `revision`, and `"title"`, to the same audience as saves. Older clients that do not know the change refetch the document as for any other change.
 - Mac: a double click on the reader header title or on the companion tab label turns it into a text field in place. Enter or leaving the field saves, Escape cancels, an empty title reverts. Only editors of a cloud Markdown document whose title shows in the header can rename; the new title shows at once and reverts with an inline error if the save fails.
+
+## Agent-created documents (added 2026-10-17, issue 1808)
+
+A document an agent writes for a group is saved in that group's Artifacts instead of a file on the owner's Mac.
+
+### Tool
+
+- `create_document` is a third lease tool next to `read_document` and `edit_document` (`connectorId: "kordi-documents"`, group `act`): `{ title, content, format? }` with `format` `markdown` (default) or `html`. Title 1 to 200 characters after collapsing whitespace; content non-empty and at most 200 kB; at most 10 documents per run. Other formats are refused with a hint to attach them as ordinary files.
+- **Gate.** Offered to chat runs whose session is a group conversation, whoever asked: the owner's own request and a request another member made of the owner's agent. Never to comment runs, public readers, or runs outside a group. On every call the agent's owner and the requester must be active members of the group (`document_tool_forbidden` otherwise). Creating a document posts only what the agent's reply could already say, to the same people, so clients run it without an approval card and a turn another member requested keeps it (with `read_document`).
+- **Effect.** The server uploads the bytes under the agent's owner as a finalized `cloud_attachments` row (`text/markdown` or `text/html`, `document_title` set for Markdown) and posts it in the group as the agent's own group message: sender the owner, `senderKind: "agent"`, empty text, the attachment in `message.attachments` and `legacy_attachments`, and no `requestId` or `replyToMessageId`, so clients never take it for the run's reply. Chat sync fans it out like any message. A `cloud_session_artifacts` row (`artifact_id` `agentdoc:<runId>:<attachmentId>`, path = file name) lists it in the session's Artifacts activity. Attachment and message ids derive from the run, the file name, and the content, so a retry returns the first result.
+- Result `{ created: true, attachmentId, title, fileName, format, messageId, note }`.
+
+### Runtimes
+
+- Cloud runner and the Mac's local runtime (including OMP) get the descriptor on the lease like the other document tools.
+- **Background tasks.** A `task_operator` child on the Mac holds no lease. It receives the parent lease reduced to `create_document` (in its `resource` context message), and so does the follow-up turn that reports the child's result. The broker accepts that call on the parent's desktop claim while the parent run is `completed`, for 12 hours after it answered; every other tool still needs an active lease.
+
+### Local paths in replies
+
+Before an agent reply is stored in a group, or as an agent response in a direct chat between two people, the server rewrites its text: a Markdown link whose target is a local path (`/Users/`, `/home/`, `/root/`, `~/`, `file://`, `/private/var/`, `/private/tmp/`, `/var/folders/`, `/Volumes/`, `C:\Users\`) becomes its label, and every other such path becomes its file name. The owner's own chat with their agent keeps its text, and so does the Mac that ran the turn, which shows its local copy. The Mac renderer shows a Markdown link to a non-web target as its label (or file name), so `**[name](/path)**` reads as bold text, never raw markup.

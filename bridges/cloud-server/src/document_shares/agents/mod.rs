@@ -11,13 +11,16 @@
 //! - [`delivery`] turns the run's answer into a reply comment, never a chat
 //!   message.
 //! - [`desktop`] routes a run to the owner's ready Mac like a chat run.
-//! - [`tools`] puts the two tools on the run's lease next to connector tools
+//! - [`tools`] puts the tools on the run's lease next to connector tools
 //!   and executes them under the lease; [`operations`] applies block edits.
+//! - [`create`] saves a document an agent writes in a group as that group's
+//!   attachment (issue 1808).
 //!
 //! Contract: `docs/development/issue-1741-shared-documents.md`, section
 //! "Agents in documents".
 
 pub(crate) mod annotate;
+pub(crate) mod create;
 pub(crate) mod delivery;
 pub(crate) mod desktop;
 mod edit;
@@ -45,6 +48,7 @@ pub(crate) const DOCUMENT_PROVIDER: &str = "kordi_documents";
 
 pub(crate) const READ_DOCUMENT_TOOL: &str = "read_document";
 pub(crate) const EDIT_DOCUMENT_TOOL: &str = "edit_document";
+pub(crate) const CREATE_DOCUMENT_TOOL: &str = "create_document";
 
 /// Largest text `read_document` returns and `edit_document` accepts.
 pub(crate) const MAX_TOOL_TEXT_BYTES: usize = 200_000;
