@@ -1,5 +1,9 @@
 .app-chat-bubble-user {
   --app-message-bubble-fill: var(--app-chat-bubble-user-bg);
+  /* Selected text keeps its own ink, and the selection is a tint of that ink. */
+  --app-copy-selection-text: currentColor;
+  --app-copy-selection-bg: color-mix(in oklab, currentColor 28%, transparent);
+  --app-copy-selection-surface-bg: color-mix(in oklab, var(--app-chat-bubble-user-text) 16%, transparent);
   --app-message-bubble-stroke: transparent;
   --app-message-bubble-shadow: none;
   --app-message-mention: var(--app-chat-mention-own);
@@ -31,6 +35,7 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-user
 
 .app-chat-bubble-peer {
   --app-message-bubble-fill: var(--app-chat-bubble-peer-bg);
+  --app-copy-selection-text: currentColor;
   --app-message-bubble-stroke: transparent;
   --app-message-bubble-shadow: none;
   --app-message-mention: var(--app-chat-mention-peer);
@@ -53,6 +58,7 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
 }
 
 .app-chat-bubble-agent {
+  --app-copy-selection-text: currentColor;
   --app-message-mention: var(--app-chat-mention-peer);
   --app-message-meta: var(--app-chat-meta-peer);
   --app-markdown-link: var(--app-chat-mention-peer);
