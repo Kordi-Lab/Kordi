@@ -209,3 +209,121 @@ async fn connecting_an_account_releases_a_waiting_digest() {
     crate::digest::store::refresh(&pool, &owner).await.unwrap();
     assert_eq!(digest_runs(&pool, &owner).await.len(), 1);
 }
+
+/// The newest digest run and the snapshot it used, recorded the way the
+/// provider-auth handout records it.
+async fn lease_newest_digest_run(pool: &PgPool, owner: &str, provider: &str) -> String {
+    let (run_id,): (String,) = query_as(
+        "SELECT run_id FROM cloud_agent_fallback_runs \
+         WHERE owner_account_id = $1 AND run_id LIKE 'digest\\_%' AND status = 'queued' \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(owner)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    query(
+        "INSERT INTO cloud_agent_provider_auth_snapshot_audit \
+         (audit_id, snapshot_id, account_id, run_id, action, created_at) \
+         SELECT $1, snapshot_id, account_id, $2, 'used', $3 \
+         FROM cloud_agent_provider_auth_snapshots \
+         WHERE account_id = $4 AND provider = $5 AND revoked_at IS NULL",
+    )
+    .bind(format!("audit_{}", Uuid::new_v4().simple()))
+    .bind(&run_id)
+    .bind(Utc::now().to_rfc3339())
+    .bind(owner)
+    .bind(provider)
+    .execute(pool)
+    .await
+    .unwrap();
+    run_id
+}
+
+async fn account_status(pool: &PgPool, owner: &str, provider: &str) -> &'static str {
+    let (refreshable, expires_at_ms): (bool, Option<i64>) = query_as(
+        "SELECT refreshable, expires_at_ms FROM cloud_agent_provider_auth_snapshots \
+         WHERE account_id = $1 AND provider = $2 AND revoked_at IS NULL",
+    )
+    .bind(owner)
+    .bind(provider)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    crate::cloud_agent_runtime::provider_auth::snapshot_status(refreshable, expires_at_ms)
+}
+
+#[tokio::test]
+async fn a_refused_account_is_skipped_and_the_digest_names_it() {
+    let Some(pool) = pool().await else { return };
+    let owner = digest_owner(&pool).await;
+    saved_account(&pool, &owner, "openai", "2026-10-01T00:00:00Z", None).await;
+    saved_account(&pool, &owner, "anthropic", "2026-10-02T00:00:00Z", None).await;
+    crate::digest::store::refresh(&pool, &owner).await.unwrap();
+    assert_eq!(
+        digest_runs(&pool, &owner).await[0]["defaultAuthProvider"],
+        "anthropic"
+    );
+
+    // The provider refuses the first account: it is marked, and the digest
+    // moves on to the next account at once without counting a failure.
+    let first = lease_newest_digest_run(&pool, &owner, "anthropic").await;
+    crate::digest::fail(&pool, &first, None, "provider_auth_rejected")
+        .await
+        .unwrap();
+    assert_eq!(
+        account_status(&pool, &owner, "anthropic").await,
+        "needs-reconnect"
+    );
+    let (events,): (i64,) = query_as(
+        "SELECT COUNT(*) FROM cloud_chat_user_sync_events \
+         WHERE account_id = $1 AND event_type = 'provider-auth.updated'",
+    )
+    .bind(&owner)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(events, 1, "the owner's clients reload their accounts");
+    let routes = digest_runs(&pool, &owner).await;
+    assert_eq!(routes.len(), 2, "{routes:?}");
+    assert!(routes
+        .iter()
+        .any(|route| route["defaultAuthProvider"] == "openai"));
+    let (failures,): (i32,) =
+        query_as("SELECT failure_count FROM cloud_account_digests WHERE account_id = $1")
+            .bind(&owner)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(failures, 0);
+
+    // The last account is refused too: no run is queued and the digest
+    // names the newest account to reconnect.
+    let second = lease_newest_digest_run(&pool, &owner, "openai").await;
+    crate::digest::fail(&pool, &second, None, "provider_auth_rejected")
+        .await
+        .unwrap();
+    assert_eq!(digest_runs(&pool, &owner).await.len(), 2);
+    assert_eq!(
+        digest_error(&pool, &owner).await.as_deref(),
+        Some("provider_auth_rejected")
+    );
+    assert_eq!(
+        crate::cloud_agent_runtime::provider_auth::newest_account_needing_reconnect(&pool, &owner)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("anthropic")
+    );
+
+    // A failure that is not a refused sign-in marks nothing and backs off.
+    let other = digest_owner(&pool).await;
+    saved_account(&pool, &other, "openai", "2026-10-01T00:00:00Z", None).await;
+    crate::digest::store::refresh(&pool, &other).await.unwrap();
+    let run = lease_newest_digest_run(&pool, &other, "openai").await;
+    crate::digest::fail(&pool, &run, None, "provider_unavailable")
+        .await
+        .unwrap();
+    assert_eq!(account_status(&pool, &other, "openai").await, "ready");
+    assert_eq!(digest_runs(&pool, &other).await.len(), 1);
+}
