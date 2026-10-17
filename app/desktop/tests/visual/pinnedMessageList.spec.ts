@@ -15,7 +15,7 @@ for (const theme of ['light', 'dark'] as const) {
       return probe.getImageData(0, 0, 1, 1).data[3];
     });
     expect(alpha).toBe(255);
-    const unpin = list.getByRole('button', { name: 'Unpin' }).first();
+    const unpin = list.getByRole('button', { name: /^Unpin / }).first();
     await expect(unpin).toHaveCSS('opacity', '0');
     await list.locator('.app-pin-list-row').first().hover();
     await expect(unpin).toHaveCSS('opacity', '1');

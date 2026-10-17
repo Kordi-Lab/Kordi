@@ -105,7 +105,7 @@ export function PinnedMessageBar({
               </span>
               <span className="app-pin-list-preview">{pinnedMessagePreview(item.message)}</span>
             </button>
-            <button type="button" className="app-pin-list-unpin" aria-label="Unpin" title="Unpin" onClick={() => {
+            <button type="button" className="app-pin-list-unpin" aria-label={`Unpin ${pinnedMessagePreview(item.message)}`} title="Unpin" onClick={() => {
               listRef.current?.close();
               onRequestUnpin(item);
             }}><PinOff size={15} aria-hidden="true" /></button>
