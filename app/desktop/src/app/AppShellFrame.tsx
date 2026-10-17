@@ -9,6 +9,7 @@ import {
 import { NativeTitlebar, type NativeTitlebarActions } from '@/app/NativeTitlebar';
 import { useNativeBackdrop } from '@/app/useNativeBackdrop';
 import { cn } from '@/lib/utils';
+import { PaneErrorBoundary } from '@/components/ErrorBoundary';
 
 type AppShellFrameProps = NativeTitlebarActions & {
   rootThemeClass: string;
@@ -166,7 +167,7 @@ export function AppShellFrame({
             gridTemplateRows: 'minmax(0, 1fr)',
           } as CSSProperties}
         >
-          {sidebar}
+          <PaneErrorBoundary area="sidebar">{sidebar}</PaneErrorBoundary>
           {showSessionRail && !collapseChatSessions && (
             <div
               onMouseDown={onSessionResizeMouseDown}
@@ -198,11 +199,11 @@ export function AppShellFrame({
             >
               <main className="flex min-h-0 min-w-0 overflow-hidden">
                 <NativeChatTitlebarContext value={chatTitlebar}>
-                  {mainContent}
+                  <PaneErrorBoundary area="main">{mainContent}</PaneErrorBoundary>
                 </NativeChatTitlebarContext>
               </main>
 
-              {showRightDetailRail && !isDetailPanelCollapsed ? rightDetailRail : null}
+              {showRightDetailRail && !isDetailPanelCollapsed ? <PaneErrorBoundary area="detail">{rightDetailRail}</PaneErrorBoundary> : null}
               {showRightDetailRail && !isDetailPanelCollapsed && (
                 <div
                   onMouseDown={onDetailResizeMouseDown}

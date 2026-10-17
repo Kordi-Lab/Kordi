@@ -42,6 +42,8 @@ const SHOWCASE = [
   '> Each person keeps their own agent; the group sees what the agents share.',
   '```ts\nconst turn = await room.nextSpeaker({ agents, people });\n```',
   '```\n```',
+  // List items that start with a block other than a paragraph (agent-written Markdown); the editor fits them to its schema.
+  '- ## Open questions\n  Who owns the summary?\n- - Interview count\n  - Turn-taking',
   '---',
 ];
 const sample = sampleDocument('owner');

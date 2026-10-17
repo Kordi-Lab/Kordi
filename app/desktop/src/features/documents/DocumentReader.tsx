@@ -5,6 +5,7 @@ import type { Editor } from '@tiptap/core';
 import { cn } from '@/lib/utils';
 
 import { DocumentBlockAnnotations, type DocumentBlockThreadProps } from './DocumentBlock';
+import { DocumentErrorBoundary } from './DocumentErrorBoundary';
 import { DocumentHeader, type DocumentBadge } from './DocumentHeader';
 import { DocumentAnnotationBar, DocumentBrowserLead, DocumentHtmlFrame } from './DocumentHtmlView';
 import { DocumentInsertBar } from './DocumentInsertBar';
@@ -140,6 +141,7 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
     : undefined;
   const showInFinder = hasLocalFile && path && host.revealPath ? () => { void host.revealPath?.(path); } : undefined;
   const memberSessionId = reader.memberSessionId;
+  const editorKey = reader.attachmentId ?? source.path ?? '';
 
   // Editable cloud documents join their collaboration room as the signed-in viewer.
   const viewerId = host.viewer?.accountId ?? null;
@@ -203,39 +205,41 @@ export function DocumentReader({ api: apiOverride, dateLabel, onOpenSession, ini
             : <div className="app-document-empty">{reader.rawPending ? 'Loading' : 'No preview'}</div>
         ) : (
           <article className="app-document-article">
-            <Suspense fallback={<div className="app-document-empty"><LoaderCircle className="animate-spin" aria-hidden="true" />Loading</div>}>
-              <DocumentEditor
-                key={reader.attachmentId ?? source.path ?? ''}
-                collab={collab}
-                onCollab={setCollabState}
-                onSnapshot={reader.replaceDocument}
-                createProvider={collabTransport?.createProvider}
-                roomTiming={collabTransport?.timing}
-                blocks={reader.editorBlocks}
-                revisionKey={reader.editorRevision}
-                editable={reader.canEdit}
-                canComment={reader.canComment}
-                canReact={reader.canReact}
-                reactions={reader.reactions}
-                comments={reader.comments}
-                composingBlock={composingBlock}
-                renderAnnotations={(blockId) => (
-                  <DocumentBlockAnnotations
-                    id={blockId}
-                    pills={reactionPillsForBlock(reader.reactions, blockId)}
-                    threads={commentThreadsForBlock(reader.comments, blockId)}
-                    composing={composingBlock === blockId}
-                    shared={blockShared}
-                  />
-                )}
-                onChange={reader.onEditorChange}
-                onComment={(blockId) => setComposingBlock(blockId)}
-                onReact={(blockId, reaction) => { void reader.toggleReaction(blockId, reaction); }}
-                onUpdatedElsewhere={() => reader.showSaveNotice(UPDATED_ELSEWHERE)}
-                onReady={setEditorHandle}
-                onEditor={onEditor}
-              />
-            </Suspense>
+            <DocumentErrorBoundary resetKey={`${editorKey}:${reader.editorRevision}`} blocks={reader.editorBlocks}>
+              <Suspense fallback={<div className="app-document-empty"><LoaderCircle className="animate-spin" aria-hidden="true" />Loading</div>}>
+                <DocumentEditor
+                  key={editorKey}
+                  collab={collab}
+                  onCollab={setCollabState}
+                  onSnapshot={reader.replaceDocument}
+                  createProvider={collabTransport?.createProvider}
+                  roomTiming={collabTransport?.timing}
+                  blocks={reader.editorBlocks}
+                  revisionKey={reader.editorRevision}
+                  editable={reader.canEdit}
+                  canComment={reader.canComment}
+                  canReact={reader.canReact}
+                  reactions={reader.reactions}
+                  comments={reader.comments}
+                  composingBlock={composingBlock}
+                  renderAnnotations={(blockId) => (
+                    <DocumentBlockAnnotations
+                      id={blockId}
+                      pills={reactionPillsForBlock(reader.reactions, blockId)}
+                      threads={commentThreadsForBlock(reader.comments, blockId)}
+                      composing={composingBlock === blockId}
+                      shared={blockShared}
+                    />
+                  )}
+                  onChange={reader.onEditorChange}
+                  onComment={(blockId) => setComposingBlock(blockId)}
+                  onReact={(blockId, reaction) => { void reader.toggleReaction(blockId, reaction); }}
+                  onUpdatedElsewhere={() => reader.showSaveNotice(UPDATED_ELSEWHERE)}
+                  onReady={setEditorHandle}
+                  onEditor={onEditor}
+                />
+              </Suspense>
+            </DocumentErrorBoundary>
             {agentName || document?.sessionTitle ? (
               <div className="app-document-foot">
                 {agentName ? <span>From <b>{agentName}</b></span> : null}

@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { notifyDocumentSyncEvents } from '@/features/documents/documentSyncEvents';
 
 import { runEditorCommand } from './editorCommands';
+import { ROOT_ERROR_OPTIONS } from '@/lib/renderErrors';
 import { IosDocumentEditor, type EditorConfig, type EditorFlush } from './IosDocumentEditor';
 import { NativeBridge, type NativePost, type NativeReply, type SocketEventKind } from './nativeBridge';
 import { createNativeDocumentApi } from './nativeDocumentApi';
@@ -39,7 +40,7 @@ export function createEditorPage(post: NativePost, container: HTMLElement): { pa
   const page: EditorPage = {
     start(config) {
       if (root) return;
-      root = createRoot(container);
+      root = createRoot(container, ROOT_ERROR_OPTIONS);
       root.render(<IosDocumentEditor api={api} bridge={bridge} config={config} flushRef={flushRef} onEditor={(next) => { editor = next; }} />);
     },
     command(name, value) {

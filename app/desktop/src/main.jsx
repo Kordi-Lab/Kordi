@@ -2,11 +2,12 @@ import { StrictMode, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import { ROOT_ERROR_OPTIONS } from './lib/renderErrors'
 import { applyChatTheme, readStoredChatTheme } from './app/themePreference'
 import { preloadNotoEmojiThumbnails } from './features/emoji/notoEmojiThumbnails'
 
 applyChatTheme(readStoredChatTheme())
-const root = createRoot(document.getElementById('root'))
+const root = createRoot(document.getElementById('root'), ROOT_ERROR_OPTIONS)
 const authPreview = import.meta.env.DEV
   ? new URLSearchParams(window.location.search).get('authPreview')
   : null

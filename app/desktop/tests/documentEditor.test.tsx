@@ -28,7 +28,7 @@ after(() => restore());
 
 function editorWith(markdown: string) {
   const editor = new Editor({ extensions: extensions.documentEditorExtensions() });
-  editor.commands.setContent(ids.parseBlocks(editor.markdown!, ids.blocksFromSource(markdown)).doc);
+  editor.commands.setContent(ids.parseBlocks(editor, ids.blocksFromSource(markdown)).doc);
   return editor;
 }
 
