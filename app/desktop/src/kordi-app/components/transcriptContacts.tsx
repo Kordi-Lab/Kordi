@@ -2,19 +2,12 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ChevronRight, LoaderCircle } from 'lucide-react';
 import type { Contact, ContactRequest } from '../types';
+import { contactTypeLabel } from './contactTypeLabel';
 import { IdentityAvatar, type IdentityAvatarKind } from './IdentityAvatar';
 import { ContactRequestTime } from './transcriptMessageTime';
 
 function contactAvatarKind(contact: Contact): IdentityAvatarKind {
   return contact.classType === 'my-agents' || contact.classType === 'other-users-agents' ? 'agent' : 'human';
-}
-
-// Every ordinary person is a user, so only labels that carry information are shown.
-const PLAIN_CONTACT_TYPES = new Set(['user', 'person']);
-
-export function contactTypeLabel(contact: Pick<Contact, 'entityType'>): string | null {
-  const label = contact.entityType?.trim() ?? '';
-  return label && !PLAIN_CONTACT_TYPES.has(label.toLowerCase()) ? label : null;
 }
 
 function requestAvatarKind(request: ContactRequest): IdentityAvatarKind {

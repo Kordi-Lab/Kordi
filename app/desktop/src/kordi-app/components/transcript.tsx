@@ -879,4 +879,4 @@ function MessageBubbleView({
 
 export type MessageBubbleProps = Parameters<typeof MessageBubbleView>[0];
 export const MessageBubble = memo(MessageBubbleView, messageBubblePropsEqual);
-export { ContactRow, ContactRequestRow, contactTypeLabel } from './transcriptContacts';
+export { ContactRow, ContactRequestRow } from './transcriptContacts';
