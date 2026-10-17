@@ -102,7 +102,7 @@ function MessageFooter({
       compact ? 'shrink-0 self-end whitespace-nowrap pl-2 justify-end' : 'ml-auto mt-1.5 justify-end',
       isUser ? 'gap-0.5 text-black/45' : 'gap-1.5 text-slate-500/80',
     )}>
-      {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}<MessageEditedLabel msg={message} />
+      {showDetail ? <span className={cn('text-[10px]', isUser && messageDeliveryVisual(status)?.tone === 'red' ? 'app-message-failure-detail min-w-0 whitespace-normal text-right' : 'truncate')}>{detail}</span> : null}<MessageEditedLabel msg={message} />
       <RequestReplyLine summary={replySummary} own={Boolean(isUser)} inline onNavigateToMessage={onNavigateToMessage} />
       {isUser ? <MessageDeliveryStatusSlot status={status} /> : null}
     </div>
@@ -624,7 +624,7 @@ function MessageBubbleView({
   const hasAttachments = (msg.attachments?.length ?? 0) > 0; const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasOnlyBorderlessMediaAttachments = hasOnlyImageAttachments || (!hasText && !hasVoice && attachmentsAreOnlyMp4Videos(msg.attachments)); const hasMixedImageAttachments = hasText && (msg.attachments ?? []).some((attachment) => attachment.kind === 'image');
   const hasGroupedImageAttachments = hasAttachments && (msg.attachments?.length ?? 0) > 1 && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasDetachedImageGroup = hasGroupedImageAttachments && hasText;
   const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage); const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus; const hasLinkPreview = (isOwnHumanMessage || isPeerHumanMessage) && hasText && !msg.callActivity && !hasVoice && !hasPlanCard && !hasAttachments && Boolean(standaloneExternalMessageLink(msg.text));
-  const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !hasPlanCard && !msg.supportContactResponse && !hasLinkPreview && !(/\r?\n/.test(msg.text) || /^\s*(?:`{3,}|#{1,3}\s+|>|[-*+]\s+|\d+\.\s+)/.test(msg.text));
+  const showInlineCompactFooter = showCompactFooter && hasText && !(isOwnHumanMessage && deliveryVisual?.tone === 'red' && msg.detail?.trim()) && !hasAttachments && !hasPlanCard && !msg.supportContactResponse && !hasLinkPreview && !(/\r?\n/.test(msg.text) || /^\s*(?:`{3,}|#{1,3}\s+|>|[-*+]\s+|\d+\.\s+)/.test(msg.text));
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = selfDisplayName(msg.sender || (isOwnHumanMessage ? 'Me' : avatarKind === 'agent' ? 'Agent' : 'Person'), isOwnHumanMessage);
   const avatarSeed = isOwnHumanMessage
