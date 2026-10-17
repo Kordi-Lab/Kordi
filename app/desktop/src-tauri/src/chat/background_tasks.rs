@@ -1,4 +1,5 @@
 mod follow_up;
+mod group_documents;
 mod managed_child;
 pub mod snapshots;
 
@@ -9,6 +10,7 @@ use super::{
     message_execution, DesktopChatManager, DesktopChatMessageRoute, DesktopChatTurnSnapshot,
 };
 
+pub(super) use group_documents::{group_document_lease, resource_document_lease};
 pub(super) use managed_child::ManagedChildAgentRunner;
 
 #[tauri::command]

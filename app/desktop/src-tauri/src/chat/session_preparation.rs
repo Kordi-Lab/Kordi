@@ -150,6 +150,8 @@ pub(super) async fn prepare_desktop_session_for_send(
         .iter()
         .filter(|message| message.context_role.as_deref() == Some("runtimeIdentity"))
         .find_map(|message| message.execution_lease.clone());
+    // A background turn has no lease, only the parent's `create_document`.
+    let document_lease = super::background_tasks::resource_document_lease(system_context);
     let prompt_session_id = cloud_lease
         .as_ref()
         .map(|lease| lease.session_id.as_str())
@@ -214,9 +216,11 @@ pub(super) async fn prepare_desktop_session_for_send(
         Some(lease) if owner_request => connector_tools_runtime::build(lease),
         Some(lease) => connector_tools_runtime::build(lease)
             .and_then(|lease_tools| lease_tools.for_shared_turn()),
-        None => {
-            (owner_local && context_session_id.is_none()).then(connector_tools_runtime::owner_local)
-        }
+        None => match document_lease.as_ref() {
+            Some(lease) => connector_tools_runtime::build(lease),
+            None => (owner_local && context_session_id.is_none())
+                .then(connector_tools_runtime::owner_local),
+        },
     });
     // Only the lease's `act` tools may ask the person; the rest stay refused.
     // The card names the conversation and agent of this turn.
@@ -231,6 +235,8 @@ pub(super) async fn prepare_desktop_session_for_send(
         .and_then(|context| super::tool_approval::hook(act_tools, context));
     runtime.set_tool_approval_hook(approval_hook);
     let parent_lease = cloud_lease.clone();
+    let group_documents = super::background_tasks::group_document_lease(cloud_lease.as_ref())
+        .or_else(|| document_lease.clone());
     let observation = if let Some(lease) = cloud_lease {
         let observation =
             super::session_observation::cloud::build(lease, prompt_session_id.clone(), calendar);
@@ -324,7 +330,8 @@ pub(super) async fn prepare_desktop_session_for_send(
                 super::hosted_provider_auth::InheritedHostedAuth::new(auth, parent_lease)
             }),
         )
-        .with_parent_runtime_session(runtime.session_id().to_string());
+        .with_parent_runtime_session(runtime.session_id().to_string())
+        .with_group_documents(group_documents);
         let _ = runtime.set_task_operator_runner(Arc::new(runner));
     }
     Ok(())

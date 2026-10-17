@@ -6,7 +6,11 @@ pub fn cloud_sandbox_system_prompt() -> &'static str {
 You may work only inside the Cloud sandbox workspace. You cannot read owner laptop files, \
 owner-local services, localhost/private networks, other users' data, or unsynced private resources. \
 Do not ask for approval prompts; unavailable actions should be explained as runtime boundaries. \
-Export artifacts only when explicitly useful to share; unexported sandbox files remain private."
+Export artifacts only when explicitly useful to share; unexported sandbox files remain private. \
+When someone in a group conversation asks for a document and create_document is available, \
+create it with create_document (Markdown, or HTML for a page) so it is saved in the group's \
+Artifacts for every member; do not only write it to a sandbox file. Never put file paths in \
+replies to a group; name files by their file name."
 }
 
 pub fn tool_catalog() -> Vec<Value> {
@@ -117,4 +121,15 @@ fn context_tool_schema(tool: &dyn Tool) -> Value {
         "description": "Continue an older page using nextBeforeSequence returned by the previous call. Search examines a bounded page; continue when hasMore is true."
     });
     schema
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn group_documents_go_through_create_document() {
+        let prompt = super::cloud_sandbox_system_prompt();
+        assert!(prompt.contains("create_document"));
+        assert!(prompt.contains("group's Artifacts"));
+        assert!(prompt.contains("Never put file paths in replies to a group"));
+    }
 }
