@@ -6,6 +6,7 @@ import type { DocumentResponse } from '@/features/documents/documentShareTypes';
 import { presenceColor, type DocumentCollabState } from '@/features/documents/documentPresence';
 import { UPDATED_ELSEWHERE, useCloudDocumentEdits } from '@/features/documents/useCloudDocumentEdits';
 import DocumentEditor from '@/features/documents/editor/DocumentEditor';
+import { DocumentErrorBoundary } from '@/features/documents/DocumentErrorBoundary';
 
 import type { NativeBridge } from './nativeBridge';
 import { toolbarState } from './editorCommands';
@@ -100,27 +101,29 @@ export function IosDocumentEditor({ api, bridge, config, flushRef, onEditor }: {
   if (!canEdit) return <div className="ios-editor-empty">You can't edit this document.</div>;
   return (
     <article className="app-document-article">
-      <DocumentEditor
-        key={document.attachmentId}
-        collab={collab}
-        onCollab={setCollabState}
-        onSnapshot={setDocument}
-        createProvider={createProvider}
-        blocks={blocks}
-        revisionKey={revisionKey}
-        editable
-        canComment={false}
-        canReact={false}
-        reactions={[]}
-        comments={[]}
-        composingBlock={null}
-        renderAnnotations={() => null}
-        onChange={cloud.updateSource}
-        onComment={() => undefined}
-        onReact={() => undefined}
-        onUpdatedElsewhere={() => bridge.send({ type: 'notice', message: UPDATED_ELSEWHERE })}
-        onEditor={watch}
-      />
+      <DocumentErrorBoundary resetKey={revisionKey} blocks={blocks}>
+        <DocumentEditor
+          key={document.attachmentId}
+          collab={collab}
+          onCollab={setCollabState}
+          onSnapshot={setDocument}
+          createProvider={createProvider}
+          blocks={blocks}
+          revisionKey={revisionKey}
+          editable
+          canComment={false}
+          canReact={false}
+          reactions={[]}
+          comments={[]}
+          composingBlock={null}
+          renderAnnotations={() => null}
+          onChange={cloud.updateSource}
+          onComment={() => undefined}
+          onReact={() => undefined}
+          onUpdatedElsewhere={() => bridge.send({ type: 'notice', message: UPDATED_ELSEWHERE })}
+          onEditor={watch}
+        />
+      </DocumentErrorBoundary>
     </article>
   );
 }

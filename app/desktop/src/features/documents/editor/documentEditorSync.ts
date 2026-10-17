@@ -50,7 +50,7 @@ export type SyncState = {
 /** Loads outside blocks into the editor; index ids take the `k:` ids chosen for them in `legacyIds`. */
 export function loadBlocks(editor: Editor, blocks: readonly SourceBlock[], legacyIds: Record<string, string>): SyncState {
   const manager = editor.markdown!;
-  const parsed = parseBlocks(manager, blocks, legacyIds);
+  const parsed = parseBlocks(editor, blocks, legacyIds);
   replaceDocument(editor, parsed.doc);
   return { base: serializeBlocks(manager, editor.getJSON()), legacyIds };
 }
@@ -68,14 +68,14 @@ export function legacyIdsFor(blocks: readonly SourceBlock[], newId: () => string
  */
 export function applyRemoteBlocks(editor: Editor, sync: SyncState, blocks: readonly SourceBlock[], legacyIds: Record<string, string>) {
   const manager = editor.markdown!;
-  const remoteDoc = parseBlocks(manager, blocks, legacyIds).doc;
+  const remoteDoc = parseBlocks(editor, blocks, legacyIds).doc;
   const remote = serializeBlocks(manager, remoteDoc);
   const local = serializeBlocks(manager, editor.getJSON());
   const same = (left: SourceBlock[], right: SourceBlock[]) => left.length === right.length && left.every((block, index) => block.id === right[index].id && block.source === right[index].source);
   if (same(remote, local)) return { sync: { base: remote, legacyIds }, conflict: false, localChanges: false };
   const merged = mergeBlocks(sync.base, local, remote, selectionBlockId(editor));
   if (!same(merged.blocks, local)) {
-    replaceDocument(editor, parseBlocks(manager, merged.blocks).doc);
+    replaceDocument(editor, parseBlocks(editor, merged.blocks).doc);
   }
   return { sync: { base: remote, legacyIds }, conflict: merged.conflict, localChanges: !same(merged.blocks, remote) };
 }
@@ -88,7 +88,7 @@ export function applyRemoteBlocks(editor: Editor, sync: SyncState, blocks: reado
  */
 export function reconciledContent(editor: Editor, room: JSONContent, blocks: readonly SourceBlock[]): JSONContent {
   const manager = editor.markdown!;
-  const snapshot = parseBlocks(manager, blocks).doc.content ?? [];
+  const snapshot = parseBlocks(editor, blocks).doc.content ?? [];
   const content = [...(room.content ?? [])];
   const sourceOf = (node: JSONContent) => serializeBlocks(manager, { type: 'doc', content: [node] })[0]?.source;
   const indexOf = (id: unknown) => content.findIndex((node) => node.attrs?.id === id);

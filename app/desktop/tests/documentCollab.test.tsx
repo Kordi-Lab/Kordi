@@ -333,7 +333,7 @@ test('a stale room takes the snapshot version of the blocks that differ, by id, 
     const { reconciledContent } = await import('../src/features/documents/editor/documentEditorSync');
     const editor = new HeadlessEditor({ extensions: documentEditorExtensions() });
     try {
-      const room = parseBlocks(editor.markdown!, [
+      const room = parseBlocks(editor, [
         { id: 'k:aaaaaaaa', source: '# Title' },
         { id: 'k:bbbbbbbb', source: 'Room text.' },
         { id: 'k:dddddddd', source: 'Only in the room.' },

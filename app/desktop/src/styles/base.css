@@ -163,3 +163,7 @@ body.app-cloud-gate-active.theme-dark {
 body.app-cloud-gate-active.theme-light {
   background: linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 54%, rgb(226 232 240) 100%);
 }
+
+/* A shell pane that failed to render (see `PaneErrorBoundary`). */
+.app-pane-fallback { display: flex; min-width: 0; min-height: 0; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; color: var(--utility-muted-text); font-size: 13px; }
+.app-pane-fallback button { padding: 4px 12px; border-radius: 8px; color: var(--utility-foreground); background: var(--app-control-hover); }

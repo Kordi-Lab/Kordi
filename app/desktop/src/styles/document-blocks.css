@@ -138,3 +138,10 @@
 @media (prefers-reduced-motion: reduce) {
   .app-document-code-copy { transition: none; }
 }
+
+/* The document area when its editor failed (see `DocumentErrorBoundary`): the Markdown as plain text. */
+.app-document-fallback-note { margin: 0 0 12px; color: var(--app-document-muted); font-size: 13px; }
+.app-document-fallback-source { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.6; }
+/* An item fitted to start with an empty paragraph (`-` over a heading, nested list or code): its bullet sits on that block. */
+.app-document-prose li > p:first-child:has(> br.ProseMirror-trailingBreak:only-child):not(:last-child) { display: none; }
+.app-document-prose li > p:first-child:has(> br.ProseMirror-trailingBreak:only-child):not(:last-child) + * { margin-top: 0; }
