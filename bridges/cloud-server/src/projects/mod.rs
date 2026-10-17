@@ -19,6 +19,9 @@ use sqlx_postgres::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
+mod route;
+pub use route::{project_route, ProjectRoute};
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Project {
@@ -252,14 +255,4 @@ pub async fn session_device(
     Ok(project_session_binding(pool, account, session)
         .await?
         .map(|binding| binding.device_id))
-}
-
-/// An online project Mac handles its sessions; while it is offline the cloud
-/// answers the chat without the project files.
-pub async fn cloud_execution_gate(pool: &PgPool, account: &str, session: &str) -> Option<Response> {
-    match project_session_binding(pool, account, session).await {
-        Ok(Some(binding)) if binding.device_online => Some((StatusCode::CONFLICT, Json(json!({"errorCode":"owner_online","message":"The project Mac will handle this task."}))).into_response()),
-        Ok(_) => None,
-        Err(error) => Some(database_error(error)),
-    }
 }
