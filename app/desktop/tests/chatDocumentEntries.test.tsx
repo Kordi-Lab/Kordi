@@ -22,12 +22,9 @@ import { COMPANION_DOCUMENT_OPEN_EVENT, openAttachmentInCompanion, type Companio
 import {
   ADD_DOCUMENT_ACCEPT,
   ADD_DOCUMENT_FAILED,
-  BLANK_DOCUMENT_BODY,
   addableDocumentContentType,
   chatDocumentArtifacts,
   chatDocumentAttachment,
-  chatDocumentNames,
-  nextUntitledDocumentName,
   sentChatDocument,
   withChatDocumentArtifacts,
 } from '../src/features/documents/chatDocuments';
@@ -35,39 +32,22 @@ import { DocumentReaderHostContext, documentReaderHostForConversation, type Docu
 import type { CanonicalSessionMessage, Message, MessageAttachment, SessionArtifact } from '../src/kordi-app/types';
 import { ArtifactInspector } from '../src/pages/ArtifactInspector';
 import { ChatDetailPanel } from '../src/pages/ChatDetailPanel';
+import {
+  CACHED_COPY_PATH,
+  DOCUMENT_BODY,
+  STORED_PATH,
+  attachmentMessage,
+  button,
+  click,
+  conversation,
+  createNamed,
+  hostWith,
+  storedItem,
+} from './helpers/chatDocumentEntryDom';
 import { withJsdomRoot } from './helpers/mountWithJsdom';
 import { waitForReactCondition } from './helpers/waitForReactCondition';
 
-const STORED_PATH = '/tmp/kordi-attachments/Untitled-1.md';
-// Where the upload persists its copy; sent messages point here, not at the stored file.
-const CACHED_COPY_PATH = '/tmp/kordi-cloud-attachments/att_new/Untitled.md';
 const account = { accountId: 'acct_example_alex', displayName: 'Alex Morgan', kordiId: '123456789', avatarUrl: null };
-const conversation = { id: 'session:group:example', canonicalSessionId: 'session:group:example', canonicalParticipants: [] };
-
-function attachmentMessage(id: string, attachment: Partial<MessageAttachment> & { name: string }): Message {
-  return { id, role: 'user', isOwnMessage: true, text: '', time: '10:02', attachments: [{ kind: 'file', ...attachment }] };
-}
-
-function storedItem(file: File): AttachmentItem {
-  return { id: `${file.name}-${STORED_PATH}`, name: file.name, path: STORED_PATH, localPath: STORED_PATH, kind: 'file', mimeType: file.type, sizeBytes: file.size };
-}
-
-function hostWith(addDocument?: DocumentReaderHost['addDocument']): DocumentReaderHost {
-  return { viewer: null, sessionId: conversation.id, agentName: null, people: [], opensDocumentsInCompanion: true, addDocument };
-}
-
-function button(root: ParentNode, label: string) {
-  const match = Array.from(root.querySelectorAll('button')).find((entry) => entry.textContent === label);
-  assert.ok(match, `button ${label}`);
-  return match;
-}
-
-async function click(element: HTMLElement) {
-  await act(async () => {
-    element.click();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-}
 
 function artifactsPanel(host: DocumentReaderHost | null, artifacts: SessionArtifact[] = [], messages: Message[] = []) {
   const panel = createElement(ChatDetailPanel, {
@@ -84,20 +64,6 @@ function artifactsPanel(host: DocumentReaderHost | null, artifacts: SessionArtif
   });
   return host ? createElement(DocumentReaderHostContext.Provider, { value: host }, panel) : panel;
 }
-
-test('a new document is Untitled.md, then numbered past the names the chat already has', () => {
-  assert.equal(nextUntitledDocumentName([]), 'Untitled.md');
-  assert.equal(nextUntitledDocumentName(['notes.md']), 'Untitled.md');
-  assert.equal(nextUntitledDocumentName(['Untitled.md']), 'Untitled 2.md');
-  assert.equal(nextUntitledDocumentName(['untitled.md', ' Untitled 2.md ', 'Untitled 4.md']), 'Untitled 3.md');
-  const names = chatDocumentNames(
-    [{ id: 'a', path: 'notes/Untitled.md', name: '', kind: 'document', summary: '' }],
-    [attachmentMessage('m1', { name: 'Untitled 2.md', attachmentId: 'att_2' })],
-  );
-  assert.deepEqual(names, ['Untitled.md', 'Untitled 2.md']);
-  assert.equal(nextUntitledDocumentName(names), 'Untitled 3.md');
-  assert.equal(BLANK_DOCUMENT_BODY.trim(), '', 'a new document has an empty body');
-});
 
 test('Add file takes Markdown and HTML only and types them for the server', async () => {
   assert.equal(ADD_DOCUMENT_ACCEPT, '.md,.markdown,.html,.htm');
@@ -134,7 +100,7 @@ test('the entries are absent where an attachment cannot be sent', () => {
 
   const artifacts: SessionArtifact[] = [{ id: 'notes/plan.md', path: 'notes/plan.md', name: 'plan.md', kind: 'document', category: 'artifact', summary: 'Created' }];
   for (const markup of [renderToStaticMarkup(artifactsPanel(hostWith(send))), renderToStaticMarkup(artifactsPanel(hostWith(send), artifacts))]) {
-    assert.match(markup, />New document</);
+    assert.match(markup, /aria-label="New document"/);
     assert.match(markup, />Add file</);
     assert.match(markup, /accept="\.md,\.markdown,\.html,\.htm"/);
   }
@@ -158,7 +124,7 @@ test('the chat detail slot adds a document through the composer send as an attac
     return (slot.props as { children: { props: { value: DocumentReaderHost } } }).children.props.value;
   };
 
-  const item = storedItem(new File(['\n'], 'Untitled.md', { type: 'text/markdown' }));
+  const item = storedItem(new File([DOCUMENT_BODY], 'Plan.md', { type: 'text/markdown' }));
   void slotHost({}).addDocument?.(item);
   assert.deepEqual(calls, [['', undefined, undefined, [item]]]);
   assert.equal(slotHost({ activeConversationUsesCollaboration: false }).addDocument, undefined, 'a local agent session');
@@ -184,50 +150,6 @@ test('documents sent in the chat are listed once, and the sent copy of a stored 
   assert.equal(sentChatDocument(messages, STORED_PATH, () => null)?.attachmentId, 'att_page');
   assert.equal(sentChatDocument(messages, '/tmp/draft.md', () => null), null, 'not uploaded yet');
   assert.equal(sentChatDocument(messages, '/tmp/plan.md', (path) => (path === '/tmp/plan.md' ? 'att_plan' : null))?.attachmentId, 'att_plan', 'found by the id its upload got');
-});
-
-test('New document sends a blank Markdown file through the chat attachment send, then opens the sent copy', async () => {
-  clearCloudAttachmentLocalPathCache();
-  await withJsdomRoot(async (mount) => {
-    const stored: File[] = [];
-    const sent: AttachmentItem[] = [];
-    const opened: MessageAttachment[] = [];
-    const artifacts: SessionArtifact[] = [{ id: 'notes/Untitled.md', path: 'notes/Untitled.md', name: 'Untitled.md', kind: 'document', category: 'artifact', summary: 'Created' }];
-    let finishSend: () => void = () => {};
-    // The upload is done at once; the send itself is still in flight.
-    const host = hostWith((attachment) => new Promise<void>((resolve) => {
-      sent.push(attachment);
-      rememberUploadedAttachmentSource(attachment.path, 'att_new');
-      finishSend = resolve;
-    }));
-    const entries = (messages: Message[]) => createElement(DocumentReaderHostContext.Provider, { value: host },
-      createElement(ChatDocumentEntries, {
-        conversationId: conversation.id,
-        messages,
-        artifacts,
-        store: async (file: File) => { stored.push(file); return storedItem(file); },
-        open: (attachment: MessageAttachment) => { opened.push(attachment); },
-      }));
-
-    const root = await mount(entries([]));
-    await click(button(root, 'New document'));
-    assert.equal(stored.length, 1);
-    assert.equal(stored[0].name, 'Untitled 2.md', 'the listed Untitled.md is taken');
-    assert.equal(stored[0].type, 'text/markdown');
-    assert.equal(await stored[0].text(), BLANK_DOCUMENT_BODY);
-    assert.deepEqual(sent.map((attachment) => [attachment.name, attachment.path, attachment.mimeType]), [['Untitled 2.md', STORED_PATH, 'text/markdown']]);
-    assert.equal(opened.length, 0, 'nothing opens before the chat has the document');
-    assert.equal(button(root, 'New document').disabled, true);
-    assert.equal(button(root, 'Add file').disabled, true);
-
-    await mount(entries([attachmentMessage('m1', { name: 'Untitled 2.md', localPath: CACHED_COPY_PATH, attachmentId: 'att_new' })]));
-    assert.deepEqual(opened.map((attachment) => [attachment.name, attachment.attachmentId]), [['Untitled 2.md', 'att_new']]);
-    await act(async () => { finishSend(); await new Promise((resolve) => setTimeout(resolve, 0)); });
-    assert.equal(opened.length, 1, 'the finished send does not open it again');
-    assert.equal(button(root, 'New document').disabled, false);
-    assert.equal(root.querySelector('[role="alert"]'), null);
-  });
-  clearCloudAttachmentLocalPathCache();
 });
 
 test('Add file sends the picked document the same way, and a failed send says so', async () => {
@@ -279,7 +201,7 @@ test('the upload records the stored file it sent, though the message points at t
   const [uploaded] = await uploadComposerAttachments({
     token: 'kordi_cs_example',
     client: {} as never,
-    attachments: [storedItem(new File([BLANK_DOCUMENT_BODY], 'Untitled.md', { type: 'text/markdown' }))],
+    attachments: [storedItem(new File([DOCUMENT_BODY], 'Plan.md', { type: 'text/markdown' }))],
     useNativeUpload: true,
     nativeUpload: async () => ({ attachmentId: 'att_new', objectKey: 'attachments/acct/att_new', sizeBytes: 1, contentType: 'text/markdown', sha256Hex: 'a'.repeat(64), finalizedAt: '2026-10-14T00:00:00Z' }),
     persistAttachmentPath: (attachmentId, name, path) => persistCloudAttachmentPath(attachmentId, name, path, async () => CACHED_COPY_PATH),
@@ -287,7 +209,7 @@ test('the upload records the stored file it sent, though the message points at t
   assert.equal(uploaded.attachmentId, 'att_new');
   // The path the old match looked for is gone from both the message and the cache.
   assert.equal(cachedCloudAttachmentLocalPath('att_new'), CACHED_COPY_PATH);
-  const delivered = [attachmentMessage('m1', { name: 'Untitled.md', attachmentId: 'att_new', localPath: CACHED_COPY_PATH })];
+  const delivered = [attachmentMessage('m1', { name: 'Plan.md', attachmentId: 'att_new', localPath: CACHED_COPY_PATH })];
   assert.equal(sentChatDocument(delivered, STORED_PATH)?.attachmentId, 'att_new');
   clearCloudAttachmentLocalPathCache();
 });
@@ -320,15 +242,15 @@ function serverRow(item: AttachmentItem, sourceTransport: string, localPath: str
 
 test('the own row of a group send has no cloud id; the upload record lists and opens it', () => {
   clearCloudAttachmentLocalPathCache();
-  const item = storedItem(new File([BLANK_DOCUMENT_BODY], 'Untitled.md', { type: 'text/markdown' }));
+  const item = storedItem(new File([DOCUMENT_BODY], 'Plan.md', { type: 'text/markdown' }));
   const rows = [localGroupRow(item)];
   const [attachment] = rows[0].attachments ?? [];
-  assert.deepEqual([attachment?.name, attachment?.localPath, attachment?.attachmentId], ['Untitled.md', STORED_PATH, undefined]);
+  assert.deepEqual([attachment?.name, attachment?.localPath, attachment?.attachmentId], ['Plan.md', STORED_PATH, undefined]);
   assert.deepEqual(withChatDocumentArtifacts([], rows), [], 'nothing to list before the upload');
   assert.equal(sentChatDocument(rows, STORED_PATH), null);
 
   rememberUploadedAttachmentSource(STORED_PATH, 'att_new');
-  assert.deepEqual(withChatDocumentArtifacts([], rows).map((artifact) => [artifact.id, artifact.name, artifact.attachmentId]), [['attachment:att_new', 'Untitled.md', 'att_new']]);
+  assert.deepEqual(withChatDocumentArtifacts([], rows).map((artifact) => [artifact.id, artifact.name, artifact.attachmentId]), [['attachment:att_new', 'Plan.md', 'att_new']]);
   assert.equal(sentChatDocument(rows, STORED_PATH)?.attachmentId, 'att_new');
   clearCloudAttachmentLocalPathCache();
 });
@@ -356,7 +278,7 @@ for (const chat of [
         createElement(ChatDocumentEntries, { conversationId: conversation.id, messages, artifacts: [], store: async (file: File) => storedItem(file), open: openAttachmentInCompanion }));
 
       const root = await mount(entries([]));
-      await click(button(root, 'New document'));
+      await createNamed(root, 'Plan');
       assert.ok(sentItem);
       const item: AttachmentItem = sentItem;
       await mount(entries([localGroupRow(item)]));
@@ -383,21 +305,21 @@ test('New document still opens the upload when the loaded rows never show it', a
     const host = hostWith((attachment) => { rememberUploadedAttachmentSource(attachment.path, 'att_new'); });
     const root = await mount(createElement(DocumentReaderHostContext.Provider, { value: host },
       createElement(ChatDocumentEntries, { conversationId: conversation.id, messages: [], artifacts: [], store: async (file: File) => storedItem(file), open: (attachment: MessageAttachment) => { opened.push(attachment); } })));
-    await click(button(root, 'New document'));
-    assert.deepEqual(opened.map((attachment) => [attachment.name, attachment.attachmentId, attachment.localPath]), [['Untitled.md', 'att_new', STORED_PATH]]);
+    await createNamed(root, 'Plan');
+    assert.deepEqual(opened.map((attachment) => [attachment.name, attachment.attachmentId, attachment.localPath]), [['Plan.md', 'att_new', STORED_PATH]]);
     assert.equal(button(root, 'New document').disabled, false);
     assert.equal(root.querySelector('[role="alert"]'), null);
   });
   clearCloudAttachmentLocalPathCache();
 });
 
-test('the listed Untitled.md row of a channel opens the same editor tab as the transcript', async () => {
+test('the listed Plan.md row of a channel opens the same editor tab as the transcript', async () => {
   clearCloudAttachmentLocalPathCache();
   await withJsdomRoot(async (mount) => {
     const opened: CompanionDocument[] = [];
     const listen = (event: Event) => { opened.push((event as CustomEvent<CompanionDocument>).detail); event.preventDefault(); };
     window.addEventListener(COMPANION_DOCUMENT_OPEN_EVENT, listen);
-    const delivered = localGroupRow(storedItem(new File([BLANK_DOCUMENT_BODY], 'Untitled.md', { type: 'text/markdown' })));
+    const delivered = localGroupRow(storedItem(new File([DOCUMENT_BODY], 'Plan.md', { type: 'text/markdown' })));
     rememberUploadedAttachmentSource(STORED_PATH, 'att_new');
     const root = await mount(createElement(DocumentReaderHostContext.Provider, { value: hostWith() },
       createElement(ArtifactInspector, {
@@ -408,7 +330,7 @@ test('the listed Untitled.md row of a channel opens the same editor tab as the t
         emptyMessage: 'No generated code or docs in this chat yet.',
       })));
     const row = root.querySelector('[data-artifact-file-row="true"]') as HTMLElement;
-    assert.match(row.textContent ?? '', /Untitled\.md/);
+    assert.match(row.textContent ?? '', /Plan\.md/);
     await click(row);
     const [attachment] = delivered.attachments ?? [];
     assert.ok(attachment);
@@ -423,7 +345,7 @@ test('the listed Untitled.md row of a channel opens the same editor tab as the t
 });
 
 test('the Artifacts tab shows the entries and the list, with nothing under the list', async () => {
-  const delivered = serverRow(storedItem(new File([BLANK_DOCUMENT_BODY], 'Untitled.md', { type: 'text/markdown' })), 'cloud-group', CACHED_COPY_PATH);
+  const delivered = serverRow(storedItem(new File([DOCUMENT_BODY], 'Plan.md', { type: 'text/markdown' })), 'cloud-group', CACHED_COPY_PATH);
   await withJsdomRoot(async (mount) => {
     const root = await mount(artifactsPanel(hostWith(() => {}), [], [delivered]));
     const inspector = root.querySelector('[data-artifact-inspector="true"]');

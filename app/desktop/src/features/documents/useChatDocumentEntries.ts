@@ -7,10 +7,9 @@ import type { Message, MessageAttachment, SessionArtifact } from '@/kordi-app/ty
 
 import {
   ADD_DOCUMENT_FAILED,
-  blankDocumentFile,
   chatDocumentAttachment,
   chatDocumentNames,
-  nextUntitledDocumentName,
+  newDocumentFile,
   sentChatDocument,
 } from './chatDocuments';
 import { openAttachmentInCompanion } from './companionDocument';
@@ -87,9 +86,13 @@ export function useChatDocumentEntries({
     }
   }, [addDocument, conversationId, store, timeoutMs, uploadedId]);
 
-  const createDocument = useCallback(() => (
-    addFile(blankDocumentFile(nextUntitledDocumentName(chatDocumentNames(artifacts, messages))))
-  ), [addFile, artifacts, messages]);
+  /** Sends a new document named `name`, headed by that name. False, with nothing sent, for a name it cannot take. */
+  const createDocument = useCallback(async (name: string) => {
+    const file = newDocumentFile(name, chatDocumentNames(artifacts, messages));
+    if (!file) return false;
+    await addFile(file);
+    return true;
+  }, [addFile, artifacts, messages]);
 
   // A document sent from another chat is not this chat's to open.
   const awaited = pending?.conversationId === conversationId ? pending : null;

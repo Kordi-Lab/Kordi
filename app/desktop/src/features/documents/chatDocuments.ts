@@ -10,30 +10,48 @@ export const ADD_DOCUMENT_ACCEPT = '.md,.markdown,.html,.htm';
 
 export const ADD_DOCUMENT_FAILED = 'Could not add the document.';
 
+/** Longest name a new document takes, before its extension. */
+const DOCUMENT_NAME_MAX = 120;
+
+/** Generated names a new document never takes, even when typed. */
+const PLACEHOLDER_NAME = /^untitled(?: \d+)?$/i;
+
 /**
- * A new document starts as one line break: an empty Markdown body that the
- * editor opens as a single empty paragraph, without a zero-byte upload.
+ * The name a new document gets from what was typed: trimmed, without a
+ * Markdown extension or path separators. Null for an empty or placeholder name.
  */
-export const BLANK_DOCUMENT_BODY = '\n';
+export function newDocumentBaseName(input: string): string | null {
+  const name = input
+    .replace(/[\\/:\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\.(?:md|markdown)$/i, '')
+    .replace(/^\.+/, '')
+    .trim()
+    .slice(0, DOCUMENT_NAME_MAX)
+    .trim();
+  return name && !PLACEHOLDER_NAME.test(name) ? name : null;
+}
 
-const UNTITLED = 'Untitled';
-
-/** `Untitled.md`, then `Untitled 2.md`, and so on past the names the chat already has. */
-export function nextUntitledDocumentName(existingNames: Iterable<string>): string {
+/** `<name>.md`, then `<name> 2.md`, and so on past the names the chat already has. */
+export function nextDocumentFileName(baseName: string, existingNames: Iterable<string>): string {
   const taken = new Set([...existingNames].map((name) => name.trim().toLowerCase()));
   for (let index = 1; ; index += 1) {
-    const name = index === 1 ? `${UNTITLED}.md` : `${UNTITLED} ${index}.md`;
+    const name = index === 1 ? `${baseName}.md` : `${baseName} ${index}.md`;
     if (!taken.has(name.toLowerCase())) return name;
   }
+}
+
+/** A new Markdown document that starts with its name as the first heading, or null for a name it cannot take. */
+export function newDocumentFile(input: string, existingNames: Iterable<string>): File | null {
+  const baseName = newDocumentBaseName(input);
+  if (!baseName) return null;
+  return new File([`# ${baseName}\n`], nextDocumentFileName(baseName, existingNames), { type: 'text/markdown' });
 }
 
 /** Content type of a file "Add file" accepts, or null for any other file. */
 export function addableDocumentContentType(name: string): 'text/markdown' | 'text/html' | null {
   return documentFormatForPath(name) ? documentContentType(name) : null;
-}
-
-export function blankDocumentFile(name: string): File {
-  return new File([BLANK_DOCUMENT_BODY], name, { type: 'text/markdown' });
 }
 
 function messageAttachments(
