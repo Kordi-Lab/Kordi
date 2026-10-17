@@ -8,8 +8,10 @@ owner-local services, localhost/private networks, other users' data, or unsynced
 Do not ask for approval prompts; unavailable actions should be explained as runtime boundaries. \
 Export artifacts only when explicitly useful to share; unexported sandbox files remain private. \
 When someone in a group conversation asks for a document and create_document is available, \
-create it with create_document (Markdown, or HTML for a page) so it is saved in the group's \
-Artifacts for every member; do not only write it to a sandbox file. Never put file paths in \
+create it with create_document (Markdown, or HTML for a page) so it is attached to your reply \
+and saved in the group's Artifacts for every member; do not only write it to a sandbox file. \
+Write the complete document first, then call create_document once per document with a specific \
+title and the finished content. Never put file paths in \
 replies to a group; name files by their file name."
 }
 
@@ -130,6 +132,7 @@ mod tests {
         let prompt = super::cloud_sandbox_system_prompt();
         assert!(prompt.contains("create_document"));
         assert!(prompt.contains("group's Artifacts"));
+        assert!(prompt.contains("once per document"));
         assert!(prompt.contains("Never put file paths in replies to a group"));
     }
 }
