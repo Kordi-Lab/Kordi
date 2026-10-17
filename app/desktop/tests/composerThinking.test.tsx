@@ -74,11 +74,11 @@ test('composer model controls display default for no-effort models', () => {
   assert.doesNotMatch(markup, />Off</);
 });
 
-test('composer model controls show the explicit no-provider state after removal', () => {
-  const markup = renderToStaticMarkup(createElement(ComposerModelControls, {
-    scope: 'chat',
+test('composer model controls offer sign-in instead of blank controls when no account is left', () => {
+  const props = {
+    scope: 'chat' as const,
     selection: { mode: 'My agent', model: 'openai/gpt-5.6-sol', thinking: 'medium' },
-    openSelector: { scope: 'chat', type: 'model' },
+    openSelector: { scope: 'chat' as const, type: 'model' as const },
     onToggleSelector: () => undefined,
     onSelectValue: () => undefined,
     authLabel: 'No auth',
@@ -93,12 +93,18 @@ test('composer model controls show the explicit no-provider state after removal'
       providerLabel: 'OpenAI',
       thinkingLevels: ['medium'],
     }],
-  }));
+  };
+  const markup = renderToStaticMarkup(createElement(ComposerModelControls, { ...props, onSignIn: () => undefined }));
 
-  assert.match(markup, />No Provider</);
-  assert.equal((markup.match(/>-<\/span>/g) ?? []).length, 2);
-  assert.equal((markup.match(/disabled=""/g) ?? []).length, 2);
-  assert.equal((markup.match(/lucide-chevron-down/g) ?? []).length, 1);
+  assert.match(markup, />No account</);
+  assert.match(markup, /Sign in<\/button>/);
+  assert.doesNotMatch(markup, />-<\/span>/);
   assert.doesNotMatch(markup, /app-composer-model-menu-layer/);
   assert.doesNotMatch(markup, />OpenAI</);
+
+  const withoutSignIn = renderToStaticMarkup(createElement(ComposerModelControls, props));
+  assert.match(withoutSignIn, />Choose account</);
+  assert.match(withoutSignIn, />gpt-5.6-sol</);
+  assert.match(withoutSignIn, />Medium</);
+  assert.doesNotMatch(withoutSignIn, />-<\/span>/);
 });

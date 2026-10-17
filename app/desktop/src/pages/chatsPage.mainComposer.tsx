@@ -341,6 +341,8 @@ export function MainComposer({
                 placeholder={editingMessage ? 'Edit message' : display.placeholder}
               />
             </div>}
+            {!editingMessage && collaborationRouting.enabled && collaborationRouting.error
+              ? <p className="app-error-text mt-1 text-[11px] leading-4 text-rose-500" role="alert">{collaborationRouting.error}</p> : null}
             {messageEditError ? (
               <p id={editErrorMessageId} className="app-error-text mt-1 text-[11px] leading-4 text-rose-500" role="alert">
                 {messageEditError}
@@ -411,7 +413,6 @@ export function MainComposer({
               && localRouting.paneKind === 'agent'
               && !collaborationRouting.enabled
               && !useCompactRouteMenu ? (
-                <>
                 <ComposerModelControls
                   scope="chat"
                   selection={composerSelection}
@@ -438,8 +439,8 @@ export function MainComposer({
                     ? chatModelOptions
                     : undefined}
                   compact={display.showCompanionPane}
+                  onSignIn={display.onOpenAuthentication}
                 />
-                </>
               ) : !editingMessage && !voiceSurfaceActive && canConfigureModelRoute
                 && collaborationRouting.enabled
                 && !useCompactRouteMenu
@@ -451,6 +452,7 @@ export function MainComposer({
                       agentSelectorOpen: collaborationRouting.agentSelectorOpen,
                       compact: display.showCompanionPane,
                     }}
+                    onSignIn={display.onOpenAuthentication}
                     options={{
                       authLabel: composerAuthLabel,
                       authOptions: composerAuthOptions,

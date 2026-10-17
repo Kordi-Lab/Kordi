@@ -18,6 +18,8 @@ type MainComposerLocalRouting = {
 type MainComposerCollaborationRouting = {
   enabled: boolean;
   notice: string | null;
+  /** A model pick whose save failed and was rolled back. */
+  error?: string | null;
   model: CollaborationRoutingControlsModel | null;
   agentSelectorOpen: boolean;
   onSelectAgent: (agentId: string) => void;
@@ -41,6 +43,8 @@ export type MainComposerProps = {
     activeLiveTurnIsRunning: boolean;
     prefersReducedMotion: boolean | null;
     placeholder: string;
+    /** Opens sign-in when no account can run the agent. */
+    onOpenAuthentication?: () => void;
   };
   onSend: (draftOverride?: string, attachmentOverride?: AttachmentItem[]) => Promise<void> | void;
   /** Present while a request the viewer sent in this chat runs or waits. */

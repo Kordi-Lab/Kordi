@@ -282,7 +282,7 @@ test('compact menu stages changes until explicit save', () => {
   assert.match(source, /const \[stagedProviderValue, setStagedProviderValue\] = useState/);
   assert.match(source, /const \[stagedModel, setStagedModel\] = useState/);
   assert.match(source, /const \[stagedThinking, setStagedThinking\] = useState/);
-  assert.match(source, /const save = \(\) => \{[\s\S]*onSave\(\{ providerOption: stagedProviderOption, model: stagedModel, thinking: stagedThinkingValue \}\);/);
+  assert.match(source, /const save = \(\) => \{[\s\S]*resolveComposerRoutePick\([\s\S]*onSave\(\{\s*providerOption: route\?\.providerOption \?\? stagedProviderOption,\s*model: route\?\.model \?\? stagedModel,\s*thinking: route\?\.thinking \?\? stagedThinkingValue,\s*\}\);/);
   assert.doesNotMatch(source, /chooseProvider = [\s\S]{0,260}onSave/);
   assert.doesNotMatch(source, /chooseModel = [\s\S]{0,220}onSave/);
 });
