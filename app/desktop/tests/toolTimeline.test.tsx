@@ -67,14 +67,15 @@ test('folded timeline summary stays inside narrow response surfaces', () => {
 
   assert.match(timelineBlock, /width:\s*100%/);
   assert.match(timelineBlock, /min-width:\s*0/);
-  assert.match(summaryBlock, /width:\s*min\(100%, 34rem\)/);
+  assert.match(summaryBlock, /max-width:\s*min\(100%, 34rem\)/);
   assert.match(summaryBlock, /overflow:\s*hidden/);
   assert.match(copyBlock, /width:\s*100%/);
   assert.match(copyBlock, /overflow:\s*hidden/);
   assert.match(lineBlock, /display:\s*flex/);
   assert.match(lineBlock, /max-width:\s*100%/);
-  assert.match(textBlock, /flex:\s*1 1 auto/);
+  assert.match(textBlock, /flex:\s*0 1 auto/);
   assert.match(textBlock, /max-width:\s*100%/);
+  assert.match(cssBlock(shellCss, '.app-transcript-timeline-reveal:not(.app-transcript-timeline-reveal-open)'), /contain:\s*inline-size/);
 });
 
 test('expanded thinking rows stay inside narrow response surfaces', () => {

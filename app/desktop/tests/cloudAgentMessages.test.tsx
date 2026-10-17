@@ -72,6 +72,10 @@ test('cloud fallback errors map backend codes to concise user-facing copy', () =
     'The owner device is online, so Kordi will answer from the device.',
   );
   assert.equal(
+    cloudAgentFallbackErrorNotice({ code: 'provider_auth_rejected' }),
+    'Sign in again to use this account.',
+  );
+  assert.equal(
     cloudAgentFallbackErrorNotice({ code: 'model_provider_error' }),
     'The provider failed while Kordi was replying. Try again in a moment.',
   );

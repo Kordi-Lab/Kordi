@@ -116,6 +116,20 @@ test('bounded model steps stop a repeating tool loop', async () => {
   expect(requests).toHaveLength(2);
 }, 20000);
 
+test('uncapped runs continue past many tool steps until the model finishes', async () => {
+  let call = 0;
+  const { request, requests } = await fixture(() => ++call <= 10 ? [
+    { choices: [{ index: 0, delta: { role: 'assistant', tool_calls: [{ index: 0, id: `call-${call}`, type: 'function', function: { name: 'repeat', arguments: '{}' } }] }, finish_reason: null }] },
+    { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
+  ] : textChunks('Done.'));
+  request.tools = [{ name: 'repeat', description: 'Repeat', inputSchema: { type: 'object', properties: {} } }];
+  delete request.limits.maxSteps;
+  delete request.limits.maxToolCalls;
+  const result = await runTurn(request, { event: () => {}, tool: async () => ({ ok: true, content: [{ type: 'text', text: 'again' }] }) }, new AbortController().signal);
+  expect(result.text).toBe('Done.');
+  expect(requests).toHaveLength(11);
+}, 30000);
+
 test('JSONL worker emits ordered lifecycle and a single terminal result', async () => {
   const { request } = await fixture(() => textChunks('Worker reply.'));
   const worker = Bun.spawn([process.execPath, 'run', 'src/worker.ts'], { cwd: join(import.meta.dir, '..'), stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });

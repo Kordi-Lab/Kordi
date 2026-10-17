@@ -93,6 +93,7 @@ export function cloudAgentFallbackErrorNotice(input: { code?: string | null; mes
   if (normalizedCode === 'owner_online') {
     return 'The owner device is online, so Kordi will answer from the device.';
   }
+  if (normalizedCode === 'provider_auth_rejected') return CLOUD_AGENT_SIGN_IN_AGAIN_NOTICE;
   if (normalizedCode === 'model_provider_error') {
     return 'The provider failed while Kordi was replying. Try again in a moment.';
   }

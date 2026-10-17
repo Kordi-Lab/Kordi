@@ -39,8 +39,6 @@ pub(crate) fn desktop_cloud_provider_auth_snapshot_payload(
             json!({ "apiKey": auth.credential, "model": model }),
         ),
         kordi_cli::login::ProviderAuthMethod::OAuth => {
-            // The expiry lets the server stop handing out a copy once its
-            // access token lapses; the refresh token never leaves this Mac.
             let profile_id = selected_choice
                 .as_deref()
                 .and_then(|choice| choice.strip_prefix("profile:"))
@@ -57,16 +55,18 @@ pub(crate) fn desktop_cloud_provider_auth_snapshot_payload(
                         })
                         .map(|profile| profile.profile_id)
                 });
+            // Only the access token's expiry leaves this Mac; the refresh
+            // token stays local so it is never rotated in two places. The
+            // server stops using the copy at that expiry (issue 1802).
             let expires_at_ms = profile_id
                 .as_deref()
                 .and_then(|id| kordi_cli::login::stored_oauth_expiry(provider, id));
-            let auth_choice = selected_choice
-                .clone()
-                .unwrap_or_else(|| "local-active-oauth".to_string());
             match auth.credential_provider.as_str() {
                 "openai-codex" => (
                     "openai-codex".to_string(),
-                    auth_choice,
+                    selected_choice
+                        .clone()
+                        .unwrap_or_else(|| "local-active-oauth".to_string()),
                     openai_codex_oauth_payload(
                         &auth.credential,
                         expires_at_ms,
@@ -76,13 +76,20 @@ pub(crate) fn desktop_cloud_provider_auth_snapshot_payload(
                 ),
                 "anthropic-oauth" => (
                     "anthropic".to_string(),
-                    auth_choice,
-                    anthropic_oauth_payload(&auth.credential, expires_at_ms, &model),
+                    selected_choice
+                        .clone()
+                        .unwrap_or_else(|| "local-active-oauth".to_string()),
+                    json!({
+                        "apiMode": "anthropic-oauth",
+                        "accessToken": auth.credential,
+                        "expiresAtMs": expires_at_ms,
+                        "model": model,
+                    }),
                 ),
                 other => {
                     return Err(format!(
-                        "Cloud fallback provider-auth sync does not support OAuth credentials from {other}"
-                    ));
+                    "Cloud fallback provider-auth sync does not support OAuth credentials from {other}"
+                ));
                 }
             }
         }
@@ -95,23 +102,8 @@ pub(crate) fn desktop_cloud_provider_auth_snapshot_payload(
     }))
 }
 
-/// Hosted payload for a desktop Claude sign-in: the access token and its
-/// expiry only. The Mac re-uploads it after refreshing the token.
-fn anthropic_oauth_payload(
-    access_token: &str,
-    expires_at_ms: Option<i64>,
-    model: &str,
-) -> serde_json::Value {
-    json!({
-        "apiMode": "anthropic-oauth",
-        "accessToken": access_token,
-        "expiresAtMs": expires_at_ms,
-        "model": model,
-    })
-}
-
 /// Hosted payload for a desktop ChatGPT sign-in: the access token and its
-/// expiry only. The Mac re-uploads it after refreshing the token.
+/// expiry only. When it expires the hosted account asks to be reconnected.
 fn openai_codex_oauth_payload(
     access_token: &str,
     expires_at_ms: Option<i64>,
@@ -184,9 +176,7 @@ pub(crate) fn cloud_provider_auth_snapshot_model(model: Option<&str>) -> String 
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        anthropic_oauth_payload, cloud_provider_auth_snapshot_model_for, openai_codex_oauth_payload,
-    };
+    use super::{cloud_provider_auth_snapshot_model_for, openai_codex_oauth_payload};
 
     #[test]
     fn desktop_codex_upload_carries_no_refresh_token() {
@@ -202,18 +192,6 @@ mod tests {
             .keys()
             .any(|key| key.to_ascii_lowercase().contains("refresh")));
         assert_eq!(payload["accessToken"], "synthetic-access");
-        assert_eq!(payload["expiresAtMs"], 1_900_000_000_000_i64);
-    }
-
-    #[test]
-    fn desktop_claude_upload_carries_its_expiry_and_no_refresh_token() {
-        let payload =
-            anthropic_oauth_payload("synthetic-access", Some(1_900_000_000_000), "claude");
-        let fields = payload.as_object().expect("payload is an object");
-        assert!(!fields
-            .keys()
-            .any(|key| key.to_ascii_lowercase().contains("refresh")));
-        assert_eq!(payload["apiMode"], "anthropic-oauth");
         assert_eq!(payload["expiresAtMs"], 1_900_000_000_000_i64);
     }
 

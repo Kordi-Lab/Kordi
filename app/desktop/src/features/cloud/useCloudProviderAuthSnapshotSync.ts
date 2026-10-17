@@ -176,7 +176,36 @@ export async function reconcileCloudProviderAuthSnapshots({
   return isCurrent() ? 'complete' : 'stale';
 }
 
+/**
+ * Republishes every configured provider whose local credential changed since
+ * its last upload. Local OAuth refreshes never reach the frontend, so without
+ * this the hosted copy keeps an expired token (issue 1802).
+ */
+export async function refreshCloudProviderAuthSnapshots(
+  options: Omit<ReconcileCloudProviderAuthSnapshotsOptions, 'intent'> & { revision: number },
+): Promise<CloudProviderAuthSnapshotSyncOutcome> {
+  const providers = new Set(
+    cloudProviderAuthReconciliationTargets(options.desktopAuthState, options.route)
+      .filter((target) => target.configured)
+      .map((target) => target.provider),
+  );
+  let outcome: CloudProviderAuthSnapshotSyncOutcome = 'complete';
+  for (const providerId of providers) {
+    const result = await reconcileCloudProviderAuthSnapshots({
+      ...options,
+      intent: { accountId: options.accountId, providerId, reason: 'credential-refresh', revision: options.revision },
+    });
+    if (result === 'stale') return result;
+    if (result !== 'complete') outcome = result;
+  }
+  return outcome;
+}
+
 const PROVIDER_AUTH_SYNC_RETRY_MS = 1_500;
+// The builder refreshes a token close to expiry, so a short interval keeps the
+// hosted copy current; unchanged credentials are skipped by the publish gate.
+const PROVIDER_AUTH_REFRESH_INTERVAL_MS = 5 * 60_000;
+const PROVIDER_AUTH_FOCUS_REFRESH_MIN_MS = 60_000;
 
 export function useCloudProviderAuthSnapshotSync({
   account,
@@ -203,6 +232,44 @@ export function useCloudProviderAuthSnapshotSync({
   const activeSyncKeyRef = useRef<string | null>(null);
   const retryTimerRef = useRef<number | null>(null);
   const [, retrySync] = useReducer((revision: number) => revision + 1, 0);
+  const [refreshRevision, requestRefresh] = useReducer((revision: number) => revision + 1, 0);
+  const refreshInputsRef = useRef({ route, desktopAuthState });
+  useEffect(() => {
+    refreshInputsRef.current = { route, desktopAuthState };
+  }, [route, desktopAuthState]);
+  const refreshInFlightRef = useRef(false);
+  const hasDesktopAuthState = Boolean(desktopAuthState);
+
+  useEffect(() => {
+    let lastFocusRefresh = Date.now();
+    const onFocus = () => {
+      if (Date.now() - lastFocusRefresh < PROVIDER_AUTH_FOCUS_REFRESH_MIN_MS) return;
+      lastFocusRefresh = Date.now();
+      requestRefresh();
+    };
+    const interval = window.setInterval(requestRefresh, PROVIDER_AUTH_REFRESH_INTERVAL_MS);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
+
+  useEffect(() => {
+    const accountId = account?.accountId;
+    if (!accountId || !hasDesktopAuthState || refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
+    void refreshCloudProviderAuthSnapshots({
+      accountId,
+      client,
+      route: refreshInputsRef.current.route,
+      desktopAuthState: refreshInputsRef.current.desktopAuthState,
+      revision: refreshRevision,
+      isCurrent: () => activeAccountIdRef.current === accountId,
+    })
+      .catch((error) => reportWarning('[cloud-provider-auth-sync] refresh failed', error))
+      .finally(() => { refreshInFlightRef.current = false; });
+  }, [account?.accountId, client, hasDesktopAuthState, refreshRevision, reportWarning]);
 
   useEffect(() => {
     activeAccountIdRef.current = account?.accountId ?? null;

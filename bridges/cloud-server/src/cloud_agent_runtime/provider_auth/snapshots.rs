@@ -11,7 +11,7 @@ use uuid::Uuid;
 use super::cipher::ProviderAuthCipher;
 use super::provider_family::equivalent_provider_ids;
 use super::publish_request::NormalizedProviderAuthSnapshotInput;
-use super::readiness::{payload_expiry, payload_refreshable, snapshot_status, READY};
+use super::readiness::{payload_refreshable, publish_expiry, snapshot_status, READY};
 use crate::chat_sync::store::{append_user_sync_events_in_transaction, StoreError};
 
 #[derive(Debug, Clone, Serialize)]
@@ -202,7 +202,7 @@ pub async fn publish_snapshot(
     .bind(encrypted_payload)
     .bind(cipher.key_id())
     .bind(&now)
-    .bind(payload_expiry(&input.payload))
+    .bind(publish_expiry(&input.payload, Utc::now().timestamp_millis()))
     .bind(payload_refreshable(&input.payload))
     .fetch_one(&mut *tx)
     .await?;
@@ -336,6 +336,25 @@ pub(crate) async fn snapshot_available_for_route(
         .is_some())
 }
 
+/// The route names exactly one saved account and it needs reconnecting, so a
+/// failed run can ask the owner to sign in again instead of reporting none.
+pub(crate) async fn snapshot_needs_reconnect_for_route(
+    pool: &PgPool,
+    account_id: &str,
+    route: &Value,
+) -> Result<bool, sqlx_core::Error> {
+    Ok(matches!(
+        route_snapshot(pool, account_id, route).await?,
+        RouteSnapshot::NeedsReconnect
+    ))
+}
+
+enum RouteSnapshot {
+    Ready(String),
+    NeedsReconnect,
+    Missing,
+}
+
 /// The live snapshot a run route names. A route with an account choice gets
 /// that saved account. A route without a choice, or without a provider, fails
 /// closed unless exactly one live snapshot matches, so the server never picks
@@ -346,6 +365,17 @@ pub(crate) async fn live_snapshot_for_route(
     account_id: &str,
     route: &Value,
 ) -> Result<Option<String>, sqlx_core::Error> {
+    Ok(match route_snapshot(pool, account_id, route).await? {
+        RouteSnapshot::Ready(snapshot_id) => Some(snapshot_id),
+        RouteSnapshot::NeedsReconnect | RouteSnapshot::Missing => None,
+    })
+}
+
+async fn route_snapshot(
+    pool: &PgPool,
+    account_id: &str,
+    route: &Value,
+) -> Result<RouteSnapshot, sqlx_core::Error> {
     let provider_ids = equivalent_provider_ids(
         route
             .get("defaultAuthProvider")
@@ -374,13 +404,14 @@ pub(crate) async fn live_snapshot_for_route(
     // A named account that needs reconnecting is unusable; never substitute
     // another saved account for it.
     Ok(match rows.as_slice() {
-        [_, _, ..] if ambiguous => None,
+        [_, _, ..] if ambiguous => RouteSnapshot::Missing,
         [(snapshot_id, refreshable, expires_at_ms), ..]
             if snapshot_status(*refreshable, *expires_at_ms) == READY =>
         {
-            Some(snapshot_id.clone())
+            RouteSnapshot::Ready(snapshot_id.clone())
         }
-        _ => None,
+        [_, ..] => RouteSnapshot::NeedsReconnect,
+        [] => RouteSnapshot::Missing,
     })
 }
 

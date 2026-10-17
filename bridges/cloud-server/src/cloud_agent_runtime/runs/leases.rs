@@ -76,6 +76,9 @@ pub struct RunnerRunResponse {
     pub runtime_route: AgentRuntimeRoute,
     #[serde(rename = "providerAuthAvailable")]
     pub provider_auth_available: bool,
+    /// The named saved account exists but its sign-in expired.
+    #[serde(rename = "providerAuthNeedsReconnect", default)]
+    pub provider_auth_needs_reconnect: bool,
     #[serde(rename = "responseMessageId")]
     pub response_message_id: Option<String>,
     #[serde(rename = "errorCode")]
@@ -249,6 +252,9 @@ pub(super) async fn runner_response_from_row(
     }
     let provider_auth_available =
         super::super::provider_auth::snapshot_available_for_route(pool, &row.3, &row.7).await?;
+    let provider_auth_needs_reconnect = !provider_auth_available
+        && super::super::provider_auth::snapshot_needs_reconnect_for_route(pool, &row.3, &row.7)
+            .await?;
     Ok(RunnerRunResponse {
         turn_identity: super::identity::identity_for_run(pool, &row.0).await?,
         history_messages: super::super::subsession_execution::history(pool, &row.0).await?,
@@ -264,6 +270,7 @@ pub(super) async fn runner_response_from_row(
         sandbox_id: row.6,
         runtime_route: serde_json::from_value(row.7).unwrap_or_default(),
         provider_auth_available,
+        provider_auth_needs_reconnect,
         response_message_id: row.8,
         error_code: row.9,
         error_message: row.10,

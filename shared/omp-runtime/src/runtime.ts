@@ -137,7 +137,7 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
       if (terminalError) return;
       switch (event.type) {
         case 'turn_start':
-          if (++steps > request.limits.maxSteps) return fail('step_limit', 'Run reached its model step limit.');
+          if (++steps > (request.limits.maxSteps ?? Infinity)) return fail('step_limit', 'Run reached its model step limit.');
           host.event({ kind: 'turn_start', step: steps - 1 });
           host.event({ kind: 'status', status: 'running', step: steps });
           break;
@@ -161,7 +161,7 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
           }
           break;
         case 'tool_execution_start':
-          if (++toolCalls > request.limits.maxToolCalls) return fail('tool_limit', 'Run reached its tool call limit.');
+          if (++toolCalls > (request.limits.maxToolCalls ?? Infinity)) return fail('tool_limit', 'Run reached its tool call limit.');
           host.event({ kind: 'tool_start', callId: event.toolCallId, name: event.toolName, input: event.args });
           break;
         case 'tool_execution_update':

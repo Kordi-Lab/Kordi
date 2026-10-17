@@ -202,6 +202,7 @@ fn run() -> CloudAgentRun {
         sandbox_id: Some("cas_memory".into()),
         runtime_route: Default::default(),
         provider_auth_available: true,
+        provider_auth_needs_reconnect: false,
         connectors: Default::default(),
     }
 }

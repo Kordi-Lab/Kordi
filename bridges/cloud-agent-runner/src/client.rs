@@ -44,6 +44,9 @@ pub struct CloudAgentRun {
     pub runtime_route: AgentRuntimeRoute,
     #[serde(rename = "providerAuthAvailable")]
     pub provider_auth_available: bool,
+    /// The owner's saved account for this route needs signing in again.
+    #[serde(rename = "providerAuthNeedsReconnect", default)]
+    pub provider_auth_needs_reconnect: bool,
     /// `trigger` and `connectorTools` from the lease; never a credential.
     #[serde(flatten)]
     pub connectors: crate::connectors::LeaseConnectors,

@@ -114,6 +114,11 @@
   pointer-events: auto;
 }
 
+/* Collapsed details must not widen the card around the summary. */
+.app-transcript-timeline-reveal:not(.app-transcript-timeline-reveal-open) {
+  contain: inline-size;
+}
+
 .app-transcript-timeline-reveal-inner {
   min-height: 0;
   min-width: 0;
@@ -140,7 +145,7 @@
 
 .app-transcript-tool-timeline-summary {
   display: inline-flex;
-  width: min(100%, 34rem);
+  width: auto;
   min-width: 0;
   max-width: min(100%, 34rem);
   overflow: hidden;
@@ -176,7 +181,8 @@
 }
 
 .app-transcript-tool-timeline-summary-text {
-  flex: 1 1 auto;
+  /* The chevron follows the text instead of the far edge of the row. */
+  flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
   color: color-mix(in oklab, var(--utility-muted-text) 84%, transparent);

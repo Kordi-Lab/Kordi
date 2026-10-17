@@ -64,6 +64,7 @@ fn run(trigger: &str, tools: Vec<ConnectorToolDescriptor>) -> CloudAgentRun {
         sandbox_id: Some("cas_test".into()),
         runtime_route: Default::default(),
         provider_auth_available: true,
+        provider_auth_needs_reconnect: false,
         connectors: LeaseConnectors {
             trigger: Some(trigger.into()),
             tools,
