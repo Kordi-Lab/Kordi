@@ -21,14 +21,14 @@ pub(super) async fn pending(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Result<Json<Vec<Value>>, axum::http::StatusCode> {
-    let rows:Vec<(String,Uuid,String,String,String)>=query_as("SELECT r.run_id,s.subsession_id,c.message_id::text,c.sender_account_id,c.text FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.account_id=c.sender_account_id AND m.membership_state='active' WHERE EXISTS(SELECT 1 FROM cloud_chat_conversation_members owner_member WHERE owner_member.conversation_id=s.parent_conversation_id AND owner_member.account_id=s.owner_account_id AND owner_member.membership_state='active') AND s.owner_account_id=$1 AND s.publisher_device_id=$2 AND s.execution_backend='desktop' AND r.status='queued' ORDER BY c.sequence LIMIT 16")
+    let rows:Vec<(String,Uuid,String,String,String,Value)>=query_as("SELECT r.run_id,s.subsession_id,c.message_id::text,c.sender_account_id,c.text,r.runtime_route_json FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.account_id=c.sender_account_id AND m.membership_state='active' WHERE EXISTS(SELECT 1 FROM cloud_chat_conversation_members owner_member WHERE owner_member.conversation_id=s.parent_conversation_id AND owner_member.account_id=s.owner_account_id AND owner_member.membership_state='active') AND s.owner_account_id=$1 AND s.publisher_device_id=$2 AND s.execution_backend='desktop' AND r.status='queued' ORDER BY c.sequence LIMIT 16")
         .bind(&session.account_id).bind(&session.device_id).fetch_all(state.db_pool()).await.map_err(|_|axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
     let mut pending = Vec::new();
-    for (run, id, message, actor, text) in rows {
+    for (run, id, message, actor, text, route) in rows {
         let ordinary:Vec<(String,String,String,i64)>=query_as("SELECT c.message_id::text,a.display_name,c.text,(extract(epoch from c.created_at)*1000)::bigint FROM cloud_agent_subsession_chat c JOIN cloud_accounts a ON a.account_id=c.sender_account_id WHERE c.subsession_id=$1 AND c.run_id IS NULL AND c.sequence<(SELECT sequence FROM cloud_agent_subsession_chat WHERE message_id::text=$2) ORDER BY c.sequence DESC LIMIT 64")
             .bind(id).bind(&message).fetch_all(state.db_pool()).await.map_err(|_|axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
         let context:Vec<Value>=ordinary.into_iter().rev().map(|(id,name,text,time)|json!({"id":id,"authorName":name,"authorKind":"person","text":text,"createdAtMs":time})).collect();
-        pending.push(json!({"runId":run,"subsessionId":id,"messageId":message,"senderAccountId":actor,"text":text,"contextMessages":context}));
+        pending.push(json!({"runId":run,"subsessionId":id,"messageId":message,"senderAccountId":actor,"text":text,"contextMessages":context,"runtimeRoute":route}));
     }
     Ok(Json(pending))
 }

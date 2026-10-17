@@ -32,10 +32,10 @@ export class CloudAgentSubsessionClient {
         title: value.title, status: value.status, messages: value.messages, activity: value.activity, expectedVersion }),
     }, 'Could not synchronize this agent task.');
   }
-  sendAgentSubsessionMessage(token: string, id: string, clientMessageId: string, text: string, mentions: unknown[]): Promise<CloudAgentSubsession> {
-    return this.request(`/v1/cloud/agent-subsessions/${encodeURIComponent(id)}/messages`, { method:'POST', headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'}, body:JSON.stringify({clientMessageId,text,mentions}) }, 'Could not send this message.');
+  sendAgentSubsessionMessage(token: string, id: string, clientMessageId: string, text: string, mentions: unknown[], runtimeRoute?: Record<string, string>): Promise<CloudAgentSubsession> {
+    return this.request(`/v1/cloud/agent-subsessions/${encodeURIComponent(id)}/messages`, { method:'POST', headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'}, body:JSON.stringify({clientMessageId,text,mentions,...(runtimeRoute ? { runtimeRoute } : {})}) }, 'Could not send this message.');
   }
-  pendingAgentSubsessionMessages(token:string): Promise<Array<{runId:string;subsessionId:string;messageId:string;senderAccountId:string;text:string;contextMessages?:DesktopChatContextMessage[]}>> {
+  pendingAgentSubsessionMessages(token:string): Promise<Array<{runId:string;subsessionId:string;messageId:string;senderAccountId:string;text:string;contextMessages?:DesktopChatContextMessage[];runtimeRoute?:unknown}>> {
     return this.request('/v1/cloud/agent-subsessions/pending', {method:'GET',headers:{Authorization:`Bearer ${token}`}}, 'Could not load queued task messages.');
   }
 }

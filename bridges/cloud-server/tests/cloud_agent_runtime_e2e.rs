@@ -417,6 +417,8 @@ mod stop_requests;
 mod subsession_budgets;
 #[path = "cloud_agent_runtime_e2e/subsession_follow.rs"]
 mod subsession_follow;
+#[path = "cloud_agent_runtime_e2e/subsession_owner_reply.rs"]
+mod subsession_owner_reply;
 #[path = "cloud_agent_runtime_e2e/subsession_stop.rs"]
 mod subsession_stop;
 #[path = "cloud_agent_runtime_e2e/subsessions.rs"]

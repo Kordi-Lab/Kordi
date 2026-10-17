@@ -1,6 +1,8 @@
-//! Shared human messages and explicit, identity-bound Agent mentions.
+//! Shared human messages, explicit identity-bound Agent mentions, and the
+//! owner's plain messages to their own Agent.
 use super::*;
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, MESSAGE_SEND_LIMIT};
+use crate::cloud_agent_runtime::runs::AgentRuntimeRoute;
 use axum::http::header::RETRY_AFTER;
 use axum::response::{IntoResponse, Response};
 
@@ -23,6 +25,17 @@ pub(crate) struct SendRequest {
     text: String,
     #[serde(default)]
     mentions: Vec<Value>,
+    /// The owner's route for the run this message starts; omitted keeps the
+    /// thread's current route.
+    #[serde(default)]
+    runtime_route: Option<AgentRuntimeRoute>,
+}
+
+/// Whether a message runs the thread's Agent: an explicit mention of it from
+/// anyone, or a message with no mentions at all from its owner, who is talking
+/// to their own Agent. Other members' plain messages stay conversation context.
+fn addresses_agent(text: &str, mentions: &[Value], agent: &str, sender_is_owner: bool) -> bool {
+    invokes_agent(text, mentions, agent) || (sender_is_owner && mentions.is_empty())
 }
 
 fn invokes_agent(text: &str, mentions: &[Value], agent: &str) -> bool {
@@ -97,6 +110,35 @@ fn valid_mentions(mentions: &[Value]) -> bool {
         })
 }
 
+/// The run a thread's next run inherits from: its own latest run, else the
+/// run that spawned it. Binds subsession, parent session, parent request,
+/// owner, and Agent.
+const THREAD_RUN_SOURCE: &str = " FROM cloud_agent_fallback_runs r WHERE r.subsession_id=$1 OR (r.session_id=$2 AND r.request_message_id IN ($3,regexp_replace($3,'^ios_','')) AND r.owner_account_id=$4 AND r.execution_agent_id=$5) ORDER BY (r.subsession_id=$1) DESC NULLS LAST,r.created_at DESC LIMIT 1";
+
+/// The route the thread's next run uses unless its owner chooses another.
+pub(super) async fn thread_route(
+    pool: &PgPool,
+    id: Uuid,
+    parent_session_id: &str,
+    parent_request_id: &str,
+    owner_account_id: &str,
+    agent_id: &str,
+) -> Result<Option<AgentRuntimeRoute>, ApiError> {
+    let row: Option<(Value,)> =
+        query_as(&format!("SELECT r.runtime_route_json{THREAD_RUN_SOURCE}"))
+            .bind(id)
+            .bind(parent_session_id)
+            .bind(parent_request_id)
+            .bind(owner_account_id)
+            .bind(agent_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_error)?;
+    Ok(row
+        .and_then(|(route,)| serde_json::from_value::<AgentRuntimeRoute>(route).ok())
+        .and_then(|route| route.normalized()))
+}
+
 /// A 429 response in this module's error shape, with `Retry-After`.
 fn rate_limited(retry_after: std::time::Duration) -> Response {
     let mut response = error(StatusCode::TOO_MANY_REQUESTS, "rate_limited").into_response();
@@ -116,7 +158,13 @@ pub(super) async fn send(
     Path(id): Path<Uuid>,
     Json(input): Json<SendRequest>,
 ) -> Response {
-    if input.text.trim().is_empty() || input.text.len() > 32_000 || !valid_mentions(&input.mentions)
+    if input.text.trim().is_empty()
+        || input.text.len() > 32_000
+        || !valid_mentions(&input.mentions)
+        || input
+            .runtime_route
+            .as_ref()
+            .is_some_and(|route| route.normalized().is_none())
     {
         return error(StatusCode::BAD_REQUEST, "invalid_subsession_message").into_response();
     }
@@ -153,7 +201,11 @@ async fn admitted_invocation(
     input: &SendRequest,
 ) -> Result<(Snapshot, bool), ApiError> {
     let visible = snapshot(pool, id, &session.account_id, false).await?;
-    let invokes = invokes_agent(&input.text, &input.mentions, &visible.agent_id);
+    let owner = visible.owner_account_id == session.account_id;
+    if input.runtime_route.is_some() && !owner {
+        return Err(error(StatusCode::FORBIDDEN, "subsession_route_owner_only"));
+    }
+    let invokes = addresses_agent(&input.text, &input.mentions, &visible.agent_id, owner);
     if invokes {
         let allowed:(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.account_id=s.owner_account_id AND m.membership_state='active' WHERE s.subsession_id=$1 AND (s.agent_id='cloud-agent:'||s.owner_account_id OR EXISTS(SELECT 1 FROM cloud_agent_definitions d WHERE d.agent_id=s.agent_id AND d.owner_account_id=s.owner_account_id AND d.status='active' AND (d.access_scope='participant_conversations' OR s.owner_account_id=$2))))")
             .bind(id).bind(&session.account_id).fetch_one(pool).await.map_err(db_error)?;
@@ -198,9 +250,17 @@ async fn store_message(
     } else {
         let run_id = if invokes {
             let run_id = format!("car_{}", Uuid::new_v4().simple());
-            let inherited:Option<(String,Value,Vec<String>)>=query_as("SELECT r.system_prompt,r.runtime_route_json,ARRAY(SELECT jsonb_array_elements_text(r.subsession_write_scope)) FROM cloud_agent_fallback_runs r WHERE r.subsession_id=$1 OR (r.session_id=$2 AND r.request_message_id IN ($3,regexp_replace($3,'^ios_','')) AND r.owner_account_id=$4 AND r.execution_agent_id=$5) ORDER BY (r.subsession_id=$1) DESC NULLS LAST,r.created_at DESC LIMIT 1")
+            let inherited:Option<(String,Value,Vec<String>)>=query_as(&format!("SELECT r.system_prompt,r.runtime_route_json,ARRAY(SELECT jsonb_array_elements_text(r.subsession_write_scope)){THREAD_RUN_SOURCE}"))
                 .bind(id).bind(&visible.parent_session_id).bind(&visible.parent_request_id).bind(&visible.owner_account_id).bind(&visible.agent_id).fetch_optional(&mut *tx).await.map_err(db_error)?;
-            let (system,route,scope)=inherited.unwrap_or_else(||(format!("You are {}. Agent identity: {}. Owner: {}. Continue the same execution subsession. Do not create a channel or another subsession. Respond only to the current explicit mention; ordinary participant messages are conversation context.",visible.agent_display_name,visible.agent_id,visible.owner_account_id),json!({}),Vec::new()));
+            let (system,inherited_route,scope)=inherited.unwrap_or_else(||(format!("You are {}. Agent identity: {}. Owner: {}. Continue the same execution subsession. Do not create a channel or another subsession. Respond to the current message addressed to you; other participant messages are conversation context.",visible.agent_display_name,visible.agent_id,visible.owner_account_id),json!({}),Vec::new()));
+            let route = match input
+                .runtime_route
+                .as_ref()
+                .and_then(AgentRuntimeRoute::normalized)
+            {
+                Some(chosen) => json!(chosen),
+                None => inherited_route,
+            };
             let sandbox = crate::cloud_agent_runtime::sandboxes::ensure_sandbox_for_run(
                 pool,
                 &format!("subsession:{id}"),
@@ -281,6 +341,33 @@ mod tests {
             "@KordiOther explain",
             &[mention],
             "agent-one"
+        ));
+    }
+
+    #[test]
+    fn the_owner_s_plain_message_addresses_their_own_agent() {
+        let agent =
+            json!({"targetKind":"agent","agentId":"agent-one","startUtf16":0,"lengthUtf16":6});
+        let person = json!({"targetKind":"person","humanId":"peer","startUtf16":0,"lengthUtf16":5});
+        assert!(addresses_agent("try again", &[], "agent-one", true));
+        assert!(!addresses_agent("try again", &[], "agent-one", false));
+        assert!(addresses_agent(
+            "@Kordi explain",
+            std::slice::from_ref(&agent),
+            "agent-one",
+            false
+        ));
+        assert!(!addresses_agent(
+            "@Alex look at this",
+            &[person],
+            "agent-one",
+            true
+        ));
+        assert!(!addresses_agent(
+            "@Kordi explain",
+            &[agent],
+            "agent-two",
+            true
         ));
     }
 }

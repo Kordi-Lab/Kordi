@@ -198,8 +198,8 @@ export class CloudAuthClient {
   putAgentSubsession(token: string, value: NativeAgentSubsession, expectedVersion: number) {
     return this.subsessionClient.putAgentSubsession(token, value, expectedVersion);
   }
-  sendAgentSubsessionMessage(token: string, id: string, clientMessageId: string, text: string, mentions: unknown[]) {
-    return this.subsessionClient.sendAgentSubsessionMessage(token, id, clientMessageId, text, mentions);
+  sendAgentSubsessionMessage(token: string, id: string, clientMessageId: string, text: string, mentions: unknown[], runtimeRoute?: Record<string, string>) {
+    return this.subsessionClient.sendAgentSubsessionMessage(token, id, clientMessageId, text, mentions, runtimeRoute);
   }
   pendingAgentSubsessionMessages(token: string) {
     return this.subsessionClient.pendingAgentSubsessionMessages(token);
