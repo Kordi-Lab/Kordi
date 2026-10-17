@@ -327,3 +327,69 @@ async fn a_refused_account_is_skipped_and_the_digest_names_it() {
     assert_eq!(account_status(&pool, &other, "openai").await, "ready");
     assert_eq!(digest_runs(&pool, &other).await.len(), 1);
 }
+
+#[tokio::test]
+async fn a_failed_account_hands_the_digest_to_another_available_one() {
+    let Some(pool) = pool().await else { return };
+    let owner = digest_owner(&pool).await;
+    saved_account(&pool, &owner, "openai", "2026-10-01T00:00:00Z", None).await;
+    saved_account(&pool, &owner, "anthropic", "2026-10-02T00:00:00Z", None).await;
+    crate::digest::store::refresh(&pool, &owner).await.unwrap();
+    assert_eq!(
+        digest_runs(&pool, &owner).await[0]["defaultAuthProvider"],
+        "anthropic"
+    );
+
+    // The provider is unavailable: the digest moves to the other account at
+    // once, counts no failure, and keeps the first account ready.
+    let first = lease_newest_digest_run(&pool, &owner, "anthropic").await;
+    crate::digest::fail(&pool, &first, None, "provider_unavailable")
+        .await
+        .unwrap();
+    assert_eq!(account_status(&pool, &owner, "anthropic").await, "ready");
+    let routes = digest_runs(&pool, &owner).await;
+    assert_eq!(routes.len(), 2, "{routes:?}");
+    assert!(routes
+        .iter()
+        .any(|route| route["defaultAuthProvider"] == "openai"));
+    let failures = |pool: PgPool, owner: String| async move {
+        query_as::<_, (i32,)>(
+            "SELECT failure_count FROM cloud_account_digests WHERE account_id = $1",
+        )
+        .bind(owner)
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .0
+    };
+    assert_eq!(failures(pool.clone(), owner.clone()).await, 0);
+
+    // The second account fails too: no account is left that has not failed,
+    // so the digest backs off instead of bouncing between them.
+    let second = lease_newest_digest_run(&pool, &owner, "openai").await;
+    crate::digest::fail(&pool, &second, None, "digest_generation_failed")
+        .await
+        .unwrap();
+    assert_eq!(digest_runs(&pool, &owner).await.len(), 2);
+    assert_eq!(failures(pool.clone(), owner.clone()).await, 1);
+
+    // After the backoff both accounts failed recently, and one is still used.
+    query("UPDATE cloud_account_digests SET retry_after = now() WHERE account_id = $1")
+        .bind(&owner)
+        .execute(&pool)
+        .await
+        .unwrap();
+    crate::digest::store::refresh(&pool, &owner).await.unwrap();
+    assert_eq!(digest_runs(&pool, &owner).await.len(), 3);
+
+    // With a single account, a failure keeps it and backs off.
+    let single = digest_owner(&pool).await;
+    saved_account(&pool, &single, "openai", "2026-10-01T00:00:00Z", None).await;
+    crate::digest::store::refresh(&pool, &single).await.unwrap();
+    let run = lease_newest_digest_run(&pool, &single, "openai").await;
+    crate::digest::fail(&pool, &run, None, "provider_unavailable")
+        .await
+        .unwrap();
+    assert_eq!(digest_runs(&pool, &single).await.len(), 1);
+    assert_eq!(failures(pool.clone(), single.clone()).await, 1);
+}

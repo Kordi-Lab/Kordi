@@ -1,5 +1,6 @@
 pub mod changes;
 pub(crate) mod chat_calendar;
+mod fallback;
 mod incremental;
 pub mod models;
 pub(crate) mod pip_guard;
