@@ -105,7 +105,7 @@ export function VirtualTranscript<Item>({
   ));
 
   const passiveViewport = useTranscriptViewportAnchor({ sessionKey, updateKey: passiveUpdateKey,
-    contentKey: `${messageContentKey ?? ''}|${String(tailKey ?? '')}`, viewportRef: internalScrollRef });
+    contentKey: `${messageContentKey ?? ''}|${String(tailKey ?? '')}`, viewportRef: internalScrollRef, followingTail: isAtTail });
   const { options: virtualizerOptions, scrollOrigin } = useTranscriptVirtualizerOptions({
     items, sessionKey, getItemKey, estimateSize, scrollClassName, scrollStyle,
     animateTailResize, gap, preserving: passiveViewport.preserving, stableDisclosureActive, isAtTail,

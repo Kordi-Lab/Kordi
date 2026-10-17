@@ -113,5 +113,22 @@ export function useTranscriptTailAlignment({
     return () => observer.disconnect();
   }, [alignViewportToTail, animateTailResize, hasItems, scheduleTailAlignment, sizeContainerRef, suspendTailResize, tailAlignmentActiveRef, viewportWasAtTailRef]);
 
+  useLayoutEffect(() => {
+    const element = internalScrollRef.current;
+    if (!hasItems || suspendTailResize || !element || typeof ResizeObserver === 'undefined') return;
+    let lastHeight = element.clientHeight;
+    // The virtualizer only re-renders when its visible range changes, so a
+    // shelf or composer that resizes the pane over several frames would leave
+    // the latest message drifting below the fold until the resize ends.
+    const observer = new ResizeObserver(() => {
+      const height = element.clientHeight;
+      if (height === lastHeight) return;
+      lastHeight = height;
+      if (viewportWasAtTailRef.current || tailAlignmentActiveRef.current) alignViewportToTail();
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [alignViewportToTail, hasItems, internalScrollRef, suspendTailResize, tailAlignmentActiveRef, viewportWasAtTailRef]);
+
   return { cancelTailLiftAnimation, cancelTailAlignment, handleUserWheel, scheduleTailAlignment };
 }
