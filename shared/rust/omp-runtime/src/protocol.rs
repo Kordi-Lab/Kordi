@@ -107,8 +107,12 @@ pub struct ToolDefinition {
 pub struct RunLimits {
     pub timeout_ms: u64,
     pub max_output_bytes: usize,
-    pub max_tool_calls: usize,
-    pub max_steps: usize,
+    /// Optional caps. Kordi leaves them unset so a turn runs until the model
+    /// finishes, the timeout fires, or the user stops it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tool_calls: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_steps: Option<usize>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -126,8 +130,8 @@ impl Default for RunLimits {
         Self {
             timeout_ms: 600_000,
             max_output_bytes: 8 * 1024 * 1024,
-            max_tool_calls: 12,
-            max_steps: 8,
+            max_tool_calls: None,
+            max_steps: None,
         }
     }
 }

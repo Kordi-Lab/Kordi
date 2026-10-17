@@ -14,7 +14,7 @@ use crate::tools::CloudToolExecutor;
 use super::provider::OpenAiApiMode;
 use super::{
     cloud_sandbox_system_prompt, execute_model_tool, run_tool_catalog, ModelLoopError,
-    ModelToolCall, OpenAiProviderConfig, MAX_MODEL_CALLS, MAX_TOOL_CALLS,
+    ModelToolCall, OpenAiProviderConfig,
 };
 
 pub async fn run_omp_model_loop<C: CloudAgentRunClient + Sync>(
@@ -130,8 +130,8 @@ async fn run_omp_with_config<C: CloudAgentRunClient + Sync>(
         limits: RunLimits {
             timeout_ms: 590_000,
             max_output_bytes: 16 * 1024 * 1024,
-            max_tool_calls: MAX_TOOL_CALLS,
-            max_steps: MAX_MODEL_CALLS,
+            max_tool_calls: None,
+            max_steps: None,
         },
         compaction: None,
         // Cloud never gains owner-device computer/browser capabilities.

@@ -3,10 +3,7 @@
 
 use crate::{
     client::{CloudAgentRun, CloudAgentRunClient, ProviderAuthMaterial},
-    model_loop::{
-        CloudModelProvider, ModelLoopError, ModelProviderResponse, OpenAiProviderConfig,
-        MAX_MODEL_CALLS, MAX_TOOL_CALLS,
-    },
+    model_loop::{CloudModelProvider, ModelLoopError, ModelProviderResponse, OpenAiProviderConfig},
 };
 use serde_json::{json, Value};
 
@@ -89,21 +86,18 @@ where
         json!({"role":"user","content":format!("{instruction} Snapshot: {input}")}),
     ];
     let catalog = tools();
-    let mut used = 0;
-    for _ in 0..MAX_MODEL_CALLS {
+    loop {
         match fallback::next_response(provider, &mut auth, &mut fallback, &messages, &catalog)
             .await?
         {
             ModelProviderResponse::FinalText(text) => return Ok(normalize_output(&text)),
             ModelProviderResponse::ToolCalls(calls) => {
                 if calls.is_empty() {
-                    return Err(ModelLoopError::LimitExceeded);
+                    return Err(ModelLoopError::Provider(
+                        "model returned an empty tool call list".into(),
+                    ));
                 }
                 for call in calls {
-                    used += 1;
-                    if used > MAX_TOOL_CALLS {
-                        return Err(ModelLoopError::LimitExceeded);
-                    }
                     let result = if call.name == crate::pip_tool::NAME {
                         match client
                             .plan_card_action(&run.run_id, call.arguments.clone())
@@ -124,7 +118,6 @@ where
             }
         }
     }
-    Err(ModelLoopError::LimitExceeded)
 }
 
 #[cfg(test)]

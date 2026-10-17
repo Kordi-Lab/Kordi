@@ -71,7 +71,25 @@ fn worker_message(code: &str) -> &'static str {
         "provider_connection" => {
             "Could not connect to the provider. Check your network and try again."
         }
-        _ => "The provider could not complete this request. Try again.",
+        "step_limit" | "tool_limit" => {
+            "The agent reached its run limit before finishing. Try again."
+        }
+        "timeout" => "The agent timed out. Try again.",
+        "cancelled" => "The agent request was cancelled.",
+        "invalid_request" => "The agent request is invalid. Try again or choose another model.",
+        "model_unavailable" => {
+            "The selected model is unavailable for this account. Choose another model."
+        }
+        "output_limit" => "The agent response exceeded its size limit.",
+        "input_limit" => {
+            "This conversation is too large for the agent. Start a new chat and try again."
+        }
+        "hook_error" => "An extension could not complete this request. Try again.",
+        code if code.starts_with("provider_") => {
+            "The provider could not complete this request. Try again."
+        }
+        // Worker failures that are not the provider's must not blame it.
+        _ => "The agent could not complete this request. Try again.",
     }
 }
 
@@ -108,8 +126,30 @@ mod tests {
         let message = RuntimeError::Worker("unexpected_secret_like_code".into()).to_string();
         assert_eq!(
             message,
-            "The provider could not complete this request. Try again."
+            "The agent could not complete this request. Try again."
         );
         assert!(!message.contains("OMP"));
+        assert_eq!(
+            RuntimeError::Worker("provider_error".into()).to_string(),
+            "The provider could not complete this request. Try again."
+        );
+    }
+
+    #[test]
+    fn non_provider_worker_codes_do_not_blame_the_provider() {
+        for code in [
+            "step_limit",
+            "tool_limit",
+            "runtime_error",
+            "route_mismatch",
+            "checkpoint_error",
+            "hook_error",
+            "input_limit",
+            "duplicate_run",
+            "worker_error",
+        ] {
+            let message = RuntimeError::Worker(code.into()).to_string();
+            assert!(!message.contains("provider"), "{code}: {message}");
+        }
     }
 }
