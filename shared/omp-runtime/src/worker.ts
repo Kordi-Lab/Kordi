@@ -168,22 +168,29 @@ if (!selectedWorker) {
 // Reserve stdout for the framed protocol before importing the SDK or its dependencies.
 const write = process.stdout.write.bind(process.stdout);
 console.log = console.info = console.debug = console.warn = console.error = () => {};
-const { runTurn } = await import('./runtime');
+const [{ runTurn }, { logger }] = await Promise.all([import('./runtime'), import('@oh-my-pi/pi-utils')]);
 let request: RunRequest | undefined;
 let sequence = 0;
-let outputBytes = 0;
 let terminal = false;
 const controller = new AbortController();
 const pending = new Map<string, { kind: 'tool_result' | 'hook_result'; resolve: (result: any) => void; reject: (error: Error) => void; cleanup: () => void }>();
+const frame = (value: JsonObject) => `${JSON.stringify({ schemaVersion: 1,
+  ...(request ? { runId: request.runId, attemptId: request.attemptId, sequence: sequence + 1 } : {}), ...value })}\n`;
 function send(value: JsonObject) {
   if (terminal) return;
-  const line = `${JSON.stringify({ schemaVersion: 1, ...(request ? { runId: request.runId, attemptId: request.attemptId, sequence: ++sequence } : {}), ...value })}\n`;
-  outputBytes += Buffer.byteLength(line);
-  if (request && outputBytes > request.limits.maxOutputBytes && !['error'].includes(value.type)) {
-    finishError(new RuntimeError('output_limit', 'Run reached its output limit.'));
+  let line = frame(value);
+  // The limit bounds each frame, including the final result. The run's stream
+  // as a whole is bounded by its timeout, so repeated progress never exhausts
+  // it. A dropped frame keeps its sequence number for the error that replaces it.
+  if (request && value.type !== 'error' && Buffer.byteLength(line) > request.limits.maxOutputBytes) {
+    // Sizes and the frame type only; frames carry conversation content.
+    logger.warn('Kordi frame exceeded the output limit', { frameType: value.type,
+      frameBytes: Buffer.byteLength(line), limitBytes: request.limits.maxOutputBytes });
+    line = frame({ type: 'error', code: 'output_limit', message: 'Run reached its output limit.' });
+    terminal = true;
     controller.abort();
-    return;
   }
+  if (request) sequence += 1;
   write(line);
 }
 function finishError(error: unknown) {

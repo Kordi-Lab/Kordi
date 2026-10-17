@@ -106,6 +106,8 @@ pub struct ToolDefinition {
 #[serde(rename_all = "camelCase")]
 pub struct RunLimits {
     pub timeout_ms: u64,
+    /// The largest single worker frame, including the final result. It does
+    /// not accumulate across the run's progress events.
     pub max_output_bytes: usize,
     /// Optional caps. Kordi leaves them unset so a turn runs until the model
     /// finishes, the timeout fires, or the user stops it.
@@ -129,7 +131,9 @@ impl Default for RunLimits {
     fn default() -> Self {
         Self {
             timeout_ms: 600_000,
-            max_output_bytes: 8 * 1024 * 1024,
+            // The result carries the full model context back, so allow it the
+            // same size the host may send in the run request.
+            max_output_bytes: 32 * 1024 * 1024,
             max_tool_calls: None,
             max_steps: None,
         }

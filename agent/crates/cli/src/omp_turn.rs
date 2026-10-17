@@ -162,7 +162,11 @@ pub(crate) async fn run_turn_inner(
     let result = OmpRuntime::new(command)
         .run_turn(&request, &tool_host, &event_sink, config.cancel.clone())
         .await
-        .map_err(|error| anyhow!(error))?;
+        .map_err(|error| {
+            // A fixed code only: the error never carries message content.
+            tracing::warn!(code = error.diagnostic_code(), "OMP turn failed");
+            anyhow!(error)
+        })?;
     persist_result(&config.conn, &config.session_id, &scope, &request, &result).await?;
     if result.checkpoint.is_some() {
         let _ = event_tx.send(TurnEvent::Status(

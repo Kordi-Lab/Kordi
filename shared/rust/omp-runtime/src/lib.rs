@@ -7,7 +7,7 @@ mod protocol;
 mod supervisor_helpers;
 mod warm_pool;
 mod worker_command;
-pub use error::RuntimeError;
+pub use error::{ProtocolViolation, RuntimeError};
 use supervisor_helpers::{
     ToolCancelGuard, acquire_computer_lock, check_frame, read_line_bounded, validate_request,
     write_json_line,
@@ -34,7 +34,6 @@ use tokio::process::{Child, ChildStdin};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_REQUEST_BYTES: usize = 32 * 1024 * 1024;
 const MAX_STDERR_BYTES: usize = 64 * 1024;
 /// How long a taken warm worker may take to produce its first stdout line
@@ -161,7 +160,6 @@ impl OmpRuntime {
             schema_version: SCHEMA_VERSION,
             request,
         };
-        let mut output_bytes = 0usize;
         let (_worker_guard, mut stdin, mut stdout, mut stderr_overflow_rx, mut first_line) = loop {
             let written = tokio::select! {
                 _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
@@ -195,7 +193,7 @@ impl OmpRuntime {
                 _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
                 result = tokio::time::timeout(
                     wait,
-                    read_line_bounded(&mut stdout, &mut output_bytes, request.limits.max_output_bytes),
+                    read_line_bounded(&mut stdout, request.limits.max_output_bytes),
                 ) => result,
             };
             match first {
@@ -205,7 +203,6 @@ impl OmpRuntime {
                 Ok(_) | Err(_) => {
                     drop(child);
                     warm = false;
-                    output_bytes = 0;
                     worker = self.fresh_worker()?;
                 }
             }
@@ -250,7 +247,7 @@ impl OmpRuntime {
                     stderr_watch = false;
                     continue;
                 },
-                result = read_line_bounded(&mut stdout, &mut output_bytes, request.limits.max_output_bytes) => Next::Line(result?),
+                result = read_line_bounded(&mut stdout, request.limits.max_output_bytes) => Next::Line(result?),
                 Some((call_id, result)) = pending_tools.next(), if !pending_tools.is_empty() => Next::Tool(call_id, result),
                 Some((call_id, result)) = pending_hooks.next(), if !pending_hooks.is_empty() => Next::Hook(call_id, result),
                 }
@@ -295,12 +292,15 @@ impl OmpRuntime {
             let Some(line) = line else {
                 return Err(RuntimeError::UnexpectedExit);
             };
-            let output: WorkerOutput =
-                serde_json::from_slice(&line).map_err(|_| RuntimeError::Protocol)?;
+            let output: WorkerOutput = serde_json::from_slice(&line)
+                .map_err(|_| RuntimeError::Protocol(ProtocolViolation::MalformedFrame))?;
             match output {
                 WorkerOutput::Ready { schema_version } => {
-                    if seen_ready || schema_version != SCHEMA_VERSION {
-                        return Err(RuntimeError::Protocol);
+                    if seen_ready {
+                        return Err(RuntimeError::Protocol(ProtocolViolation::Handshake));
+                    }
+                    if schema_version != SCHEMA_VERSION {
+                        return Err(RuntimeError::Protocol(ProtocolViolation::SchemaVersion));
                     }
                     seen_ready = true;
                 }
@@ -352,16 +352,16 @@ impl OmpRuntime {
                         sequence,
                         &mut last_sequence,
                     )?;
+                    // Optional step and tool-call caps are the worker's to
+                    // report with their own codes; the host never counts calls.
                     if call_id.trim().is_empty()
                         || !tool_calls.insert(call_id.clone())
                         || hook_calls.contains(&call_id)
-                        || request
-                            .limits
-                            .max_tool_calls
-                            .is_some_and(|max| tool_calls.len() > max)
-                        || !request.tools.iter().any(|tool| tool.name == name)
                     {
-                        return Err(RuntimeError::Protocol);
+                        return Err(RuntimeError::Protocol(ProtocolViolation::CallId));
+                    }
+                    if !request.tools.iter().any(|tool| tool.name == name) {
+                        return Err(RuntimeError::Protocol(ProtocolViolation::UnknownTool));
                     }
                     let token = tool_cancel.child_token();
                     pending_tools.push(Box::pin(async move {
@@ -399,14 +399,13 @@ impl OmpRuntime {
                     if call_id.trim().is_empty()
                         || tool_calls.contains(&call_id)
                         || !hook_calls.insert(call_id.clone())
-                        || request
-                            .limits
-                            .max_steps
-                            .is_some_and(|max| hook_calls.len() > max.saturating_mul(4).max(64))
-                        || !matches!(name.as_str(), "context" | "before_provider_request")
+                    {
+                        return Err(RuntimeError::Protocol(ProtocolViolation::CallId));
+                    }
+                    if !matches!(name.as_str(), "context" | "before_provider_request")
                         || !request.hooks.iter().any(|hook| hook == &name)
                     {
-                        return Err(RuntimeError::Protocol);
+                        return Err(RuntimeError::Protocol(ProtocolViolation::UnknownHook));
                     }
                     let token = tool_cancel.child_token();
                     pending_hooks.push(Box::pin(async move {
@@ -436,7 +435,7 @@ impl OmpRuntime {
                         &mut last_sequence,
                     )?;
                     if !pending_tools.is_empty() || !pending_hooks.is_empty() {
-                        return Err(RuntimeError::Protocol);
+                        return Err(RuntimeError::Protocol(ProtocolViolation::PendingCallbacks));
                     }
                     return Ok(RunResult {
                         text,
@@ -480,5 +479,7 @@ impl OmpRuntime {
     }
 }
 
+#[cfg(test)]
+mod frame_tests;
 #[cfg(test)]
 mod tests;
