@@ -33,6 +33,18 @@ test('selection colors use a quiet blue tint with explicit light and dark contra
   assert.match(tokens, /--app-copy-selection-text: rgb\(15 23 42\)/);
 });
 
+test('selected text in chat bubbles keeps its own ink instead of the theme selection ink', () => {
+  const css = readFileSync(new URL('../src/styles/shell-bubbles.css', import.meta.url), 'utf8');
+  const rule = (selector: string) => css.match(new RegExp(`(?:^|\\n)${selector.replace('.', '\\.')} \\{[^}]*\\}`))?.[0] ?? '';
+  const own = rule('.app-chat-bubble-user');
+  assert.match(own, /--app-copy-selection-text: currentColor;/);
+  assert.match(own, /--app-copy-selection-bg: color-mix\(in oklab, currentColor 28%, transparent\);/);
+  for (const selector of ['.app-chat-bubble-peer', '.app-chat-bubble-agent']) {
+    assert.match(rule(selector), /--app-copy-selection-text: currentColor;/, selector);
+  }
+  assert.doesNotMatch(css, /--app-copy-selection-text: (?!currentColor;)/);
+});
+
 test('message payloads opt in without making system notices selectable', () => {
   const message: Message = {
     id: 'msg:copyable',

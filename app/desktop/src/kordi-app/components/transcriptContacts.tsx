@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ChevronRight, LoaderCircle } from 'lucide-react';
 import type { Contact, ContactRequest } from '../types';
+import { contactTypeLabel } from './contactTypeLabel';
 import { IdentityAvatar, type IdentityAvatarKind } from './IdentityAvatar';
 import { ContactRequestTime } from './transcriptMessageTime';
 
@@ -14,6 +15,7 @@ function requestAvatarKind(request: ContactRequest): IdentityAvatarKind {
 }
 
 export function ContactRow({ contact, active, onSelect }: { contact: Contact; active: boolean; onSelect: () => void }) {
+  const typeLabel = contactTypeLabel(contact);
   return (
     <button
       onClick={onSelect}
@@ -32,7 +34,7 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-[13px] font-medium leading-5">{contact.name}</span>
-          <span className="text-[10.5px] leading-4 text-slate-300">{contact.entityType}</span>
+          {typeLabel ? <span className="text-[10.5px] leading-4 text-slate-300">{typeLabel}</span> : null}
         </div>
         <div className="truncate text-[11.5px] leading-4 text-slate-300">{contact.subtitle}</div>
       </div>

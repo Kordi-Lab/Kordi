@@ -259,6 +259,22 @@ test('active contact rows stay visually neutral until hover', () => {
   assert.doesNotMatch(markup, /text-slate-100/);
 });
 
+test('contact rows hide the plain user type and keep informative ones', () => {
+  const row = (overrides: Partial<Contact>) => renderToStaticMarkup(createElement(ContactRow, {
+    contact: contact({ subtitle: '@123456789', ...overrides }),
+    active: false,
+    onSelect: () => undefined,
+  }));
+
+  for (const entityType of ['user', 'Person']) {
+    const markup = row({ entityType });
+    assert.doesNotMatch(markup, new RegExp(`>${entityType}<`));
+    assert.match(markup, />@123456789</);
+  }
+  assert.match(row({ entityType: 'My agent', classType: 'my-agents' }), />My agent</);
+  assert.match(row({ entityType: 'agent', classType: 'other-users-agents' }), />agent</);
+});
+
 test('contacts page uses positive-only request activity and flat page-plane controls', () => {
   const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
   const componentSource = readFileSync(new URL('../src/kordi-app/components/transcriptContacts.tsx', import.meta.url), 'utf8');
