@@ -97,5 +97,25 @@ async fn chat_worktree_preserves_the_original_checkout_and_rejects_other_folders
         root
     );
     assert!(tree.join("chat-work.txt").exists());
+    let tree = std::fs::canonicalize(&tree).map_err(|e| e.to_string())?;
+    let synced = desktop_project_git_workspace(
+        root.display().to_string(),
+        None,
+        Some(super::super::catalog_binding::catalog_id(&tree)),
+    )
+    .await?
+    .ok_or("Git workspace is missing")?;
+    assert!(synced.is_worktree);
+    assert_eq!(synced.workspace_root, tree.display().to_string());
+    assert!(synced
+        .branch
+        .as_deref()
+        .is_some_and(|branch| branch.starts_with("kordi/chat-fixturesession-")));
+    let project_folder =
+        desktop_project_git_workspace(root.display().to_string(), None, Some("0".repeat(64)))
+            .await?
+            .ok_or("Git workspace is missing")?;
+    assert!(!project_folder.is_worktree);
+    assert_eq!(project_folder.branch.as_deref(), Some("main"));
     Ok(())
 }
