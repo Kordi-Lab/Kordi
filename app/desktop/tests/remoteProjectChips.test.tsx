@@ -77,6 +77,24 @@ test('a synced worktree session shows its project, branch and worktree when the 
   }
 });
 
+test('after a send, the runtime copy of a synced session keeps its project, branch and worktree', async () => {
+  __setRemoteProjectCatalogForTests([{ id: CATALOG_ID, name: 'example-project', sessions: ['synced'], localRoot: ROOT, workspaces: { synced: WORKTREE_ID } }]);
+  const copy = { ...conversation('synced', true), localSessionCwd: '/Users/example/chat-folder' } as Conversation;
+  const view = await render([{ id: `project:${ROOT}`, name: 'example-project', root: ROOT, sessions: [{ id: 'synced' }] }], copy);
+  try {
+    assert.match(view.text(), /example-project/);
+    assert.match(view.text(), /kordi\/chat-synced/);
+    assert.doesNotMatch(view.text(), /Choose project/);
+    // The copy runs in this profile's chat folder; the workspace comes from the owning Mac.
+    assert.deepEqual(view.loads[0], [ROOT, undefined, WORKTREE_ID]);
+    assert.equal(document.querySelector<HTMLInputElement>('input[aria-label="Use worktree"]')?.disabled, true);
+    assert.equal(document.querySelector('[aria-label^="Project:"]'), null);
+  } finally {
+    await view.cleanup();
+    __setRemoteProjectCatalogForTests([]);
+  }
+});
+
 test('a project whose folder is missing keeps its chip and offers Locate folder', async () => {
   const calls: string[] = [];
   const view = await render(

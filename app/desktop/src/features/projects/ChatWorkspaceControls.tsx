@@ -6,16 +6,19 @@ import { remoteProjectCatalogId } from '@/features/canonical/sessionResolver';
 import { ChatProjectPicker } from './ChatProjectPicker';
 import { canChooseChatProject, projectForChat, useChatProjects } from './chatProjects';
 import type { ChatWorkspaceSelection, GitWorkspace } from './gitWorkspace';
-import { locateRemoteProject, useRemoteSessionWorkspaceId } from './remoteProjectCatalog';
+import { locateRemoteProject, useRemoteProjectSession } from './remoteProjectCatalog';
 
 export function ChatWorkspaceControls({ conversation, disabled }: { conversation: Conversation; disabled: boolean }) {
   const projects = useChatProjects();
   const project = projectForChat(projects?.projects ?? [], conversation.id);
-  // Sessions synced from another Mac's runtime keep their project there; this Mac shows it read-only.
-  const editable = canChooseChatProject(conversation);
-  const workspaceId = useRemoteSessionWorkspaceId(conversation.id);
+  // A session another Mac runs keeps its project and workspace there; this Mac shows them
+  // read-only, even after opening or sending creates a plain runtime copy here.
+  const { ownedElsewhere, workspaceId } = useRemoteProjectSession(conversation.id);
+  const editable = canChooseChatProject(conversation) && !ownedElsewhere;
   const catalogId = remoteProjectCatalogId(project?.id);
-  const requestKey = `${project?.root ?? ""}:${conversation.localSessionCwd ?? ""}:${workspaceId ?? ""}`;
+  // The runtime copy's folder is this Mac's chat folder, not the session's workspace.
+  const cwd = ownedElsewhere ? undefined : conversation.localSessionCwd ?? undefined;
+  const requestKey = `${project?.root ?? ""}:${cwd ?? ""}:${workspaceId ?? ""}`;
   const [gitResult, setGitResult] = useState<{ key: string; value: GitWorkspace | null } | null>(null);
   const git = gitResult?.key === requestKey ? gitResult.value : null;
   const [loading, setLoading] = useState(false);
@@ -30,7 +33,6 @@ export function ChatWorkspaceControls({ conversation, disabled }: { conversation
   const id = useId();
   const root = project?.root;
   const load = projects?.gitWorkspace;
-  const cwd = conversation.localSessionCwd ?? undefined;
   useEffect(() => {
     let cancelled = false;
     if (!load || !root) return;

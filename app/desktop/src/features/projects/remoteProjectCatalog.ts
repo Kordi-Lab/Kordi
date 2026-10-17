@@ -65,16 +65,29 @@ function subscribe(listener: () => void) {
 
 export function __setRemoteProjectCatalogForTests(next: readonly RemoteProjectMembership[]) { publishSnapshot(next); }
 
-/** Catalog ID of the worktree another Mac reports for this session, if any. */
-export function useRemoteSessionWorkspaceId(sessionId: string) {
+/** True when another Mac's project catalog lists the session; it is moved on that Mac. */
+export function sessionRunsOnAnotherMac(sessionId: string) {
+  return catalogSnapshot.some((project) => project.sessions.includes(sessionId));
+}
+
+/**
+ * Whether another Mac runs this session in one of its projects, and the catalog
+ * ID of the worktree it uses there. Such a session keeps that project and
+ * workspace even when this Mac opens a plain runtime copy of it.
+ */
+export function useRemoteProjectSession(sessionId: string) {
   const read = () => {
+    let owned = false;
     for (const project of catalogSnapshot) {
+      if (!project.sessions.includes(sessionId)) continue;
+      owned = true;
       const workspace = project.workspaces?.[sessionId];
       if (workspace) return workspace;
     }
-    return undefined;
+    return owned ? '' : null;
   };
-  return useSyncExternalStore(subscribe, read, read);
+  const value = useSyncExternalStore(subscribe, read, read);
+  return { ownedElsewhere: value !== null, workspaceId: value || undefined };
 }
 
 /** Register the local folder of a catalog project when it exists on this Mac. */

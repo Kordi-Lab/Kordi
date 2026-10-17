@@ -76,9 +76,28 @@ test('a catalog project this Mac also has merges into the local project', () => 
   ]);
 });
 
-test('archived, local plain, and unknown sessions never join a catalog project', () => {
-  const groups = route(freshProfile(), synced(['worktree-status', 3, 'archived']), [{ ...remote, sessions: ['worktree-status', 'plain', 'gone'] }]);
+test('archived and unknown sessions never join a catalog project', () => {
+  const groups = route(freshProfile(), synced(['worktree-status', 3, 'archived']), [{ ...remote, sessions: ['worktree-status', 'gone'] }]);
   assert.deepEqual(groups, []);
+});
+
+test('sending in a synced project session keeps it in its project', () => {
+  // Opening or sending loads a plain runtime copy of the session in this profile's chat folder.
+  const afterSend = {
+    ...freshProfile(),
+    activeSessionId: 'worktree-status',
+    sessions: [
+      { id: 'worktree-status', title: 'Check the worktree status', subtitle: '', updatedAtLabel: 'Now', updatedAtMs: 9, messageCount: 2, draft: false },
+      { id: 'plain', title: 'plain', subtitle: '', updatedAtLabel: 'Now', updatedAtMs: 1, messageCount: 1, draft: false },
+    ],
+    activeSession: { id: 'worktree-status', title: 'Check the worktree status', cwd: '/Users/example', messages: [] },
+  } as unknown as DesktopChatState;
+  const canonical = synced(['worktree-status', 9], ['fork', 2], ['plain', 1]);
+  const groups = route(afterSend, canonical, [remote]);
+  assert.deepEqual(sidebar(groups, ['worktree-status', 'fork', 'plain']), {
+    projects: [['example-project', ['worktree-status', 'fork']]],
+    recents: ['plain'],
+  });
 });
 
 test('catalogs from this device are ignored and duplicates merge', () => {

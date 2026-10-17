@@ -267,6 +267,8 @@ export function buildProjectRoutingGroups(
   // Projects live on the Mac that created them. A new Mac or app profile only
   // receives the sessions, so group them as the publishing Mac does. These groups
   // are display-only: they never register or restore a local project.
+  // The publishing Mac also runs these sessions, so its catalog wins over a plain
+  // runtime copy this Mac opens to show or send in the session.
   const knownSessionTimestamps = new Map<string, number>();
   for (const session of canonicalState?.sessions ?? []) {
     if (session.status === 'archived') continue;
@@ -281,7 +283,7 @@ export function buildProjectRoutingGroups(
     const groupId = localGroupId ?? `${REMOTE_PROJECT_GROUP_PREFIX}${project.id}`;
     for (const sessionId of project.sessions) {
       if (placedSessionIds.has(sessionId) || archivedSessionIds.has(sessionId)) continue;
-      if (options.unboundSessionIds?.has(sessionId) || !knownSessionTimestamps.has(sessionId)) continue;
+      if (!knownSessionTimestamps.has(sessionId)) continue;
       addSession(groupId, sessionId, knownSessionTimestamps.get(sessionId) ?? 0);
       placedSessionIds.add(sessionId);
     }
