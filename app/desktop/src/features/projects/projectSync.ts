@@ -6,7 +6,8 @@ import { desktopProjectImportApi, githubRepositoryFromInput } from './projectImp
 
 export const PROJECTS_UPDATED_EVENT = 'kordi-projects-updated';
 type Operation = { id: string; request: { action: string; projectId?: string; sessionId?: string; repository?: string; page?: number } };
-async function projectID(root: string) {
+/** Opaque catalog ID of a project root; the root itself never leaves this Mac. */
+export async function projectID(root: string) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(root));
   return [...new Uint8Array(bytes)].map((n) => n.toString(16).padStart(2, '0')).join('');
 }
@@ -16,7 +17,7 @@ async function catalog() {
     id: await projectID(project.root), name: project.name, sessions: project.sessions.map((session) => session.id), root: project.root,
   })));
 }
-async function request<T>(token: string, path: string, method = 'GET', body?: unknown): Promise<T> {
+export async function projectCatalogRequest<T>(token: string, path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(`${cloudApiBaseUrl()}/v1/cloud/projects${path}`, {
     method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(15000),
@@ -70,7 +71,7 @@ export function useProjectSync(enabled: boolean, accountId: string | undefined) 
         const session = await loadSession();
         if (!session?.deviceId || session.accountId !== accountId) return;
         const projects = (await catalog()).map(({ id, name, sessions }) => ({ id, name, sessions }));
-        if (!stopped && (await loadSession())?.token === session.token) await request(session.token, '', 'PUT', { projects });
+        if (!stopped && (await loadSession())?.token === session.token) await projectCatalogRequest(session.token, '', 'PUT', { projects });
       } catch { /* Older servers and temporary disconnections must leave local projects usable. */ }
       finally { publishing = false; }
     };
@@ -80,7 +81,7 @@ export function useProjectSync(enabled: boolean, accountId: string | undefined) 
       try {
         const session = await loadSession();
         if (!session?.deviceId || session.accountId !== accountId) return;
-        const { command } = await request<{ command: Operation | null }>(session.token, '/commands/next', 'POST');
+        const { command } = await projectCatalogRequest<{ command: Operation | null }>(session.token, '/commands/next', 'POST');
         if (!command || stopped || (await loadSession())?.token !== session.token) return;
         let result: unknown;
         let failed = false;
@@ -89,8 +90,8 @@ export function useProjectSync(enabled: boolean, accountId: string | undefined) 
         if (stopped || (await loadSession())?.token !== session.token) return;
         // Publish membership before acknowledging so iOS cannot send into the old workspace.
         const projects = (await catalog()).map(({ id, name, sessions }) => ({ id, name, sessions }));
-        await request(session.token, '', 'PUT', { projects });
-        await request(session.token, `/commands/${command.id}`, 'PUT', { result, failed });
+        await projectCatalogRequest(session.token, '', 'PUT', { projects });
+        await projectCatalogRequest(session.token, `/commands/${command.id}`, 'PUT', { result, failed });
         window.dispatchEvent(new Event(PROJECTS_UPDATED_EVENT));
       } catch { /* A failed transport never repeats a potentially completed clone or move. */ }
       finally { busy = false; }
@@ -98,7 +99,7 @@ export function useProjectSync(enabled: boolean, accountId: string | undefined) 
     void publish().then(tick);
     const heartbeat = window.setInterval(() => {
       if (busy) {
-        void loadSession().then((session) => session?.deviceId && session.accountId === accountId ? request(session.token, '/heartbeat', 'POST') : undefined).catch(() => undefined);
+        void loadSession().then((session) => session?.deviceId && session.accountId === accountId ? projectCatalogRequest(session.token, '/heartbeat', 'POST') : undefined).catch(() => undefined);
       } else { void publish(); }
     }, 10000);
     const commands = window.setInterval(() => { void tick(); }, 3000);

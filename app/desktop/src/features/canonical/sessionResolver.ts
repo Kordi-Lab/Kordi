@@ -19,7 +19,22 @@ export type ProjectRoutingGroup = {
   id: string;
   sessions: Array<{ id: string }>;
   persisted?: boolean;
+  /** Display name another Mac published for a project this Mac does not have. */
+  name?: string;
+  /** The project folder is on another Mac; it cannot start sessions or read Git here. */
+  remote?: boolean;
 };
+
+/** A project another Mac on the account publishes, with the session IDs it groups. */
+export type RemoteProjectMembership = {
+  id: string;
+  name: string;
+  sessions: readonly string[];
+  /** Root of the local project with the same catalog ID, when this Mac has it too. */
+  localRoot?: string | null;
+};
+
+export const REMOTE_PROJECT_GROUP_PREFIX = 'remote-project:';
 
 /** A local session the project catalog may not list yet, with any workspace paths it already carries. */
 export type ProjectSessionHint = {
@@ -37,6 +52,8 @@ export type ProjectRoutingOptions = {
   unboundSessionIds?: ReadonlySet<string>;
   /** Project group each session was last shown under. */
   previousGroupIdBySession?: ReadonlyMap<string, string>;
+  /** Other Macs' catalogs; they place synced sessions this Mac has no project for. */
+  remoteProjects?: readonly RemoteProjectMembership[];
 };
 
 function normalizedProjectRoot(value?: string | null) {
@@ -240,11 +257,36 @@ export function buildProjectRoutingGroups(
     placedSessionIds.add(sessionId);
   }
 
+  // Projects live on the Mac that created them. A new Mac or app profile only
+  // receives the sessions, so group them as the publishing Mac does. These groups
+  // are display-only: they never register or restore a local project.
+  const knownSessionTimestamps = new Map<string, number>();
+  for (const session of canonicalState?.sessions ?? []) {
+    if (session.status === 'archived') continue;
+    knownSessionTimestamps.set(session.id, session.lastMessageAtMs ?? session.updatedAtMs ?? session.createdAtMs);
+  }
+  for (const hint of options.sessionHints ?? []) {
+    if (!knownSessionTimestamps.has(hint.sessionId)) knownSessionTimestamps.set(hint.sessionId, hint.updatedAtMs ?? 0);
+  }
+  const remoteNameByGroupId = new Map<string, string>();
+  for (const project of options.remoteProjects ?? []) {
+    const localGroupId = canonicalProjectGroupIdFromRoot(project.localRoot);
+    const groupId = localGroupId ?? `${REMOTE_PROJECT_GROUP_PREFIX}${project.id}`;
+    for (const sessionId of project.sessions) {
+      if (placedSessionIds.has(sessionId) || archivedSessionIds.has(sessionId)) continue;
+      if (options.unboundSessionIds?.has(sessionId) || !knownSessionTimestamps.has(sessionId)) continue;
+      addSession(groupId, sessionId, knownSessionTimestamps.get(sessionId) ?? 0);
+      placedSessionIds.add(sessionId);
+    }
+    if (!localGroupId && sessionIdsByGroupId.has(groupId)) remoteNameByGroupId.set(groupId, project.name);
+  }
+
   return groupIdsInOrder
     .sort((left, right) => (latestTimestampByGroupId.get(right) ?? 0) - (latestTimestampByGroupId.get(left) ?? 0))
     .map((groupId) => ({
       id: groupId,
       persisted: persistedGroupIds.has(groupId),
+      ...(remoteNameByGroupId.has(groupId) ? { name: remoteNameByGroupId.get(groupId), remote: true } : {}),
       sessions: (sessionIdsByGroupId.get(groupId) ?? [])
         .sort((left, right) => (sessionTimestampById.get(right) ?? 0) - (sessionTimestampById.get(left) ?? 0))
         .map((id) => ({ id })),
