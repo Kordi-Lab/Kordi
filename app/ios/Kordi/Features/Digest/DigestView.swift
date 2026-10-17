@@ -159,7 +159,11 @@ struct DigestView: View {
         case .needsProvider:
             Text("Connect a model provider in Account to get your digest")
         case .providerRejected:
-            Text("Your model provider sign-in didn't work. Check it in Account")
+            if let name = digest?.reconnectProviderName {
+                Text("Reconnect \(name) in Account")
+            } else {
+                Text("Your model provider sign-in didn't work. Check it in Account")
+            }
         case .providerUnavailable:
             Text("Your model provider is unavailable right now ·")
             statusAction(isRefreshing ? "Trying again…" : "Try again") { Task { await refresh() } }
@@ -177,7 +181,7 @@ struct DigestView: View {
             } else if digest?.errorCode == "missing_provider_auth" {
                 Text("· Connect a model provider in Account")
             } else if digest?.errorCode == "provider_auth_rejected" {
-                Text("· Provider sign-in didn't work")
+                Text(digest?.reconnectProviderName.map { "· Reconnect \($0)" } ?? "· Provider sign-in didn't work")
             } else if digest?.errorCode == "provider_unavailable" {
                 Text("· Provider unavailable ·")
                 statusAction("Retry") { Task { await refresh() } }

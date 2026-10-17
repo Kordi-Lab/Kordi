@@ -21,6 +21,8 @@ export type DigestResponse = {
   partial: boolean; revision: number; updatedAt: string;
   timezone?: string;
   status: 'ready' | 'loading' | 'updating' | 'error'; errorCode?: string | null;
+  /** The saved account to reconnect when the provider refused its sign-in. */
+  errorProvider?: string | null;
   feedback: { id: string; status: 'dismissed' | 'task'; taskId?: string | null }[];
 };
 export type CalendarEvent = {

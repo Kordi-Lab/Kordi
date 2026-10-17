@@ -6,6 +6,7 @@ mod codex_refresh;
 mod provider_family;
 mod publish_request;
 mod readiness;
+mod rejection;
 mod resolve;
 mod service;
 mod snapshots;
@@ -16,6 +17,7 @@ pub use publish_request::{
     NormalizedProviderAuthSnapshotInput, PublishProviderAuthSnapshotRequest, MAX_PAYLOAD_BYTES,
 };
 pub(crate) use readiness::{snapshot_status, READY};
+pub(crate) use rejection::{mark_run_account_rejected, newest_account_needing_reconnect};
 pub use resolve::{
     provider_auth_for_account_route, provider_auth_for_run, ProviderAuthForRunResult,
 };

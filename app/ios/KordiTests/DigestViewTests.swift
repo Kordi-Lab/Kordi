@@ -1062,3 +1062,15 @@ func digestDismissalKeepsBriefAndSuggestionRestorationSeparate(hideSuggestion: B
     #expect(response.snapshot?.claims.count == 2)
     #expect(response.partial)
 }
+
+@Test func refusedSignInNamesTheAccountToReconnect() throws {
+    func decode(_ provider: String?) throws -> RollingDigestResponse {
+        var json: [String: Any] = ["accountId": "viewer", "sources": [], "partial": false, "revision": 1, "updatedAt": "", "status": "error", "errorCode": "provider_auth_rejected", "feedback": []]
+        if let provider { json["errorProvider"] = provider }
+        return try JSONDecoder().decode(RollingDigestResponse.self, from: JSONSerialization.data(withJSONObject: json))
+    }
+    #expect(try decode("anthropic").reconnectProviderName == "Claude")
+    #expect(try decode("openai-codex").reconnectProviderName == "OpenAI")
+    #expect(try decode("custom-endpoint").reconnectProviderName == "custom-endpoint")
+    #expect(try decode(nil).reconnectProviderName == nil)
+}

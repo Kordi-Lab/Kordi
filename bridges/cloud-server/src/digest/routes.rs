@@ -1,4 +1,5 @@
 use super::{models::*, store};
+use crate::cloud_agent_runtime::provider_auth::newest_account_needing_reconnect;
 use crate::{
     auth::routes::{cloud_session_middleware, CloudSession},
     server::ServerState,
@@ -116,6 +117,16 @@ async fn read(
             }
         });
     }
+    // Names the account to reconnect when the provider refused the sign-in.
+    let error_provider = match error_code.as_deref() {
+        Some("provider_auth_rejected") => {
+            match newest_account_needing_reconnect(pool, &session.account_id).await {
+                Ok(provider) => provider,
+                Err(_) => return failed(),
+            }
+        }
+        _ => None,
+    };
     let input = serde_json::from_value::<Input>(input).ok();
     let mut refs = Vec::new();
     let mut partial = false;
@@ -141,7 +152,7 @@ async fn read(
         Ok(v) => v,
         Err(_) => return failed(),
     };
-    Json(json!({"accountId":session.account_id,"timezone":timezone,"snapshot":snapshot,"sources":if snapshot.is_some(){refs}else{vec![]},"partial":partial&&snapshot.is_some(),"revision":revision,"updatedAt":updated_at,"status":if active.is_some(){"updating"}else if error_code.is_some(){"error"}else if snapshot.is_some(){"ready"}else{"loading"},"errorCode":error_code,"feedback":feedback.into_iter().map(|(id,status,task_id)|json!({"id":id,"status":status,"taskId":task_id})).collect::<Vec<_>>()})).into_response()
+    Json(json!({"accountId":session.account_id,"timezone":timezone,"snapshot":snapshot,"sources":if snapshot.is_some(){refs}else{vec![]},"partial":partial&&snapshot.is_some(),"revision":revision,"updatedAt":updated_at,"status":if active.is_some(){"updating"}else if error_code.is_some(){"error"}else if snapshot.is_some(){"ready"}else{"loading"},"errorCode":error_code,"errorProvider":error_provider,"feedback":feedback.into_iter().map(|(id,status,task_id)|json!({"id":id,"status":status,"taskId":task_id})).collect::<Vec<_>>()})).into_response()
 }
 async fn refresh(
     State(state): State<Arc<ServerState>>,
