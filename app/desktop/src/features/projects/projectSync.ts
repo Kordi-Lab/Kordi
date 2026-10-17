@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { cloudApiBaseUrl } from '@/features/cloud/cloudApiEnvironment';
 import { loadSession } from '@/features/cloud/session';
 import { fetchDesktopChatState, invokeDesktop, createDesktopProjectSession, moveDesktopChatSessionToProject } from '@/lib/desktop';
+import { adoptedProjectSessionIds } from './adoptedProjectSessions';
 import { desktopProjectImportApi, githubRepositoryFromInput } from './projectImportApi';
 
 export const PROJECTS_UPDATED_EVENT = 'kordi-projects-updated';
@@ -21,7 +22,9 @@ type PublishedProject = { id: string; name: string; sessions: string[]; workspac
 let workspacesUnsupportedUntil = 0;
 /** Worktree sessions publish an opaque worktree ID so other Macs can show the same branch. */
 async function publishedCatalog(): Promise<PublishedProject[]> {
-  const projects = await catalog();
+  // Sessions run here for an offline project Mac stay listed by that Mac only.
+  const adopted = adoptedProjectSessionIds();
+  const projects = (await catalog()).map((project) => ({ ...project, sessions: project.sessions.filter((session) => !adopted.has(session)) }));
   let ids: Record<string, unknown> = {};
   if (Date.now() >= workspacesUnsupportedUntil) {
     try {
