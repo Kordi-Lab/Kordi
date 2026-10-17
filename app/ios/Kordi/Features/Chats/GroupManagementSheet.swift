@@ -92,9 +92,11 @@ struct GroupManagementSheet: View {
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(participant.displayName)
                                         .font(.body.weight(.medium))
-                                    Text(memberRole(participant))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                    if let role = memberRole(participant) {
+                                        Text(role)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
                                 Spacer(minLength: 8)
                                 if participant.accountId == model.account?.accountId {
@@ -184,11 +186,11 @@ struct GroupManagementSheet: View {
         }
     }
 
-    private func memberRole(_ participant: CloudGroupParticipant) -> String {
+    /// Ordinary members carry no label; the trailing "You" already marks this account.
+    private func memberRole(_ participant: CloudGroupParticipant) -> String? {
         switch participant.role?.lowercased() {
-        case "self": "Member · this account"
         case "admin", "owner": "Admin"
-        default: "Member"
+        default: nil
         }
     }
 

@@ -9,11 +9,20 @@ function contactAvatarKind(contact: Contact): IdentityAvatarKind {
   return contact.classType === 'my-agents' || contact.classType === 'other-users-agents' ? 'agent' : 'human';
 }
 
+// Every ordinary person is a user, so only labels that carry information are shown.
+const PLAIN_CONTACT_TYPES = new Set(['user', 'person']);
+
+export function contactTypeLabel(contact: Pick<Contact, 'entityType'>): string | null {
+  const label = contact.entityType?.trim() ?? '';
+  return label && !PLAIN_CONTACT_TYPES.has(label.toLowerCase()) ? label : null;
+}
+
 function requestAvatarKind(request: ContactRequest): IdentityAvatarKind {
   return /agent/i.test(request.title) ? 'agent' : 'human';
 }
 
 export function ContactRow({ contact, active, onSelect }: { contact: Contact; active: boolean; onSelect: () => void }) {
+  const typeLabel = contactTypeLabel(contact);
   return (
     <button
       onClick={onSelect}
@@ -32,7 +41,7 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-[13px] font-medium leading-5">{contact.name}</span>
-          <span className="text-[10.5px] leading-4 text-slate-300">{contact.entityType}</span>
+          {typeLabel ? <span className="text-[10.5px] leading-4 text-slate-300">{typeLabel}</span> : null}
         </div>
         <div className="truncate text-[11.5px] leading-4 text-slate-300">{contact.subtitle}</div>
       </div>

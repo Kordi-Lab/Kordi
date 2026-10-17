@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { cn } from '@/lib/utils';
-import { ContactRequestRow, ContactRequestTime, ContactRow } from './components';
+import { ContactRequestRow, ContactRequestTime, ContactRow, contactTypeLabel } from './components';
 import { IdentityAvatar } from './components/IdentityAvatar';
 import { contactCanBeRemoved, contactDetailBodyText, contactPresenceStatus, sentInviteDisplayName } from './contactPresentation';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
@@ -506,7 +506,7 @@ export function ContactsPage({
                       />
                       <div>
                         <div className="app-transient-muted text-sm">
-                          {activeContact.entityType} • {activeContact.subtitle}
+                          {[contactTypeLabel(activeContact), activeContact.subtitle].filter(Boolean).join(' • ')}
                         </div>
                       </div>
                     </div>

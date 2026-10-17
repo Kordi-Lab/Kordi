@@ -4,5 +4,5 @@ export { MarkdownCodeBlock, MarkdownContent, MermaidDiagram } from './components
 export { SettingsValueControl } from './components/settings';
 export { SettingsNav, SettingsRow, SettingsSection, SettingsSelect, SettingsSwitch } from './components/settingsLayout';
 export type { SettingsNavGroup, SettingsNavItem } from './components/settingsLayout';
-export { ContactRequestRow, ContactRow, LiveChatTurnCard, LiveChatTurnMessage, MessageBubble, StatusPill, TypeBadge } from './components/transcript';
+export { ContactRequestRow, ContactRow, contactTypeLabel, LiveChatTurnCard, LiveChatTurnMessage, MessageBubble, StatusPill, TypeBadge } from './components/transcript';
 export { ContactRequestTime } from './components/transcriptMessageTime';
