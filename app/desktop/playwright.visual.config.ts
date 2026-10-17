@@ -26,6 +26,7 @@ export default defineConfig({
   projects: [
     { name: 'webkit-cloud-transport', testMatch: '**/cloudTransport.spec.ts', use: { ...devices['Desktop Safari'] } },
     { name: 'webkit-live-photo', testMatch: '**/livePhoto.spec.ts', use: { ...devices['Desktop Safari'] } },
+    { name: 'webkit-pinned-list', testMatch: '**/pinnedMessageList.spec.ts', use: { ...devices['Desktop Safari'] } },
     { name: 'webkit-emoji-picker', testMatch: '**/emojiPickerOffline.spec.ts', use: { ...devices['Desktop Safari'] } },
     {
       name: 'chromium',
