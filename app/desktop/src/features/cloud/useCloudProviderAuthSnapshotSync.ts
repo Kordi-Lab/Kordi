@@ -15,6 +15,7 @@ import type {
 } from './authClient';
 import { createCloudProviderAuthApi } from './providerAuthClient';
 import { createProviderAuthPublishGate, type ProviderAuthPublishGate } from './providerAuthPublishGate';
+import { useCloudProviderAuthFreshness } from './providerAuthFreshness';
 import { publishableAccountLabel } from './routeAccountChoice';
 import {
   canonicalCloudProviderId,
@@ -193,6 +194,7 @@ export function useCloudProviderAuthSnapshotSync({
   initialMessagesSettled: boolean;
   reportWarning: (message: string, error: unknown) => void;
 }) {
+  useCloudProviderAuthFreshness({ account, client, route, desktopAuthState, reportWarning });
   const syncGateRef = useRef<CloudProviderAuthSnapshotSyncGate | null>(null);
   if (syncGateRef.current == null) {
     syncGateRef.current = new CloudProviderAuthSnapshotSyncGate();

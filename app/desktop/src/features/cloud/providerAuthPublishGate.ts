@@ -47,10 +47,12 @@ export type ProviderAuthPublishGate = {
   /** Whether to publish; unchanged snapshots are skipped unless the owner acted explicitly. */
   shouldPublish(accountId: string, snapshot: PublishableSnapshot, explicit: boolean): Promise<{ publish: boolean; fingerprint: string }>;
   record(accountId: string, snapshot: PublishableSnapshot, fingerprint: string): void;
+  /** Whether this device published this account before, even if it was removed since. */
+  hasPublished(accountId: string, snapshot: Pick<PublishableSnapshot, 'provider' | 'authChoice'>): boolean;
 };
 
 export function createProviderAuthPublishGate(storage: FingerprintStore | null = defaultStorage()): ProviderAuthPublishGate {
-  const keyFor = (accountId: string, snapshot: PublishableSnapshot) => `${accountId}\u0000${snapshot.provider}\u0000${snapshot.authChoice}`;
+  const keyFor = (accountId: string, snapshot: Pick<PublishableSnapshot, 'provider' | 'authChoice'>) => `${accountId}\u0000${snapshot.provider}\u0000${snapshot.authChoice}`;
   const read = (): Record<string, string> => {
     try {
       const parsed = JSON.parse(storage?.getItem(STORAGE_KEY) ?? '{}') as unknown;
@@ -65,6 +67,9 @@ export function createProviderAuthPublishGate(storage: FingerprintStore | null =
       // Without persistent storage there is nothing to compare against.
       if (!storage || explicit) return { publish: true, fingerprint };
       return { publish: read()[keyFor(accountId, snapshot)] !== fingerprint, fingerprint };
+    },
+    hasPublished(accountId, snapshot) {
+      return keyFor(accountId, snapshot) in read();
     },
     record(accountId, snapshot, fingerprint) {
       if (!storage) return;
