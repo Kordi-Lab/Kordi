@@ -4,12 +4,18 @@ import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 type Anchor = { rowKey: string; screenTop: number; scrollTop: number; viewportTop: number };
 type Snapshot = { sessionKey: string; updateKey: string; contentKey: string; anchor: Anchor | null; active: boolean };
 
-/** Pin decorations preserve the visible message, including changes to the shelf above it. */
-export function useTranscriptViewportAnchor({ sessionKey, updateKey, contentKey: messageContentKey, viewportRef }: {
+/**
+ * Pin decorations preserve the visible message, including changes to the shelf above it.
+ * A viewport that follows the latest message keeps following it instead: pins
+ * for a newly opened chat arrive after its first paint, and anchoring the top
+ * row then would push the latest message below the fold.
+ */
+export function useTranscriptViewportAnchor({ sessionKey, updateKey, contentKey: messageContentKey, viewportRef, followingTail }: {
   sessionKey: string;
   updateKey?: string;
   contentKey: string;
   viewportRef: RefObject<HTMLDivElement | null>;
+  followingTail: boolean;
 }) {
   const contentKey = `${useMessageLayout()}|${messageContentKey}`;
   const snapshot = useRef<Snapshot | null>(null);
@@ -17,7 +23,7 @@ export function useTranscriptViewportAnchor({ sessionKey, updateKey, contentKey:
   let preserving = revision.preserving;
   if (revision.sessionKey !== sessionKey || revision.updateKey !== updateKey || revision.contentKey !== contentKey) {
     preserving = updateKey !== undefined && revision.sessionKey === sessionKey && revision.contentKey === contentKey
-      && (revision.preserving || revision.updateKey !== updateKey);
+      && (revision.preserving || (revision.updateKey !== updateKey && !followingTail));
     setRevision({ sessionKey, updateKey, contentKey, preserving });
   }
   const restore = () => {
