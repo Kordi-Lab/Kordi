@@ -215,6 +215,19 @@ pub fn cloud_session_store(
     Ok(())
 }
 
+/// Signs a test in without the keychain or the host activity side effects.
+#[cfg(test)]
+pub(crate) fn store_session_for_test(account_id: &str) -> Result<(), String> {
+    let payload = CloudSessionEntry {
+        token: "kordi_s_synthetic".into(),
+        account_id: account_id.into(),
+        expires_at: "2099-01-01T00:00:00Z".into(),
+        device_id: None,
+    };
+    let json = serde_json::to_string(&payload).map_err(|err| err.to_string())?;
+    secret_store(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, &json)
+}
+
 #[tauri::command]
 pub fn cloud_session_load() -> Result<Option<CloudSessionEntry>, String> {
     match secret_load(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)? {

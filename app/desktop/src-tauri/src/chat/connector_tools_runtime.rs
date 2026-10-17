@@ -24,11 +24,24 @@ pub(super) fn build(lease: &DesktopCloudExecutionLease) -> Option<ConnectorTools
     if descriptors.is_empty() && !offer_request_connect {
         return None;
     }
-    let session = crate::cloud_session::cloud_session_load().ok()??;
+    let names: Vec<&str> = descriptors.iter().map(|tool| tool.name.as_str()).collect();
+    // Tool names and a reason only; never a token.
+    let unavailable = |reason: &str| {
+        eprintln!("[connectors] lease tools {names:?} not offered: {reason}");
+    };
+    let Some(session) = crate::cloud_session::cloud_session_load().ok().flatten() else {
+        unavailable("no cloud session");
+        return None;
+    };
     if session.token.trim().is_empty() || session.account_id != lease.owner_account_id {
+        unavailable("the signed-in account is not the lease owner");
         return None;
     }
-    let api_base = crate::cloud_api_base_url_from_env().ok()?;
+    let Ok(api_base) = crate::cloud_api_base_url_from_env() else {
+        unavailable("no cloud API origin");
+        return None;
+    };
+    eprintln!("[connectors] lease tools offered: {names:?}");
     let mut runtime = http_runtime(descriptors, lease, api_base, session.token);
     runtime.offer_request_connect = offer_request_connect;
     Some(runtime)

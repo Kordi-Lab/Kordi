@@ -9,6 +9,7 @@ include!("tests/memory_prompt.rs");
 include!("tests/workspace.rs");
 include!("tests/live_local_tools.rs");
 include!("tests/omp_integration.rs");
+include!("tests/omp_lease_tools.rs");
 include!("tests/shared_turn_tools.rs");
 fn effective_thinking_for_model(requested: ThinkingLevel, model: &Model) -> ThinkingLevel {
     model_options::effective_thinking_for_model_with_auth(requested, model, None)

@@ -83,11 +83,16 @@ where
     let memory = load_run_memory(client, run).await;
     let tools = run_tool_catalog(run, &memory);
     let executor = CloudToolExecutor::new(sandbox.clone()).with_memory(memory.enabled);
-    let system_prompt = [run.system_prompt.trim(), cloud_sandbox_system_prompt()]
-        .into_iter()
-        .filter(|section| !section.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n");
+    let documents = prompt::group_document_guidance(&run.connectors.tools).unwrap_or_default();
+    let system_prompt = [
+        run.system_prompt.trim(),
+        cloud_sandbox_system_prompt(),
+        documents,
+    ]
+    .into_iter()
+    .filter(|section| !section.is_empty())
+    .collect::<Vec<_>>()
+    .join("\n\n");
     let system_prompt = if run.subsession_id.is_none()
         && (run.session_id.starts_with("session:group:")
             || run.session_id.starts_with("session:direct-person:"))
