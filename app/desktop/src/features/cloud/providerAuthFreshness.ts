@@ -109,7 +109,9 @@ export function useCloudProviderAuthFreshness({
   reportWarning: (message: string, error: unknown) => void;
 }) {
   const latest = useRef({ client, route, desktopAuthState, reportWarning });
-  latest.current = { client, route, desktopAuthState, reportWarning };
+  useEffect(() => {
+    latest.current = { client, route, desktopAuthState, reportWarning };
+  }, [client, route, desktopAuthState, reportWarning]);
   const accountId = account?.accountId ?? null;
   const authReady = desktopAuthState != null;
   useEffect(() => {
