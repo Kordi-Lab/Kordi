@@ -46,7 +46,7 @@ pub struct AgentRuntimeRoute {
 }
 
 impl AgentRuntimeRoute {
-    pub(super) fn normalized(&self) -> Option<Self> {
+    pub(crate) fn normalized(&self) -> Option<Self> {
         fn clean(value: &Option<String>, max_len: usize) -> Option<String> {
             value
                 .as_deref()

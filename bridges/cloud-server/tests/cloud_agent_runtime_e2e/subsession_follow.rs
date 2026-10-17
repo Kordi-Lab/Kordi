@@ -350,4 +350,5 @@ pub(super) async fn verify(
             .count(),
         1
     );
+    super::subsession_owner_reply::verify(router, pool, [owner, peer], id).await;
 }
