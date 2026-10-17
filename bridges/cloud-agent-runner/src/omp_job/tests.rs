@@ -51,8 +51,6 @@ fn sandbox_free_jobs_keep_exact_tool_catalog_and_route() {
             resume: false,
             tools: tools.clone(),
             timeout_ms: 20_000,
-            max_steps: 8,
-            max_tool_calls: 12,
         }
         .request()
         .unwrap();
@@ -162,8 +160,6 @@ async fn packaged_worker_runs_scoped_pip_and_digest_tools() {
                 resume: false,
                 tools,
                 timeout_ms: 20_000,
-                max_steps: 8,
-                max_tool_calls: 12,
             },
             &host,
             &events,
