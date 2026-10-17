@@ -124,3 +124,23 @@ test('code copy stays inside the upper right corner without adding a row or cove
     }
   }
 });
+
+test('selected text keeps each bubble’s own ink in light and dark themes', async ({ page }) => {
+  for (const theme of ['light', 'dark']) {
+    await page.goto(`${fixture}?theme=${theme}&layout=chat`);
+    for (const id of ['layout-quote', 'layout-source']) {
+      const surface = page.locator(`#app-transcript-message-${id} [data-kordi-copy-surface="message"]`).first();
+      await surface.evaluate(element => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        getSelection()?.removeAllRanges();
+        getSelection()?.addRange(range);
+      });
+      const colors = await surface.evaluate(element => ({
+        text: getComputedStyle(element).color,
+        selection: getComputedStyle(element, '::selection').color,
+      }));
+      expect(colors.selection, `${theme} ${id}`).toBe(colors.text);
+    }
+  }
+});

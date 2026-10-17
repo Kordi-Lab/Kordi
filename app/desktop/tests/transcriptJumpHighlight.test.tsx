@@ -25,6 +25,15 @@ test('jump-to-message highlight is one full-width accent band, matching iOS', ()
   assert.doesNotMatch(shellCss, /\.app-transcript-message-highlight \.app-(?:chat-bubble-user|chat-bubble-peer|live-assistant-answer-surface|message-bubble-shape-fill)/);
 });
 
+test('jump highlights never change message text color', () => {
+  const shellCss = readDesktopShellCss();
+  const highlightRules = shellCss.match(/[^{}]*\.app-(?:transcript-message-highlight|message-forward-reveal)[^{}]*\{[^}]*\}/g) ?? [];
+  assert.ok(highlightRules.length >= 4);
+  for (const rule of highlightRules) {
+    assert.doesNotMatch(rule, /(?:^|[;{\s])(?:color|-webkit-text-fill-color)\s*:/, rule);
+  }
+});
+
 test('reduced motion keeps the highlight band without animating it', () => {
   const shellCss = readDesktopShellCss();
   assert.match(
