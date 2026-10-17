@@ -8,6 +8,10 @@
 
 use kordi_cli::desktop_runtime::{DesktopChatContextMessage, DesktopCloudExecutionLease};
 
+/// Added to the turn's prompt only when the turn can call `create_document`
+/// (issue 1808): a prompt never asks for a tool the model does not have.
+pub(in crate::chat) const GROUP_DOCUMENTS_POLICY: &str = "When someone asks for a document, note, report, or plan for this conversation, create it with create_document (Markdown, or HTML for a page) so it is attached to your reply and saved in this conversation's Artifacts for every member; do not write it to a local file or folder instead. Write the complete document first, then call create_document once per document, at the end, with a specific title (never Untitled) and the finished content. Other formats, such as .docx, are only for an explicit request and are not shared documents. If background work should produce such a document, say in the spawn message that the child must create it with create_document.";
+
 /// Id of the resource message that carries the group directory and the
 /// document lease into a background turn.
 const GROUP_DIRECTORY_ID: &str = "group-directory";
@@ -141,6 +145,15 @@ mod tests {
         assert!(group_document_lease(Some(&reader)).is_none());
         assert!(group_document_lease(None).is_none());
         assert!(resource_message(None, None).is_none());
+    }
+
+    #[test]
+    fn document_guidance_asks_for_one_finished_call() {
+        let documents = super::GROUP_DOCUMENTS_POLICY;
+        assert!(documents.contains("create it with create_document"));
+        assert!(documents.contains("the child must create it with create_document"));
+        assert!(documents.contains("call create_document once per document, at the end"));
+        assert!(documents.contains("never Untitled"));
     }
 
     #[test]
