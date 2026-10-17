@@ -17,6 +17,38 @@ async function catalog() {
     id: await projectID(project.root), name: project.name, sessions: project.sessions.map((session) => session.id), root: project.root,
   })));
 }
+type PublishedProject = { id: string; name: string; sessions: string[]; workspaces?: Record<string, string> };
+let workspacesUnsupportedUntil = 0;
+/** Worktree sessions publish an opaque worktree ID so other Macs can show the same branch. */
+async function publishedCatalog(): Promise<PublishedProject[]> {
+  const projects = await catalog();
+  let ids: Record<string, unknown> = {};
+  if (Date.now() >= workspacesUnsupportedUntil) {
+    try {
+      const result = await invokeDesktop<Record<string, unknown> | null>('desktop_project_session_workspace_ids', { sessionIds: projects.flatMap((project) => project.sessions) });
+      if (result && typeof result === 'object') ids = result;
+    } catch { /* Older desktop runtimes publish membership only. */ }
+  }
+  return projects.map(({ id, name, sessions }) => {
+    const workspaces = Object.fromEntries(sessions.flatMap((session) => {
+      const workspace = Object.prototype.hasOwnProperty.call(ids, session) ? ids[session] : undefined;
+      return typeof workspace === 'string' && /^[a-f0-9]{64}$/u.test(workspace) ? [[session, workspace]] : [];
+    }));
+    return Object.keys(workspaces).length ? { id, name, sessions, workspaces } : { id, name, sessions };
+  });
+}
+/** Servers released before worktree IDs reject the field; publish membership alone there. */
+async function publishCatalog(token: string) {
+  const projects = await publishedCatalog();
+  try {
+    await projectCatalogRequest(token, '', 'PUT', { projects });
+  } catch (error) {
+    if (!projects.some((project) => project.workspaces)) throw error;
+    await projectCatalogRequest(token, '', 'PUT', { projects: projects.map(({ workspaces: _workspaces, ...project }) => project) });
+    // Retry with worktree IDs later so an updated server picks them up without a restart.
+    workspacesUnsupportedUntil = Date.now() + 10 * 60_000;
+  }
+}
 export async function projectCatalogRequest<T>(token: string, path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(`${cloudApiBaseUrl()}/v1/cloud/projects${path}`, {
     method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -70,8 +102,7 @@ export function useProjectSync(enabled: boolean, accountId: string | undefined) 
       try {
         const session = await loadSession();
         if (!session?.deviceId || session.accountId !== accountId) return;
-        const projects = (await catalog()).map(({ id, name, sessions }) => ({ id, name, sessions }));
-        if (!stopped && (await loadSession())?.token === session.token) await projectCatalogRequest(session.token, '', 'PUT', { projects });
+        if (!stopped && (await loadSession())?.token === session.token) await publishCatalog(session.token);
       } catch { /* Older servers and temporary disconnections must leave local projects usable. */ }
       finally { publishing = false; }
     };
@@ -89,8 +120,7 @@ export function useProjectSync(enabled: boolean, accountId: string | undefined) 
         catch { failed = true; result = { message: 'The project action failed on your Mac. Check that the folder exists and GitHub is connected, then try again.' }; }
         if (stopped || (await loadSession())?.token !== session.token) return;
         // Publish membership before acknowledging so iOS cannot send into the old workspace.
-        const projects = (await catalog()).map(({ id, name, sessions }) => ({ id, name, sessions }));
-        await projectCatalogRequest(session.token, '', 'PUT', { projects });
+        await publishCatalog(session.token);
         await projectCatalogRequest(session.token, `/commands/${command.id}`, 'PUT', { result, failed });
         window.dispatchEvent(new Event(PROJECTS_UPDATED_EVENT));
       } catch { /* A failed transport never repeats a potentially completed clone or move. */ }

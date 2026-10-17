@@ -52,6 +52,38 @@ async fn projects_are_private_device_bound_and_operations_are_claimed_once() {
     .await;
     let device = rows["devices"][0]["id"].as_str().unwrap();
     assert_eq!(rows["devices"][0]["projects"][0]["name"], "Example");
+    assert!(rows["devices"][0]["projects"][0]
+        .get("workspaces")
+        .is_none());
+    let worktree = "b".repeat(64);
+    for (workspaces, status) in [
+        (json!({"other-session": worktree}), StatusCode::BAD_REQUEST),
+        (
+            json!({"project-session": "/private/path"}),
+            StatusCode::BAD_REQUEST,
+        ),
+        (json!({"project-session": worktree}), StatusCode::OK),
+    ] {
+        let catalog = json!({"projects":[{"id":project_id,"name":"Example","sessions":["project-session"],"workspaces":workspaces}]});
+        let response = router
+            .clone()
+            .oneshot(put(&owner.token, "/v1/cloud/projects", catalog))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), status);
+    }
+    let rows = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/projects", &owner.token))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(
+        rows["devices"][0]["projects"][0]["workspaces"],
+        json!({"project-session": worktree})
+    );
     assert_eq!(rows["devices"][0]["online"], true);
     let other = read_json(
         router

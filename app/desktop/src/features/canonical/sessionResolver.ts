@@ -32,9 +32,16 @@ export type RemoteProjectMembership = {
   sessions: readonly string[];
   /** Root of the local project with the same catalog ID, when this Mac has it too. */
   localRoot?: string | null;
+  /** Session ID to the catalog ID of the worktree it runs in. */
+  workspaces?: Readonly<Record<string, string>>;
 };
 
 export const REMOTE_PROJECT_GROUP_PREFIX = 'remote-project:';
+
+/** The catalog ID of a project group whose folder this Mac has not found. */
+export function remoteProjectCatalogId(groupId?: string | null) {
+  return groupId?.startsWith(REMOTE_PROJECT_GROUP_PREFIX) ? groupId.slice(REMOTE_PROJECT_GROUP_PREFIX.length) : null;
+}
 
 /** A local session the project catalog may not list yet, with any workspace paths it already carries. */
 export type ProjectSessionHint = {

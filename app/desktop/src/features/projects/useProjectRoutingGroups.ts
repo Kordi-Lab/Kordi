@@ -30,7 +30,9 @@ export function useProjectRoutingGroups(
     [canonicalSessionState, desktopChatState],
   );
   const localRoots = useMemo(() => (desktopChatState?.projects ?? []).map((project) => project.root), [desktopChatState?.projects]);
-  const remoteProjects = useRemoteProjectCatalog(Boolean(desktopChatState) && isNativeDesktopShell(), localRoots);
+  // Folders this profile already works in help find a synced project's folder.
+  const folderHints = useMemo(() => [desktopChatState?.cwd ?? '', desktopChatState?.activeSession.cwd ?? ''], [desktopChatState?.cwd, desktopChatState?.activeSession.cwd]);
+  const remoteProjects = useRemoteProjectCatalog(Boolean(desktopChatState) && isNativeDesktopShell(), localRoots, folderHints);
   const groups = useMemo(() => buildProjectRoutingGroups(desktopChatState?.projects, canonicalSessionState, {
     sessionHints: hints?.sessionHints,
     unboundSessionIds: hints?.unboundSessionIds,
