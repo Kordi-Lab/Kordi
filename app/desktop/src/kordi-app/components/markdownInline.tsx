@@ -7,6 +7,7 @@ import {
   bareHttpUrlStartPattern,
   compactExternalLinkLabel,
   markdownHttpLinkPrefix,
+  markdownNonHttpLinkPrefix,
   safeExternalHttpHref,
   splitBareHttpUrl,
 } from './messageLinks';
@@ -73,7 +74,9 @@ function emphasisMatches(text: string) {
   // message for each unmatched opener makes incomplete streamed text quadratic.
   while (cursor < text.length) {
     const slice = text.slice(cursor);
-    const opaqueLength = markdownHttpLinkPrefix(slice)?.matchedLength ?? slice.match(/^`[^`]+`/)?.[0].length;
+    const opaqueLength = markdownHttpLinkPrefix(slice)?.matchedLength
+      ?? markdownNonHttpLinkPrefix(slice)?.matchedLength
+      ?? slice.match(/^`[^`]+`/)?.[0].length;
     if (opaqueLength) {
       cursor += opaqueLength;
       continue;
@@ -148,6 +151,13 @@ function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
     if (markdownLink) {
       parts.push({ type: 'link', label: markdownLink.label, href: markdownLink.href });
       index += markdownLink.matchedLength;
+      continue;
+    }
+    // A link to a local file or another non-web target keeps only its label.
+    const otherLink = markdownNonHttpLinkPrefix(slice);
+    if (otherLink) {
+      parts.push({ type: 'text', value: otherLink.label });
+      index += otherLink.matchedLength;
       continue;
     }
     const wrapped = WRAPPED_INLINE.map((entry) => ({ type: entry.type, match: entry.pattern.exec(slice) })).find((entry) => entry.match);

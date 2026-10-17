@@ -132,7 +132,8 @@ export function compactExternalLinkLabel(label: string, href: string, maxLength 
     : `${compact.slice(0, Math.max(1, maxLength - 1))}…`;
 }
 
-export function markdownHttpLinkPrefix(value: string): MessageLinkMatch | null {
+/** `[label](destination)` at the start of `value`; spaces end a destination unless allowed. */
+function markdownLinkParts(value: string, allowSpaces = false): { label: string; destination: string; matchedLength: number; adjacent: boolean } | null {
   if (!value.startsWith('[')) return null;
 
   let escaped = false;
@@ -165,7 +166,7 @@ export function markdownHttpLinkPrefix(value: string): MessageLinkMatch | null {
         escaped = true;
         continue;
       }
-      if (/\s/.test(destinationCharacter)) break;
+      if (destinationCharacter === '\n' || (!allowSpaces && /\s/.test(destinationCharacter))) break;
       if (destinationCharacter === '(') {
         parenthesisDepth += 1;
         continue;
@@ -176,12 +177,9 @@ export function markdownHttpLinkPrefix(value: string): MessageLinkMatch | null {
         continue;
       }
 
-      const href = safeExternalHttpHref(
-        value.slice(destinationStart, cursor).replace(/\\([\\()])/g, '$1'),
-      );
-      if (!href) return null;
       return {
-        href,
+        adjacent: destinationStart === labelEnd + 2,
+        destination: value.slice(destinationStart, cursor).replace(/\\([\\()])/g, '$1'),
         label: value.slice(1, labelEnd).replace(/\\([\\[\]])/g, '$1'),
         matchedLength: cursor + 1,
       };
@@ -189,6 +187,29 @@ export function markdownHttpLinkPrefix(value: string): MessageLinkMatch | null {
   }
 
   return null;
+}
+
+export function markdownHttpLinkPrefix(value: string): MessageLinkMatch | null {
+  const parts = markdownLinkParts(value);
+  const href = parts ? safeExternalHttpHref(parts.destination) : null;
+  return parts && href ? { href, label: parts.label, matchedLength: parts.matchedLength } : null;
+}
+
+/**
+ * A Markdown link to anything but a web page, such as a file on someone's
+ * computer: shown as its label, or the file name when the label is empty,
+ * never as raw markup.
+ */
+export function markdownNonHttpLinkPrefix(value: string): { label: string; matchedLength: number } | null {
+  const parts = markdownLinkParts(value, true);
+  if (!parts?.adjacent || markdownHttpLinkPrefix(value)) return null;
+  const target = parts.destination.trim().replace(/^<|>$/g, '');
+  // A path, a URI, or a file name; never ordinary words in parentheses.
+  if (!/[\\/]/.test(target) && !/^[a-z][a-z\d+.-]*:\S/i.test(target) && !/^\S+\.[a-z\d]{1,8}$/i.test(target)) return null;
+  return {
+    label: parts.label.trim() ? parts.label : target.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? '',
+    matchedLength: parts.matchedLength,
+  };
 }
 
 export function externalMessageLinks(text: string, limit = 10): Omit<MessageLinkMatch, 'matchedLength'>[] {
