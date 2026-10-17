@@ -46,8 +46,11 @@ pub struct ConnectorToolDescriptor {
     pub input_schema: Value,
 }
 
-/// The `provider` of the document tools (`read_document`, `edit_document`).
+/// The `provider` of the document tools (`read_document`, `edit_document`,
+/// `create_document`).
 pub const DOCUMENT_TOOLS_PROVIDER: &str = "kordi_documents";
+/// The document tool that saves a new document in the run's group.
+pub const CREATE_DOCUMENT_TOOL: &str = "create_document";
 
 impl ConnectorToolDescriptor {
     pub fn is_act(&self) -> bool {
@@ -59,6 +62,20 @@ impl ConnectorToolDescriptor {
     /// gates every call, so a turn another member requested may use it.
     pub fn is_shared_document_read(&self) -> bool {
         self.provider == DOCUMENT_TOOLS_PROVIDER && self.group == ConnectorToolGroup::Read
+    }
+
+    /// `create_document`: posts a new document in the run's group as the
+    /// agent's message, so it reaches exactly the people who read the reply.
+    /// It touches none of the owner's services or files and the server gates
+    /// every call, so it needs no approval card and may serve a turn another
+    /// member requested (issue 1808).
+    pub fn is_group_document_create(&self) -> bool {
+        self.provider == DOCUMENT_TOOLS_PROVIDER && self.name == CREATE_DOCUMENT_TOOL
+    }
+
+    /// A document tool a turn another member requested may keep.
+    pub fn is_shared_document_tool(&self) -> bool {
+        self.is_shared_document_read() || self.is_group_document_create()
     }
 }
 
@@ -109,7 +126,7 @@ pub fn act_tool_providers(
     descriptors
         .iter()
         .filter_map(|descriptor| lease_tool(descriptors, &descriptor.name))
-        .filter(|descriptor| descriptor.is_act())
+        .filter(|descriptor| descriptor.is_act() && !descriptor.is_group_document_create())
         .map(|descriptor| (descriptor.name.clone(), descriptor.provider.clone()))
         .collect()
 }
@@ -182,13 +199,13 @@ pub struct ConnectorToolsRuntime {
 
 impl ConnectorToolsRuntime {
     /// What a turn requested by someone other than the owner keeps: the
-    /// read-only document tools and nothing else. `None` when the lease
-    /// carries none.
+    /// read-only document tools and `create_document`, nothing else. `None`
+    /// when the lease carries none.
     pub fn for_shared_turn(&self) -> Option<Self> {
         let descriptors = self
             .descriptors
             .iter()
-            .filter(|descriptor| descriptor.is_shared_document_read())
+            .filter(|descriptor| descriptor.is_shared_document_tool())
             .cloned()
             .collect::<Vec<_>>();
         (!descriptors.is_empty()).then(|| Self {
@@ -254,7 +271,7 @@ impl Tool for ConnectorTool {
     }
 
     fn allows_shared_requests(&self) -> bool {
-        self.descriptor.is_shared_document_read()
+        self.descriptor.is_shared_document_tool()
     }
 
     fn metadata(&self) -> ToolMetadata {
@@ -284,7 +301,7 @@ impl Tool for ConnectorTool {
             .filter(|descriptor| descriptor.connector_id == self.descriptor.connector_id)
             .cloned()
             .ok_or_else(|| KordiError::Tool(CONNECTOR_TOOLS_UNAVAILABLE.into()))?;
-        if descriptor.is_act() {
+        if descriptor.is_act() && !descriptor.is_group_document_create() {
             request_act_approval(runtime, &descriptor, &params, ctx).await?;
         }
         let value = tokio::select! {
