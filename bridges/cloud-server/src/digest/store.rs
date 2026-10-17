@@ -12,8 +12,6 @@ use super::source_reader::source_page;
 #[cfg(test)]
 pub use super::source_reader::visible_text;
 pub use super::source_reader::{authorized, sources};
-use crate::cloud_agent_runtime::provider_auth::mark_run_account_rejected;
-use crate::cloud_agent_runtime::runs::route_fill::background_route;
 
 pub async fn initialize_preferences(
     pool: &PgPool,
@@ -296,7 +294,7 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
     // The run names the account it uses, so the runner resolves the same one
     // this check found even when the owner holds several saved accounts.
     let session = format!("digest:{account}");
-    let Some(route) = background_route(pool, account, &session).await? else {
+    let Some(route) = super::fallback::route(pool, account, &session).await? else {
         // Saved accounts that all need reconnecting are a sign-in problem, not a missing provider.
         let (live,):(i64,)=query_as("SELECT COUNT(*) FROM cloud_agent_provider_auth_snapshots WHERE account_id=$1 AND revoked_at IS NULL").bind(account).fetch_one(pool).await?;
         let code = if live > 0 {
@@ -450,11 +448,9 @@ pub async fn fail(pool: &PgPool, run: &str, runner: Option<&str>, code: &str) ->
     let changed=query("UPDATE cloud_agent_fallback_runs SET status='failed',error_code=$3,error_message='Digest update failed.',updated_at=$4 WHERE run_id=$1 AND ($2::text IS NULL OR claimed_by=$2) AND status IN ('queued','leased','running')").bind(run).bind(runner).bind(code).bind(Utc::now().to_rfc3339()).execute(&mut *tx).await?;
     let mut retry_now = None;
     if changed.rows_affected() > 0 {
-        // A refused saved account needs reconnecting and is skipped from now
-        // on, so the digest retries at once with the owner's next account.
-        // Each account is refused once, which bounds these retries.
-        let switched = code == "provider_auth_rejected"
-            && mark_run_account_rejected(&mut tx, run).await?.is_some();
+        // When the failure may be the account's, the digest retries at once
+        // with the owner's next account (see `fallback`).
+        let switched = super::fallback::switches_account(&mut tx, pool, run, code).await?;
         // Repeated failures back off (1 minute, 5 minutes, 30 minutes, 2 hours,
         // then 12 hours) so a broken provider sign-in costs a handful of calls
         // a day. A source change is not a failure and retries at once.

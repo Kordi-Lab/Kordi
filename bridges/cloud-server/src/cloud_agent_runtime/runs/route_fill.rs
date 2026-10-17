@@ -12,7 +12,7 @@ use sqlx_postgres::PgPool;
 
 use super::AgentRuntimeRoute;
 use crate::cloud_agent_runtime::provider_auth::{
-    snapshot_available_for_route, snapshot_status, READY,
+    live_snapshot_for_route, snapshot_available_for_route, snapshot_status, READY,
 };
 
 const CANDIDATE_LIMIT: i64 = 16;
@@ -46,11 +46,13 @@ pub(crate) async fn fill_cloud_route(
 /// claim to carry a route, and an empty route only resolves while the owner
 /// holds exactly one saved account. It reuses the owner's latest route that a
 /// hosted account can serve, then falls back to the most recently connected
-/// account that is ready. `None` means no saved account can run it.
+/// account that is ready. Saved accounts in `exclude` are passed over.
+/// `None` means no other saved account can run it.
 pub(crate) async fn background_route(
     pool: &PgPool,
     owner_account_id: &str,
     session_id: &str,
+    exclude: &[String],
 ) -> Result<Option<AgentRuntimeRoute>, sqlx_core::Error> {
     let route = fill_cloud_route(
         pool,
@@ -60,10 +62,15 @@ pub(crate) async fn background_route(
     )
     .await?;
     if route.default_model.is_some() {
-        return Ok(Some(route));
+        let route_json = serde_json::to_value(&route)
+            .map_err(|error| sqlx_core::Error::Encode(Box::new(error)))?;
+        let resolved = live_snapshot_for_route(pool, owner_account_id, &route_json).await?;
+        if resolved.is_some_and(|snapshot_id| !exclude.contains(&snapshot_id)) {
+            return Ok(Some(route));
+        }
     }
-    let rows: Vec<(String, String, bool, Option<i64>)> = query_as(
-        "SELECT provider, auth_choice, refreshable, expires_at_ms \
+    let rows: Vec<(String, String, String, bool, Option<i64>)> = query_as(
+        "SELECT snapshot_id, provider, auth_choice, refreshable, expires_at_ms \
          FROM cloud_agent_provider_auth_snapshots \
          WHERE account_id = $1 AND revoked_at IS NULL ORDER BY created_at DESC",
     )
@@ -72,10 +79,10 @@ pub(crate) async fn background_route(
     .await?;
     Ok(rows
         .into_iter()
-        .find(|(_, _, refreshable, expires_at_ms)| {
-            snapshot_status(*refreshable, *expires_at_ms) == READY
+        .find(|(snapshot_id, _, _, refreshable, expires_at_ms)| {
+            snapshot_status(*refreshable, *expires_at_ms) == READY && !exclude.contains(snapshot_id)
         })
-        .map(|(provider, auth_choice, _, _)| AgentRuntimeRoute {
+        .map(|(_, provider, auth_choice, _, _)| AgentRuntimeRoute {
             default_auth_provider: Some(provider),
             default_auth_choice: Some(auth_choice),
             ..AgentRuntimeRoute::default()
