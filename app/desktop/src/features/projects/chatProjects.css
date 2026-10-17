@@ -61,3 +61,26 @@
 .chat-workspace-error { margin: 6px 0 0; color: var(--app-error-text); font-size: 11px; }
 .chat-workspace-menu { width: min(280px, calc(100vw - 16px)); max-height: min(340px, calc(100dvh - 16px)); }
 .chat-workspace-menu-heading { padding: 8px 9px 4px; color: var(--utility-muted-text); font-size: 11px; }
+
+/* One line at every composer width. Space runs out in this order: the branch name
+   truncates, then the project name, then the worktree toggle and the location chip
+   drop their text. The add-folder button never leaves the row. Pure CSS (flex
+   shrink weights + container queries), so resizing costs no script or observer.
+   `flex-basis: content` plus a `width` makes the floor min(content, width), so short
+   names never get padded. Selectors for the read-only project and Locate chips match
+   nothing when those chips are absent. */
+.chat-workspace-controls { container: chat-workspace / inline-size; }
+.chat-workspace-selector-row { flex-wrap: nowrap; min-width: 0; overflow: hidden; }
+.chat-workspace-selector-row > * { flex: none; }
+.chat-workspace-selector-row > :is(.chat-project-trigger, .chat-workspace-project) { flex: 0 1 content; width: 72px; min-width: auto; }
+.chat-workspace-selector-row > .chat-workspace-git { flex: 0 1000 content; width: 156px; min-width: auto; }
+.chat-workspace-git > button { flex: 1 1 auto; }
+.chat-workspace-git > button > span { min-width: 0; }
+.chat-workspace-git label { flex: none; }
+@container chat-workspace (max-width: 340px) {
+  .chat-workspace-git label { gap: 0; font-size: 0; }
+  .chat-workspace-selector-row > .chat-workspace-git { width: 100px; }
+}
+@container chat-workspace (max-width: 290px) {
+  .chat-workspace-selector-row > :is(.chat-workspace-location, .chat-workspace-locate) { gap: 0; font-size: 0; }
+}
