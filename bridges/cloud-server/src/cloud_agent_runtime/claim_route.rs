@@ -6,9 +6,9 @@ use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::routes::CloudSession;
 use crate::cloud_agent_runtime::runs::{
     claim_has_shared_cloud_agent_target, claim_run_for_person_message,
-    cloud_agent_response_is_processing_for_request, error_response, requester_can_target_owner,
-    run_error_response, validate_group_agent_claim, validate_shared_cloud_agent_claim,
-    ClaimRunRequest,
+    cloud_agent_response_is_processing_for_request, error_response,
+    fail_unavailable_project_request, requester_can_target_owner, run_error_response,
+    validate_group_agent_claim, validate_shared_cloud_agent_claim, ClaimRunRequest,
 };
 use crate::server::ServerState;
 use axum::extract::State;
@@ -175,14 +175,42 @@ pub(super) async fn claim_cloud_agent_run(
         );
     }
 
-    if let Some(response) = crate::projects::cloud_execution_gate(
+    // Project sessions are routed by project, never by account-wide desktop
+    // readiness: a ready Mac without the project would never claim them.
+    match crate::projects::project_route(
         state.db_pool(),
         &input.owner_account_id,
         &input.session_id,
+        None,
     )
     .await
     {
-        return response;
+        Ok(Some(route)) if !route.runners.is_empty() => {
+            return error_response(
+                "owner_online",
+                "The project Mac will handle this task.",
+                StatusCode::CONFLICT,
+            );
+        }
+        Ok(Some(route)) => {
+            let message = route.unavailable_message();
+            return match fail_unavailable_project_request(state.db_pool(), &input, &message).await {
+                Ok(run) => Json(run).into_response(),
+                Err(error) => run_error_response(
+                    "end unavailable project request",
+                    "Could not end this project request.",
+                    error,
+                ),
+            };
+        }
+        Ok(None) => {}
+        Err(error) => {
+            return run_error_response(
+                "project routing",
+                "Could not resolve this project device.",
+                error.into(),
+            );
+        }
     }
     let now = Utc::now();
     let route_timeout = crate::presence::presence_timeout();

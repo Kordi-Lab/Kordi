@@ -24,16 +24,15 @@ pub(in crate::cloud_agent_runtime) async fn claim(
     if !input.run.is_well_formed() || input.run.owner_account_id != session.account_id {
         return denied();
     }
-    match crate::projects::session_device(
+    let project = match crate::projects::project_route(
         state.db_pool(),
         &session.account_id,
         &input.run.session_id,
+        Some(&session.device_id),
     )
     .await
     {
-        Ok(Some(device)) if device != session.device_id => {
-            return Json(json!({"acquired":false})).into_response()
-        }
+        Ok(project) => project,
         Err(error) => {
             return run_error_response(
                 "project routing",
@@ -41,7 +40,31 @@ pub(in crate::cloud_agent_runtime) async fn claim(
                 error.into(),
             )
         }
-        _ => {}
+    };
+    // Another Mac runs a project session only when its build moves the session
+    // into its own folder of the project first (`bindsProject`).
+    if let Some(route) = project.as_ref().filter(|route| {
+        !route.admits(&session.device_id)
+            || (route.project_device_id != session.device_id && !input.binds_project)
+    }) {
+        if route
+            .runners
+            .iter()
+            .any(|runner| runner != &session.device_id)
+        {
+            return Json(json!({"acquired":false})).into_response();
+        }
+        // No Mac with the project is online: end the request now with a reply
+        // that says where to run it, instead of leaving it with no status.
+        let message = route.unavailable_message();
+        return match runs::fail_unavailable_project_request(state.db_pool(), &input.run, &message)
+            .await
+        {
+            Ok(run) => Json(json!({"acquired":false,"runId":run.run_id,"errorCode":runs::PROJECT_UNAVAILABLE_ERROR_CODE,"message":message})).into_response(),
+            // Not a chat request of this session, such as a follow-up or comment run.
+            Err(runs::RunError::NotFound) => Json(json!({"acquired":false})).into_response(),
+            Err(e) => run_error_response("project routing", "Could not end this project request.", e),
+        };
     }
     // A comment run exists before its claim and has no chat message.
     if crate::document_shares::agents::is_comment_request(&input.run.request_message_id) {
@@ -83,7 +106,12 @@ pub(in crate::cloud_agent_runtime) async fn claim(
         let acquired: (bool,) = query_as("SELECT execution_backend='desktop' AND claimed_by=$2 AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() FROM cloud_agent_fallback_runs WHERE run_id=$1")
             .bind(&run.run_id).bind(owner).fetch_one(state.db_pool()).await?;
         let identity = if acquired.0 { Some(runs::identity::identity_for_run(state.db_pool(), &run.run_id).await?) } else { None };
-        Ok(Some(json!({"runId":run.run_id,"acquired":acquired.0,"leaseSeconds":45,"turnIdentity":identity})))
+        let mut value = json!({"runId":run.run_id,"acquired":acquired.0,"leaseSeconds":45,"turnIdentity":identity});
+        // The claiming Mac runs the turn in its own folder of this project.
+        if let Some(route) = project.as_ref() {
+            value["project"] = json!({"id":route.project_id,"name":route.project_name,"workspaceId":route.workspace_id});
+        }
+        Ok(Some(value))
     }.await;
     match result {
         Ok(Some(value)) => context_scope_response(&state, value).await,
