@@ -132,3 +132,46 @@ test('real subsessions do not leave permanently active duplicate planning tasks'
   } });
   assert.equal(result.tasks.length, 0);
 });
+
+test('Cloud tool progress renders as one activity row, never one message per tool call', () => {
+  const tool = (id: string, name: string, status: string) => ({ id, name, status, arguments: '', liveOutput: '', isError: false });
+  const record: CloudAgentSubsession = { sessionId: 'child', parentSessionId: 'parent', parentRequestId: 'root',
+    ownerAccountId: 'owner', agentId: 'agent-one', ownerDisplayName: 'Owner', agentDisplayName: 'Researcher',
+    title: 'Research', status: 'running', version: 4, updatedAt: '', live: true,
+    activity: { tools: [tool('a', 'search_sessions', 'completed'), tool('b', 'read_session', 'running')] },
+    messages: [{ id: 'brief', role: 'user', senderAgentId: 'agent-one', text: 'Compare sources', timestampMs: 1 }] };
+  const running = subsessionTranscript(record, 'owner');
+  assert.equal(running.length, 2);
+  assert.equal(running[1].turn?.completed, false);
+  assert.deepEqual(running[1].turn?.tools.map(item => [item.name, item.status]), [['search_sessions', 'completed'], ['read_session', 'running']]);
+  record.status = 'done';
+  record.messages.push({ id: 'result:run', role: 'assistant', text: 'Final answer', timestampMs: 9 });
+  const done = subsessionTranscript(record, 'owner');
+  assert.equal(done.length, 2);
+  assert.equal(done[1].text, 'Final answer');
+  assert.equal(done[1].turn?.completed, true);
+  assert.equal(done[1].turn?.assistantText, 'Final answer');
+  assert(done[1].turn?.tools.every(item => item.status === 'completed'));
+});
+
+test('stored per-tool progress messages collapse into one row', () => {
+  const legacy = Array.from({ length: 30 }, (_, index) => ({ id: `tool:call-${index}`, role: 'assistant' as const,
+    text: index % 3 ? 'Using search_sessions…' : 'Using read_session…', timestampMs: 2 + index }));
+  const record: CloudAgentSubsession = { sessionId: 'child', parentSessionId: 'parent', parentRequestId: 'root',
+    ownerAccountId: 'owner', agentId: 'agent-one', ownerDisplayName: 'Owner', agentDisplayName: 'Researcher',
+    title: 'Research', status: 'running', version: 40, updatedAt: '', live: true, activity: { tools: [] },
+    messages: [{ id: 'brief', role: 'user', senderAgentId: 'agent-one', text: 'Compare sources', timestampMs: 1 }, ...legacy] };
+  const running = subsessionTranscript(record, 'owner');
+  assert.equal(running.length, 2);
+  assert(!running.some(row => row.text.startsWith('Using ')));
+  assert.equal(running[1].turn?.tools.length, 30);
+  assert.equal(running[1].turn?.completed, false);
+  assert.equal(running[1].turn?.tools.at(-1)?.status, 'running');
+  record.status = 'done';
+  record.messages.push({ id: 'result:run', role: 'assistant', text: 'Final answer', timestampMs: 99 });
+  const done = subsessionTranscript(record, 'owner');
+  assert.deepEqual(done.map(row => row.id), ['brief', 'result:run']);
+  assert.equal(done[1].turn?.tools.length, 30);
+  assert.equal(done[1].turn?.completed, true);
+  assert.equal(done[1].turn?.tools[1].name, 'search_sessions');
+});

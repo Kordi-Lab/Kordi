@@ -118,7 +118,7 @@ fn context_tool_schema(tool: &dyn Tool) -> Value {
     let mut schema = local_tool_schema(tool);
     schema["function"]["parameters"]["properties"]["beforeSequence"] = serde_json::json!({
         "type": "integer", "minimum": 1,
-        "description": "Continue an older page using nextBeforeSequence returned by the previous call. Search examines a bounded page; continue when hasMore is true."
+        "description": "Continue an older page using nextBeforeSequence returned by the previous call. Search examines a bounded page; continue only while older matches are still needed, and stop when the result note says there are no more matches."
     });
     schema
 }

@@ -1,4 +1,5 @@
 //! Child execution text is durable without becoming a parent chat response.
+pub(crate) mod activity;
 use super::{
     leases::{runner_response_from_row, RunnerRunRow},
     RunError, RunResult, RunnerRunResponse,
@@ -11,9 +12,9 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use sqlx_core::{query::query, query_as::query_as};
-use sqlx_postgres::PgPool;
+use sqlx_postgres::{PgConnection, PgPool};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -60,18 +61,20 @@ pub(super) async fn finish_with_state(
         .await?;
     }
     let now = chrono::Utc::now();
-    let follow = query(
-        "UPDATE cloud_agent_subsession_chat SET response_text=$2,updated_at=now() WHERE run_id=$1",
-    )
-    .bind(run_id)
-    .bind(text)
-    .execute(&mut *tx)
-    .await?
-    .rows_affected()
-        > 0;
+    let chat: Option<(Value,)> =
+        query_as("SELECT activity FROM cloud_agent_subsession_chat WHERE run_id=$1 FOR UPDATE")
+            .bind(run_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let follow = chat.is_some();
+    if let Some((current,)) = chat {
+        query("UPDATE cloud_agent_subsession_chat SET response_text=$2,activity=$3,updated_at=now() WHERE run_id=$1")
+            .bind(run_id).bind(text).bind(activity::settle(&current)).execute(&mut *tx).await?;
+    }
+    let settled = activity::settle(&subsession_activity(&mut tx, id).await?);
     let message = json!([{"id":format!("result:{run_id}"),"role":"assistant","text":text,"timestampMs":now.timestamp_millis()}]);
-    query("UPDATE cloud_agent_subsessions SET status=$2,execution_finished_at=now(),messages=messages||$3,version=version+1,updated_at=now() WHERE subsession_id=$1 AND execution_backend='cloud'")
-        .bind(id).bind(if succeeded {"done"} else {"failed"}).bind(if follow {json!([])}else{message}).execute(&mut *tx).await?;
+    query("UPDATE cloud_agent_subsessions SET status=$2,execution_finished_at=now(),messages=messages||$3,activity=CASE WHEN $4 THEN activity ELSE $5 END,version=version+1,updated_at=now() WHERE subsession_id=$1 AND execution_backend='cloud'")
+        .bind(id).bind(if succeeded {"done"} else {"failed"}).bind(if follow {json!([])}else{message}).bind(follow).bind(settled).execute(&mut *tx).await?;
     let row:RunnerRunRow=query_as("UPDATE cloud_agent_fallback_runs SET status=$3,updated_at=$4,completed_at=$4,lease_expires_at=NULL WHERE run_id=$1 AND claimed_by=$2 RETURNING run_id,status,prompt,owner_account_id,requester_account_id,session_id,sandbox_id,runtime_route_json,response_message_id,error_code,error_message,system_prompt")
         .bind(run_id).bind(runner_id).bind(if succeeded {"completed"} else {"failed"}).bind(now.to_rfc3339()).fetch_one(&mut *tx).await?;
     tx.commit().await?;
@@ -124,7 +127,6 @@ async fn progress(pool: &PgPool, run_id: &str, input: ProgressInput) -> RunResul
     {
         return Err(RunError::NotFound);
     }
-    let message = json!([{"id":format!("tool:{}",input.tool_call_id),"role":"assistant","text":format!("Using {}…",input.tool_name),"timestampMs":chrono::Utc::now().timestamp_millis()}]);
     let mut tx = pool.begin().await?;
     query("SELECT pg_advisory_xact_lock(81208411)")
         .execute(&mut *tx)
@@ -132,15 +134,38 @@ async fn progress(pool: &PgPool, run_id: &str, input: ProgressInput) -> RunResul
     let owned:Option<(Uuid,)> = query_as("SELECT subsession_id FROM cloud_agent_fallback_runs WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='cloud' AND subsession_id IS NOT NULL AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() FOR UPDATE")
         .bind(run_id).bind(&input.runner_id).fetch_optional(&mut *tx).await?;
     let (id,) = owned.ok_or(RunError::NotFound)?;
-    let follow=query("UPDATE cloud_agent_subsession_chat SET activity=jsonb_build_object('tools',jsonb_build_array(jsonb_build_object('id',$2::text,'name',$3::text,'status','running','arguments','','liveOutput','','isError',false))),updated_at=now() WHERE run_id=$1")
-        .bind(run_id).bind(&input.tool_call_id).bind(&input.tool_name).execute(&mut *tx).await?.rows_affected()>0;
-    if follow {
+    // Progress updates run activity only. It never appends transcript
+    // messages, so long runs cannot fill or clutter the conversation.
+    let chat: Option<(Value,)> =
+        query_as("SELECT activity FROM cloud_agent_subsession_chat WHERE run_id=$1 FOR UPDATE")
+            .bind(run_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    if let Some((current,)) = chat {
+        let next = activity::record_tool(&current, &input.tool_call_id, &input.tool_name);
+        query(
+            "UPDATE cloud_agent_subsession_chat SET activity=$2,updated_at=now() WHERE run_id=$1",
+        )
+        .bind(run_id)
+        .bind(next)
+        .execute(&mut *tx)
+        .await?;
         query("UPDATE cloud_agent_subsessions SET version=version+1,updated_at=now() WHERE subsession_id=$1").bind(id).execute(&mut *tx).await?;
-        tx.commit().await?;
-        return Ok(());
+    } else {
+        let current = subsession_activity(&mut tx, id).await?;
+        let next = activity::record_tool(&current, &input.tool_call_id, &input.tool_name);
+        query("UPDATE cloud_agent_subsessions SET activity=$2,version=version+1,updated_at=now() WHERE subsession_id=$1 AND status='running' AND activity<>$2")
+            .bind(id).bind(next).execute(&mut *tx).await?;
     }
-    query("UPDATE cloud_agent_subsessions SET messages=messages||$2,version=version+1,updated_at=now() WHERE subsession_id=$1 AND status='running' AND NOT messages @> $3 AND jsonb_array_length(messages)<255")
-        .bind(id).bind(message).bind(json!([{"id":format!("tool:{}",input.tool_call_id)}])).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(())
+}
+
+async fn subsession_activity(conn: &mut PgConnection, id: Uuid) -> RunResult<Value> {
+    let (current,): (Value,) =
+        query_as("SELECT activity FROM cloud_agent_subsessions WHERE subsession_id=$1 FOR UPDATE")
+            .bind(id)
+            .fetch_one(conn)
+            .await?;
+    Ok(current)
 }

@@ -32,15 +32,17 @@ export function subsessionMentions(text: string, options: ComposerMentionOption[
 }
 
 export function subsessionTranscript(record: CloudAgentSubsession, accountId: string): Message[] {
-  const rows = record.messages.filter(row => !(row.role === 'assistant' && (
+  const live = record.status === 'running' && record.live !== false;
+  const { rows, legacyTools } = collapseLegacyToolRows(record.messages.filter(row => !(row.role === 'assistant' && (
     ['queued', 'pending', 'leased'].includes(row.requestState ?? '')
       || record.live === false && row.requestState === 'running' && !row.text.trim()
-  )));
+  ))), live && !record.hasFollowupExecution);
   const result = rows.map((row): Message => {
     const assistant = row.role === 'assistant';
     const agent = assistant || row.senderAgentId === record.agentId;
     const own = row.senderAccountId === accountId;
     const participant = record.participants?.find(person => person.accountId === row.senderAccountId);
+    const tools = legacyTools.get(row.id);
     return {
       id: row.id, role: agent ? record.ownerAccountId === accountId ? 'owned-agent' : 'external-agent' : own ? 'user' : 'person',
       sender: agent ? record.agentDisplayName : own ? 'You' : row.senderDisplayName ?? 'Task',
@@ -51,18 +53,22 @@ export function subsessionTranscript(record: CloudAgentSubsession, accountId: st
       senderType: agent ? 'agent' : 'human', isOwnMessage: !agent && own, showSenderMeta: true,
       text: row.text, timestampMs: row.timestampMs,
       statusChips: !agent && row.requestState === 'queued' ? ['queued'] : undefined,
-      time: new Date(row.timestampMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      mentions: row.mentions, turn: assistant && row.requestState && !(record.live === false && row.requestState === 'running') ? execution(row, row.activity?.tools) : undefined,
+      time: row.timestampMs ? new Date(row.timestampMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+      mentions: row.mentions,
+      turn: assistant && row.requestState && !(record.live === false && row.requestState === 'running') ? execution(row, row.activity?.tools)
+        : tools ? execution({ ...row, requestState: 'completed' }, tools) : undefined,
       replyToMessageId: assistant ? row.requestId : undefined,
     };
   });
-  if (record.status === 'running' && record.live !== false && !record.hasFollowupExecution) {
+  const runTools = record.activity?.tools ?? [];
+  if (live && !record.hasFollowupExecution || !live && runTools.length > 0) {
     const reversed = [...rows].reverse();
     const lastAnswer = reversed.find(row => row.role === 'assistant' && !row.requestId);
     const last = result.find(row => row.id === lastAnswer?.id);
     const taskBrief = reversed.find(row => row.senderAgentId === record.agentId);
-    const progress = execution({ id: `runtime:${record.sessionId}`, role: 'assistant', text: '', timestampMs: 0, requestState: 'running' }, record.activity?.tools);
-    if (last) last.turn = { ...progress, assistantText: last.text };
+    const progress = execution({ id: `runtime:${record.sessionId}`, role: 'assistant', text: '', timestampMs: 0, requestState: live ? 'running' : 'completed' },
+      live ? runTools : runTools.map(settledTool));
+    if (last) last.turn = { ...progress, tools: [...(last.turn?.tools ?? []), ...progress.tools], assistantText: last.text };
     else result.splice(result.findIndex(row => row.id === taskBrief?.id) + 1, 0,
       { id: progress.id, role: record.ownerAccountId === accountId ? 'owned-agent' : 'external-agent', senderType: 'agent', sender: record.agentDisplayName,
       senderOwnerName: record.ownerAccountId === accountId ? 'You' : record.ownerDisplayName,
@@ -70,6 +76,46 @@ export function subsessionTranscript(record: CloudAgentSubsession, accountId: st
       senderAvatarSeed: record.agentId, text: '', time: '', turn: progress });
   }
   return result;
+}
+
+const LEGACY_TOOL_PREFIX = 'tool:';
+
+function settledTool(tool: DesktopChatToolSnapshot): DesktopChatToolSnapshot {
+  return tool.status === 'running' ? { ...tool, status: 'completed' } : tool;
+}
+
+/**
+ * Older Cloud runs stored one "Using <tool>…" message per tool call. Fold each
+ * consecutive run of them into the following answer, or into one summary row,
+ * so existing threads read like the main transcript.
+ */
+export function collapseLegacyToolRows(messages: AgentSubsessionMessage[], live: boolean) {
+  const rows: AgentSubsessionMessage[] = [];
+  const legacyTools = new Map<string, DesktopChatToolSnapshot[]>();
+  let pending: AgentSubsessionMessage[] = [];
+  const flush = (into?: AgentSubsessionMessage) => {
+    if (!pending.length) return;
+    const tools = pending.map((row): DesktopChatToolSnapshot => ({ id: row.id.slice(LEGACY_TOOL_PREFIX.length),
+      name: /^Using (.+?)…$/u.exec(row.text.trim())?.[1] ?? 'tool', status: 'completed', arguments: '', liveOutput: '', isError: false }));
+    const target = into ?? { ...pending[0], id: `tools:${pending[0].id.slice(LEGACY_TOOL_PREFIX.length)}`, text: '' };
+    if (!into) rows.push(target);
+    legacyTools.set(target.id, tools);
+    pending = [];
+  };
+  for (const row of messages) {
+    if (row.role === 'assistant' && row.id.startsWith(LEGACY_TOOL_PREFIX)) { pending.push(row); continue; }
+    if (row.role === 'assistant' && !row.requestId) { flush(row); rows.push(row); continue; }
+    flush();
+    rows.push(row);
+  }
+  const trailing = pending.length > 0;
+  flush();
+  // A still-running legacy run shows its latest call as the live tool.
+  if (trailing && live) {
+    const tools = legacyTools.get(rows[rows.length - 1].id);
+    if (tools?.length) tools[tools.length - 1] = { ...tools[tools.length - 1], status: 'running' };
+  }
+  return { rows, legacyTools };
 }
 
 export function subsessionConversation(id: string, record: CloudAgentSubsession | null, accountId: string): Conversation {
