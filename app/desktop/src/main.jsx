@@ -7,11 +7,10 @@ import { preloadNotoEmojiThumbnails } from './features/emoji/notoEmojiThumbnails
 
 applyChatTheme(readStoredChatTheme())
 const root = createRoot(document.getElementById('root'))
-const authPreview = import.meta.env.DEV
-  ? new URLSearchParams(window.location.search).get('authPreview')
-  : null
+const authPreview = new URLSearchParams(window.location.search).get('authPreview')
 
-if (authPreview === 'start' || authPreview === 'settings' || authPreview === 'login') {
+// The literal DEV check lets production builds drop the preview and its chunk.
+if (import.meta.env.DEV && (authPreview === 'start' || authPreview === 'settings' || authPreview === 'login')) {
   void import('./dev/AuthPreview.tsx').then(({ AuthPreview }) => {
     root.render(<StrictMode>{createElement(AuthPreview, { variant: authPreview })}</StrictMode>)
   })
