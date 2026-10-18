@@ -1,6 +1,5 @@
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ChevronRight, LoaderCircle } from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
 import type { Contact, ContactRequest } from '../types';
 import { contactTypeLabel } from './contactTypeLabel';
 import { IdentityAvatar, type IdentityAvatarKind } from './IdentityAvatar';
@@ -18,27 +17,31 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
   const typeLabel = contactTypeLabel(contact);
   return (
     <button
+      type="button"
       onClick={onSelect}
       aria-current={active ? 'true' : undefined}
-      className="app-contact-row app-list-item flex w-full items-center gap-3 rounded-[15px] px-3 py-2 text-left text-white transition-none"
+      className={cn(
+        'app-contact-row app-list-item flex w-full items-center gap-3 rounded-[10px] px-2.5 py-2 text-left transition-none',
+        active && 'app-contact-row-selected',
+      )}
     >
       <IdentityAvatar
         kind={contactAvatarKind(contact)}
         seed={contact.avatarSeed ?? contact.sourceParticipantId ?? contact.id}
         name={contact.name}
         imageUrl={contact.profileImageUrl}
-        className="h-10 w-10 border border-white/10"
+        cornerRadius="50%"
+        className="app-contacts-avatar h-10 w-10"
         presenceStatus={contact.presenceStatus}
         presenceLabel={contact.presenceStatus ? `${contact.name} is ${contact.presenceStatus === 'online' ? 'online' : 'offline'}` : null}
       />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[13px] font-medium leading-5">{contact.name}</span>
-          {typeLabel ? <span className="text-[10.5px] leading-4 text-slate-300">{typeLabel}</span> : null}
+        <div className="flex items-baseline gap-2">
+          <span className="truncate text-[14px] font-semibold leading-5">{contact.name}</span>
+          {typeLabel ? <span className="app-contact-row-meta shrink-0 text-[11px] leading-4">{typeLabel}</span> : null}
         </div>
-        <div className="truncate text-[11.5px] leading-4 text-slate-300">{contact.subtitle}</div>
+        <div className="app-contact-row-meta truncate text-[12px] leading-4">{contact.subtitle}</div>
       </div>
-      <ChevronRight className="h-4 w-4 text-slate-500" />
     </button>
   );
 }
@@ -66,7 +69,7 @@ export function ContactRequestRow({
   return (
     <div
       className={cn(
-        'app-contact-request-item px-3 py-3 text-white transition-none',
+        'app-contact-request-item rounded-[10px] px-2.5 py-2.5 transition-none',
         active && 'app-contact-request-item-active',
       )}
     >
@@ -76,34 +79,35 @@ export function ContactRequestRow({
           seed={request.avatarSeed ?? request.id}
           name={request.title}
           imageUrl={request.profileImageUrl}
-          className="h-10 w-10 border border-white/10"
+          cornerRadius="50%"
+          className="app-contacts-avatar h-10 w-10"
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
-            <div className="truncate text-sm font-medium">{request.title}</div>
+            <div className="truncate text-[14px] font-semibold leading-5">{request.title}</div>
             <ContactRequestTime value={request.time} />
           </div>
-          <div className={`mt-1 text-xs ${active ? 'text-slate-100' : 'text-slate-300'}`}>{request.detail}</div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button className="h-8 rounded-xl px-3 text-[11px]" onClick={onAccept} disabled={!onAccept || isBusy}>
+          <div className="app-contact-row-meta mt-0.5 text-[12px] leading-4">{request.detail}</div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <button type="button" className="app-contacts-primary-action inline-flex h-7 items-center justify-center gap-1.5 rounded-[8px] px-3 text-[12px] font-medium disabled:pointer-events-none disabled:opacity-50" onClick={onAccept} disabled={!onAccept || isBusy}>
               {actionState === 'accepting' ? (
                 <>
                   <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                   Accepting…
                 </>
               ) : 'Accept'}
-            </Button>
-            <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={onReject} disabled={!onReject || isBusy}>
+            </button>
+            <button type="button" className="app-contacts-danger-action inline-flex h-7 items-center justify-center gap-1.5 rounded-[8px] px-3 text-[12px] font-medium disabled:pointer-events-none disabled:opacity-50" onClick={onReject} disabled={!onReject || isBusy}>
               {actionState === 'rejecting' ? (
                 <>
                   <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                   Rejecting…
                 </>
               ) : 'Reject'}
-            </Button>
+            </button>
           </div>
           {statusText ? (
-            <div className="mt-2 text-[11px] leading-4 text-slate-400" aria-live="polite">
+            <div className="app-contact-row-meta mt-2 text-[11px] leading-4" aria-live="polite">
               {statusText}
             </div>
           ) : null}

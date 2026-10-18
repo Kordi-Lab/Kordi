@@ -1,3 +1,94 @@
+/* Contacts: master-detail page. Colors come from the shared --utility-* and
+ * --app-* tokens so light and dark themes follow the workspace palette. */
+
+.app-contacts-page {
+  color: var(--utility-foreground);
+}
+
+.app-contacts-muted,
+.app-contact-row-meta {
+  color: var(--utility-muted-text);
+}
+
+.app-contacts-error {
+  color: var(--app-transient-danger-text);
+}
+
+/* List column */
+.app-contacts-list-column {
+  border-right: 1px solid var(--app-divider);
+  background: color-mix(in oklab, var(--utility-foreground) 2.5%, transparent);
+}
+
+.app-contacts-page.is-narrow .app-contacts-list-column {
+  border-right: 0;
+}
+
+.app-contacts-list-header {
+  height: 52px;
+}
+
+.app-contacts-search {
+  height: 32px;
+  border-radius: 9px;
+  background: color-mix(in oklab, var(--utility-foreground) 6.5%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-contacts-search:focus-within {
+  outline: 2px solid var(--app-quiet-control-focus-ring);
+  outline-offset: -1px;
+}
+
+.app-contacts-search input::placeholder,
+.app-contacts-field::placeholder {
+  color: var(--utility-muted-text);
+}
+
+.app-contacts-icon-button {
+  border: 0;
+  background: transparent;
+  color: var(--utility-muted-text);
+}
+
+.app-contacts-icon-button:hover,
+.app-contacts-icon-button[aria-expanded='true'] {
+  background: var(--app-quiet-control-hover-bg);
+  color: var(--utility-foreground);
+}
+
+.app-contacts-icon-button:focus-visible,
+.app-contacts-section-button:focus-visible,
+.app-contacts-group-row:focus-visible,
+.app-contacts-page .app-contact-row:focus-visible,
+.app-contacts-primary-action:focus-visible,
+.app-contacts-danger-action:focus-visible {
+  outline: 2px solid var(--app-quiet-control-focus-ring);
+  outline-offset: -2px;
+}
+
+/* Add contact panel */
+.app-contacts-add-form {
+  border: 0;
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--utility-foreground) 4.5%, transparent);
+  box-shadow: none;
+}
+
+.app-contacts-field {
+  border: 1px solid var(--app-divider);
+  background: var(--utility-background);
+  color: var(--utility-foreground);
+}
+
+.app-contacts-field:focus {
+  border-color: var(--app-quiet-control-focus-ring);
+}
+
+.app-contacts-lookup-result {
+  background: color-mix(in oklab, var(--utility-foreground) 5%, transparent);
+}
+
 .app-contacts-action-chip {
   border: 1px solid color-mix(in oklab, var(--app-control-border) 82%, transparent);
   background: color-mix(in oklab, var(--app-control-bg) 88%, transparent);
@@ -10,6 +101,7 @@
   background: color-mix(in oklab, var(--app-control-hover) 92%, transparent);
 }
 
+/* Request inbox and sent invites rows */
 .app-contacts-section-button {
   border: 1px solid transparent;
   background: transparent;
@@ -22,25 +114,22 @@
   background: var(--app-quiet-control-hover-bg);
 }
 
-.app-contacts-section-button:focus-visible,
-.app-contacts-group-row:focus-visible {
-  outline: 2px solid var(--app-quiet-control-focus-ring);
-  outline-offset: -2px;
-}
-
-.app-contacts-content-rail {
-  max-width: none;
-}
-
 .app-contacts-request-row {
-  min-height: 46px;
-  border-radius: 8px;
-  padding: 10px 14px;
+  min-height: 56px;
+  border-radius: 10px;
+  padding: 8px 10px;
 }
 
-.app-contacts-search {
-  min-height: 40px;
-  border-radius: 8px;
+.app-contacts-row-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--app-accent) 15%, transparent);
+  color: var(--app-accent);
 }
 
 .app-contacts-sent-invites-row {
@@ -51,19 +140,12 @@
   box-shadow: none;
 }
 
-.app-contacts-sent-invites-row > button {
-  border-radius: 8px;
-}
-
-.app-contacts-sent-invites-row > button:hover {
-  background: transparent;
-}
-
 .app-contact-request-item,
 .app-contacts-sent-invite-item {
-  border-top: 1px solid color-mix(in oklab, var(--app-divider) 64%, transparent);
-  border-radius: 0;
+  border: 0;
+  border-radius: 10px;
   background: transparent;
+  color: var(--utility-foreground);
   box-shadow: none;
 }
 
@@ -72,32 +154,100 @@
   box-shadow: none;
 }
 
-.app-contacts-add-form {
-  border-color: color-mix(in oklab, var(--app-divider) 68%, transparent);
-  border-style: solid;
-  border-width: 1px 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.app-contacts-content-rail .app-contact-row.app-list-item {
-  transition: none;
-}
-
-.app-contacts-content-rail .app-contact-row.app-list-item:hover {
-  box-shadow: none;
-}
-
+/* Group labels: quiet, sentence case, no bar */
 .app-contacts-group-row {
-  min-height: 44px;
-  border-color: color-mix(in oklab, var(--app-control-border) 72%, transparent);
-  border-style: solid;
-  border-width: 0 0 1px;
-  border-radius: 0;
+  min-height: 30px;
+  border: 0;
+  border-radius: 6px;
+  padding: 10px 10px 4px;
   background: transparent;
-  color: var(--utility-foreground);
+  color: var(--utility-muted-text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
 }
 
 .app-contacts-group-row:hover {
-  background: color-mix(in oklab, var(--app-control-hover) 44%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-contacts-group-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+/* Contact rows */
+.app-contacts-page .app-contact-row.app-list-item {
+  border: 0;
+  color: var(--utility-foreground);
+  box-shadow: none;
+  transition: none;
+}
+
+.kordi-app .app-contacts-page .app-contact-row.app-contact-row-selected,
+.kordi-app .app-contacts-page .app-contact-row.app-contact-row-selected:hover {
+  background: color-mix(in oklab, var(--app-accent) 16%, transparent);
+}
+
+.app-contacts-avatar .app-presence-light[data-presence-status] {
+  right: 4%;
+  bottom: 4%;
+  width: 10px;
+  height: 10px;
+}
+
+.app-contacts-detail-avatar .app-presence-light[data-presence-status] {
+  right: 7%;
+  bottom: 7%;
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+/* Detail actions */
+.app-contacts-primary-action {
+  border: 0;
+  background: var(--utility-foreground);
+  color: var(--utility-background);
+  box-shadow: none;
+}
+
+.app-contacts-primary-action:hover {
+  background: color-mix(in oklab, var(--utility-foreground) 86%, var(--utility-background));
+}
+
+.app-contacts-danger-action {
+  border: 0;
+  background: transparent;
+  color: var(--app-transient-danger-text);
+  box-shadow: none;
+}
+
+.app-contacts-danger-action:hover {
+  background: var(--app-transient-danger-hover-bg);
+  color: var(--app-transient-danger-text);
+}
+
+/* Narrow windows: the detail sits in the shared transient dialog surface. */
+.app-contact-detail-dialog .app-contacts-detail-content {
+  color: var(--app-transient-text);
+}
+
+.app-contact-detail-dialog .app-contacts-muted {
+  color: var(--app-transient-muted-text);
+}
+
+.app-contact-detail-dialog .app-contacts-primary-action {
+  background: var(--app-transient-text);
+  color: var(--app-transient-surface-fallback);
+}
+
+/* The detail pane sits on the plain page surface so the list column reads as a sidebar. */
+.app-contacts-page:not(.is-narrow) .app-contacts-detail-pane {
+  background: color-mix(in oklab, var(--utility-card) 70%, transparent);
+}
+
+/* Grid tracks may not grow past the column, so long request titles truncate instead of pushing rows out. */
+.app-contacts-list-scroll .grid {
+  grid-template-columns: minmax(0, 1fr);
 }

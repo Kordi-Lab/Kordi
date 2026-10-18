@@ -5,65 +5,9 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { ContactRow } from '../src/kordi-app/components/transcript';
-import { ContactsPage } from '../src/kordi-app/pages';
 import { cloudRequestToContactRequest } from '../src/features/cloud/useCloudContacts';
 import { KORDI_SUPPORT_AVATAR_URL } from '../src/features/support/supportIdentity';
-import type { Contact, ContactRequest } from '../src/kordi-app/types';
-import { readDesktopShellCss } from './helpers/readDesktopStyles';
-
-function contact(overrides: Partial<Contact> = {}): Contact {
-  return {
-    id: 'contact-1',
-    name: 'Testuser',
-    initials: 'TU',
-    classType: 'other-users',
-    entityType: 'Person',
-    subtitle: 'Testuser',
-    collaborationSources: ['Bridge'],
-    status: 'Available',
-    discoverableOn: [],
-    detail: 'Bridge contact',
-    owner: 'Testuser',
-    ...overrides,
-  };
-}
-
-function request(overrides: Partial<ContactRequest> = {}): ContactRequest {
-  return {
-    id: 'request-1',
-    initials: 'TU',
-    title: 'Testuser wants to connect',
-    detail: "I am Testuser. I'd like to add you as a Kordi contact.",
-    time: 'now',
-    ...overrides,
-  };
-}
-
-function renderContactsPage(contactRequests: ContactRequest[], overrides: Partial<Parameters<typeof ContactsPage>[0]> = {}) {
-  return renderToStaticMarkup(createElement(ContactsPage, {
-    filteredGroupedContacts: [],
-    addableContacts: [],
-    isContactRequestsOpen: true,
-    onToggleRequests: () => undefined,
-    contactRequests,
-    activeContactRequestId: '',
-    contactSearch: '',
-    onContactSearchChange: () => undefined,
-    expandedContactGroups: {
-      'my-agents': false,
-      'other-users-agents': false,
-      'other-users': false,
-    },
-    onToggleGroup: () => undefined,
-    activeContactId: '',
-    onSelectContact: () => undefined,
-    contactOverlayMode: null,
-    activeContact: contact(),
-    onCloseOverlay: () => undefined,
-    getStatusBadgeClass: () => '',
-    ...overrides,
-  }));
-}
+import { contact, renderContactsPage, request } from './helpers/contactsPageFixtures';
 
 test('contact request rows do not repeat the review-details action beside accept and reject', () => {
   const source = readFileSync(new URL('../src/kordi-app/components/transcriptContacts.tsx', import.meta.url), 'utf8');
@@ -136,7 +80,7 @@ test('contacts page summarizes outgoing-only pending invites without showing the
 });
 
 test('sent invites section has independent fold and expand controls', () => {
-  const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/kordi-app/contacts/ContactsRequestActivity.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /isSentInvitesOpen/);
   assert.match(source, /setIsSentInvitesOpen\(\(open\) => !open\)/);
@@ -145,22 +89,19 @@ test('sent invites section has independent fold and expand controls', () => {
 });
 
 test('sent invite rows use real account avatars in a compact row', () => {
-  const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/kordi-app/contacts/ContactsRequestActivity.tsx', import.meta.url), 'utf8');
   const sentInvitesStart = source.indexOf('{sentInviteCount > 0 && (');
-  const sentInvitesEnd = source.indexOf('<div className="app-contacts-section-heading', sentInvitesStart);
   assert.ok(sentInvitesStart >= 0, 'Sent invites source block should be present');
-  const sentInvitesBlock = source.slice(sentInvitesStart, sentInvitesEnd > sentInvitesStart ? sentInvitesEnd : undefined);
+  const sentInvitesBlock = source.slice(sentInvitesStart);
 
-  assert.match(source, /<IdentityAvatar/);
-  assert.match(source, /imageUrl=\{request\.profileImageUrl\}/);
-  assert.match(source, /name=\{sentInviteDisplayName\(request\)\}/);
-  assert.match(source, /className="app-contacts-sent-invite-item w-full px-3 py-2\.5 text-white"/);
-  assert.doesNotMatch(source, /className="app-list-item w-full rounded-2xl bg-transparent px-3 py-2 text-white"/);
-  assert.doesNotMatch(source, /max-w-\[720px\]/);
-  assert.match(source, /app-contacts-sent-invite-item w-full px-3 py-2\.5 text-white/);
-  assert.match(source, /className="h-9 w-9 border border-white\/10"/);
-  assert.match(source, /Awaiting approval/);
-  assert.match(source, /<ContactRequestTime value=\{request\.time\} \/>/);
+  assert.match(sentInvitesBlock, /<IdentityAvatar/);
+  assert.match(sentInvitesBlock, /imageUrl=\{request\.profileImageUrl\}/);
+  assert.match(sentInvitesBlock, /name=\{sentInviteDisplayName\(request\)\}/);
+  assert.match(sentInvitesBlock, /cornerRadius="50%"/);
+  assert.match(sentInvitesBlock, /className="app-contacts-sent-invite-item /);
+  assert.doesNotMatch(sentInvitesBlock, /text-white/);
+  assert.match(sentInvitesBlock, /Awaiting approval/);
+  assert.match(sentInvitesBlock, /<ContactRequestTime value=\{request\.time\} \/>/);
   assert.doesNotMatch(sentInvitesBlock, /\{request\.detail\}/);
   assert.doesNotMatch(sentInvitesBlock, /Waiting for approval/);
   assert.doesNotMatch(sentInvitesBlock, /border-amber|bg-amber|text-amber/);
@@ -246,7 +187,7 @@ test('the locked Kordi Support contact routes reporting through its chat', () =>
   assert.doesNotMatch(markup, />Delete contact</);
 });
 
-test('active contact rows stay visually neutral until hover', () => {
+test('active contact rows use the soft selection tint instead of the raised list-item style', () => {
   const markup = renderToStaticMarkup(createElement(ContactRow, {
     contact: contact({ id: 'cloud:acct_peer', name: 'Maya Chen', subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e' }),
     active: true,
@@ -255,8 +196,10 @@ test('active contact rows stay visually neutral until hover', () => {
 
   assert.match(markup, /app-contact-row/);
   assert.match(markup, /app-list-item/);
+  assert.match(markup, /app-contact-row-selected/);
+  assert.match(markup, /aria-current="true"/);
   assert.doesNotMatch(markup, /app-list-item-active/);
-  assert.doesNotMatch(markup, /text-slate-100/);
+  assert.doesNotMatch(markup, /text-slate-100|text-white/);
 });
 
 test('contact rows hide the plain user type and keep informative ones', () => {
@@ -273,60 +216,6 @@ test('contact rows hide the plain user type and keep informative ones', () => {
   }
   assert.match(row({ entityType: 'My agent', classType: 'my-agents' }), />My agent</);
   assert.match(row({ entityType: 'agent', classType: 'other-users-agents' }), />agent</);
-});
-
-test('contacts page uses positive-only request activity and flat page-plane controls', () => {
-  const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
-  const componentSource = readFileSync(new URL('../src/kordi-app/components/transcriptContacts.tsx', import.meta.url), 'utf8');
-  const shellCss = readDesktopShellCss();
-  const themeOverridesCss = shellCss;
-
-  assert.match(source, /app-contacts-section-button/);
-  assert.match(source, /app-contacts-action-chip/);
-  assert.match(source, /app-contacts-request-activity/);
-  assert.match(source, /app-contacts-content-rail/);
-  assert.match(source, /app-contacts-request-row/);
-  assert.match(source, /app-flat-input app-contacts-search/);
-  assert.match(source, /app-contacts-add-form/);
-  assert.match(source, /app-contacts-group-row/);
-  assert.match(source, /app-contacts-section-heading/);
-  assert.match(source, /app-contacts-add-button h-8 rounded-\[8px\]/);
-  assert.match(source, /app-contacts-sent-invites-row/);
-  assert.match(source, /pendingRequestCount > 0 && \(/);
-  assert.match(source, /sentInviteCount > 0 && \(/);
-  assert.doesNotMatch(source, /app-contacts-status-chip|No pending|None sent/);
-  assert.doesNotMatch(source, /Classified as my agents/);
-  assert.doesNotMatch(source, /Foldable classes with quick letter jump/);
-  assert.doesNotMatch(source, /mb-4 flex items-center justify-between/);
-  assert.doesNotMatch(source, /app-control-chip rounded-xl border-0/);
-  assert.doesNotMatch(source, /app-surface-muted flex w-full items-center justify-between gap-3 rounded-2xl/);
-  assert.doesNotMatch(source, /className="app-surface-muted mb-4 rounded-2xl px-3 py-3"/);
-  assert.doesNotMatch(source, /app-contacts-section-button flex w-full items-center justify-between gap-3 rounded-\[24px\]/);
-  assert.doesNotMatch(source, /app-contacts-section-button flex w-full items-center justify-between rounded-\[24px\]/);
-  assert.doesNotMatch(source, /app-contacts-action-chip h-9 rounded-full px-4/);
-  assert.match(shellCss, /\.app-contacts-action-chip[\s\S]*box-shadow:\s*none/);
-  assert.match(shellCss, /\.app-contacts-section-button[\s\S]*box-shadow:\s*none/);
-  assert.match(shellCss, /\.app-contacts-content-rail[\s\S]*max-width:\s*none/);
-  assert.match(shellCss, /\.app-contacts-request-row[\s\S]*border-radius:\s*8px/);
-  assert.match(shellCss, /\.app-contacts-search[\s\S]*border-radius:\s*8px/);
-  assert.match(shellCss, /\.app-contacts-sent-invites-row\s*\{[^}]*border:\s*0;[^}]*border-radius:\s*0;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
-  assert.match(shellCss, /\.app-contacts-sent-invites-row > button:hover\s*\{[^}]*background:\s*transparent;/s);
-  assert.match(shellCss, /\.app-contact-request-item,[\s\S]*?\.app-contacts-sent-invite-item\s*\{[^}]*border-radius:\s*0;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
-  assert.match(shellCss, /\.app-contacts-add-form\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
-  assert.match(shellCss, /\.app-input-shell\.app-flat-input\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*transition:\s*none;/s);
-  assert.match(shellCss, /\.kordi-app\.theme-light \.app-input-shell\.app-flat-input\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*transition:\s*none;/s);
-  assert.match(shellCss, /\.app-contacts-group-row[\s\S]*border-radius:\s*0/);
-  assert.match(shellCss, /\.app-contacts-group-row[\s\S]*border-width:\s*0 0 1px/);
-  const contactRowStart = componentSource.indexOf('export function ContactRow');
-  const contactRowEnd = componentSource.indexOf('export function ContactRequestRow', contactRowStart + 1);
-  assert.ok(contactRowStart >= 0, 'ContactRow source block should be present');
-  const contactRowBlock = componentSource.slice(contactRowStart, contactRowEnd > contactRowStart ? contactRowEnd : undefined);
-  assert.match(contactRowBlock, /app-contact-row app-list-item/);
-  assert.doesNotMatch(contactRowBlock, /app-list-item-active/);
-  assert.match(shellCss, /\.app-list-item:hover[\s\S]*background:\s*var\(--app-control-bg\)/);
-  assert.match(shellCss, /\.app-contacts-content-rail \.app-contact-row\.app-list-item:hover\s*\{[^}]*box-shadow:\s*none;/s);
-  assert.doesNotMatch(shellCss, /\.app-contact-row\.app-list-item-active/);
-  assert.doesNotMatch(themeOverridesCss, /\.kordi-app\.theme-light \.app-contact-row\.app-list-item-active/);
 });
 
 test('contact detail modal mirrors real presence instead of deriving it from status text', () => {
@@ -379,43 +268,8 @@ test('contact detail modal shows other users with a read-only avatar', () => {
   assert.doesNotMatch(markup, /type="file"/);
 });
 
-test('contact overlays use the shared popup shell with flat actions at rest', () => {
-  const markup = renderContactsPage([], {
-    contactOverlayMode: 'contact',
-    activeContact: contact({
-      id: 'cloud:acct_peer',
-      name: 'Maya Chen',
-      subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
-      sourceHostId: 'cloud',
-      sourceParticipantId: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
-    }),
-    onMessageContact: () => undefined,
-    onRemoveContact: () => undefined,
-  });
-  const css = readFileSync(new URL('../src/styles/transient-surfaces.css', import.meta.url), 'utf8');
-  const requestMarkup = renderContactsPage([request()], {
-    contactOverlayMode: 'request',
-    activeContactRequest: request(),
-    onAcceptRequest: () => undefined,
-    onRejectRequest: () => undefined,
-  });
-
-  assert.match(markup, /role="dialog"/);
-  assert.match(markup, /aria-modal="true"/);
-  assert.match(markup, /app-contact-detail-dialog/);
-  assert.ok((markup.match(/app-transient-flat-action/g) ?? []).length >= 3);
-  assert.match(markup, /app-transient-flat-action-danger/);
-  assert.doesNotMatch(markup, /app-transient-row-danger rounded-full/);
-  assert.match(requestMarkup, /aria-label="Contact request review"/);
-  assert.ok((requestMarkup.match(/app-transient-flat-action/g) ?? []).length >= 4);
-  assert.match(requestMarkup, /app-transient-flat-action-danger/);
-  assert.match(css, /\.app-transient-surface \.app-transient-flat-action \{[\s\S]*?background:\s*transparent;/);
-  assert.match(css, /\.app-transient-surface \.app-transient-flat-action:hover,[\s\S]*?background:\s*var\(--app-transient-hover-bg\);/);
-  assert.match(css, /\.app-transient-surface \.app-transient-flat-action-danger:hover,[\s\S]*?background:\s*var\(--app-transient-danger-hover-bg\);/);
-});
-
-test('contact detail modal removes redundant repeated metadata and unused profile action', () => {
-  const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
+test('contact detail removes redundant repeated metadata and unused profile action', () => {
+  const source = readFileSync(new URL('../src/kordi-app/contacts/ContactDetailPane.tsx', import.meta.url), 'utf8');
 
   assert.doesNotMatch(source, />\s*Contact detail\s*</);
   assert.doesNotMatch(source, /Owner: \{selfObjectLabel\(activeContact\.owner\)\}/);
@@ -444,7 +298,7 @@ test('contact detail modal suppresses detail text when it repeats the visible ac
 });
 
 test('contacts add surface uses concise public Kordi ID controls without implementation wording', () => {
-  const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/kordi-app/contacts/ContactsAddForm.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /placeholder="Kordi ID, e\.g\. @482731906"/);
   assert.match(source, /Send request/);
