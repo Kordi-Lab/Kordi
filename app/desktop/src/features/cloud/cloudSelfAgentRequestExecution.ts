@@ -18,6 +18,7 @@ import { cloudAgentRunAlreadyOwnsRequest } from './cloudAgentRequestState';
 import { cloudSelfAgentRuntimeSessionId } from './cloudAgentRuntime';
 import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
+import { bindClaimedProjectSession } from '@/features/projects/claimedProjectSession';
 import {
   cloudDirectMessageAgentRuntimeRoute,
   cloudDirectMessageContextMessages,
@@ -152,7 +153,7 @@ export async function executeCloudSelfAgentRequest({
     runtimeRoute: executionRoute ? { defaultModel: executionRoute.model, defaultAuthProvider: executionRoute.authProvider,
       defaultAuthChoice: executionRoute.authChoice, thinking: executionRoute.thinking } : undefined,
     idempotencyKey: `request:${request.messageId}`,
-  });
+  }, { bindsProject: true });
   if (!lease) return;
   let stopRequested = false;
   const stop = () => {
@@ -227,6 +228,17 @@ export async function executeCloudSelfAgentRequest({
     const prompt = (voice ? voiceAgentText(voice) : cloudDirectMessageDisplayText(request.body)).trim();
     if (!prompt) {
       processedRequestIdsRef.current.delete(request.messageId);
+      return;
+    }
+    // A project session runs in this Mac's folder of the project, never without its files.
+    if (lease.project && !await bindClaimedProjectSession(runtimeSessionId, lease.project).catch((error) => {
+      reportWarning('[cloud-self-agent-execution] project binding failed', error);
+      return false;
+    })) {
+      await settle({
+        deliveryState: 'failed',
+        text: `Add the ${lease.project.name} folder in Kordi on this Mac to run this task.`,
+      });
       return;
     }
     const ownerName =

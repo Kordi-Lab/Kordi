@@ -28,3 +28,21 @@ test('execution identity is server-authored, frozen and appended after history',
   } finally { lease.dispose(); }
   await assert.rejects(acquireDesktopExecutionLease(client, 'fixture-token', { ...input, ownerAccountId: 'impostor' }), /matching runtime identity/);
 });
+
+test('a project claim tells the Mac which project folder the turn must run in', async () => {
+  const identity = { requestId: 'request', agentId: 'agent', ownerAccountId: 'owner', requesterAccountId: 'owner', agentName: 'Kordi' };
+  const project = { id: 'e'.repeat(64), name: 'Trust', workspaceId: null };
+  const bodies: Record<string, unknown>[] = [];
+  const client = { desktopAgentExecution: async (_token: string, _action: string, body: Record<string, unknown>) => { bodies.push(body); return { acquired: true, runId: 'run', turnIdentity: identity, project }; } } as unknown as Pick<CloudAuthClient, 'desktopAgentExecution'>;
+  const input = { requestMessageId: 'request', sessionId: 'session', ownerAccountId: 'owner', requesterAccountId: 'owner', prompt: 'hello', idempotencyKey: 'request' };
+  const lease = await acquireDesktopExecutionLease(client, 'fixture-token', input, { bindsProject: true });
+  assert.equal(bodies[0]?.bindsProject, true);
+  assert.ok(lease);
+  try { assert.deepEqual(lease.project, { id: 'e'.repeat(64), name: 'Trust' }); } finally { lease.dispose(); }
+  const plain = { desktopAgentExecution: async (_token: string, _action: string, body: Record<string, unknown>) => { bodies.push(body); return { acquired: true, runId: 'run', turnIdentity: identity }; } } as unknown as Pick<CloudAuthClient, 'desktopAgentExecution'>;
+  const chat = await acquireDesktopExecutionLease(plain, 'fixture-token', input);
+  assert.ok(chat);
+  try { assert.equal(chat.project, undefined); } finally { chat.dispose(); }
+  // Other executions never claim to bind a project folder.
+  assert.equal(bodies[1]?.bindsProject, undefined);
+});
