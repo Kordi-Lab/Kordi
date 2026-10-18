@@ -2,17 +2,15 @@ import { cancelledTurnContent } from '@/features/chat/cancellation';
 import { canonicalMessageRole } from './messageRole';
 export { canonicalMessageRole } from './messageRole';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
-import { cloudAgentFallbackErrorNotice, isCloudAgentStoredNoProviderFailure } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentFallbackErrorNotice } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentStoredReplyHasRunOutput, isCloudAgentStoredNoProviderReply } from '@/features/cloud/cloudAgentReplyText';
 import { cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { storedVoiceMessage, withoutVoiceAttachment } from '@/features/cloud/cloudVoiceMessage';
 import { normalizePlanCardSnapshot } from '@/features/cloud/planCardSnapshot';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
-import type {
-CanonicalIdentity,CanonicalSessionMessage,CanonicalSessionState,
-DesktopChatToolSnapshot,Message,MessageActionMetadata,
-} from '@/kordi-app/types';
+import type { CanonicalIdentity, CanonicalSessionMessage, CanonicalSessionState, DesktopChatToolSnapshot, Message, MessageActionMetadata } from '@/kordi-app/types';
 import { isSelfReferenceName, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
 import { agentMessagePresentation, ownerScopedAgentName } from './agentMessagePresentation';
@@ -316,8 +314,9 @@ export function mapCanonicalMessage(
     ? 'queued'
     : stringValue(content.deliveryState)?.trim().toLowerCase();
   const cancelled = message.status === 'cancelled' || deliveryState === 'cancelled';
-  const noProviderFailure = isAgentTurn && isCloudAgentStoredNoProviderFailure(contentText || stringValue(content.error) || stringValue(content.detail));
-  const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled || noProviderFailure; if (failed && storedContent[RETIRED_BY_RETRY_CONTENT_KEY] === true) return null;
+  const statusFailed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed'; // A successful reply that mentions the notice stays a reply.
+  const noProviderFailure = isAgentTurn && isCloudAgentStoredNoProviderReply({ text: contentText, error: stringValue(content.error), detail: stringValue(content.detail), failed: statusFailed, hasRunOutput: cloudAgentStoredReplyHasRunOutput(content) });
+  const failed = statusFailed || cancelled || noProviderFailure; if (failed && storedContent[RETIRED_BY_RETRY_CONTENT_KEY] === true) return null;
   const legacyCollaborationAgentFailure = isAgentTurn && failed && sourceTransport.startsWith('desktop-bridge');
   const sourceConversationId = compatibleSourceConversationId(content)?.trim();
   const sourceRequestId = stringValue(content.requestId)?.trim();

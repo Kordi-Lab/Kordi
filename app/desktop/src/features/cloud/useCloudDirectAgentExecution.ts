@@ -65,6 +65,7 @@ import {
 import { cloudSessionIdForCollaborationSend } from './cloudCollaborationState';
 import { loadSession } from './session';
 import { createCloudSharedAgentProgress } from './cloudSharedAgentProgress';
+import { cloudAgentTurnReplyText } from './cloudAgentReplyText';
 import { useDocumentAgentRequests } from '@/features/documents/useDocumentAgentRequests';
 
 export function useCloudDirectAgentExecution({
@@ -352,11 +353,10 @@ export function useCloudDirectAgentExecution({
                 reportWarning,
               });
             }
-            const responseSucceeded =
-              finalTurn.succeeded
-              && finalTurn.assistantText.trim().length > 0;
+            const replyText = cloudAgentTurnReplyText(finalTurn);
+            const responseSucceeded = replyText.length > 0;
             const responseText = responseSucceeded
-              ? finalTurn.assistantText.trim()
+              ? replyText
               : finalTurn.status === 'cancelled'
                 ? 'Request stopped.'
               : cloudAgentProviderFailureNotice(finalTurn.error || finalTurn.message)
