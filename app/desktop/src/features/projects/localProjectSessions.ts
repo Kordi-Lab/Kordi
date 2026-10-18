@@ -29,8 +29,10 @@ export function localProjectSessions(desktopChatState: DesktopChatState) {
       ? [activeSessionSummary, ...allLocalSessions]
       : allLocalSessions;
     const sessionSummaries = rawSessionSummaries.filter((session) => !isCloudAgentRuntimeSessionId(session.id));
+    // The runtime holds this session in memory only, for example a copy loaded to open or run a cloud chat.
+    const unlistedActiveSessionId = activeSessionSummary?.id ?? null;
 
-    return { projectRootBySession, sessionSummaries };
+    return { projectRootBySession, sessionSummaries, unlistedActiveSessionId };
 }
 
 /** Workspace bindings local sessions already carry before the project catalog lists them. */
