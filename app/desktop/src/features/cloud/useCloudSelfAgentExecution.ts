@@ -66,10 +66,13 @@ export function useCloudSelfAgentExecution({
   }, [account, client, messageIndex, setLocalTurns, syncMessages, reportWarning]);
   useCloudSelfAgentInterruptedTurnRecovery({
     enabled: Boolean(account && initialMessagesSettled && isNativeDesktopShell()),
+    account,
     canonicalState,
     client,
+    messageIndex,
     processedRequestIdsRef,
     hydrateSessionPage,
+    mergeMessage,
     syncMessages,
     reportWarning,
   });
