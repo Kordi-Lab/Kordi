@@ -18,13 +18,15 @@ type Route = { model: string; thinking: string; authProvider: string | null; aut
  * gate: a route that names a removed account shows "Account unavailable", and
  * the saved accounts of the Kordi account are listed as route choices.
  */
-export function PreviewSessionRoute({ providers, initialAuthChoice, loadSnapshots }: {
+export function PreviewSessionRoute({ providers, initialAuthChoice, initialAuthProvider = 'openai-codex', initialModel = 'openai-codex/gpt-5.5', loadSnapshots }: {
   providers: DesktopAuthProvider[];
   initialAuthChoice: string;
+  initialAuthProvider?: string;
+  initialModel?: string;
   loadSnapshots: () => Promise<CloudProviderAuthSnapshot[]>;
 }) {
   const [route, setRoute] = useState<Route>({
-    model: 'openai-codex/gpt-5.5', thinking: 'medium', authProvider: 'openai-codex', authChoice: initialAuthChoice,
+    model: initialModel, thinking: 'medium', authProvider: initialAuthProvider, authChoice: initialAuthChoice,
   });
   const [hosted, setHosted] = useState<{ snapshots: CloudProviderAuthSnapshot[]; catalog: OmpCatalogEntry[] }>({ snapshots: [], catalog: [] });
   useEffect(() => {

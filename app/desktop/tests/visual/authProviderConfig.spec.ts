@@ -318,8 +318,25 @@ test('a completed ChatGPT device sign-in returns with the account added and read
   expect(offOrigin).toEqual([]);
 });
 
-test('a session routed to a removed account shows it as unavailable and blocks send until another account is chosen', async ({ page }) => {
+test('a session routed to a removed account opens its route on the signed-in account of the same provider', async ({ page }) => {
   await openPreview(page, 'settings', { provider: 'openai', flags: ['missingAccount'] });
+  const session = section(page, 'Agent session');
+  await expect(session.getByRole('status')).toContainText('Account unavailable');
+  await expect(session.getByRole('button', { name: 'Send' })).toBeDisabled();
+  await expect(session.getByRole('button', { name: 'Test route' })).toBeDisabled();
+  await session.getByRole('button', { name: 'model route · Account unavailable' }).click();
+  const menu = page.getByRole('dialog', { name: 'Agent model' });
+  // The dialog offers the ChatGPT account in place of the removed one; saving applies it.
+  await expect(menu).not.toContainText('account unavailable');
+  await expect(menu.getByRole('button', { name: 'save' })).toBeEnabled();
+  await menu.getByRole('button', { name: 'save' }).click();
+  await expect(session.getByRole('status')).toHaveCount(0);
+  await expect(session.getByRole('button', { name: 'Send' })).toBeEnabled();
+  await expect(session.getByRole('button', { name: 'model route', exact: true })).toBeVisible();
+});
+
+test('a session routed to a removed account with no account of its provider stays unavailable and blocks send until another account is chosen', async ({ page }) => {
+  await openPreview(page, 'settings', { provider: 'openai', flags: ['missingAccount', 'otherProvider'] });
   const session = section(page, 'Agent session');
   await expect(session.getByRole('status')).toContainText('Account unavailable');
   await expect(session.getByRole('button', { name: 'Send' })).toBeDisabled();
