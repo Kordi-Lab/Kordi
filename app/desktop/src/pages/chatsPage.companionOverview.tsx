@@ -8,6 +8,7 @@ import type { DigestState } from '@/features/digest/store';
 import type { CalendarEvent, DigestItem, DigestSource } from '@/features/digest/types';
 import { dateKey, eventOnDay, monthDays } from '@/features/digest/calendar';
 import { DigestPeople } from '@/features/digest/DigestPeople';
+import { formatDesktopShortDateTime } from '@/lib/time';
 import { companionAgendaDays } from './chatsPage.companionCalendarModel';
 import type { CompanionView } from './chatsPage.companionToolbar';
 import { CompanionTitlebar } from './CompanionTitlebar';
@@ -75,7 +76,7 @@ function CompanionDigest({ accountId, state, onRetry, actions }: { accountId: st
     {digestError ? <ReadError label="Digest" onRetry={onRetry} /> : null}
     {!snapshot ? <p className="app-companion-status" role="status">{digestError ? 'The digest could not be loaded.' : unavailable}</p>
       : <>
-        <p className="app-companion-freshness" role="status">{digest?.status === 'updating' ? 'Updating…' : digest?.updatedAt ? `Updated ${new Date(digest.updatedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Latest digest'}</p>
+        <p className="app-companion-freshness" role="status">{digest?.status === 'updating' ? 'Updating…' : digest?.updatedAt ? `Updated ${formatDesktopShortDateTime(digest.updatedAt)}` : 'Latest digest'}</p>
         {digest?.status === 'error' ? <p className="app-companion-status">The latest update failed. Showing the last available digest.</p> : null}
         {sections.map(([label, items]) => <section className="app-companion-digest-section" key={label}>
           <h3>{label}</h3>

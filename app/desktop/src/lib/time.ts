@@ -19,6 +19,7 @@ function toDate(value: Date | number) {
 const desktopClockTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 const desktopDateFormatters = new Map<string, Intl.DateTimeFormat>();
 const desktopDateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
+const desktopShortDateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 const desktopTranscriptTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 const desktopRelativeDayFormatters = new Map<string, Intl.RelativeTimeFormat>();
 let deviceTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -139,6 +140,23 @@ export function formatDesktopDateTime(value: Date | number, options: { timeZone?
     },
   );
   return formatter.format(toDate(value));
+}
+
+/** Short month, day and clock time in the device timezone, for example "Oct 16, 9:45 PM". */
+export function formatDesktopShortDateTime(value: Date | number | string, options: { timeZone?: string } = {}) {
+  const formatter = cachedFormatter(
+    desktopShortDateTimeFormatters,
+    formatterKey([options.timeZone]),
+    undefined,
+    {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      ...(options.timeZone ? { timeZone: options.timeZone } : {}),
+    },
+  );
+  return formatter.format(typeof value === 'string' ? new Date(value) : toDate(value));
 }
 
 /**

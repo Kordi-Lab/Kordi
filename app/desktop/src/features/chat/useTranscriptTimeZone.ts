@@ -11,7 +11,7 @@ function clockContext() {
   return { timeZone, day: formatDesktopDate(now, { timeZone }), now };
 }
 
-/** Refresh local clock labels after travel, including while the window stays open. */
+/** Refresh local clock labels after travel, including while the window stays open. Used by chat and Digest. */
 export function useTranscriptTimeZone() {
   const [context, setContext] = useState(clockContext);
   const contextRef = useRef(context);

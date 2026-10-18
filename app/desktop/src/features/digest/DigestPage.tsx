@@ -19,8 +19,11 @@ import { DigestSplit } from './DigestSplit';
 import { useCalendarPreview } from './useCalendarPreview';
 import { MarkdownContent } from '@/kordi-app/components/markdown';
 import { providerDisplayLabel } from '@/kordi-app/components/composerModelSelection';
+import { formatDesktopShortDateTime } from '@/lib/time';
+import { useTranscriptTimeZone } from '@/features/chat/useTranscriptTimeZone';
 
-const timeLabel=(value:string)=>new Date(value).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+// Same rule as chat timestamps: the server sends UTC instants and the device timezone formats them.
+const timeLabel=(value:string,timeZone?:string)=>formatDesktopShortDateTime(value,{timeZone});
 const localInput=(value?:string|null)=>{if(!value)return '';const d=new Date(value);return `${dateKey(d)}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;};
 const ActionErrorContext = createContext<{error:string|null;setError:(error:string|null)=>void}>({error:null,setError:()=>{}});
 function Sheet({title,onClose,children}:{title:string;onClose:()=>void;children:ReactNode}){
@@ -53,6 +56,8 @@ export default function DigestPage({accountId,onOpenProviderSettings,renderConte
   renderContent?: (model: { state: ReturnType<typeof useDigest>; actions: DigestPanelActions }) => ReactNode;
 }){
   const state=useDigest(accountId);
+  // Rerender every digest time after the device timezone or local day changes, like the chat transcript.
+  const {timeZone}=useTranscriptTimeZone();
   const {digest,events,error,digestError,calendarError,reload,calendarLoaded,setFeedback,removeEvents,pendingMutationKeys,mutationError,canRetryMutation,retryMutation}=state;
   const [view,setView]=useState<'brief'|'tasks'|'calendar'>('brief');
   const mainRef=useRef<HTMLDivElement>(null);
@@ -96,7 +101,7 @@ export default function DigestPage({accountId,onOpenProviderSettings,renderConte
     :unavailable==='providerRejected'?<>{reconnect??"Your model provider sign-in didn't work"}{settingsAction}</>
     :unavailable==='providerUnavailable'?<>Your model provider is unavailable right now{statusAction('Try again',retryGeneration)}</>
     :unavailable==='failed'?<>Your digest couldn't be prepared{statusAction('Try again',retryGeneration)}</>
-    :<><span title="Updates a few minutes after your conversations go quiet">{digest?.updatedAt?`Updated ${timeLabel(digest.updatedAt)}`:'Up to date'}</span>{digest?.status==='updating'?<> · Updating…</>:needsProvider?<> · Connect a model provider{settingsAction}</>:digest?.errorCode==='provider_auth_rejected'?<> · {reconnect??"Provider sign-in didn't work"}{settingsAction}</>:digest?.errorCode==='provider_unavailable'?<> · Provider unavailable{statusAction('Retry',retryGeneration)}</>:digest?.errorCode?<> · Last update failed{statusAction('Retry',retryGeneration)}</>:null}</>;
+    :<><span title="Updates a few minutes after your conversations go quiet">{digest?.updatedAt?`Updated ${timeLabel(digest.updatedAt,timeZone)}`:'Up to date'}</span>{digest?.status==='updating'?<> · Updating…</>:needsProvider?<> · Connect a model provider{settingsAction}</>:digest?.errorCode==='provider_auth_rejected'?<> · {reconnect??"Provider sign-in didn't work"}{settingsAction}</>:digest?.errorCode==='provider_unavailable'?<> · Provider unavailable{statusAction('Retry',retryGeneration)}</>:digest?.errorCode?<> · Last update failed{statusAction('Retry',retryGeneration)}</>:null}</>;
   const digestStatus=unavailable?<div className="digest-placeholder" aria-hidden="true"/>:null;
   const calendarStatus=!calendarLoaded?<DigestReadStatus label="Calendar" failed={!!calendarError} busy={busy} onRetry={()=>void retryReads()}/>:null;
   const selectedSources=sources.filter(s=>(Array.isArray(sourceId)?sourceId:[sourceId]).includes(s.id)).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
