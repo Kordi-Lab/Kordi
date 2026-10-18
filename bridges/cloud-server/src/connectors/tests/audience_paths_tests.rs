@@ -68,7 +68,7 @@ async fn claims_record_the_audience_of_their_conversation() {
     let removed = conversation(&pool, "ai", &owner, &[&contact]).await;
     set_membership(&pool, &removed, &contact, "removed").await;
     for (label, session) in [("left", &left), ("removed", &removed)] {
-        let run = claim_run_for_person_message(&pool, &claim(&owner, session, &owner))
+        let run = claim_run_for_person_message(&pool, &claim(&owner, session, &owner), None)
             .await
             .unwrap();
         assert_eq!(audience_of(&pool, &run.run_id).await, "shared", "{label}");
@@ -119,7 +119,7 @@ async fn spawned_subsessions_inherit_the_parent_audience() {
     let private = conversation(&pool, "ai", &owner, &[]).await;
     let group = conversation(&pool, "group", &owner, &[&contact]).await;
     for (session, expected) in [(&private, "owner_private"), (&group, "shared")] {
-        let parent = claim_run_for_person_message(&pool, &claim(&owner, session, &owner))
+        let parent = claim_run_for_person_message(&pool, &claim(&owner, session, &owner), None)
             .await
             .unwrap();
         assert_eq!(audience_of(&pool, &parent.run_id).await, expected);

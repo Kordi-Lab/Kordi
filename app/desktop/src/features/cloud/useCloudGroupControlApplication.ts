@@ -51,8 +51,8 @@ import type {
   CloudGroupControlEnvelope,
 } from './cloudGroupMessages';
 import type { CloudMessageIndex } from './cloudMessageIndex';
+import { cloudFallbackRunExecutingRequest } from './cloudAgentRunOwnership';
 import {
-  cloudFallbackRunAlreadyOwnsRequest,
   cloudGroupAgentResponseExistsForRequest,
   isCloudAgentProcessingPlaceholderText,
   removeCanonicalMessageById,
@@ -392,7 +392,7 @@ export function useCloudGroupControlApplication({
         isRecentMention: isRecentCloudAgentMention,
         messageTargetsLocalAgent: cloudGroupMessageTargetsLocalAgent,
         responseExists: cloudGroupAgentResponseExistsForRequest,
-        fallbackRunOwnsRequest: cloudFallbackRunAlreadyOwnsRequest,
+        fallbackRunOwnsRequest: cloudFallbackRunExecutingRequest,
         nativeContext: cloudGroupNativeContextMessages,
         waitForTurn: waitForCloudAgentTurn,
         publishActivity: (input) => publishDerivedCloudSessionActivity({

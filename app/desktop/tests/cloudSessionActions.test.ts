@@ -379,7 +379,8 @@ test('cloud group requesting placeholder times out to unavailable notice instead
   const timeoutIndex = source.indexOf('const requestDeadlineMs = candidate.requestMessage.createdAtMs');
   assert.ok(timeoutIndex >= 0, 'expected bounded requesting placeholder status checks');
   const timeoutBlock = source.slice(timeoutIndex, timeoutIndex + 6500);
-  assert.match(timeoutBlock, /cloudFallbackRunAlreadyOwnsRequest\(\{/);
+  assert.match(timeoutBlock, /cloudFallbackRunOwnership\(\{/);
+  assert.match(timeoutBlock, /if \(ownership === 'unknown'\) \{\s*scheduleStatusCheck\(CLOUD_GROUP_AGENT_STATUS_RECHECK_MS\);\s*return;/);
   assert.match(timeoutBlock, /cloudFallbackRunClaimsForMessages\(\{/);
   assert.match(timeoutBlock, /claimCloudFallbackRun\(\s*exactClaim/);
   assert.match(timeoutBlock, /scheduleStatusCheck\(\s*Math\.min\(\s*CLOUD_GROUP_AGENT_STATUS_RECHECK_MS,\s*remainingMs,?\s*\),?\s*\)/);

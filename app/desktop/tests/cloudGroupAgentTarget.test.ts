@@ -38,6 +38,7 @@ test('one legacy group send never creates claims for unrelated Kordi contacts', 
     const body = encodeCloudGroupControl({ kind: 'group-message', groupId: 'session:group:targeting', groupTitle: null, createdByAccountId: sender.accountId, actor: sender, participants: fixture.participants, message });
     const messagesByPeer = Object.fromEntries(contacts.map((contact) => [contact.sourceParticipantId!, [{ messageId: `wire-${contact.sourceParticipantId}`, fromAccountId: account.accountId, toAccountId: contact.sourceParticipantId!, body, direction: 'outgoing', createdAt: new Date().toISOString(), deliveredAt: null, readAt: null } satisfies CloudMessage]]));
     const claims = cloudFallbackRunClaimsForMessages({ account, contacts, messagesByPeer });
-    assert.deepEqual(claims.map((c) => c.ownerAccountId), message.targetCloudAgentOwnerAccountId ? ['acct_one'] : []);
+    const target = message.targetCloudAgentOwnerAccountId ?? fixture.expected?.ownerAccountId;
+    assert.deepEqual(claims.map((c) => c.ownerAccountId), target ? [target] : []);
   }
 });
