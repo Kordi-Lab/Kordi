@@ -1,4 +1,5 @@
 import { canChooseChatProject } from '@/features/projects/chatProjects';
+import { sessionRunsOnAnotherMac } from '@/features/projects/remoteProjectCatalog';
 import { BellOff, Bookmark, ChevronRight, Paperclip, Pin, Split } from 'lucide-react';
 
 import { attachmentPreviewUrl } from '@/features/chat/attachmentMediaGallery';
@@ -123,7 +124,7 @@ export function AgentSidebarRow({
           if (!target) return;
           event.preventDefault();
           event.stopPropagation();
-          onOpenSessionContextMenu({ ...target, canChooseProject: canChooseChatProject(conversation) });
+          onOpenSessionContextMenu({ ...target, canChooseProject: canChooseChatProject(conversation) && !sessionRunsOnAnotherMac(session.id) });
         }}
         className={cn(
           'app-session-row app-agent-session-row w-full px-2.5 py-1 text-left text-white',
