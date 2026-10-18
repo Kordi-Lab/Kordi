@@ -1,7 +1,8 @@
 //! Database tests for `create_document` (issue 1808): the document is
 //! recorded against the run, carried by the agent's reply from cloud
-//! completion, shown with the agent as its author, and refused without a
-//! real title and content.
+//! completion (also when the model ended on the tool call with no text),
+//! shown with the agent as its author, and refused without a real title and
+//! content.
 
 use axum::http::StatusCode;
 use serde_json::json;
@@ -68,6 +69,35 @@ async fn cloud_completion_attaches_the_document_to_the_agents_reply() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["attachmentId"] == attachment_id.as_str()));
+}
+
+/// A cloud run whose model ended on `create_document` with no closing text:
+/// the server still refuses the empty reply, and the line the runner sends
+/// instead carries the document.
+#[tokio::test]
+async fn a_tool_only_cloud_reply_names_and_carries_the_document() {
+    let Some(f) = fixture().await else { return };
+    let state = state(&f).await;
+    let (conversation, session_id) = group(&f).await;
+    let request_id = send_request(&f, conversation, &session_id).await;
+    let run_id = chat_run(&f, &session_id, &f.member, &request_id).await;
+    let (runner, _) = lease(&f, &state, &run_id).await;
+    let (_, created) = call_tool(&state, &runner, &run_id, "create_document", plan_args()).await;
+    let attachment_id = attachment_of(&created);
+
+    let empty =
+        crate::cloud_agent_runtime::runs::complete_run(&f.pool, &run_id, &runner, " ").await;
+    assert!(empty.is_err());
+    assert!(messages_with(&f, &attachment_id).await.is_empty());
+
+    let title = created.result.as_ref().unwrap()["title"].as_str().unwrap();
+    let reply = format!("Created “{title}”.");
+    crate::cloud_agent_runtime::runs::complete_run(&f.pool, &run_id, &runner, &reply)
+        .await
+        .unwrap();
+    let envelope = assert_carried_by_agent(&f, &attachment_id).await;
+    assert_eq!(envelope["message"]["text"], "Created “Launch plan”.");
+    assert_eq!(envelope["message"]["requestId"], request_id.as_str());
 }
 
 #[tokio::test]

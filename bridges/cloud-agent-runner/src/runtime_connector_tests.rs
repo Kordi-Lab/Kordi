@@ -251,7 +251,11 @@ async fn a_tool_not_on_the_lease_is_refused_without_calling_the_broker() {
     let executor = crate::tools::CloudToolExecutor::new(sandbox.clone());
     let output =
         crate::model_loop::execute_model_tool(&client, &executor, &sandbox, &run, &call).await;
-    assert!(output.as_str().unwrap().contains("not available"));
+    assert!(output
+        .unwrap_err()
+        .as_str()
+        .unwrap()
+        .contains("not available"));
     assert!(client.calls.lock().unwrap().is_empty());
     let _ = std::fs::remove_dir_all(root);
     let builtin = ModelToolCall {
@@ -422,6 +426,7 @@ async fn request_connect_returns_a_settings_link_only_on_owner_private_runs() {
         .any(|tool| tool["function"]["name"] == "connectors_request_connect"));
     let output = connectors::execute_connector_call(&client, &private, &call)
         .await
+        .unwrap()
         .unwrap();
     let result: Value = serde_json::from_str(output.as_str().unwrap()).unwrap();
     assert_eq!(
@@ -438,7 +443,8 @@ async fn request_connect_returns_a_settings_link_only_on_owner_private_runs() {
     assert!(connectors::tool_definitions(&shared).is_empty());
     let refused = connectors::execute_connector_call(&client, &shared, &call)
         .await
-        .unwrap();
+        .unwrap()
+        .unwrap_err();
     assert!(refused.as_str().unwrap().contains("not available"));
     let parsed: LeaseConnectors = serde_json::from_value(json!({
         "trigger": "person_started",
