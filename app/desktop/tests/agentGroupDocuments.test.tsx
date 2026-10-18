@@ -67,3 +67,16 @@ test('an agent turn shows its document card in the transcript', () => {
   assert.match(html, /Launch plan\.md/);
   assert.doesNotMatch(html, /\/Users\//);
 });
+
+test("the owner's stored agent reply gains the document the server attached", async () => {
+  const { mergedGroupMessageAttachments } = await import('../src/features/cloud/cloudGroupReplyAttachments');
+  const document = { attachmentId: 'att_agentdoc_1', name: 'launch-plan.md', kind: 'file' as const, mimeType: 'text/markdown' };
+  // The Mac stored its reply before the server added the document.
+  assert.deepEqual(mergedGroupMessageAttachments([], [document], true), [document]);
+  // A person's message never gains attachments this way, and nothing new means no update.
+  assert.equal(mergedGroupMessageAttachments([], [document], false), null);
+  assert.equal(mergedGroupMessageAttachments([document], [document], true), null);
+  // A cached copy still fills in its local path.
+  const cached = { ...document, localPath: '/tmp/cache/launch-plan.md' };
+  assert.deepEqual(mergedGroupMessageAttachments([document], [cached], false), [{ ...document, localPath: cached.localPath }]);
+});

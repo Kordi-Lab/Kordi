@@ -163,13 +163,24 @@ async fn compute_and_store(
             RunTrigger::parse(&trigger),
             ConnectorAudience::parse(&audience),
         )
-        .await?
+        .await
+        // One failing connector must not take the document tools with it.
+        .unwrap_or_else(|error| {
+            eprintln!("[connectors] connector tools for {run_id}: {error}");
+            Vec::new()
+        })
     } else {
         Vec::new()
     };
     // Document tools ride the same lease field; their own gate decides them.
     let mut tools = tools;
-    tools.extend(crate::document_shares::agents::tools::lease_tools(pool, run_id).await?);
+    let documents = crate::document_shares::agents::tools::lease_tools(pool, run_id).await;
+    match documents {
+        Ok(documents) => tools.extend(documents),
+        Err(error) => eprintln!("[documents] document tools for {run_id}: {error}"),
+    }
+    let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_str()).collect();
+    eprintln!("[connectors] lease tools for {run_id}: {names:?}");
     let json = serde_json::to_value(&tools).unwrap_or_else(|_| Value::Array(Vec::new()));
     // A concurrent first delivery may have won; keep whichever set was
     // stored first and return that one.

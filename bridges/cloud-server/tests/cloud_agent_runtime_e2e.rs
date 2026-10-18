@@ -393,6 +393,8 @@ mod claims;
 mod cloud_subsessions;
 #[path = "cloud_agent_runtime_e2e/execution_ownership.rs"]
 mod execution_ownership;
+#[path = "cloud_agent_runtime_e2e/group_document_tools.rs"]
+mod group_document_tools;
 #[path = "cloud_agent_runtime_e2e/group_owner_admission.rs"]
 mod group_owner_admission;
 #[path = "cloud_agent_runtime_e2e/group_target_admission.rs"]

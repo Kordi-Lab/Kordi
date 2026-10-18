@@ -249,11 +249,17 @@ fn system_prompt_for_run(run: &CloudAgentRun) -> Result<String, ModelLoopError> 
             ));
         }
     }
-    let mut system_prompt = [run.system_prompt.trim(), cloud_sandbox_system_prompt()]
-        .into_iter()
-        .filter(|section| !section.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n");
+    let documents =
+        super::prompt::group_document_guidance(&run.connectors.tools).unwrap_or_default();
+    let mut system_prompt = [
+        run.system_prompt.trim(),
+        cloud_sandbox_system_prompt(),
+        documents,
+    ]
+    .into_iter()
+    .filter(|section| !section.is_empty())
+    .collect::<Vec<_>>()
+    .join("\n\n");
     if run.subsession_id.is_none()
         && (run.session_id.starts_with("session:group:")
             || run.session_id.starts_with("session:direct-person:"))

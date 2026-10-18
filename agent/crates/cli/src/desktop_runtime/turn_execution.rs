@@ -294,6 +294,53 @@ pub(super) fn turn_connector_tools(
     }
 }
 
+/// Puts the tools a turn under `execution_policy` may use on the session's
+/// registry: the owner's Mac-local tools and the lease's connector and
+/// document tools, or for anyone else's request only the shared document
+/// tools. Returns the runtimes those tools call.
+fn select_turn_tools(
+    setup: &mut crate::session_bootstrap::SessionRuntimeSetup,
+    execution_policy: kordi_tools::ExecutionPolicy,
+) -> (
+    Option<kordi_tools::mac_local::MacLocalRuntime>,
+    Option<kordi_tools::connector_tools::ConnectorToolsRuntime>,
+) {
+    let owner_turn = execution_policy != kordi_tools::ExecutionPolicy::Shared;
+    let mac_local = owner_turn
+        .then(|| setup.tool_ctx.mac_local.clone())
+        .flatten();
+    let connector_tools = turn_connector_tools(setup.tool_ctx.connector_tools.as_ref(), owner_turn);
+    setup
+        .tool_registry
+        .sync_mac_local_tools(mac_local.as_ref(), &setup.tool_selection);
+    setup.tool_registry.set_connector_tools(
+        connector_tools.as_ref(),
+        setup.tool_selection != crate::tool_registry::ToolSelection::None,
+    );
+    (mac_local, connector_tools)
+}
+
+impl DesktopRuntimeSession {
+    /// The system prompt the next turn sends, session context included.
+    pub fn next_turn_system_prompt(&self) -> &str {
+        &self.setup.system_prompt
+    }
+
+    /// The names of the tools the next turn offers the model, chosen exactly
+    /// as the turn chooses them.
+    pub fn next_turn_tool_names(&mut self) -> Result<Vec<String>> {
+        let execution_policy = self.turn_execution_policy()?;
+        select_turn_tools(&mut self.setup, execution_policy);
+        Ok(self
+            .setup
+            .tool_registry
+            .active_tools()
+            .iter()
+            .map(|tool| tool.name().to_string())
+            .collect())
+    }
+}
+
 pub(super) fn build_turn_config(
     setup: &mut crate::session_bootstrap::SessionRuntimeSetup,
     cancel: tokio_util::sync::CancellationToken,
@@ -311,17 +358,8 @@ pub(super) fn build_turn_config(
     // Owner-only tools (Mac-local sources and connector tools) never serve a
     // shared request from someone other than the owner. Such a turn keeps
     // only the read-only document tools of its lease.
-    let owner_turn = execution_policy != kordi_tools::ExecutionPolicy::Shared;
-    let mac_local = owner_turn
-        .then(|| setup.tool_ctx.mac_local.clone())
-        .flatten();
-    let connector_tools = turn_connector_tools(setup.tool_ctx.connector_tools.as_ref(), owner_turn);
-    let mut tool_registry = std::mem::take(&mut setup.tool_registry);
-    tool_registry.sync_mac_local_tools(mac_local.as_ref(), &setup.tool_selection);
-    tool_registry.set_connector_tools(
-        connector_tools.as_ref(),
-        setup.tool_selection != crate::tool_registry::ToolSelection::None,
-    );
+    let (mac_local, connector_tools) = select_turn_tools(setup, execution_policy);
+    let tool_registry = std::mem::take(&mut setup.tool_registry);
 
     let request_thinking = request_thinking_for_model_with_auth(
         &setup.thinking_level,

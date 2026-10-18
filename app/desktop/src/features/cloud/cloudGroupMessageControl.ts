@@ -11,6 +11,7 @@ import type {
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { cloudMessageAttachmentToMessageAttachment } from './cloudAttachments';
 import { withoutVoiceAttachment } from './cloudVoiceMessage';
+import { mergedGroupMessageAttachments } from './cloudGroupReplyAttachments';
 import {
   cloudAgentCanonicalIdentityId,
   cloudAgentDisplayName,
@@ -190,34 +191,14 @@ export async function applyCloudGroupMessageControl({
       : mapped;
   });
 
-  if (
-    messageAlreadyExists
-    && existingCloudGroupMessage
-    && mappedAttachments.some((attachment) => attachment.localPath)
-  ) {
+  if (messageAlreadyExists && existingCloudGroupMessage && mappedAttachments.length > 0) {
     const content = stateOps.objectContent(existingCloudGroupMessage.content);
-    const existingAttachments: unknown[] = Array.isArray(content.attachments)
-      ? content.attachments
-      : [];
-    const shouldUpdateCachedAttachments = existingAttachments.some((attachment) => {
-      const record = stateOps.objectContent(attachment);
-      return typeof record.attachmentId === 'string'
-        && !record.localPath
-        && mappedAttachments.some((mapped) => (
-          mapped.attachmentId === record.attachmentId && mapped.localPath
-        ));
-    });
-    if (shouldUpdateCachedAttachments) {
-      const mergedAttachments = existingAttachments.map((attachment: unknown) => {
-        const record = stateOps.objectContent(attachment);
-        const attachmentId = typeof record.attachmentId === 'string' ? record.attachmentId : null;
-        const cached = attachmentId
-          ? mappedAttachments.find((mapped) => (
-              mapped.attachmentId === attachmentId && mapped.localPath
-            ))
-          : null;
-        return cached ? { ...record, localPath: cached.localPath } : attachment;
-      });
+    const mergedAttachments = mergedGroupMessageAttachments(
+      Array.isArray(content.attachments) ? content.attachments : [],
+      mappedAttachments,
+      senderIsAgent,
+    );
+    if (mergedAttachments) {
       const attachmentUpdateRequest = {
         id: existingCloudGroupMessage.id,
         sessionId: existingCloudGroupMessage.sessionId,

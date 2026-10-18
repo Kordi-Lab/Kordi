@@ -412,9 +412,9 @@ pub(super) async fn progress(
         // Route the compatibility response by conversation membership, as chat sync does.
         let conversation: (Uuid, String) = query_as("SELECT c.conversation_id, COALESCE((SELECT member.account_id FROM cloud_chat_conversation_members member WHERE member.conversation_id=c.conversation_id AND member.account_id<>$2 AND member.membership_state='active' AND c.kind='direct' ORDER BY member.account_id LIMIT 1), $3) FROM cloud_chat_conversations c WHERE c.legacy_session_id=$1")
             .bind(&session_id).bind(&session.account_id).bind(&requester).fetch_one(&mut *tx).await?;
-        let message = crate::chat_sync::store::send_message_in_transaction(&mut tx, &session.account_id, conversation.0, crate::chat_sync::models::SendMessageRequest {
-            client_message_id: input.client_message_id, kind: "text".into(), content: json!({"schema":1,"blocks":[{"type":"text","text":input.body}]}), reply_to_message_id: None, attachment_ids:vec![],
-        }).await?.value;
+        let reply = crate::chat_sync::models::SendMessageRequest { client_message_id: input.client_message_id, kind: "text".into(), content: json!({"schema":1,"blocks":[{"type":"text","text":input.body}]}), reply_to_message_id: None, attachment_ids:vec![] };
+        let reply = if phase == "completed" { crate::document_shares::agents::create::reply::attach_run_documents(&mut tx, &run_id, reply).await? } else { reply }; // A completed reply carries the run's documents (issue 1808).
+        let message = crate::chat_sync::store::send_message_in_transaction(&mut tx, &session.account_id, conversation.0, reply).await?.value;
         query("UPDATE cloud_agent_fallback_runs SET status=$2, response_message_id=$3, updated_at=$4, completed_at=CASE WHEN $2 IN ('completed','failed','cancelled') THEN $4 ELSE NULL END WHERE run_id=$1")
             .bind(&run_id).bind(phase).bind(message.id.to_string()).bind(Utc::now().to_rfc3339()).execute(&mut *tx).await?;
         tx.commit().await?;

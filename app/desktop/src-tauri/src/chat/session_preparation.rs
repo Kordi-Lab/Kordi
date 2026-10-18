@@ -183,10 +183,20 @@ pub(super) async fn prepare_desktop_session_for_send(
     } else {
         Some(format!("Current session: {prompt_session_id}. Use this session ID when retrieving earlier messages or attachments from this conversation."))
     };
+    // Document guidance only for a turn that can call create_document.
+    let documents = [cloud_lease.as_ref(), document_lease.as_ref()]
+        .into_iter()
+        .flatten()
+        .flat_map(|lease| lease.connector_tools.iter().flatten())
+        .any(|tool| tool.is_group_document_create())
+        .then_some(super::background_tasks::GROUP_DOCUMENTS_POLICY);
     runtime.set_session_prompt_context(Some(format!(
-        "{}\n{}",
+        "{}\n{}{}",
         local_session_context.unwrap_or_default(),
-        kordi_tools::session_observation::CHAT_HISTORY_GUIDANCE
+        kordi_tools::session_observation::CHAT_HISTORY_GUIDANCE,
+        documents
+            .map(|policy| format!("\n{policy}"))
+            .unwrap_or_default()
     )));
     let calendar = calendar_runtime::build(runtime, context_session_id);
     // Owner-only tools follow this turn's identity; the stored one is only a
@@ -377,6 +387,10 @@ fn allow_memory_scopes(
         },
     );
 }
+
+#[cfg(test)]
+#[path = "session_preparation_group_tools_tests.rs"]
+mod group_tools_tests;
 
 #[cfg(test)]
 mod tests {

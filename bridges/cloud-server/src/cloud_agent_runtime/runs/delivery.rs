@@ -111,6 +111,14 @@ pub(super) async fn ensure_group_response_messages(
         response.delivery_state,
         now_ms,
     );
+    // A completed reply carries the documents the run created (issue 1808).
+    let documents = if response.delivery_state == "complete" {
+        let mut conn = pool.acquire().await?;
+        crate::document_shares::agents::create::reply::pending_for_run(&mut conn, response.run_id)
+            .await?
+    } else {
+        Vec::new()
+    };
     let recipient_account_id = cloud_group_response_recipients(&request_envelope)
         .into_iter()
         .find(|recipient| recipient != response.owner_account_id)
@@ -123,10 +131,13 @@ pub(super) async fn ensure_group_response_messages(
             to_account_id: &recipient_account_id,
             body: &response_body,
             session_id: response.session_id,
+            documents: &documents,
         },
     )
     .await?;
     if let Some(message_id) = &message_id {
+        let mut conn = pool.acquire().await?;
+        crate::document_shares::agents::create::reply::mark_attached(&mut conn, &documents).await?;
         query("UPDATE cloud_agent_fallback_runs SET response_message_id = $2, updated_at = $3 WHERE run_id = $1")
             .bind(response.run_id)
             .bind(message_id)
@@ -156,6 +167,7 @@ pub(super) async fn ensure_scheduled_direct_person_response_message(
             to_account_id: &peer_account_id,
             body: response_body,
             session_id,
+            documents: &[],
         },
     )
     .await?;
