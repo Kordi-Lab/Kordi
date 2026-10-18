@@ -10,7 +10,7 @@ import { resolvedPublishedAgentRuntimeRoute } from '@/features/chat/agentSession
 import { cloudAgentContextMessagesFromConversation } from '@/features/chat/chatCreateFlows';
 import { persistQueuedDesktopMessage } from '@/features/chat/queuedDesktopMessages';
 import { restoredSelfAgentContextMessages } from './restoredSelfAgentContext';
-import { cloudAgentNoProviderNoticeText,cloudAgentProviderFailureNotice,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentNoProviderNoticeText,cloudAgentProviderFailureNotice,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages'; import { isCloudAgentProviderFailureNoticeText } from '@/features/cloud/cloudAgentReplyText';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import {
@@ -341,7 +341,7 @@ export function useChatMessageActions({
       }
       flushQueuedDesktopMessagesForSessionRef.current(turn.sessionId);
     };
-    if (turn.completed && isCloudAgentNoProviderConfiguredError(turn.error || turn.message || turn.assistantText)) {
+    if (turn.completed && (isCloudAgentNoProviderConfiguredError(turn.error || turn.message) || isCloudAgentProviderFailureNoticeText(turn.assistantText))) {
       void Promise.resolve(onComplete?.(turn)).finally(cleanup);
       return;
     }

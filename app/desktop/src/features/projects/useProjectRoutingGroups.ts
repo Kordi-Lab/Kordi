@@ -4,7 +4,9 @@ import {
   rememberProjectMembership,
 } from '@/features/canonical/sessionResolver';
 import type { CanonicalSessionState, DesktopChatState } from '@/kordi-app/types';
+import { isNativeDesktopShell } from '@/lib/desktop';
 import { localProjectSessionHints } from './localProjectSessions';
+import { useRemoteProjectCatalog } from './remoteProjectCatalog';
 
 function sameMembership(left: ReadonlyMap<string, string>, right: ReadonlyMap<string, string>) {
   if (left.size !== right.size) return false;
@@ -27,11 +29,16 @@ export function useProjectRoutingGroups(
     () => (desktopChatState ? localProjectSessionHints(desktopChatState, canonicalSessionState) : null),
     [canonicalSessionState, desktopChatState],
   );
+  const localRoots = useMemo(() => (desktopChatState?.projects ?? []).map((project) => project.root), [desktopChatState?.projects]);
+  // Folders this profile already works in help find a synced project's folder.
+  const folderHints = useMemo(() => [desktopChatState?.cwd ?? '', desktopChatState?.activeSession.cwd ?? ''], [desktopChatState?.cwd, desktopChatState?.activeSession.cwd]);
+  const remoteProjects = useRemoteProjectCatalog(Boolean(desktopChatState) && isNativeDesktopShell(), localRoots, folderHints);
   const groups = useMemo(() => buildProjectRoutingGroups(desktopChatState?.projects, canonicalSessionState, {
     sessionHints: hints?.sessionHints,
     unboundSessionIds: hints?.unboundSessionIds,
     previousGroupIdBySession: membership,
-  }), [canonicalSessionState, desktopChatState?.projects, hints, membership]);
+    remoteProjects,
+  }), [canonicalSessionState, desktopChatState?.projects, hints, membership, remoteProjects]);
   const nextMembership = useMemo(
     () => rememberProjectMembership(membership, groups, hints?.unboundSessionIds),
     [groups, hints, membership],

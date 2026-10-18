@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChatProjects } from '@/features/projects/chatProjects';
 import { projectChatGroups } from '@/features/projects/projectChatGroups';
-import { ChevronRight, Folder, FolderOpen, Plus } from 'lucide-react';
+import { ChevronRight, Folder, FolderOpen, FolderSearch, Plus } from 'lucide-react';
+import { remoteProjectCatalogId } from '@/features/canonical/sessionResolver';
+import { locateRemoteProject } from '@/features/projects/remoteProjectCatalog';
 import { ProjectSidebarHeading } from '@/features/projects/ProjectSidebarHeading';
 import { participantSpaceSessionPreferenceId } from '@/pages/workspaceSidebar.chatHelpers';
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
@@ -71,6 +73,12 @@ export function WorkspaceChatLists({
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
+  const [locateError, setLocateError] = useState<{ id: string; message: string } | null>(null);
+  const locate = async (id: string) => {
+    setLocateError(null);
+    try { await locateRemoteProject(remoteProjectCatalogId(id)!); }
+    catch (reason) { setLocateError({ id, message: reason instanceof Error ? reason.message : 'Unable to use this folder.' }); }
+  };
   const createProjectSession = async (id: string) => {
     const project = projects?.projects.find((candidate) => candidate.id === id);
     if (!projects?.enabled || !project?.root || creatingProjectIds.has(id)) return;
@@ -184,7 +192,15 @@ export function WorkspaceChatLists({
                   onClick={() => { void createProjectSession(descriptor.spaceId); }}>
                   <Plus size={15} aria-hidden="true" />
                 </button>
+              ) : remoteProjectCatalogId(descriptor.spaceId) ? (
+                <button type="button" className="chat-project-new-session"
+                  title={`Locate ${grouped.groups.get(descriptor.spaceId)?.name} on this Mac`}
+                  aria-label={`Locate folder for ${grouped.groups.get(descriptor.spaceId)?.name}`}
+                  onClick={() => { void locate(descriptor.spaceId); }}>
+                  <FolderSearch size={15} aria-hidden="true" />
+                </button>
               ) : null}
+              {locateError?.id === descriptor.spaceId ? <p role="alert" className="chat-workspace-error chat-project-locate-error">{locateError.message}</p> : null}
             </div>
           )
         ) : (
