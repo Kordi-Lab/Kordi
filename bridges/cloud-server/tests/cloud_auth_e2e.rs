@@ -205,6 +205,8 @@ mod account_email;
 mod account_email_limits;
 #[path = "cloud_auth_e2e/device_listing.rs"]
 mod device_listing;
+#[path = "cloud_auth_e2e/device_review.rs"]
+mod device_review;
 #[path = "cloud_auth_e2e/devices.rs"]
 mod devices;
 #[path = "cloud_auth_e2e/expressive_media.rs"]

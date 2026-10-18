@@ -107,3 +107,53 @@ async fn device_list_hides_dead_legacy_rows_and_labels_placeholder_sign_ins() {
     );
     assert_eq!(devices.len(), 2);
 }
+
+#[tokio::test]
+async fn device_list_hides_sessions_idle_for_more_than_two_days() {
+    let Some(pool) = try_pool().await else { return };
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
+    let router = fast_router(state);
+    let signup = read_json(
+        router
+            .clone()
+            .oneshot(post(
+                "/v1/cloud/auth/signup",
+                signup_body(&unique_email("device-list-idle"), "correct horse").await,
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let token = signup["session"]["token"].as_str().unwrap();
+    let account_id = signup["account"]["accountId"].as_str().unwrap();
+
+    let recent_id = insert_legacy_device(&pool, account_id, "Recent Mac").await;
+    insert_refresh_token(&pool, account_id, &recent_id, false).await;
+    let idle_id = insert_legacy_device(&pool, account_id, "Idle Mac").await;
+    insert_refresh_token(&pool, account_id, &idle_id, false).await;
+    for (device_id, hours) in [(&recent_id, 47), (&idle_id, 49)] {
+        sqlx_core::query::query("UPDATE cloud_devices SET last_seen_at = $1 WHERE device_id = $2")
+            .bind((chrono::Utc::now() - chrono::Duration::hours(hours)).to_rfc3339())
+            .bind(device_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    let body = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/auth/devices", token))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let ids: Vec<&str> = body["devices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|device| device["deviceId"].as_str().unwrap())
+        .collect();
+    assert!(ids.contains(&recent_id.as_str()));
+    assert!(!ids.contains(&idle_id.as_str()));
+}

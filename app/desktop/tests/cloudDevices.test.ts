@@ -9,6 +9,7 @@ import {
   publishCloudDeviceEvents,
 } from '../src/features/cloud/cloudDeviceEvents';
 import type { ChatSyncEvent } from '../src/features/cloud/chatSyncTypes';
+import { CloudDeviceClient } from '../src/features/cloud/cloudDeviceClient';
 
 function readSource(relativePath: string): string {
   return readFileSync(new URL(`../src/${relativePath}`, import.meta.url), 'utf8');
@@ -24,12 +25,18 @@ test('device settings keep session details concise while covering review and rev
   assert.match(settings, /id: 'devices', label: 'Active sessions'/);
   assert.match(panel, /This device/);
   assert.match(panel, /Other devices/);
-  assert.match(panel, /Older sign-ins/);
+  assert.match(panel, /Also on this Mac/);
+  assert.match(panel, /Also on this device/);
+  assert.match(panel, /sameMachine/);
+  assert.doesNotMatch(panel, /Older sign-ins/);
   assert.match(dialogs, /Rename this device/);
   assert.match(panel, /renameDevice/);
   assert.match(panel, /Log out of all other devices/);
-  assert.match(parts, /Log out of this device/);
-  assert.match(panel, /Log out of all older sign-ins/);
+  for (const source of [panel, parts, dialogs]) {
+    assert.doesNotMatch(source, /Log out of this device/);
+    assert.doesNotMatch(source, /older sign-ins/);
+    assert.doesNotMatch(source, /kind: 'group'/);
+  }
   for (const source of [panel, dialogs]) assert.doesNotMatch(source, /Terminate/);
   assert.match(groups, /authorizationState === 'pending_review'/);
   assert.match(parts, /Active now/);
@@ -43,14 +50,18 @@ test('device settings keep session details concise while covering review and rev
     assert.doesNotMatch(source, /Sync protocol/);
     assert.doesNotMatch(source, /Session expires/);
   }
-  assert.match(panel, /lastActiveAt/);
-  assert.match(panel, /approximateLocation/);
+  assert.match(parts, /lastActiveAt/);
+  assert.match(parts, /approximateLocation/);
   assert.match(panel, /revokeOtherDevices/);
   assert.match(panel, /confirmation\.operationId/);
   assert.match(panel, /No other devices\./);
   assert.match(dialogs, /Every device except this one will be signed out\./);
-  assert.match(dialogs, /will be signed out\./);
   assert.match(panel, /This device is not in the list\. Refresh and try again\./);
+  assert.match(parts, /Waiting for approval/);
+  assert.match(panel, /Approve from another device, or wait until \$\{reviewEnds\}\./);
+  assert.match(panel, /Approve this device from another device first\./);
+  assert.match(panel, /actionsHidden=\{currentPending\}/);
+  assert.match(panel, /currentPending \? null : \(/);
   for (const source of [panel, parts, dialogs]) {
     assert.doesNotMatch(source, /cannot erase files/);
     assert.doesNotMatch(source, /will not be erased/);
@@ -131,5 +142,31 @@ test('durable directory events refresh profiles without replacing the signed-in 
       else delete target[key];
     });
     dom.window.close();
+  }
+});
+
+test('the device list sends the hashed machine id only when the native layer reports one', async () => {
+  const registration = {
+    displayName: 'MacBook Pro',
+    platform: 'macos',
+    osVersion: '27.0.1',
+    appVersion: '0.0.2',
+    approximateLocation: '',
+    publicKey: 'pk',
+    keyAlgorithm: 'p256' as const,
+  };
+  for (const machineId of ['ab12', undefined]) {
+    const bodies: Array<Record<string, unknown>> = [];
+    const client = new CloudDeviceClient(
+      async <T,>(path: string, init: RequestInit): Promise<T> => {
+        if (init.method === 'PUT') bodies.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+        return (path.endsWith('/devices') ? { devices: [] } : undefined) as T;
+      },
+      async () => (machineId ? { ...registration, machineId } : registration),
+    );
+    await client.list('token');
+    assert.equal(bodies.length, 1);
+    assert.equal(bodies[0].machineId, machineId);
+    assert.equal('machineId' in bodies[0], Boolean(machineId));
   }
 });

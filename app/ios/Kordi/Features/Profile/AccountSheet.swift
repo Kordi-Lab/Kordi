@@ -311,34 +311,26 @@ struct ConnectorsSettingsPreview: View {
 
 private enum DeviceLogoutRequest: Identifiable {
     case single(CloudDeviceAuthorization)
-    case group(CloudDeviceGroup)
     case allOthers
-    case allLegacy([CloudDeviceAuthorization])
 
     var id: String {
         switch self {
         case .single(let device): "single:\(device.deviceId)"
-        case .group(let group): "group:\(group.id)"
         case .allOthers: "all-others"
-        case .allLegacy: "all-legacy"
         }
     }
 
     var title: String {
         switch self {
         case .single(let device): "Log out of \(device.sessionTitle)?"
-        case .group(let group): "Log out of \(group.title)?"
         case .allOthers: "Log out of all other devices?"
-        case .allLegacy: "Log out of all older sign-ins?"
         }
     }
 
     var message: String? {
         switch self {
         case .single: nil
-        case .group(let group): group.sessionCount > 1 ? "\(group.sessionCount) sessions will be signed out." : nil
         case .allOthers: "Every device except this one will be signed out."
-        case .allLegacy(let rows): rows.count == 1 ? nil : "\(rows.count) older sign-ins will be signed out."
         }
     }
 }
@@ -353,14 +345,11 @@ private struct DevicesSettingsView: View {
     /// Leading inset that aligns sub-rows with the row title (icon width + spacing).
     private static let titleInset: CGFloat = 22 + 12
 
-    private var grouping: CloudDeviceGrouping {
-        CloudDeviceGrouping.make(from: model.devices)
-    }
-
     @ViewBuilder
     private var deviceSections: some View {
-        let grouping = grouping
-        if let current = grouping.current {
+        let list = CloudDeviceList.make(from: model.devices)
+        let locked = list.actionsLocked
+        if let current = list.current {
             currentDeviceSection(current)
         } else {
             Label("This iPhone is not in the list. Refresh and try again.", systemImage: "exclamationmark.triangle")
@@ -368,19 +357,22 @@ private struct DevicesSettingsView: View {
                 .foregroundStyle(.orange)
                 .frame(minHeight: 48, alignment: .leading)
         }
-        if !grouping.otherDevices.isEmpty {
+        if !locked, !list.otherDevices.isEmpty {
             destructiveRow("Log out of all other devices") { logoutRequest = .allOthers }
         }
-        if !grouping.groups.isEmpty {
+        if !list.sameMachine.isEmpty {
             SettingsDivider()
-            SettingsSectionTitle("Other devices")
-            ForEach(grouping.groups) { group in
-                groupRows(group)
+            SettingsSectionTitle("Also on this device")
+            ForEach(list.sameMachine) { device in
+                otherDeviceRow(device, locked: locked)
             }
         }
-        if !grouping.legacy.isEmpty {
+        if !list.others.isEmpty {
             SettingsDivider()
-            legacySection(grouping.legacy)
+            SettingsSectionTitle("Other devices")
+            ForEach(list.others) { device in
+                otherDeviceRow(device, locked: locked)
+            }
         }
     }
 
@@ -389,105 +381,46 @@ private struct DevicesSettingsView: View {
         HStack(alignment: .firstTextBaseline) {
             SettingsSectionTitle("This device")
             Spacer(minLength: 8)
-            Button("Rename") {
-                renameDraft = device.title
-                renameTarget = device
+            if !device.isPendingReview {
+                Button("Rename") {
+                    renameDraft = device.title
+                    renameTarget = device
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .disabled(isMutating)
             }
-            .font(.caption.weight(.semibold))
-            .textCase(nil)
-            .disabled(isMutating)
         }
         DeviceSessionRow(
             title: device.title,
             systemImage: device.deviceSystemImage,
-            detail: device.currentDetailLine,
-            online: true,
-            lastActiveAt: device.lastActiveAt,
-            location: device.approximateLocation
+            tag: device.isPendingReview ? "Waiting for approval" : nil,
+            lines: [
+                device.currentDetailLine,
+                device.isPendingReview ? pendingApprovalHint(reviewEndsAt: device.reviewEndsAt) : "Active now",
+            ].compactMap { $0 }
         )
     }
 
-    @ViewBuilder
-    private func groupRows(_ group: CloudDeviceGroup) -> some View {
-        if group.devices.count == 1 {
-            let device = group.primary
+    private func otherDeviceRow(_ device: CloudDeviceAuthorization, locked: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 8) {
                 DeviceSessionRow(
-                    title: group.title,
+                    title: device.sessionTitle,
                     systemImage: device.deviceSystemImage,
-                    detail: [group.platformVersionLabel, device.appVersionLabel]
-                        .compactMap { $0 }
-                        .joined(separator: " · "),
-                    online: group.online,
-                    lastActiveAt: group.lastActiveAt,
-                    location: group.location,
-                    pending: group.pending
+                    tag: device.isPendingReview ? "Needs review" : nil,
+                    lines: [device.metaLine].compactMap { $0 }
                 )
-                revokeButton(title: group.title) { logoutRequest = .single(device) }
+                if !locked {
+                    revokeButton(title: device.sessionTitle) { logoutRequest = .single(device) }
+                }
             }
-            if device.isPendingReview {
+            if !locked, device.isPendingReview {
                 confirmButton(device)
                     .padding(.leading, Self.titleInset)
                     .padding(.bottom, 6)
             }
-        } else {
-            DeviceSessionRow(
-                title: group.title,
-                systemImage: group.primary.deviceSystemImage,
-                detail: [group.platformVersionLabel, "\(group.sessionCount) sessions"]
-                    .compactMap { $0 }
-                    .joined(separator: " · "),
-                online: group.online,
-                lastActiveAt: group.lastActiveAt,
-                location: group.location,
-                pending: group.pending
-            )
-            ForEach(group.devices) { device in
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .center, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 6) {
-                                Text(device.appVersionLabel)
-                                    .font(.subheadline)
-                                if device.isPendingReview {
-                                    NeedsReviewBadge()
-                                }
-                            }
-                            DeviceStatusLine(online: device.online, lastActiveAt: device.lastActiveAt, location: nil)
-                        }
-                        .accessibilityElement(children: .combine)
-                        Spacer(minLength: 8)
-                        revokeButton(title: device.sessionTitle) { logoutRequest = .single(device) }
-                    }
-                    if device.isPendingReview {
-                        confirmButton(device)
-                            .padding(.bottom, 6)
-                    }
-                }
-                .padding(.leading, Self.titleInset)
-            }
-            destructiveRow("Log out of this device") { logoutRequest = .group(group) }
-                .padding(.leading, Self.titleInset)
         }
-    }
-
-    @ViewBuilder
-    private func legacySection(_ rows: [CloudDeviceAuthorization]) -> some View {
-        SettingsSectionTitle("Older sign-ins")
-        ForEach(rows) { device in
-            HStack(alignment: .center, spacing: 8) {
-                DeviceSessionRow(
-                    title: device.sessionTitle,
-                    systemImage: "key",
-                    detail: nil,
-                    online: false,
-                    lastActiveAt: device.lastActiveAt,
-                    location: device.approximateLocation
-                )
-                revokeButton(title: device.sessionTitle) { logoutRequest = .single(device) }
-            }
-        }
-        destructiveRow("Log out of all older sign-ins") { logoutRequest = .allLegacy(rows) }
     }
 
     private func destructiveRow(_ title: String, action: @escaping () -> Void) -> some View {
@@ -530,12 +463,8 @@ private struct DevicesSettingsView: View {
             switch request {
             case .single(let device):
                 _ = await model.revokeDevice(device)
-            case .group(let group):
-                _ = await model.revokeDevices(group.devices)
             case .allOthers:
                 _ = await model.revokeOtherDevices()
-            case .allLegacy(let rows):
-                _ = await model.revokeDevices(rows)
             }
             isMutating = false
             logoutRequest = nil
@@ -640,38 +569,13 @@ private struct DevicesSettingsView: View {
     }
 }
 
-private struct NeedsReviewBadge: View {
+private struct DeviceStatusTag: View {
+    let text: String
+
     var body: some View {
-        Text("Needs review")
+        Text(text)
             .font(.caption2.weight(.semibold))
             .foregroundStyle(.orange)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Color.orange.opacity(0.12), in: Capsule())
-    }
-}
-
-private struct DeviceStatusLine: View {
-    let online: Bool
-    let lastActiveAt: String
-    let location: String?
-
-    var body: some View {
-        let status = online ? "Active now" : lastActiveDescription(lastActiveAt)
-        let text = [status, location.nonEmpty].compactMap { $0 }.joined(separator: " · ")
-        if !text.isEmpty {
-            HStack(spacing: 5) {
-                if online {
-                    Circle()
-                        .fill(Color.green)
-                        .frame(width: 6, height: 6)
-                        .accessibilityHidden(true)
-                }
-                Text(text)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
     }
 }
 
@@ -679,11 +583,9 @@ private struct DeviceStatusLine: View {
 private struct DeviceSessionRow: View {
     let title: String
     let systemImage: String
-    let detail: String?
-    let online: Bool
-    let lastActiveAt: String
-    let location: String?
-    var pending = false
+    var tag: String? = nil
+    /// Grey lines under the title.
+    let lines: [String]
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -694,16 +596,15 @@ private struct DeviceSessionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(title).font(.subheadline)
-                    if pending {
-                        NeedsReviewBadge()
+                    if let tag {
+                        DeviceStatusTag(text: tag)
                     }
                 }
-                if let detail = detail?.nonEmpty {
-                    Text(detail)
+                ForEach(lines, id: \.self) { line in
+                    Text(line)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                DeviceStatusLine(online: online, lastActiveAt: lastActiveAt, location: location)
             }
             .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -727,6 +628,17 @@ private extension CloudDeviceAuthorization {
 
     var currentDetailLine: String? {
         [platformVersionLabel, appVersionLabel]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+            .nonEmpty
+    }
+
+    /// App version, location, and activity on one line.
+    var metaLine: String? {
+        let hasVersion = appVersion?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty != nil
+        let version = hasVersion ? appVersionLabel : nil
+        let activity = online ? "Active now" : lastActiveDescription(lastActiveAt)
+        return [version, approximateLocation?.nonEmpty, activity]
             .compactMap { $0 }
             .joined(separator: " · ")
             .nonEmpty

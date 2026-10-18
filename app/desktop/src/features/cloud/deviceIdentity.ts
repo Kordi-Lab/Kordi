@@ -6,6 +6,8 @@ export type CloudDeviceRegistration = {
   approximateLocation: string;
   publicKey: string;
   keyAlgorithm: 'p256';
+  /** Hashed hardware id; lets the server spot other installations on this machine. */
+  machineId?: string;
 };
 
 type NativeDeviceMetadata = {
@@ -14,6 +16,7 @@ type NativeDeviceMetadata = {
   osVersion: string;
   timeZone: string | null;
   countryCode: string | null;
+  machineId?: string | null;
 };
 
 type StoredDeviceIdentity = {
@@ -153,6 +156,7 @@ async function desktopMetadata(): Promise<{
   platform: string;
   osVersion: string;
   approximateLocation: string;
+  machineId?: string;
 }> {
   if (!isTauriRuntime()) {
     return { ...browserDesktopPlatform(), approximateLocation: '' };
@@ -165,6 +169,7 @@ async function desktopMetadata(): Promise<{
       platform: metadata.platform,
       osVersion: metadata.osVersion,
       approximateLocation: approximateLocation(metadata.timeZone, metadata.countryCode),
+      ...(metadata.machineId ? { machineId: metadata.machineId } : {}),
     };
   } catch {
     return { ...browserDesktopPlatform(), approximateLocation: '' };

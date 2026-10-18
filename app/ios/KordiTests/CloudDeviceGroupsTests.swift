@@ -19,7 +19,8 @@ final class CloudDeviceGroupsTests: XCTestCase {
         online: Bool = false,
         sessionCount: Int = 1,
         legacy: Bool = false,
-        signInMethod: String? = nil
+        signInMethod: String? = nil,
+        sameMachine: Bool = false
     ) -> CloudDeviceAuthorization {
         CloudDeviceAuthorization(
             deviceId: id,
@@ -37,56 +38,69 @@ final class CloudDeviceGroupsTests: XCTestCase {
             online: online,
             sessionCount: sessionCount,
             legacy: legacy,
-            signInMethod: signInMethod
+            signInMethod: signInMethod,
+            sameMachine: sameMachine
         )
     }
 
-    func testRowsOfTheSameMacFormOneGroup() {
-        let grouping = CloudDeviceGrouping.make(from: [
+    func testRowsWithTheSameNameStaySeparate() {
+        let list = CloudDeviceList.make(from: [
             device("a", secondsAgo: 600),
-            device("b", secondsAgo: 30, state: "pending_review", online: true),
+            device("b", secondsAgo: 30, online: true),
         ])
-        XCTAssertEqual(grouping.groups.count, 1)
-        let group = grouping.groups[0]
-        XCTAssertEqual(group.id, "macos::macbook pro")
-        XCTAssertEqual(group.sessionCount, 2)
-        XCTAssertTrue(group.online)
-        XCTAssertTrue(group.pending)
-        XCTAssertEqual(group.devices.map(\.deviceId), ["b", "a"])
-        XCTAssertEqual(group.lastActiveAt, iso(30))
+        XCTAssertNil(list.current)
+        XCTAssertEqual(list.others.map(\.deviceId), ["b", "a"])
+        XCTAssertTrue(list.sameMachine.isEmpty)
     }
 
-    func testCurrentDeviceIsExcludedFromGroups() {
-        let grouping = CloudDeviceGrouping.make(from: [
+    func testSplitsCurrentSameMachineAndOthers() {
+        let list = CloudDeviceList.make(from: [
+            device("mac"),
             device("phone", name: "iPhone 17e", platform: "ios", current: true, online: true),
-            device("mac"),
+            device("phone-old", name: "iPhone 17e", platform: "ios", secondsAgo: 9_000, sameMachine: true),
         ])
-        XCTAssertEqual(grouping.current?.deviceId, "phone")
-        XCTAssertEqual(grouping.groups.flatMap(\.devices).map(\.deviceId), ["mac"])
-        XCTAssertTrue(grouping.legacy.isEmpty)
+        XCTAssertEqual(list.current?.deviceId, "phone")
+        XCTAssertEqual(list.sameMachine.map(\.deviceId), ["phone-old"])
+        XCTAssertEqual(list.others.map(\.deviceId), ["mac"])
+        XCTAssertEqual(list.otherDevices.map(\.deviceId), ["phone-old", "mac"])
+        XCTAssertFalse(list.actionsLocked)
     }
 
-    func testLegacyAndPlaceholderRowsGoToLegacy() {
-        let grouping = CloudDeviceGrouping.make(from: [
-            device("old", name: nil, platform: nil, secondsAgo: 900, legacy: true, signInMethod: "google"),
-            device("oauth", name: "oauth-github-device", platform: nil, secondsAgo: 100),
-            device("password", name: "cloud-email-password-device", platform: nil, secondsAgo: 500),
-            device("mac"),
-        ])
-        XCTAssertEqual(grouping.legacy.map(\.deviceId), ["oauth", "password", "old"])
-        XCTAssertEqual(grouping.groups.map(\.id), ["macos::macbook pro"])
-        XCTAssertTrue(grouping.legacy.allSatisfy(\.isLegacySignIn))
-        XCTAssertEqual(grouping.legacy[0].groupKey, "legacy::oauth")
-        XCTAssertEqual(grouping.legacy[0].title, "Kordi device")
-    }
-
-    func testGroupsSortOnlineFirstThenByRecency() {
-        let grouping = CloudDeviceGrouping.make(from: [
+    func testPendingRowsSortFirstThenByRecency() {
+        let list = CloudDeviceList.make(from: [
             device("recent", name: "Mac Studio", secondsAgo: 10),
             device("older", name: "Mac mini", secondsAgo: 5_000),
-            device("online", name: "MacBook Air", secondsAgo: 9_000, online: true),
+            device("pending", name: "MacBook Air", secondsAgo: 9_000, state: "pending_review"),
         ])
-        XCTAssertEqual(grouping.groups.map(\.title), ["MacBook Air", "Mac Studio", "Mac mini"])
+        XCTAssertEqual(list.others.map(\.deviceId), ["pending", "recent", "older"])
+    }
+
+    func testPendingCurrentDeviceLocksActions() {
+        let list = CloudDeviceList.make(from: [
+            device("phone", platform: "ios", state: "pending_review", current: true),
+            device("mac"),
+        ])
+        XCTAssertTrue(list.actionsLocked)
+        XCTAssertEqual(list.others.map(\.deviceId), ["mac"])
+    }
+
+    func testLegacyRowsStayInTheFlatList() {
+        let list = CloudDeviceList.make(from: [
+            device("old", name: nil, platform: nil, secondsAgo: 900, legacy: true, signInMethod: "google"),
+            device("oauth", name: "oauth-github-device", platform: nil, secondsAgo: 100),
+            device("mac"),
+        ])
+        XCTAssertEqual(list.others.map(\.deviceId), ["mac", "oauth", "old"])
+        XCTAssertTrue(list.others[1].isLegacySignIn)
+        XCTAssertEqual(list.others[1].title, "Kordi device")
+    }
+
+    func testPendingApprovalHint() {
+        XCTAssertEqual(pendingApprovalHint(reviewEndsAt: nil), "Approve from another device.")
+        XCTAssertEqual(pendingApprovalHint(reviewEndsAt: "not a date"), "Approve from another device.")
+        let hint = pendingApprovalHint(reviewEndsAt: "2026-10-08T12:00:00Z")
+        XCTAssertTrue(hint.hasPrefix("Approve from another device, or wait until "), hint)
+        XCTAssertTrue(hint.hasSuffix("."), hint)
     }
 
     func testLastActiveDescriptionBoundaries() {
@@ -134,6 +148,8 @@ final class CloudDeviceGroupsTests: XCTestCase {
         XCTAssertEqual(decoded.sessionCount, 1)
         XCTAssertFalse(decoded.legacy)
         XCTAssertNil(decoded.signInMethod)
+        XCTAssertFalse(decoded.sameMachine)
+        XCTAssertNil(decoded.reviewEndsAt)
         XCTAssertEqual(decoded.title, "MacBook Pro")
     }
 
@@ -144,13 +160,16 @@ final class CloudDeviceGroupsTests: XCTestCase {
          "authorizationState":"pending_review","currentDevice":false,"sessionExpiresAt":null,
          "approximateLocation":"Jeddah, Saudi Arabia",
          "syncStatus":{"protocolVersion":2,"lastAppliedSequence":5,"lastSuccessfulCatchUpAt":null},
-         "online":true,"sessionCount":3,"legacy":true,"signInMethod":"github"}]}
+         "online":true,"sessionCount":3,"legacy":true,"signInMethod":"github",
+         "sameMachine":true,"reviewEndsAt":"2026-10-08T00:00:00Z"}]}
         """#
         let decoded = try JSONDecoder().decode(CloudDeviceListResponse.self, from: Data(json.utf8)).devices[0]
         XCTAssertTrue(decoded.online)
         XCTAssertEqual(decoded.sessionCount, 3)
         XCTAssertTrue(decoded.legacy)
         XCTAssertEqual(decoded.signInMethod, "github")
+        XCTAssertTrue(decoded.sameMachine)
+        XCTAssertEqual(decoded.reviewEndsAt, "2026-10-08T00:00:00Z")
         XCTAssertTrue(decoded.isPendingReview)
         XCTAssertTrue(decoded.isLegacySignIn)
         XCTAssertNotNil(decoded.lastActiveDate)

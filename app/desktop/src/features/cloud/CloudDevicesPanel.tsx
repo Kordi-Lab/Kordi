@@ -9,12 +9,14 @@ import {
   type CloudAuthClient,
   type CloudDeviceAuthorization,
 } from './authClient';
+import { CloudAuthError } from './cloudAuthError';
 import {
   appVersionLabel,
   deviceTitle,
-  groupCloudDevices,
+  isPendingReview,
   platformVersionLabel,
-  signInMethodLabel,
+  reviewEndsLabel,
+  splitCloudDevices,
 } from './cloudDeviceGroups';
 import {
   DeviceLogoutDialog,
@@ -22,13 +24,7 @@ import {
   type Confirmation,
   type RenameRequest,
 } from './CloudDevicesPanelDialogs';
-import {
-  DeviceCard,
-  DeviceGroupCard,
-  DeviceIcon,
-  SessionRow,
-  StatusLine,
-} from './CloudDevicesPanelParts';
+import { CurrentDeviceCard, DeviceRow } from './CloudDevicesPanelParts';
 import { loadSession } from './session';
 
 const cachedDevicesByAccount = new Map<string, CloudDeviceAuthorization[]>();
@@ -39,8 +35,11 @@ export type CloudDevicesClient = Pick<
   'listDevices' | 'renameDevice' | 'confirmDevice' | 'revokeDevice' | 'revokeOtherDevices'
 >;
 
-function operationIdsFor(devices: CloudDeviceAuthorization[]): Map<string, string> {
-  return new Map(devices.map((device) => [device.deviceId, crypto.randomUUID()]));
+function errorMessage(caught: unknown, fallback: string): string {
+  if (caught instanceof CloudAuthError && caught.code === 'device_review_required') {
+    return 'Approve this device from another device first.';
+  }
+  return caught instanceof Error ? caught.message : fallback;
 }
 
 export type CloudDevicesSessionLoader = () => Promise<{ token: string; accountId: string } | null>;
@@ -85,7 +84,7 @@ export function CloudDevicesPanel({
       setDevices(result.devices);
       setError(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not load active devices.');
+      setError(errorMessage(caught, 'Could not load active devices.'));
     } finally {
       setIsLoading(false);
     }
@@ -124,7 +123,7 @@ export function CloudDevicesPanel({
       await refresh({ quiet: true });
     } catch (caught) {
       setDevices(before);
-      setError(caught instanceof Error ? caught.message : 'Could not update active devices. Try again.');
+      setError(errorMessage(caught, 'Could not update active devices. Try again.'));
     } finally {
       setBusyDeviceId(null);
     }
@@ -145,7 +144,7 @@ export function CloudDevicesPanel({
       confirmOperationIds.current.delete(device.deviceId);
       await refresh({ quiet: true });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not confirm this device.');
+      setError(errorMessage(caught, 'Could not confirm this device.'));
     } finally {
       setBusyDeviceId(null);
     }
@@ -164,18 +163,6 @@ export function CloudDevicesPanel({
         () => authClient.revokeDevice(token, target.deviceId, confirmation.operationId),
         [target.deviceId],
       );
-      return;
-    }
-    if (confirmation.kind === 'group' || confirmation.kind === 'legacy') {
-      const targets = confirmation.kind === 'group' ? confirmation.group.devices : confirmation.devices;
-      const { operationIds } = confirmation;
-      await mutate(async () => {
-        for (const target of targets) {
-          const operationId = operationIds.get(target.deviceId) ?? crypto.randomUUID();
-          operationIds.set(target.deviceId, operationId);
-          await authClient.revokeDevice(token, target.deviceId, operationId);
-        }
-      }, targets.map((target) => target.deviceId));
       return;
     }
     const affectedIds = devices.filter((device) => !device.currentDevice).map((device) => device.deviceId);
@@ -214,15 +201,33 @@ export function CloudDevicesPanel({
       await refresh({ quiet: true });
     } catch (caught) {
       setDevices(before);
-      setError(caught instanceof Error ? caught.message : 'Could not rename this device.');
+      setError(errorMessage(caught, 'Could not rename this device.'));
     } finally {
       setBusyDeviceId(null);
     }
   };
 
-  const { current: currentDevice, groups, legacy } = useMemo(() => groupCloudDevices(devices), [devices]);
-  const hasOtherSessions = groups.length > 0 || legacy.length > 0;
+  const { current: currentDevice, sameMachine, others } = useMemo(() => splitCloudDevices(devices), [devices]);
+  const hasOtherSessions = sameMachine.length > 0 || others.length > 0;
   const actionsDisabled = busyDeviceId !== null;
+  const currentPending = currentDevice ? isPendingReview(currentDevice) : false;
+  const reviewEnds = currentDevice ? reviewEndsLabel(currentDevice.reviewEndsAt) : null;
+  const sameMachineHeading = currentDevice?.platform?.toLowerCase() === 'macos' ? 'Also on this Mac' : 'Also on this device';
+
+  const renderRows = (rows: CloudDeviceAuthorization[]) => (
+    <ul className="m-0 mt-2 list-none divide-y divide-white/10 border-y border-white/10 p-0">
+      {rows.map((device) => (
+        <DeviceRow
+          key={device.deviceId}
+          device={device}
+          busy={actionsDisabled}
+          actionsHidden={currentPending}
+          onConfirm={() => { void confirmDevice(device); }}
+          onLogOut={() => setConfirmation({ kind: 'one', device, operationId: crypto.randomUUID() })}
+        />
+      ))}
+    </ul>
+  );
 
   return (
     <div className="app-cloud-account-settings-section max-w-[680px] py-1">
@@ -252,9 +257,7 @@ export function CloudDevicesPanel({
         </div>
       ) : devices.length === 0 ? (
         <div className="grid min-h-32 place-items-center text-center">
-          <div>
-            <div className="text-[13px] font-medium text-white">No active sessions.</div>
-          </div>
+          <div className="text-[13px] font-medium text-white">No active sessions.</div>
         </div>
       ) : (
         <div className="mt-5">
@@ -262,31 +265,34 @@ export function CloudDevicesPanel({
             <section aria-labelledby="current-device-heading">
               <div className="mb-2 flex min-h-8 items-center justify-between gap-3">
                 <SectionHeading id="current-device-heading">This device</SectionHeading>
-                <Button
-                  variant="quiet"
-                  className="h-8 rounded-full px-3 text-[11px] text-sky-200 hover:text-sky-100"
-                  disabled={actionsDisabled}
-                  onClick={() => setRenameRequest({
-                    device: currentDevice,
-                    displayName: deviceTitle(currentDevice),
-                    operationId: crypto.randomUUID(),
-                  })}
-                >
-                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                  Rename
-                </Button>
+                {currentPending ? null : (
+                  <Button
+                    variant="quiet"
+                    className="h-8 rounded-full px-3 text-[11px] text-sky-200 hover:text-sky-100"
+                    disabled={actionsDisabled}
+                    onClick={() => setRenameRequest({
+                      device: currentDevice,
+                      displayName: deviceTitle(currentDevice),
+                      operationId: crypto.randomUUID(),
+                    })}
+                  >
+                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                    Rename
+                  </Button>
+                )}
               </div>
-              <DeviceCard
-                highlighted
-                icon={<DeviceIcon platform={currentDevice.platform} />}
+              <CurrentDeviceCard
+                device={currentDevice}
                 title={deviceTitle(currentDevice)}
-                subtitle={[
+                details={[
                   platformVersionLabel(currentDevice.platform, currentDevice.osVersion),
                   appVersionLabel(currentDevice.appVersion),
                 ].filter(Boolean).join(' · ')}
-                status={<StatusLine online lastActiveAt={currentDevice.lastActiveAt} location={currentDevice.approximateLocation} />}
+                note={reviewEnds
+                  ? `Approve from another device, or wait until ${reviewEnds}.`
+                  : 'Approve from another device.'}
               />
-              {hasOtherSessions ? (
+              {currentPending ? null : hasOtherSessions ? (
                 <Button
                   variant="quiet"
                   className="mt-2 h-auto w-full justify-start rounded-[12px] px-3 py-3 text-left text-rose-100 hover:text-rose-50"
@@ -309,60 +315,17 @@ export function CloudDevicesPanel({
             </div>
           )}
 
-          {groups.length > 0 ? (
-            <section className="mt-7" aria-labelledby="other-devices-heading">
-              <SectionHeading id="other-devices-heading">Other devices</SectionHeading>
-              <div className="mt-2 grid gap-2">
-                {groups.map((group) => (
-                  <DeviceGroupCard
-                    key={group.key}
-                    group={group}
-                    busyDeviceId={busyDeviceId}
-                    onConfirmDevice={(device) => { void confirmDevice(device); }}
-                    onLogOutDevice={(device) => setConfirmation({ kind: 'one', device, operationId: crypto.randomUUID() })}
-                    onLogOutGroup={() => setConfirmation({
-                      kind: 'group',
-                      group,
-                      operationIds: operationIdsFor(group.devices),
-                    })}
-                  />
-                ))}
-              </div>
+          {sameMachine.length > 0 ? (
+            <section className="mt-7" aria-labelledby="same-machine-heading">
+              <SectionHeading id="same-machine-heading">{sameMachineHeading}</SectionHeading>
+              {renderRows(sameMachine)}
             </section>
           ) : null}
 
-          {legacy.length > 0 ? (
-            <section className="mt-7" aria-labelledby="older-sign-ins-heading">
-              <SectionHeading id="older-sign-ins-heading">Older sign-ins</SectionHeading>
-              <ul className="m-0 mt-2 list-none divide-y divide-white/10 border-y border-white/10 p-0">
-                {legacy.map((device) => {
-                  const title = `${signInMethodLabel(device.signInMethod)} sign-in`;
-                  return (
-                    <SessionRow
-                      key={device.deviceId}
-                      device={device}
-                      title={title}
-                      busy={busyDeviceId === device.deviceId}
-                      onConfirm={() => { void confirmDevice(device); }}
-                      logOutLabel={`Log out ${title}`}
-                      onLogOut={() => setConfirmation({ kind: 'one', device, operationId: crypto.randomUUID() })}
-                    />
-                  );
-                })}
-              </ul>
-              <Button
-                variant="quiet"
-                className="mt-2 h-8 rounded-full px-3 text-[11px] text-rose-100 hover:text-rose-50"
-                disabled={actionsDisabled}
-                onClick={() => setConfirmation({
-                  kind: 'legacy',
-                  devices: legacy,
-                  operationIds: operationIdsFor(legacy),
-                })}
-              >
-                <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
-                Log out of all older sign-ins
-              </Button>
+          {others.length > 0 ? (
+            <section className="mt-7" aria-labelledby="other-devices-heading">
+              <SectionHeading id="other-devices-heading">Other devices</SectionHeading>
+              {renderRows(others)}
             </section>
           ) : null}
         </div>
