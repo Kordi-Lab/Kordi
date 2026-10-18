@@ -196,7 +196,7 @@ export function useWorkspaceViewModels({
       || canonicalSessionState?.profile.id
       || getLocalProfileAvatarSeed();
 
-    const { projectRootBySession, sessionSummaries } = localProjectSessions(desktopChatState);
+    const { projectRootBySession, sessionSummaries, unlistedActiveSessionId } = localProjectSessions(desktopChatState);
 
     return sessionSummaries.map((session) => {
       const isActiveSession = session.id === desktopChatState.activeSession.id;
@@ -241,7 +241,7 @@ export function useWorkspaceViewModels({
         canonicalSessionId: session.id,
         localSessionCwd: isActiveSession ? desktopChatState.activeSession.cwd : null,
         metadata: projectRootBySession.has(session.id) ? { projectRoot: projectRootBySession.get(session.id) } : undefined,
-        desktopRuntimeBacked: true,
+        desktopRuntimeBacked: true, desktopRuntimeUnlisted: session.id === unlistedActiveSessionId || undefined,
         desktopRuntimeTranscriptLoaded: hydratedDesktopSessionIds.has(session.id) || cachedDesktopSessionSourceMessages[session.id] !== undefined || cachedChatSessionMessages[session.id] !== undefined,
         name: session.title,
         type: 'owned-agent' as const,

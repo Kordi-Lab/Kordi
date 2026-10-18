@@ -28,5 +28,15 @@ export function projectForChat(projects: readonly ChatProject[], sessionId: stri
 
 export function canChooseChatProject(conversation: Conversation) {
   return !conversation.agentSubsessionId && !conversation.collaborationTarget
-    && (conversation.desktopRuntimeBacked || isLocalDraftChatConversationId(conversation.id));
+    && (isLocalDraftChatConversationId(conversation.id)
+      || (Boolean(conversation.desktopRuntimeBacked) && !isCloudChatRuntimeCopy(conversation)));
+}
+
+/**
+ * Opening or running a cloud chat on this Mac loads an in-memory runtime copy, and
+ * routine refreshes load and drop it. The answer must not follow that copy.
+ */
+function isCloudChatRuntimeCopy(conversation: Conversation) {
+  const metadata = conversation.metadata as { cloudSelfAgentSession?: unknown } | null | undefined;
+  return conversation.desktopRuntimeUnlisted === true && metadata?.cloudSelfAgentSession === true;
 }
