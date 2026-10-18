@@ -1,8 +1,6 @@
 import Foundation
 
-/// Pure grouping and labeling logic for the Active sessions screen.
-/// Rows from the same physical device are grouped so the list reads like
-/// "Where you're logged in" instead of one row per sign-in.
+/// Pure list and labeling logic for the Active sessions screen.
 
 enum CloudDeviceDates {
     private static let fractional: ISO8601DateFormatter = {
@@ -93,81 +91,37 @@ extension CloudDeviceAuthorization {
         }
     }
 
-    var groupKey: String {
-        if isLegacySignIn { return "legacy::\(deviceId)" }
-        return "\(platform ?? "unknown")::\(title.lowercased())"
-    }
-
     var lastActiveDate: Date? { CloudDeviceDates.parse(lastActiveAt) }
 }
 
-struct CloudDeviceGroup: Identifiable, Hashable {
-    let id: String
-    let title: String
-    let platform: String?
-    let osVersion: String?
-    let location: String?
-    let online: Bool
-    let lastActiveAt: String
-    let sessionCount: Int
-    /// Rows in this group, most recent first.
-    let devices: [CloudDeviceAuthorization]
-    let pending: Bool
-
-    /// The most recent row, used for icon and platform labels.
-    var primary: CloudDeviceAuthorization { devices[0] }
-
-    var platformVersionLabel: String? { primary.platformVersionLabel }
-}
-
-struct CloudDeviceGrouping: Hashable {
+/// The Active sessions list split into flat sections, with no grouping by name.
+struct CloudDeviceList: Hashable {
     let current: CloudDeviceAuthorization?
-    let groups: [CloudDeviceGroup]
-    let legacy: [CloudDeviceAuthorization]
+    /// Other sessions on the same machine as this device.
+    let sameMachine: [CloudDeviceAuthorization]
+    let others: [CloudDeviceAuthorization]
 
-    var otherDevices: [CloudDeviceAuthorization] {
-        groups.flatMap(\.devices) + legacy
+    /// The server rejects every device action until this device is approved.
+    var actionsLocked: Bool { current?.isPendingReview == true }
+
+    var otherDevices: [CloudDeviceAuthorization] { sameMachine + others }
+
+    static func make(from devices: [CloudDeviceAuthorization]) -> CloudDeviceList {
+        let current = devices.first(where: \.currentDevice)
+        let rest = devices.filter { $0.deviceId != current?.deviceId }
+        return CloudDeviceList(
+            current: current,
+            sameMachine: sorted(rest.filter(\.sameMachine)),
+            others: sorted(rest.filter { !$0.sameMachine })
+        )
     }
 
-    static func make(from devices: [CloudDeviceAuthorization]) -> CloudDeviceGrouping {
-        let current = devices.first(where: \.currentDevice)
-        let others = devices.filter { !$0.currentDevice }
-        let legacy = sortedByRecency(others.filter(\.isLegacySignIn))
-
-        var buckets: [String: [CloudDeviceAuthorization]] = [:]
-        var order: [String] = []
-        for device in others where !device.isLegacySignIn {
-            let key = device.groupKey
-            if buckets[key] == nil { order.append(key) }
-            buckets[key, default: []].append(device)
-        }
-
-        let groups = order.compactMap { key -> CloudDeviceGroup? in
-            let rows = sortedByRecency(buckets[key] ?? [])
-            guard let primary = rows.first else { return nil }
-            return CloudDeviceGroup(
-                id: key,
-                title: primary.title,
-                platform: primary.platform,
-                osVersion: primary.osVersion,
-                location: rows.lazy.compactMap { $0.approximateLocation?.nonEmpty }.first,
-                online: rows.contains(where: \.online),
-                lastActiveAt: primary.lastActiveAt,
-                sessionCount: rows.reduce(0) { $0 + max(1, $1.sessionCount) },
-                devices: rows,
-                pending: rows.contains(where: \.isPendingReview)
-            )
-        }
-        .sorted { lhs, rhs in
-            if lhs.online != rhs.online { return lhs.online }
+    /// Pending rows first, then most recent.
+    static func sorted(_ devices: [CloudDeviceAuthorization]) -> [CloudDeviceAuthorization] {
+        devices.sorted { lhs, rhs in
+            if lhs.isPendingReview != rhs.isPendingReview { return lhs.isPendingReview }
             return isMoreRecent(lhs.lastActiveAt, than: rhs.lastActiveAt)
         }
-
-        return CloudDeviceGrouping(current: current, groups: groups, legacy: legacy)
-    }
-
-    private static func sortedByRecency(_ devices: [CloudDeviceAuthorization]) -> [CloudDeviceAuthorization] {
-        devices.sorted { isMoreRecent($0.lastActiveAt, than: $1.lastActiveAt) }
     }
 
     private static func isMoreRecent(_ lhs: String, than rhs: String) -> Bool {
@@ -178,6 +132,14 @@ struct CloudDeviceGrouping: Hashable {
         case (nil, nil): return lhs > rhs
         }
     }
+}
+
+/// Grey line under a pending current device.
+func pendingApprovalHint(reviewEndsAt: String?) -> String {
+    guard let date = CloudDeviceDates.parse(reviewEndsAt) else {
+        return "Approve from another device."
+    }
+    return "Approve from another device, or wait until \(date.formatted(date: .abbreviated, time: .shortened))."
 }
 
 /// Short activity text for a row that is not online right now.

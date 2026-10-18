@@ -295,4 +295,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "agent run documents",
         "0132_cloud_agent_run_documents.sql"
     ),
+    migration!(133, "device review window", "0133_device_review_window.sql"),
 ];

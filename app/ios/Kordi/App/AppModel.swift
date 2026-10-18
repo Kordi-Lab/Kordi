@@ -7979,7 +7979,8 @@ final class AppModel: ObservableObject {
             location: String? = "Riyadh, Saudi Arabia",
             online: Bool = false,
             legacy: Bool = false,
-            signInMethod: String? = nil
+            signInMethod: String? = nil,
+            sameMachine: Bool = false
         ) -> CloudDeviceAuthorization {
             CloudDeviceAuthorization(
                 deviceId: deviceId,
@@ -8000,30 +8001,31 @@ final class AppModel: ObservableObject {
                 ),
                 online: online,
                 legacy: legacy,
-                signInMethod: signInMethod
+                signInMethod: signInMethod,
+                sameMachine: sameMachine,
+                reviewEndsAt: state == "pending_review"
+                    ? timestamp.string(from: now.addingTimeInterval(21 * 3_600))
+                    : nil
             )
         }
-        let day: TimeInterval = 86_400
+        // `--preview-device-pending` shows this iPhone waiting for approval.
+        let currentState = arguments.contains("--preview-device-pending") ? "pending_review" : "confirmed"
         devices = [
             previewDevice("device_preview_iphone", name: "iPhone 17e", platform: "ios", osVersion: "iOS 27.0",
-                          appVersion: "0.0.2", lastActive: 0, current: true, online: true, signInMethod: "google"),
+                          appVersion: "0.0.2", lastActive: 0, state: currentState, current: true, online: true,
+                          signInMethod: "google"),
+            previewDevice("device_preview_iphone_beta", name: "iPhone 17e", platform: "ios", osVersion: "iOS 27.0",
+                          appVersion: "0.0.2-beta.5", lastActive: 20 * 3_600, signInMethod: "google", sameMachine: true),
             previewDevice("device_preview_mac", name: "MacBook Pro", platform: "macos", osVersion: "macOS 26.0",
                           appVersion: "0.0.2", lastActive: 30, online: true, signInMethod: "google"),
             previewDevice("device_preview_mac_beta", name: "MacBook Pro", platform: "macos", osVersion: "macOS 26.0",
                           appVersion: "0.0.2-beta.3", lastActive: 3 * 3_600, state: "pending_review",
                           signInMethod: "github"),
-            previewDevice("device_preview_mac_old", name: "MacBook Pro", platform: "macos", osVersion: "26.0",
-                          appVersion: "0.0.1", lastActive: 5 * day, signInMethod: "password"),
             previewDevice("device_preview_studio", name: "Mac Studio", platform: "macos", osVersion: "macOS 26.0",
-                          appVersion: "0.0.2", lastActive: 2 * day, location: "Jeddah, Saudi Arabia",
+                          appVersion: "0.0.2", lastActive: 26 * 3_600, location: "Jeddah, Saudi Arabia",
                           signInMethod: "google"),
-            previewDevice("device_preview_legacy_google_1", name: nil, platform: nil, osVersion: nil,
-                          appVersion: nil, lastActive: 9 * day, legacy: true, signInMethod: "google"),
-            previewDevice("device_preview_legacy_google_2", name: nil, platform: nil, osVersion: nil,
-                          appVersion: nil, lastActive: 17 * day, location: "Jeddah, Saudi Arabia",
-                          legacy: true, signInMethod: "google"),
-            previewDevice("device_preview_legacy_password", name: nil, platform: nil, osVersion: nil,
-                          appVersion: nil, lastActive: 25 * day, legacy: true, signInMethod: "password")
+            previewDevice("device_preview_legacy_google", name: nil, platform: nil, osVersion: nil,
+                          appVersion: nil, lastActive: 40 * 3_600, legacy: true, signInMethod: "google"),
         ]
         currentDeviceId = "device_preview_iphone"
         token = "preview-token"
@@ -8090,6 +8092,7 @@ final class AppModel: ObservableObject {
             case "proxy_unreachable": return error.message.nonEmpty ?? "Kordi can't reach this network's proxy. Check the proxy settings or connect to another network."
             case "invalid_redirect": return "This Kordi build is not yet allowed to finish social sign-in."
             case "oauth_not_configured": return "This sign-in provider is temporarily unavailable."
+            case "device_review_required": return "Approve this device from another device first."
             default: return error.message.nonEmpty ?? fallback
             }
         }

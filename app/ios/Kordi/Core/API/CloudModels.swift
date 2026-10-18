@@ -248,6 +248,10 @@ struct CloudDeviceAuthorization: Codable, Hashable, Identifiable {
     let legacy: Bool
     /// How the session was signed in, such as "google", "github", or "password".
     let signInMethod: String?
+    /// Another sign-in on the same machine as the current device.
+    let sameMachine: Bool
+    /// For pending rows, when the server approves the device on its own.
+    let reviewEndsAt: String?
 
     var id: String { deviceId }
     var needsReview: Bool { authorizationState == "pending_review" }
@@ -255,7 +259,7 @@ struct CloudDeviceAuthorization: Codable, Hashable, Identifiable {
     private enum CodingKeys: String, CodingKey {
         case deviceId, displayName, platform, osVersion, appVersion, createdAt, lastActiveAt
         case authorizationState, currentDevice, sessionExpiresAt, approximateLocation, syncStatus
-        case online, sessionCount, legacy, signInMethod
+        case online, sessionCount, legacy, signInMethod, sameMachine, reviewEndsAt
     }
 
     init(
@@ -274,7 +278,9 @@ struct CloudDeviceAuthorization: Codable, Hashable, Identifiable {
         online: Bool = false,
         sessionCount: Int = 1,
         legacy: Bool = false,
-        signInMethod: String? = nil
+        signInMethod: String? = nil,
+        sameMachine: Bool = false,
+        reviewEndsAt: String? = nil
     ) {
         self.deviceId = deviceId
         self.displayName = displayName
@@ -292,6 +298,8 @@ struct CloudDeviceAuthorization: Codable, Hashable, Identifiable {
         self.sessionCount = sessionCount
         self.legacy = legacy
         self.signInMethod = signInMethod
+        self.sameMachine = sameMachine
+        self.reviewEndsAt = reviewEndsAt
     }
 
     init(from decoder: Decoder) throws {
@@ -312,6 +320,8 @@ struct CloudDeviceAuthorization: Codable, Hashable, Identifiable {
         sessionCount = max(1, try container.decodeIfPresent(Int.self, forKey: .sessionCount) ?? 1)
         legacy = try container.decodeIfPresent(Bool.self, forKey: .legacy) ?? false
         signInMethod = try container.decodeIfPresent(String.self, forKey: .signInMethod)
+        sameMachine = try container.decodeIfPresent(Bool.self, forKey: .sameMachine) ?? false
+        reviewEndsAt = try container.decodeIfPresent(String.self, forKey: .reviewEndsAt)
     }
 }
 
