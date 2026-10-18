@@ -24,50 +24,12 @@ use uuid::Uuid;
 mod claim;
 pub(crate) use claim::agent_desktop_ready;
 pub(super) use claim::claim;
+#[path = "desktop_ready.rs"]
+mod ready;
+pub(super) use ready::ready;
 #[path = "desktop_interrupted.rs"]
 mod interrupted;
 pub(super) use interrupted::interrupted;
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct ReadyInput {
-    agent_ids: Vec<String>,
-}
-
-pub(super) async fn ready(
-    State(state): State<Arc<ServerState>>,
-    Extension(session): Extension<CloudSession>,
-    Json(input): Json<ReadyInput>,
-) -> Response {
-    if input.agent_ids.len() > 128 {
-        return denied();
-    }
-    let result = async {
-        let mut tx = state.db_pool().begin().await?;
-        let desktop: Option<(String,)> = query_as("SELECT device_id FROM cloud_devices WHERE device_id=$1 AND account_id=$2 AND device_platform IN ('macos','desktop') AND revoked_at IS NULL FOR UPDATE")
-            .bind(&session.device_id).bind(&session.account_id).fetch_optional(&mut *tx).await?;
-        if desktop.is_none() { return Ok::<_, sqlx_core::Error>(false); }
-        query("DELETE FROM cloud_agent_desktop_capabilities WHERE device_id=$1").bind(&session.device_id).execute(&mut *tx).await?;
-        for agent in &input.agent_ids {
-            let own: Option<(String,)> = query_as("SELECT agent_id FROM cloud_agent_definitions WHERE agent_id=$1 AND owner_account_id=$2 AND status='active'")
-                .bind(agent).bind(&session.account_id).fetch_optional(&mut *tx).await?;
-            if agent != &format!("cloud-agent:{}", session.account_id) && own.is_none() { return Ok(false); }
-            query("INSERT INTO cloud_agent_desktop_capabilities(device_id,agent_id) VALUES($1,$2) ON CONFLICT(device_id,agent_id) DO UPDATE SET updated_at=now()")
-                .bind(&session.device_id).bind(agent).execute(&mut *tx).await?;
-        }
-        tx.commit().await?;
-        Ok(true)
-    }.await;
-    match result {
-        Ok(true) => Json(json!({"ok":true})).into_response(),
-        Ok(false) => denied(),
-        Err(e) => run_error_response(
-            "desktop readiness",
-            "Could not publish runtime readiness.",
-            e.into(),
-        ),
-    }
-}
 
 pub(super) async fn prefer_ready_desktop(
     pool: &PgPool,
@@ -125,7 +87,7 @@ pub(super) async fn read_context(
         ),
     }
 }
-fn denied() -> Response {
+pub(super) fn denied() -> Response {
     error_response(
         "desktop_execution_denied",
         "This desktop cannot execute the requested agent run.",

@@ -66,6 +66,30 @@ pub(in crate::cloud_agent_runtime) async fn claim(
             Err(e) => run_error_response("project routing", "Could not end this project request.", e),
         };
     }
+    // A digest run is the owner's own background run and has no chat message.
+    if input
+        .run
+        .request_message_id
+        .starts_with(crate::digest::RUN_PREFIX)
+    {
+        let claim = crate::digest::desktop::claim;
+        return match claim(
+            state.db_pool(),
+            &session,
+            input.claim_id,
+            input.run.request_message_id.trim(),
+        )
+        .await
+        {
+            Ok(Some(value)) => Json(value).into_response(),
+            Ok(None) => denied(),
+            Err(e) => run_error_response(
+                "desktop claim",
+                "Could not claim agent execution.",
+                e.into(),
+            ),
+        };
+    }
     // A comment run exists before its claim and has no chat message.
     if crate::document_shares::agents::is_comment_request(&input.run.request_message_id) {
         let owner = executor(&session, input.claim_id);

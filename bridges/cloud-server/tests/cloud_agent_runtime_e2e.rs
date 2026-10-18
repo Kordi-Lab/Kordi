@@ -391,6 +391,8 @@ mod calendar;
 mod claims;
 #[path = "cloud_agent_runtime_e2e/cloud_subsessions.rs"]
 mod cloud_subsessions;
+#[path = "cloud_agent_runtime_e2e/digest_mac_first.rs"]
+mod digest_mac_first;
 #[path = "cloud_agent_runtime_e2e/execution_ownership.rs"]
 mod execution_ownership;
 #[path = "cloud_agent_runtime_e2e/group_document_tools.rs"]

@@ -1,8 +1,10 @@
 pub mod changes;
 pub(crate) mod chat_calendar;
+pub(crate) mod desktop;
 mod fallback;
 mod incremental;
 pub mod models;
+mod output;
 pub(crate) mod pip_guard;
 mod recurrence;
 mod routes;

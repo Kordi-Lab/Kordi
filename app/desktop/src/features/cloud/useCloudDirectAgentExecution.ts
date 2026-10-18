@@ -67,6 +67,7 @@ import { loadSession } from './session';
 import { createCloudSharedAgentProgress } from './cloudSharedAgentProgress';
 import { cloudAgentTurnReplyText } from './cloudAgentReplyText';
 import { useDocumentAgentRequests } from '@/features/documents/useDocumentAgentRequests';
+import { useDigestMacRuns } from '@/features/digest/useDigestMacRuns';
 
 export function useCloudDirectAgentExecution({
   account,
@@ -114,6 +115,8 @@ export function useCloudDirectAgentExecution({
     routesBySessionId: cloudAgentRuntimeRoutesBySessionId,
     defaultRoute: defaultCloudAgentRuntimeRoute, runtimeReady, reportWarning,
   });
+  // Digest runs of this account run on this Mac when it has a local provider.
+  useDigestMacRuns({ account, client, defaultRoute: defaultCloudAgentRuntimeRoute, runtimeReady, reportWarning });
   useEffect(() => {
     if (!account || !initialMessagesSettled || !runtimeReady) return;
     for (const [peerId, messages] of cloudMessageIndex.byPeerId) {
