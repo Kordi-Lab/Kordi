@@ -85,6 +85,8 @@ pub(super) struct DesktopClaimInput {
     #[serde(flatten)]
     run: ClaimRunRequest,
     claim_id: Uuid,
+    #[serde(default)]
+    binds_project: bool,
 }
 
 fn executor(session: &CloudSession, claim_id: Uuid) -> String {
