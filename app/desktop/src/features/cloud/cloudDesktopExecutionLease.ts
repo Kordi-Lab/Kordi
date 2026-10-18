@@ -3,14 +3,16 @@ import { cloudOperationUuid } from './chatSyncMapping';
 import { CloudAuthError } from './cloudAuthError';
 import { cancelDesktopChatTurn, renewDesktopChatExecutionLease } from '@/lib/desktop';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
+import { claimedProjectFromLease } from '@/features/projects/claimedProjectSession';
 
 // The native deadline is shorter than the server lease, including network delay.
 export const DESKTOP_EXECUTION_WATCHDOG_MS = 30_000;
 
-export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient, 'desktopAgentExecution'>, token: string, input: CloudAgentRunClaimInput) {
+/** `bindsProject`: this caller runs a project session in this Mac's folder of the project. */
+export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient, 'desktopAgentExecution'>, token: string, input: CloudAgentRunClaimInput, options: { bindsProject?: boolean } = {}) {
   const claimId = crypto.randomUUID();
   const started = Date.now();
-  const result = await client.desktopAgentExecution<{runId: string; acquired: boolean; contextSessionId?: string; turnIdentity?: Record<string, unknown>; connectorTools?: unknown[]; connectorAudience?: string}>(token, 'claim', { ...input, claimId });
+  const result = await client.desktopAgentExecution<{runId: string; acquired: boolean; contextSessionId?: string; turnIdentity?: Record<string, unknown>; connectorTools?: unknown[]; connectorAudience?: string; project?: unknown}>(token, 'claim', { ...input, claimId, ...(options.bindsProject ? { bindsProject: true } : {}) });
   if (!result.acquired) return null;
   if (!result.turnIdentity || result.turnIdentity.ownerAccountId !== input.ownerAccountId
     || result.turnIdentity.requesterAccountId !== input.requesterAccountId) {
@@ -57,6 +59,8 @@ export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient,
       }).catch(loseLease).finally(() => { renewing = false; });
   }, 10_000);
   return {
+    /** The project this run belongs to; the turn runs in this Mac's folder of it. */
+    project: claimedProjectFromLease(result.project),
     contextMessages(messages: readonly DesktopChatContextMessage[]) {
       // Requester-dependent group policy now travels in the frozen turn identity,
       // never in the system header. Custom Agent definitions remain unchanged.

@@ -51,7 +51,8 @@
   color: var(--app-sidebar-title-text);
   font-size: 13px;
 }
-.chat-project-group-row { display: flex; align-items: center; padding-right: var(--chat-project-row-inset); border-radius: 7px; }
+.chat-project-group-row { display: flex; flex-wrap: wrap; align-items: center; padding-right: var(--chat-project-row-inset); border-radius: 7px; }
+.chat-project-locate-error { flex-basis: 100%; margin: 0 0 4px; padding: 0 10px; }
 .chat-project-group-row .chat-project-group { flex: 1; min-width: 0; width: auto; padding-right: 4px; }
 .chat-project-new-session {
   display: grid;

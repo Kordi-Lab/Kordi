@@ -10,6 +10,7 @@ export type GitWorkspace = {
 };
 export type ChatWorkspaceSelection = { worktree?: boolean; branch?: string; workspaceRoot?: string };
 
-export function fetchGitWorkspace(projectRoot: string, workspaceRoot?: string) {
-  return invokeDesktop<GitWorkspace | null>('desktop_project_git_workspace', { projectRoot, workspaceRoot });
+/** `workspaceId` names a synced session's worktree by catalog ID when its path is unknown here. */
+export function fetchGitWorkspace(projectRoot: string, workspaceRoot?: string, workspaceId?: string) {
+  return invokeDesktop<GitWorkspace | null>('desktop_project_git_workspace', { projectRoot, workspaceRoot, workspaceId });
 }
