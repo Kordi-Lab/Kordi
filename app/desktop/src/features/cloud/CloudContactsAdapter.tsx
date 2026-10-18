@@ -19,6 +19,7 @@ import { ContactsPage } from '@/kordi-app/pages';
 import type { Contact, ContactRequest } from '@/kordi-app/types';
 import { formatKordiHandle, normalizeKordiId } from './kordiId';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
+import { useCommonGroundPreviewEntry } from '@/features/commonGround/useCommonGroundPreviewEntry';
 
 type CloudContactsAdapterProps = {
   account: CloudAccount;
@@ -37,6 +38,11 @@ type CloudContactsAdapterProps = {
 export function CloudContactsAdapter({ account, contactsPageProps }: CloudContactsAdapterProps) {
   const cloud = useCloudContacts(account);
   const presence = useCloudPresence(account);
+  const commonGround = useCommonGroundPreviewEntry({
+    onSelectContact: contactsPageProps.onSelectContact,
+    onSelectRequest: contactsPageProps.onSelectRequest,
+    onCloseOverlay: contactsPageProps.onCloseOverlay,
+  }, account.displayName ?? undefined);
 
   const visibleCloudContacts = useMemo(() => {
     const search = contactsPageProps.contactSearch?.trim().toLowerCase() ?? '';
@@ -169,6 +175,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       onAddContactByNodeId={onAddContactByNodeId}
       onLookupContact={onLookupContact}
       onMessageContact={contactsPageProps.onMessageContact}
+      {...commonGround}
     />
   );
 }
