@@ -1,12 +1,14 @@
-import { useState, type ReactNode } from 'react';
-import { ChevronDown, ChevronRight, Search, UserPlus } from 'lucide-react';
+import { useState } from 'react';
+import { Search, UserPlus } from 'lucide-react';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { ContactRow } from '../components';
 import type { ContactClass } from '../types';
 import { ContactsAddForm } from './ContactsAddForm';
+import { ContactsListSection } from './ContactsListSection';
 import { ContactsRequestActivity } from './ContactsRequestActivity';
+import { usePresenceNow } from './usePresenceNow';
 import type { ContactGroup, ContactOverlayMode, ContactsPageProps } from './contactsPageTypes';
 import { useAddContactForm, type ContactRequestActions, type PartitionedContactRequests } from './useContactsPageState';
 
@@ -14,6 +16,7 @@ type ContactsListColumnProps = Pick<ContactsPageProps,
   | 'filteredGroupedContacts'
   | 'isContactRequestsOpen'
   | 'onToggleRequests'
+  | 'onSelectRequest'
   | 'activeContactRequestId'
   | 'onAddContactByNodeId'
   | 'onLookupContact'
@@ -31,35 +34,9 @@ type ContactsListColumnProps = Pick<ContactsPageProps,
   fullWidth: boolean;
 };
 
-function ContactGroupSection({
-  group,
-  showLabel,
-  expanded,
-  onToggle,
-  children,
-}: {
-  group: ContactGroup;
-  showLabel: boolean;
-  expanded: boolean;
-  onToggle: () => void;
-  children: ReactNode;
-}) {
-  if (!showLabel) return <div>{children}</div>;
-  return (
-    <section aria-label={group.label}>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="app-contacts-group-row flex w-full items-center gap-1.5 text-left"
-      >
-        {expanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-        <span className="min-w-0 flex-1 truncate">{group.label}</span>
-        <span className="app-contacts-group-count">{group.items.length}</span>
-      </button>
-      {expanded ? children : null}
-    </section>
-  );
+/** Sentence-case heading for a contact group; people read better as "Contacts" than "Other users". */
+function contactGroupHeading(group: Pick<ContactGroup, 'id' | 'label'>) {
+  return group.id === 'other-users' ? 'Contacts' : group.label;
 }
 
 function ContactGroupList({
@@ -75,32 +52,31 @@ function ContactGroupList({
   isSelected: (contactId: string) => boolean;
   onSelectContact: (groupId: ContactClass, contactId: string) => void;
 }) {
-  const showLabels = groups.length > 1;
+  const now = usePresenceNow();
   return (
     <>
       {groups.map((group) => (
-        <ContactGroupSection
+        <ContactsListSection
           key={group.id}
-          group={group}
-          showLabel={showLabels}
-          expanded={!showLabels || Boolean(expandedContactGroups[group.id])}
+          label={contactGroupHeading(group)}
+          count={group.items.length}
+          expanded={Boolean(expandedContactGroups[group.id])}
           onToggle={() => onToggleGroup(group.id)}
         >
-          <div className="grid gap-0.5">
-            {group.items.length > 0 ? (
-              group.items.map((contact) => (
-                <ContactRow
-                  key={contact.id}
-                  contact={contact}
-                  active={isSelected(contact.id)}
-                  onSelect={() => onSelectContact(group.id, contact.id)}
-                />
-              ))
-            ) : (
-              <div className="app-contacts-muted px-2.5 py-2 text-[12.5px]">No contacts match this search.</div>
-            )}
-          </div>
-        </ContactGroupSection>
+          {group.items.length > 0 ? (
+            group.items.map((contact) => (
+              <ContactRow
+                key={contact.id}
+                contact={contact}
+                active={isSelected(contact.id)}
+                now={now}
+                onSelect={() => onSelectContact(group.id, contact.id)}
+              />
+            ))
+          ) : (
+            <div className="app-contacts-muted px-2 py-2 text-[12.5px]">No contacts match this search.</div>
+          )}
+        </ContactsListSection>
       ))}
     </>
   );
@@ -114,6 +90,7 @@ export function ContactsListColumn({
   filteredGroupedContacts,
   isContactRequestsOpen,
   onToggleRequests,
+  onSelectRequest,
   activeContactRequestId,
   onAddContactByNodeId,
   onLookupContact,
@@ -170,14 +147,20 @@ export function ContactsListColumn({
       </label>
 
       <ScrollArea className="app-contacts-list-scroll min-h-0 flex-1">
-        <div className="grid gap-0.5 px-2.5 pb-3">
-          {leadingListItems}
+        <div className="app-contacts-list-body grid px-2.5 pb-3">
+          {leadingListItems ? (
+            <>
+              <div className="app-contacts-pinned grid gap-px">{leadingListItems}</div>
+              <div className="app-contacts-list-divider" role="separator" />
+            </>
+          ) : null}
           <ContactsRequestActivity
             incomingContactRequests={requests.incoming}
             outgoingContactRequests={requests.outgoing}
             activeContactRequestId={contactOverlayMode === 'request' ? activeContactRequestId : ''}
             isContactRequestsOpen={isContactRequestsOpen}
             onToggleRequests={onToggleRequests}
+            onSelectRequest={onSelectRequest}
             requestActions={requestActions}
           />
           <ContactGroupList

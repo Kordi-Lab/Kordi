@@ -175,9 +175,10 @@ test('CloudContactsAdapter shows one human row and removes other people agent gr
     },
   } as never));
 
-  // Only the human group remains, so the list shows no group labels at all.
+  // Only the human group remains, shown under a single "Contacts" section header.
   assert.match(markup, /aria-label="Search contacts"/);
-  assert.doesNotMatch(markup, /app-contacts-group-row/);
+  assert.equal((markup.match(/app-contacts-group-row/g) ?? []).length, 1);
+  assert.match(markup, /app-contacts-group-row[^>]*>.*Contacts/);
   assert.doesNotMatch(markup, /Other users&#x27; agents|Other users' agents/);
   assert.doesNotMatch(markup, /Owner of Maya/);
 });

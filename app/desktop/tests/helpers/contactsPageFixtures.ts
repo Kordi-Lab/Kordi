@@ -21,6 +21,22 @@ export function contact(overrides: Partial<Contact> = {}): Contact {
   };
 }
 
+/** People with varied presence: online, seen 9 minutes ago, seen yesterday at 18:58, and no timestamp. */
+export function presenceContacts(now: number = Date.now()): Contact[] {
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  yesterday.setHours(18, 58, 0, 0);
+  const person = (id: string, name: string, handle: string, overrides: Partial<Contact>) => contact({
+    id: `cloud:${id}`, name, subtitle: handle, detail: handle, entityType: 'user', sourceHostId: 'cloud', sourceParticipantId: id, ...overrides,
+  });
+  return [
+    person('acct_maya', 'Maya Chen', '@482731906', { presenceStatus: 'online' }),
+    person('acct_hana', 'Hana Sato', '@193847562', { presenceStatus: 'offline', presenceLastSeenAt: new Date(now - 9 * 60_000).toISOString() }),
+    person('acct_ines', 'Ines Wolf', '@650218437', { presenceStatus: 'offline', presenceLastSeenAt: yesterday.toISOString() }),
+    person('acct_rafa', 'Rafa Mendes', '@771045293', { presenceStatus: 'offline' }),
+  ];
+}
+
 export function request(overrides: Partial<ContactRequest> = {}): ContactRequest {
   return {
     id: 'request-1',
@@ -32,13 +48,14 @@ export function request(overrides: Partial<ContactRequest> = {}): ContactRequest
   };
 }
 
-export function renderContactsPage(contactRequests: ContactRequest[], overrides: Partial<Parameters<typeof ContactsPage>[0]> = {}) {
-  return renderToStaticMarkup(createElement(ContactsPage, {
+type ContactsPageFixtureProps = Parameters<typeof ContactsPage>[0];
+
+export function contactsPageProps(overrides: Partial<ContactsPageFixtureProps> = {}): ContactsPageFixtureProps {
+  return {
     filteredGroupedContacts: [],
     addableContacts: [],
     isContactRequestsOpen: true,
     onToggleRequests: () => undefined,
-    contactRequests,
     activeContactRequestId: '',
     contactSearch: '',
     onContactSearchChange: () => undefined,
@@ -54,6 +71,11 @@ export function renderContactsPage(contactRequests: ContactRequest[], overrides:
     activeContact: contact(),
     onCloseOverlay: () => undefined,
     getStatusBadgeClass: () => '',
+    contactRequests: [],
     ...overrides,
-  }));
+  };
+}
+
+export function renderContactsPage(contactRequests: ContactRequest[], overrides: Partial<ContactsPageFixtureProps> = {}) {
+  return renderToStaticMarkup(createElement(ContactsPage, contactsPageProps({ contactRequests, ...overrides })));
 }

@@ -9,6 +9,7 @@ import {
   useEscapeToDeselect,
   useIsNarrowContainer,
   usePartitionedContactRequests,
+  useSelectedContactRequest,
 } from './useContactsPageState';
 
 /** Below this page width the detail falls back to a modal over the full-width list. */
@@ -27,13 +28,14 @@ export function ContactsPage(props: ContactsPageProps) {
   const isNarrow = useIsNarrowContainer(rootRef, CONTACTS_SPLIT_MIN_WIDTH);
   const requests = usePartitionedContactRequests(props.contactRequests);
   const requestActions = useContactRequestActions(props.onAcceptRequest, props.onRejectRequest);
-  const detailMode = contactOverlayMode === 'request' && !activeContactRequest ? null : contactOverlayMode;
+  const selectedRequest = useSelectedContactRequest(props.contactRequests, props.activeContactRequestId, activeContactRequest);
+  const detailMode = contactOverlayMode === 'request' && !selectedRequest ? null : contactOverlayMode;
   useEscapeToDeselect(Boolean(detailMode) && !(detailMode === 'request' && requestActions.busy), onCloseOverlay);
 
   const detailProps = detailMode ? {
     mode: detailMode,
     activeContact,
-    activeContactRequest,
+    activeContactRequest: selectedRequest,
     onCloseOverlay,
     onMessageContact,
     onRemoveContact,

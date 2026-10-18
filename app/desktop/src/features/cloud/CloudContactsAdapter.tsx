@@ -42,7 +42,8 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     const search = contactsPageProps.contactSearch?.trim().toLowerCase() ?? '';
     const matches = search
       ? cloud.contacts.filter((contact) =>
-          (contact.name + ' ' + contact.subtitle + ' ' + (contact.sourceParticipantId ?? '')).toLowerCase().includes(search),
+          // Kordi IDs stay searchable even though rows show presence instead of the handle.
+          [contact.name, contact.subtitle, contact.detail, contact.sourceParticipantId ?? ''].join(' ').toLowerCase().includes(search),
         )
       : cloud.contacts;
     return dedupeCloudContacts(matches).map((contact) => {
@@ -50,6 +51,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       return {
         ...contact,
         presenceStatus: contact.systemContact ? 'online' : presence.statusForAccount(accountId),
+        presenceLastSeenAt: contact.systemContact || !accountId ? null : presence.snapshot[accountId]?.lastSeenAt ?? null,
       };
     });
   }, [contactsPageProps.contactSearch, cloud.contacts, presence]);

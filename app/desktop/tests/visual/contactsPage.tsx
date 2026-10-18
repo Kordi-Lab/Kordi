@@ -15,6 +15,12 @@ localStorage.setItem('kordi.themeMode.v1', theme);
 
 const pause = (ms = 600) => new Promise((resolve) => setTimeout(resolve, ms));
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+const yesterdayAt = (hours: number, minutes: number) => {
+  const date = new Date();
+  date.setDate(date.getDate() - 1);
+  date.setHours(hours, minutes, 0, 0);
+  return date.toISOString();
+};
 
 function person(id: string, name: string, subtitle: string, overrides: Partial<Contact> = {}): Contact {
   return {
@@ -38,9 +44,9 @@ function person(id: string, name: string, subtitle: string, overrides: Partial<C
 
 const INITIAL_CONTACTS: Contact[] = [
   person('acct_maya', 'Maya Chen', '@482731906', { presenceStatus: 'online', detail: 'Memory systems group' }),
-  person('acct_hana', 'Hana Sato', '@193847562', { presenceStatus: 'offline' }),
-  person('acct_ines', 'Ines Wolf', '@650218437', { presenceStatus: 'online' }),
-  person('acct_rafa', 'Rafa Mendes', '@771045293'),
+  person('acct_hana', 'Hana Sato', '@193847562', { presenceStatus: 'offline', presenceLastSeenAt: minutesAgo(9) }),
+  person('acct_ines', 'Ines Wolf', '@650218437', { presenceStatus: 'offline', presenceLastSeenAt: yesterdayAt(18, 58) }),
+  person('acct_rafa', 'Rafa Mendes', '@771045293', { presenceStatus: 'offline' }),
   person('kordi-support', 'Kordi Support', 'Ask questions or suggest improvements', { locked: true, systemContact: true }),
 ];
 
@@ -66,6 +72,7 @@ function ContactsPreview() {
   const [isRequestsOpen, setIsRequestsOpen] = useState(true);
   const [expanded, setExpanded] = useState<Record<ContactClass, boolean>>({ 'other-users': true, 'my-agents': true, 'other-users-agents': true });
   const [activeContactId, setActiveContactId] = useState('');
+  const [activeRequestId, setActiveRequestId] = useState('');
   const [overlayMode, setOverlayMode] = useState<'contact' | 'request' | null>(null);
 
   useLayoutEffect(() => {
@@ -78,8 +85,10 @@ function ContactsPreview() {
     const query = search.trim().toLowerCase();
     const matches = (contact: Contact) => !query || `${contact.name} ${contact.subtitle}`.toLowerCase().includes(query);
     const result: Array<{ id: ContactClass; label: string; items: Contact[] }> = [
-      { id: 'other-users', label: 'Other users', items: contacts.filter(matches) },
+      { id: 'other-users', label: 'Other users', items: contacts.filter((contact) => !contact.systemContact && matches(contact)) },
     ];
+    const kordi = contacts.filter((contact) => contact.systemContact && matches(contact));
+    if (kordi.length > 0) result.unshift({ id: 'other-users-agents', label: 'Kordi', items: kordi });
     if (showAgents) result.push({ id: 'my-agents', label: 'My agents', items: INITIAL_AGENTS.filter(matches) });
     return result;
   }, [contacts, search]);
@@ -105,7 +114,11 @@ function ContactsPreview() {
         isContactRequestsOpen={isRequestsOpen}
         onToggleRequests={() => setIsRequestsOpen((open) => !open)}
         contactRequests={requests}
-        activeContactRequestId=""
+        activeContactRequestId={activeRequestId}
+        onSelectRequest={(request) => {
+          setActiveRequestId(request.id);
+          setOverlayMode('request');
+        }}
         onAcceptRequest={(request) => resolveRequest(request, true)}
         onRejectRequest={(request) => resolveRequest(request, false)}
         onLookupContact={async (raw) => {

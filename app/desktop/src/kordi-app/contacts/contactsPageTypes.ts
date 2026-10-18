@@ -14,6 +14,8 @@ export type ContactsPageProps = {
   onToggleRequests: () => void;
   contactRequests: ContactRequest[];
   activeContactRequestId: string;
+  /** Opens a pending request in the detail pane, where Accept and Reject live. */
+  onSelectRequest?: (request: ContactRequest) => void;
   onAcceptRequest?: (request: ContactRequest) => Promise<void> | void;
   onRejectRequest?: (request: ContactRequest) => Promise<void> | void;
   onAddContactByNodeId?: (nodeId: string) => Promise<void> | void;

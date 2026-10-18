@@ -4,17 +4,17 @@ import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { ContactRow } from '../src/kordi-app/components/transcript';
+import { ContactRequestRow, ContactRow } from '../src/kordi-app/components/transcript';
 import { cloudRequestToContactRequest } from '../src/features/cloud/useCloudContacts';
 import { KORDI_SUPPORT_AVATAR_URL } from '../src/features/support/supportIdentity';
-import { contact, renderContactsPage, request } from './helpers/contactsPageFixtures';
+import { contactRequestDisplayName } from '../src/kordi-app/contactPresentation';
+import { contact, presenceContacts, renderContactsPage, request } from './helpers/contactsPageFixtures';
 
 test('contact request rows do not repeat the review-details action beside accept and reject', () => {
   const source = readFileSync(new URL('../src/kordi-app/components/transcriptContacts.tsx', import.meta.url), 'utf8');
   const start = source.indexOf('export function ContactRequestRow');
-  const end = source.indexOf('export function ContactRow', start + 1);
   assert.ok(start >= 0, 'ContactRequestRow source block should be present');
-  const block = source.slice(start, end > start ? end : undefined);
+  const block = source.slice(start);
 
   assert.doesNotMatch(block, /Review details/);
   assert.doesNotMatch(block, /onReview/);
@@ -24,87 +24,70 @@ test('contacts page hides the complete request activity area when no requests or
   const markup = renderContactsPage([]);
 
   assert.doesNotMatch(markup, /app-contacts-request-activity/);
-  assert.doesNotMatch(markup, />New requests</);
-  assert.doesNotMatch(markup, />Sent invites</);
+  assert.doesNotMatch(markup, />Requests</);
   assert.doesNotMatch(markup, /No pending|None sent/);
   assert.match(markup, />Contacts</);
   assert.match(markup, /aria-label="Search contacts"/);
 });
 
-test('contacts page shows incoming requests without an empty sent-invites section', () => {
+test('incoming requests are single compact rows: name, handle, and an Accept pill', () => {
   const markup = renderContactsPage([
-    request({ id: 'request-in', direction: 'incoming' }),
-  ]);
+    request({ id: 'request-in', direction: 'incoming', detail: '@305918274' }),
+  ], { onAcceptRequest: () => undefined, onRejectRequest: () => undefined, onSelectRequest: () => undefined });
 
   assert.match(markup, /app-contacts-request-activity/);
-  assert.match(markup, />New requests</);
-  assert.match(markup, />Review 1 pending request\.</);
-  assert.match(markup, /app-badge-attention[^>]*>1</);
-  assert.match(markup, />Testuser wants to connect</);
-  assert.match(markup, />Accept</);
-  assert.match(markup, />Reject</);
-  assert.doesNotMatch(markup, />Sent invites</);
-  assert.doesNotMatch(markup, /No pending|None sent/);
+  assert.match(markup, /aria-label="Requests"/);
+  assert.match(markup, />Requests</);
+  assert.match(markup, /app-contacts-group-count">1</);
+  assert.match(markup, />Testuser</);
+  assert.doesNotMatch(markup, />Testuser wants to connect</);
+  assert.match(markup, />@305918274</);
+  assert.match(markup, /app-contacts-accept-pill[^>]*>Accept</);
+  assert.doesNotMatch(markup, />Reject</, 'Reject lives in the detail pane');
+  assert.doesNotMatch(markup, />New requests<|>Sent invites<|Review \d+ pending/);
 });
 
-test('contacts request activity counts incoming approvals separately from outgoing invites', () => {
+test('request rows fall back to a state line when no handle is known', () => {
   const markup = renderContactsPage([
     request({ id: 'request-in', direction: 'incoming' }),
     request({ id: 'request-out', title: 'Request sent to Maya Chen', detail: 'acct_maya_123', direction: 'outgoing' }),
   ]);
 
-  assert.equal((markup.match(/app-badge-attention/g) ?? []).length, 1);
-  assert.doesNotMatch(markup, /app-badge-attention[^>]*>2</);
-  assert.match(markup, />Review 1 pending request\.</);
-  assert.match(markup, />Sent invites</);
-  assert.match(markup, />1 awaiting approval</);
+  assert.match(markup, />Wants to connect</);
+  assert.match(markup, />Maya Chen</);
+  assert.match(markup, />Awaiting approval</);
+  assert.match(markup, />Pending</);
+  assert.match(markup, /app-contacts-group-count">2</);
+  assert.equal((markup.match(/app-contacts-accept-pill/g) ?? []).length, 1, 'only incoming rows can be accepted');
+  assert.doesNotMatch(markup, /acct_maya_123/);
   assert.doesNotMatch(markup, />Request sent to Maya Chen</);
-  assert.doesNotMatch(markup, /No pending|None sent/);
 });
 
-test('contacts page summarizes outgoing-only pending invites without showing the full list by default', () => {
+test('outgoing-only requests show in the Requests section without accept controls', () => {
   const markup = renderContactsPage([
-    request({ id: 'request-out', title: 'Request sent to Maya Chen', detail: 'acct_maya_123', direction: 'outgoing' }),
+    request({ id: 'request-out', title: 'Request sent to Maya Chen', avatarName: 'Maya Chen', detail: '@482731906', direction: 'outgoing' }),
   ]);
 
-  assert.doesNotMatch(markup, />New requests</);
-  assert.match(markup, />Sent invites</);
-  assert.match(markup, />1 awaiting approval</);
-  assert.doesNotMatch(markup, /app-badge-attention/);
-  assert.doesNotMatch(markup, /No pending|None sent/);
-  assert.doesNotMatch(markup, />Waiting for approval</);
-  assert.doesNotMatch(markup, />Request sent to Maya Chen</);
+  assert.match(markup, />Requests</);
+  assert.match(markup, />Maya Chen</);
+  assert.match(markup, />@482731906</);
+  assert.match(markup, />Pending</);
   assert.doesNotMatch(markup, />Accept</);
   assert.doesNotMatch(markup, />Reject</);
-  assert.doesNotMatch(markup, />Review details</);
 });
 
-test('sent invites section has independent fold and expand controls', () => {
-  const source = readFileSync(new URL('../src/kordi-app/contacts/ContactsRequestActivity.tsx', import.meta.url), 'utf8');
+test('the Requests section collapses with the requests toggle', () => {
+  const markup = renderContactsPage([request({ id: 'request-in', direction: 'incoming' })], { isContactRequestsOpen: false });
 
-  assert.match(source, /isSentInvitesOpen/);
-  assert.match(source, /setIsSentInvitesOpen\(\(open\) => !open\)/);
-  assert.match(source, /aria-expanded=\{isSentInvitesOpen\}/);
-  assert.match(source, /\{isSentInvitesOpen && \(/);
+  assert.match(markup, /aria-expanded="false"[^>]*>.*Requests/);
+  assert.doesNotMatch(markup, />Testuser</);
 });
 
-test('sent invite rows use real account avatars in a compact row', () => {
-  const source = readFileSync(new URL('../src/kordi-app/contacts/ContactsRequestActivity.tsx', import.meta.url), 'utf8');
-  const sentInvitesStart = source.indexOf('{sentInviteCount > 0 && (');
-  assert.ok(sentInvitesStart >= 0, 'Sent invites source block should be present');
-  const sentInvitesBlock = source.slice(sentInvitesStart);
-
-  assert.match(sentInvitesBlock, /<IdentityAvatar/);
-  assert.match(sentInvitesBlock, /imageUrl=\{request\.profileImageUrl\}/);
-  assert.match(sentInvitesBlock, /name=\{sentInviteDisplayName\(request\)\}/);
-  assert.match(sentInvitesBlock, /cornerRadius="50%"/);
-  assert.match(sentInvitesBlock, /className="app-contacts-sent-invite-item /);
-  assert.doesNotMatch(sentInvitesBlock, /text-white/);
-  assert.match(sentInvitesBlock, /Awaiting approval/);
-  assert.match(sentInvitesBlock, /<ContactRequestTime value=\{request\.time\} \/>/);
-  assert.doesNotMatch(sentInvitesBlock, /\{request\.detail\}/);
-  assert.doesNotMatch(sentInvitesBlock, /Waiting for approval/);
-  assert.doesNotMatch(sentInvitesBlock, /border-amber|bg-amber|text-amber/);
+test('request display names strip the request phrasing', () => {
+  assert.equal(contactRequestDisplayName({ title: 'Noor Haddad wants to connect' }), 'Noor Haddad');
+  assert.equal(contactRequestDisplayName({ title: 'Request sent to Elio Marin' }), 'Elio Marin');
+  assert.equal(contactRequestDisplayName({ title: 'Ignored title', avatarName: 'Oskar Berg' }), 'Oskar Berg');
+  assert.equal(contactRequestDisplayName({ title: 'Carol Ops Agent trust request' }), 'Carol Ops Agent trust request');
 });
 
 test('cloud request mapping keeps counterpart name for request avatar fallback', () => {
@@ -185,6 +168,7 @@ test('the locked Kordi Support contact routes reporting through its chat', () =>
   assert.match(markup, />Message</);
   assert.doesNotMatch(markup, />Submit a request</);
   assert.doesNotMatch(markup, />Delete contact</);
+  assert.doesNotMatch(markup, /aria-label="More actions"/);
 });
 
 test('active contact rows use the soft selection tint instead of the raised list-item style', () => {
@@ -216,6 +200,50 @@ test('contact rows hide the plain user type and keep informative ones', () => {
   }
   assert.match(row({ entityType: 'My agent', classType: 'my-agents' }), />My agent</);
   assert.match(row({ entityType: 'agent', classType: 'other-users-agents' }), />agent</);
+});
+
+test('contact rows show presence for people, descriptions for agents, and search still finds Kordi IDs', () => {
+  const row = (overrides: Partial<Contact>) => renderToStaticMarkup(createElement(ContactRow, {
+    contact: contact({ subtitle: '@482731906', ...overrides }),
+    active: false,
+    onSelect: () => undefined,
+    now: Date.parse('2026-10-18T15:30:00Z'),
+  }));
+
+  const online = row({ presenceStatus: 'online' });
+  assert.match(online, /app-contact-row-meta[^"]*app-contacts-presence-online[^"]*">online</);
+  assert.doesNotMatch(online, /@482731906/, 'the Kordi ID moves to the detail pane');
+  assert.match(row({ presenceStatus: 'offline', presenceLastSeenAt: '2026-10-18T15:21:00Z' }), />last seen 9 minutes ago</);
+  assert.match(row({ presenceStatus: 'offline' }), />last seen recently</);
+  assert.match(row({ presenceStatus: null }), />@482731906</, 'unknown presence keeps the subtitle');
+
+  const support = row({ subtitle: 'Ask questions or suggest improvements', presenceStatus: 'online', systemContact: true });
+  assert.match(support, />Ask questions or suggest improvements</);
+  assert.doesNotMatch(support, /app-contacts-presence-online/);
+  assert.match(row({ classType: 'my-agents', entityType: 'My agent', subtitle: 'On this Mac', presenceStatus: 'offline' }), />On this Mac</);
+
+  const requestRow = renderToStaticMarkup(createElement(ContactRequestRow, {
+    request: request({ title: 'Noor Haddad wants to connect', avatarName: 'Noor Haddad', detail: '@305918274', direction: 'incoming' }),
+    active: false,
+  }));
+  assert.match(requestRow, />@305918274</, 'request rows keep their handle line');
+
+  const adapterSource = readFileSync(new URL('../src/features/cloud/CloudContactsAdapter.tsx', import.meta.url), 'utf8');
+  assert.match(adapterSource, /\[contact\.name, contact\.subtitle, contact\.detail, contact\.sourceParticipantId/);
+  assert.match(adapterSource, /presenceLastSeenAt:/);
+});
+
+test('contacts list shows presence lines instead of Kordi IDs', () => {
+  const markup = renderContactsPage([], {
+    filteredGroupedContacts: [{ id: 'other-users', label: 'Other users', items: presenceContacts() }],
+    expandedContactGroups: { 'my-agents': false, 'other-users-agents': false, 'other-users': true },
+  });
+  assert.match(markup, /">online</);
+  assert.match(markup, />last seen 9 minutes ago</);
+  // Just after midnight, yesterday 18:58 is still under six hours old and reads relatively.
+  assert.match(markup, />last seen (yesterday at 18:58|[1-5] hours ago)</);
+  assert.match(markup, />last seen recently</);
+  assert.doesNotMatch(markup, /@482731906|@193847562|@650218437|@771045293/);
 });
 
 test('contact detail modal mirrors real presence instead of deriving it from status text', () => {

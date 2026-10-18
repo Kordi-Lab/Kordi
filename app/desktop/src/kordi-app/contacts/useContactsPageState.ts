@@ -32,6 +32,22 @@ export function usePartitionedContactRequests(contactRequests: ContactRequest[])
   return useMemo(() => partitionContactRequests(contactRequests), [contactRequests]);
 }
 
+/**
+ * The request the detail pane should show: the listed request with the active id, or the caller's
+ * resolved request when it matches that id. A request that was just accepted or rejected drops out.
+ */
+export function useSelectedContactRequest(
+  contactRequests: ContactRequest[],
+  activeContactRequestId: string,
+  fallback?: ContactRequest,
+) {
+  return useMemo(() => {
+    if (!activeContactRequestId) return fallback;
+    return contactRequests.find((request) => request.id === activeContactRequestId)
+      ?? (fallback?.id === activeContactRequestId ? fallback : undefined);
+  }, [contactRequests, activeContactRequestId, fallback]);
+}
+
 export type ContactRequestActionState = 'accepting' | 'rejecting' | null;
 
 export type ContactRequestActions = {
@@ -152,9 +168,9 @@ export function useAddContactForm({
   const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
 
   const statusMessage = addContactState === 'sent'
-    ? 'Request sent. Track it under Sent invites while they review it.'
+    ? 'Request sent. It stays under Requests until they respond.'
     : addContactState === 'pending' || lookupRequestPending
-      ? 'Request pending. Track it under Sent invites while they review it.'
+      ? 'Request pending. It stays under Requests until they respond.'
       : addContactState === 'error'
         ? addContactError || 'Unable to send contact request.'
         : lookupState === 'error'

@@ -1,19 +1,85 @@
 import { useState } from 'react';
-import { LoaderCircle, MessageSquare, Trash2, X } from 'lucide-react';
+import { Check, LoaderCircle, MessageCircle, Trash2, X } from 'lucide-react';
 
+import { formatKordiHandle } from '@/features/cloud/kordiId';
+import { formatDesktopContactRequestTimeLabel } from '@/lib/time';
 import { cn } from '@/lib/utils';
-import { ContactRequestTime } from '../components';
-import { contactTypeLabel } from '../components/contactTypeLabel';
 import { IdentityAvatar } from '../components/IdentityAvatar';
-import { contactCanBeRemoved, contactDetailBodyText, contactPresenceStatus } from '../contactPresentation';
+import {
+  contactCanBeRemoved,
+  contactDetailBodyText,
+  contactKordiHandle,
+  contactPresenceStatus,
+  contactRequestDisplayName,
+  contactSecondaryLine,
+  isAgentContact,
+  isOutgoingContactRequest,
+} from '../contactPresentation';
 import type { Contact, ContactRequest } from '../types';
+import { CopyButton, DetailHeader, DetailTile, DetailTiles, InfoCard, MoreTile, type InfoCardRow } from './ContactDetailParts';
 import type { ContactsPageProps } from './contactsPageTypes';
 import type { ContactRequestActions } from './useContactsPageState';
+import { usePresenceNow } from './usePresenceNow';
 
 type ContactDetailPaneProps = Pick<ContactsPageProps, 'activeContact' | 'activeContactRequest' | 'onCloseOverlay' | 'onMessageContact' | 'onRemoveContact'> & {
   mode: 'contact' | 'request';
   requestActions: ContactRequestActions;
 };
+
+const DETAIL_AVATAR_CLASS = 'app-contacts-avatar app-contacts-detail-avatar h-24 w-24 shrink-0';
+
+function kordiIdRow(handle: string): InfoCardRow {
+  return {
+    key: 'kordi-id',
+    value: handle,
+    caption: 'Kordi ID',
+    accent: true,
+    trailing: <CopyButton value={handle} label="Copy Kordi ID" />,
+  };
+}
+
+function DeleteConfirm({
+  removeState,
+  removeError,
+  onCancel,
+  onDelete,
+}: {
+  removeState: 'idle' | 'saving' | 'error';
+  removeError: string;
+  onCancel: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="app-contacts-confirm mt-2 rounded-[12px] px-3.5 py-3" role="group" aria-label="Delete contact">
+      <div
+        className={cn('text-[12.5px] leading-[18px]', removeState === 'error' ? 'app-error-text app-contacts-error' : 'app-contacts-muted')}
+        aria-live="polite"
+      >
+        {removeState === 'error'
+          ? removeError || 'Unable to delete contact.'
+          : 'Deleting removes both contact directions. They will need approval before messages can reach you again.'}
+      </div>
+      <div className="mt-2.5 flex justify-end gap-1.5">
+        <button
+          type="button"
+          className="app-contacts-quiet-action inline-flex h-7 items-center rounded-[7px] px-3 text-[12.5px] font-medium"
+          onClick={onCancel}
+          disabled={removeState === 'saving'}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="app-contacts-danger-fill inline-flex h-7 items-center gap-1.5 rounded-[7px] px-3 text-[12.5px] font-semibold disabled:pointer-events-none disabled:opacity-50"
+          onClick={onDelete}
+          disabled={removeState === 'saving'}
+        >
+          {removeState === 'saving' ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />Deleting…</> : 'Delete'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function ContactDetailBody({
   contact,
@@ -26,13 +92,22 @@ function ContactDetailBody({
   onMessageContact?: (contact: Contact) => void;
   onRemoveContact?: (contact: Contact) => Promise<void> | void;
 }) {
+  const now = usePresenceNow();
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [removeState, setRemoveState] = useState<'idle' | 'saving' | 'error'>('idle');
   const [removeError, setRemoveError] = useState('');
   const presenceStatus = contactPresenceStatus(contact);
   const detailBody = contactDetailBodyText(contact);
-  const meta = [contactTypeLabel(contact), contact.subtitle].filter(Boolean).join(' · ');
+  const handle = contactKordiHandle(contact);
+  const isAgent = isAgentContact(contact);
+  const secondaryLine = contactSecondaryLine(contact, now);
+  const headerLine = secondaryLine.text && secondaryLine.text !== handle && secondaryLine.text !== contact.name ? secondaryLine.text : '';
   const canRemove = Boolean(onRemoveContact && contactCanBeRemoved(contact));
   const canMessage = Boolean(onMessageContact && contact.sourceHostId && contact.sourceParticipantId);
+  const rows: InfoCardRow[] = [];
+  if (handle) rows.push(kordiIdRow(handle));
+  if (detailBody && detailBody !== headerLine) rows.push({ key: 'about', value: detailBody, caption: 'About' });
+  if (isAgent) rows.push({ key: 'type', value: 'Agent', caption: 'Type' });
 
   const submitRemoveContact = async () => {
     if (!canRemove || removeState === 'saving') return;
@@ -49,100 +124,144 @@ function ContactDetailBody({
 
   return (
     <>
-      <IdentityAvatar
-        kind={contact.classType === 'my-agents' || contact.classType === 'other-users-agents' ? 'agent' : 'human'}
-        seed={contact.avatarSeed ?? contact.sourceParticipantId ?? contact.id}
+      <DetailHeader
+        avatar={(
+          <IdentityAvatar
+            kind={isAgent ? 'agent' : 'human'}
+            seed={contact.avatarSeed ?? contact.sourceParticipantId ?? contact.id}
+            name={contact.name}
+            imageUrl={contact.profileImageUrl}
+            presenceStatus={presenceStatus}
+            presenceLabel={presenceStatus ? `${contact.name} is ${presenceStatus}` : undefined}
+            cornerRadius="50%"
+            className={DETAIL_AVATAR_CLASS}
+          />
+        )}
         name={contact.name}
-        imageUrl={contact.profileImageUrl}
-        presenceStatus={presenceStatus}
-        presenceLabel={presenceStatus ? `${contact.name} is ${presenceStatus}` : undefined}
-        cornerRadius="50%"
-        className="app-contacts-avatar app-contacts-detail-avatar h-24 w-24"
+        line={headerLine}
+        lineAccent={secondaryLine.online}
       />
-      <h2 className="mt-4 max-w-full truncate text-[22px] font-bold leading-7 tracking-[-0.01em]">{contact.name}</h2>
-      {meta ? <div className="app-contacts-muted mt-1 max-w-full truncate text-[13px] leading-5">{meta}</div> : null}
-      {detailBody ? <p className="app-contacts-muted mt-3 max-w-[360px] text-[13px] leading-5">{detailBody}</p> : null}
-      <div className="mt-6 grid w-full max-w-[240px] gap-1.5">
-        <button
-          type="button"
-          className="app-contacts-primary-action inline-flex h-9 items-center justify-center gap-2 rounded-[9px] px-4 text-[13.5px] font-semibold disabled:pointer-events-none disabled:opacity-50"
+      <DetailTiles>
+        <DetailTile
+          icon={<MessageCircle className="h-5 w-5" aria-hidden="true" />}
+          label="Message"
           onClick={() => onMessageContact?.(contact)}
           disabled={!canMessage}
-        >
-          <MessageSquare className="h-4 w-4" aria-hidden="true" />
-          Message
-        </button>
-        {canRemove ? (
-          <button
-            type="button"
-            className="app-contacts-danger-action inline-flex h-9 items-center justify-center gap-2 rounded-[9px] px-4 text-[13px] font-medium disabled:pointer-events-none disabled:opacity-50"
-            onClick={() => { void submitRemoveContact(); }}
-            disabled={removeState === 'saving'}
-          >
-            <Trash2 className="h-4 w-4" aria-hidden="true" />
-            {removeState === 'saving' ? 'Deleting…' : 'Delete contact'}
-          </button>
-        ) : null}
-      </div>
+        />
+        {canRemove ? <MoreTile onDelete={() => setIsConfirmOpen(true)} /> : null}
+      </DetailTiles>
+      <InfoCard rows={rows} />
       {canRemove ? (
-        <div
-          className={cn('mt-3 max-w-[300px] text-[11.5px] leading-4', removeState === 'error' ? 'app-error-text app-contacts-error' : 'app-contacts-muted')}
-          aria-live="polite"
-        >
-          {removeState === 'error'
-            ? removeError || 'Unable to delete contact.'
-            : 'Deleting removes both contact directions. They will need approval before messages can reach you again.'}
-        </div>
+        <>
+          <div className="app-contacts-card mt-3 rounded-[12px]">
+            <button
+              type="button"
+              className="app-contacts-card-action flex h-11 w-full items-center gap-3 rounded-[12px] px-4 text-left text-[14px]"
+              aria-expanded={isConfirmOpen || removeState === 'error'}
+              onClick={() => setIsConfirmOpen(true)}
+            >
+              <Trash2 className="h-[18px] w-[18px]" aria-hidden="true" />
+              Delete contact
+            </button>
+          </div>
+          {isConfirmOpen || removeState === 'error' ? (
+            <DeleteConfirm
+              removeState={removeState}
+              removeError={removeError}
+              onCancel={() => {
+                setIsConfirmOpen(false);
+                setRemoveState('idle');
+              }}
+              onDelete={() => { void submitRemoveContact(); }}
+            />
+          ) : null}
+        </>
       ) : null}
     </>
   );
+}
+
+function RequestActionStatus({ state, error }: { state: ReturnType<ContactRequestActions['stateFor']>; error: string }) {
+  if (state === 'accepting') {
+    return <div className="app-contacts-muted mt-3 text-center text-[12px] leading-4" aria-live="polite">Accepting and sending greeting…</div>;
+  }
+  if (state === 'rejecting') {
+    return <div className="app-contacts-muted mt-3 text-center text-[12px] leading-4" aria-live="polite">Rejecting request…</div>;
+  }
+  if (error) {
+    return <div className="app-error-text app-contacts-error mt-3 text-center text-[12px] leading-5" aria-live="polite">{error}</div>;
+  }
+  return null;
 }
 
 function ContactRequestDetailBody({ request, requestActions }: { request: ContactRequest; requestActions: ContactRequestActions }) {
   const state = requestActions.stateFor(request);
+  const name = contactRequestDisplayName(request);
+  const outgoing = isOutgoingContactRequest(request);
+  const isAgent = /agent/i.test(request.title);
+  const handle = formatKordiHandle(request.detail);
+  const note = request.detail.trim() && !handle ? request.detail.trim() : '';
+  const timestampMs = Date.parse(request.time);
+  const rows: InfoCardRow[] = [];
+  if (handle) rows.push(kordiIdRow(handle));
+  rows.push({
+    key: 'requested',
+    value: (
+      <time className="app-contacts-detail-time" dateTime={Number.isFinite(timestampMs) ? new Date(timestampMs).toISOString() : undefined}>
+        {formatDesktopContactRequestTimeLabel(request.time)}
+      </time>
+    ),
+    caption: 'Requested',
+  });
+  if (note) rows.push({ key: 'note', value: note, caption: 'Note' });
+
   return (
     <>
-      <IdentityAvatar
-        kind={/agent/i.test(request.title) ? 'agent' : 'human'}
-        seed={request.avatarSeed ?? request.id}
-        name={request.avatarName ?? request.title}
-        imageUrl={request.profileImageUrl}
-        cornerRadius="50%"
-        className="app-contacts-avatar app-contacts-detail-avatar h-24 w-24"
+      <DetailHeader
+        avatar={(
+          <IdentityAvatar
+            kind={isAgent ? 'agent' : 'human'}
+            seed={request.avatarSeed ?? request.targetNodeId ?? request.id}
+            name={name}
+            imageUrl={request.profileImageUrl}
+            cornerRadius="50%"
+            className={DETAIL_AVATAR_CLASS}
+          />
+        )}
+        name={name}
+        line={outgoing ? 'Awaiting approval' : 'Wants to connect'}
       />
-      <h2 className="mt-4 max-w-full text-[22px] font-bold leading-7 tracking-[-0.01em]">{request.title}</h2>
-      <div className="app-badge-neutral mt-2 px-2.5 py-1 text-[10px] font-medium"><ContactRequestTime value={request.time} /></div>
-      {request.detail ? <p className="app-contacts-muted mt-3 max-w-[360px] text-[13px] leading-5">{request.detail}</p> : null}
-      <div className="mt-6 grid w-full max-w-[240px] gap-1.5">
-        <button
-          type="button"
-          className="app-contacts-primary-action inline-flex h-9 items-center justify-center gap-2 rounded-[9px] px-4 text-[13.5px] font-semibold disabled:pointer-events-none disabled:opacity-50"
-          onClick={() => { void requestActions.submit(request, 'accept'); }}
-          disabled={requestActions.busy || !requestActions.canAccept}
-        >
-          {state === 'accepting' ? <><LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />Accepting…</> : 'Accept'}
-        </button>
-        <button
-          type="button"
-          className="app-contacts-danger-action inline-flex h-9 items-center justify-center gap-2 rounded-[9px] px-4 text-[13px] font-medium disabled:pointer-events-none disabled:opacity-50"
-          onClick={() => { void requestActions.submit(request, 'reject'); }}
-          disabled={requestActions.busy || !requestActions.canReject}
-        >
-          {state === 'rejecting' ? <><LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />Rejecting…</> : 'Reject'}
-        </button>
-      </div>
-      {state === 'accepting' ? (
-        <div className="app-contacts-muted mt-3 text-[11.5px] leading-4" aria-live="polite">Accepting and sending greeting…</div>
-      ) : state === 'rejecting' ? (
-        <div className="app-contacts-muted mt-3 text-[11.5px] leading-4" aria-live="polite">Rejecting request…</div>
-      ) : requestActions.error ? (
-        <div className="app-error-text app-contacts-error mt-3 max-w-[300px] text-[12px] leading-5" aria-live="polite">{requestActions.error}</div>
-      ) : null}
+      {outgoing ? null : (
+        <>
+          <DetailTiles>
+            <DetailTile
+              tone="primary"
+              icon={state === 'accepting'
+                ? <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />
+                : <Check className="h-5 w-5" aria-hidden="true" />}
+              label={state === 'accepting' ? 'Accepting…' : 'Accept'}
+              onClick={() => { void requestActions.submit(request, 'accept'); }}
+              disabled={requestActions.busy || !requestActions.canAccept}
+            />
+            <DetailTile
+              tone="danger"
+              icon={state === 'rejecting'
+                ? <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />
+                : <X className="h-5 w-5" aria-hidden="true" />}
+              label={state === 'rejecting' ? 'Rejecting…' : 'Reject'}
+              onClick={() => { void requestActions.submit(request, 'reject'); }}
+              disabled={requestActions.busy || !requestActions.canReject}
+            />
+          </DetailTiles>
+          <RequestActionStatus state={state} error={requestActions.error} />
+        </>
+      )}
+      <InfoCard rows={rows} />
     </>
   );
 }
 
-/** Centered contact or request detail, shared by the split-view pane and the narrow-window dialog. */
+/** Contact or request detail, shared by the split-view pane and the narrow-window dialog. */
 export function ContactDetailContent({
   mode,
   activeContact,
@@ -154,14 +273,14 @@ export function ContactDetailContent({
 }: ContactDetailPaneProps) {
   if (mode === 'request' && !activeContactRequest) return null;
   return (
-    <div className="app-contacts-detail-content flex flex-col items-center px-6 py-8 text-center">
+    <div className="app-contacts-detail-content relative mx-auto w-full max-w-[420px] px-6 pb-10 pt-10">
       <button
         type="button"
         onClick={onCloseOverlay}
         aria-label="Close"
         title="Close"
         disabled={mode === 'request' && requestActions.busy}
-        className="app-contacts-icon-button absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-[8px] disabled:pointer-events-none disabled:opacity-50"
+        className="app-contacts-icon-button app-contacts-detail-close absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-[8px] disabled:pointer-events-none disabled:opacity-50"
       >
         <X className="h-4 w-4" />
       </button>
@@ -188,11 +307,9 @@ export function ContactDetailPane(props: ContactDetailPaneProps) {
   return (
     <section
       aria-label={contactDetailLabel(props.mode, props.activeContact)}
-      className="app-contacts-detail-pane relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-y-auto"
+      className="app-contacts-detail-pane relative min-h-0 min-w-0 flex-1 overflow-y-auto"
     >
-      <div className="w-full max-w-[460px]">
-        <ContactDetailContent {...props} />
-      </div>
+      <ContactDetailContent {...props} />
     </section>
   );
 }
@@ -204,7 +321,7 @@ export function ContactDetailDialog(props: ContactDetailPaneProps) {
         role="dialog"
         aria-modal="true"
         aria-label={contactDetailLabel(props.mode, props.activeContact)}
-        className="app-transient-surface app-modal-panel app-contact-detail-dialog relative w-full max-w-[420px] rounded-[18px] border"
+        className="app-transient-surface app-modal-panel app-contact-detail-dialog relative w-full max-w-[440px] rounded-[18px] border"
       >
         <ContactDetailContent {...props} />
       </div>
