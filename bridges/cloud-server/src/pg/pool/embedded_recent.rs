@@ -290,4 +290,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "provider auth unknown expiry",
         "0131_provider_auth_unknown_expiry.sql"
     ),
+    migration!(
+        132,
+        "agent run documents",
+        "0132_cloud_agent_run_documents.sql"
+    ),
 ];

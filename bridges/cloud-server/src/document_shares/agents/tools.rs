@@ -159,19 +159,22 @@ pub(crate) fn descriptors(read: bool, edit: bool) -> Vec<LeaseConnectorTool> {
 }
 
 /// `create_document`: an `act` tool, because it adds a document to the
-/// group. Clients run it without an approval card: it posts only what the
-/// agent's reply could already say, to the same people.
+/// group. Clients run it without an approval card: the document rides the
+/// agent's reply, to the people who read that reply anyway.
 pub(crate) fn create_descriptor() -> LeaseConnectorTool {
     LeaseConnectorTool {
         connector_id: DOCUMENT_CONNECTOR_ID.to_string(),
         provider: DOCUMENT_PROVIDER.to_string(),
         name: CREATE_DOCUMENT_TOOL.to_string(),
         group: ConnectorToolGroup::Act,
-        description: "Create a Markdown or HTML document in this group conversation. It is \
-             saved in the group's Artifacts, shown to every member as your message, and \
-             members can open, comment on, and edit it. Use it whenever someone asks for a \
-             document, note, report, or plan for the group, instead of writing a local file. \
-             Then reply briefly with what the document covers; never mention file paths."
+        description: "Save a finished Markdown or HTML document for this group conversation. \
+             It is attached to your reply as a document card from you and listed in the \
+             group's Artifacts, where members can open, comment on, and edit it. Use it \
+             whenever someone asks for a document, note, report, or plan for the group, \
+             instead of writing a local file. Write the whole document first, then call this \
+             once per document with a specific title and the complete content; never call it \
+             to start an empty or placeholder document. Afterwards reply briefly with what it \
+             covers, without file paths."
             .to_string(),
         input_schema: super::create::schema(),
     }

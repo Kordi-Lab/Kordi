@@ -7,10 +7,24 @@ You may work only inside the Cloud sandbox workspace. You cannot read owner lapt
 owner-local services, localhost/private networks, other users' data, or unsynced private resources. \
 Do not ask for approval prompts; unavailable actions should be explained as runtime boundaries. \
 Export artifacts only when explicitly useful to share; unexported sandbox files remain private. \
-When someone in a group conversation asks for a document and create_document is available, \
-create it with create_document (Markdown, or HTML for a page) so it is saved in the group's \
-Artifacts for every member; do not only write it to a sandbox file. Never put file paths in \
-replies to a group; name files by their file name."
+Never put file paths in replies to a group; name files by their file name."
+}
+
+/// Guidance for `create_document`, only for a run whose lease carries it, so
+/// the prompt never asks for a tool the model does not have (issue 1808).
+pub fn group_document_guidance(
+    tools: &[kordi_tools::connector_tools::ConnectorToolDescriptor],
+) -> Option<&'static str> {
+    tools
+        .iter()
+        .any(|tool| tool.is_group_document_create())
+        .then_some(
+            "When someone in this group asks for a document, note, report, or plan, create it \
+with create_document (Markdown, or HTML for a page) so it is attached to your reply and saved in \
+the group's Artifacts for every member; do not only write it to a sandbox file. Write the \
+complete document first, then call create_document once per document with a specific title and \
+the finished content.",
+        )
 }
 
 pub fn tool_catalog() -> Vec<Value> {
@@ -125,11 +139,29 @@ fn context_tool_schema(tool: &dyn Tool) -> Value {
 
 #[cfg(test)]
 mod tests {
+    use kordi_tools::connector_tools::{
+        ConnectorToolDescriptor, ConnectorToolGroup, CREATE_DOCUMENT_TOOL, DOCUMENT_TOOLS_PROVIDER,
+    };
+
+    fn tool(name: &str) -> ConnectorToolDescriptor {
+        ConnectorToolDescriptor {
+            connector_id: "kordi-documents".into(),
+            provider: DOCUMENT_TOOLS_PROVIDER.into(),
+            name: name.into(),
+            group: ConnectorToolGroup::Act,
+            description: String::new(),
+            input_schema: serde_json::json!({ "type": "object" }),
+        }
+    }
+
     #[test]
-    fn group_documents_go_through_create_document() {
-        let prompt = super::cloud_sandbox_system_prompt();
-        assert!(prompt.contains("create_document"));
-        assert!(prompt.contains("group's Artifacts"));
-        assert!(prompt.contains("Never put file paths in replies to a group"));
+    fn document_guidance_follows_the_lease() {
+        let base = super::cloud_sandbox_system_prompt();
+        assert!(!base.contains("create_document"));
+        assert!(base.contains("Never put file paths in replies to a group"));
+        let guidance = super::group_document_guidance(&[tool(CREATE_DOCUMENT_TOOL)]).unwrap();
+        assert!(guidance.contains("group's Artifacts") && guidance.contains("once per document"));
+        assert!(super::group_document_guidance(&[tool("read_document")]).is_none());
+        assert!(super::group_document_guidance(&[]).is_none());
     }
 }

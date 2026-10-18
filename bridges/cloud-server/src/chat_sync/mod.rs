@@ -13,5 +13,6 @@ pub mod visibility;
 
 pub const PROTOCOL_VERSION: i32 = 2;
 
+pub(crate) mod agent_replies;
 pub(crate) mod local_paths;
 pub(crate) mod voice;

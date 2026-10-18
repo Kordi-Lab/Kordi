@@ -124,6 +124,7 @@ pub async fn ensure_response_message(
             to_account_id: requester_account_id,
             body: &body,
             session_id,
+            documents: &[],
         },
     )
     .await?

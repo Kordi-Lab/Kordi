@@ -2,31 +2,33 @@
 //! group's Markdown or HTML attachment (issue 1808).
 //!
 //! The document is uploaded under the agent's owner, like every agent
-//! artifact, and posted in the group as the agent's own message, so it shows
-//! in the group's Artifacts for every member and opens, shares, and edits
-//! with the ordinary document rules. Posting it right away, rather than
-//! waiting for the run's reply, gives every runtime one path: the cloud
-//! runner, the owner's Mac, and a background task on the Mac whose run has
-//! already answered.
+//! artifact, so the owner's sharing and editing rules apply, and it is
+//! recorded against the run (`cloud_agent_run_documents`). It is not a
+//! message of its own: [`reply`] attaches it to the agent's reply when the
+//! reply is published, on every path that publishes one (the Mac's
+//! progress route, cloud completion, and a background task's follow-up).
+//! It then shows inside the reply as a document card, from the agent, and
+//! in the group's Artifacts. Only a document that no reply took is posted as
+//! the agent's own message by [`fallback`].
 //!
-//! Retrying the same call is harmless: the attachment and message ids are
-//! derived from the run, the file name, and the content.
+//! Retrying the same call is harmless: the attachment id is derived from the
+//! run, the file name, and the content.
 
 use serde::Deserialize;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
-use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
-use uuid::Uuid;
 
-use super::gating::RunFacts;
 use super::tools::ToolError;
 use super::MAX_TOOL_TEXT_BYTES;
 use crate::connectors::delivery::{tools_from_json, LeaseConnectorTool, LeaseHolder};
-use crate::server::ServerState;
 
+pub(crate) mod fallback;
 mod group_message;
+mod record;
+pub(crate) mod reply;
+
+pub(crate) use record::execute;
 
 /// Longest title, in characters, like a document rename.
 pub(crate) const MAX_TITLE_CHARS: usize = 200;
@@ -36,7 +38,7 @@ pub(crate) const MAX_DOCUMENTS_PER_RUN: i64 = 10;
 /// deliver a document from the owner's Mac.
 pub(crate) const FINISHED_RUN_WINDOW_HOURS: i32 = 12;
 /// Longest file name stem derived from a title.
-const MAX_FILE_STEM_CHARS: usize = 120;
+const MAX_FILE_STEM_CHARS: usize = 80;
 
 pub(crate) fn schema() -> Value {
     json!({
@@ -44,11 +46,16 @@ pub(crate) fn schema() -> Value {
         "properties": {
             "title": {
                 "type": "string",
-                "description": "The document title, also used for its file name."
+                "minLength": 1,
+                "maxLength": MAX_TITLE_CHARS,
+                "description": "A specific title for this document, such as \"Q3 launch plan\". \
+                    It names the file. Never empty, never a placeholder such as \"Untitled\"."
             },
             "content": {
                 "type": "string",
-                "description": "The full document: Markdown, or a complete HTML page when format is html."
+                "minLength": 1,
+                "description": "The complete, finished document: Markdown, or a full HTML page \
+                    when format is html. Never a stub or an empty draft."
             },
             "format": {
                 "type": "string",
@@ -56,15 +63,18 @@ pub(crate) fn schema() -> Value {
                 "description": "markdown (the default) or html."
             }
         },
-        "required": ["title", "content"]
+        "required": ["title", "content"],
+        "additionalProperties": false
     })
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateArguments {
-    title: String,
-    content: String,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    content: Option<String>,
     #[serde(default)]
     format: Option<String>,
 }
@@ -92,65 +102,88 @@ fn collapse_whitespace(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// A file name for `title`: no path separators or characters file systems
-/// refuse, at most [`MAX_FILE_STEM_CHARS`] before the extension.
+/// Titles that name no document: what an editor calls a new, empty file.
+fn placeholder_title(title: &str) -> bool {
+    let lowered = title.to_lowercase();
+    let stem = lowered
+        .trim_end_matches(".markdown")
+        .trim_end_matches(".md")
+        .trim_end_matches(".html")
+        .trim_end_matches(".htm")
+        .trim();
+    let words: Vec<&str> = stem.split_whitespace().collect();
+    matches!(
+        words.as_slice(),
+        ["untitled" | "document" | "doc" | "new" | "title" | "file"]
+            | ["untitled" | "new", "document" | "doc" | "file"]
+    ) || (words.len() == 2
+        && words[0] == "untitled"
+        && words[1].chars().all(|ch| ch.is_ascii_digit()))
+}
+
+/// A file name for `title`: lowercase letters and digits joined by hyphens,
+/// at most [`MAX_FILE_STEM_CHARS`] before the extension.
 pub(crate) fn file_name_for(title: &str, extension: &str) -> String {
-    let lowered = title.to_ascii_lowercase();
+    let lowered = title.to_lowercase();
     let stem = [".markdown", ".md", ".html", ".htm"]
         .iter()
-        .find_map(|known| {
-            lowered
-                .ends_with(known)
-                .then(|| &title[..title.len() - known.len()])
-        })
-        .unwrap_or(title);
-    let cleaned: String = stem
-        .chars()
-        .map(|ch| {
-            if ch.is_control() || matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
-            {
-                ' '
-            } else {
-                ch
-            }
-        })
-        .collect();
-    let stem: String = collapse_whitespace(&cleaned)
-        .trim_matches(['.', ' '])
-        .chars()
-        .take(MAX_FILE_STEM_CHARS)
-        .collect();
-    let stem = stem.trim_end_matches(['.', ' ']);
+        .find_map(|known| lowered.strip_suffix(known))
+        .unwrap_or(&lowered);
+    let mut slug = String::new();
+    for ch in stem.chars() {
+        if ch.is_alphanumeric() {
+            slug.push(ch);
+        } else if !slug.is_empty() && !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+    let slug: String = slug.chars().take(MAX_FILE_STEM_CHARS).collect();
+    let slug = slug.trim_matches('-');
     format!(
         "{}.{extension}",
-        if stem.is_empty() { "Document" } else { stem }
+        if slug.is_empty() { "document" } else { slug }
     )
+}
+
+fn invalid(message: &str) -> ToolError {
+    ToolError::Invalid(format!(
+        "{message} Write the whole document first, then call create_document once with a \
+         specific title and the finished content."
+    ))
 }
 
 /// Checks the arguments of one call.
 pub(crate) fn parse(args: &Value) -> Result<NewDocument, ToolError> {
-    let input: CreateArguments = serde_json::from_value(args.clone()).map_err(|_| {
-        ToolError::Invalid("create_document needs a title and the document content.".into())
-    })?;
-    let title = collapse_whitespace(&input.title);
-    if title.is_empty() || title.chars().count() > MAX_TITLE_CHARS {
-        return Err(ToolError::Invalid(format!(
-            "The title must be 1 to {MAX_TITLE_CHARS} characters."
+    let input: CreateArguments = serde_json::from_value(args.clone())
+        .map_err(|_| invalid("create_document needs a title and the document content."))?;
+    let title = collapse_whitespace(input.title.as_deref().unwrap_or_default());
+    if title.is_empty() {
+        return Err(invalid("The title is missing."));
+    }
+    if title.chars().count() > MAX_TITLE_CHARS {
+        return Err(invalid(&format!(
+            "The title is longer than {MAX_TITLE_CHARS} characters."
+        )));
+    }
+    if placeholder_title(&title) {
+        return Err(invalid(&format!(
+            "\"{title}\" is a placeholder, not a title. Name the document after what it covers."
         )));
     }
     let (content_type, extension) = match input.format.as_deref().map(str::trim) {
         None | Some("") | Some("markdown") | Some("md") => ("text/markdown", "md"),
         Some("html") => ("text/html", "html"),
         Some(_) => {
-            return Err(ToolError::Invalid(
-                "format must be markdown or html. Attach other formats as ordinary files.".into(),
+            return Err(invalid(
+                "format must be markdown or html. Attach other formats as ordinary files.",
             ))
         }
     };
-    if input.content.trim().is_empty() {
-        return Err(ToolError::Invalid("The document content is empty.".into()));
+    let content = input.content.unwrap_or_default();
+    if content.trim().is_empty() {
+        return Err(invalid("The document content is empty."));
     }
-    if input.content.len() > MAX_TOOL_TEXT_BYTES {
+    if content.len() > MAX_TOOL_TEXT_BYTES {
         return Err(ToolError::Invalid(format!(
             "The document is larger than {MAX_TOOL_TEXT_BYTES} bytes. Split it into parts."
         )));
@@ -159,7 +192,7 @@ pub(crate) fn parse(args: &Value) -> Result<NewDocument, ToolError> {
         file_name: file_name_for(&title, extension),
         title,
         content_type,
-        content: input.content,
+        content,
     })
 }
 
@@ -207,184 +240,6 @@ pub(crate) async fn finished_desktop_lease_tools(
     .fetch_optional(pool)
     .await?;
     Ok(row.map(|(tools,)| tools_from_json(tools)))
-}
-
-/// Ids derived from what the call creates, so a retry finds its first result.
-fn derived_ids(run_id: &str, document: &NewDocument) -> (String, Uuid) {
-    let digest = Sha256::digest(format!(
-        "kordi-agent-document\0{run_id}\0{}\0{}",
-        document.file_name, document.content
-    ));
-    let hex = format!("{digest:x}");
-    let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&digest[16..]);
-    bytes[6] = (bytes[6] & 0x0f) | 0x50;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    (
-        format!("att_agentdoc_{}", &hex[..32]),
-        Uuid::from_bytes(bytes),
-    )
-}
-
-/// `cloud_session_artifacts.artifact_id` prefix of the documents of a run.
-fn artifact_prefix(run_id: &str) -> String {
-    format!("agentdoc:{run_id}:")
-}
-
-async fn active_member(
-    pool: &PgPool,
-    conversation_id: Uuid,
-    account_id: &str,
-) -> Result<bool, sqlx_core::Error> {
-    let (member,): (bool,) = query_as(
-        "SELECT EXISTS(SELECT 1 FROM cloud_chat_conversation_members \
-         WHERE conversation_id = $1 AND account_id = $2 AND membership_state = 'active')",
-    )
-    .bind(conversation_id)
-    .bind(account_id)
-    .fetch_one(pool)
-    .await?;
-    Ok(member)
-}
-
-/// Stores the document and posts it in the run's group.
-pub(crate) async fn execute(
-    state: &ServerState,
-    run_id: &str,
-    facts: &RunFacts,
-    args: &Value,
-) -> Result<Value, ToolError> {
-    let document = parse(args)?;
-    let pool = state.db_pool();
-    let conversation: Option<(Uuid,)> = query_as(
-        "SELECT conversation_id FROM cloud_chat_conversations \
-         WHERE legacy_session_id = $1 AND kind = 'group'",
-    )
-    .bind(&facts.session_id)
-    .fetch_optional(pool)
-    .await?;
-    let Some((conversation_id,)) = conversation else {
-        return Err(ToolError::Forbidden(
-            "create_document works only in a group conversation.",
-        ));
-    };
-    for account in [&facts.owner_account_id, &facts.requester_account_id] {
-        if !active_member(pool, conversation_id, account).await? {
-            return Err(ToolError::Forbidden(
-                "Only members of this group can receive its documents.",
-            ));
-        }
-    }
-    let (attachment_id, client_message_id) = derived_ids(run_id, &document);
-    let artifact_id = format!("{}{attachment_id}", artifact_prefix(run_id));
-    let (created,): (i64,) = query_as(
-        "SELECT COUNT(*) FROM cloud_session_artifacts \
-         WHERE session_id = $1 AND starts_with(artifact_id, $2) AND artifact_id <> $3",
-    )
-    .bind(&facts.session_id)
-    .bind(artifact_prefix(run_id))
-    .bind(&artifact_id)
-    .fetch_one(pool)
-    .await?;
-    if created >= MAX_DOCUMENTS_PER_RUN {
-        return Err(ToolError::Invalid(format!(
-            "One request can create at most {MAX_DOCUMENTS_PER_RUN} documents."
-        )));
-    }
-    store_attachment(state, &attachment_id, &facts.owner_account_id, &document).await?;
-    let message_id = group_message::post(
-        pool,
-        group_message::DocumentMessage {
-            conversation_id,
-            client_message_id,
-            session_id: &facts.session_id,
-            owner_account_id: &facts.owner_account_id,
-            agent_id: &facts.agent_id,
-            attachment_id: &attachment_id,
-            document: &document,
-        },
-    )
-    .await?;
-    group_message::record_artifact(
-        pool,
-        &facts.session_id,
-        &artifact_id,
-        &facts.owner_account_id,
-        &message_id,
-        &attachment_id,
-        &document,
-    )
-    .await?;
-    Ok(json!({
-        "created": true,
-        "attachmentId": attachment_id,
-        "title": document.title,
-        "fileName": document.file_name,
-        "format": document.format(),
-        "messageId": message_id,
-        "note": "The document is in this group's Artifacts and was posted as your message. \
-                 Reply briefly without file paths.",
-    }))
-}
-
-/// Uploads the bytes and records the finalized attachment once.
-async fn store_attachment(
-    state: &ServerState,
-    attachment_id: &str,
-    owner_account_id: &str,
-    document: &NewDocument,
-) -> Result<(), ToolError> {
-    let pool = state.db_pool();
-    let exists: Option<(String,)> = query_as(
-        "SELECT owner_account_id FROM cloud_attachments \
-         WHERE attachment_id = $1 AND finalized_at IS NOT NULL",
-    )
-    .bind(attachment_id)
-    .fetch_optional(pool)
-    .await?;
-    if let Some((owner,)) = exists {
-        return if owner == owner_account_id {
-            Ok(())
-        } else {
-            Err(ToolError::Server)
-        };
-    }
-    let Some(s3) = state.s3() else {
-        eprintln!("[documents] create_document: object storage is not configured");
-        return Err(ToolError::Server);
-    };
-    let bytes = document.content.as_bytes().to_vec();
-    let size_bytes = i64::try_from(bytes.len()).map_err(|_| ToolError::Server)?;
-    let sha256_hex = format!("{:x}", Sha256::digest(&bytes));
-    let object_key = format!("attachments/{owner_account_id}/{attachment_id}");
-    crate::cloud_agent_runtime::artifacts::upload_object(
-        s3,
-        &object_key,
-        document.content_type,
-        bytes,
-    )
-    .await
-    .map_err(|error| {
-        eprintln!("[documents] create_document upload: {}", error.message);
-        ToolError::Server
-    })?;
-    let now = chrono::Utc::now().to_rfc3339();
-    query(
-        "INSERT INTO cloud_attachments (attachment_id, owner_account_id, object_key, size_bytes, \
-         content_type, sha256_hex, created_at, finalized_at, document_title) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8) ON CONFLICT (attachment_id) DO NOTHING",
-    )
-    .bind(attachment_id)
-    .bind(owner_account_id)
-    .bind(&object_key)
-    .bind(size_bytes)
-    .bind(document.content_type)
-    .bind(&sha256_hex)
-    .bind(&now)
-    .bind((document.format() == "markdown").then_some(document.title.as_str()))
-    .execute(pool)
-    .await?;
-    Ok(())
 }
 
 #[cfg(test)]
