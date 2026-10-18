@@ -376,6 +376,7 @@ pub fn run() {
             chat::desktop_chat_send_message,
             chat::desktop_chat_start_message,
             chat::background_tasks::desktop_chat_start_shared_message,
+            chat::digest_run::desktop_digest_run,
             chat::background_tasks::snapshots::desktop_chat_subsession_ids,
             chat::background_tasks::snapshots::desktop_chat_subsession_snapshot,
             chat::desktop_chat_run_skill_command,

@@ -48,5 +48,7 @@ export const digestClient = {
   removeEvent: (accountId: string, event: CalendarEvent, signal?: AbortSignal) => request<void>(accountId, `calendar/events/${encodeURIComponent(event.id)}?revision=${event.revision}`, 'DELETE', undefined, signal),
   removeSeries: (accountId: string, id: string, events: CalendarEvent[], signal?: AbortSignal) => request<void>(accountId, `calendar/series/${encodeURIComponent(id)}`, 'DELETE', {events:events.map(event=>({id:event.id,revision:event.revision}))}, signal),
   feedback: (accountId: string, id: string, dismissed: boolean, signal?: AbortSignal) => request<void>(accountId, `digest/items/${encodeURIComponent(id)}/feedback`, 'PUT', { dismissed }, signal),
+  /** A digest run this Mac holds: its tool calls, reply, or hand-back to the cloud. */
+  desktopRun: (accountId: string, path: string, body: unknown) => request<unknown>(accountId, path, 'POST', body),
   task: (accountId: string, id: string, input: { title: string; ownerAccountId: string | null; dueAt: string | null }) => request<{ taskId: string }>(accountId, `digest/items/${encodeURIComponent(id)}/task`, 'POST', input),
 };

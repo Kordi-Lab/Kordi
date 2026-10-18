@@ -19,6 +19,7 @@ pub(crate) mod artifacts;
 pub(crate) mod attachments;
 pub(crate) mod background_tasks;
 pub(crate) mod canonical_sync;
+pub(crate) mod digest_run;
 mod hosted_provider_auth;
 pub(crate) mod interrupted_requests;
 pub(crate) mod memory;

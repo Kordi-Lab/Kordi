@@ -8,6 +8,7 @@ import type { CloudAgentDefinition } from './cloudAgents';
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import { defaultCloudAgentId } from './cloudAgentIdentity';
 import { loadSession } from './session';
+import { macCanRunDigest } from '@/features/digest/digestMacRuns';
 
 export type CloudSelfAgentExecutionInput = {
   account: CloudAccount | null;
@@ -30,8 +31,8 @@ export type CloudSelfAgentExecutionInput = {
 };
 
 export function useDesktopAgentReadiness({
-  account, client, runtimeReady = true, cloudAgentDefinitionsById, reportWarning,
-}: Pick<CloudSelfAgentExecutionInput, 'account' | 'client' | 'runtimeReady' | 'cloudAgentDefinitionsById' | 'reportWarning'>) {
+  account, client, runtimeReady = true, cloudAgentDefinitionsById, defaultRoute, reportWarning,
+}: Pick<CloudSelfAgentExecutionInput, 'account' | 'client' | 'runtimeReady' | 'cloudAgentDefinitionsById' | 'defaultRoute' | 'reportWarning'>) {
   const accountId = account?.accountId;
   useProjectSync(isNativeDesktopShell() && runtimeReady, accountId);
   const agentIdsKey = JSON.stringify(runtimeReady && accountId
@@ -39,7 +40,9 @@ export function useDesktopAgentReadiness({
       .filter(agent => agent.ownerAccountId === accountId && agent.status !== 'archived')
       .map(agent => agent.agentId)])].sort()
     : []);
-  const readinessKey = JSON.stringify([accountId, agentIdsKey]);
+  // Digest runs wait for this Mac only while it can run them with its own provider.
+  const digest = Boolean(runtimeReady && accountId && macCanRunDigest(defaultRoute));
+  const readinessKey = JSON.stringify([accountId, agentIdsKey, digest]);
   const registration = useMemo(() => ({ readinessKey, client }), [readinessKey, client]);
   const publicationTail = useRef(Promise.resolve());
   const [acknowledged, setAcknowledged] = useState<typeof registration | null>(null);
@@ -58,7 +61,7 @@ export function useDesktopAgentReadiness({
           if (cancelled) return;
           const session = await loadSession();
           if (!session?.token || session.accountId !== accountId || cancelled) return;
-          await client.desktopAgentExecution(session.token, 'ready', { agentIds: JSON.parse(agentIdsKey) as string[] });
+          await client.desktopAgentExecution(session.token, 'ready', { agentIds: JSON.parse(agentIdsKey) as string[], digest });
           if (!cancelled) setAcknowledged(registration);
         } catch (error) {
           if (!cancelled) {
@@ -73,7 +76,7 @@ export function useDesktopAgentReadiness({
     void publish();
     const timer = setInterval(() => { void publish(); }, 10_000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [accountId, agentIdsKey, client, registration, reportWarning]);
+  }, [accountId, agentIdsKey, client, digest, registration, reportWarning]);
 
   // Presence alone does not grant a desktop execution lease. Admission must
   // wait until the server has accepted this account's current capabilities.
