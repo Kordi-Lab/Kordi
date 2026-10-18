@@ -384,14 +384,16 @@ export class ChatSyncConversationClient {
     return result;
   }
 
-  async markSessionMessagesRead(token: string, sessionId: string): Promise<void> {
+  // `observedSequence` covers messages published outside this client, such as
+  // an agent reply this Mac posted through its execution lease.
+  async markSessionMessagesRead(token: string, sessionId: string, observedSequence = 0): Promise<void> {
     let conversation = this.state.conversationBySessionId.get(sessionId.trim());
     if (!conversation) {
       await this.state.bootstrap(token);
       conversation = this.state.conversationBySessionId.get(sessionId.trim());
     }
     if (!conversation) throw new Error('Reliable chat conversation is unavailable.');
-    await this.advanceChatCursor(token, conversation, 'read');
+    await this.advanceChatCursor(token, conversation, 'read', Math.max(conversation.latest_message_sequence, observedSequence));
   }
 
   private async advanceChatCursor(
