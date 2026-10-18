@@ -124,23 +124,27 @@ pub(crate) fn check_frame(
     sequence: u64,
     last_sequence: &mut Option<u64>,
 ) -> Result<(), RuntimeError> {
-    if !ready
-        || schema_version != SCHEMA_VERSION
-        || run_id != request.run_id
-        || attempt_id != request.attempt_id
-        || last_sequence.map_or(sequence != 1, |last| last.checked_add(1) != Some(sequence))
-    {
-        return Err(RuntimeError::Protocol);
-    }
-    *last_sequence = Some(sequence);
-    Ok(())
+    let violation = if !ready {
+        ProtocolViolation::Handshake
+    } else if schema_version != SCHEMA_VERSION {
+        ProtocolViolation::SchemaVersion
+    } else if run_id != request.run_id || attempt_id != request.attempt_id {
+        ProtocolViolation::RunMismatch
+    } else if last_sequence.map_or(sequence != 1, |last| last.checked_add(1) != Some(sequence)) {
+        ProtocolViolation::Sequence
+    } else {
+        *last_sequence = Some(sequence);
+        return Ok(());
+    };
+    Err(RuntimeError::Protocol(violation))
 }
 
 pub(crate) async fn write_json_line<T: serde::Serialize>(
     stdin: &mut ChildStdin,
     value: &T,
 ) -> Result<(), RuntimeError> {
-    let mut line = serde_json::to_vec(value).map_err(|_| RuntimeError::Protocol)?;
+    let mut line = serde_json::to_vec(value)
+        .map_err(|_| RuntimeError::Protocol(ProtocolViolation::Encoding))?;
     if line.len() > MAX_REQUEST_BYTES {
         return Err(RuntimeError::OutputLimit);
     }
@@ -151,10 +155,12 @@ pub(crate) async fn write_json_line<T: serde::Serialize>(
         .map_err(|_| RuntimeError::UnexpectedExit)
 }
 
+/// Reads one worker frame. `max_line` bounds each frame, including the final
+/// result; the stream as a whole is bounded by the run timeout, so a long run
+/// never exhausts a budget by repeating progress and transcript events.
 pub(crate) async fn read_line_bounded<R: AsyncRead + Unpin>(
     reader: &mut BufReader<R>,
-    total: &mut usize,
-    max_total: usize,
+    max_line: usize,
 ) -> Result<Option<Vec<u8>>, RuntimeError> {
     let mut line = Vec::new();
     loop {
@@ -166,22 +172,19 @@ pub(crate) async fn read_line_bounded<R: AsyncRead + Unpin>(
             return if line.is_empty() {
                 Ok(None)
             } else {
-                Err(RuntimeError::Protocol)
+                Err(RuntimeError::Protocol(ProtocolViolation::TruncatedFrame))
             };
         }
         let size = available
             .iter()
             .position(|byte| *byte == b'\n')
             .map_or(available.len(), |index| index + 1);
-        if line.len().saturating_add(size) > MAX_LINE_BYTES
-            || total.saturating_add(size) > max_total
-        {
+        if line.len().saturating_add(size) > max_line {
             return Err(RuntimeError::OutputLimit);
         }
         line.extend_from_slice(&available[..size]);
         let complete = line.last() == Some(&b'\n');
         reader.consume(size);
-        *total += size;
         if complete {
             line.pop();
             return Ok(Some(line));

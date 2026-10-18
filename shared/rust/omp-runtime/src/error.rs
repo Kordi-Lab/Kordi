@@ -6,7 +6,7 @@ use std::fmt;
 pub enum RuntimeError {
     InvalidRequest,
     Spawn,
-    Protocol,
+    Protocol(ProtocolViolation),
     OutputLimit,
     Timeout,
     Cancelled,
@@ -22,7 +22,7 @@ impl fmt::Display for RuntimeError {
                 "The agent request is invalid. Try again or choose another model."
             }
             Self::Spawn => "The agent could not start. Restart Kordi and try again.",
-            Self::Protocol => "The agent returned an invalid response. Try again.",
+            Self::Protocol(_) => "The agent returned an invalid response. Try again.",
             Self::OutputLimit => "The agent response exceeded its size limit.",
             Self::Timeout => "The agent timed out. Try again.",
             Self::Cancelled => "The agent request was cancelled.",
@@ -35,6 +35,67 @@ impl fmt::Display for RuntimeError {
 }
 
 impl std::error::Error for RuntimeError {}
+
+impl RuntimeError {
+    /// A fixed, non-sensitive classification for logs. It never contains
+    /// message content, tool data, or provider response text.
+    pub fn diagnostic_code(&self) -> &str {
+        match self {
+            Self::InvalidRequest => "invalid_request",
+            Self::Spawn => "spawn",
+            Self::Protocol(violation) => violation.code(),
+            Self::OutputLimit => "output_limit",
+            Self::Timeout => "timeout",
+            Self::Cancelled => "cancelled",
+            Self::UnexpectedExit => "unexpected_exit",
+            Self::Callback => "callback",
+            // Worker codes are already restricted to `[A-Za-z0-9_]{1,64}`.
+            Self::Worker(code) => code,
+        }
+    }
+}
+
+/// Which supervisor check rejected a worker frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProtocolViolation {
+    /// A worker line is not a well-formed protocol frame.
+    MalformedFrame,
+    /// The worker closed stdout in the middle of a line.
+    TruncatedFrame,
+    /// A frame arrived before `ready`, or `ready` arrived twice.
+    Handshake,
+    SchemaVersion,
+    /// A frame names a different run or attempt.
+    RunMismatch,
+    /// Frame sequence numbers are not contiguous from 1.
+    Sequence,
+    /// A tool or hook call ID is empty or reused.
+    CallId,
+    UnknownTool,
+    UnknownHook,
+    /// The result arrived while host tools or hooks were still pending.
+    PendingCallbacks,
+    /// A host message could not be encoded.
+    Encoding,
+}
+
+impl ProtocolViolation {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::MalformedFrame => "protocol_malformed_frame",
+            Self::TruncatedFrame => "protocol_truncated_frame",
+            Self::Handshake => "protocol_handshake",
+            Self::SchemaVersion => "protocol_schema_version",
+            Self::RunMismatch => "protocol_run_mismatch",
+            Self::Sequence => "protocol_sequence",
+            Self::CallId => "protocol_call_id",
+            Self::UnknownTool => "protocol_unknown_tool",
+            Self::UnknownHook => "protocol_unknown_hook",
+            Self::PendingCallbacks => "protocol_pending_callbacks",
+            Self::Encoding => "protocol_encoding",
+        }
+    }
+}
 
 fn worker_message(code: &str) -> &'static str {
     if code
