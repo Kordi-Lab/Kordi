@@ -542,11 +542,18 @@ struct PlanCardPeopleSheet: View {
 struct FlowLayout: Layout {
     var spacing: CGFloat = 6
 
+    /// A chip wider than the row is narrowed to the row so its text truncates.
+    private func size(of subview: LayoutSubview, maxWidth: CGFloat) -> CGSize {
+        let ideal = subview.sizeThatFits(.unspecified)
+        guard ideal.width > maxWidth else { return ideal }
+        return subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: ideal.height))
+    }
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
         var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let size = size(of: subview, maxWidth: width)
             if x > 0, x + size.width > width {
                 x = 0
                 y += rowHeight + spacing
@@ -561,7 +568,7 @@ struct FlowLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let size = size(of: subview, maxWidth: bounds.width)
             if x > bounds.minX, x + size.width > bounds.maxX {
                 x = bounds.minX
                 y += rowHeight + spacing

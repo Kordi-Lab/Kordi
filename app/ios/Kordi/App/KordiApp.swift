@@ -393,6 +393,8 @@ private struct RootView: View {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview-native-design") {
             NativeDesignPreview()
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-common-ground") {
+            CommonGroundView()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-contacts") {
             NavigationStack {
                 ContactsView()
