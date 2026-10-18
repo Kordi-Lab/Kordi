@@ -46,6 +46,12 @@ pub struct DeviceAuthorizationResponse {
     /// (for example "google", "github" or "password").
     #[serde(rename = "signInMethod")]
     pub sign_in_method: Option<String>,
+    /// True when another installation of the caller's machine holds this row.
+    #[serde(rename = "sameMachine")]
+    pub same_machine: bool,
+    /// For a pending installation, when the server confirms it automatically.
+    #[serde(rename = "reviewEndsAt")]
+    pub review_ends_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

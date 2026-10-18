@@ -1,22 +1,10 @@
 import type { CloudDeviceAuthorization } from './cloudDeviceClient';
 
-export type CloudDeviceGroup = {
-  key: string;
-  title: string;
-  platform: string | null;
-  osVersion: string | null;
-  location: string | null;
-  online: boolean;
-  lastActiveAt: string | null;
-  sessionCount: number;
-  devices: CloudDeviceAuthorization[];
-  pending: boolean;
-};
-
-export type CloudDeviceGrouping = {
+export type CloudDeviceSplit = {
   current: CloudDeviceAuthorization | null;
-  groups: CloudDeviceGroup[];
-  legacy: CloudDeviceAuthorization[];
+  /** Other installations on the same machine as the current device. */
+  sameMachine: CloudDeviceAuthorization[];
+  others: CloudDeviceAuthorization[];
 };
 
 const PLACEHOLDER_OAUTH_NAME = /^oauth-.+-device$/i;
@@ -25,6 +13,13 @@ const PLACEHOLDER_PASSWORD_NAME = 'cloud-email-password-device';
 const lastActiveDateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
   timeStyle: 'short',
+});
+
+const reviewEndsFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
 });
 
 /** Names that older servers and clients stored instead of a real device name. */
@@ -63,66 +58,43 @@ export function isLegacyDevice(device: CloudDeviceAuthorization): boolean {
   return device.legacy === true || isPlaceholderDeviceName(device.displayName);
 }
 
-/** Groups rows that belong to the same physical device. Legacy rows get a unique key. */
-export function deviceGroupKey(device: CloudDeviceAuthorization): string {
-  if (isLegacyDevice(device)) return `legacy::${device.deviceId}`;
-  return `${device.platform ?? 'unknown'}::${deviceTitle(device).trim().toLowerCase()}`;
+/** Row title: legacy rows have no real device name, so they are named by sign-in method. */
+export function deviceRowTitle(device: CloudDeviceAuthorization): string {
+  return isLegacyDevice(device) ? `${signInMethodLabel(device.signInMethod)} sign-in` : deviceTitle(device);
 }
 
-function activityTime(value: string | null | undefined): number {
-  if (!value) return 0;
-  const time = new Date(value).getTime();
+function activityTime(device: CloudDeviceAuthorization): number {
+  if (device.online === true) return Number.MAX_SAFE_INTEGER;
+  const time = device.lastActiveAt ? new Date(device.lastActiveAt).getTime() : 0;
   return Number.isNaN(time) ? 0 : time;
 }
 
-function byMostRecent(left: CloudDeviceAuthorization, right: CloudDeviceAuthorization): number {
-  return activityTime(right.lastActiveAt) - activityTime(left.lastActiveAt);
+/** Pending review first, then most recent activity (online counts as now). */
+function byReviewThenActivity(left: CloudDeviceAuthorization, right: CloudDeviceAuthorization): number {
+  const pending = Number(isPendingReview(right)) - Number(isPendingReview(left));
+  return pending || activityTime(right) - activityTime(left);
 }
 
-function rowSessionCount(device: CloudDeviceAuthorization): number {
-  const count = device.sessionCount;
-  return typeof count === 'number' && Number.isFinite(count) && count > 0 ? Math.floor(count) : 1;
-}
-
-function buildGroup(key: string, rows: CloudDeviceAuthorization[]): CloudDeviceGroup {
-  const devices = [...rows].sort(byMostRecent);
-  const latest = devices[0];
+export function splitCloudDevices(devices: CloudDeviceAuthorization[]): CloudDeviceSplit {
+  const current = devices.find((device) => device.currentDevice) ?? null;
+  const sameMachine: CloudDeviceAuthorization[] = [];
+  const others: CloudDeviceAuthorization[] = [];
+  for (const device of devices) {
+    if (device.currentDevice) continue;
+    (device.sameMachine === true ? sameMachine : others).push(device);
+  }
   return {
-    key,
-    title: deviceTitle(latest),
-    platform: latest.platform,
-    osVersion: latest.osVersion,
-    location: latest.approximateLocation,
-    online: devices.some((device) => device.online === true),
-    lastActiveAt: latest.lastActiveAt || null,
-    sessionCount: devices.reduce((total, device) => total + rowSessionCount(device), 0),
-    devices,
-    pending: devices.some(isPendingReview),
+    current,
+    sameMachine: sameMachine.sort(byReviewThenActivity),
+    others: others.sort(byReviewThenActivity),
   };
 }
 
-export function groupCloudDevices(devices: CloudDeviceAuthorization[]): CloudDeviceGrouping {
-  const current = devices.find((device) => device.currentDevice) ?? null;
-  const legacy: CloudDeviceAuthorization[] = [];
-  const rowsByKey = new Map<string, CloudDeviceAuthorization[]>();
-  for (const device of devices) {
-    if (device.currentDevice) continue;
-    if (isLegacyDevice(device)) {
-      legacy.push(device);
-      continue;
-    }
-    const key = deviceGroupKey(device);
-    const rows = rowsByKey.get(key);
-    if (rows) rows.push(device);
-    else rowsByKey.set(key, [device]);
-  }
-  const groups = [...rowsByKey.entries()]
-    .map(([key, rows]) => buildGroup(key, rows))
-    .sort((left, right) => {
-      if (left.online !== right.online) return left.online ? -1 : 1;
-      return activityTime(right.lastActiveAt) - activityTime(left.lastActiveAt);
-    });
-  return { current, groups, legacy: legacy.sort(byMostRecent) };
+/** Short date and time a pending review ends, or null when unknown. */
+export function reviewEndsLabel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : reviewEndsFormatter.format(date);
 }
 
 export function lastActiveDescription(value: string | null | undefined, now: number = Date.now()): string | null {
@@ -179,8 +151,4 @@ export function platformVersionLabel(platform: string | null, osVersion: string 
 export function appVersionLabel(appVersion: string | null | undefined): string {
   const version = appVersion?.trim();
   return version ? `Kordi ${version}` : 'Kordi';
-}
-
-export function sessionCountLabel(count: number): string {
-  return count === 1 ? '1 session' : `${count} sessions`;
 }

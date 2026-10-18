@@ -30,32 +30,65 @@ function row(overrides: Partial<CloudDeviceAuthorization> & { deviceId: string }
     sessionCount: 1,
     legacy: false,
     signInMethod: null,
+    sameMachine: false,
+    reviewEndsAt: null,
     ...overrides,
   };
 }
 
+// `?state=confirmed` shows this device already approved; the default shows it waiting for review.
+const currentConfirmed = params.get('state') === 'confirmed';
+const reviewEndsAt = new Date(now + 20 * 60 * 60_000).toISOString();
+
 let devices: CloudDeviceAuthorization[] = [
-  row({ deviceId: 'dev_current', displayName: 'Shu’s MacBook Air', currentDevice: true, online: true, lastActiveAt: ago(0) }),
-  row({ deviceId: 'dev_studio_1', displayName: 'Mac Studio', appVersion: '0.0.2', online: true, lastActiveAt: ago(2) }),
   row({
-    deviceId: 'dev_studio_2',
-    displayName: 'Mac Studio',
-    appVersion: '0.0.2-beta.3',
-    authorizationState: 'pending_review',
-    lastActiveAt: ago(45),
+    deviceId: 'dev_current',
+    displayName: 'MacBook Pro',
+    osVersion: '27.0.1',
+    appVersion: '0.0.2-beta.5.2',
+    currentDevice: true,
+    online: true,
+    lastActiveAt: ago(0),
+    authorizationState: currentConfirmed ? 'confirmed' : 'pending_review',
+    reviewEndsAt: currentConfirmed ? null : reviewEndsAt,
   }),
-  row({ deviceId: 'dev_studio_3', displayName: 'Mac Studio', osVersion: '15.6', appVersion: '0.0.1', lastActiveAt: ago(60 * 26) }),
+  row({
+    deviceId: 'dev_same_dev_profile',
+    displayName: 'MacBook Pro',
+    osVersion: '27.0.1',
+    appVersion: '0.0.2-dev',
+    sameMachine: true,
+    authorizationState: 'pending_review',
+    reviewEndsAt: new Date(now + 6 * 60 * 60_000).toISOString(),
+    lastActiveAt: ago(40),
+  }),
+  row({
+    deviceId: 'dev_same_old_install',
+    displayName: 'MacBook Pro',
+    osVersion: '26.0',
+    appVersion: '0.0.2-beta.4',
+    sameMachine: true,
+    lastActiveAt: ago(60 * 20),
+  }),
   row({
     deviceId: 'dev_iphone',
     displayName: 'iPhone 17 Pro',
     platform: 'ios',
     osVersion: '26.0',
-    lastActiveAt: ago(60 * 24 * 2),
+    appVersion: '0.0.2-beta.5.2',
+    online: true,
+    lastActiveAt: ago(2),
     approximateLocation: 'Jeddah, Saudi Arabia',
   }),
-  row({ deviceId: 'dev_legacy_1', platform: null, osVersion: null, appVersion: null, legacy: true, signInMethod: 'google', lastActiveAt: ago(60 * 24 * 6) }),
-  row({ deviceId: 'dev_legacy_2', displayName: 'oauth-google-device', platform: null, osVersion: null, appVersion: null, signInMethod: 'google', lastActiveAt: ago(60 * 24 * 12) }),
-  row({ deviceId: 'dev_legacy_3', platform: null, osVersion: null, appVersion: null, legacy: true, signInMethod: 'password', lastActiveAt: ago(60 * 24 * 20), approximateLocation: null }),
+  row({
+    deviceId: 'dev_legacy',
+    platform: null,
+    osVersion: null,
+    appVersion: null,
+    legacy: true,
+    signInMethod: 'google',
+    lastActiveAt: ago(60 * 30),
+  }),
 ];
 
 const pause = () => new Promise((resolve) => setTimeout(resolve, 250));
@@ -74,7 +107,7 @@ const previewClient: CloudDevicesClient = {
   async confirmDevice(_token, deviceId) {
     await pause();
     devices = devices.map((device) => (
-      device.deviceId === deviceId ? { ...device, authorizationState: 'confirmed' as const } : device
+      device.deviceId === deviceId ? { ...device, authorizationState: 'confirmed' as const, reviewEndsAt: null } : device
     ));
     return mutation([deviceId]);
   },

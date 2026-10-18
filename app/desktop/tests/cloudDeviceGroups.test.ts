@@ -3,12 +3,13 @@ import { test } from 'node:test';
 
 import type { CloudDeviceAuthorization } from '../src/features/cloud/cloudDeviceClient';
 import {
-  deviceGroupKey,
+  deviceRowTitle,
   deviceTitle,
-  groupCloudDevices,
   isPlaceholderDeviceName,
   lastActiveDescription,
+  reviewEndsLabel,
   signInMethodLabel,
+  splitCloudDevices,
 } from '../src/features/cloud/cloudDeviceGroups';
 
 const NOW = Date.parse('2026-10-07T12:00:00Z');
@@ -49,83 +50,53 @@ test('placeholder names are detected and replaced with a platform title', () => 
   assert.equal(deviceTitle(device({ deviceId: 'f', displayName: '  Ada’s Mac ' })), 'Ada’s Mac');
 });
 
-test('rows from the same Mac share a group key, legacy rows never do', () => {
-  const first = device({ deviceId: 'a', displayName: 'MacBook Pro' });
-  const second = device({ deviceId: 'b', displayName: ' macbook pro ' });
-  assert.equal(deviceGroupKey(first), 'macos::macbook pro');
-  assert.equal(deviceGroupKey(first), deviceGroupKey(second));
-  const legacyRow = device({ deviceId: 'c', displayName: 'MacBook Pro', legacy: true });
-  assert.notEqual(deviceGroupKey(legacyRow), deviceGroupKey(first));
-  const placeholderRow = device({ deviceId: 'd', displayName: 'oauth-google-device' });
-  assert.notEqual(deviceGroupKey(placeholderRow), deviceGroupKey(device({ deviceId: 'e', displayName: null })));
+test('legacy and placeholder rows are named by sign-in method', () => {
+  assert.equal(deviceRowTitle(device({ deviceId: 'a', displayName: null, legacy: true, signInMethod: 'google' })), 'Google sign-in');
+  assert.equal(deviceRowTitle(device({ deviceId: 'b', displayName: 'cloud-email-password-device', signInMethod: 'password' })), 'Email and password sign-in');
+  assert.equal(deviceRowTitle(device({ deviceId: 'c', displayName: 'MacBook Pro' })), 'MacBook Pro');
 });
 
-test('two rows of the same Mac form one group and the current device is excluded', () => {
-  const current = device({ deviceId: 'current', displayName: 'MacBook Pro', currentDevice: true, lastActiveAt: minutesAgo(0) });
-  const older = device({
-    deviceId: 'older',
-    displayName: 'MacBook Pro',
-    osVersion: '15.6',
-    lastActiveAt: minutesAgo(120),
-    approximateLocation: 'Riyadh, Saudi Arabia',
-    online: false,
-  });
-  const newer = device({
-    deviceId: 'newer',
-    displayName: 'MacBook Pro',
-    osVersion: '26.0',
-    lastActiveAt: minutesAgo(5),
-    approximateLocation: 'Thuwal, Saudi Arabia',
-    online: true,
-    authorizationState: 'pending_review',
-  });
-
-  const result = groupCloudDevices([current, older, newer]);
+test('split separates the current device, same-machine installs, and other devices', () => {
+  const current = device({ deviceId: 'current', currentDevice: true, sameMachine: false, lastActiveAt: minutesAgo(0) });
+  const sameOld = device({ deviceId: 'same-old', sameMachine: true, lastActiveAt: minutesAgo(600) });
+  const samePending = device({ deviceId: 'same-pending', sameMachine: true, authorizationState: 'pending_review', lastActiveAt: minutesAgo(900) });
+  const otherMac = device({ deviceId: 'other-mac', displayName: 'MacBook Pro', lastActiveAt: minutesAgo(5) });
+  const legacy = device({ deviceId: 'legacy', displayName: null, legacy: true, lastActiveAt: minutesAgo(5_000) });
+  const result = splitCloudDevices([sameOld, otherMac, current, legacy, samePending]);
   assert.equal(result.current?.deviceId, 'current');
-  assert.equal(result.groups.length, 1);
-  const [group] = result.groups;
-  assert.equal(group.title, 'MacBook Pro');
-  assert.equal(group.sessionCount, 2);
-  assert.equal(group.online, true);
-  assert.equal(group.pending, true);
-  assert.equal(group.osVersion, '26.0');
-  assert.equal(group.location, 'Thuwal, Saudi Arabia');
-  assert.equal(group.lastActiveAt, newer.lastActiveAt);
-  assert.deepEqual(group.devices.map((row) => row.deviceId), ['newer', 'older']);
-  assert.deepEqual(result.legacy, []);
+  assert.deepEqual(result.sameMachine.map((row) => row.deviceId), ['same-pending', 'same-old']);
+  assert.deepEqual(result.others.map((row) => row.deviceId), ['other-mac', 'legacy']);
 });
 
-test('session counts default to one per row and sum across the group', () => {
-  const result = groupCloudDevices([
-    device({ deviceId: 'a', sessionCount: 3 }),
-    device({ deviceId: 'b' }),
+test('rows without sameMachine (older servers) are other devices, even with the same name', () => {
+  const result = splitCloudDevices([
+    device({ deviceId: 'current', currentDevice: true, displayName: 'MacBook Pro' }),
+    device({ deviceId: 'twin', displayName: 'MacBook Pro' }),
   ]);
-  assert.equal(result.groups[0].sessionCount, 4);
-  assert.equal(result.current, null);
+  assert.deepEqual(result.sameMachine, []);
+  assert.deepEqual(result.others.map((row) => row.deviceId), ['twin']);
+  assert.equal(splitCloudDevices([device({ deviceId: 'x' })]).current, null);
 });
 
-test('legacy and placeholder rows go to the older sign-ins list, most recent first', () => {
-  const result = groupCloudDevices([
-    device({ deviceId: 'real', displayName: 'MacBook Pro' }),
-    device({ deviceId: 'legacy-old', displayName: null, legacy: true, signInMethod: 'google', lastActiveAt: minutesAgo(5_000) }),
-    device({ deviceId: 'placeholder', displayName: 'oauth-google-device', lastActiveAt: minutesAgo(60) }),
-    device({ deviceId: 'password', displayName: 'cloud-email-password-device', lastActiveAt: minutesAgo(600) }),
-  ]);
-  assert.deepEqual(result.groups.map((group) => group.devices.map((row) => row.deviceId)), [['real']]);
-  assert.deepEqual(result.legacy.map((row) => row.deviceId), ['placeholder', 'password', 'legacy-old']);
-});
-
-test('groups sort online devices first, then by most recent activity', () => {
-  const result = groupCloudDevices([
-    device({ deviceId: 'recent-offline', displayName: 'Studio', lastActiveAt: minutesAgo(1) }),
-    device({ deviceId: 'old-online', displayName: 'Laptop', lastActiveAt: minutesAgo(500), online: true }),
-    device({ deviceId: 'older-offline', displayName: 'iPhone', platform: 'ios', lastActiveAt: minutesAgo(3_000) }),
-    device({ deviceId: 'new-online', displayName: 'Desk', lastActiveAt: minutesAgo(2), online: true }),
+test('rows sort pending first, then online, then most recent activity', () => {
+  const result = splitCloudDevices([
+    device({ deviceId: 'recent-offline', lastActiveAt: minutesAgo(1) }),
+    device({ deviceId: 'old-online', lastActiveAt: minutesAgo(500), online: true }),
+    device({ deviceId: 'old-pending', lastActiveAt: minutesAgo(3_000), authorizationState: 'pending_review' }),
+    device({ deviceId: 'older-offline', lastActiveAt: minutesAgo(3_000) }),
+    device({ deviceId: 'new-pending', lastActiveAt: minutesAgo(2), authorizationState: 'pending_review' }),
   ]);
   assert.deepEqual(
-    result.groups.map((group) => group.devices[0].deviceId),
-    ['new-online', 'old-online', 'recent-offline', 'older-offline'],
+    result.others.map((row) => row.deviceId),
+    ['new-pending', 'old-pending', 'old-online', 'recent-offline', 'older-offline'],
   );
+});
+
+test('review end labels format valid times only', () => {
+  assert.equal(reviewEndsLabel(null), null);
+  assert.equal(reviewEndsLabel(undefined), null);
+  assert.equal(reviewEndsLabel('not a date'), null);
+  assert.ok(reviewEndsLabel('2026-10-18T12:00:00Z'));
 });
 
 test('last active descriptions use minute, hour, and date boundaries', () => {

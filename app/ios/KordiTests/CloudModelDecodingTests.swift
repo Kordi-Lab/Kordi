@@ -911,6 +911,17 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertFalse(device.currentDevice)
         XCTAssertEqual(device.syncStatus.protocolVersion, 2)
         XCTAssertEqual(device.syncStatus.lastAppliedSequence, 42)
+        XCTAssertFalse(device.sameMachine)
+        XCTAssertNil(device.reviewEndsAt)
+    }
+
+    func testDeviceListDecodesSameMachineAndReviewWindow() throws {
+        let payload = Data(#"{"devices":[{"deviceId":"device_2","displayName":"MacBook Pro","platform":"macos","osVersion":"26.0","appVersion":"0.0.2","createdAt":"2026-10-16T09:00:00Z","lastActiveAt":"2026-10-16T09:05:00Z","authorizationState":"pending_review","currentDevice":false,"sessionExpiresAt":null,"approximateLocation":null,"syncStatus":{"protocolVersion":2,"lastAppliedSequence":0,"lastSuccessfulCatchUpAt":null},"sameMachine":true,"reviewEndsAt":"2026-10-17T09:00:00Z"}]}"#.utf8)
+
+        let device = try XCTUnwrap(try JSONDecoder().decode(CloudDeviceListResponse.self, from: payload).devices.first)
+
+        XCTAssertTrue(device.sameMachine)
+        XCTAssertEqual(device.reviewEndsAt, "2026-10-17T09:00:00Z")
     }
 
     func testAuthSessionAcceptsDeviceBindingAndLegacyResponses() throws {
