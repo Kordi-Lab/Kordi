@@ -59,5 +59,6 @@
 .chat-workspace-add:focus-visible, .chat-workspace-git > button:focus-visible { outline: 2px solid var(--utility-muted-text); outline-offset: -2px; }
 .chat-workspace-selector-row button:disabled { opacity: .5; cursor: default; }
 .chat-workspace-error { margin: 6px 0 0; color: var(--app-error-text); font-size: 11px; }
+.chat-workspace-selector-row-cloud { opacity: .5; cursor: default; user-select: none; }
 .chat-workspace-menu { width: min(280px, calc(100vw - 16px)); max-height: min(340px, calc(100dvh - 16px)); }
 .chat-workspace-menu-heading { padding: 8px 9px 4px; color: var(--utility-muted-text); font-size: 11px; }

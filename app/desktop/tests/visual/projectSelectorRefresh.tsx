@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ChatWorkspaceControls } from '../../src/features/projects/ChatWorkspaceControls';
-import { ChatProjectsContext, canChooseChatProject, type ChatProject } from '../../src/features/projects/chatProjects';
+import { ChatProjectsContext, canChooseChatProject, isCloudAgentChat, type ChatProject } from '../../src/features/projects/chatProjects';
+import { CloudChatWorkspaceRow } from '../../src/features/projects/CloudChatWorkspaceRow';
 import type { GitWorkspace } from '../../src/features/projects/gitWorkspace';
 import { cloudChatId, desktopState, localChatId, refreshes, selectedFor } from '../helpers/cloudChatRuntimeCopyFixtures';
 import '../../src/index.css';
@@ -22,7 +23,8 @@ function Fixture() {
         <button type="button" style={{ alignSelf: 'flex-start' }} onClick={() => setRefresh((value) => value + 1)}>Refresh</button>
       </div>
       <div className="app-chat-composer-frame shrink-0 px-5 pb-4 pt-3">
-        {canChooseChatProject(conversation) ? <ChatWorkspaceControls key={conversation.id} conversation={conversation} disabled={false} /> : null}
+        {canChooseChatProject(conversation) ? <ChatWorkspaceControls key={conversation.id} conversation={conversation} disabled={false} />
+          : isCloudAgentChat(conversation) ? <CloudChatWorkspaceRow key={conversation.id} sessionId={conversation.id} /> : null}
         <div className="app-composer-input rounded-[18px] px-4" data-composer-input style={{ minHeight: 88, border: '1px solid var(--app-divider)' }}>
           <textarea aria-label="Ask your agent…" placeholder="Ask your agent…" style={{ width: '100%', minHeight: 56, resize: 'none', outline: 'none', background: 'transparent' }} />
         </div>

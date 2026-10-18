@@ -1,5 +1,6 @@
 import { ChatWorkspaceControls } from '@/features/projects/ChatWorkspaceControls';
-import { canChooseChatProject } from '@/features/projects/chatProjects';
+import { canChooseChatProject, isCloudAgentChat } from '@/features/projects/chatProjects';
+import { CloudChatWorkspaceRow } from '@/features/projects/CloudChatWorkspaceRow';
 import { useId, useRef, useState } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -185,6 +186,8 @@ export function MainComposer({
       ) : null}
       {!editingMessage && !voiceSurfaceActive && !videoSurfaceActive && canChooseChatProject(conversation) ? (
         <ChatWorkspaceControls key={conversation.id} conversation={conversation} disabled={display.activeLiveTurnIsRunning} />
+      ) : !editingMessage && !voiceSurfaceActive && !videoSurfaceActive && isCloudAgentChat(conversation) ? (
+        <CloudChatWorkspaceRow key={conversation.id} sessionId={conversation.id} />
       ) : null}
       <ComposerDropSurface disabled={editingMessage} saveDesktopAttachments={(files) => (
         videoReviews.stage(saveDesktopAttachments(files))
