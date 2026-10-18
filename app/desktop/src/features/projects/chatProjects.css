@@ -48,15 +48,18 @@
   padding: 3px 7px; background: var(--app-control-bg); color: var(--utility-muted-text);
   font-size: 12px; line-height: 18px;
 }
-.chat-workspace-selector-row .chat-project-trigger { max-width: min(220px, 45vw); color: var(--utility-foreground); }
+.chat-workspace-selector-row .chat-project-trigger, .chat-workspace-project { max-width: min(220px, 45vw); color: var(--utility-foreground); }
+.chat-workspace-project > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-workspace-locate { cursor: pointer; }
+.chat-workspace-locate:disabled { cursor: default; opacity: 0.6; }
 .chat-workspace-git { padding: 0; min-width: 0; max-width: 100%; }
 .chat-workspace-git > button { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 7px; border-radius: 6px 0 0 6px; }
 .chat-workspace-git > button > span { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-workspace-git label { display: flex; align-items: center; gap: 4px; flex-shrink: 0; margin: 3px 0; padding: 0 7px; border-left: 1px solid var(--app-divider); cursor: pointer; }
 .chat-workspace-git input { width: 12px; height: 12px; accent-color: var(--app-accent); }
 .chat-workspace-git svg { flex-shrink: 0; }
-.chat-workspace-add:hover, .chat-workspace-git > button:hover { background: var(--app-control-active-bg); color: var(--utility-foreground); }
-.chat-workspace-add:focus-visible, .chat-workspace-git > button:focus-visible { outline: 2px solid var(--utility-muted-text); outline-offset: -2px; }
+.chat-workspace-add:hover, .chat-workspace-locate:not(:disabled):hover, .chat-workspace-git > button:hover { background: var(--app-control-active-bg); color: var(--utility-foreground); }
+.chat-workspace-add:focus-visible, .chat-workspace-locate:focus-visible, .chat-workspace-git > button:focus-visible { outline: 2px solid var(--utility-muted-text); outline-offset: -2px; }
 .chat-workspace-selector-row button:disabled { opacity: .5; cursor: default; }
 .chat-workspace-error { margin: 6px 0 0; color: var(--app-error-text); font-size: 11px; }
 .chat-workspace-selector-row-cloud { opacity: .5; cursor: default; user-select: none; }

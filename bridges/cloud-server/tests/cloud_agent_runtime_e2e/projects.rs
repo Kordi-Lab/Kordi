@@ -52,6 +52,38 @@ async fn projects_are_private_device_bound_and_operations_are_claimed_once() {
     .await;
     let device = rows["devices"][0]["id"].as_str().unwrap();
     assert_eq!(rows["devices"][0]["projects"][0]["name"], "Example");
+    assert!(rows["devices"][0]["projects"][0]
+        .get("workspaces")
+        .is_none());
+    let worktree = "b".repeat(64);
+    for (workspaces, status) in [
+        (json!({"other-session": worktree}), StatusCode::BAD_REQUEST),
+        (
+            json!({"project-session": "/private/path"}),
+            StatusCode::BAD_REQUEST,
+        ),
+        (json!({"project-session": worktree}), StatusCode::OK),
+    ] {
+        let catalog = json!({"projects":[{"id":project_id,"name":"Example","sessions":["project-session"],"workspaces":workspaces}]});
+        let response = router
+            .clone()
+            .oneshot(put(&owner.token, "/v1/cloud/projects", catalog))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), status);
+    }
+    let rows = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/projects", &owner.token))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(
+        rows["devices"][0]["projects"][0]["workspaces"],
+        json!({"project-session": worktree})
+    );
     assert_eq!(rows["devices"][0]["online"], true);
     let other = read_json(
         router
@@ -329,4 +361,105 @@ async fn project_runs_use_the_cloud_only_while_the_project_mac_is_offline() {
         .await
         .unwrap()
         .is_none());
+}
+
+#[tokio::test]
+async fn another_mac_publishing_the_same_project_never_drops_this_macs_sessions() {
+    let Some(pool) = try_pool().await else { return };
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
+    let email = unique_email("project-two-macs");
+    let signup = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            Body::from(
+                signup_email_fixture::with_proof(json!({
+                    "email": email, "password": "correct horse", "displayName": "Owner",
+                    "avatarSeed": "agent_runtime_avatar",
+                }))
+                .await
+                .to_string(),
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(signup.status(), StatusCode::CREATED);
+    let first = read_json(signup).await;
+    let login = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/login",
+            Body::from(json!({"email": email, "password": "correct horse"}).to_string()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(login.status(), StatusCode::OK);
+    let second = read_json(login).await;
+    let account = first["account"]["accountId"].as_str().unwrap();
+    let (mac_a, mac_b) = (
+        first["session"]["token"].as_str().unwrap(),
+        second["session"]["token"].as_str().unwrap(),
+    );
+    sqlx_core::query::query("UPDATE cloud_devices SET device_platform='macos' WHERE account_id=$1")
+        .bind(account)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let project_id = "c".repeat(64);
+    let publish = |token: &str, sessions: Value| {
+        put(
+            token,
+            "/v1/cloud/projects",
+            json!({"projects":[{"id":project_id,"name":"Example","sessions":sessions}]}),
+        )
+    };
+    let status = router
+        .clone()
+        .oneshot(publish(mac_a, json!(["project-session", "fork-session"])))
+        .await
+        .unwrap()
+        .status();
+    assert_eq!(status, StatusCode::OK);
+    let owner_device =
+        kordi_cloud_server::projects::session_device(&pool, account, "project-session")
+            .await
+            .unwrap()
+            .expect("the first Mac owns the session");
+    // The second Mac bound the same folder but runs none of these sessions.
+    for _ in 0..2 {
+        let status = router
+            .clone()
+            .oneshot(publish(mac_b, json!([])))
+            .await
+            .unwrap()
+            .status();
+        assert_eq!(status, StatusCode::OK);
+    }
+    let rows = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/projects", mac_b))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let devices = rows["devices"].as_array().unwrap();
+    assert_eq!(devices.len(), 2);
+    let owner = devices
+        .iter()
+        .find(|device| device["id"] == owner_device.as_str())
+        .unwrap();
+    assert_eq!(
+        owner["projects"][0]["sessions"],
+        json!(["project-session", "fork-session"])
+    );
+    for session in ["project-session", "fork-session"] {
+        assert_eq!(
+            kordi_cloud_server::projects::session_device(&pool, account, session)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some(owner_device.as_str())
+        );
+    }
 }

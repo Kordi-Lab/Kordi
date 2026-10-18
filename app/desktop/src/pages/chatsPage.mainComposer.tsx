@@ -1,5 +1,5 @@
 import { ChatWorkspaceControls } from '@/features/projects/ChatWorkspaceControls';
-import { canChooseChatProject, isCloudAgentChat } from '@/features/projects/chatProjects';
+import { isCloudAgentChat } from '@/features/projects/chatProjects';
 import { CloudChatWorkspaceRow } from '@/features/projects/CloudChatWorkspaceRow';
 import { useId, useRef, useState } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
@@ -184,11 +184,12 @@ export function MainComposer({
           onForward={onForwardSelectedMessages}
         />
       ) : null}
-      {!editingMessage && !voiceSurfaceActive && !videoSurfaceActive && canChooseChatProject(conversation) ? (
-        <ChatWorkspaceControls key={conversation.id} conversation={conversation} disabled={display.activeLiveTurnIsRunning} />
-      ) : !editingMessage && !voiceSurfaceActive && !videoSurfaceActive && isCloudAgentChat(conversation) ? (
+      {/* Cloud agent chats keep a grayed row; the controls hide themselves for chats that have no project and cannot choose one. */}
+      {editingMessage || voiceSurfaceActive || videoSurfaceActive ? null : isCloudAgentChat(conversation) ? (
         <CloudChatWorkspaceRow key={conversation.id} sessionId={conversation.id} />
-      ) : null}
+      ) : (
+        <ChatWorkspaceControls key={conversation.id} conversation={conversation} disabled={display.activeLiveTurnIsRunning} />
+      )}
       <ComposerDropSurface disabled={editingMessage} saveDesktopAttachments={(files) => (
         videoReviews.stage(saveDesktopAttachments(files))
       )}>

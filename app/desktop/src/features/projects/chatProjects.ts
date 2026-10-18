@@ -14,7 +14,7 @@ export type ChatProjects = {
   enabled: boolean;
   openImporter?: (sessionId?: string) => void;
   projects: readonly ChatProject[];
-  gitWorkspace?: (root: string, workspaceRoot?: string) => Promise<GitWorkspace | null>;
+  gitWorkspace?: (root: string, workspaceRoot?: string, workspaceId?: string) => Promise<GitWorkspace | null>;
   assign: (sessionId: string, root: string, workspace?: ChatWorkspaceSelection) => Promise<void>;
   create: (sessionId: string, name: string, folder: string) => Promise<void>;
 };

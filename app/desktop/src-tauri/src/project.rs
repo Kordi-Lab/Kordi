@@ -1,3 +1,4 @@
+pub(crate) mod catalog_binding;
 pub(crate) mod git_workspace;
 pub(crate) mod import;
 
