@@ -23,12 +23,14 @@ enum CommonGroundRoute: Hashable {
 /// Built from the conversation info page's parts (hero, glass action tiles,
 /// grouped sections, segmented picker) so it reads as the same product.
 struct CommonGroundView: View {
+    /// Leaves Common ground from its home page; nil hides the back button.
+    var onClose: (() -> Void)? = nil
     @StateObject private var model = CommonGroundModel()
     @State private var path: [CommonGroundRoute] = []
 
     var body: some View {
         NavigationStack(path: $path) {
-            CommonGroundHome(path: $path)
+            CommonGroundHome(path: $path, onClose: onClose)
                 .navigationDestination(for: CommonGroundRoute.self) { route in
                     switch route {
                     case .build: CommonGroundBuildView(path: $path)
@@ -53,6 +55,7 @@ private let commonGroundTint = KordiTheme.signalBlue
 private struct CommonGroundPage<Content: View>: View {
     @Environment(\.dismiss) private var dismiss
     var showsBack = true
+    var onBack: (() -> Void)? = nil
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -70,7 +73,7 @@ private struct CommonGroundPage<Content: View>: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .topLeading) {
-            if showsBack { SessionDetailBackButton { dismiss() } }
+            if showsBack { SessionDetailBackButton { if let onBack { onBack() } else { dismiss() } } }
         }
     }
 }
@@ -138,9 +141,10 @@ private struct CommonGroundActions<Content: View>: View {
 private struct CommonGroundHome: View {
     @EnvironmentObject private var model: CommonGroundModel
     @Binding var path: [CommonGroundRoute]
+    var onClose: (() -> Void)? = nil
 
     var body: some View {
-        CommonGroundPage(showsBack: false) {
+        CommonGroundPage(showsBack: onClose != nil, onBack: onClose) {
             CommonGroundHero(title: "Common ground", status: "Find what you share") {
                 CommonGroundAvatar(person: model.me, size: 92)
             } actions: {
@@ -148,7 +152,7 @@ private struct CommonGroundHome: View {
                     SessionProfileActionButton(title: "Tap phones", symbol: "iphone.radiowaves.left.and.right", tint: commonGroundTint) {
                         path.append(model.hasCard ? .tap : .build)
                     }
-                    SessionProfileActionButton(title: "Join with code", symbol: "circle.grid.3x3", tint: commonGroundTint) {
+                    SessionProfileActionButton(title: "Pair code", symbol: "circle.grid.3x3", tint: commonGroundTint) {
                         path.append(model.hasCard ? .code : .build)
                     }
                 }
@@ -1032,7 +1036,7 @@ private struct CommonGroundCodeView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 2) {
-                Text("Join with code")
+                Text("Pair code")
                     .font(.system(size: 24, weight: .bold))
                 Text("Same code, same room")
                     .font(.subheadline)

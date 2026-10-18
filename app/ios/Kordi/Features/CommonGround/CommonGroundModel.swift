@@ -1,5 +1,39 @@
 import SwiftUI
 
+/// Decides whether the Common ground entry exists in Contacts. The server
+/// side does not exist yet, so only debug builds show it: with the
+/// `--preview-common-ground` launch argument, or with the
+/// `kordi.debug.common-ground` defaults flag. Release builds never do.
+enum CommonGroundAvailability {
+    static let previewArgument = "--preview-common-ground"
+    static let defaultsKey = "kordi.debug.common-ground"
+
+    static func isPreviewRequested(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
+#if DEBUG
+        arguments.contains(previewArgument)
+#else
+        false
+#endif
+    }
+
+    static func isEnabled(
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+#if DEBUG
+        isPreviewRequested(arguments: arguments) || defaults.bool(forKey: defaultsKey)
+#else
+        false
+#endif
+    }
+
+    /// Whether a room invitation is waiting. There is no invitation feed yet;
+    /// the preview argument shows the waiting state.
+    static func hasWaitingInvitation(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
+        isPreviewRequested(arguments: arguments)
+    }
+}
+
 #if DEBUG
 /// Network-backed state for the Common ground preview. Talks to the local demo
 /// server described in experiments/common-ground-lab/demo/API.md.

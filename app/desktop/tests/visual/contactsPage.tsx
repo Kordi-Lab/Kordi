@@ -1,16 +1,20 @@
 import { StrictMode, useLayoutEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { CommonGroundContactsRow } from '../../src/features/commonGround/CommonGroundContactsRow';
 import { ContactsPage } from '../../src/kordi-app/pages';
 import type { Contact, ContactClass, ContactRequest } from '../../src/kordi-app/types';
 import '../../src/index.css';
 
 // Login-free preview of the Contacts page with fictional people.
-// Query params: ?theme=light|dark, ?empty=1 (no requests or invites), ?groups=2 (adds a My agents group).
+// Query params: ?theme=light|dark, ?empty=1 (no requests or invites), ?groups=2 (adds a My agents group),
+// ?invite=1 (the Common ground row shows a waiting room invitation).
+// The Common ground row opens commonGround.html in the detail pane; it talks to the demo API on 127.0.0.1:18190.
 const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
 const withActivity = params.get('empty') !== '1';
 const showAgents = params.get('groups') === '2';
+const hasInvitation = params.get('invite') === '1';
 localStorage.setItem('kordi.themeMode.v1', theme);
 
 const pause = (ms = 600) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -21,6 +25,15 @@ const yesterdayAt = (hours: number, minutes: number) => {
   date.setHours(hours, minutes, 0, 0);
   return date.toISOString();
 };
+
+// Generated avatars come from the cloud API, which the preview does not run, so fixtures carry initials avatars.
+function initialsAvatar(name: string) {
+  const initials = name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+  const [fill, ink] = theme === 'light' ? ['#e4e6eb', '#5f6672'] : ['#3a3f48', '#c3c8d1'];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><rect width="80" height="80" fill="${fill}"/>`
+    + `<text x="40" y="40" dy="0.35em" text-anchor="middle" font-family="-apple-system, system-ui, sans-serif" font-size="30" font-weight="500" fill="${ink}">${initials}</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
 
 function person(id: string, name: string, subtitle: string, overrides: Partial<Contact> = {}): Contact {
   return {
@@ -38,6 +51,7 @@ function person(id: string, name: string, subtitle: string, overrides: Partial<C
     sourceHostId: 'cloud',
     sourceParticipantId: id,
     avatarSeed: id,
+    profileImageUrl: initialsAvatar(name),
     ...overrides,
   };
 }
@@ -55,15 +69,26 @@ const INITIAL_AGENTS: Contact[] = [
 ];
 
 const INITIAL_REQUESTS: ContactRequest[] = withActivity ? [
-  { id: 'req-noor', initials: 'NH', title: 'Noor Haddad wants to connect', avatarName: 'Noor Haddad', avatarSeed: 'acct_noor', detail: '@305918274', time: minutesAgo(12), direction: 'incoming', status: 'pending' },
-  { id: 'req-oskar', initials: 'OB', title: 'Oskar Berg wants to connect', avatarName: 'Oskar Berg', avatarSeed: 'acct_oskar', detail: '@846203915', time: minutesAgo(60 * 26), direction: 'incoming', status: 'pending' },
-  { id: 'req-elio', initials: 'EM', title: 'Request sent to Elio Marin', avatarName: 'Elio Marin', avatarSeed: 'acct_elio', detail: 'acct_elio', targetNodeId: 'acct_elio', time: minutesAgo(90), direction: 'outgoing', status: 'pending' },
+  { id: 'req-noor', initials: 'NH', title: 'Noor Haddad wants to connect', avatarName: 'Noor Haddad', profileImageUrl: initialsAvatar('Noor Haddad'), avatarSeed: 'acct_noor', detail: '@305918274', time: minutesAgo(12), direction: 'incoming', status: 'pending' },
+  { id: 'req-oskar', initials: 'OB', title: 'Oskar Berg wants to connect', avatarName: 'Oskar Berg', profileImageUrl: initialsAvatar('Oskar Berg'), avatarSeed: 'acct_oskar', detail: '@846203915', time: minutesAgo(60 * 26), direction: 'incoming', status: 'pending' },
+  { id: 'req-elio', initials: 'EM', title: 'Request sent to Elio Marin', avatarName: 'Elio Marin', profileImageUrl: initialsAvatar('Elio Marin'), avatarSeed: 'acct_elio', detail: 'acct_elio', targetNodeId: 'acct_elio', time: minutesAgo(90), direction: 'outgoing', status: 'pending' },
 ] : [];
 
 const LOOKUP: Record<string, { accountId: string; displayName: string }> = {
   '112233445': { accountId: 'acct_lena', displayName: 'Lena Park' },
   '846203915': { accountId: 'acct_oskar', displayName: 'Oskar Berg' },
 };
+
+// Preview only: the standalone Common ground page fills the detail pane until the React port lands.
+function CommonGroundFrame() {
+  const api = params.get('api');
+  const src = `./commonGround.html?embedded=1&theme=${theme}${api ? `&api=${encodeURIComponent(api)}` : ''}`;
+  return (
+    <section aria-label="Common ground" className="flex min-h-0 min-w-0 flex-1">
+      <iframe title="Common ground" src={src} className="block h-full w-full border-0" style={{ background: 'transparent', colorScheme: theme }} />
+    </section>
+  );
+}
 
 function ContactsPreview() {
   const [contacts, setContacts] = useState(INITIAL_CONTACTS);
@@ -74,6 +99,7 @@ function ContactsPreview() {
   const [activeContactId, setActiveContactId] = useState('');
   const [activeRequestId, setActiveRequestId] = useState('');
   const [overlayMode, setOverlayMode] = useState<'contact' | 'request' | null>(null);
+  const [commonGroundSelected, setCommonGroundSelected] = useState(true);
 
   useLayoutEffect(() => {
     document.body.classList.toggle('theme-light', theme === 'light');
@@ -118,7 +144,19 @@ function ContactsPreview() {
         onSelectRequest={(request) => {
           setActiveRequestId(request.id);
           setOverlayMode('request');
+          setCommonGroundSelected(false);
         }}
+        leadingListItems={(
+          <CommonGroundContactsRow
+            selected={commonGroundSelected}
+            hasInvitation={hasInvitation}
+            onSelect={() => {
+              setCommonGroundSelected(true);
+              setOverlayMode(null);
+            }}
+          />
+        )}
+        leadingDetail={commonGroundSelected ? <CommonGroundFrame /> : null}
         onAcceptRequest={(request) => resolveRequest(request, true)}
         onRejectRequest={(request) => resolveRequest(request, false)}
         onLookupContact={async (raw) => {
@@ -145,6 +183,7 @@ function ContactsPreview() {
             initials: '',
             title: `Request sent to ${match?.displayName ?? 'Kordi user'}`,
             avatarName: match?.displayName ?? null,
+            profileImageUrl: initialsAvatar(match?.displayName ?? 'Kordi user'),
             avatarSeed: accountId,
             detail: accountId,
             targetNodeId: accountId,
@@ -161,10 +200,14 @@ function ContactsPreview() {
         onSelectContact={(_groupId, contactId) => {
           setActiveContactId(contactId);
           setOverlayMode('contact');
+          setCommonGroundSelected(false);
         }}
         contactOverlayMode={overlayMode}
         activeContact={activeContact}
-        onCloseOverlay={() => setOverlayMode(null)}
+        onCloseOverlay={() => {
+          setOverlayMode(null);
+          setCommonGroundSelected(false);
+        }}
         getStatusBadgeClass={() => ''}
         onMessageContact={() => { setOverlayMode(null); }}
         onRemoveContact={async (contact) => {

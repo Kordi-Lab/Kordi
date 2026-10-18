@@ -4,6 +4,15 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Common ground</title>
+<script>
+  // ?embedded=1 drops the page chrome so it can fill the Contacts detail pane; ?theme=light|dark follows the host.
+  (() => {
+    const q = new URLSearchParams(location.search);
+    const theme = q.get("theme");
+    if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+    if (q.get("embedded") === "1") document.documentElement.classList.add("embedded");
+  })();
+</script>
 <style>
   :root {
     --bg: #f2f2f7;
@@ -22,13 +31,22 @@
     --pink: #f83e9c; --cyan: #27b9d1; --amber: #fcb526; --violet: #847ac4; --gray: #8e8e93;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
       --bg: #000000; --card: #1c1c1e; --fill: rgba(118, 118, 128, 0.24); --line: rgba(84, 84, 88, 0.6);
       --text: #ffffff; --muted: rgba(235, 235, 245, 0.6); --faint: rgba(235, 235, 245, 0.3);
       --tint: #60a5fa; --primary-fill: #f5f5f5; --primary-text: #16181d;
       --glass: rgba(44, 44, 46, 0.7); --avatar: #3a3a3c; --avatar-text: #aeaeb2;
     }
   }
+  :root[data-theme="dark"] {
+      --bg: #000000; --card: #1c1c1e; --fill: rgba(118, 118, 128, 0.24); --line: rgba(84, 84, 88, 0.6);
+      --text: #ffffff; --muted: rgba(235, 235, 245, 0.6); --faint: rgba(235, 235, 245, 0.3);
+      --tint: #60a5fa; --primary-fill: #f5f5f5; --primary-text: #16181d;
+      --glass: rgba(44, 44, 46, 0.7); --avatar: #3a3a3c; --avatar-text: #aeaeb2;
+  }
+  :root { color-scheme: light; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; } }
+  :root[data-theme="dark"] { color-scheme: dark; }
   * { box-sizing: border-box; }
   html, body { margin: 0; min-height: 100%; }
   body {
@@ -163,6 +181,110 @@
   .error { color: #d70015; text-align: center; margin-top: 12px; font-size: 14px; }
   .fade { animation: fade .25s ease; }
   @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  /* Embedded in the Kordi Contacts detail pane: Kordi palette, macOS sizes, card on the left, actions on the right. */
+  html.embedded {
+    --ink: oklch(26% 0.025 250); --text: var(--ink); --muted: oklch(46% 0.025 250); --faint: oklch(46% 0.025 250 / 0.55);
+    --card: oklch(100% 0 0 / 0.62); --line: oklch(36% 0.025 250 / 0.11); --fill: oklch(36% 0.025 250 / 0.07);
+    --glass: oklch(100% 0 0 / 0.62); --avatar: oklch(91% 0.012 250); --avatar-text: oklch(46% 0.025 250);
+    --primary-fill: var(--ink); --primary-text: oklch(98% 0.005 250); --bg: oklch(96% 0.012 250);
+  }
+  @media (prefers-color-scheme: dark) {
+    html.embedded:not([data-theme="light"]) {
+      --ink: oklch(92% 0.016 250); --muted: oklch(73% 0.023 250); --faint: oklch(73% 0.023 250 / 0.5);
+      --card: oklch(34% 0.025 250 / 0.32); --line: oklch(85% 0.018 250 / 0.1); --fill: oklch(85% 0.018 250 / 0.08);
+      --glass: oklch(34% 0.025 250 / 0.4); --avatar: oklch(36% 0.02 250); --avatar-text: oklch(80% 0.02 250);
+      --primary-text: oklch(21.5% 0.018 250); --bg: oklch(24% 0.02 250);
+    }
+  }
+  html.embedded[data-theme="dark"] {
+    --ink: oklch(92% 0.016 250); --muted: oklch(73% 0.023 250); --faint: oklch(73% 0.023 250 / 0.5);
+    --card: oklch(34% 0.025 250 / 0.32); --line: oklch(85% 0.018 250 / 0.1); --fill: oklch(85% 0.018 250 / 0.08);
+    --glass: oklch(34% 0.025 250 / 0.4); --avatar: oklch(36% 0.02 250); --avatar-text: oklch(80% 0.02 250);
+    --primary-text: oklch(21.5% 0.018 250); --bg: oklch(24% 0.02 250);
+  }
+  html.embedded, html.embedded body { height: 100%; overflow: hidden; background: transparent; }
+  html.embedded body { font-size: 13px; line-height: 1.4; }
+  html.embedded .wash { display: none; }
+  html.embedded main { max-width: none; margin: 0; padding: 0; height: 100%; display: flex; flex-direction: column; }
+  .cg-head { height: 52px; flex: none; display: flex; align-items: center; padding: 0 20px; }
+  .cg-head h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .cg-cols, .cg-full { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  .cg-cols[hidden], .cg-full[hidden] { display: none; }
+  .cg-col { padding: 4px 20px 28px; min-width: 0; }
+  .cg-full > * { max-width: 520px; margin: 0 auto; }
+  .cg-full { padding: 4px 20px 28px; }
+  @media (min-width: 760px) {
+    .cg-cols { display: grid; grid-template-columns: minmax(0, 1fr) 344px; overflow: hidden; }
+    .cg-col { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+    .cg-col + .cg-col { border-left: 1px solid var(--line); padding-top: 4px; }
+  }
+  html.embedded .section { margin-top: 18px; }
+  html.embedded .section:first-child { margin-top: 8px; }
+  html.embedded .section-title { font-size: 12.5px; margin: 0 2px 8px; }
+  html.embedded .group { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+  html.embedded .row { min-height: 46px; padding: 7px 12px; gap: 10px; }
+  html.embedded .row + .row::before { border-top-width: 1px; }
+  html.embedded .row .name { font-size: 13px; }
+  html.embedded .row .sub { font-size: 12px; }
+  html.embedded .row .trail { font-size: 12.5px; }
+  html.embedded .icon { width: 26px; height: 26px; border-radius: 6px; }
+  html.embedded .icon svg { width: 15px; height: 15px; }
+  html.embedded .tags { padding: 12px; gap: 6px; }
+  html.embedded .tag { height: 28px; font-size: 13px; padding: 0 5px 0 10px; gap: 6px; }
+  html.embedded .tag.ref { padding-right: 10px; font-size: 13px; }
+  html.embedded .tag.add { font-size: 13px; padding: 0 10px 0 8px; }
+  html.embedded .tag.add input { font-size: 13px; }
+  html.embedded .tag.small { height: 24px; font-size: 12px; padding: 0 8px; }
+  html.embedded .tag-x { width: 18px; height: 18px; font-size: 14px; }
+  html.embedded .tl-row { grid-template-columns: 92px minmax(0, 1fr); }
+  html.embedded .tl-when { font-size: 12px; padding-top: 12px; }
+  html.embedded .tl-when::after { top: 14px; box-shadow: none; }
+  html.embedded .tl-row .tags { padding: 8px 12px 8px 0; }
+  html.embedded .pill { font-size: 12px; padding: 4px 8px; }
+  html.embedded .hero { margin-top: 12px; }
+  html.embedded .hero h1 { font-size: 20px; margin-top: 12px; }
+  html.embedded .hero .status { font-size: 13px; }
+  html.embedded .avatar.ring { box-shadow: 0 0 0 3px var(--bg); }
+  html.embedded .badge { box-shadow: 0 0 0 2px var(--bg); font-size: 11px; padding: 3px 9px; margin-top: -10px; }
+  html.embedded .actions { gap: 8px; }
+  html.embedded .tile { min-height: 54px; border-radius: 10px; backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); font-size: 11.5px; }
+  html.embedded .tile svg { width: 19px; height: 19px; }
+  html.embedded .seg { margin-top: 18px; border-radius: 8px; }
+  html.embedded .seg button { font-size: 12.5px; padding: 5px; border-radius: 6px; }
+  html.embedded .seg button.on { background: var(--glass); box-shadow: 0 1px 2px rgba(0,0,0,.12), inset 0 0 0 1px var(--line); }
+  html.embedded .primary { min-height: 36px; border-radius: 9px; font-size: 13.5px; margin-top: 16px; }
+  html.embedded .link { font-size: 13px; padding: 10px; }
+  html.embedded .small-btn { border-radius: 7px; padding: 5px 12px; font-size: 12.5px; flex: none; }
+  html.embedded .small-btn.quiet { background: var(--fill); color: var(--text); }
+  html.embedded textarea { font-size: 13px; min-height: 72px; padding: 10px 12px; }
+  html.embedded .switch { width: 34px; height: 20px; }
+  html.embedded .switch::after { top: 2px; left: 2px; width: 16px; height: 16px; }
+  html.embedded .switch.on::after { left: 16px; }
+  html.embedded .keypad { gap: 8px; margin-top: 24px; }
+  html.embedded .key { height: 48px; border-radius: 10px; font-size: 20px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); }
+  html.embedded .dots { margin-top: 20px; }
+  html.embedded .center { min-height: 60vh; }
+  html.embedded .pulse { height: 220px; }
+  html.embedded .sheet-back { align-items: center; padding: 24px; background: rgba(0,0,0,.28); }
+  html.embedded .sheet { max-width: 420px; border-radius: 14px; padding: 22px 18px 16px; background: var(--bg); box-shadow: 0 12px 32px rgba(0,0,0,.28), inset 0 0 0 1px var(--line); }
+  html.embedded .sheet h2 { font-size: 16px; }
+  html.embedded .sheet .primary { margin-top: 14px; }
+  html.embedded .toast { font-size: 12.5px; padding: 8px 14px; background: var(--bg); }
+  html.embedded .error { font-size: 12.5px; }
+  .back-inline { display: inline-flex; align-items: center; gap: 4px; margin: 8px 0 4px -6px; padding: 4px 8px; border: 0; border-radius: 7px;
+    background: transparent; color: var(--muted); font: 500 13px -apple-system, sans-serif; cursor: pointer; }
+  .back-inline:hover { background: var(--fill); color: var(--text); }
+  .cardhead { display: flex; align-items: center; gap: 12px; margin: 8px 0 4px; }
+  .cardhead .grow { flex: 1; min-width: 0; }
+  .cardhead .t { font-size: 15px; font-weight: 600; }
+  .cardhead .s { color: var(--muted); font-size: 12px; }
+  .digits { display: flex; align-items: center; gap: 6px; padding: 10px 12px; }
+  .digits input { width: 36px; height: 40px; border-radius: 8px; border: 1px solid var(--line); background: var(--fill); color: var(--text);
+    text-align: center; font: 600 17px ui-monospace, "SF Mono", Menlo, monospace; outline: none; }
+  .digits input:focus { border-color: color-mix(in srgb, var(--tint) 60%, transparent); }
+  .digits .sp { flex: 1; }
+  .digits .small-btn:disabled { opacity: .42; cursor: default; }
 </style>
 </head>
 <body>
@@ -171,6 +293,7 @@
 <script>
 // Desktop preview of Common ground, backed by the demo server (experiments/common-ground-lab/demo).
 const API = new URLSearchParams(location.search).get("api") || "http://127.0.0.1:18190";
+const EMBED = document.documentElement.classList.contains("embedded");
 const ME_NAME = "Alex";
 const ICONS = {
   memory: '<path d="M9 4a3 3 0 0 0-3 3v1a3 3 0 0 0-1 5.8V15a3 3 0 0 0 3 3h1m6-14a3 3 0 0 1 3 3v1a3 3 0 0 1 1 5.8V15a3 3 0 0 1-3 3h-1M12 4v16"/>',
@@ -230,18 +353,45 @@ const stack = [];
 let timers = [];
 const later = (fn, ms) => timers.push(setTimeout(fn, ms));
 const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
-const app = document.getElementById("app");
+let app = document.getElementById("app");
 const current = () => stack[stack.length - 1];
+
+// Embedded: the card stays in the left column; Home, pairing, rooms and matches use the right
+// column; building the card takes the whole pane.
+const regions = {};
+if (EMBED) {
+  app.innerHTML = `<header class="cg-head"><h1>Common ground</h1></header>
+    <div class="cg-cols" id="cg-cols"><div class="cg-col" id="cg-left"></div><div class="cg-col" id="cg-right"></div></div>
+    <div class="cg-full" id="cg-full" hidden></div>`;
+  for (const id of ["cols", "left", "right", "full"]) regions[id] = document.getElementById(`cg-${id}`);
+}
+function useRegion(screen) {
+  const full = screen === "build";
+  regions.cols.hidden = full;
+  regions.full.hidden = !full;
+  app = full ? regions.full : regions.right;
+  regions.full.scrollTop = 0;
+  regions.right.scrollTop = 0;
+  if (!full) paintLeft();
+}
+function paintLeft() {
+  if (state.me?.card) return paintCard(undefined, regions.left);
+  if (!state.me) { regions.left.innerHTML = ""; return; }
+  regions.left.innerHTML = `<div class="cardhead">${avatar("You", 40)}<div class="grow"><div class="t">Your card</div><div class="s">Your agent writes it</div></div></div>
+    <div class="section"><div class="group"><div class="row click" onclick="go('build')"><div class="grow">Build your card</div><span class="chev">›</span></div></div></div>`;
+}
 
 function go(screen, arg) { clearTimers(); stack.push([screen, arg]); render(); }
 function back() { clearTimers(); document.querySelectorAll(".sheet-back").forEach((s) => s.remove()); if (stack.length > 1) stack.pop(); render(); }
 function render() {
   const [screen, arg] = current();
-  window.scrollTo(0, 0);
+  if (EMBED) useRegion(screen); else window.scrollTo(0, 0);
   app.classList.remove("fade"); void app.offsetWidth; app.classList.add("fade");
   SCREENS[screen](arg);
 }
-const backButton = () => (stack.length > 1 ? `<button class="back" onclick="back()" aria-label="Back">‹</button>` : "");
+const backButton = () => (stack.length < 2 ? ""
+  : EMBED ? `<button class="back-inline" onclick="back()">‹ Back</button>`
+  : `<button class="back" onclick="back()" aria-label="Back">‹</button>`);
 function toast(text) {
   const t = document.createElement("div"); t.className = "toast"; t.textContent = text; document.body.appendChild(t);
   setTimeout(() => { t.style.opacity = 0; setTimeout(() => t.remove(), 200); }, Math.max(1700, text.length * 50));
@@ -260,10 +410,11 @@ async function paintHome() {
   try {
     state.me = await api("GET", "/v1/me");
     state.recent = state.me.card ? (await api("GET", "/v1/recent")).people : [];
-    if (current()[0] === "home") draw();
+    if (current()[0] === "home") { draw(); if (EMBED) paintLeft(); }
   } catch (e) { app.insertAdjacentHTML("beforeend", `<div class="error">${esc(e.message)}</div>`); }
 
   function draw() {
+    if (EMBED) return drawEmbedded();
     const card = state.me?.card;
     const topics = card ? shownTopics(card) : [];
     app.innerHTML = `
@@ -282,6 +433,43 @@ async function paintHome() {
         ${state.recent.length ? state.recent.map(rankedRow).join("") : `<div class="row"><span style="color:var(--muted)">No matches yet</span></div>`}
       </div></div>`;
   }
+}
+
+// Embedded Home (right column): Pair, pair code, Recent.
+function drawEmbedded() {
+  const digits = ["", "", "", ""];
+  app.innerHTML = `
+    <div class="section"><div class="section-title">Pair</div><div class="group" style="--inset:48px">
+      <div class="row">${iconTile("device")}<div class="grow"><div>Someone nearby</div><div class="sub">Both of you open Common ground</div></div>
+        <button class="small-btn" onclick="start('tap')">Pair</button></div></div></div>
+    <div class="section"><div class="section-title">Pair code</div><div class="group"><div class="digits">
+      ${digits.map((_, i) => `<input data-i="${i}" inputmode="numeric" maxlength="1" aria-label="Digit ${i + 1}" autocomplete="off">`).join("")}
+      <div class="sp"></div><button class="small-btn" id="join" disabled>Join</button></div></div></div>
+    <div class="section"><div class="section-title">Recent</div><div class="group" style="--inset:62px">
+      ${state.recent.length ? state.recent.map(rankedRow).join("") : `<div class="row"><span style="color:var(--muted)">No matches yet</span></div>`}
+    </div></div>`;
+  const inputs = [...app.querySelectorAll(".digits input")];
+  const join = document.getElementById("join");
+  const code = () => inputs.map((el) => el.value).join("");
+  const submit = async () => {
+    if (code().length !== 4) return;
+    if (!state.me?.card) return go("build", "home");
+    join.disabled = true;
+    try { state.room = await api("POST", `/v1/rooms/${code()}/join`); go("lobby", code()); }
+    catch (e) { toast(e.message); inputs.forEach((el) => (el.value = "")); inputs[0].focus(); join.disabled = true; }
+  };
+  inputs.forEach((el, i) => {
+    el.oninput = () => {
+      el.value = el.value.replace(/\D/g, "").slice(-1);
+      if (el.value && inputs[i + 1]) inputs[i + 1].focus();
+      join.disabled = code().length !== 4;
+    };
+    el.onkeydown = (e) => {
+      if (e.key === "Backspace" && !el.value && inputs[i - 1]) inputs[i - 1].focus();
+      if (e.key === "Enter") submit();
+    };
+  });
+  join.onclick = submit;
 }
 
 function rankedRow(r) {
@@ -303,7 +491,18 @@ const CONNECTORS = [
 
 // On this Mac: Calendar and Reminders through the Kordi app (EventKit). Only
 // titles and dates are read, and only after the person allows access.
-const tauriInvoke = window.__TAURI_INTERNALS__?.invoke;
+// Inside the Contacts preview iframe the Tauri globals live on the parent window.
+const tauriInvoke = (() => {
+  for (const host of [window, window.parent]) {
+    try {
+      const internals = host.__TAURI_INTERNALS__;
+      if (internals?.invoke) return internals.invoke.bind(internals);
+      const core = host.__TAURI__?.core;
+      if (core?.invoke) return core.invoke.bind(core);
+    } catch {}
+  }
+  return null;
+})();
 const DEVICE = [
   { id: "calendar", name: "Calendar", reads: "Event titles from the last 6 months", icon: "calendar", color: "--pink" },
   { id: "reminders", name: "Reminders", reads: "Reminder titles", icon: "spark", color: "--amber" },
@@ -457,7 +656,7 @@ async function paintBuild(next) {
         const r = await api("POST", "/v1/me/card/build", { use_agents: useAgents && state.sources.length > 0, links: allLinks, notes, device: deviceItems() });
         state.me = { ...(state.me || {}), card: r.card }; state.matchCache = {}; state.results = null;
         clearTimers();
-        stack.splice(0, stack.length, ["home"], next ? [next] : ["card"]);
+        stack.splice(0, stack.length, ["home"], ...(next && next !== "home" ? [[next]] : EMBED ? [] : [["card"]]));
         render();
         if (r.skipped?.length) toast(r.skipped.map((x) => x.reason).join(" "));
       } catch (e) { clearTimers(); draw(e.message); }
@@ -474,8 +673,9 @@ const fmtDate = (d) => (d ? `${MONTHS[Number(d.slice(5, 7)) - 1]} ${Number(d.sli
 
 function openUrl(url) {
   if (!/^https?:\/\//i.test(url)) return;
-  if (tauriInvoke) tauriInvoke("desktop_open_external_url", { url }).catch(() => {});
-  else window.open(url, "_blank", "noopener,noreferrer");
+  const fallback = () => window.open(url, "_blank", "noopener,noreferrer");
+  if (tauriInvoke) tauriInvoke("desktop_open_external_url", { url }).catch(fallback);
+  else fallback();
 }
 
 function showRefs(topic) {
@@ -497,8 +697,8 @@ function showRefs(topic) {
   document.body.appendChild(back);
 }
 
-function paintCard() {
-  if (!state.me?.card) { stack.pop(); return go("build"); }
+function paintCard(_arg, host = app) {
+  if (!state.me?.card) { if (EMBED) return; stack.pop(); return go("build"); }
   let adding = null;
   const card = () => state.me.card;
 
@@ -522,7 +722,9 @@ function paintCard() {
 
   const draw = () => {
     const c = card(), prof = c.profile || {};
-    app.innerHTML = `${backButton()}<div class="hero">${avatar("You", 92, "hero-avatar")}<h1>Your card</h1><div class="status">Built by your agent</div></div>
+    host.innerHTML = `${EMBED
+        ? `<div class="cardhead">${avatar("You", 40)}<div class="grow"><div class="t">Your card</div><div class="s">Built by your agent</div></div><button class="small-btn quiet" onclick="go('build')">Rebuild card</button></div>`
+        : `${backButton()}<div class="hero">${avatar("You", 92, "hero-avatar")}<h1>Your card</h1><div class="status">Built by your agent</div></div>`}
       ${prof.latest?.length ? `<div class="section"><div class="section-title">Now</div><div class="group tags">${prof.latest.map((t) => refTag(t)).join("")}</div></div>` : ""}
       ${CARD_SECTIONS.map(([key, title]) => `<div class="section"><div class="section-title">${title}</div>
         <div class="group tags">${c[key].map((t, i) => tag(key, t, i)).join("")}
@@ -531,14 +733,14 @@ function paintCard() {
             : `<button class="tag add" data-add="${key}" aria-label="Add a topic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add</button>`}
         </div></div>`).join("")}
       ${timeline(prof)}
-      <button class="link" onclick="go('build')">Rebuild card</button>`;
-    app.querySelectorAll("[data-ref]").forEach((el) => (el.onclick = () => showRefs(el.dataset.ref)));
-    app.querySelectorAll(".tag-x").forEach((el) => (el.onclick = () => {
+      ${EMBED ? "" : `<button class="link" onclick="go('build')">Rebuild card</button>`}`;
+    host.querySelectorAll("[data-ref]").forEach((el) => (el.onclick = () => showRefs(el.dataset.ref)));
+    host.querySelectorAll(".tag-x").forEach((el) => (el.onclick = () => {
       const next = edited();
       next[el.dataset.key].splice(Number(el.dataset.i), 1);
       save(next);
     }));
-    app.querySelectorAll("[data-add]").forEach((el) => (el.onclick = () => { adding = el.dataset.add; draw(); }));
+    host.querySelectorAll("[data-add]").forEach((el) => (el.onclick = () => { adding = el.dataset.add; draw(); }));
     const input = document.getElementById("new-tag");
     if (input) {
       input.focus();
@@ -573,7 +775,7 @@ function paintCard() {
     draw();
     try { state.me.card = (await api("PUT", "/v1/me/card", next)).card; state.matchCache = {}; state.results = null; }
     catch (e) { toast(e.message); }
-    if (current()[0] === "card") draw();
+    if (EMBED || current()[0] === "card") draw();
   };
 
   draw();
@@ -583,7 +785,7 @@ function paintCard() {
 function paintTap() {
   app.innerHTML = `${backButton()}<div class="center"><div class="pulse"><b style="border-color:var(--pink)"></b><b style="border-color:var(--cyan)"></b><b style="border-color:var(--amber)"></b>
     <div class="pair" id="pair">${avatar("You", 92, "ring hero-avatar")}</div></div>
-    <div><div style="font-size:20px;font-weight:700" id="who">Hold near another iPhone</div><div style="color:var(--muted)" id="lab">Both phones unlocked</div></div></div>`;
+    <div><div style="font-size:${EMBED ? 17 : 20}px;font-weight:700" id="who">${EMBED ? "Looking for someone nearby" : "Hold near another iPhone"}</div><div style="color:var(--muted)" id="lab">${EMBED ? "Both of you open Common ground" : "Both phones unlocked"}</div></div></div>`;
   later(async () => {
     try {
       const { person } = await api("POST", "/v1/tap");

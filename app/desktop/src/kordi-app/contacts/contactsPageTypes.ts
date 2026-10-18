@@ -35,4 +35,10 @@ export type ContactsPageProps = {
   onRemoveContact?: (contact: Contact) => Promise<void> | void;
   /** Optional rows pinned above the request inbox at the top of the list column. */
   leadingListItems?: ReactNode;
+  /**
+   * Custom detail content, such as the page for a pinned leading row. When set it replaces the
+   * contact or request detail; the caller clears contact selection while it is shown. Narrow
+   * windows show it in place of the list, and Escape calls `onCloseOverlay`.
+   */
+  leadingDetail?: ReactNode;
 };
