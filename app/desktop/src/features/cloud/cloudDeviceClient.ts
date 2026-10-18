@@ -30,6 +30,10 @@ export type CloudDeviceAuthorization = {
   legacy?: boolean;
   /** Sign-in method that created the session, such as "google", "github" or "password". */
   signInMethod?: string | null;
+  /** True when this is not the current device but runs on the same machine. Older servers omit it. */
+  sameMachine?: boolean;
+  /** RFC3339 time a pending_review row auto-confirms; null otherwise. Older servers omit it. */
+  reviewEndsAt?: string | null;
 };
 
 export type CloudDeviceListResponse = { devices: CloudDeviceAuthorization[] };
@@ -60,6 +64,7 @@ export class CloudDeviceClient {
           osVersion: device.osVersion,
           appVersion: device.appVersion,
           approximateLocation: device.approximateLocation,
+          ...(device.machineId ? { machineId: device.machineId } : {}),
         }),
       },
       'Could not update this device.',

@@ -1,5 +1,6 @@
 use super::device_operation_support::{
-    device_server_error, require_confirmed_actor, restored_operation, write_device_audit,
+    confirm_reviewed_devices_now, device_server_error, require_confirmed_actor, restored_operation,
+    write_device_audit,
 };
 use super::*;
 use crate::auth::devices::{
@@ -24,6 +25,9 @@ pub(super) async fn rename_device(
     let display_name = display_name.to_string();
     let intent = serde_json::json!({"deviceId": device_id, "displayName": display_name});
     let fingerprint = operation_fingerprint(&intent);
+    if let Err(response) = confirm_reviewed_devices_now(&state, &session.account_id).await {
+        return *response;
+    }
     let mut transaction = match state.db_pool().begin().await {
         Ok(value) => value,
         Err(_) => return device_server_error("Could not start the device operation."),
@@ -140,6 +144,9 @@ pub(super) async fn confirm_device(
     }
     let intent = serde_json::json!({"deviceId": device_id});
     let fingerprint = operation_fingerprint(&intent);
+    if let Err(response) = confirm_reviewed_devices_now(&state, &session.account_id).await {
+        return *response;
+    }
     let mut transaction = match state.db_pool().begin().await {
         Ok(value) => value,
         Err(_) => return device_server_error("Could not start the device operation."),
@@ -281,6 +288,9 @@ async fn revoke_devices(
         "currentDeviceId": session.device_id,
     });
     let fingerprint = operation_fingerprint(&intent);
+    if let Err(response) = confirm_reviewed_devices_now(&state, &session.account_id).await {
+        return *response;
+    }
     let mut transaction = match state.db_pool().begin().await {
         Ok(value) => value,
         Err(_) => return device_server_error("Could not start the device operation."),
