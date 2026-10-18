@@ -1,10 +1,20 @@
 import SwiftUI
 
-struct ContactsView: View {
+struct ContactsView<PinnedRows: View>: View {
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
     @State private var showAddContact = false
     var onOpenConversation: ((ConversationSummary) -> Void)? = nil
+    /// Rows shown above requests and contacts, for entries that live outside this screen.
+    private let pinnedRows: PinnedRows
+
+    init(
+        onOpenConversation: ((ConversationSummary) -> Void)? = nil,
+        @ViewBuilder pinnedRows: () -> PinnedRows
+    ) {
+        self.onOpenConversation = onOpenConversation
+        self.pinnedRows = pinnedRows()
+    }
 
     private var contacts: [CloudContact] {
         guard !searchText.isEmpty else { return model.contacts }
@@ -22,59 +32,88 @@ struct ContactsView: View {
         model.contactRequests.filter { !$0.isIncoming }
     }
 
+    private var showsRequests: Bool {
+        !incomingRequests.isEmpty || !outgoingRequests.isEmpty
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            KordiPageSearchHeader(
+            KordiPullDownSearchField(
                 text: $searchText,
                 prompt: "Name or Kordi ID",
                 accessibilityLabel: "Search contacts by name or Kordi ID"
-            ) {
-                EmptyView()
-            }
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 6)
+            .padding(.bottom, 8)
 
             List {
-                if !incomingRequests.isEmpty || !outgoingRequests.isEmpty {
-                    Section("Requests") {
+                if searchText.isEmpty {
+                    Section {
+                        pinnedRows
+                    }
+                    .listSectionSeparator(.hidden)
+                }
+
+                if showsRequests {
+                    Section {
                         ForEach(incomingRequests) { request in
                             ContactRequestRow(request: request)
+                                .contactsListRow()
                         }
                         ForEach(outgoingRequests) { request in
                             ContactRequestRow(request: request)
+                                .contactsListRow()
                         }
+                    } header: {
+                        ContactsSectionHeader(title: "Requests")
                     }
+                    .listSectionSeparator(.hidden)
                 }
 
-                if contacts.isEmpty {
-                    ContentUnavailableView(
-                        searchText.isEmpty ? "No contacts yet" : "No contacts found",
-                        systemImage: searchText.isEmpty ? "person.crop.circle.badge.plus" : "magnifyingglass",
-                        description: Text(searchText.isEmpty ? "Add someone with their nine-digit Kordi ID." : "Try another name or Kordi ID.")
-                    )
-                    .listRowSeparator(.hidden)
-                } else {
-                    ForEach(contacts) { contact in
-                        if let conversation = model.conversationForContact(contact) {
-                            if let onOpenConversation {
-                                Button { onOpenConversation(conversation) } label: {
-                                    ContactIdentityRow(contact: contact)
+                Section {
+                    if contacts.isEmpty {
+                        ContentUnavailableView(
+                            searchText.isEmpty ? "No contacts yet" : "No contacts found",
+                            systemImage: searchText.isEmpty ? "person.crop.circle.badge.plus" : "magnifyingglass",
+                            description: Text(searchText.isEmpty ? "Add someone with their nine-digit Kordi ID." : "Try another name or Kordi ID.")
+                        )
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                    } else {
+                        ForEach(contacts) { contact in
+                            if let conversation = model.conversationForContact(contact) {
+                                if let onOpenConversation {
+                                    Button { onOpenConversation(conversation) } label: {
+                                        ContactIdentityRow(contact: contact)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .contactsListRow()
+                                } else {
+                                    NavigationLink(value: conversation) {
+                                        ContactIdentityRow(contact: contact)
+                                    }
+                                    .contactsListRow()
                                 }
-                                .buttonStyle(.plain)
-                                .kordiListRow()
-                            } else {
-                                NavigationLink(value: conversation) {
-                                    ContactIdentityRow(contact: contact)
-                                }
-                                .kordiListRow()
                             }
                         }
                     }
+                } header: {
+                    if showsRequests {
+                        ContactsSectionHeader(title: "Contacts")
+                    }
                 }
+                .listSectionSeparator(.hidden)
             }
             .listStyle(.plain)
+            .environment(\.defaultMinListHeaderHeight, 0)
+            .listSectionSpacing(0)
             .scrollBounceBehavior(.always)
             .scrollDismissesKeyboard(.interactively)
             .refreshable { await model.refreshWorkspace() }
         }
+        .background(Color(uiColor: .systemBackground))
+        .navigationTitle("Contacts")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: ConversationSummary.self) { conversation in
             ConversationView(conversation: conversation)
@@ -98,9 +137,7 @@ struct ContactsView: View {
 
     private var addContactButton: some View {
         Button { showAddContact = true } label: {
-            Image(systemName: "person.badge.plus")
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+            ContactsToolbarIcon(systemName: "person.badge.plus")
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
@@ -108,25 +145,161 @@ struct ContactsView: View {
     }
 }
 
-private struct ContactIdentityRow: View {
-    let contact: CloudContact
+extension ContactsView where PinnedRows == EmptyView {
+    init(onOpenConversation: ((ConversationSummary) -> Void)? = nil) {
+        self.init(onOpenConversation: onOpenConversation) { EmptyView() }
+    }
+}
+
+/// A plain navigation-bar icon matching the other tab toolbars.
+struct ContactsToolbarIcon: View {
+    let systemName: String
 
     var body: some View {
-        HStack(spacing: 11) {
-            IdentityAvatar(
-                name: contact.preferredName,
-                imageSource: contact.avatarUrl.nonEmpty,
-                kind: .person,
-                size: 44,
-                seed: contact.accountId
-            )
+        Image(systemName: systemName)
+            .font(.body.weight(.semibold))
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+    }
+}
+
+private struct ContactsSectionHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .textCase(nil)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+extension View {
+    /// Row spacing and separators for Contacts: separators start at the text, not the avatar.
+    func contactsListRow() -> some View {
+        modifier(ContactsListRowModifier())
+    }
+}
+
+private struct ContactsListRowModifier: ViewModifier {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    func body(content: Content) -> some View {
+        let verticalInset: CGFloat = dynamicTypeSize.isAccessibilitySize ? 10 : 8
+        content
+            .listRowInsets(EdgeInsets(top: verticalInset, leading: 16, bottom: verticalInset, trailing: 16))
+            .listRowBackground(Color.clear)
+            .listRowSeparatorTint(Color(uiColor: .separator).opacity(0.6))
+    }
+}
+
+/// Avatar, title and subtitle with an optional trailing accessory; the shared
+/// shape of every Contacts row.
+struct ContactsRowLayout<Leading: View, Trailing: View>: View {
+    let title: String
+    let subtitle: String?
+    /// Overrides the secondary subtitle color, such as the tint for "online".
+    var subtitleColor: Color? = nil
+    private let leading: Leading
+    private let trailing: Trailing
+
+    init(
+        title: String,
+        subtitle: String?,
+        subtitleColor: Color? = nil,
+        @ViewBuilder leading: () -> Leading,
+        @ViewBuilder trailing: () -> Trailing
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.subtitleColor = subtitleColor
+        self.leading = leading()
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            leading
+                .frame(width: 44, height: 44)
             VStack(alignment: .leading, spacing: 2) {
-                Text(contact.preferredName).font(.headline)
-                if let kordiId = contact.kordiId.nonEmpty {
-                    Text("@\(kordiId)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.footnote)
+                        .foregroundStyle(subtitleColor.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
+                        .lineLimit(1)
                 }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+            trailing
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+    }
+}
+
+extension ContactsRowLayout where Trailing == EmptyView {
+    init(title: String, subtitle: String?, subtitleColor: Color? = nil, @ViewBuilder leading: () -> Leading) {
+        self.init(title: title, subtitle: subtitle, subtitleColor: subtitleColor, leading: leading) { EmptyView() }
+    }
+}
+
+private struct ContactAvatar: View {
+    let name: String
+    let imageSource: String?
+    let seed: String?
+
+    var body: some View {
+        IdentityAvatar(
+            name: name,
+            imageSource: imageSource,
+            kind: .person,
+            size: 44,
+            seed: seed,
+            cornerRadius: 22
+        )
+    }
+}
+
+/// A person row: presence ("online", "last seen 9 minutes ago") under the name. The Kordi ID
+/// stays searchable and shows only when presence is unknown.
+private struct ContactIdentityRow: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.calendar) private var calendar
+    @Environment(\.locale) private var locale
+    let contact: CloudContact
+
+    private var handle: String? { contact.kordiId.nonEmpty.map { "@\($0)" } }
+
+    /// Kordi Support and other Kordi agents are services, so they show their description instead of presence.
+    private var isSupport: Bool { KordiSupportIdentity.matches(name: contact.preferredName, seed: contact.accountId) }
+    private var isSystemAgent: Bool { isSupport || contact.contactKind == "system_agent" }
+
+    private var systemAgentDescription: String? {
+        contact.subtitle.nonEmpty ?? (isSupport ? "Ask questions or suggest improvements" : handle)
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            let presence = isSystemAgent ? nil : model.contactPresenceByAccountID[contact.accountId]
+            ContactsRowLayout(
+                title: contact.preferredName,
+                subtitle: isSystemAgent
+                    ? systemAgentDescription
+                    : presence.map {
+                        ContactPresencePresentation.listLabel(for: $0, now: context.date, calendar: calendar, locale: locale)
+                    } ?? handle,
+                subtitleColor: presence?.status == .online ? KordiTheme.signalBlue : nil
+            ) {
+                ContactAvatar(name: contact.preferredName, imageSource: contact.avatarUrl.nonEmpty, seed: contact.accountId)
             }
         }
     }
@@ -138,74 +311,68 @@ private struct ContactRequestRow: View {
     let request: CloudContactRequest
     @State private var isWorking = false
 
+    private var name: String { request.counterpart?.preferredName ?? "Kordi user" }
+
+    private var subtitle: String {
+        request.isIncoming ? (request.message.nonEmpty ?? "Wants to connect") : "Request sent"
+    }
+
     var body: some View {
-        let actionLayout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .trailing, spacing: 10))
-            : AnyLayout(HStackLayout(spacing: 10))
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .trailing, spacing: 10) {
+                ContactsRowLayout(title: name, subtitle: subtitle) { avatar }
+                trailing
+            }
+        } else {
+            ContactsRowLayout(title: name, subtitle: subtitle) { avatar } trailing: { trailing }
+        }
+    }
 
-        HStack(alignment: .top, spacing: 12) {
-            IdentityAvatar(
-                name: request.counterpart?.preferredName ?? "Kordi user",
-                imageSource: request.counterpart?.avatarUrl.nonEmpty,
-                kind: .person,
-                size: 46,
-                seed: request.counterpart?.accountId
-            )
-            .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 8) {
-                    Text(request.counterpart?.preferredName ?? "Kordi user")
-                        .font(.headline)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    if !request.isIncoming && !dynamicTypeSize.isAccessibilitySize {
-                        pendingLabel
+    private var avatar: some View {
+        ContactAvatar(name: name, imageSource: request.counterpart?.avatarUrl.nonEmpty, seed: request.counterpart?.accountId)
+    }
+
+    @ViewBuilder
+    private var trailing: some View {
+        if request.isIncoming {
+            HStack(spacing: 8) {
+                Button(action: decline) {
+                    Image(systemName: "xmark")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 30)
+                        .background(Color(uiColor: .tertiarySystemFill), in: Circle())
+                        .frame(width: 36, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Decline")
+
+                Button(action: accept) {
+                    ZStack {
+                        Text("Accept").opacity(isWorking ? 0 : 1)
+                        if isWorking {
+                            ProgressView().controlSize(.small).tint(.white)
+                        }
                     }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 30)
+                    .background(KordiTheme.signalBlue, in: Capsule())
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
-                requestMessage.lineLimit(2)
-                if request.isIncoming {
-                    requestActions(using: actionLayout)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .padding(.top, 5)
-                } else if !request.isIncoming && dynamicTypeSize.isAccessibilitySize {
-                    pendingLabel
-                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Accept")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .disabled(isWorking)
+            .opacity(isWorking ? 0.6 : 1)
+        } else {
+            Text("Pending")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
         }
-        .padding(.vertical, 6)
-    }
-
-    private var requestMessage: some View {
-        Text(request.isIncoming ? (request.message.nonEmpty ?? "Wants to connect") : "Request sent")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-    }
-
-    private func requestActions(using layout: AnyLayout) -> some View {
-        layout {
-            Button(role: .destructive, action: decline) {
-                Text("Decline")
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.red)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-            Button(action: accept) {
-                Text("Accept")
-            }
-            .buttonStyle(.borderedProminent)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .controlSize(dynamicTypeSize.isAccessibilitySize ? .large : .small)
-        .disabled(isWorking)
-    }
-
-    private var pendingLabel: some View {
-        Text("Pending")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
     }
 
     private func accept() {

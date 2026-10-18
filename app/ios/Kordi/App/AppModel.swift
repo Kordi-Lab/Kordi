@@ -7858,13 +7858,23 @@ final class AppModel: ObservableObject {
         contactRequests = fixture.contactRequests
         let now = Date()
         let timestamp = ISO8601DateFormatter()
-        contactPresenceByAccountID = Dictionary(uniqueKeysWithValues: fixture.contacts.map { contact in
-            (
+        // Varied presence so previews show each list line: online, minutes ago, yesterday, and unknown time.
+        let yesterdayEvening = Calendar.current.date(
+            bySettingHour: 18, minute: 58, second: 0,
+            of: Calendar.current.date(byAdding: .day, value: -1, to: now) ?? now
+        ) ?? now
+        contactPresenceByAccountID = Dictionary(uniqueKeysWithValues: fixture.contacts.enumerated().map { index, contact in
+            let lastSeen: Date? = switch index % 4 {
+            case 1: now.addingTimeInterval(-9 * 60)
+            case 2: yesterdayEvening
+            default: nil
+            }
+            return (
                 contact.accountId,
                 CloudPresenceAccount(
                     accountId: contact.accountId,
-                    status: .offline,
-                    lastSeenAt: timestamp.string(from: now.addingTimeInterval(-90))
+                    status: index % 4 == 0 ? .online : .offline,
+                    lastSeenAt: lastSeen.map { timestamp.string(from: $0) }
                 )
             )
         })

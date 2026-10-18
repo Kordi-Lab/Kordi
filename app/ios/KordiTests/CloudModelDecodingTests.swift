@@ -566,6 +566,30 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(presence.lastSeenAt, "2026-08-17T09:55:00Z")
     }
 
+    func testContactPresenceListLabelUsesRelativeTimesForRecentHours() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let locale = Locale(identifier: "en_US")
+        let now = parseCloudDate("2026-08-17T13:00:00Z")
+        func label(_ status: CloudPresenceStatus, _ lastSeenAt: String?) -> String {
+            ContactPresencePresentation.listLabel(
+                for: CloudPresenceAccount(accountId: "acct_maya", status: status, lastSeenAt: lastSeenAt),
+                now: now,
+                calendar: calendar,
+                locale: locale
+            )
+        }
+
+        XCTAssertEqual(label(.online, nil), "online")
+        XCTAssertEqual(label(.offline, nil), "last seen recently")
+        XCTAssertEqual(label(.offline, "2026-08-17T12:59:30Z"), "last seen just now")
+        XCTAssertEqual(label(.offline, "2026-08-17T12:59:00Z"), "last seen 1 minute ago")
+        XCTAssertEqual(label(.offline, "2026-08-17T12:51:00Z"), "last seen 9 minutes ago")
+        XCTAssertEqual(label(.offline, "2026-08-17T11:00:00Z"), "last seen 2 hours ago")
+        XCTAssertEqual(label(.offline, "2026-08-17T06:55:00Z"), "last seen today at 6:55\u{202F}AM")
+        XCTAssertEqual(label(.offline, "2026-08-16T18:58:00Z"), "last seen yesterday at 6:58\u{202F}PM")
+    }
+
     func testContactPresencePresentationMatchesTelegramStyle() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
