@@ -1,6 +1,7 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { cloudAgentNoProviderNoticeText, cloudAgentProviderFailureNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { isCloudAgentProviderFailureNoticeText } from '@/features/cloud/cloudAgentReplyText';
 import { routeRunsOnKordiCloud } from '@/features/cloud/cloudAgentRuntimeRoute';
 import { hostedRequestContextContent } from '@/features/cloud/cloudAgentRequestContext';
 import type { CanonicalSessionState, DesktopChatTurnSnapshot } from '@/kordi-app/types';
@@ -120,7 +121,7 @@ export function localAgentNoProviderCompletion(
   prepared: PreparedCanonicalUserMessage | null,
 ) {
   return async (finalTurn: DesktopChatTurnSnapshot) => {
-    const noProviderFailure = isCloudAgentNoProviderConfiguredError(finalTurn.error || finalTurn.message || finalTurn.assistantText);
+    const noProviderFailure = isCloudAgentNoProviderConfiguredError(finalTurn.error || finalTurn.message) || isCloudAgentProviderFailureNoticeText(finalTurn.assistantText);
     if (!noProviderFailure || !prepared) return;
     const sentUserRequest = {
       ...prepared.request,

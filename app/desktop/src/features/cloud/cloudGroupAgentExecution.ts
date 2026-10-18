@@ -29,6 +29,7 @@ import {
 import {
   cloudGroupAgentRequestRuntimeSessionId,
 } from './cloudAgentRuntime';
+import { cloudAgentTurnReplyText } from './cloudAgentReplyText';
 import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
 import type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.types';
@@ -343,9 +344,8 @@ export async function respondToCloudGroupAgentMention(
     return;
   }
 
-  const succeeded = finalTurn.succeeded
-    && finalTurn.assistantText.trim().length > 0;
-  const responseText = succeeded ? finalTurn.assistantText.trim() : '';
+  const responseText = cloudAgentTurnReplyText(finalTurn);
+  const succeeded = responseText.length > 0;
   const failureMessage = succeeded
     ? null
     : cloudAgentProviderFailureNotice(finalTurn.error || finalTurn.message)

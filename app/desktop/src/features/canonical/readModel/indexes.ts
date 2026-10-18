@@ -3,7 +3,7 @@ import { sortedCanonicalMessages, type SortableCanonicalMessage } from './messag
 import { isPipIdentity } from '@/features/pip/pipIdentity';
 import { transcriptEntries } from './planCardEntries';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
-import { isCloudAgentStoredNoProviderFailure } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentStoredReplyHasRunOutput as hasRunOutput, isCloudAgentStoredNoProviderReply } from '@/features/cloud/cloudAgentReplyText';
 import type {
   CanonicalIdentity,
   CanonicalSessionMessage,
@@ -368,7 +368,7 @@ function noProviderRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
     if (message.sourceTransport !== 'desktop-chat-ui') continue;
     if (message.messageKind !== 'agent-turn' || message.status !== 'failed') continue;
     const content = contentRecord(message.content);
-    if (!isCloudAgentStoredNoProviderFailure(message.contentText || stringValue(content.error) || stringValue(content.detail))) continue;
+    if (!isCloudAgentStoredNoProviderReply({ text: message.contentText, error: stringValue(content.error), detail: stringValue(content.detail), failed: true })) continue;
     for (const requestId of requestIdsForMessage(message)) {
       const failureIds = syntheticFailureIdsByRequestId.get(requestId) ?? new Set<string>();
       failureIds.add(message.id);
@@ -382,7 +382,7 @@ function noProviderRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
   for (const message of messages) {
     if (message.sourceTransport === 'desktop-chat' && message.messageKind === 'agent-turn') {
       const content = contentRecord(message.content);
-      if (isCloudAgentStoredNoProviderFailure(message.contentText || stringValue(content.error) || stringValue(content.detail))) {
+      if (isCloudAgentStoredNoProviderReply({ text: message.contentText, error: stringValue(content.error), detail: stringValue(content.detail), failed: message.status === 'failed' || stringValue(content.deliveryState) === 'failed', hasRunOutput: hasRunOutput(content) })) {
         if (requestIdsForMessage(message).some((requestId) => syntheticRequestIds.has(requestId))) {
           duplicateIds.add(message.id);
         }
@@ -405,8 +405,8 @@ function noProviderRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
       || deliveryState === 'failed'
       || deliveryState === 'cancelled'
       || deliveryState === 'processing_failed';
-    const errorText = message.contentText || stringValue(content.error) || stringValue(content.detail);
-    if (isUnsuccessful || !message.contentText.trim() || isCloudAgentStoredNoProviderFailure(errorText)) continue;
+    const noticeOnly = isCloudAgentStoredNoProviderReply({ text: message.contentText, error: stringValue(content.error), failed: false, hasRunOutput: hasRunOutput(content) });
+    if (isUnsuccessful || !message.contentText.trim() || noticeOnly) continue;
     for (const requestId of requestIdsForMessage(message)) {
       for (const failureId of syntheticFailureIdsByRequestId.get(requestId) ?? []) {
         duplicateIds.add(failureId);

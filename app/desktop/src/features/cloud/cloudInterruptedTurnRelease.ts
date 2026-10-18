@@ -9,6 +9,8 @@ export type InterruptedCloudAgentRequest = {
 
 export type InterruptedCloudAgentReleaseResult = {
   released: number;
+  /** The requests the server released, in input order. */
+  releasedRequests: InterruptedCloudAgentRequest[];
   failures: unknown[];
 };
 
@@ -32,20 +34,24 @@ export async function releaseInterruptedCloudAgentRequests(
       unique.set(`${sessionId}\n${requestId}`, { sessionId, requestId });
     }
   }
-  if (unique.size === 0) return { released: 0, failures: [] };
+  if (unique.size === 0) return { released: 0, releasedRequests: [], failures: [] };
   const token = await loadToken();
-  if (!token) return { released: 0, failures: [] };
-  const results = await Promise.allSettled([...unique.values()].map(
+  if (!token) return { released: 0, releasedRequests: [], failures: [] };
+  const requested = [...unique.values()];
+  const results = await Promise.allSettled(requested.map(
     ({ sessionId, requestId }) => client.desktopAgentExecution<{ released?: boolean }>(
       token,
       'interrupted',
       { sessionId, requestMessageId: requestId },
     ),
   ));
+  const releasedRequests = requested.filter((_, index) => {
+    const result = results[index];
+    return result.status === 'fulfilled' && result.value?.released === true;
+  });
   return {
-    released: results.filter(
-      (result) => result.status === 'fulfilled' && result.value?.released === true,
-    ).length,
+    released: releasedRequests.length,
+    releasedRequests,
     failures: results.flatMap((result): unknown[] => (
       result.status === 'rejected' ? [result.reason as unknown] : []
     )),
