@@ -1,6 +1,6 @@
 use super::*;
 
-fn put(token: &str, path: &str, body: Value) -> Request<Body> {
+pub(super) fn put(token: &str, path: &str, body: Value) -> Request<Body> {
     Request::builder()
         .method("PUT")
         .uri(path)
@@ -297,7 +297,8 @@ async fn project_runs_use_the_cloud_only_while_the_project_mac_is_offline() {
         .unwrap();
     assert_eq!(desktop.execution_backend, "desktop");
 
-    // Offline project Mac: the cloud answers without the project files.
+    // Offline project Mac and no other Mac with the project: the cloud never
+    // answers without the files. The request fails at once with a reply.
     set_project_device_seen(&pool, &owner.account_id, "1 minute").await;
     let offline_claim = router
         .clone()
@@ -308,19 +309,7 @@ async fn project_runs_use_the_cloud_only_while_the_project_mac_is_offline() {
         ))
         .await
         .unwrap();
-    assert_eq!(offline_claim.status(), StatusCode::OK);
-    let run_id = read_json(offline_claim).await["runId"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let leased = lease_canary_run(&pool, "project-runner", &run_id)
-        .await
-        .unwrap()
-        .expect("offline project run is leased by the cloud runner");
-    assert_eq!(leased.run_id, run_id);
-    assert!(leased
-        .system_prompt
-        .contains("This chat belongs to the project \"Example\""));
+    assert_eq!(offline_claim.status(), StatusCode::NOT_FOUND);
     let earlier = lease_canary_run(&pool, "project-runner", &queued.run_id)
         .await
         .unwrap()
