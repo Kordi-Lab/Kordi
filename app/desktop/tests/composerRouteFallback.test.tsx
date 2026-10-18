@@ -6,8 +6,10 @@ import { act, createElement, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { keepPendingRuntimeRoutes, type PendingRuntimeRoutes } from '../src/app/useCloudAgentRuntimeRouteSync';
+import { freshPendingRuntimeRoute, keepPendingRuntimeRoutes, type PendingRuntimeRoutes } from '../src/app/useCloudAgentRuntimeRouteSync';
 import { setActiveChatRoute } from '../src/features/chat/kordiCloudChatRoute';
+import { setLocalAccountChoices } from '../src/features/cloud/hostedAccountRegistry';
+import { publishHostedProviderSnapshots } from '../src/features/cloud/hostedAccounts';
 import { ComposerModelControls } from '../src/kordi-app/components';
 import {
   resolveComposerModelSelection,
@@ -211,6 +213,11 @@ test('a published route outlasts history replays until history records it', () =
   const picked = { ...previous, model: 'openai-codex/gpt-5.6-sol' };
   const pending: PendingRuntimeRoutes = new Map([['runtime:session', { route: picked, atMs: 1_000 }]]);
 
+  // A send right after the pick runs with it, before state catches up.
+  assert.equal(freshPendingRuntimeRoute(pending, 'runtime:session', 2_000), picked);
+  assert.equal(freshPendingRuntimeRoute(pending, 'runtime:other', 2_000), null);
+  assert.equal(freshPendingRuntimeRoute(pending, 'runtime:session', 1_000 + 60_000), null);
+
   // History still names the previous route, so the replay would undo the pick.
   const kept = keepPendingRuntimeRoutes({ 'runtime:session': previous }, { 'runtime:session': previous }, pending, 2_000);
   assert.equal(kept['runtime:session'].model, picked.model);
@@ -226,4 +233,146 @@ test('a published route outlasts history replays until history records it', () =
   const stale = { 'runtime:session': previous };
   assert.equal(keepPendingRuntimeRoutes(stale, stale, pending, 1_000 + 60_000), stale);
   assert.equal(pending.size, 0);
+});
+
+async function renderMainRouting({
+  storedChoice,
+  options,
+  listsLoaded,
+  save = () => Promise.resolve(),
+}: {
+  storedChoice: string;
+  options: ComposerProviderOption[];
+  listsLoaded: boolean;
+  save?: () => Promise<void>;
+}) {
+  const restore = installDom();
+  const root = createRoot(document.getElementById('root')!);
+  const saves: Array<{ model?: string | null; thinking?: string | null; authProvider?: string | null; authChoice?: string | null }> = [];
+  const route = { model: 'openai-codex/gpt-6-sol', authProvider: 'openai-codex', authChoice: storedChoice, thinking: 'max' };
+  const host = {
+    id: 'cloud', displayName: 'Kordi', ownerName: 'Me', serverUrl: '', activeAgentId: 'agent',
+    agents: [{ id: 'agent', label: 'My Kordi', runtime: 'local', isDefault: true, isActive: true, registered: true,
+      defaultModel: route.model, defaultAuthProvider: route.authProvider, defaultAuthChoice: storedChoice, thinking: route.thinking }],
+  } as unknown as DesktopCollaborationHost;
+  let routing!: ReturnType<typeof useChatCollaborationRouting>;
+  let rerender!: () => void;
+  function Harness() {
+    const [, setTick] = useState(0);
+    rerender = () => setTick((tick) => tick + 1);
+    routing = useChatCollaborationRouting({
+      shared: {
+        desktopChatState: null, modelOptions, providerOptions: options,
+        updateRouting: (_host, _agent, model, _fallback, thinking, authProvider, authChoice) => {
+          saves.push({ model, thinking, authProvider, authChoice });
+          return save();
+        },
+      },
+      main: {
+        conversation: { id: 'session:self-agent:me', canonicalSessionId: 'session:self-agent:me' } as never,
+        host, enabled: true, isBusy: false, openSelector: null, toggleSelector: () => undefined,
+        composerSelection: { model: route.model, thinking: route.thinking }, selectComposerProviderChoice: () => undefined, selectComposerValue: () => undefined,
+      },
+      companion: { conversation: null, host: null, enabled: false, isBusy: false, openSelector: null, setOpenSelector: () => undefined },
+    });
+    return null;
+  }
+  setActiveChatRoute(route);
+  if (listsLoaded) {
+    setLocalAccountChoices(['profile:local']);
+    publishHostedProviderSnapshots([]);
+  } else {
+    setLocalAccountChoices(null);
+  }
+  await act(async () => root.render(createElement(Harness)));
+  return {
+    saves,
+    routing: () => routing,
+    rerender: () => act(async () => rerender()),
+    async cleanup() {
+      setActiveChatRoute(null);
+      setLocalAccountChoices(null);
+      await act(async () => root.unmount());
+      restore();
+    },
+  };
+}
+
+const workAccount: ComposerProviderOption = { value: 'openai-codex::cloud-login:work', providerId: 'openai-codex', label: 'Work', selectionLabel: 'ChatGPT • Work', hosted: true };
+const researchAccount: ComposerProviderOption = { value: 'anthropic::cloud-login:research', providerId: 'anthropic', label: 'Research', hosted: true };
+
+test('an unavailable stored account is replaced automatically once both account lists have loaded', async () => {
+  let finishSave!: () => void;
+  const harness = await renderMainRouting({
+    storedChoice: 'cloud-login:removed', options: [workAccount, researchAccount], listsLoaded: true,
+    save: () => new Promise<void>((resolve) => { finishSave = resolve; }),
+  });
+  try {
+    assert.equal(harness.saves.length, 1, 'The usable same-provider account is applied without a pick');
+    assert.deepEqual(harness.saves[0], { model: 'openai-codex/gpt-6-sol', thinking: 'high', authProvider: 'openai-codex', authChoice: 'cloud-login:work' });
+    assert.equal(harness.routing().main.selection.authChoice, 'cloud-login:work', 'The composer shows the account before the save settles');
+    assert.equal(harness.routing().main.replaceUnavailableAccount, null);
+    // The saved route reaches the session, as the route sync does.
+    await act(async () => {
+      setActiveChatRoute({ model: 'openai-codex/gpt-6-sol', authProvider: 'openai-codex', authChoice: 'cloud-login:work', thinking: 'high' });
+      finishSave();
+    });
+    assert.equal(harness.routing().main.selection.authChoice, 'cloud-login:work');
+    await harness.rerender();
+    await harness.rerender();
+    assert.equal(harness.saves.length, 1, 'The replacement is saved once, not in a loop');
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test('the only usable account replaces an unavailable account of another provider', async () => {
+  const harness = await renderMainRouting({ storedChoice: 'cloud-login:removed', options: [researchAccount], listsLoaded: true });
+  try {
+    assert.equal(harness.saves.length, 1);
+    assert.equal(harness.saves[0].authChoice, 'cloud-login:research');
+    assert.equal(harness.saves[0].model, 'anthropic/claude-fable-5');
+    assert.equal(harness.saves[0].thinking, 'max');
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test('an unavailable account stays until the owner chooses when lists are loading, the choice is unclear, or the save failed', async () => {
+  const loading = await renderMainRouting({ storedChoice: 'cloud-login:removed', options: [workAccount], listsLoaded: false });
+  try {
+    assert.equal(loading.saves.length, 0, 'An account that may still be loading is never replaced');
+    assert.equal(loading.routing().main.replaceUnavailableAccount, null, 'Nor at send time');
+  } finally {
+    await loading.cleanup();
+  }
+
+  const unclear = await renderMainRouting({
+    storedChoice: 'cloud-login:removed',
+    options: [researchAccount, { value: 'google::cloud-login:lab', providerId: 'google', label: 'Lab', hosted: true }],
+    listsLoaded: true,
+  });
+  try {
+    assert.equal(unclear.saves.length, 0);
+    assert.equal(unclear.routing().main.selection.authChoice, 'cloud-login:removed');
+  } finally {
+    await unclear.cleanup();
+  }
+
+  const failing = await renderMainRouting({
+    storedChoice: 'cloud-login:removed', options: [workAccount], listsLoaded: true,
+    save: () => Promise.reject(new Error('Unable to reach Kordi Cloud')),
+  });
+  try {
+    await failing.rerender();
+    await failing.rerender();
+    assert.equal(failing.saves.length, 1, 'A failed replacement is not retried in a loop');
+    assert.equal(failing.routing().main.selection.authChoice, 'cloud-login:removed', 'The failed save rolls back');
+    assert.equal(typeof failing.routing().main.replaceUnavailableAccount, 'function', 'A send can still apply the replacement');
+    await act(async () => { assert.equal(failing.routing().main.replaceUnavailableAccount!(), true); });
+    assert.equal(failing.saves.length, 2);
+    assert.equal(failing.saves[1].authChoice, 'cloud-login:work');
+  } finally {
+    await failing.cleanup();
+  }
 });

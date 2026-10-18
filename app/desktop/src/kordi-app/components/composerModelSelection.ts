@@ -193,6 +193,29 @@ export function composerSignInRequired(providerOptions: readonly ComposerProvide
   return !providerOptions.some((option) => composerProviderOptionUsable(option));
 }
 
+/**
+ * The route that replaces a stored account this device no longer has: a
+ * usable account of the same provider, else the only usable account, with a
+ * model and thinking level it offers. Null when the account is not missing or
+ * the choice is not clear; then the owner chooses.
+ */
+export function unavailableAccountReplacement({
+  selection,
+  providerOptions,
+  modelOptions,
+}: {
+  selection: ComposerModelSelection & { thinking: string };
+  providerOptions: ComposerProviderOption[];
+  modelOptions: ComposerModelOption[];
+}): ComposerRoute | null {
+  const resolved = resolveComposerModelSelection({ selection, providerOptions, modelOptions });
+  if (!resolved.missingAccount || !resolved.selectedProviderOption) return null;
+  const usable = providerOptions.filter((option) => composerProviderOptionUsable(option));
+  const option = sameProviderComposerAccount(resolved.selectedProviderOption.providerId, providerOptions)
+    ?? (usable.length === 1 ? usable[0] : null);
+  return option ? resolveComposerRoutePick({ selection, providerOptions, modelOptions, pick: { type: 'provider', option } }) : null;
+}
+
 export type ComposerRoute = {
   providerOption: ComposerProviderOption | null;
   model: string;

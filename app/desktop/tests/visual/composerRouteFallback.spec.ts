@@ -42,3 +42,15 @@ test('a removed account falls back to a signed-in account of the same provider',
   for (const trigger of await triggers(page).all()) await expect(trigger).not.toHaveText(/^-?$/);
   await page.screenshot({ path: testInfo.outputPath('composer-route-fallback.png') });
 });
+
+test('once the account lists load, an unavailable account is replaced without a pick and saved once', async ({ page }) => {
+  await page.goto('/tests/visual/composerRouteFallback.html?removed&loaded');
+  await expect(triggers(page).nth(0)).toHaveText('ChatGPT • Work', { timeout: 200 });
+  await expect(triggers(page).nth(1)).toHaveText('gpt-6-sol');
+  await expect(triggers(page).nth(2)).toHaveText('Medium');
+  await expect(pendingSaves(page)).toHaveAttribute('data-pending-saves', '1');
+  await expect(pendingSaves(page)).toHaveAttribute('data-pending-saves', '0');
+  await page.waitForTimeout(500);
+  await expect(pendingSaves(page)).toHaveAttribute('data-pending-saves', '0');
+  await expect(triggers(page).nth(0)).toHaveText('ChatGPT • Work');
+});

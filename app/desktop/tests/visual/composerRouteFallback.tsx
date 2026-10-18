@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { setActiveChatRoute } from '../../src/features/chat/kordiCloudChatRoute';
+import { setLocalAccountChoices } from '../../src/features/cloud/hostedAccountRegistry';
+import { publishHostedProviderSnapshots } from '../../src/features/cloud/hostedAccounts';
 import type { ComposerSelectorType, DesktopCollaborationHost } from '../../src/kordi-app/types';
 import { CollaborationRoutingControls } from '../../src/pages/chatsPage.collaborationRoutingControls';
 import { useChatCollaborationRouting } from '../../src/pages/useChatCollaborationRouting';
@@ -12,6 +14,11 @@ import '../../src/index.css';
 const params = new URLSearchParams(location.search);
 const failSaves = params.has('fail');
 const removedAccount = params.has('removed');
+// Both account lists have arrived, so a missing account is truly gone.
+if (params.has('loaded')) {
+  setLocalAccountChoices([]);
+  publishHostedProviderSnapshots([]);
+}
 const providers = [
   { value: 'openai-codex::cloud-login:work', providerId: 'openai-codex', label: 'Work', selectionLabel: 'ChatGPT • Work', active: true, hosted: true },
   { value: 'anthropic::cloud-login:research', providerId: 'anthropic', label: 'Research', selectionLabel: 'Claude • Research', hosted: true },

@@ -92,6 +92,12 @@ export function keepPendingRuntimeRoutes(
   return next;
 }
 
+/** A route published moments ago, which a send uses before state catches up. */
+export function freshPendingRuntimeRoute(pending: PendingRuntimeRoutes, runtimeSessionId: string | null, nowMs: number) {
+  const entry = runtimeSessionId ? pending.get(runtimeSessionId) : undefined;
+  return entry && nowMs - entry.atMs <= PENDING_RUNTIME_ROUTE_MS ? entry.route : null;
+}
+
 export function useCloudAgentRuntimeRouteSync({
   accountId,
   activeConversationId,
@@ -213,10 +219,16 @@ export function useCloudAgentRuntimeRouteSync({
   );
   const activeRuntimeRoute = storedSessionRoute(activeRuntimeSessionId);
   const activeRuntimeRouteKey = JSON.stringify(activeRuntimeRoute);
-  const resolveChatRuntimeRoute = useCallback((sessionId?: string | null) => (
+  const renderedChatRuntimeRoute = useCallback((sessionId?: string | null) => (
     storedSessionRoute(cloudAgentRuntimeSessionId(accountId, sessionId))
       ?? compactCloudAgentRuntimeRoute(defaultCloudAgentRuntimeRoute)
   ), [accountId, defaultCloudAgentRuntimeRoute, storedSessionRoute]);
+  // For sends and route changes: a route published moments ago wins before
+  // state catches up, so a send right after a route change runs with it.
+  const resolveChatRuntimeRoute = useCallback((sessionId?: string | null) => {
+    const pending = freshPendingRuntimeRoute(pendingRoutesRef.current, cloudAgentRuntimeSessionId(accountId, sessionId), Date.now());
+    return pending ? compactCloudAgentRuntimeRoute(pending) : renderedChatRuntimeRoute(sessionId);
+  }, [accountId, renderedChatRuntimeRoute]);
 
   const sendRuntimeRouteChangeMessage = useCallback(async ({
     sessionId,
@@ -399,7 +411,7 @@ export function useCloudAgentRuntimeRouteSync({
   ]);
 
   // The composer marks the active chat's hosted account and shows when it runs on Kordi Cloud.
-  const activeChatRoute = resolveChatRuntimeRoute(activeConversationId);
+  const activeChatRoute = renderedChatRuntimeRoute(activeConversationId);
   const activeChatRouteKey = JSON.stringify(activeChatRoute);
   useEffect(() => { setActiveChatRoute(JSON.parse(activeChatRouteKey) as DesktopChatMessageRoute | null); }, [activeChatRouteKey]);
 

@@ -30,18 +30,24 @@ export function hostedAccountsFromSnapshots(snapshots: CloudProviderAuthSnapshot
 }
 
 /** Hosted accounts and the pinned OMP catalog that lists their providers' models. */
-export type HostedAccountsState = { accounts: HostedAccount[]; catalog: OmpCatalogEntry[]; hasLoaded: boolean };
+export type HostedAccountsState = {
+  accounts: HostedAccount[];
+  catalog: OmpCatalogEntry[];
+  hasLoaded: boolean;
+  /** True once a list actually arrived; a failed load leaves it false, so a missing account may still exist. */
+  listed?: boolean;
+};
 
 // One list for the app: the Authentication page publishes every load, and the
 // composer loads it once per Kordi session.
-const emptyState: HostedAccountsState = { accounts: [], catalog: [], hasLoaded: false };
+const emptyState: HostedAccountsState = { accounts: [], catalog: [], hasLoaded: false, listed: false };
 let state: HostedAccountsState = emptyState;
 let generation = 0;
 const listeners = new Set<() => void>();
 
 function update(next: Partial<HostedAccountsState>) {
   const merged = { ...state, ...next };
-  if (merged.hasLoaded === state.hasLoaded && merged.catalog === state.catalog
+  if (merged.hasLoaded === state.hasLoaded && merged.listed === state.listed && merged.catalog === state.catalog
     && (merged.accounts === state.accounts || JSON.stringify(merged.accounts) === JSON.stringify(state.accounts))) return;
   state = merged;
   for (const listener of [...listeners]) listener();
@@ -49,7 +55,7 @@ function update(next: Partial<HostedAccountsState>) {
 
 function applySnapshots(snapshots: CloudProviderAuthSnapshot[]) {
   setHostedAccountChoices(snapshots.filter((snapshot) => !snapshot.revokedAt).map((snapshot) => snapshot.authChoice));
-  update({ accounts: hostedAccountsFromSnapshots(snapshots), hasLoaded: true });
+  update({ accounts: hostedAccountsFromSnapshots(snapshots), hasLoaded: true, listed: true });
 }
 
 export function publishHostedProviderSnapshots(snapshots: CloudProviderAuthSnapshot[]) {

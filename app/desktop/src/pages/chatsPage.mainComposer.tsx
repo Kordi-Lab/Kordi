@@ -144,8 +144,11 @@ export function MainComposer({
   const routeAccountUnavailable = canConfigureModelRoute
     && (localRouting.paneKind === 'agent' || collaborationRouting.enabled)
     && isRouteAccountUnavailable(routeSelection, composerProviderOptions);
+  // When the account menu offers a usable account, a send applies it first.
+  const canSend = !routeAccountUnavailable || Boolean(collaborationRouting.replaceUnavailableAccount);
   const onSend: MainComposerProps['onSend'] = (draftOverride, attachmentOverride) => (
-    routeAccountUnavailable ? undefined : sendMessage(draftOverride, attachmentOverride)
+    !routeAccountUnavailable || collaborationRouting.replaceUnavailableAccount?.()
+      ? sendMessage(draftOverride, attachmentOverride) : undefined
   );
   const voice = useVoiceComposer({
     conversation,
@@ -481,7 +484,7 @@ export function MainComposer({
               </Button>
             ) : <VoiceComposerControls
               voice={voice}
-              hasSendableDraft={hasSendableDraft && !routeAccountUnavailable}
+              hasSendableDraft={hasSendableDraft && canSend}
               activeLiveTurnIsRunning={display.activeLiveTurnIsRunning}
               onSend={() => { void onSend(); }}
               stop={stop}
