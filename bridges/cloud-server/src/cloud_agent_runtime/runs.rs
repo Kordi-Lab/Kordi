@@ -3,6 +3,7 @@ mod claims;
 mod completion;
 pub(super) mod context_read;
 mod delivery;
+mod desktop_takeover;
 mod envelopes;
 mod errors;
 mod group_mentions;

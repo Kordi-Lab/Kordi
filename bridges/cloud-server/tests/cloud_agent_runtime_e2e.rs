@@ -401,6 +401,8 @@ mod group_owner_admission;
 mod group_target_admission;
 #[path = "cloud_agent_runtime_e2e/hosted_only_admission.rs"]
 mod hosted_only_admission;
+#[path = "cloud_agent_runtime_e2e/mac_first_routing.rs"]
+mod mac_first_routing;
 #[path = "cloud_agent_runtime_e2e/omp_state.rs"]
 mod omp_state;
 #[path = "cloud_agent_runtime_e2e/provider_auth.rs"]
