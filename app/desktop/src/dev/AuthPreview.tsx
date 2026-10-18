@@ -259,6 +259,7 @@ export function AuthPreview({
               <PreviewSessionRoute
                 providers={authState.providers}
                 initialAuthChoice={previewParams().get('missingAccount') === '1' ? 'profile:preview-removed' : 'profile:preview-work'}
+                {...(previewParams().get('otherProvider') === '1' ? { initialAuthProvider: 'anthropic', initialModel: 'anthropic/claude-fable-5' } : {})}
                 loadSnapshots={cloudSources.loadSnapshots}
               />
             ) : null}

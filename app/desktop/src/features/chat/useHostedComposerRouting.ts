@@ -86,13 +86,17 @@ export function useHostedComposerRouting({
   // A route applied moments ago wins until the session state catches up, so
   // an account choice followed by a model choice keeps the chosen account.
   const appliedRef = useRef(new Map<string, { route: DesktopChatMessageRoute; atMs: number }>());
+  // Saves run in the background, one after another per session, so an older
+  // save never lands after a newer one.
+  const savesRef = useRef(new Map<string, Promise<void>>());
 
-  return useCallback(async (
+  // Returns at once: true when the change runs on Kordi Cloud, after showing it.
+  return useCallback((
     scope: ComposerScope,
     sessionId: string | null | undefined,
     change: ComposerRouteChange,
     isolatedTarget?: Exclude<ComposerConfigTargetOverride, string | null> | null,
-  ) => {
+  ): boolean => {
     if (!isNativeShell || scope !== 'chat' || !sessionId || !publishCloudAgentRuntimeRouteChange) return false;
     const stored = resolveChatRuntimeRoute?.(sessionId) ?? null;
     const applied = appliedRef.current.get(sessionId);
@@ -120,18 +124,21 @@ export function useHostedComposerRouting({
     });
     const pending = { route: decision.route, atMs: Date.now() };
     appliedRef.current.set(sessionId, pending);
-    try {
-      setDesktopChatError(null);
+    setDesktopChatError(null);
+    // The choice shows at once; the caller closes the menu without waiting for
+    // the save, and only a failed save rolls the choice back.
+    const publish = publishCloudAgentRuntimeRouteChange;
+    const save = (savesRef.current.get(sessionId) ?? Promise.resolve()).then(async () => {
       if (decision.leavesCloud) await updateDesktopChatSessionConfig(sessionId, model, decision.route.thinking ?? undefined);
-      await publishCloudAgentRuntimeRouteChange({
+      await publish({
         sessionId,
         model,
         authProvider: decision.route.authProvider,
         authChoice: decision.route.authChoice,
         thinking: decision.route.thinking,
       });
-    } catch (error) {
-      if (appliedRef.current.get(sessionId) !== pending) return true;
+    }).catch((error: unknown) => {
+      if (appliedRef.current.get(sessionId) !== pending) return;
       appliedRef.current.delete(sessionId);
       if (isolatedTarget) isolatedTarget.onSelectionChange(isolatedTarget.selection);
       else if (previous) {
@@ -142,7 +149,11 @@ export function useHostedComposerRouting({
           : current);
       }
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to update session');
-    }
+    });
+    savesRef.current.set(sessionId, save);
+    void save.finally(() => {
+      if (savesRef.current.get(sessionId) === save) savesRef.current.delete(sessionId);
+    });
     return true;
   }, [isNativeShell, publishCloudAgentRuntimeRouteChange, resolveChatRuntimeRoute, setComposerSelections, setDesktopChatError]);
 }

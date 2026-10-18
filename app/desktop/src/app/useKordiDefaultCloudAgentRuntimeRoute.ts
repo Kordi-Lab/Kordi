@@ -9,6 +9,8 @@ import type { ComposerScope, DesktopAuthState } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import { DEVICE_ACTIVE_CHOICES, isAccountAuthChoice, isHostedOnlyAccountChoice } from '@/features/cloud/routeAccountChoice';
 import { registeredAccountChoices } from '@/features/cloud/hostedAccountRegistry';
+import { hostedAccountsState } from '@/features/cloud/hostedAccounts';
+import { kordiCloudFallbackRoute } from '@/features/chat/messageActions/noProviderRoute';
 
 type DefaultCloudAgentRuntimeRouteArgs = {
   activeLoginProviderId: string | null;
@@ -106,7 +108,13 @@ export function resolveDefaultCloudAgentRuntimeRoute({
     routeModel = routeProviderId ? preferredModelValueForProvider(routeProviderId) : null;
   }
 
-  if (!routeModel) return null;
+  // No provider on this Mac: a new session starts on a usable Kordi Cloud
+  // account, once both account lists have arrived.
+  if (!routeModel) {
+    return desktopAuthState && hostedAccountsState().listed
+      ? kordiCloudFallbackRoute({ model: chatModel, thinking: selectedThinking })
+      : null;
+  }
 
   const modelProviderId = routeProviderId ?? routeModel.split('/')[0] ?? null;
   const normalizedModelProviderId =

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
 import {
@@ -11,6 +11,10 @@ import {
   type LocalCollaborationAgentRoutingOption,
 } from '@/features/collaboration/agentModelRouting';
 import { isCloudCollaborationHostId } from '@/features/cloud/cloudCollaborationState';
+import { useActiveChatRoute } from '@/features/chat/kordiCloudChatRoute';
+import { registeredAccountChoices } from '@/features/cloud/hostedAccountRegistry';
+import { useHostedAccountsSnapshot } from '@/features/cloud/hostedAccounts';
+import { unavailableAccountReplacement, type ComposerRoute } from '@/kordi-app/components/composerModelSelection';
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
   focusComposerTextarea,
@@ -101,24 +105,39 @@ function routingKey(
   return `${agent.hostId}:${agent.id}`;
 }
 
-function selectedRoutingAgent(
-  agents: LocalCollaborationAgentRoutingOption[],
-  selectedAgentId: string | null,
+/** A pick shown before its save settles; the token tells a newer pick from an older one. */
+type OptimisticRouting = { routing: DesktopCollaborationAgentRouting; token: symbol };
+
+/**
+ * The agent as the composer shows it: a Kordi Cloud agent with its session
+ * route, then any pick whose save has not settled, so a pick shows at once.
+ */
+export function selectedRoutingAgent(
+  agent: LocalCollaborationAgentRoutingOption | null,
   key: string | null,
-  optimisticRouting: Record<string, DesktopCollaborationAgentRouting>,
+  optimisticRouting: Record<string, OptimisticRouting>,
+  sessionRoute?: Parameters<typeof collaborationAgentWithSessionRoute>[1],
 ) {
-  const agent = agents.find((candidate) => candidate.id === selectedAgentId)
-    ?? agents.find((candidate) => candidate.isActive)
-    ?? agents.find((candidate) => candidate.isDefault)
-    ?? agents[0]
-    ?? null;
   if (!agent) return null;
-  const optimistic = key && !isCloudCollaborationHostId(agent.hostId)
-    ? optimisticRouting[key]
-    : null;
+  const routed = sessionRoute !== undefined && isCloudCollaborationHostId(agent.hostId)
+    ? collaborationAgentWithSessionRoute(agent, sessionRoute) ?? agent
+    : agent;
+  const optimistic = key ? optimisticRouting[key]?.routing : null;
+  return optimistic ? { ...routed, ...optimistic } : routed;
+}
+
+function routingPatchForRoute(
+  agent: LocalCollaborationAgentRoutingOption,
+  route: ComposerRoute,
+): DesktopCollaborationAgentRouting {
   return {
-    ...agent,
-    ...optimistic,
+    defaultModel: route.model,
+    defaultAuthProvider: route.providerOption?.providerId ?? agent.defaultAuthProvider ?? null,
+    defaultAuthChoice: route.providerOption ? authChoiceFromProviderOption(route.providerOption) : agent.defaultAuthChoice ?? null,
+    fallbackModel: agent.fallbackModel ?? null,
+    fallbackAuthProvider: agent.fallbackAuthProvider ?? null,
+    fallbackAuthChoice: agent.fallbackAuthChoice ?? null,
+    thinking: route.thinking,
   };
 }
 
@@ -131,9 +150,12 @@ export function useChatCollaborationRouting({
   const [selectedCompanionAgentId, setSelectedCompanionAgentId] = useState<string | null>(null);
   const [mainNotice, setMainNotice] = useState<string | null>(null);
   const [companionNotice, setCompanionNotice] = useState<string | null>(null);
+  const [mainError, setMainError] = useState<string | null>(null);
+  const [companionError, setCompanionError] = useState<string | null>(null);
   const [optimisticRouting, setOptimisticRouting] = useState<
-    Record<string, DesktopCollaborationAgentRouting>
+    Record<string, OptimisticRouting>
   >({});
+  const activeChatRoute = useActiveChatRoute();
 
   const mainAgents = useMemo(
     () => localOwnedCollaborationAgentsForModelRouting(
@@ -162,21 +184,19 @@ export function useChatCollaborationRouting({
     ?? null;
   const mainKey = routingKey(mainBase, main.conversation);
   const companionKey = routingKey(companionBase, companion.conversation);
-  const selectedMainAgent = selectedRoutingAgent(
-    mainAgents,
-    selectedMainAgentId,
-    mainKey,
-    optimisticRouting,
-  );
-  const mainAgent = selectedMainAgent && isCloudCollaborationHostId(selectedMainAgent.hostId)
-    ? collaborationAgentWithSessionRoute(selectedMainAgent, main.composerSelection)
-    : selectedMainAgent;
-  const companionAgent = selectedRoutingAgent(
-    companionAgents,
-    selectedCompanionAgentId,
-    companionKey,
-    optimisticRouting,
-  );
+  const mainAgent = selectedRoutingAgent(mainBase, mainKey, optimisticRouting, {
+    model: main.composerSelection.model,
+    thinking: main.composerSelection.thinking,
+    authProvider: activeChatRoute?.authProvider,
+    authChoice: activeChatRoute?.authChoice,
+  });
+  const companionAgent = selectedRoutingAgent(companionBase, companionKey, optimisticRouting);
+
+  useEffect(() => {
+    if (!mainError) return;
+    const timeoutId = window.setTimeout(() => setMainError(null), COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [mainError]);
 
   useEffect(() => {
     if (!mainNotice) return;
@@ -202,6 +222,7 @@ export function useChatCollaborationRouting({
     patch,
     isBusy,
     setNotice,
+    setError,
     targetSessionId,
   }: {
     agent: LocalCollaborationAgentRoutingOption | null;
@@ -209,12 +230,13 @@ export function useChatCollaborationRouting({
     patch: DesktopCollaborationAgentRouting;
     isBusy: boolean;
     setNotice: Dispatch<SetStateAction<string | null>>;
+    setError: Dispatch<SetStateAction<string | null>>;
     targetSessionId?: string | null;
   }) => {
-    if (!agent || !key) return;
+    if (!agent || !key) return false;
     if (isBusy) {
       setNotice("Stop the running task before changing this session's model or thinking level.");
-      return;
+      return false;
     }
 
     const { routing, defaultAuthChanged, fallbackAuthChanged } =
@@ -237,11 +259,19 @@ export function useChatCollaborationRouting({
     }) ?? ((defaultAuthChanged || fallbackAuthChanged)
       ? `${agent.label} model route changed to ${routeLabel}. Only you can see this.`
       : null);
-    if (!notice) return;
+    if (!notice) return false;
 
-    if (!isCloudCollaborationHostId(agent.hostId)) {
-      setOptimisticRouting((current) => ({ ...current, [key]: routing }));
-    }
+    // The pick shows at once and saves in the background; only a failed save
+    // rolls it back, with a notice.
+    const token = Symbol(key);
+    const settle = (keep: boolean) => setOptimisticRouting((current) => {
+      if (current[key]?.token !== token || keep) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setOptimisticRouting((current) => ({ ...current, [key]: { routing, token } }));
+    setError(null);
     setNotice(notice);
     void shared.updateRouting(
       agent.hostId,
@@ -254,13 +284,18 @@ export function useChatCollaborationRouting({
       routing.fallbackAuthProvider,
       routing.fallbackAuthChoice,
       targetSessionId,
-    ).catch((error) => {
-      setNotice(
+    ).then(() => {
+      // A Kordi Cloud session route now holds the pick itself.
+      settle(!isCloudCollaborationHostId(agent.hostId));
+    }, (error) => {
+      settle(false);
+      setError(
         error instanceof Error
           ? error.message
-          : 'Unable to update collaboration agent model routing',
+          : 'Unable to change the model',
       );
     });
+    return true;
   };
 
   const updateMain = ({ selectorType, ...patch }: RoutingPatch) => {
@@ -275,11 +310,42 @@ export function useChatCollaborationRouting({
       patch,
       isBusy: main.isBusy,
       setNotice: setMainNotice,
+      setError: setMainError,
       targetSessionId: main.conversation?.canonicalSessionId
         ?? main.conversation?.id
         ?? null,
     });
   };
+
+  // A stored account this device no longer has gives way to a usable one, but
+  // only once both account lists have arrived, so an account that is still
+  // loading is never replaced. Each session tries this once.
+  const hostedAccounts = useHostedAccountsSnapshot();
+  const accountListsLoaded = Boolean(hostedAccounts.listed) && registeredAccountChoices().localChoices !== null;
+  const mainSelection = routingSelectionForCollaborationAgent(mainAgent);
+  const accountReplacement = main.enabled && mainAgent && accountListsLoaded
+    ? unavailableAccountReplacement({ selection: mainSelection, providerOptions: shared.providerOptions, modelOptions: shared.modelOptions ?? [] })
+    : null;
+  const replaceUnavailableAccount = () => Boolean(mainAgent && accountReplacement) && applyUpdate({
+    agent: mainAgent,
+    key: mainKey,
+    patch: routingPatchForRoute(mainAgent!, accountReplacement!),
+    isBusy: main.isBusy,
+    setNotice: setMainNotice,
+    setError: setMainError,
+    targetSessionId: main.conversation?.canonicalSessionId ?? main.conversation?.id ?? null,
+  });
+  const replacementAttempt = accountReplacement && mainKey && !main.isBusy
+    ? `${mainKey}\u0000${mainSelection.authChoice ?? ''}`
+    : null;
+  const attemptedReplacementsRef = useRef(new Set<string>());
+  const replaceOnce = useEffectEvent((attempt: string) => {
+    if (attemptedReplacementsRef.current.has(attempt)) return;
+    if (replaceUnavailableAccount()) attemptedReplacementsRef.current.add(attempt);
+  });
+  useEffect(() => {
+    if (replacementAttempt) replaceOnce(replacementAttempt);
+  }, [replacementAttempt]);
 
   const updateCompanion = ({ selectorType, ...patch }: RoutingPatch) => {
     if (selectorType && companion.openSelector?.scope === 'chat'
@@ -292,6 +358,7 @@ export function useChatCollaborationRouting({
       patch,
       isBusy: companion.isBusy,
       setNotice: setCompanionNotice,
+      setError: setCompanionError,
       targetSessionId: companion.conversation?.canonicalSessionId
         ?? companion.conversation?.id
         ?? null,
@@ -332,6 +399,9 @@ export function useChatCollaborationRouting({
     main: {
       enabled: main.enabled && Boolean(mainAgent),
       notice: mainNotice,
+      error: mainError,
+      /** Applies the usable account that replaces an unavailable one; null when there is none. */
+      replaceUnavailableAccount: accountReplacement ? replaceUnavailableAccount : null,
       agents: mainAgents,
       selectedAgent: mainAgent,
       selection: routingSelectionForCollaborationAgent(mainAgent),
@@ -344,7 +414,7 @@ export function useChatCollaborationRouting({
       defaultThinkingForModel,
     },
     companion: {
-      notice: companionNotice,
+      notice: companionError ?? companionNotice,
       agents: companionAgents,
       selectedAgent: companionAgent,
       selection: routingSelectionForCollaborationAgent(companionAgent),

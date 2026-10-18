@@ -1,4 +1,5 @@
 import { ACCOUNT_UNAVAILABLE_LABEL, isAccountAuthChoice } from '@/features/cloud/routeAccountChoice';
+import { fallbackComposerThinkingValue } from './composerThinking';
 
 export type ComposerProviderOption = {
   value: string;
@@ -100,10 +101,12 @@ export function resolveComposerModelSelection({
     providerOptions.some(
       (option) => normalizeComposerProviderId(option.providerId) === fallbackProviderValue,
     )
-    || modelOptions.some((option) => option.provider === fallbackProviderValue)
+    || modelOptions.some((option) => normalizeComposerProviderId(option.provider ?? '') === fallbackProviderValue)
   );
-  const modelProviderValue = selectedModelOption?.provider
-    ?? (fallbackProviderKnown ? fallbackProviderValue : '');
+  // Model options keep their catalog provider id (for example `openai-codex`),
+  // so compare them in the same normalized form as the provider options.
+  const modelProviderValue = (selectedModelOption?.provider ? normalizeComposerProviderId(selectedModelOption.provider) : '')
+    || (fallbackProviderKnown ? fallbackProviderValue : '');
   const selectedProviderValue = modelProviderValue && providerOptions.some(
     (option) => normalizeComposerProviderId(option.providerId) === modelProviderValue,
   )
@@ -145,6 +148,11 @@ export function resolveComposerModelSelection({
     selectedProviderOption,
     selectedProviderValue: missingAccountOption ? normalizeComposerProviderId(missingAccountOption.providerId) : selectedProviderValue,
     missingAccount: Boolean(missingAccountOption),
+    // A dialog opens on a signed-in account of the same provider in place of a
+    // removed one; saving applies it.
+    initialProviderValue: (missingAccountOption
+      ? sameProviderComposerAccount(missingAccountOption.providerId, providerOptions)?.value
+      : null) ?? selectedProviderOption?.value ?? '',
   };
 }
 
@@ -154,4 +162,124 @@ export function isRouteAccountUnavailable(
   providerOptions: ComposerProviderOption[],
 ) {
   return resolveComposerModelSelection({ selection, providerOptions, modelOptions: [] }).missingAccount;
+}
+
+/** An account that can run a route now: signed in and not waiting to reconnect. */
+export function composerProviderOptionUsable(option: ComposerProviderOption | null | undefined): boolean {
+  return Boolean(option && !option.unavailable && !option.disabled);
+}
+
+/** The models a provider offers; a model without a provider is offered by every provider. */
+export function composerModelsForProvider(providerId: string, modelOptions: readonly ComposerModelOption[]) {
+  const normalized = normalizeComposerProviderId(providerId);
+  return modelOptions.filter((option) => !option.provider || normalizeComposerProviderId(option.provider) === normalized);
+}
+
+/** A usable account of the same provider, the active one first. */
+export function sameProviderComposerAccount(
+  providerId: string | null | undefined,
+  providerOptions: readonly ComposerProviderOption[],
+): ComposerProviderOption | null {
+  if (!providerId?.trim()) return null;
+  const normalized = normalizeComposerProviderId(providerId);
+  const candidates = providerOptions.filter((option) => (
+    composerProviderOptionUsable(option) && normalizeComposerProviderId(option.providerId) === normalized
+  ));
+  return candidates.find((option) => option.active) ?? candidates[0] ?? null;
+}
+
+/** True when no account can run a route, so the picker offers sign-in instead. */
+export function composerSignInRequired(providerOptions: readonly ComposerProviderOption[]) {
+  return !providerOptions.some((option) => composerProviderOptionUsable(option));
+}
+
+/**
+ * The route that replaces a stored account this device no longer has: a
+ * usable account of the same provider, else the only usable account, with a
+ * model and thinking level it offers. Null when the account is not missing or
+ * the choice is not clear; then the owner chooses.
+ */
+export function unavailableAccountReplacement({
+  selection,
+  providerOptions,
+  modelOptions,
+}: {
+  selection: ComposerModelSelection & { thinking: string };
+  providerOptions: ComposerProviderOption[];
+  modelOptions: ComposerModelOption[];
+}): ComposerRoute | null {
+  const resolved = resolveComposerModelSelection({ selection, providerOptions, modelOptions });
+  if (!resolved.missingAccount || !resolved.selectedProviderOption) return null;
+  const usable = providerOptions.filter((option) => composerProviderOptionUsable(option));
+  const option = sameProviderComposerAccount(resolved.selectedProviderOption.providerId, providerOptions)
+    ?? (usable.length === 1 ? usable[0] : null);
+  return option ? resolveComposerRoutePick({ selection, providerOptions, modelOptions, pick: { type: 'provider', option } }) : null;
+}
+
+export type ComposerRoute = {
+  providerOption: ComposerProviderOption | null;
+  model: string;
+  thinking: string;
+};
+
+export type ComposerRoutePick =
+  | { type: 'provider'; option: ComposerProviderOption }
+  | { type: 'model'; value: string }
+  | { type: 'thinking'; value: string };
+
+function modelIdOf(value: string) {
+  const separator = value.indexOf('/');
+  return separator > 0 ? value.slice(separator + 1) : value;
+}
+
+/**
+ * The complete route one pick applies, so no control is left without a valid
+ * value. An account that is gone or switched off gives way to a signed-in
+ * account of the same provider, a model the account does not offer gives way
+ * to its default model, and the thinking level follows the model. Null when no
+ * account can run the pick.
+ */
+export function resolveComposerRoutePick({
+  selection,
+  providerOptions,
+  modelOptions,
+  pick,
+}: {
+  selection: ComposerModelSelection & { thinking: string };
+  providerOptions: ComposerProviderOption[];
+  modelOptions: ComposerModelOption[];
+  pick: ComposerRoutePick;
+}): ComposerRoute | null {
+  const resolved = resolveComposerModelSelection({ selection, providerOptions, modelOptions });
+  const current = resolved.selectedProviderOption;
+  const currentProviderId = current?.providerId ?? resolved.selectedProviderValue;
+  const requestedModel = pick.type === 'model' ? pick.value : selection.model;
+  const requestedModelOption = modelOptions.find((option) => option.value === requestedModel);
+
+  let account: ComposerProviderOption | null;
+  if (pick.type === 'provider') {
+    account = composerProviderOptionUsable(pick.option)
+      ? pick.option
+      : sameProviderComposerAccount(pick.option.providerId, providerOptions);
+  } else if (pick.type === 'model') {
+    const modelProviderId = requestedModelOption?.provider ?? (requestedModel.includes('/') ? requestedModel.split('/')[0] : '');
+    const sameProvider = !modelProviderId || (Boolean(currentProviderId)
+      && normalizeComposerProviderId(modelProviderId) === normalizeComposerProviderId(currentProviderId));
+    account = sameProvider && current && composerProviderOptionUsable(current)
+      ? current
+      : sameProviderComposerAccount(modelProviderId || currentProviderId, providerOptions);
+  } else {
+    account = current && composerProviderOptionUsable(current) ? current : sameProviderComposerAccount(currentProviderId, providerOptions);
+  }
+  if (!account) return null;
+
+  const offered = composerModelsForProvider(account.providerId, modelOptions);
+  const model = offered.length === 0 || offered.some((option) => option.value === requestedModel)
+    ? requestedModel
+    : (offered.find((option) => modelIdOf(option.value) === modelIdOf(requestedModel)) ?? offered[0]).value;
+  const modelOption = modelOptions.find((option) => option.value === model);
+  const thinking = pick.type === 'thinking'
+    ? pick.value
+    : fallbackComposerThinkingValue(modelOption?.thinkingLevels ?? [], selection.thinking);
+  return { providerOption: account, model, thinking };
 }

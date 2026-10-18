@@ -126,28 +126,18 @@ export function useKordiCollaborationNavigationActions({
         || activeConversation.canonicalSessionId
         || activeConversation.id
         || activeConversationId;
+      // A failure rejects, so the composer can roll back the pick it showed.
       if (!accountId || !routeTargetSessionId || !defaultModel?.trim()) {
-        setDesktopChatError(
-          'Account is still loading. Try again in a moment.',
-        );
-        return;
+        throw new Error('Account is still loading. Try again in a moment.');
       }
-      try {
-        await publishCloudAgentRuntimeRouteChange({
-          sessionId: routeTargetSessionId,
-          model: defaultModel,
-          authProvider: defaultAuthProvider,
-          authChoice: defaultAuthChoice,
-          thinking,
-        });
-        setDesktopChatError(null);
-      } catch (error) {
-        setDesktopChatError(
-          error instanceof Error
-            ? error.message
-            : 'Unable to synchronize the session model.',
-        );
-      }
+      await publishCloudAgentRuntimeRouteChange({
+        sessionId: routeTargetSessionId,
+        model: defaultModel,
+        authProvider: defaultAuthProvider,
+        authChoice: defaultAuthChoice,
+        thinking,
+      });
+      setDesktopChatError(null);
     },
     [
       accountId,

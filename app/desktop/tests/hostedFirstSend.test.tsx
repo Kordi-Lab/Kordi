@@ -13,12 +13,14 @@ import { useCloudSelfAgentForwardSync } from '../src/features/cloud/useCloudSelf
 import { saveCloudSelfAgentForwardCutoff } from '../src/features/cloud/cloudSelfAgentForwardSync';
 import { cloudDirectMessageDisplayText, cloudDirectMessageAgentRuntimeRoute } from '../src/features/cloud/cloudDirectMessages';
 import { cloudCollaborationConversationId } from '../src/features/collaboration/conversationIds';
+import { setLocalAccountChoices } from '../src/features/cloud/hostedAccountRegistry';
+import { publishHostedProviderSnapshots } from '../src/features/cloud/hostedAccounts';
 
 const sessionId = 'synthetic-new-chat';
 const route = { model: 'openai/gpt-6-sol', thinking: 'medium', authProvider: 'openai-codex', authChoice: 'cloud-login:synthetic' };
 const noop = () => undefined;
 
-async function sendFirstMessage(existingSession = false, blankNativeSession = false, missingCatalog = false, sideTarget?: Conversation) {
+async function sendFirstMessage(existingSession = false, blankNativeSession = false, missingCatalog = false, sideTarget?: Conversation, noLocalProvider = false) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost', pretendToBeVisual: true });
   const globals = { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement,
     requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window), IS_REACT_ACT_ENVIRONMENT: true, __TAURI_INTERNALS__: {} };
@@ -73,13 +75,14 @@ async function sendFirstMessage(existingSession = false, blankNativeSession = fa
   const args = {
     activeConvId: existingSession ? sessionId : 'draft:local-chat', activeConvCanonicalSessionId: existingSession ? sessionId : null,
     activeConversationUsesCollaboration: false, activeConvCollaborationTarget: null, activeConvMentionScope: null,
-    activeConvMessages: [], chatConversations: sideTarget ? [sideTarget] : [], isNativeShell: true, hasAnyDesktopAuth: true, hasConfiguredProviderAuth: true,
+    activeConvMessages: [], chatConversations: sideTarget ? [sideTarget] : [], isNativeShell: true,
+    hasAnyDesktopAuth: !noLocalProvider, hasConfiguredProviderAuth: !noLocalProvider,
     canonicalHumanIdentityId: 'human:me', canonicalSessionState: canonical, desktopChatState: existingSession ? desktop : null,
     desktopCollaborationState: null, desktopLiveTurn: null, queuedDesktopMessagesBySession: {},
     composerDrafts: { chat: 'Which model are you using?', project: '' }, composerSelections: { chat: { mode: 'agent', model: route.model, thinking: route.thinking } },
     chatComposerAttachments: [], selectedChatAgentMentionRef: { current: null }, localChatSendInFlightRef: { current: null },
     shouldAutoFollowChatRef: followMain, attachmentSummaryText: (text: string) => text,
-    resolveChatRuntimeRoute: (id: string) => { assert.equal(id, sideTarget ? sessionId : id); return route; },
+    resolveChatRuntimeRoute: (id: string) => { assert.equal(id, sideTarget ? sessionId : id); return noLocalProvider ? null : route; },
     sendCloudCollaborationMessage: async (_id: string, body: string) => { directSends.push(body); return { messageId: 'synthetic-direct' }; },
     handleLocalSlashCommand: async () => false, setComposerDrafts: noop, setActiveConvId: noop,
     setCanonicalSessionState: (update: React.SetStateAction<CanonicalSessionState | null>) => { canonical = (typeof update === 'function' ? update(canonical) : update) ?? canonical; },
@@ -177,4 +180,45 @@ test('a published cloud agent in the panel receives the selected route without m
   assert.equal(cloudDirectMessageDisplayText(result.directSends[0]), 'Which model are you using?');
   assert.deepEqual(cloudDirectMessageAgentRuntimeRoute(result.directSends[0]), route);
   assert.equal(result.followsMain, false);
+});
+
+test('a new chat with only a Kordi Cloud account runs on that account instead of answering no provider', async () => {
+  // This Mac has no provider and the new chat has no route yet; the owner's
+  // only usable account is saved in their Kordi account.
+  setLocalAccountChoices([]);
+  publishHostedProviderSnapshots([{ snapshotId: 'synthetic-work', provider: 'openai-codex', authChoice: 'cloud-login:work',
+    label: 'Work', modelHint: 'gpt-6-sol', createdAt: '2026-01-01T00:00:00Z', revokedAt: null }]);
+  try {
+    const result = await sendFirstMessage(false, false, false, undefined, true);
+    assert.deepEqual(result.errors, []);
+    assert.equal(result.canonical.messages.some(message => message.id.startsWith('msg:no-provider:')), false, 'No local no-provider reply is written');
+    const requests = result.sent.filter(body => cloudDirectMessageDisplayText(body) === 'Which model are you using?');
+    assert.equal(requests.length, 1, 'The request reaches Kordi Cloud');
+    assert.deepEqual(cloudDirectMessageAgentRuntimeRoute(requests[0]),
+      { model: 'openai-codex/gpt-6-sol', authProvider: 'openai-codex', authChoice: 'cloud-login:work', thinking: 'medium' });
+  } finally {
+    publishHostedProviderSnapshots([]);
+    setLocalAccountChoices(null);
+  }
+});
+
+test('a send while the account lists are still loading waits for them instead of answering no provider', async () => {
+  setLocalAccountChoices(null);
+  const loaded = setTimeout(() => {
+    setLocalAccountChoices([]);
+    publishHostedProviderSnapshots([{ snapshotId: 'synthetic-work', provider: 'openai-codex', authChoice: 'cloud-login:work',
+      label: 'Work', modelHint: 'gpt-6-sol', createdAt: '2026-01-01T00:00:00Z', revokedAt: null }]);
+  }, 300);
+  try {
+    const result = await sendFirstMessage(false, false, false, undefined, true);
+    assert.deepEqual(result.errors, []);
+    assert.equal(result.canonical.messages.some(message => message.id.startsWith('msg:no-provider:')), false);
+    const requests = result.sent.filter(body => cloudDirectMessageDisplayText(body) === 'Which model are you using?');
+    assert.equal(requests.length, 1);
+    assert.equal(cloudDirectMessageAgentRuntimeRoute(requests[0])?.authChoice, 'cloud-login:work');
+  } finally {
+    clearTimeout(loaded);
+    publishHostedProviderSnapshots([]);
+    setLocalAccountChoices(null);
+  }
 });
