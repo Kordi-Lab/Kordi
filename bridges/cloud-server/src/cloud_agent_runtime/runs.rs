@@ -10,6 +10,7 @@ mod group_target;
 pub(crate) mod identity;
 mod leases;
 pub(crate) mod omp_state;
+mod project_unavailable;
 mod prompt_history;
 pub(crate) mod route_fill;
 pub mod stop;
@@ -45,6 +46,7 @@ pub use leases::{
     lease_canary_run, lease_next_run, mark_run_running, RunnerLeaseResponse, RunnerRunEnvelope,
     RunnerRunRequest, RunnerRunResponse,
 };
+pub use project_unavailable::{fail_unavailable_project_request, PROJECT_UNAVAILABLE_ERROR_CODE};
 #[cfg(test)]
 use prompt_history::{fallback_prompt_with_history, CloudFallbackHistoryMessage};
 

@@ -147,3 +147,24 @@ test('keeps valid links after unmatched and mixed emphasis markers', () => {
     assert.match(html, /<strong[^>]*><a\b/);
   }
 });
+
+test('renders bold links to local files as bold labels without raw markup', () => {
+  for (const [text, visible] of [
+    ['**[Launch plan](/Users/example/Documents/Launch plan.md)**', 'Launch plan'],
+    ['**[plan.md](file:///Users/example/Documents/plan.md)**', 'plan.md'],
+    ['Saved **[notes](~/Notes/notes.md)** and **[](/Users/example/Desktop/chart.png)**', 'Saved notes and chart.png'],
+    ['- **[Report](C:\\Users\\example\\report.md)**', 'Report'],
+  ]) {
+    const html = render(text);
+    assert.equal(visibleText(html), visible, text);
+    assert.match(html, /<strong\b/, text);
+    assert.doesNotMatch(html, /<a\b/, text);
+    assert.doesNotMatch(visibleText(html), /\]\(|\*\*|\/Users\/|Notes\//, text);
+  }
+});
+
+test('keeps bracketed words and parentheses that are not links as written', () => {
+  for (const text of ['[note] (see below)', 'Pick [a](b c) or [x](y)', 'See [the list] later']) {
+    assert.equal(visibleText(render(text)), text);
+  }
+});

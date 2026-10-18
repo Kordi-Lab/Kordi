@@ -11,6 +11,7 @@ use sqlx_core::transaction::Transaction;
 use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
+use crate::chat_sync::agent_replies::prepare_agent_reply;
 use crate::chat_sync::models::{
     AddConversationMembersRequest, AdvanceConversationCursorRequest, CloudSessionPinSummary,
     ConversationCursorSnapshot, ConversationKind, ConversationPreferencesSnapshot,

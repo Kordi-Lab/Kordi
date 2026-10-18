@@ -4,7 +4,10 @@
 //! that carries a document. `edit_document` goes only to a comment run a
 //! person started with their own agent, when that person can edit the
 //! document: never to a public reader's run, a background run, or a
-//! scheduled run. The same gate is evaluated when the lease is delivered and
+//! scheduled run. `create_document` goes to chat runs in a group, whoever
+//! asked: the document is posted in that group as the agent's own message,
+//! so it reaches exactly the people who already read the agent's reply
+//! (issue 1808). The same gate is evaluated when the lease is delivered and
 //! again on every call.
 
 use sqlx_core::query_as::query_as;
@@ -31,12 +34,15 @@ pub(crate) struct ToolGate {
     pub requester_can_edit: bool,
     /// A chat run whose session carries a Markdown or HTML document.
     pub session_has_document: bool,
+    /// The run's session is a group conversation.
+    pub group_session: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct OfferedTools {
     pub read: bool,
     pub edit: bool,
+    pub create: bool,
 }
 
 pub(crate) fn offered_tools(gate: &ToolGate) -> OfferedTools {
@@ -47,6 +53,7 @@ pub(crate) fn offered_tools(gate: &ToolGate) -> OfferedTools {
             && !gate.scheduled
             && !gate.public_reader
             && gate.requester_can_edit,
+        create: !gate.comment_run && gate.group_session && !gate.public_reader,
     }
 }
 
@@ -97,6 +104,7 @@ pub(crate) async fn run_facts(
         public_reader: false,
         requester_can_edit: false,
         session_has_document: false,
+        group_session: false,
     };
     let mut document = None;
     if comment_run {
@@ -131,6 +139,7 @@ pub(crate) async fn run_facts(
         gate.session_has_document = !super::read::session_documents(pool, &session_id)
             .await?
             .is_empty();
+        gate.group_session = super::create::is_group_session(pool, &session_id).await?;
     }
     Ok(Some(RunFacts {
         owner_account_id: owner,

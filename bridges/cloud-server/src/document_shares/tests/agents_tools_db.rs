@@ -349,7 +349,8 @@ async fn chat_runs_read_documents_of_their_session_and_never_edit() {
     };
     let run_id = insert_run(session_id).await;
     let (runner, tools) = lease(&f, &state, &run_id).await;
-    assert_eq!(tool_names(&tools), ["read_document"]);
+    // The session is a group, so the run may also create group documents.
+    assert_eq!(tool_names(&tools), ["read_document", "create_document"]);
     let (status, read) = call_tool(&state, &runner, &run_id, "read_document", json!({})).await;
     assert_eq!(status, StatusCode::OK, "{read:?}");
     let result = read.result.unwrap();

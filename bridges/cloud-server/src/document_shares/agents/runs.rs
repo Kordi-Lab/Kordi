@@ -250,6 +250,7 @@ pub(crate) async fn start(
         )
         .await?,
         session_has_document: true,
+        group_session: false,
     })
     .edit;
     let owner = &plan.agent.owner_account_id;
