@@ -108,16 +108,16 @@ function scheduledTaskScheduleLabel(task: ScheduledTask, now: Date, timeZone?: s
 }
 
 function scheduledTaskRuntimeLabel(task: ScheduledTask): string | null {
-  return task.targetRuntime === 'local_required' ? 'Requires Desktop' : null;
+  return task.targetRuntime === 'local_required' ? 'Runs on your Mac' : null;
 }
 
 function scheduledTaskStatusLabel(task: ScheduledTask): string {
-  if (task.lastRunStatus === 'waiting_for_desktop') return 'Waiting for Desktop';
+  if (task.lastRunStatus === 'waiting_for_desktop') return 'Waiting for your Mac';
   if (task.status === 'paused') return 'Paused';
   if (task.lastRunStatus === 'completed') return 'Last run completed';
   if (task.lastRunStatus === 'failed') return task.lastRunError ? `Last run failed: ${task.lastRunError}` : 'Last run failed';
   if (task.lastRunStatus === 'queued') return 'Queued';
-  if (task.lastRunStatus === 'leased' || task.lastRunStatus === 'running') return 'Running in Cloud';
+  if (task.lastRunStatus === 'leased' || task.lastRunStatus === 'running') return 'Running';
   if (task.lastRunStatus) return task.lastRunStatus.replace(/_/g, ' ');
   return 'Scheduled';
 }
@@ -139,7 +139,7 @@ function runDurationLabel(run: ScheduledTaskRun): string | null {
 
 function scheduledRunStatusLabel(run: ScheduledTaskRun): string {
   const duration = runDurationLabel(run);
-  const status = run.status.replace(/_/g, ' ');
+  const status = run.status === 'waiting_for_desktop' ? 'waiting for your Mac' : run.status.replace(/_/g, ' ');
   return duration ? `${status} · ${duration}` : status;
 }
 

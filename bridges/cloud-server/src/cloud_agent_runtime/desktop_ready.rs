@@ -8,6 +8,9 @@ pub(in crate::cloud_agent_runtime) struct ReadyInput {
     /// This Mac runs digests ([`crate::digest::desktop`]).
     #[serde(default)]
     digest: bool,
+    /// This Mac runs scheduled tasks ([`crate::scheduled_tasks::mac`]).
+    #[serde(default)]
+    scheduled: bool,
 }
 
 pub(in crate::cloud_agent_runtime) async fn ready(
@@ -31,9 +34,11 @@ pub(in crate::cloud_agent_runtime) async fn ready(
             query("INSERT INTO cloud_agent_desktop_capabilities(device_id,agent_id) VALUES($1,$2) ON CONFLICT(device_id,agent_id) DO UPDATE SET updated_at=now()")
                 .bind(&session.device_id).bind(agent).execute(&mut *tx).await?;
         }
-        if input.digest {
+        let digest = input.digest.then_some(crate::digest::desktop::CAPABILITY);
+        let scheduled = input.scheduled.then_some(crate::scheduled_tasks::mac::CAPABILITY);
+        for capability in digest.into_iter().chain(scheduled) {
             query("INSERT INTO cloud_agent_desktop_capabilities(device_id,agent_id) VALUES($1,$2) ON CONFLICT(device_id,agent_id) DO UPDATE SET updated_at=now()")
-                .bind(&session.device_id).bind(crate::digest::desktop::CAPABILITY).execute(&mut *tx).await?;
+                .bind(&session.device_id).bind(capability).execute(&mut *tx).await?;
         }
         tx.commit().await?;
         Ok(true)

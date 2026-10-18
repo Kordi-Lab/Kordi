@@ -153,7 +153,7 @@ pub async fn complete_run_with_state(
     let existing: Option<(String, String, String, String, String, Option<String>)> = query_as(
         "SELECT owner_account_id, requester_account_id, session_id, request_message_id, status, response_message_id \
          FROM cloud_agent_fallback_runs \
-         WHERE run_id = $1 AND claimed_by = $2 AND execution_backend='cloud' AND status IN ('leased', 'running') AND lease_expires_at::timestamptz>now()",
+         WHERE run_id = $1 AND claimed_by = $2 AND execution_backend IN ('cloud','desktop') AND status IN ('leased', 'running') AND lease_expires_at::timestamptz>now()",
     )
     .bind(run_id)
     .bind(runner_id)
@@ -327,7 +327,7 @@ pub async fn fail_run(
     let existing: Option<FailedRunRow> = query_as(
         "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id \
          FROM cloud_agent_fallback_runs \
-         WHERE run_id = $1 AND claimed_by = $2 AND execution_backend='cloud' AND status IN ('leased', 'running') AND lease_expires_at::timestamptz>now()",
+         WHERE run_id = $1 AND claimed_by = $2 AND execution_backend IN ('cloud','desktop') AND status IN ('leased', 'running') AND lease_expires_at::timestamptz>now()",
     )
     .bind(run_id)
     .bind(runner_id)

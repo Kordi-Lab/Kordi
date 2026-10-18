@@ -293,8 +293,9 @@ fn stranded_scheduled_task_backfill_migration_is_embedded_and_skips_tasks_with_r
 
 #[test]
 fn scheduled_task_store_enqueues_cloud_agent_fallback_runs_for_cloud_jobs() {
-    let store_source = std::fs::read_to_string("src/scheduled_tasks/store.rs")
-        .expect("read scheduled store source");
+    // Every occurrence is queued Mac first in `mac.rs`.
+    let store_source =
+        std::fs::read_to_string("src/scheduled_tasks/mac.rs").expect("read scheduled Mac source");
     assert!(store_source.contains("claim_run("));
     assert!(store_source.contains("ClaimRunRequest"));
     assert!(store_source.contains("scheduled:"));
@@ -331,7 +332,7 @@ fn scheduled_task_run_now_enqueues_cloud_agent_fallback_runs_for_cloud_jobs() {
         .find("async fn create_run_for_task")
         .expect("create run function");
     let run_now_source = &store_source[run_now_start..create_run_start];
-    assert!(run_now_source.contains("enqueue_cloud_agent_fallback_run_for_scheduled_run"));
+    assert!(run_now_source.contains("super::mac::enqueue"));
 }
 
 #[test]
