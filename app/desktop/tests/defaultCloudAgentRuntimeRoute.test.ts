@@ -107,3 +107,30 @@ test('default cloud agent route falls back to the active configured provider', (
     thinking: '',
   });
 });
+
+test('a new session without a provider on this Mac starts on a usable Kordi Cloud account', async () => {
+  const { publishHostedProviderSnapshots } = await import('../src/features/cloud/hostedAccounts');
+  const args = {
+    activeLoginProviderId: null,
+    authOptions: [],
+    chatModelOptions: [],
+    desktopAuthState: authState([]),
+    isNativeShell: true,
+    preferredModelValueForProvider: () => null,
+    resolveComposerProviderId: () => 'anthropic',
+    selectedModel: 'anthropic/claude-fable-5',
+    selectedThinking: 'medium',
+  };
+  // The Kordi Cloud list has not arrived: an account may still exist, so no route yet.
+  assert.equal(resolveDefaultCloudAgentRuntimeRoute(args), null);
+  publishHostedProviderSnapshots([{ snapshotId: 'synthetic-work', provider: 'openai-codex', authChoice: 'cloud-login:work',
+    label: 'Work', modelHint: 'gpt-6-sol', createdAt: '2026-01-01T00:00:00Z', revokedAt: null }]);
+  try {
+    assert.deepEqual(resolveDefaultCloudAgentRuntimeRoute(args),
+      { model: 'openai-codex/gpt-6-sol', authProvider: 'openai-codex', authChoice: 'cloud-login:work', thinking: 'medium' });
+    assert.equal(resolveDefaultCloudAgentRuntimeRoute({ ...args, desktopAuthState: null }), null, 'Not while this Mac\'s accounts load');
+  } finally {
+    publishHostedProviderSnapshots([]);
+  }
+  assert.equal(resolveDefaultCloudAgentRuntimeRoute(args), null, 'No usable account anywhere keeps the no-provider state');
+});

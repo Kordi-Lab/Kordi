@@ -156,3 +156,16 @@ export function hostedRouteForModel({
   const hostedOnlyProvider = provider === CUSTOM_ROUTE_PROVIDER || ![...localProviderIds].some((id) => sameProvider(id, provider));
   return hostedOnlyProvider && usable[0] ? routeFor(usable[0], modelId, thinking) : null;
 }
+
+/**
+ * The Kordi Cloud account a route falls back to when it has no usable
+ * account: one of the model's provider, else the only usable account. Null
+ * when the choice is not clear, so the owner chooses.
+ */
+export function fallbackHostedRouteAccount(accounts: HostedRouteAccount[], model?: string | null): HostedRouteAccount | null {
+  const usable = accounts.filter((account) => !account.needsReconnect && account.models.length > 0);
+  const separator = model?.indexOf('/') ?? -1;
+  const provider = model && separator > 0 ? model.slice(0, separator) : '';
+  return (provider ? usable.find((account) => sameProvider(account.providerId, provider)) : null)
+    ?? (usable.length === 1 ? usable[0] : null);
+}
