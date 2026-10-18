@@ -32,7 +32,14 @@ test('restart releases each interrupted request once on the server', async () =>
     ],
     async () => 'token-1',
   );
-  assert.deepEqual(result, { released: 2, failures: [] });
+  assert.deepEqual(result, {
+    released: 2,
+    releasedRequests: [
+      { sessionId: 'session:group:one', requestId: 'request:a' },
+      { sessionId: 'session:group:two', requestId: 'request:b' },
+    ],
+    failures: [],
+  });
   assert.deepEqual(calls, [
     {
       token: 'token-1',
@@ -60,7 +67,7 @@ test('a failed release is reported without blocking the others', async () => {
     ],
     async () => 'token-1',
   );
-  assert.deepEqual(result, { released: 0, failures: [failure] });
+  assert.deepEqual(result, { released: 0, releasedRequests: [], failures: [failure] });
 });
 
 test('nothing is sent without a signed-in session', async () => {
@@ -70,6 +77,6 @@ test('nothing is sent without a signed-in session', async () => {
     [{ sessionId: 'session:group:one', requestId: 'request:a' }],
     async () => null,
   );
-  assert.deepEqual(result, { released: 0, failures: [] });
+  assert.deepEqual(result, { released: 0, releasedRequests: [], failures: [] });
   assert.equal(calls.length, 0);
 });

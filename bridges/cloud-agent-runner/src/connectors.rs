@@ -125,20 +125,21 @@ pub fn prompt_section(run: &CloudAgentRun) -> Option<String> {
 
 /// Runs a connector tool call, or returns `None` when the lease does not list
 /// `call.name`; such calls continue to the built-in tools, where an unknown
-/// name is refused by the runner tool policy.
+/// name is refused by the runner tool policy. `Err` carries the text the model
+/// sees for a call that did not succeed.
 pub async fn execute_connector_call<C: CloudAgentRunClient + Sync>(
     client: &C,
     run: &CloudAgentRun,
     call: &ModelToolCall,
-) -> Option<Value> {
+) -> Option<Result<Value, Value>> {
     if call.name == REQUEST_CONNECT_TOOL_NAME {
         if !run.connectors.is_owner_private() {
-            return Some(not_available(&call.name));
+            return Some(Err(not_available(&call.name)));
         }
         // Only a settings link: nothing is granted and no broker is called.
         return Some(match request_connect_result(&call.arguments) {
-            Ok(result) => result.to_string().into(),
-            Err(message) => message.into(),
+            Ok(result) => Ok(result.to_string().into()),
+            Err(message) => Err(message.into()),
         });
     }
     run.connectors.descriptor(&call.name)?;
@@ -153,20 +154,20 @@ pub async fn execute_connector_call<C: CloudAgentRunClient + Sync>(
     };
     let descriptor = match decide_runner_tool(&request) {
         RunnerToolDecision::AllowConnector => run.connectors.descriptor(&call.name)?,
-        RunnerToolDecision::Block(reason) => return Some(reason.explanation().into()),
-        _ => return Some(not_available(&call.name)),
+        RunnerToolDecision::Block(reason) => return Some(Err(reason.explanation().into())),
+        _ => return Some(Err(not_available(&call.name))),
     };
     Some(
         match client
             .call_connector_tool(&run.run_id, descriptor, call.arguments.clone())
             .await
         {
-            Ok(result) => result.to_string().into(),
-            Err(error) => format!(
+            Ok(result) => Ok(result.to_string().into()),
+            Err(error) => Err(format!(
                 "The {} connector call failed: {error}. Do not guess its result.",
                 call.name
             )
-            .into(),
+            .into()),
         },
     )
 }

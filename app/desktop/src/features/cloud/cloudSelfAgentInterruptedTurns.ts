@@ -6,13 +6,20 @@ import {
   cloudAgentTurnLifecycleState,
   isTerminalCloudAgentTurnState,
 } from '@/features/canonical/cloudAgentTurnLifecycle';
-import type { CloudAuthClient } from './authClient';
+import type { CloudAccount, CloudAuthClient, CloudMessage } from './authClient';
+import type { CloudMessageIndex } from './cloudMessageIndex';
 import { routeRunsOnKordiCloud } from './cloudAgentRuntimeRoute';
 import {
   releaseInterruptedCloudAgentRequests,
   type InterruptedCloudAgentRequest,
 } from './cloudInterruptedTurnRelease';
+import {
+  latestCloudSelfAgentProgressAtMs,
+  settleAbandonedCloudSelfAgentRequests,
+  type AbandonedCloudSelfAgentRequest,
+} from './cloudSelfAgentAbandonedReplies';
 import { CLOUD_SELF_AGENT_LOCAL_EXECUTION_WINDOW_MS } from './cloudSelfAgentExecutionState';
+import { loadSession } from './session';
 import { cloudSyncedLocalAgentSessionIds } from './cloudSelfAgentSessionIdentity';
 
 /** Requests sent from here before this load can only run in an earlier app process. */
@@ -25,6 +32,11 @@ export type InterruptedCloudSelfAgentTurnPlan = {
   nativeSessionIds: string[];
   /** Requests a leased run executed; the server ends only this device's run. */
   releaseRequests: InterruptedCloudAgentRequest[];
+  /**
+   * Released requests whose reply is ended here when the server holds no
+   * run of this device for them, with the reply's newest progress.
+   */
+  abandonedRequests: AbandonedCloudSelfAgentRequest[];
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -45,6 +57,20 @@ function isProcessingSelfAgentReply(message: CanonicalSessionMessage) {
   ) return false;
   const lifecycle = cloudAgentTurnLifecycleState(message);
   return lifecycle === 'queued' || lifecycle === 'processing';
+}
+
+function finiteNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+/** The newest progress a processing reply shows; its row update time is when it synced. */
+function replyLastProgressAtMs(message: CanonicalSessionMessage): number {
+  const content = record(message.content);
+  return Math.max(
+    message.createdAtMs,
+    finiteNumber(content.executionUpdatedAtMs),
+    finiteNumber(record(content.execution).updatedAtMs),
+  );
 }
 
 function isTerminalAgentReply(message: CanonicalSessionMessage) {
@@ -76,6 +102,7 @@ export function planInterruptedCloudSelfAgentTurns({
     rowIds: [],
     nativeSessionIds: [],
     releaseRequests: [],
+    abandonedRequests: [],
   };
   const candidates = state.messages.filter((message) => (
     !attemptedRowIds.has(message.id) && isProcessingSelfAgentReply(message)
@@ -125,9 +152,76 @@ export function planInterruptedCloudSelfAgentTurns({
     ) continue;
     plan.rowIds.push(message.id);
     plan.releaseRequests.push({ sessionId: message.sessionId, requestId });
+    plan.abandonedRequests.push({
+      sessionId: message.sessionId,
+      requestId,
+      lastProgressAtMs: replyLastProgressAtMs(message),
+    });
   }
   plan.nativeSessionIds = [...nativeSessionIds];
   return plan;
+}
+
+type InterruptedTurnRecoveryDeps = {
+  account: Pick<CloudAccount, 'accountId'> | null;
+  client: Pick<CloudAuthClient, 'desktopAgentExecution' | 'lookupCloudAgentRunForRequest' | 'sendMessage'>;
+  /** The account's own messages, for progress newer than the canonical rows. */
+  selfMessages?: () => readonly CloudMessage[];
+  hydrateSessionPage?: (sessionId: string, options?: { force?: boolean }) => Promise<unknown>;
+  mergeMessage: (message: CloudMessage) => void;
+  syncMessages: () => Promise<void>;
+  reportWarning: (message: string, error: unknown) => void;
+  loadToken?: () => Promise<string | null | undefined>;
+};
+
+/**
+ * Carries out a recovery plan. A request the server cannot release, because
+ * no run of this device exists or the run already ended without a reply, is
+ * ended with a failed reply once nobody still writes it.
+ */
+export async function recoverInterruptedCloudSelfAgentTurns(
+  plan: InterruptedCloudSelfAgentTurnPlan,
+  deps: InterruptedTurnRecoveryDeps,
+  nowMs = Date.now(),
+): Promise<void> {
+  const loadToken = deps.loadToken ?? (async () => (await loadSession())?.token);
+  for (const sessionId of plan.nativeSessionIds) {
+    await closeDesktopChatInterruptedRequest(sessionId).catch((error: unknown) => {
+      deps.reportWarning('[cloud-self-agent] interrupted request close failed', error);
+    });
+    // A session load may have closed it already; the page reload shows the note.
+    await deps.hydrateSessionPage?.(sessionId, { force: true });
+  }
+  if (plan.releaseRequests.length === 0) return;
+  const { releasedRequests, failures } = await releaseInterruptedCloudAgentRequests(
+    deps.client,
+    plan.releaseRequests,
+    loadToken,
+  );
+  failures.forEach((error) => deps.reportWarning(
+    '[cloud-self-agent] interrupted turn release failed',
+    error,
+  ));
+  const released = new Set(releasedRequests.map(({ sessionId, requestId }) => `${sessionId}\n${requestId}`));
+  const abandoned = failures.length > 0 ? [] : plan.abandonedRequests.filter(
+    ({ sessionId, requestId }) => !released.has(`${sessionId}\n${requestId}`),
+  );
+  let ended = 0;
+  const token = abandoned.length > 0 && deps.account ? await loadToken() : null;
+  if (token && deps.account) {
+    const messages = deps.selfMessages?.() ?? [];
+    ended = await settleAbandonedCloudSelfAgentRequests({
+      client: deps.client,
+      token,
+      accountId: deps.account.accountId,
+      requests: abandoned,
+      latestProgressAtMs: (requestId) => latestCloudSelfAgentProgressAtMs(requestId, messages),
+      mergeMessage: deps.mergeMessage,
+      reportWarning: deps.reportWarning,
+      nowMs,
+    });
+  }
+  if (releasedRequests.length > 0 || ended > 0) await deps.syncMessages();
 }
 
 /**
@@ -137,26 +231,26 @@ export function planInterruptedCloudSelfAgentTurns({
  */
 export function useCloudSelfAgentInterruptedTurnRecovery({
   enabled,
+  account,
   canonicalState,
   client,
+  messageIndex,
   processedRequestIdsRef,
   hydrateSessionPage,
+  mergeMessage,
   syncMessages,
   reportWarning,
-}: {
+}: Omit<InterruptedTurnRecoveryDeps, 'selfMessages' | 'loadToken'> & {
   enabled: boolean;
   canonicalState: CanonicalSessionState | null | undefined;
-  client: Pick<CloudAuthClient, 'desktopAgentExecution'>;
+  messageIndex?: CloudMessageIndex;
   processedRequestIdsRef: MutableRefObject<Set<string>>;
-  hydrateSessionPage?: (sessionId: string, options?: { force?: boolean }) => Promise<unknown>;
-  syncMessages: () => Promise<void>;
-  reportWarning: (message: string, error: unknown) => void;
 }) {
   const attemptedRowIdsRef = useRef(new Set<string>());
-  const latestRef = useRef({ client, hydrateSessionPage, syncMessages, reportWarning });
+  const latestRef = useRef({ account, client, messageIndex, hydrateSessionPage, mergeMessage, syncMessages, reportWarning });
   useEffect(() => {
-    latestRef.current = { client, hydrateSessionPage, syncMessages, reportWarning };
-  }, [client, hydrateSessionPage, reportWarning, syncMessages]);
+    latestRef.current = { account, client, messageIndex, hydrateSessionPage, mergeMessage, syncMessages, reportWarning };
+  }, [account, client, hydrateSessionPage, mergeMessage, messageIndex, reportWarning, syncMessages]);
 
   useEffect(() => {
     if (!enabled || !canonicalState) return;
@@ -168,25 +262,12 @@ export function useCloudSelfAgentInterruptedTurnRecovery({
     if (plan.rowIds.length === 0) return;
     plan.rowIds.forEach((id) => attemptedRowIdsRef.current.add(id));
     const latest = latestRef.current;
-    void (async () => {
-      for (const sessionId of plan.nativeSessionIds) {
-        await closeDesktopChatInterruptedRequest(sessionId).catch((error: unknown) => {
-          latest.reportWarning('[cloud-self-agent] interrupted request close failed', error);
-        });
-        // A session load may have closed it already; the page reload shows the note.
-        await latest.hydrateSessionPage?.(sessionId, { force: true });
-      }
-      if (plan.releaseRequests.length === 0) return;
-      const { released, failures } = await releaseInterruptedCloudAgentRequests(
-        latest.client,
-        plan.releaseRequests,
-      );
-      failures.forEach((error) => latest.reportWarning(
-        '[cloud-self-agent] interrupted turn release failed',
-        error,
-      ));
-      if (released > 0) await latest.syncMessages();
-    })().catch((error: unknown) => {
+    void recoverInterruptedCloudSelfAgentTurns(plan, {
+      ...latest,
+      selfMessages: () => (latest.account
+        ? latest.messageIndex?.byPeerId.get(latest.account.accountId) ?? []
+        : []),
+    }).catch((error: unknown) => {
       latest.reportWarning('[cloud-self-agent] interrupted turn recovery failed', error);
     });
   }, [canonicalState, enabled, processedRequestIdsRef]);
