@@ -140,17 +140,14 @@ export function MainComposer({
     && shouldUseCompactModelRouteMenu(conversation);
   // An agent route bound to a removed account cannot run until the owner picks another account.
   const routeSelection = collaborationRouting.enabled && collaborationRouting.model
-    ? collaborationRouting.model.selection
-    : composerSelection;
+    ? collaborationRouting.model.selection : composerSelection;
   const routeAccountUnavailable = canConfigureModelRoute
     && (localRouting.paneKind === 'agent' || collaborationRouting.enabled)
     && isRouteAccountUnavailable(routeSelection, composerProviderOptions);
   // When the account menu offers a usable account, a send applies it first.
   const canSend = !routeAccountUnavailable || Boolean(collaborationRouting.replaceUnavailableAccount);
-  const onSend: MainComposerProps['onSend'] = (draftOverride, attachmentOverride) => (
-    !routeAccountUnavailable || collaborationRouting.replaceUnavailableAccount?.()
-      ? sendMessage(draftOverride, attachmentOverride) : undefined
-  );
+  const onSend: MainComposerProps['onSend'] = (draftOverride, attachmentOverride) => (!routeAccountUnavailable
+    || collaborationRouting.replaceUnavailableAccount?.() ? sendMessage(draftOverride, attachmentOverride) : undefined);
   const voice = useVoiceComposer({
     conversation,
     cloudAccountId,
