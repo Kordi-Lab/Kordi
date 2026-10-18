@@ -1,4 +1,5 @@
 import { isCloudAgentStoredNoProviderFailure } from '@/features/cloud/cloudAgentMessages';
+import { isCloudAgentProviderFailureNoticeText } from '@/features/cloud/cloudAgentReplyText';
 import type {
   Conversation,
   DesktopChatTurnSnapshot,
@@ -289,8 +290,9 @@ function agentReplyLifecycleKey(message: Message) {
 }
 
 function noProviderReplyDedupeKey(message: Message, sourceMessage: MessageSourceReference) {
-  const errorText = cleanText(message.turn?.error) || cleanText(message.text);
-  if (!isCloudAgentStoredNoProviderFailure(errorText)) return null;
+  // A reply's own text counts only when it is the notice, not when it mentions it.
+  const errorText = cleanText(message.turn?.error);
+  if (errorText ? !isCloudAgentStoredNoProviderFailure(errorText) : !isCloudAgentProviderFailureNoticeText(message.text)) return null;
   return [
     sourceMessage.messageId,
     cleanText(message.sender),

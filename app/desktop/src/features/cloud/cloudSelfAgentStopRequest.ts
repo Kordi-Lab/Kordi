@@ -1,6 +1,7 @@
 import type { CloudAccount, CloudAuthClient } from './authClient';
 import { cloudMessageIsSelfAgentRequest, parseCloudAgentResponse } from './cloudAgentMessages';
 import { CloudAuthError } from './cloudAuthError';
+import { publishEndedCloudSelfAgentReply } from './cloudSelfAgentAbandonedReplies';
 import { closeCloudAgentRunFromDesktop } from './cloudInterruptedTurnRelease';
 import { cloudSelfAgentHasTerminalResponse } from './cloudSelfAgentExecutionState';
 import type { CloudSelfAgentActiveRequest } from './cloudSelfAgentRequestExecution';
@@ -116,6 +117,33 @@ export async function stopCloudSelfAgentRequest({
     } catch (error) {
       if (!(error instanceof CloudAuthError) || ![404, 409].includes(error.status)) throw error;
     }
+    // The server has no run for the request or its run already ended, so no
+    // executor will end the processing reply. The stop ends it here.
+    if (!cloudSelfAgentHasProcessingReply(request.messageId, selfMessages)) continue;
+    await publishEndedCloudSelfAgentReply({
+      client: currentClient,
+      token: session.token,
+      accountId: currentAccount.accountId,
+      sessionId,
+      requestId: request.messageId,
+      reply,
+    });
+    supersededRequestIds.add(request.messageId);
+    await syncCurrentMessages().catch((error) => reportCurrentWarning(
+      '[cloud-self-agent-execution] terminal sync failed',
+      error,
+    ));
+    return true;
   }
   return false;
+}
+
+function cloudSelfAgentHasProcessingReply(
+  requestId: string,
+  messages: readonly { body: string }[],
+): boolean {
+  return messages.some((message) => {
+    const response = parseCloudAgentResponse(message.body);
+    return response?.requestId === requestId && response.deliveryState === 'processing';
+  });
 }

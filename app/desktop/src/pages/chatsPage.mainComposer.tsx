@@ -1,5 +1,4 @@
 import { ChatWorkspaceControls } from '@/features/projects/ChatWorkspaceControls';
-import { canChooseChatProject } from '@/features/projects/chatProjects';
 import { useId, useRef, useState } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -186,7 +185,8 @@ export function MainComposer({
           onForward={onForwardSelectedMessages}
         />
       ) : null}
-      {!editingMessage && !voiceSurfaceActive && !videoSurfaceActive && canChooseChatProject(conversation) ? (
+      {/* The controls hide themselves for chats that have no project and cannot choose one. */}
+      {!editingMessage && !voiceSurfaceActive && !videoSurfaceActive ? (
         <ChatWorkspaceControls key={conversation.id} conversation={conversation} disabled={display.activeLiveTurnIsRunning} />
       ) : null}
       <ComposerDropSurface disabled={editingMessage} saveDesktopAttachments={(files) => (
