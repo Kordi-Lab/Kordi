@@ -386,10 +386,14 @@ where
         Ok(response) => response,
         Err(err) => {
             let message = err.to_string();
+            let code = match err {
+                crate::model_loop::ModelLoopError::ToolFailed(_) => "tool_error",
+                _ => model_failure_code(&message),
+            };
             client
                 .fail_run(
                     &run.run_id,
-                    model_failure_code(&message),
+                    code,
                     &format!("Cloud fallback model loop failed: {message}"),
                 )
                 .await?;
@@ -438,6 +442,9 @@ mod connector_tests;
 #[cfg(test)]
 #[path = "runtime_tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "runtime_tool_only_reply_tests.rs"]
+mod tool_only_reply_tests;
 
 #[cfg(test)]
 mod failure_code_tests {
