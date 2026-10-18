@@ -196,7 +196,7 @@ export function useWorkspaceViewModels({
       || canonicalSessionState?.profile.id
       || getLocalProfileAvatarSeed();
 
-    const { projectRootBySession, sessionSummaries } = localProjectSessions(desktopChatState);
+    const { projectRootBySession, sessionSummaries, unlistedActiveSessionId } = localProjectSessions(desktopChatState);
 
     return sessionSummaries.map((session) => {
       const isActiveSession = session.id === desktopChatState.activeSession.id;
@@ -241,7 +241,7 @@ export function useWorkspaceViewModels({
         canonicalSessionId: session.id,
         localSessionCwd: isActiveSession ? desktopChatState.activeSession.cwd : null,
         metadata: projectRootBySession.has(session.id) ? { projectRoot: projectRootBySession.get(session.id) } : undefined,
-        desktopRuntimeBacked: true,
+        desktopRuntimeBacked: true, desktopRuntimeUnlisted: session.id === unlistedActiveSessionId || undefined,
         desktopRuntimeTranscriptLoaded: hydratedDesktopSessionIds.has(session.id) || cachedDesktopSessionSourceMessages[session.id] !== undefined || cachedChatSessionMessages[session.id] !== undefined,
         name: session.title,
         type: 'owned-agent' as const,
@@ -760,7 +760,7 @@ export function useWorkspaceViewModels({
     return routingGroups.map((group) => {
       const desktopProject = desktopProjectById.get(group.id);
       const workspaceProject = workspaceProjectById.get(group.id);
-      const projectScope = desktopProject?.root
+      const projectScope = group.remote ? '' : desktopProject?.root
         ?? workspaceProject?.root
         ?? projectRootFromCanonicalProjectGroupId(group.id)
         ?? group.id;
@@ -775,7 +775,7 @@ export function useWorkspaceViewModels({
         : undefined;
       const projectName = desktopProject?.name
         ?? workspaceProject?.name
-        ?? (canonicalLeadSession ? canonicalProjectDisplayName(canonicalLeadSession) : activeSessionProjectName ?? 'Project');
+        ?? group.name ?? (canonicalLeadSession ? canonicalProjectDisplayName(canonicalLeadSession) : activeSessionProjectName ?? 'Project');
       const projectSummary = desktopProject?.summary
         ?? workspaceProject?.summary
         ?? (canonicalLeadSession ? canonicalProjectDisplayName(canonicalLeadSession) : projectScope);
@@ -796,7 +796,7 @@ export function useWorkspaceViewModels({
         summary: projectSummary,
         collaboration: 'Local',
         scope: projectScope,
-        status: desktopProject?.backgroundSystem ? 'Configured' : 'Local',
+        status: group.remote ? 'Unavailable' : desktopProject?.backgroundSystem ? 'Configured' : 'Local',
         people: workspaceProject?.people ?? [],
         agents: workspaceProject?.agents ?? [],
         pendingInvites: workspaceProject?.pendingInvites ?? [],

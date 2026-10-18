@@ -42,6 +42,8 @@ pub(in crate::chat) struct ManagedChildAgentRunner {
     runtime_identity: Option<kordi_cli::desktop_runtime::DesktopChatContextMessage>,
     parent_route: Option<DesktopChatMessageRoute>,
     parent_hosted_auth: Option<InheritedHostedAuth>,
+    /// The parent lease reduced to `create_document` (issue 1808).
+    document_lease: Option<kordi_cli::desktop_runtime::DesktopCloudExecutionLease>,
     jobs: Arc<Mutex<BTreeMap<String, ManagedTask>>>,
 }
 
@@ -63,6 +65,7 @@ impl ManagedChildAgentRunner {
             runtime_identity: None,
             parent_route: None,
             parent_hosted_auth: None,
+            document_lease: None,
             jobs: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -90,6 +93,15 @@ impl ManagedChildAgentRunner {
     ) -> Self {
         self.parent_route = route;
         self.parent_hosted_auth = hosted_auth;
+        self
+    }
+
+    /// Lets children and follow-ups save documents in the parent group.
+    pub(in crate::chat) fn with_group_documents(
+        mut self,
+        lease: Option<kordi_cli::desktop_runtime::DesktopCloudExecutionLease>,
+    ) -> Self {
+        self.document_lease = lease;
         self
     }
 
@@ -136,22 +148,13 @@ impl ManagedChildAgentRunner {
             attachment_paths: Some(attachment_paths),
             route: self.parent_route.clone(),
             context_messages: Some(
-                self.directory
-                    .as_ref()
-                    .map(
-                        |text| kordi_cli::desktop_runtime::DesktopChatContextMessage {
-                            execution_lease: None,
-                            id: "group-directory".to_string(),
-                            author_name: "Group directory".to_string(),
-                            author_kind: "agent".to_string(),
-                            context_role: Some("resource".to_string()),
-                            text: text.clone(),
-                            created_at_ms: None,
-                        },
-                    )
-                    .into_iter()
-                    .chain(self.runtime_identity.clone())
-                    .collect(),
+                super::group_documents::resource_message(
+                    self.directory.as_ref(),
+                    self.document_lease.as_ref(),
+                )
+                .into_iter()
+                .chain(self.runtime_identity.clone())
+                .collect(),
             ),
             visible_task_records: None,
             scheduled_task_session_id: self

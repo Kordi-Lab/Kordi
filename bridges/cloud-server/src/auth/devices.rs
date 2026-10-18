@@ -12,6 +12,11 @@ use sqlx_postgres::Postgres;
 
 use crate::chat_sync::store::{append_user_sync_events_in_transaction, StoreError};
 
+mod review;
+pub use review::{
+    confirm_reviewed_devices, device_review_ends_at, machine_hash, DEVICE_REVIEW_WINDOW_HOURS,
+};
+
 const MAX_DEVICE_NAME_CHARS: usize = 80;
 const MAX_PLATFORM_CHARS: usize = 32;
 const MAX_VERSION_CHARS: usize = 64;
@@ -46,6 +51,10 @@ pub struct DeviceMetadataUpdateRequest {
     pub app_version: Option<String>,
     #[serde(rename = "approximateLocation")]
     pub approximate_location: Option<String>,
+    /// Opaque, client-hashed machine identifier. Stored only as an
+    /// account-salted hash.
+    #[serde(rename = "machineId", default)]
+    pub machine_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -241,6 +250,11 @@ pub async fn authorize_device(
                approximate_location = COALESCE($6, approximate_location), \
                authorization_state = $7, \
                confirmed_at = CASE WHEN $7 = 'confirmed' THEN COALESCE(confirmed_at, $8) ELSE NULL END, \
+               review_started_at = CASE \
+                 WHEN $7 = 'confirmed' THEN NULL \
+                 WHEN revoked_at IS NOT NULL THEN $8 \
+                 ELSE COALESCE(review_started_at, $8) \
+               END, \
                last_seen_at = $8, revoked_at = NULL \
              WHERE account_id = $9 AND device_id = $10",
         )
@@ -267,9 +281,10 @@ pub async fn authorize_device(
         "INSERT INTO cloud_devices \
          (device_id, account_id, device_name, device_public_key, device_key_algorithm, \
           device_platform, os_version, app_version, approximate_location, authorization_state, confirmed_at, \
-          created_at, last_seen_at) \
+          review_started_at, created_at, last_seen_at) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, \
-                 CASE WHEN $10 = 'confirmed' THEN $11 ELSE NULL END, $11, $11)",
+                 CASE WHEN $10 = 'confirmed' THEN $11 ELSE NULL END, \
+                 CASE WHEN $10 = 'confirmed' THEN NULL ELSE $11 END, $11, $11)",
     )
     .bind(&device_id)
     .bind(account_id)

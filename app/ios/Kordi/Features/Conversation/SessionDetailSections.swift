@@ -80,9 +80,11 @@ struct SessionParticipantsSection: View {
                         .font(.body)
                         .lineLimit(2)
                     Spacer(minLength: 8)
-                    Text(roleLabel(participant))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    if let role = roleLabel(participant) {
+                        Text(role)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
                 .padding(.vertical, 6)
@@ -105,12 +107,13 @@ struct SessionParticipantsSection: View {
         .frame(minWidth: 44, minHeight: 44)
     }
 
-    private func roleLabel(_ participant: CloudGroupParticipant) -> String {
+    /// Ordinary members carry no label; only "You" and admins are called out.
+    private func roleLabel(_ participant: CloudGroupParticipant) -> String? {
         if participant.accountId == selfAccountId { return "You" }
         if let role = participant.role?.lowercased(), ["owner", "admin"].contains(role) {
             return "Admin"
         }
-        return "Member"
+        return nil
     }
 }
 

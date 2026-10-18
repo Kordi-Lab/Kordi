@@ -1,4 +1,5 @@
 mod follow_up;
+mod group_documents;
 mod managed_child;
 pub mod snapshots;
 
@@ -9,6 +10,15 @@ use super::{
     message_execution, DesktopChatManager, DesktopChatMessageRoute, DesktopChatTurnSnapshot,
 };
 
+pub(super) use group_documents::{
+    group_document_lease, resource_document_lease, GROUP_DOCUMENTS_POLICY,
+};
+#[cfg(test)]
+pub(super) fn resource_message_for_test(
+    lease: Option<kordi_cli::desktop_runtime::DesktopCloudExecutionLease>,
+) -> DesktopChatContextMessage {
+    group_documents::resource_message(None, lease.as_ref()).expect("a document lease")
+}
 pub(super) use managed_child::ManagedChildAgentRunner;
 
 #[tauri::command]

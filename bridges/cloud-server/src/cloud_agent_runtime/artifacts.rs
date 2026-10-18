@@ -181,7 +181,7 @@ async fn run_for_export(
     .await
 }
 
-async fn upload_object(
+pub(crate) async fn upload_object(
     s3: &S3Config,
     object_key: &str,
     content_type: &str,

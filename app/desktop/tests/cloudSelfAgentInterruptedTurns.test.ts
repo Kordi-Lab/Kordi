@@ -65,7 +65,7 @@ test('a reply still processing for a request sent before this app loaded is clos
 test('a turn this app is running is untouched', () => {
   const sent = request({ createdAtMs: LOADED_AT_MS + 10 });
   const result = plan([sent, processing(sent)]);
-  assert.deepEqual(result, { rowIds: [], nativeSessionIds: [], releaseRequests: [] });
+  assert.deepEqual(result, { rowIds: [], nativeSessionIds: [], releaseRequests: [], abandonedRequests: [] });
 });
 
 test('a reply whose request already has a terminal answer needs no recovery', () => {

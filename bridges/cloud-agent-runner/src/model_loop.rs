@@ -4,11 +4,13 @@ use serde_json::{json, Value};
 pub(crate) mod omp;
 mod prompt;
 mod provider;
+mod reply;
 
 pub use omp::run_omp_model_loop;
 pub use prompt::{cloud_sandbox_system_prompt, tool_catalog};
 pub(crate) use provider::OpenAiApiMode;
 pub use provider::{OpenAiCompatibleProvider, OpenAiProviderConfig};
+pub(crate) use reply::{run_reply_text, ToolOutcome};
 
 use crate::artifacts::export_sandbox_file;
 use crate::client::{CloudAgentRun, CloudAgentRunClient, ProviderAuthMaterial, RunnerClientError};
@@ -36,6 +38,9 @@ pub enum ModelLoopError {
     Provider(String),
     #[error("runner client error: {0}")]
     Client(#[from] RunnerClientError),
+    /// The model ended the run after a failed tool call, with no reply.
+    #[error("the run ended after a failed {0} call with no reply")]
+    ToolFailed(String),
 }
 
 #[async_trait]
@@ -83,11 +88,16 @@ where
     let memory = load_run_memory(client, run).await;
     let tools = run_tool_catalog(run, &memory);
     let executor = CloudToolExecutor::new(sandbox.clone()).with_memory(memory.enabled);
-    let system_prompt = [run.system_prompt.trim(), cloud_sandbox_system_prompt()]
-        .into_iter()
-        .filter(|section| !section.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n");
+    let documents = prompt::group_document_guidance(&run.connectors.tools).unwrap_or_default();
+    let system_prompt = [
+        run.system_prompt.trim(),
+        cloud_sandbox_system_prompt(),
+        documents,
+    ]
+    .into_iter()
+    .filter(|section| !section.is_empty())
+    .collect::<Vec<_>>()
+    .join("\n\n");
     let system_prompt = if run.subsession_id.is_none()
         && (run.session_id.starts_with("session:group:")
             || run.session_id.starts_with("session:direct-person:"))
@@ -136,10 +146,11 @@ where
         messages.push(identity.provider_message());
     }
     messages.push(json!({ "role": "user", "content": run.prompt }));
+    let mut outcomes = Vec::new();
     // No step or tool-call cap: the run deadline and user stop end long runs.
     loop {
         match provider.next_response(&auth, &messages, &tools).await? {
-            ModelProviderResponse::FinalText(text) => return Ok(text),
+            ModelProviderResponse::FinalText(text) => return run_reply_text(text, &outcomes),
             ModelProviderResponse::ToolCalls(calls) => {
                 if calls.is_empty() {
                     return Err(ModelLoopError::Provider(
@@ -177,13 +188,15 @@ where
                             }
                         }]
                     }));
-                    let content = execute_model_tool(client, &executor, sandbox, run, &call).await;
+                    let result = execute_model_tool(client, &executor, sandbox, run, &call).await;
+                    let outcome = ToolOutcome::new(&call.name, &result);
                     messages.push(json!({
                         "role": "tool",
                         "tool_call_id": call.id,
                         "name": call.name,
-                        "content": content,
+                        "content": outcome.content,
                     }));
+                    outcomes.push(outcome);
                 }
             }
         }
@@ -196,63 +209,63 @@ pub(crate) async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
     sandbox: &SandboxBackendHandle,
     run: &CloudAgentRun,
     call: &ModelToolCall,
-) -> Value {
+) -> Result<Value, Value> {
     if let Some(output) = crate::connectors::execute_connector_call(client, run, call).await {
         return output;
     }
     if call.name == "task_operator" {
         if run.subsession_id.is_some() {
-            return "Nested execution subsessions are not supported.".into();
+            return Err("Nested execution subsessions are not supported.".into());
         }
         return match client
             .task_operator(&run.run_id, &call.id, call.arguments.clone())
             .await
         {
-            Ok(record) => format!("Background session: {record}").into(),
-            Err(_) => {
-                "The subsession could not be created or accessed. Do not claim it started.".into()
-            }
+            Ok(record) => Ok(format!("Background session: {record}").into()),
+            Err(_) => Err(
+                "The subsession could not be created or accessed. Do not claim it started.".into(),
+            ),
         };
     }
     if run.subsession_id.is_some() {
         if matches!(call.name.as_str(), "bash" | "export_artifact") {
-            return "This tool is unavailable in an execution subsession.".into();
+            return Err("This tool is unavailable in an execution subsession.".into());
         }
         if matches!(call.name.as_str(), "write" | "edit") {
             let path = call.arguments["path"].as_str().unwrap_or_default();
             if !run.subsession_write_scope.iter().any(|scope| {
                 path == scope || path.starts_with(&format!("{}/", scope.trim_end_matches('/')))
             }) {
-                return "The path is outside this subsession's write scope.".into();
+                return Err("The path is outside this subsession's write scope.".into());
             }
         }
     }
     if call.name == "read_calendar" {
         if run.owner_account_id != run.requester_account_id || run.subsession_id.is_some() {
-            return format!(
+            return Err(format!(
                 "Calendar reads require a direct request to the owner's own Agent. {}",
                 kordi_tools::calendar::CALENDAR_UNAVAILABLE
             )
-            .into();
+            .into());
         }
         if (run.session_id.starts_with("session:group:")
             || run.session_id.starts_with("session:direct-person:"))
             && call.arguments["shareInConversation"] != true
         {
-            return format!("Calendar disclosure requires the owner's explicit request in this conversation. {}", kordi_tools::calendar::CALENDAR_UNAVAILABLE).into();
+            return Err(format!("Calendar disclosure requires the owner's explicit request in this conversation. {}", kordi_tools::calendar::CALENDAR_UNAVAILABLE).into());
         }
         return match client
             .read_context(&run.run_id, &call.name, call.arguments.clone())
             .await
         {
-            Ok(value) => value.to_string().into(),
-            Err(_) => kordi_tools::calendar::CALENDAR_UNAVAILABLE.into(),
+            Ok(value) => Ok(value.to_string().into()),
+            Err(_) => Err(kordi_tools::calendar::CALENDAR_UNAVAILABLE.into()),
         };
     }
     if matches!(call.name.as_str(), "search_sessions" | "read_session") {
         return match client.read_context(&run.run_id, &call.name, call.arguments.clone()).await {
             Ok(value) => context_tool_output(value),
-            Err(_) => "Conversation retrieval is unavailable or access was revoked. Do not infer missing context.".into(),
+            Err(_) => Err("Conversation retrieval is unavailable or access was revoked. Do not infer missing context.".into()),
         };
     }
     if call.name == "reflection" {
@@ -270,13 +283,14 @@ pub(crate) async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
             .await
         {
             Ok(output) => format_tool_output(output),
-            Err(err) => err.to_string().into(),
+            Err(err) => Err(err.to_string().into()),
         };
     }
     if call.name == "export_artifact" {
         return export_model_artifact(client, sandbox, run, &call.arguments)
             .await
-            .into();
+            .map(Value::from)
+            .map_err(Value::from);
     }
 
     let primary = primary_arg(&call.name, &call.arguments).unwrap_or_default();
@@ -322,11 +336,11 @@ pub(crate) async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
         .await
     {
         Ok(output) => format_tool_output(output),
-        Err(err) => err.to_string().into(),
+        Err(err) => Err(err.to_string().into()),
     }
 }
 
-fn context_tool_output(mut value: Value) -> Value {
+fn context_tool_output(mut value: Value) -> Result<Value, Value> {
     let media = value.as_object_mut().and_then(|o| o.remove("media"));
     match media {
         Some(media) => {
@@ -340,13 +354,13 @@ fn context_tool_output(mut value: Value) -> Value {
                     );
                     format_tool_output(CloudToolOutput::Content(blocks))
                 }
-                Err(_) => {
+                Err(_) => Err(
                     "Conversation retrieval returned invalid media. Retry reading the attachment."
-                        .into()
-                }
+                        .into(),
+                ),
             }
         }
-        None => value.to_string().into(),
+        None => Ok(value.to_string().into()),
     }
 }
 
@@ -355,7 +369,7 @@ async fn export_model_artifact<C: CloudAgentRunClient + Sync>(
     sandbox: &SandboxBackendHandle,
     run: &CloudAgentRun,
     arguments: &Value,
-) -> String {
+) -> Result<String, String> {
     let path = arguments
         .get("path")
         .or_else(|| arguments.get("sandboxPath"))
@@ -372,11 +386,11 @@ async fn export_model_artifact<C: CloudAgentRunClient + Sync>(
         .unwrap_or("application/octet-stream");
 
     match export_sandbox_file(client, sandbox, &run.run_id, path, name, content_type).await {
-        Ok(artifact) => format!(
+        Ok(artifact) => Ok(format!(
             "exported artifact {} as attachment {} ({})",
             artifact.name, artifact.attachment_id, artifact.sandbox_path
-        ),
-        Err(err) => format!("artifact export failed: {err}"),
+        )),
+        Err(err) => Err(format!("artifact export failed: {err}")),
     }
 }
 
@@ -392,18 +406,22 @@ fn primary_arg(tool_name: &str, arguments: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
-fn format_tool_output(output: CloudToolOutput) -> Value {
-    match output {
+/// A tool's output for the model; a command that exited non-zero is a failure.
+fn format_tool_output(output: CloudToolOutput) -> Result<Value, Value> {
+    Ok(match output {
         CloudToolOutput::Text(text) => text.into(),
         CloudToolOutput::List(items) => items.join("\n").into(),
-        CloudToolOutput::Bash(output) => format!(
-            "exit_code={}\nstdout:\n{}\nstderr:\n{}", output.exit_code, output.stdout, output.stderr,
-        ).into(),
+        CloudToolOutput::Bash(output) => {
+            let text = format!(
+                "exit_code={}\nstdout:\n{}\nstderr:\n{}", output.exit_code, output.stdout, output.stderr,
+            );
+            return if output.exit_code == 0 { Ok(text.into()) } else { Err(text.into()) };
+        }
         CloudToolOutput::Content(blocks) => json!(blocks.into_iter().map(|block| match block {
             kordi_core::types::ContentBlock::Text { text } => json!({"type":"text","text":text}),
             kordi_core::types::ContentBlock::Image { data, mime_type } => json!({"type":"image","source":{"type":"base64","media_type":mime_type,"data":data}}),
         }).collect::<Vec<_>>()),
-    }
+    })
 }
 #[cfg(test)]
 mod context_media_tests {
@@ -412,7 +430,8 @@ mod context_media_tests {
     fn context_media_is_image_content_and_not_embedded_in_text_metadata() {
         let result = context_tool_output(
             json!({"sessionId":"group","messages":[],"media":[{"type":"image","data":"fixture-image","mime_type":"image/png"}]}),
-        );
+        )
+        .unwrap();
         assert_eq!(result[1]["type"], "image");
         assert_eq!(result[1]["source"]["data"], "fixture-image");
         assert!(!result[0]["text"]
@@ -420,6 +439,7 @@ mod context_media_tests {
             .unwrap()
             .contains("fixture-image"));
         assert!(context_tool_output(json!({"media":"invalid"}))
+            .unwrap_err()
             .as_str()
             .unwrap()
             .contains("invalid media"));

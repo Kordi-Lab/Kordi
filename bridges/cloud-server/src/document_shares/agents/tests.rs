@@ -262,6 +262,7 @@ fn gate() -> ToolGate {
         public_reader: false,
         requester_can_edit: true,
         session_has_document: false,
+        group_session: false,
     }
 }
 
@@ -306,6 +307,45 @@ fn the_gate_offers_edit_only_to_a_person_started_comment_run_that_can_edit() {
     };
     let offered = offered_tools(&plain);
     assert!(!offered.read && !offered.edit);
+}
+
+#[test]
+fn the_gate_offers_create_to_group_chat_runs_whoever_asked() {
+    let group_chat = ToolGate {
+        comment_run: false,
+        group_session: true,
+        ..gate()
+    };
+    for trigger in [RunTrigger::PersonStarted, RunTrigger::Background] {
+        let offered = offered_tools(&ToolGate {
+            trigger,
+            ..group_chat
+        });
+        assert!(offered.create && !offered.edit, "{trigger:?}");
+    }
+    let refused = [
+        // A comment run answers in its thread, not in the group.
+        ToolGate {
+            comment_run: true,
+            ..group_chat
+        },
+        ToolGate {
+            group_session: false,
+            ..group_chat
+        },
+        ToolGate {
+            public_reader: true,
+            ..group_chat
+        },
+    ];
+    for gate in refused {
+        assert!(!offered_tools(&gate).create, "{gate:?}");
+    }
+    let tool = tools::create_descriptor();
+    assert_eq!(tool.name, CREATE_DOCUMENT_TOOL);
+    assert_eq!(tool.group, ConnectorToolGroup::Act);
+    assert!(tools::is_document_tool(&tool));
+    assert_eq!(tool.input_schema["required"], json!(["title", "content"]));
 }
 
 #[test]

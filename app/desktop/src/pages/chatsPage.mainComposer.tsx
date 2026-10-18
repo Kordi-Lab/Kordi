@@ -1,5 +1,6 @@
 import { ChatWorkspaceControls } from '@/features/projects/ChatWorkspaceControls';
-import { canChooseChatProject } from '@/features/projects/chatProjects';
+import { isCloudAgentChat } from '@/features/projects/chatProjects';
+import { CloudChatWorkspaceRow } from '@/features/projects/CloudChatWorkspaceRow';
 import { useId, useRef, useState } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -139,14 +140,14 @@ export function MainComposer({
     && shouldUseCompactModelRouteMenu(conversation);
   // An agent route bound to a removed account cannot run until the owner picks another account.
   const routeSelection = collaborationRouting.enabled && collaborationRouting.model
-    ? collaborationRouting.model.selection
-    : composerSelection;
+    ? collaborationRouting.model.selection : composerSelection;
   const routeAccountUnavailable = canConfigureModelRoute
     && (localRouting.paneKind === 'agent' || collaborationRouting.enabled)
     && isRouteAccountUnavailable(routeSelection, composerProviderOptions);
-  const onSend: MainComposerProps['onSend'] = (draftOverride, attachmentOverride) => (
-    routeAccountUnavailable ? undefined : sendMessage(draftOverride, attachmentOverride)
-  );
+  // When the account menu offers a usable account, a send applies it first.
+  const canSend = !routeAccountUnavailable || Boolean(collaborationRouting.replaceUnavailableAccount);
+  const onSend: MainComposerProps['onSend'] = (draftOverride, attachmentOverride) => (!routeAccountUnavailable
+    || collaborationRouting.replaceUnavailableAccount?.() ? sendMessage(draftOverride, attachmentOverride) : undefined);
   const voice = useVoiceComposer({
     conversation,
     cloudAccountId,
@@ -183,9 +184,12 @@ export function MainComposer({
           onForward={onForwardSelectedMessages}
         />
       ) : null}
-      {!editingMessage && !voiceSurfaceActive && !videoSurfaceActive && canChooseChatProject(conversation) ? (
+      {/* Cloud agent chats keep a grayed row; the controls hide themselves for chats that have no project and cannot choose one. */}
+      {editingMessage || voiceSurfaceActive || videoSurfaceActive ? null : isCloudAgentChat(conversation) ? (
+        <CloudChatWorkspaceRow key={conversation.id} sessionId={conversation.id} />
+      ) : (
         <ChatWorkspaceControls key={conversation.id} conversation={conversation} disabled={display.activeLiveTurnIsRunning} />
-      ) : null}
+      )}
       <ComposerDropSurface disabled={editingMessage} saveDesktopAttachments={(files) => (
         videoReviews.stage(saveDesktopAttachments(files))
       )}>
@@ -341,6 +345,8 @@ export function MainComposer({
                 placeholder={editingMessage ? 'Edit message' : display.placeholder}
               />
             </div>}
+            {!editingMessage && collaborationRouting.enabled && collaborationRouting.error
+              ? <p className="app-error-text mt-1 text-[11px] leading-4 text-rose-500" role="alert">{collaborationRouting.error}</p> : null}
             {messageEditError ? (
               <p id={editErrorMessageId} className="app-error-text mt-1 text-[11px] leading-4 text-rose-500" role="alert">
                 {messageEditError}
@@ -411,7 +417,6 @@ export function MainComposer({
               && localRouting.paneKind === 'agent'
               && !collaborationRouting.enabled
               && !useCompactRouteMenu ? (
-                <>
                 <ComposerModelControls
                   scope="chat"
                   selection={composerSelection}
@@ -438,8 +443,8 @@ export function MainComposer({
                     ? chatModelOptions
                     : undefined}
                   compact={display.showCompanionPane}
+                  onSignIn={display.onOpenAuthentication}
                 />
-                </>
               ) : !editingMessage && !voiceSurfaceActive && canConfigureModelRoute
                 && collaborationRouting.enabled
                 && !useCompactRouteMenu
@@ -451,6 +456,7 @@ export function MainComposer({
                       agentSelectorOpen: collaborationRouting.agentSelectorOpen,
                       compact: display.showCompanionPane,
                     }}
+                    onSignIn={display.onOpenAuthentication}
                     options={{
                       authLabel: composerAuthLabel,
                       authOptions: composerAuthOptions,
@@ -479,7 +485,7 @@ export function MainComposer({
               </Button>
             ) : <VoiceComposerControls
               voice={voice}
-              hasSendableDraft={hasSendableDraft && !routeAccountUnavailable}
+              hasSendableDraft={hasSendableDraft && canSend}
               activeLiveTurnIsRunning={display.activeLiveTurnIsRunning}
               onSend={() => { void onSend(); }}
               stop={stop}

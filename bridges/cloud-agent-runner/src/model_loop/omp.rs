@@ -13,8 +13,8 @@ use crate::tools::CloudToolExecutor;
 
 use super::provider::OpenAiApiMode;
 use super::{
-    cloud_sandbox_system_prompt, execute_model_tool, run_tool_catalog, ModelLoopError,
-    ModelToolCall, OpenAiProviderConfig,
+    cloud_sandbox_system_prompt, execute_model_tool, run_reply_text, run_tool_catalog,
+    ModelLoopError, ModelToolCall, OpenAiProviderConfig, ToolOutcome,
 };
 
 pub async fn run_omp_model_loop<C: CloudAgentRunClient + Sync>(
@@ -143,6 +143,7 @@ async fn run_omp_with_config<C: CloudAgentRunClient + Sync>(
         executor,
         sandbox,
         run,
+        outcomes: std::sync::Mutex::new(Vec::new()),
     };
     let result = worker
         .run_turn(
@@ -172,7 +173,8 @@ async fn run_omp_with_config<C: CloudAgentRunClient + Sync>(
             serde_json::to_value(checkpoint).expect("checkpoint is serializable")
         }),
     };
-    Ok((result.text, state))
+    let outcomes = host.outcomes.into_inner().unwrap_or_default();
+    Ok((run_reply_text(result.text, &outcomes)?, state))
 }
 
 fn output_is_replayable(messages: &[Value]) -> bool {
@@ -252,11 +254,17 @@ fn system_prompt_for_run(run: &CloudAgentRun) -> Result<String, ModelLoopError> 
             ));
         }
     }
-    let mut system_prompt = [run.system_prompt.trim(), cloud_sandbox_system_prompt()]
-        .into_iter()
-        .filter(|section| !section.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n");
+    let documents =
+        super::prompt::group_document_guidance(&run.connectors.tools).unwrap_or_default();
+    let mut system_prompt = [
+        run.system_prompt.trim(),
+        cloud_sandbox_system_prompt(),
+        documents,
+    ]
+    .into_iter()
+    .filter(|section| !section.is_empty())
+    .collect::<Vec<_>>()
+    .join("\n\n");
     if run.subsession_id.is_none()
         && (run.session_id.starts_with("session:group:")
             || run.session_id.starts_with("session:direct-person:"))
@@ -315,6 +323,8 @@ struct CloudOmpTools<'a, C> {
     executor: CloudToolExecutor,
     sandbox: &'a SandboxBackendHandle,
     run: &'a CloudAgentRun,
+    /// Each tool call's result, in order, for the run's reply.
+    outcomes: std::sync::Mutex<Vec<ToolOutcome>>,
 }
 
 #[async_trait]
@@ -360,7 +370,7 @@ impl<C: CloudAgentRunClient + Sync> HostTool for CloudOmpTools<'_, C> {
                 details: None,
             };
         }
-        let output = execute_model_tool(
+        let result = execute_model_tool(
             self.client,
             &self.executor,
             self.sandbox,
@@ -368,7 +378,12 @@ impl<C: CloudAgentRunClient + Sync> HostTool for CloudOmpTools<'_, C> {
             &model_call,
         )
         .await;
-        let content = match output {
+        let outcome = ToolOutcome::new(&model_call.name, &result);
+        let content = outcome.content.clone();
+        if let Ok(mut outcomes) = self.outcomes.lock() {
+            outcomes.push(outcome);
+        }
+        let content = match content {
             Value::Array(blocks) => blocks,
             Value::String(text) => vec![json!({"type":"text","text":text})],
             other => vec![json!({"type":"text","text":other.to_string()})],

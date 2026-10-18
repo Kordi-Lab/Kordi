@@ -135,7 +135,7 @@ export function useComposerInputActions({
     const nextThinkingValue = type === 'thinking' ? value : nextModelThinkingValue;
     const modelChanged = Boolean(nextModelValue && nextModelValue !== currentSelection.model);
     const thinkingChanged = Boolean(nextThinkingValue && nextThinkingValue !== currentSelection.thinking);
-    if ((type === 'model' || type === 'thinking') && await routeComposerChange(scope, routeTargetSessionId(scope, configTargetOverride), {
+    if ((type === 'model' || type === 'thinking') && routeComposerChange(scope, routeTargetSessionId(scope, configTargetOverride), {
       model: type === 'model' ? value : null,
       thinking: nextThinkingValue ?? currentSelection.thinking,
     }, isolatedTarget)) {
@@ -306,7 +306,7 @@ export function useComposerInputActions({
     const currentProviderId = resolveComposerProviderId(scope, currentSelection.model);
     const normalizedProviderId = normalizeSelectedProviderId(providerId) ?? providerId;
     const nextModelValue = preferredModelValueForProvider(providerId) ?? preferredModelValueForProvider(normalizedProviderId);
-    if (await routeComposerChange(scope, routeTargetSessionId(scope, configTargetOverride), {
+    if (routeComposerChange(scope, routeTargetSessionId(scope, configTargetOverride), {
       model: nextModelValue, thinking: currentSelection.thinking, choice: { providerId, authChoice: choice },
     }, isolatedTarget)) {
       setOpenComposerSelector(null);
@@ -332,13 +332,27 @@ export function useComposerInputActions({
     const routeSessionId = routeTargetSessionId(scope, configTargetOverride);
     if (routeSessionId) configRequestsRef.current.delete(routeSessionId);
 
+    const nextModelValue = preferredModelValueForProvider(option.providerId) ?? preferredModelValueForProvider(normalizedProviderId);
     if (choice && !isolatedTarget && !isHostedOnlyAccountChoice(choice, registeredAccountChoices())) {
+      // Switching this Mac's account is a round trip; show the account's model
+      // first so the pick does not wait for it.
+      if (nextModelValue) {
+        const thinkingLevels = chatModelOptions.find((model) => model.value === nextModelValue)?.thinkingLevels ?? [];
+        setComposerSelections((current: ComposerSelectionState) => ({
+          ...current,
+          [scope]: {
+            ...current[scope],
+            model: nextModelValue,
+            thinking: fallbackComposerThinkingValue(thinkingLevels, current[scope].thinking),
+          },
+        }));
+      }
+      setOpenComposerSelector(null);
       await handleSelectAuthChoice(option.providerId, choice);
     }
 
-    const nextModelValue = preferredModelValueForProvider(option.providerId) ?? preferredModelValueForProvider(normalizedProviderId);
     // A hosted account opens its own model on Kordi Cloud; a local account leaves Kordi Cloud.
-    if (choice && await routeComposerChange(scope, routeTargetSessionId(scope, configTargetOverride), {
+    if (choice && routeComposerChange(scope, routeTargetSessionId(scope, configTargetOverride), {
       model: nextModelValue, thinking: (isolatedTarget?.selection ?? composerSelections[scope]).thinking,
       choice: { providerId: option.providerId, authChoice: choice },
     }, isolatedTarget)) {
@@ -357,7 +371,7 @@ export function useComposerInputActions({
     }
 
     await selectComposerValue(scope, 'provider', normalizedProviderId, configTargetOverride);
-  }, [composerSelections, handleSelectAuthChoice, preferredModelValueForProvider, routeComposerChange, routeTargetSessionId, selectComposerValue, setDesktopChatError, setOpenComposerSelector]);
+  }, [chatModelOptions, composerSelections, handleSelectAuthChoice, preferredModelValueForProvider, routeComposerChange, routeTargetSessionId, selectComposerValue, setComposerSelections, setDesktopChatError, setOpenComposerSelector]);
 
   const updateComposerDraft = useCallback((scope: ComposerScope, value: string, target: HTMLTextAreaElement | HTMLDivElement) => {
     const sessionId = scope === 'chat' ? activeConvId : activeProjectSessionId;

@@ -1,5 +1,6 @@
 import type { Conversation, Message } from '@/kordi-app/types';
 import { isCloudAgentStoredNoProviderFailure } from '@/features/cloud/cloudAgentMessages';
+import { isCloudAgentProviderFailureNoticeText } from '@/features/cloud/cloudAgentReplyText';
 import {
   isKordiSupportConversation,
   KORDI_SUPPORT_ACCOUNT_ID,
@@ -9,13 +10,9 @@ import {
 
 function isStaleLocalProviderFailure(message: Message): boolean {
   if (message.role !== 'owned-agent' && message.role !== 'external-agent') return false;
-  return [
-    message.turn?.error,
-    message.turn?.message,
-    message.turn?.assistantText,
-    message.detail,
-    message.text,
-  ].some((value) => isCloudAgentStoredNoProviderFailure(value));
+  // Errors match on any wording; a reply's text only when it is the notice itself.
+  return [message.turn?.error, message.turn?.message, message.detail].some((value) => isCloudAgentStoredNoProviderFailure(value))
+    || [message.turn?.assistantText, message.text].some((value) => isCloudAgentProviderFailureNoticeText(value));
 }
 
 function supportContactResponseText(message: Message): string {

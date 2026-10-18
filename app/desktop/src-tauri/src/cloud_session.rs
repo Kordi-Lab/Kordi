@@ -8,6 +8,7 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf, process::Command};
 
 const KEYCHAIN_SERVICE: &str = "com.kordi.cloud-session";
@@ -60,6 +61,10 @@ pub struct CloudDeviceSystemMetadata {
     pub time_zone: Option<String>,
     #[serde(rename = "countryCode")]
     pub country_code: Option<String>,
+    /// Salted hash of the hardware id, so the server can tell installations on
+    /// the same machine apart from other devices. Never shown to users.
+    #[serde(rename = "machineId")]
+    pub machine_id: Option<String>,
 }
 
 fn command_output(program: &str, arguments: &[&str]) -> Option<String> {
@@ -68,6 +73,56 @@ fn command_output(program: &str, arguments: &[&str]) -> Option<String> {
         .status
         .success()
         .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+const MACHINE_ID_SALT: &str = "kordi-machine-v1:";
+
+/// Hashes a raw hardware id so the raw value never leaves this machine.
+#[cfg_attr(not(any(target_os = "macos", target_os = "linux")), allow(dead_code))]
+fn hashed_machine_id(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let digest = Sha256::digest(format!("{MACHINE_ID_SALT}{raw}").as_bytes());
+    Some(hex::encode(digest))
+}
+
+/// Extracts `IOPlatformUUID` from `ioreg -rd1 -c IOPlatformExpertDevice` output.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn parse_ioreg_platform_uuid(output: &str) -> Option<String> {
+    output.lines().find_map(|line| {
+        let (key, value) = line.split_once('=')?;
+        if key.trim().trim_matches('"') != "IOPlatformUUID" {
+            return None;
+        }
+        let value = value.trim().trim_matches('"').trim();
+        (!value.is_empty()).then(|| value.to_string())
+    })
+}
+
+fn machine_id() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        command_output("/usr/sbin/ioreg", &["-rd1", "-c", "IOPlatformExpertDevice"])
+            .as_deref()
+            .and_then(parse_ioreg_platform_uuid)
+            .as_deref()
+            .and_then(hashed_machine_id)
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        fs::read_to_string("/etc/machine-id")
+            .ok()
+            .as_deref()
+            .and_then(hashed_machine_id)
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        None
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -215,6 +270,19 @@ pub fn cloud_session_store(
     Ok(())
 }
 
+/// Signs a test in without the keychain or the host activity side effects.
+#[cfg(test)]
+pub(crate) fn store_session_for_test(account_id: &str) -> Result<(), String> {
+    let payload = CloudSessionEntry {
+        token: "kordi_s_synthetic".into(),
+        account_id: account_id.into(),
+        expires_at: "2099-01-01T00:00:00Z".into(),
+        device_id: None,
+    };
+    let json = serde_json::to_string(&payload).map_err(|err| err.to_string())?;
+    secret_store(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, &json)
+}
+
 #[tauri::command]
 pub fn cloud_session_load() -> Result<Option<CloudSessionEntry>, String> {
     match secret_load(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)? {
@@ -277,6 +345,7 @@ pub fn cloud_device_system_metadata() -> CloudDeviceSystemMetadata {
                 .unwrap_or_default(),
             time_zone,
             country_code,
+            machine_id: machine_id(),
         }
     }
 
@@ -287,12 +356,40 @@ pub fn cloud_device_system_metadata() -> CloudDeviceSystemMetadata {
         os_version: String::new(),
         time_zone: None,
         country_code: None,
+        machine_id: machine_id(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ioreg_platform_uuid_is_parsed_and_hashed() {
+        let output = r#"+-o J316sAP  <class IOPlatformExpertDevice, id 0x100000210>
+    {
+      "IOPlatformSerialNumber" = "ABC123"
+      "IOPlatformUUID" = "1A2B3C4D-0000-1111-2222-333344445555"
+      "model" = <"MacBookPro18,2">
+    }"#;
+        assert_eq!(
+            parse_ioreg_platform_uuid(output).as_deref(),
+            Some("1A2B3C4D-0000-1111-2222-333344445555")
+        );
+        assert_eq!(parse_ioreg_platform_uuid("\"model\" = <\"Mac\">"), None);
+        assert_eq!(parse_ioreg_platform_uuid("\"IOPlatformUUID\" = \"\""), None);
+
+        let hashed = hashed_machine_id("1A2B3C4D-0000-1111-2222-333344445555\n").unwrap();
+        assert_eq!(hashed.len(), 64);
+        assert!(hashed.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(
+            hashed,
+            hex::encode(Sha256::digest(
+                b"kordi-machine-v1:1A2B3C4D-0000-1111-2222-333344445555"
+            ))
+        );
+        assert_eq!(hashed_machine_id("  "), None);
+    }
 
     fn with_isolated_app_data_dir<T>(test: impl FnOnce(PathBuf) -> T) -> T {
         let _guard = crate::test_support::lock_process_environment();

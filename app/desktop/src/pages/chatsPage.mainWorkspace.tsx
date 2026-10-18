@@ -381,6 +381,8 @@ export function ChatMainWorkspace({
                       collaborationRouting={{
                         enabled: models.routing.enabled,
                         notice: models.routing.notice,
+                        error: models.routing.error,
+                        replaceUnavailableAccount: models.routing.replaceUnavailableAccount,
                         model: models.routing.selectedAgent ? {
                           agents: models.routing.agents,
                           selectedAgent: models.routing.selectedAgent,
@@ -406,6 +408,7 @@ export function ChatMainWorkspace({
                         prefersReducedMotion:
                           presentation.prefersReducedMotion,
                         placeholder: chatComposerPlaceholder(activeConv),
+                        onOpenAuthentication: openAuthentication,
                       }}
                       onSend={handleSend}
                       stop={composerStop}

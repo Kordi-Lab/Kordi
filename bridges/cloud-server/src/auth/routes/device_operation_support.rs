@@ -13,6 +13,27 @@ fn idempotency_conflict() -> Response {
     )
 }
 
+/// Confirms pending installations that no longer need approval (see
+/// [`crate::auth::devices::confirm_reviewed_devices`]) and notifies clients.
+pub(super) async fn confirm_reviewed_devices_now(
+    state: &ServerState,
+    account_id: &str,
+) -> Result<(), Box<Response>> {
+    let failed = || Box::new(device_server_error("Could not update device reviews."));
+    let mut transaction = state.db_pool().begin().await.map_err(|_| failed())?;
+    let confirmed = crate::auth::devices::confirm_reviewed_devices(&mut transaction, account_id)
+        .await
+        .map_err(|_| failed())?;
+    transaction.commit().await.map_err(|_| failed())?;
+    for device_id in confirmed {
+        state
+            .events()
+            .publish_device_event(account_id, "confirmed", &device_id)
+            .await;
+    }
+    Ok(())
+}
+
 pub(super) async fn require_confirmed_actor(
     transaction: &mut Transaction<'_, sqlx_postgres::Postgres>,
     session: &CloudSession,

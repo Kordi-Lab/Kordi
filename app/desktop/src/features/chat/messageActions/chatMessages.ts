@@ -10,7 +10,7 @@ import { resolvedPublishedAgentRuntimeRoute } from '@/features/chat/agentSession
 import { cloudAgentContextMessagesFromConversation } from '@/features/chat/chatCreateFlows';
 import { persistQueuedDesktopMessage } from '@/features/chat/queuedDesktopMessages';
 import { restoredSelfAgentContextMessages } from './restoredSelfAgentContext';
-import { cloudAgentNoProviderNoticeText,cloudAgentProviderFailureNotice,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentNoProviderNoticeText,cloudAgentProviderFailureNotice,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages'; import { isCloudAgentProviderFailureNoticeText } from '@/features/cloud/cloudAgentReplyText';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import {
@@ -81,6 +81,7 @@ generatedSelfAgentSessionId,
 isOwnedAgentMention,
 shouldUseNoProviderSelfAgentShortcut,
 } from './localAgentSessionTarget';
+import { routeForSendWithoutLocalProvider } from './noProviderRoute';
 import {
   dispatchLocalAgentVoiceTurn,
   localAgentNoProviderCompletion,
@@ -341,7 +342,7 @@ export function useChatMessageActions({
       }
       flushQueuedDesktopMessagesForSessionRef.current(turn.sessionId);
     };
-    if (turn.completed && isCloudAgentNoProviderConfiguredError(turn.error || turn.message || turn.assistantText)) {
+    if (turn.completed && (isCloudAgentNoProviderConfiguredError(turn.error || turn.message) || isCloudAgentProviderFailureNoticeText(turn.assistantText))) {
       void Promise.resolve(onComplete?.(turn)).finally(cleanup);
       return;
     }
@@ -1360,13 +1361,13 @@ export function useChatMessageActions({
       return;
     }
 
-    const noProviderShortcutSessionId = activeConvCanonicalSessionId?.trim()
-      || (isTransientDraftConversation ? generatedSelfAgentSessionId() : null);
+    const noProviderShortcutSessionId = activeConvCanonicalSessionId?.trim() || (isTransientDraftConversation ? generatedSelfAgentSessionId() : null);
+    const kordiCloudRoute = hasAnyDesktopAuth || activeConversationUsesCollaborationRouting ? null : await routeForSendWithoutLocalProvider(resolveChatRuntimeRoute(activeConvCanonicalSessionId ?? activeConvId), { model: composerSelections.chat.model, thinking: composerSelections.chat.thinking });
     if (noProviderShortcutSessionId && shouldUseNoProviderSelfAgentShortcut({
       activeConversationUsesCollaborationRouting,
       activeConvCanonicalSessionId: activeConvCanonicalSessionId?.trim() || null,
       canonicalSessionState,
-      hasAnyDesktopAuth: hasAnyDesktopAuth || routeRunsOnKordiCloud(resolveChatRuntimeRoute(activeConvCanonicalSessionId ?? activeConvId)),
+      hasAnyDesktopAuth: hasAnyDesktopAuth || Boolean(kordiCloudRoute),
     })) {
       localChatSendInFlightRef.current = { sessionId: localTargetSessionId };
       if (followMainTranscript) shouldAutoFollowChatRef.current = true;
@@ -1470,8 +1471,7 @@ export function useChatMessageActions({
 
     let materializedState: DesktopChatState | null = null;
     const runtimeRouteForSend = resolvedPublishedAgentRuntimeRoute(
-      activeConvMentionScope,
-      resolveChatRuntimeRoute(targetSessionId ?? activeConvCanonicalSessionId ?? activeConvId),
+      activeConvMentionScope, kordiCloudRoute ?? resolveChatRuntimeRoute(targetSessionId ?? activeConvCanonicalSessionId ?? activeConvId),
     );
     const ensureLocalSessionId = async () => {
       if (targetSessionId) {

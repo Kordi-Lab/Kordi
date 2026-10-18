@@ -175,9 +175,20 @@ async fn claim_run_with_executor(
     let project =
         crate::projects::project_session_binding(pool, &input.owner_account_id, &input.session_id)
             .await?;
-    // A cloud claim answers without project files; another Mac never runs it.
-    if let (Some(binding), Some(executor)) = (&project, desktop_executor) {
-        if !executor.starts_with(&format!("desktop:{}:", binding.device_id)) {
+    // Only a Mac that the project route admits runs a project session.
+    if let (Some(_), Some(executor)) = (&project, desktop_executor) {
+        let device = executor
+            .strip_prefix("desktop:")
+            .and_then(|rest| rest.split(':').next())
+            .filter(|device| !device.is_empty());
+        let route = crate::projects::project_route(
+            pool,
+            &input.owner_account_id,
+            &input.session_id,
+            device,
+        )
+        .await?;
+        if !route.is_some_and(|route| device.is_some_and(|device| route.admits(device))) {
             return Err(super::RunError::ContextUnavailable("Open Kordi on the project Mac to run this task. Project files are available only on that device."));
         }
     }

@@ -268,6 +268,12 @@ async fn load_record(
     .fetch_optional(pool)
     .await
     .map_err(|_| db_error())?;
+    let artifact = match artifact {
+        Some(artifact) => Some(artifact),
+        None => created_by_agent(pool, &facts.attachment_id)
+            .await
+            .map_err(|_| db_error())?,
+    };
     let envelope_name = if artifact.is_none() {
         message_envelope_name(pool, &facts.attachment_id)
             .await
@@ -311,6 +317,28 @@ async fn load_record(
         author,
         agent_name: artifact.map(|(_, agent)| agent),
     }))
+}
+
+/// File name and agent of a document an agent created with `create_document`
+/// (issue 1808), so readers show the agent as its author.
+async fn created_by_agent(
+    pool: &PgPool,
+    attachment_id: &str,
+) -> Result<Option<(String, String)>, sqlx_core::Error> {
+    query_as(
+        "SELECT document.file_name, \
+                COALESCE((SELECT definition.name FROM cloud_agent_definitions definition \
+                          WHERE definition.agent_id = document.agent_id \
+                            AND definition.owner_account_id = document.owner_account_id), \
+                         profile.display_name, 'Kordi') \
+         FROM cloud_agent_run_documents document \
+         LEFT JOIN cloud_default_agent_profiles profile \
+           ON profile.owner_account_id = document.owner_account_id \
+         WHERE document.attachment_id = $1",
+    )
+    .bind(attachment_id)
+    .fetch_optional(pool)
+    .await
 }
 
 /// The file name a chat message recorded for the attachment.

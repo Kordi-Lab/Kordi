@@ -336,3 +336,45 @@ async fn a_shared_turn_keeps_only_the_read_only_document_tool() {
     );
     assert_eq!(calls.lock().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn create_document_serves_shared_turns_without_an_approval_card() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut lease = runtime(calls.clone());
+    lease.descriptors.extend([
+        document_descriptor("read_document", ConnectorToolGroup::Read),
+        document_descriptor("edit_document", ConnectorToolGroup::Act),
+        document_descriptor(CREATE_DOCUMENT_TOOL, ConnectorToolGroup::Act),
+    ]);
+    // A member's request keeps reading and creating, never editing.
+    let shared = lease.for_shared_turn().expect("document tools stay");
+    let tools = shared.tools();
+    let names: Vec<&str> = tools.iter().map(|tool| tool.name()).collect();
+    assert_eq!(names, ["read_document", CREATE_DOCUMENT_TOOL]);
+    // No approval card is mapped for it.
+    assert!(!act_tool_providers(&lease.descriptors).contains_key(CREATE_DOCUMENT_TOOL));
+
+    // It runs in a shared, non-interactive turn, where an `act` tool that
+    // needs approval is refused.
+    let create = ConnectorTool::new(document_descriptor(
+        CREATE_DOCUMENT_TOOL,
+        ConnectorToolGroup::Act,
+    ));
+    assert!(create.allows_shared_requests());
+    let mut ctx = context(Some(shared), None);
+    ctx.execution_policy = ExecutionPolicy::Shared;
+    ctx.execution_mode = ToolExecutionMode::NonInteractive;
+    create
+        .execute(json!({ "title": "Plan" }), &ctx, CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(
+        *calls.lock().unwrap(),
+        [format!("{CREATE_DOCUMENT_TOOL}:{{\"title\":\"Plan\"}}")]
+    );
+
+    // A connector tool of the same name from another provider is not it.
+    let impostor = descriptor(CREATE_DOCUMENT_TOOL, ConnectorToolGroup::Act);
+    assert!(!impostor.is_group_document_create());
+    assert!(!ConnectorTool::new(impostor).allows_shared_requests());
+}

@@ -1,4 +1,4 @@
-//! The two document tools on a run's lease and the call that executes them.
+//! The document tools on a run's lease and the call that executes them.
 //!
 //! The descriptors travel with connector tools (`connectorTools` on the cloud
 //! lease and on the desktop claim), so both runtimes offer them without a
@@ -13,8 +13,8 @@ use sqlx_postgres::PgPool;
 
 use super::gating::{offered_tools, run_facts, RunFacts};
 use super::{
-    DOCUMENT_CONNECTOR_ID, DOCUMENT_PROVIDER, EDIT_DOCUMENT_TOOL, MAX_EDIT_OPERATIONS,
-    MAX_TOOL_TEXT_BYTES, READ_DOCUMENT_TOOL,
+    CREATE_DOCUMENT_TOOL, DOCUMENT_CONNECTOR_ID, DOCUMENT_PROVIDER, EDIT_DOCUMENT_TOOL,
+    MAX_EDIT_OPERATIONS, MAX_TOOL_TEXT_BYTES, READ_DOCUMENT_TOOL,
 };
 use crate::connectors::broker::codes;
 use crate::connectors::delivery::{load_active_lease, LeaseConnectorTool, LeaseHolder};
@@ -158,6 +158,28 @@ pub(crate) fn descriptors(read: bool, edit: bool) -> Vec<LeaseConnectorTool> {
     tools
 }
 
+/// `create_document`: an `act` tool, because it adds a document to the
+/// group. Clients run it without an approval card: the document rides the
+/// agent's reply, to the people who read that reply anyway.
+pub(crate) fn create_descriptor() -> LeaseConnectorTool {
+    LeaseConnectorTool {
+        connector_id: DOCUMENT_CONNECTOR_ID.to_string(),
+        provider: DOCUMENT_PROVIDER.to_string(),
+        name: CREATE_DOCUMENT_TOOL.to_string(),
+        group: ConnectorToolGroup::Act,
+        description: "Save a finished Markdown or HTML document for this group conversation. \
+             It is attached to your reply as a document card from you and listed in the \
+             group's Artifacts, where members can open, comment on, and edit it. Use it \
+             whenever someone asks for a document, note, report, or plan for the group, \
+             instead of writing a local file. Write the whole document first, then call this \
+             once per document with a specific title and the complete content; never call it \
+             to start an empty or placeholder document. Afterwards reply briefly with what it \
+             covers, without file paths."
+            .to_string(),
+        input_schema: super::create::schema(),
+    }
+}
+
 /// Whether a lease descriptor is one of the document tools.
 pub(crate) fn is_document_tool(tool: &LeaseConnectorTool) -> bool {
     tool.connector_id == DOCUMENT_CONNECTOR_ID
@@ -172,7 +194,11 @@ pub(crate) async fn lease_tools(
         return Ok(Vec::new());
     };
     let offered = offered_tools(&facts.gate);
-    Ok(descriptors(offered.read, offered.edit))
+    let mut tools = descriptors(offered.read, offered.edit);
+    if offered.create {
+        tools.push(create_descriptor());
+    }
+    Ok(tools)
 }
 
 fn refuse(status: StatusCode, code: &str, message: &str) -> (StatusCode, BrokerCallResponse) {
@@ -198,7 +224,7 @@ pub(crate) async fn call(
     if run_id.is_empty() || run_id.len() > 256 {
         return ToolError::Invalid("leaseId is required.".into()).response();
     }
-    if tool != READ_DOCUMENT_TOOL && tool != EDIT_DOCUMENT_TOOL {
+    if ![READ_DOCUMENT_TOOL, EDIT_DOCUMENT_TOOL, CREATE_DOCUMENT_TOOL].contains(&tool) {
         return refuse(
             StatusCode::BAD_REQUEST,
             codes::UNKNOWN_TOOL,
@@ -206,7 +232,25 @@ pub(crate) async fn call(
         );
     }
     let lease = match load_active_lease(pool, run_id, holder).await {
-        Ok(Some(lease)) => lease,
+        Ok(Some(lease)) => lease.tools,
+        // A background task of a finished desktop run may still deliver its
+        // document to the run's group.
+        Ok(None) if tool == CREATE_DOCUMENT_TOOL => {
+            match super::create::finished_desktop_lease_tools(pool, run_id, holder).await {
+                Ok(Some(tools)) => tools,
+                Ok(None) => {
+                    return refuse(
+                        StatusCode::FORBIDDEN,
+                        codes::LEASE_INVALID,
+                        "This run no longer holds its lease.",
+                    )
+                }
+                Err(error) => {
+                    eprintln!("[documents] agent tool lease: {error}");
+                    return ToolError::Server.response();
+                }
+            }
+        }
         Ok(None) => {
             return refuse(
                 StatusCode::FORBIDDEN,
@@ -219,7 +263,10 @@ pub(crate) async fn call(
             return ToolError::Server.response();
         }
     };
-    if !lease.has_tool(DOCUMENT_CONNECTOR_ID, tool) {
+    if !lease
+        .iter()
+        .any(|entry| entry.connector_id == DOCUMENT_CONNECTOR_ID && entry.name == tool)
+    {
         return refuse(
             StatusCode::FORBIDDEN,
             codes::NOT_ON_LEASE,
@@ -248,6 +295,9 @@ pub(crate) async fn execute(
     match tool {
         READ_DOCUMENT_TOOL if offered.read => super::read::execute(state, &facts, args).await,
         EDIT_DOCUMENT_TOOL if offered.edit => super::edit::execute(state, &facts, args).await,
+        CREATE_DOCUMENT_TOOL if offered.create => {
+            super::create::execute(state, run_id, &facts, args).await
+        }
         EDIT_DOCUMENT_TOOL => Err(ToolError::Forbidden(
             "This run may not edit the document. Only the person who owns the agent can ask \
              for an edit, and only on a document they can edit.",

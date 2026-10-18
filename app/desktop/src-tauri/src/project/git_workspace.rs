@@ -97,6 +97,7 @@ async fn branches(root: &Path) -> Result<Vec<String>, String> {
 pub async fn desktop_project_git_workspace(
     project_root: String,
     workspace_root: Option<String>,
+    workspace_id: Option<String>,
 ) -> Result<Option<GitWorkspace>, String> {
     let root = super::resolve_explicit_project_folder(&project_root, false, false)?;
     // An ordinary local folder is a valid project; Git controls are optional.
@@ -108,6 +109,7 @@ pub async fn desktop_project_git_workspace(
         .as_deref()
         .map(|raw| super::resolve_explicit_project_folder(raw, false, false))
         .transpose()?
+        .or_else(|| worktree_for_catalog_id(&trees, workspace_id.as_deref()))
         .unwrap_or_else(|| root.clone());
     let tree = trees.iter().find(|tree| Path::new(&tree.path) == workspace);
     let branch = if let Some(tree) = tree {
@@ -129,6 +131,15 @@ pub async fn desktop_project_git_workspace(
         workspace_root: workspace.display().to_string(),
         is_worktree: workspace != root,
     }))
+}
+
+/// A session synced from another Mac names its worktree only by catalog ID.
+fn worktree_for_catalog_id(trees: &[GitWorktree], id: Option<&str>) -> Option<PathBuf> {
+    let id = id?.to_ascii_lowercase();
+    trees
+        .iter()
+        .map(|tree| PathBuf::from(&tree.path))
+        .find(|path| super::catalog_binding::catalog_id(path) == id)
 }
 
 pub async fn select_workspace(

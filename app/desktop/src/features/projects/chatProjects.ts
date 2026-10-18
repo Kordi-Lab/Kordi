@@ -14,7 +14,7 @@ export type ChatProjects = {
   enabled: boolean;
   openImporter?: (sessionId?: string) => void;
   projects: readonly ChatProject[];
-  gitWorkspace?: (root: string, workspaceRoot?: string) => Promise<GitWorkspace | null>;
+  gitWorkspace?: (root: string, workspaceRoot?: string, workspaceId?: string) => Promise<GitWorkspace | null>;
   assign: (sessionId: string, root: string, workspace?: ChatWorkspaceSelection) => Promise<void>;
   create: (sessionId: string, name: string, folder: string) => Promise<void>;
 };
@@ -28,5 +28,25 @@ export function projectForChat(projects: readonly ChatProject[], sessionId: stri
 
 export function canChooseChatProject(conversation: Conversation) {
   return !conversation.agentSubsessionId && !conversation.collaborationTarget
-    && (conversation.desktopRuntimeBacked || isLocalDraftChatConversationId(conversation.id));
+    && (isLocalDraftChatConversationId(conversation.id)
+      || (Boolean(conversation.desktopRuntimeBacked) && !isCloudChatRuntimeCopy(conversation)));
+}
+
+/**
+ * Opening or running a cloud chat on this Mac loads an in-memory runtime copy, and
+ * routine refreshes load and drop it. The answer must not follow that copy.
+ */
+function isCloudChatRuntimeCopy(conversation: Conversation) {
+  return conversation.desktopRuntimeUnlisted === true && isCloudAgentSession(conversation);
+}
+
+function isCloudAgentSession(conversation: Conversation) {
+  const metadata = conversation.metadata as { cloudSelfAgentSession?: unknown } | null | undefined;
+  return metadata?.cloudSelfAgentSession === true;
+}
+
+/** A cloud agent chat this Mac does not keep as a saved local chat, with or without a runtime copy loaded. */
+export function isCloudAgentChat(conversation: Conversation) {
+  return !conversation.agentSubsessionId && !conversation.collaborationTarget && isCloudAgentSession(conversation)
+    && (!conversation.desktopRuntimeBacked || conversation.desktopRuntimeUnlisted === true);
 }

@@ -7,6 +7,7 @@ import {
   type SetStateAction,
 } from 'react';
 
+import { canonicalJsonValuesEqual } from '@/features/canonical/canonicalEquality';
 import { cloudAgentRuntimeRouteMessageTarget } from '@/app/cloudAgentRuntimeRouteMessageTarget';
 import { resolveDefaultCloudAgentRuntimeRoute } from '@/app/useKordiDefaultCloudAgentRuntimeRoute';
 import { useMirroredSessionRequestRoutes } from '@/app/useMirroredSessionRequestRoutes';
@@ -61,6 +62,42 @@ export function chatComposerSelectionForRoute(
   return { ...current, chat: { ...current.chat, model, thinking } };
 }
 
+/** How long a published route outranks session history that has not caught up with it. */
+export const PENDING_RUNTIME_ROUTE_MS = 30_000;
+
+export type PendingRuntimeRoutes = Map<string, { route: DesktopChatMessageRoute; atMs: number }>;
+
+/**
+ * Keeps routes the person just published in place of older history. History
+ * is replayed whenever messages arrive, and until it records the new route it
+ * names the previous one; without this the pick would flip back and forth.
+ * A pending route is dropped once history records it or once it is stale.
+ */
+export function keepPendingRuntimeRoutes(
+  routes: Record<string, DesktopChatMessageRoute>,
+  history: Record<string, DesktopChatMessageRoute>,
+  pending: PendingRuntimeRoutes,
+  nowMs: number,
+): Record<string, DesktopChatMessageRoute> {
+  let next = routes;
+  for (const [sessionId, { route, atMs }] of pending) {
+    if (nowMs - atMs > PENDING_RUNTIME_ROUTE_MS || runtimeRoutesMatch(history[sessionId], route)) {
+      pending.delete(sessionId);
+      continue;
+    }
+    if (runtimeRoutesMatch(next[sessionId], route)) continue;
+    if (next === routes) next = { ...routes };
+    next[sessionId] = route;
+  }
+  return next;
+}
+
+/** A route published moments ago, which a send uses before state catches up. */
+export function freshPendingRuntimeRoute(pending: PendingRuntimeRoutes, runtimeSessionId: string | null, nowMs: number) {
+  const entry = runtimeSessionId ? pending.get(runtimeSessionId) : undefined;
+  return entry && nowMs - entry.atMs <= PENDING_RUNTIME_ROUTE_MS ? entry.route : null;
+}
+
 export function useCloudAgentRuntimeRouteSync({
   accountId,
   activeConversationId,
@@ -113,38 +150,8 @@ export function useCloudAgentRuntimeRouteSync({
     canonicalSessionState?.messages,
     fetchMirroredRequestRoutes,
   );
-  useEffect(() => {
-    if (
-      !accountId
-      || (
-        cloudAgentRuntimeRouteMessages.length === 0
-        && !canonicalSessionState?.messages.length
-        && mirroredRequestRoutes.length === 0
-      )
-    ) return;
-    const animationFrame = window.requestAnimationFrame(() => {
-      setRoutesBySessionId((current) => (
-        applySynchronizedCloudAgentRuntimeRoutes(
-          current,
-          accountId,
-          canonicalSessionState?.messages,
-          cloudAgentRuntimeRouteMessages,
-          defaultCloudAgentRuntimeRoute,
-          mirroredRequestRoutes,
-        )
-      ));
-    });
-    return () => window.cancelAnimationFrame(animationFrame);
-  }, [
-    accountId,
-    canonicalSessionState?.messages,
-    cloudAgentRuntimeRouteMessages,
-    defaultCloudAgentRuntimeRoute,
-    mirroredRequestRoutes,
-    setRoutesBySessionId,
-  ]);
-
-  // The same history the effect above applies, read synchronously, so a send
+  const pendingRoutesRef = useRef<PendingRuntimeRoutes>(new Map());
+  // The same history the effect below applies, read synchronously, so a send
   // or the composer right after startup never falls back to another route
   // while the restored session route is still one frame away.
   const recoveredRoutesBySessionId = useMemo(() => (
@@ -165,6 +172,40 @@ export function useCloudAgentRuntimeRouteSync({
     defaultCloudAgentRuntimeRoute,
     mirroredRequestRoutes,
   ]);
+  useEffect(() => {
+    if (
+      !accountId
+      || (
+        cloudAgentRuntimeRouteMessages.length === 0
+        && !canonicalSessionState?.messages.length
+        && mirroredRequestRoutes.length === 0
+      )
+    ) return;
+    const animationFrame = window.requestAnimationFrame(() => {
+      setRoutesBySessionId((current) => {
+        const synchronized = applySynchronizedCloudAgentRuntimeRoutes(
+          current,
+          accountId,
+          canonicalSessionState?.messages,
+          cloudAgentRuntimeRouteMessages,
+          defaultCloudAgentRuntimeRoute,
+          mirroredRequestRoutes,
+        );
+        const kept = keepPendingRuntimeRoutes(synchronized, recoveredRoutesBySessionId, pendingRoutesRef.current, Date.now());
+        return canonicalJsonValuesEqual(current, kept) ? current : kept;
+      });
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [
+    accountId,
+    canonicalSessionState?.messages,
+    cloudAgentRuntimeRouteMessages,
+    defaultCloudAgentRuntimeRoute,
+    mirroredRequestRoutes,
+    recoveredRoutesBySessionId,
+    setRoutesBySessionId,
+  ]);
+
   const storedSessionRoute = useCallback((runtimeSessionId: string | null) => (
     runtimeSessionId
       ? compactCloudAgentRuntimeRoute(routesBySessionId[runtimeSessionId])
@@ -178,10 +219,16 @@ export function useCloudAgentRuntimeRouteSync({
   );
   const activeRuntimeRoute = storedSessionRoute(activeRuntimeSessionId);
   const activeRuntimeRouteKey = JSON.stringify(activeRuntimeRoute);
-  const resolveChatRuntimeRoute = useCallback((sessionId?: string | null) => (
+  const renderedChatRuntimeRoute = useCallback((sessionId?: string | null) => (
     storedSessionRoute(cloudAgentRuntimeSessionId(accountId, sessionId))
       ?? compactCloudAgentRuntimeRoute(defaultCloudAgentRuntimeRoute)
   ), [accountId, defaultCloudAgentRuntimeRoute, storedSessionRoute]);
+  // For sends and route changes: a route published moments ago wins before
+  // state catches up, so a send right after a route change runs with it.
+  const resolveChatRuntimeRoute = useCallback((sessionId?: string | null) => {
+    const pending = freshPendingRuntimeRoute(pendingRoutesRef.current, cloudAgentRuntimeSessionId(accountId, sessionId), Date.now());
+    return pending ? compactCloudAgentRuntimeRoute(pending) : renderedChatRuntimeRoute(sessionId);
+  }, [accountId, renderedChatRuntimeRoute]);
 
   const sendRuntimeRouteChangeMessage = useCallback(async ({
     sessionId,
@@ -313,6 +360,8 @@ export function useCloudAgentRuntimeRouteSync({
     const previousRoute = storedSessionRoute(runtimeSessionId);
     const initializingSession = Boolean(input.initialSessionTitle?.trim());
     if (!initializingSession && runtimeRoutesMatch(previousRoute, nextRoute)) return;
+    const pending = { route: nextRoute, atMs: Date.now() };
+    pendingRoutesRef.current.set(runtimeSessionId, pending);
     setRoutesBySessionId((current) => ({
       ...current,
       [runtimeSessionId]: nextRoute,
@@ -334,6 +383,9 @@ export function useCloudAgentRuntimeRouteSync({
         );
       }
     } catch (error) {
+      if (pendingRoutesRef.current.get(runtimeSessionId) === pending) {
+        pendingRoutesRef.current.delete(runtimeSessionId);
+      }
       setRoutesBySessionId((current) => {
         if (current[runtimeSessionId] !== nextRoute) return current;
         const next = { ...current };
@@ -359,7 +411,7 @@ export function useCloudAgentRuntimeRouteSync({
   ]);
 
   // The composer marks the active chat's hosted account and shows when it runs on Kordi Cloud.
-  const activeChatRoute = resolveChatRuntimeRoute(activeConversationId);
+  const activeChatRoute = renderedChatRuntimeRoute(activeConversationId);
   const activeChatRouteKey = JSON.stringify(activeChatRoute);
   useEffect(() => { setActiveChatRoute(JSON.parse(activeChatRouteKey) as DesktopChatMessageRoute | null); }, [activeChatRouteKey]);
 

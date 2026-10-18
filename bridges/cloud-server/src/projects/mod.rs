@@ -1,5 +1,5 @@
 //! Private project discovery and bounded, account-owned desktop operations.
-//! Only opaque project IDs and display names cross the device boundary.
+//! Only opaque project and worktree IDs and display names cross the device boundary.
 use crate::{
     auth::routes::{cloud_session_middleware, CloudSession},
     server::ServerState,
@@ -16,8 +16,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 use uuid::Uuid;
+
+mod route;
+pub use route::{project_route, ProjectRoute};
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -25,6 +28,24 @@ pub struct Project {
     pub id: String,
     pub name: String,
     pub sessions: Vec<String>,
+    /// Session ID to the opaque ID of its worktree, for sessions outside the project folder.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub workspaces: BTreeMap<String, String>,
+}
+fn opaque_id(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
+}
+fn valid_workspaces(project: &Project) -> bool {
+    if project.workspaces.is_empty() {
+        return true;
+    }
+    let sessions: std::collections::HashSet<&str> =
+        project.sessions.iter().map(String::as_str).collect();
+    project.workspaces.len() <= sessions.len()
+        && project
+            .workspaces
+            .iter()
+            .all(|(session, workspace)| sessions.contains(session.as_str()) && opaque_id(workspace))
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -122,12 +143,12 @@ async fn publish(
     }
     if input.projects.len() > 200
         || input.projects.iter().any(|p| {
-            p.id.len() != 64
-                || !p.id.bytes().all(|b| b.is_ascii_hexdigit())
+            !opaque_id(&p.id)
                 || p.name.is_empty()
                 || p.name.len() > 200
                 || p.sessions.len() > 2000
                 || p.sessions.iter().any(|s| s.is_empty() || s.len() > 256)
+                || !valid_workspaces(p)
         })
     {
         return error(StatusCode::BAD_REQUEST, "Invalid project catalog.");
@@ -252,14 +273,4 @@ pub async fn session_device(
     Ok(project_session_binding(pool, account, session)
         .await?
         .map(|binding| binding.device_id))
-}
-
-/// An online project Mac handles its sessions; while it is offline the cloud
-/// answers the chat without the project files.
-pub async fn cloud_execution_gate(pool: &PgPool, account: &str, session: &str) -> Option<Response> {
-    match project_session_binding(pool, account, session).await {
-        Ok(Some(binding)) if binding.device_online => Some((StatusCode::CONFLICT, Json(json!({"errorCode":"owner_online","message":"The project Mac will handle this task."}))).into_response()),
-        Ok(_) => None,
-        Err(error) => Some(database_error(error)),
-    }
 }

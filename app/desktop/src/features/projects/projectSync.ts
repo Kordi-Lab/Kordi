@@ -2,11 +2,13 @@ import { useEffect } from 'react';
 import { cloudApiBaseUrl } from '@/features/cloud/cloudApiEnvironment';
 import { loadSession } from '@/features/cloud/session';
 import { fetchDesktopChatState, invokeDesktop, createDesktopProjectSession, moveDesktopChatSessionToProject } from '@/lib/desktop';
+import { adoptedProjectSessionIds } from './adoptedProjectSessions';
 import { desktopProjectImportApi, githubRepositoryFromInput } from './projectImportApi';
 
 export const PROJECTS_UPDATED_EVENT = 'kordi-projects-updated';
 type Operation = { id: string; request: { action: string; projectId?: string; sessionId?: string; repository?: string; page?: number } };
-async function projectID(root: string) {
+/** Opaque catalog ID of a project root; the root itself never leaves this Mac. */
+export async function projectID(root: string) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(root));
   return [...new Uint8Array(bytes)].map((n) => n.toString(16).padStart(2, '0')).join('');
 }
@@ -16,7 +18,41 @@ async function catalog() {
     id: await projectID(project.root), name: project.name, sessions: project.sessions.map((session) => session.id), root: project.root,
   })));
 }
-async function request<T>(token: string, path: string, method = 'GET', body?: unknown): Promise<T> {
+type PublishedProject = { id: string; name: string; sessions: string[]; workspaces?: Record<string, string> };
+let workspacesUnsupportedUntil = 0;
+/** Worktree sessions publish an opaque worktree ID so other Macs can show the same branch. */
+async function publishedCatalog(): Promise<PublishedProject[]> {
+  // Sessions run here for an offline project Mac stay listed by that Mac only.
+  const adopted = adoptedProjectSessionIds();
+  const projects = (await catalog()).map((project) => ({ ...project, sessions: project.sessions.filter((session) => !adopted.has(session)) }));
+  let ids: Record<string, unknown> = {};
+  if (Date.now() >= workspacesUnsupportedUntil) {
+    try {
+      const result = await invokeDesktop<Record<string, unknown> | null>('desktop_project_session_workspace_ids', { sessionIds: projects.flatMap((project) => project.sessions) });
+      if (result && typeof result === 'object') ids = result;
+    } catch { /* Older desktop runtimes publish membership only. */ }
+  }
+  return projects.map(({ id, name, sessions }) => {
+    const workspaces = Object.fromEntries(sessions.flatMap((session) => {
+      const workspace = Object.prototype.hasOwnProperty.call(ids, session) ? ids[session] : undefined;
+      return typeof workspace === 'string' && /^[a-f0-9]{64}$/u.test(workspace) ? [[session, workspace]] : [];
+    }));
+    return Object.keys(workspaces).length ? { id, name, sessions, workspaces } : { id, name, sessions };
+  });
+}
+/** Servers released before worktree IDs reject the field; publish membership alone there. */
+async function publishCatalog(token: string) {
+  const projects = await publishedCatalog();
+  try {
+    await projectCatalogRequest(token, '', 'PUT', { projects });
+  } catch (error) {
+    if (!projects.some((project) => project.workspaces)) throw error;
+    await projectCatalogRequest(token, '', 'PUT', { projects: projects.map(({ workspaces: _workspaces, ...project }) => project) });
+    // Retry with worktree IDs later so an updated server picks them up without a restart.
+    workspacesUnsupportedUntil = Date.now() + 10 * 60_000;
+  }
+}
+export async function projectCatalogRequest<T>(token: string, path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(`${cloudApiBaseUrl()}/v1/cloud/projects${path}`, {
     method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(15000),
@@ -69,8 +105,7 @@ export function useProjectSync(enabled: boolean, accountId: string | undefined) 
       try {
         const session = await loadSession();
         if (!session?.deviceId || session.accountId !== accountId) return;
-        const projects = (await catalog()).map(({ id, name, sessions }) => ({ id, name, sessions }));
-        if (!stopped && (await loadSession())?.token === session.token) await request(session.token, '', 'PUT', { projects });
+        if (!stopped && (await loadSession())?.token === session.token) await publishCatalog(session.token);
       } catch { /* Older servers and temporary disconnections must leave local projects usable. */ }
       finally { publishing = false; }
     };
@@ -80,7 +115,7 @@ export function useProjectSync(enabled: boolean, accountId: string | undefined) 
       try {
         const session = await loadSession();
         if (!session?.deviceId || session.accountId !== accountId) return;
-        const { command } = await request<{ command: Operation | null }>(session.token, '/commands/next', 'POST');
+        const { command } = await projectCatalogRequest<{ command: Operation | null }>(session.token, '/commands/next', 'POST');
         if (!command || stopped || (await loadSession())?.token !== session.token) return;
         let result: unknown;
         let failed = false;
@@ -88,9 +123,8 @@ export function useProjectSync(enabled: boolean, accountId: string | undefined) 
         catch { failed = true; result = { message: 'The project action failed on your Mac. Check that the folder exists and GitHub is connected, then try again.' }; }
         if (stopped || (await loadSession())?.token !== session.token) return;
         // Publish membership before acknowledging so iOS cannot send into the old workspace.
-        const projects = (await catalog()).map(({ id, name, sessions }) => ({ id, name, sessions }));
-        await request(session.token, '', 'PUT', { projects });
-        await request(session.token, `/commands/${command.id}`, 'PUT', { result, failed });
+        await publishCatalog(session.token);
+        await projectCatalogRequest(session.token, `/commands/${command.id}`, 'PUT', { result, failed });
         window.dispatchEvent(new Event(PROJECTS_UPDATED_EVENT));
       } catch { /* A failed transport never repeats a potentially completed clone or move. */ }
       finally { busy = false; }
@@ -98,7 +132,7 @@ export function useProjectSync(enabled: boolean, accountId: string | undefined) 
     void publish().then(tick);
     const heartbeat = window.setInterval(() => {
       if (busy) {
-        void loadSession().then((session) => session?.deviceId && session.accountId === accountId ? request(session.token, '/heartbeat', 'POST') : undefined).catch(() => undefined);
+        void loadSession().then((session) => session?.deviceId && session.accountId === accountId ? projectCatalogRequest(session.token, '/heartbeat', 'POST') : undefined).catch(() => undefined);
       } else { void publish(); }
     }, 10000);
     const commands = window.setInterval(() => { void tick(); }, 3000);

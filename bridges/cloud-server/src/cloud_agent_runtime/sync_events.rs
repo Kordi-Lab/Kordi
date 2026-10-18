@@ -26,6 +26,8 @@ pub(super) struct CloudAgentResponseSyncEvent<'a> {
     pub to_account_id: &'a str,
     pub body: &'a str,
     pub session_id: &'a str,
+    /// Documents the run created, carried by its reply (issue 1808).
+    pub documents: &'a [crate::document_shares::agents::create::reply::RunDocument],
 }
 
 fn deterministic_message_uuid(event: &CloudAgentResponseSyncEvent<'_>) -> Uuid {
@@ -171,23 +173,19 @@ pub(super) async fn append_cloud_agent_response_sync_event(
         None
     };
     let client_message_id = deterministic_message_uuid(&event);
-    let content = json!({
-        "schema": 1,
-        "blocks": [{ "type": "text", "text": event.body }]
-    });
-    let outcome = store::send_message(
-        pool,
-        event.from_account_id,
-        conversation_id,
-        SendMessageRequest {
-            client_message_id,
-            kind: "text".to_string(),
-            content: content.clone(),
-            reply_to_message_id,
-            attachment_ids: Vec::new(),
-        },
-    )
-    .await;
+    let mut request = SendMessageRequest {
+        client_message_id,
+        kind: "text".to_string(),
+        content: json!({
+            "schema": 1,
+            "blocks": [{ "type": "text", "text": event.body }]
+        }),
+        reply_to_message_id,
+        attachment_ids: Vec::new(),
+    };
+    crate::document_shares::agents::create::reply::add_to_request(&mut request, event.documents);
+    let content = request.content.clone();
+    let outcome = store::send_message(pool, event.from_account_id, conversation_id, request).await;
     match outcome {
         Ok(outcome) => Ok(Some(outcome.value.id.to_string())),
         Err(store::StoreError::IdempotencyKeyReused) => {
@@ -213,7 +211,16 @@ pub(super) async fn append_cloud_agent_response_sync_event(
             .await?
             .into_iter()
             .map(|(attachment_id,)| attachment_id)
-            .collect();
+            .chain(
+                event
+                    .documents
+                    .iter()
+                    .map(|document| document.attachment_id.clone()),
+            )
+            .collect::<Vec<_>>();
+            let mut attachment_ids = attachment_ids;
+            let mut seen = std::collections::HashSet::new();
+            attachment_ids.retain(|id| seen.insert(id.clone()));
             let message = store::replace_message_snapshot(
                 pool,
                 event.from_account_id,
