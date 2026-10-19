@@ -1,5 +1,6 @@
 pub mod artifacts;
 pub mod client;
+pub mod common_ground;
 pub mod config;
 pub mod connectors;
 pub mod k8s_sandbox;
