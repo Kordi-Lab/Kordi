@@ -6,7 +6,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createCollaborationConversationMapper } from '@/features/collaboration/conversationProjectionCache';
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { EMPTY_CLOUD_SESSION_ACTIVITY } from '@/features/cloud/cloudSessionActivity';
-import { cloudAgentDefinitionToAgent } from '@/features/cloud/cloudAgents';
+import { cloudAgentDefinitionToAgent, collaborationAgentAvatarFields } from '@/features/cloud/cloudAgents';
 import {
   canonicalProjectGroupIdFromRoot,
   isLegacyCanonicalCollaborationSessionId,
@@ -651,7 +651,7 @@ export function useWorkspaceViewModels({
           isCollaborationDefault: agent.isDefault,
           isCollaborationActive: agent.isActive,
           isCollaborationRegistered: agent.registered,
-          avatarSeed: agent.id,
+          ...collaborationAgentAvatarFields(agent),
           collaborationReachouts,
         });
       }

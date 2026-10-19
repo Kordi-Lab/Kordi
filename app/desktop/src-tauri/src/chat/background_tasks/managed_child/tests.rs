@@ -41,6 +41,43 @@ fn managed_background_profile_is_isolated_and_scope_aware() {
 }
 
 #[test]
+fn owner_background_session_keeps_the_parent_tools() {
+    let parent_tools = [
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "task_operator",
+        "search_sessions",
+    ]
+    .map(String::from)
+    .to_vec();
+    let runner = ManagedChildAgentRunner::new(
+        DesktopChatManager::default(),
+        "parent".to_string(),
+        Some("request".to_string()),
+        DesktopRuntimeProfile::default(),
+    )
+    .with_owner_local_tools(Some(parent_tools));
+
+    // No write scope: the owner's task still has the parent's local tools.
+    let profile = runner
+        .profile_for(&request(Some("none"), Vec::new()))
+        .unwrap();
+    let tools = profile.tool_names.unwrap();
+    for name in ["read", "bash", "edit", "write", "search_sessions"] {
+        assert!(tools.iter().any(|tool| tool == name), "{name}: {tools:?}");
+    }
+    assert!(
+        !tools.iter().any(|tool| tool == "task_operator"),
+        "{tools:?}"
+    );
+    let prompt = profile.system_prompt.unwrap();
+    assert!(!prompt.contains("read-only"), "{prompt}");
+    assert!(prompt.contains("same local tools and approval rules"));
+}
+
+#[test]
 fn background_child_inherits_parent_hosted_route() {
     let route = DesktopChatMessageRoute {
         model: Some("openai-codex/gpt-5.6-sol".to_string()),

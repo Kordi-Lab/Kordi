@@ -62,7 +62,9 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
   const [isPointerLayoutResizing, setIsPointerLayoutResizing] = useState(false);
   const [isNativeWindowResizing, setIsNativeWindowResizing] = useState(false);
 
-  const showSessionRail = isChatNavigation(activeNav) || activeNav === 'projects';
+  // Contacts and Factory render their lists into the session panel, like Chats.
+  const showSessionRail = isChatNavigation(activeNav) || activeNav === 'projects'
+    || activeNav === 'contacts' || activeNav === 'agents';
   const showRightDetailRail = isChatNavigation(activeNav) || activeNav === 'projects';
   const showResizableRightDetailRail = activeNav === 'projects';
   const initialMinWindowWidth = Math.max(
@@ -81,7 +83,7 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
   );
   const showChatDetailRail = isChatNavigation(activeNav);
   const collapseChatSessions = showSessionRail && isSessionPanelCollapsed;
-  const isSingleWorkspacePage = !isChatNavigation(activeNav) && activeNav !== 'projects';
+  const isSingleWorkspacePage = !showSessionRail;
   const sessionRailWidth =
     showSessionRail && !collapseChatSessions
       ? clampSessionPanelWidth(sessionRailUserWidth, windowSize.width, showResizableRightDetailRail && !isDetailPanelCollapsed)
