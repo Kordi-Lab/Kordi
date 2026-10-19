@@ -418,9 +418,9 @@ export function ChatCreateDialog({
 
           <div className="min-h-4 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]" aria-live="polite">
             {addContactState === 'sent'
-              ? 'Request sent. Track it under Sent invites while they review it.'
+              ? 'Request sent. It stays under Requests in Contacts until they respond.'
               : addContactState === 'pending' || lookupRequestPending
-                ? 'Request pending. Track it under Sent invites while they review it.'
+                ? 'Request pending. It stays under Requests in Contacts until they respond.'
                 : lookupState === 'error'
                   ? lookupError || 'Lookup failed.'
                   : addContactState === 'error'

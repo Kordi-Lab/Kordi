@@ -21,14 +21,14 @@ function getSystemThemeMode(): ResolvedThemeMode {
 export function useKordiLocalUiState(activeNav: NavId = 'agent-chats') {
   const [activeContactGroup, setActiveContactGroup] = useState<ContactClass>('my-agents');
   const [activeContactId, setActiveContactId] = useState('my-core-agent');
-  const [isContactRequestsOpen, setIsContactRequestsOpen] = useState(false);
+  const [isContactRequestsOpen, setIsContactRequestsOpen] = useState(true);
   const [activeContactRequestId, setActiveContactRequestId] = useState(contactRequests[0]?.id ?? '');
   const [contactOverlayMode, setContactOverlayMode] = useState<'contact' | 'request' | null>(null);
   const [contactSearch, setContactSearch] = useState('');
   const [expandedContactGroups, setExpandedContactGroups] = useState<Record<ContactClass, boolean>>({
     'my-agents': true,
-    'other-users-agents': false,
-    'other-users': false,
+    'other-users-agents': true,
+    'other-users': true,
   });
 
   const [activeAgentId, setActiveAgentId] = useState('');

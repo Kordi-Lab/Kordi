@@ -35,4 +35,6 @@ export type Contact = SystemContactMetadata & {
   avatarSeed?: string | null;
   profileImageUrl?: string | null;
   presenceStatus?: string | null;
+  /** When an offline person was last seen, for the "last seen …" line. */
+  presenceLastSeenAt?: string | null;
 };

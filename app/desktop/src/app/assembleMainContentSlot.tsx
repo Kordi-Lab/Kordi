@@ -23,6 +23,10 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         onToggleRequests: () => args.setIsContactRequestsOpen((open) => !open),
         contactRequests: args.contactRequests,
         activeContactRequestId: args.activeContactRequestId,
+        onSelectRequest: (request) => {
+          args.setActiveContactRequestId(request.id);
+          args.setContactOverlayMode('request');
+        },
         onAcceptRequest: async (request) => {
           if (!request.sourceHostId || !request.sourceRequestId) return;
           await args.handleApproveCollaborationContactRequest(request.sourceHostId, request.sourceRequestId);

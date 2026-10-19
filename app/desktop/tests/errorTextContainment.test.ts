@@ -37,7 +37,8 @@ test('common app error surfaces opt into contained error text', () => {
     'kordi-app/agents/AgentDetailPane.tsx',
     'kordi-app/components/EditableIdentityAvatar.tsx',
     'kordi-app/components/transcriptAttachmentActions.tsx',
-    'kordi-app/pages.tsx',
+    'kordi-app/contacts/ContactDetailPane.tsx',
+    'kordi-app/contacts/ContactsRequestActivity.tsx',
   ];
 
   for (const path of sources) {
