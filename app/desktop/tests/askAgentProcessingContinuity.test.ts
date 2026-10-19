@@ -9,6 +9,7 @@ import { projectPendingSelfAgentReplies } from '../src/features/cloud/cloudSelfA
 import { removeHostedSelfAgentProgress, updateHostedSelfAgentProgress } from '../src/features/cloud/hostedSelfAgentRunProgress';
 import { planCloudSelfAgentCanonicalSync } from '../src/features/cloud/useCloudCollaborationState';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
+import { agentRequestStopTarget } from '../src/features/chat/agentRequestStop';
 import type { CanonicalSessionMessage, CanonicalSessionState, DesktopChatTurnSnapshot } from '../src/kordi-app/types';
 import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
 
@@ -137,6 +138,10 @@ for (const server of ['inserts a row per progress tick', 'edits one reply row'] 
     assert.equal(rows.length, 1, `${label}: ${rows.length} agent rows (${rows.map((row) => row.id).join(', ')})`);
     const running = label !== 'final reply';
     assert.equal(rows[0]?.turn?.completed, !running, `${label}: running state`);
+    const projected = projectPendingSelfAgentReplies(projectCloudSelfAgentLiveTurns(stepState, {}))!;
+    const userRows = createCanonicalSessionReadModel(projected as never).messages(sessionId).filter((message) => message.role === 'user');
+    assert.equal(userRows.length, 1, `${label}: one user bubble for the request`);
+    if (!running) assert.equal(agentRequestStopTarget(rows[0]?.turn, rows[0]!), null, 'the final reply has no stop');
   }
 });
 

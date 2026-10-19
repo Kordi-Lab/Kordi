@@ -1,3 +1,4 @@
+import { cloudSelfAgentRequestPrompt } from './cloudSelfAgentRequestPrompt';
 import { voiceAgentText } from '@/features/chat/voiceTranscription';
 import type { Contact } from '@/kordi-app/types';
 import type { MessageVoiceDraft } from '@/kordi-app/types/message';
@@ -384,9 +385,7 @@ export function cloudFallbackRunClaimsForMessages({
         ) continue;
         const sessionId = cleanText(message.sessionId);
         if (!sessionId) continue;
-        const prompt = (message.voiceMessage
-          ? voiceAgentText(message.voiceMessage)
-          : cloudDirectMessageDisplayText(message.body)).trim();
+        const prompt = cloudSelfAgentRequestPrompt(message);
         if (!prompt) continue;
         claims.push({
           requestMessageId: message.messageId,

@@ -1,10 +1,14 @@
+import { useEffect, useState } from 'react';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import { routeRunsOnKordiCloud } from './cloudAgentRuntimeRoute';
 import { cloudSyncedLocalAgentSessionIds } from './cloudSelfAgentSessionIdentity';
 
-/** How long after sending a request its reply waits without any reply row. */
-export const PENDING_SELF_AGENT_REPLY_WINDOW_MS = 2 * 60_000;
+/** How long a request may wait for its run before the reply says it did not start. */
+export const PENDING_SELF_AGENT_START_TIMEOUT_MS = 15_000;
+/** Uploading attachments delays the request, so it gets longer. */
+export const PENDING_SELF_AGENT_ATTACHMENT_START_TIMEOUT_MS = 60_000;
+export const PENDING_SELF_AGENT_NOT_STARTED_TEXT = 'This request did not start. Send it again.';
 const PENDING_SOURCE = 'cloud-self-agent-pending';
 
 export function pendingSelfAgentReplyId(requestMessageId: string) {
@@ -23,14 +27,44 @@ function repliesTo(message: CanonicalSessionMessage, requestId: string) {
 }
 
 /** A hosted Ask Agent request this Mac sent that no reply row answers yet. */
-function waitingHostedRequest(message: CanonicalSessionMessage, nowMs: number) {
+function waitingHostedRequest(message: CanonicalSessionMessage) {
   const content = record(message.content);
   return message.senderRole === 'user'
     && message.sourceTransport === 'desktop-chat-ui'
     && ['sending', 'sent'].includes(message.status)
     && content.queuedMessage !== true
-    && routeRunsOnKordiCloud(content.agentRuntimeRoute as DesktopChatMessageRoute | null)
-    && nowMs - message.createdAtMs <= PENDING_SELF_AGENT_REPLY_WINDOW_MS;
+    && routeRunsOnKordiCloud(content.agentRuntimeRoute as DesktopChatMessageRoute | null);
+}
+
+function startTimeoutMs(message: CanonicalSessionMessage) {
+  const attachments = record(message.content).attachments;
+  return Array.isArray(attachments) && attachments.length > 0
+    ? PENDING_SELF_AGENT_ATTACHMENT_START_TIMEOUT_MS
+    : PENDING_SELF_AGENT_START_TIMEOUT_MS;
+}
+
+/** When the newest waiting request's processing reply turns into its not-started notice. */
+export function nextPendingSelfAgentDeadlineMs(state: CanonicalSessionState | null, nowMs: number): number | null {
+  if (!state) return null;
+  let next: number | null = null;
+  for (const message of state.messages) {
+    if (message.senderRole !== 'user' || !waitingHostedRequest(message)) continue;
+    const deadline = message.createdAtMs + startTimeoutMs(message);
+    if (deadline > nowMs && (next === null || deadline < next)) next = deadline;
+  }
+  return next;
+}
+
+/** The clock the pending replies read; it ticks once at the next deadline. */
+export function usePendingSelfAgentReplyClock(state: CanonicalSessionState | null): number {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const deadline = nextPendingSelfAgentDeadlineMs(state, Date.now());
+    if (deadline === null) return;
+    const timer = setTimeout(() => setNowMs(Date.now()), deadline - Date.now() + 50);
+    return () => clearTimeout(timer);
+  }, [state, nowMs]);
+  return nowMs;
 }
 
 /**
@@ -38,7 +72,8 @@ function waitingHostedRequest(message: CanonicalSessionMessage, nowMs: number) {
  * sent, as a group chat does for its agent's request. The row is a read-model
  * projection, never stored or synchronized, so it cannot become history. Any
  * reply row for the request (the hosted progress, the executor's progress,
- * the final, stopped or failed reply) replaces it in the same render.
+ * the final, stopped or failed reply) replaces it in the same render. When
+ * no reply row appears in time, the row becomes a failed notice.
  */
 export function projectPendingSelfAgentReplies(
   state: CanonicalSessionState | null,
@@ -57,10 +92,12 @@ export function projectPendingSelfAgentReplies(
   const sessionById = new Map(state.sessions.map((session) => [session.id, session]));
   const pending: CanonicalSessionMessage[] = [];
   for (const request of newestUserBySession.values()) {
-    if (!waitingHostedRequest(request, nowMs)) continue;
+    if (!waitingHostedRequest(request)) continue;
     if (state.messages.some((message) => message.senderRole !== 'user' && repliesTo(message, request.id))) continue;
     const agentIdentityId = sessionById.get(request.sessionId)?.primaryIdentityId?.trim();
     if (!agentIdentityId) continue;
+    // No run answered in time: say so instead of showing a run that does not exist.
+    const notStarted = nowMs - request.createdAtMs > startTimeoutMs(request);
     pending.push({
       id: pendingSelfAgentReplyId(request.id),
       sessionId: request.sessionId,
@@ -68,10 +105,12 @@ export function projectPendingSelfAgentReplies(
       senderRole: 'owned-agent',
       messageKind: 'agent-turn',
       contentText: '',
-      content: { requestId: request.id, replyToMessageId: request.id, deliveryState: 'processing' },
+      content: notStarted
+        ? { requestId: request.id, replyToMessageId: request.id, deliveryState: 'failed', error: PENDING_SELF_AGENT_NOT_STARTED_TEXT }
+        : { requestId: request.id, replyToMessageId: request.id, deliveryState: 'processing' },
       parentMessageId: request.id,
       delegatedExchangeId: null,
-      status: 'processing',
+      status: notStarted ? 'failed' : 'processing',
       sequenceNum: request.sequenceNum,
       // Where the stored reply sits, so the real row takes the same place.
       createdAtMs: request.createdAtMs + 1,

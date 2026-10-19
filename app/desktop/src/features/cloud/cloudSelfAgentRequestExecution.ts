@@ -19,12 +19,12 @@ import { cloudSelfAgentRuntimeSessionId } from './cloudAgentRuntime';
 import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
 import { handBackDesktopRun } from './cloudDesktopRunHandback';
+import { cloudSelfAgentRequestPrompt } from './cloudSelfAgentRequestPrompt';
 import { holdLeasedTurnSession } from './cloudLeasedTurnSessions';
 import { bindClaimedProjectSession } from '@/features/projects/claimedProjectSession';
 import {
   cloudDirectMessageAgentRuntimeRoute,
   cloudDirectMessageContextMessages,
-  cloudDirectMessageDisplayText,
   cloudDirectMessageTargetCloudAgentId,
 } from './cloudDirectMessages';
 import { planCloudSelfAgentCanonicalSync } from './cloudSelfAgentCanonicalSync';
@@ -150,7 +150,7 @@ export async function executeCloudSelfAgentRequest({
   });
   const lease = await acquireDesktopExecutionLease(client, session.token, {
     requestMessageId: request.messageId, sessionId, ownerAccountId: account.accountId,
-    requesterAccountId: account.accountId, prompt: (voice ? voiceAgentText(voice) : cloudDirectMessageDisplayText(request.body)),
+    requesterAccountId: account.accountId, prompt: (voice ? voiceAgentText(voice) : cloudSelfAgentRequestPrompt(request)),
     runtimeRoute: executionRoute ? { defaultModel: executionRoute.model, defaultAuthProvider: executionRoute.authProvider,
       defaultAuthChoice: executionRoute.authChoice, thinking: executionRoute.thinking } : undefined,
     idempotencyKey: `request:${request.messageId}`,
@@ -255,7 +255,7 @@ export async function executeCloudSelfAgentRequest({
       processedRequestIdsRef.current.delete(request.messageId);
       return;
     }
-    const prompt = (voice ? voiceAgentText(voice) : cloudDirectMessageDisplayText(request.body)).trim();
+    const prompt = (voice ? voiceAgentText(voice) : cloudSelfAgentRequestPrompt(request)).trim();
     if (!prompt) {
       processedRequestIdsRef.current.delete(request.messageId);
       return;

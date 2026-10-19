@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { pendingSelfAgentReplyId, projectPendingSelfAgentReplies, PENDING_SELF_AGENT_REPLY_WINDOW_MS } from '../src/features/cloud/cloudSelfAgentPendingReply';
+import {
+  nextPendingSelfAgentDeadlineMs, pendingSelfAgentReplyId, projectPendingSelfAgentReplies,
+  PENDING_SELF_AGENT_ATTACHMENT_START_TIMEOUT_MS, PENDING_SELF_AGENT_NOT_STARTED_TEXT, PENDING_SELF_AGENT_START_TIMEOUT_MS,
+} from '../src/features/cloud/cloudSelfAgentPendingReply';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 
 const sessionId = 'session:self-agent:pending';
@@ -44,7 +47,7 @@ test('any reply row for the request replaces the pending row', () => {
   }
 });
 
-test('no pending row for failed, queued, local, stale or older requests', () => {
+test('no pending row for failed, queued, local or older requests', () => {
   const cases: CanonicalSessionMessage[][] = [
     [{ ...request, status: 'failed' }],
     [{ ...request, content: { ...request.content as object, queuedMessage: true, queueState: 'queued' } }],
@@ -53,13 +56,10 @@ test('no pending row for failed, queued, local, stale or older requests', () => 
   for (const messages of cases) {
     assert.equal(pendingRow(projectPendingSelfAgentReplies(state(messages), 10_050)), undefined);
   }
-  assert.equal(pendingRow(projectPendingSelfAgentReplies(
-    state([request]), request.createdAtMs + PENDING_SELF_AGENT_REPLY_WINDOW_MS + 1,
-  )), undefined);
   const newer = { ...request, id: 'msg:ui:newer', createdAtMs: 20_000, content: { deliveryState: 'sent' } };
   assert.equal(pendingRow(projectPendingSelfAgentReplies(state([request, newer]), 20_050)), undefined);
-  const untouched = state([request]);
-  assert.equal(projectPendingSelfAgentReplies(untouched, 99_999_999), untouched, 'state is unchanged without a pending row');
+  const answered = state([request, { ...request, id: 'reply', senderRole: 'owned-agent', parentMessageId: request.id }]);
+  assert.equal(projectPendingSelfAgentReplies(answered, 99_999_999), answered, 'state is unchanged without a pending row');
 });
 
 test('the pending row renders as a running reply with a stop', async () => {
@@ -70,4 +70,20 @@ test('the pending row renders as a running reply with a stop', async () => {
   const mapped = mapCanonicalMessage(row, identities as never, 'human:me');
   assert.equal(mapped?.turn?.completed, false);
   assert.notEqual(agentRequestStopTarget(mapped?.turn, mapped!), null);
+});
+
+test('a request that no run answers in time becomes an actionable failed reply', async () => {
+  const late = pendingRow(projectPendingSelfAgentReplies(state([request]), request.createdAtMs + PENDING_SELF_AGENT_START_TIMEOUT_MS + 1));
+  assert.equal(late?.status, 'failed');
+  assert.equal((late?.content as Record<string, unknown>).error, PENDING_SELF_AGENT_NOT_STARTED_TEXT);
+  const { mapCanonicalMessage } = await import('../src/features/canonical/readModel/messageMapping');
+  const { agentRequestStopTarget } = await import('../src/features/chat/agentRequestStop');
+  const identities = new Map([['agent:me', { id: 'agent:me', kind: 'agent', displayName: 'Agent', ownerIdentityId: 'human:me' }]]);
+  const mapped = mapCanonicalMessage(late!, identities as never, 'human:me');
+  assert.equal(mapped?.turn?.completed, true);
+  assert.equal(agentRequestStopTarget(mapped?.turn, mapped!), null, 'a request that never started offers no stop');
+  assert.equal(nextPendingSelfAgentDeadlineMs(state([request]), request.createdAtMs), request.createdAtMs + PENDING_SELF_AGENT_START_TIMEOUT_MS);
+  const withImage = { ...request, content: { ...request.content as object, attachments: [{ kind: 'image', name: 'Screenshot.png' }] } };
+  assert.equal(pendingRow(projectPendingSelfAgentReplies(state([withImage]), request.createdAtMs + PENDING_SELF_AGENT_START_TIMEOUT_MS + 1))?.status, 'processing', 'an upload gets longer');
+  assert.equal(pendingRow(projectPendingSelfAgentReplies(state([withImage]), request.createdAtMs + PENDING_SELF_AGENT_ATTACHMENT_START_TIMEOUT_MS + 1))?.status, 'failed');
 });
