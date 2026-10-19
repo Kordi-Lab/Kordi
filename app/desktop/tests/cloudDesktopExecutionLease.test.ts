@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import { acquireDesktopExecutionLease } from '../src/features/cloud/cloudDesktopExecutionLease';
 import type { CloudAuthClient } from '../src/features/cloud/authClient';
+import { CloudAuthError } from '../src/features/cloud/cloudAuthError';
 
 test('execution identity is server-authored, frozen and appended after history', async () => {
   const identity = { requestId: 'request', agentId: 'agent-b', ownerAccountId: 'owner-b', requesterAccountId: 'visitor-a', agentName: 'Owner B Kordi' };
@@ -45,4 +46,53 @@ test('a project claim tells the Mac which project folder the turn must run in', 
   try { assert.equal(chat.project, undefined); } finally { chat.dispose(); }
   // Other executions never claim to bind a project folder.
   assert.equal(bodies[1]?.bindsProject, undefined);
+});
+
+async function leaseWithRenewals(renew: () => Promise<unknown>) {
+  const identity = { requestId: 'request', agentId: 'agent', ownerAccountId: 'owner', requesterAccountId: 'owner', agentName: 'Kordi' };
+  const client = {
+    desktopAgentExecution: async (_token: string, action: string) => (action === 'claim'
+      ? { acquired: true, runId: 'run', turnIdentity: identity }
+      : renew()),
+  } as unknown as Pick<CloudAuthClient, 'desktopAgentExecution'>;
+  const input = { requestMessageId: 'request', sessionId: 'session', ownerAccountId: 'owner', requesterAccountId: 'owner', prompt: 'Review disk usage', idempotencyKey: 'request' };
+  const lease = await acquireDesktopExecutionLease(client, 'fixture-token', input);
+  assert.ok(lease);
+  return lease;
+}
+
+async function advance(ms: number) {
+  for (let elapsed = 0; elapsed < ms; elapsed += 1_000) {
+    mock.timers.tick(1_000);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+test('a transient renewal failure keeps a long local turn running', async () => {
+  mock.timers.enable({ apis: ['setInterval', 'Date'], now: 1_000_000 });
+  let calls = 0;
+  const lease = await leaseWithRenewals(async () => {
+    calls += 1;
+    if (calls <= 2) throw new CloudAuthError('network_error', 'Cloud request timed out. Check your connection and try again.', 0);
+    return { ok: true, cancelRequested: false };
+  });
+  try {
+    // Two timed-out renewals, then the network recovers.
+    await advance(60_000);
+    assert.equal(lease.lost, false);
+    assert.ok(calls > 2);
+  } finally { lease.dispose(); mock.timers.reset(); }
+});
+
+test('a refused renewal or an unrenewed deadline ends the lease', async () => {
+  mock.timers.enable({ apis: ['setInterval', 'Date'], now: 1_000_000 });
+  const refused = await leaseWithRenewals(async () => { throw new CloudAuthError('execution_lease_lost', 'This runtime no longer owns the request.', 409); });
+  const unreachable = await leaseWithRenewals(async () => { throw new CloudAuthError('network_error', 'Network request failed.', 0); });
+  try {
+    await advance(6_000);
+    assert.equal(refused.lost, true);
+    assert.equal(unreachable.lost, false);
+    await advance(40_000);
+    assert.equal(unreachable.lost, true);
+  } finally { refused.dispose(); unreachable.dispose(); mock.timers.reset(); }
 });
