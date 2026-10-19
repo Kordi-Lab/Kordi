@@ -182,6 +182,7 @@
 		96742F0881FFFEE98895FE4B /* MessageNotificationCleanupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9710C8878BC6B3B5D15A24A /* MessageNotificationCleanupTests.swift */; };
 		9742C64E3D476EC0503A7C96 /* VoiceMessageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E0E98754E4D3E74B787C6A /* VoiceMessageView.swift */; };
 		97FE7B56ED21F0CDBDC8AAEB /* DigestViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 568EBC3F7D9760AAD86C912C /* DigestViewTests.swift */; };
+		9C6613A5B66EE25328C93EC8 /* KordiMarkdownListParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 366FB25C511905DAAB4EEEC8 /* KordiMarkdownListParser.swift */; };
 		9CBCC6179F5F6DCB52745C81 /* CompanionReadPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47798873F5DC1483941C6758 /* CompanionReadPresentationTests.swift */; };
 		9CCDB7C6E7EB247D7D39276A /* DigestCalendarSyncCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D29C9408B984322F36776ABE /* DigestCalendarSyncCoordinator.swift */; };
 		9D95B282D7012DD2050A43D0 /* ProviderLoginTranscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3B99AF14FDFD546D14AB8A5 /* ProviderLoginTranscript.swift */; };
@@ -298,6 +299,7 @@
 		F741A102256DF00A06CC07A1 /* CloudConnectorsClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BD3948FBFFE206A5BB48CDC /* CloudConnectorsClientTests.swift */; };
 		F7D2FBC93887F75BCDF18D61 /* ConversationInitialLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E3BB5862C5807A1AD1244A0 /* ConversationInitialLoadingView.swift */; };
 		F9E33A7DCCE9CF63E615408F /* ForwardMessageSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3310BE41F1F31B92D8D6151B /* ForwardMessageSheet.swift */; };
+		FA72A7984BAF93FA187C0D67 /* KordiMarkdownListParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9C013E8001C316A9C9CA130 /* KordiMarkdownListParserTests.swift */; };
 		FBE280EC3A6D9ACF063D7C39 /* KordiLinkHandling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0218E2113CE6E59C3A85E1 /* KordiLinkHandling.swift */; };
 		FD5B3FEC4C203C259378AB38 /* CloudOAuthCallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A9FFC456D58053BB00863A /* CloudOAuthCallbackTests.swift */; };
 		FDA1CA373CE0A4957DE0F998 /* DocumentForwardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75003FC35484D74E742DA4F /* DocumentForwardingTests.swift */; };
@@ -414,6 +416,7 @@
 		33D2AF3B66E209A9728305F4 /* ContactPresencePresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactPresencePresentation.swift; sourceTree = "<group>"; };
 		34269C735F1FCF72602AD0D6 /* KordiMessageNotificationCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiMessageNotificationCleanup.swift; sourceTree = "<group>"; };
 		35E4741FA31FACB0202B6A98 /* DocumentSelectionMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentSelectionMenu.swift; sourceTree = "<group>"; };
+		366FB25C511905DAAB4EEEC8 /* KordiMarkdownListParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiMarkdownListParser.swift; sourceTree = "<group>"; };
 		379A8A36CB77D9967CF63DAF /* CloudDirectMessageProjectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudDirectMessageProjectorTests.swift; sourceTree = "<group>"; };
 		3C92DB0175FB38A09C313B82 /* CommonGroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundView.swift; sourceTree = "<group>"; };
 		3D3832E4F40194B89E79AB6E /* ConnectorsSettingsLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorsSettingsLinkTests.swift; sourceTree = "<group>"; };
@@ -605,6 +608,7 @@
 		D6B70D03EA8C02F0F10917A6 /* DigestCalendarService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestCalendarService.swift; sourceTree = "<group>"; };
 		D754E3537F473F98052E1220 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D8A0D4656EE35E183A198472 /* SessionRuntimeRouteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRuntimeRouteStore.swift; sourceTree = "<group>"; };
+		D9C013E8001C316A9C9CA130 /* KordiMarkdownListParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiMarkdownListParserTests.swift; sourceTree = "<group>"; };
 		DA243B6979BEEBADE478E33E /* CloudMessageStateProjectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudMessageStateProjectorTests.swift; sourceTree = "<group>"; };
 		DA7028359C98849CFD0A5FCE /* CloudMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudMemory.swift; sourceTree = "<group>"; };
 		DDB063759C8072686227B4C1 /* GroupSpaceSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupSpaceSummary.swift; sourceTree = "<group>"; };
@@ -836,6 +840,7 @@
 				4021DE92BF82560F7905E214 /* ConversationView.swift */,
 				C2C10B9D09B7992549A6CE35 /* ExpressiveMediaPicker.swift */,
 				3310BE41F1F31B92D8D6151B /* ForwardMessageSheet.swift */,
+				366FB25C511905DAAB4EEEC8 /* KordiMarkdownListParser.swift */,
 				EFCC37295C93ECDF39C84206 /* LivePhotoSurface.swift */,
 				C89A8FB63D5B1DFD7576809C /* MarkdownMessageContent.swift */,
 				B05863F065BA138C9337DF7F /* MediaPreviewView.swift */,
@@ -1083,6 +1088,7 @@
 				216678652A940F2F115F8A26 /* GroupAvatarTests.swift */,
 				FD8D24A6689116C11FF7A038 /* InitialAgentModelNoticeTests.swift */,
 				1B3BED33D4A29116EAD073A0 /* KordiAppEnvironmentTests.swift */,
+				D9C013E8001C316A9C9CA130 /* KordiMarkdownListParserTests.swift */,
 				274B3D971B28CFFC0EF77C13 /* KordiMarkdownParserTests.swift */,
 				16C36C042F23DA97ABD30265 /* LocalMessageStoreTests.swift */,
 				A8BE8ED2C03AEBF0EAA5F045 /* MediaCacheTests.swift */,
@@ -1538,6 +1544,7 @@
 				0BC208ED5A89747823F3B780 /* GroupAvatarTests.swift in Sources */,
 				BA1EBAE68A68B522D0B2C8C8 /* InitialAgentModelNoticeTests.swift in Sources */,
 				F72232A5E55E5DDBF7C08493 /* KordiAppEnvironmentTests.swift in Sources */,
+				FA72A7984BAF93FA187C0D67 /* KordiMarkdownListParserTests.swift in Sources */,
 				A7D9800431A98277443048BB /* KordiMarkdownParserTests.swift in Sources */,
 				C6F07352981BFA43F316E7AA /* LocalMessageStoreTests.swift in Sources */,
 				B41CEC7F2405B39CDF400491 /* MediaCacheTests.swift in Sources */,
@@ -1711,6 +1718,7 @@
 				DF513D18A9730F82DD79FECC /* KordiCallCoordinator.swift in Sources */,
 				FBE280EC3A6D9ACF063D7C39 /* KordiLinkHandling.swift in Sources */,
 				DBF208CACDCDD3766655FEF7 /* KordiMark.swift in Sources */,
+				9C6613A5B66EE25328C93EC8 /* KordiMarkdownListParser.swift in Sources */,
 				5A526074F09A34B5DEF383AE /* KordiMessageNotificationCleanup.swift in Sources */,
 				66218B84FEF69BF454A03DFD /* KordiNotificationCoordinator.swift in Sources */,
 				BE821F4028CF8A3212755E16 /* KordiTheme.swift in Sources */,
