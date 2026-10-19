@@ -1,18 +1,23 @@
-//! `edit_document`: block operations on the run's document.
+//! `edit_document`: block operations on a document of the run.
 //!
 //! The gate in [`super::gating`] already limits this tool to a comment run a
-//! person started with their own agent on a document they can edit. The edit
+//! person started with their own agent on a document they can edit, and to
+//! the owner's own chat run on their Mac. A comment run edits its comment's
+//! document. A chat run edits a document of its session the owner can edit,
+//! named by `attachmentId` when the session has several. The edit
 //! goes through the same save as a person's edit: revision check, annotation
 //! remap, stale collaboration room, and `document.updated`.
 
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use super::super::access::{canonical_record, DocumentRecord};
+use super::super::canonical::{can_edit, canonical_attachment_id};
 use super::super::contents::document_source;
 use super::super::editing::{
     announce_save, save, SaveInput, SaveMode, SaveOutcome, MAX_EDIT_BYTES,
 };
-use super::super::model::DocumentFormat;
+use super::super::model::{DocumentFormat, Viewer};
 use super::super::render::markdown_blocks;
 use super::gating::RunFacts;
 use super::operations::{apply_operations, random_block_id, validate_operations, Operation};
@@ -22,6 +27,8 @@ use crate::server::ServerState;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct EditArguments {
+    #[serde(default)]
+    attachment_id: Option<String>,
     base_revision: i64,
     operations: Vec<Operation>,
 }
@@ -43,6 +50,62 @@ fn stale(revision: i64, text: &str) -> Value {
     result
 }
 
+/// The document a call edits: a comment run's own document, or the chat
+/// run's session document the call names (or the only one), when the
+/// requester can edit it.
+async fn target(
+    pool: &sqlx_postgres::PgPool,
+    facts: &RunFacts,
+    requested: Option<&str>,
+) -> Result<DocumentRecord, ToolError> {
+    let requested = requested.map(str::trim).filter(|id| !id.is_empty());
+    if requested.is_some_and(|id| id.len() > 256) {
+        return Err(ToolError::NotFound);
+    }
+    let requested = match requested {
+        Some(id) => Some(canonical_attachment_id(pool, id).await?),
+        None => None,
+    };
+    if facts.gate.comment_run {
+        let record = facts.document.as_ref().ok_or(ToolError::NotFound)?;
+        if requested.is_some_and(|id| id != record.attachment_id) {
+            return Err(ToolError::NotFound);
+        }
+        return Ok(record.clone());
+    }
+    let documents = super::read::canonical_session_documents(pool, &facts.session_id).await?;
+    let attachment_id = match (requested, documents.as_slice()) {
+        (Some(id), _) if documents.iter().any(|(document, _)| *document == id) => id,
+        (Some(_), _) | (None, []) => return Err(ToolError::NotFound),
+        (None, [(only, _)]) => only.clone(),
+        (None, _) => {
+            return Err(ToolError::Invalid(
+                "This conversation has several documents. Pass the attachmentId read_document \
+                 returned."
+                    .into(),
+            ))
+        }
+    };
+    let record = canonical_record(pool, &attachment_id)
+        .await
+        .map_err(|_| ToolError::Server)?
+        .ok_or(ToolError::NotFound)?;
+    if record.format != DocumentFormat::Markdown {
+        return Err(ToolError::Forbidden(
+            "Only Markdown documents can be edited.",
+        ));
+    }
+    let viewer = if record.owner_account_id == facts.requester_account_id {
+        Viewer::Owner
+    } else {
+        Viewer::Member
+    };
+    if !can_edit(pool, &record, viewer, &facts.requester_account_id).await? {
+        return Err(ToolError::Forbidden("You cannot edit this document."));
+    }
+    Ok(record)
+}
+
 pub(super) async fn execute(
     state: &ServerState,
     facts: &RunFacts,
@@ -55,7 +118,7 @@ pub(super) async fn execute(
         )
     })?;
     validate_operations(&args.operations).map_err(|error| ToolError::Invalid(error.message()))?;
-    let record = facts.document.as_ref().ok_or(ToolError::NotFound)?;
+    let record = &target(pool, facts, args.attachment_id.as_deref()).await?;
     if record.format != DocumentFormat::Markdown {
         return Err(ToolError::Forbidden(
             "Only Markdown documents can be edited.",

@@ -263,6 +263,8 @@ fn gate() -> ToolGate {
         requester_can_edit: true,
         session_has_document: false,
         group_session: false,
+        owner_request: true,
+        desktop_backend: false,
     }
 }
 
@@ -293,7 +295,8 @@ fn the_gate_offers_edit_only_to_a_person_started_comment_run_that_can_edit() {
         assert!(offered.read, "{gate:?}");
         assert!(!offered.edit, "{gate:?}");
     }
-    // Chat runs read documents of their session and never edit.
+    // A chat run on the cloud runner reads documents of its session and
+    // never edits: it has no approval card.
     let chat = ToolGate {
         comment_run: false,
         session_has_document: true,
@@ -301,6 +304,35 @@ fn the_gate_offers_edit_only_to_a_person_started_comment_run_that_can_edit() {
     };
     let offered = offered_tools(&chat);
     assert!(offered.read && !offered.edit);
+    // The owner's own chat run on their Mac may edit, behind the Mac's
+    // approval card.
+    let owner_on_mac = ToolGate {
+        desktop_backend: true,
+        ..chat
+    };
+    let offered = offered_tools(&owner_on_mac);
+    assert!(offered.read && offered.edit);
+    let refused = [
+        ToolGate {
+            owner_request: false,
+            ..owner_on_mac
+        },
+        ToolGate {
+            trigger: RunTrigger::Background,
+            ..owner_on_mac
+        },
+        ToolGate {
+            scheduled: true,
+            ..owner_on_mac
+        },
+        ToolGate {
+            session_has_document: false,
+            ..owner_on_mac
+        },
+    ];
+    for gate in refused {
+        assert!(!offered_tools(&gate).edit, "{gate:?}");
+    }
     let plain = ToolGate {
         comment_run: false,
         ..gate()

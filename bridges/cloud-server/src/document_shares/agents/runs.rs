@@ -251,6 +251,8 @@ pub(crate) async fn start(
         .await?,
         session_has_document: true,
         group_session: false,
+        owner_request: plan.requester_account_id == plan.agent.owner_account_id,
+        desktop_backend: false,
     })
     .edit;
     let owner = &plan.agent.owner_account_id;
