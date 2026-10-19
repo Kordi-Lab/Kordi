@@ -113,15 +113,12 @@ struct AgentModelPicker: View {
                 .accessibilityIdentifier("agent-model-save-error")
             }
         }
-        .padding(page == .effort ? 0 : 10)
-        .frame(width: page == .effort ? nil : 288)
+        .padding(page == .effort ? 8 : 10)
+        .frame(width: page == .effort ? 208 : 288)
         .fixedSize(horizontal: false, vertical: true)
-        .background {
-            if page != .effort {
-                RoundedRectangle(cornerRadius: 15).fill(.regularMaterial)
-                    .overlay { RoundedRectangle(cornerRadius: 15).stroke(chatTheme.accent.opacity(0.15), lineWidth: 0.5) }
-            }
-        }
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .overlay { RoundedRectangle(cornerRadius: 14).stroke(chatTheme.accent.opacity(0.15), lineWidth: 0.5) }
+        .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
         .tint(chatTheme.accent)
         .disabled(isSaving || isTesting)
         .onAppear { loadSelection() }
@@ -146,33 +143,34 @@ struct AgentModelPicker: View {
 
     private var effortControl: some View {
         VStack(spacing: 4) {
-            HStack(spacing: 4) {
-                Button(action: onDismiss) {
-                    Image(systemName: "keyboard").frame(width: 32, height: 32)
-                }
-                .accessibilityLabel("Back to message")
+            HStack(spacing: 0) {
+                Color.clear.frame(width: 28, height: 28).accessibilityHidden(true)
                 Spacer(minLength: 0)
-                Button { page = .models } label: {
-                    HStack(spacing: 4) {
-                        Text(modelLabel(selectedModel)).fontWeight(.medium)
-                        Text(thinkingLabel(selectedThinking)).foregroundStyle(.secondary)
-                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                VStack(spacing: 1) {
+                    Text(thinkingLabel(selectedThinking))
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(chatTheme.accent)
+                    Button { page = .models } label: {
+                        HStack(spacing: 2) {
+                            Text(modelLabel(selectedModel)).lineLimit(1)
+                            Image(systemName: "chevron.right").font(.system(size: 7, weight: .semibold))
+                        }
+                        .font(.caption2).foregroundStyle(.secondary)
                     }
-                    .font(.caption).lineLimit(1)
+                    .accessibilityLabel("Select model")
                 }
-                .accessibilityLabel("Select model")
                 Spacer(minLength: 0)
                 Button {
                     selectedThinking = "default"
                     save(dismissAfter: false)
                 } label: {
-                    Image(systemName: "arrow.counterclockwise").frame(width: 32, height: 32)
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
                 }
                 .disabled(!canEdit || selectedAccountIsUnavailable || selectedAuthChoice.isEmpty)
                 .accessibilityLabel("Reset effort to model default")
             }
-            .font(.caption)
-            .foregroundStyle(.primary)
             .buttonStyle(.plain)
             AgentEffortSlider(
                 value: $selectedThinking,
@@ -180,9 +178,6 @@ struct AgentModelPicker: View {
                 accent: chatTheme.accent,
                 onCommit: { save(dismissAfter: false) }
             )
-            .padding(.horizontal, 8)
-            .background(.regularMaterial, in: Capsule())
-            .overlay { Capsule().stroke(chatTheme.accent.opacity(0.12), lineWidth: 0.5) }
             .disabled(!canEdit || selectedAccountIsUnavailable || selectedAuthChoice.isEmpty)
         }
     }
@@ -569,28 +564,28 @@ private struct AgentEffortSlider: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let travel = max(0, geometry.size.width - 32)
+            let travel = max(0, geometry.size.width - 24)
             let fraction = Double(index) / Double(max(1, levels.count - 1))
             ZStack(alignment: .leading) {
-                Capsule().fill(accent.opacity(0.12)).frame(height: 32)
-                Capsule().fill(accent).frame(width: levels.contains(value) ? 16 + travel * fraction : 0, height: 32)
+                Capsule().fill(accent.opacity(0.12)).frame(height: 20)
+                Capsule().fill(accent).frame(width: levels.contains(value) ? 12 + travel * fraction : 0, height: 20)
                 HStack {
                     ForEach(levels, id: \.self) { level in
                         Circle().fill(Color.secondary.opacity(0.35)).frame(width: 4, height: 4)
                         if level != levels.last { Spacer(minLength: 0) }
                     }
-                }.padding(.horizontal, 16)
+                }.padding(.horizontal, 12)
                 Circle().fill(Color(uiColor: .systemBackground)).shadow(color: .black.opacity(0.15), radius: 2, y: 1)
-                    .frame(width: 28, height: 28).offset(x: 2 + travel * fraction)
+                    .frame(width: 20, height: 20).offset(x: 2 + travel * fraction)
             }
-            .frame(height: 44).contentShape(Rectangle())
+            .frame(height: 28).contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0).onChanged { gesture in
                 guard isEnabled, levels.count > 1, travel > 0 else { return }
-                let step = Int(((gesture.location.x - 16) / travel * Double(levels.count - 1)).rounded())
+                let step = Int(((gesture.location.x - 12) / travel * Double(levels.count - 1)).rounded())
                 value = levels[min(max(0, step), levels.count - 1)]
             }.onEnded { _ in if isEnabled { onCommit() } })
         }
-        .frame(height: 44)
+        .frame(height: 28)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Thinking effort")
         .accessibilityValue(AgentModelPresentation.effort(value))
