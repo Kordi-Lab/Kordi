@@ -105,6 +105,21 @@ fn observation_runtime(
     }
 }
 
+/// The execution lease this Mac holds for the digest run.
+fn lease(
+    run_id: &str,
+    claim_id: &str,
+    owner_account_id: &str,
+) -> Result<kordi_cli::desktop_runtime::DesktopCloudExecutionLease, String> {
+    serde_json::from_value(json!({
+        "sessionId": format!("digest:{owner_account_id}"),
+        "runId": run_id,
+        "claimId": claim_id,
+        "ownerAccountId": owner_account_id,
+    }))
+    .map_err(|error| error.to_string())
+}
+
 /// Runs one claimed digest run and returns the model's reply.
 #[tauri::command]
 pub async fn desktop_digest_run(
@@ -116,18 +131,33 @@ pub async fn desktop_digest_run(
     tools: Vec<DesktopDigestTool>,
     route: DesktopChatMessageRoute,
 ) -> Result<String, String> {
-    if super::hosted_provider_auth::route_uses_hosted_auth(Some(&route)) {
-        return Err("A digest runs on this Mac only with a provider on this Mac.".into());
-    }
     let session = crate::cloud_session::cloud_session_load()?
         .filter(|session| session.account_id == owner_account_id && !session.token.is_empty())
         .ok_or_else(|| "Sign in to Kordi to run the digest.".to_string())?;
     let api_base = crate::cloud_api_base_url_from_env()?;
     let workspace = std::env::temp_dir().join("kordi-digest-runs");
     std::fs::create_dir_all(&workspace).map_err(|error| error.to_string())?;
+    // A hosted account has no credential on this Mac: the server hands over
+    // short-lived material for this claimed run, exactly as for a chat turn.
+    let hosted = super::hosted_provider_auth::route_uses_hosted_auth(Some(&route));
+    let hosted_auth = if hosted {
+        Some(
+            super::hosted_provider_auth::resolve_for_lease(
+                &route,
+                &lease(&run_id, &claim_id, &owner_account_id)?,
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
     let profile = DesktopRuntimeProfile {
-        provider: route.auth_provider.clone(),
-        model: route.model.clone(),
+        provider: if hosted {
+            None
+        } else {
+            route.auth_provider.clone()
+        },
+        model: if hosted { None } else { route.model.clone() },
         thinking: route.thinking.clone(),
         system_prompt: Some(system_prompt),
         // Only the observation tools: no files, shell, network, or messages.
@@ -142,6 +172,16 @@ pub async fn desktop_digest_run(
                 .await
                 .map_err(|error| error.to_string())?;
         super::message_route::apply_desktop_chat_message_route(&mut runtime, Some(&route))?;
+        if let Some(auth) = hosted_auth {
+            runtime
+                .set_ephemeral_provider_auth_with_options(
+                    &auth.provider,
+                    auth.auth,
+                    auth.base_url,
+                    auth.api.as_deref(),
+                )
+                .map_err(|error| error.to_string())?;
+        }
         runtime.set_connector_tools_runtime(Some(observation_runtime(
             &run_id,
             &claim_id,

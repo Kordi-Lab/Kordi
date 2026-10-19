@@ -78,6 +78,7 @@ pub(in crate::cloud_agent_runtime) async fn claim(
             &session,
             input.claim_id,
             input.run.request_message_id.trim(),
+            input.run.runtime_route.as_ref(),
         )
         .await
         {

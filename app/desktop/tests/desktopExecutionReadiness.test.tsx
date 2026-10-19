@@ -202,7 +202,7 @@ test('live execution becomes ready after cursor catch-up while older history rem
   } finally { cancelledRef.current = true; await view.close(); }
 });
 
-test('a Mac offers to run digests only with a provider on this Mac', async () => {
+test('a Mac offers to run digests and scheduled tasks with any model route', async () => {
   const view = await fixture(async () => null);
   const inputs: unknown[] = [];
   const client = new CloudAuthClient('http://localhost');
@@ -217,13 +217,10 @@ test('a Mac offers to run digests only with a provider on this Mac', async () =>
     return null;
   }
   try {
-    await view.render(<Probe authChoice="local-active-oauth" />);
-    await waitFor(() => inputs.length >= 1);
-    assert.equal((inputs.at(-1) as { digest: boolean }).digest, true);
-    const published = inputs.length;
+    // The owner's default route is a hosted account, as with "ChatGPT • Work".
     await view.render(<Probe authChoice="cloud-login:work" />);
-    await waitFor(() => inputs.length > published);
-    assert.equal((inputs.at(-1) as { digest: boolean }).digest, false, 'a hosted-only route leaves digests to the cloud');
+    await waitFor(() => inputs.length >= 1);
+    assert.equal((inputs.at(-1) as { digest: boolean }).digest, true, 'a hosted account still runs digests on this Mac');
     assert.equal((inputs.at(-1) as { scheduled: boolean }).scheduled, true, 'scheduled tasks still wait for this Mac');
   } finally { await view.close(); }
 });
