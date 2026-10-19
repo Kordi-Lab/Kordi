@@ -30,6 +30,9 @@ pub(super) use ready::ready;
 #[path = "desktop_interrupted.rs"]
 mod interrupted;
 pub(super) use interrupted::interrupted;
+#[path = "desktop_release.rs"]
+mod release;
+pub(super) use release::release;
 
 pub(super) async fn prefer_ready_desktop(
     pool: &PgPool,
