@@ -24,10 +24,10 @@ mod requests;
 pub use requests::{CompleteRunRequest, FailRunRequest};
 
 fn cloud_agent_failure_response_text(error_code: &str, is_support_agent: bool) -> &'static str {
+    if is_support_agent {
+        return "Kordi Support couldn’t complete this request. Please try again shortly.";
+    }
     match error_code {
-        "missing_provider_auth" | "provider_auth_rejected" if is_support_agent => {
-            "Kordi Support is temporarily unavailable. Try again shortly."
-        }
         "missing_provider_auth" => "No provider configured yet.",
         // Desktop clients match this text to offer "Open authentication".
         "provider_auth_rejected" => "Sign in again to use this account.",
@@ -452,10 +452,21 @@ mod tests {
     use super::cloud_agent_failure_response_text;
 
     #[test]
-    fn support_auth_failure_never_asks_the_user_to_configure_a_provider() {
+    fn support_failures_never_describe_local_fallback_or_user_provider_setup() {
+        for code in [
+            "model_provider_error",
+            "sandbox_error",
+            "provider_auth_rejected",
+            "unknown",
+        ] {
+            assert_eq!(
+                cloud_agent_failure_response_text(code, true),
+                "Kordi Support couldn’t complete this request. Please try again shortly."
+            );
+        }
         assert_eq!(
             cloud_agent_failure_response_text("missing_provider_auth", true),
-            "Kordi Support is temporarily unavailable. Try again shortly."
+            "Kordi Support couldn’t complete this request. Please try again shortly."
         );
         assert_eq!(
             cloud_agent_failure_response_text("missing_provider_auth", false),
