@@ -150,7 +150,9 @@ impl OmpRuntime {
                 .computer_lock_path
                 .as_ref()
                 .ok_or(RuntimeError::InvalidRequest)?;
-            Some(acquire_computer_lock(path, &cancel, request.limits.timeout_ms).await?)
+            let limits = &request.limits;
+            let wait_ms = limits.idle_timeout_ms.unwrap_or(limits.timeout_ms);
+            Some(acquire_computer_lock(path, &cancel, wait_ms.min(limits.timeout_ms)).await?)
         } else {
             None
         };
@@ -220,7 +222,13 @@ impl OmpRuntime {
             BoxFuture<'_, (String, Result<serde_json::Value, String>)>,
         > = FuturesUnordered::new();
         let mut stderr_watch = true;
+        let idle = request.limits.idle_timeout_ms.map(Duration::from_millis);
+        let mut idle_deadline = deadline;
         loop {
+            if let Some(idle) = idle {
+                idle_deadline = deadline.min(Instant::now() + idle);
+            }
+            let busy = !pending_tools.is_empty() || !pending_hooks.is_empty();
             enum Next {
                 Line(Option<Vec<u8>>),
                 Tool(String, ToolResult),
@@ -242,6 +250,7 @@ impl OmpRuntime {
                     return Err(RuntimeError::Cancelled);
                 },
                 _ = tokio::time::sleep_until(deadline) => return Err(RuntimeError::Timeout),
+                _ = tokio::time::sleep_until(idle_deadline), if !busy => return Err(RuntimeError::Timeout),
                 result = &mut stderr_overflow_rx, if stderr_watch => {
                     if result.is_ok() { return Err(RuntimeError::OutputLimit); }
                     stderr_watch = false;

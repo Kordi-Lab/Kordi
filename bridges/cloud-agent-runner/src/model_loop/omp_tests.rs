@@ -216,3 +216,21 @@ async fn real_bun_cloud_adapter_returns_durable_context() {
         .iter()
         .any(|message| message["role"] == "toolResult"));
 }
+
+#[test]
+fn openai_api_keys_use_responses_without_changing_compatible_endpoints() {
+    let mut auth = OpenAiProviderConfig::from_material(&ProviderAuthMaterial {
+        snapshot_id: "synthetic-support".into(),
+        provider: "openai".into(),
+        auth_choice: "support-service-api-key".into(),
+        payload: json!({"apiKey":"synthetic-key", "model":"gpt-5.6-luna"}),
+    })
+    .unwrap();
+    assert_eq!(api_for_provider(&auth), "openai-responses");
+    auth.base_url = "https://api.openai.com/v1/".into();
+    assert_eq!(api_for_provider(&auth), "openai-responses");
+    auth.base_url = "https://compatible.example/v1".into();
+    assert_eq!(api_for_provider(&auth), "openai-completions");
+    auth.provider = "openrouter".into();
+    assert_eq!(api_for_provider(&auth), "openai-completions");
+}

@@ -359,3 +359,20 @@ test('self-agent canonical persistence removes a proven mirror after repairing m
     duplicateMessageId: 'message:cloud',
   }]);
 });
+
+test('a mirror pair the store refuses does not stop the rest of the sync batch', async () => {
+  const written: string[] = [];
+  const batch = await persistCloudSelfAgentCanonicalSyncPlan({
+    ...plan,
+    mirrorReconciliations: [{ preferredMessageId: 'msg:local-reply', duplicateMessageId: 'msg:cloud-reply' }],
+  }, {
+    persistence: {
+      upsertIdentity: async () => identity,
+      openSession: async () => sessionResult,
+      upsertMessage: async (request) => { written.push(request.id ?? ''); return restoredMessage; },
+      reconcileMessageMirror: async () => { throw new Error('Canonical mirror reconciliation did not match one user intent'); },
+    },
+  });
+  assert.deepEqual(written, [restoredMessage.id], 'later Cloud updates, such as run progress, are still stored');
+  assert.deepEqual(batch?.reconciledMessageMirrors, []);
+});

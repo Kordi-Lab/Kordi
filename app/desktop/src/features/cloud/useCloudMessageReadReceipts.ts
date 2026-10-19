@@ -38,7 +38,7 @@ import type {
 import {
   loadSession,
 } from './session';
-import { rollbackReadInboundMessageIds } from './cloudReadTracking';
+import { cloudGroupObservedSequences, rollbackReadInboundMessageIds } from './cloudReadTracking';
 import { useCloudDirectMessageReadReceipts } from './useCloudDirectMessageReadReceipts';
 
 export { rollbackReadInboundMessageIds } from './cloudReadTracking';
@@ -168,6 +168,10 @@ export function useCloudMessageReadReceipts({
           .catch(() => {});
       }
 
+      const observedSequences = cloudGroupObservedSequences(
+        messageIndex.groupRows,
+        groupReadTargets.sessionIds,
+      );
       void loadSession()
         .then((session) => {
           if (!session?.token) throw new Error('Cloud session is unavailable.');
@@ -175,6 +179,7 @@ export function useCloudMessageReadReceipts({
             client.markSessionMessagesRead(
               session.token,
               sessionId,
+              observedSequences[sessionId],
             )
           );
           return Promise.all(readRequests);

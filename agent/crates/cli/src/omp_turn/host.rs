@@ -4,11 +4,19 @@ pub(super) struct DesktopHost<'a> {
     pub(super) config: &'a TurnConfig,
     pub(super) event_tx: &'a mpsc::UnboundedSender<TurnEvent>,
     pub(super) file_queue: &'a FileQueue,
+    pub(super) tool_starts: &'a super::ToolStarts,
 }
 
 #[async_trait::async_trait]
 impl HostTool for DesktopHost<'_> {
     async fn execute(&self, call: ToolCall, cancel: CancellationToken) -> ToolResult {
+        // The call can arrive before its start event; show it as started now.
+        for event in self
+            .tool_starts
+            .announce(&call.call_id, &call.name, call.input.to_string())
+        {
+            let _ = self.event_tx.send(event);
+        }
         turn_runner::execute_omp_tool_call(
             self.config,
             self.event_tx,

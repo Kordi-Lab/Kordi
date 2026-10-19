@@ -70,6 +70,30 @@ pub(crate) fn desktop_session_agent_identity(
     Ok(identity.unwrap_or_else(|| fallback.to_string()))
 }
 
+const LOCAL_DELEGATE_IDENTITY_PREFIX: &str = "agent:local:";
+
+/// The agent that owns a desktop session's shell. A session another sync
+/// already gave one of the owner's agents (a Kordi Cloud chat with a named
+/// agent) keeps that agent, so its local replies show the same name as its
+/// synchronized ones; only a plain local chat follows this Mac's delegate.
+/// A stale delegate participant that an earlier sync added is removed.
+pub(crate) fn shell_agent_identity(
+    conn: &Connection,
+    session_id: &str,
+    local_delegate: &str,
+) -> Result<String, String> {
+    let current = desktop_session_agent_identity(conn, session_id, local_delegate)?;
+    if current.starts_with(LOCAL_DELEGATE_IDENTITY_PREFIX) {
+        return Ok(local_delegate.to_string());
+    }
+    conn.execute(
+        "DELETE FROM session_participants WHERE session_id=?1 AND role='delegate' AND identity_id LIKE 'agent:local:%'",
+        [session_id],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(current)
+}
+
 pub(crate) fn explicit_desktop_project_membership(
     state: &crate::chat::DesktopChatState,
     session_id: &str,

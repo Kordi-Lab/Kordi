@@ -24,3 +24,20 @@ export function addReadInboundMessageIds(
   for (const messageId of messageIds) next.add(messageId);
   return next.size === existing.size ? current : { ...current, [peerId]: next };
 }
+
+// Highest server sequence the renderer holds per group. The cached chat head
+// can lag replies this Mac published itself, and those replies are counted
+// as unread until the read cursor covers them.
+export function cloudGroupObservedSequences(
+  groupRows: readonly { wire: { conversationSequence?: number | null }; envelope: { groupId: string } }[],
+  sessionIds: readonly string[],
+): Record<string, number> {
+  const wanted = new Set(sessionIds);
+  const sequences: Record<string, number> = {};
+  for (const { wire, envelope } of groupRows) {
+    const sequence = wire.conversationSequence;
+    if (!wanted.has(envelope.groupId) || !Number.isSafeInteger(sequence) || sequence! <= 0) continue;
+    sequences[envelope.groupId] = Math.max(sequences[envelope.groupId] ?? 0, sequence!);
+  }
+  return sequences;
+}

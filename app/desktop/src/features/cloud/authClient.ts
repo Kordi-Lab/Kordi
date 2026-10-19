@@ -722,7 +722,7 @@ export class CloudAuthClient {
   threadReads(token: string, sessionId: string) { return this.chat.threadReads(token, sessionId); }
   markThreadRead(token: string, sessionId: string, rootId: string, sequence: number) { return this.chat.markThreadRead(token, sessionId, rootId, sequence); }
 
-  async markSessionMessagesRead(token: string, sessionId: string): Promise<void> { return this.chat.markSessionMessagesRead(token, sessionId); }
+  async markSessionMessagesRead(token: string, sessionId: string, observedSequence?: number): Promise<void> { return this.chat.markSessionMessagesRead(token, sessionId, observedSequence); }
 
   async acknowledgeChatDelivery(token: string, conversationId: string, sequence: number): Promise<void> { return this.chat.acknowledgeDelivery(token, conversationId, sequence); }
 

@@ -62,6 +62,7 @@ tests=(
   document_share_tests::upgrade_from_126_adds_document_agent_runs
   document_share_tests::upgrade_from_127_adds_desktop_preference
   document_share_tests::upgrade_from_128_adds_document_title
+  common_ground_tests::upgrade_from_133_adds_common_ground
 )
 index=0
 for test_name in "${tests[@]}"; do
@@ -83,3 +84,6 @@ DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
 # Shared document tests follow the same rule.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib document_shares:: -- --test-threads=1
+# Common ground tests follow the same rule.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib common_ground:: -- --test-threads=1
