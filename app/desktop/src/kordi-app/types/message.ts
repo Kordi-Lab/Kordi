@@ -377,6 +377,10 @@ export type DesktopBackgroundFollowUp = {
   parentRequestId?: string | null;
   title: string;
   status: 'done' | 'failed' | 'stopped';
+  /** Where the reply is published, as registered by the parent request. */
+  route?: unknown;
+  /** The reply has already been published. */
+  published?: boolean;
 };
 
 export type DesktopChatTurnSnapshot = {

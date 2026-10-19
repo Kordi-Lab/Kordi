@@ -20,7 +20,7 @@ import {
   startDesktopSharedChatMessage,
 } from '@/lib/desktopBackgroundSessions';
 import { publishModelSubsessions } from './agentSubsessionSync';
-import { registerCloudBackgroundFollowUpPublisher } from './cloudBackgroundFollowUps';
+import { cloudGroupBackgroundFollowUpRoute } from './cloudGroupBackgroundFollowUp';
 import { cloudAgentPublicBackgroundToolsFromTurn } from './cloudAgentBackgroundSessions';
 import {
   cloudAgentProviderFailureNotice,
@@ -181,6 +181,15 @@ export async function respondToCloudGroupAgentMention(
       [message.id]: { ...snapshot, replyToMessageId: message.id, messageAction: threadMessageAction },
     }));
   };
+  // A background follow-up of this request publishes its reply here, also
+  // after the webview reloads.
+  const backgroundFollowUpRoute = cloudGroupBackgroundFollowUpRoute({
+    context,
+    messageAction: threadMessageAction ?? null,
+    targetAccountIds,
+    agentId: presentation.agentId,
+    agentDisplayName: presentation.displayName,
+  });
   const runtimeStartSpan = beginChatPerformanceSpan(
     'cloud-agent-runtime-start',
   );
@@ -201,6 +210,7 @@ export async function respondToCloudGroupAgentMention(
       ),
       envelope.groupId,
       lease.deadline,
+      backgroundFollowUpRoute,
     );
     finishChatPerformanceSpan(runtimeStartSpan, { resultClass: 'success' });
   } catch (error) {
@@ -213,28 +223,6 @@ export async function respondToCloudGroupAgentMention(
     ...context,
     envelope: { ...envelope, message: { ...message, messageAction: threadMessageAction } },
   } : context;
-  registerCloudBackgroundFollowUpPublisher(message.id, async (reply) => {
-    const current = await loadSession();
-    if (!current?.token || current.accountId !== account.accountId) return;
-    await publishCloudGroupAgentTerminalAfterGuards({
-      publisher: runtime.client,
-      context: replyContext,
-      runtime,
-      policy,
-      token: current.token,
-      targetAccountIds,
-      responseMessageId: `msg:cloud-agent:${reply.turn.id}`,
-      responseCreatedAtMs: reply.turn.completedAtMs ?? Date.now(),
-      responseText: reply.text,
-      responseDeliveryState: reply.deliveryState === 'complete' ? 'complete' : 'failed',
-      responseTools: [],
-      requestId: reply.requestId,
-      agentId: presentation.agentId,
-      agentDisplayName: presentation.displayName,
-      agentHandoff: null,
-      signal: new AbortController().signal,
-    });
-  });
   const processingMessageId =
     `msg:cloud-agent-processing:${message.id}:${account.accountId}`;
   const processingCreatedAtMs = Date.now();
