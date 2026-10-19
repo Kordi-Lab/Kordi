@@ -20,6 +20,27 @@ function cleanText(value?: string | null) {
   return (value ?? '').trim();
 }
 
+const BACKGROUND_FOLLOW_UP_PREFIX = 'background-result:';
+
+/**
+ * A background follow-up reply answers its runtime notice, whose id the Cloud
+ * copy carries as its request id. The notice is its parent, as on the Mac.
+ */
+export function backgroundFollowUpNoticeId(
+  messages: readonly CanonicalSessionMessage[],
+  sessionId: string,
+  requestId?: string | null,
+): string | null {
+  const id = cleanText(requestId);
+  if (!id.startsWith(BACKGROUND_FOLLOW_UP_PREFIX)) return null;
+  return messages.find((candidate) => {
+    if (candidate.sessionId !== sessionId || candidate.senderRole !== 'system') return false;
+    const content = candidate.content && typeof candidate.content === 'object' && !Array.isArray(candidate.content)
+      ? candidate.content as Record<string, unknown> : {};
+    return content.desktopEntryId === id;
+  })?.id ?? null;
+}
+
 export function indexLocalSelfAgentMessagesByClientMessageId(
   messages: readonly CanonicalSessionMessage[],
 ): Map<string, CanonicalSessionMessage> {

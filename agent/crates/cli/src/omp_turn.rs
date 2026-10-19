@@ -104,18 +104,22 @@ pub(crate) async fn run_turn_inner(
     };
     let request = build_request(config, prompt_text, history, system_prompt, capabilities)?;
     let file_queue = FileQueue::new();
+    let tool_starts = ToolStarts::default();
     let tool_host = DesktopHost {
         config,
         event_tx,
         file_queue: &file_queue,
+        tool_starts: &tool_starts,
     };
     let event_sink = |event: RuntimeEvent| {
         let event_tx = event_tx.clone();
+        let tool_starts = &tool_starts;
         async move {
-            let tool_arguments = (event.kind == "tool_start")
+            let tool_start = (event.kind == "tool_start")
                 .then(|| {
-                    Some((
-                        event.data.get("callId")?.as_str()?.to_string(),
+                    Some(tool_starts.announce(
+                        event.data.get("callId")?.as_str()?,
+                        event.data.get("name")?.as_str()?,
                         event.data.get("input")?.to_string(),
                     ))
                 })
@@ -146,14 +150,15 @@ pub(crate) async fn run_turn_inner(
                 }
                 _ => {}
             }
-            if let Some(mapped) = map_event(event) {
+            // A tool start is forwarded once, here or by the host.
+            let mapped = match tool_start {
+                Some(events) => events,
+                None if event.kind == "tool_start" => Vec::new(),
+                None => map_event(event).into_iter().collect(),
+            };
+            for mapped in mapped {
                 event_tx
                     .send(mapped)
-                    .map_err(|_| "turn event receiver closed".to_string())?;
-            }
-            if let Some((id, args)) = tool_arguments {
-                event_tx
-                    .send(TurnEvent::ToolCallDelta { id, args })
                     .map_err(|_| "turn event receiver closed".to_string())?;
             }
             Ok(())
@@ -181,6 +186,7 @@ mod history;
 mod host;
 #[cfg(test)]
 mod tests;
+mod tool_starts;
 
 #[allow(
     unused_imports,
@@ -191,3 +197,4 @@ use history::{build_request, persist_result, prepare_history, route_scope};
 use host::{
     DesktopHost, map_event, owner_capabilities, private_computer_lock_path, worker_command,
 };
+use tool_starts::ToolStarts;
