@@ -52,7 +52,7 @@ final class AgentModelRouteUITests: ProviderUITestCase {
         app.terminate()
     }
 
-    func testAccountPickAppliesImmediatelyAndTestRouteUsesIt() {
+    func testAccountPickAppliesImmediately() {
         let app = launch("--preview-agent-model")
         let account = app.buttons["agent-model-account"]
         XCTAssertTrue(account.waitForExistence(timeout: 15))
@@ -60,17 +60,14 @@ final class AgentModelRouteUITests: ProviderUITestCase {
         let personal = app.buttons["Personal"]
         XCTAssertTrue(personal.waitForExistence(timeout: 5))
         personal.tap()
-        let testRoute = app.buttons["agent-model-test-route"]
-        XCTAssertTrue(testRoute.waitForExistence(timeout: 5))
-        XCTAssertTrue(testRoute.isEnabled)
-        testRoute.tap()
-        let result = element("agent-model-route-test-result", in: app)
-        XCTAssertTrue(result.waitForExistence(timeout: 15))
-        XCTAssertTrue(result.label.contains("Personal"), result.label)
-        XCTAssertTrue(result.label.contains("GPT-5.6 Sol"), result.label)
-        for secret in ["preview-token", "ios-codex:", "provider_auth_"] {
-            XCTAssertFalse(result.label.contains(secret))
-        }
+        app.buttons["Close model picker"].tap()
+        app.buttons["composer-model-picker"].tap()
+        XCTAssertTrue(app.buttons["agent-model-account"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["agent-model-account"].label, "Personal")
+        app.buttons["agent-model-account"].tap()
+        XCTAssertFalse(app.buttons["agent-model-test-route"].exists)
+        XCTAssertFalse(app.staticTexts["Test route uses provider quota."].exists)
+        capture("Compact account picker", app: app)
         app.terminate()
     }
 
@@ -80,9 +77,7 @@ final class AgentModelRouteUITests: ProviderUITestCase {
         XCTAssertTrue(unavailable.waitForExistence(timeout: 15))
         XCTAssertEqual(app.buttons["composer-model-picker"].value as? String, "Account unavailable")
         app.buttons["agent-model-account"].tap()
-        XCTAssertFalse(app.buttons["agent-model-test-route"].isEnabled)
         app.buttons["Personal"].tap()
-        XCTAssertTrue(app.buttons["agent-model-test-route"].isEnabled)
         XCTAssertEqual(app.buttons["composer-model-picker"].value as? String, "GPT-5.6 Sol")
         app.terminate()
     }
@@ -91,7 +86,6 @@ final class AgentModelRouteUITests: ProviderUITestCase {
         let app = launch("--preview-agent-model", "--preview-provider-unavailable")
         XCTAssertTrue(element("agent-model-account-unavailable", in: app).waitForExistence(timeout: 15))
         app.buttons["agent-model-account"].tap()
-        XCTAssertFalse(app.buttons["agent-model-test-route"].isEnabled)
         XCTAssertTrue(app.staticTexts["No signed-in account. Connect one in Settings → Authentication."].exists)
         XCTAssertEqual(app.buttons["composer-model-picker"].value as? String, "Account unavailable")
         app.terminate()

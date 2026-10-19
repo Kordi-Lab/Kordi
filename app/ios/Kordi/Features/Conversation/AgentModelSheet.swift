@@ -18,8 +18,6 @@ struct AgentModelPicker: View {
     @State private var selectedModel = ""
     @State private var selectedThinking = "medium"
     @State private var isSaving = false
-    @State private var isTesting = false
-    @State private var routeTestResult: CloudProviderRouteTest?
     @State private var showsManualModel = false
     @State private var manualModelID = ""
 
@@ -120,7 +118,7 @@ struct AgentModelPicker: View {
         .overlay { RoundedRectangle(cornerRadius: 14).stroke(chatTheme.accent.opacity(0.15), lineWidth: 0.5) }
         .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
         .tint(chatTheme.accent)
-        .disabled(isSaving || isTesting)
+        .disabled(isSaving)
         .onAppear { loadSelection() }
         .task {
             if !model.hasLiveOMPProviderCatalog && !model.ompBackendUnavailable {
@@ -263,7 +261,6 @@ struct AgentModelPicker: View {
                         selectedProvider = provider
                         selectedAuthChoice = ""
                         selectCompatibleModel(for: provider)
-                        routeTestResult = nil
                     }
                 }
             } label: { HStack { Text(providerLabel(selectedProvider)); Spacer(); Image(systemName: "chevron.down") } }
@@ -276,21 +273,7 @@ struct AgentModelPicker: View {
                 Text("No signed-in account. Connect one in Settings → Authentication.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Divider()
-            Button("Test route", action: testRoute)
-                .font(.caption).frame(minHeight: 36)
-                .disabled(!canEdit || selectedModel.isEmpty || selectedAuthChoice.isEmpty || selectedAccountIsUnavailable || model.ompBackendUnavailable)
-                .accessibilityIdentifier("agent-model-test-route")
-            if isTesting {
-                ProgressView("Testing route…").font(.caption)
-                    .accessibilityIdentifier("agent-model-route-test-pending")
-            } else if let routeTestResult {
-                Text("Runner \(routeTestResult.runner) · \(routeTestResult.accountLabel) · \(modelLabel(routeTestResult.model))\n\(routeTestResult.response)")
-                    .font(.caption).accessibilityIdentifier("agent-model-route-test-result")
-            } else if let error = model.providerAuthenticationErrorMessage?.nonEmpty {
-                Text(error).font(.caption).foregroundStyle(.secondary)
-            }
-            Text("Test route uses provider quota.").font(.caption2).foregroundStyle(.secondary)
+
         }
     }
 
@@ -318,7 +301,6 @@ struct AgentModelPicker: View {
         let changesProvider = ProviderAuthenticationDefinition.canonicalID(provider) != ProviderAuthenticationDefinition.canonicalID(selectedProvider)
         selectedModel = value
         selectedThinking = Self.normalizedThinking(selectedThinking, for: value)
-        routeTestResult = nil
         if changesProvider {
             selectedProvider = provider
             selectedAuthChoice = ""
@@ -332,7 +314,6 @@ struct AgentModelPicker: View {
 
     private func chooseAccount(_ choice: String) {
         selectedAuthChoice = choice
-        routeTestResult = nil
         if isCustomProvider {
             manualModelID = ""
             selectedModel = account(for: choice)?.modelHint?.nonEmpty.map { "\(selectedProvider)/\($0)" } ?? ""
@@ -497,23 +478,6 @@ struct AgentModelPicker: View {
                 saveError = "Could not change the model route."
                 retrySelection = selection
             }
-        }
-    }
-
-    /// An explicit diagnostic, separate from applying a route selection.
-    private func testRoute() {
-        guard !isSaving, !isTesting, !selectedAccountIsUnavailable else { return }
-        isTesting = true
-        routeTestResult = nil
-        model.clearProviderAuthenticationError()
-        Task {
-            routeTestResult = await model.testProviderRoute(
-                provider: selectedProvider,
-                authChoice: selectedAuthChoice,
-                model: selectedModel,
-                thinking: Self.normalizedThinking(selectedThinking, for: selectedModel)
-            )
-            isTesting = false
         }
     }
 
