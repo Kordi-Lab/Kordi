@@ -360,10 +360,13 @@ async fn write(
     }
     let pool = state.db_pool();
     let mut transaction = pool.begin().await.map_err(db_error)?;
-    query("SELECT pg_advisory_xact_lock(81208411)")
-        .execute(&mut *transaction)
-        .await
-        .map_err(db_error)?;
+    crate::cloud_agent_runtime::run_locks::lock_subsession(
+        &mut transaction,
+        id,
+        Some(&request.parent_session_id),
+    )
+    .await
+    .map_err(db_error)?;
     let follow_started:(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id WHERE c.subsession_id=$1 AND s.owner_account_id=$2 AND r.status<>'queued')")
         .bind(id).bind(&session.account_id).fetch_one(&mut *transaction).await.map_err(db_error)?;
     if follow_started.0 {

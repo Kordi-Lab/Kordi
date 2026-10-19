@@ -15,9 +15,8 @@ pub(super) async fn stop(
 ) -> Result<Json<Snapshot>, ApiError> {
     let pool = state.db_pool();
     let mut tx = pool.begin().await.map_err(db_error)?;
-    // Share the admission/publishing lock so Stop cannot race a new execution.
-    query("SELECT pg_advisory_xact_lock(81208411)")
-        .execute(&mut *tx)
+    // Share the session's admission/publishing lock so Stop cannot race a new execution.
+    crate::cloud_agent_runtime::run_locks::lock_subsession(&mut tx, id, None)
         .await
         .map_err(db_error)?;
     let current: Option<(String, Option<i64>)> = query_as(

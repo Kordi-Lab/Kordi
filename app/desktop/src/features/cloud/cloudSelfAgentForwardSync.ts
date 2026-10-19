@@ -92,6 +92,10 @@ function leasedDesktopRequestMirrors(
 ) {
   const key = (sessionId: string, wireId: string) => `${sessionId}\u0000${wireId}`;
   const cloudRequestWireIds = new Set<string>();
+  // Local ids of the same routed requests. The native reply of a leased turn
+  // names the local request as its parent when the request's Cloud mirror has
+  // not reached this Mac yet.
+  const leasedRequestIds = new Set<string>();
   for (const message of messages) {
     if (message.senderRole !== 'user') continue;
     // A Cloud mirror alone may be historical transcript export. Only an
@@ -99,7 +103,9 @@ function leasedDesktopRequestMirrors(
     // execution echo, rather than a new turn or recovered history.
     if (!kordiCloudRouteFromContent(objectContent(message.content))) continue;
     const forwardedWireId = ledger[message.id]?.cloudMessageId;
-    if (forwardedWireId) cloudRequestWireIds.add(key(message.sessionId, forwardedWireId));
+    if (!forwardedWireId) continue;
+    cloudRequestWireIds.add(key(message.sessionId, forwardedWireId));
+    leasedRequestIds.add(message.id);
   }
 
   const nativeRequestIds = new Set<string>();
@@ -110,7 +116,7 @@ function leasedDesktopRequestMirrors(
       nativeRequestIds.add(message.id);
     }
   }
-  return { cloudRequestWireIds, nativeRequestIds };
+  return { cloudRequestWireIds, leasedRequestIds, nativeRequestIds };
 }
 
 function forwardEligibilityAtMs(message: CanonicalSessionMessage) {
@@ -344,6 +350,7 @@ export function planCloudSelfAgentSync(
       const parentId = explicitSelfAgentParentMessageId(message);
       if (message.senderRole.includes('agent') && parentId
         && (leasedMirrors.nativeRequestIds.has(parentId)
+          || leasedMirrors.leasedRequestIds.has(parentId)
           || leasedMirrors.cloudRequestWireIds.has(`${message.sessionId}\u0000${parentId}`))) continue;
     }
     const recoveringMissingChatSession = Boolean(

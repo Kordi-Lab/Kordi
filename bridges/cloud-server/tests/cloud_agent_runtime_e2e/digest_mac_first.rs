@@ -233,6 +233,38 @@ async fn a_ready_mac_runs_the_digest_and_its_reply_gets_the_cloud_checks() {
     fx.finish().await;
 }
 
+/// The Mac learns of a held run only from the hint on the sync stream it
+/// reads, so the hint must be there before the hold ends.
+#[tokio::test]
+async fn a_held_digest_run_is_announced_on_the_mac_sync_stream() {
+    let Some(fx) = fixture("digest-mac-hint", true).await else {
+        return;
+    };
+    let run_id = fx.refresh().await;
+    // The batch `/v2/chat/sync` serves to the owner's devices.
+    let batch = chat_store::sync_batch(&fx.pool, &fx.owner.account_id, 0, Some(1000))
+        .await
+        .unwrap();
+    let hint = batch
+        .events
+        .iter()
+        .find(|event| event.event_type == "digest.run_requested")
+        .expect("the held run is announced");
+    assert!(!hint.critical, "older clients can skip the hint");
+    assert_eq!(hint.payload["runId"], run_id.as_str());
+    assert_eq!(
+        hint.payload["sessionId"],
+        format!("digest:{}", fx.owner.account_id)
+    );
+    let claimed = fx.mac_claim(&run_id, uuid::Uuid::new_v4()).await;
+    assert_eq!(
+        claimed["acquired"], true,
+        "the announced run is the Mac's to claim"
+    );
+    assert_eq!(fx.run_state(&run_id).await.1, "desktop");
+    fx.finish().await;
+}
+
 #[tokio::test]
 async fn the_cloud_runs_the_digest_once_when_no_mac_claims_it() {
     let Some(fx) = fixture("digest-mac-silent", true).await else {

@@ -2,6 +2,7 @@ import type { CloudSyncEvent, CloudSyncResponse } from './authClient';
 import { normalizeCloudMessageSnapshot } from './cloudMessageSnapshot';
 import { chatSyncSessionTitle, cloudMessageFromChatSync, directSessionId, conversationPeer } from './chatSyncMapping';
 import { ChatSyncState } from './chatSyncState';
+import { ACCOUNT_HINT_EVENT_TYPES } from './accountHintEvents';
 import { requireCloudSessionVisibility } from './cloudSessionListClient';
 import type { ChatSyncBootstrapResponse, ChatSyncConversation, ChatSyncEvent, ChatSyncMessage, ChatSyncPreferences, ChatSyncSyncResponse } from './chatSyncTypes';
 
@@ -294,6 +295,7 @@ export class ChatSyncSyncClient {
         },
       },
     } satisfies CloudSyncEvent : null;
+    if (ACCOUNT_HINT_EVENT_TYPES.has(event.type)) return [{ ...base, eventType: event.type, payload: event.payload }];
     if (event.type === 'call.created' || event.type === 'call.updated') {
       return [{
         ...base,

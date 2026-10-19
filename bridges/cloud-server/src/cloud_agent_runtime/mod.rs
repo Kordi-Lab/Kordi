@@ -6,6 +6,7 @@ pub mod provider_auth;
 mod provider_auth_intent;
 mod provider_login;
 pub mod routes;
+pub mod run_locks;
 pub mod runs;
 pub mod sandboxes;
 mod shared_threads;

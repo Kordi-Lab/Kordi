@@ -17,18 +17,17 @@ use tokio::sync::Mutex;
 
 use super::super::{
     cancel_turn_by_id, hosted_provider_auth::InheritedHostedAuth, message_execution,
-    turn_snapshot_by_id, DesktopBackgroundFollowUp, DesktopChatManager, DesktopChatMessageRoute,
-    DesktopChatTurnSnapshot,
+    turn_snapshot_by_id, DesktopChatManager, DesktopChatMessageRoute, DesktopChatTurnSnapshot,
 };
 use super::follow_up;
 
 const FOLLOW_UP_POLL: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Debug)]
-struct ManagedTask {
-    session_id: String,
-    turn_id: String,
-    title: String,
+pub(super) struct ManagedTask {
+    pub(super) session_id: String,
+    pub(super) turn_id: String,
+    pub(super) title: String,
 }
 
 #[derive(Clone)]
@@ -253,18 +252,15 @@ impl ManagedChildAgentRunner {
         let turn = message_execution::start_message(&self.manager, input)
             .await
             .map_err(anyhow::Error::msg)?;
-        follow_up::expose_turn(
+        let origin = follow_up::origin(
             &self.manager,
-            &turn.id,
-            DesktopBackgroundFollowUp {
-                id,
-                session_id: task.session_id.clone(),
-                parent_request_id: self.parent_request_id.clone(),
-                title: task.title.clone(),
-                status: status.to_string(),
-            },
+            id,
+            task,
+            self.parent_request_id.clone(),
+            status,
         )
         .await;
+        follow_up::expose_turn(&self.manager, &turn.id, origin).await;
         Ok(Some(turn))
     }
 

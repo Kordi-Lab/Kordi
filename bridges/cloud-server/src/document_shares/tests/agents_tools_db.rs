@@ -312,7 +312,7 @@ async fn edit_document_is_refused_when_the_requester_does_not_own_the_agent() {
 }
 
 #[tokio::test]
-async fn chat_runs_read_documents_of_their_session_and_never_edit() {
+async fn a_members_chat_run_reads_documents_of_its_session_and_never_edits() {
     let Some(f) = fixture().await else { return };
     let state = state(&f).await;
     let (session_id,): (String,) = query_as(
@@ -327,19 +327,20 @@ async fn chat_runs_read_documents_of_their_session_and_never_edit() {
     .unwrap();
     let insert_run = |session: String| {
         let run_id = format!("car_{}", Uuid::new_v4().simple());
-        let (pool, owner) = (f.pool.clone(), f.owner.clone());
+        let (pool, owner, member) = (f.pool.clone(), f.owner.clone(), f.member.clone());
         async move {
             let now = Utc::now().to_rfc3339();
             query(
                 "INSERT INTO cloud_agent_fallback_runs (run_id, idempotency_key, request_message_id, \
                  session_id, owner_account_id, requester_account_id, status, prompt, created_at, \
-                 updated_at, run_trigger) VALUES ($1, $1, $2, $3, $4, $4, 'queued', 'Hello', $5, $5, \
+                 updated_at, run_trigger) VALUES ($1, $1, $2, $3, $4, $5, 'queued', 'Hello', $6, $6, \
                  'person_started')",
             )
             .bind(&run_id)
             .bind(format!("msg_{run_id}"))
             .bind(session)
             .bind(owner)
+            .bind(member)
             .bind(now)
             .execute(&pool)
             .await

@@ -177,6 +177,23 @@ pub(crate) async fn attach_run_documents(
     Ok(request)
 }
 
+/// The body and attachments a reply was stored with, for the route that
+/// answers the Mac with it. Storing adds the run's documents, so echoing the
+/// sent body would leave the Mac's copy without them.
+pub(crate) fn stored_reply_fields(content: &Value, sent_body: &str) -> (String, Option<Value>) {
+    let body = content
+        .pointer("/blocks/0/text")
+        .and_then(Value::as_str)
+        .unwrap_or(sent_body)
+        .to_string();
+    let attachments = content
+        .get("legacy_attachments")
+        .and_then(Value::as_array)
+        .filter(|items| !items.is_empty())
+        .map(|items| Value::Array(items.clone()));
+    (body, attachments)
+}
+
 /// A completed follow-up reply of a background task: the agent's group
 /// message whose request id is a follow-up id.
 fn is_follow_up_reply(content: &Value, sender_account_id: &str) -> bool {

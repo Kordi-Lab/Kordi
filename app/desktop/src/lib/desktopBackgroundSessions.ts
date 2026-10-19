@@ -20,6 +20,8 @@ export function startDesktopSharedChatMessage(
   visibleTaskRecords: DesktopVisibleTaskRecord[] = [],
   scheduledTaskSessionId: string | null = null,
   executionLeaseDeadlineMs: number | null = null,
+  /** Where a background follow-up of this request publishes its reply. */
+  backgroundFollowUpRoute: unknown = null,
 ) {
   return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_start_shared_message', {
     requestId,
@@ -31,7 +33,12 @@ export function startDesktopSharedChatMessage(
     visibleTaskRecords,
     scheduledTaskSessionId,
     executionLeaseDeadlineMs,
+    backgroundFollowUpRoute,
   });
+}
+
+export function markDesktopBackgroundFollowUpPublished(turnId: string) {
+  return invokeDesktop<boolean>('desktop_chat_mark_background_follow_up_published', { turnId });
 }
 
 export function fetchDesktopSubsessionIds() {

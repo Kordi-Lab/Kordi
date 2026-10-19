@@ -30,6 +30,9 @@ pub(super) use ready::ready;
 #[path = "desktop_interrupted.rs"]
 mod interrupted;
 pub(super) use interrupted::interrupted;
+#[path = "desktop_release.rs"]
+mod release;
+pub(super) use release::release;
 
 pub(super) async fn prefer_ready_desktop(
     pool: &PgPool,
@@ -204,9 +207,10 @@ pub(super) async fn admit(
     Path(run_id): Path<String>,
     Json(input): Json<RenewalInput>,
 ) -> Response {
+    let started = std::time::Instant::now();
     let result = async {
         let mut tx = state.db_pool().begin().await?;
-        query("SELECT pg_advisory_xact_lock(81208411)").execute(&mut *tx).await?;
+        super::run_locks::lock_run(&mut tx, &run_id).await?;
         let owned: Option<(String,String,String)> = query_as("SELECT session_id,execution_agent_id,created_at FROM cloud_agent_fallback_runs WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='desktop' AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() FOR UPDATE")
             .bind(&run_id).bind(executor(&session,input.claim_id)).fetch_optional(&mut *tx).await?;
         let Some((session_id,agent_id,created_at))=owned else { return Ok::<_,sqlx_core::Error>(None); };
@@ -218,6 +222,13 @@ pub(super) async fn admit(
         if !blocked.0 { super::subsession_execution::mark_active(state.db_pool(),&run_id,"desktop").await.map_err(|e|sqlx_core::Error::Protocol(e.to_string()))?; }
         Ok(Some((!blocked.0, cancel_requested)))
     }.await;
+    let outcome = match &result {
+        Ok(Some((true, _))) => "admitted",
+        Ok(Some((false, _))) => "waiting",
+        Ok(None) => "lease_lost",
+        Err(_) => "error",
+    };
+    super::run_locks::log_op("desktop_admit", Some(&run_id), outcome, started);
     match result {
         Ok(Some((admitted, cancel_requested))) => {
             Json(json!({"admitted":admitted,"cancelRequested":cancel_requested})).into_response()
@@ -285,11 +296,25 @@ pub(super) struct ProgressInput {
 }
 
 pub(super) async fn progress(
+    state: State<Arc<ServerState>>,
+    session: Extension<CloudSession>,
+    Path(run_id): Path<String>,
+    input: Json<ProgressInput>,
+) -> Response {
+    let started = std::time::Instant::now();
+    let response = publish_progress(state, session, &run_id, input).await;
+    let outcome = response.status();
+    super::run_locks::log_op("desktop_progress", Some(&run_id), outcome.as_str(), started);
+    response
+}
+
+async fn publish_progress(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
-    Path(run_id): Path<String>,
+    run_id: &str,
     Json(input): Json<ProgressInput>,
 ) -> Response {
+    let run_id = run_id.to_string();
     let parts = input.body.split_once(':').filter(|(prefix, body)| {
         matches!(*prefix, "kordi-cloud-agent-response" | "kordi-cloud-group")
             && body.len() <= 1_048_576
@@ -380,7 +405,11 @@ pub(super) async fn progress(
         query("UPDATE cloud_agent_fallback_runs SET status=$2, response_message_id=$3, updated_at=$4, completed_at=CASE WHEN $2 IN ('completed','failed','cancelled') THEN $4 ELSE NULL END WHERE run_id=$1")
             .bind(&run_id).bind(phase).bind(message.id.to_string()).bind(Utc::now().to_rfc3339()).execute(&mut *tx).await?;
         tx.commit().await?;
-        Ok(Some(json!({"messageId":message.id,"clientMessageId":message.client_message_id,"conversationId":message.conversation_id,"conversationSequence":message.conversation_sequence,"version":message.version,"fromAccountId":session.account_id,"toAccountId":conversation.1,"sessionId":session_id,"body":input.body,"createdAt":message.created_at,"deliveredAt":null,"readAt":null})))
+        // Answer with the stored reply, which carries the run's documents.
+        let (body, attachments) = crate::document_shares::agents::create::reply::stored_reply_fields(&message.content, &input.body);
+        let mut value = json!({"messageId":message.id,"clientMessageId":message.client_message_id,"conversationId":message.conversation_id,"conversationSequence":message.conversation_sequence,"version":message.version,"fromAccountId":session.account_id,"toAccountId":conversation.1,"sessionId":session_id,"body":body,"createdAt":message.created_at,"deliveredAt":null,"readAt":null});
+        if let Some(attachments) = attachments { value["attachments"] = attachments; }
+        Ok(Some(value))
     }.await;
     match result {
         Ok(Some(value)) => {

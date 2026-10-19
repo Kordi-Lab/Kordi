@@ -15,7 +15,14 @@ import type {
 } from '@/kordi-app/types';
 import { canonicalCallActivityIdentity } from '@/features/canonical/readModel/callActivity';
 import { createCloudCanonicalStateUpdates } from './cloudCanonicalStateUpdates';
-import type { CanonicalSessionStateSetter } from './cloudGroupControlContext';
+import type {
+  CanonicalSessionStateSetter,
+  CloudGroupAgentRuntime,
+} from './cloudGroupControlContext';
+import type { CloudGroupAgentPolicy } from './cloudGroupAgentControl.types';
+import { registerCloudBackgroundFollowUpHandler } from './cloudBackgroundFollowUps';
+import { publishCloudGroupBackgroundFollowUp } from './cloudGroupBackgroundFollowUp';
+import { loadSession } from './session';
 import type {
   CloudAccount,
   CloudAuthClient,
@@ -279,6 +286,74 @@ export function useCloudGroupControlApplication({
     },
     [flushCanonicalState, publishCanonicalState],
   );
+  // Built per use, so the refs are read when the work runs, not during render.
+  const agentRuntime = useCallback((): CloudGroupAgentRuntime => ({
+    client,
+    turnCoordinator,
+    ready: runtimeReady,
+    messageIndex: () => messageIndexRef.current,
+    sessionActivity: () => sessionActivityRef.current,
+    setSessionActivity,
+    setLocalTurns,
+    processedMentionIds: processedRequestIdsRef.current,
+    turnIdsByRequestId: turnIdsByRequestIdRef.current,
+    agentDefinitionsById,
+    routesBySessionId,
+    defaultRoute,
+    mergeMessage,
+    syncDiff,
+    reportFailure: (kind, error) => {
+      reportWarning(
+        kind === 'no-provider-notice'
+          ? '[cloud-group-agent-mention] no-provider notice failed'
+          : '[cloud-group-agent-mention] local agent response failed',
+        error,
+      );
+    },
+  }), [
+    agentDefinitionsById,
+    client,
+    defaultRoute,
+    mergeMessage,
+    messageIndexRef,
+    processedRequestIdsRef,
+    reportWarning,
+    routesBySessionId,
+    runtimeReady,
+    sessionActivityRef,
+    setLocalTurns,
+    setSessionActivity,
+    syncDiff,
+    turnCoordinator,
+    turnIdsByRequestIdRef,
+  ]);
+  const agentPolicy = useMemo<CloudGroupAgentPolicy>(() => ({
+    isRecentMention: isRecentCloudAgentMention,
+    messageTargetsLocalAgent: cloudGroupMessageTargetsLocalAgent,
+    responseExists: cloudGroupAgentResponseExistsForRequest,
+    fallbackRunOwnsRequest: cloudFallbackRunExecutingRequest,
+    nativeContext: cloudGroupNativeContextMessages,
+    waitForTurn: waitForCloudAgentTurn,
+    publishActivity: (input) => publishDerivedCloudSessionActivity({
+      ...input,
+      reportWarning,
+    }),
+  }), [reportWarning]);
+  // Background follow-ups publish from the route their parent registered, so
+  // a reloaded webview still delivers them.
+  useEffect(() => {
+    if (!account) return;
+    return registerCloudBackgroundFollowUpHandler('group', async (route, reply) => {
+      const current = await loadSession();
+      if (!current?.token || current.accountId !== account.accountId || route.accountId !== account.accountId) return false;
+      await publishCloudGroupBackgroundFollowUp(
+        { account, runtime: agentRuntime(), policy: agentPolicy, token: current.token },
+        route,
+        reply,
+      );
+      return true;
+    });
+  }, [account, agentPolicy, agentRuntime]);
   const apply = useCallback(async (
     cloudMessage: CloudMessage,
     envelope: CloudGroupControlEnvelope,
@@ -356,30 +431,7 @@ export function useCloudGroupControlApplication({
       setCanonicalState: options.deferPublish
         ? publishCanonicalState
         : publishCanonicalStateImmediately,
-      runtime: {
-        client,
-        turnCoordinator,
-        ready: runtimeReady,
-        messageIndex: () => messageIndexRef.current,
-        sessionActivity: () => sessionActivityRef.current,
-        setSessionActivity,
-        setLocalTurns,
-        processedMentionIds: processedRequestIdsRef.current,
-        turnIdsByRequestId: turnIdsByRequestIdRef.current,
-        agentDefinitionsById,
-        routesBySessionId,
-        defaultRoute,
-        mergeMessage,
-        syncDiff,
-        reportFailure: (kind, error) => {
-          reportWarning(
-            kind === 'no-provider-notice'
-              ? '[cloud-group-agent-mention] no-provider notice failed'
-              : '[cloud-group-agent-mention] local agent response failed',
-            error,
-          );
-        },
-      },
+      runtime: agentRuntime(),
       stateOps: {
         cleanText: cleanCloudText,
         upsertIdentity: upsertCanonicalIdentityIntoLocalState,
@@ -388,41 +440,18 @@ export function useCloudGroupControlApplication({
         removeTimeoutPlaceholder:
           removeCloudGroupTimeoutPlaceholderForTerminalResponse,
       },
-      policy: {
-        isRecentMention: isRecentCloudAgentMention,
-        messageTargetsLocalAgent: cloudGroupMessageTargetsLocalAgent,
-        responseExists: cloudGroupAgentResponseExistsForRequest,
-        fallbackRunOwnsRequest: cloudFallbackRunExecutingRequest,
-        nativeContext: cloudGroupNativeContextMessages,
-        waitForTurn: waitForCloudAgentTurn,
-        publishActivity: (input) => publishDerivedCloudSessionActivity({
-          ...input,
-          reportWarning,
-        }),
-      },
+      policy: agentPolicy,
     });
   }, [
     account,
-    agentDefinitionsById,
+    agentPolicy,
+    agentRuntime,
     canonicalStateRef,
     client,
-    defaultRoute,
-    runtimeReady,
-    mergeMessage,
-    messageIndexRef,
-    processedRequestIdsRef,
     profileCacheRef,
     publishCanonicalState,
     publishCanonicalStateImmediately,
-    reportWarning,
-    routesBySessionId,
-    sessionActivityRef,
     setCanonicalState,
-    setLocalTurns,
-    setSessionActivity,
-    syncDiff,
-    turnCoordinator,
-    turnIdsByRequestIdRef,
   ]);
   return { apply, flushCanonicalState };
 }

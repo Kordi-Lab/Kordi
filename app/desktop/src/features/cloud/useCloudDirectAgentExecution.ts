@@ -38,7 +38,11 @@ import {
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
 import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
-import { registerCloudBackgroundFollowUpPublisher } from './cloudBackgroundFollowUps';
+import {
+  registerCloudBackgroundFollowUpHandler,
+  type CloudDirectBackgroundFollowUpRoute,
+} from './cloudBackgroundFollowUps';
+import { publishCloudDirectBackgroundFollowUp } from './cloudDirectBackgroundFollowUp';
 import {
   cloudAgentRuntimeSessionId,
 } from './cloudAgentRuntime';
@@ -110,6 +114,18 @@ export function useCloudDirectAgentExecution({
   reportWarning: (message: string, error: unknown) => void;
 }) {
   const voiceGate = useVoiceAgentRequestGate();
+  // Background follow-ups publish from the route their parent registered, so
+  // a reloaded webview still delivers them.
+  useEffect(() => {
+    const accountId = account?.accountId;
+    if (!accountId) return;
+    return registerCloudBackgroundFollowUpHandler('direct', async (route, reply) => {
+      const current = await loadSession();
+      if (!current?.token || current.accountId !== accountId || route.accountId !== accountId) return false;
+      await publishCloudDirectBackgroundFollowUp({ client, token: current.token, mergeMessage, syncMessages }, route, reply);
+      return true;
+    });
+  }, [account?.accountId, client, mergeMessage, syncMessages]);
   // Comment requests in shared documents run on this Mac like chat mentions.
   useDocumentAgentRequests({
     account, client, agentDefinitionsById: cloudAgentDefinitionsById,
@@ -273,31 +289,19 @@ export function useCloudDirectAgentExecution({
               visibleTaskRecords,
               activitySessionId,
               lease.deadline,
+              {
+                kind: 'direct',
+                accountId: account.accountId,
+                peerId,
+                sessionId: message.sessionId ?? null,
+                requestMessageId: message.messageId,
+                messageAction: replyMessageAction ?? null,
+              } satisfies CloudDirectBackgroundFollowUpRoute,
             );
             lease.attach(startedTurn.id);
             lease.onStopRequested(() => { void cancelDesktopChatTurn(startedTurn.id).catch(() => undefined); });
             rememberLocalTurn(startedTurn);
             turnIdsByRequestIdRef.current.set(message.messageId, startedTurn.id);
-            registerCloudBackgroundFollowUpPublisher(message.messageId, async (reply) => {
-              const current = await loadSession();
-              if (!current?.token || current.accountId !== account.accountId) return;
-              const followUpResponse = await client.sendMessage(
-                current.token,
-                peerId,
-                encodeCloudAgentResponse({
-                  requestId: reply.requestId,
-                  text: reply.text,
-                  deliveryState: reply.deliveryState,
-                  messageAction: replyMessageAction,
-                }),
-                {
-                  sessionId: message.sessionId ?? null,
-                  clientMessageId: `shared:${message.messageId}:${reply.requestId}`,
-                },
-              );
-              mergeMessage(followUpResponse);
-              void syncMessages();
-            });
             progress.update(startedTurn);
             finalTurn = startedTurn.completed
               ? startedTurn
