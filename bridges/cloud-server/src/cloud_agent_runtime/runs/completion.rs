@@ -1,7 +1,6 @@
 //! Completion/failure DTOs and terminal Cloud run state transitions.
 
 use chrono::Utc;
-use serde::Deserialize;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
@@ -21,55 +20,8 @@ use super::{RunError, RunResult};
 
 type FailedRunRow = (String, String, String, String, Option<String>);
 
-#[derive(Debug, Deserialize)]
-pub struct CompleteRunRequest {
-    #[serde(rename = "runnerId")]
-    pub runner_id: String,
-    #[serde(rename = "responseText")]
-    pub response_text: String,
-    #[serde(rename = "ompState", default)]
-    pub omp_state: Option<super::omp_state::OmpState>,
-}
-
-impl CompleteRunRequest {
-    pub fn runner_id(&self) -> Option<String> {
-        let trimmed = self.runner_id.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct FailRunRequest {
-    #[serde(rename = "runnerId")]
-    pub runner_id: String,
-    #[serde(rename = "errorCode")]
-    pub error_code: String,
-    pub message: String,
-}
-
-impl FailRunRequest {
-    pub fn runner_id(&self) -> Option<String> {
-        let trimmed = self.runner_id.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    }
-
-    pub fn error_code(&self) -> String {
-        let trimmed = self.error_code.trim();
-        if trimmed.is_empty() {
-            "runner_error".to_string()
-        } else {
-            trimmed.to_string()
-        }
-    }
-}
+mod requests;
+pub use requests::{CompleteRunRequest, FailRunRequest};
 
 fn cloud_agent_failure_response_text(error_code: &str, is_support_agent: bool) -> &'static str {
     match error_code {
