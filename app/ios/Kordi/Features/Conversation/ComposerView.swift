@@ -193,6 +193,8 @@ struct ComposerView: View {
     @State private var textSelection = ComposerTextSelection(location: 0, length: 0)
     @State private var keyboardSurfaceHeight: CGFloat = 0
     @State private var composerContentHeight: CGFloat = 0
+    @State private var modelPickerPage: AgentModelPickerPage = .models
+    @Environment(\.kordiChatTheme) private var composerChatTheme
     @State private var messageEditorHeight: CGFloat = 44
     @State private var isDraftPanePresented = false
     @State private var keyboardFocusRequest = 0
@@ -361,9 +363,11 @@ struct ComposerView: View {
             if isAgentModelPickerPresented {
                 AgentModelPicker(
                     conversation: conversation,
-                    onDismiss: dismissAgentModelPicker
+                    onDismiss: dismissAgentModelPicker,
+                    initialPage: modelPickerPage
                 )
-                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.horizontal, 16)
                 .offset(y: -composerContentHeight - 8)
                 .transition(mentionPickerTransition)
                 .zIndex(10)
@@ -501,27 +505,25 @@ struct ComposerView: View {
                         .padding(.bottom, 3)
                 }
         } else {
-            messageEditor
-                .padding(.horizontal, 4)
-                .padding(.vertical, 3)
-                .animation(messageFieldAnimation) { content in
-                    content.frame(height: messageFieldHeight, alignment: .bottom)
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    HStack(spacing: 0) {
-                        if editingMessage == nil {
-                            if conversation.subsessionId == nil { expressivePickerButton }
-                        }
-                        sendButton
+            VStack(spacing: 0) {
+                messageEditor
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 3)
+                    .animation(messageFieldAnimation) { content in
+                        content.frame(height: messageFieldHeight, alignment: .bottom)
                     }
-                    .padding(.bottom, 3)
-                    .transaction { $0.disablesAnimations = true }
-                }
-                .overlay(alignment: .topTrailing) {
-                    if showsDraftPaneButton {
-                        draftPaneButton
+                    .overlay(alignment: .topTrailing) {
+                        if showsDraftPaneButton { draftPaneButton }
                     }
+                HStack(spacing: 2) {
+                    if editingMessage == nil && conversation.subsessionId == nil { expressivePickerButton }
+                    Spacer(minLength: 0)
+                    if editingMessage == nil && model.canChangeRuntimeRouting(for: conversation) { modelEffortPill }
+                    sendButton
                 }
+                .padding(.leading, 6)
+                .padding(.bottom, 3)
+            }
         }
     }
 
@@ -591,8 +593,7 @@ struct ComposerView: View {
             onRequestExpressiveMediaImport: requestExpressiveMediaImport,
             measuredHeight: $messageEditorHeight,
             draftButtonThreshold: draftPaneExpansionThreshold,
-            trailingExclusionWidth: ComposerTextExclusionLayout.defaultTrailingWidth
-                + (showsStopBesideSend ? ComposerTextExclusionLayout.stopControlWidth : 0),
+            trailingExclusionWidth: showsDraftPaneButton ? 44 : 0,
             accessibilityLabel: editingMessage == nil
                 ? "Message \(destinationName)"
                 : "Edit message"
@@ -1120,11 +1121,51 @@ struct ComposerView: View {
         )
     }
 
+    private var modelEffortPill: some View {
+        let route = model.runtimeRouting(for: conversation)
+        let unavailable = route.defaultAuthChoice?.nonEmpty.map { choice in
+            !model.authenticationSnapshots(for: route.defaultAuthProvider ?? "").contains { $0.authChoice == choice }
+        } ?? false
+        return HStack(spacing: 0) {
+            Button {
+                showAgentModelPicker()
+            } label: {
+                Text(unavailable ? "Account unavailable" : AgentModelPresentation.name(route.defaultModel ?? ""))
+                    .font(.caption2.weight(.medium)).lineLimit(1)
+                    .truncationMode(.middle).frame(maxWidth: 130)
+                    .padding(.leading, 9).padding(.trailing, 4).frame(minHeight: 32)
+            }
+            .accessibilityLabel("Select model")
+            .accessibilityValue(unavailable ? "Account unavailable" : AgentModelPresentation.name(route.defaultModel ?? ""))
+            .accessibilityIdentifier("composer-model-picker")
+            Button {
+                dismissExpressivePicker()
+                isFocused = false
+                modelPickerPage = .effort
+                isAgentModelPickerPresented = true
+            } label: {
+                HStack(spacing: 3) {
+                    Text(AgentModelPresentation.effort(route.thinking ?? "default")).lineLimit(1)
+                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
+                }
+                .font(.caption2).foregroundStyle(.secondary)
+                .padding(.leading, 4).padding(.trailing, 8).frame(minHeight: 32)
+            }
+            .accessibilityLabel("Adjust effort")
+            .accessibilityValue(AgentModelPresentation.effort(route.thinking ?? "default"))
+            .accessibilityIdentifier("composer-effort-picker")
+        }
+        .buttonStyle(.plain)
+        .background(composerChatTheme.accent.opacity(0.08), in: Capsule())
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
     private func dismissAgentModelPicker() {
         isAgentModelPickerPresented = false
     }
 
     private func showAgentModelPicker() {
+        modelPickerPage = .models
         dismissExpressivePicker()
         isFocused = false
         isAgentModelPickerPresented = true

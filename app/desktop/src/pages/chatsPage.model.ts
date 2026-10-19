@@ -1,3 +1,4 @@
+import { modelDisplayName } from '@/lib/modelDisplayName';
 import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
 import type { ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import { matchingComposerAccountOption } from '@/kordi-app/components/composerModelSelection';
@@ -402,7 +403,7 @@ export function clampChatSplitFraction(value: number) {
 export function collaborationModelDisplayName(modelValue?: string | null, modelOptions?: ComposerModelOption[]) {
   if (!modelValue?.trim()) return 'model default';
   const option = modelOptions?.find((candidate) => candidate.value === modelValue);
-  return option?.label ?? modelValue;
+  return modelDisplayName(modelValue, option?.label);
 }
 
 export function collaborationThinkingDisplayName(value?: string | null) {

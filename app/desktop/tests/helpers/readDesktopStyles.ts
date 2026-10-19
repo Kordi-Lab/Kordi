@@ -8,6 +8,7 @@ const SHELL_STYLE_FILES = [
   '../../src/styles/shell-inspector.css',
   '../../src/styles/shell-glass.css',
   '../../src/styles/shell-popovers.css',
+  '../../src/styles/model-effort-picker.css',
   '../../src/styles/shell-bubbles.css',
   '../../src/styles/shell-transcript-motion.css',
   '../../src/styles/shell-transcript.css',

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ComposerModelControls } from '../../src/kordi-app/components/composer';
 import type { ComposerSelectorType } from '../../src/kordi-app/types';
@@ -16,10 +16,14 @@ const models = [
 ];
 
 function Fixture() {
-  const compact = new URLSearchParams(location.search).has('compact');
+  const params = new URLSearchParams(location.search);
+  const compact = params.has('compact');
+  const dark = params.get('theme') === 'dark';
+  const palette = params.get('palette') ?? 'sand';
+  useEffect(() => { document.body.dataset.kordiChatTheme = palette; }, [palette]);
   const [selection, setSelection] = useState({ mode: 'agent', model: models[0].value, thinking: 'medium', authProvider: 'openai', authChoice: 'work' });
   const [openSelector, setOpenSelector] = useState<{ scope: 'chat'; type: ComposerSelectorType } | null>(null);
-  return <main className="kordi-app theme-light" style={{ minHeight: '100vh', padding: 24, background: 'var(--utility-background)', color: 'var(--utility-foreground)' }}>
+  return <main className={`kordi-app ${dark ? 'theme-dark' : 'theme-light'}`} style={{ minHeight: '100vh', padding: 24, background: 'var(--utility-background)', color: 'var(--utility-foreground)' }}>
     <div style={{ position: 'fixed', bottom: 24, left: 24, right: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
       <ComposerModelControls scope="chat" compact={compact} selection={selection} openSelector={openSelector}
         authLabel="Synthetic account" authOptions={[]} onSelectAuthChoice={() => undefined}

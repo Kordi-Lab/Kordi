@@ -1,3 +1,4 @@
+import { modelDisplayName } from '@/lib/modelDisplayName';
 import { useCallback, useEffect, useMemo } from 'react';
 
 import {
@@ -222,7 +223,7 @@ export function useComposerViewModel({
       if (!options.some((existing) => existing.value === option.value)) options.push(option);
     }
 
-    return options;
+    return options.map((option) => ({ ...option, label: modelDisplayName(option.value, option.label) }));
   }, [authDisplayProviders, composerSelections.chat.model, composerSelections.project.model, desktopChatState?.modelOptions, hostedAccounts, isNativeShell]);
 
   const composerProviderOptions = useMemo<ComposerProviderOption[]>(() => {

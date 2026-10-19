@@ -48,7 +48,7 @@ type RunLocalSlashCommandArgs = Pick<
   rawText: string;
   scope: ComposerScope;
   appendDesktopSystemMessage: (text: string) => void;
-  selectComposerValue: (scope: ComposerScope, type: 'model', value: string) => Promise<void>;
+  selectComposerValue: (scope: ComposerScope, type: 'model', value: string) => Promise<void | boolean>;
 };
 
 export function appendDesktopSystemMessageToState(

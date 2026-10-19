@@ -4,6 +4,16 @@ struct AgentModelPicker: View {
     @EnvironmentObject private var model: AppModel
     let conversation: ConversationSummary
     let onDismiss: () -> Void
+    var initialPage: AgentModelPickerPage = .models
+    @Environment(\.kordiChatTheme) private var chatTheme
+    @State private var page: AgentModelPickerPage = .models
+    @State private var search = ""
+    @State private var showsAllModels = false
+    @State private var showsAccountConfirmation = false
+    @State private var dismissAfterConfirmation = false
+    @State private var saveError: String?
+    @State private var retrySelection: AgentModelRouteSelection?
+
     @State private var selectedProvider = ""
     @State private var selectedAuthChoice = ""
     @State private var selectedModel = ""
@@ -74,214 +84,267 @@ struct AgentModelPicker: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("AGENT MODEL")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-
-                Spacer(minLength: 8)
-
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 32, height: 32)
+        VStack(spacing: 6) {
+            if page == .effort {
+                effortControl
+            } else {
+                HStack {
+                    if page != .models {
+                        Button { page = .models } label: { Image(systemName: "chevron.left") }
+                            .accessibilityLabel("Back to models")
+                    }
+                    Text(page == .accounts ? "Choose account" : "Select model")
+                        .font(.caption.weight(.semibold))
+                    Spacer()
+                    Button(action: onDismiss) { Image(systemName: "xmark") }
+                        .accessibilityLabel("Close model picker")
                 }
                 .buttonStyle(.plain)
-                .disabled(isSaving)
-                .accessibilityLabel("Close agent model")
+                .frame(minHeight: 28)
+                .padding(.horizontal, 6)
+                if page == .accounts { accountsMenu } else { modelsMenu }
             }
-            .padding(.leading, 12)
-            .padding(.trailing, 6)
-            .padding(.top, 6)
-
-            VStack(spacing: 0) {
-                AgentModelMenuRow(
-                    title: "Provider",
-                    options: providers,
-                    selection: $selectedProvider,
-                    isEnabled: canEdit && !providers.isEmpty && !isTesting,
-                    optionLabel: providerLabel
-                )
-
-                Divider()
-
-                AgentModelMenuRow(
-                    title: "Account",
-                    options: accountChoices,
-                    selection: $selectedAuthChoice,
-                    isEnabled: canEdit && !accountChoices.isEmpty && !isTesting,
-                    optionLabel: accountLabel
-                )
-
-                Divider()
-
-                AgentModelMenuRow(
-                    title: "Model",
-                    options: routes,
-                    selection: $selectedModel,
-                    isEnabled: canEdit && !selectedProvider.isEmpty && !routes.isEmpty && !isTesting,
-                    optionLabel: modelLabel
-                )
-
-                Divider()
-
-                AgentModelMenuRow(
-                    title: "Thinking level",
-                    options: selectedProvider.isEmpty ? [] : thinkingLevels,
-                    selection: $selectedThinking,
-                    isEnabled: canEdit && !selectedProvider.isEmpty && !isTesting,
-                    optionLabel: thinkingLabel
-                )
-            }
-            .padding(.horizontal, 12)
-
-            if selectedProvider == "custom" || showsManualModel {
-                TextField("Model ID", text: $manualModelID)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
-                    .padding(.horizontal, 12)
-                    .onChange(of: manualModelID) { _, value in
-                        if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            selectedModel = "\(selectedProvider)/\(value.trimmingCharacters(in: .whitespacesAndNewlines))"
-                        }
-                    }
-            } else {
-                Button("Enter another model ID") { showsManualModel = true }
-                    .font(.caption)
-                    .padding(.horizontal, 12)
-            }
-
-            if !canEdit {
-                Label("Only the agent owner can change this model route.", systemImage: "lock")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-            }
-            if selectedAccountIsUnavailable {
-                Label("Account unavailable. Choose another saved account or reconnect it in Settings → Authentication.", systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 12)
-                    .accessibilityIdentifier("agent-model-account-unavailable")
-            }
-
-            if isTesting {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Testing route through OMP…")
-                }
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("agent-model-route-test-pending")
-            } else if let routeTestResult {
-                // Every value shown here comes from the server-confirmed result.
-                VStack(alignment: .leading, spacing: 5) {
-                    Label("Route confirmed", systemImage: "checkmark.circle.fill")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.green)
-                    Text("Runner \(routeTestResult.runner) · \(routeTestResult.accountLabel) · \(modelLabel(routeTestResult.model))")
-                        .font(.footnote)
-                    Text(routeTestResult.response)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("agent-model-route-test-result")
-            } else if let error = model.providerAuthenticationErrorMessage?.nonEmpty,
-                      error != OMPBackendSupport.unavailableMessage {
-                Label(error, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 12)
-            }
-
-            HStack {
-                Button {
-                    testRoute()
-                } label: {
-                    if isTesting {
-                        ProgressView()
-                    } else {
-                        Text("Test route")
+            if let saveError {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(saveError).font(.caption).foregroundStyle(.secondary)
+                    if let retrySelection {
+                        Button("Retry") { apply(retrySelection, dismissAfter: page != .effort) }
                     }
                 }
-                .buttonStyle(.bordered)
-                .frame(minHeight: 44)
-                .disabled(!canEdit || isSaving || isTesting || selectedModel.isEmpty || selectedAuthChoice.isEmpty
-                    || selectedAccountIsUnavailable || model.ompBackendUnavailable)
-                .accessibilityLabel("Test route")
-                .accessibilityIdentifier("agent-model-test-route")
-                Spacer()
-                Button {
-                    save()
-                } label: {
-                    if isSaving {
-                        ProgressView().tint(.white)
-                    } else {
-                        Text("Save")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .frame(minHeight: 44)
-                .disabled(!canEdit || isSaving || isTesting || selectedModel.isEmpty || selectedAuthChoice.isEmpty || selectedAccountIsUnavailable)
-                .accessibilityLabel("Save")
-                .accessibilityIdentifier("agent-model-save")
+                .accessibilityIdentifier("agent-model-save-error")
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
-            Text(model.ompBackendUnavailable
-                ? OMPBackendSupport.unavailableMessage
-                : "Test route runs one short hosted model request and may use provider quota.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-                .accessibilityIdentifier("agent-model-test-route-note")
         }
-        .frame(maxWidth: .infinity)
-        .modifier(ComposerFloatingPanelSurfaceModifier())
-        .onAppear { loadSelection() }
+        .padding(10)
+        .frame(width: page == .effort ? 232 : 288)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15))
+        .overlay { RoundedRectangle(cornerRadius: 15).stroke(chatTheme.accent.opacity(0.15), lineWidth: 0.5) }
+        .tint(chatTheme.accent)
+        .disabled(isSaving || isTesting)
+        .onAppear { loadSelection(); page = initialPage }
+        .onChange(of: initialPage) { _, value in page = value }
         .task {
             if !model.hasLiveOMPProviderCatalog && !model.ompBackendUnavailable {
                 await model.refreshOMPProviderCatalog()
             }
         }
-        .onChange(of: selectedProvider) { _, provider in
-            routeTestResult = nil
-            selectCompatibleModel(for: provider)
-            selectCompatibleAccount(for: provider)
-        }
-        .onChange(of: selectedAuthChoice) { previous, choice in
-            routeTestResult = nil
-            if isCustomProvider, !previous.isEmpty {
-                // A Custom API endpoint serves only the model its account names.
-                manualModelID = ""
-                selectedModel = account(for: choice)?.modelHint?.nonEmpty.map { "\(selectedProvider)/\($0)" } ?? ""
-            } else if !routes.contains(selectedModel) {
-                selectedModel = routes.first ?? ""
-            }
-        }
-        .onChange(of: selectedModel) { _, value in
-            routeTestResult = nil
-            selectedThinking = Self.normalizedThinking(selectedThinking, for: value)
-        }
-        .onChange(of: selectedThinking) { _, _ in routeTestResult = nil }
         .onChange(of: routing) { _, _ in
-            guard !isSaving else { return }
-            loadSelection()
+            if !isSaving && !showsAccountConfirmation { loadSelection() }
         }
         .onChange(of: model.sessionRuntimeRouteRevision) { _, _ in
-            guard !isSaving else { return }
-            loadSelection()
+            if !isSaving && !showsAccountConfirmation { loadSelection() }
         }
+        .confirmationDialog("Change shared account?", isPresented: $showsAccountConfirmation, titleVisibility: .visible) {
+            Button("Change account") { save(dismissAfter: dismissAfterConfirmation, confirmAccountChange: false) }
+            Button("Cancel", role: .cancel) { loadSelection() }
+        } message: {
+            Text("Future agent replies in this conversation will use \(accountLabel(selectedAuthChoice)).")
+        }
+    }
+
+    private var effortControl: some View {
+        VStack(spacing: 4) {
+            HStack {
+                Spacer(minLength: 28)
+                VStack(spacing: 0) {
+                    Text(thinkingLabel(selectedThinking))
+                        .font(.caption.weight(.semibold)).foregroundStyle(chatTheme.accent)
+                    Button { page = .models } label: {
+                        HStack(spacing: 2) {
+                            Text(modelLabel(selectedModel)).lineLimit(1)
+                            Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
+                        }
+                        .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Select model")
+                }
+                .padding(.horizontal, 10).padding(.vertical, 2)
+                .background(chatTheme.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
+                Spacer(minLength: 0)
+                Button {
+                    selectedThinking = "default"
+                    save(dismissAfter: false)
+                } label: {
+                    Image(systemName: "arrow.counterclockwise").font(.caption)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canEdit || selectedAccountIsUnavailable || selectedAuthChoice.isEmpty)
+                .accessibilityLabel("Reset effort to model default")
+            }
+            AgentEffortSlider(
+                value: $selectedThinking,
+                levels: thinkingLevels.filter { $0 != "default" },
+                accent: chatTheme.accent,
+                onCommit: { save(dismissAfter: false) }
+            )
+            .disabled(!canEdit || selectedAccountIsUnavailable || selectedAuthChoice.isEmpty)
+        }
+    }
+
+    private var modelChoices: [String] {
+        providers.flatMap { provider in
+            availableRoutes(for: provider, authChoice: provider == selectedProvider
+                ? selectedAuthChoice : model.authenticationSnapshots(for: provider).first?.authChoice ?? "")
+        }
+    }
+
+    private var visibleModels: [String] {
+        if showsAllModels {
+            return modelChoices.filter { search.isEmpty || modelLabel($0).localizedCaseInsensitiveContains(search) }
+        }
+        var choices = Array(modelChoices.prefix(5))
+        if !selectedModel.isEmpty && !choices.contains(selectedModel) { choices.append(selectedModel) }
+        return choices
+    }
+
+    private var defaultRouteModel: String? {
+        let preferred = model.authenticationProviderDefinitions.first {
+            ProviderAuthenticationDefinition.canonicalID($0.id) == ProviderAuthenticationDefinition.canonicalID(selectedProvider)
+        }?.defaultModel
+        return preferred.map { "\(selectedProvider)/\($0)" }.flatMap { routes.contains($0) ? $0 : nil } ?? routes.first
+    }
+
+    private var modelsMenu: some View {
+        VStack(spacing: 2) {
+            if !canEdit {
+                Label("Only the agent owner can change this model route.", systemImage: "lock")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if selectedAccountIsUnavailable {
+                Button("Account unavailable") { page = .accounts }
+                    .font(.caption).foregroundStyle(.orange)
+                    .accessibilityIdentifier("agent-model-account-unavailable")
+            }
+            if showsAllModels {
+                TextField("Find a model", text: $search).textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+            } else {
+                pickerRow("Default", detail: defaultRouteModel.map(modelLabel)) {
+                    if let defaultRouteModel { selectedThinking = "default"; chooseModel(defaultRouteModel) }
+                }
+                .disabled(!canEdit || defaultRouteModel == nil)
+            }
+            ScrollView {
+                VStack(spacing: 1) {
+                    ForEach(visibleModels, id: \.self) { value in
+                        pickerRow(modelLabel(value), selected: value == selectedModel) { chooseModel(value) }
+                            .disabled(!canEdit)
+                            .accessibilityIdentifier("agent-model-option-\(value)")
+                    }
+                    if visibleModels.isEmpty { Text("No models found").font(.caption).foregroundStyle(.secondary) }
+                }
+            }
+            .frame(height: min(240, max(36, CGFloat(visibleModels.count) * 37)))
+            if !showsAllModels && modelChoices.count > 5 {
+                pickerRow("More models", chevron: true) { showsAllModels = true }
+            }
+            Divider()
+            pickerRow(selectedAccountIsUnavailable ? "Account unavailable" : accountLabel(selectedAuthChoice), chevron: true) { page = .accounts }
+                .accessibilityIdentifier("agent-model-account")
+            if showsAllModels {
+                if showsManualModel || isCustomProvider {
+                    TextField("Model ID", text: $manualModelID)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .textFieldStyle(.roundedBorder).onSubmit { applyManualModel() }
+                    Button("Use model", action: applyManualModel).disabled(!canEdit || manualModelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } else {
+                    Button("Enter another model ID") { showsManualModel = true }.font(.caption)
+                }
+            }
+        }
+    }
+
+    private var accountsMenu: some View {
+        VStack(spacing: 4) {
+            Menu {
+                ForEach(providers, id: \.self) { provider in
+                    Button(providerLabel(provider)) {
+                        selectedProvider = provider
+                        selectedAuthChoice = ""
+                        selectCompatibleModel(for: provider)
+                        routeTestResult = nil
+                    }
+                }
+            } label: { HStack { Text(providerLabel(selectedProvider)); Spacer(); Image(systemName: "chevron.down") } }
+            .font(.caption).padding(8).disabled(!canEdit)
+            ForEach(accountChoices, id: \.self) { choice in
+                pickerRow(accountLabel(choice), selected: choice == selectedAuthChoice) { chooseAccount(choice) }
+                    .disabled(!canEdit || account(for: choice) == nil)
+            }
+            if !accountChoices.contains(where: { account(for: $0) != nil }) {
+                Text("No signed-in account. Connect one in Settings → Authentication.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Divider()
+            Button("Test route", action: testRoute)
+                .font(.caption).frame(minHeight: 36)
+                .disabled(!canEdit || selectedModel.isEmpty || selectedAuthChoice.isEmpty || selectedAccountIsUnavailable || model.ompBackendUnavailable)
+                .accessibilityIdentifier("agent-model-test-route")
+            if isTesting {
+                ProgressView("Testing route…").font(.caption)
+                    .accessibilityIdentifier("agent-model-route-test-pending")
+            } else if let routeTestResult {
+                Text("Runner \(routeTestResult.runner) · \(routeTestResult.accountLabel) · \(modelLabel(routeTestResult.model))\n\(routeTestResult.response)")
+                    .font(.caption).accessibilityIdentifier("agent-model-route-test-result")
+            } else if let error = model.providerAuthenticationErrorMessage?.nonEmpty {
+                Text(error).font(.caption).foregroundStyle(.secondary)
+            }
+            Text("Test route uses provider quota.").font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    private func pickerRow(_ title: String, detail: String? = nil, selected: Bool = false,
+                           chevron: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.caption).foregroundStyle(.primary)
+                    if let detail { Text(detail).font(.caption2).foregroundStyle(.secondary) }
+                }
+                Spacer(minLength: 4)
+                if selected { Image(systemName: "checkmark").font(.caption).foregroundStyle(chatTheme.accent) }
+                if chevron { Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary) }
+            }
+            .padding(.horizontal, 8).frame(minHeight: 36).contentShape(Rectangle())
+            .background(selected ? chatTheme.accent.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func chooseModel(_ value: String) {
+        let provider = value.split(separator: "/", maxSplits: 1).first.map(String.init) ?? selectedProvider
+        let changesProvider = ProviderAuthenticationDefinition.canonicalID(provider) != ProviderAuthenticationDefinition.canonicalID(selectedProvider)
+        selectedModel = value
+        selectedThinking = Self.normalizedThinking(selectedThinking, for: value)
+        routeTestResult = nil
+        if changesProvider {
+            selectedProvider = provider
+            selectedAuthChoice = ""
+            page = .accounts
+        } else if selectedAccountIsUnavailable || selectedAuthChoice.isEmpty {
+            page = .accounts
+        } else {
+            save()
+        }
+    }
+
+    private func chooseAccount(_ choice: String) {
+        selectedAuthChoice = choice
+        routeTestResult = nil
+        if isCustomProvider {
+            manualModelID = ""
+            selectedModel = account(for: choice)?.modelHint?.nonEmpty.map { "\(selectedProvider)/\($0)" } ?? ""
+        } else if !routes.contains(selectedModel) { selectedModel = routes.first ?? "" }
+        selectedThinking = Self.normalizedThinking(selectedThinking, for: selectedModel)
+        save(dismissAfter: false)
+    }
+
+    private func applyManualModel() {
+        guard let value = manualModelID.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty else { return }
+        chooseModel("\(selectedProvider)/\(value)")
     }
 
     private var providers: [String] {
@@ -304,10 +367,12 @@ struct AgentModelPicker: View {
         return [routeProvider] + available
     }
 
-    private var routes: [String] {
-        guard let provider = selectedProvider.nonEmpty else { return [] }
+    private var routes: [String] { availableRoutes(for: selectedProvider, authChoice: selectedAuthChoice) }
+
+    private func availableRoutes(for provider: String, authChoice: String) -> [String] {
+        guard let provider = provider.nonEmpty else { return [] }
         let canonicalProvider = ProviderAuthenticationDefinition.canonicalID(provider)
-        let selectedAccount = account(for: selectedAuthChoice)
+        let selectedAccount = model.authenticationSnapshots(for: provider).first { $0.authChoice == authChoice }
         let catalogProvider = selectedAccount?.provider == "openai-codex" ? "openai-codex" : canonicalProvider
         let catalogModels = model.ompProviderCatalog
             .first { $0.id == catalogProvider }?.models ?? []
@@ -324,7 +389,7 @@ struct AgentModelPicker: View {
             "\(provider)/\(name)"
         }
         // A Custom API route's model belongs to the account it was saved with.
-        let routedAccount = !isCustomProvider || selectedAuthChoice == routing.defaultAuthChoice
+        let routedAccount = canonicalProvider != "custom" || authChoice == routing.defaultAuthChoice
         let current = routing.defaultModel?.nonEmpty.flatMap { currentModel -> String? in
             guard routedAccount else { return nil }
             let currentProvider = currentModel.split(separator: "/", maxSplits: 1)
@@ -335,7 +400,7 @@ struct AgentModelPicker: View {
                 : nil
         }
         let savedModel = selectedAccount?.modelHint?.nonEmpty.map { "\(provider)/\($0)" }
-        let manualModel = manualModelID.nonEmpty.map { "\(provider)/\($0)" }
+        let manualModel = provider == selectedProvider ? manualModelID.nonEmpty.map { "\(provider)/\($0)" } : nil
         return ([savedModel, manualModel, current].compactMap { $0 } + suggested)
             .reduce(into: []) { options, option in
                 if !options.contains(option) { options.append(option) }
@@ -403,30 +468,40 @@ struct AgentModelPicker: View {
         selectedModel = routes.first ?? ""
     }
 
-    private func selectCompatibleAccount(for provider: String) {
-        // `accountChoices` keeps a routed account that was removed, so the route
-        // stays attached to it until the owner explicitly picks another account.
-        guard !accountChoices.contains(selectedAuthChoice) else { return }
-        selectedAuthChoice = accountChoices.first ?? ""
+    private func save(dismissAfter: Bool = true, confirmAccountChange: Bool = true) {
+        guard canEdit, !isSaving, !selectedAccountIsUnavailable,
+              !selectedAuthChoice.isEmpty, !selectedModel.isEmpty else { return }
+        let changesAccount = routing.defaultAuthChoice != selectedAuthChoice
+            || ProviderAuthenticationDefinition.canonicalID(routing.defaultAuthProvider ?? "") != ProviderAuthenticationDefinition.canonicalID(selectedProvider)
+        if confirmAccountChange && conversation.kind != .agent && changesAccount {
+            dismissAfterConfirmation = dismissAfter
+            showsAccountConfirmation = true
+            return
+        }
+        apply(AgentModelRouteSelection(provider: selectedProvider, account: selectedAuthChoice,
+            model: selectedModel, effort: Self.normalizedThinking(selectedThinking, for: selectedModel)), dismissAfter: dismissAfter)
     }
 
-    private func save() {
-        guard !isSaving else { return }
+    private func apply(_ selection: AgentModelRouteSelection, dismissAfter: Bool) {
+        guard !isSaving, canEdit else { return }
         isSaving = true
-        Task {
-            let saved = await model.updateRuntimeRouting(
-                for: conversation,
-                provider: selectedProvider,
-                authChoice: selectedAuthChoice,
-                model: selectedModel,
-                thinking: Self.normalizedThinking(selectedThinking, for: selectedModel)
-            )
+        saveError = nil
+        retrySelection = nil
+        Task { @MainActor in
+            let saved = await model.updateRuntimeRouting(for: conversation, provider: selection.provider,
+                authChoice: selection.account, model: selection.model, thinking: selection.effort)
             isSaving = false
-            if saved { onDismiss() }
+            loadSelection()
+            if saved {
+                if dismissAfter { onDismiss() }
+            } else {
+                saveError = "Could not change the model route."
+                retrySelection = selection
+            }
         }
     }
 
-    /// Tests the selection on screen without saving it; only Save changes the route.
+    /// An explicit diagnostic, separate from applying a route selection.
     private func testRoute() {
         guard !isSaving, !isTesting, !selectedAccountIsUnavailable else { return }
         isTesting = true
@@ -443,14 +518,87 @@ struct AgentModelPicker: View {
         }
     }
 
-    private func modelLabel(_ value: String) -> String {
-        guard !value.isEmpty else { return "-" }
-        guard let separator = value.firstIndex(of: "/") else { return value }
-        return String(value[value.index(after: separator)...])
+    private func modelLabel(_ value: String) -> String { AgentModelPresentation.name(value) }
+    private func thinkingLabel(_ value: String) -> String { AgentModelPresentation.effort(value) }
+}
+
+enum AgentModelPickerPage { case models, effort, accounts }
+
+private struct AgentModelRouteSelection {
+    let provider: String
+    let account: String
+    let model: String
+    let effort: String
+}
+
+enum AgentModelPresentation {
+    static func notice(_ message: ChatMessage) -> String {
+        guard message.isAgentModelChangeNotice,
+              let rawModel = ChatMessage.modelFromAgentModelChangeNotice(message.text),
+              let range = message.text.range(of: rawModel) else { return message.text }
+        return message.text.replacingCharacters(in: range, with: name(rawModel))
     }
 
-    private func thinkingLabel(_ value: String) -> String {
-        guard !value.isEmpty else { return "-" }
-        return value == "xhigh" ? "Extra High" : value.capitalized
+    static func name(_ value: String) -> String {
+        let id = value.split(separator: "/").last.map(String.init) ?? value
+        guard !id.isEmpty, id != "default" else { return "Default" }
+        guard ["gpt-", "claude-", "gemini-", "grok-"].contains(where: id.hasPrefix) else { return id }
+        let normalized = id.replacingOccurrences(of: "(\\d)-(\\d)", with: "$1.$2", options: .regularExpression)
+        return normalized.split(separator: "-").map { word in
+            word == "gpt" ? "GPT" : word.prefix(1).uppercased() + word.dropFirst()
+        }.joined(separator: " ").replacingOccurrences(of: "^GPT ", with: "GPT-", options: .regularExpression)
+    }
+
+    static func effort(_ value: String) -> String {
+        if value.isEmpty || ["default", "auto", "thinking"].contains(value) { return "Default" }
+        return value == "xhigh" ? "Extra high" : value.capitalized
+    }
+}
+
+private struct AgentEffortSlider: View {
+    @Environment(\.isEnabled) private var isEnabled
+    @Binding var value: String
+    let levels: [String]
+    let accent: Color
+    let onCommit: () -> Void
+    private var index: Int { levels.firstIndex(of: value) ?? 0 }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let travel = max(0, geometry.size.width - 24)
+            let fraction = Double(index) / Double(max(1, levels.count - 1))
+            ZStack(alignment: .leading) {
+                Capsule().fill(accent.opacity(0.12)).frame(height: 24)
+                Capsule().fill(accent).frame(width: levels.contains(value) ? 12 + travel * fraction : 0, height: 24)
+                HStack {
+                    ForEach(levels, id: \.self) { level in
+                        Circle().fill(Color.secondary.opacity(0.35)).frame(width: 4, height: 4)
+                        if level != levels.last { Spacer(minLength: 0) }
+                    }
+                }.padding(.horizontal, 10)
+                Circle().fill(Color(uiColor: .systemBackground)).shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+                    .frame(width: 22, height: 22).offset(x: 1 + travel * fraction)
+            }
+            .frame(height: 36).contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { gesture in
+                guard isEnabled, levels.count > 1, travel > 0 else { return }
+                let step = Int(((gesture.location.x - 12) / travel * Double(levels.count - 1)).rounded())
+                value = levels[min(max(0, step), levels.count - 1)]
+            }.onEnded { _ in if isEnabled { onCommit() } })
+        }
+        .frame(height: 36)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Thinking effort")
+        .accessibilityValue(AgentModelPresentation.effort(value))
+        .accessibilityIdentifier("agent-effort-slider")
+        .accessibilityAdjustableAction { direction in
+            guard isEnabled, !levels.isEmpty else { return }
+            switch direction {
+            case .increment: value = levels[min(index + 1, levels.count - 1)]
+            case .decrement: value = levels[max(index - 1, 0)]
+            @unknown default: return
+            }
+            onCommit()
+        }
     }
 }

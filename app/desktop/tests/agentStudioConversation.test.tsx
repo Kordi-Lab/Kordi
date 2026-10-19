@@ -125,7 +125,7 @@ test('Kordi Factory conversation uses the normal transcript identity and attachm
   assert.match(html, /data-composer-attachment-add-trigger="true"/);
   assert.match(html, /lucide-plus/);
   assert.doesNotMatch(html, /lucide-paperclip/);
-  assert.match(html, /ChatGPT account/);
+  assert.doesNotMatch(html, /ChatGPT account/, 'accounts belong in the secondary menu');
   assert.match(html, /GPT Test/);
   assert.match(html, /Medium/);
   assert.match(html, /Auto-compresses before Kordi responds once usage reaches 90%/);

@@ -1503,7 +1503,7 @@ struct ConversationView: View {
             }
 
             if message.isSystemNotice {
-                SystemNoticeRow(text: message.text)
+                SystemNoticeRow(text: AgentModelPresentation.notice(message))
                     .padding(.vertical, 8)
             } else {
                 MessageBubble(

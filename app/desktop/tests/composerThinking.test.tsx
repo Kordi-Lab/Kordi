@@ -24,7 +24,7 @@ test('composer labels max and falls back through the nearest high effort', () =>
   assert.equal(fallbackComposerThinkingValue(['off', 'high'], 'max'), 'high');
 });
 
-test('composer model controls display medium instead of off for default selection on effort models', () => {
+test('composer model controls preserve a model-default selection without claiming a specific effort', () => {
   const markup = renderToStaticMarkup(createElement(ComposerModelControls, {
     scope: 'chat',
     selection: { mode: 'My agent', model: 'openai/gpt-5.5', thinking: 'default' },
@@ -45,7 +45,7 @@ test('composer model controls display medium instead of off for default selectio
     }],
   }));
 
-  assert.match(markup, />Medium</);
+  assert.match(markup, />Default</);
   assert.doesNotMatch(markup, />Off</);
 });
 
@@ -103,8 +103,7 @@ test('composer model controls offer sign-in instead of blank controls when no ac
   assert.doesNotMatch(markup, />OpenAI</);
 
   const withoutSignIn = renderToStaticMarkup(createElement(ComposerModelControls, props));
-  assert.match(withoutSignIn, />Choose account</);
-  assert.match(withoutSignIn, />gpt-5.6-sol</);
+  assert.match(withoutSignIn, />GPT-5.6 Sol</);
   assert.match(withoutSignIn, />Medium</);
   assert.doesNotMatch(withoutSignIn, />-<\/span>/);
 });

@@ -20,13 +20,11 @@ type MainComposerCollaborationRouting = {
   notice: string | null;
   /** A model pick whose save failed and was rolled back. */
   error?: string | null;
-  /** Applies the usable account that replaces an unavailable stored one. */
-  replaceUnavailableAccount?: (() => boolean) | null;
   model: CollaborationRoutingControlsModel | null;
   agentSelectorOpen: boolean;
   onSelectAgent: (agentId: string) => void;
-  onUpdate: (patch: CollaborationRoutingPatch) => void;
-  onSaveCompact: (input: CompactComposerModelMenuSaveInput) => void;
+  onUpdate: (patch: CollaborationRoutingPatch) => void | boolean | Promise<void | boolean>;
+  onSaveCompact: (input: CompactComposerModelMenuSaveInput) => void | boolean | Promise<void | boolean>;
   defaultThinkingForModel: (
     modelValue: string | null | undefined,
     currentThinking: string | null | undefined,

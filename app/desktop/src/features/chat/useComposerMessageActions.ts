@@ -26,7 +26,7 @@ type UseComposerMessageActionsArgs = UseComposerControllerArgs & {
       scope: ComposerScope,
       type: 'model',
       value: string,
-    ) => Promise<void>;
+    ) => Promise<void | boolean>;
     appendProjectDraft: (value: string) => void;
     appendChatDraft: (value: string) => void;
   };

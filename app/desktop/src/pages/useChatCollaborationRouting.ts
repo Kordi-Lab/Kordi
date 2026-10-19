@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
 import {
@@ -12,9 +12,6 @@ import {
 } from '@/features/collaboration/agentModelRouting';
 import { isCloudCollaborationHostId } from '@/features/cloud/cloudCollaborationState';
 import { useActiveChatRoute } from '@/features/chat/kordiCloudChatRoute';
-import { registeredAccountChoices } from '@/features/cloud/hostedAccountRegistry';
-import { useHostedAccountsSnapshot } from '@/features/cloud/hostedAccounts';
-import { unavailableAccountReplacement, type ComposerRoute } from '@/kordi-app/components/composerModelSelection';
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
   focusComposerTextarea,
@@ -81,12 +78,12 @@ type UseChatCollaborationRoutingInput = {
     selectComposerProviderChoice: (
       scope: 'chat',
       option: ComposerProviderOption,
-    ) => void | Promise<void>;
+    ) => void | boolean | Promise<void | boolean>;
     selectComposerValue: (
       scope: 'chat',
       type: 'model' | 'thinking',
       value: string,
-    ) => void | Promise<void>;
+    ) => void | boolean | Promise<void | boolean>;
   };
   companion: RoutingTargetInput & {
     openSelector: ComposerSelector | null;
@@ -126,20 +123,6 @@ export function selectedRoutingAgent(
   return optimistic ? { ...routed, ...optimistic } : routed;
 }
 
-function routingPatchForRoute(
-  agent: LocalCollaborationAgentRoutingOption,
-  route: ComposerRoute,
-): DesktopCollaborationAgentRouting {
-  return {
-    defaultModel: route.model,
-    defaultAuthProvider: route.providerOption?.providerId ?? agent.defaultAuthProvider ?? null,
-    defaultAuthChoice: route.providerOption ? authChoiceFromProviderOption(route.providerOption) : agent.defaultAuthChoice ?? null,
-    fallbackModel: agent.fallbackModel ?? null,
-    fallbackAuthProvider: agent.fallbackAuthProvider ?? null,
-    fallbackAuthChoice: agent.fallbackAuthChoice ?? null,
-    thinking: route.thinking,
-  };
-}
 
 export function useChatCollaborationRouting({
   shared,
@@ -259,7 +242,7 @@ export function useChatCollaborationRouting({
     }) ?? ((defaultAuthChanged || fallbackAuthChanged)
       ? `${agent.label} model route changed to ${routeLabel}. Only you can see this.`
       : null);
-    if (!notice) return false;
+    if (!notice) return true;
 
     // The pick shows at once and saves in the background; only a failed save
     // rolls it back, with a notice.
@@ -272,8 +255,7 @@ export function useChatCollaborationRouting({
     });
     setOptimisticRouting((current) => ({ ...current, [key]: { routing, token } }));
     setError(null);
-    setNotice(notice);
-    void shared.updateRouting(
+    return shared.updateRouting(
       agent.hostId,
       agent.id,
       routing.defaultModel,
@@ -287,6 +269,8 @@ export function useChatCollaborationRouting({
     ).then(() => {
       // A Kordi Cloud session route now holds the pick itself.
       settle(!isCloudCollaborationHostId(agent.hostId));
+      setNotice(notice);
+      return true;
     }, (error) => {
       settle(false);
       setError(
@@ -294,8 +278,8 @@ export function useChatCollaborationRouting({
           ? error.message
           : 'Unable to change the model',
       );
+      return false;
     });
-    return true;
   };
 
   const updateMain = ({ selectorType, ...patch }: RoutingPatch) => {
@@ -304,7 +288,7 @@ export function useChatCollaborationRouting({
       main.toggleSelector('chat', selectorType);
     }
     focusComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-    applyUpdate({
+    return applyUpdate({
       agent: mainAgent,
       key: mainKey,
       patch,
@@ -317,42 +301,12 @@ export function useChatCollaborationRouting({
     });
   };
 
-  // A stored account this device no longer has gives way to a usable one, but
-  // only once both account lists have arrived, so an account that is still
-  // loading is never replaced. Each session tries this once.
-  const hostedAccounts = useHostedAccountsSnapshot();
-  const accountListsLoaded = Boolean(hostedAccounts.listed) && registeredAccountChoices().localChoices !== null;
-  const mainSelection = routingSelectionForCollaborationAgent(mainAgent);
-  const accountReplacement = main.enabled && mainAgent && accountListsLoaded
-    ? unavailableAccountReplacement({ selection: mainSelection, providerOptions: shared.providerOptions, modelOptions: shared.modelOptions ?? [] })
-    : null;
-  const replaceUnavailableAccount = () => Boolean(mainAgent && accountReplacement) && applyUpdate({
-    agent: mainAgent,
-    key: mainKey,
-    patch: routingPatchForRoute(mainAgent!, accountReplacement!),
-    isBusy: main.isBusy,
-    setNotice: setMainNotice,
-    setError: setMainError,
-    targetSessionId: main.conversation?.canonicalSessionId ?? main.conversation?.id ?? null,
-  });
-  const replacementAttempt = accountReplacement && mainKey && !main.isBusy
-    ? `${mainKey}\u0000${mainSelection.authChoice ?? ''}`
-    : null;
-  const attemptedReplacementsRef = useRef(new Set<string>());
-  const replaceOnce = useEffectEvent((attempt: string) => {
-    if (attemptedReplacementsRef.current.has(attempt)) return;
-    if (replaceUnavailableAccount()) attemptedReplacementsRef.current.add(attempt);
-  });
-  useEffect(() => {
-    if (replacementAttempt) replaceOnce(replacementAttempt);
-  }, [replacementAttempt]);
-
   const updateCompanion = ({ selectorType, ...patch }: RoutingPatch) => {
     if (selectorType && companion.openSelector?.scope === 'chat'
       && companion.openSelector.type === selectorType) {
       companion.setOpenSelector(null);
     }
-    applyUpdate({
+    return applyUpdate({
       agent: companionAgent,
       key: companionKey,
       patch,
@@ -367,7 +321,7 @@ export function useChatCollaborationRouting({
 
   const saveCompactMainRoute = (input: CompactComposerModelMenuSaveInput) => {
     if (main.enabled && mainAgent) {
-      updateMain({
+      return updateMain({
         defaultModel: input.model,
         defaultAuthProvider:
           input.providerOption?.providerId ?? mainAgent.defaultAuthProvider ?? null,
@@ -379,18 +333,17 @@ export function useChatCollaborationRouting({
         fallbackAuthChoice: mainAgent.fallbackAuthChoice ?? null,
         thinking: input.thinking,
       });
-      return;
     }
 
-    void (async () => {
+    return (async () => {
       if (input.providerOption) {
-        await main.selectComposerProviderChoice('chat', input.providerOption);
+        if (await main.selectComposerProviderChoice('chat', input.providerOption) === false) return false;
       }
       if (input.model !== main.composerSelection.model) {
-        await main.selectComposerValue('chat', 'model', input.model);
+        if (await main.selectComposerValue('chat', 'model', input.model) === false) return false;
       }
       if (input.thinking !== main.composerSelection.thinking) {
-        await main.selectComposerValue('chat', 'thinking', input.thinking);
+        if (await main.selectComposerValue('chat', 'thinking', input.thinking) === false) return false;
       }
     })();
   };
@@ -400,8 +353,6 @@ export function useChatCollaborationRouting({
       enabled: main.enabled && Boolean(mainAgent),
       notice: mainNotice,
       error: mainError,
-      /** Applies the usable account that replaces an unavailable one; null when there is none. */
-      replaceUnavailableAccount: accountReplacement ? replaceUnavailableAccount : null,
       agents: mainAgents,
       selectedAgent: mainAgent,
       selection: routingSelectionForCollaborationAgent(mainAgent),

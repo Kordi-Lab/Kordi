@@ -263,3 +263,15 @@ struct ModelReleaseTests {
         #expect(AgentModelPicker.normalizedThinking("off", for: "openai/gpt-5.6-sol") == "off")
     }
 }
+
+@Suite("Model presentation")
+struct ModelPresentationTests {
+    @Test func readableNamesPreserveCustomModels() {
+        #expect(AgentModelPresentation.name("openai/gpt-6-astra") == "GPT-6 Astra")
+        #expect(AgentModelPresentation.name("anthropic/claude-opus-4-8") == "Claude Opus 4.8")
+        #expect(AgentModelPresentation.name("openrouter/anthropic/claude-fable-5-1") == "Claude Fable 5.1")
+        #expect(AgentModelPresentation.name("custom/research-model") == "research-model")
+        #expect(AgentModelPresentation.effort("xhigh") == "Extra high")
+        #expect(AgentModelPresentation.effort("default") == "Default")
+    }
+}

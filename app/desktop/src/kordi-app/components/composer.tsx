@@ -1,4 +1,5 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { ModelEffortPicker } from './modelEffortPicker';
+import { useEffect, useRef } from 'react';
 import {
   Bot,
   Check,
@@ -9,21 +10,13 @@ import {
   ImagePlus,
   LogIn,
   LogOut,
-  Menu,
   RefreshCw,
-  Search,
   Settings2,
   Sparkles,
   Wrench,
-  X,
 } from 'lucide-react';
-import { createPortal } from 'react-dom';
 
 import { cn } from '@/lib/utils';
-import {
-  composerThinkingLevelsIncludingCurrent,
-  fallbackComposerThinkingValue,
-} from './composerThinking';
 
 export {
   fallbackComposerThinkingValue,
@@ -32,12 +25,7 @@ export {
 export { ComposerMentionMenu } from './composerMentionMenu';
 export { ComposerRuntimeStatus } from './composerRuntimeStatus';
 import {
-  composerModelsForProvider,
-  composerSignInRequired,
-  normalizeComposerProviderId,
-  providerDisplayLabel,
   resolveComposerModelSelection,
-  resolveComposerRoutePick,
   type ComposerModelOption,
   type ComposerProviderOption,
   type ComposerRoute,
@@ -182,634 +170,59 @@ export function composerThinkingLabel(value: string) {
         : value);
 }
 
-function lowerComposerLabel(value?: string | null) {
-  return (value?.trim() || '').toLocaleLowerCase();
-}
+export type CompactComposerModelMenuSaveInput = ComposerRoute;
 
-export type CompactComposerModelMenuSaveInput = {
-  providerOption: ComposerProviderOption | null;
-  model: string;
-  thinking: string;
-};
-
-export function CompactComposerModelMenu({
-  scope,
-  selection,
-  providerOptions = [],
-  modelOptions = composerModelOptions.map((option) => ({ value: option, label: option })),
-  defaultOpen = false,
-  onSave,
+export function CompactComposerModelMenu({ scope, selection, providerOptions = [],
+  modelOptions = composerModelOptions.map((value) => ({ value, label: value })),
+  defaultOpen = false, onSave, confirmAccountChanges = true,
 }: {
   scope: ComposerScope;
   selection: { mode: string; model: string; thinking: string; authProvider?: string | null; authChoice?: string | null };
   providerOptions?: ComposerProviderOption[];
   modelOptions?: ComposerModelOption[];
   defaultOpen?: boolean;
-  onSave: (input: CompactComposerModelMenuSaveInput) => void;
+  confirmAccountChanges?: boolean;
+  onSave: (input: CompactComposerModelMenuSaveInput) => void | boolean | Promise<void | boolean>;
 }) {
-  const {
-    selectedModelOption,
-    selectedProviderOption,
-    selectedProviderValue,
-    initialProviderValue,
-  } = resolveComposerModelSelection({ selection, providerOptions, modelOptions });
-
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const [isOpen, setIsOpen] = useState(defaultOpen);
-  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
-  const [menuThemeClass, setMenuThemeClass] = useState('');
-  const [stagedProviderValue, setStagedProviderValue] = useState(initialProviderValue);
-  const [stagedModel, setStagedModel] = useState(selection.model);
-  const [stagedThinking, setStagedThinking] = useState(selection.thinking);
-
-  useEffect(() => {
-    setStagedProviderValue(initialProviderValue);
-    setStagedModel(selection.model);
-    setStagedThinking(selection.thinking);
-  }, [initialProviderValue, selection.model, selection.thinking]);
-
-  const stagedProviderOption = providerOptions.find((option) => option.value === stagedProviderValue) ?? selectedProviderOption ?? null;
-  const stagedProviderId = stagedProviderOption?.providerId
-    ? normalizeComposerProviderId(stagedProviderOption.providerId)
-    : selectedProviderValue;
-  const visibleModelOptions = stagedProviderId
-    ? composerModelsForProvider(stagedProviderId, modelOptions)
-    : modelOptions;
-  const stagedModelOption = modelOptions.find((option) => option.value === stagedModel) ?? selectedModelOption ?? visibleModelOptions[0] ?? null;
-  const stagedThinkingLevels = composerThinkingLevelsIncludingCurrent(
-    stagedModelOption?.thinkingLevels?.length
-      ? stagedModelOption.thinkingLevels
-      : composerThinkingOptions.map((option) => option.value),
-    stagedThinking,
-  );
-  const stagedThinkingValue = fallbackComposerThinkingValue(stagedThinkingLevels, stagedThinking);
-  const hasStagedProvider = Boolean(stagedProviderId);
-  const providerSummary = hasStagedProvider
-    ? lowerComposerLabel(stagedProviderOption?.selectionLabel
-      ?? (stagedProviderOption ? [stagedProviderOption.label, stagedProviderOption.detail].filter(Boolean).join(' · ') : null)
-      ?? stagedModelOption?.providerLabel
-      ?? providerDisplayLabel(stagedProviderId))
-    : 'no provider';
-  const modelSummary = lowerComposerLabel(stagedModelOption?.label ?? stagedModel);
-  const thinkingSummary = lowerComposerLabel(composerThinkingLabel(stagedThinkingValue));
-  const updateMenuPosition = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    const trigger = triggerRef.current;
-    if (!trigger) return;
-    const rect = trigger.getBoundingClientRect();
-    const viewportPadding = 24;
-    const menuWidth = Math.min(352, Math.max(240, window.innerWidth - (viewportPadding * 2)));
-    const left = Math.min(
-      Math.max(viewportPadding, rect.left),
-      Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
-    );
-    const availableAbove = Math.max(192, rect.top - viewportPadding);
-    const appShell = trigger.closest('.kordi-app');
-    setMenuThemeClass(appShell?.classList.contains('theme-light') ? 'app-compact-model-menu-light' : '');
-    setMenuStyle({
-      left: `${left}px`,
-      top: `${Math.max(viewportPadding, rect.top)}px`,
-      maxHeight: `min(31rem, ${availableAbove}px)`,
-      width: 'min(22rem, calc(100vw - 3rem))',
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    updateMenuPosition();
-    window.addEventListener('resize', updateMenuPosition);
-    window.addEventListener('scroll', updateMenuPosition, true);
-    return () => {
-      window.removeEventListener('resize', updateMenuPosition);
-      window.removeEventListener('scroll', updateMenuPosition, true);
-    };
-  }, [isOpen, updateMenuPosition]);
-
-  const chooseProvider = (option: ComposerProviderOption) => {
-    const providerId = normalizeComposerProviderId(option.providerId);
-    const firstProviderModel = composerModelsForProvider(providerId, modelOptions)[0];
-    setStagedProviderValue(option.value);
-    if (firstProviderModel && normalizeComposerProviderId(stagedModelOption?.provider ?? '') !== providerId) {
-      setStagedModel(firstProviderModel.value);
-      setStagedThinking(fallbackComposerThinkingValue(firstProviderModel.thinkingLevels ?? [], stagedThinking));
-    }
-  };
-
-  const chooseModel = (option: ComposerModelOption) => {
-    setStagedModel(option.value);
-    setStagedThinking(fallbackComposerThinkingValue(option.thinkingLevels ?? [], stagedThinking));
-  };
-
-  const cancel = () => {
-    setStagedProviderValue(initialProviderValue);
-    setStagedModel(selection.model);
-    setStagedThinking(selection.thinking);
-    setIsOpen(false);
-    queueMicrotask(() => triggerRef.current?.focus());
-  };
-
-  const save = () => {
-    // A staged model the account does not offer saves as the account's default model.
-    const route = stagedProviderOption ? resolveComposerRoutePick({
-      selection: { model: stagedModel, thinking: stagedThinkingValue },
-      providerOptions,
-      modelOptions,
-      pick: { type: 'provider', option: stagedProviderOption },
-    }) : null;
-    onSave({
-      providerOption: route?.providerOption ?? stagedProviderOption,
-      model: route?.model ?? stagedModel,
-      thinking: route?.thinking ?? stagedThinkingValue,
-    });
-    setIsOpen(false);
-    queueMicrotask(() => triggerRef.current?.focus());
-  };
-
-  useEffect(() => {
-    if (!isOpen || typeof document === 'undefined') return undefined;
-    const closeWithoutSaving = () => {
-      setStagedProviderValue(initialProviderValue);
-      setStagedModel(selection.model);
-      setStagedThinking(selection.thinking);
-      setIsOpen(false);
-    };
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
-      closeWithoutSaving();
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation();
-      closeWithoutSaving();
-      queueMicrotask(() => triggerRef.current?.focus());
-    };
-    document.addEventListener('pointerdown', handlePointerDown, true);
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown, true);
-      document.removeEventListener('keydown', handleKeyDown, true);
-    };
-  }, [initialProviderValue, isOpen, selection.model, selection.thinking]);
-
-  const renderMenu = () => (
-    <div
-      ref={menuRef}
-      role="dialog"
-      aria-label="Agent model"
-      className={cn('app-transient-surface app-transient-scroll app-compact-model-menu app-compact-model-menu-layer overflow-y-auto rounded-[18px] p-2.5', menuThemeClass)}
-      style={menuStyle}
-    >
-      <div className="app-compact-model-menu-header mb-2 flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="app-transient-identity-title truncate">Agent model</div>
-        </div>
-        <button
-          type="button"
-          onClick={cancel}
-          className="app-button-quiet app-chat-create-close grid h-6 w-6 shrink-0 place-items-center rounded-[9px] p-0"
-          aria-label="Close agent model"
-        >
-          <X className="h-3.5 w-3.5" aria-hidden="true" />
-        </button>
-      </div>
-      <div className="space-y-1">
-        <details className="app-compact-model-menu-section">
-          <summary className="app-transient-action-row flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-2.5 marker:hidden transition [&::-webkit-details-marker]:hidden">
-            <span className="font-medium">provider</span>
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className="app-transient-metadata min-w-0 truncate">{providerSummary}</span>
-              <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-            </span>
-          </summary>
-          <div className="space-y-1 px-1 pb-1 pt-1">
-            {providerOptions.map((option) => {
-              const isSelected = stagedProviderOption?.value === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button" disabled={Boolean(option.disabled)} title={option.disabledReason}
-                  onClick={() => chooseProvider(option)}
-                  className={cn(
-                    'app-composer-popover-item app-compact-model-menu-option app-transient-action-row flex w-full items-center justify-between px-3 py-2 text-left',
-                    isSelected ? 'app-composer-popover-item-active' : '',
-                  )}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate">{lowerComposerLabel(option.label)}</span>
-                    {option.detail ? <span className="app-transient-metadata block truncate">{lowerComposerLabel(option.detail)}</span> : null}
-                  </span>
-                  <span className={cn('shrink-0', isSelected ? 'app-transient-metadata' : 'app-transient-status text-transparent')}>selected</span>
-                </button>
-              );
-            })}
-          </div>
-        </details>
-        <details hidden={!hasStagedProvider} className="app-compact-model-menu-section">
-          <summary className="app-transient-action-row flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-2.5 marker:hidden transition [&::-webkit-details-marker]:hidden">
-            <span className="font-medium">model</span>
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className="app-transient-metadata min-w-0 truncate">{modelSummary}</span>
-              <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-            </span>
-          </summary>
-          <div className="space-y-1 px-1 pb-1 pt-1">
-            {visibleModelOptions.map((option) => {
-              const isSelected = stagedModel === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => chooseModel(option)}
-                  className={cn(
-                    'app-composer-popover-item app-compact-model-menu-option app-transient-action-row flex w-full items-center justify-between px-3 py-2 text-left',
-                    isSelected ? 'app-composer-popover-item-active' : '',
-                  )}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate">{lowerComposerLabel(option.label)}</span>
-                    {option.detail ? <span className="app-transient-metadata block truncate">{lowerComposerLabel(option.detail)}</span> : null}
-                  </span>
-                  <span className={cn('shrink-0', isSelected ? 'app-transient-metadata' : 'app-transient-status text-transparent')}>selected</span>
-                </button>
-              );
-            })}
-          </div>
-        </details>
-        <details hidden={!hasStagedProvider} className="app-compact-model-menu-section">
-          <summary className="app-transient-action-row flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-2.5 marker:hidden transition [&::-webkit-details-marker]:hidden">
-            <span className="font-medium">thinking level</span>
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className="app-transient-metadata min-w-0 truncate">{thinkingSummary}</span>
-              <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-            </span>
-          </summary>
-          <div className="space-y-1 px-1 pb-1 pt-1">
-            {stagedThinkingLevels.map((value) => {
-              const isSelected = stagedThinkingValue === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setStagedThinking(value)}
-                  className={cn(
-                    'app-composer-popover-item app-compact-model-menu-option app-transient-action-row flex w-full items-center justify-between px-3 py-2 text-left',
-                    isSelected ? 'app-composer-popover-item-active' : '',
-                  )}
-                >
-                  <span>{lowerComposerLabel(composerThinkingLabel(value))}</span>
-                  <span className={cn('shrink-0', isSelected ? 'app-transient-metadata' : 'app-transient-status text-transparent')}>selected</span>
-                </button>
-              );
-            })}
-          </div>
-        </details>
-      </div>
-      <div className="mt-2 flex items-center justify-end gap-1">
-        <span className="flex shrink-0 items-center gap-2">
-          <button type="button" onClick={cancel} className="app-button-quiet app-transient-action-row rounded-[10px] px-3 py-1.5">cancel</button>
-          <button type="button" onClick={save} disabled={!hasStagedProvider || Boolean(stagedProviderOption?.unavailable)} className="app-button-primary app-transient-action-row rounded-[10px] px-3 py-1.5 font-semibold transition">save</button>
-        </span>
-      </div>
-    </div>
-
-  );
-  return (
-    <div className="relative shrink-0" data-compact-model-menu="true" data-composer-scope={scope}>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => {
-          if (!isOpen) updateMenuPosition();
-          setIsOpen((current) => !current);
-        }}
-        className="app-button-quiet relative grid h-9 w-9 shrink-0 place-items-center rounded-[10px] p-0"
-        title={selectedProviderOption?.unavailable ? `model route · ${selectedProviderOption.label}` : 'model route'}
-        aria-label={selectedProviderOption?.unavailable ? `model route · ${selectedProviderOption.label}` : 'model route'}
-        aria-expanded={isOpen}
-        data-compact-model-trigger="bare"
-      >
-        <Menu className="h-[18px] w-[18px] text-slate-400" strokeWidth={2.25} aria-hidden="true" />
-      </button>
-      {isOpen ? (typeof document !== 'undefined' ? createPortal(renderMenu(), document.body) : renderMenu()) : null}
-    </div>
-  );
+  return <div className="min-w-0 max-w-full" data-compact-model-menu="true" data-composer-scope={scope}>
+    <ModelEffortPicker selection={selection} providerOptions={providerOptions} modelOptions={modelOptions}
+      defaultOpen={defaultOpen} onApply={onSave} confirmAccountChanges={confirmAccountChanges} />
+  </div>;
 }
 
-export function ComposerModelControls({
-  scope,
-  selection,
-  openSelector,
-  onToggleSelector,
-  onSelectValue,
-  authLabel: _authLabel,
-  authOptions,
-  onSelectAuthChoice,
-  onSelectProviderChoice,
-  providerOptions = [],
-  modelOptions = composerModelOptions.map((option) => ({ value: option, label: option })),
-  compact = false,
-  onSelectRoute,
-  onSignIn,
+export function ComposerModelControls({ scope, selection, onSelectValue, onSelectProviderChoice,
+  providerOptions = [], modelOptions = composerModelOptions.map((value) => ({ value, label: value })),
+  onSelectRoute, onSignIn, confirmAccountChanges = false,
 }: {
   scope: ComposerScope;
   selection: { mode: string; model: string; thinking: string; authProvider?: string | null; authChoice?: string | null };
   openSelector: { scope: ComposerScope; type: ComposerSelectorType } | null;
   onToggleSelector: (scope: ComposerScope, type: ComposerSelectorType) => void;
-  onSelectValue: (scope: ComposerScope, type: ComposerSelectorType, value: string) => void;
+  onSelectValue: (scope: ComposerScope, type: ComposerSelectorType, value: string) => void | boolean | Promise<unknown>;
   authLabel: string;
   authOptions: ComposerAuthOption[];
   onSelectAuthChoice: (scope: ComposerScope, providerId: string, choice: string) => void;
-  onSelectProviderChoice: (scope: ComposerScope, option: ComposerProviderOption) => void;
+  onSelectProviderChoice: (scope: ComposerScope, option: ComposerProviderOption) => void | boolean | Promise<unknown>;
   providerOptions?: ComposerProviderOption[];
   modelOptions?: ComposerModelOption[];
   compact?: boolean;
-  /**
-   * Receives every pick as one complete route: an unusable account falls back
-   * to a signed-in account of the same provider, and the model and thinking
-   * level fall back to values that account offers.
-   */
-  onSelectRoute?: (scope: ComposerScope, route: ComposerRoute, type: 'provider' | 'model' | 'thinking') => void;
-  /** Shown in place of the controls when no account is signed in. */
+  confirmAccountChanges?: boolean;
+  onSelectRoute?: (scope: ComposerScope, route: ComposerRoute, type: 'provider' | 'model' | 'thinking') => void | boolean | Promise<void | boolean>;
   onSignIn?: () => void;
 }) {
-  const requestedSelector = openSelector?.scope === scope ? openSelector.type : null;
-  const selectorTriggerRefs = useRef<Partial<Record<ComposerSelectorType, HTMLButtonElement | null>>>({});
-  const selectorMenuRef = useRef<HTMLDivElement | null>(null);
-  const [selectorMenuStyle, setSelectorMenuStyle] = useState<CSSProperties>({});
-  const [selectorMenuThemeClass, setSelectorMenuThemeClass] = useState('');
-  const {
-    fallbackModelLabel,
-    selectedModelOption,
-    selectedProviderOption,
-    selectedProviderValue,
-  } = resolveComposerModelSelection({ selection, providerOptions, modelOptions });
-  const signInRequired = Boolean(onSignIn) && composerSignInRequired(providerOptions);
-  const activeSelector = requestedSelector && !signInRequired ? requestedSelector : null;
-  const selectedProviderLabel = selectedProviderOption?.selectionLabel
-    ?? (selectedProviderOption ? [selectedProviderOption.label, selectedProviderOption.detail].filter(Boolean).join(' · ') : null)
-    ?? (selectedProviderValue ? selectedModelOption?.providerLabel ?? providerDisplayLabel(selectedProviderValue) : 'Choose account');
-  const filteredModelOptions = selectedProviderValue
-    ? composerModelsForProvider(selectedProviderValue, modelOptions)
-    : modelOptions;
-  const selectedThinkingLevels = composerThinkingLevelsIncludingCurrent(
-    selectedModelOption?.thinkingLevels?.length
-      ? selectedModelOption.thinkingLevels
-      : composerThinkingOptions.map((option) => option.value),
-    selection.thinking,
-  );
-  const thinkingOptions = selectedThinkingLevels.map((value) => ({
-    value,
-    label: composerThinkingLabel(value),
-    detail: null,
-  }));
-  const activeOptions = activeSelector === 'provider'
-    ? providerOptions
-    : activeSelector === 'model'
-      ? filteredModelOptions
-      : thinkingOptions;
-  // Every control names a value; a model without an account still shows its
-  // name, and picking any value resolves a complete route.
-  const selectedModel = selectedModelOption?.label ?? (fallbackModelLabel || 'Model');
-  const selectedThinkingValue = fallbackComposerThinkingValue(selectedThinkingLevels, selection.thinking);
-  const selectedThinkingLabel = composerThinkingLabel(selectedThinkingValue);
-
-  const updateSelectorMenuPosition = useCallback((selectorType: ComposerSelectorType | null = activeSelector) => {
-    if (typeof window === 'undefined' || !selectorType || selectorType === 'mode') return;
-    const trigger = selectorTriggerRefs.current[selectorType]
-      ?? selectorTriggerRefs.current.model
-      ?? selectorTriggerRefs.current.provider
-      ?? selectorTriggerRefs.current.thinking;
-    if (!trigger) return;
-    const rect = trigger.getBoundingClientRect();
-    const viewportPadding = 16;
-    const menuWidth = Math.min(340, Math.max(240, window.innerWidth - (viewportPadding * 2)));
-    const left = Math.min(
-      Math.max(viewportPadding, rect.right - menuWidth),
-      Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
-    );
-    const availableAbove = Math.max(160, rect.top - viewportPadding);
-    const appShell = trigger.closest('.kordi-app');
-    setSelectorMenuThemeClass(appShell?.classList.contains('theme-light') ? 'app-compact-model-menu-light' : '');
-    setSelectorMenuStyle({
-      left: `${left}px`,
-      top: `${Math.max(viewportPadding, rect.top)}px`,
-      width: `${menuWidth}px`,
-      maxHeight: `min(28rem, ${availableAbove}px)`,
-      transform: 'translateY(calc(-100% - 0.5rem))',
-    });
-  }, [activeSelector, setSelectorMenuStyle, setSelectorMenuThemeClass]);
-
-  useEffect(() => {
-    if (!activeSelector || activeSelector === 'mode') return undefined;
-    updateSelectorMenuPosition(activeSelector);
-    const handleUpdate = () => updateSelectorMenuPosition(activeSelector);
-    window.addEventListener('resize', handleUpdate);
-    window.addEventListener('scroll', handleUpdate, true);
-    return () => {
-      window.removeEventListener('resize', handleUpdate);
-      window.removeEventListener('scroll', handleUpdate, true);
-    };
-  }, [activeSelector, updateSelectorMenuPosition]);
-
-  useEffect(() => {
-    if (!activeSelector || activeSelector === 'mode' || typeof document === 'undefined') return undefined;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      const clickedTrigger = Object.values(selectorTriggerRefs.current).some((trigger) => trigger?.contains(target));
-      if (selectorMenuRef.current?.contains(target) || clickedTrigger) return;
-      onToggleSelector(scope, activeSelector);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      onToggleSelector(scope, activeSelector);
-    };
-    document.addEventListener('pointerdown', handlePointerDown, true);
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown, true);
-      document.removeEventListener('keydown', handleKeyDown, true);
-    };
-  }, [activeSelector, onToggleSelector, scope]);
-
-  const pickRoute = (type: 'provider' | 'model' | 'thinking', pick: Parameters<typeof resolveComposerRoutePick>[0]['pick']) => {
-    if (!onSelectRoute) return false;
-    const route = resolveComposerRoutePick({ selection, providerOptions, modelOptions, pick });
-    if (!route) return false;
-    onSelectRoute(scope, route, type);
-    return true;
-  };
-
-  const renderSelectorMenu = () => (
-    <div ref={selectorMenuRef} className={cn('app-transient-surface app-transient-scroll app-composer-model-menu-layer fixed z-[2147483000] overflow-y-auto rounded-[16px] border px-3 py-3 text-[12px] leading-[1.38]', selectorMenuThemeClass)} style={selectorMenuStyle}>
-      <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">
-        {activeSelector === 'provider'
-          ? 'Provider'
-          : activeSelector === 'model'
-            ? 'Model'
-            : activeSelector === 'thinking'
-              ? 'Thinking level'
-              : 'Auth profile / API'}
-      </div>
-      <div className="space-y-1">
-        {activeSelector === 'auth' ? (
-          authOptions.length > 0 ? (
-            authOptions.map((option, index) => {
-              const showProviderHeader = index === 0 || authOptions[index - 1]?.providerId !== option.providerId;
-
-              return (
-                <Fragment key={`${option.providerId}-${option.value}`}>
-                  {showProviderHeader ? (
-                    <div className="pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--utility-muted-text)] first:pt-0">
-                      {option.providerLabel}
-                    </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => onSelectAuthChoice(scope, option.providerId, option.value)}
-                    className={cn(
-                      'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
-                      option.active ? 'app-composer-popover-item-active' : '',
-                    )}
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate">{option.label}</div>
-                      <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">
-                        {[option.methodLabel, option.detail].filter(Boolean).join(' • ')}
-                      </div>
-                    </div>
-                    <span className={cn('shrink-0 text-[11px] font-medium', option.active ? 'text-[color:var(--utility-foreground)]' : 'text-transparent')}>
-                      Current
-                    </span>
-                  </button>
-                </Fragment>
-              );
-            })
-          ) : (
-            <div className="rounded-[18px] py-2 text-[12px] text-[color:var(--utility-muted-text)]">
-              No saved auth options yet.
-            </div>
-          )
-        ) : activeSelector === 'provider' ? (
-          providerOptions.map((option) => {
-            const isSelected = selectedProviderOption?.value === option.value;
-
-            return (
-              <button
-                key={option.value}
-                type="button" disabled={Boolean(option.disabled)} title={option.disabledReason}
-                onClick={() => {
-                  if (!pickRoute('provider', { type: 'provider', option })) onSelectProviderChoice(scope, option);
-                }}
-                className={cn(
-                  'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
-                  isSelected ? 'app-composer-popover-item-active' : '',
-                )}
-              >
-                <div className="min-w-0">
-                  <div className="truncate">{option.label}</div>
-                  {option.detail ? <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">{option.detail}</div> : null}
-                </div>
-                <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-[color:var(--utility-foreground)]' : 'text-transparent')}>
-                  Selected
-                </span>
-              </button>
-            );
-          })
-        ) : (
-          activeOptions.map((option) => {
-            const isSelected = selection.model === option.value || selectedThinkingValue === option.value;
-            return (
-              <Fragment key={option.value}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (activeSelector === 'model' || activeSelector === 'thinking') {
-                      if (!pickRoute(activeSelector, { type: activeSelector, value: option.value })) {
-                        onSelectValue(scope, activeSelector, option.value);
-                      }
-                    }
-                  }}
-                  className={cn(
-                    'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
-                    isSelected ? 'app-composer-popover-item-active' : '',
-                  )}
-                >
-                  <div className="min-w-0">
-                    <div className="truncate">{option.label}</div>
-                    {option.detail ? <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">{option.detail}</div> : null}
-                  </div>
-                  <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-[color:var(--utility-foreground)]' : 'text-transparent')}>
-                    Selected
-                  </span>
-                </button>
-              </Fragment>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-
-  if (signInRequired) {
-    return (
-      <div className={cn('relative flex min-w-0 max-w-full items-center justify-end gap-1.5', compact ? 'w-[18rem]' : 'w-[27rem]')} data-composer-model-controls={scope} data-composer-sign-in="true">
-        <span className="min-w-0 truncate text-[12px] text-[color:var(--utility-muted-text)]">No account</span>
-        <button type="button" onClick={onSignIn} className="app-button-quiet inline-flex shrink-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium">
-          <LogIn className="h-3.5 w-3.5" aria-hidden="true" />
-          Sign in
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className={cn('relative flex min-w-0 max-w-full items-center gap-1.5', compact ? 'w-[18rem] flex-nowrap justify-end' : 'w-[27rem]')} data-composer-model-controls={scope}>
-      <button
-        ref={(node) => { selectorTriggerRefs.current.provider = node; }}
-        type="button"
-        onClick={() => {
-          updateSelectorMenuPosition('provider');
-          onToggleSelector(scope, 'provider');
-        }}
-        className="app-button-quiet inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium" aria-expanded={activeSelector === 'provider'} title={selectedProviderLabel}
-      >
-        <span className="min-w-0 flex-1 truncate text-left">{selectedProviderLabel || 'Provider'}</span>
-        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'provider' ? 'rotate-180 text-slate-300' : '')} />
-      </button>
-      <button
-        ref={(node) => { selectorTriggerRefs.current.model = node; }}
-        type="button"
-        onClick={() => {
-          updateSelectorMenuPosition('model');
-          onToggleSelector(scope, 'model');
-        }}
-        className="app-button-quiet inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium" aria-expanded={activeSelector === 'model'} title={selectedModel}
-      >
-        <span className="min-w-0 flex-1 truncate text-left">{selectedModel}</span>
-        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'model' ? 'rotate-180 text-slate-300' : '')} />
-      </button>
-      <button
-        ref={(node) => { selectorTriggerRefs.current.thinking = node; }}
-        type="button"
-        onClick={() => {
-          updateSelectorMenuPosition('thinking');
-          onToggleSelector(scope, 'thinking');
-        }}
-        className="app-button-quiet inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium" aria-expanded={activeSelector === 'thinking'} title={selectedThinkingLabel}
-      >
-        <span className="min-w-0 flex-1 truncate text-left">{selectedThinkingLabel}</span>
-        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'thinking' ? 'rotate-180 text-slate-300' : '')} />
-      </button>
-      {activeSelector && activeSelector !== 'mode'
-        ? (typeof document !== 'undefined' ? createPortal(renderSelectorMenu(), document.body) : renderSelectorMenu())
-        : null}
-    </div>
-  );
+  return <div className="min-w-0 max-w-full" data-composer-model-controls={scope}>
+    <ModelEffortPicker selection={selection} providerOptions={providerOptions} modelOptions={modelOptions}
+      onSignIn={onSignIn} confirmAccountChanges={confirmAccountChanges}
+      onApply={async (route, type) => {
+        if (onSelectRoute) return onSelectRoute(scope, route, type);
+        const current = resolveComposerModelSelection({ selection, providerOptions, modelOptions });
+        if (route.providerOption && route.providerOption.value !== current.selectedProviderOption?.value) {
+          if (await onSelectProviderChoice(scope, route.providerOption) === false) return false;
+        }
+        if (route.model !== selection.model && await onSelectValue(scope, 'model', route.model) === false) return false;
+        if (route.thinking !== selection.thinking && await onSelectValue(scope, 'thinking', route.thinking) === false) return false;
+      }} />
+  </div>;
 }
 
 export function ComposerModeControl({

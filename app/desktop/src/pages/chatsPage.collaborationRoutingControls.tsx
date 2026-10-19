@@ -50,7 +50,7 @@ type CollaborationRoutingControlsProps = {
   actions: {
     toggleSelector: ChatsPageRuntime['toggleComposerSelector'];
     onSelectAgent: (agentId: string) => void;
-    onUpdate: (patch: CollaborationRoutingPatch) => void;
+    onUpdate: (patch: CollaborationRoutingPatch) => void | boolean | Promise<void | boolean>;
     defaultThinkingForModel: (
       modelValue: string | null | undefined,
       currentThinking: string | null | undefined,
@@ -117,12 +117,13 @@ export function CollaborationRoutingControls({
       ) : null}
       <ComposerModelControls
         scope="chat"
+        confirmAccountChanges
         selection={selection}
         openSelector={openSelector}
         onToggleSelector={actions.toggleSelector}
         onSelectValue={(_scope, type, value) => {
           if (type === 'model') {
-            actions.onUpdate({
+            return actions.onUpdate({
               defaultModel: value,
               defaultAuthProvider: selectedAgent.defaultAuthProvider ?? null,
               defaultAuthChoice: selectedAgent.defaultAuthChoice ?? null,
@@ -133,7 +134,7 @@ export function CollaborationRoutingControls({
               selectorType: 'model',
             });
           } else if (type === 'thinking') {
-            actions.onUpdate({
+            return actions.onUpdate({
               defaultModel: selectedAgent.defaultModel ?? null,
               defaultAuthProvider: selectedAgent.defaultAuthProvider ?? null,
               defaultAuthChoice: selectedAgent.defaultAuthChoice ?? null,
@@ -152,7 +153,7 @@ export function CollaborationRoutingControls({
         onSelectRoute={(_scope, route, selectorType) => {
           // One pick saves one complete route: its account, a model that
           // account offers, and a thinking level that model offers.
-          actions.onUpdate({
+          return actions.onUpdate({
             defaultModel: route.model,
             defaultAuthProvider: route.providerOption?.providerId ?? selectedAgent.defaultAuthProvider ?? null,
             defaultAuthChoice: route.providerOption
@@ -168,7 +169,7 @@ export function CollaborationRoutingControls({
         onSelectProviderChoice={(_scope, option) => {
           const nextModel = firstModelForProvider(option.providerId, modelOptions);
           if (!nextModel) return;
-          actions.onUpdate({
+          return actions.onUpdate({
             defaultModel: nextModel,
             defaultAuthProvider: option.providerId,
             defaultAuthChoice: authChoiceFromProviderOption(option),

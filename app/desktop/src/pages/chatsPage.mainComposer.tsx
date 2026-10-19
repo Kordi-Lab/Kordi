@@ -144,10 +144,10 @@ export function MainComposer({
   const routeAccountUnavailable = canConfigureModelRoute
     && (localRouting.paneKind === 'agent' || collaborationRouting.enabled)
     && isRouteAccountUnavailable(routeSelection, composerProviderOptions);
-  // When the account menu offers a usable account, a send applies it first.
-  const canSend = !routeAccountUnavailable || Boolean(collaborationRouting.replaceUnavailableAccount);
-  const onSend: MainComposerProps['onSend'] = (draftOverride, attachmentOverride) => (!routeAccountUnavailable
-    || collaborationRouting.replaceUnavailableAccount?.() ? sendMessage(draftOverride, attachmentOverride) : undefined);
+  const canSend = !routeAccountUnavailable;
+  const onSend: MainComposerProps['onSend'] = (draftOverride, attachmentOverride) => (
+    canSend ? sendMessage(draftOverride, attachmentOverride) : undefined
+  );
   const voice = useVoiceComposer({
     conversation,
     cloudAccountId,
@@ -365,17 +365,6 @@ export function MainComposer({
             className="flex min-w-0 flex-wrap items-center gap-2 overflow-visible pr-1"
             data-composer-left-actions="true"
           >
-            {!editingMessage && useCompactRouteMenu ? (
-              <CompactComposerModelMenu
-                scope="chat"
-                selection={routeSelection}
-                providerOptions={composerProviderOptions}
-                modelOptions={chatModelOptions && chatModelOptions.length > 0
-                  ? chatModelOptions
-                  : undefined}
-                onSave={collaborationRouting.onSaveCompact}
-              />
-            ) : null}
             {!editingMessage && !voiceSurfaceActive ? <ComposerAttachmentAddMenu
               inputRef={chatAttachmentInputRef}
               onRecordVideo={() => { void video.start(); }}
@@ -405,6 +394,17 @@ export function MainComposer({
                 : display.showCompanionPane ? 'shrink gap-2' : 'shrink-0 gap-3',
             )}
           >
+            {!editingMessage && useCompactRouteMenu ? (
+              <CompactComposerModelMenu
+                scope="chat"
+                selection={routeSelection}
+                providerOptions={composerProviderOptions}
+                modelOptions={chatModelOptions && chatModelOptions.length > 0
+                  ? chatModelOptions
+                  : undefined}
+                onSave={collaborationRouting.onSaveCompact}
+              />
+            ) : null}
             {!editingMessage && !voiceSurfaceActive && localRouting.paneKind === 'agent'
               && !collaborationRouting.enabled
               && (display.isNativeShell || localRouting.contextStatus) ? (
@@ -423,7 +423,7 @@ export function MainComposer({
                   openSelector={openComposerSelector}
                   onToggleSelector={toggleComposerSelector}
                   onSelectValue={(scope, type, value) => {
-                    void selectComposerValue(scope, type, value, localRouting.configTarget);
+                    return selectComposerValue(scope, type, value, localRouting.configTarget);
                   }}
                   authLabel={composerAuthLabel}
                   authOptions={composerAuthOptions}
@@ -436,7 +436,7 @@ export function MainComposer({
                     );
                   }}
                   onSelectProviderChoice={(scope, option) => {
-                    void selectComposerProviderChoice(scope, option, localRouting.configTarget);
+                    return selectComposerProviderChoice(scope, option, localRouting.configTarget);
                   }}
                   providerOptions={composerProviderOptions}
                   modelOptions={chatModelOptions && chatModelOptions.length > 0
