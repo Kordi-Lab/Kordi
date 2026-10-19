@@ -2,8 +2,10 @@ import { backfillLocalHistoryImages } from './cloudSelfAgentImageBackfill';
 import {
   useEffect,
   useRef,
+  useState,
   type MutableRefObject,
 } from 'react';
+import { withDeadline } from '@/lib/promiseDeadline';
 import type {
   CanonicalSessionState,
   DesktopChatTurnSnapshot,
@@ -62,6 +64,8 @@ import {
 import { indexRemoteSelfAgentOperations } from './cloudSelfAgentRemoteIdentity';
 
 const CLOUD_SELF_AGENT_RECONCILE_RETRY_MS = 30_000;
+/** A run that holds the single-flight lock longer is released and retried. */
+export const CLOUD_SELF_AGENT_RECONCILE_DEADLINE_MS = 180_000;
 
 export function useCloudSelfAgentForwardSync({
   account,
@@ -89,6 +93,10 @@ export function useCloudSelfAgentForwardSync({
   reportWarning: (message: string, error: unknown) => void;
 }) {
   const syncFlightRef = useRef(createSingleFlightState());
+  // Bumped after a failed or stuck run, so a send is retried without waiting for another local change.
+  const [reconcileRetryTick, setReconcileRetryTick] = useState(0);
+  const reconcileRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (reconcileRetryTimerRef.current) clearTimeout(reconcileRetryTimerRef.current); }, []);
   const reconciliationFailureRef = useRef<{
     accountId: string;
     failedAtMs: number;
@@ -190,7 +198,16 @@ export function useCloudSelfAgentForwardSync({
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;
 
-    void requestSingleFlightRun(syncFlightRef.current, async () => {
+    const recordFailure = (message: string, error: unknown) => {
+      reconciliationFailureRef.current = { accountId: account.accountId, failedAtMs: Date.now() };
+      reportWarning(message, error);
+      if (reconcileRetryTimerRef.current) clearTimeout(reconcileRetryTimerRef.current);
+      reconcileRetryTimerRef.current = setTimeout(() => setReconcileRetryTick((tick) => tick + 1), CLOUD_SELF_AGENT_RECONCILE_RETRY_MS + 250);
+    };
+    // An abandoned run stops at its next checkpoint instead of racing the retry.
+    let abandoned = false;
+    const stopped = () => cancelledRef.current || abandoned;
+    void requestSingleFlightRun(syncFlightRef.current, () => withDeadline((async () => {
       const previousFailure = reconciliationFailureRef.current;
       if (
         previousFailure?.accountId === account.accountId
@@ -207,7 +224,7 @@ export function useCloudSelfAgentForwardSync({
           loadSession(),
           loadChatSyncConversations(account.accountId),
         ]);
-        if (!session?.token || session.accountId !== account.accountId || cancelledRef.current) return;
+        if (!session?.token || session.accountId !== account.accountId || stopped()) return;
         const initialLedger = loadCloudSelfAgentSyncLedger(account.accountId);
 
         const syncedSessionIds = cloudSyncedLocalAgentSessionIds(latestState);
@@ -257,7 +274,7 @@ export function useCloudSelfAgentForwardSync({
             })
           )),
         );
-        if (cancelledRef.current) return;
+        if (stopped()) return;
 
         const recoverySessionIds = new Set(pendingRecoverySessionIds);
         const remoteHistorySessionIds = new Set([
@@ -270,7 +287,7 @@ export function useCloudSelfAgentForwardSync({
           await Promise.all([
             loadCanonicalRecoveryMessages(
               recoverySessionIds,
-              () => !cancelledRef.current,
+              () => !stopped(),
             ),
             loadRemoteRecoveryMessages(
               client,
@@ -280,10 +297,10 @@ export function useCloudSelfAgentForwardSync({
                 ...createdConversations,
               ],
               remoteHistorySessionIds,
-              () => !cancelledRef.current,
+              () => !stopped(),
             ),
           ]);
-        if (cancelledRef.current) return;
+        if (stopped()) return;
         const identityResult = await publishCloudAgentIdentityMarkers({
           accountId: account.accountId,
           client,
@@ -418,7 +435,7 @@ export function useCloudSelfAgentForwardSync({
                 nextLedger,
               );
             },
-            shouldContinue: () => !cancelledRef.current,
+            shouldContinue: () => !stopped(),
             shouldMergeMessage: (operation) => (
               shouldPublishProgress(operation.sessionId)
             ),
@@ -434,7 +451,7 @@ export function useCloudSelfAgentForwardSync({
           });
         }
         const restoredImages = await backfillLocalHistoryImages({ accountId: account.accountId, token: session.token,
-          state: latestState, conversations: localConversations, client, shouldContinue: () => !cancelledRef.current });
+          state: latestState, conversations: localConversations, client, shouldContinue: () => !stopped() });
         if (
           restoredImages || reconciliation.length > 0
           || operations.length > 0
@@ -445,16 +462,10 @@ export function useCloudSelfAgentForwardSync({
         );
         reconciliationFailureRef.current = null;
       } catch (error) {
-        reconciliationFailureRef.current = {
-          accountId: account.accountId,
-          failedAtMs: Date.now(),
-        };
-        reportWarning(
-          '[cloud-self-agent-sync] failed to reconcile agent sessions',
-          error,
-        );
+        if (!abandoned) recordFailure('[cloud-self-agent-sync] failed to reconcile agent sessions', error);
       }
-    });
+    })(), CLOUD_SELF_AGENT_RECONCILE_DEADLINE_MS, 'Agent chat sync did not finish in time.', () => { abandoned = true; })
+      .catch((error: unknown) => recordFailure('[cloud-self-agent-sync] released a stuck agent session sync', error)));
   }, [
     account,
     cancelledRef,
@@ -466,6 +477,7 @@ export function useCloudSelfAgentForwardSync({
     activeLocalTurnSessionKey,
     mergeMessage,
     processedRequestIdsRef,
+    reconcileRetryTick,
     reportWarning,
     syncCloudCollaborationDiff,
   ]);
