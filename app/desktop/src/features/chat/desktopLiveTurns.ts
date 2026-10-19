@@ -87,6 +87,9 @@ export function buildCompletedDesktopAssistantMessage(
   const assistantText = turn.assistantText.trim();
   const fallbackText = turn.error?.trim() || turn.message?.trim() || '';
   const timestampMs = desktopTurnDisplayTimestampMs(turn, fallbackTimestampMs);
+  const failed = !turn.succeeded && turn.status !== 'cancelled';
+  // A failed turn keeps its partial reply as text and its failure apart.
+  const error = failed && assistantText.length > 0 ? turn.error?.trim() : '';
 
   return {
     role: 'assistant',
@@ -94,9 +97,10 @@ export function buildCompletedDesktopAssistantMessage(
     sender: 'Kordi',
     text: assistantText.length > 0 ? assistantText : turn.status === 'cancelled' ? '' : fallbackText,
     detail: undefined,
+    ...(error ? { error } : {}),
     timeLabel: formatDesktopClockTime(new Date(timestampMs)),
     timestampMs,
-    failed: !turn.succeeded && turn.status !== 'cancelled',
+    failed,
     cancelled: turn.status === 'cancelled',
     thinkingText: turn.thinkingText,
     tools: turn.tools,
