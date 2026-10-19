@@ -6,6 +6,7 @@ use crate::{
 use serde_json::{json, Value};
 
 mod omp;
+mod triage;
 pub(crate) use omp::run_omp;
 
 fn model_context(input: &Value) -> Result<Value, ModelLoopError> {
@@ -259,6 +260,9 @@ pub(crate) async fn run_legacy<P: CloudModelProvider + Sync>(
     }
     let mut auth = OpenAiProviderConfig::from_material(&material)?;
     auth.apply_runtime_route(&run.runtime_route, &material.provider)?;
+    if triage::is_triage(&input) {
+        return triage::run_legacy(provider, run, &auth, &input).await;
+    }
     let context = model_context(&input)?;
     let instruction = if input.get("changes").is_some_and(Value::is_object) {
         "Apply the supplied change events to the previous digest. Return only changed or new items and explicit removedItemIds, not the entire report. Review every changed source, including proposed meetings. Use observation tools only for specific missing context."

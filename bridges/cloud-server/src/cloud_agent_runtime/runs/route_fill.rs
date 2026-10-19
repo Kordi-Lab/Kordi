@@ -18,7 +18,7 @@ use crate::cloud_agent_runtime::provider_auth::{
 const CANDIDATE_LIMIT: i64 = 16;
 
 /// The route a Cloud claim runs with. A route that already names a model is
-/// kept. Otherwise the owner's latest recorded route with a model replaces it
+/// kept. Digest runs, which ask for their own model, are never reused. Otherwise the owner's latest recorded route with a model replaces it
 /// when the owner has a live hosted account for that route. A thinking level
 /// the claim chose is kept, and a claim that names an account only takes a
 /// route for that same account.
@@ -98,7 +98,7 @@ async fn recent_route(
     let rows: Vec<(Value,)> = query_as(
         "SELECT runtime_route_json FROM cloud_agent_fallback_runs \
          WHERE owner_account_id = $1 AND ($2::TEXT IS NULL OR session_id = $2) \
-           AND NOT legacy_duplicate \
+           AND NOT legacy_duplicate AND run_id NOT LIKE 'digest\\_%' \
            AND COALESCE(runtime_route_json->>'defaultModel', '') <> '' \
            AND ($3::TEXT IS NULL OR runtime_route_json->>'defaultAuthChoice' = $3) \
            AND ($4::TEXT IS NULL OR runtime_route_json->>'defaultAuthProvider' = $4) \

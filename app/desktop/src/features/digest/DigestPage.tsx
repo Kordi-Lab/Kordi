@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type FormEvent } from 'react';
-import { Bell, RefreshCw } from 'lucide-react';
+import { Bell, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { digestClient } from './client';
 import { useDigest } from './useDigest';
 import { digestUpdatedLabel } from './freshness';
+import { DigestSettings } from './DigestSettings';
 import { CALENDAR_PRIVACY_SETTINGS_URL, fetchCalendarLink, dateKey, importCalendar, plainEventNotes, shiftedCalendarEnd, syncReminders, zonedEventLabel, type CalendarImport } from './calendar';
 import type { CalendarConnection, CalendarEvent, CalendarRecurrence, DigestItem, DigestSource } from './types';
 import { requestCalendarSync, useCalendarSyncStatus } from './calendarSyncRunner';
@@ -66,6 +67,7 @@ export default function DigestPage({accountId,onOpenProviderSettings,renderConte
   const [review,setReview]=useState<{item:DigestItem;original?:CalendarEvent;series?:CalendarEvent[]}|null>(null);
   const [importOpen,setImportOpen]=useState(false);
   const [calendarSettingsOpen,setCalendarSettingsOpen]=useState(false);
+  const [settingsOpen,setSettingsOpen]=useState(false);
   const sync=useCalendarSyncStatus(accountId);
   const [busy,setBusy]=useState(false);const [actionError,setActionError]=useState<string|null>(null);
   const [reminderState,setReminderState]=useState('unknown');
@@ -133,7 +135,7 @@ export default function DigestPage({accountId,onOpenProviderSettings,renderConte
   }
   function calendarCandidate(item:DigestItem){try{const event=proposalEvent(item,events,sources,digest?.timezone);setReview({item,original:events.find(e=>e.id===item.existingEventId),series:proposalSeries(item,events)});setEditEvent(event);}catch(error){setActionError(calendarErrorMessage(error,'Could not review this event.'));}}
   function changeMonth(next:string){setMonth(next);if(!selectedDay.startsWith(next))setSelectedDay(`${next}-01`);}
-  return <ActionErrorContext.Provider value={{error:actionError,setError:setActionError}}><section className={renderContent ? "digest-page digest-companion-page" : "digest-page"} aria-label="Digest">{!renderContent&&<header className="digest-header"><div><h1>Digest</h1><div className="digest-header-actions"><button aria-label="Enable calendar reminders" onClick={()=>void act(async()=>setReminderState(await syncReminders(accountId,events,true)))}><Bell size={18}/></button><button aria-label="Refresh digest" disabled={busy||digest?.status==='updating'} onClick={()=>void act(()=>digestClient.refresh(accountId))}><RefreshCw size={18}/></button></div></div><div className="digest-status" role="status" aria-live="polite"><span className="digest-status-line">{pendingMutationKeys.length>0&&!unavailable?<>Saving changes…</>:freshness}</span></div><nav aria-label="Digest views">{(['brief','tasks','calendar'] as const).map(v=><button key={v} aria-pressed={view===v} onClick={()=>setView(v)}>{v==='brief'?'Brief':v==='tasks'?'Next steps':'Calendar'}</button>)}</nav></header>}
+  return <ActionErrorContext.Provider value={{error:actionError,setError:setActionError}}><section className={renderContent ? "digest-page digest-companion-page" : "digest-page"} aria-label="Digest">{!renderContent&&<header className="digest-header"><div><h1>Digest</h1><div className="digest-header-actions"><button aria-label="Enable calendar reminders" onClick={()=>void act(async()=>setReminderState(await syncReminders(accountId,events,true)))}><Bell size={18}/></button><button aria-label="Refresh digest" disabled={busy||digest?.status==='updating'} onClick={()=>void act(()=>digestClient.refresh(accountId))}><RefreshCw size={18}/></button><button aria-label="Digest settings" onClick={()=>setSettingsOpen(true)}><SlidersHorizontal size={18}/></button></div></div><div className="digest-status" role="status" aria-live="polite"><span className="digest-status-line">{pendingMutationKeys.length>0&&!unavailable?<>Saving changes…</>:freshness}</span></div><nav aria-label="Digest views">{(['brief','tasks','calendar'] as const).map(v=><button key={v} aria-pressed={view===v} onClick={()=>setView(v)}>{v==='brief'?'Brief':v==='tasks'?'Next steps':'Calendar'}</button>)}</nav></header>}
     <div className="digest-notices" role="status">{renderContent&&pendingMutationKeys.length>0&&<p className="digest-meta">Saving changes…</p>}{mutationError&&<p className="digest-warning">{mutationError} {canRetryMutation&&<button onClick={()=>void retryMutation().catch(()=>{})}>Try again</button>}</p>}{(visibleActionError||error)&&<p className="digest-warning">{visibleActionError||error}</p>}{reminderState==='denied'&&<p className="digest-warning">Device notifications are off. Enable them in system settings to receive reminders.</p>}</div>{renderContent ? renderContent({state,actions:{
       onEvent:openEvent,onSource:setSourceId,onFeedback:changeFeedback,feedbackPending,
       onCandidate:calendarCandidate,onRefresh:retryGeneration,busy,
@@ -152,6 +154,7 @@ export default function DigestPage({accountId,onOpenProviderSettings,renderConte
     {sourceId&&<Sheet title={source?.sessionTitle||'Source unavailable'} onClose={()=>setSourceId(null)}>{source?<>{selectedSources.map(source=><article key={source.id}><p className="digest-meta">@{source.senderName} · {timeLabel(source.createdAt)}</p><blockquote><MarkdownContent text={source.text} tone="inherit" className="whitespace-normal" copySurface="message" preserveLineBreaks /></blockquote></article>)}</>:<p>This message is no longer included or accessible. Refresh the digest.</p>}</Sheet>}
     {editEvent&&(!review||editEvent.revision>0||output?.calendarCandidates.some(item=>item.id===review.item.id))&&editEvent.sourceIds.every(id=>sources.some(s=>s.id===id))&&<EventEditor key={editEvent.id+(review?.item.id??'')} removesFromDevice={removesFromDevice(editEvent)} event={editEvent} review={review} sources={sources} accountId={accountId} onClose={()=>setEditEvent(null)} onSave={event=>act(async()=>{if(event.recurrence&&!event.revision)await digestClient.saveSeries(accountId,event);else await digestClient.saveEvent(accountId,event);setEditEvent(null);})} onRemove={editEvent.revision?async()=>{const seriesId=review?.series?review.item.existingSeriesId:undefined;const targets=seriesId&&review?.series?review.series:[editEvent];setEditEvent(null);setReview(null);try{await removeEvents(targets,seriesId??undefined);}catch{/* The account-owned store reports failure and restores the event. */}}:undefined}/>}
     {importOpen&&<ImportSheet events={events} onClose={()=>setImportOpen(false)} onImport={saveImported}/>}
+    {settingsOpen&&<Sheet title="Digest settings" onClose={()=>setSettingsOpen(false)}><DigestSettings accountId={accountId} onRebuilt={()=>{setSettingsOpen(false);void reload().catch(()=>{});}}/></Sheet>}
     {calendarSettingsOpen&&<CalendarSettingsSheet accountId={accountId} calendars={sync.calendars} onClose={()=>setCalendarSettingsOpen(false)}/>}
   </section></ActionErrorContext.Provider>;
 }

@@ -123,6 +123,13 @@ pub(crate) async fn claim(
         fail_held(pool, run_id, &owner, "digest_generation_failed").await?;
         return Ok(Some(json!({"runId": run_id, "acquired": false})));
     };
+    // The model and thinking level the run asks for (see `model_choice`).
+    let asked: Option<(Option<String>, Option<String>)> =
+        query_as("SELECT model, thinking FROM cloud_digest_runs WHERE run_id = $1")
+            .bind(run_id)
+            .fetch_optional(pool)
+            .await?;
+    let (model, thinking) = asked.unwrap_or_default();
     Ok(Some(json!({
         "runId": run_id,
         "acquired": true,
@@ -131,6 +138,8 @@ pub(crate) async fn claim(
             "systemPrompt": mac_tool_names(&system_prompt),
             "prompt": prompt,
             "tools": mac_tools(),
+            "model": model,
+            "thinking": thinking,
         },
     })))
 }

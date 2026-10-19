@@ -29,6 +29,11 @@ pub const SAFETY_CHECK_MINUTES: i64 = 30;
 /// Automatic runs per account. Pressing refresh is never capped.
 pub const AUTOMATIC_RUNS_PER_HOUR: i64 = 4;
 pub const AUTOMATIC_RUNS_PER_DAY: i64 = 30;
+/// Urgent updates may run until this many automatic and urgent runs started
+/// in the last hour.
+pub const URGENT_RUNS_PER_HOUR: i64 = 6;
+/// Quick urgency checks per account per hour.
+pub const TRIAGE_RUNS_PER_HOUR: i64 = 6;
 /// Opening the digest starts a run only for a snapshot at least this old,
 /// and at most once per this interval however often clients poll.
 pub const OPEN_REFRESH_MINUTES: i64 = 15;
@@ -105,7 +110,9 @@ pub async fn note_message<'e>(
     if deleted || generating {
         return Ok(());
     }
-    let news = !is_trivial(&message.content);
+    let text = super::source_reader::visible_text(&message.content);
+    let news = text.as_deref().is_some_and(|text| !is_trivial_text(text));
+    let urgent = news && text.as_deref().is_some_and(super::urgent::looks_urgent);
     // Digest rows are locked in account order before they are marked. A
     // message send marks its members inside the send's transaction, so two
     // sends into chats that share members would otherwise lock the same rows
@@ -127,7 +134,8 @@ pub async fn note_message<'e>(
          UPDATE cloud_account_digests digest
          SET owner_active_at = CASE WHEN digest.account_id = $2 THEN now() ELSE digest.owner_active_at END,
              dirty_since = CASE WHEN news.marks THEN COALESCE(digest.dirty_since, now()) ELSE digest.dirty_since END,
-             last_change_at = CASE WHEN news.marks THEN now() ELSE digest.last_change_at END
+             last_change_at = CASE WHEN news.marks THEN now() ELSE digest.last_change_at END,
+             urgent_since = CASE WHEN news.marks AND $5 THEN COALESCE(digest.urgent_since, now()) ELSE digest.urgent_since END
          FROM news WHERE digest.account_id = news.account_id
            AND (news.marks OR digest.account_id = $2)",
     )
@@ -135,6 +143,7 @@ pub async fn note_message<'e>(
     .bind(&message.sender_account_id)
     .bind(news)
     .bind(serde_json::json!([{ "id": message.id.to_string() }]))
+    .bind(urgent)
     .execute(executor)
     .await?;
     Ok(())
