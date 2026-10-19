@@ -6,7 +6,8 @@ use kordi_tools::task_operator::models::TaskOperatorBackgroundSession;
 use tokio::{process::Command, sync::Mutex, task::JoinHandle};
 
 use super::child_process_policy::{
-    CHILD_AGENT_PROCESS_TIMEOUT, child_agent_tool_names, prompt_context,
+    CHILD_AGENT_PROCESS_TIMEOUT, child_agent_tool_names, owner_local_child_tool_names,
+    owner_local_prompt_context, prompt_context,
 };
 use super::inspection::{BackgroundSessionInspection, truncate_summary};
 use super::registry::TaskAgentStatus;
@@ -26,6 +27,22 @@ pub fn managed_child_prompt_context(
     write_scope: &[String],
 ) -> String {
     prompt_context(task_path, task_name, write_scope)
+}
+
+/// The parent turn's tools for a background session the owner started on
+/// their own Mac (see `owner_local_child_tool_names`).
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub fn owner_child_tool_names(parent_tools: &[String]) -> Vec<String> {
+    owner_local_child_tool_names(parent_tools)
+}
+
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub fn owner_child_prompt_context(
+    task_path: &str,
+    task_name: &str,
+    write_scope: &[String],
+) -> String {
+    owner_local_prompt_context(task_path, task_name, write_scope)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

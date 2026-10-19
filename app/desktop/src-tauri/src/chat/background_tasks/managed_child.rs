@@ -9,8 +9,9 @@ use kordi_cli::desktop_runtime::{
     DesktopRuntimeProfile, DesktopRuntimeSession,
 };
 use kordi_cli::task_operator::{
-    managed_child_prompt_context, managed_child_tool_names, BackgroundSessionInspection,
-    ChildAgentRunner, SpawnRequest, SpawnedTask, WaitOutcome,
+    managed_child_prompt_context, managed_child_tool_names, owner_child_prompt_context,
+    owner_child_tool_names, BackgroundSessionInspection, ChildAgentRunner, SpawnRequest,
+    SpawnedTask, WaitOutcome,
 };
 use tokio::sync::Mutex;
 
@@ -44,6 +45,8 @@ pub(in crate::chat) struct ManagedChildAgentRunner {
     parent_hosted_auth: Option<InheritedHostedAuth>,
     /// The parent lease reduced to `create_document` (issue 1808).
     document_lease: Option<kordi_cli::desktop_runtime::DesktopCloudExecutionLease>,
+    /// The parent turn's tools when the owner made the request on this Mac.
+    owner_local_tools: Option<Vec<String>>,
     jobs: Arc<Mutex<BTreeMap<String, ManagedTask>>>,
 }
 
@@ -66,6 +69,7 @@ impl ManagedChildAgentRunner {
             parent_route: None,
             parent_hosted_auth: None,
             document_lease: None,
+            owner_local_tools: None,
             jobs: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -105,6 +109,14 @@ impl ManagedChildAgentRunner {
         self
     }
 
+    /// A background session of the owner's own request on this Mac keeps the
+    /// parent turn's tools and approval rules. Without it (anyone else's
+    /// request), children get the restricted read-only set.
+    pub(in crate::chat) fn with_owner_local_tools(mut self, tools: Option<Vec<String>>) -> Self {
+        self.owner_local_tools = tools;
+        self
+    }
+
     /// The runtime session that receives the follow-up turn when a child
     /// finishes. Without it, outcomes stay in the background session only.
     pub(in crate::chat) fn with_parent_runtime_session(mut self, session_id: String) -> Self {
@@ -123,12 +135,25 @@ impl ManagedChildAgentRunner {
         }
 
         let mut profile = self.base_profile.clone();
-        profile.tool_names = Some(managed_child_tool_names(!request.write_scope.is_empty()));
-        let child_context = managed_child_prompt_context(
-            &request.task_path,
-            &request.task_name,
-            &request.write_scope,
-        );
+        let (tools, child_context) = match self.owner_local_tools.as_deref() {
+            Some(parent_tools) => (
+                owner_child_tool_names(parent_tools),
+                owner_child_prompt_context(
+                    &request.task_path,
+                    &request.task_name,
+                    &request.write_scope,
+                ),
+            ),
+            None => (
+                managed_child_tool_names(!request.write_scope.is_empty()),
+                managed_child_prompt_context(
+                    &request.task_path,
+                    &request.task_name,
+                    &request.write_scope,
+                ),
+            ),
+        };
+        profile.tool_names = Some(tools);
         profile.system_prompt = Some(match profile.system_prompt.take() {
             Some(base) if !base.trim().is_empty() => format!("{base}\n\n{child_context}\n\nRetain the parent Agent identity and ownership. This is an execution subsession, not another Agent or a conversation channel."),
             _ => child_context,
