@@ -49,7 +49,8 @@ export function projectPendingSelfAgentReplies(
   if (sessionIds.size === 0) return state;
   const newestUserBySession = new Map<string, CanonicalSessionMessage>();
   for (const message of state.messages) {
-    if (!sessionIds.has(message.sessionId) || message.senderRole !== 'user') continue;
+    // A native transcript copy of the request is not a newer request.
+    if (!sessionIds.has(message.sessionId) || message.senderRole !== 'user' || message.sourceTransport === 'desktop-chat') continue;
     const current = newestUserBySession.get(message.sessionId);
     if (!current || message.createdAtMs > current.createdAtMs) newestUserBySession.set(message.sessionId, message);
   }

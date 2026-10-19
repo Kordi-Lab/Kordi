@@ -1,4 +1,5 @@
 import { backfillLocalHistoryImages } from './cloudSelfAgentImageBackfill';
+import { linkPublishedSelfAgentRequest } from './cloudSelfAgentRequestEntryLink';
 import {
   useEffect,
   useRef,
@@ -429,6 +430,10 @@ export function useCloudSelfAgentForwardSync({
               if (!recoverySessionIds.has(operation.sessionId)
                 && publishedSelfAgentRequestAlreadyExecutedLocally(operation)) {
                 processedRequestIdsRef.current.add(message.messageId);
+              }
+              if (!publishedSelfAgentRequestAlreadyExecutedLocally(operation)) {
+                void linkPublishedSelfAgentRequest(canonicalStateRef.current, operation.localMessageId, message.messageId)
+                  .catch((error: unknown) => reportWarning('[cloud-self-agent-sync] request link failed', error));
               }
             },
             operations,
