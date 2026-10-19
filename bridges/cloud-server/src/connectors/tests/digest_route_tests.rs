@@ -33,7 +33,7 @@ async fn digest_owner(pool: &PgPool) -> String {
     owner
 }
 
-async fn saved_account(
+pub(super) async fn saved_account(
     pool: &PgPool,
     owner: &str,
     provider: &str,
@@ -56,7 +56,7 @@ async fn saved_account(
     .unwrap();
 }
 
-async fn digest_runs(pool: &PgPool, owner: &str) -> Vec<serde_json::Value> {
+pub(super) async fn digest_runs(pool: &PgPool, owner: &str) -> Vec<serde_json::Value> {
     query_as::<_, (serde_json::Value,)>(
         "SELECT runtime_route_json FROM cloud_agent_fallback_runs \
          WHERE owner_account_id = $1 AND run_id LIKE 'digest\\_%'",
