@@ -290,8 +290,7 @@ function CloudEditionRoot({
           status={status === 'authenticated' && sync.status === 'error' ? 'error' : 'syncing'}
           onRetry={sync.onRetry}
           onCancelSignIn={signedOut && activity === 'social-signing-in' ? cancelSocialSignIn : undefined}
-          onReopenSignIn={reopenCloudOAuthBrowser}
-          signInProvider={socialProvider ?? undefined}
+          onReopenSignIn={reopenCloudOAuthBrowser} signInProvider={socialProvider ?? undefined}
         />
         {signedOut ? (
           <div className="app-cloud-login-surface" data-ready={loginReady} inert={!loginReady}>
