@@ -235,3 +235,73 @@ test('renders step result tables as compact labeled report rows', () => {
   assert.doesNotMatch(html, /aria-label="Scrollable table"/);
   assert.doesNotMatch(html, /<table/);
 });
+
+function orderedListMarkup(text: string) {
+  const html = renderToStaticMarkup(createElement(MarkdownContent, { text }));
+  const lists = html.match(/<ol\b[^>]*>/g) ?? [];
+  return { html, lists, starts: lists.map((tag) => Number(tag.match(/start="(\d+)"/)?.[1] ?? 1)) };
+}
+
+test('keeps a loose numbered list in one ordered list', () => {
+  const { html, lists } = orderedListMarkup([
+    'Three checks:',
+    '',
+    '1. **Sign-in and connection status** — **Action:** open the app. **Expected:** the account is shown.',
+    '',
+    '1. **Conversation switching** — **Action:** switch chats. **Expected:** history loads.',
+    '',
+    '1. **Network interruption recovery** — **Action:** drop the network. **Expected:** the chat reconnects.',
+  ].join('\n'));
+
+  assert.equal(lists.length, 1);
+  assert.equal((html.match(/<li\b/g) ?? []).length, 3);
+  assert.doesNotMatch(lists[0], /start=/);
+});
+
+test('keeps nested bullets and indented continuation lines inside numbered items', () => {
+  for (const nested of ['   ', '']) {
+    const { html, lists } = orderedListMarkup([
+      '1. **Sign-in and provider status**',
+      `${nested}- **Test:** sign in.`,
+      `${nested}- **Expected:** the provider is ready.`,
+      '1. **Conversation switching**',
+      `${nested}- **Test:** switch chats.`,
+      `${nested}- **Expected:** history loads.`,
+      '',
+      '1. **Network interruption recovery**',
+      '   Drop the network for a minute.',
+      '',
+      '   The chat reconnects on its own.',
+    ].join('\n'));
+
+    assert.equal(lists.length, 1, `nested indent ${JSON.stringify(nested)}`);
+    assert.equal((html.match(/<ul\b/g) ?? []).length, 2);
+    assert.equal((html.match(/<li\b/g) ?? []).length, 7);
+    assert.match(html, /recovery<\/strong> Drop the network for a minute\.<\/div><div>The chat reconnects on its own\.<\/div>(?:<\/div>){2}<\/li><\/ol>/);
+  }
+});
+
+test('keeps the source start number when numbered items land in separate lists', () => {
+  const { starts } = orderedListMarkup([
+    '1. First step',
+    '',
+    'A note between steps.',
+    '',
+    '2. Second step',
+    '',
+    '```sh',
+    'echo done',
+    '```',
+    '',
+    '3. Third step',
+  ].join('\n'));
+
+  assert.deepEqual(starts, [1, 2, 3]);
+});
+
+test('keeps a plain line after a list as its own paragraph', () => {
+  const html = renderToStaticMarkup(createElement(MarkdownContent, { text: '1. One\n2. Two\nAfter the list.' }));
+
+  assert.equal((html.match(/<li\b/g) ?? []).length, 2);
+  assert.match(html, /<\/ol><p[^>]*>.*After the list\./);
+});

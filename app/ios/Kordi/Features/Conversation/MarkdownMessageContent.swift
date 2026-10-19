@@ -368,62 +368,12 @@ enum KordiMarkdownParser {
         return urls
     }
 
-    private static func parseList(
-        _ lines: [String],
-        startIndex: Int
-    ) -> (items: [KordiMarkdownListItem], nextIndex: Int)? {
-        guard let first = listLine(lines[startIndex]) else { return nil }
-        var items: [KordiMarkdownListItem] = []
-        var indentLevels = [first.indent]
-        var ordinals: [Int: Int] = [:]
-        var index = startIndex
-
-        while index < lines.count {
-            guard !lines[index].trimmingCharacters(in: .whitespaces).isEmpty,
-                  let line = listLine(lines[index]),
-                  line.indent >= first.indent else { break }
-            if line.indent == first.indent, line.ordered != first.ordered { break }
-
-            indentLevels.removeAll { $0 > line.indent }
-            if !indentLevels.contains(line.indent) { indentLevels.append(line.indent) }
-            indentLevels.sort()
-            let depth = indentLevels.firstIndex(of: line.indent) ?? 0
-            let task = taskPrefix(line.content)
-            let ordinal = line.ordered ? ordinals[depth, default: 0] + 1 : 0
-            if line.ordered { ordinals[depth] = ordinal }
-
-            items.append(KordiMarkdownListItem(
-                text: task.text,
-                checked: task.checked,
-                depth: depth,
-                ordered: line.ordered,
-                ordinal: ordinal
-            ))
-            index += 1
-        }
-
-        return (items, index)
-    }
-
     private static func isBlockStarter(lines: [String], index: Int) -> Bool {
         let value = lines[index].trimmingCharacters(in: .whitespaces)
         if captures(in: value, pattern: "^(#{1,3})\\s+(.+)$") != nil { return true }
         if captures(in: value, pattern: "^(`{3,})") != nil { return true }
         if value.hasPrefix(">") || listLine(lines[index]) != nil { return true }
         return value.contains("|") && index + 1 < lines.count && isTableSeparator(lines[index + 1])
-    }
-
-    private static func listLine(_ line: String) -> (indent: Int, ordered: Bool, content: String)? {
-        guard let hit = captures(in: line, pattern: "^(\\s*)([-*+]|(\\d+)\\.)\\s+(.*)$") else { return nil }
-        let indent = hit[1].replacingOccurrences(of: "\t", with: "    ").count
-        return (indent, !hit[3].isEmpty, hit[4])
-    }
-
-    private static func taskPrefix(_ text: String) -> (checked: Bool?, text: String) {
-        guard let hit = captures(in: text, pattern: "^\\[( |x|X)\\]\\s+(.*)$") else {
-            return (nil, text)
-        }
-        return (hit[1].lowercased() == "x", hit[2])
     }
 
     private static func splitTableRow(_ line: String) -> [String] {
@@ -442,7 +392,7 @@ enum KordiMarkdownParser {
         }
     }
 
-    private static func captures(in text: String, pattern: String) -> [String]? {
+    static func captures(in text: String, pattern: String) -> [String]? {
         capturesWithFullMatch(in: text, pattern: pattern)?.captures
     }
 
