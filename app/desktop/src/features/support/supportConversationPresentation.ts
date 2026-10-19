@@ -1,4 +1,5 @@
 import type { Conversation, Message } from '@/kordi-app/types';
+import { mergeCanonicalHistoryIntoRuntime } from '@/features/canonical/runtimeHistoryMerge';
 import { isCloudAgentStoredNoProviderFailure } from '@/features/cloud/cloudAgentMessages';
 import { isCloudAgentProviderFailureNoticeText } from '@/features/cloud/cloudAgentReplyText';
 import {
@@ -42,12 +43,27 @@ function isPendingSupportContactResponse(
   );
 }
 
+function supportResponseRequestId(message: Message) {
+  return message.supportContactRequestId || message.replyToMessageId || message.turn?.replyToMessageId || null;
+}
+
 export function normalizeSupportContactMessages(messages: Message[]) {
+  const terminalRequestIds = new Set(messages.flatMap((message) => {
+    const requestId = supportResponseRequestId(message);
+    const isResponse = message.supportContactResponse || message.role === 'owned-agent' || message.role === 'external-agent';
+    return requestId && isResponse && !message.supportContactTyping
+      && (!message.turn || message.turn.completed || Boolean(message.turn.error?.trim()))
+      && supportContactResponseText(message).trim() && !isStaleLocalProviderFailure(message)
+      ? [requestId] : [];
+  }));
   const userMessageIds = new Set(messages.flatMap((message) => (
     message.role === 'user' && message.id ? [message.id] : []
   )));
   return messages.flatMap((message) => {
     if (isStaleLocalProviderFailure(message)) return [];
+    const requestId = supportResponseRequestId(message);
+    if (requestId && terminalRequestIds.has(requestId)
+      && (message.supportContactTyping || isPendingSupportContactResponse(message, userMessageIds))) return [];
     if (message.role !== 'owned-agent' && message.role !== 'external-agent') return [message];
 
     const text = supportContactResponseText(message);
@@ -65,6 +81,7 @@ export function normalizeSupportContactMessages(messages: Message[]) {
       isOwnMessage: false,
       showSenderMeta: false,
       supportContactResponse: true,
+      supportContactRequestId: requestId,
       supportContactTyping,
       text,
       detail: undefined,
@@ -139,9 +156,22 @@ export function collapseDuplicateKordiSupportConversations(
   const routed = supportConversations.reduce((current, candidate) => (
     supportRoutingScore(candidate) > supportRoutingScore(current) ? candidate : current
   ), preferred);
-  const collapsed = routed === preferred
-    ? preferred
-    : { ...preferred, collaborationTarget: routed.collaborationTarget };
+  // Keep the established row identity while combining activity from newer mirrors.
+  const histories = [...supportConversations]
+    .sort((left, right) => (left._updatedAtMs ?? 0) - (right._updatedAtMs ?? 0));
+  const activeHistories = histories.filter((conversation) => supportConversationMessageCount(conversation) > 0);
+  const latest = activeHistories[activeHistories.length - 1] ?? preferred;
+  const messages = histories.reduce<Message[]>((history, conversation) => (
+    mergeCanonicalHistoryIntoRuntime(history, conversation.messages)
+  ), []);
+  const collapsed = {
+    ...preferred,
+    _updatedAtMs: latest._updatedAtMs,
+    updatedAtLabel: latest.updatedAtLabel,
+    subtitle: latest.subtitle,
+    collaborationTarget: routed.collaborationTarget,
+    messages: normalizeSupportContactMessages(messages),
+  };
   return conversations.flatMap((conversation) => {
     if (!isKordiSupportConversation(conversation)) return [conversation];
     return conversation === preferred ? [collapsed] : [];

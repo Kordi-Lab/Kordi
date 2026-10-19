@@ -39,6 +39,18 @@ impl ServiceProviderAuth<'_> {
         self.run_id_prefix
             .is_none_or(|prefix| run_id.starts_with(prefix))
     }
+
+    pub(crate) fn matches_run(&self, owner: &str, run_id: &str, route: &Value) -> bool {
+        self.owner_account_id == owner
+            && self.covers_run(run_id)
+            && equivalent_provider_ids(route.get("defaultAuthProvider").and_then(Value::as_str))
+                .is_some_and(|providers| providers.iter().any(|provider| provider == self.provider))
+            && route
+                .get("defaultAuthChoice")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                == Some(self.auth_choice)
+    }
 }
 
 pub(super) fn service_provider_auth_for_run(
@@ -47,28 +59,9 @@ pub(super) fn service_provider_auth_for_run(
     runtime_route: &Value,
     service_auths: Vec<ServiceProviderAuth<'_>>,
 ) -> Option<RunnerProviderAuthMaterial> {
-    let routed_provider_ids = equivalent_provider_ids(
-        runtime_route
-            .get("defaultAuthProvider")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty()),
-    );
-    let routed_auth_choice = runtime_route
-        .get("defaultAuthChoice")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let service_auth = service_auths.into_iter().find(|service_auth| {
-        service_auth.owner_account_id == owner_account_id
-            && service_auth.covers_run(run_id)
-            && routed_provider_ids.as_ref().is_some_and(|providers| {
-                providers
-                    .iter()
-                    .any(|provider| provider == service_auth.provider)
-            })
-            && routed_auth_choice == Some(service_auth.auth_choice)
-    })?;
+    let service_auth = service_auths
+        .into_iter()
+        .find(|auth| auth.matches_run(owner_account_id, run_id, runtime_route))?;
 
     Some(RunnerProviderAuthMaterial {
         snapshot_id: service_auth.snapshot_id.to_string(),
