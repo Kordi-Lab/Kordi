@@ -91,6 +91,10 @@ pub(crate) fn edit_document_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
+            "attachmentId": {
+                "type": "string",
+                "description": "The document to edit, as read_document returned it. Omit it for the document this request is about."
+            },
             "baseRevision": {
                 "type": "integer",
                 "description": "The revision read_document returned."
@@ -150,9 +154,10 @@ pub(crate) fn descriptors(read: bool, edit: bool) -> Vec<LeaseConnectorTool> {
         tools.push(descriptor(
             EDIT_DOCUMENT_TOOL,
             ConnectorToolGroup::Act,
-            "Edit the shared Kordi document this request is about by replacing, inserting \
-             after, or deleting blocks. Read the document first and pass its revision. Use it \
-             only when the person asked for a change, then say what you changed.",
+            "Edit a shared Kordi document of this conversation by replacing, inserting after, \
+             or deleting blocks. Read the document first and pass its attachmentId and \
+             revision. Use it only when the person asked for a change, then say what you \
+             changed.",
         ));
     }
     tools
