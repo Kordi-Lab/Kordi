@@ -45,7 +45,11 @@ pub(super) async fn queue(
         (DIGEST_THINKING, super::SYSTEM_PROMPT)
     };
     let preference = model_choice::preference(pool, account).await?;
-    let route = model_choice::digest_route(route, &preference, thinking);
+    let mut route = model_choice::digest_route(route, &preference, thinking);
+    if trigger == Trigger::Triage {
+        // A quick check never thinks, whichever model the owner chose.
+        route.thinking = Some(TRIAGE_THINKING.to_string());
+    }
     let mut tx = pool.begin().await?;
     let run = format!("{}{}", super::RUN_PREFIX, Uuid::new_v4().simple());
     let value = serde_json::to_value(input).unwrap();

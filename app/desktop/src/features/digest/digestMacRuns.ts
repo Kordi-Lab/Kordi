@@ -4,23 +4,40 @@ import { invokeDesktop, type DesktopChatMessageRoute } from '@/lib/desktop';
 
 // Digest runs on this Mac. While this Mac can run digests, the server holds
 // each new digest run for it and announces it with `digest.run_requested`.
-// This Mac claims the run, runs one turn with its own provider, and submits
-// the reply, which the server checks exactly like a cloud reply. A run this
+// This Mac claims the run, runs one turn with its own provider and the
+// digest's model choice, and submits the reply, which the server checks
+// exactly like a cloud reply. A run this
 // Mac cannot finish goes back to the cloud at once; a run it never claims is
 // run by the cloud once the hold ends.
 
 const RUN_PREFIX = 'digest_';
 const RENEW_MS = 10_000;
 const MAX_PENDING = 8;
+/** The thinking level of a digest run when the claim names none. */
+const DIGEST_THINKING = 'low';
 
 export type DigestRunRequest = { runId: string; sessionId: string };
 
 export type DigestTool = { name: string; description: string; parameters?: unknown };
 
+/**
+ * The model the server chose for the run (see the server's `model_choice`):
+ * `model` and `thinking` for `provider`, how the owner chose it, and each
+ * provider's fast model. `triage` marks the quick urgency check.
+ */
+export type DigestRunChoice = {
+  model?: string | null;
+  thinking?: string | null;
+  provider?: string | null;
+  modelChoice?: string | null;
+  triage?: boolean;
+  fastModels?: Record<string, string> | null;
+};
+
 type DigestClaim = {
   runId: string;
   acquired: boolean;
-  digest?: { systemPrompt: string; prompt: string; tools: DigestTool[] };
+  digest?: DigestRunChoice & { systemPrompt: string; prompt: string; tools: DigestTool[] };
 };
 
 export type DigestMacRuntime = {
@@ -51,6 +68,41 @@ export function claimRuntimeRoute(route: DesktopChatMessageRoute | null | undefi
   return { defaultModel: route.model, defaultAuthProvider: route.authProvider, defaultAuthChoice: route.authChoice, thinking: route.thinking };
 }
 
+function providerOf(model: string | null | undefined, provider: string | null | undefined) {
+  const prefix = model?.includes('/') ? model.slice(0, model.indexOf('/')) : '';
+  return (prefix || provider || '').trim().toLowerCase();
+}
+
+function qualified(model: string, provider: string) {
+  return model.includes('/') || !provider ? model : `${provider}/${model}`;
+}
+
+/**
+ * The route this Mac runs a digest run with: its own provider and account,
+ * with the digest's model and thinking instead of the chat's. A model chosen
+ * for another provider becomes this provider's fast model; a named model of
+ * this provider runs with that fast model as `fallbackModel` in case this Mac
+ * cannot run it. The quick urgency check never thinks.
+ */
+export function digestRunRoute(
+  route: DesktopChatMessageRoute,
+  choice: DigestRunChoice,
+): { route: DesktopChatMessageRoute; fallbackModel: string | null } {
+  const triage = choice.triage === true;
+  if (choice.modelChoice === 'chat') {
+    return { route: triage ? { ...route, thinking: 'off' } : route, fallbackModel: null };
+  }
+  const provider = providerOf(route.model, route.authProvider);
+  const fastId = provider ? choice.fastModels?.[provider]?.trim() : '';
+  const fast = fastId ? qualified(fastId, provider) : null;
+  const requested = choice.model?.trim();
+  const model = requested && provider && providerOf(requested, choice.provider) === provider
+    ? qualified(requested, provider)
+    : fast ?? route.model;
+  const thinking = triage ? 'off' : choice.thinking?.trim() || DIGEST_THINKING;
+  return { route: { ...route, model, thinking }, fallbackModel: fast && fast !== model ? fast : null };
+}
+
 export function runDesktopDigest(input: {
   runId: string;
   claimId: string;
@@ -59,6 +111,7 @@ export function runDesktopDigest(input: {
   prompt: string;
   tools: DigestTool[];
   route: DesktopChatMessageRoute;
+  fallbackModel: string | null;
 }) {
   return invokeDesktop<string>('desktop_digest_run', input);
 }
@@ -121,10 +174,12 @@ export async function runDigestOnMac(
       .catch(() => { lost = true; });
   }, RENEW_MS);
   const path = `digest/desktop/${encodeURIComponent(request.runId)}`;
+  const chosen = digestRunRoute(route, claim.digest);
   try {
     const text = await (runtime.run ?? runDesktopDigest)({
       runId: request.runId, claimId, ownerAccountId: accountId,
-      systemPrompt: claim.digest.systemPrompt, prompt: claim.digest.prompt, tools: claim.digest.tools, route,
+      systemPrompt: claim.digest.systemPrompt, prompt: claim.digest.prompt, tools: claim.digest.tools,
+      route: chosen.route, fallbackModel: chosen.fallbackModel,
     });
     if (lost) return 'not-acquired';
     await runtime.post(`${path}/complete`, { claimId, text });
