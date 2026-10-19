@@ -78,6 +78,14 @@ pub struct DesktopBackgroundFollowUp {
     pub parent_request_id: Option<String>,
     pub title: String,
     pub status: String,
+    /// Where the webview publishes the reply, as it registered it when the
+    /// parent request started. Kept here so a reloaded webview can still
+    /// publish it; opaque to Rust.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub route: Option<serde_json::Value>,
+    /// Set once the webview has published the reply, so a reloaded webview
+    /// does not publish it again.
+    pub published: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]

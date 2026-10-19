@@ -82,6 +82,14 @@ async fn the_macs_completed_reply_carries_the_runs_document() {
     assert_eq!(status, StatusCode::OK, "{body}");
     let envelope = assert_carried_by_agent(&f, &attachment_id).await;
     assert_eq!(envelope["message"]["text"], "The plan is ready.");
+    // The Mac is answered with the stored reply, documents included, since
+    // it renders the reply from this answer (issue 1906).
+    let answered = decode_group(&json!({ "blocks": [{ "text": body["body"] }] }));
+    assert_eq!(
+        answered["message"]["attachments"][0]["attachmentId"],
+        attachment_id
+    );
+    assert_eq!(body["attachments"][0]["attachmentId"], attachment_id);
 }
 
 #[tokio::test]

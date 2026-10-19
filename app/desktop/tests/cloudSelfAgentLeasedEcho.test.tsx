@@ -53,6 +53,42 @@ test('leased native mirrors do not publish a second self-agent request or reply'
     .map((operation) => operation.localMessageId), [separateUser.id, separateReply.id]);
 });
 
+test('a leased native reply under the local request is not republished as history', () => {
+  // The Mac ran the turn before the request's Cloud mirror reached it, so the
+  // native reply names the local request as its parent.
+  const sessionId = 'session:self-agent:lapsed-lease';
+  const request = {
+    id: 'ui-request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text',
+    contentText: 'hi', parentMessageId: null, delegatedExchangeId: null, status: 'sent',
+    content: {
+      desktopEntryId: 'wire-request',
+      agentRuntimeRoute: { model: 'openai/gpt', authProvider: 'openai', authChoice: 'cloud-login:synthetic' },
+    },
+    sequenceNum: 1, createdAtMs: 1001, updatedAtMs: 1001,
+    sourceTransport: 'desktop-chat-ui', sourceEventId: 'desktop-chat-ui:ui-request',
+  } as CanonicalSessionMessage;
+  const nativeReply = {
+    ...request, id: 'native-reply', senderIdentityId: 'agent:me', senderRole: 'owned-agent',
+    messageKind: 'agent-turn', contentText: 'Mac reply', content: { replyToMessageId: request.id },
+    parentMessageId: request.id, status: 'complete', sequenceNum: 2, createdAtMs: 1002, updatedAtMs: 1002,
+    sourceTransport: 'desktop-chat', sourceEventId: 'desktop-chat:native-reply',
+  } as CanonicalSessionMessage;
+  const state = {
+    sessions: [{ id: sessionId, kind: 'self-agent', status: 'active' }],
+    identities: [], participants: [], profile: { humanIdentityId: 'human:me' },
+    messages: [request, nativeReply],
+  } as unknown as CanonicalSessionState;
+  const ledger = { [request.id]: { cloudMessageId: 'wire-request', syncedAtMs: 1000 } };
+  assert.deepEqual(planCloudSelfAgentSync(state, ledger, { createdAfterMs: 900 }), []);
+  assert.deepEqual(planCloudSelfAgentSync(state, ledger, { recoverSessionIds: new Set([sessionId]) })
+    .map((operation) => operation.localMessageId), [request.id], 'recovery never republishes the leased reply');
+
+  // A local reply to an unrouted request is ordinary history and still syncs.
+  const unrouted = { ...request, content: {} } as CanonicalSessionMessage;
+  assert.deepEqual(planCloudSelfAgentSync({ ...state, messages: [unrouted, nativeReply] }, ledger, { createdAfterMs: 900 })
+    .map((operation) => operation.localMessageId), [nativeReply.id]);
+});
+
 test('historical Cloud export does not suppress a later native turn by entry id alone', () => {
   const sessionId = 'session:self-agent:history';
   const row = (id: string, sourceTransport: string, senderRole: string,

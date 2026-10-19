@@ -8,6 +8,7 @@ use super::render::*;
 use super::tokens::*;
 use super::validate::*;
 
+mod agents_chat_edit_db;
 mod agents_create_db;
 mod agents_create_fixture;
 mod agents_create_reply_db;

@@ -19,6 +19,7 @@ import { cloudAgentRunExecutingRequest } from './cloudAgentRunOwnership';
 import { cloudSelfAgentRuntimeSessionId } from './cloudAgentRuntime';
 import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
+import { handBackDesktopRun } from './cloudDesktopRunHandback';
 import { bindClaimedProjectSession } from '@/features/projects/claimedProjectSession';
 import {
   cloudDirectMessageAgentRuntimeRoute,
@@ -173,6 +174,34 @@ export async function executeCloudSelfAgentRequest({
   const runtimeSessionId = cloudSelfAgentRuntimeSessionId(sessionId);
   let lastTurn: DesktopChatTurnSnapshot | null = null;
   let settled = false;
+  let localTurnStarted = false;
+  // Before a local turn starts, a failure on this Mac (a slow cloud call, an
+  // attachment, the runtime refusing the turn) hands the run back to the
+  // cloud, which answers instead of the request failing. Returns `false` when
+  // the run stays here, such as a project session the cloud cannot run.
+  const handBackBeforeLocalTurn = async (error: unknown) => {
+    if (
+      localTurnStarted
+      || stopRequested
+      || supersededRequestIdsRef.current.has(request.messageId)
+      || isInactive()
+      || !await handBackDesktopRun(client, session.token, lease)
+    ) return false;
+    settled = true;
+    reportWarning('[cloud-self-agent-execution] handed back to the cloud', error);
+    if (isInactive()) return true;
+    setLocalTurns((current) => {
+      if (!(request.messageId in current)) return current;
+      const next = { ...current };
+      delete next[request.messageId];
+      return next;
+    });
+    void syncMessages().catch((syncError) => reportWarning(
+      '[cloud-self-agent-execution] hand-back sync failed',
+      syncError,
+    ));
+    return true;
+  };
   // Every exit after the claim publishes a terminal reply and ends the
   // run in the same step, so other devices leave the running state.
   const settle = async (
@@ -367,6 +396,7 @@ export async function executeCloudSelfAgentRequest({
         request.messageId,
         lease.deadline,
       );
+      localTurnStarted = true;
       lease.attach(startedTurn.id);
       lastTurn = startedTurn;
       rememberLocalTurn(startedTurn);
@@ -384,6 +414,7 @@ export async function executeCloudSelfAgentRequest({
       lastTurn = finalTurn;
       rememberLocalTurn(finalTurn);
     } catch (error) {
+      if (await handBackBeforeLocalTurn(error)) return;
       finalTurn = {
         ...cloudAgentFailedTurnSnapshot({
           requestId: request.messageId,
@@ -442,6 +473,7 @@ export async function executeCloudSelfAgentRequest({
     // A failure after the claim, such as a lost lease, still ends the
     // request with the text streamed so far.
     if (settled || isInactive()) throw error;
+    if (await handBackBeforeLocalTurn(error)) return;
     reportWarning('[cloud-self-agent-execution] request failed', error);
     await settle(cloudSelfAgentInterruptedReply(
       streamedTextByRequestIdRef.current.get(request.messageId),

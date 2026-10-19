@@ -95,8 +95,19 @@ impl Fixture {
 
     /// The owner Mac's execution claim.
     async fn mac_claim(&self) -> Value {
-        let body = self.body(Some(uuid::Uuid::new_v4()));
+        self.mac_claim_as(uuid::Uuid::new_v4()).await
+    }
+
+    async fn mac_claim_as(&self, claim_id: uuid::Uuid) -> Value {
+        let body = self.body(Some(claim_id));
         self.post("/v1/cloud/agent-runs/desktop/claim", body).await
+    }
+
+    /// The Mac hands its claimed run back to the cloud.
+    async fn hand_back(&self, run_id: &str, claim_id: uuid::Uuid) -> bool {
+        let uri = format!("/v1/cloud/agent-runs/desktop/{run_id}/release");
+        let released = self.post(&uri, json!({ "claimId": claim_id })).await;
+        released["released"].as_bool().unwrap()
     }
 
     async fn end_window(&self, run_id: &str) {
@@ -196,4 +207,85 @@ async fn a_hung_mac_loses_the_request_to_the_cloud_when_its_lease_ends() {
         .bind(run_id).execute(&fx.pool).await.unwrap();
     assert!(runner_can_lease(&fx.router, run_id).await);
     assert_eq!(fx.runs().await, vec![("leased".into(), "cloud".into())]);
+}
+
+#[tokio::test]
+async fn a_mac_that_cannot_start_the_turn_hands_the_request_to_the_cloud_at_once() {
+    let Some(fx) = fixture("mac-first-handback").await else {
+        return;
+    };
+    let held = fx.request_claim().await;
+    let run_id = held["runId"].as_str().unwrap();
+    let claim_id = uuid::Uuid::new_v4();
+    assert_eq!(fx.mac_claim_as(claim_id).await["acquired"], true);
+    let admit = format!("/v1/cloud/agent-runs/desktop/{run_id}/admit");
+    assert_eq!(
+        fx.post(&admit, json!({ "claimId": claim_id })).await["admitted"],
+        true
+    );
+    assert!(
+        !fx.hand_back(run_id, uuid::Uuid::new_v4()).await,
+        "only the claiming Mac hands it back"
+    );
+    assert!(fx.hand_back(run_id, claim_id).await);
+    assert!(!fx.hand_back(run_id, claim_id).await, "handed back once");
+
+    // The Mac is still ready, yet neither it nor a new admission holds the
+    // run for a Mac again: the cloud runner answers it now.
+    let again = fx.mac_claim().await;
+    assert_eq!(again["runId"], run_id);
+    assert_eq!(again["acquired"], false);
+    assert_eq!(fx.request_claim().await["runId"], run_id);
+    assert!(runner_can_lease(&fx.router, run_id).await);
+    assert_eq!(fx.runs().await, vec![("leased".into(), "cloud".into())]);
+}
+
+#[tokio::test]
+async fn a_run_the_mac_admitted_itself_is_handed_back_too() {
+    let Some(fx) = fixture("mac-first-handback-fresh").await else {
+        return;
+    };
+    let claim_id = uuid::Uuid::new_v4();
+    let claimed = fx.mac_claim_as(claim_id).await;
+    let run_id = claimed["runId"].as_str().unwrap();
+    assert!(!runner_can_lease(&fx.router, run_id).await);
+    assert!(fx.hand_back(run_id, claim_id).await);
+    let preferred: (Option<String>,) = sqlx_core::query_as::query_as(
+        "SELECT desktop_preferred_until::text FROM cloud_agent_fallback_runs WHERE run_id=$1",
+    )
+    .bind(run_id)
+    .fetch_one(&fx.pool)
+    .await
+    .unwrap();
+    assert_eq!(preferred.0, None, "no hold for the ready Mac");
+    assert!(runner_can_lease(&fx.router, run_id).await);
+    assert_eq!(fx.runs().await, vec![("leased".into(), "cloud".into())]);
+}
+
+#[tokio::test]
+async fn a_project_request_stays_with_its_mac_when_it_cannot_start() {
+    let Some(fx) = fixture("mac-first-handback-project").await else {
+        return;
+    };
+    let catalog = json!({ "projects": [{ "id": "c".repeat(64), "name": "Trust", "sessions": [fx.session] }] });
+    let response = fx
+        .router
+        .clone()
+        .oneshot(super::projects::put(
+            &fx.owner.token,
+            "/v1/cloud/projects",
+            catalog,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let claim_id = uuid::Uuid::new_v4();
+    let claimed = fx.mac_claim_as(claim_id).await;
+    assert_eq!(claimed["acquired"], true);
+    let run_id = claimed["runId"].as_str().unwrap();
+    assert!(
+        !fx.hand_back(run_id, claim_id).await,
+        "the cloud has no project folder"
+    );
+    assert_eq!(fx.runs().await, vec![("leased".into(), "desktop".into())]);
 }

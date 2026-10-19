@@ -52,47 +52,7 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             "/v1/cloud/agent-subsessions/pending",
             get(super::subsession_execution::pending),
         )
-        .route(
-            "/v1/cloud/agent-runs/desktop/:run_id/cancel",
-            post(super::desktop::cancel),
-        )
         .route("/v1/cloud/agent-runs/claim", post(claim_cloud_agent_run))
-        .route(
-            "/v1/cloud/agent-runs/desktop/read-context",
-            post(super::desktop::read_member_context),
-        )
-        .route(
-            "/v1/cloud/agent-runs/desktop/ready",
-            post(super::desktop::ready),
-        )
-        .route(
-            "/v1/cloud/agent-runs/desktop/interrupted",
-            post(super::desktop::interrupted),
-        )
-        .route(
-            "/v1/cloud/agent-runs/desktop/claim",
-            post(super::desktop::claim),
-        )
-        .route(
-            "/v1/cloud/agent-runs/desktop/:run_id/renew",
-            post(super::desktop::renew),
-        )
-        .route(
-            "/v1/cloud/agent-runs/desktop/:run_id/admit",
-            post(super::desktop::admit),
-        )
-        .route(
-            "/v1/cloud/agent-runs/desktop/:run_id/progress",
-            post(super::desktop::progress),
-        )
-        .route(
-            "/v1/cloud/agent-runs/desktop/:run_id/context",
-            post(super::desktop::read_context),
-        )
-        .route(
-            "/v1/cloud/agent-runs/:run_id/desktop/provider-auth",
-            post(super::desktop::provider_auth),
-        )
         .route(
             "/v1/cloud/agent-runs/request/:request_message_id",
             get(lookup_cloud_agent_run_for_request),
@@ -105,6 +65,7 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             "/v1/cloud/agent-runs/:run_id/stop",
             post(super::runs::stop::stop_run_route),
         )
+        .merge(desktop_routes::routes())
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,
@@ -455,6 +416,7 @@ async fn lookup_cloud_agent_run_for_request(
 }
 
 mod auth_snapshots;
+mod desktop_routes;
 mod provider_auth_routes;
 mod runner_memory;
 mod test_route;

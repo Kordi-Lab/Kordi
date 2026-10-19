@@ -44,9 +44,7 @@ pub(super) async fn finish_with_state(
         return Err(RunError::NotFound);
     }
     let mut tx = pool.begin().await?;
-    query("SELECT pg_advisory_xact_lock(81208411)")
-        .execute(&mut *tx)
-        .await?;
+    super::super::run_locks::lock_run(&mut tx, run_id).await?;
     let owned:Option<(Uuid,)> = query_as("SELECT subsession_id FROM cloud_agent_fallback_runs WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='cloud' AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() FOR UPDATE")
         .bind(run_id).bind(runner_id).fetch_optional(&mut *tx).await?;
     let (id,) = owned.ok_or(RunError::NotFound)?;
@@ -128,9 +126,7 @@ async fn progress(pool: &PgPool, run_id: &str, input: ProgressInput) -> RunResul
     }
     let message = json!([{"id":format!("tool:{}",input.tool_call_id),"role":"assistant","text":format!("Using {}…",input.tool_name),"timestampMs":chrono::Utc::now().timestamp_millis()}]);
     let mut tx = pool.begin().await?;
-    query("SELECT pg_advisory_xact_lock(81208411)")
-        .execute(&mut *tx)
-        .await?;
+    super::super::run_locks::lock_run(&mut tx, run_id).await?;
     let owned:Option<(Uuid,)> = query_as("SELECT subsession_id FROM cloud_agent_fallback_runs WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='cloud' AND subsession_id IS NOT NULL AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() FOR UPDATE")
         .bind(run_id).bind(&input.runner_id).fetch_optional(&mut *tx).await?;
     let (id,) = owned.ok_or(RunError::NotFound)?;

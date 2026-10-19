@@ -78,9 +78,7 @@ pub(crate) async fn execute_tool(
     let mut tx = pool.begin().await?;
     // Serialize a spawn with lease takeover and parent completion. A stale
     // executor must not create new work after another runtime acquired the run.
-    query("SELECT pg_advisory_xact_lock(81208411)")
-        .execute(&mut *tx)
-        .await?;
+    super::super::run_locks::lock_run(&mut tx, run_id).await?;
     let parent: Option<ParentRunRow> = query_as(
         "SELECT session_id,request_message_id,owner_account_id,requester_account_id,execution_agent_id,system_prompt,runtime_route_json,subsession_id FROM cloud_agent_fallback_runs WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='cloud' AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() FOR UPDATE"
     ).bind(run_id).bind(&input.runner_id).fetch_optional(&mut *tx).await?;

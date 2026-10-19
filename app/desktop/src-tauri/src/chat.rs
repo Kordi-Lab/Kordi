@@ -115,6 +115,8 @@ pub struct DesktopChatManager {
     background_turn_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
     shared_request_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
     background_follow_up_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
+    background_follow_up_routes:
+        Arc<tokio::sync::Mutex<background_tasks::follow_up_routes::FollowUpRoutes>>,
 }
 
 impl DesktopChatManager {
