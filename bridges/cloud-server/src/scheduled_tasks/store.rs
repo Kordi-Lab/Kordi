@@ -5,7 +5,6 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
-use crate::cloud_agent_runtime::runs::{claim_run, ClaimRunRequest, RunError};
 use crate::scheduled_tasks::models::{
     CreateScheduledTaskRequest, ScheduledTaskResponse, ScheduledTaskRunResponse,
 };
@@ -261,17 +260,14 @@ pub async fn create_scheduled_task_run_now(
     };
     let run =
         create_run_for_task(pool, owner_account_id, &task_id, &target_runtime, now, now).await?;
-    if target_runtime == "cloud" {
-        enqueue_cloud_agent_fallback_run_for_scheduled_run(
-            pool,
-            owner_account_id,
-            &created_by_account_id,
-            &prompt,
-            &tool_payload_json,
-            &run,
-        )
-        .await?;
-    }
+    let task = super::mac::Occurrence {
+        owner_account_id,
+        created_by_account_id: &created_by_account_id,
+        prompt: &prompt,
+        tool_payload: &tool_payload_json,
+        target_runtime: &target_runtime,
+    };
+    super::mac::enqueue(pool, &task, &run).await?;
     Ok(Some(run))
 }
 
@@ -388,40 +384,6 @@ pub async fn list_scheduled_task_runs(
     Ok(rows.into_iter().map(row_to_run).collect())
 }
 
-async fn enqueue_cloud_agent_fallback_run_for_scheduled_run(
-    pool: &PgPool,
-    owner_account_id: &str,
-    created_by_account_id: &str,
-    prompt: &str,
-    tool_payload_json: &Value,
-    run: &ScheduledTaskRunResponse,
-) -> Result<(), sqlx_core::Error> {
-    let session_id = tool_payload_json
-        .get("sessionId")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .unwrap_or_else(|| format!("session:scheduled:{}", owner_account_id));
-    // A scheduled occurrence has no requesting person present: `claim_run`
-    // admits it as a background run, so connector tools are read only.
-    claim_run(
-        pool,
-        &ClaimRunRequest {
-            request_message_id: run.run_id.clone(),
-            session_id,
-            owner_account_id: owner_account_id.to_string(),
-            requester_account_id: created_by_account_id.to_string(),
-            prompt: prompt.to_string(),
-            runtime_route: None,
-            idempotency_key: format!("scheduled:{}", run.run_id),
-        },
-    )
-    .await
-    .map_err(RunError::into_persistence_error)?;
-    Ok(())
-}
-
 pub async fn claim_due_scheduled_task_runs(
     pool: &PgPool,
     now: DateTime<Utc>,
@@ -468,17 +430,14 @@ pub async fn claim_due_scheduled_task_runs(
             now,
         )
         .await?;
-        if target_runtime == "cloud" {
-            enqueue_cloud_agent_fallback_run_for_scheduled_run(
-                pool,
-                &owner_account_id,
-                &created_by_account_id,
-                &prompt,
-                &tool_payload_json,
-                &run,
-            )
-            .await?;
-        }
+        let task = super::mac::Occurrence {
+            owner_account_id: &owner_account_id,
+            created_by_account_id: &created_by_account_id,
+            prompt: &prompt,
+            tool_payload: &tool_payload_json,
+            target_runtime: &target_runtime,
+        };
+        super::mac::enqueue(pool, &task, &run).await?;
         let schedule = parse_schedule(schedule_json)?;
         let next = next_run_after(&schedule, due_at)
             .map_err(|err| protocol_error(err.to_string()))?

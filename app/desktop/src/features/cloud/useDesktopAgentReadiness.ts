@@ -42,7 +42,9 @@ export function useDesktopAgentReadiness({
     : []);
   // Digest runs wait for this Mac only while it can run them with its own provider.
   const digest = Boolean(runtimeReady && accountId && macCanRunDigest(defaultRoute));
-  const readinessKey = JSON.stringify([accountId, agentIdsKey, digest]);
+  // Scheduled tasks wait for this Mac while it has a model route to run them.
+  const scheduled = Boolean(runtimeReady && accountId && defaultRoute?.model?.trim());
+  const readinessKey = JSON.stringify([accountId, agentIdsKey, digest, scheduled]);
   const registration = useMemo(() => ({ readinessKey, client }), [readinessKey, client]);
   const publicationTail = useRef(Promise.resolve());
   const [acknowledged, setAcknowledged] = useState<typeof registration | null>(null);
@@ -61,7 +63,7 @@ export function useDesktopAgentReadiness({
           if (cancelled) return;
           const session = await loadSession();
           if (!session?.token || session.accountId !== accountId || cancelled) return;
-          await client.desktopAgentExecution(session.token, 'ready', { agentIds: JSON.parse(agentIdsKey) as string[], digest });
+          await client.desktopAgentExecution(session.token, 'ready', { agentIds: JSON.parse(agentIdsKey) as string[], digest, scheduled });
           if (!cancelled) setAcknowledged(registration);
         } catch (error) {
           if (!cancelled) {
@@ -76,7 +78,7 @@ export function useDesktopAgentReadiness({
     void publish();
     const timer = setInterval(() => { void publish(); }, 10_000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [accountId, agentIdsKey, client, digest, registration, reportWarning]);
+  }, [accountId, agentIdsKey, client, digest, registration, reportWarning, scheduled]);
 
   // Presence alone does not grant a desktop execution lease. Admission must
   // wait until the server has accepted this account's current capabilities.
