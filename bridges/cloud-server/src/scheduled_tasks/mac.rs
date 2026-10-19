@@ -130,7 +130,8 @@ pub(crate) async fn claim(
          SET status = 'leased', execution_backend = 'desktop', claimed_by = $3, \
              lease_expires_at = $4, updated_at = $5, \
              desktop_preferred_until = CASE WHEN scheduled.target_runtime = 'local_required' \
-               THEN run.desktop_preferred_until ELSE NULL END \
+               THEN run.desktop_preferred_until ELSE NULL END, \
+             runtime_route_json = COALESCE($6, run.runtime_route_json) \
          FROM scheduled_tool_task_runs scheduled \
          WHERE scheduled.run_id = run.request_message_id \
            AND run.owner_account_id = $1 AND run.request_message_id = $2 \
@@ -145,6 +146,10 @@ pub(crate) async fn claim(
     .bind(executor)
     .bind((now + Duration::seconds(LEASE_SECONDS)).to_rfc3339())
     .bind(now.to_rfc3339())
+    // The Mac's hosted account, so its credentials resolve for this run.
+    .bind(crate::cloud_agent_runtime::runs::claimed_route_json(
+        input.runtime_route.as_ref(),
+    ))
     .fetch_optional(pool)
     .await?;
     let Some((run_id,)) = taken else {
