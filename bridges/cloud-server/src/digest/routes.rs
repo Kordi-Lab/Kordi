@@ -107,28 +107,30 @@ async fn read(
         i64,
         chrono::DateTime<chrono::Utc>,
         String,
-        bool,
     );
-    let row=query_as::<_,Row>("SELECT snapshot_json,COALESCE(snapshot_input_json,'{}'),active_run_id,error_code,revision,updated_at,timezone,((dirty_since IS NOT NULL OR (snapshot_json IS NULL AND error_code IS NULL)) AND retry_after<=now()) FROM cloud_account_digests WHERE account_id=$1").bind(&session.account_id).fetch_one(pool).await;
-    let Ok((mut snapshot, input, active, error_code, revision, updated_at, timezone, pending)) =
-        row
-    else {
+    // Opening the digest shows the saved snapshot. It starts a run only for a
+    // first build or a snapshot over 15 minutes old with changes pending, at
+    // most once per 15 minutes, since clients poll this route while it is open.
+    match super::cadence::claim_open_refresh(pool, &session.account_id).await {
+        Ok(true) => {
+            let pool = pool.clone();
+            let account = session.account_id.clone();
+            tokio::spawn(async move {
+                if store::refresh_as(&pool, &account, store::Trigger::Automatic)
+                    .await
+                    .is_err()
+                {
+                    eprintln!("[digest] Refresh on open failed; the background check will retry.");
+                }
+            });
+        }
+        Ok(false) => {}
+        Err(_) => return failed(),
+    }
+    let row=query_as::<_,Row>("SELECT snapshot_json,COALESCE(snapshot_input_json,'{}'),active_run_id,error_code,revision,updated_at,timezone FROM cloud_account_digests WHERE account_id=$1").bind(&session.account_id).fetch_one(pool).await;
+    let Ok((mut snapshot, input, active, error_code, revision, updated_at, timezone)) = row else {
         return failed();
     };
-    // Opening the digest with unprocessed changes, or before a first build was
-    // ever attempted, brings it up to date now; the background quiet window
-    // only applies while nobody is looking. A failed first build is retried
-    // only on new changes or an explicit refresh, since clients poll this
-    // route while the digest is open.
-    if pending && active.is_none() {
-        let pool = pool.clone();
-        let account = session.account_id.clone();
-        tokio::spawn(async move {
-            if store::refresh(&pool, &account).await.is_err() {
-                eprintln!("[digest] Refresh on open failed; the background check will retry.");
-            }
-        });
-    }
     // Names the account to reconnect when the provider refused the sign-in.
     let error_provider = match error_code.as_deref() {
         Some("provider_auth_rejected") => {
@@ -143,8 +145,13 @@ async fn read(
     let mut refs = Vec::new();
     let mut partial = false;
     if let Some(input) = input {
-        match store::authorized_input_sources(pool, &session.account_id, &input).await {
+        // Items whose sources changed since the run stay hidden until the
+        // next run reconciles them.
+        match super::evidence::current_input_sources(pool, &session.account_id, &input).await {
             Ok(Some(current)) => {
+                if let Some(snapshot) = &mut snapshot {
+                    super::evidence::retain_supported_json(snapshot, &current);
+                }
                 refs = current;
                 partial = input.partial;
             }

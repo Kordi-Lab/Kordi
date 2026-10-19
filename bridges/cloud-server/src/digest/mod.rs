@@ -1,6 +1,8 @@
+mod cadence;
 pub mod changes;
 pub(crate) mod chat_calendar;
 pub(crate) mod desktop;
+mod evidence;
 mod fallback;
 mod incremental;
 pub mod models;
@@ -13,7 +15,7 @@ mod source_identity;
 mod source_reader;
 pub(crate) mod store;
 mod sync_routes;
-mod worker;
+pub(crate) mod worker;
 pub use routes::routes;
 pub use store::{authorized, complete, fail, revalidate_run};
 pub use worker::spawn;

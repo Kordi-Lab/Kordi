@@ -368,7 +368,7 @@ struct DigestView: View {
         }
         case .imports: DigestImportView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); model.requestDigestCalendarSync(); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .calendarSettings: DigestCalendarSettingsView(sync: model.digestCalendarSync, preferences: model.digestCalendarSyncPreferences()) { model.updateDigestCalendarSyncPreferences($0) }
-        case .details: ScrollView { VStack(alignment: .leading, spacing: 16) { Text("Your digest updates a few minutes after your conversations go quiet, and right away when you open it or pull to refresh."); Text("Open work stays in the digest until later evidence resolves it."); Text("\(sources.count) source messages are currently included. Only accessible sources may be opened.").foregroundStyle(.secondary) }.padding() }.navigationTitle("How Digest updates")
+        case .details: ScrollView { VStack(alignment: .leading, spacing: 16) { Text("Your digest updates after your conversations go quiet. Pull to refresh to update it now."); Text("Open work stays in the digest until later evidence resolves it."); Text("\(sources.count) source messages are currently included. Only accessible sources may be opened.").foregroundStyle(.secondary) }.padding() }.navigationTitle("How Digest updates")
         }
     }
     private func reloadAfterEdit() async { selectedSheet = nil; if let account = model.account?.accountId { await load(accountId: account) } }

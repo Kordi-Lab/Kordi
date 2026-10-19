@@ -8,6 +8,10 @@ use std::collections::{BTreeSet, HashMap};
 use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, sqlx_core::Error>;
+pub use super::cadence::{fail, Trigger};
+#[cfg(test)]
+pub use super::evidence::authorized_input_sources;
+pub use super::evidence::input_is_currently_authorized;
 use super::source_reader::source_page;
 #[cfg(test)]
 pub use super::source_reader::visible_text;
@@ -229,7 +233,12 @@ fn input_hash(input: &Input) -> String {
     hex::encode(Sha256::digest(value.to_string().as_bytes()))
 }
 
+/// Runs the digest now, as the refresh button does.
 pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
+    refresh_as(pool, account, Trigger::Manual).await
+}
+
+pub async fn refresh_as(pool: &PgPool, account: &str, trigger: Trigger) -> Result<()> {
     type DigestState = (
         String,
         String,
@@ -239,11 +248,12 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
         Option<Value>,
         Option<chrono::DateTime<Utc>>,
     );
-    let row:Option<DigestState>=query_as("SELECT locale,timezone,input_hash,snapshot_json,active_run_id,snapshot_input_json,last_change_at FROM cloud_account_digests WHERE account_id=$1 AND retry_after<=now()").bind(account).fetch_optional(pool).await?;
+    let row:Option<DigestState>=query_as("SELECT locale,timezone,input_hash,snapshot_json,active_run_id,snapshot_input_json,last_change_at FROM cloud_account_digests WHERE account_id=$1 AND (retry_after<=now() OR $2)").bind(account).bind(trigger == Trigger::Manual).fetch_optional(pool).await?;
     let Some((locale, timezone, old_hash, snapshot, active, saved_input, seen_change)) = row else {
         return Ok(());
     };
-    if active.is_some() {
+    let automatic = trigger == Trigger::Automatic;
+    if active.is_some() || (automatic && !super::cadence::within_caps(pool, account).await?) {
         return Ok(());
     }
     let previous = snapshot.and_then(|v| serde_json::from_value(v).ok());
@@ -286,6 +296,12 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
         }
         input.changes = Some(changes);
     }
+    // Only changes that can matter start an automatic run; the rest reach
+    // the digest with its next run.
+    let saved = saved.filter(|_| input.previous.is_some());
+    if automatic && !super::changes::relevant(saved.as_ref(), input.changes.as_ref(), account) {
+        return Ok(());
+    }
     if input.sources.is_empty() {
         query("UPDATE cloud_account_digests SET snapshot_json=$2,snapshot_input_json=$3,input_json=$3,input_hash=$4,error_code=NULL,revision=revision+1,updated_at=now() WHERE account_id=$1 AND active_run_id IS NULL")
             .bind(account).bind(serde_json::to_value(Output::default()).unwrap()).bind(serde_json::to_value(&input).unwrap()).bind(&hash).execute(pool).await?;
@@ -312,6 +328,7 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
     if changed.rows_affected() == 0 {
         return Ok(());
     }
+    super::cadence::record(&mut tx, account, &run, trigger).await?;
     let now = Utc::now().to_rfc3339();
     // Digest runs are background runs (read-only connector tools) whose
     // output only the owner reads.
@@ -324,58 +341,6 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
         super::desktop::announce(&mut tx, account, &run).await?;
     }
     tx.commit().await
-}
-
-pub async fn input_is_currently_authorized(
-    pool: &PgPool,
-    account: &str,
-    input: &Input,
-) -> Result<bool> {
-    Ok(authorized_input_sources(pool, account, input)
-        .await?
-        .is_some())
-}
-
-pub async fn authorized_input_sources(
-    pool: &PgPool,
-    account: &str,
-    input: &Input,
-) -> Result<Option<Vec<Source>>> {
-    let ids: Vec<_> = input.sources.iter().map(|s| s.id.clone()).collect();
-    let current = sources(pool, account, Some(&ids)).await?;
-    let versions: HashMap<_, _> = current.iter().map(|s| (&s.id, s.version)).collect();
-    if !input
-        .sources
-        .iter()
-        .all(|s| versions.get(&s.id) == Some(&s.version))
-    {
-        return Ok(None);
-    }
-    for event in &input.calendar_events {
-        if !authorized(pool, account, &event.source_ids).await? {
-            return Ok(None);
-        }
-    }
-    let current: HashMap<_, _> = current
-        .into_iter()
-        .map(|source| (source.id.clone(), source))
-        .collect();
-    let mut refs = input.sources.clone();
-    for source in &mut refs {
-        let latest = &current[&source.id];
-        source.sender_name = latest.sender_name.clone();
-        source.sender_avatar_url = latest.sender_avatar_url.clone();
-        source.session_title = latest.session_title.clone();
-        source.is_agent = latest.is_agent;
-        source.agent_id = latest.agent_id.clone();
-        source.agent_owner_name = latest.agent_owner_name.clone();
-        source.agent_avatar_url = latest.agent_avatar_url.clone();
-        source.reply_to_source_id = latest
-            .reply_to_source_id
-            .clone()
-            .filter(|id| ids.contains(id));
-    }
-    Ok(Some(refs))
 }
 
 pub async fn revalidate_run(pool: &PgPool, run: &str) -> Result<bool> {
@@ -431,9 +396,13 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
         eprintln!("[digest] Rejected run {run}: {reason}");
         return fail(pool, run, Some(runner), "invalid_output").await;
     }
-    if !input_is_currently_authorized(pool, &account, &input).await? {
+    // A source edited or removed while the model ran retires the items it
+    // supports instead of discarding the run; the next run sees the change.
+    let Some(current) = super::evidence::current_input_sources(pool, &account, &input).await?
+    else {
         return fail(pool, run, Some(runner), "sources_changed").await;
-    }
+    };
+    super::evidence::retain_supported(&mut output, &current);
     let mut tx = pool.begin().await?;
     let changed=query("UPDATE cloud_agent_fallback_runs SET status='completed',completed_at=$3,updated_at=$3 WHERE run_id=$1 AND claimed_by=$2 AND status IN ('leased','running') AND lease_expires_at>$3").bind(run).bind(runner).bind(Utc::now().to_rfc3339()).execute(&mut *tx).await?;
     if changed.rows_affected() == 0 {
@@ -449,42 +418,4 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
     .await
     .map_err(|_| sqlx_core::Error::Protocol("Could not publish digest update.".into()))?;
     tx.commit().await
-}
-
-pub async fn fail(pool: &PgPool, run: &str, runner: Option<&str>, code: &str) -> Result<()> {
-    let mut tx = pool.begin().await?;
-    let changed=query("UPDATE cloud_agent_fallback_runs SET status='failed',error_code=$3,error_message='Digest update failed.',updated_at=$4 WHERE run_id=$1 AND ($2::text IS NULL OR claimed_by=$2) AND status IN ('queued','leased','running')").bind(run).bind(runner).bind(code).bind(Utc::now().to_rfc3339()).execute(&mut *tx).await?;
-    let mut retry_now = None;
-    if changed.rows_affected() > 0 {
-        // When the failure may be the account's, the digest retries at once
-        // with the owner's next account (see `fallback`).
-        let switched = super::fallback::switches_account(&mut tx, pool, run, code).await?;
-        // Repeated failures back off (1 minute, 5 minutes, 30 minutes, 2 hours,
-        // then 12 hours) so a broken provider sign-in costs a handful of calls
-        // a day. A source change is not a failure and retries at once.
-        retry_now = query_as::<_, (String,)>(
-            "UPDATE cloud_account_digests SET active_run_id=NULL,error_code=$2,input_hash='',
-                failure_count=CASE WHEN $2='sources_changed' OR $3 THEN failure_count ELSE failure_count+1 END,
-                retry_after=now()+CASE
-                    WHEN $3 THEN interval '0 seconds'
-                    WHEN $2='sources_changed' THEN interval '1 second'
-                    WHEN failure_count=0 THEN interval '1 minute'
-                    WHEN failure_count=1 THEN interval '5 minutes'
-                    WHEN failure_count=2 THEN interval '30 minutes'
-                    WHEN failure_count=3 THEN interval '2 hours'
-                    ELSE interval '12 hours' END
-             WHERE active_run_id=$1 RETURNING account_id",
-        )
-        .bind(run)
-        .bind(code)
-        .bind(switched)
-        .fetch_optional(&mut *tx)
-        .await?
-        .filter(|_| switched);
-    }
-    tx.commit().await?;
-    if let Some((account,)) = retry_now {
-        refresh(pool, &account).await?;
-    }
-    Ok(())
 }
