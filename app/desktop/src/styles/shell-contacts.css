@@ -60,18 +60,6 @@
   color: var(--utility-muted-text);
 }
 
-.app-contacts-icon-button {
-  border: 0;
-  background: transparent;
-  color: var(--utility-muted-text);
-}
-
-.app-contacts-icon-button:hover,
-.app-contacts-icon-button[aria-expanded='true'] {
-  background: var(--app-quiet-control-hover-bg);
-  color: var(--utility-foreground);
-}
-
 .app-contacts-icon-button:focus-visible,
 .app-contacts-tile:focus-visible,
 .app-contacts-card-action:focus-visible,
@@ -80,7 +68,6 @@
 .app-contacts-accept-pill:focus-visible,
 .app-contacts-group-row:focus-visible,
 .app-contacts-page .app-contact-row:focus-visible,
-.app-contacts-primary-action:focus-visible,
 .app-contacts-danger-action:focus-visible {
   outline: 2px solid var(--app-quiet-control-focus-ring);
   outline-offset: -2px;
@@ -199,17 +186,6 @@
   outline-offset: -2px;
 }
 
-.app-contacts-accept-pill {
-  z-index: 1;
-  border: 0;
-  background: var(--app-accent);
-  color: var(--app-palette-accent-ink);
-}
-
-.app-contacts-accept-pill:hover {
-  background: color-mix(in oklab, var(--app-accent) 88%, var(--utility-foreground));
-}
-
 .kordi-app .app-contacts-page .app-contact-row.app-contact-row-selected,
 .kordi-app .app-contacts-page .app-contact-row.app-contact-row-selected:hover {
   background: color-mix(in oklab, var(--app-accent) 16%, transparent);
@@ -230,38 +206,14 @@
   border-width: 2.5px;
 }
 
-/* Detail pane */
-.app-contacts-detail-divider {
-  height: 1px;
-  background: var(--app-divider);
-}
-
 /* Action tiles: equal width (grid columns), icon over label, on a subtle surface. */
 .app-contacts-tile {
-  border: 0;
   background: color-mix(in oklab, var(--utility-foreground) 5%, transparent);
   color: var(--app-accent);
 }
 
-.app-contacts-tile:hover {
+.app-contacts-tile:not(.is-primary):hover {
   background: color-mix(in oklab, var(--utility-foreground) 9%, transparent);
-}
-
-.app-contacts-tile.is-primary {
-  background: var(--app-accent);
-  color: var(--app-palette-accent-ink);
-}
-
-.app-contacts-tile.is-primary:hover {
-  background: color-mix(in oklab, var(--app-accent) 88%, var(--utility-foreground));
-}
-
-.app-contacts-tile.is-danger {
-  color: var(--app-transient-danger-text);
-}
-
-.app-contacts-tile.is-danger:hover {
-  background: var(--app-transient-danger-hover-bg);
 }
 
 /* Grouped info and action cards. */
@@ -289,16 +241,6 @@
   content: '';
 }
 
-.app-contacts-card-action {
-  border: 0;
-  background: transparent;
-  color: var(--app-transient-danger-text);
-}
-
-.app-contacts-card-action:hover {
-  background: var(--app-transient-danger-hover-bg);
-}
-
 .app-contacts-menu {
   border: 1px solid var(--app-transient-border);
   background: var(--app-transient-surface-fallback);
@@ -309,53 +251,12 @@
   background: color-mix(in oklab, var(--app-transient-danger-text) 9%, transparent);
 }
 
-.app-contacts-quiet-action {
-  border: 0;
-  background: transparent;
-  color: var(--utility-foreground);
-}
-
-.app-contacts-quiet-action:hover {
-  background: var(--app-quiet-control-hover-bg);
-}
-
 .app-contacts-danger-fill {
-  border: 0;
   background: var(--app-transient-danger-text);
   color: var(--utility-background);
 }
 
-.app-contacts-danger-fill:hover {
-  background: color-mix(in oklab, var(--app-transient-danger-text) 88%, var(--utility-foreground));
-}
-
-.app-contacts-primary-action {
-  border: 0;
-  background: var(--app-accent);
-  color: var(--app-palette-accent-ink);
-  box-shadow: none;
-}
-
-.app-contacts-primary-action:hover {
-  background: color-mix(in oklab, var(--app-accent) 88%, var(--utility-foreground));
-}
-
-.app-contacts-danger-action {
-  border: 0;
-  background: transparent;
-  color: var(--app-transient-danger-text);
-  box-shadow: none;
-}
-
-.app-contacts-danger-action:hover {
-  background: var(--app-transient-danger-hover-bg);
-  color: var(--app-transient-danger-text);
-}
-
 /* Narrow windows: the detail sits in the shared transient dialog surface. */
-.app-contact-detail-dialog .app-contacts-detail-content {
-  color: var(--app-transient-text);
-}
 
 .app-contact-detail-dialog .app-contacts-muted {
   color: var(--app-transient-muted-text);
@@ -363,6 +264,7 @@
 
 .app-contact-detail-dialog .app-contacts-detail-content {
   padding: 36px 20px 20px;
+  color: var(--app-transient-text);
 }
 
 /* The detail pane sits on the plain page surface so the list column reads as a sidebar. */
@@ -380,6 +282,67 @@
   display: none;
 }
 
-.app-contacts-detail-time {
-  color: inherit;
+/* Shared control looks: borderless buttons that are accent-filled, quiet, or danger. */
+.app-contacts-icon-button,
+.app-contacts-tile,
+.app-contacts-accept-pill,
+.app-contacts-quiet-action,
+.app-contacts-card-action,
+.app-contacts-danger-action,
+.app-contacts-danger-fill {
+  border: 0;
+  box-shadow: none;
+}
+
+.app-contacts-icon-button,
+.app-contacts-quiet-action,
+.app-contacts-card-action,
+.app-contacts-danger-action {
+  background: transparent;
+}
+
+.app-contacts-icon-button {
+  color: var(--utility-muted-text);
+}
+
+.app-contacts-quiet-action {
+  color: var(--utility-foreground);
+}
+
+.app-contacts-icon-button:hover,
+.app-contacts-icon-button[aria-expanded='true'],
+.app-contacts-quiet-action:hover {
+  background: var(--app-quiet-control-hover-bg);
+  color: var(--utility-foreground);
+}
+
+.app-contacts-accept-pill {
+  z-index: 1;
+}
+
+.app-contacts-accept-pill,
+.app-contacts-tile.is-primary {
+  background: var(--app-accent);
+  color: var(--app-palette-accent-ink);
+}
+
+.app-contacts-accept-pill:hover,
+.app-contacts-tile.is-primary:hover {
+  background: color-mix(in oklab, var(--app-accent) 88%, var(--utility-foreground));
+}
+
+.app-contacts-danger-fill:hover {
+  background: color-mix(in oklab, var(--app-transient-danger-text) 88%, var(--utility-foreground));
+}
+
+.app-contacts-tile.is-danger,
+.app-contacts-card-action,
+.app-contacts-danger-action {
+  color: var(--app-transient-danger-text);
+}
+
+.app-contacts-tile.is-danger:hover,
+.app-contacts-card-action:hover,
+.app-contacts-danger-action:hover {
+  background: var(--app-transient-danger-hover-bg);
 }

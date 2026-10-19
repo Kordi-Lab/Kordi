@@ -40,10 +40,9 @@ test('contacts page is a master-detail layout with themed list controls', () => 
   assert.match(shellCss, /\.app-contacts-search\s*\{[^}]*border-radius:\s*9px;/s);
   assert.match(shellCss, /\.app-contacts-group-row\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;[^}]*font-size:\s*12px;[^}]*font-weight:\s*600;/s);
   assert.match(shellCss, /\.app-contacts-page \.app-contact-row\.app-list-item,\s*\.app-contacts-page \.app-contact-request-row\s*\{[^}]*min-height:\s*56px;/s);
-  assert.match(shellCss, /\.app-contacts-accept-pill\s*\{[^}]*background:\s*var\(--app-accent\);/s);
+  assert.match(shellCss, /\.app-contacts-accept-pill,\s*\.app-contacts-tile\.is-primary\s*\{[^}]*background:\s*var\(--app-accent\);[^}]*color:\s*var\(--app-palette-accent-ink\);/s);
   assert.match(shellCss, /\.app-contacts-add-form\s*\{[^}]*box-shadow:\s*none;/s);
   assert.match(shellCss, /\.app-contact-row\.app-contact-row-selected[\s\S]*?background:\s*color-mix\(in oklab, var\(--app-accent\)/);
-  assert.match(shellCss, /\.app-contacts-primary-action\s*\{[^}]*background:\s*var\(--app-accent\);[^}]*color:\s*var\(--app-palette-accent-ink\);/s);
   const contactsCss = readFileSync(new URL('../src/styles/shell-contacts.css', import.meta.url), 'utf8');
   assert.doesNotMatch(contactsCss, /#[0-9a-f]{3,8}\b|rgb\(/i, 'contacts styles should only use theme tokens');
   const contactRowStart = componentSource.indexOf('export function ContactRow');
