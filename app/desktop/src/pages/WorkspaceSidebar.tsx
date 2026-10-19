@@ -4,6 +4,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Archive, ChevronLeft } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { setSessionPanelSlot } from '@/app/sessionPanelSlot';
 import { ChatCreateDialog } from '@/pages/ChatCreateDialog';
 import { ChannelCreateDialog } from '@/pages/ChannelCreateDialog';
 import type {
@@ -29,8 +30,6 @@ import { useWorkspaceChatSidebarModel } from '@/pages/workspaceSidebar.chatModel
 import { ChatSidebarChrome } from '@/pages/workspaceSidebar.chrome';
 import { WorkspaceNavigationRail } from '@/pages/workspaceSidebar.navigation';
 import {
-  SidebarAgentsPanel,
-  SidebarContactsPanel,
   SidebarProjectsPanel,
   SidebarSettingsPanel,
 } from '@/pages/workspaceSidebar.panels';
@@ -325,11 +324,8 @@ export function WorkspaceSidebar({
                     onOpenCreate={() => setIsCreateProjectDialogOpen(true)}
                   />
                 ) : null}
-                {activeNav === 'contacts' ? (
-                  <SidebarContactsPanel directory={directory} />
-                ) : null}
-                {activeNav === 'agents' ? (
-                  <SidebarAgentsPanel directory={directory} />
+                {activeNav === 'contacts' || activeNav === 'agents' ? (
+                  <div ref={setSessionPanelSlot} className="app-session-panel-slot flex h-full min-h-0 flex-col" />
                 ) : null}
                 {activeNav === 'settings' ? <SidebarSettingsPanel /> : null}
               </div>

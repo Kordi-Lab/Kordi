@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Search, UserPlus } from 'lucide-react';
+import { UserPlus } from 'lucide-react';
 
+import { SidebarListAction, SidebarListHeader, SidebarSearchField } from '@/components/SidebarListChrome';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { ContactRow } from '../components';
@@ -32,6 +33,8 @@ type ContactsListColumnProps = Pick<ContactsPageProps,
   requests: PartitionedContactRequests;
   requestActions: ContactRequestActions;
   fullWidth: boolean;
+  /** Rendered in the sidebar session panel, which provides the width and backdrop. */
+  inSidebar: boolean;
 };
 
 /** Sentence-case heading for a contact group; people read better as "Contacts" than "Other users". */
@@ -105,6 +108,7 @@ export function ContactsListColumn({
   requests,
   requestActions,
   fullWidth,
+  inSidebar,
 }: ContactsListColumnProps) {
   const [isAddContactOpen, setIsAddContactOpen] = useState(false);
   const addContactForm = useAddContactForm({
@@ -116,38 +120,31 @@ export function ContactsListColumn({
   return (
     <section
       aria-label="Contacts list"
-      className={cn('app-contacts-list-column flex h-full min-h-0 flex-col', fullWidth ? 'w-full' : 'w-[340px] shrink-0')}
+      className={cn(
+        'app-contacts-list-column flex h-full min-h-0 flex-col p-2.5',
+        inSidebar ? 'w-full' : fullWidth ? 'is-standalone w-full' : 'is-standalone w-[248px] shrink-0',
+      )}
     >
-      <div className="app-contacts-list-header flex shrink-0 items-center gap-2 pl-4 pr-2.5">
-        <h2 className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-[-0.01em]">Contacts</h2>
-        <button
-          type="button"
-          className="app-contacts-icon-button inline-flex h-8 w-8 items-center justify-center rounded-[8px] disabled:pointer-events-none disabled:opacity-50"
-          aria-label="Add contact"
-          title="Add contact"
-          aria-expanded={isAddContactOpen}
+      <SidebarListHeader title="Contacts">
+        <SidebarListAction
+          icon={UserPlus}
+          label="Add contact"
+          expanded={isAddContactOpen}
           onClick={() => setIsAddContactOpen((open) => !open)}
           disabled={!onAddContactByNodeId}
-        >
-          <UserPlus className="h-[18px] w-[18px]" />
-        </button>
-      </div>
+        />
+      </SidebarListHeader>
 
       {isAddContactOpen && <ContactsAddForm form={addContactForm} />}
 
-      <label className="app-contacts-search mx-3 mb-2 flex shrink-0 items-center gap-2 px-2.5">
-        <Search className="app-contacts-muted h-4 w-4 shrink-0" aria-hidden="true" />
-        <input
-          value={contactSearch}
-          onChange={(event) => onContactSearchChange(event.target.value)}
-          placeholder="Search"
-          aria-label="Search contacts"
-          className="h-full w-full min-w-0 bg-transparent text-[13px] leading-5 outline-none"
-        />
-      </label>
+      <SidebarSearchField
+        value={contactSearch}
+        onChange={onContactSearchChange}
+        placeholder="Search contacts"
+      />
 
       <ScrollArea className="app-contacts-list-scroll min-h-0 flex-1">
-        <div className="app-contacts-list-body grid px-2.5 pb-3">
+        <div className="app-contacts-list-body grid pb-3">
           {leadingListItems ? (
             <>
               <div className="app-contacts-pinned grid gap-px">{leadingListItems}</div>
