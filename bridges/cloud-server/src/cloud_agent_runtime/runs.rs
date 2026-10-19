@@ -6,6 +6,7 @@ mod delivery;
 mod desktop_takeover;
 mod envelopes;
 mod errors;
+mod feature_runs;
 mod group_mentions;
 mod group_target;
 pub(crate) mod identity;

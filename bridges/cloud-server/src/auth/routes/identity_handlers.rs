@@ -38,6 +38,8 @@ pub(super) async fn auth_capabilities(
             .is_some()
             .then_some(crate::connectors::CONNECTORS_VERSION),
         memory_version: 1,
+        common_ground_version: crate::common_ground::available(&state)
+            .then_some(crate::common_ground::COMMON_GROUND_VERSION),
     })
 }
 
