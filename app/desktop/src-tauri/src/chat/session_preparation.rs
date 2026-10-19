@@ -150,7 +150,7 @@ pub(super) async fn prepare_desktop_session_for_send(
         .iter()
         .filter(|message| message.context_role.as_deref() == Some("runtimeIdentity"))
         .find_map(|message| message.execution_lease.clone());
-    // A background turn has no lease, only the parent's `create_document`.
+    // A background turn has no lease, only the parent's document tools.
     let document_lease = super::background_tasks::resource_document_lease(system_context);
     let prompt_session_id = cloud_lease
         .as_ref()
@@ -216,6 +216,10 @@ pub(super) async fn prepare_desktop_session_for_send(
             .map_err(|_| ())
     });
     let owner_local = cloud_lease.is_none() && owner_requester;
+    // The parent's document reads reach a background turn only for the
+    // owner's own request (issue 1889).
+    let document_lease =
+        super::background_tasks::group_document_lease(document_lease.as_ref(), owner_requester);
     runtime.set_mac_local_runtime(mac_local_runtime::build(owner_local));
     // Only a cloud lease carries connector tools, and only for the owner's
     // own request; a request from anyone else keeps the read-only document
@@ -245,8 +249,9 @@ pub(super) async fn prepare_desktop_session_for_send(
         .and_then(|context| super::tool_approval::hook(act_tools, context));
     runtime.set_tool_approval_hook(approval_hook);
     let parent_lease = cloud_lease.clone();
-    let group_documents = super::background_tasks::group_document_lease(cloud_lease.as_ref())
-        .or_else(|| document_lease.clone());
+    let group_documents =
+        super::background_tasks::group_document_lease(cloud_lease.as_ref(), owner_requester)
+            .or_else(|| document_lease.clone());
     let observation = if let Some(lease) = cloud_lease {
         let observation =
             super::session_observation::cloud::build(lease, prompt_session_id.clone(), calendar);

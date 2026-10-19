@@ -1,10 +1,14 @@
 //! Documents a background task writes for its parent group (issue 1808).
 //!
 //! A background task holds no execution lease of its own. It gets the
-//! parent turn's `create_document`, and only that tool, through the parent
-//! lease's run and claim ids, so a document it writes is saved in the parent
-//! group's Artifacts instead of a local file. The server still gates every
-//! call and accepts the parent's claim for a while after the parent answered.
+//! parent turn's `create_document` through the parent lease's run and claim
+//! ids, so a document it writes is saved in the parent group's Artifacts
+//! instead of a local file. When the owner made the request (issue 1889), it
+//! also gets the parent's read-only document tools, such as `read_document`.
+//! It never gets an `act` tool other than `create_document`: a background
+//! task has no approval card, so `edit_document` or a connector's `act` tool
+//! could only be refused there. The server still gates every call and accepts
+//! the parent's claim for a while after the parent answered.
 
 use kordi_cli::desktop_runtime::{DesktopChatContextMessage, DesktopCloudExecutionLease};
 
@@ -16,17 +20,22 @@ pub(in crate::chat) const GROUP_DOCUMENTS_POLICY: &str = "When someone asks for 
 /// document lease into a background turn.
 const GROUP_DIRECTORY_ID: &str = "group-directory";
 
-/// The parent lease reduced to `create_document`; `None` when the parent
-/// lease does not carry it.
+/// The parent lease reduced to the document tools a background task may use:
+/// `create_document`, plus the read-only document tools when the owner made
+/// the request. Anyone else's request keeps `create_document` only. `None`
+/// when the parent lease carries none of them.
 pub(in crate::chat) fn group_document_lease(
     lease: Option<&DesktopCloudExecutionLease>,
+    owner_request: bool,
 ) -> Option<DesktopCloudExecutionLease> {
     let lease = lease?;
     let tools = lease
         .connector_tools
         .as_ref()?
         .iter()
-        .filter(|tool| tool.is_group_document_create())
+        .filter(|tool| {
+            tool.is_group_document_create() || (owner_request && tool.is_shared_document_read())
+        })
         .cloned()
         .collect::<Vec<_>>();
     (!tools.is_empty()).then(|| DesktopCloudExecutionLease {
@@ -57,6 +66,8 @@ pub(super) fn resource_message(
 }
 
 /// The document lease a background turn received in its resource message.
+/// A lease with any tool other than a document read or `create_document` is
+/// ignored; the turn still reduces it to its own requester.
 pub(in crate::chat) fn resource_document_lease(
     messages: &[DesktopChatContextMessage],
 ) -> Option<DesktopCloudExecutionLease> {
@@ -68,7 +79,7 @@ pub(in crate::chat) fn resource_document_lease(
             lease
                 .connector_tools
                 .as_ref()
-                .is_some_and(|tools| tools.iter().all(|tool| tool.is_group_document_create()))
+                .is_some_and(|tools| tools.iter().all(|tool| tool.is_shared_document_tool()))
         })
 }
 
@@ -102,10 +113,19 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_background_task_gets_only_the_parents_create_document() {
-        let parent = lease(vec![
+    fn names(lease: &DesktopCloudExecutionLease) -> Vec<&str> {
+        lease
+            .connector_tools
+            .iter()
+            .flatten()
+            .map(|tool| tool.name.as_str())
+            .collect()
+    }
+
+    fn parent() -> DesktopCloudExecutionLease {
+        lease(vec![
             tool("gmail", "gmail_send", ConnectorToolGroup::Act),
+            tool("gmail", "gmail_search", ConnectorToolGroup::Read),
             tool(
                 DOCUMENT_TOOLS_PROVIDER,
                 "read_document",
@@ -113,19 +133,21 @@ mod tests {
             ),
             tool(
                 DOCUMENT_TOOLS_PROVIDER,
+                "edit_document",
+                ConnectorToolGroup::Act,
+            ),
+            tool(
+                DOCUMENT_TOOLS_PROVIDER,
                 CREATE_DOCUMENT_TOOL,
                 ConnectorToolGroup::Act,
             ),
-        ]);
-        let child = group_document_lease(Some(&parent)).expect("create_document stays");
-        let names: Vec<&str> = child
-            .connector_tools
-            .as_ref()
-            .unwrap()
-            .iter()
-            .map(|tool| tool.name.as_str())
-            .collect();
-        assert_eq!(names, [CREATE_DOCUMENT_TOOL]);
+        ])
+    }
+
+    #[test]
+    fn anyone_elses_background_task_gets_only_the_parents_create_document() {
+        let child = group_document_lease(Some(&parent()), false).expect("create_document stays");
+        assert_eq!(names(&child), [CREATE_DOCUMENT_TOOL]);
         assert_eq!(
             (child.run_id.as_str(), child.claim_id.as_str()),
             ("run_parent", "claim_parent")
@@ -142,9 +164,32 @@ mod tests {
             "read_document",
             ConnectorToolGroup::Read,
         )]);
-        assert!(group_document_lease(Some(&reader)).is_none());
-        assert!(group_document_lease(None).is_none());
+        assert!(group_document_lease(Some(&reader), false).is_none());
+        assert!(group_document_lease(None, false).is_none());
         assert!(resource_message(None, None).is_none());
+    }
+
+    #[test]
+    fn an_owner_background_task_also_gets_the_parents_document_reads() {
+        // Issue 1889: reads and create_document, never edit_document or
+        // another connector's tools.
+        let child = group_document_lease(Some(&parent()), true).expect("document tools stay");
+        assert_eq!(names(&child), ["read_document", CREATE_DOCUMENT_TOOL]);
+        assert_eq!(child.connector_audience, None);
+        let message = resource_message(None, Some(&child)).unwrap();
+        let received = resource_document_lease(&[message]).expect("reads are accepted");
+        assert_eq!(received, child);
+        // The receiving turn reduces again to its own requester.
+        let restricted = group_document_lease(Some(&received), false).unwrap();
+        assert_eq!(names(&restricted), [CREATE_DOCUMENT_TOOL]);
+
+        let reader = lease(vec![tool(
+            DOCUMENT_TOOLS_PROVIDER,
+            "read_document",
+            ConnectorToolGroup::Read,
+        )]);
+        let child = group_document_lease(Some(&reader), true).expect("reads stay");
+        assert_eq!(names(&child), ["read_document"]);
     }
 
     #[test]
@@ -164,6 +209,12 @@ mod tests {
         message.execution_lease = Some(lease(vec![tool(
             "gmail",
             "gmail_send",
+            ConnectorToolGroup::Act,
+        )]));
+        assert!(resource_document_lease(std::slice::from_ref(&message)).is_none());
+        message.execution_lease = Some(lease(vec![tool(
+            DOCUMENT_TOOLS_PROVIDER,
+            "edit_document",
             ConnectorToolGroup::Act,
         )]));
         assert!(resource_document_lease(&[message]).is_none());
