@@ -101,7 +101,9 @@ pub(crate) fn validate_request(request: &RunRequest) -> Result<(), RuntimeError>
                 .is_none_or(|value| value.trim().is_empty() || value.len() > 4096),
         }
         || request.limits.timeout_ms == 0
-        || request.limits.timeout_ms > 3_600_000
+        || request.limits.timeout_ms > crate::protocol::MAX_RUN_TIMEOUT_MS
+        || request.limits.idle_timeout_ms == Some(0)
+        || (request.limits.idle_timeout_ms.is_none() && request.limits.timeout_ms > 3_600_000)
         || request.limits.max_output_bytes == 0
         || request.limits.max_output_bytes > 32 * 1024 * 1024
         || request.limits.max_tool_calls.is_some_and(|max| max > 128)

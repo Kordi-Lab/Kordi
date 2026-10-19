@@ -32,7 +32,8 @@ async fn support_runs_use_the_dedicated_service_api_key_without_an_owner_snapsho
         token: String::new(),
     };
     let state = Arc::new(
-        signup_email_fixture::state(pool.clone()).with_support(SupportService::new(support_config)),
+        signup_email_fixture::state(pool.clone())
+            .with_support(SupportService::new(support_config.clone())),
     );
     let router = test_router(state);
     let requester = signup(&router, "provider-support-requester", "Requester").await;
@@ -165,4 +166,106 @@ async fn support_runs_use_the_dedicated_service_api_key_without_an_owner_snapsho
         provider_auth["providerAuth"]["payload"]["model"],
         "gpt-5.6-luna"
     );
+
+    let context = json!({"runnerId":"runner-support-service","provider":"openai",
+        "model":"gpt-5.6-luna","authSnapshotId":"support-service-openai"});
+    for (key, value) in [
+        ("runnerId", "another-runner"),
+        ("provider", "anthropic"),
+        ("model", "another-model"),
+        ("authSnapshotId", "another-snapshot"),
+    ] {
+        let mut invalid = context.clone();
+        invalid[key] = json!(value);
+        let denied = router
+            .clone()
+            .oneshot(post_json_with_runner_token(
+                &format!("/v1/cloud/agent-runs/{run_id}/omp-context"),
+                "runner-test-token",
+                invalid,
+            ))
+            .await
+            .unwrap();
+        assert!(!denied.status().is_success(), "accepted invalid {key}");
+    }
+    let without_service = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
+    let mut wrong_owner_config = support_config.clone();
+    wrong_owner_config.owner_account_id = "acct_unrelated_service_owner".into();
+    let wrong_owner = test_router(Arc::new(
+        signup_email_fixture::state(pool.clone())
+            .with_support(SupportService::new(wrong_owner_config)),
+    ));
+    for other_router in [&without_service, &wrong_owner] {
+        let denied = other_router
+            .clone()
+            .oneshot(post_json_with_runner_token(
+                &format!("/v1/cloud/agent-runs/{run_id}/omp-context"),
+                "runner-test-token",
+                context.clone(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), StatusCode::NOT_FOUND);
+    }
+    let loaded = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            &format!("/v1/cloud/agent-runs/{run_id}/omp-context"),
+            "runner-test-token",
+            context,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(loaded.status(), StatusCode::OK);
+    assert!(!read_json(loaded)
+        .await
+        .to_string()
+        .contains(&support_secret));
+
+    let omp_state = json!({"schemaVersion":1,"replayable":true,"provider":"openai",
+        "model":"gpt-5.6-luna","authSnapshotId":"support-service-openai",
+        "messages":[{"role":"assistant","content":[{"type":"text","text":"Support is ready."}]}]});
+    for (key, value) in [
+        ("provider", "anthropic"),
+        ("model", "another-model"),
+        ("authSnapshotId", "another-snapshot"),
+    ] {
+        let mut invalid = omp_state.clone();
+        invalid[key] = json!(value);
+        let denied = router.clone().oneshot(post_json_with_runner_token(
+            &format!("/v1/cloud/agent-runs/{run_id}/complete"), "runner-test-token",
+            json!({"runnerId":"runner-support-service","responseText":"Support is ready.","ompState":invalid}),
+        )).await.unwrap();
+        assert!(
+            !denied.status().is_success(),
+            "accepted invalid completion {key}"
+        );
+    }
+    for other_router in [&without_service, &wrong_owner] {
+        let denied = other_router.clone().oneshot(post_json_with_runner_token(
+            &format!("/v1/cloud/agent-runs/{run_id}/complete"), "runner-test-token",
+            json!({"runnerId":"runner-support-service","responseText":"Support is ready.","ompState":omp_state}),
+        )).await.unwrap();
+        assert_eq!(denied.status(), StatusCode::NOT_FOUND);
+    }
+    let completed = router.clone().oneshot(post_json_with_runner_token(
+        &format!("/v1/cloud/agent-runs/{run_id}/complete"), "runner-test-token",
+        json!({"runnerId":"runner-support-service","responseText":"Support is ready.","ompState":omp_state}),
+    )).await.unwrap();
+    assert_eq!(completed.status(), StatusCode::OK);
+    let completed = read_json(completed).await;
+    assert_eq!(completed["run"]["status"], "completed");
+    let response_id = completed["run"]["responseMessageId"].as_str().unwrap();
+    assert!(message_body(&pool, response_id)
+        .await
+        .contains("kordi-cloud-agent-response:"));
+    let (stored,): (Value,) = sqlx_core::query_as::query_as(
+        "SELECT state_json FROM cloud_agent_omp_state WHERE run_id=$1",
+    )
+    .bind(&run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stored, omp_state);
+    assert!(!stored.to_string().contains(&support_secret));
 }

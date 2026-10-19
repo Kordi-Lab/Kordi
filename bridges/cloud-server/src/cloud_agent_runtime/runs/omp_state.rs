@@ -1,4 +1,5 @@
 //! Private structured replay state, fenced by the same lease as final delivery.
+use super::super::provider_auth::ServiceProviderAuth;
 use super::{RunError, RunResult};
 use axum::{
     extract::{Path, State},
@@ -83,12 +84,14 @@ pub(super) async fn save(
     runner_id: &str,
     response_id: &str,
     state: &OmpState,
+    service_auths: &[ServiceProviderAuth<'_>],
 ) -> RunResult<()> {
     query("SELECT run_id FROM cloud_agent_fallback_runs WHERE run_id=$1 FOR UPDATE")
         .bind(run_id)
         .execute(&mut *conn)
         .await?;
-    let (owner, session, agent, route) = validate_for_run(conn, run_id, runner_id, state).await?;
+    let (owner, session, agent, route) =
+        validate_for_run(conn, run_id, runner_id, state, service_auths).await?;
     query("INSERT INTO cloud_agent_omp_state(run_id,owner_account_id,session_id,execution_agent_id,route_json,auth_snapshot_id,provider,model,response_message_id,state_json) \
            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(run_id) DO NOTHING")
         .bind(run_id).bind(owner).bind(session).bind(agent).bind(route).bind(&state.auth_snapshot_id)
@@ -101,6 +104,7 @@ pub(super) async fn validate_for_run(
     run_id: &str,
     runner_id: &str,
     state: &OmpState,
+    service_auths: &[ServiceProviderAuth<'_>],
 ) -> RunResult<(String, String, String, Value)> {
     validate(state)?;
     let row: Option<(String, String, String, Value)> = query_as(
@@ -109,10 +113,17 @@ pub(super) async fn validate_for_run(
          AND lease_expires_at::timestamptz>now()")
         .bind(run_id).bind(runner_id).fetch_optional(&mut *conn).await?;
     let (owner, session, agent, route) = row.ok_or(RunError::NotFound)?;
-    let snapshot: Option<(String, String)> = query_as(
-        "SELECT provider,auth_choice FROM cloud_agent_provider_auth_snapshots WHERE snapshot_id=$1 AND account_id=$2 AND revoked_at IS NULL FOR SHARE")
-        .bind(&state.auth_snapshot_id).bind(&owner).fetch_optional(&mut *conn).await?;
-    let (snapshot_provider, choice) = snapshot.ok_or(RunError::NotFound)?;
+    let service = service_auths.iter().find(|auth| {
+        auth.matches_run(&owner, run_id, &route) && auth.snapshot_id == state.auth_snapshot_id
+    });
+    let (snapshot_provider, choice) = if let Some(auth) = service {
+        (auth.provider.to_owned(), auth.auth_choice.to_owned())
+    } else {
+        let snapshot: Option<(String, String)> = query_as(
+            "SELECT provider,auth_choice FROM cloud_agent_provider_auth_snapshots WHERE snapshot_id=$1 AND account_id=$2 AND revoked_at IS NULL FOR SHARE")
+            .bind(&state.auth_snapshot_id).bind(&owner).fetch_optional(&mut *conn).await?;
+        snapshot.ok_or(RunError::NotFound)?
+    };
     let families = super::super::provider_auth::equivalent_provider_ids(Some(&state.provider))
         .unwrap_or_default();
     let model_matches = route
@@ -160,7 +171,14 @@ pub(crate) async fn context_route(
     if !super::super::routes::runner_authorized_for_scheduled_tasks(&headers) {
         return super::runner_unauthorized();
     }
-    match context(state.db_pool(), &run_id, input).await {
+    match context(
+        state.db_pool(),
+        &run_id,
+        input,
+        &super::super::routes::service_auth::service_provider_auths(&state),
+    )
+    .await
+    {
         Ok(value) => Json(value).into_response(),
         Err(error) => {
             super::run_error_response("runtime context", "Could not load runtime context.", error)
@@ -168,7 +186,12 @@ pub(crate) async fn context_route(
     }
 }
 
-async fn context(pool: &PgPool, run_id: &str, input: ContextInput) -> RunResult<Value> {
+async fn context(
+    pool: &PgPool,
+    run_id: &str,
+    input: ContextInput,
+    service_auths: &[ServiceProviderAuth<'_>],
+) -> RunResult<Value> {
     super::context_read::authorize_runner_context(pool, run_id, &input.runner_id).await?;
     let row: Option<ContextRow> = query_as(
         "SELECT owner_account_id,session_id,execution_agent_id,runtime_route_json,omp_input_json,prompt,subsession_id IS NOT NULL,requester_account_id \
@@ -177,10 +200,17 @@ async fn context(pool: &PgPool, run_id: &str, input: ContextInput) -> RunResult<
         .bind(run_id).bind(&input.runner_id).fetch_optional(pool).await?;
     let (owner, session, agent, route, frozen, prompt, subsession, requester) =
         row.ok_or(RunError::NotFound)?;
-    if super::super::provider_auth::live_snapshot_for_route(pool, &owner, &route)
-        .await?
-        .as_deref()
-        != Some(input.auth_snapshot_id.as_str())
+    let service_snapshot_matches = service_auths.iter().any(|auth| {
+        auth.matches_run(&owner, run_id, &route)
+            && auth.snapshot_id == input.auth_snapshot_id
+            && auth.provider == input.provider
+            && auth.model == input.model
+    });
+    if !service_snapshot_matches
+        && super::super::provider_auth::live_snapshot_for_route(pool, &owner, &route)
+            .await?
+            .as_deref()
+            != Some(input.auth_snapshot_id.as_str())
     {
         return Err(RunError::NotFound);
     }

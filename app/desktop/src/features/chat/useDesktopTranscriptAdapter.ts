@@ -79,6 +79,26 @@ function assistantSenderLabelForTranscript(
   return stripSelfPossessivePrefix(label) || label;
 }
 
+/**
+ * The runtime stores a failed turn as a bare failure notice. When the finished
+ * live turn's reply, which carries that failure with its partial text and
+ * work, is in the same transcript, the notice would repeat it as its own row.
+ */
+function supersededFailureNotices(messages: readonly DesktopChatMessage[]) {
+  const normalized = (value?: string | null) => (value ?? '').trim().replace(/\s+/g, ' ');
+  const errors = new Set(messages
+    .filter((message) => message.role === 'assistant' && message.failed && message.error?.trim())
+    .map((message) => normalized(message.error)));
+  return new Set(errors.size === 0 ? [] : messages.filter((message) => (
+    message.role === 'assistant'
+    && message.failed === true
+    && !message.error?.trim()
+    && !message.tools?.length
+    && !message.thinkingText?.trim()
+    && errors.has(normalized(message.text))
+  )));
+}
+
 export function mapDesktopMessagesForTranscript(
   sessionId: string,
   messages: DesktopChatMessage[],
@@ -86,10 +106,13 @@ export function mapDesktopMessagesForTranscript(
   sessionContext?: DesktopTranscriptSessionContext,
 ): Message[] {
   const cloudAgentIdentity = cloudAgentTranscriptIdentity(sessionContext);
+  const supersededFailures = supersededFailureNotices(messages);
   return messages.flatMap((message, index) => {
+    if (supersededFailures.has(message)) return [];
     const messageId = desktopTranscriptMessageId(sessionId, message, index);
     const isAssistant = message.role === 'assistant';
     const failedAssistant = isAssistant && message.failed === true;
+    const failureError = failedAssistant ? message.error?.trim() || '' : '';
     const cancelledAssistant = isAssistant && message.cancelled === true;
     const assistantText = message.text.trim();
     const hasHistoricalTurn =
@@ -196,14 +219,14 @@ export function mapDesktopMessagesForTranscript(
                 : cancelledAssistant
                   ? 'Response stopped'
                   : 'Response complete',
-              assistantText: failedAssistant ? '' : message.text,
+              assistantText: failedAssistant && !failureError ? '' : message.text,
               thinkingText: message.thinkingText ?? '',
               tools: message.tools ?? [],
               completed: true,
               succeeded: !failedAssistant && !cancelledAssistant,
               startedAtMs: message.turnStartedAtMs ?? null,
               completedAtMs: message.turnCompletedAtMs ?? message.timestampMs,
-              error: failedAssistant ? message.text : undefined,
+              error: failedAssistant ? failureError || message.text : undefined,
             }
           : undefined,
     }];

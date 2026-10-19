@@ -13,13 +13,13 @@
 /* "online" in rows and the detail header; other presence lines stay muted. The dark accent is
  * a pale tint that reads like muted text at 12px, so dark themes use a more saturated tone of the
  * palette hue; light themes use the accent itself. */
-.app-contacts-page .app-contacts-presence-online,
+:is(.app-contacts-page, .app-contacts-list-column) .app-contacts-presence-online,
 .app-contacts-presence-online,
 .app-contacts-card-value.is-accent {
   color: oklch(78% 0.115 var(--app-palette-hue, 250));
 }
 
-.theme-light .app-contacts-page .app-contacts-presence-online,
+.theme-light :is(.app-contacts-page, .app-contacts-list-column) .app-contacts-presence-online,
 .theme-light .app-contacts-presence-online,
 .theme-light .app-contacts-card-value.is-accent {
   color: var(--app-accent);
@@ -29,33 +29,21 @@
   color: var(--app-transient-danger-text);
 }
 
-/* List column */
+/* List column: in the sidebar session panel it inherits the panel's backdrop; on its own
+ * (previews, tests) it draws the same divider the panel does. */
 .app-contacts-list-column {
+  color: var(--utility-foreground);
+}
+
+.app-contacts-list-column.is-standalone {
   border-right: 1px solid var(--app-divider);
-  background: color-mix(in oklab, var(--utility-foreground) 2.5%, transparent);
+  background: var(--app-session-bg);
 }
 
 .app-contacts-page.is-narrow .app-contacts-list-column {
   border-right: 0;
 }
 
-.app-contacts-list-header {
-  height: 52px;
-}
-
-.app-contacts-search {
-  height: 32px;
-  border-radius: 9px;
-  background: color-mix(in oklab, var(--utility-foreground) 6.5%, transparent);
-  color: var(--utility-foreground);
-}
-
-.app-contacts-search:focus-within {
-  outline: 2px solid var(--app-quiet-control-focus-ring);
-  outline-offset: -1px;
-}
-
-.app-contacts-search input::placeholder,
 .app-contacts-field::placeholder {
   color: var(--utility-muted-text);
 }
@@ -67,7 +55,7 @@
 .app-contacts-danger-fill:focus-visible,
 .app-contacts-accept-pill:focus-visible,
 .app-contacts-group-row:focus-visible,
-.app-contacts-page .app-contact-row:focus-visible,
+:is(.app-contacts-page, .app-contacts-list-column) .app-contact-row:focus-visible,
 .app-contacts-danger-action:focus-visible {
   outline: 2px solid var(--app-quiet-control-focus-ring);
   outline-offset: -2px;
@@ -149,17 +137,17 @@
 }
 
 /* Contact rows */
-/* Every list row (pinned, request, contact) shares these metrics: 56px tall, 40px avatar, 8px inset. */
-.app-contacts-page .app-contact-row.app-list-item,
-.app-contacts-page .app-contact-request-row {
-  min-height: 56px;
+/* Every list row (pinned, request, contact) matches a Chats row: 44px tall, 36px avatar, 10px inset. */
+:is(.app-contacts-page, .app-contacts-list-column) .app-contact-row.app-list-item,
+:is(.app-contacts-page, .app-contacts-list-column) .app-contact-request-row {
+  min-height: 44px;
   border: 0;
   color: var(--utility-foreground);
   box-shadow: none;
   transition: none;
 }
 
-.app-contacts-page .app-contact-request-row:hover {
+:is(.app-contacts-page, .app-contacts-list-column) .app-contact-request-row:hover {
   background: var(--app-quiet-control-hover-bg);
 }
 
@@ -186,9 +174,9 @@
   outline-offset: -2px;
 }
 
-.kordi-app .app-contacts-page .app-contact-row.app-contact-row-selected,
-.kordi-app .app-contacts-page .app-contact-row.app-contact-row-selected:hover {
-  background: color-mix(in oklab, var(--app-accent) 16%, transparent);
+.kordi-app :is(.app-contacts-page, .app-contacts-list-column) .app-contact-row.app-contact-row-selected,
+.kordi-app :is(.app-contacts-page, .app-contacts-list-column) .app-contact-row.app-contact-row-selected:hover {
+  background: var(--app-sidebar-selected-bg);
 }
 
 .app-contacts-avatar .app-presence-light[data-presence-status] {
@@ -278,9 +266,10 @@
 }
 
 /* Pinned Common ground row: brand blue tile with a red dot when a room invitation waits. */
+/* Accent-tinted like the other Kordi controls, not a solid brand color. */
 .app-common-ground-tile {
-  background: oklch(54.6% 0.215 262.9);
-  color: oklch(100% 0 0);
+  background: color-mix(in oklab, var(--app-accent) 18%, transparent);
+  color: var(--app-accent);
 }
 
 .app-common-ground-dot {

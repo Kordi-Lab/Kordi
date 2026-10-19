@@ -81,6 +81,12 @@ pub struct AuthCapabilitiesResponse {
     /// Present when the account memory routes exist (#1710).
     #[serde(rename = "memoryVersion")]
     pub memory_version: u32,
+    /// Present when the Common ground routes can build cards (#1847).
+    #[serde(
+        rename = "commonGroundVersion",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub common_ground_version: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]

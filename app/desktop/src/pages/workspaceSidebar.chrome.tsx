@@ -1,5 +1,7 @@
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
-import { Plus, Search } from 'lucide-react';
+import { Plus } from 'lucide-react';
+
+import { SidebarListAction, SidebarListHeader, SidebarSearchField } from '@/components/SidebarListChrome';
 
 import type { ChatChannel } from '@/kordi-app/types';
 import type { CollaborationSyncStatus } from '@/pages/workspaceSidebar.chatModel';
@@ -67,39 +69,24 @@ export function ChatSidebarChrome({
 }) {
   return (
     <>
-      <div className="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2.5">
-        <div className="flex min-w-0 items-center gap-1">
-          <div className="shrink-0 text-[15px] font-semibold text-white">{chatChannel === 'agent' ? 'Agent Chats' : 'Chats'}</div>
+      <SidebarListHeader
+        title={chatChannel === 'agent' ? 'Agent Chats' : 'Chats'}
+        after={(
           <CollaborationSyncIndicator
             status={collaborationSyncStatus}
             ariaLabel={collaborationSyncAriaLabel}
           />
-        </div>
-        <div className="app-chat-sidebar-actions flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={onOpenCreate}
-            className="app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-[10px] p-0 transition"
-            title="Start a chat"
-            aria-label="Start a chat"
-          >
-            <Plus className="h-4 w-4 stroke-[2.2]" aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-
-      <div className="app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5">
-        <Search className="h-3.5 w-3.5 text-slate-400" />
-        <input
-          value={chatSearch}
-          onChange={(event) => setChatSearch(event.target.value)}
-          placeholder={chatChannel === 'contact'
-            ? 'Search contacts, groups, sessions'
-            : 'Search agent conversations'}
-          className="w-full bg-transparent text-[13px] text-white outline-none placeholder:text-slate-400"
-        />
-      </div>
-
+        )}
+      >
+        <SidebarListAction icon={Plus} label="Start a chat" onClick={onOpenCreate} />
+      </SidebarListHeader>
+      <SidebarSearchField
+        value={chatSearch}
+        onChange={setChatSearch}
+        placeholder={chatChannel === 'contact'
+          ? 'Search contacts, groups, sessions'
+          : 'Search agent conversations'}
+      />
     </>
   );
 }
