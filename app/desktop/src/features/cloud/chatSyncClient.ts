@@ -83,8 +83,8 @@ export class ChatSyncClient {
   threadReads(token: string, sessionId: string) { return this.conversations.threadReads(token, sessionId); }
   markThreadRead(token: string, sessionId: string, rootId: string, sequence: number) { return this.conversations.markThreadRead(token, sessionId, rootId, sequence); }
 
-  markSessionMessagesRead(token: string, sessionId: string): Promise<void> {
-    return this.conversations.markSessionMessagesRead(token, sessionId);
+  markSessionMessagesRead(token: string, sessionId: string, observedSequence?: number): Promise<void> {
+    return this.conversations.markSessionMessagesRead(token, sessionId, observedSequence);
   }
 
   acknowledgeDelivery(token: string, conversationId: string, sequence: number): Promise<void> {

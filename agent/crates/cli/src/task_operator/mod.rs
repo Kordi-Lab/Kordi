@@ -24,7 +24,7 @@ use runner::SubprocessChildAgentRunner;
 #[allow(unused_imports)]
 pub use runner::{
     ChildAgentRunner, SpawnRequest, SpawnedTask, WaitOutcome, managed_child_prompt_context,
-    managed_child_tool_names,
+    managed_child_tool_names, owner_child_prompt_context, owner_child_tool_names,
 };
 
 #[cfg(test)]

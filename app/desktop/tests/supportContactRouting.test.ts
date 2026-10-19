@@ -403,3 +403,35 @@ test('an ordinary person chat without an agent target stays plain text', () => {
     },
   }), null);
 });
+
+test('recent Support activity survives a longer legacy conversation in the sidebar', () => {
+  const legacy = {
+    ...supportConversation(),
+    _updatedAtMs: 100,
+    messages: Array.from({ length: 4 }, (_, index) => ({
+      id: `old-${index}`, role: 'person' as const, sender: 'Kordi Support',
+      text: `Historical answer ${index}`, time: '10:00', timestampMs: 90 + index,
+    })),
+  };
+  const recent = {
+    ...supportConversationWithRealOwner(),
+    _updatedAtMs: 300,
+    updatedAtLabel: '12:00',
+    subtitle: 'Support is temporarily unavailable.',
+    messages: [
+      { id: 'new-question', role: 'user' as const, text: 'Are you there?', time: '12:00', timestampMs: 299 },
+      { id: 'new-failure', role: 'person' as const, sender: 'Kordi Support', text: 'Support is temporarily unavailable.', time: '12:00', timestampMs: 300 },
+    ],
+  };
+  const [collapsed] = normalizeSupportContactConversationCollection([legacy, recent]);
+  assert.equal(collapsed?.id, legacy.id);
+  assert.equal(collapsed?._updatedAtMs, 300);
+  assert.equal(collapsed?.subtitle, recent.subtitle);
+  assert.equal(collapsed?.updatedAtLabel, '12:00');
+  assert.deepEqual(collapsed?.messages.map((message) => message.id), [
+    'old-0', 'old-1', 'old-2', 'old-3', 'new-question', 'new-failure',
+  ]);
+  const spaces = buildParticipantSpaces([collapsed!, { ...recent, id: 'other-contact', name: 'Other', supportTicketEnabled: false,
+    canonicalSessionId: 'other-contact', collaborationTarget: undefined, participants: ['Me', 'Other'], _updatedAtMs: 200 }]);
+  assert.equal(spaces[0]?.title, 'Kordi Support');
+});
