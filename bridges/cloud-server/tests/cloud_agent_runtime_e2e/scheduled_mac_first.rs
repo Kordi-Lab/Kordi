@@ -313,3 +313,61 @@ async fn a_task_that_needs_the_mac_fails_visibly_when_no_mac_comes() {
     assert_eq!(fx.agent_run(&run_id).await.0, "failed");
     fx.finish().await;
 }
+
+#[tokio::test]
+async fn a_mac_with_a_hosted_account_gets_that_accounts_credentials_for_a_task() {
+    std::env::set_var(
+        "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
+        "test-provider-auth-key-that-is-long-enough",
+    );
+    let Some(fx) = fixture("scheduled-mac-hosted").await else {
+        return;
+    };
+    fx.mac_ready().await;
+    // The cloud would use another saved account; the Mac's route names "work".
+    let (status, saved) = fx
+        .post(
+            "/v1/cloud/agent-provider-auth/snapshots?intent=explicit",
+            json!({"provider":"openai","authChoice":"cloud-api-key:personal",
+                "payload":{"apiKey":"synthetic-personal-key","baseUrl":"https://api.openai.com/v1","model":"gpt-4.1-mini"}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{saved}");
+    let (scheduled, run_id) = fx.run_now("cloud").await;
+    let (status, saved) = fx
+        .post(
+            "/v1/cloud/agent-provider-auth/snapshots?intent=explicit",
+            json!({"provider":"openai","authChoice":"cloud-api-key:work",
+                "payload":{"apiKey":"synthetic-hosted-key","baseUrl":"https://api.openai.com/v1","model":"gpt-4.1-mini"}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{saved}");
+    let claim_id = uuid::Uuid::new_v4();
+    let (status, claimed) = fx
+        .post(
+            "/v1/cloud/agent-runs/desktop/claim",
+            json!({
+                "claimId": claim_id,
+                "requestMessageId": scheduled,
+                "sessionId": format!("session:scheduled:{}", fx.owner.account_id),
+                "ownerAccountId": fx.owner.account_id,
+                "requesterAccountId": fx.owner.account_id,
+                "prompt": "Summarize what changed overnight.",
+                "idempotencyKey": format!("scheduled:{scheduled}"),
+                "runtimeRoute": {"defaultModel":"openai/gpt-4.1-mini","defaultAuthProvider":"openai",
+                    "defaultAuthChoice":"cloud-api-key:work"},
+            }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{claimed}");
+    assert_eq!(claimed["acquired"], true);
+    let (status, material) = fx
+        .post(
+            &format!("/v1/cloud/agent-runs/{run_id}/desktop/provider-auth"),
+            json!({"claimId": claim_id}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{material}");
+    assert_eq!(material["providerAuth"]["authChoice"], "cloud-api-key:work");
+    fx.finish().await;
+}
