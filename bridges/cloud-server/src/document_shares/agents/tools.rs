@@ -239,9 +239,12 @@ pub(crate) async fn call(
     let lease = match load_active_lease(pool, run_id, holder).await {
         Ok(Some(lease)) => lease.tools,
         // A background task of a finished desktop run may still deliver its
-        // document to the run's group.
-        Ok(None) if tool == CREATE_DOCUMENT_TOOL => {
-            match super::create::finished_desktop_lease_tools(pool, run_id, holder).await {
+        // document to the run's group, and the owner's own task may still
+        // read the conversation's documents.
+        Ok(None) if tool != EDIT_DOCUMENT_TOOL => {
+            match super::finished_run::finished_desktop_lease_tools(pool, run_id, holder, tool)
+                .await
+            {
                 Ok(Some(tools)) => tools,
                 Ok(None) => {
                     return refuse(
