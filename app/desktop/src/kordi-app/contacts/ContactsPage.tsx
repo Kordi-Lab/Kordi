@@ -23,6 +23,7 @@ export function ContactsPage(props: ContactsPageProps) {
     onCloseOverlay,
     onMessageContact,
     onRemoveContact,
+    leadingDetail,
   } = props;
   const rootRef = useRef<HTMLDivElement>(null);
   const isNarrow = useIsNarrowContainer(rootRef, CONTACTS_SPLIT_MIN_WIDTH);
@@ -30,9 +31,13 @@ export function ContactsPage(props: ContactsPageProps) {
   const requestActions = useContactRequestActions(props.onAcceptRequest, props.onRejectRequest);
   const selectedRequest = useSelectedContactRequest(props.contactRequests, props.activeContactRequestId, activeContactRequest);
   const detailMode = contactOverlayMode === 'request' && !selectedRequest ? null : contactOverlayMode;
-  useEscapeToDeselect(Boolean(detailMode) && !(detailMode === 'request' && requestActions.busy), onCloseOverlay);
+  const hasLeadingDetail = leadingDetail !== undefined && leadingDetail !== null && leadingDetail !== false;
+  useEscapeToDeselect(
+    hasLeadingDetail || (Boolean(detailMode) && !(detailMode === 'request' && requestActions.busy)),
+    onCloseOverlay,
+  );
 
-  const detailProps = detailMode ? {
+  const detailProps = detailMode && !hasLeadingDetail ? {
     mode: detailMode,
     activeContact,
     activeContactRequest: selectedRequest,
@@ -44,8 +49,15 @@ export function ContactsPage(props: ContactsPageProps) {
 
   return (
     <div ref={rootRef} className={cn('app-contacts-page relative flex h-full min-h-0 min-w-0 flex-1', isNarrow && 'is-narrow')}>
-      <ContactsListColumn {...props} requests={requests} requestActions={requestActions} fullWidth={isNarrow} />
-      {!isNarrow && (detailProps ? <ContactDetailPane {...detailProps} /> : <ContactDetailEmpty />)}
+      {isNarrow && hasLeadingDetail ? null : (
+        <ContactsListColumn {...props} requests={requests} requestActions={requestActions} fullWidth={isNarrow} />
+      )}
+      {hasLeadingDetail ? (
+        <div className="app-contacts-detail-pane app-contacts-leading-detail relative flex min-h-0 min-w-0 flex-1 flex-col">
+          {leadingDetail}
+        </div>
+      ) : null}
+      {!isNarrow && !hasLeadingDetail && (detailProps ? <ContactDetailPane {...detailProps} /> : <ContactDetailEmpty />)}
       {isNarrow && detailProps ? <ContactDetailDialog {...detailProps} /> : null}
     </div>
   );

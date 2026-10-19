@@ -277,6 +277,26 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* Pinned Common ground row: brand blue tile with a red dot when a room invitation waits. */
+.app-common-ground-tile {
+  background: oklch(54.6% 0.215 262.9);
+  color: oklch(100% 0 0);
+}
+
+.app-common-ground-dot {
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: oklch(62.8% 0.233 27.5);
+  box-shadow: 0 0 0 2px var(--app-main-bg);
+}
+
+.app-contacts-leading-detail {
+  overflow: hidden;
+}
+
 /* In the split view a row click or Escape deselects, so the close button only shows in the narrow dialog. */
 .app-contacts-detail-pane .app-contacts-detail-close {
   display: none;

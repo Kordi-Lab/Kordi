@@ -4,15 +4,23 @@ struct ContactsView<PinnedRows: View>: View {
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
     @State private var showAddContact = false
+    @State private var showsCommonGround = false
     var onOpenConversation: ((ConversationSummary) -> Void)? = nil
+    /// Pushes Common ground on the main stack; without it the screen opens full screen.
+    var onOpenCommonGround: (() -> Void)? = nil
     /// Rows shown above requests and contacts, for entries that live outside this screen.
     private let pinnedRows: PinnedRows
 
+    private let showsCommonGroundEntry = CommonGroundAvailability.isEnabled()
+    private let commonGroundInvitationWaiting = CommonGroundAvailability.hasWaitingInvitation()
+
     init(
         onOpenConversation: ((ConversationSummary) -> Void)? = nil,
+        onOpenCommonGround: (() -> Void)? = nil,
         @ViewBuilder pinnedRows: () -> PinnedRows
     ) {
         self.onOpenConversation = onOpenConversation
+        self.onOpenCommonGround = onOpenCommonGround
         self.pinnedRows = pinnedRows()
     }
 
@@ -121,18 +129,49 @@ struct ContactsView<PinnedRows: View>: View {
         }
         .toolbar {
             if #available(iOS 26.0, *) {
-                ToolbarItem(placement: .topBarTrailing) {
-                    addContactButton
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    toolbarButtons
                 }
                 .sharedBackgroundVisibility(.hidden)
             } else {
-                ToolbarItem(placement: .topBarTrailing) {
-                    addContactButton
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    toolbarButtons
                 }
             }
         }
         .sheet(isPresented: $showAddContact) { AddContactSheet() }
+#if DEBUG
+        .fullScreenCover(isPresented: $showsCommonGround) {
+            CommonGroundView { showsCommonGround = false }
+        }
+#endif
         .task { await model.refreshContactRequests() }
+    }
+
+    @ViewBuilder
+    private var toolbarButtons: some View {
+        if showsCommonGroundEntry {
+            commonGroundButton
+        }
+        addContactButton
+    }
+
+    private var commonGroundButton: some View {
+        Button(action: openCommonGround) {
+            ContactsToolbarIcon(assetName: "CommonGroundHug", showsBadge: commonGroundInvitationWaiting)
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .accessibilityLabel("Common ground")
+        .accessibilityValue(commonGroundInvitationWaiting ? "Invitation waiting" : "")
+    }
+
+    private func openCommonGround() {
+        if let onOpenCommonGround {
+            onOpenCommonGround()
+        } else {
+            showsCommonGround = true
+        }
     }
 
     private var addContactButton: some View {
@@ -146,20 +185,58 @@ struct ContactsView<PinnedRows: View>: View {
 }
 
 extension ContactsView where PinnedRows == EmptyView {
-    init(onOpenConversation: ((ConversationSummary) -> Void)? = nil) {
-        self.init(onOpenConversation: onOpenConversation) { EmptyView() }
+    init(
+        onOpenConversation: ((ConversationSummary) -> Void)? = nil,
+        onOpenCommonGround: (() -> Void)? = nil
+    ) {
+        self.init(onOpenConversation: onOpenConversation, onOpenCommonGround: onOpenCommonGround) { EmptyView() }
     }
 }
 
 /// A plain navigation-bar icon matching the other tab toolbars.
 struct ContactsToolbarIcon: View {
-    let systemName: String
+    var systemName: String? = nil
+    var assetName: String? = nil
+    var showsBadge = false
+
+    private var icon: some View {
+        Group {
+            if let assetName {
+                Image(assetName)
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 26, height: 26)
+            } else {
+                Image(systemName: systemName ?? "questionmark")
+                    .font(.body.weight(.semibold))
+            }
+        }
+    }
 
     var body: some View {
-        Image(systemName: systemName)
-            .font(.body.weight(.semibold))
+        icon
+            .overlay(alignment: .topTrailing) {
+                if showsBadge {
+                    ContactsBadgeDot(diameter: 8)
+                        .offset(x: 4, y: -2)
+                }
+            }
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
+    }
+}
+
+/// Small red dot used to mark something waiting.
+struct ContactsBadgeDot: View {
+    var diameter: CGFloat = 10
+
+    var body: some View {
+        Circle()
+            .fill(Color.red)
+            .frame(width: diameter, height: diameter)
+            .overlay { Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 1.5) }
+            .accessibilityHidden(true)
     }
 }
 

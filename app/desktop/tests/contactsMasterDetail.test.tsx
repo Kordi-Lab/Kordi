@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { CommonGroundContactsRow } from '../src/features/commonGround/CommonGroundContactsRow';
 import { ContactDetailDialog } from '../src/kordi-app/contacts/ContactDetailPane';
 import { ContactsPage } from '../src/kordi-app/pages';
 import type { ContactsPageProps } from '../src/kordi-app/contacts/contactsPageTypes';
@@ -356,4 +357,31 @@ test('a failed delete keeps the confirm open with the error', async () => {
   } finally {
     await page.cleanup();
   }
+});
+
+test('leading detail replaces the contact detail pane and leaves the default unchanged when unset', () => {
+  const selected = contact({ id: 'cloud:acct_peer', name: 'Maya Chen', sourceHostId: 'cloud', sourceParticipantId: 'acct_peer' });
+  const markup = renderContactsPage([], {
+    contactOverlayMode: 'contact',
+    activeContact: selected,
+    leadingListItems: createElement(CommonGroundContactsRow, { selected: true, hasInvitation: true, onSelect: () => undefined }),
+    leadingDetail: createElement('div', { 'data-testid': 'leading-detail' }, 'Common ground page'),
+  });
+
+  assert.match(markup, /app-contacts-leading-detail/);
+  assert.match(markup, />Common ground page</);
+  assert.doesNotMatch(markup, /Maya Chen contact details/);
+  assert.doesNotMatch(markup, /No contact selected/);
+  assert.match(markup, /aria-label="Contacts list"/);
+  assert.match(markup, /app-common-ground-row[^"]*app-contact-row-selected/);
+  assert.match(markup, />Meet people at this event</);
+  assert.match(markup, /aria-label="Room invitation waiting"/);
+
+  const cleared = renderContactsPage([], { contactOverlayMode: 'contact', activeContact: selected, leadingDetail: null });
+  assert.doesNotMatch(cleared, /app-contacts-leading-detail/);
+  assert.match(cleared, /aria-label="Maya Chen contact details"/);
+
+  const quietRow = renderToStaticMarkup(createElement(CommonGroundContactsRow, { selected: false, onSelect: () => undefined }));
+  assert.doesNotMatch(quietRow, /app-contact-row-selected|Room invitation waiting/);
+  assert.match(quietRow, /app-common-ground-tile/);
 });

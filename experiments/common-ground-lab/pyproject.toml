@@ -1,0 +1,13 @@
+[project]
+name = "common-ground-lab"
+version = "0.1.0"
+description = "Offline harness for the Common ground card, match, and room algorithm"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "fastembed>=0.4",
+    "anthropic>=0.60",
+]
+
+[tool.uv]
+package = false
