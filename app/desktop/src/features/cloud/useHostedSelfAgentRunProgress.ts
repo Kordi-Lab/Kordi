@@ -77,6 +77,9 @@ export function useHostedSelfAgentRunProgress({
       ));
       if (
         Date.now() - entry.startedAtMs >= MAX_TRACK_MS
+        // A Mac took the run: its live turn and processing reply show the
+        // progress, so a second running row would repeat it.
+        || lastRun.executionBackend === 'desktop'
         || hostedSelfAgentRequestIsTerminal(requestId, selfMessages)
         || !['queued', 'leased', 'running'].includes(lastRun.status.trim().toLowerCase())
       ) {
