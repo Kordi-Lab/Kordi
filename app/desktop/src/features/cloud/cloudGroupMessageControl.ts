@@ -123,6 +123,16 @@ export async function applyCloudGroupMessageControl({
   const messageReplyToId = message.replyToMessageId?.trim()
     || message.requestId?.trim()
     || null;
+  // A background follow-up replies to the parent's request under its own
+  // request id. Give it its own response slot; sharing the parent's slot made
+  // each replay overwrite the other reply's text in one row.
+  const followUpRequestId = senderIsAgent ? message.requestId?.trim() : '';
+  const responseRequestId = followUpRequestId && messageReplyToId && followUpRequestId !== messageReplyToId
+    ? followUpRequestId
+    : messageReplyToId;
+  const responseSlotId = senderIsAgent && responseRequestId
+    ? `msg:cloud-agent-processing:${responseRequestId}:${message.senderAccountId}`
+    : null;
   const agentDeliveryState = senderIsAgent
     ? (message.deliveryState?.trim()
       || (stateOps.isProcessingPlaceholder(message.text) ? 'processing' : 'complete'))
@@ -132,7 +142,7 @@ export async function applyCloudGroupMessageControl({
     ? (cloudMessage.readAt ? 'read' : 'delivered')
     : null;
   const ownAgentProcessingId = isOwnAgentResponseRoundTrip
-    ? `msg:cloud-agent-processing:${(message.replyToMessageId || message.requestId || '').trim()}:${account.accountId}`
+    ? responseSlotId
     : null;
   const incomingSource = cloudGroupCanonicalMessageSource(cloudMessage, envelope);
   if (!incomingSource) {
@@ -146,6 +156,8 @@ export async function applyCloudGroupMessageControl({
   const existingCloudGroupMessage = existingCloudGroupMessages.find((candidate) => (
     candidate.sourceTransport === incomingSourceTransport
       && candidate.sourceEventId === incomingSourceEventId
+      // A row repaired from an earlier shared-slot write belongs to the other reply.
+      && !(responseSlotId && candidate.id.startsWith('msg:cloud-agent-processing:') && candidate.id !== responseSlotId)
   )) ?? existingCloudGroupMessages.find((candidate) => (
     candidate.id === message.id
       || (ownAgentProcessingId !== null && candidate.id === ownAgentProcessingId)
@@ -220,13 +232,13 @@ export async function applyCloudGroupMessageControl({
   }
 
   const responseProcessingSlot = senderIsAgent
-    && messageReplyToId
+    && responseRequestId
     && !isPendingAgentDeliveryState(agentDeliveryState)
     ? [canonicalState, nextState]
         .map((state) => stateOps.processingSlot(
           state.messages,
           envelope.groupId,
-          messageReplyToId,
+          responseRequestId,
           message.senderAccountId,
         ))
         .find((candidate): candidate is CanonicalSessionMessage => Boolean(candidate)) ?? null
@@ -241,9 +253,7 @@ export async function applyCloudGroupMessageControl({
   }
 
   if (!messageAlreadyExists) {
-    const stableAgentNoticeId = senderIsAgent && messageReplyToId
-      ? `msg:cloud-agent-processing:${messageReplyToId}:${message.senderAccountId}`
-      : null;
+    const stableAgentNoticeId = responseSlotId;
     const terminalStableAgentNoticeId = stableAgentNoticeId
       && !isPendingAgentDeliveryState(agentDeliveryState)
       ? stableAgentNoticeId
@@ -312,7 +322,7 @@ export async function applyCloudGroupMessageControl({
         // A document the agent created for the group (issue 1808) rides its message.
         ...(mappedAttachments.length > 0 ? { attachments: mappedAttachments } : {}),
         sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
-        requestId: messageReplyToId,
+        requestId: responseRequestId,
         replyToMessageId: messageReplyToId,
         ...(message.messageAction?.kind === 'thread' ? { messageAction: message.messageAction } : {}),
         ...(cloudMessage.planCard ? { planCard: cloudMessage.planCard } : {}),

@@ -28,6 +28,7 @@ export default defineConfig({
     { name: 'webkit-live-photo', testMatch: '**/livePhoto.spec.ts', use: { ...devices['Desktop Safari'] } },
     { name: 'webkit-pinned-list', testMatch: '**/pinnedMessageList.spec.ts', use: { ...devices['Desktop Safari'] } },
     { name: 'webkit-emoji-picker', testMatch: '**/emojiPickerOffline.spec.ts', use: { ...devices['Desktop Safari'] } },
+    { name: 'webkit-transcript-open-settle', testMatch: '**/transcriptOpenSettle.spec.ts', use: { ...devices['Desktop Safari'] } },
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
