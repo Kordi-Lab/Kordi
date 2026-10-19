@@ -132,6 +132,7 @@ async fn run_omp_with_config<C: CloudAgentRunClient + Sync>(
             max_output_bytes: 16 * 1024 * 1024,
             max_tool_calls: None,
             max_steps: None,
+            idle_timeout_ms: None,
         },
         compaction: None,
         // Cloud never gains owner-device computer/browser capabilities.

@@ -321,7 +321,7 @@ pub(super) fn build_request(
         } else {
             vec![]
         },
-        limits: RunLimits::default(),
+        limits: RunLimits::local_device(),
         compaction: Some(CompactionSettings {
             enabled: config.compaction_settings.enabled,
             reserve_tokens: u32::try_from(config.compaction_settings.reserve_tokens)
