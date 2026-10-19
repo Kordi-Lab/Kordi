@@ -19,6 +19,7 @@ import type {
   CloudAuthClient,
 } from './authClient';
 import { cloudFallbackRunClaimsForMessages } from './cloudAgentFallbackClaims';
+import { cloudFallbackRunOwnership } from './cloudAgentRunOwnership';
 import {
   CLOUD_AGENT_MENTION_WINDOW_MS,
   cloudAgentMentionCandidates,
@@ -27,7 +28,6 @@ import {
   appendCloudGroupRequestingPlaceholder,
   cloudAgentRequestReachedCloud,
   cloudAgentRunAlreadyOwnsRequest,
-  cloudFallbackRunAlreadyOwnsRequest,
   cloudGroupAgentUnavailableFallbackRequest,
   removeCloudGroupOfflinePlaceholder,
   removeCloudGroupPendingRowsForTerminalResponse,
@@ -292,14 +292,15 @@ export function useCloudAgentAvailability({
         }
 
         const session = await loadSession();
-        if (
-          session?.token
-          && await cloudFallbackRunAlreadyOwnsRequest({
-            client,
-            token: session.token,
-            requestMessageId: candidate.requestMessage.id,
-          })
-        ) {
+        // A lookup that cannot answer never shows the notice: the run may be pending.
+        const ownership = session?.token ? await cloudFallbackRunOwnership({
+          client, token: session.token, requestMessageId: candidate.requestMessage.id,
+        }) : 'unknown';
+        if (ownership === 'unknown') {
+          scheduleStatusCheck(CLOUD_GROUP_AGENT_STATUS_RECHECK_MS);
+          return;
+        }
+        if (ownership === 'owned') {
           setCanonicalSessionState((current) =>
             setCloudGroupRequestPlaceholderProcessing(
               current,

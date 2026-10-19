@@ -428,9 +428,11 @@ test('group progress candidates include the sender, Agent owner, and other membe
   ownEnvelope.message!.senderAccountId = 'acct_owner';
   const ownWire: CloudMessage = { messageId: 'own-wire', fromAccountId: 'acct_owner', toAccountId: 'acct_sender',
     body: encodeCloudGroupControl(ownEnvelope), createdAt: new Date(10).toISOString(), readAt: null, direction: 'outgoing' };
+  // The server keys a run by owner, agent, and request, so this claim joins the
+  // run the other device admitted; it holds the run for a ready owner Mac.
   assert.deepEqual(cloudFallbackRunClaimsForMessages({
     account: { ...account, accountId: 'acct_owner' }, contacts: [], messagesByPeer: { acct_sender: [ownWire] },
-  }), [], 'observing the same account iOS request does not claim another Cloud run');
+  }).map((claim) => [claim.requestMessageId, claim.ownerAccountId]), [['request', 'acct_owner']]);
   const candidate = cloudAgentMentionCandidates(state, 'member')[0];
   const pendingState = appendCloudGroupRequestingPlaceholder(state, candidate, 'msg:cloud-agent-processing:request:owner')!;
   const pendingRow = pendingState.messages.at(-1)!;

@@ -569,7 +569,8 @@ struct MainTabView: View {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview-digest-tab") {
             return .digest
-        } else if ProcessInfo.processInfo.arguments.contains("--preview-contacts-tab") {
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-contacts-tab")
+            || CommonGroundAvailability.isPreviewRequested() {
             return .contacts
         } else if ProcessInfo.processInfo.arguments.contains("--preview-agent-page") {
             return .agents
@@ -718,7 +719,10 @@ struct MainTabView: View {
 
     private var contactsRoot: some View {
         NavigationStack {
-            ContactsView(onOpenConversation: { path.append(.conversation($0)) })
+            ContactsView(
+                onOpenConversation: { path.append(.conversation($0)) },
+                onOpenCommonGround: { path.append(.commonGround) }
+            )
         }
     }
 

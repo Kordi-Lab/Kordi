@@ -465,6 +465,10 @@ struct CloudContact: Codable, Hashable, Identifiable {
     var defaultAgent: CloudDefaultAgentProfile? = nil
     let nodeId: String?
     let createdAt: String
+    /// Server-provided description, set for Kordi's own agent contacts such as Kordi Support.
+    var subtitle: String? = nil
+    /// "system_agent" for Kordi's own agent contacts.
+    var contactKind: String? = nil
 
     var id: String { accountId }
     var preferredName: String { displayName?.nonEmpty ?? kordiId?.nonEmpty ?? "Kordi user" }

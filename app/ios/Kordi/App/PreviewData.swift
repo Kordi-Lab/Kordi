@@ -50,7 +50,7 @@ enum PreviewData {
             passwordSet: true
         )
         let contacts = [
-            CloudContact(accountId: KordiSupportIdentity.accountId, kordiId: "100000001", displayName: KordiSupportIdentity.displayName, avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -300)),
+            CloudContact(accountId: KordiSupportIdentity.accountId, kordiId: "100000001", displayName: KordiSupportIdentity.displayName, avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -300), subtitle: "Ask questions or suggest improvements", contactKind: "system_agent"),
             CloudContact(accountId: "acct_maya", kordiId: "284106395", displayName: "Maya Chen", avatarUrl: previewAvatarSource, nodeId: nil, createdAt: timestamp(now, -500)),
             CloudContact(accountId: "acct_ethan", kordiId: "318457209", displayName: "Ethan Park", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -900)),
             CloudContact(accountId: "acct_priya", kordiId: "650917284", displayName: "Priya Shah", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -1_400)),

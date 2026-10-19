@@ -21,6 +21,18 @@ pub fn routes(state: Arc<ServerState>) -> Router {
     Router::new()
         .route("/v1/cloud/digest", get(read))
         .route("/v1/cloud/digest/refresh", post(refresh))
+        .route(
+            "/v1/cloud/digest/desktop/:run_id/observe",
+            post(super::desktop::observe),
+        )
+        .route(
+            "/v1/cloud/digest/desktop/:run_id/complete",
+            post(super::desktop::complete),
+        )
+        .route(
+            "/v1/cloud/digest/desktop/:run_id/release",
+            post(super::desktop::release),
+        )
         .route("/v1/cloud/digest/items/:id/feedback", put(feedback))
         .route("/v1/cloud/digest/items/:id/task", post(task))
         .route("/v1/cloud/calendar/events", get(events))

@@ -4,7 +4,6 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ContactRequestRow, LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/transcript';
-import { formatDesktopContactRequestTimeLabel } from '../src/lib/time';
 import type { ContactRequest, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
 test('transcript human avatars are large enough to read beside message bubbles', () => {
@@ -349,7 +348,6 @@ test('contact request row shows accept progress while sending the greeting', () 
     request,
     active: false,
     onAccept: () => undefined,
-    onReject: () => undefined,
     actionState: 'accepting',
   }));
 
@@ -359,7 +357,7 @@ test('contact request row shows accept progress while sending the greeting', () 
   assert.match(markup, /disabled=""/);
 });
 
-test('contact request row formats transport timestamps for people', () => {
+test('contact request row stays one compact row with the name and no timestamp', () => {
   const request: ContactRequest = {
     id: 'request-time',
     initials: 'SY',
@@ -373,8 +371,10 @@ test('contact request row formats transport timestamps for people', () => {
     active: false,
   }));
 
-  assert.match(markup, new RegExp(formatDesktopContactRequestTimeLabel(request.time)));
-  assert.doesNotMatch(markup, />2026-08-13T10:22:12/);
+  assert.match(markup, />Shu Yang</);
+  assert.match(markup, />Wants to connect</);
+  assert.doesNotMatch(markup, />2026-08-13T10:22:12|<time/);
+  assert.doesNotMatch(markup, />Reject</);
 });
 
 test('renders bridge agent stop control beside the first-response waveform', () => {

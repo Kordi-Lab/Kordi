@@ -1,6 +1,6 @@
 //! Cloud fallback run claim DTOs and persistence workflow.
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
@@ -10,6 +10,7 @@ use crate::cloud_agent_runtime::sandboxes::ensure_sandbox_for_run;
 
 use crate::connectors::models::RunTrigger;
 
+use super::desktop_takeover::{existing_run_id, run_response};
 use super::prompt_history::fallback_prompt_for_claim;
 use super::RunResult;
 
@@ -140,18 +141,35 @@ pub async fn lookup_run_for_request(
 /// Admits a run with no requesting person present, such as a scheduled task
 /// occurrence. The run is a background run and never receives `act` tools.
 pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<CloudAgentRunResponse> {
-    claim_run_with_executor(pool, input, None, RunTrigger::Background).await
+    claim_run_with_executor(pool, input, None, RunTrigger::Background, None).await
+}
+
+/// Admits a background run held for the owner's Mac until
+/// `desktop_preferred_until`: the cloud runner leases it only after that.
+pub async fn claim_run_held_for_desktop(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+    desktop_preferred_until: DateTime<Utc>,
+) -> RunResult<CloudAgentRunResponse> {
+    let until = Some(desktop_preferred_until);
+    claim_run_with_executor(pool, input, None, RunTrigger::Background, until).await
 }
 
 /// Admits a run for a message the signed-in requester just sent. It is
 /// person-started only when that person owns the agent.
+///
+/// With `desktop_preferred_until`, the owner's Mac is ready: the run is
+/// queued for the cloud runner but held back until then, so the Mac claims
+/// it first and the cloud answers when no Mac does. Without it, a run still
+/// held for a Mac that is no longer ready is released to the cloud at once.
 pub async fn claim_run_for_person_message(
     pool: &PgPool,
     input: &ClaimRunRequest,
+    desktop_preferred_until: Option<DateTime<Utc>>,
 ) -> RunResult<CloudAgentRunResponse> {
     let trigger =
         RunTrigger::for_person_message(&input.owner_account_id, &input.requester_account_id);
-    claim_run_with_executor(pool, input, None, trigger).await
+    claim_run_with_executor(pool, input, None, trigger, desktop_preferred_until).await
 }
 
 /// Admits a run on the owner's desktop for a verified message in the
@@ -163,7 +181,7 @@ pub async fn claim_run_for_desktop(
 ) -> RunResult<CloudAgentRunResponse> {
     let trigger =
         RunTrigger::for_person_message(&input.owner_account_id, &input.requester_account_id);
-    claim_run_with_executor(pool, input, Some(executor), trigger).await
+    claim_run_with_executor(pool, input, Some(executor), trigger, None).await
 }
 
 async fn claim_run_with_executor(
@@ -171,6 +189,7 @@ async fn claim_run_with_executor(
     input: &ClaimRunRequest,
     desktop_executor: Option<&str>,
     trigger: RunTrigger,
+    desktop_preferred_until: Option<DateTime<Utc>>,
 ) -> RunResult<CloudAgentRunResponse> {
     let project =
         crate::projects::project_session_binding(pool, &input.owner_account_id, &input.session_id)
@@ -193,24 +212,16 @@ async fn claim_run_with_executor(
         }
     }
     let agent_id = super::execution_agent_id(pool, input).await?;
-    let existing: Option<(String, String, Option<String>, String, String, String)> = query_as(
-        "SELECT run_id, status, sandbox_id, created_at, updated_at, execution_backend \
-         FROM cloud_agent_fallback_runs WHERE owner_account_id = $1 AND execution_agent_id = $2 AND request_message_id = $3 AND NOT legacy_duplicate",
-    )
-    .bind(&input.owner_account_id)
-    .bind(&agent_id)
-    .bind(&input.request_message_id)
-    .fetch_optional(pool)
-    .await?;
-    if let Some(row) = existing {
-        return Ok(CloudAgentRunResponse {
-            run_id: row.0,
-            status: row.1,
-            sandbox_id: row.2,
-            created_at: row.3,
-            updated_at: row.4,
-            execution_backend: row.5,
-        });
+    if let Some(run_id) = existing_run_id(pool, input, &agent_id).await? {
+        match desktop_executor {
+            // The owner's Mac takes a run still waiting for the cloud runner.
+            Some(executor) => super::desktop_takeover::take(pool, &run_id, input, executor).await?,
+            None if desktop_preferred_until.is_none() => {
+                super::desktop_takeover::release_to_cloud(pool, &run_id).await?
+            }
+            None => {}
+        }
+        return run_response(pool, &run_id).await;
     }
 
     let now = Utc::now().to_rfc3339();
@@ -251,8 +262,9 @@ async fn claim_run_with_executor(
         "INSERT INTO cloud_agent_fallback_runs (
             run_id, idempotency_key, request_message_id, session_id, owner_account_id,
             requester_account_id, status, prompt, system_prompt, sandbox_id, runtime_route_json, created_at, updated_at,
-            execution_backend, execution_agent_id, claimed_by, lease_expires_at, omp_input_json, run_trigger, connector_audience
-         ) VALUES ($1, $2, $3, $4, $5, $6, $12, $7, $8, $9, $10, $11, $11, $13, $14, $15, $16, $17, $18, $19)
+            execution_backend, execution_agent_id, claimed_by, lease_expires_at, omp_input_json, run_trigger, connector_audience,
+            desktop_preferred_until
+         ) VALUES ($1, $2, $3, $4, $5, $6, $12, $7, $8, $9, $10, $11, $11, $13, $14, $15, $16, $17, $18, $19, $20)
          ON CONFLICT (owner_account_id, execution_agent_id, request_message_id) WHERE NOT legacy_duplicate DO UPDATE SET request_message_id = cloud_agent_fallback_runs.request_message_id
          RETURNING run_id, status, sandbox_id, created_at, updated_at, execution_backend",
     )
@@ -275,8 +287,14 @@ async fn claim_run_with_executor(
     .bind(&prompt.omp_input)
     .bind(trigger.as_str())
     .bind(audience.as_str())
+    .bind(desktop_preferred_until.filter(|_| desktop_executor.is_none()))
     .fetch_one(pool)
     .await?;
+    if let Some(executor) = desktop_executor.filter(|_| row.0 != run_id) {
+        // A concurrent cloud admission won the insert; the Mac still goes first.
+        super::desktop_takeover::take(pool, &row.0, input, executor).await?;
+        return run_response(pool, &row.0).await;
+    }
 
     Ok(CloudAgentRunResponse {
         run_id: row.0,

@@ -65,7 +65,9 @@ test('explicit default-agent owners override identical Kordi labels in group and
     for (const body of [group, direct]) {
       const row = { ...message, messageId: `wire-${owner}`, fromAccountId: account.accountId, toAccountId: 'acct_peer', sessionId: groupId, body };
       const claims = cloudFallbackRunClaimsForMessages({ account, contacts: [peer], messagesByPeer: { acct_peer: [row] } });
-      assert.equal(claims.length, owner === 'acct_peer' ? 1 : 0);
+      // A sender's own group mention is claimed too, so the cloud answers when no Mac does.
+      const claimable = owner === 'acct_peer' || (owner === account.accountId && body === group);
+      assert.equal(claims.length, claimable ? 1 : 0);
       if (claims.length) assert.equal(claims[0].ownerAccountId, owner);
     }
   }

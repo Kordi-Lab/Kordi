@@ -59,6 +59,8 @@ export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient,
       }).catch(loseLease).finally(() => { renewing = false; });
   }, 10_000);
   return {
+    runId: result.runId,
+    claimId,
     /** The project this run belongs to; the turn runs in this Mac's folder of it. */
     project: claimedProjectFromLease(result.project),
     contextMessages(messages: readonly DesktopChatContextMessage[]) {

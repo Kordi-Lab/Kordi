@@ -1,5 +1,6 @@
-//! A ready owner Mac keeps requests for both local and hosted accounts.
-//! Cloud may claim after the Mac's capability or presence expires.
+//! A ready owner Mac gets the first chance at requests for both local and
+//! hosted accounts. Cloud runs them once the Mac's capability or presence
+//! expires.
 
 use super::*;
 
@@ -67,6 +68,22 @@ async fn hold_admission_window(
     .unwrap();
 }
 
+/// Whether the cloud runner can lease `run_id` right now.
+pub(super) async fn runner_can_lease(router: &axum::Router, run_id: &str) -> bool {
+    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
+    let lease = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            "/v1/cloud/agent-runs/lease",
+            "runner-test-token",
+            json!({ "runnerId": "runner-mac-first", "canaryRunId": run_id }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(lease.status(), StatusCode::OK);
+    read_json(lease).await["run"]["runId"] == run_id
+}
+
 fn hosted_route(auth_choice: &str) -> Value {
     json!({
         "defaultModel": "openai/gpt-5.6-sol",
@@ -116,13 +133,16 @@ async fn hosted_account_waits_for_the_ready_owner_mac_then_falls_back() {
         ))
     };
 
-    let local = claim(&local_request, "profile:work").await.unwrap();
-    assert_eq!(local.status(), StatusCode::CONFLICT);
-    assert_eq!(read_json(local).await["errorCode"], "owner_online");
-
-    let hosted = claim(&hosted_request, "cloud-api-key:work").await.unwrap();
-    assert_eq!(hosted.status(), StatusCode::CONFLICT);
-    assert_eq!(read_json(hosted).await["errorCode"], "owner_online");
+    for (request, auth_choice) in [
+        (&local_request, "profile:work"),
+        (&hosted_request, "cloud-api-key:work"),
+    ] {
+        let held = claim(request, auth_choice).await.unwrap();
+        assert_eq!(held.status(), StatusCode::OK);
+        let held = read_json(held).await;
+        assert_eq!(held["status"], "queued");
+        assert!(!runner_can_lease(&router, held["runId"].as_str().unwrap()).await);
+    }
 
     sqlx_core::query::query(
         "UPDATE cloud_agent_desktop_capabilities SET updated_at=now()-interval '1 minute' WHERE agent_id=$1",
@@ -137,6 +157,15 @@ async fn hosted_account_waits_for_the_ready_owner_mac_then_falls_back() {
         .as_str()
         .unwrap()
         .to_string();
+    // The local request's run still waits for the Mac and queues ahead in this chat.
+    sqlx_core::query::query(
+        "UPDATE cloud_agent_fallback_runs SET status='cancelled' WHERE session_id=$1 AND run_id<>$2",
+    )
+    .bind(&session)
+    .bind(&run_id)
+    .execute(&pool)
+    .await
+    .unwrap();
     let lease = router
         .clone()
         .oneshot(post_json_with_runner_token(
@@ -204,6 +233,8 @@ async fn a_contacts_hosted_only_route_does_not_skip_the_owner_mac() {
         ))
         .await
         .unwrap();
-    assert_eq!(claim.status(), StatusCode::CONFLICT);
-    assert_eq!(read_json(claim).await["errorCode"], "owner_online");
+    assert_eq!(claim.status(), StatusCode::OK);
+    let held = read_json(claim).await;
+    assert_eq!(held["status"], "queued");
+    assert!(!runner_can_lease(&router, held["runId"].as_str().unwrap()).await);
 }

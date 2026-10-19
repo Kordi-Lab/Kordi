@@ -94,14 +94,14 @@ async fn connector_tools_reach_only_runs_the_owner_alone_can_read() {
         runtime_route: None,
         idempotency_key: format!("{label}:{}", Uuid::new_v4().simple()),
     };
-    let person = claim_run_for_person_message(&pool, &claim(&private, &owner, "person"))
+    let person = claim_run_for_person_message(&pool, &claim(&private, &owner, "person"), None)
         .await
         .unwrap();
-    let in_group = claim_run_for_person_message(&pool, &claim(&group, &owner, "group"))
+    let in_group = claim_run_for_person_message(&pool, &claim(&group, &owner, "group"), None)
         .await
         .unwrap();
     let from_contact =
-        claim_run_for_person_message(&pool, &claim(&private_contact, &contact, "contact"))
+        claim_run_for_person_message(&pool, &claim(&private_contact, &contact, "contact"), None)
             .await
             .unwrap();
     // Scheduled occurrences are admitted through `claim_run`, exactly as

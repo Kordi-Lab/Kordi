@@ -115,7 +115,7 @@ test('execution waits for capability acknowledgement and ignores stale account r
     await view.render(<Probe accountId="acct_other" runtimeReady={false} />);
     assert.equal(ready, false);
     await waitFor(() => requests.length === 3);
-    assert.deepEqual(requests[2].input, { agentIds: [] });
+    assert.deepEqual(requests[2].input, { agentIds: [], digest: false, scheduled: false });
     // Restoring the same capability list must obtain a fresh acknowledgement,
     // even while its withdrawal is still in flight.
     await view.render(<Probe accountId="acct_other" />);
@@ -200,4 +200,30 @@ test('live execution becomes ready after cursor catch-up while older history rem
     cancelledRef.current = true;
     await act(async () => nextCursor.resolve(await cursor.promise));
   } finally { cancelledRef.current = true; await view.close(); }
+});
+
+test('a Mac offers to run digests only with a provider on this Mac', async () => {
+  const view = await fixture(async () => null);
+  const inputs: unknown[] = [];
+  const client = new CloudAuthClient('http://localhost');
+  client.desktopAgentExecution = async <T,>(_token: string, _action: string, input: unknown): Promise<T> => {
+    inputs.push(input);
+    return {} as T;
+  };
+  const local = { model: 'openai/gpt-5.6', authProvider: 'openai', authChoice: 'local-active-oauth', thinking: null };
+  const reportWarning = () => {};
+  function Probe({ authChoice }: { authChoice: string }) {
+    useDesktopAgentReadiness({ account: { accountId: 'acct_test' } as CloudAccount, client, defaultRoute: { ...local, authChoice }, reportWarning });
+    return null;
+  }
+  try {
+    await view.render(<Probe authChoice="local-active-oauth" />);
+    await waitFor(() => inputs.length >= 1);
+    assert.equal((inputs.at(-1) as { digest: boolean }).digest, true);
+    const published = inputs.length;
+    await view.render(<Probe authChoice="cloud-login:work" />);
+    await waitFor(() => inputs.length > published);
+    assert.equal((inputs.at(-1) as { digest: boolean }).digest, false, 'a hosted-only route leaves digests to the cloud');
+    assert.equal((inputs.at(-1) as { scheduled: boolean }).scheduled, true, 'scheduled tasks still wait for this Mac');
+  } finally { await view.close(); }
 });

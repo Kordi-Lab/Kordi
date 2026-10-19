@@ -54,7 +54,11 @@ async fn desktop_and_cloud_share_one_run_and_preserve_queue_during_takeover() {
         ))
         .await
         .unwrap();
-    assert_eq!(cloud_wait.status(), StatusCode::CONFLICT);
+    // A ready Mac gets the first chance: the run waits for it, not for the cloud.
+    assert_eq!(cloud_wait.status(), StatusCode::OK);
+    let cloud_wait = read_json(cloud_wait).await;
+    assert_eq!(cloud_wait["status"], "queued");
+    assert_eq!(cloud_wait["executionBackend"], "cloud");
 
     let claim_one = uuid::Uuid::new_v4();
     let claim_two = uuid::Uuid::new_v4();
@@ -77,6 +81,7 @@ async fn desktop_and_cloud_share_one_run_and_preserve_queue_during_takeover() {
     let one = read_json(one).await;
     let two = read_json(two).await;
     assert_eq!(one["runId"], two["runId"]);
+    assert_eq!(one["runId"], cloud_wait["runId"]);
     assert_ne!(one["acquired"], two["acquired"]);
     let claim_a = if one["acquired"] == true {
         claim_one

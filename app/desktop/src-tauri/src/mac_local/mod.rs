@@ -8,6 +8,7 @@ use kordi_core::settings::{MacLocalConnectorSettings, Settings};
 use serde::Serialize;
 use serde_json::{json, Value};
 
+pub(crate) mod common_ground;
 pub(crate) mod contacts;
 #[cfg(target_os = "macos")]
 pub(crate) mod eventkit;

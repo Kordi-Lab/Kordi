@@ -31,8 +31,8 @@ test('right-panel task dashboard renders scheduled jobs as normal task rows', ()
   }));
 
   assert.match(markup, /Check disk usage/);
-  assert.match(markup, /Today 12:00 · Requires Desktop/);
-  assert.match(markup, /Waiting for Desktop/);
+  assert.match(markup, /Today 12:00 · Runs on your Mac/);
+  assert.match(markup, /Waiting for your Mac/);
   assert.doesNotMatch(markup, /Scheduled tools/);
 });
 
