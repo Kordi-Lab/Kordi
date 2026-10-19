@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Blocks, Bot, Globe2, Hammer, Plus, Puzzle, Search, Wrench } from 'lucide-react';
+import { Blocks, Bot, Globe2, Hammer, Plus, Puzzle, Wrench } from 'lucide-react';
 
+import { SessionPanelPortal } from '@/app/SessionPanelPortal';
+import { useSessionPanelSlot } from '@/app/sessionPanelSlot';
+import { SidebarListHeader, SidebarSearchField } from '@/components/SidebarListChrome';
 import { cn } from '@/lib/utils';
 import type { DesktopSkillLibraryEntry } from '@/lib/desktop';
 import type { DesktopAgentBuilderSummary } from '@/lib/desktopAgentBuilderCatalog';
@@ -140,11 +143,13 @@ export function AgentStudioRail({
     { kind: 'plugin', label: 'New plugin', detail: 'Package an integration' },
   ];
 
+  // In the app the rail lives in the sidebar session panel, like the Chats list.
+  const inSidebar = useSessionPanelSlot() !== null;
   return (
-    <aside className="app-agent-studio-rail">
+    <SessionPanelPortal>
+    <aside className={cn('app-agent-studio-rail', inSidebar && 'is-in-sidebar')}>
       <header className="app-agent-studio-rail-head">
-        <div className="flex items-start justify-between gap-3">
-          <h1>Factory</h1>
+        <SidebarListHeader title="Factory">
           <details
             ref={createMenuRef}
             className="app-factory-create-menu"
@@ -152,12 +157,13 @@ export function AgentStudioRail({
           >
             <summary
               ref={createMenuSummaryRef}
-              className="app-button-quiet app-agent-studio-rail-add"
+              className="app-agent-studio-rail-add app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-[10px] p-0 transition"
+              title="Start a new Factory build"
               aria-label="Start a new Factory build"
               aria-haspopup="menu"
               aria-expanded={createMenuOpen}
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-4 w-4 stroke-[2.2]" aria-hidden="true" />
             </summary>
             <div className="app-factory-create-menu-panel" role="menu" aria-label="Create in Factory">
               {createItems.map((item) => {
@@ -180,7 +186,14 @@ export function AgentStudioRail({
               })}
             </div>
           </details>
-        </div>
+        </SidebarListHeader>
+        {section === 'library' && librarySection === 'skill' && libraryCommunity ? null : (
+          <SidebarSearchField
+            value={query}
+            onChange={(value) => setQueries((current) => ({ ...current, [viewKey]: value }))}
+            placeholder={section === 'build' ? 'Search builds' : section === 'agents' ? 'Search agents' : `Search ${librarySection}s`}
+          />
+        )}
         <div className="app-factory-rail-switch" role="tablist" aria-label="Factory navigation">
           <button type="button" role="tab" aria-selected={section === 'build'} className={cn(section === 'build' && 'is-active')} onClick={() => onSectionChange('build')}>Build</button>
           <button type="button" role="tab" aria-selected={section === 'agents'} className={cn(section === 'agents' && 'is-active')} onClick={() => onSectionChange('agents')}>Agent <span>{agents.length}</span></button>
@@ -194,15 +207,6 @@ export function AgentStudioRail({
             })}
           </div>
         ) : null}
-        {section === 'library' && librarySection === 'skill' && libraryCommunity ? null : <label className="app-agent-studio-rail-search">
-          <Search className="h-4 w-4" />
-          <input
-            value={query}
-            onChange={(event) => setQueries((current) => ({ ...current, [viewKey]: event.currentTarget.value }))}
-            placeholder={section === 'build' ? 'Search builds' : section === 'agents' ? 'Search agents' : `Search ${librarySection}s`}
-            aria-label={section === 'build' ? 'Search builds' : section === 'agents' ? 'Search agents' : `Search ${librarySection}s`}
-          />
-        </label>}
       </header>
       <div
         ref={listRef}
@@ -219,7 +223,7 @@ export function AgentStudioRail({
           const capabilityCount = agent.loadedSkills.length + agent.loadedTools.length + agent.loadedPlugins.length;
           return (
             <button key={agent.id} type="button" aria-current={agent.id === activeAgentId ? 'true' : undefined} className={cn('app-agent-studio-agent-row', agent.id === activeAgentId && 'app-session-row-active')} onClick={() => onOpenAgent(agent.id)}>
-              <IdentityAvatar kind="agent" seed={agent.avatarSeed ?? agent.id} name={agent.name} imageUrl={agent.profileImageUrl} className="h-9 w-9 rounded-[12px]" />
+              <IdentityAvatar kind="agent" seed={agent.avatarSeed ?? agent.id} name={agent.name} imageUrl={agent.profileImageUrl} className="h-9 w-9" />
               <span className="min-w-0"><strong>{agent.name}</strong><small>{agent.role} · {capabilityCount} capabilities</small></span>
               <span className="app-agent-studio-agent-state">{agent.status}</span>
             </button>
@@ -242,5 +246,6 @@ export function AgentStudioRail({
         {section === 'library' && !(librarySection === 'skill' && libraryCommunity) && filteredLibrary.length === 0 ? <div className="app-agent-studio-rail-empty">No {librarySection}s match this search.</div> : null}
       </div>
     </aside>
+    </SessionPanelPortal>
   );
 }

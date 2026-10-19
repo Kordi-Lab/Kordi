@@ -283,7 +283,7 @@ test('Factory rail keys search and scroll return context independently for each 
 
   assert.match(source, /const \[queries, setQueries\] = useState<Record<string, string>>\(\{\}\);/);
   assert.match(source, /const viewKey = section === 'library' \? `\$\{section\}:\$\{librarySection\}:\$\{libraryCommunity \? 'community' : 'installed'\}` : section;/);
-  assert.match(source, /setQueries\(\(current\) => \(\{ \.\.\.current, \[viewKey\]: event\.currentTarget\.value \}\)\)/);
+  assert.match(source, /setQueries\(\(current\) => \(\{ \.\.\.current, \[viewKey\]: value \}\)\)/);
   assert.equal(source.match(/scrollPositionsRef\.current\[viewKey\]/g)?.length, 2);
 });
 
