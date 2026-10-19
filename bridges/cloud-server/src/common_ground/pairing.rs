@@ -61,23 +61,24 @@ fn display(code: &str) -> String {
 async fn observe(
     rate_limiter: &CloudRateLimiter,
     limits: &[(crate::auth::rate_limit::AccountActionLimit, &str)],
-) -> Result<(), Response> {
+) -> Option<Response> {
     for (limit, key) in limits {
         if let RateLimitDecision::Limited { retry_after } =
             rate_limiter.observe_account_limit(*limit, key).await
         {
-            return Err(limited(retry_after));
+            return Some(limited(retry_after));
         }
     }
-    Ok(())
+    None
 }
 
-async fn require_shared_card(pool: &sqlx_postgres::PgPool, account: &str) -> Result<(), Response> {
+/// The response to send instead when `account` has no shared card.
+async fn require_shared_card(pool: &sqlx_postgres::PgPool, account: &str) -> Option<Response> {
     match card::load(pool, account).await {
-        Ok(Some(row)) if row.has_card() && row.sharing => Ok(()),
-        Ok(Some(row)) if row.has_card() => Err(super::sharing_off()),
-        Ok(_) => Err(card::no_card()),
-        Err(error) => Err(db_error(error)),
+        Ok(Some(row)) if row.has_card() && row.sharing => None,
+        Ok(Some(row)) if row.has_card() => Some(super::sharing_off()),
+        Ok(_) => Some(card::no_card()),
+        Err(error) => Some(db_error(error)),
     }
 }
 
@@ -89,10 +90,10 @@ pub(super) async fn create(
 ) -> Response {
     let pool = state.db_pool();
     let account = session.account_id.as_str();
-    if let Err(response) = observe(&rate_limiter, &[(PAIR_CODE_LIMIT, account)]).await {
+    if let Some(response) = observe(&rate_limiter, &[(PAIR_CODE_LIMIT, account)]).await {
         return response;
     }
-    if let Err(response) = require_shared_card(pool, account).await {
+    if let Some(response) = require_shared_card(pool, account).await {
         return response;
     }
     let code = new_code();
@@ -161,13 +162,13 @@ pub(super) async fn redeem(
         (PAIR_REDEEM_LIMIT, account),
         (PAIR_IP_LIMIT, ip_key.as_str()),
     ];
-    if let Err(response) = observe(&rate_limiter, &limits).await {
+    if let Some(response) = observe(&rate_limiter, &limits).await {
         return response;
     }
     if normalize(&body.code).len() != CODE_CHARS {
         return code_not_found();
     }
-    if let Err(response) = require_shared_card(pool, account).await {
+    if let Some(response) = require_shared_card(pool, account).await {
         return response;
     }
     let result = async {
