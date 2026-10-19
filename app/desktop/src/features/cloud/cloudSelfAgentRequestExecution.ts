@@ -15,7 +15,6 @@ import {
   waitForCloudAgentTurn,
 } from './cloudAgentLocalExecution';
 import { cloudAgentRunAlreadyOwnsRequest } from './cloudAgentRequestState';
-import { cloudAgentRunExecutingRequest } from './cloudAgentRunOwnership';
 import { cloudSelfAgentRuntimeSessionId } from './cloudAgentRuntime';
 import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
@@ -129,11 +128,9 @@ export async function executeCloudSelfAgentRequest({
     processedRequestIdsRef.current.delete(request.messageId);
     return;
   }
-  const existingRun = await client
-    .lookupCloudAgentRunForRequest(session.token, request.messageId)
-    .catch(() => null);
-  // A queued run is held for this Mac first; only an executing run blocks it.
-  if (cloudAgentRunExecutingRequest(existingRun) || isInactive()) return;
+  // The claim itself refuses a run that already executes elsewhere, so no
+  // lookup round trip precedes it.
+  if (isInactive()) return;
 
   const targetCloudAgentId =
     cloudDirectMessageTargetCloudAgentId(request.body)
@@ -298,7 +295,8 @@ export async function executeCloudSelfAgentRequest({
     const queueProgress = (turn: DesktopChatTurnSnapshot) => {
       lastTurn = turn;
       rememberLocalTurn(turn);
-      if (turn.completed || isInactive()) return;
+      // After a stop only the terminal reply is published.
+      if (turn.completed || stopRequested || isInactive()) return;
       const execution = cloudAgentExecutionSnapshotFromTurn(turn);
       const fingerprint = cloudAgentExecutionFingerprint(
         execution,
@@ -343,7 +341,7 @@ export async function executeCloudSelfAgentRequest({
               token: session.token,
             });
         // A snapshot that returns after the turn ended would show it running again.
-        if (isInactive() || settled || lastTurn?.completed) return;
+        if (isInactive() || settled || stopRequested || lastTurn?.completed) return;
         mergeMessage(progress);
         // The terminal reply waits on this chain; a full sync must not delay it.
         void syncMessages().catch((error) => reportWarning('[cloud-self-agent-execution] progress sync failed', error));
