@@ -328,3 +328,63 @@ async fn worker_cleanup_kills_descendants_after_leader_exits() {
         .expect("worker descendant survived its leader")
         .unwrap();
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn idle_timeout_spares_a_long_host_tool_and_catches_a_silent_worker() {
+    struct SlowTool;
+    #[async_trait]
+    impl HostTool for SlowTool {
+        async fn execute(&self, _: ToolCall, _: CancellationToken) -> ToolResult {
+            tokio::time::sleep(Duration::from_millis(600)).await;
+            ToolResult {
+                ok: true,
+                content: vec![json!({"type":"text","text":"ok"})],
+                details: None,
+            }
+        }
+    }
+    let worker = |script: &str| WorkerCommand {
+        program: "/bin/sh".into(),
+        args: vec!["-c".into(), script.into()],
+        computer_lock_path: None,
+    };
+    let mut limits = request();
+    limits.limits.timeout_ms = 5_000;
+    limits.limits.idle_timeout_ms = Some(200);
+    // The host tool runs three times the idle limit: the run still finishes.
+    let tool = r#"read request
+printf '%s\n' '{"type":"ready","schemaVersion":1}'
+printf '%s\n' '{"type":"tool_call","schemaVersion":1,"runId":"run-1","attemptId":"attempt-1","sequence":1,"callId":"call-1","name":"echo","input":{}}'
+read reply
+printf '%s\n' '{"type":"result","schemaVersion":1,"runId":"run-1","attemptId":"attempt-1","sequence":2,"text":"done"}'
+"#;
+    let result = OmpRuntime::new(worker(tool))
+        .run_turn(&limits, &SlowTool, &NoEvents, CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(result.text, "done");
+    // A worker that goes silent with nothing running fails at the idle limit.
+    let silent = r#"read request
+printf '%s\n' '{"type":"ready","schemaVersion":1}'
+sleep 3
+"#;
+    let started = std::time::Instant::now();
+    let result = OmpRuntime::new(worker(silent))
+        .run_turn(&limits, &SlowTool, &NoEvents, CancellationToken::new())
+        .await;
+    assert!(matches!(result, Err(RuntimeError::Timeout)));
+    assert!(started.elapsed() < Duration::from_millis(2_000));
+}
+
+#[test]
+fn local_device_limits_outlast_ten_minutes_of_work() {
+    let limits = RunLimits::local_device();
+    assert!(limits.timeout_ms > 60 * 60 * 1000);
+    assert_eq!(limits.idle_timeout_ms, Some(600_000));
+    let mut run = request();
+    run.limits = limits;
+    assert!(crate::supervisor_helpers::validate_request(&run).is_ok());
+    run.limits.idle_timeout_ms = None;
+    assert!(crate::supervisor_helpers::validate_request(&run).is_err());
+}
