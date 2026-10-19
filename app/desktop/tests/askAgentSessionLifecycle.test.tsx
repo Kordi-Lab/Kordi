@@ -198,19 +198,19 @@ test('side Agent sends stay optimistic while materializing the target runtime', 
 
   assert.match(
     targetedBlock,
-    /await sendLocalAgentChatMessage\(\{[\s\S]*materializeTarget: \(\) => materializeLocalChatTarget\(targetRuntimeSessionId\)/,
+    /await sendLocalAgentChatMessage\(\{[\s\S]*materializeTarget: \(route\) => materializeLocalChatTarget\(targetRuntimeSessionId, route\)/,
   );
-  assert.doesNotMatch(targetedBlock, /await materializeLocalChatTarget\(targetRuntimeSessionId\)/);
+  assert.doesNotMatch(targetedBlock, /await materializeLocalChatTarget\(targetRuntimeSessionId/);
   assert.ok(
     sharedSendBlock.indexOf('setCanonicalSessionState((current) => appendOptimisticCanonicalMessage')
-      < sharedSendBlock.indexOf('await materializeTarget()'),
+      < sharedSendBlock.indexOf('await materializeTarget(route)'),
     'the visible user turn must be committed before background runtime loading can delay or fail',
   );
   assert.match(
     sharedSendBlock,
-    /if \(materializeTarget\) resolvedMaterializedState = await materializeTarget\(\);[\s\S]*appendOptimisticOutboundMessage/,
+    /if \(materializeTarget\) resolvedMaterializedState = await materializeTarget\(route\);[\s\S]*appendOptimisticOutboundMessage/,
   );
-  assert.match(materializer, /await fetchDesktopChatState\(sessionId\)/);
+  assert.match(materializer, /fetchState = fetchDesktopChatState[\s\S]*await fetchState\(sessionId\)/);
   assert.match(materializer, /materializedState\.activeSessionId !== sessionId[\s\S]*materializedState\.activeSession\.id !== sessionId/);
   const materializerStart = chatMessages.indexOf('const materializeLocalChatTarget = useCallback');
   const materializerBlock = chatMessages.slice(materializerStart, chatMessages.indexOf('const sendQueuedLocalMessage', materializerStart));

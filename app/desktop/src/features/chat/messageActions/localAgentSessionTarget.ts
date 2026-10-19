@@ -53,20 +53,36 @@ export function shouldUseNoProviderSelfAgentShortcut({
   return !session || session.kind === 'self-agent';
 }
 
+export const AGENT_SESSION_NOT_ON_THIS_MAC_DETAIL =
+  'This Agent chat has no history on this Mac. Choose a Kordi Cloud model to continue it here, or start a new chat.';
+
+/**
+ * Loads the target session's runtime transcript before a send.
+ *
+ * A session synced from another device has no runtime transcript on this Mac,
+ * and the runtime then answers with a different session. A Kordi Cloud request
+ * does not use the local transcript, so it continues without one. A local
+ * turn would lose its history, so it fails with a reason the person can act on.
+ */
 export async function fetchMaterializedLocalChatTarget(
   sessionId: string,
   currentState: DesktopChatState | null,
+  { runsOnKordiCloud = false, fetchState = fetchDesktopChatState }: {
+    runsOnKordiCloud?: boolean;
+    fetchState?: (sessionId: string) => Promise<DesktopChatState | null>;
+  } = {},
 ) {
   const currentRuntimeMatches = currentState?.activeSessionId === sessionId
     && currentState.activeSession.id === sessionId;
   if (currentRuntimeMatches) return null;
-  const materializedState = await fetchDesktopChatState(sessionId);
+  const materializedState = await fetchState(sessionId);
   if (
     !materializedState
     || materializedState.activeSessionId !== sessionId
     || materializedState.activeSession.id !== sessionId
   ) {
-    throw new Error('Unable to load that Agent session. Try again.');
+    if (runsOnKordiCloud) return null;
+    throw new Error(AGENT_SESSION_NOT_ON_THIS_MAC_DETAIL);
   }
   return materializedState;
 }

@@ -469,19 +469,19 @@ test('side-panel local-agent sends materialize an unhydrated runtime transcript 
   const queuedSendStart = source.indexOf('const sendQueuedLocalMessage = useCallback', materializerStart);
   const materializerBlock = source.slice(materializerStart, queuedSendStart);
   const queuedSendBlock = source.slice(queuedSendStart, source.indexOf('flushQueuedDesktopMessagesForSessionRef.current =', queuedSendStart));
-  const materializeIndex = sharedSendBlock.indexOf('await materializeTarget()');
+  const materializeIndex = sharedSendBlock.indexOf('await materializeTarget(route)');
   const sendIndex = sharedSendBlock.indexOf('await startLocalAgentTurn(');
 
-  assert.match(targetedSendBlock, /materializeTarget: \(\) => materializeLocalChatTarget\(targetRuntimeSessionId\)/, 'an inactive side Agent session should supply its runtime materializer');
+  assert.match(targetedSendBlock, /materializeTarget: \(route\) => materializeLocalChatTarget\(targetRuntimeSessionId, route\)/, 'an inactive side Agent session should supply its runtime materializer');
   assert.notEqual(materializeIndex, -1, 'the shared send should await runtime transcript materialization');
   assert.notEqual(sendIndex, -1, 'the shared send should start the live turn');
   assert.match(turnDispatchSource, /export async function startLocalAgentTurn[\s\S]*?await startDesktopChatMessage\(/, 'the turn helper starts the runtime turn');
   assert.ok(sharedSendBlock.indexOf('dispatchLocalAgentVoiceTurn(') > materializeIndex, 'a voice turn also starts only after materialization');
   assert.ok(materializeIndex < sendIndex, 'runtime transcript materialization must finish before the live turn starts');
   assert.match(sharedSendBlock, /resolvedMaterializedState[\s\S]*appendOptimisticOutboundMessage/, 'the shared send should receive the materialized target state');
-  assert.match(materializerBlock, /await fetchMaterializedLocalChatTarget\(sessionId, desktopChatState\)/, 'the action should use the shared target materializer');
-  assert.match(targetSource, /await fetchDesktopChatState\(sessionId\)/, 'materialization should fetch the complete target runtime transcript');
-  assert.match(targetSource, /materializedState\.activeSessionId !== sessionId[\s\S]*materializedState\.activeSession\.id !== sessionId/, 'materialization should fail closed if the runtime returns another session');
+  assert.match(materializerBlock, /await fetchMaterializedLocalChatTarget\(sessionId, desktopChatState, \{ runsOnKordiCloud: routeRunsOnKordiCloud\(route\) \}\)/, 'the action should use the shared target materializer');
+  assert.match(targetSource, /await fetchState\(sessionId\)/, 'materialization should fetch the complete target runtime transcript');
+  assert.match(targetSource, /materializedState\.activeSessionId !== sessionId[\s\S]*materializedState\.activeSession\.id !== sessionId/, 'a local turn should fail closed if the runtime returns another session');
   assert.match(materializerBlock, /mergeBackgroundDesktopChatState\(current, materializedState\)/, 'side-session materialization must preserve the main session selection');
   assert.match(queuedSendBlock, /if \(routeRunsOnKordiCloud\(route\)\) \{[\s\S]*?await startLocalAgentTurn\(/,
     'a queued hosted request must enter the shared hosted dispatch boundary before any native local turn');

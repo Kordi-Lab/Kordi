@@ -355,9 +355,9 @@ export function useChatMessageActions({
       .finally(cleanup);
   }, [localChatSendInFlightRef, watchDesktopLiveTurn]);
 
-  const materializeLocalChatTarget = useCallback(async (sessionId: string) => {
+  const materializeLocalChatTarget = useCallback(async (sessionId: string, route: QueuedDesktopChatMessage['runtimeRoute']) => {
     await ensureLocalChatSessionInCanonicalState(sessionId, canonicalSessionState, setCanonicalSessionState);
-    const materializedState = await fetchMaterializedLocalChatTarget(sessionId, desktopChatState);
+    const materializedState = await fetchMaterializedLocalChatTarget(sessionId, desktopChatState, { runsOnKordiCloud: routeRunsOnKordiCloud(route) });
     if (materializedState) setDesktopChatState(current => mergeBackgroundDesktopChatState(current, materializedState));
     return materializedState;
   }, [canonicalSessionState, desktopChatState, setCanonicalSessionState, setDesktopChatState]);
@@ -384,13 +384,13 @@ export function useChatMessageActions({
         return;
       }
       setDesktopChatError(null);
-      const materializedState = await materializeLocalChatTarget(message.sessionId);
+      const route = message.runtimeRoute ?? resolveChatRuntimeRoute(message.sessionId);
+      const materializedState = await materializeLocalChatTarget(message.sessionId, route);
       const dispatchMessage = await queuedMessageWithAgentTranscript(message);
       const attachmentPaths = dispatchMessage.attachments.map((item) => item.path);
       const previewText = attachmentSummaryText(dispatchMessage.text);
       const quote = composerQuoteFromMessageAction(message.messageAction);
       const preparedCanonicalMessage = prepareCanonicalQueuedMessage(dispatchMessage, canonicalHumanIdentityId, 'sent');
-      const route = message.runtimeRoute ?? resolveChatRuntimeRoute(message.sessionId);
       if (routeRunsOnKordiCloud(route)) {
         const turn = await startLocalAgentTurn({
           targetConversationId: message.sessionId,
@@ -505,7 +505,7 @@ export function useChatMessageActions({
     contextMessages: DesktopChatContextMessage[];
     clearDraftSessionIds: string[];
     materializedState?: DesktopChatState | null;
-    materializeTarget?: () => Promise<DesktopChatState | null>;
+    materializeTarget?: (route: QueuedDesktopChatMessage['runtimeRoute']) => Promise<DesktopChatState | null>;
     preserveComposer?: boolean;
     setSendingState: boolean;
     runtimeRoute?: QueuedDesktopChatMessage['runtimeRoute'];
@@ -535,7 +535,8 @@ export function useChatMessageActions({
     if (!preserveComposer) clearComposerAfterSend(clearDraftSessionIds);
 
     try {
-      if (materializeTarget) resolvedMaterializedState = await materializeTarget();
+      const route = runtimeRoute ?? resolveChatRuntimeRoute(canonicalSessionId);
+      if (materializeTarget) resolvedMaterializedState = await materializeTarget(route);
       setDesktopChatState((current) => {
         const baseState = current ?? resolvedMaterializedState;
         if (!baseState) return current;
@@ -543,8 +544,7 @@ export function useChatMessageActions({
       });
       await persistCanonicalUserMessage(preparedCanonicalMessage);
       const turnContext = {
-        targetConversationId, canonicalSessionId, canonicalSessionState, text, attachmentPaths, contextMessages,
-        route: runtimeRoute ?? resolveChatRuntimeRoute(canonicalSessionId),
+        targetConversationId, canonicalSessionId, canonicalSessionState, text, attachmentPaths, contextMessages, route,
         setCanonicalSessionState, setDesktopChatError, watchTurn: watchLocalTurnAndFlushQueue,
       };
       if (agentVoiceTranscription) {
@@ -812,7 +812,7 @@ export function useChatMessageActions({
       quote: activeChatQuote,
       contextMessages,
       clearDraftSessionIds: [targetConversation.id],
-      materializeTarget: () => materializeLocalChatTarget(targetRuntimeSessionId),
+      materializeTarget: (route) => materializeLocalChatTarget(targetRuntimeSessionId, route),
       preserveComposer: true,
       setSendingState: false,
       runtimeRoute: targetRuntimeRoute,
