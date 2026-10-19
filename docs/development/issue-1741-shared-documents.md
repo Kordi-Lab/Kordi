@@ -274,7 +274,7 @@ A document an agent writes for a group is saved in that group's Artifacts instea
 ### Runtimes
 
 - Cloud runner and the Mac's local runtime (including OMP) get the descriptor on the lease like the other document tools.
-- **Background tasks.** A `task_operator` child on the Mac holds no lease. It receives the parent lease reduced to `create_document` (in its `resource` context message), and so does the follow-up turn that reports the child's result. The broker accepts that call on the parent's desktop claim while the parent run is `completed`, for 12 hours after it answered; every other tool still needs an active lease.
+- **Background tasks.** A `task_operator` child on the Mac holds no lease. It receives the parent lease reduced to `create_document`, plus the parent's read-only document tools when the owner made the request (in its `resource` context message), and so does the follow-up turn that reports the child's result. The broker accepts `create_document`, and `read_document` for a run the owner requested, on the parent's desktop claim while the parent run is `completed`, for 12 hours after it answered; `edit_document` and every other tool still need an active lease.
 
 ### Local paths in replies
 

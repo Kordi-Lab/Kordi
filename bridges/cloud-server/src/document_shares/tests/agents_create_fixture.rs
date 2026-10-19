@@ -149,9 +149,21 @@ pub(super) async fn desktop_run(
     executor: &str,
     answered_hours_ago: Option<i64>,
 ) -> String {
+    let tools = vec![tools::create_descriptor()];
+    let run = (session_id, request_id, executor, answered_hours_ago);
+    desktop_run_for(f, run, &f.owner, tools).await
+}
+
+/// [`desktop_run`] that `requester` asked for, leased with `lease_tools`.
+pub(super) async fn desktop_run_for(
+    f: &Fixture,
+    (session_id, request_id, executor, answered_hours_ago): (&str, &str, &str, Option<i64>),
+    requester: &str,
+    lease_tools: Vec<crate::connectors::delivery::LeaseConnectorTool>,
+) -> String {
     let run_id = format!("car_{}", Uuid::new_v4().simple());
     let now = Utc::now();
-    let tools = serde_json::to_value(vec![tools::create_descriptor()]).unwrap();
+    let tools = serde_json::to_value(lease_tools).unwrap();
     let (status, completed) = match answered_hours_ago {
         Some(hours) => (
             "completed",
@@ -164,7 +176,7 @@ pub(super) async fn desktop_run(
          session_id, owner_account_id, requester_account_id, status, prompt, created_at, \
          updated_at, completed_at, run_trigger, execution_backend, claimed_by, lease_expires_at, \
          connector_tools_json, connector_tools_delivered_at) \
-         VALUES ($1, $1, $2, $3, $4, $4, $5, 'Hello', $6, $6, $7, 'person_started', 'desktop', \
+         VALUES ($1, $1, $2, $3, $4, $11, $5, 'Hello', $6, $6, $7, 'person_started', 'desktop', \
                  $8, $9, $10, now())",
     )
     .bind(&run_id)
@@ -177,6 +189,7 @@ pub(super) async fn desktop_run(
     .bind(executor)
     .bind((now + chrono::Duration::minutes(5)).to_rfc3339())
     .bind(tools)
+    .bind(requester)
     .execute(&f.pool)
     .await
     .unwrap();
