@@ -117,6 +117,17 @@ pub async fn complete_run_with_state(
     response_text: &str,
     omp_state: Option<&super::omp_state::OmpState>,
 ) -> RunResult<RunnerRunResponse> {
+    complete_run_with_service_auth(pool, run_id, runner_id, response_text, omp_state, &[]).await
+}
+
+pub(crate) async fn complete_run_with_service_auth(
+    pool: &PgPool,
+    run_id: &str,
+    runner_id: &str,
+    response_text: &str,
+    omp_state: Option<&super::omp_state::OmpState>,
+    service_auths: &[super::super::provider_auth::ServiceProviderAuth<'_>],
+) -> RunResult<RunnerRunResponse> {
     if let Some(run) = super::subsession_lifecycle::finish_with_state(
         pool,
         run_id,
@@ -124,6 +135,7 @@ pub async fn complete_run_with_state(
         response_text,
         true,
         omp_state,
+        service_auths,
     )
     .await?
     {
@@ -172,7 +184,8 @@ pub async fn complete_run_with_state(
     };
     let response_body = encode_cloud_agent_response_body(&request_message_id, trimmed);
     if let Some(state) = omp_state {
-        super::omp_state::validate_for_run(&mut tx, run_id, runner_id, state).await?;
+        super::omp_state::validate_for_run(&mut tx, run_id, runner_id, state, service_auths)
+            .await?;
     }
     let response_body = super::subsessions::with_links(pool, run_id, &response_body).await?;
     let response_message_id = if is_scheduled_run_request_id(&request_message_id) {
@@ -263,7 +276,15 @@ pub async fn complete_run_with_state(
     let now = Utc::now();
     let now_text = now.to_rfc3339();
     if let Some(state) = omp_state {
-        super::omp_state::save(&mut tx, run_id, runner_id, &response_message_id, state).await?;
+        super::omp_state::save(
+            &mut tx,
+            run_id,
+            runner_id,
+            &response_message_id,
+            state,
+            service_auths,
+        )
+        .await?;
     }
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \

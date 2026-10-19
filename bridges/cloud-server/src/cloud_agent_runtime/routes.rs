@@ -26,7 +26,7 @@ use crate::cloud_agent_runtime::runs::{
 };
 use crate::server::ServerState;
 
-mod service_auth;
+pub(crate) mod service_auth;
 use service_auth::{include_service_provider_auth, service_provider_auths};
 
 pub(super) async fn notify_run_response(state: &ServerState, response_message_id: Option<&str>) {
@@ -282,12 +282,13 @@ async fn complete_runner_run(
             StatusCode::BAD_REQUEST,
         );
     };
-    match super::runs::complete_run_with_state(
+    match super::runs::completion::complete_run_with_service_auth(
         state.db_pool(),
         &run_id,
         &runner_id,
         &input.response_text,
         input.omp_state.as_ref(),
+        &service_auth::service_provider_auths(&state),
     )
     .await
     {
