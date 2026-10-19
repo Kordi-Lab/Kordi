@@ -24,7 +24,7 @@ pub(super) async fn finish(
     text: &str,
     succeeded: bool,
 ) -> RunResult<Option<RunnerRunResponse>> {
-    finish_with_state(pool, run_id, runner_id, text, succeeded, None).await
+    finish_with_state(pool, run_id, runner_id, text, succeeded, None, &[]).await
 }
 
 pub(super) async fn finish_with_state(
@@ -34,6 +34,7 @@ pub(super) async fn finish_with_state(
     text: &str,
     succeeded: bool,
     omp_state: Option<&super::omp_state::OmpState>,
+    service_auths: &[super::super::provider_auth::ServiceProviderAuth<'_>],
 ) -> RunResult<Option<RunnerRunResponse>> {
     let exists:(bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs WHERE run_id=$1 AND subsession_id IS NOT NULL)").bind(run_id).fetch_one(pool).await?;
     if !exists.0 {
@@ -56,6 +57,7 @@ pub(super) async fn finish_with_state(
             runner_id,
             &format!("result:{run_id}"),
             state,
+            service_auths,
         )
         .await?;
     }

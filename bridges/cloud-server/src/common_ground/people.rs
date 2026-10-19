@@ -1,0 +1,116 @@
+//! Who can see whose card. A card is visible to people who share an open
+//! room or a pairing with its owner, only while the owner shares it, and
+//! never with hidden topics or references.
+
+use std::sync::Arc;
+
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Extension, Json,
+};
+use serde_json::{json, Value};
+use sqlx_core::query_as::query_as;
+use sqlx_postgres::{PgPool, Postgres};
+
+use super::{card, db_error, err, ROOM_OPEN_SQL};
+use crate::document_shares::access::{clean_display_name, syncable_avatar_url};
+use crate::{auth::routes::CloudSession, server::ServerState};
+
+pub(super) fn person(account_id: &str, name: Option<&str>, avatar_url: Option<&str>) -> Value {
+    json!({
+        "accountId": account_id,
+        "name": clean_display_name(name),
+        "avatarUrl": avatar_url.and_then(syncable_avatar_url),
+    })
+}
+
+/// Whether `viewer` may see `other`'s shared card.
+pub(super) async fn can_see<'e, E>(
+    executor: E,
+    viewer: &str,
+    other: &str,
+) -> sqlx_core::Result<bool>
+where
+    E: sqlx_core::executor::Executor<'e, Database = Postgres>,
+{
+    if viewer == other {
+        return Ok(true);
+    }
+    let sql = format!(
+        "SELECT EXISTS (
+             SELECT 1 FROM cloud_common_ground_pairings
+             WHERE account_a = LEAST($1, $2) AND account_b = GREATEST($1, $2)
+         ) OR EXISTS (
+             SELECT 1 FROM cloud_common_ground_room_members mine
+             JOIN cloud_common_ground_room_members theirs
+               ON theirs.room_id = mine.room_id AND theirs.account_id = $2
+                  AND theirs.left_at IS NULL
+             JOIN cloud_common_ground_rooms room ON room.room_id = mine.room_id
+             WHERE mine.account_id = $1 AND mine.left_at IS NULL AND {ROOM_OPEN_SQL}
+         )"
+    );
+    let (visible,): (bool,) = query_as(&sql)
+        .bind(viewer)
+        .bind(other)
+        .fetch_one(executor)
+        .await?;
+    Ok(visible)
+}
+
+/// `GET /v1/cloud/common-ground/people/:account_id`: another person's card
+/// as you may see it.
+pub(super) async fn read(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(other): Path<String>,
+) -> Response {
+    match shared_view(state.db_pool(), &session.account_id, &other).await {
+        Ok(Some(view)) => (StatusCode::OK, Json(view)).into_response(),
+        Ok(None) => not_found(),
+        Err(error) => db_error(error),
+    }
+}
+
+pub(super) fn not_found() -> Response {
+    err(
+        "common_ground_person_not_found",
+        "This card isn't available.",
+        StatusCode::NOT_FOUND,
+    )
+}
+
+pub(super) async fn shared_view(
+    pool: &PgPool,
+    viewer: &str,
+    other: &str,
+) -> sqlx_core::Result<Option<Value>> {
+    if viewer == other || !can_see(pool, viewer, other).await? {
+        return Ok(None);
+    }
+    let Some(card) = card::load(pool, other).await? else {
+        return Ok(None);
+    };
+    if !card.has_card() || !card.sharing {
+        return Ok(None);
+    }
+    let account: Option<(Option<String>, Option<String>)> =
+        query_as("SELECT display_name, avatar_url FROM cloud_accounts WHERE account_id = $1")
+            .bind(other)
+            .fetch_optional(pool)
+            .await?;
+    let Some((name, avatar_url)) = account else {
+        return Ok(None);
+    };
+    let topics = card.shared_topics();
+    Ok(Some(json!({
+        "person": person(other, name.as_deref(), avatar_url.as_deref()),
+        "card": {
+            "workingOn": topics.working_on,
+            "interests": topics.interests,
+            "canHelp": topics.can_help,
+            "lookingFor": topics.looking_for,
+        },
+    })))
+}

@@ -132,6 +132,7 @@ async fn run_omp_with_config<C: CloudAgentRunClient + Sync>(
             max_output_bytes: 16 * 1024 * 1024,
             max_tool_calls: None,
             max_steps: None,
+            idle_timeout_ms: None,
         },
         compaction: None,
         // Cloud never gains owner-device computer/browser capabilities.
@@ -209,6 +210,12 @@ pub(crate) fn api_for_provider(auth: &OpenAiProviderConfig) -> &'static str {
         OpenAiApiMode::AnthropicOAuth => "anthropic-messages",
         OpenAiApiMode::ChatCompletions if auth.provider == "anthropic" => "anthropic-messages",
         OpenAiApiMode::ChatCompletions if auth.provider == "google" => "google-generative-ai",
+        OpenAiApiMode::ChatCompletions
+            if auth.provider == "openai"
+                && auth.base_url.trim_end_matches('/') == "https://api.openai.com/v1" =>
+        {
+            "openai-responses"
+        }
         OpenAiApiMode::ChatCompletions => "openai-completions",
     }
 }

@@ -124,7 +124,7 @@ impl Tool for TaskOperatorTool {
                 "writeScope": {
                     "type": "array",
                     "items": { "type": "string" },
-                    "description": "Paths the spawned task may write; empty means read-only."
+                    "description": "Paths the spawned task should keep its writes within. A task for the owner's own request on the owner's Mac keeps the parent turn's tools and approval rules; for anyone else's request, empty means read-only."
                 },
                 "target": {
                     "type": "string",
