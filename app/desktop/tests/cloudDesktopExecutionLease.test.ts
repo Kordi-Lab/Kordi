@@ -96,3 +96,31 @@ test('a refused renewal or an unrenewed deadline ends the lease', async () => {
     assert.equal(unreachable.lost, true);
   } finally { refused.dispose(); unreachable.dispose(); mock.timers.reset(); }
 });
+
+test('a timed-out admission is sent again while the lease holds', async () => {
+  mock.timers.enable({ apis: ['setInterval', 'setTimeout', 'Date'], now: 1_000_000 });
+  let admits = 0;
+  const lease = await leaseWithRenewals(async () => {
+    admits += 1;
+    if (admits === 1) throw new CloudAuthError('network_error', 'Cloud request timed out. Check your connection and try again.', 0);
+    return { admitted: true, cancelRequested: false };
+  });
+  try {
+    const admitted = lease.admitted();
+    await advance(2_000);
+    assert.equal(await admitted, true);
+    assert.equal(admits, 2);
+  } finally { lease.dispose(); mock.timers.reset(); }
+});
+
+test('a refused admission or an unreachable server past the deadline still fails', async () => {
+  mock.timers.enable({ apis: ['setInterval', 'setTimeout', 'Date'], now: 1_000_000 });
+  const refused = await leaseWithRenewals(async () => { throw new CloudAuthError('execution_lease_lost', 'This runtime no longer owns the request.', 409); });
+  const unreachable = await leaseWithRenewals(async () => { throw new CloudAuthError('network_error', 'Network request failed.', 0); });
+  try {
+    await assert.rejects(refused.admitted(), /no longer owns/);
+    const pending = assert.rejects(unreachable.admitted(), /Execution lease lost/);
+    await advance(42_000);
+    await pending;
+  } finally { refused.dispose(); unreachable.dispose(); mock.timers.reset(); }
+});
