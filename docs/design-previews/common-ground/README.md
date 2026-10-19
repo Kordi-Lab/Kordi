@@ -1,0 +1,7 @@
+# Common ground proposal
+
+A standalone, interactive design preview for Common ground. It uses synthetic people, a synthetic room code, and a placeholder pairing code. It makes no API calls, uses no account data, and loads no external scripts or fonts. Open `index.html` through a loopback static server, for example `python3 -m http.server 8000 --bind 127.0.0.1` from this folder.
+
+Two modes share one set of data. Common ground lives in Contacts on both platforms. **iPhone** starts in Contacts, where the hug icon in the toolbar, beside Add contact, opens it. It covers the first run (intro, sources, building, your card), Home, Tap and QR pairing with a scanner, rooms (keypad, naming, a live lobby with member cards, results, start group, the invitation a member receives), the match (Add, Joint idea, Meet, Share, and the Shared and Trade tabs), the card with references, and Settings › Common ground. **Mac** shows the Contacts page: the pinned Common ground row opens Common ground in the detail area (your card on the left, Pair and Pair code on the right), and a contact opens their profile, with rooms and matches replacing the right column and references, start group, and Meet opening as dialogs. The **Screen** menu jumps to any screen or state, including errors, offline, and sharing off. The light and dark toggle overrides the system appearance.
+
+The design spec is in [`docs/common-ground.md`](../../common-ground.md). Tracking issue: #1847.

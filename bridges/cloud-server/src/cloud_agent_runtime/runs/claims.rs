@@ -144,6 +144,17 @@ pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<Clou
     claim_run_with_executor(pool, input, None, RunTrigger::Background, None).await
 }
 
+/// Admits a background run held for the owner's Mac until
+/// `desktop_preferred_until`: the cloud runner leases it only after that.
+pub async fn claim_run_held_for_desktop(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+    desktop_preferred_until: DateTime<Utc>,
+) -> RunResult<CloudAgentRunResponse> {
+    let until = Some(desktop_preferred_until);
+    claim_run_with_executor(pool, input, None, RunTrigger::Background, until).await
+}
+
 /// Admits a run for a message the signed-in requester just sent. It is
 /// person-started only when that person owns the agent.
 ///

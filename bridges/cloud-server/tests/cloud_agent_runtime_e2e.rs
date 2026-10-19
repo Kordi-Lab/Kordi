@@ -413,6 +413,8 @@ mod provider_auth;
 mod runner;
 #[path = "cloud_agent_runtime_e2e/sandboxes.rs"]
 mod sandboxes;
+#[path = "cloud_agent_runtime_e2e/scheduled_mac_first.rs"]
+mod scheduled_mac_first;
 #[path = "cloud_agent_runtime_e2e/scheduled_runs.rs"]
 mod scheduled_runs;
 #[path = "cloud_agent_runtime_e2e/shared_desktop_lease.rs"]

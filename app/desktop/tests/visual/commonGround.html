@@ -1,0 +1,937 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Common ground</title>
+<script>
+  // ?embedded=1 drops the page chrome so it can fill the Contacts detail pane; ?theme=light|dark follows the host.
+  // ?app=1 is the real desktop app: no simulated people (no Recent, no pairing or rooms); ?name= is the signed-in name.
+  (() => {
+    const q = new URLSearchParams(location.search);
+    const theme = q.get("theme");
+    if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+    if (q.get("embedded") === "1") document.documentElement.classList.add("embedded");
+  })();
+</script>
+<style>
+  :root {
+    --bg: #f2f2f7;
+    --card: #ffffff;
+    --fill: rgba(120, 120, 128, 0.12);
+    --line: rgba(60, 60, 67, 0.14);
+    --text: #000000;
+    --muted: rgba(60, 60, 67, 0.62);
+    --faint: rgba(60, 60, 67, 0.3);
+    --tint: #2563eb;
+    --primary-fill: #16181d;
+    --primary-text: #fafafa;
+    --glass: rgba(255, 255, 255, 0.62);
+    --avatar: #e5e5ea;
+    --avatar-text: #8e8e93;
+    --pink: #f83e9c; --cyan: #27b9d1; --amber: #fcb526; --violet: #847ac4; --gray: #8e8e93;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #000000; --card: #1c1c1e; --fill: rgba(118, 118, 128, 0.24); --line: rgba(84, 84, 88, 0.6);
+      --text: #ffffff; --muted: rgba(235, 235, 245, 0.6); --faint: rgba(235, 235, 245, 0.3);
+      --tint: #60a5fa; --primary-fill: #f5f5f5; --primary-text: #16181d;
+      --glass: rgba(44, 44, 46, 0.7); --avatar: #3a3a3c; --avatar-text: #aeaeb2;
+    }
+  }
+  :root[data-theme="dark"] {
+      --bg: #000000; --card: #1c1c1e; --fill: rgba(118, 118, 128, 0.24); --line: rgba(84, 84, 88, 0.6);
+      --text: #ffffff; --muted: rgba(235, 235, 245, 0.6); --faint: rgba(235, 235, 245, 0.3);
+      --tint: #60a5fa; --primary-fill: #f5f5f5; --primary-text: #16181d;
+      --glass: rgba(44, 44, 46, 0.7); --avatar: #3a3a3c; --avatar-text: #aeaeb2;
+  }
+  :root { color-scheme: light; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; } }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.38 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wash { position: fixed; inset: 0; pointer-events: none;
+    background: linear-gradient(to bottom, rgba(37,99,235,.25) 0%, rgba(37,99,235,.18) 28%, rgba(37,99,235,.07) 52%, transparent 70%); }
+  main { position: relative; max-width: 560px; margin: 0 auto; padding: 64px 20px 48px; }
+  .back { position: fixed; top: 18px; left: 18px; width: 40px; height: 40px; border-radius: 50%; border: 0;
+    background: var(--glass); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    box-shadow: inset 0 0 0 .5px var(--line); color: var(--text); font-size: 20px; cursor: pointer; z-index: 3; }
+  .hero { display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .hero h1 { margin: 10px 0 0; font-size: 24px; font-weight: 700; }
+  .hero .status { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  .avatar { border-radius: 50%; background: var(--avatar); color: var(--avatar-text); display: grid; place-items: center;
+    font-weight: 500; flex: none; box-shadow: 0 0 0 .5px var(--line) inset; }
+  .avatar.ring { box-shadow: 0 0 0 3px var(--bg); }
+  .hero-avatar { box-shadow: 0 4px 10px rgba(0,0,0,.08); }
+  .grid-av { display: grid; gap: 1px; align-content: center; justify-content: center; overflow: hidden; flex: none; }
+  .grid-av div { background: var(--avatar); color: var(--avatar-text); display: grid; place-items: center; font-weight: 500; border-radius: 50%; }
+  .pair { display: flex; }
+  .pair .avatar + .avatar { margin-left: -14px; }
+  .badge { margin-top: -12px; background: var(--tint); color: white; font-size: 12px; font-weight: 700; padding: 4px 10px;
+    border-radius: 999px; box-shadow: 0 0 0 2px var(--bg); position: relative; }
+  .actions { display: grid; gap: 10px; width: 100%; margin-top: 16px; }
+  .tile { min-height: 62px; border: 0; border-radius: 18px; background: var(--glass); backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px); box-shadow: inset 0 0 0 .5px var(--line); color: var(--tint); cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font: 500 12px -apple-system, sans-serif; padding: 8px 4px; }
+  .tile svg { width: 22px; height: 22px; }
+  .tile:active { transform: scale(.97); }
+  .section { margin-top: 16px; }
+  .section-title { color: var(--muted); font-weight: 600; font-size: 14px; margin: 0 16px 8px; }
+  .group { background: var(--card); border-radius: 14px; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 8px 16px; min-height: 52px; position: relative; }
+  .row + .row::before { content: ""; position: absolute; top: 0; right: 0; left: var(--inset, 16px); border-top: .5px solid var(--line); }
+  .row.click { cursor: pointer; }
+  .row.click:hover { background: var(--fill); }
+  .row .grow { flex: 1; min-width: 0; }
+  .row .name { font-weight: 600; font-size: 16px; }
+  .row .sub { color: var(--muted); font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .wrap { white-space: normal; }
+  .row .trail { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .chev { color: var(--faint); font-size: 18px; }
+  .icon { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: white; flex: none; }
+  .icon svg { width: 17px; height: 17px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; border-radius: 6px; font-size: 12.5px; font-weight: 500; }
+  .pill i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .gh-code { gap: 8px; padding-left: 58px !important; }
+  .gh-code .code { font: 600 22px/1.2 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .12em; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px; }
+  .tag { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 6px 0 11px; border-radius: 8px; font-size: 14px; font-weight: 500; line-height: 1.2; }
+  .tag i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .tag-x { width: 20px; height: 20px; border-radius: 5px; border: 0; background: transparent; color: var(--muted); font: 500 16px/1 -apple-system, sans-serif; cursor: pointer; display: grid; place-items: center; padding: 0; }
+  .tag-x:hover { background: var(--line); color: var(--text); }
+  .tag.add { border: 0; background: var(--fill); color: var(--muted); padding: 0 12px 0 10px; gap: 5px; cursor: pointer; font: 500 14px -apple-system, sans-serif; }
+  .tag.add:hover { color: var(--text); }
+  .tag.add svg { width: 14px; height: 14px; }
+  .tag { max-width: 100%; }
+  .tag .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag.add.editing { max-width: 100%; cursor: text; padding: 0 11px; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--tint) 55%, transparent); background: var(--card); }
+  .tag.add.editing i { background: var(--faint); }
+  .tag.ref { cursor: pointer; padding-right: 12px; border: 0; color: var(--text); font: 500 14px -apple-system, sans-serif; }
+  .tag .txt { cursor: pointer; }
+  .tag.small { height: 26px; padding: 0 9px; font-size: 13px; gap: 6px; border-radius: 6px; }
+  .tag.muted { background: var(--fill) !important; color: var(--muted); }
+  .tag.muted i { background: var(--faint) !important; }
+  .timeline { padding: 6px 0; }
+  .tl-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); column-gap: 10px; }
+  .tl-when { position: relative; padding: 14px 0 0 30px; color: var(--muted); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tl-when::before { content: ""; position: absolute; left: 17px; top: 0; bottom: 0; width: 1.5px; background: var(--line); }
+  .tl-row:first-child .tl-when::before { top: 20px; }
+  .tl-row:last-child .tl-when::before { bottom: calc(100% - 20px); }
+  .tl-when::after { content: ""; position: absolute; left: 13px; top: 16px; width: 9px; height: 9px; border-radius: 50%; background: var(--tint); box-shadow: 0 0 0 3px var(--card); }
+  .tl-row.past .tl-when::after { background: var(--faint); }
+  .tl-row .tags { padding: 10px 14px 10px 0; gap: 6px; min-width: 0; }
+  .sheet.refs { text-align: left; max-height: 72vh; overflow-y: auto; }
+  .sheet.refs h2 { margin: 0 0 4px; font-size: 20px; }
+  .refs .when { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .ref-row { display: block; padding: 12px 14px; color: inherit; text-decoration: none; }
+  .ref-row + .ref-row { border-top: .5px solid var(--line); }
+  a.ref-row:hover { background: var(--fill); }
+  .ref-meta { color: var(--muted); font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+  .ref-title { font-weight: 600; }
+  .ref-snip { color: var(--muted); font-size: 13px; margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .tag.add input { border: 0; outline: none; background: transparent; color: var(--text); font: 500 14px -apple-system, sans-serif; padding: 0; min-width: 0; flex: 1 1 auto; }
+  .tag.add .count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
+  .tag.add .count.full { color: #d70015; }
+  .seg { display: grid; grid-auto-flow: column; background: var(--fill); border-radius: 9px; padding: 2px; margin-top: 22px; }
+  .seg button { border: 0; background: none; color: var(--text); font: 500 13px -apple-system, sans-serif; padding: 6px; border-radius: 7px; cursor: pointer; }
+  .seg button.on { background: var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.12); font-weight: 600; }
+  .primary { width: 100%; min-height: 52px; border: 0; border-radius: 999px; background: var(--primary-fill); color: var(--primary-text);
+    font: 600 17px -apple-system, sans-serif; cursor: pointer; margin-top: 20px; }
+  .primary:disabled { opacity: .42; cursor: default; }
+  .link { background: none; border: 0; color: var(--tint); font: 600 16px -apple-system, sans-serif; cursor: pointer; padding: 12px; width: 100%; }
+  .small-btn { border: 0; background: var(--tint); color: white; border-radius: 999px; padding: 6px 14px; font: 600 13px -apple-system, sans-serif; cursor: pointer; }
+  textarea { width: 100%; min-height: 86px; border: 0; resize: vertical; background: transparent; color: var(--text);
+    font: 15px -apple-system, sans-serif; padding: 12px 16px; outline: none; display: block; }
+  textarea::placeholder { color: var(--faint); }
+  .switch { width: 51px; height: 31px; border-radius: 999px; background: var(--fill); position: relative; cursor: pointer; flex: none; border: 0; transition: background .2s; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: white; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: left .2s; }
+  .switch.on { background: var(--tint); }
+  .switch.on::after { left: 22px; }
+  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 40px; }
+  .key { height: 62px; border-radius: 18px; border: 0; background: var(--glass); box-shadow: inset 0 0 0 .5px var(--line);
+    font: 500 26px -apple-system, sans-serif; color: var(--text); cursor: pointer; }
+  .key.blank { visibility: hidden; }
+  .dots { display: flex; gap: 22px; justify-content: center; margin-top: 32px; }
+  .dots span { width: 13px; height: 13px; border-radius: 50%; background: var(--fill); }
+  .dots span.on { background: var(--text); }
+  .center { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; }
+  .mark { position: relative; width: 72px; height: 72px; }
+  .mark i { position: absolute; width: 48%; height: 48%; border-radius: 50%; opacity: .92; animation: relay 1.65s ease-in-out infinite; }
+  .mark i:nth-child(1) { background: var(--pink); left: 26%; top: 11%; }
+  .mark i:nth-child(2) { background: var(--cyan); left: 9%; top: 41%; animation-delay: .25s; }
+  .mark i:nth-child(3) { background: var(--amber); left: 43%; top: 41%; animation-delay: .5s; }
+  @keyframes relay { 0%, 100% { transform: scale(.92); } 50% { transform: scale(1.1); } }
+  .pulse { position: relative; height: 280px; display: grid; place-items: center; }
+  .pulse b { position: absolute; width: 120px; height: 120px; border-radius: 50%; border: 1.5px solid; animation: ping 2.4s ease-out infinite; opacity: 0; }
+  .pulse b:nth-child(2) { animation-delay: .8s; } .pulse b:nth-child(3) { animation-delay: 1.6s; }
+  @keyframes ping { from { transform: scale(.8); opacity: .9; } to { transform: scale(2.5); opacity: 0; } }
+  .sheet-back { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: flex-end; justify-content: center; z-index: 5; }
+  .sheet { width: 100%; max-width: 560px; background: var(--bg); border-radius: 22px 22px 0 0; padding: 28px 20px 24px; text-align: center; animation: up .25s ease; }
+  @keyframes up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .sheet h2 { margin: 12px 0 2px; font-size: 20px; }
+  .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); max-width: min(520px, 90vw); text-align: center; background: var(--glass); backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px); box-shadow: inset 0 0 0 .5px var(--line), 0 6px 20px rgba(0,0,0,.12); padding: 10px 16px;
+    border-radius: 999px; font-size: 14px; font-weight: 500; z-index: 9; transition: opacity .2s; }
+  .error { color: #d70015; text-align: center; margin-top: 12px; font-size: 14px; }
+  .fade { animation: fade .25s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  /* Embedded in the Kordi Contacts detail pane: Kordi palette, macOS sizes, card on the left, actions on the right. */
+  html.embedded {
+    --ink: oklch(26% 0.025 250); --text: var(--ink); --muted: oklch(46% 0.025 250); --faint: oklch(46% 0.025 250 / 0.55);
+    --card: oklch(100% 0 0 / 0.62); --line: oklch(36% 0.025 250 / 0.11); --fill: oklch(36% 0.025 250 / 0.07);
+    --glass: oklch(100% 0 0 / 0.62); --avatar: oklch(91% 0.012 250); --avatar-text: oklch(46% 0.025 250);
+    --primary-fill: var(--ink); --primary-text: oklch(98% 0.005 250); --bg: oklch(96% 0.012 250);
+  }
+  @media (prefers-color-scheme: dark) {
+    html.embedded:not([data-theme="light"]) {
+      --ink: oklch(92% 0.016 250); --muted: oklch(73% 0.023 250); --faint: oklch(73% 0.023 250 / 0.5);
+      --card: oklch(34% 0.025 250 / 0.32); --line: oklch(85% 0.018 250 / 0.1); --fill: oklch(85% 0.018 250 / 0.08);
+      --glass: oklch(34% 0.025 250 / 0.4); --avatar: oklch(36% 0.02 250); --avatar-text: oklch(80% 0.02 250);
+      --primary-text: oklch(21.5% 0.018 250); --bg: oklch(24% 0.02 250);
+    }
+  }
+  html.embedded[data-theme="dark"] {
+    --ink: oklch(92% 0.016 250); --muted: oklch(73% 0.023 250); --faint: oklch(73% 0.023 250 / 0.5);
+    --card: oklch(34% 0.025 250 / 0.32); --line: oklch(85% 0.018 250 / 0.1); --fill: oklch(85% 0.018 250 / 0.08);
+    --glass: oklch(34% 0.025 250 / 0.4); --avatar: oklch(36% 0.02 250); --avatar-text: oklch(80% 0.02 250);
+    --primary-text: oklch(21.5% 0.018 250); --bg: oklch(24% 0.02 250);
+  }
+  html.embedded, html.embedded body { height: 100%; overflow: hidden; background: transparent; }
+  html.embedded body { font-size: 13px; line-height: 1.4; }
+  html.embedded .wash { display: none; }
+  html.embedded main { max-width: none; margin: 0; padding: 0; height: 100%; display: flex; flex-direction: column; }
+  .cg-head { height: 52px; flex: none; display: flex; align-items: center; padding: 0 20px; }
+  .cg-head h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .cg-cols, .cg-full { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  .cg-cols[hidden], .cg-full[hidden] { display: none; }
+  .cg-col { padding: 4px 20px 28px; min-width: 0; }
+  .cg-full > * { max-width: 520px; margin: 0 auto; }
+  .cg-full { padding: 4px 20px 28px; }
+  @media (min-width: 760px) {
+    .cg-cols { display: grid; grid-template-columns: minmax(0, 1fr) 344px; overflow: hidden; }
+    .cg-col { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+    .cg-col + .cg-col { border-left: 1px solid var(--line); padding-top: 4px; }
+  }
+  html.embedded .section { margin-top: 18px; }
+  html.embedded .section:first-child { margin-top: 8px; }
+  html.embedded .section-title { font-size: 12.5px; margin: 0 2px 8px; }
+  html.embedded .group { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+  html.embedded .row { min-height: 46px; padding: 7px 12px; gap: 10px; }
+  html.embedded .row + .row::before { border-top-width: 1px; }
+  html.embedded .row .name { font-size: 13px; }
+  html.embedded .row .sub { font-size: 12px; }
+  html.embedded .row .trail { font-size: 12.5px; }
+  html.embedded .icon { width: 26px; height: 26px; border-radius: 6px; }
+  html.embedded .icon svg { width: 15px; height: 15px; }
+  html.embedded .tags { padding: 12px; gap: 6px; }
+  html.embedded .tag { height: 28px; font-size: 13px; padding: 0 5px 0 10px; gap: 6px; }
+  html.embedded .tag.ref { padding-right: 10px; font-size: 13px; }
+  html.embedded .tag.add { font-size: 13px; padding: 0 10px 0 8px; }
+  html.embedded .tag.add input { font-size: 13px; }
+  html.embedded .tag.small { height: 24px; font-size: 12px; padding: 0 8px; }
+  html.embedded .tag-x { width: 18px; height: 18px; font-size: 14px; }
+  html.embedded .tl-row { grid-template-columns: 92px minmax(0, 1fr); }
+  html.embedded .tl-when { font-size: 12px; padding-top: 12px; }
+  html.embedded .tl-when::after { top: 14px; box-shadow: none; }
+  html.embedded .tl-row .tags { padding: 8px 12px 8px 0; }
+  html.embedded .pill { font-size: 12px; padding: 4px 8px; }
+  html.embedded .hero { margin-top: 12px; }
+  html.embedded .hero h1 { font-size: 20px; margin-top: 12px; }
+  html.embedded .hero .status { font-size: 13px; }
+  html.embedded .avatar.ring { box-shadow: 0 0 0 3px var(--bg); }
+  html.embedded .badge { box-shadow: 0 0 0 2px var(--bg); font-size: 11px; padding: 3px 9px; margin-top: -10px; }
+  html.embedded .actions { gap: 8px; }
+  html.embedded .tile { min-height: 54px; border-radius: 10px; backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); font-size: 11.5px; }
+  html.embedded .tile svg { width: 19px; height: 19px; }
+  html.embedded .seg { margin-top: 18px; border-radius: 8px; }
+  html.embedded .seg button { font-size: 12.5px; padding: 5px; border-radius: 6px; }
+  html.embedded .seg button.on { background: var(--glass); box-shadow: 0 1px 2px rgba(0,0,0,.12), inset 0 0 0 1px var(--line); }
+  html.embedded .primary { min-height: 36px; border-radius: 9px; font-size: 13.5px; margin-top: 16px; }
+  html.embedded .link { font-size: 13px; padding: 10px; }
+  html.embedded .small-btn { border-radius: 7px; padding: 5px 12px; font-size: 12.5px; flex: none; }
+  html.embedded .small-btn.quiet { background: var(--fill); color: var(--text); }
+  html.embedded textarea { font-size: 13px; min-height: 72px; padding: 10px 12px; }
+  html.embedded .switch { width: 34px; height: 20px; }
+  html.embedded .switch::after { top: 2px; left: 2px; width: 16px; height: 16px; }
+  html.embedded .switch.on::after { left: 16px; }
+  html.embedded .keypad { gap: 8px; margin-top: 24px; }
+  html.embedded .key { height: 48px; border-radius: 10px; font-size: 20px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); }
+  html.embedded .dots { margin-top: 20px; }
+  html.embedded .center { min-height: 60vh; }
+  html.embedded .pulse { height: 220px; }
+  html.embedded .sheet-back { align-items: center; padding: 24px; background: rgba(0,0,0,.28); }
+  html.embedded .sheet { max-width: 420px; border-radius: 14px; padding: 22px 18px 16px; background: var(--bg); box-shadow: 0 12px 32px rgba(0,0,0,.28), inset 0 0 0 1px var(--line); }
+  html.embedded .sheet h2 { font-size: 16px; }
+  html.embedded .sheet .primary { margin-top: 14px; }
+  html.embedded .toast { font-size: 12.5px; padding: 8px 14px; background: var(--bg); }
+  html.embedded .error { font-size: 12.5px; }
+  .back-inline { display: inline-flex; align-items: center; gap: 4px; margin: 8px 0 4px -6px; padding: 4px 8px; border: 0; border-radius: 7px;
+    background: transparent; color: var(--muted); font: 500 13px -apple-system, sans-serif; cursor: pointer; }
+  .back-inline:hover { background: var(--fill); color: var(--text); }
+  .cardhead { display: flex; align-items: center; gap: 12px; margin: 8px 0 4px; }
+  .cardhead .grow { flex: 1; min-width: 0; }
+  .cardhead .t { font-size: 15px; font-weight: 600; }
+  .cardhead .s { color: var(--muted); font-size: 12px; }
+  .digits { display: flex; align-items: center; gap: 6px; padding: 10px 12px; }
+  .digits input { width: 36px; height: 40px; border-radius: 8px; border: 1px solid var(--line); background: var(--fill); color: var(--text);
+    text-align: center; font: 600 17px ui-monospace, "SF Mono", Menlo, monospace; outline: none; }
+  .digits input:focus { border-color: color-mix(in srgb, var(--tint) 60%, transparent); }
+  .digits .sp { flex: 1; }
+  .small-btn:disabled { opacity: .42; cursor: default; }
+</style>
+</head>
+<body>
+<div class="wash"></div>
+<main id="app"></main>
+<script>
+// Desktop preview of Common ground, backed by the demo server (experiments/common-ground-lab/demo).
+const API = new URLSearchParams(location.search).get("api") || "http://127.0.0.1:18190";
+const EMBED = document.documentElement.classList.contains("embedded");
+const QUERY = new URLSearchParams(location.search);
+const APP = QUERY.get("app") === "1";
+const ME_NAME = QUERY.get("name") || (APP ? "You" : "Alex");
+const ICONS = {
+  memory: '<path d="M9 4a3 3 0 0 0-3 3v1a3 3 0 0 0-1 5.8V15a3 3 0 0 0 3 3h1m6-14a3 3 0 0 1 3 3v1a3 3 0 0 1 1 5.8V15a3 3 0 0 1-3 3h-1M12 4v16"/>',
+  eval: '<path d="M12 3l2.4 1.6 2.9-.2 1 2.7 2.3 1.8-.9 2.8.9 2.8-2.3 1.8-1 2.7-2.9-.2L12 21l-2.4-1.6-2.9.2-1-2.7-2.3-1.8.9-2.8-.9-2.8 2.3-1.8 1-2.7 2.9.2z"/><path d="M8.5 12l2.3 2.3 4.7-4.6"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  learn: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2 9 2 12 0v-5"/>',
+  device: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18h2"/>',
+  social: '<path d="M4 5h11v8H8l-4 3z"/><path d="M15 9h5v8l-3-2h-6v-2"/>',
+  robot: '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01"/>',
+  people: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 19c.6-3 3-5 6-5s5.4 2 6 5M15 14.5c2.6 0 4.6 1.6 5.2 4.5"/>',
+  spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/>',
+  calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+};
+const PALETTE = ["--pink", "--cyan", "--amber", "--tint", "--violet"];
+
+function topicStyle(topic) {
+  const t = topic.toLowerCase();
+  const rules = [
+    [/memory|recall/, "memory", "--pink"], [/eval|benchmark|judge/, "eval", "--tint"],
+    [/privacy|security|secure|crypt/, "lock", "--gray"], [/educat|learn|tutor|student/, "learn", "--cyan"],
+    [/device|quantiz|edge|compress|mobile|inference/, "device", "--amber"],
+    [/moderat|communit|social|chat/, "social", "--violet"], [/robot|embodied/, "robot", "--violet"],
+    [/study|user|qualitative|interview|human/, "people", "--cyan"],
+  ];
+  for (const [re, icon, color] of rules) if (re.test(t)) return { icon, color };
+  let h = 0; for (const c of topic) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return { icon: "spark", color: PALETTE[h % PALETTE.length] };
+}
+const svg = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const initials = (name) => (name === "You" ? ME_NAME : name).slice(0, 2).toUpperCase();
+const avatar = (name, size, extra = "") => `<div class="avatar ${extra}" style="width:${size}px;height:${size}px;font-size:${size * 0.36}px">${esc(initials(name))}</div>`;
+function gridAvatar(people, size) {
+  const shown = people.slice(0, 9);
+  const cols = shown.length <= 1 ? 1 : shown.length <= 4 ? 2 : 3;
+  const gap = cols === 1 ? 0 : Math.max(2, size * 0.04);
+  const tile = (size - gap * (cols - 1)) / cols;
+  return `<div class="grid-av" style="width:${size}px;height:${size}px;gap:${gap}px;grid-template-columns:repeat(${cols},${tile}px);grid-auto-rows:${tile}px">${shown.map((p) => `<div style="font-size:${tile * 0.36}px">${esc(initials(p.name))}</div>`).join("")}</div>`;
+}
+const iconTile = (topic) => { const s = topicStyle(topic); return `<div class="icon" style="background:var(${s.color})">${svg(s.icon)}</div>`; };
+const pill = (topic) => { const s = topicStyle(topic); return `<span class="pill" style="background:color-mix(in srgb, var(${s.color}) 14%, transparent)"><i style="background:var(${s.color})"></i>${esc(topic)}</span>`; };
+const shownTopics = (card) => [...card.working_on, ...card.interests].filter((t) => !card.hidden.includes(t));
+
+async function api(method, path, body) {
+  let r;
+  try {
+    r = await fetch(API + path, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  } catch { throw new Error("Demo server not reachable"); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
+  return data;
+}
+
+// ---------- navigation ----------
+const state = { me: null, sources: [], recent: [], room: null, results: null, matchCache: {}, code: "" };
+const stack = [];
+let timers = [];
+const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+let app = document.getElementById("app");
+const current = () => stack[stack.length - 1];
+
+// Embedded: the card stays in the left column; Home, pairing, rooms and matches use the right
+// column; building the card takes the whole pane.
+const regions = {};
+if (EMBED) {
+  app.innerHTML = `<header class="cg-head"><h1>Common ground</h1></header>
+    <div class="cg-cols" id="cg-cols"><div class="cg-col" id="cg-left"></div><div class="cg-col" id="cg-right"></div></div>
+    <div class="cg-full" id="cg-full" hidden></div>`;
+  for (const id of ["cols", "left", "right", "full"]) regions[id] = document.getElementById(`cg-${id}`);
+}
+function useRegion(screen) {
+  const full = screen === "build";
+  regions.cols.hidden = full;
+  regions.full.hidden = !full;
+  app = full ? regions.full : regions.right;
+  regions.full.scrollTop = 0;
+  regions.right.scrollTop = 0;
+  if (!full) paintLeft();
+}
+function paintLeft() {
+  if (state.me?.card) return paintCard(undefined, regions.left);
+  if (!state.me) { regions.left.innerHTML = ""; return; }
+  regions.left.innerHTML = `<div class="cardhead">${avatar("You", 40)}<div class="grow"><div class="t">Your card</div><div class="s">Your agent writes it</div></div></div>
+    <div class="section"><div class="group"><div class="row click" onclick="go('build')"><div class="grow">Build your card</div><span class="chev">›</span></div></div></div>`;
+}
+
+function go(screen, arg) { clearTimers(); stack.push([screen, arg]); render(); }
+function back() { clearTimers(); document.querySelectorAll(".sheet-back").forEach((s) => s.remove()); if (stack.length > 1) stack.pop(); render(); }
+function render() {
+  const [screen, arg] = current();
+  if (EMBED) useRegion(screen); else window.scrollTo(0, 0);
+  app.classList.remove("fade"); void app.offsetWidth; app.classList.add("fade");
+  SCREENS[screen](arg);
+}
+const backButton = () => (stack.length < 2 ? ""
+  : EMBED ? `<button class="back-inline" onclick="back()">‹ Back</button>`
+  : `<button class="back" onclick="back()" aria-label="Back">‹</button>`);
+function toast(text) {
+  const t = document.createElement("div"); t.className = "toast"; t.textContent = text; document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = 0; setTimeout(() => t.remove(), 200); }, Math.max(1700, text.length * 50));
+}
+function thinking(steps) {
+  app.innerHTML = `<div class="center"><div class="mark"><i></i><i></i><i></i></div><div id="step" style="color:var(--muted)">${esc(steps[0])}</div></div>`;
+  steps.forEach((s, i) => i && later(() => { const el = document.getElementById("step"); if (el) el.textContent = s; }, i * 1600));
+}
+function start(screen) { if (state.me?.card) go(screen); else go("build", screen); }
+
+const SCREENS = { home: paintHome, build: paintBuild, card: paintCard, tap: paintTap, code: paintCode, lobby: paintLobby, room: paintRoom, match: paintMatch };
+
+// ---------- home ----------
+async function paintHome() {
+  draw();
+  try {
+    state.me = await api("GET", "/v1/me");
+    state.recent = state.me.card && !APP ? (await api("GET", "/v1/recent")).people : [];
+    if (current()[0] === "home") { draw(); if (EMBED) paintLeft(); }
+  } catch (e) { app.insertAdjacentHTML("beforeend", `<div class="error">${esc(e.message)}</div>`); }
+
+  function draw() {
+    if (EMBED) return drawEmbedded();
+    const card = state.me?.card;
+    const topics = card ? shownTopics(card) : [];
+    app.innerHTML = `
+      <div class="hero">${avatar("You", 92, "hero-avatar")}<h1>Common ground</h1><div class="status">Find what you share</div>
+        <div class="actions" style="grid-template-columns:1fr 1fr">
+          <button class="tile" onclick="start('tap')">${svg("device")}Tap phones</button>
+          <button class="tile" onclick="start('code')"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="6" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/></svg>Join with code</button>
+        </div></div>
+      <div class="section"><div class="section-title">Your card</div><div class="group">
+        ${card ? `<div class="row click" style="flex-direction:column;align-items:stretch;gap:12px;padding:16px" onclick="go('card')">
+            <div style="display:flex;justify-content:space-between;color:var(--muted)"><span>${topics.length} topics shared</span><span class="chev">›</span></div>
+            <div class="pills">${topics.map(pill).join("")}</div></div>`
+          : `<div class="row click" onclick="go('build')"><div class="grow">Build your card</div><span class="chev">›</span></div>`}
+      </div></div>
+      <div class="section"><div class="section-title">Recent</div><div class="group" style="--inset:68px">
+        ${state.recent.length ? state.recent.map(rankedRow).join("") : `<div class="row"><span style="color:var(--muted)">No matches yet</span></div>`}
+      </div></div>`;
+  }
+}
+
+// Embedded Home (right column): Pair, pair code, Recent.
+function drawEmbedded() {
+  const digits = ["", "", "", ""];
+  app.innerHTML = `
+    <div class="section"><div class="section-title">Pair</div><div class="group" style="--inset:48px">
+      <div class="row">${iconTile("device")}<div class="grow"><div>Someone nearby</div><div class="sub">${APP ? "Available after launch" : "Both of you open Common ground"}</div></div>
+        <button class="small-btn" onclick="start('tap')" ${APP ? "disabled" : ""}>Pair</button></div></div></div>
+    <div class="section"><div class="section-title">Pair code</div><div class="group"><div class="digits">
+      ${digits.map((_, i) => `<input data-i="${i}" inputmode="numeric" maxlength="1" aria-label="Digit ${i + 1}" autocomplete="off" ${APP ? "disabled" : ""}>`).join("")}
+      <div class="sp"></div><button class="small-btn" id="join" disabled>Join</button></div></div></div>
+    <div class="section"><div class="section-title">Recent</div><div class="group" style="--inset:62px">
+      ${state.recent.length ? state.recent.map(rankedRow).join("") : `<div class="row"><span style="color:var(--muted)">No matches yet</span></div>`}
+    </div></div>`;
+  const inputs = [...app.querySelectorAll(".digits input")];
+  const join = document.getElementById("join");
+  const code = () => inputs.map((el) => el.value).join("");
+  const submit = async () => {
+    if (code().length !== 4) return;
+    if (!state.me?.card) return go("build", "home");
+    join.disabled = true;
+    try { state.room = await api("POST", `/v1/rooms/${code()}/join`); go("lobby", code()); }
+    catch (e) { toast(e.message); inputs.forEach((el) => (el.value = "")); inputs[0].focus(); join.disabled = true; }
+  };
+  inputs.forEach((el, i) => {
+    el.oninput = () => {
+      el.value = el.value.replace(/\D/g, "").slice(-1);
+      if (el.value && inputs[i + 1]) inputs[i + 1].focus();
+      join.disabled = code().length !== 4;
+    };
+    el.onkeydown = (e) => {
+      if (e.key === "Backspace" && !el.value && inputs[i - 1]) inputs[i - 1].focus();
+      if (e.key === "Enter") submit();
+    };
+  });
+  join.onclick = submit;
+}
+
+function rankedRow(r) {
+  return `<div class="row click" onclick="go('match','${esc(r.person.id)}')">${avatar(r.person.name, 40)}
+    <div class="grow"><div class="name">${esc(r.person.name)}</div><div class="sub">${esc(r.headline)}</div></div>
+    <span class="trail">${r.score}%</span><span class="chev">›</span></div>`;
+}
+
+// ---------- build card ----------
+// Kordi's connector catalog. GitHub signs in on github.com (device flow) and
+// reads the public profile; the rest need a Kordi account with the connector
+// set up on the server, which this demo lacks.
+const CONNECTORS = [
+  { id: "gmail", name: "Gmail", reads: "Paper, review and conference threads", icon: "social", color: "--pink", setup: "Gmail needs a Google sign-in app on this server" },
+  { id: "gcal", name: "Google Calendar", reads: "Talks and meetings", icon: "calendar", color: "--tint", setup: "Google Calendar needs a Google sign-in app on this server" },
+  { id: "github", name: "GitHub", reads: "Repositories and bio", icon: "spark", color: "--gray" },
+  { id: "slack", name: "Slack", reads: "Channels you choose", icon: "social", color: "--violet", setup: "Slack needs a Slack app on this server" },
+];
+
+// On this Mac: Calendar and Reminders through the Kordi app (EventKit). Only
+// titles and dates are read, and only after the person allows access.
+// Inside the Contacts preview iframe the Tauri globals live on the parent window.
+const tauriInvoke = (() => {
+  for (const host of [window, window.parent]) {
+    try {
+      const internals = host.__TAURI_INTERNALS__;
+      if (internals?.invoke) return internals.invoke.bind(internals);
+      const core = host.__TAURI__?.core;
+      if (core?.invoke) return core.invoke.bind(core);
+    } catch {}
+  }
+  return null;
+})();
+const DEVICE = [
+  { id: "calendar", name: "Calendar", reads: "Event titles from the last 6 months", icon: "calendar", color: "--pink" },
+  { id: "reminders", name: "Reminders", reads: "Reminder titles", icon: "spark", color: "--amber" },
+];
+const device = { status: {}, titles: {}, included: new Set() };
+
+async function refreshDevice() {
+  if (!tauriInvoke) return;
+  try { device.status = await tauriInvoke("common_ground_device_status"); } catch { device.status = {}; }
+  for (const d of DEVICE) {
+    if (device.status[d.id] === "granted" && !device.titles[d.id]) {
+      try { device.titles[d.id] = await tauriInvoke("common_ground_device_titles", { source: d.id }); } catch { device.titles[d.id] = []; }
+    }
+  }
+}
+
+async function paintBuild(next) {
+  let useAgents = false;
+  let links = "", notes = "";
+  let github = state.me?.github || "", ghFlow = null, ghTimer = null;
+  draw();
+  try { state.sources = (await api("GET", "/v1/me/sources")).agents; if (current()[0] === "build") draw(); } catch {}
+  await refreshDevice();
+  if (current()[0] === "build") draw();
+
+  function deviceRow(d) {
+    const status = device.status[d.id] || "not_determined";
+    const count = device.titles[d.id]?.length;
+    let sub = d.reads, trail = `<button class="small-btn" data-allow="${d.id}">Allow</button>`;
+    if (status === "granted") {
+      sub = count === undefined ? "Reading…" : count === 0 ? "Nothing found" : `${count} titles`;
+      trail = `<button class="switch ${device.included.has(d.id) && count ? "on" : ""}" data-include="${d.id}" ${count ? "" : "disabled"}></button>`;
+    } else if (status !== "not_determined") {
+      sub = "Access is off";
+      trail = `<button class="small-btn" style="background:var(--fill);color:var(--muted)" data-settings="${d.id}">Settings</button>`;
+    }
+    return `<div class="row"><div class="icon" style="background:var(${d.color})">${svg(d.icon)}</div>
+      <div class="grow"><div>${esc(d.name)}</div><div class="sub">${esc(sub)}</div></div>${trail}</div>`;
+  }
+
+  function deviceItems() {
+    return DEVICE.filter((d) => device.included.has(d.id) && device.titles[d.id]?.length)
+      .map((d) => ({ source: `Mac ${d.name}`, items: device.titles[d.id] }));
+  }
+
+  function connectorRow(c) {
+    let trail = `<button class="small-btn" style="background:var(--fill);color:var(--muted)" data-setup="${c.id}">Set up</button>`;
+    let sub = c.reads;
+    if (c.id === "github") {
+      trail = github ? `<button class="small-btn" style="background:var(--fill);color:var(--text)" data-gh="off">Remove</button>`
+                     : `<button class="small-btn" data-gh="on">Connect</button>`;
+      if (github) sub = `@${github}`;
+      if (ghFlow) trail = "";
+    }
+    const row = `<div class="row"><div class="icon" style="background:var(${c.color})">${svg(c.icon)}</div>
+      <div class="grow"><div>${esc(c.name)}</div><div class="sub">${esc(sub)}</div></div>${trail}</div>`;
+    const code = c.id === "github" && ghFlow
+      ? `<div class="row gh-code"><div class="grow"><div class="code">${esc(ghFlow.user_code)}</div><div class="sub">Code copied. Paste it on GitHub.</div></div>
+          <button class="small-btn" data-gh="open">Open GitHub</button><button class="small-btn" style="background:var(--fill);color:var(--muted)" data-gh="cancel">Cancel</button></div>` : "";
+    return row + code;
+  }
+
+  // GitHub device flow: show the code, open github.com/login/device, and
+  // poll until the tester approves there.
+  async function githubAction(action) {
+    try {
+      if (action === "on") {
+        const r = await api("POST", "/v1/connect/github");
+        ghFlow = r;
+        navigator.clipboard?.writeText(r.user_code).catch(() => {});
+        openUrl(r.verification_uri);
+        clearInterval(ghTimer);
+        ghTimer = setInterval(pollGithub, 2000);
+      } else if (action === "open") {
+        navigator.clipboard?.writeText(ghFlow.user_code).catch(() => {});
+        openUrl(ghFlow.verification_uri);
+        return;
+      } else {
+        clearInterval(ghTimer); ghFlow = null;
+        github = (await api("DELETE", "/v1/connect/github")).login;
+        state.me.github = github;
+      }
+    } catch (e) { toast(e.message); }
+    if (current()[0] === "build") draw();
+  }
+
+  async function pollGithub() {
+    if (current()[0] !== "build") return clearInterval(ghTimer);
+    let r;
+    try { r = await api("GET", "/v1/connect/github"); } catch { return; }
+    if (r.status === "pending") return;
+    clearInterval(ghTimer); ghFlow = null;
+    if (r.status === "done") { github = r.login; if (state.me) state.me.github = github; }
+    else if (r.status === "denied") toast("GitHub sign-in was cancelled");
+    else if (r.status === "expired") toast("The code expired. Try again.");
+    draw();
+  }
+
+  function draw(error = "") {
+    const files = state.sources.map((s) => s.label.split("/").pop());
+    const summary = files.length ? files.slice(0, 2).join(", ") + (files.length > 2 ? ` +${files.length - 2}` : "") : "No agent files found";
+    app.innerHTML = `${backButton()}
+      <div class="hero">${avatar("You", 92, "hero-avatar")}<h1>Build your card</h1><div class="status">Your agent writes it</div></div>
+      <div class="section"><div class="section-title">Connectors</div><div class="group" style="--inset:58px">
+        ${CONNECTORS.map(connectorRow).join("")}
+        <div class="row">${iconTile("device")}<div class="grow"><div>Agents on this Mac</div><div class="sub">${esc(summary)}</div></div>
+          <button class="switch ${useAgents ? "on" : ""}" id="agents" aria-label="Agents on this Mac"></button></div>
+      </div></div>
+      ${tauriInvoke ? `<div class="section"><div class="section-title">On this Mac</div><div class="group" style="--inset:58px">${DEVICE.map(deviceRow).join("")}</div></div>` : ""}
+      <div class="section"><div class="section-title">Links</div><div class="group"><textarea id="links" placeholder="Homepage; Google Scholar; ORCID; papers; anything about you">${esc(links)}</textarea></div></div>
+      <div class="section"><div class="section-title">Notes</div><div class="group"><textarea id="notes" placeholder="What are you working on?">${esc(notes)}</textarea></div></div>
+      <button class="primary" id="build">Build card</button><div class="error">${esc(error)}</div>`;
+    const btn = document.getElementById("build");
+    const sync = () => {
+      links = document.getElementById("links").value; notes = document.getElementById("notes").value;
+      btn.disabled = !(useAgents && state.sources.length) && !github && !links.trim() && !notes.trim() && !deviceItems().length;
+    };
+    document.getElementById("agents").onclick = () => { sync(); useAgents = !useAgents; draw(); };
+    document.getElementById("links").oninput = sync;
+    document.getElementById("notes").oninput = sync;
+    app.querySelectorAll("[data-allow]").forEach((el) => (el.onclick = async () => {
+      sync();
+      const id = el.dataset.allow;
+      try {
+        device.status = await tauriInvoke("common_ground_device_request", { source: id });
+        if (device.status[id] === "granted") {
+          device.titles[id] = await tauriInvoke("common_ground_device_titles", { source: id });
+          device.included.add(id);
+        }
+      } catch (e) { toast(String(e)); }
+      draw();
+    }));
+    app.querySelectorAll("[data-include]").forEach((el) => (el.onclick = () => {
+      sync();
+      const id = el.dataset.include;
+      device.included.has(id) ? device.included.delete(id) : device.included.add(id);
+      draw();
+    }));
+    app.querySelectorAll("[data-settings]").forEach((el) => (el.onclick = () => {
+      const pane = el.dataset.settings === "calendar" ? "Privacy_Calendars" : "Privacy_Reminders";
+      tauriInvoke("desktop_open_external_url", { url: `x-apple.systempreferences:com.apple.preference.security?${pane}` }).catch(() => toast("Open System Settings > Privacy & Security"));
+    }));
+    app.querySelectorAll("[data-setup]").forEach((el) => (el.onclick = () => toast(CONNECTORS.find((c) => c.id === el.dataset.setup).setup)));
+    app.querySelectorAll("[data-gh]").forEach((el) => (el.onclick = () => { sync(); githubAction(el.dataset.gh); }));
+    sync();
+    btn.onclick = async () => {
+      sync();
+      thinking(["Reading sources", "Building your card"]);
+      const allLinks = [github && `github.com/${github}`, links].filter(Boolean).join("; ");
+      try {
+        const r = await api("POST", "/v1/me/card/build", { use_agents: useAgents && state.sources.length > 0, links: allLinks, notes, device: deviceItems() });
+        state.me = { ...(state.me || {}), card: r.card }; state.matchCache = {}; state.results = null;
+        clearTimers();
+        stack.splice(0, stack.length, ["home"], ...(next && next !== "home" ? [[next]] : EMBED ? [] : [["card"]]));
+        render();
+        if (r.skipped?.length) toast(r.skipped.map((x) => x.reason).join(" "));
+      } catch (e) { clearTimers(); draw(e.message); }
+    };
+  }
+}
+
+// ---------- card ----------
+const TAG_MAX = 40;
+const CARD_SECTIONS = [["working_on", "Working on"], ["interests", "Interests"], ["can_help", "Can help with"], ["looking_for", "Looking for"]];
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const fmtDate = (d) => (d ? `${MONTHS[Number(d.slice(5, 7)) - 1]} ${Number(d.slice(8, 10))}, ${d.slice(0, 4)}` : "");
+
+function openUrl(url) {
+  if (!/^https?:\/\//i.test(url)) return;
+  const fallback = () => window.open(url, "_blank", "noopener,noreferrer");
+  if (tauriInvoke) tauriInvoke("desktop_open_external_url", { url }).catch(fallback);
+  else fallback();
+}
+
+function showRefs(topic) {
+  const prof = state.me?.card?.profile;
+  const info = prof?.topics?.[topic];
+  const rows = (info?.refs || []).map((id) => prof.evidence[id]).filter(Boolean);
+  const when = [info?.first_seen && `First seen ${fmtDate(info.first_seen)}`, info?.last_seen && info.last_seen !== info.first_seen && `Last seen ${fmtDate(info.last_seen)}`].filter(Boolean).join(" · ");
+  const row = (e) => {
+    const inner = `<div class="ref-meta">${esc(e.source)}${e.date ? ` · ${fmtDate(e.date)}` : ""}</div>
+      <div class="ref-title">${esc(e.title)}</div>${e.snippet && e.snippet !== e.title ? `<div class="ref-snip">${esc(e.snippet)}</div>` : ""}`;
+    return e.url ? `<a class="ref-row" href="${esc(e.url)}" data-url="${esc(e.url)}">${inner}</a>` : `<div class="ref-row">${inner}</div>`;
+  };
+  const back = document.createElement("div");
+  back.className = "sheet-back";
+  back.innerHTML = `<div class="sheet refs"><h2>${esc(topic)}</h2>${when ? `<div class="when">${when}</div>` : ""}
+    ${rows.length ? `<div class="group">${rows.map(row).join("")}</div>` : `<div class="when">No references</div>`}</div>`;
+  back.onclick = (e) => { if (e.target === back) back.remove(); };
+  back.querySelectorAll("[data-url]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); openUrl(a.dataset.url); }));
+  document.body.appendChild(back);
+}
+
+function paintCard(_arg, host = app) {
+  if (!state.me?.card) { if (EMBED) return; stack.pop(); return go("build"); }
+  let adding = null;
+  const card = () => state.me.card;
+
+  const tint = (t) => `background:color-mix(in srgb, var(${topicStyle(t).color}) 13%, transparent)`;
+  const dot = (t) => `<i style="background:var(${topicStyle(t).color})"></i>`;
+  const tag = (key, t, i) => `<span class="tag" style="${tint(t)}">${dot(t)}<span class="txt" data-ref="${esc(t)}">${esc(t)}</span>
+      <button class="tag-x" data-key="${key}" data-i="${i}" aria-label="Remove ${esc(t)}">×</button></span>`;
+  const refTag = (t, extra = "") => `<button class="tag ref ${extra}" style="${tint(t)}" data-ref="${esc(t)}" title="${esc(t)}">${dot(t)}<span class="txt">${esc(t)}</span></button>`;
+
+  const timeline = (prof) => {
+    // Past topics stay in the timeline, muted; undated ones get their own row.
+    const past = new Set(prof.earlier || []);
+    const placed = new Set((prof.timeline || []).flatMap((p) => p.topics));
+    const rows = (prof.timeline || []).map((p) => `<div class="tl-row ${p.topics.every((t) => past.has(t)) ? "past" : ""}"><div class="tl-when">${esc(p.period)}</div>
+      <div class="tags">${p.topics.map((t) => refTag(t, past.has(t) ? "small muted" : "small")).join("")}</div></div>`);
+    const undated = [...past].filter((t) => !placed.has(t));
+    if (undated.length) rows.push(`<div class="tl-row past"><div class="tl-when">Earlier</div>
+      <div class="tags">${undated.map((t) => refTag(t, "small muted")).join("")}</div></div>`);
+    return rows.length ? `<div class="section"><div class="section-title">Timeline</div><div class="group timeline">${rows.join("")}</div></div>` : "";
+  };
+
+  const draw = () => {
+    const c = card(), prof = c.profile || {};
+    host.innerHTML = `${EMBED
+        ? `<div class="cardhead">${avatar("You", 40)}<div class="grow"><div class="t">Your card</div><div class="s">Built by your agent</div></div><button class="small-btn quiet" onclick="go('build')">Rebuild card</button></div>`
+        : `${backButton()}<div class="hero">${avatar("You", 92, "hero-avatar")}<h1>Your card</h1><div class="status">Built by your agent</div></div>`}
+      ${prof.latest?.length ? `<div class="section"><div class="section-title">Now</div><div class="group tags">${prof.latest.map((t) => refTag(t)).join("")}</div></div>` : ""}
+      ${CARD_SECTIONS.map(([key, title]) => `<div class="section"><div class="section-title">${title}</div>
+        <div class="group tags">${c[key].map((t, i) => tag(key, t, i)).join("")}
+          ${adding === key
+            ? `<span class="tag add editing"><i></i><input id="new-tag" maxlength="${TAG_MAX}" placeholder="New topic" size="9"><span class="count"></span></span>`
+            : `<button class="tag add" data-add="${key}" aria-label="Add a topic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add</button>`}
+        </div></div>`).join("")}
+      ${timeline(prof)}
+      ${EMBED ? "" : `<button class="link" onclick="go('build')">Rebuild card</button>`}`;
+    host.querySelectorAll("[data-ref]").forEach((el) => (el.onclick = () => showRefs(el.dataset.ref)));
+    host.querySelectorAll(".tag-x").forEach((el) => (el.onclick = () => {
+      const next = edited();
+      next[el.dataset.key].splice(Number(el.dataset.i), 1);
+      save(next);
+    }));
+    host.querySelectorAll("[data-add]").forEach((el) => (el.onclick = () => { adding = el.dataset.add; draw(); }));
+    const input = document.getElementById("new-tag");
+    if (input) {
+      input.focus();
+      // Grow with the text so the field stays the size of a tag.
+      const count = input.nextElementSibling;
+      input.oninput = () => {
+        const n = input.value.length;
+        input.size = Math.max(9, n + 1);
+        count.textContent = n >= TAG_MAX - 10 ? `${n}/${TAG_MAX}` : "";
+        count.classList.toggle("full", n >= TAG_MAX);
+      };
+      let done = false;
+      const commit = () => {
+        if (done) return;
+        done = true;
+        const text = input.value.replace(/\s+/g, " ").trim();
+        const key = adding;
+        adding = null;
+        const next = edited();
+        if (text && !next[key].some((t) => t.toLowerCase() === text.toLowerCase())) { next[key].push(text); save(next); } else draw();
+      };
+      input.onkeydown = (e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") { done = true; adding = null; draw(); } };
+      input.onblur = commit;
+    }
+  };
+
+  const edited = () => Object.fromEntries(CARD_SECTIONS.map(([key]) => [key, [...card()[key]]]));
+
+  // Show the change right away, then take the server's card (with the updated profile).
+  const save = async (next) => {
+    Object.assign(state.me.card, next);
+    draw();
+    try { state.me.card = (await api("PUT", "/v1/me/card", next)).card; state.matchCache = {}; state.results = null; }
+    catch (e) { toast(e.message); }
+    if (EMBED || current()[0] === "card") draw();
+  };
+
+  draw();
+}
+
+// ---------- tap ----------
+function paintTap() {
+  app.innerHTML = `${backButton()}<div class="center"><div class="pulse"><b style="border-color:var(--pink)"></b><b style="border-color:var(--cyan)"></b><b style="border-color:var(--amber)"></b>
+    <div class="pair" id="pair">${avatar("You", 92, "ring hero-avatar")}</div></div>
+    <div><div style="font-size:${EMBED ? 17 : 20}px;font-weight:700" id="who">${EMBED ? "Looking for someone nearby" : "Hold near another iPhone"}</div><div style="color:var(--muted)" id="lab">${EMBED ? "Both of you open Common ground" : "Both phones unlocked"}</div></div></div>`;
+  later(async () => {
+    try {
+      const { person } = await api("POST", "/v1/tap");
+      if (current()[0] !== "tap") return;
+      document.getElementById("pair").insertAdjacentHTML("beforeend", avatar(person.name, 92, "ring hero-avatar fade"));
+      document.querySelectorAll(".pulse b").forEach((b) => (b.style.display = "none"));
+      document.getElementById("who").textContent = person.name;
+      document.getElementById("lab").textContent = person.lab;
+      later(() => consent(person), 900);
+    } catch (e) { toast(e.message); }
+  }, 2400);
+}
+
+function consent(person) {
+  const topics = shownTopics(state.me.card);
+  const sheet = document.createElement("div");
+  sheet.className = "sheet-back";
+  sheet.innerHTML = `<div class="sheet"><div class="pair" style="justify-content:center">${avatar("You", 56, "ring")}${avatar(person.name, 56, "ring")}</div>
+    <h2>Share card with ${esc(person.name)}?</h2><div style="color:var(--muted);font-size:14px">${topics.length} topics. No chats.</div>
+    <div class="pills" style="justify-content:center;margin-top:16px">${topics.map(pill).join("")}</div>
+    <button class="primary" id="share">Share card</button><button class="link" id="no">Not now</button></div>`;
+  document.body.appendChild(sheet);
+  sheet.querySelector("#no").onclick = () => back();
+  sheet.querySelector("#share").onclick = () => { sheet.remove(); stack.pop(); go("match", person.id); };
+}
+
+// ---------- code + lobby ----------
+function paintCode() {
+  state.code = "";
+  const draw = () => {
+    app.innerHTML = `${backButton()}<div class="hero" style="margin-top:20px"><h1>Join with code</h1><div class="status">Same code, same room</div></div>
+      <div class="dots">${[0, 1, 2, 3].map((i) => `<span class="${i < state.code.length ? "on" : ""}"></span>`).join("")}</div>
+      <div class="keypad">${["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"].map((k) => `<button class="key ${k ? "" : "blank"}" data-k="${k}" aria-label="${k === "⌫" ? "Delete" : k}">${k}</button>`).join("")}</div>`;
+    app.querySelectorAll(".key").forEach((el) => (el.onclick = () => press(el.dataset.k)));
+  };
+  const press = (k) => {
+    if (!k || state.code.length === 4 && k !== "⌫") return;
+    state.code = k === "⌫" ? state.code.slice(0, -1) : state.code + k;
+    draw();
+    if (state.code.length === 4) later(async () => {
+      try { state.room = await api("POST", `/v1/rooms/${state.code}/join`); stack.pop(); go("lobby", state.code); }
+      catch (e) { toast(e.message); state.code = ""; draw(); }
+    }, 250);
+  };
+  window.onkeydown = (e) => { if (current()[0] !== "code") return; if (/^\d$/.test(e.key)) press(e.key); if (e.key === "Backspace") press("⌫"); };
+  draw();
+}
+
+function paintLobby(code) {
+  const draw = () => {
+    const members = state.room?.members || [];
+    const everyone = [{ id: "me", name: "You", lab: "" }, ...members];
+    app.innerHTML = `${backButton()}<div class="hero">${gridAvatar(everyone, 92)}<h1>Room ${esc(code)}</h1><div class="status">${everyone.length} people</div></div>
+      <div class="section"><div class="group" style="--inset:68px">${everyone.map((p) => `<div class="row">${avatar(p.name, 40)}<div class="grow"><div class="name">${esc(p.id === "me" ? ME_NAME : p.name)}</div><div class="sub">${esc(p.id === "me" ? "You" : p.lab)}</div></div></div>`).join("")}</div></div>
+      <button class="primary" id="find" ${members.length < 2 ? "disabled" : ""} style="position:sticky;bottom:16px">Find common ground</button>`;
+    document.getElementById("find").onclick = find;
+  };
+  const poll = async () => {
+    try { state.room = await api("GET", `/v1/rooms/${code}`); } catch {}
+    if (current()[0] !== "lobby") return;
+    draw();
+    if ((state.room?.members.length || 0) < 20) later(poll, 1000);
+  };
+  const find = async () => {
+    clearTimers();
+    thinking([`Reading ${state.room.members.length + 1} cards`, "Finding overlap", "Grouping topics"]);
+    try { state.results = await api("POST", `/v1/rooms/${code}/results`); clearTimers(); stack.pop(); go("room", code); }
+    catch (e) { clearTimers(); toast(e.message); draw(); }
+  };
+  draw();
+  later(poll, 1000);
+}
+
+// ---------- room ----------
+function paintRoom(code, tab = "people") {
+  const r = state.results;
+  const everyone = [{ id: "me", name: "You" }, ...state.room.members];
+  const sug = r.suggestion;
+  const others = sug ? sug.people.filter((p) => p.id !== "me").map((p) => p.name) : [];
+  const names = others.length > 1 ? `${others.slice(0, -1).join(", ")} and ${others.at(-1)}` : others[0] || "";
+  app.innerHTML = `${backButton()}<div class="hero">${gridAvatar(everyone, 92)}<h1>Room ${esc(code)}</h1><div class="status">${everyone.length} people · ${r.topics.length} shared topics</div>
+      <div class="actions" style="grid-template-columns:repeat(4,1fr)">
+        <button class="tile" onclick="toast('Group created')">${svg("people")}Start group</button>
+        <button class="tile" onclick="toast('Invite sent')">${svg("calendar")}Meet</button>
+        <button class="tile" onclick="toast('Code copied')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 15V3M8 7l4-4 4 4"/><path d="M5 12v7h14v-7"/></svg>Share code</button>
+        <button class="tile" onclick="stack.splice(1); render()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10"/></svg>Leave</button>
+      </div></div>
+    ${sug ? `<div class="section"><div class="section-title">Suggested</div><div class="group"><div class="row" style="padding:12px 16px">${gridAvatar(sug.people, 40)}
+      <div class="grow"><div class="name">${esc(sug.label)}</div><div class="sub">You, ${esc(names)}</div></div><button class="small-btn" onclick="toast('Group created')">Start</button></div></div></div>` : ""}
+    <div class="seg"><button class="${tab === "people" ? "on" : ""}" id="t-people">People</button><button class="${tab === "topics" ? "on" : ""}" id="t-topics">Topics</button></div>
+    <div class="section"><div class="group" style="--inset:${tab === "people" ? 68 : 58}px">
+      ${tab === "people" ? r.people.map(rankedRow).join("")
+        : r.topics.map((t) => `<div class="row">${iconTile(t.label)}<div class="grow"><div>${esc(t.label)}</div><div class="sub">${t.people.length} people${t.people.some((p) => p.id === "me") ? " · includes you" : ""}</div></div>${gridAvatar(t.people, 34)}</div>`).join("")}
+    </div></div>`;
+  document.getElementById("t-people").onclick = () => paintRoom(code, "people");
+  document.getElementById("t-topics").onclick = () => paintRoom(code, "topics");
+}
+
+// ---------- match ----------
+async function paintMatch(pid, tab = "shared") {
+  let m = state.matchCache[pid];
+  if (!m) {
+    thinking(["Reading cards", "Finding overlap", "Writing reasons"]);
+    try { m = state.matchCache[pid] = await api("GET", `/v1/match/${pid}`); clearTimers(); }
+    catch (e) { clearTimers(); toast(e.message); return back(); }
+    if (current()[1] !== pid) return;
+  }
+  const name = esc(m.person.name);
+  const rows = (items, whose) => items.map((t) => `<div class="row">${iconTile(t.topic)}<div class="grow"><div>${esc(t.topic)}</div><div class="sub wrap">For ${whose} ${esc(t.for.charAt(0).toLowerCase() + t.for.slice(1))}</div></div></div>`).join("");
+  const trade = !m.you_bring.length && !m.they_bring.length
+    ? `<div class="section"><div class="group"><div class="row"><span style="color:var(--muted)">No clear trade yet</span></div></div></div>`
+    : [[m.you_bring, "You bring", `${name}'s`], [m.they_bring, `${name} brings`, "your"]].filter(([items]) => items.length)
+        .map(([items, title, whose]) => `<div class="section"><div class="section-title">${title}</div><div class="group" style="--inset:58px">${rows(items, whose)}</div></div>`).join("");
+  app.innerHTML = `${backButton()}<div class="hero"><div class="pair">${avatar("You", 80, "ring")}${avatar(m.person.name, 80, "ring")}</div><div class="badge">${m.score}% match</div>
+      <h1>${name}</h1><div class="status">${esc(m.person.lab)}</div>
+      <div class="actions" style="grid-template-columns:repeat(4,1fr)">
+        <button class="tile" id="add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="8" r="3.5"/><path d="M3.5 20c.8-3.4 3.4-5.5 6.5-5.5s5.7 2.1 6.5 5.5M18 8v6M15 11h6"/></svg>Add</button>
+        <button class="tile" id="idea"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></svg>Joint idea</button>
+        <button class="tile" id="meet">${svg("calendar")}Meet</button>
+        <button class="tile" onclick="toast('Chat opened')">${svg("social")}Chat</button>
+      </div></div>
+    <div class="seg"><button class="${tab === "shared" ? "on" : ""}" id="t-shared">Shared</button><button class="${tab === "trade" ? "on" : ""}" id="t-trade">Trade</button></div>
+    ${tab === "shared"
+      ? `<div class="section"><div class="group" style="--inset:58px">${m.shared.length ? m.shared.map((s) => `<div class="row">${iconTile(s.topic)}<div class="grow"><div>${esc(s.topic)}</div><div class="sub wrap">${esc(s.why)}</div></div></div>`).join("") : `<div class="row"><span style="color:var(--muted)">No direct overlap</span></div>`}</div></div>`
+      : trade}`;
+  document.getElementById("t-shared").onclick = () => paintMatch(pid, "shared");
+  document.getElementById("t-trade").onclick = () => paintMatch(pid, "trade");
+  document.getElementById("add").onclick = () => toast(`Request sent to ${m.person.name}`);
+  document.getElementById("meet").onclick = () => toast(`Invite sent to ${m.person.name}`);
+  document.getElementById("idea").onclick = () => {
+    const sheet = document.createElement("div");
+    sheet.className = "sheet-back";
+    sheet.innerHTML = `<div class="sheet" style="text-align:left"><h2 style="text-align:center;margin-top:0">Joint idea</h2>
+      <div class="group" style="margin-top:14px;padding:16px;line-height:1.5">${m.shared.map((s) => `<div style="margin-bottom:8px">${esc(s.why)}</div>`).join("")}<div><b>Next:</b> ${esc(m.next_step)}</div></div>
+      <button class="primary" id="share">Share with ${name}</button></div>`;
+    document.body.appendChild(sheet);
+    sheet.querySelector("#share").onclick = () => { sheet.remove(); toast("Shared as a document"); };
+    sheet.onclick = (e) => { if (e.target === sheet) sheet.remove(); };
+  };
+}
+
+stack.push(["home"]);
+render();
+</script>
+</body>
+</html>

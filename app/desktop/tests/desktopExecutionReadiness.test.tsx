@@ -115,7 +115,7 @@ test('execution waits for capability acknowledgement and ignores stale account r
     await view.render(<Probe accountId="acct_other" runtimeReady={false} />);
     assert.equal(ready, false);
     await waitFor(() => requests.length === 3);
-    assert.deepEqual(requests[2].input, { agentIds: [], digest: false });
+    assert.deepEqual(requests[2].input, { agentIds: [], digest: false, scheduled: false });
     // Restoring the same capability list must obtain a fresh acknowledgement,
     // even while its withdrawal is still in flight.
     await view.render(<Probe accountId="acct_other" />);
@@ -224,5 +224,6 @@ test('a Mac offers to run digests only with a provider on this Mac', async () =>
     await view.render(<Probe authChoice="cloud-login:work" />);
     await waitFor(() => inputs.length > published);
     assert.equal((inputs.at(-1) as { digest: boolean }).digest, false, 'a hosted-only route leaves digests to the cloud');
+    assert.equal((inputs.at(-1) as { scheduled: boolean }).scheduled, true, 'scheduled tasks still wait for this Mac');
   } finally { await view.close(); }
 });

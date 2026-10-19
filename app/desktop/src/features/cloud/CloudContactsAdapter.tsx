@@ -19,6 +19,7 @@ import { ContactsPage } from '@/kordi-app/pages';
 import type { Contact, ContactRequest } from '@/kordi-app/types';
 import { formatKordiHandle, normalizeKordiId } from './kordiId';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
+import { useCommonGroundPreviewEntry } from '@/features/commonGround/useCommonGroundPreviewEntry';
 
 type CloudContactsAdapterProps = {
   account: CloudAccount;
@@ -37,12 +38,18 @@ type CloudContactsAdapterProps = {
 export function CloudContactsAdapter({ account, contactsPageProps }: CloudContactsAdapterProps) {
   const cloud = useCloudContacts(account);
   const presence = useCloudPresence(account);
+  const commonGround = useCommonGroundPreviewEntry({
+    onSelectContact: contactsPageProps.onSelectContact,
+    onSelectRequest: contactsPageProps.onSelectRequest,
+    onCloseOverlay: contactsPageProps.onCloseOverlay,
+  }, account.displayName ?? undefined);
 
   const visibleCloudContacts = useMemo(() => {
     const search = contactsPageProps.contactSearch?.trim().toLowerCase() ?? '';
     const matches = search
       ? cloud.contacts.filter((contact) =>
-          (contact.name + ' ' + contact.subtitle + ' ' + (contact.sourceParticipantId ?? '')).toLowerCase().includes(search),
+          // Kordi IDs stay searchable even though rows show presence instead of the handle.
+          [contact.name, contact.subtitle, contact.detail, contact.sourceParticipantId ?? ''].join(' ').toLowerCase().includes(search),
         )
       : cloud.contacts;
     return dedupeCloudContacts(matches).map((contact) => {
@@ -50,6 +57,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       return {
         ...contact,
         presenceStatus: contact.systemContact ? 'online' : presence.statusForAccount(accountId),
+        presenceLastSeenAt: contact.systemContact || !accountId ? null : presence.snapshot[accountId]?.lastSeenAt ?? null,
       };
     });
   }, [contactsPageProps.contactSearch, cloud.contacts, presence]);
@@ -167,6 +175,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       onAddContactByNodeId={onAddContactByNodeId}
       onLookupContact={onLookupContact}
       onMessageContact={contactsPageProps.onMessageContact}
+      {...commonGround}
     />
   );
 }
