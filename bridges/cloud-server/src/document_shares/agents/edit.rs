@@ -2,7 +2,7 @@
 //!
 //! The gate in [`super::gating`] already limits this tool to a comment run a
 //! person started with their own agent on a document they can edit, and to
-//! the owner's own chat run on their Mac. A comment run edits its comment's
+//! the owner's own chat run. A comment run edits its comment's
 //! document. A chat run edits a document of its session the owner can edit,
 //! named by `attachmentId` when the session has several. The edit
 //! goes through the same save as a person's edit: revision check, annotation
