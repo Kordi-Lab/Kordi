@@ -77,18 +77,12 @@ export async function persistCloudSelfAgentCanonicalSyncPlan(
   const reconciledMessageMirrors: CloudSelfAgentCanonicalSyncPlan['mirrorReconciliations'] = [];
   for (const reconciliation of plan.mirrorReconciliations) {
     if (!shouldContinue()) return null;
-    let reconciled: boolean;
-    try {
-      reconciled = await persistence.reconcileMessageMirror(
-        reconciliation.preferredMessageId,
-        reconciliation.duplicateMessageId,
-      );
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `Unable to reconcile canonical mirror ${reconciliation.preferredMessageId} -> ${reconciliation.duplicateMessageId}: ${detail}`,
-      );
-    }
+    // A pair the store refuses stays two rows; it must not stop the batch,
+    // or no later Cloud update (such as a run's progress) is ever stored.
+    const reconciled = await persistence.reconcileMessageMirror(
+      reconciliation.preferredMessageId,
+      reconciliation.duplicateMessageId,
+    ).catch(() => false);
     if (reconciled) {
       reconciledMessageMirrors.push(reconciliation);
     }
