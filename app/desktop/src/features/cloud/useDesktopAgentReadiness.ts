@@ -9,6 +9,14 @@ import type { CloudMessageIndex } from './cloudMessageIndex';
 import { defaultCloudAgentId } from './cloudAgentIdentity';
 import { loadSession } from './session';
 import { macCanRunDigest } from '@/features/digest/digestMacRuns';
+import { withDeadline } from '@/lib/promiseDeadline';
+
+/**
+ * Longest one readiness publication may hold the serialized chain. Requests
+ * already time out sooner; this bound keeps a reply that never arrives (a
+ * webview reload mid-command) from stopping every later heartbeat.
+ */
+export const DESKTOP_READINESS_PUBLICATION_DEADLINE_MS = 60_000;
 
 export type CloudSelfAgentExecutionInput = {
   account: CloudAccount | null;
@@ -61,10 +69,13 @@ export function useDesktopAgentReadiness({
       publicationTail.current = publicationTail.current.then(async () => {
         try {
           if (cancelled) return;
-          const session = await loadSession();
-          if (!session?.token || session.accountId !== accountId || cancelled) return;
-          await client.desktopAgentExecution(session.token, 'ready', { agentIds: JSON.parse(agentIdsKey) as string[], digest, scheduled });
-          if (!cancelled) setAcknowledged(registration);
+          const published = await withDeadline((async () => {
+            const session = await loadSession();
+            if (!session?.token || session.accountId !== accountId || cancelled) return false;
+            await client.desktopAgentExecution(session.token, 'ready', { agentIds: JSON.parse(agentIdsKey) as string[], digest, scheduled });
+            return true;
+          })(), DESKTOP_READINESS_PUBLICATION_DEADLINE_MS, 'Desktop readiness did not finish in time.');
+          if (published && !cancelled) setAcknowledged(registration);
         } catch (error) {
           if (!cancelled) {
             setAcknowledged(null);

@@ -9,7 +9,13 @@
 // connection. This adapter releases the request as soon as the send settles and
 // always drains or cancels the response body before returning a buffered
 // Response, so a long-lived desktop session does not grow with every request.
+//
+// Every native step also settles when the caller's signal aborts. A response
+// body that stalls holds `fetch_read_body` open in Rust, and a command whose
+// reply never reaches the page (a webview reload) never settles at all, so a
+// caller's request deadline must not depend on the native reply arriving.
 import { invoke } from '@tauri-apps/api/core';
+import { untilAborted } from '@/lib/promiseDeadline';
 
 const ERROR_REQUEST_CANCELLED = 'Request cancelled';
 const NULL_BODY_STATUSES = new Set([101, 103, 204, 205, 304]);
@@ -65,7 +71,7 @@ async function readNativeBody(rid: number, signal?: AbortSignal | null): Promise
     }
     let chunk: Uint8Array;
     try {
-      chunk = chunkBytes(await invoke('plugin:http|fetch_read_body', { rid }));
+      chunk = chunkBytes(await untilAborted(invoke('plugin:http|fetch_read_body', { rid }), signal, cancelled));
     } catch (caught) {
       await releaseNativeResponse(rid);
       throw caught;
@@ -95,9 +101,9 @@ export async function nativeCloudFetch(input: RequestInfo | URL, init?: RequestI
   const headers = requestHeaders(request, init);
   if (signal?.aborted) throw cancelled();
 
-  const rid = await invoke<number>('plugin:http|fetch', {
+  const rid = await untilAborted(invoke<number>('plugin:http|fetch', {
     clientConfig: { method: request.method, url: request.url, headers, data },
-  });
+  }), signal, cancelled, (lateRid) => { void releaseNativeRequest(lateRid); });
   const abort = () => { void invoke('plugin:http|fetch_cancel', { rid }).catch(() => undefined); };
   if (signal?.aborted) {
     abort();
@@ -107,7 +113,12 @@ export async function nativeCloudFetch(input: RequestInfo | URL, init?: RequestI
   signal?.addEventListener('abort', abort);
   let response: NativeFetchResponse;
   try {
-    response = await invoke<NativeFetchResponse>('plugin:http|fetch_send', { rid });
+    response = await untilAborted(
+      invoke<NativeFetchResponse>('plugin:http|fetch_send', { rid }),
+      signal,
+      cancelled,
+      (late) => { void releaseNativeResponse(late.rid); },
+    );
   } finally {
     signal?.removeEventListener('abort', abort);
     void releaseNativeRequest(rid);
