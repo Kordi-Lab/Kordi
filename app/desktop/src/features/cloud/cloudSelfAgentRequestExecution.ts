@@ -20,6 +20,7 @@ import { cloudSelfAgentRuntimeSessionId } from './cloudAgentRuntime';
 import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
 import { handBackDesktopRun } from './cloudDesktopRunHandback';
+import { holdLeasedTurnSession } from './cloudLeasedTurnSessions';
 import { bindClaimedProjectSession } from '@/features/projects/claimedProjectSession';
 import {
   cloudDirectMessageAgentRuntimeRoute,
@@ -175,6 +176,7 @@ export async function executeCloudSelfAgentRequest({
   let lastTurn: DesktopChatTurnSnapshot | null = null;
   let settled = false;
   let localTurnStarted = false;
+  let releaseLeasedSession = () => {};
   // Before a local turn starts, a failure on this Mac (a slow cloud call, an
   // attachment, the runtime refusing the turn) hands the run back to the
   // cloud, which answers instead of the request failing. Returns `false` when
@@ -340,9 +342,11 @@ export async function executeCloudSelfAgentRequest({
               sessionId,
               token: session.token,
             });
-        if (isInactive()) return;
+        // A snapshot that returns after the turn ended would show it running again.
+        if (isInactive() || settled || lastTurn?.completed) return;
         mergeMessage(progress);
-        await syncMessages();
+        // The terminal reply waits on this chain; a full sync must not delay it.
+        void syncMessages().catch((error) => reportWarning('[cloud-self-agent-execution] progress sync failed', error));
       }).catch((error) => {
         reportWarning(
           '[cloud-self-agent-execution] progress publish failed',
@@ -383,6 +387,7 @@ export async function executeCloudSelfAgentRequest({
             attachments: request.attachments,
           })
         : request.attachments ?? [];
+      releaseLeasedSession = holdLeasedTurnSession(runtimeSessionId);
       const startedTurn = await startDesktopChatMessage(
         runtimeSessionId,
         prompt,
@@ -482,6 +487,7 @@ export async function executeCloudSelfAgentRequest({
   } finally {
     activeRequestsRef.current.delete(request.messageId);
     streamedTextByRequestIdRef.current.delete(request.messageId);
+    releaseLeasedSession();
     lease.dispose();
   }
 }
