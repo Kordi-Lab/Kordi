@@ -1,7 +1,7 @@
 import type { Editor } from '@tiptap/core';
 import { useEditorState } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
-import { Braces, Check, ChevronDown, Highlighter, Link2, List, MessageSquarePlus, SmilePlus } from 'lucide-react';
+import { Braces, Check, ChevronDown, Highlighter, Link2, List, MessageSquarePlus, SmilePlus, Trash2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 
 
@@ -65,6 +65,7 @@ export function DocumentBubbleMenu({
       style: activeBlockStyle(current),
       list: current.isActive('bulletList'),
       link: current.isActive('link'),
+      table: current.isActive('table'),
     }),
   });
   const toggle = (next: Panel) => setPanel((current) => (current === next ? null : next));
@@ -142,6 +143,14 @@ export function DocumentBubbleMenu({
               >
                 <Link2 aria-hidden="true" />
               </button>
+              {state.table ? (
+                <>
+                  <span className="app-document-selection-separator" aria-hidden="true" />
+                  <button type="button" aria-label="Delete table" title="Delete table" onClick={() => editor.chain().focus().deleteTable().run()}>
+                    <Trash2 aria-hidden="true" />
+                  </button>
+                </>
+              ) : null}
             </>
           ) : null}
         </div>

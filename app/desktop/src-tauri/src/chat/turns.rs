@@ -211,7 +211,7 @@ pub(super) async fn renew_execution_lease(
         .map_err(|_| "Execution lease unavailable")?;
     let start_watchdog = deadline.is_none();
     *deadline = Some(
-        std::time::Instant::now() + std::time::Duration::from_millis(remaining.min(30_000) as u64),
+        std::time::Instant::now() + std::time::Duration::from_millis(remaining.min(40_000) as u64),
     );
     drop(deadline);
     if start_watchdog {

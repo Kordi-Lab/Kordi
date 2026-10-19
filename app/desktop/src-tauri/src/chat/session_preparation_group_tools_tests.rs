@@ -330,3 +330,101 @@ async fn a_spawned_background_task_is_prepared_with_create_document() {
         .next_turn_system_prompt()
         .contains("create it with create_document"));
 }
+
+/// The owner's own request on the Mac: the spawned background session gets
+/// the parent turn's local tools (shell and file edits included), not the
+/// read-only report set, and never task_operator.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_owner_background_task_keeps_the_parent_local_tools() {
+    use kordi_cli::task_operator::{ChildAgentRunner, SpawnRequest};
+
+    let storage = crate::test_support::ScopedKordiStorageRoot::new("owner-background-tools");
+    let root = storage.root().to_path_buf();
+    let (home, app, cwd) = (root.join("home"), root.join("app"), root.join("cwd"));
+    for dir in [&home, &app, &cwd] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    let _env = EnvGuard::set(&[
+        ("HOME", home.into_os_string()),
+        ("APP_DATA_DIR", app.into_os_string()),
+        ("VITE_KORDI_CLOUD_API_BASE", "http://127.0.0.1:9".into()),
+        ("VITE_KORDI_DEV_PROFILE", "community".into()),
+    ]);
+    crate::cloud_session::store_session_for_test(OWNER).unwrap();
+
+    let parent_session = format!("cloud-agent:{OWNER}:direct:request:msg_disk");
+    let mut parent = DesktopRuntimeSession::create_with_id(cwd.clone(), &parent_session)
+        .await
+        .unwrap();
+    let context = vec![identity(OWNER, None)];
+    parent.sync_shared_context_messages(&context).unwrap();
+    prepare_desktop_session_for_send(
+        &DesktopChatManager::default(),
+        &mut parent,
+        cwd.clone(),
+        "Review my disk usage.",
+        (None, None),
+        Some("msg_disk"),
+        &context,
+        (None, None),
+    )
+    .await
+    .unwrap();
+    let parent_tools = parent.next_turn_tool_names().unwrap();
+    assert!(
+        parent_tools.iter().any(|tool| tool == "bash"),
+        "{parent_tools:?}"
+    );
+
+    let manager = DesktopChatManager::default();
+    crate::chat::background_tasks::ManagedChildAgentRunner::new(
+        manager.clone(),
+        parent_session.clone(),
+        Some("msg_disk".to_string()),
+        kordi_cli::desktop_runtime::DesktopRuntimeProfile::default(),
+    )
+    .with_shared_context(false, None, Some(identity(OWNER, None)))
+    .with_owner_local_tools(Some(parent_tools))
+    .spawn(SpawnRequest {
+        task_path: "/root/disk".into(),
+        task_name: "disk".into(),
+        task_title: "Review local disk usage".into(),
+        message: "Measure the largest folders in the home directory.".into(),
+        fork_turns: Some("none".into()),
+        write_scope: Vec::new(),
+        cwd,
+        parent_message_id: None,
+        attachment_paths: Vec::new(),
+    })
+    .await
+    .unwrap();
+
+    // The turn ends at the missing model sign-in, after its preparation.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !manager.turns.lock().await.values().all(|turn| {
+        turn.snapshot
+            .lock()
+            .map(|snapshot| snapshot.completed)
+            .unwrap_or(true)
+    }) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the background turn did not end"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let sessions: Vec<_> = manager.sessions.lock().await.values().cloned().collect();
+    assert_eq!(sessions.len(), 1);
+    let mut child = sessions[0].lock().await;
+    let tools = child.next_turn_tool_names().unwrap();
+    for name in ["bash", "edit", "write", "read"] {
+        assert!(tools.iter().any(|tool| tool == name), "{name}: {tools:?}");
+    }
+    assert!(
+        !tools.iter().any(|tool| tool == "task_operator"),
+        "{tools:?}"
+    );
+    assert!(!child
+        .next_turn_system_prompt()
+        .contains("Write scope: read-only"));
+}

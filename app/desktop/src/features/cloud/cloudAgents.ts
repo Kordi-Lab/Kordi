@@ -1,4 +1,5 @@
-import type { Agent } from '@/kordi-app/types';
+import { getLocalAgentAvatar } from '@/features/canonical/localAgentAvatar';
+import type { Agent, DesktopCollaborationAgent } from '@/kordi-app/types';
 import type { CloudSyncEvent } from './authClient';
 import type { CloudAgentAccessScope, CloudAgentResource, CloudAgentSkill, CloudAgentStatus } from './cloudAgentsClient';
 import {
@@ -120,6 +121,18 @@ export function normalizeCloudAgentDefinition(value: unknown): CloudAgentDefinit
 
 function cloudAgentId(definition: CloudAgentDefinition): string {
   return `cloud-agent:${definition.agentId}`;
+}
+
+/**
+ * Avatar fields for an agent listed on a collaboration host. The host's default agent is the
+ * user's own agent, so it takes the own-agent seed like the Chats and Contacts rows; its id
+ * (`cloud-agent:<account>`) is not a valid generated-avatar seed and would render blank.
+ */
+export function collaborationAgentAvatarFields(agent: Pick<DesktopCollaborationAgent, 'id' | 'isDefault' | 'profileImageUrl'>) {
+  return {
+    avatarSeed: agent.isDefault ? getLocalAgentAvatar().seed : agent.id,
+    profileImageUrl: agent.profileImageUrl?.trim() || null,
+  };
 }
 
 export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): Agent {

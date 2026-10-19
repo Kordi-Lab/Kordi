@@ -4,6 +4,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Archive, ChevronLeft } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { setSessionPanelSlot } from '@/app/sessionPanelSlot';
 import { ChatCreateDialog } from '@/pages/ChatCreateDialog';
 import { ChannelCreateDialog } from '@/pages/ChannelCreateDialog';
 import type {
@@ -29,8 +30,6 @@ import { useWorkspaceChatSidebarModel } from '@/pages/workspaceSidebar.chatModel
 import { ChatSidebarChrome } from '@/pages/workspaceSidebar.chrome';
 import { WorkspaceNavigationRail } from '@/pages/workspaceSidebar.navigation';
 import {
-  SidebarAgentsPanel,
-  SidebarContactsPanel,
   SidebarProjectsPanel,
   SidebarSettingsPanel,
 } from '@/pages/workspaceSidebar.panels';
@@ -291,7 +290,7 @@ export function WorkspaceSidebar({
                     ) : null}
 
                     {desktopChatError ? (
-                      <div className="app-error-text mb-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">
+                      <div className="app-error-text mb-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">
                         {desktopChatError}
                       </div>
                     ) : null}
@@ -325,11 +324,8 @@ export function WorkspaceSidebar({
                     onOpenCreate={() => setIsCreateProjectDialogOpen(true)}
                   />
                 ) : null}
-                {activeNav === 'contacts' ? (
-                  <SidebarContactsPanel directory={directory} />
-                ) : null}
-                {activeNav === 'agents' ? (
-                  <SidebarAgentsPanel directory={directory} />
+                {activeNav === 'contacts' || activeNav === 'agents' ? (
+                  <div ref={setSessionPanelSlot} className="app-session-panel-slot flex h-full min-h-0 flex-col" />
                 ) : null}
                 {activeNav === 'settings' ? <SidebarSettingsPanel /> : null}
               </div>

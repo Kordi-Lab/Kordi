@@ -28,7 +28,7 @@ import {
 } from './cloudSelfAgentResponseLifecycle';
 import {
   indexLocalSelfAgentMessagesByClientMessageId,
-  resolveCloudSelfAgentMirror,
+  resolveCloudSelfAgentMirror, backgroundFollowUpNoticeId,
   type CloudSelfAgentMirrorReconciliation,
 } from './cloudSelfAgentMirrorPlan';
 import {
@@ -199,7 +199,7 @@ export function planCloudSelfAgentCanonicalSync({
       : null;
     const resolvedRequestId = (mappedRequest && mappedRequest.sessionId !== sessionId ? null : mappedRequestId)
       ?? (existingParentRequest?.senderRole === 'user' && existingParentRequest.sessionId === sessionId
-        ? existingParentRequest.id : null);
+        ? existingParentRequest.id : backgroundFollowUpNoticeId(state.messages, sessionId, responseRequestId));
     const responseAnchorCreatedAtMs = responseRequestId && resolvedRequestId
       ? existingCanonicalMessageIndex.byId.get(resolvedRequestId)?.createdAtMs
         ?? requestCreatedAtMsByCloudMessageId.get(responseRequestId)
