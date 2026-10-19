@@ -1,5 +1,5 @@
 //! Issue 1808: a group turn on the Mac prepares the tools of its cloud lease
-//! for the model, and a background task gets the lease's create_document.
+//! for the model, and a background task gets the lease's document tools.
 //! These run the real preparation path, then read the tool list the next
 //! turn would hand to the model (Rust loop or OMP alike).
 
@@ -212,22 +212,32 @@ async fn group_turns_and_background_tasks_offer_create_document() {
         "{member:?}"
     );
 
-    // A background task: no lease of its own, the parent's create_document.
-    let child_lease = crate::chat::background_tasks::group_document_lease(Some(&group_lease()));
-    let child = prepared_tools(
-        &root,
-        "background-child",
-        vec![
-            crate::chat::background_tasks::resource_message_for_test(child_lease),
-            identity(OWNER, None),
-        ],
-    )
-    .await;
-    assert!(
-        child.iter().any(|tool| tool == CREATE_DOCUMENT_TOOL),
-        "{child:?}"
-    );
-    assert!(!child.iter().any(|tool| tool == "gmail_send"), "{child:?}");
+    // A background task: no lease of its own, the parent's document tools.
+    // The owner's request keeps read_document (issue 1889); a member's does
+    // not, even when the resource message carries it.
+    let child_lease =
+        crate::chat::background_tasks::group_document_lease(Some(&group_lease()), true);
+    for (requester, reads) in [(OWNER, true), (MEMBER, false)] {
+        let child = prepared_tools(
+            &root,
+            "background-child",
+            vec![
+                crate::chat::background_tasks::resource_message_for_test(child_lease.clone()),
+                identity(requester, None),
+            ],
+        )
+        .await;
+        assert!(
+            child.iter().any(|tool| tool == CREATE_DOCUMENT_TOOL),
+            "{child:?}"
+        );
+        assert_eq!(
+            child.iter().any(|tool| tool == "read_document"),
+            reads,
+            "{requester}: {child:?}"
+        );
+        assert!(!child.iter().any(|tool| tool == "gmail_send"), "{child:?}");
+    }
 
     // A lease without create_document: no tool and no guidance for it.
     let mut reader_lease = group_lease();
@@ -280,9 +290,10 @@ async fn a_spawned_background_task_is_prepared_with_create_document() {
         kordi_cli::desktop_runtime::DesktopRuntimeProfile::default(),
     )
     .with_shared_context(true, None, Some(identity(OWNER, None)))
-    .with_group_documents(crate::chat::background_tasks::group_document_lease(Some(
-        &group_lease(),
-    )));
+    .with_group_documents(crate::chat::background_tasks::group_document_lease(
+        Some(&group_lease()),
+        true,
+    ));
     runner
         .spawn(SpawnRequest {
             task_path: "/root/document".into(),
@@ -323,6 +334,11 @@ async fn a_spawned_background_task_is_prepared_with_create_document() {
     let tools = child.next_turn_tool_names().unwrap();
     assert!(
         tools.iter().any(|tool| tool == CREATE_DOCUMENT_TOOL),
+        "{tools:?}"
+    );
+    // Issue 1889: the owner's background task can read the group's documents.
+    assert!(
+        tools.iter().any(|tool| tool == "read_document"),
         "{tools:?}"
     );
     assert!(!tools.iter().any(|tool| tool == "gmail_send"), "{tools:?}");
