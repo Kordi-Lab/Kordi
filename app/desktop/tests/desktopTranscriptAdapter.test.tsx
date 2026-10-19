@@ -331,3 +331,45 @@ test('desktop transcript attachment mapping preserves file size and local previe
     sizeBytes: 276000,
   }]);
 });
+
+test('a timed-out turn keeps its partial reply as text and shows its failure once', async () => {
+  const { buildCompletedDesktopAssistantMessage } = await import('../src/features/chat/desktopLiveTurns');
+  const error = 'The agent timed out. Try again.';
+  const finished = buildCompletedDesktopAssistantMessage({
+    id: 'turn-follow-up',
+    sessionId: 'session-timeout',
+    prompt: '',
+    status: 'failed',
+    message: error,
+    assistantText: 'I will run a few bounded size checks.',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: false,
+    startedAtMs: 1_000,
+    completedAtMs: 601_000,
+    error,
+  }, 601_000);
+  assert.equal(finished.text, 'I will run a few bounded size checks.');
+  assert.equal(finished.error, error);
+
+  const mapped = mapDesktopMessagesForTranscript('session-timeout', [
+    { role: 'user', sender: 'Me', text: 'Review disk usage', timeLabel: '12:00', timestampMs: 500 },
+    // The runtime's own record of the failure, refreshed before the live reply lands.
+    { role: 'assistant', sender: 'Kordi', text: error, timeLabel: '12:10', timestampMs: 601_000, failed: true },
+    finished,
+  ]);
+
+  const replies = mapped.filter((message) => message.role === 'owned-agent');
+  assert.equal(replies.length, 1, 'the failure must not appear as a second reply');
+  assert.equal(replies[0].turn?.assistantText, 'I will run a few bounded size checks.');
+  assert.equal(replies[0].turn?.error, error);
+});
+
+test('a bare failure without a finished live reply still renders as the error', () => {
+  const [reply] = mapDesktopMessagesForTranscript('session-failure', [
+    { role: 'assistant', sender: 'Kordi', text: 'Provider unavailable.', timeLabel: '12:00', timestampMs: 10, failed: true },
+  ]);
+  assert.equal(reply.turn?.assistantText, '');
+  assert.equal(reply.turn?.error, 'Provider unavailable.');
+});
