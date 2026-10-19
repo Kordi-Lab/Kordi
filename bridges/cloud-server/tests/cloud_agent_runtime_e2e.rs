@@ -417,6 +417,8 @@ mod sandboxes;
 mod scheduled_mac_first;
 #[path = "cloud_agent_runtime_e2e/scheduled_runs.rs"]
 mod scheduled_runs;
+#[path = "cloud_agent_runtime_e2e/session_run_locks.rs"]
+mod session_run_locks;
 #[path = "cloud_agent_runtime_e2e/shared_desktop_lease.rs"]
 mod shared_desktop_lease;
 #[path = "cloud_agent_runtime_e2e/stop_requests.rs"]

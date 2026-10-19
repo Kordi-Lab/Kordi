@@ -54,9 +54,7 @@ pub(super) async fn claim(
         return Err(RunError::NotFound);
     };
     let mut tx = pool.begin().await?;
-    query("SELECT pg_advisory_xact_lock(81208411)")
-        .execute(&mut *tx)
-        .await?;
+    super::run_locks::lock_run(&mut tx, &run).await?;
     let eligible:(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsessions s JOIN cloud_agent_subsession_chat c ON c.subsession_id=s.subsession_id JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE s.subsession_id=$1 AND c.message_id=$2 AND s.owner_account_id=$3 AND s.publisher_device_id=$4 AND s.execution_backend='desktop' AND r.status='queued' AND s.status<>'running' AND EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=c.sender_account_id AND m.membership_state='active') AND EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=s.owner_account_id AND m.membership_state='active') AND EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities ready WHERE ready.device_id=$4 AND ready.agent_id=s.agent_id AND ready.updated_at>now()-interval '35 seconds') AND NOT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat earlier JOIN cloud_agent_fallback_runs e ON e.run_id=earlier.run_id WHERE earlier.subsession_id=s.subsession_id AND earlier.sequence<c.sequence AND e.status IN ('queued','leased','running')))")
         .bind(id).bind(message).bind(&session.account_id).bind(&session.device_id).fetch_one(&mut *tx).await?;
     if eligible.0 {
@@ -85,9 +83,7 @@ pub(crate) async fn revalidate(pool: &PgPool, run: &str) -> RunResult<bool> {
         .bind(run).fetch_optional(pool).await?;
     if valid.is_some_and(|value| !value.0) {
         let mut tx = pool.begin().await?;
-        query("SELECT pg_advisory_xact_lock(81208411)")
-            .execute(&mut *tx)
-            .await?;
+        super::run_locks::lock_run(&mut tx, run).await?;
         query("UPDATE cloud_agent_subsessions s SET status='stopped',execution_finished_at=COALESCE(execution_finished_at,now()),version=version+1,updated_at=now() FROM cloud_agent_fallback_runs r WHERE r.run_id=$1 AND s.subsession_id=r.subsession_id AND r.status IN ('leased','running')")
             .bind(run).execute(&mut *tx).await?;
         query("UPDATE cloud_agent_fallback_runs SET status='cancelled',completed_at=now()::text,updated_at=now()::text WHERE run_id=$1 AND status IN ('queued','leased','running')")
@@ -123,9 +119,7 @@ pub(super) async fn publish(
         return Err(RunError::NotFound);
     }
     let mut tx = pool.begin().await?;
-    query("SELECT pg_advisory_xact_lock(81208411)")
-        .execute(&mut *tx)
-        .await?;
+    super::run_locks::lock_run(&mut tx, run).await?;
     let owned:Option<(Uuid,Uuid,String,String,String)>=query_as("SELECT c.message_id,c.subsession_id,r.owner_account_id,r.requester_account_id,r.status FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE r.run_id=$1 AND r.claimed_by=$2 AND r.execution_backend='desktop' AND (r.status IN ('leased','running') AND r.lease_expires_at::timestamptz>now() OR r.status=$3 AND r.status IN ('completed','failed','cancelled') AND c.response_text=$4) FOR UPDATE OF r")
         .bind(run).bind(executor).bind(phase).bind(response["text"].as_str().unwrap_or_default()).fetch_optional(&mut *tx).await?;
     let (message, id, owner, requester, stored_status) = owned.ok_or(RunError::NotFound)?;

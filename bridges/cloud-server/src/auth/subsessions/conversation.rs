@@ -173,9 +173,8 @@ async fn store_message(
     invokes: bool,
 ) -> Result<Json<Snapshot>, ApiError> {
     let mut tx = pool.begin().await.map_err(db_error)?;
-    // ponytail: serialize subsession admission; use per-session locks if throughput requires it.
-    query("SELECT pg_advisory_xact_lock(81208411)")
-        .execute(&mut *tx)
+    // Serialize follow-up admission with the parent session's runs.
+    crate::cloud_agent_runtime::run_locks::lock_subsession(&mut tx, id, None)
         .await
         .map_err(db_error)?;
     let member:(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id WHERE s.subsession_id=$1 AND m.account_id=$2 AND m.membership_state='active')").bind(id).bind(&session.account_id).fetch_one(&mut *tx).await.map_err(db_error)?;
