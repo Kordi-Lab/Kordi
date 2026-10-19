@@ -458,6 +458,7 @@ fn capabilities_report_memory_version() {
         oauth_providers: Vec::new(),
         connectors_version: None,
         memory_version: 1,
+        common_ground_version: None,
     })
     .unwrap();
     assert_eq!(value["memoryVersion"], 1);

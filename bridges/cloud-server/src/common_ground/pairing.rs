@@ -1,0 +1,271 @@
+//! One-to-one pairing. One person shows a short code (as a QR code or
+//! text, or sends it over a phone tap); the other redeems it. A code lasts
+//! two minutes and works once. Pairing makes each card visible to the other.
+
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use axum::{
+    extract::{ConnectInfo, State},
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+    Extension, Json,
+};
+use chrono::{DateTime, Utc};
+use rand::Rng;
+use serde::Deserialize;
+use serde_json::json;
+use sha2::{Digest, Sha256};
+use sqlx_core::{query::query, query_as::query_as};
+
+use super::{
+    card, db_error, err, limited, people, PAIR_CODE_LIMIT, PAIR_IP_LIMIT, PAIR_REDEEM_LIMIT,
+};
+use crate::auth::rate_limit::{rate_limit_client_key, CloudRateLimiter, RateLimitDecision};
+use crate::{auth::routes::CloudSession, server::ServerState};
+
+/// Crockford base32 without I, L, O and U, so codes read aloud cleanly.
+const ALPHABET: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const CODE_CHARS: usize = 8;
+const CODE_SECONDS: i64 = 120;
+
+fn new_code() -> String {
+    let mut rng = rand::thread_rng();
+    (0..CODE_CHARS)
+        .map(|_| ALPHABET[rng.gen_range(0..ALPHABET.len())] as char)
+        .collect()
+}
+
+/// Upper case without separators; the commonly confused letters map to the
+/// digits they look like.
+pub(super) fn normalize(code: &str) -> String {
+    code.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| match c.to_ascii_uppercase() {
+            'O' => '0',
+            'I' | 'L' => '1',
+            other => other,
+        })
+        .collect()
+}
+
+fn hash(code: &str) -> String {
+    hex::encode(Sha256::digest(normalize(code).as_bytes()))
+}
+
+/// `ABCD-EFGH` for display.
+fn display(code: &str) -> String {
+    format!("{}-{}", &code[..4], &code[4..])
+}
+
+async fn observe(
+    rate_limiter: &CloudRateLimiter,
+    limits: &[(crate::auth::rate_limit::AccountActionLimit, &str)],
+) -> Result<(), Response> {
+    for (limit, key) in limits {
+        if let RateLimitDecision::Limited { retry_after } =
+            rate_limiter.observe_account_limit(*limit, key).await
+        {
+            return Err(limited(retry_after));
+        }
+    }
+    Ok(())
+}
+
+async fn require_shared_card(pool: &sqlx_postgres::PgPool, account: &str) -> Result<(), Response> {
+    match card::load(pool, account).await {
+        Ok(Some(row)) if row.has_card() && row.sharing => Ok(()),
+        Ok(Some(row)) if row.has_card() => Err(super::sharing_off()),
+        Ok(_) => Err(card::no_card()),
+        Err(error) => Err(db_error(error)),
+    }
+}
+
+/// `POST /v1/cloud/common-ground/pairings/code`: a fresh code to show.
+pub(super) async fn create(
+    State(state): State<Arc<ServerState>>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
+    Extension(session): Extension<CloudSession>,
+) -> Response {
+    let pool = state.db_pool();
+    let account = session.account_id.as_str();
+    if let Err(response) = observe(&rate_limiter, &[(PAIR_CODE_LIMIT, account)]).await {
+        return response;
+    }
+    if let Err(response) = require_shared_card(pool, account).await {
+        return response;
+    }
+    let code = new_code();
+    let result = async {
+        let mut tx = pool.begin().await?;
+        // Only the newest code works, and spent or expired codes are dropped.
+        query(
+            "DELETE FROM cloud_common_ground_pairing_codes
+             WHERE account_id = $1 OR expires_at < now() - interval '1 hour'",
+        )
+        .bind(account)
+        .execute(&mut *tx)
+        .await?;
+        let (expires_at,): (DateTime<Utc>,) = query_as(
+            "INSERT INTO cloud_common_ground_pairing_codes (code_hash, account_id, expires_at)
+             VALUES ($1, $2, now() + make_interval(secs => $3)) RETURNING expires_at",
+        )
+        .bind(hash(&code))
+        .bind(account)
+        .bind(CODE_SECONDS as f64)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok::<_, sqlx_core::Error>(expires_at)
+    }
+    .await;
+    match result {
+        Ok(expires_at) => (
+            StatusCode::CREATED,
+            Json(json!({ "code": display(&code), "expiresAt": expires_at })),
+        )
+            .into_response(),
+        Err(error) => db_error(error),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct RedeemRequest {
+    code: String,
+}
+
+fn code_not_found() -> Response {
+    err(
+        "common_ground_code_not_found",
+        "Code not found or expired.",
+        StatusCode::NOT_FOUND,
+    )
+}
+
+/// `POST /v1/cloud/common-ground/pairings/redeem`: pairs you with the
+/// person who showed the code and returns their card.
+pub(super) async fn redeem(
+    State(state): State<Arc<ServerState>>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
+    Extension(session): Extension<CloudSession>,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
+    Json(body): Json<RedeemRequest>,
+) -> Response {
+    let pool = state.db_pool();
+    let account = session.account_id.as_str();
+    let client =
+        crate::client_ip::resolve_client_ip(&headers, connect_info.map(|info| info.0.ip()));
+    let ip_key = format!("ip:{}", rate_limit_client_key(client));
+    let limits = [
+        (PAIR_REDEEM_LIMIT, account),
+        (PAIR_IP_LIMIT, ip_key.as_str()),
+    ];
+    if let Err(response) = observe(&rate_limiter, &limits).await {
+        return response;
+    }
+    if normalize(&body.code).len() != CODE_CHARS {
+        return code_not_found();
+    }
+    if let Err(response) = require_shared_card(pool, account).await {
+        return response;
+    }
+    let result = async {
+        let mut tx = pool.begin().await?;
+        let owner: Option<(String,)> = query_as(
+            "UPDATE cloud_common_ground_pairing_codes SET redeemed_at = now(), redeemed_by = $2
+             WHERE code_hash = $1 AND account_id <> $2 AND redeemed_at IS NULL
+               AND expires_at > now()
+             RETURNING account_id",
+        )
+        .bind(hash(&body.code))
+        .bind(account)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((owner,)) = owner else {
+            return Ok(None);
+        };
+        query(
+            "INSERT INTO cloud_common_ground_pairings (account_a, account_b)
+             VALUES (LEAST($1, $2), GREATEST($1, $2)) ON CONFLICT DO NOTHING",
+        )
+        .bind(account)
+        .bind(&owner)
+        .execute(&mut *tx)
+        .await?;
+        super::hint(
+            &mut tx,
+            &owner,
+            "common_ground.paired",
+            json!({ "accountId": account }),
+        )
+        .await?;
+        super::hint(
+            &mut tx,
+            account,
+            "common_ground.paired",
+            json!({ "accountId": owner }),
+        )
+        .await?;
+        tx.commit().await?;
+        Ok::<_, sqlx_core::Error>(Some(owner))
+    }
+    .await;
+    let owner = match result {
+        Ok(Some(owner)) => owner,
+        Ok(None) => return code_not_found(),
+        Err(error) => return db_error(error),
+    };
+    match people::shared_view(pool, account, &owner).await {
+        Ok(Some(view)) => (StatusCode::OK, Json(view)).into_response(),
+        // They turned sharing off a moment ago; the pairing stands.
+        Ok(None) => people::not_found(),
+        Err(error) => db_error(error),
+    }
+}
+
+type PairedRow = (String, Option<String>, Option<String>, DateTime<Utc>);
+
+/// `GET /v1/cloud/common-ground/pairings`: people you paired with, newest
+/// first.
+pub(super) async fn list(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+) -> Response {
+    let rows: sqlx_core::Result<Vec<PairedRow>> = query_as(
+        "SELECT account.account_id, account.display_name, account.avatar_url, pairing.created_at
+         FROM cloud_common_ground_pairings pairing
+         JOIN cloud_accounts account ON account.account_id =
+             CASE WHEN pairing.account_a = $1 THEN pairing.account_b ELSE pairing.account_a END
+         WHERE pairing.account_a = $1 OR pairing.account_b = $1
+         ORDER BY pairing.created_at DESC LIMIT 200",
+    )
+    .bind(&session.account_id)
+    .fetch_all(state.db_pool())
+    .await;
+    match rows {
+        Ok(rows) => {
+            let people: Vec<_> = rows
+                .into_iter()
+                .map(|(account_id, name, avatar_url, paired_at)| {
+                    let mut person =
+                        people::person(&account_id, name.as_deref(), avatar_url.as_deref());
+                    person["pairedAt"] = json!(paired_at);
+                    person
+                })
+                .collect();
+            (StatusCode::OK, Json(json!({ "people": people }))).into_response()
+        }
+        Err(error) => db_error(error),
+    }
+}
+
+#[cfg(test)]
+pub(super) fn display_for_tests(code: &str) -> String {
+    display(code)
+}
+
+#[cfg(test)]
+pub(super) fn new_code_for_tests() -> String {
+    new_code()
+}

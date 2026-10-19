@@ -93,12 +93,7 @@ pub(crate) async fn complete_run_with_service_auth(
     {
         return Ok(run);
     }
-    if run_id.starts_with(crate::digest::RUN_PREFIX) {
-        crate::digest::complete(pool, run_id, runner_id, response_text).await?;
-        return digest_run_response(pool, run_id).await;
-    }
-    if run_id.starts_with(crate::pip::RUN_PREFIX) {
-        crate::pip::store::complete(pool, run_id, runner_id, response_text).await?;
+    if super::feature_runs::complete(pool, run_id, runner_id, response_text).await? {
         return digest_run_response(pool, run_id).await;
     }
     if crate::document_shares::agents::complete_comment_run(pool, run_id, runner_id, response_text)
@@ -281,12 +276,7 @@ pub async fn fail_run(
     {
         return Ok(run);
     }
-    if run_id.starts_with(crate::digest::RUN_PREFIX) {
-        crate::digest::fail(pool, run_id, Some(runner_id), error_code).await?;
-        return digest_run_response(pool, run_id).await;
-    }
-    if run_id.starts_with(crate::pip::RUN_PREFIX) {
-        crate::pip::store::fail(pool, run_id, Some(runner_id), error_code).await?;
+    if super::feature_runs::fail(pool, run_id, runner_id, error_code).await? {
         return digest_run_response(pool, run_id).await;
     }
     let comments = crate::document_shares::agents::fail_comment_run;
