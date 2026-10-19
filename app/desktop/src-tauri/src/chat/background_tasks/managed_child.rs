@@ -42,7 +42,7 @@ pub(in crate::chat) struct ManagedChildAgentRunner {
     runtime_identity: Option<kordi_cli::desktop_runtime::DesktopChatContextMessage>,
     parent_route: Option<DesktopChatMessageRoute>,
     parent_hosted_auth: Option<InheritedHostedAuth>,
-    /// The parent lease reduced to `create_document` (issue 1808).
+    /// The parent lease reduced to its document tools (issues 1808, 1889).
     document_lease: Option<kordi_cli::desktop_runtime::DesktopCloudExecutionLease>,
     /// The parent turn's tools when the owner made the request on this Mac.
     owner_local_tools: Option<Vec<String>>,

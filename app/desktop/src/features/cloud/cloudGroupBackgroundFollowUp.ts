@@ -98,6 +98,7 @@ export async function publishCloudGroupBackgroundFollowUp(
     responseText: reply.text,
     responseDeliveryState: reply.deliveryState === 'complete' ? 'complete' : 'failed',
     responseTools: [],
+    responseTiming: reply.turn,
     requestId: reply.requestId,
     agentId: route.agentId,
     agentDisplayName: route.agentDisplayName,

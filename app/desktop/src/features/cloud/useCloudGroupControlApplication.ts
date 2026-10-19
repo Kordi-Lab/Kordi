@@ -117,12 +117,12 @@ export function cloudGroupAgentProcessingSlotForResponse(
         : message.senderIdentityId !== `agent:cloud:${trimmedSenderAccountId}`
     ) return false;
     const linkedRequestId =
-      cleanCloudText(message.parentMessageId)
-      || cleanCloudText(
+      cleanCloudText(
         typeof content.requestId === 'string'
           ? content.requestId
           : null,
       )
+      || cleanCloudText(message.parentMessageId)
       || cleanCloudText(
         typeof content.replyToMessageId === 'string'
           ? content.replyToMessageId
