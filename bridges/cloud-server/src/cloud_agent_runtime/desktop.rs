@@ -380,7 +380,11 @@ pub(super) async fn progress(
         query("UPDATE cloud_agent_fallback_runs SET status=$2, response_message_id=$3, updated_at=$4, completed_at=CASE WHEN $2 IN ('completed','failed','cancelled') THEN $4 ELSE NULL END WHERE run_id=$1")
             .bind(&run_id).bind(phase).bind(message.id.to_string()).bind(Utc::now().to_rfc3339()).execute(&mut *tx).await?;
         tx.commit().await?;
-        Ok(Some(json!({"messageId":message.id,"clientMessageId":message.client_message_id,"conversationId":message.conversation_id,"conversationSequence":message.conversation_sequence,"version":message.version,"fromAccountId":session.account_id,"toAccountId":conversation.1,"sessionId":session_id,"body":input.body,"createdAt":message.created_at,"deliveredAt":null,"readAt":null})))
+        // Answer with the stored reply, which carries the run's documents.
+        let (body, attachments) = crate::document_shares::agents::create::reply::stored_reply_fields(&message.content, &input.body);
+        let mut value = json!({"messageId":message.id,"clientMessageId":message.client_message_id,"conversationId":message.conversation_id,"conversationSequence":message.conversation_sequence,"version":message.version,"fromAccountId":session.account_id,"toAccountId":conversation.1,"sessionId":session_id,"body":body,"createdAt":message.created_at,"deliveredAt":null,"readAt":null});
+        if let Some(attachments) = attachments { value["attachments"] = attachments; }
+        Ok(Some(value))
     }.await;
     match result {
         Ok(Some(value)) => {
