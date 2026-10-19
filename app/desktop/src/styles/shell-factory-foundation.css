@@ -52,6 +52,28 @@
   background: color-mix(in oklab, var(--app-card-bg) 42%, var(--utility-background));
 }
 
+/* The rail in the sidebar session panel: same padding and backdrop as the Chats list. */
+.app-agent-studio-shell:not(:has(> .app-agent-studio-rail)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-agent-studio-rail.is-in-sidebar {
+  height: 100%;
+  padding: 10px;
+  border-right: 0;
+  background: transparent;
+}
+
+.app-agent-studio-rail.is-in-sidebar .app-agent-studio-rail-head {
+  gap: 0;
+  padding: 0 0 8px;
+  border-bottom: 0;
+}
+
+.app-agent-studio-rail.is-in-sidebar .app-agent-studio-agent-list {
+  padding: 0;
+}
+
 .app-agent-studio-rail-head {
   display: grid;
   gap: 12px;
