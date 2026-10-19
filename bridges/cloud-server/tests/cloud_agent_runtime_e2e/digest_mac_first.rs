@@ -110,6 +110,17 @@ impl Fixture {
     }
 
     async fn mac_claim(&self, run_id: &str, claim_id: uuid::Uuid) -> Value {
+        self.mac_claim_with_route(run_id, claim_id, Value::Null)
+            .await
+    }
+
+    /// The Mac's claim, naming its route when that is a hosted account.
+    async fn mac_claim_with_route(
+        &self,
+        run_id: &str,
+        claim_id: uuid::Uuid,
+        route: Value,
+    ) -> Value {
         let (status, body) = self
             .post(
                 "/v1/cloud/agent-runs/desktop/claim",
@@ -121,6 +132,7 @@ impl Fixture {
                     "requesterAccountId": self.owner.account_id,
                     "prompt": "digest",
                     "idempotencyKey": run_id,
+                    "runtimeRoute": route,
                 }),
             )
             .await;
@@ -271,5 +283,44 @@ async fn a_mac_that_cannot_finish_hands_the_digest_to_the_cloud_at_once() {
     let (status, _) = fx.post(&release, json!({"claimId": claim_id})).await;
     assert_eq!(status, StatusCode::OK);
     assert!(runner_can_lease(&fx.router, &run_id).await);
+    fx.finish().await;
+}
+
+#[tokio::test]
+async fn a_mac_with_a_hosted_account_gets_that_accounts_credentials_for_the_digest() {
+    std::env::set_var(
+        "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
+        "test-provider-auth-key-that-is-long-enough",
+    );
+    let Some(fx) = fixture("digest-mac-hosted", true).await else {
+        return;
+    };
+    let run_id = fx.refresh().await;
+    // The owner's default route on the Mac is a hosted account.
+    let (status, saved) = fx
+        .post(
+            "/v1/cloud/agent-provider-auth/snapshots?intent=explicit",
+            json!({"provider":"openai","authChoice":"cloud-api-key:work",
+                "payload":{"apiKey":"synthetic-hosted-key","baseUrl":"https://api.openai.com/v1","model":"gpt-4.1-mini"}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{saved}");
+    let claim_id = uuid::Uuid::new_v4();
+    let route = json!({"defaultModel":"openai/gpt-4.1-mini","defaultAuthProvider":"openai",
+        "defaultAuthChoice":"cloud-api-key:work"});
+    let claimed = fx.mac_claim_with_route(&run_id, claim_id, route).await;
+    assert_eq!(claimed["acquired"], true);
+    let (status, material) = fx
+        .post(
+            &format!("/v1/cloud/agent-runs/{run_id}/desktop/provider-auth"),
+            json!({"claimId": claim_id}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{material}");
+    assert_eq!(material["providerAuth"]["authChoice"], "cloud-api-key:work");
+    assert_eq!(
+        material["providerAuth"]["payload"]["apiKey"],
+        "synthetic-hosted-key"
+    );
     fx.finish().await;
 }

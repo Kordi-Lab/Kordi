@@ -115,6 +115,11 @@ pub struct RunLimits {
     pub max_tool_calls: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_steps: Option<usize>,
+    /// When set, the run also fails after this long without a worker frame
+    /// while no host tool or hook is running; `timeout_ms` stays the hard cap.
+    /// A long local command that is still running is not idle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idle_timeout_ms: Option<u64>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -127,6 +132,22 @@ pub struct CompactionSettings {
     pub threshold_tokens: Option<u32>,
 }
 
+/// The hard cap of a run with an idle timeout; other runs keep one hour.
+pub const MAX_RUN_TIMEOUT_MS: u64 = 24 * 60 * 60 * 1000;
+
+impl RunLimits {
+    /// A turn on the person's own device. Long local commands may run as long
+    /// as they need: the turn fails only after ten minutes with no progress
+    /// and no running host tool, or at the hard cap. The person can stop it.
+    pub fn local_device() -> Self {
+        Self {
+            timeout_ms: MAX_RUN_TIMEOUT_MS,
+            idle_timeout_ms: Some(600_000),
+            ..Self::default()
+        }
+    }
+}
+
 impl Default for RunLimits {
     fn default() -> Self {
         Self {
@@ -136,6 +157,7 @@ impl Default for RunLimits {
             max_output_bytes: 32 * 1024 * 1024,
             max_tool_calls: None,
             max_steps: None,
+            idle_timeout_ms: None,
         }
     }
 }

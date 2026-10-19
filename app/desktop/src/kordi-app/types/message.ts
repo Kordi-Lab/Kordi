@@ -284,6 +284,8 @@ export type Message = {
    * messages. This preserves support-specific report actions without routing
    * the row through the live-agent turn UI. */
   supportContactResponse?: boolean;
+  /** Request identity retained when Support turns become ordinary contact messages. */
+  supportContactRequestId?: string | null;
   /** A pending Kordi Support response rendered as contact-style typing dots.
    * The underlying agent turn is intentionally removed from the presentation
    * model so the generic agent processing card cannot leak into this chat. */

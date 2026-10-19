@@ -4,6 +4,7 @@ import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
 import { cloudFetchImpl } from './cloudTransport';
 import { waitForCloudAgentTurn } from './cloudAgentLocalExecution';
 import { startDesktopSharedChatMessage } from '@/lib/desktopBackgroundSessions';
+import { claimRuntimeRoute } from '@/features/digest/digestMacRuns';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
 // Scheduled tasks on this Mac. While this Mac is ready, the server holds each
@@ -73,7 +74,7 @@ export async function runScheduledOnMac(
   const lease = await (runtime.acquireLease ?? acquireDesktopExecutionLease)(client, token, {
     requestMessageId: run.requestMessageId, sessionId: run.sessionId, ownerAccountId: accountId,
     requesterAccountId: run.requesterAccountId, prompt: run.prompt, idempotencyKey: `scheduled:${run.requestMessageId}`,
-    runtimeRoute: route ? { defaultModel: route.model, defaultAuthProvider: route.authProvider, defaultAuthChoice: route.authChoice, thinking: route.thinking } : undefined,
+    runtimeRoute: claimRuntimeRoute(route),
   });
   if (!lease) return 'not-acquired';
   const path = encodeURIComponent(lease.runId);

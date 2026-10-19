@@ -1,4 +1,7 @@
 import { useRef } from 'react';
+import { createPortal } from 'react-dom';
+
+import { useSessionPanelSlot } from '@/app/sessionPanelSlot';
 
 import { cn } from '@/lib/utils';
 import { ContactDetailDialog, ContactDetailEmpty, ContactDetailPane } from './ContactDetailPane';
@@ -26,7 +29,9 @@ export function ContactsPage(props: ContactsPageProps) {
     leadingDetail,
   } = props;
   const rootRef = useRef<HTMLDivElement>(null);
-  const isNarrow = useIsNarrowContainer(rootRef, CONTACTS_SPLIT_MIN_WIDTH);
+  const slot = useSessionPanelSlot();
+  // With the list in the sidebar the detail always has the page to itself.
+  const isNarrow = useIsNarrowContainer(rootRef, CONTACTS_SPLIT_MIN_WIDTH) && !slot;
   const requests = usePartitionedContactRequests(props.contactRequests);
   const requestActions = useContactRequestActions(props.onAcceptRequest, props.onRejectRequest);
   const selectedRequest = useSelectedContactRequest(props.contactRequests, props.activeContactRequestId, activeContactRequest);
@@ -47,11 +52,13 @@ export function ContactsPage(props: ContactsPageProps) {
     requestActions,
   } : null;
 
+  const listProps = { ...props, requests, requestActions, fullWidth: isNarrow };
+
   return (
     <div ref={rootRef} className={cn('app-contacts-page relative flex h-full min-h-0 min-w-0 flex-1', isNarrow && 'is-narrow')}>
-      {isNarrow && hasLeadingDetail ? null : (
-        <ContactsListColumn {...props} requests={requests} requestActions={requestActions} fullWidth={isNarrow} />
-      )}
+      {slot
+        ? createPortal(<ContactsListColumn {...listProps} inSidebar />, slot)
+        : isNarrow && hasLeadingDetail ? null : <ContactsListColumn {...listProps} inSidebar={false} />}
       {hasLeadingDetail ? (
         <div className="app-contacts-detail-pane app-contacts-leading-detail relative flex min-h-0 min-w-0 flex-1 flex-col">
           {leadingDetail}

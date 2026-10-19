@@ -126,5 +126,6 @@ mod catalog;
 mod delivery;
 mod membership;
 mod message_mirror;
+mod message_mirror_follow_up;
 mod message_mirror_reply_echo;
 mod session_routes;

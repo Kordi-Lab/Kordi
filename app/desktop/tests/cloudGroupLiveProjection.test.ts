@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { projectCloudGroupLiveTurns } from '../src/features/cloud/cloudGroupLiveProjection';
+import { projectCloudGroupLiveTurns, projectCloudSelfAgentLiveTurns } from '../src/features/cloud/cloudGroupLiveProjection';
 import { cloudGroupAgentRuntimeSessionId } from '../src/features/cloud/cloudAgentRuntime';
 import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 import type { CanonicalSessionState, DesktopChatTurnSnapshot } from '../src/kordi-app/types';
@@ -54,4 +54,37 @@ test('peer, account, request, and group boundaries cannot project private progre
 test('authoritative terminal replies and subsequent edits win over retained local snapshots', () => {
   const final = { ...state, messages: [{ ...state.messages[0], status: 'received', contentText: 'Edited public answer', content: { deliveryState: 'complete' } }] };
   assert.equal(projectCloudGroupLiveTurns(final, { request: { ...turn, completed: true, assistantText: 'Old answer' } }, 'owner'), final);
+});
+
+const selfState = {
+  profile: { humanIdentityId: 'human:owner' },
+  identities: [{ id: 'agent:cloud-self:owner', kind: 'agent', ownerIdentityId: 'human:owner', displayName: 'Named agent' }],
+  sessions: [{ id: 'self-session', kind: 'self-agent' }],
+  messages: [{ id: 'msg:cloud:self:response:request', sessionId: 'self-session', senderIdentityId: 'agent:cloud-self:owner',
+    senderRole: 'owned-agent', messageKind: 'agent-turn', parentMessageId: 'local-request', sourceTransport: 'cloud-self-agent',
+    status: 'processing', contentText: '', createdAtMs: 1000, sequenceNum: 2,
+    content: { deliveryState: 'processing', cloudRequestMessageId: 'request', requestId: 'local-request' } }],
+} as CanonicalSessionState;
+const runningCommand: DesktopChatTurnSnapshot = {
+  id: 'runtime-turn', sessionId: 'self-session', prompt: '', status: 'tooling', message: 'Running tool…',
+  assistantText: '', thinkingText: '', completed: false, succeeded: false, startedAtMs: 1500,
+  tools: [{ id: 'call-du', name: 'bash', arguments: '{"command":"du -x -k -d 1 ."}', liveOutput: '', status: 'running', isError: false }],
+};
+
+test('a self-agent request run on this Mac shows its running command before any output or publish', () => {
+  const projected = projectCloudSelfAgentLiveTurns(selfState, { request: runningCommand })!;
+  const mapped = mapCanonicalMessage(projected.messages[0], new Map(projected.identities.map(identity => [identity.id, identity])), 'human:owner')!;
+  assert.equal(mapped.turn?.tools.length, 1);
+  assert.equal(mapped.turn?.tools[0].status, 'running');
+  assert.equal(mapped.turn?.tools[0].arguments, runningCommand.tools[0].arguments);
+  assert.equal(mapped.turn?.status, 'tooling');
+});
+
+test('self-agent progress stays on its own request, session, and owner', () => {
+  assert.equal(projectCloudSelfAgentLiveTurns(selfState, { other: runningCommand }), selfState);
+  assert.equal(projectCloudSelfAgentLiveTurns(selfState, { request: { ...runningCommand, sessionId: 'other-session' } }), selfState);
+  const peer = { ...selfState, profile: { humanIdentityId: 'human:peer' } } as CanonicalSessionState;
+  assert.equal(projectCloudSelfAgentLiveTurns(peer, { request: runningCommand }), peer);
+  const final = { ...selfState, messages: [{ ...selfState.messages[0], status: 'received', contentText: 'Done', content: { ...selfState.messages[0].content as object, deliveryState: 'complete' } }] } as CanonicalSessionState;
+  assert.equal(projectCloudSelfAgentLiveTurns(final, { request: runningCommand }), final);
 });

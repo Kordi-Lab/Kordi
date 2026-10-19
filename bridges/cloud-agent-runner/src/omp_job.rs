@@ -93,6 +93,7 @@ impl Job<'_> {
                 timeout_ms: self.timeout_ms,
                 max_output_bytes: 16 * 1024 * 1024,
                 max_steps: None,
+                idle_timeout_ms: None,
                 max_tool_calls: None,
             },
         })
