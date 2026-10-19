@@ -10,6 +10,7 @@ import StarterKit from '@tiptap/starter-kit';
 
 import { DocumentCodeBlocks } from './documentCodeBlocks';
 import { DocumentHighlight, DocumentUnderline } from './documentEditorMarks';
+import { DocumentTables } from './documentTables';
 import { ROOM_FIELD, type CollabUser, type DocumentRoom } from './documentRoom';
 import { newBlockId } from '../newBlockId';
 
@@ -48,6 +49,7 @@ export function documentEditorExtensions(extra: AnyExtension[] = [], collab: { r
     TaskList,
     TaskItem.configure({ nested: true }),
     TableKit.configure({ table: { resizable: false } }),
+    DocumentTables,
     Image.configure({ inline: false, allowBase64: false }),
     UniqueID.configure({
       types: BLOCK_TYPES,
