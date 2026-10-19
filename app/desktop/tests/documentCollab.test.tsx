@@ -355,3 +355,22 @@ test('a stale room takes the snapshot version of the blocks that differ, by id, 
     }
   });
 });
+
+test('a stale room keeps its content unchanged when the snapshot is empty', async () => {
+  await withJsdomRoot(async () => {
+    const { Editor: HeadlessEditor } = await import('@tiptap/core');
+    const { documentEditorExtensions } = await import('../src/features/documents/editor/documentEditorExtensions');
+    const { parseBlocks } = await import('../src/features/documents/editor/documentBlockIds');
+    const { reconciledContent } = await import('../src/features/documents/editor/documentEditorSync');
+    const editor = new HeadlessEditor({ extensions: documentEditorExtensions() });
+    try {
+      const room = parseBlocks(editor.markdown!, [
+        { id: 'k:aaaaaaaa', source: '# Title' },
+        { id: 'k:bbbbbbbb', source: 'Room text.' },
+      ]).doc;
+      assert.deepEqual(reconciledContent(editor, room, []), room, 'no blank paragraph is added');
+    } finally {
+      editor.destroy();
+    }
+  });
+});
