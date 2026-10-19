@@ -2,6 +2,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEventHandler } from 'react';
 
 import { CloudStartingScreen } from '@/features/cloud/CloudStartingScreen';
+import { reopenCloudOAuthBrowser } from '@/features/cloud/cloudOAuthSignIn';
 
 import { AppShellFrame } from '@/app/AppShellFrame';
 import { useNativeViewport } from '@/app/useNativeViewport';
@@ -254,7 +255,7 @@ function CloudEditionRoot({
     enabled: cloudSessionOverride === undefined,
   });
   const session = cloudSessionOverride ?? liveSession;
-  const { activity, signIn, signUp, socialSignIn, cancelSocialSignIn, signOut } = useCloudAuthTransition({
+  const { activity, socialProvider, signIn, signUp, socialSignIn, cancelSocialSignIn, signOut } = useCloudAuthTransition({
     ...session, signOut: liveSession.signOut,
   });
   const presentedSession = useMemo(() => ({ ...liveSession, signOut }), [liveSession, signOut]);
@@ -289,6 +290,8 @@ function CloudEditionRoot({
           status={status === 'authenticated' && sync.status === 'error' ? 'error' : 'syncing'}
           onRetry={sync.onRetry}
           onCancelSignIn={signedOut && activity === 'social-signing-in' ? cancelSocialSignIn : undefined}
+          onReopenSignIn={reopenCloudOAuthBrowser}
+          signInProvider={socialProvider ?? undefined}
         />
         {signedOut ? (
           <div className="app-cloud-login-surface" data-ready={loginReady} inert={!loginReady}>
