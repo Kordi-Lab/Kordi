@@ -34,6 +34,25 @@ pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
             .bind(super::changes::SAFETY_CHECK_MINUTES as i32)
             .fetch_all(state.db_pool())
             .await;
+            // Marked messages that may be urgent get their quick check once
+            // a burst has settled.
+            let urgent: Result<Vec<(String,)>, _> = query_as(
+                "SELECT account_id FROM cloud_account_digests
+                 WHERE urgent_since <= now() - make_interval(secs => $1)
+                   AND active_run_id IS NULL AND retry_after <= now()
+                 ORDER BY urgent_since LIMIT 20",
+            )
+            .bind(super::urgent::SETTLE_SECONDS as f64)
+            .fetch_all(state.db_pool())
+            .await;
+            for (account,) in urgent.unwrap_or_default() {
+                if super::urgent::start(state.db_pool(), &account)
+                    .await
+                    .is_err()
+                {
+                    tracing_failure();
+                }
+            }
             if let Ok(accounts) = accounts {
                 for (account,) in accounts {
                     if super::store::refresh_as(

@@ -25,6 +25,11 @@ export type DigestResponse = {
   errorProvider?: string | null;
   feedback: { id: string; status: 'dismissed' | 'task'; taskId?: string | null }[];
 };
+/** The digest model choice: "fast", "chat", or a model id. */
+export type DigestSettings = {
+  model: string; thinking: string;
+  provider?: string | null; fastModel?: string | null; chatModel?: string | null;
+};
 export type CalendarEvent = {
   id: string; title: string; startAt: string; endAt?: string | null; reminderAt?: string | null;
   allDay: boolean; sourceIds: string[]; description: string; externalUid?: string | null; revision: number;

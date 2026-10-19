@@ -5,7 +5,6 @@ use sha2::{Digest, Sha256};
 use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
 use std::collections::{BTreeSet, HashMap};
-use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, sqlx_core::Error>;
 pub use super::cadence::{fail, Trigger};
@@ -197,6 +196,7 @@ pub async fn input(
             Utc::now() - chrono::Duration::days(7),
         )
         .await?,
+        triage: false,
     })
 }
 
@@ -247,13 +247,19 @@ pub async fn refresh_as(pool: &PgPool, account: &str, trigger: Trigger) -> Resul
         Option<String>,
         Option<Value>,
         Option<chrono::DateTime<Utc>>,
+        bool,
     );
-    let row:Option<DigestState>=query_as("SELECT locale,timezone,input_hash,snapshot_json,active_run_id,snapshot_input_json,last_change_at FROM cloud_account_digests WHERE account_id=$1 AND (retry_after<=now() OR $2)").bind(account).bind(trigger == Trigger::Manual).fetch_optional(pool).await?;
-    let Some((locale, timezone, old_hash, snapshot, active, saved_input, seen_change)) = row else {
+    // A full rebuild is due with the first run after 06:00 in the owner's
+    // timezone each day.
+    let row:Option<DigestState>=query_as("SELECT locale,timezone,input_hash,snapshot_json,active_run_id,snapshot_input_json,last_change_at,last_full_at IS NULL OR last_full_at < (date_trunc('day', now() AT TIME ZONE timezone - interval '6 hours') + interval '6 hours') AT TIME ZONE timezone FROM cloud_account_digests WHERE account_id=$1 AND (retry_after<=now() OR $2)").bind(account).bind(trigger.requested()).fetch_optional(pool).await?;
+    let Some((locale, timezone, old_hash, snapshot, active, saved_input, seen_change, full_due)) =
+        row
+    else {
         return Ok(());
     };
-    let automatic = trigger == Trigger::Automatic;
-    if active.is_some() || (automatic && !super::cadence::within_caps(pool, account).await?) {
+    let automatic = !trigger.requested();
+    let full = trigger == Trigger::Full;
+    if active.is_some() || !super::cadence::within_caps(pool, account, trigger).await? {
         return Ok(());
     }
     let previous = snapshot.and_then(|v| serde_json::from_value(v).ok());
@@ -284,12 +290,12 @@ pub async fn refresh_as(pool: &PgPool, account: &str, trigger: Trigger) -> Resul
         );
     }
     let hash = input_hash(&input);
-    if hash == old_hash {
+    if hash == old_hash && !full {
         return Ok(());
     }
     if let Some(saved) = saved.as_ref().filter(|_| input.previous.is_some()) {
         let changes = super::incremental::Changes::between(saved, &input);
-        if changes.is_empty() {
+        if changes.is_empty() && !full {
             query("UPDATE cloud_account_digests SET input_hash=$2,error_code=NULL WHERE account_id=$1 AND active_run_id IS NULL")
                 .bind(account).bind(&hash).execute(pool).await?;
             return Ok(());
@@ -302,45 +308,18 @@ pub async fn refresh_as(pool: &PgPool, account: &str, trigger: Trigger) -> Resul
     if automatic && !super::changes::relevant(saved.as_ref(), input.changes.as_ref(), account) {
         return Ok(());
     }
+    // Other runs send only the changes since the saved snapshot; a full
+    // rebuild sends the whole input and reconciles every saved item.
+    if full || full_due {
+        input.changes = None;
+    }
     if input.sources.is_empty() {
         query("UPDATE cloud_account_digests SET snapshot_json=$2,snapshot_input_json=$3,input_json=$3,input_hash=$4,error_code=NULL,revision=revision+1,updated_at=now() WHERE account_id=$1 AND active_run_id IS NULL")
             .bind(account).bind(serde_json::to_value(Output::default()).unwrap()).bind(serde_json::to_value(&input).unwrap()).bind(&hash).execute(pool).await?;
         return Ok(());
     }
-    // The run names the account it uses, so the runner resolves the same one
-    // this check found even when the owner holds several saved accounts.
-    let session = format!("digest:{account}");
-    let Some(route) = super::fallback::route(pool, account, &session).await? else {
-        // Saved accounts that all need reconnecting are a sign-in problem, not a missing provider.
-        let (live,):(i64,)=query_as("SELECT COUNT(*) FROM cloud_agent_provider_auth_snapshots WHERE account_id=$1 AND revoked_at IS NULL").bind(account).fetch_one(pool).await?;
-        let code = if live > 0 {
-            "provider_auth_rejected"
-        } else {
-            "missing_provider_auth"
-        };
-        query("UPDATE cloud_account_digests SET error_code=$2,retry_after=now()+interval '30 seconds' WHERE account_id=$1").bind(account).bind(code).execute(pool).await?;
-        return Ok(());
-    };
-    let mut tx = pool.begin().await?;
-    let run = format!("{}{}", super::RUN_PREFIX, Uuid::new_v4().simple());
-    let changed=query("UPDATE cloud_account_digests SET active_run_id=$2,input_hash=$3,input_json=$4,error_code=NULL WHERE account_id=$1 AND active_run_id IS NULL AND input_hash<>$3")
-        .bind(account).bind(&run).bind(&hash).bind(serde_json::to_value(&input).unwrap()).execute(&mut *tx).await?;
-    if changed.rows_affected() == 0 {
-        return Ok(());
-    }
-    super::cadence::record(&mut tx, account, &run, trigger).await?;
-    let now = Utc::now().to_rfc3339();
-    // Digest runs are background runs (read-only connector tools) whose
-    // output only the owner reads.
-    // A ready owner Mac runs the digest first; the cloud runner waits until
-    // `desktop_preferred_until` and then runs it if no Mac claimed it.
-    let preferred_until = super::desktop::preferred_until(pool, account).await?;
-    query("INSERT INTO cloud_agent_fallback_runs (run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,system_prompt,runtime_route_json,created_at,updated_at,run_trigger,connector_audience,desktop_preferred_until) VALUES($1,$1,$1,$2,$3,$3,'queued',$4,$5,$6,$7,$7,'background','owner_private',$8)")
-        .bind(&run).bind(&session).bind(account).bind(serde_json::to_string(&input).unwrap()).bind(super::SYSTEM_PROMPT).bind(serde_json::to_value(&route).unwrap()).bind(now).bind(preferred_until).execute(&mut *tx).await?;
-    if preferred_until.is_some() {
-        super::desktop::announce(&mut tx, account, &run).await?;
-    }
-    tx.commit().await
+    super::queue::queue(pool, account, &input, Some(&hash), trigger).await?;
+    Ok(())
 }
 
 pub async fn revalidate_run(pool: &PgPool, run: &str) -> Result<bool> {
@@ -368,6 +347,9 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
     let Some((account, value)) = row else {
         return Err(sqlx_core::Error::RowNotFound);
     };
+    if value.get("triage").and_then(Value::as_bool) == Some(true) {
+        return super::urgent::complete(pool, run, runner, &account, text).await;
+    }
     // Every executor's reply gets the same clean-up before the checks below.
     let text = super::output::normalized_reply(text, &value);
     let input: Input =
@@ -408,7 +390,7 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
     if changed.rows_affected() == 0 {
         return Err(sqlx_core::Error::RowNotFound);
     }
-    query("UPDATE cloud_account_digests SET snapshot_json=$2,snapshot_input_json=input_json,active_run_id=NULL,error_code=NULL,failure_count=0,revision=revision+1,updated_at=now() WHERE account_id=$1 AND active_run_id=$3").bind(&account).bind(serde_json::to_value(output).unwrap()).bind(run).execute(&mut *tx).await?;
+    query("UPDATE cloud_account_digests SET snapshot_json=$2,snapshot_input_json=input_json,active_run_id=NULL,error_code=NULL,failure_count=0,revision=revision+1,updated_at=now(),last_full_at=CASE WHEN $4 THEN now() ELSE last_full_at END WHERE account_id=$1 AND active_run_id=$3").bind(&account).bind(serde_json::to_value(output).unwrap()).bind(run).bind(input.changes.is_none()).execute(&mut *tx).await?;
     crate::chat_sync::store::append_account_hint(
         &mut tx,
         &account,

@@ -2,7 +2,7 @@ import { cloudApiBaseUrl } from '@/features/cloud/authClient';
 import { cloudFetchImpl } from '@/features/cloud/cloudTransport';
 import { normalizeCalendarEvent } from './calendarImport';
 import { loadSession } from '@/features/cloud/session';
-import type { CalendarEvent, CalendarSyncResult, DigestResponse } from './types';
+import type { CalendarEvent, CalendarSyncResult, DigestResponse, DigestSettings } from './types';
 
 async function request<T>(accountId: string, path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> {
   const session = await loadSession();
@@ -39,7 +39,10 @@ export const digestClient = {
     if (response.accountId !== accountId) throw new Error('Digest account did not match the signed-in account.');
     return response;
   },
-  refresh: (accountId: string) => request<void>(accountId, `digest/refresh?${new URLSearchParams({ locale: navigator.language, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })}`, 'POST'),
+  /** `full` rebuilds the digest from all its sources instead of the latest changes. */
+  refresh: (accountId: string, full = false) => request<void>(accountId, `digest/refresh?${new URLSearchParams({ locale: navigator.language, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, ...(full ? { full: 'true' } : {}) })}`, 'POST'),
+  settings: (accountId: string) => request<DigestSettings>(accountId, 'digest/settings'),
+  saveSettings: (accountId: string, settings: Pick<DigestSettings, 'model' | 'thinking'>) => request<void>(accountId, 'digest/settings', 'PUT', settings),
   calendar: (accountId: string, signal?: AbortSignal) => request<{ events: CalendarEvent[] }>(accountId, 'calendar/events', 'GET', undefined, signal),
   saveEvent: (accountId: string, event: CalendarEvent) => request<CalendarEvent>(accountId, `calendar/events/${encodeURIComponent(event.id)}`, 'PUT', normalizeCalendarEvent(event)),
   previewSeries: (accountId: string, event: CalendarEvent, signal?: AbortSignal) => request<{events: CalendarEvent[]}>(accountId, 'calendar/series/preview', 'POST', normalizeCalendarEvent(event), signal),

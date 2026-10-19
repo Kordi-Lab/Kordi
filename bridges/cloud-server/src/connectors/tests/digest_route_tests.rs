@@ -133,7 +133,8 @@ async fn digest_reuses_the_owners_latest_cloud_route() {
     let routes = digest_runs(&pool, &owner).await;
     assert_eq!(routes.len(), 1, "{routes:?}");
     assert_eq!(routes[0]["defaultAuthProvider"], "anthropic");
-    assert_eq!(routes[0]["defaultModel"], "claude-sonnet-5-5");
+    // The same account, with that provider's fast model (issue 1870).
+    assert_eq!(routes[0]["defaultModel"], "claude-haiku-4-5");
 }
 
 #[tokio::test]

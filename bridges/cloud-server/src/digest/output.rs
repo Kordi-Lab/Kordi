@@ -59,6 +59,9 @@ fn model_context(input: &Value) -> Option<Value> {
 /// cannot produce a digest.
 pub(crate) fn prompt(input: &Value) -> Option<String> {
     input.get("sources").and_then(Value::as_array)?;
+    if input.get("triage").and_then(Value::as_bool) == Some(true) {
+        return Some(super::urgent::triage_prompt(input));
+    }
     let context = model_context(input)?;
     let instruction = if incremental(input) {
         "Apply the supplied change events to the previous digest. Return only changed or new items and explicit removedItemIds, not the entire report. Review every changed source, including proposed meetings. Use observation tools only for specific missing context."

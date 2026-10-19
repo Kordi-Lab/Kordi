@@ -164,7 +164,7 @@ fn every_run_insert_sets_its_trigger_and_audience() {
         "cloud_agent_runtime/runs/subsessions.rs",
         "auth/subsessions/conversation.rs",
         "pip/store.rs",
-        "digest/store.rs",
+        "digest/queue.rs",
     ] {
         assert!(
             sites.contains(&expected),
@@ -173,7 +173,7 @@ fn every_run_insert_sets_its_trigger_and_audience() {
     }
     let read = |name: &str| std::fs::read_to_string(root.join(name)).unwrap();
     assert!(read("pip/store.rs").contains("$7, $7, 'background', 'shared')"));
-    assert!(read("digest/store.rs").contains("$7,$7,'background','owner_private',$8)"));
+    assert!(read("digest/queue.rs").contains("$7,$7,'background','owner_private',$8)"));
     assert!(read("cloud_agent_runtime/runs/subsessions.rs")
         .contains("'background',COALESCE((SELECT parent.connector_audience"));
 }

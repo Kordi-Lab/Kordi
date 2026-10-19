@@ -31,7 +31,7 @@ pub struct ClaimRunRequest {
     pub idempotency_key: String,
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AgentRuntimeRoute {
     #[serde(rename = "defaultModel", skip_serializing_if = "Option::is_none")]
     pub default_model: Option<String>,

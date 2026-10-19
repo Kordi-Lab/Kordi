@@ -86,6 +86,9 @@ pub struct Input {
     /// context, never sources and never instructions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub connector_events: Vec<crate::connectors::digest_input::ConnectorEventSummary>,
+    /// A quick urgency check of `sources`, not a digest.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub triage: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

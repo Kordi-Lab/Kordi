@@ -10,17 +10,17 @@ use crate::chat_sync::models::MessageSnapshot;
 use crate::digest::changes::{note_message, MAX_WAIT_MINUTES, QUIET_WINDOW_MINUTES};
 use crate::digest::store::{self as digest_store, Trigger};
 
-struct Fixture {
-    pool: PgPool,
-    owner: String,
-    token: String,
-    author: String,
+pub(super) struct Fixture {
+    pub(super) pool: PgPool,
+    pub(super) owner: String,
+    pub(super) token: String,
+    pub(super) author: String,
     conversation_id: Uuid,
 }
 
 /// An owner and a contact in one group with one message from the contact,
 /// and a provider account the digest can use.
-async fn fixture(label: &str) -> Option<Fixture> {
+pub(super) async fn fixture(label: &str) -> Option<Fixture> {
     let pool = pool().await?;
     let (owner, token) = signed_in_account(&pool, &format!("cadence_{label}_owner")).await;
     let (author, _) = signed_in_account(&pool, &format!("cadence_{label}_author")).await;
@@ -49,7 +49,7 @@ async fn fixture(label: &str) -> Option<Fixture> {
 }
 
 impl Fixture {
-    async fn message(&self, sender: &str, text: &str) -> MessageSnapshot {
+    pub(super) async fn message(&self, sender: &str, text: &str) -> MessageSnapshot {
         let (sequence,): (i64,) = query_as(
             "SELECT COALESCE(MAX(conversation_sequence),0)+1 FROM cloud_chat_messages \
              WHERE conversation_id=$1",
@@ -95,7 +95,7 @@ impl Fixture {
     }
 
     /// Whether the owner's digest is marked, and whether the owner is active.
-    async fn marks(&self) -> (bool, bool) {
+    pub(super) async fn marks(&self) -> (bool, bool) {
         query_as(
             "SELECT dirty_since IS NOT NULL, owner_active_at IS NOT NULL \
              FROM cloud_account_digests WHERE account_id=$1",
@@ -106,13 +106,13 @@ impl Fixture {
         .unwrap()
     }
 
-    async fn runs(&self) -> usize {
+    pub(super) async fn runs(&self) -> usize {
         digest_runs(&self.pool, &self.owner).await.len()
     }
 
     /// Completes the active run with an empty digest saved `age_minutes` ago,
     /// as a runner would, and marks a new change.
-    async fn settle(&self, age_minutes: i32) {
+    pub(super) async fn settle(&self, age_minutes: i32) {
         query(
             "UPDATE cloud_agent_fallback_runs SET status='completed' \
              WHERE owner_account_id=$1 AND run_id LIKE 'digest\\_%'",
@@ -135,7 +135,7 @@ impl Fixture {
         .unwrap();
     }
 
-    async fn open(&self) -> Value {
+    pub(super) async fn open(&self) -> Value {
         let router = crate::digest::routes(Arc::new(ServerState::new(
             self.pool.clone(),
             EventBus::noop(),
@@ -154,7 +154,7 @@ impl Fixture {
     }
 
     /// Waits for the refresh that opening the digest may have started.
-    async fn runs_after_open(&self, expected: usize) -> usize {
+    pub(super) async fn runs_after_open(&self, expected: usize) -> usize {
         for _ in 0..50 {
             if self.runs().await >= expected {
                 break;
@@ -166,7 +166,7 @@ impl Fixture {
         self.runs().await
     }
 
-    async fn automatic_runs(&self, count: i32, age: &str) {
+    pub(super) async fn automatic_runs(&self, count: i32, age: &str) {
         query(
             "INSERT INTO cloud_digest_runs(run_id,account_id,run_trigger,created_at) \
              SELECT 'past_'||gen_random_uuid(), $1, 'automatic', now()-$3::interval \
