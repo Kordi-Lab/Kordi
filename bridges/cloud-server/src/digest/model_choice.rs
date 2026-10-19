@@ -20,13 +20,29 @@ pub const DIGEST_THINKING: &str = "low";
 pub const TRIAGE_THINKING: &str = "off";
 const THINKING_LEVELS: &[&str] = &["off", "minimal", "low", "medium", "high"];
 
+/// The fast model of each provider with a known one.
+pub const FAST_MODELS: &[(&str, &str)] = &[
+    ("anthropic", "claude-haiku-4-5"),
+    ("openai", "gpt-5.6-luna"),
+    ("openai-codex", "gpt-5.6-luna"),
+    ("google", "gemini-2.5-flash"),
+    ("google-gemini", "gemini-2.5-flash"),
+];
+
 /// The fast model of a provider family, when it has a known one.
 pub fn fast_model(provider: &str) -> Option<&'static str> {
-    match provider {
-        "anthropic" => Some("claude-haiku-4-5"),
-        "openai" | "openai-codex" => Some("gpt-5.6-luna"),
-        "google" | "google-gemini" => Some("gemini-2.5-flash"),
-        _ => None,
+    FAST_MODELS
+        .iter()
+        .find(|(name, _)| *name == provider)
+        .map(|(_, model)| *model)
+}
+
+/// How a Mac reads a run's model: "fast", "chat", or "named".
+pub fn choice_kind(preference: &Preference) -> &'static str {
+    match preference.model.as_deref() {
+        None | Some("fast") => "fast",
+        Some("chat") => "chat",
+        Some(_) => "named",
     }
 }
 
@@ -103,6 +119,38 @@ pub fn digest_route(
     route
 }
 
+/// The route a Mac's claim stores when the Mac runs with a hosted account:
+/// that account, with the digest's model choice applied for its provider, so
+/// the Mac's chat model and thinking never replace the choice. A model the
+/// choice names without a provider takes the provider prefix of the Mac's
+/// model, as a Mac names its models. A quick check never thinks.
+pub fn claimed_route(
+    mac: AgentRuntimeRoute,
+    preference: &Preference,
+    triage: bool,
+) -> AgentRuntimeRoute {
+    let prefix = mac
+        .default_model
+        .as_deref()
+        .and_then(|model| model.split_once('/'))
+        .map(|(prefix, _)| prefix.to_string());
+    let thinking = if triage {
+        TRIAGE_THINKING
+    } else {
+        DIGEST_THINKING
+    };
+    let mut route = digest_route(mac, preference, thinking);
+    if let (Some(prefix), Some(model)) = (prefix, route.default_model.as_mut()) {
+        if !model.contains('/') {
+            *model = format!("{prefix}/{model}");
+        }
+    }
+    if triage {
+        route.thinking = Some(TRIAGE_THINKING.to_string());
+    }
+    route
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,5 +203,36 @@ mod tests {
         }
         .validated()
         .is_err());
+    }
+
+    #[test]
+    fn a_mac_claim_keeps_the_digest_choice_with_the_macs_account() {
+        let mac = AgentRuntimeRoute {
+            default_model: Some("openai/gpt-5.6".into()),
+            default_auth_provider: Some("openai".into()),
+            default_auth_choice: Some("cloud-api-key:work".into()),
+            thinking: Some("xhigh".into()),
+        };
+        let route = claimed_route(mac.clone(), &Preference::default(), false);
+        assert_eq!(route.default_model.as_deref(), Some("openai/gpt-5.6-luna"));
+        assert_eq!(route.thinking.as_deref(), Some("low"));
+        assert_eq!(
+            route.default_auth_choice.as_deref(),
+            Some("cloud-api-key:work")
+        );
+        let triage = claimed_route(mac.clone(), &Preference::default(), true);
+        assert_eq!(triage.thinking.as_deref(), Some("off"));
+        let chat = Preference {
+            model: Some("chat".into()),
+            thinking: None,
+        };
+        assert_eq!(claimed_route(mac.clone(), &chat, false), mac);
+        assert_eq!(
+            claimed_route(mac, &chat, true).thinking.as_deref(),
+            Some("off"),
+            "a quick check never thinks"
+        );
+        assert_eq!(choice_kind(&Preference::default()), "fast");
+        assert_eq!(choice_kind(&chat), "chat");
     }
 }

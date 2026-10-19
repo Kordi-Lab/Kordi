@@ -324,3 +324,79 @@ async fn a_mac_with_a_hosted_account_gets_that_accounts_credentials_for_the_dige
     );
     fx.finish().await;
 }
+
+#[tokio::test]
+async fn a_mac_claim_with_a_hosted_account_keeps_the_digest_model_choice() {
+    let Some(fx) = fixture("digest-mac-model", true).await else {
+        return;
+    };
+    let run_id = fx.refresh().await;
+    // The Mac's chat runs a large model at high effort.
+    let route = json!({"defaultModel":"openai/gpt-5.6","defaultAuthProvider":"openai",
+        "defaultAuthChoice":"cloud-api-key:work","thinking":"xhigh"});
+    let claimed = fx
+        .mac_claim_with_route(&run_id, uuid::Uuid::new_v4(), route)
+        .await;
+    assert_eq!(claimed["acquired"], true);
+    let digest = &claimed["digest"];
+    assert_eq!(digest["model"], "openai/gpt-5.6-luna");
+    assert_eq!(digest["thinking"], "low");
+    assert_eq!(digest["provider"], "openai");
+    assert_eq!(digest["modelChoice"], "fast");
+    assert_eq!(digest["triage"], false);
+    assert_eq!(digest["fastModels"]["anthropic"], "claude-haiku-4-5");
+    let (stored,): (Value,) =
+        query_as("SELECT runtime_route_json FROM cloud_agent_fallback_runs WHERE run_id=$1")
+            .bind(&run_id)
+            .fetch_one(&fx.pool)
+            .await
+            .unwrap();
+    assert_eq!(stored["defaultAuthChoice"], "cloud-api-key:work");
+    assert_eq!(stored["defaultModel"], "openai/gpt-5.6-luna");
+    assert_eq!(
+        stored["thinking"], "low",
+        "the Mac's chat effort is not saved"
+    );
+    let (model, thinking): (Option<String>, Option<String>) =
+        query_as("SELECT model, thinking FROM cloud_digest_runs WHERE run_id=$1")
+            .bind(&run_id)
+            .fetch_one(&fx.pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        (model.as_deref(), thinking.as_deref()),
+        (Some("openai/gpt-5.6-luna"), Some("low"))
+    );
+    fx.finish().await;
+}
+
+#[tokio::test]
+async fn a_mac_runs_the_quick_check_without_tools_or_thinking() {
+    let Some(fx) = fixture("digest-mac-triage", true).await else {
+        return;
+    };
+    let run_id = fx.refresh().await;
+    query("UPDATE cloud_digest_runs SET run_trigger='triage' WHERE run_id=$1")
+        .bind(&run_id)
+        .execute(&fx.pool)
+        .await
+        .unwrap();
+    query("UPDATE cloud_agent_fallback_runs SET prompt=jsonb_set(prompt::jsonb,'{triage}','true')::text WHERE run_id=$1")
+        .bind(&run_id).execute(&fx.pool).await.unwrap();
+    let route = json!({"defaultModel":"anthropic/claude-opus-4-8","defaultAuthProvider":"anthropic",
+        "defaultAuthChoice":"cloud-login:work","thinking":"high"});
+    let claimed = fx
+        .mac_claim_with_route(&run_id, uuid::Uuid::new_v4(), route)
+        .await;
+    assert_eq!(claimed["acquired"], true);
+    let digest = &claimed["digest"];
+    assert_eq!(digest["triage"], true);
+    assert_eq!(digest["tools"], json!([]));
+    assert_eq!(digest["thinking"], "off");
+    assert_eq!(digest["model"], "anthropic/claude-haiku-4-5");
+    assert!(digest["prompt"]
+        .as_str()
+        .unwrap()
+        .contains("need the viewer's attention soon"));
+    fx.finish().await;
+}

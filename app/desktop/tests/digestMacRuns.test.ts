@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  digestRunRoute,
   macCanRunDigest,
   notifyDigestRunRequests,
   parseDigestRunRequest,
@@ -10,6 +11,7 @@ import {
 } from '../src/features/digest/digestMacRuns';
 
 const localRoute = { model: 'openai/gpt-5.6', authProvider: 'openai', authChoice: 'local-active-oauth', thinking: null };
+const fastModels = { anthropic: 'claude-haiku-4-5', openai: 'gpt-5.6-luna', 'openai-codex': 'gpt-5.6-luna' };
 const request = { runId: 'digest_1', sessionId: 'digest:acct_owner' };
 
 function runtime(overrides: Partial<DigestMacRuntime> & { claim?: unknown } = {}) {
@@ -61,7 +63,7 @@ test('a claimed digest run submits the Mac reply for the server checks', async (
   assert.equal(claim.requestMessageId, 'digest_1');
   assert.equal(claim.ownerAccountId, 'acct_owner');
   assert.equal((ran as { systemPrompt: string }).systemPrompt, 'system');
-  assert.deepEqual((ran as { route: unknown }).route, localRoute);
+  assert.deepEqual((ran as { route: unknown }).route, { ...localRoute, thinking: 'low' });
   const complete = calls.find((call) => call.path === 'digest/desktop/digest_1/complete')!;
   assert.deepEqual(complete.body, { claimId: claim.claimId, text: '{"claims":[]}' });
 });
@@ -92,9 +94,53 @@ test('a hosted account runs the digest on this Mac and names that account in the
   assert.deepEqual(claim.runtimeRoute, {
     defaultModel: hostedRoute.model, defaultAuthProvider: 'openai', defaultAuthChoice: 'cloud-login:work', thinking: null,
   });
-  assert.deepEqual((ran as { route: unknown }).route, hostedRoute);
+  assert.deepEqual((ran as { route: unknown }).route, { ...hostedRoute, thinking: 'low' });
   const local = runtime();
   await runDigestOnMac(request, local.value);
   const localClaim = local.calls.find((call) => call.path === 'claim')!.body as Record<string, unknown>;
   assert.equal(localClaim.runtimeRoute, undefined, 'a Mac-local route never replaces the cloud route');
+});
+
+test('a Mac runs the digest with the digest model choice, not its chat effort', () => {
+  const chat = { ...localRoute, thinking: 'xhigh' };
+  // The cloud chose the fast model of the same provider.
+  assert.deepEqual(
+    digestRunRoute(chat, { model: 'gpt-5.6-luna', thinking: 'low', provider: 'openai', modelChoice: 'fast', fastModels }),
+    { route: { ...chat, model: 'openai/gpt-5.6-luna', thinking: 'low' }, fallbackModel: null },
+  );
+  // A choice made for another provider becomes this provider's fast model.
+  assert.deepEqual(
+    digestRunRoute(chat, { model: 'claude-haiku-4-5', thinking: 'low', provider: 'anthropic', modelChoice: 'fast', fastModels }).route,
+    { ...chat, model: 'openai/gpt-5.6-luna', thinking: 'low' },
+  );
+  // A named model of this provider runs, with the fast model if it is not available here.
+  assert.deepEqual(
+    digestRunRoute(chat, { model: 'openai/gpt-5.5', thinking: 'medium', provider: 'openai', modelChoice: 'named', fastModels }),
+    { route: { ...chat, model: 'openai/gpt-5.5', thinking: 'medium' }, fallbackModel: 'openai/gpt-5.6-luna' },
+  );
+  // The owner chose the chat's own model: this Mac's chat route runs.
+  assert.deepEqual(digestRunRoute(chat, { model: 'anthropic/claude-opus-4-8', thinking: 'high', provider: 'anthropic', modelChoice: 'chat', fastModels }).route, chat);
+  // A claim without a choice still never runs at the chat's effort.
+  assert.equal(digestRunRoute(chat, {}).route.thinking, 'low');
+});
+
+test('the quick urgency check runs on this Mac without tools or thinking', async () => {
+  const chat = { ...localRoute, thinking: 'high' };
+  assert.deepEqual(
+    digestRunRoute(chat, { model: 'gpt-5.6-luna', thinking: 'low', provider: 'openai', modelChoice: 'chat', triage: true, fastModels }).route,
+    { ...chat, thinking: 'off' },
+  );
+  const { value } = runtime({
+    route: chat,
+    claim: { runId: 'digest_1', acquired: true, digest: {
+      systemPrompt: 'check', prompt: 'messages', tools: [], model: 'gpt-5.6-luna', thinking: 'off',
+      provider: 'openai', modelChoice: 'fast', triage: true, fastModels,
+    } },
+  });
+  let ran: { route: unknown; tools: unknown; fallbackModel: unknown } | null = null;
+  value.run = async (input) => { ran = input; return '{"urgent":true}'; };
+  assert.equal(await runDigestOnMac(request, value), 'completed');
+  assert.deepEqual(ran!.route, { ...chat, model: 'openai/gpt-5.6-luna', thinking: 'off' });
+  assert.deepEqual(ran!.tools, []);
+  assert.equal(ran!.fallbackModel, null);
 });

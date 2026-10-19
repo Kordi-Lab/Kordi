@@ -25,6 +25,7 @@ use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
 use crate::auth::routes::CloudSession;
+use crate::cloud_agent_runtime::runs::AgentRuntimeRoute;
 use crate::server::ServerState;
 
 type Result<T> = std::result::Result<T, sqlx_core::Error>;
@@ -69,7 +70,7 @@ pub(crate) async fn claim(
     session: &CloudSession,
     claim_id: Uuid,
     run_id: &str,
-    route: Option<&crate::cloud_agent_runtime::runs::AgentRuntimeRoute>,
+    route: Option<&AgentRuntimeRoute>,
 ) -> Result<Option<Value>> {
     let (ready,): (bool,) = query_as(
         "SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities ready \
@@ -94,7 +95,20 @@ pub(crate) async fn claim(
     }
     let owner = executor(session, claim_id);
     let now = Utc::now();
-    query(
+    let preference = super::model_choice::preference(pool, &session.account_id).await?;
+    let (trigger,): (String,) = query_as(
+        "SELECT COALESCE((SELECT run_trigger FROM cloud_digest_runs WHERE run_id = $1), '')",
+    )
+    .bind(run_id)
+    .fetch_one(pool)
+    .await?;
+    let triage = trigger == "triage";
+    // The Mac's hosted account, so its credentials resolve for this run, with
+    // the digest's model choice kept: the Mac's chat model never replaces it.
+    let claimed = crate::cloud_agent_runtime::runs::claimed_route_json(route)
+        .and_then(|value| serde_json::from_value::<AgentRuntimeRoute>(value).ok())
+        .map(|mac| super::model_choice::claimed_route(mac, &preference, triage));
+    let changed = query(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'leased', execution_backend = 'desktop', claimed_by = $3, \
              lease_expires_at = $4, desktop_preferred_until = NULL, updated_at = $5, \
@@ -107,29 +121,44 @@ pub(crate) async fn claim(
     .bind(&owner)
     .bind((now + chrono::Duration::seconds(LEASE_SECONDS)).to_rfc3339())
     .bind(now.to_rfc3339())
-    // The Mac's hosted account, so its credentials resolve for this run.
-    .bind(crate::cloud_agent_runtime::runs::claimed_route_json(route))
+    .bind(
+        claimed
+            .as_ref()
+            .map(|route| serde_json::to_value(route).unwrap()),
+    )
     .execute(pool)
     .await?;
+    if let (Some(route), 1) = (&claimed, changed.rows_affected()) {
+        query("UPDATE cloud_digest_runs SET model = $2, thinking = $3 WHERE run_id = $1")
+            .bind(run_id)
+            .bind(&route.default_model)
+            .bind(&route.thinking)
+            .execute(pool)
+            .await?;
+    }
     let Some(prompt) = held_input(pool, run_id, &owner).await? else {
         return Ok(Some(json!({"runId": run_id, "acquired": false})));
     };
-    let (system_prompt,): (String,) =
-        query_as("SELECT system_prompt FROM cloud_agent_fallback_runs WHERE run_id = $1")
-            .bind(run_id)
-            .fetch_one(pool)
-            .await?;
+    let (system_prompt, stored): (String, Option<Value>) = query_as(
+        "SELECT system_prompt, runtime_route_json FROM cloud_agent_fallback_runs WHERE run_id = $1",
+    )
+    .bind(run_id)
+    .fetch_one(pool)
+    .await?;
     let Some(prompt) = super::output::prompt(&prompt) else {
         fail_held(pool, run_id, &owner, "digest_generation_failed").await?;
         return Ok(Some(json!({"runId": run_id, "acquired": false})));
     };
-    // The model and thinking level the run asks for (see `model_choice`).
-    let asked: Option<(Option<String>, Option<String>)> =
-        query_as("SELECT model, thinking FROM cloud_digest_runs WHERE run_id = $1")
-            .bind(run_id)
-            .fetch_optional(pool)
-            .await?;
-    let (model, thinking) = asked.unwrap_or_default();
+    // The model and thinking level the run asks for (see `model_choice`),
+    // and what a Mac that runs with its own account needs to apply the same
+    // choice to its provider.
+    let asked: AgentRuntimeRoute = stored
+        .and_then(|value| serde_json::from_value(value).ok())
+        .unwrap_or_default();
+    let fast_models: serde_json::Map<String, Value> = super::model_choice::FAST_MODELS
+        .iter()
+        .map(|(provider, model)| (provider.to_string(), json!(model)))
+        .collect();
     Ok(Some(json!({
         "runId": run_id,
         "acquired": true,
@@ -137,9 +166,14 @@ pub(crate) async fn claim(
         "digest": {
             "systemPrompt": mac_tool_names(&system_prompt),
             "prompt": prompt,
-            "tools": mac_tools(),
-            "model": model,
-            "thinking": thinking,
+            // A quick check answers from its prompt alone.
+            "tools": if triage { json!([]) } else { mac_tools() },
+            "model": asked.default_model,
+            "thinking": asked.thinking,
+            "provider": asked.default_auth_provider,
+            "modelChoice": super::model_choice::choice_kind(&preference),
+            "triage": triage,
+            "fastModels": fast_models,
         },
     })))
 }

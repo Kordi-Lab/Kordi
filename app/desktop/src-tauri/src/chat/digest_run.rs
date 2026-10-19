@@ -1,11 +1,14 @@
 //! A digest run on this Mac (the server's `digest::desktop`).
 //!
 //! The server hands a claimed digest run's prompt, system prompt, and two
-//! read-only observation tools to this command. It runs one turn in a
-//! throwaway profiled session with the owner's local provider route and no
-//! other tools; each tool call goes back to the server, which answers it from
-//! the run's frozen input. The reply text goes back to the caller, which
-//! submits it to the server for the same checks a cloud reply gets.
+//! read-only observation tools to this command; the quick urgency check gets
+//! no tools. It runs one turn in a throwaway profiled session with the
+//! owner's provider account and the digest's model and thinking (the caller's
+//! `digestRunRoute`), and no other tools; each tool call goes back to the
+//! server, which answers it from the run's frozen input. When the chosen
+//! model fails on this Mac, the turn runs once more with the provider's fast
+//! model. The reply text goes back to the caller, which submits it to the
+//! server for the same checks a cloud reply gets.
 
 use std::sync::Arc;
 
@@ -105,6 +108,22 @@ fn observation_runtime(
     }
 }
 
+/// The routes to try, in order: the chosen one, then the same route with the
+/// provider's fast model when that differs.
+fn attempt_routes(
+    route: DesktopChatMessageRoute,
+    fallback_model: Option<String>,
+) -> Vec<DesktopChatMessageRoute> {
+    let fallback = fallback_model
+        .map(|model| model.trim().to_string())
+        .filter(|model| !model.is_empty() && Some(model.as_str()) != route.model.as_deref())
+        .map(|model| DesktopChatMessageRoute {
+            model: Some(model),
+            ..route.clone()
+        });
+    std::iter::once(route).chain(fallback).collect()
+}
+
 /// The execution lease this Mac holds for the digest run.
 fn lease(
     run_id: &str,
@@ -121,6 +140,7 @@ fn lease(
 }
 
 /// Runs one claimed digest run and returns the model's reply.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn desktop_digest_run(
     run_id: String,
@@ -130,6 +150,7 @@ pub async fn desktop_digest_run(
     prompt: String,
     tools: Vec<DesktopDigestTool>,
     route: DesktopChatMessageRoute,
+    fallback_model: Option<String>,
 ) -> Result<String, String> {
     let session = crate::cloud_session::cloud_session_load()?
         .filter(|session| session.account_id == owner_account_id && !session.token.is_empty())
@@ -139,8 +160,7 @@ pub async fn desktop_digest_run(
     std::fs::create_dir_all(&workspace).map_err(|error| error.to_string())?;
     // A hosted account has no credential on this Mac: the server hands over
     // short-lived material for this claimed run, exactly as for a chat turn.
-    let hosted = super::hosted_provider_auth::route_uses_hosted_auth(Some(&route));
-    let hosted_auth = if hosted {
+    let hosted_auth = if super::hosted_provider_auth::route_uses_hosted_auth(Some(&route)) {
         Some(
             super::hosted_provider_auth::resolve_for_lease(
                 &route,
@@ -151,59 +171,93 @@ pub async fn desktop_digest_run(
     } else {
         None
     };
-    let profile = DesktopRuntimeProfile {
-        provider: if hosted {
-            None
-        } else {
-            route.auth_provider.clone()
-        },
-        model: if hosted { None } else { route.model.clone() },
-        thinking: route.thinking.clone(),
-        system_prompt: Some(system_prompt),
-        // Only the observation tools: no files, shell, network, or messages.
-        tool_names: Some(tools.iter().map(|tool| tool.name.clone()).collect()),
-        execution_policy: Some(ExecutionPolicy::Safety),
-        ..DesktopRuntimeProfile::default()
-    };
-    let session_id = format!("session:digest:{}", uuid::Uuid::new_v4());
-    let result = async {
-        let mut runtime =
-            DesktopRuntimeSession::create_profiled_with_id(workspace, &session_id, profile)
-                .await
-                .map_err(|error| error.to_string())?;
-        super::message_route::apply_desktop_chat_message_route(&mut runtime, Some(&route))?;
-        if let Some(auth) = hosted_auth {
-            runtime
-                .set_ephemeral_provider_auth_with_options(
-                    &auth.provider,
-                    auth.auth,
-                    auth.base_url,
-                    auth.api.as_deref(),
-                )
-                .map_err(|error| error.to_string())?;
+    let observation = (!tools.is_empty())
+        .then(|| observation_runtime(&run_id, &claim_id, &tools, &api_base, session.token));
+    let tool_names: Vec<String> = tools.iter().map(|tool| tool.name.clone()).collect();
+    let mut failure = String::new();
+    for route in attempt_routes(route, fallback_model) {
+        let attempt = DigestAttempt {
+            workspace: workspace.clone(),
+            system_prompt: system_prompt.clone(),
+            prompt: prompt.clone(),
+            tool_names: tool_names.clone(),
+            observation: observation.clone(),
+            hosted_auth: hosted_auth.clone(),
+        };
+        match attempt.run(&route).await {
+            Ok(text) => return Ok(text),
+            Err(error) => failure = error,
         }
-        runtime.set_connector_tools_runtime(Some(observation_runtime(
-            &run_id,
-            &claim_id,
-            &tools,
-            &api_base,
-            session.token,
-        )));
-        let detail = runtime
-            .send_message(prompt, Vec::new())
+    }
+    Err(failure)
+}
+
+struct DigestAttempt {
+    workspace: std::path::PathBuf,
+    system_prompt: String,
+    prompt: String,
+    tool_names: Vec<String>,
+    observation: Option<ConnectorToolsRuntime>,
+    hosted_auth: Option<super::hosted_provider_auth::HostedTurnAuth>,
+}
+
+impl DigestAttempt {
+    /// One turn with `route` in a throwaway session.
+    async fn run(self, route: &DesktopChatMessageRoute) -> Result<String, String> {
+        let hosted = self.hosted_auth.is_some();
+        let profile = DesktopRuntimeProfile {
+            provider: if hosted {
+                None
+            } else {
+                route.auth_provider.clone()
+            },
+            model: if hosted { None } else { route.model.clone() },
+            thinking: route.thinking.clone(),
+            system_prompt: Some(self.system_prompt),
+            // Only the observation tools: no files, shell, network, or messages.
+            tool_names: Some(self.tool_names),
+            execution_policy: Some(ExecutionPolicy::Safety),
+            ..DesktopRuntimeProfile::default()
+        };
+        let session_id = format!("session:digest:{}", uuid::Uuid::new_v4());
+        let result = async {
+            let mut runtime = DesktopRuntimeSession::create_profiled_with_id(
+                self.workspace,
+                &session_id,
+                profile,
+            )
             .await
             .map_err(|error| error.to_string())?;
-        detail
-            .messages
-            .iter()
-            .rev()
-            .find(|message| message.role == "assistant" && !message.text.trim().is_empty())
-            .map(|message| message.text.clone())
-            .ok_or_else(|| "The model finished without writing a digest.".to_string())
+            super::message_route::apply_desktop_chat_message_route(&mut runtime, Some(route))?;
+            if let Some(auth) = self.hosted_auth {
+                runtime
+                    .set_ephemeral_provider_auth_with_options(
+                        &auth.provider,
+                        auth.auth,
+                        auth.base_url,
+                        auth.api.as_deref(),
+                    )
+                    .map_err(|error| error.to_string())?;
+            }
+            if let Some(observation) = self.observation {
+                runtime.set_connector_tools_runtime(Some(observation));
+            }
+            let detail = runtime
+                .send_message(self.prompt, Vec::new())
+                .await
+                .map_err(|error| error.to_string())?;
+            detail
+                .messages
+                .iter()
+                .rev()
+                .find(|message| message.role == "assistant" && !message.text.trim().is_empty())
+                .map(|message| message.text.clone())
+                .ok_or_else(|| "The model finished without writing a digest.".to_string())
+        }
+        .await;
+        let _ = kordi_cli::desktop_runtime::delete_session_forever(&session_id);
+        result
     }
-    .await;
-    let _ = kordi_cli::desktop_runtime::delete_session_forever(&session_id);
-    result
 }
 
 #[cfg(test)]
@@ -240,6 +294,28 @@ mod tests {
             runtime.tools().len(),
             1,
             "no request-connect tool is offered"
+        );
+    }
+
+    #[test]
+    fn a_digest_tries_the_providers_fast_model_after_the_chosen_one() {
+        let route = DesktopChatMessageRoute {
+            model: Some("openai/gpt-5.5".into()),
+            auth_provider: Some("openai".into()),
+            auth_choice: Some("cloud-login:work".into()),
+            thinking: Some("low".into()),
+        };
+        let routes = attempt_routes(route.clone(), Some("openai/gpt-5.6-luna".into()));
+        assert_eq!(routes.len(), 2);
+        assert_eq!(routes[0].model.as_deref(), Some("openai/gpt-5.5"));
+        assert_eq!(routes[1].model.as_deref(), Some("openai/gpt-5.6-luna"));
+        assert_eq!(routes[1].auth_choice.as_deref(), Some("cloud-login:work"));
+        assert_eq!(routes[1].thinking.as_deref(), Some("low"));
+        assert_eq!(attempt_routes(route.clone(), None).len(), 1);
+        assert_eq!(
+            attempt_routes(route, Some("openai/gpt-5.5".into())).len(),
+            1,
+            "the same model is not tried twice"
         );
     }
 }
