@@ -1,0 +1,916 @@
+{
+  "personas": [
+    {
+      "id": "p01",
+      "name": "Maya",
+      "lab": "Interactive systems lab",
+      "memories": [
+        "User is running a 3-month diary study on how people use a personal agent in daily life",
+        "User asked for help debugging a retrieval index over their lab notebook",
+        "User is drafting a paper on long-term memory for personal agents, focused on what an agent should remember across weeks",
+        "User keeps a reading list on memory-augmented assistants and episodic recall",
+        "User wants a benchmark dataset of multi-session conversations to test whether an agent remembers user facts",
+        "User coded 40 diary entries with an open-coding scheme and wants a second coder",
+        "User is flying to Lisbon on the 14th and needs a vegetarian meal option",
+        "User asked for a grocery list: oat milk, lentils, spinach, rice",
+        "User asked how to fix a pandas merge that duplicated rows",
+        "User told the agent they have been sleeping badly and are anxious about a thesis committee meeting",
+        "User prefers short bulleted summaries over long paragraphs",
+        "User has taught a graduate seminar on qualitative methods for HCI and can advise on study design"
+      ],
+      "sensitive": [
+        "User told the agent they have been sleeping badly and are anxious about a thesis committee meeting"
+      ],
+      "card": {
+        "working_on": ["Long-term memory for personal agents", "Diary study of agent use"],
+        "interests": ["Personal agents", "Memory retrieval", "Human-agent interaction"],
+        "can_help": ["User study design", "Qualitative coding"],
+        "looking_for": ["Multi-session memory benchmark data"]
+      }
+    },
+    {
+      "id": "p02",
+      "name": "Tomas",
+      "lab": "Assistant modeling group",
+      "memories": [
+        "User is building persistent user models that let a digital assistant track preferences as they drift over months",
+        "User wrote a vector index for storing summaries of past dialogues and wants to tune recall",
+        "User is reading papers on lifelong personalization for dialogue assistants",
+        "User needs help running participant studies, since nobody in their group has done human-subject work",
+        "User asked for a regex to parse timestamps in chat logs",
+        "User is comparing embedding models for retrieving old user preferences",
+        "User wants to understand how teams could share a common assistant context without leaking individual details",
+        "User is booking a train to Zurich for a workshop next month",
+        "User asked for a recipe for a quick tomato soup",
+        "User mentioned they are paying off a large personal loan and is stressed about it",
+        "User has opinions on schema design for storing user facts with timestamps and confidence",
+        "User asked for a LaTeX template for a workshop abstract"
+      ],
+      "sensitive": [
+        "User mentioned they are paying off a large personal loan and is stressed about it"
+      ],
+      "card": {
+        "working_on": ["Persistent user models for assistants", "Preference drift tracking"],
+        "interests": ["Lifelong personalization", "Dialogue assistants", "Vector retrieval"],
+        "can_help": ["Retrieval index engineering", "User modeling methods"],
+        "looking_for": ["Help running participant studies"]
+      }
+    },
+    {
+      "id": "p03",
+      "name": "Priya",
+      "lab": "Human-agent collaboration lab",
+      "memories": [
+        "User is designing an interface where people can view and edit what their agent remembers about them",
+        "User ran 12 interviews about how people feel when an assistant recalls old conversations",
+        "User is prototyping an editable memory timeline in React",
+        "User wants a reliable backend for retrieving relevant stored facts quickly in her prototype",
+        "User is interested in transparency and control in everyday AI tools",
+        "User asked for feedback on a Figma flow for a memory review screen",
+        "User asked for help writing a CSS grid layout",
+        "User mentioned a visa renewal deadline that is worrying her",
+        "User is planning a hiking weekend in the Alps",
+        "User asked for a summary of a paper on explainable recommendation",
+        "User prefers to be addressed informally and dislikes emoji",
+        "User is mentoring two master's students on interface prototyping",
+        "User asked for stretching exercises for wrist pain from typing"
+      ],
+      "sensitive": [
+        "User mentioned a visa renewal deadline that is worrying her",
+        "User asked for stretching exercises for wrist pain from typing"
+      ],
+      "card": {
+        "working_on": ["Editable agent memory interfaces", "Memory review timeline"],
+        "interests": ["Transparency and control", "Personal agents", "Human-AI collaboration"],
+        "can_help": ["Interface prototyping", "Interview studies"],
+        "looking_for": ["Fast memory retrieval backend"]
+      }
+    },
+    {
+      "id": "p04",
+      "name": "Oskar",
+      "lab": "Trustworthy assistants lab",
+      "memories": [
+        "User is designing access controls so a personal agent can keep private memories separate from ones it may share",
+        "User is working on a forgetting mechanism that deletes remembered facts on request and proves they are gone",
+        "User wrote a threat model for an agent that stores years of user notes",
+        "User wants user studies on how people decide what their agent may disclose to others",
+        "User reviewed a paper on memory poisoning attacks against assistants",
+        "User is reading about data retention rules and the right to erasure",
+        "User asked for a Dockerfile for a small Rust service",
+        "User is arranging a flight to Toronto for a policy workshop",
+        "User is in a dispute with their advisor over authorship order on a paper",
+        "User asked how to remove a stuck git submodule",
+        "User likes to cite sources with links in every answer",
+        "User asked for advice on a laptop with good battery life"
+      ],
+      "sensitive": [
+        "User is in a dispute with their advisor over authorship order on a paper"
+      ],
+      "card": {
+        "working_on": ["Private agent memory with access control", "Verifiable memory deletion"],
+        "interests": ["Agent memory", "Privacy policy", "Memory security"],
+        "can_help": ["Threat modeling", "Access control design"],
+        "looking_for": ["User studies on memory disclosure consent"]
+      }
+    },
+    {
+      "id": "p05",
+      "name": "Nadia",
+      "lab": "Evaluation methods lab",
+      "memories": [
+        "User is building a method to detect benchmark contamination in language models",
+        "User wrote an evaluation harness that runs 30 benchmarks with consistent prompts",
+        "User is studying how long-context evaluation scores change with answer position",
+        "User wants more task domains and annotators to broaden their benchmark suite",
+        "User asked for help with bootstrap confidence intervals over benchmark scores",
+        "User is writing a blog post on why leaderboard gaps are often within noise",
+        "User asked for a Python decorator that retries failed API calls",
+        "User is flying to Vienna for a conference in November",
+        "User asked about a good espresso grinder under 200 dollars",
+        "User told the agent they are going through a divorce and needs time off",
+        "User is reading about item response theory for model testing",
+        "User prefers tables over prose when comparing results"
+      ],
+      "sensitive": [
+        "User told the agent they are going through a divorce and needs time off"
+      ],
+      "card": {
+        "working_on": ["Benchmark contamination detection", "Long-context evaluation"],
+        "interests": ["LLM evaluation", "Benchmark statistics", "Item response theory"],
+        "can_help": ["Statistical testing for benchmarks", "Evaluation harness engineering"],
+        "looking_for": ["New task domains", "Annotation partners"]
+      }
+    },
+    {
+      "id": "p06",
+      "name": "Felix",
+      "lab": "Model assessment group",
+      "memories": [
+        "User is investigating test set leakage from the pretraining corpus into popular language model benchmarks",
+        "User is studying how reliable an LLM acting as a judge is compared with human raters",
+        "User built a calibration script that adjusts judge scores to match human labels",
+        "User maintains an internal test runner for dozens of model evaluations",
+        "User needs human annotation partners to label 2000 model outputs",
+        "User asked for help plotting grouped bar charts with error bars",
+        "User is attending a summer school in Barcelona and needs hotel suggestions",
+        "User asked for a good gluten-free pasta recipe",
+        "User is reading about robustness of evaluations under prompt rephrasing",
+        "User asked the agent to keep a secret that their lab is quietly looking for another job",
+        "User asked how to resolve a merge conflict in a Jupyter notebook",
+        "User dislikes overly verbose answers"
+      ],
+      "sensitive": [
+        "User asked the agent to keep a secret that their lab is quietly looking for another job"
+      ],
+      "card": {
+        "working_on": ["Benchmark test-set leakage", "LLM-as-judge reliability"],
+        "interests": ["Evaluation methodology", "Judge calibration", "Evaluation robustness"],
+        "can_help": ["Judge model calibration", "Test runner engineering"],
+        "looking_for": ["Human annotation partners"]
+      }
+    },
+    {
+      "id": "p07",
+      "name": "Ines",
+      "lab": "Learning analytics lab",
+      "memories": [
+        "User is designing rubrics to evaluate the quality of LLM tutor explanations",
+        "User compares judge-model scores with teacher ratings on 300 student dialogues",
+        "User needs better statistical methods for inter-rater agreement beyond simple kappa",
+        "User co-designed assessment criteria with six high-school teachers",
+        "User is reading about evaluating educational chatbots for pedagogical soundness",
+        "User asked for help formatting a table of rubric dimensions in LaTeX",
+        "User asked for a packing list for a week in Kyoto",
+        "User mentioned a family member's illness and that she needs to travel home soon",
+        "User asked how to export survey data from a form tool as CSV",
+        "User is interested in how LLM scoring generalizes across classrooms",
+        "User prefers concise, structured answers",
+        "User asked for ideas for a 10-minute lightning talk"
+      ],
+      "sensitive": [
+        "User mentioned a family member's illness and that she needs to travel home soon"
+      ],
+      "card": {
+        "working_on": ["Rubrics for LLM tutor evaluation", "Judge and teacher agreement"],
+        "interests": ["LLM evaluation", "Educational chatbots", "Rater agreement"],
+        "can_help": ["Rubric design", "Teacher co-design"],
+        "looking_for": ["Statistical methods for rater agreement"]
+      }
+    },
+    {
+      "id": "p08",
+      "name": "Kofi",
+      "lab": "Clinical biostatistics group",
+      "memories": [
+        "User is validating risk prediction models for use in clinical trials of cardiac patients",
+        "User is developing calibration checks for survival outcome models",
+        "User advised on the design of an adaptive phase II trial",
+        "User uses causal inference methods to adjust for confounding in observational cohorts",
+        "User is looking for collaborators with medical imaging datasets",
+        "User asked for R code for a Kaplan-Meier plot with risk table",
+        "User asked for a recommended route for a half marathon in Accra",
+        "User complained about a pending grant rejection and personal financial worries",
+        "User wants to learn how deep models for imaging are validated externally",
+        "User is renewing a passport before an overseas conference",
+        "User asked for a polite email declining a review invitation",
+        "User asked how to install the survival package in R"
+      ],
+      "sensitive": [
+        "User complained about a pending grant rejection and personal financial worries",
+        "User is renewing a passport before an overseas conference"
+      ],
+      "card": {
+        "working_on": ["Model evaluation for clinical trials", "Survival model calibration"],
+        "interests": ["Biostatistics", "Trial design", "Causal inference"],
+        "can_help": ["Adaptive trial design", "Causal inference methods"],
+        "looking_for": ["Medical imaging dataset collaborators"]
+      }
+    },
+    {
+      "id": "p09",
+      "name": "Lena",
+      "lab": "Social computing lab",
+      "memories": [
+        "User studies how norms form and shift in online forums over time",
+        "User is analyzing moderation decisions from 20 volunteer-run communities",
+        "User collected platform data through public APIs and handled rate limits",
+        "User wants better automated classifiers that flag toxic comments without over-removing dialect",
+        "User is interested in community governance and how rules get negotiated",
+        "User coded 500 moderator comments with a team of three annotators",
+        "User asked for a script to scrape and store forum threads politely",
+        "User needs a birthday gift idea for her sister",
+        "User asked how to fix an R markdown knitting error",
+        "User described feeling harassed by a former collaborator and asked how to document it",
+        "User prefers formal tone in emails to reviewers",
+        "User is applying for a postdoc and asked for feedback on a research statement"
+      ],
+      "sensitive": [
+        "User described feeling harassed by a former collaborator and asked how to document it"
+      ],
+      "card": {
+        "working_on": ["Online community moderation", "Norm formation in forums"],
+        "interests": ["Social computing", "Community governance", "Computational social science"],
+        "can_help": ["Qualitative coding", "Platform data collection"],
+        "looking_for": ["Toxicity classifiers for dialect"]
+      }
+    },
+    {
+      "id": "p10",
+      "name": "Arjun",
+      "lab": "Language and society lab",
+      "memories": [
+        "User is building tools that use language models to triage reported comments for human moderators",
+        "User trained a toxicity classifier and is measuring bias against minority dialects",
+        "User needs real case studies of how communities set and revise their governance rules",
+        "User is interested in how automated moderation changes user behavior",
+        "User wrote a data loader for a multilingual comment dataset",
+        "User is reading about fairness metrics for text classification",
+        "User asked for help optimizing a slow pandas groupby",
+        "User asked for restaurant recommendations in Seattle",
+        "User is thinking about leaving academia and asked for salary comparisons in industry",
+        "User asked for tips on giving a conference talk with few slides",
+        "User likes answers that include code examples"
+      ],
+      "sensitive": [
+        "User is thinking about leaving academia and asked for salary comparisons in industry"
+      ],
+      "card": {
+        "working_on": ["LLM-assisted comment moderation", "Dialect bias in toxicity classifiers"],
+        "interests": ["Automated moderation", "Fairness in NLP", "Language and society"],
+        "can_help": ["NLP classifier training", "Fairness evaluation"],
+        "looking_for": ["Community governance case studies"]
+      }
+    },
+    {
+      "id": "p11",
+      "name": "Sven",
+      "lab": "Collaboration technology lab",
+      "memories": [
+        "User is building shared workspaces for remote teams that keep everyone aware of ongoing work",
+        "User is prototyping an AI meeting summarizer that posts action items to a team board",
+        "User ran a 6-week field deployment with two startups",
+        "User is interested in how AI agents should act in group settings",
+        "User wants an agent that remembers team context, such as past decisions, across weeks",
+        "User asked for help designing a within-subjects experiment on awareness cues",
+        "User asked for a script to merge calendar exports",
+        "User is planning a ski trip to Norway in February",
+        "User asked for a gift wrap idea for a coworker's farewell",
+        "User confided that his team lead is bullying a junior colleague and he does not know what to do",
+        "User asked for a TypeScript type guard example",
+        "User asked for a polite way to decline a committee request"
+      ],
+      "sensitive": [
+        "User confided that his team lead is bullying a junior colleague and he does not know what to do"
+      ],
+      "card": {
+        "working_on": ["Shared workspaces for remote teams", "AI meeting summarization"],
+        "interests": ["CSCW", "Agents in group settings", "Team awareness"],
+        "can_help": ["Field deployments", "Experiment design"],
+        "looking_for": ["Agent memory for team context"]
+      }
+    },
+    {
+      "id": "p12",
+      "name": "Yara",
+      "lab": "Creative computing studio",
+      "memories": [
+        "User is building generative tools that help illustrators explore variations of a sketch",
+        "User studies co-creation between artists and generative models in a six-person pilot",
+        "User is interested in creativity support tools and open-ended design",
+        "User needs ways to evaluate creative outputs without reducing them to a single score",
+        "User builds interactive prototypes in p5.js and Processing",
+        "User asked for design critique on a gallery installation layout",
+        "User asked for a color palette suggestion for a poster",
+        "User asked for a recipe for sourdough starter",
+        "User is anxious about a diagnosis she received last week and asked for reading about it",
+        "User asked how to export a WebGL canvas as a video",
+        "User prefers a warm, informal tone"
+      ],
+      "sensitive": [
+        "User is anxious about a diagnosis she received last week and asked for reading about it"
+      ],
+      "card": {
+        "working_on": ["Generative tools for illustrators", "Artist and model co-creation"],
+        "interests": ["Creativity support", "Generative models", "Interactive prototyping"],
+        "can_help": ["Prototyping", "Design critique"],
+        "looking_for": ["Evaluation methods for creative output"]
+      }
+    },
+    {
+      "id": "p13",
+      "name": "Mateo",
+      "lab": "Efficient inference lab",
+      "memories": [
+        "User is quantizing small language models to 4-bit weights so they run on phones",
+        "User compares post-training quantization against quantization-aware training",
+        "User deploys models on Android with a native runtime and measures token throughput",
+        "User needs standardized benchmarks for small models under 3B parameters",
+        "User maintains an open-source quantization toolkit",
+        "User is reading about outlier handling in activation quantization",
+        "User asked for a bash loop to rename files by date",
+        "User is booking a campsite near Lake Tahoe",
+        "User asked for a recipe for chickpea curry",
+        "User confided that they are overdrawn on rent this month",
+        "User asked about a good mechanical keyboard",
+        "User asked how to profile Python memory leaks"
+      ],
+      "sensitive": [
+        "User confided that they are overdrawn on rent this month"
+      ],
+      "card": {
+        "working_on": ["4-bit quantization of small LLMs", "Phone deployment of language models"],
+        "interests": ["On-device ML", "Model compression", "Mobile inference"],
+        "can_help": ["Quantization toolkits", "Android deployment"],
+        "looking_for": ["Benchmarks for small models"]
+      }
+    },
+    {
+      "id": "p14",
+      "name": "Hana",
+      "lab": "Edge intelligence lab",
+      "memories": [
+        "User is making compact LLMs run smoothly on smartphones with low-bit compression",
+        "User profiles latency and battery drain on three mobile chipsets",
+        "User built an analytical latency model for transformer layers on NPUs",
+        "User wants real use cases for personalizing models on the device itself",
+        "User is reading about speculative decoding for mobile inference",
+        "User asked for a script to parse power-meter logs",
+        "User asked for tips to prepare for a PhD qualifying exam",
+        "User is visiting family in Busan over the holidays",
+        "User asked for a bike repair guide for a flat tire",
+        "User mentioned that her visa interview was rejected and she is considering other countries",
+        "User prefers metric units",
+        "User asked for a color-blind-friendly chart palette"
+      ],
+      "sensitive": [
+        "User mentioned that her visa interview was rejected and she is considering other countries"
+      ],
+      "card": {
+        "working_on": ["Compact LLMs on smartphones", "Low-bit model compression"],
+        "interests": ["Edge AI", "Mobile latency and battery", "Speculative decoding"],
+        "can_help": ["Mobile chip profiling", "Latency modeling"],
+        "looking_for": ["On-device personalization use cases"]
+      }
+    },
+    {
+      "id": "p15",
+      "name": "Dmitri",
+      "lab": "GPU systems group",
+      "memories": [
+        "User is optimizing GPU memory use when training large models, including activation checkpointing",
+        "User wrote a custom CUDA kernel that fuses attention and reduces memory traffic",
+        "User profiles memory fragmentation across 64 GPUs",
+        "User is interested in memory hierarchy, offloading and paging to host RAM",
+        "User is looking for collaborators on model compression for training",
+        "User asked for help writing a Makefile for a CUDA project",
+        "User is planning a trip to Kraków for a wedding",
+        "User asked about a good winter jacket",
+        "User told the agent about a recent breakup and asked for coping advice",
+        "User asked how to read nvprof output",
+        "User asked for a regex to extract GPU IDs from logs"
+      ],
+      "sensitive": [
+        "User told the agent about a recent breakup and asked for coping advice"
+      ],
+      "card": {
+        "working_on": ["GPU memory optimization for training", "Fused attention kernels"],
+        "interests": ["ML systems", "Memory hierarchy", "Distributed training"],
+        "can_help": ["CUDA profiling", "Distributed training setup"],
+        "looking_for": ["Compression collaborators for training"]
+      }
+    },
+    {
+      "id": "p16",
+      "name": "Zoe",
+      "lab": "Tiny ML lab",
+      "memories": [
+        "User builds keyword spotting models that run on microcontrollers with under 256 KB of RAM",
+        "User measures the energy consumption of sensor inference on wearable devices",
+        "User is interested in training across many wearables without moving raw sensor data",
+        "User deploys models with an embedded C runtime",
+        "User wrote an energy-profiling rig using a current sensor",
+        "User asked for help debugging an I2C timing issue",
+        "User asked for a plan for a three-day Iceland trip",
+        "User is being treated for an eating disorder and asked for meal planning help",
+        "User asked for a good book on embedded systems",
+        "User wants to simplify a noisy sensor dataset with a low-pass filter",
+        "User asked for a poster layout for a TinyML workshop"
+      ],
+      "sensitive": [
+        "User is being treated for an eating disorder and asked for meal planning help"
+      ],
+      "card": {
+        "working_on": ["Microcontroller keyword spotting", "Wearable energy profiling"],
+        "interests": ["TinyML", "Energy efficiency", "Wearable sensing"],
+        "can_help": ["Embedded deployment", "Energy measurement"],
+        "looking_for": ["Federated learning for wearables"]
+      }
+    },
+    {
+      "id": "p17",
+      "name": "Ravi",
+      "lab": "Private machine learning group",
+      "memories": [
+        "User is developing differentially private federated learning methods for training on user devices",
+        "User implemented secure aggregation for a federated training prototype",
+        "User maintains tooling for privacy budget accounting across training rounds",
+        "User needs real on-device testbeds to validate federated protocols beyond simulation",
+        "User is reading about membership inference attacks on federated models",
+        "User asked for a stable way to compute Renyi divergence in Python",
+        "User is booking a flight to Mumbai for a family wedding",
+        "User asked for a recommended podcast about statistics",
+        "User received a cease-and-desist letter from a former employer and asked for guidance",
+        "User asked how to profile a slow PyTorch dataloader",
+        "User is writing a grant proposal on privacy-preserving collaborative training"
+      ],
+      "sensitive": [
+        "User received a cease-and-desist letter from a former employer and asked for guidance"
+      ],
+      "card": {
+        "working_on": ["Differentially private federated learning", "Secure aggregation prototypes"],
+        "interests": ["Privacy-preserving ML", "Membership inference", "Collaborative training"],
+        "can_help": ["Privacy budget accounting", "Secure aggregation"],
+        "looking_for": ["Real on-device testbeds"]
+      }
+    },
+    {
+      "id": "p18",
+      "name": "Elif",
+      "lab": "Usable privacy lab",
+      "memories": [
+        "User is studying how people respond to consent dialogs and why they click accept",
+        "User designs alternative consent flows that make data sharing choices understandable",
+        "User ran a survey of 800 participants on perceived risk of sharing data with AI apps",
+        "User is interested in dark patterns and deceptive interface design",
+        "User wants technical privacy mechanisms she can prototype and test with users",
+        "User asked for help building a Qualtrics survey with randomized blocks",
+        "User asked for a vegan dessert recipe",
+        "User is flying to Istanbul to visit family for the weekend",
+        "User has been fighting with her landlord about a rent increase and asked for legal templates",
+        "User asked for help interpreting a mixed-effects regression output",
+        "User likes concise bullet answers"
+      ],
+      "sensitive": [
+        "User has been fighting with her landlord about a rent increase and asked for legal templates"
+      ],
+      "card": {
+        "working_on": ["Privacy UX for consent dialogs", "Alternative consent flows"],
+        "interests": ["Usable privacy", "Dark patterns", "Data sharing choices"],
+        "can_help": ["Survey design", "Consent flow design"],
+        "looking_for": ["Privacy mechanisms to prototype"]
+      }
+    },
+    {
+      "id": "p19",
+      "name": "Jonas",
+      "lab": "Security lab",
+      "memories": [
+        "User is developing defenses against prompt injection for tool-using agents",
+        "User built a sandbox that restricts file and network access for agent tool calls",
+        "User runs red-team exercises against LLM applications",
+        "User needs realistic agent workloads and traces to test defenses",
+        "User wrote a threat model for browser-driving agents",
+        "User is reading about indirect injection through web pages and emails",
+        "User asked for help with a Bash one-liner to filter logs",
+        "User is traveling to Berlin for a security conference",
+        "User asked for a recipe for ramen eggs",
+        "User admitted to the agent that he reused one password across work accounts",
+        "User asked about renewing a domain name",
+        "User asked for suggestions for a standing desk"
+      ],
+      "sensitive": [
+        "User admitted to the agent that he reused one password across work accounts"
+      ],
+      "card": {
+        "working_on": ["Prompt injection defenses", "Agent tool sandboxing"],
+        "interests": ["LLM security", "Red teaming", "Agent threat models"],
+        "can_help": ["Red teaming", "Threat modeling"],
+        "looking_for": ["Realistic agent workload traces"]
+      }
+    },
+    {
+      "id": "p20",
+      "name": "Amara",
+      "lab": "Applied cryptography group",
+      "memories": [
+        "User designs secure multiparty computation protocols for private analytics",
+        "User implemented a private set intersection library and benchmarked it on 10 million items",
+        "User is interested in cryptographic protocols that let parties find shared items without revealing the rest",
+        "User is looking for real applications that need private matching",
+        "User asked for help with a Rust FFI binding",
+        "User is planning a trip to Nairobi for a conference",
+        "User asked for a coffee shop with outlets near campus",
+        "User confided that her visa status may affect her job offer",
+        "User asked about a good chess opening book",
+        "User asked how to format a protocol figure in TikZ",
+        "User asked for suggestions on a yoga routine"
+      ],
+      "sensitive": [
+        "User confided that her visa status may affect her job offer"
+      ],
+      "card": {
+        "working_on": ["Secure multiparty computation", "Private set intersection library"],
+        "interests": ["Applied cryptography", "Private matching", "Private analytics"],
+        "can_help": ["Protocol design", "Private set intersection"],
+        "looking_for": ["Applications needing private matching"]
+      }
+    },
+    {
+      "id": "p21",
+      "name": "Luca",
+      "lab": "Learning sciences lab",
+      "memories": [
+        "User is studying how students regulate their own learning when using AI tutors",
+        "User is running a semester-long classroom field study in four schools",
+        "User wants working LLM tutor prototypes to test in real classrooms",
+        "User is interested in metacognition and learning analytics",
+        "User has good connections with school districts and can help with classroom recruitment",
+        "User asked for a summary of a paper on self-explanation prompts",
+        "User asked for a calendar invite template for parent meetings",
+        "User is dealing with a custody dispute and asked for scheduling help around it",
+        "User asked for a recipe for a school bake sale",
+        "User asked how to anonymize classroom video for sharing",
+        "User asked for a good bookshelf under 100 euros"
+      ],
+      "sensitive": [
+        "User is dealing with a custody dispute and asked for scheduling help around it"
+      ],
+      "card": {
+        "working_on": ["Self-regulated learning with AI tutors", "Classroom field study"],
+        "interests": ["Metacognition", "Learning analytics", "AI in education"],
+        "can_help": ["Classroom recruitment", "Learning theory"],
+        "looking_for": ["LLM tutor prototypes"]
+      }
+    },
+    {
+      "id": "p22",
+      "name": "Noor",
+      "lab": "Educational technology lab",
+      "memories": [
+        "User is building an LLM tool that gives students feedback on their essay drafts",
+        "User fine-tuned a model on annotated writing comments and measures revision quality",
+        "User prototypes tutoring chatbots with a Streamlit front end",
+        "User needs classroom partners willing to try feedback tools with real students",
+        "User is reading about scaffolding in writing instruction",
+        "User asked for help converting a Word document with comments to JSON",
+        "User asked for a gift idea for a teacher",
+        "User asked for a vegetarian lasagna recipe",
+        "User mentioned she is in therapy for burnout and needs lighter workload",
+        "User asked for tips on grading rubrics for peer review",
+        "User asked how to deploy a Streamlit app on a small server"
+      ],
+      "sensitive": [
+        "User mentioned she is in therapy for burnout and needs lighter workload"
+      ],
+      "card": {
+        "working_on": ["LLM feedback on student essays", "Tutoring chatbot prototypes"],
+        "interests": ["Writing instruction", "Educational technology", "Feedback scaffolding"],
+        "can_help": ["Tutor prototype building", "Fine-tuning feedback models"],
+        "looking_for": ["Classroom partners"]
+      }
+    },
+    {
+      "id": "p23",
+      "name": "Sana",
+      "lab": "Cognitive science of learning lab",
+      "memories": [
+        "User is studying spaced repetition and retrieval practice to improve long-term memory in students",
+        "User runs lab experiments on memory consolidation after sleep",
+        "User is interested in the forgetting curve and how it varies across learners",
+        "User wants adaptive scheduling algorithms for review sessions",
+        "User teaches experimental design and can help set up controlled experiments",
+        "User asked for a power analysis for a within-subject design",
+        "User asked for a cheap flight to Montreal for a cognitive science meeting",
+        "User asked for a smoothie recipe with spinach",
+        "User told the agent that her mother recently passed away",
+        "User asked for help in fixing a LaTeX bibliography error",
+        "User asked for a stand-up routine of five minutes for an event"
+      ],
+      "sensitive": [
+        "User told the agent that her mother recently passed away"
+      ],
+      "card": {
+        "working_on": ["Spaced repetition and retrieval practice", "Memory consolidation experiments"],
+        "interests": ["Human memory", "Cognitive psychology", "Forgetting curve"],
+        "can_help": ["Controlled experiment design", "Power analysis"],
+        "looking_for": ["Adaptive review scheduling algorithms"]
+      }
+    },
+    {
+      "id": "p24",
+      "name": "Ivo",
+      "lab": "Programming education lab",
+      "memories": [
+        "User studies how novice programmers use code assistants and whether they learn from them",
+        "User observed 25 students solving debugging tasks with an assistant",
+        "User designs introductory programming curricula",
+        "User wants ways to evaluate code language models on beginner-style tasks",
+        "User is interested in program comprehension and error messages",
+        "User asked for a regex to split Python tracebacks",
+        "User asked for a good camera for travel photography",
+        "User asked for recommendations on a local bakery",
+        "User confided that he was passed over for a promotion and is bitter about his department head",
+        "User asked for ideas for an in-class debugging exercise",
+        "User asked how to set up autograding with pytest"
+      ],
+      "sensitive": [
+        "User confided that he was passed over for a promotion and is bitter about his department head"
+      ],
+      "card": {
+        "working_on": ["Novices using code assistants", "Intro programming curricula"],
+        "interests": ["Programming education", "Program comprehension", "Error messages"],
+        "can_help": ["Curriculum design", "Student debugging studies"],
+        "looking_for": ["Evaluation of code LLMs on beginner tasks"]
+      }
+    },
+    {
+      "id": "p25",
+      "name": "Tessa",
+      "lab": "Robot learning lab",
+      "memories": [
+        "User trains imitation learning policies for robot arm manipulation from teleoperated demonstrations",
+        "User collected 500 demonstrations of drawer opening and cup stacking",
+        "User is working on sim-to-real transfer for a gripper",
+        "User needs policies that run fast on small onboard computers, not a big GPU",
+        "User maintains the lab's robot hardware and can advise on gripper design",
+        "User asked for help with a ROS2 launch file",
+        "User is booking a hotel in Yokohama for a robotics conference",
+        "User asked for a pasta salad recipe",
+        "User mentioned a lab injury report and a pending safety investigation",
+        "User asked for a calibration routine for a depth camera",
+        "User asked for a good hiking boot"
+      ],
+      "sensitive": [
+        "User mentioned a lab injury report and a pending safety investigation"
+      ],
+      "card": {
+        "working_on": ["Imitation learning for manipulation", "Sim-to-real gripper transfer"],
+        "interests": ["Robot learning", "Teleoperation data", "Embodied AI"],
+        "can_help": ["Robot hardware setup", "Gripper design"],
+        "looking_for": ["Fast onboard policy inference"]
+      }
+    },
+    {
+      "id": "p26",
+      "name": "Bruno",
+      "lab": "Embodied agents group",
+      "memories": [
+        "User is building language-conditioned planners that let a robot follow natural instructions",
+        "User fine-tunes vision-language models for indoor navigation",
+        "User runs experiments in a household simulator with 100 scenes",
+        "User needs evaluation benchmarks for embodied agents that go beyond success rate",
+        "User maintains a simulation environment that others can reuse",
+        "User asked for a script to batch-render simulator videos",
+        "User asked for a cheap flight to Santiago",
+        "User asked for a pizza dough recipe",
+        "User shared that he is deep in credit card debt",
+        "User asked how to reduce Docker image size for a simulator",
+        "User asked for feedback on a conference rebuttal"
+      ],
+      "sensitive": [
+        "User shared that he is deep in credit card debt"
+      ],
+      "card": {
+        "working_on": ["Language-conditioned robot planning", "VLMs for indoor navigation"],
+        "interests": ["Embodied agents", "Vision-language models", "Household simulation"],
+        "can_help": ["Simulation environments", "Navigation experiments"],
+        "looking_for": ["Embodied agent benchmarks"]
+      }
+    },
+    {
+      "id": "p27",
+      "name": "Clara",
+      "lab": "Human-robot interaction lab",
+      "memories": [
+        "User studies social robots that keep older adults company in care homes",
+        "User runs long-term trust studies where residents interact with a robot for eight weeks",
+        "User has strong experience recruiting and working with older adults in studies",
+        "User wants robots that remember residents across visits, such as names and favorite topics",
+        "User is interested in assistive technology and trust in robots",
+        "User asked for a consent form template for older adult participants",
+        "User asked for a recipe for ginger tea",
+        "User asked for a route for a weekend cycling trip",
+        "User told the agent about her own cancer screening results",
+        "User asked how to transcribe interview audio locally",
+        "User asked for tips on presenting statistics to non-technical caregivers"
+      ],
+      "sensitive": [
+        "User told the agent about her own cancer screening results"
+      ],
+      "card": {
+        "working_on": ["Social robots for older adults", "Long-term robot trust studies"],
+        "interests": ["Human-robot interaction", "Assistive technology", "Trust in robots"],
+        "can_help": ["Studies with older adults", "Consent protocols"],
+        "looking_for": ["Long-term memory for robots"]
+      }
+    },
+    {
+      "id": "p28",
+      "name": "Emil",
+      "lab": "Protein modeling lab",
+      "memories": [
+        "User trains protein language models to predict the fitness effect of mutations",
+        "User fine-tunes a sequence model on deep mutational scanning data",
+        "User is interested in representation learning for biological sequences",
+        "User needs better ways to test whether models generalize to new protein families",
+        "User can help others with sequence modeling and embeddings",
+        "User asked for a script to cluster sequences with MMseqs",
+        "User asked for a recipe for sourdough pancakes",
+        "User asked for a flight to Boston for a computational biology meeting",
+        "User asked the agent to hide from his advisor that he is applying for an industry fellowship",
+        "User asked how to read a FASTA file in Biopython",
+        "User asked for ideas for a weekend board game night"
+      ],
+      "sensitive": [
+        "User asked the agent to hide from his advisor that he is applying for an industry fellowship"
+      ],
+      "card": {
+        "working_on": ["Protein language models", "Mutation fitness prediction"],
+        "interests": ["Computational biology", "Sequence representation learning"],
+        "can_help": ["Sequence modeling", "Protein embeddings"],
+        "looking_for": ["Generalization testing methods"]
+      }
+    },
+    {
+      "id": "p29",
+      "name": "Wen",
+      "lab": "Single-cell genomics lab",
+      "memories": [
+        "User builds foundation models over millions of single-cell RNA profiles",
+        "User works on automatic cell type annotation across tissues",
+        "User maintains bioinformatics pipelines for count matrices and batch correction",
+        "User needs efficient fine-tuning or compression methods because the large model does not fit their cluster",
+        "User is interested in scaling laws for biological foundation models",
+        "User asked for help with a Snakemake rule",
+        "User asked for a recipe for dumplings",
+        "User is traveling to Shanghai for a family visit",
+        "User mentioned an upcoming surgery and the leave she needs for it",
+        "User asked for a color scheme for a UMAP figure",
+        "User asked how to reduce memory use when loading AnnData objects"
+      ],
+      "sensitive": [
+        "User mentioned an upcoming surgery and the leave she needs for it"
+      ],
+      "card": {
+        "working_on": ["Single-cell foundation models", "Cell type annotation"],
+        "interests": ["Computational biology", "Scaling laws", "Batch correction"],
+        "can_help": ["Bioinformatics pipelines", "Single-cell data processing"],
+        "looking_for": ["Efficient fine-tuning and compression"]
+      }
+    },
+    {
+      "id": "p30",
+      "name": "Rosa",
+      "lab": "Clinical language processing lab",
+      "memories": [
+        "User builds LLM systems that summarize clinical notes for physicians",
+        "User works on de-identification of patient records before model training",
+        "User knows how to get access to hospital data and navigate ethics approvals",
+        "User needs privacy-preserving training approaches so patient data never leaves the hospital",
+        "User is interested in health NLP and clinical documentation burden",
+        "User asked for help writing an ethics application summary",
+        "User asked for a recipe for lemon chicken",
+        "User is traveling to Lyon for a clinical informatics meeting",
+        "User shared that she is struggling with a miscarriage and asked for time-off wording",
+        "User asked how to regex mask phone numbers in text",
+        "User asked for a polite reminder email to a collaborator"
+      ],
+      "sensitive": [
+        "User shared that she is struggling with a miscarriage and asked for time-off wording"
+      ],
+      "card": {
+        "working_on": ["Clinical note summarization", "Patient record de-identification"],
+        "interests": ["Health NLP", "Clinical documentation", "Medical data privacy"],
+        "can_help": ["Hospital data access", "Ethics approval guidance"],
+        "looking_for": ["Privacy-preserving training methods"]
+      }
+    }
+  ],
+  "pairs": [
+    { "a": "p01", "b": "p02", "label": "strong", "why": "Same topic worded differently: long-term memory for personal agents vs persistent user models for assistants; also user study help matches", "kind": "paraphrase" },
+    { "a": "p05", "b": "p06", "label": "strong", "why": "Benchmark contamination detection vs test-set leakage into benchmarks", "kind": "paraphrase" },
+    { "a": "p13", "b": "p14", "label": "strong", "why": "4-bit quantization of small LLMs for phones vs compact LLMs on smartphones with low-bit compression", "kind": "paraphrase" },
+    { "a": "p01", "b": "p03", "label": "strong", "why": "Both work on what personal agents remember and how users experience it", "kind": "overlap" },
+    { "a": "p02", "b": "p03", "label": "strong", "why": "Retrieval index engineering can help her memory backend; her interview studies can help his participant studies", "kind": "complement" },
+    { "a": "p01", "b": "p04", "label": "strong", "why": "Both focus on agent memory; one on what to remember, other on private and deletable memory", "kind": "overlap" },
+    { "a": "p04", "b": "p18", "label": "strong", "why": "Memory disclosure consent studies needed; consent-flow and survey design offered", "kind": "complement" },
+    { "a": "p17", "b": "p14", "label": "strong", "why": "Federated learning needs real on-device testbeds; mobile profiling and on-device personalization needs", "kind": "complement" },
+    { "a": "p17", "b": "p16", "label": "strong", "why": "Wearable training without moving raw data matches private federated learning", "kind": "complement" },
+    { "a": "p09", "b": "p10", "label": "strong", "why": "Governance case studies and coded moderation data match moderation classifier work", "kind": "complement" },
+    { "a": "p07", "b": "p05", "label": "strong", "why": "Needs statistical methods for rater agreement; benchmark statistics expertise offered", "kind": "complement" },
+    { "a": "p07", "b": "p06", "label": "strong", "why": "Both study agreement between LLM judges and human raters", "kind": "overlap" },
+    { "a": "p21", "b": "p22", "label": "strong", "why": "Needs LLM tutor prototypes; builds them and needs classroom partners", "kind": "complement" },
+    { "a": "p25", "b": "p14", "label": "strong", "why": "Needs fast onboard policy inference; offers on-device latency profiling and compression", "kind": "complement" },
+    { "a": "p27", "b": "p01", "label": "strong", "why": "Wants long-term memory for robots; works on long-term memory for agents and offers study design", "kind": "complement" },
+    { "a": "p11", "b": "p02", "label": "strong", "why": "Wants agent memory for team context; builds persistent user models and retrieval", "kind": "complement" },
+    { "a": "p30", "b": "p17", "label": "strong", "why": "Needs privacy-preserving training so patient data stays on site; offers DP federated learning", "kind": "complement" },
+    { "a": "p29", "b": "p13", "label": "strong", "why": "Needs compression for a large model; quantization toolkit expertise", "kind": "complement" },
+    { "a": "p24", "b": "p06", "label": "strong", "why": "Needs evaluation of code models on beginner tasks; evaluation harness and judge calibration offered", "kind": "complement" },
+    { "a": "p28", "b": "p29", "label": "strong", "why": "Both build biological foundation models over sequence or cell data", "kind": "overlap" },
+    { "a": "p22", "b": "p07", "label": "strong", "why": "Essay feedback tutor needs the rubrics and teacher co-design offered", "kind": "complement" },
+    { "a": "p20", "b": "p17", "label": "weak", "why": "Both cryptography-adjacent privacy methods but different problems", "kind": "overlap" },
+    { "a": "p21", "b": "p07", "label": "weak", "why": "Both AI tutors in education but different focus: learner behavior vs evaluation rubrics", "kind": "overlap" },
+    { "a": "p25", "b": "p26", "label": "weak", "why": "Both robotics but low-level manipulation learning vs language planning and navigation", "kind": "overlap" },
+    { "a": "p26", "b": "p05", "label": "weak", "why": "Needs embodied benchmarks; evaluation expertise is on language models only", "kind": "complement" },
+    { "a": "p12", "b": "p05", "label": "weak", "why": "Needs creative output evaluation; evaluation expertise is benchmark-style, not creative", "kind": "complement" },
+    { "a": "p19", "b": "p04", "label": "weak", "why": "Agent security and agent memory security are adjacent but different topics", "kind": "overlap" },
+    { "a": "p03", "b": "p11", "label": "weak", "why": "Both HCI for AI agents, one individual memory views and one team workspaces", "kind": "overlap" },
+    { "a": "p03", "b": "p18", "label": "weak", "why": "Both HCI around transparency and control, not the same problem", "kind": "overlap" },
+    { "a": "p21", "b": "p23", "label": "weak", "why": "Both learning sciences but classroom AI tutors vs lab studies of human memory", "kind": "overlap" },
+    { "a": "p23", "b": "p02", "label": "weak", "why": "Shared words retrieval and memory, but human memory practice vs assistant retrieval index", "kind": "hard_negative" },
+    { "a": "p15", "b": "p13", "label": "weak", "why": "Both efficiency work but GPU training memory vs phone inference quantization", "kind": "hard_negative" },
+    { "a": "p16", "b": "p13", "label": "weak", "why": "Both small-device ML but microcontrollers and keyword spotting vs phone LLMs", "kind": "overlap" },
+    { "a": "p17", "b": "p18", "label": "weak", "why": "Shared word privacy: technical federated learning vs consent dialog UX", "kind": "hard_negative" },
+    { "a": "p28", "b": "p06", "label": "weak", "why": "Needs generalization testing; evaluation methodology offered but not biological", "kind": "complement" },
+    { "a": "p09", "b": "p11", "label": "weak", "why": "Both social and collaborative computing but different problems", "kind": "overlap" },
+    { "a": "p30", "b": "p08", "label": "weak", "why": "Both clinical data work but NLP summarization vs trial statistics", "kind": "overlap" },
+    { "a": "p10", "b": "p19", "label": "weak", "why": "Both language model applications with adversarial risks, but moderation vs agent security", "kind": "overlap" },
+    { "a": "p15", "b": "p01", "label": "none", "why": "GPU memory optimization vs agent memory share only the word memory", "kind": "hard_negative" },
+    { "a": "p08", "b": "p05", "label": "none", "why": "Model evaluation for clinical trials vs LLM evaluation share only the word evaluation", "kind": "hard_negative" },
+    { "a": "p23", "b": "p01", "label": "none", "why": "Human memory and spaced repetition vs long-term memory for personal agents", "kind": "hard_negative" },
+    { "a": "p15", "b": "p03", "label": "none", "why": "GPU memory optimization vs agent memory interface", "kind": "hard_negative" },
+    { "a": "p08", "b": "p06", "label": "none", "why": "Clinical trial model evaluation vs LLM judge evaluation", "kind": "hard_negative" },
+    { "a": "p09", "b": "p19", "label": "none", "why": "Community moderation research vs agent prompt injection defenses", "kind": "unrelated" },
+    { "a": "p22", "b": "p15", "label": "none", "why": "Writing feedback tools vs GPU kernels", "kind": "unrelated" },
+    { "a": "p29", "b": "p12", "label": "none", "why": "Single-cell models vs creative tools", "kind": "unrelated" },
+    { "a": "p25", "b": "p09", "label": "none", "why": "Robot manipulation vs online community norms", "kind": "unrelated" },
+    { "a": "p27", "b": "p15", "label": "none", "why": "Social robots for care vs GPU systems", "kind": "unrelated" },
+    { "a": "p28", "b": "p21", "label": "none", "why": "Protein modeling vs classroom learning study", "kind": "unrelated" },
+    { "a": "p24", "b": "p17", "label": "none", "why": "Programming education vs private federated learning", "kind": "unrelated" },
+    { "a": "p10", "b": "p13", "label": "none", "why": "Toxicity classifiers vs model quantization for phones", "kind": "unrelated" },
+    { "a": "p16", "b": "p21", "label": "none", "why": "Microcontroller sensing vs classroom study", "kind": "unrelated" },
+    { "a": "p20", "b": "p12", "label": "none", "why": "Cryptographic protocols vs creative generative tools", "kind": "unrelated" },
+    { "a": "p08", "b": "p25", "label": "none", "why": "Clinical trial statistics vs robot learning", "kind": "unrelated" },
+    { "a": "p14", "b": "p18", "label": "none", "why": "Mobile compression vs consent dialog design", "kind": "unrelated" },
+    { "a": "p26", "b": "p23", "label": "none", "why": "Embodied agents planning vs human memory experiments", "kind": "unrelated" },
+    { "a": "p30", "b": "p15", "label": "none", "why": "Clinical note summarization vs GPU systems", "kind": "unrelated" },
+    { "a": "p19", "b": "p23", "label": "none", "why": "Agent security vs human memory experiments", "kind": "unrelated" },
+    { "a": "p29", "b": "p09", "label": "none", "why": "Single-cell genomics vs online communities", "kind": "unrelated" },
+    { "a": "p08", "b": "p13", "label": "none", "why": "Clinical trial statistics vs phone quantization", "kind": "unrelated" },
+    { "a": "p20", "b": "p27", "label": "none", "why": "Private set intersection vs social robots for elderly care", "kind": "unrelated" },
+    { "a": "p12", "b": "p15", "label": "none", "why": "Creative tools vs GPU memory optimization", "kind": "unrelated" },
+    { "a": "p19", "b": "p29", "label": "none", "why": "Agent security vs single-cell models", "kind": "unrelated" },
+    { "a": "p24", "b": "p28", "label": "none", "why": "Programming education vs protein modeling", "kind": "unrelated" }
+  ],
+  "rooms": [
+    {
+      "id": "r1",
+      "members": ["p01", "p02", "p03", "p04", "p05", "p06", "p07", "p17", "p18", "p19", "p15", "p25"],
+      "expected_clusters": [
+        { "theme": "agent memory", "members": ["p01", "p02", "p03", "p04"] },
+        { "theme": "LLM evaluation", "members": ["p05", "p06", "p07"] },
+        { "theme": "privacy and security", "members": ["p17", "p18", "p19"] }
+      ]
+    },
+    {
+      "id": "r2",
+      "members": ["p09", "p10", "p11", "p21", "p22", "p23", "p13", "p14", "p16", "p08", "p28", "p26"],
+      "expected_clusters": [
+        { "theme": "social computing and moderation", "members": ["p09", "p10", "p11"] },
+        { "theme": "learning sciences and education", "members": ["p21", "p22", "p23"] },
+        { "theme": "on-device efficient ML", "members": ["p13", "p14", "p16"] }
+      ]
+    }
+  ]
+}

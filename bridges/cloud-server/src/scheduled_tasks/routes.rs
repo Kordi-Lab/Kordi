@@ -76,6 +76,18 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             "/v1/cloud/scheduled-tasks/:task_id/runs",
             get(list_task_runs),
         )
+        .route(
+            "/v1/cloud/scheduled-task-runs/desktop/pending",
+            get(super::mac::pending),
+        )
+        .route(
+            "/v1/cloud/scheduled-task-runs/desktop/:run_id/complete",
+            post(super::mac::complete),
+        )
+        .route(
+            "/v1/cloud/scheduled-task-runs/desktop/:run_id/fail",
+            post(super::mac::fail),
+        )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,

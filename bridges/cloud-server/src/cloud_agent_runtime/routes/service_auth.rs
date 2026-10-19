@@ -12,7 +12,7 @@ pub(super) fn include_service_provider_auth(state: &ServerState, run: &mut Runne
     });
 }
 
-pub(super) fn service_provider_auths(state: &ServerState) -> Vec<ServiceProviderAuth<'_>> {
+pub(crate) fn service_provider_auths(state: &ServerState) -> Vec<ServiceProviderAuth<'_>> {
     let mut auths = Vec::new();
     if let Some(support) = state.support() {
         let config = support.config();

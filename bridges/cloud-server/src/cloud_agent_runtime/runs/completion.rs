@@ -1,7 +1,6 @@
 //! Completion/failure DTOs and terminal Cloud run state transitions.
 
 use chrono::Utc;
-use serde::Deserialize;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
@@ -21,61 +20,14 @@ use super::{RunError, RunResult};
 
 type FailedRunRow = (String, String, String, String, Option<String>);
 
-#[derive(Debug, Deserialize)]
-pub struct CompleteRunRequest {
-    #[serde(rename = "runnerId")]
-    pub runner_id: String,
-    #[serde(rename = "responseText")]
-    pub response_text: String,
-    #[serde(rename = "ompState", default)]
-    pub omp_state: Option<super::omp_state::OmpState>,
-}
-
-impl CompleteRunRequest {
-    pub fn runner_id(&self) -> Option<String> {
-        let trimmed = self.runner_id.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct FailRunRequest {
-    #[serde(rename = "runnerId")]
-    pub runner_id: String,
-    #[serde(rename = "errorCode")]
-    pub error_code: String,
-    pub message: String,
-}
-
-impl FailRunRequest {
-    pub fn runner_id(&self) -> Option<String> {
-        let trimmed = self.runner_id.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    }
-
-    pub fn error_code(&self) -> String {
-        let trimmed = self.error_code.trim();
-        if trimmed.is_empty() {
-            "runner_error".to_string()
-        } else {
-            trimmed.to_string()
-        }
-    }
-}
+mod requests;
+pub use requests::{CompleteRunRequest, FailRunRequest};
 
 fn cloud_agent_failure_response_text(error_code: &str, is_support_agent: bool) -> &'static str {
+    if is_support_agent {
+        return "Kordi Support couldn’t complete this request. Please try again shortly.";
+    }
     match error_code {
-        "missing_provider_auth" | "provider_auth_rejected" if is_support_agent => {
-            "Kordi Support is temporarily unavailable. Try again shortly."
-        }
         "missing_provider_auth" => "No provider configured yet.",
         // Desktop clients match this text to offer "Open authentication".
         "provider_auth_rejected" => "Sign in again to use this account.",
@@ -117,6 +69,17 @@ pub async fn complete_run_with_state(
     response_text: &str,
     omp_state: Option<&super::omp_state::OmpState>,
 ) -> RunResult<RunnerRunResponse> {
+    complete_run_with_service_auth(pool, run_id, runner_id, response_text, omp_state, &[]).await
+}
+
+pub(crate) async fn complete_run_with_service_auth(
+    pool: &PgPool,
+    run_id: &str,
+    runner_id: &str,
+    response_text: &str,
+    omp_state: Option<&super::omp_state::OmpState>,
+    service_auths: &[super::super::provider_auth::ServiceProviderAuth<'_>],
+) -> RunResult<RunnerRunResponse> {
     if let Some(run) = super::subsession_lifecycle::finish_with_state(
         pool,
         run_id,
@@ -124,6 +87,7 @@ pub async fn complete_run_with_state(
         response_text,
         true,
         omp_state,
+        service_auths,
     )
     .await?
     {
@@ -153,7 +117,7 @@ pub async fn complete_run_with_state(
     let existing: Option<(String, String, String, String, String, Option<String>)> = query_as(
         "SELECT owner_account_id, requester_account_id, session_id, request_message_id, status, response_message_id \
          FROM cloud_agent_fallback_runs \
-         WHERE run_id = $1 AND claimed_by = $2 AND execution_backend='cloud' AND status IN ('leased', 'running') AND lease_expires_at::timestamptz>now()",
+         WHERE run_id = $1 AND claimed_by = $2 AND execution_backend IN ('cloud','desktop') AND status IN ('leased', 'running') AND lease_expires_at::timestamptz>now()",
     )
     .bind(run_id)
     .bind(runner_id)
@@ -172,7 +136,8 @@ pub async fn complete_run_with_state(
     };
     let response_body = encode_cloud_agent_response_body(&request_message_id, trimmed);
     if let Some(state) = omp_state {
-        super::omp_state::validate_for_run(&mut tx, run_id, runner_id, state).await?;
+        super::omp_state::validate_for_run(&mut tx, run_id, runner_id, state, service_auths)
+            .await?;
     }
     let response_body = super::subsessions::with_links(pool, run_id, &response_body).await?;
     let response_message_id = if is_scheduled_run_request_id(&request_message_id) {
@@ -263,7 +228,15 @@ pub async fn complete_run_with_state(
     let now = Utc::now();
     let now_text = now.to_rfc3339();
     if let Some(state) = omp_state {
-        super::omp_state::save(&mut tx, run_id, runner_id, &response_message_id, state).await?;
+        super::omp_state::save(
+            &mut tx,
+            run_id,
+            runner_id,
+            &response_message_id,
+            state,
+            service_auths,
+        )
+        .await?;
     }
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
@@ -327,7 +300,7 @@ pub async fn fail_run(
     let existing: Option<FailedRunRow> = query_as(
         "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id \
          FROM cloud_agent_fallback_runs \
-         WHERE run_id = $1 AND claimed_by = $2 AND execution_backend='cloud' AND status IN ('leased', 'running') AND lease_expires_at::timestamptz>now()",
+         WHERE run_id = $1 AND claimed_by = $2 AND execution_backend IN ('cloud','desktop') AND status IN ('leased', 'running') AND lease_expires_at::timestamptz>now()",
     )
     .bind(run_id)
     .bind(runner_id)
@@ -479,10 +452,21 @@ mod tests {
     use super::cloud_agent_failure_response_text;
 
     #[test]
-    fn support_auth_failure_never_asks_the_user_to_configure_a_provider() {
+    fn support_failures_never_describe_local_fallback_or_user_provider_setup() {
+        for code in [
+            "model_provider_error",
+            "sandbox_error",
+            "provider_auth_rejected",
+            "unknown",
+        ] {
+            assert_eq!(
+                cloud_agent_failure_response_text(code, true),
+                "Kordi Support couldn’t complete this request. Please try again shortly."
+            );
+        }
         assert_eq!(
             cloud_agent_failure_response_text("missing_provider_auth", true),
-            "Kordi Support is temporarily unavailable. Try again shortly."
+            "Kordi Support couldn’t complete this request. Please try again shortly."
         );
         assert_eq!(
             cloud_agent_failure_response_text("missing_provider_auth", false),

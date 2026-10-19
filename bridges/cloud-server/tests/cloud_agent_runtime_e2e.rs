@@ -391,6 +391,8 @@ mod calendar;
 mod claims;
 #[path = "cloud_agent_runtime_e2e/cloud_subsessions.rs"]
 mod cloud_subsessions;
+#[path = "cloud_agent_runtime_e2e/digest_mac_first.rs"]
+mod digest_mac_first;
 #[path = "cloud_agent_runtime_e2e/execution_ownership.rs"]
 mod execution_ownership;
 #[path = "cloud_agent_runtime_e2e/group_document_tools.rs"]
@@ -401,6 +403,8 @@ mod group_owner_admission;
 mod group_target_admission;
 #[path = "cloud_agent_runtime_e2e/hosted_only_admission.rs"]
 mod hosted_only_admission;
+#[path = "cloud_agent_runtime_e2e/mac_first_routing.rs"]
+mod mac_first_routing;
 #[path = "cloud_agent_runtime_e2e/omp_state.rs"]
 mod omp_state;
 #[path = "cloud_agent_runtime_e2e/provider_auth.rs"]
@@ -409,6 +413,8 @@ mod provider_auth;
 mod runner;
 #[path = "cloud_agent_runtime_e2e/sandboxes.rs"]
 mod sandboxes;
+#[path = "cloud_agent_runtime_e2e/scheduled_mac_first.rs"]
+mod scheduled_mac_first;
 #[path = "cloud_agent_runtime_e2e/scheduled_runs.rs"]
 mod scheduled_runs;
 #[path = "cloud_agent_runtime_e2e/shared_desktop_lease.rs"]

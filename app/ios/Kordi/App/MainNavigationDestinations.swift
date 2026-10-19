@@ -6,6 +6,8 @@ enum MainNavigationRoute: Hashable {
     case sessionDetails(ConversationSummary)
     case newChat(NewChatMode)
     case archived(ChatChannel)
+    /// Debug-only for now; see CommonGroundAvailability.
+    case commonGround
 }
 
 struct MainNavigationDestination: View {
@@ -16,6 +18,23 @@ struct MainNavigationDestination: View {
     let selectedTab: MainTab
 
     var body: some View {
+        if route == .commonGround {
+            commonGround
+        } else {
+            standardScreen
+        }
+    }
+
+    /// Common ground brings its own stack and round glass back button.
+    @ViewBuilder private var commonGround: some View {
+#if DEBUG
+        CommonGroundView { if path.last == .commonGround { path.removeLast() } }
+#else
+        EmptyView()
+#endif
+    }
+
+    private var standardScreen: some View {
         NavigationStack {
             screen
                 .toolbar {
@@ -61,6 +80,8 @@ struct MainNavigationDestination: View {
             NewChatView(mode: mode) { path.append(.conversation($0)) }
         case .archived(let channel):
             ArchivedChatsView(channel: channel, onOpenConversation: { path.append(.conversation($0)) })
+        case .commonGround:
+            EmptyView()
         }
     }
 

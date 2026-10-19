@@ -72,8 +72,9 @@ async fn group_logical_request_prefers_mac_and_rejects_another_default_agent_own
     let correct = claim(input(&owner.account_id, &logical_id, &session_id))
         .await
         .unwrap();
-    assert_eq!(correct.status(), StatusCode::CONFLICT);
-    assert_eq!(read_json(correct).await["errorCode"], "owner_online");
+    assert_eq!(correct.status(), StatusCode::OK);
+    let held = read_json(correct).await;
+    assert_eq!(held["status"], "queued");
     let wrong = claim(input(&peer.account_id, &logical_id, &session_id))
         .await
         .unwrap();
@@ -99,7 +100,7 @@ async fn group_logical_request_prefers_mac_and_rejects_another_default_agent_own
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(count, 0);
+    assert_eq!(count, 1, "the held run is the only run for the request");
 
     sqlx_core::query::query("UPDATE cloud_device_presence SET state='offline' WHERE account_id=$1")
         .bind(&owner.account_id)
@@ -111,7 +112,20 @@ async fn group_logical_request_prefers_mac_and_rejects_another_default_agent_own
         .await
         .unwrap();
     assert_eq!(offline.status(), StatusCode::OK);
-    assert_eq!(read_json(offline).await["executionBackend"], "cloud");
+    let offline = read_json(offline).await;
+    assert_eq!(offline["executionBackend"], "cloud");
+    assert_eq!(offline["runId"], held["runId"]);
+    let (held_for_mac,): (bool,) = sqlx_core::query_as::query_as(
+        "SELECT desktop_preferred_until IS NOT NULL FROM cloud_agent_fallback_runs WHERE run_id=$1",
+    )
+    .bind(held["runId"].as_str().unwrap())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        !held_for_mac,
+        "an offline Mac releases the run to the cloud at once"
+    );
     assert_eq!(
         claim(input(&peer.account_id, &logical_id, &session_id))
             .await

@@ -286,8 +286,9 @@ export function cloudFallbackRunClaimsForMessages({
     const ownerAccountId = groupMessage.senderKind === 'agent'
       ? cloudGroupAgentHandoffTarget(envelope)?.accountId
       : cloudGroupHumanAgentTarget(groupMessage, envelope.participants)?.ownerAccountId;
-    // Self-agent fallback has its own admission path; observers cannot claim.
-    if (!ownerAccountId || ownerAccountId === account.accountId) continue;
+    // The sender claims for every target, its own agent included: the server
+    // holds the run for a ready owner Mac and the cloud answers if none does.
+    if (!ownerAccountId) continue;
     const requestKey = `${envelope.groupId}\u0000${ownerAccountId}\u0000${groupMessage.id}`;
     if (claimedGroupRequests.has(requestKey) || terminalGroupResponseKeys.has(requestKey)) continue;
     claimedGroupRequests.add(requestKey);

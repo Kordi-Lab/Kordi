@@ -74,7 +74,7 @@ test('support presentation hides stale local provider failures only', () => {
     },
   ]);
 
-  assert.deepEqual(messages.map((message) => message.id), ['support-answer', 'support-processing', 'user-question']);
+  assert.deepEqual(messages.map((message) => message.id), ['support-answer', 'user-question']);
   assert.equal(messages[0]?.sender, KORDI_SUPPORT_NAME);
   assert.equal(messages[0]?.role, 'person');
   assert.equal(messages[0]?.senderType, 'human');
@@ -83,14 +83,7 @@ test('support presentation hides stale local provider failures only', () => {
   assert.equal(messages[0]?.replyToMessageId, undefined);
   assert.equal(messages[0]?.supportContactResponse, true);
   assert.equal(messages[0]?.supportContactTyping, false);
-  assert.equal(messages[1]?.sender, KORDI_SUPPORT_NAME);
-  assert.equal(messages[1]?.role, 'person');
-  assert.equal(messages[1]?.senderType, 'human');
-  assert.equal(messages[1]?.text, '');
-  assert.equal(messages[1]?.turn, undefined);
-  assert.equal(messages[1]?.replyToMessageId, undefined);
-  assert.equal(messages[1]?.supportContactResponse, true);
-  assert.equal(messages[1]?.supportContactTyping, true);
+
 });
 
 test('support presentation drops orphaned processing without a user request', () => {
@@ -332,4 +325,22 @@ test('canonical hydration keeps runtime Kordi Support visible before its session
   assert.equal(conversations[0]?.messages[1]?.role, 'person');
   assert.equal(conversations[0]?.messages[1]?.turn, undefined);
   assert.equal(conversations[0]?.messages[1]?.supportContactResponse, true);
+});
+
+test('a terminal Support reply removes already-presented typing for the same request', () => {
+  const request = { id: 'pending-question', role: 'user' as const, text: 'Hello', time: '12:00' };
+  const pending = {
+    id: 'typing', role: 'external-agent' as const, text: '', time: '12:00', replyToMessageId: request.id,
+    turn: { id: 'typing-turn', sessionId, prompt: 'Hello', status: 'processing', message: '', assistantText: '',
+      thinkingText: '', tools: [], completed: false, succeeded: false },
+  };
+  const presented = normalizeSupportContactMessages([request, pending]);
+  const terminal = {
+    ...pending, id: 'failure',
+    turn: { ...pending.turn, status: 'failed', completed: true,
+      error: 'Kordi Support is temporarily unavailable. Try again shortly.' },
+  };
+  const reconciled = normalizeSupportContactMessages([...presented, terminal]);
+  assert.deepEqual(reconciled.map((message) => message.id), [request.id, 'failure']);
+  assert.equal(reconciled.at(-1)?.text, terminal.turn.error);
 });

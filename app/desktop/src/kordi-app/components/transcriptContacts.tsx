@@ -1,10 +1,9 @@
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ChevronRight, LoaderCircle } from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
+import { contactRequestDisplayName, contactRequestSummary, contactSecondaryLine, isOutgoingContactRequest } from '../contactPresentation';
 import type { Contact, ContactRequest } from '../types';
 import { contactTypeLabel } from './contactTypeLabel';
 import { IdentityAvatar, type IdentityAvatarKind } from './IdentityAvatar';
-import { ContactRequestTime } from './transcriptMessageTime';
 
 function contactAvatarKind(contact: Contact): IdentityAvatarKind {
   return contact.classType === 'my-agents' || contact.classType === 'other-users-agents' ? 'agent' : 'human';
@@ -14,101 +13,124 @@ function requestAvatarKind(request: ContactRequest): IdentityAvatarKind {
   return /agent/i.test(request.title) ? 'agent' : 'human';
 }
 
-export function ContactRow({ contact, active, onSelect }: { contact: Contact; active: boolean; onSelect: () => void }) {
+export function ContactRow({
+  contact,
+  active,
+  onSelect,
+  now,
+}: {
+  contact: Contact;
+  active: boolean;
+  onSelect: () => void;
+  /** Clock for the "last seen" line; the list passes a ticking value. */
+  now?: number;
+}) {
   const typeLabel = contactTypeLabel(contact);
+  const secondaryLine = contactSecondaryLine(contact, now);
   return (
     <button
+      type="button"
       onClick={onSelect}
       aria-current={active ? 'true' : undefined}
-      className="app-contact-row app-list-item flex w-full items-center gap-3 rounded-[15px] px-3 py-2 text-left text-white transition-none"
+      className={cn(
+        'app-contact-row app-list-item flex w-full items-center gap-3 rounded-[10px] px-2 py-2 text-left transition-none',
+        active && 'app-contact-row-selected',
+      )}
     >
       <IdentityAvatar
         kind={contactAvatarKind(contact)}
         seed={contact.avatarSeed ?? contact.sourceParticipantId ?? contact.id}
         name={contact.name}
         imageUrl={contact.profileImageUrl}
-        className="h-10 w-10 border border-white/10"
+        cornerRadius="50%"
+        className="app-contacts-avatar h-10 w-10"
         presenceStatus={contact.presenceStatus}
         presenceLabel={contact.presenceStatus ? `${contact.name} is ${contact.presenceStatus === 'online' ? 'online' : 'offline'}` : null}
       />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[13px] font-medium leading-5">{contact.name}</span>
-          {typeLabel ? <span className="text-[10.5px] leading-4 text-slate-300">{typeLabel}</span> : null}
+        <div className="flex items-baseline gap-2">
+          <span className="truncate text-[14px] font-semibold leading-5">{contact.name}</span>
+          {typeLabel ? <span className="app-contact-row-meta shrink-0 text-[11px] leading-4">{typeLabel}</span> : null}
         </div>
-        <div className="truncate text-[11.5px] leading-4 text-slate-300">{contact.subtitle}</div>
+        <div className={cn('app-contact-row-meta truncate text-[12.5px] leading-[18px]', secondaryLine.online && 'app-contacts-presence-online')}>
+          {secondaryLine.text}
+        </div>
       </div>
-      <ChevronRight className="h-4 w-4 text-slate-500" />
     </button>
   );
 }
 
+/**
+ * One compact two-line row per pending request: avatar, name, handle or state, and a short trailing
+ * control. Incoming rows carry an Accept pill; Reject and the full note live in the detail pane.
+ */
 export function ContactRequestRow({
   request,
   active,
+  onSelect,
   onAccept,
-  onReject,
   actionState = null,
 }: {
   request: ContactRequest;
   active: boolean;
+  onSelect?: () => void;
   onAccept?: () => void;
-  onReject?: () => void;
   actionState?: 'accepting' | 'rejecting' | null;
 }) {
-  const isBusy = Boolean(actionState);
-  const statusText = actionState === 'accepting'
+  const name = contactRequestDisplayName(request);
+  const outgoing = isOutgoingContactRequest(request);
+  const summary = actionState === 'accepting'
     ? 'Accepting and sending greeting…'
     : actionState === 'rejecting'
       ? 'Rejecting request…'
-      : '';
+      : contactRequestSummary(request);
 
   return (
     <div
       className={cn(
-        'app-contact-request-item px-3 py-3 text-white transition-none',
-        active && 'app-contact-request-item-active',
+        'app-contact-row app-contact-request-row relative flex w-full items-center gap-2 rounded-[10px] px-2 py-2 transition-none',
+        active && 'app-contact-row-selected',
       )}
     >
-      <div className="flex items-start gap-3">
+      <button
+        type="button"
+        onClick={onSelect}
+        disabled={!onSelect}
+        aria-current={active ? 'true' : undefined}
+        className="app-contact-request-select flex min-w-0 flex-1 items-center gap-3 text-left"
+      >
         <IdentityAvatar
           kind={requestAvatarKind(request)}
-          seed={request.avatarSeed ?? request.id}
-          name={request.title}
+          seed={request.avatarSeed ?? request.targetNodeId ?? request.id}
+          name={name}
           imageUrl={request.profileImageUrl}
-          className="h-10 w-10 border border-white/10"
+          cornerRadius="50%"
+          className="app-contacts-avatar h-10 w-10"
         />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-3">
-            <div className="truncate text-sm font-medium">{request.title}</div>
-            <ContactRequestTime value={request.time} />
-          </div>
-          <div className={`mt-1 text-xs ${active ? 'text-slate-100' : 'text-slate-300'}`}>{request.detail}</div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button className="h-8 rounded-xl px-3 text-[11px]" onClick={onAccept} disabled={!onAccept || isBusy}>
-              {actionState === 'accepting' ? (
-                <>
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                  Accepting…
-                </>
-              ) : 'Accept'}
-            </Button>
-            <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={onReject} disabled={!onReject || isBusy}>
-              {actionState === 'rejecting' ? (
-                <>
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                  Rejecting…
-                </>
-              ) : 'Reject'}
-            </Button>
-          </div>
-          {statusText ? (
-            <div className="mt-2 text-[11px] leading-4 text-slate-400" aria-live="polite">
-              {statusText}
-            </div>
-          ) : null}
-        </div>
-      </div>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[14px] font-semibold leading-5">{name}</span>
+          <span className="app-contact-row-meta block truncate text-[12.5px] leading-[18px]" aria-live={actionState ? 'polite' : undefined}>
+            {summary}
+          </span>
+        </span>
+      </button>
+      {outgoing ? (
+        <span className="app-contact-row-meta relative mt-0.5 shrink-0 self-start text-[12px] leading-5">Pending</span>
+      ) : (
+        <button
+          type="button"
+          className="app-contacts-accept-pill relative inline-flex h-6 shrink-0 items-center gap-1 self-start rounded-full px-2.5 text-[11.5px] font-semibold disabled:pointer-events-none disabled:opacity-50"
+          onClick={onAccept}
+          disabled={!onAccept || Boolean(actionState)}
+        >
+          {actionState === 'accepting' ? (
+            <>
+              <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden="true" />
+              Accepting…
+            </>
+          ) : 'Accept'}
+        </button>
+      )}
     </div>
   );
 }

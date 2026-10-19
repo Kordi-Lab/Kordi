@@ -315,8 +315,14 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     // Digest runs are background runs (read-only connector tools) whose
     // output only the owner reads.
-    query("INSERT INTO cloud_agent_fallback_runs (run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,system_prompt,runtime_route_json,created_at,updated_at,run_trigger,connector_audience) VALUES($1,$1,$1,$2,$3,$3,'queued',$4,$5,$6,$7,$7,'background','owner_private')")
-        .bind(&run).bind(&session).bind(account).bind(serde_json::to_string(&input).unwrap()).bind(super::SYSTEM_PROMPT).bind(serde_json::to_value(&route).unwrap()).bind(now).execute(&mut *tx).await?;
+    // A ready owner Mac runs the digest first; the cloud runner waits until
+    // `desktop_preferred_until` and then runs it if no Mac claimed it.
+    let preferred_until = super::desktop::preferred_until(pool, account).await?;
+    query("INSERT INTO cloud_agent_fallback_runs (run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,system_prompt,runtime_route_json,created_at,updated_at,run_trigger,connector_audience,desktop_preferred_until) VALUES($1,$1,$1,$2,$3,$3,'queued',$4,$5,$6,$7,$7,'background','owner_private',$8)")
+        .bind(&run).bind(&session).bind(account).bind(serde_json::to_string(&input).unwrap()).bind(super::SYSTEM_PROMPT).bind(serde_json::to_value(&route).unwrap()).bind(now).bind(preferred_until).execute(&mut *tx).await?;
+    if preferred_until.is_some() {
+        super::desktop::announce(&mut tx, account, &run).await?;
+    }
     tx.commit().await
 }
 
@@ -397,6 +403,8 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
     let Some((account, value)) = row else {
         return Err(sqlx_core::Error::RowNotFound);
     };
+    // Every executor's reply gets the same clean-up before the checks below.
+    let text = super::output::normalized_reply(text, &value);
     let input: Input =
         serde_json::from_value(value).map_err(|e| sqlx_core::Error::Decode(Box::new(e)))?;
     // The reason a generated digest is rejected is logged without its content.

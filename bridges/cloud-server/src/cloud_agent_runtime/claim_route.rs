@@ -225,13 +225,6 @@ pub(super) async fn claim_cloud_agent_run(
                 );
             }
         };
-    if owner_desktop_online {
-        return error_response(
-            "owner_online",
-            "The owner Mac is online and will handle this agent request.",
-            StatusCode::CONFLICT,
-        );
-    }
     let request_owned_by_desktop =
         match owner_has_fresh_desktop_execution_claim(state.db_pool(), &input, now, route_timeout)
             .await
@@ -253,9 +246,11 @@ pub(super) async fn claim_cloud_agent_run(
         );
     }
 
-    // The exact idempotency key is the durable Cloud admission boundary once
-    // no reachable owner Mac can claim the request.
-    match claim_run_for_person_message(state.db_pool(), &input).await {
+    // The exact idempotency key is the durable admission boundary. A ready
+    // owner Mac gets the first chance for one presence timeout; if no Mac
+    // claims the run by then, the cloud runner answers it.
+    let desktop_preferred_until = owner_desktop_online.then(|| now + route_timeout);
+    match claim_run_for_person_message(state.db_pool(), &input, desktop_preferred_until).await {
         Ok(run) => Json(run).into_response(),
         Err(error) => run_error_response(
             "claim run",

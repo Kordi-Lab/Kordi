@@ -77,7 +77,7 @@ export function useCloudSelfAgentExecution({
     reportWarning,
   });
   const voiceGate = useVoiceAgentRequestGate();
-  const executionReady = useDesktopAgentReadiness({ account, client, runtimeReady, cloudAgentDefinitionsById, reportWarning });
+  const executionReady = useDesktopAgentReadiness({ account, client, runtimeReady, cloudAgentDefinitionsById, defaultRoute, reportWarning });
   const activeAccountIdRef = useRef<string | null>(
     account?.accountId ?? null,
   );
