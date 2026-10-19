@@ -4,9 +4,8 @@ struct AgentModelPicker: View {
     @EnvironmentObject private var model: AppModel
     let conversation: ConversationSummary
     let onDismiss: () -> Void
-    var initialPage: AgentModelPickerPage = .models
+    @Binding var page: AgentModelPickerPage
     @Environment(\.kordiChatTheme) private var chatTheme
-    @State private var page: AgentModelPickerPage = .models
     @State private var search = ""
     @State private var showsAllModels = false
     @State private var showsAccountConfirmation = false
@@ -114,15 +113,18 @@ struct AgentModelPicker: View {
                 .accessibilityIdentifier("agent-model-save-error")
             }
         }
-        .padding(10)
-        .frame(width: page == .effort ? 232 : 288)
+        .padding(page == .effort ? 0 : 10)
+        .frame(width: page == .effort ? nil : 288)
         .fixedSize(horizontal: false, vertical: true)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 15))
-        .overlay { RoundedRectangle(cornerRadius: 15).stroke(chatTheme.accent.opacity(0.15), lineWidth: 0.5) }
+        .background {
+            if page != .effort {
+                RoundedRectangle(cornerRadius: 15).fill(.regularMaterial)
+                    .overlay { RoundedRectangle(cornerRadius: 15).stroke(chatTheme.accent.opacity(0.15), lineWidth: 0.5) }
+            }
+        }
         .tint(chatTheme.accent)
         .disabled(isSaving || isTesting)
-        .onAppear { loadSelection(); page = initialPage }
-        .onChange(of: initialPage) { _, value in page = value }
+        .onAppear { loadSelection() }
         .task {
             if !model.hasLiveOMPProviderCatalog && !model.ompBackendUnavailable {
                 await model.refreshOMPProviderCatalog()
@@ -144,41 +146,43 @@ struct AgentModelPicker: View {
 
     private var effortControl: some View {
         VStack(spacing: 4) {
-            HStack {
-                Spacer(minLength: 28)
-                VStack(spacing: 0) {
-                    Text(thinkingLabel(selectedThinking))
-                        .font(.caption.weight(.semibold)).foregroundStyle(chatTheme.accent)
-                    Button { page = .models } label: {
-                        HStack(spacing: 2) {
-                            Text(modelLabel(selectedModel)).lineLimit(1)
-                            Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
-                        }
-                        .font(.caption2).foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Select model")
+            HStack(spacing: 4) {
+                Button(action: onDismiss) {
+                    Image(systemName: "keyboard").frame(width: 32, height: 32)
                 }
-                .padding(.horizontal, 10).padding(.vertical, 2)
-                .background(chatTheme.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
+                .accessibilityLabel("Back to message")
+                Spacer(minLength: 0)
+                Button { page = .models } label: {
+                    HStack(spacing: 4) {
+                        Text(modelLabel(selectedModel)).fontWeight(.medium)
+                        Text(thinkingLabel(selectedThinking)).foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                    }
+                    .font(.caption).lineLimit(1)
+                }
+                .accessibilityLabel("Select model")
                 Spacer(minLength: 0)
                 Button {
                     selectedThinking = "default"
                     save(dismissAfter: false)
                 } label: {
-                    Image(systemName: "arrow.counterclockwise").font(.caption)
-                        .frame(width: 28, height: 28)
+                    Image(systemName: "arrow.counterclockwise").frame(width: 32, height: 32)
                 }
-                .buttonStyle(.plain)
                 .disabled(!canEdit || selectedAccountIsUnavailable || selectedAuthChoice.isEmpty)
                 .accessibilityLabel("Reset effort to model default")
             }
+            .font(.caption)
+            .foregroundStyle(.primary)
+            .buttonStyle(.plain)
             AgentEffortSlider(
                 value: $selectedThinking,
                 levels: thinkingLevels.filter { $0 != "default" },
                 accent: chatTheme.accent,
                 onCommit: { save(dismissAfter: false) }
             )
+            .padding(.horizontal, 8)
+            .background(.regularMaterial, in: Capsule())
+            .overlay { Capsule().stroke(chatTheme.accent.opacity(0.12), lineWidth: 0.5) }
             .disabled(!canEdit || selectedAccountIsUnavailable || selectedAuthChoice.isEmpty)
         }
     }
@@ -565,28 +569,28 @@ private struct AgentEffortSlider: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let travel = max(0, geometry.size.width - 24)
+            let travel = max(0, geometry.size.width - 32)
             let fraction = Double(index) / Double(max(1, levels.count - 1))
             ZStack(alignment: .leading) {
-                Capsule().fill(accent.opacity(0.12)).frame(height: 24)
-                Capsule().fill(accent).frame(width: levels.contains(value) ? 12 + travel * fraction : 0, height: 24)
+                Capsule().fill(accent.opacity(0.12)).frame(height: 32)
+                Capsule().fill(accent).frame(width: levels.contains(value) ? 16 + travel * fraction : 0, height: 32)
                 HStack {
                     ForEach(levels, id: \.self) { level in
                         Circle().fill(Color.secondary.opacity(0.35)).frame(width: 4, height: 4)
                         if level != levels.last { Spacer(minLength: 0) }
                     }
-                }.padding(.horizontal, 10)
+                }.padding(.horizontal, 16)
                 Circle().fill(Color(uiColor: .systemBackground)).shadow(color: .black.opacity(0.15), radius: 2, y: 1)
-                    .frame(width: 22, height: 22).offset(x: 1 + travel * fraction)
+                    .frame(width: 28, height: 28).offset(x: 2 + travel * fraction)
             }
-            .frame(height: 36).contentShape(Rectangle())
+            .frame(height: 44).contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0).onChanged { gesture in
                 guard isEnabled, levels.count > 1, travel > 0 else { return }
-                let step = Int(((gesture.location.x - 12) / travel * Double(levels.count - 1)).rounded())
+                let step = Int(((gesture.location.x - 16) / travel * Double(levels.count - 1)).rounded())
                 value = levels[min(max(0, step), levels.count - 1)]
             }.onEnded { _ in if isEnabled { onCommit() } })
         }
-        .frame(height: 36)
+        .frame(height: 44)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Thinking effort")
         .accessibilityValue(AgentModelPresentation.effort(value))

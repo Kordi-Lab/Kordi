@@ -194,7 +194,7 @@ struct ComposerView: View {
     @State private var keyboardSurfaceHeight: CGFloat = 0
     @State private var composerContentHeight: CGFloat = 0
     @State private var modelPickerPage: AgentModelPickerPage = .models
-    @Environment(\.kordiChatTheme) private var composerChatTheme
+    @State private var modelPillFrame: CGRect = .zero
     @State private var messageEditorHeight: CGFloat = 44
     @State private var isDraftPanePresented = false
     @State private var keyboardFocusRequest = 0
@@ -222,6 +222,7 @@ struct ComposerView: View {
 
     private var composerBody: some View {
         composerContainer
+            .coordinateSpace(name: "composerControls")
             .overlay(alignment: .bottomTrailing) {
                 VoiceRecordingGestureCapture(
                     isEnabled: canCaptureHoldToTalk,
@@ -364,11 +365,12 @@ struct ComposerView: View {
                 AgentModelPicker(
                     conversation: conversation,
                     onDismiss: dismissAgentModelPicker,
-                    initialPage: modelPickerPage
+                    page: $modelPickerPage
                 )
                 .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.horizontal, 16)
-                .offset(y: -composerContentHeight - 8)
+                .padding(.leading, showsInlineEffort ? 28 : 10)
+                .padding(.trailing, showsInlineEffort ? 28 : sendButtonDiameter + 20)
+                .offset(y: showsInlineEffort ? 0 : -max(44, composerContentHeight - modelPillFrame.minY + 4))
                 .transition(mentionPickerTransition)
                 .zIndex(10)
             } else if showsMentionPicker {
@@ -384,8 +386,16 @@ struct ComposerView: View {
         .animation(inputSurfaceAnimation, value: isAgentModelPickerPresented)
     }
 
+    private var showsInlineEffort: Bool {
+        isAgentModelPickerPresented && modelPickerPage == .effort
+    }
+
     private var inputSurfaceAssembly: some View {
         inputSurface
+            .opacity(showsInlineEffort ? 0 : 1)
+            .allowsHitTesting(!showsInlineEffort)
+            .accessibilityHidden(showsInlineEffort)
+            .frame(height: showsInlineEffort ? 80 : nil, alignment: .bottom)
             .padding(.horizontal, 10)
             .overlay(alignment: .top) {
                 if showsHoldToTalkHint {
@@ -448,7 +458,7 @@ struct ComposerView: View {
             .transition(voiceRecordingSurfaceTransition)
         } else {
             HStack(alignment: .bottom, spacing: 8) {
-                if editingMessage == nil && conversation.subsessionId == nil {
+                if !showsInlineEffort && editingMessage == nil && conversation.subsessionId == nil {
                     attachmentMenu
                 }
                 messageFieldSurface
@@ -476,7 +486,7 @@ struct ComposerView: View {
     private var messageFieldSurface: some View {
         if #available(iOS 26.0, *) {
             messageFieldContent
-                .glassEffect(.regular, in: .rect(cornerRadius: messageFieldCornerRadius))
+                .glassEffect(showsInlineEffort ? .identity : .regular, in: .rect(cornerRadius: messageFieldCornerRadius))
         } else {
             messageFieldContent
                 .background(
@@ -515,14 +525,16 @@ struct ComposerView: View {
                     .overlay(alignment: .topTrailing) {
                         if showsDraftPaneButton { draftPaneButton }
                     }
-                HStack(spacing: 2) {
-                    if editingMessage == nil && conversation.subsessionId == nil { expressivePickerButton }
-                    Spacer(minLength: 0)
-                    if editingMessage == nil && model.canChangeRuntimeRouting(for: conversation) { modelEffortPill }
-                    sendButton
+                if !showsInlineEffort {
+                    HStack(spacing: 2) {
+                        if editingMessage == nil && conversation.subsessionId == nil { expressivePickerButton }
+                        Spacer(minLength: 0)
+                        if editingMessage == nil && model.canChangeRuntimeRouting(for: conversation) { modelEffortPill }
+                        sendButton
+                    }
+                    .padding(.leading, 6)
+                    .padding(.bottom, 3)
                 }
-                .padding(.leading, 6)
-                .padding(.bottom, 3)
             }
         }
     }
@@ -1132,7 +1144,7 @@ struct ComposerView: View {
             } label: {
                 Text(unavailable ? "Account unavailable" : AgentModelPresentation.name(route.defaultModel ?? ""))
                     .font(.caption2.weight(.medium)).lineLimit(1)
-                    .truncationMode(.middle).frame(maxWidth: 130)
+                    .truncationMode(.middle)
                     .padding(.leading, 9).padding(.trailing, 4).frame(minHeight: 32)
             }
             .accessibilityLabel("Select model")
@@ -1140,7 +1152,6 @@ struct ComposerView: View {
             .accessibilityIdentifier("composer-model-picker")
             Button {
                 dismissExpressivePicker()
-                isFocused = false
                 modelPickerPage = .effort
                 isAgentModelPickerPresented = true
             } label: {
@@ -1156,8 +1167,12 @@ struct ComposerView: View {
             .accessibilityIdentifier("composer-effort-picker")
         }
         .buttonStyle(.plain)
-        .background(composerChatTheme.accent.opacity(0.08), in: Capsule())
         .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGRect.self) { proxy in
+            proxy.frame(in: .named("composerControls"))
+        } action: { frame in
+            if !showsInlineEffort { modelPillFrame = frame }
+        }
     }
 
     private func dismissAgentModelPicker() {
@@ -1167,7 +1182,6 @@ struct ComposerView: View {
     private func showAgentModelPicker() {
         modelPickerPage = .models
         dismissExpressivePicker()
-        isFocused = false
         isAgentModelPickerPresented = true
     }
 

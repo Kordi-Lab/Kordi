@@ -12,15 +12,42 @@ final class AgentModelRouteUITests: ProviderUITestCase {
         XCTAssertTrue(pill.waitForExistence(timeout: 5))
         XCTAssertEqual(pill.value as? String, "GPT-6 Astra")
         XCTAssertFalse(option.exists)
+        let composerBottom = pill.frame.maxY
         app.buttons["composer-effort-picker"].tap()
         let slider = element("agent-effort-slider", in: app)
         XCTAssertTrue(slider.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(slider.frame.maxY, composerBottom - 44)
+        XCTAssertLessThan(slider.frame.maxY, composerBottom + 44)
         XCTAssertFalse(app.staticTexts["More effort may take longer"].exists)
         capture("Compact effort selection", app: app)
         app.buttons["Reset effort to model default"].tap()
+        app.buttons["Back to message"].tap()
         XCTAssertEqual(app.buttons["composer-effort-picker"].value as? String, "Default")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: GPT-6 Astra")).firstMatch.exists)
         capture("Compact model and effort picker", app: app)
+        app.terminate()
+    }
+
+    func testEffortKeepsDraftAndKeyboardAndModelMenuUsesPillAnchor() {
+        let app = launch("--preview-agent-model")
+        app.buttons["agent-model-option-openai/gpt-6-astra"].tap()
+        let editor = app.textViews.firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("Keep this draft")
+        let pill = app.buttons["composer-model-picker"]
+        pill.tap()
+        let account = app.buttons["agent-model-account"]
+        XCTAssertTrue(account.waitForExistence(timeout: 5))
+        XCTAssertLessThan(account.frame.maxY, pill.frame.minY)
+        XCTAssertGreaterThan(account.frame.maxY, editor.frame.minY)
+        app.buttons["Close model picker"].tap()
+        app.buttons["composer-effort-picker"].tap()
+        XCTAssertTrue(element("agent-effort-slider", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        app.buttons["Back to message"].tap()
+        XCTAssertEqual(editor.value as? String, "Keep this draft")
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
         app.terminate()
     }
 

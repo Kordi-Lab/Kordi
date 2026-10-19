@@ -54,3 +54,8 @@ when implementing the production behavior.
 
 Captured from the Kordi Beta simulator with offline synthetic preview data.
 The real composer uses the selected theme accent and readable model names.
+
+The native iOS refinement uses an inline effort state in place of the composer,
+with one model/effort label above the slider. It preserves the draft and keyboard.
+The model menu anchors directly to the composer model control; the desktop
+retains the compact popover shown in this original browser proposal.
