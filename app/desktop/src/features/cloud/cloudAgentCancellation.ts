@@ -57,10 +57,10 @@ export function cloudGroupAgentProcessingMessageForRequest(
       || !message.sourceTransport?.startsWith('cloud-group-agent')
     ) return false;
     const content = objectContent(message.content);
-    const linkedRequestId = cleanText(message.parentMessageId)
-      || cleanText(
-        typeof content.requestId === 'string' ? content.requestId : null,
-      )
+    const linkedRequestId = cleanText(
+      typeof content.requestId === 'string' ? content.requestId : null,
+    )
+      || cleanText(message.parentMessageId)
       || cleanText(
         typeof content.replyToMessageId === 'string'
           ? content.replyToMessageId

@@ -73,6 +73,8 @@ export function DocumentEditorSurface(props: SurfaceProps) {
   const latest = useRef({ ...props, dirty: false });
   useLayoutEffect(() => { latest.current = { ...props, dirty: latest.current.dirty }; });
   const sync = useRef<SyncState>({ base: [], legacyIds: {} });
+  /** The editor the outside blocks were loaded into, and the revision it holds. */
+  const applied = useRef<{ editor: Editor | null; key: string }>({ editor: null, key: '' });
   // Index ids (`b3`) of a document saved before ids existed get `k:` ids once; after its first stamped save the server lists only `k:` ids.
   const { initialLegacyIds } = props;
   const legacyIds = useMemo(() => (props.blocks.some((block) => !block.id.startsWith('k:')) ? initialLegacyIds : {}), [initialLegacyIds, props.blocks]);
@@ -138,6 +140,9 @@ export function DocumentEditorSurface(props: SurfaceProps) {
       },
     },
     onUpdate: ({ editor: changed, transaction }) => {
+      // Only the editor this surface loaded reports edits. Another instance (React's discarded
+      // render in development) starts empty, and its id stamping would save an empty document.
+      if (changed !== applied.current.editor) return;
       updateSlash(changed);
       if (!transaction.getMeta(OUTSIDE_CONTENT)) emitChange(changed);
     },
@@ -145,7 +150,6 @@ export function DocumentEditorSurface(props: SurfaceProps) {
   });
 
   // The first outside version loads; newer ones (remote save, our own save's answer, a reloaded file) merge in.
-  const applied = useRef<{ editor: Editor | null; key: string }>({ editor: null, key: '' });
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     if (applied.current.editor !== editor) {

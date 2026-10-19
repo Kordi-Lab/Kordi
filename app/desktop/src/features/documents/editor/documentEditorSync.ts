@@ -88,7 +88,8 @@ export function applyRemoteBlocks(editor: Editor, sync: SyncState, blocks: reado
  */
 export function reconciledContent(editor: Editor, room: JSONContent, blocks: readonly SourceBlock[]): JSONContent {
   const manager = editor.markdown!;
-  const snapshot = parseBlocks(manager, blocks).doc.content ?? [];
+  // An empty snapshot has no blocks to bring in (parsing it would add a blank paragraph).
+  const snapshot = blocks.length > 0 ? parseBlocks(manager, blocks).doc.content ?? [] : [];
   const content = [...(room.content ?? [])];
   const sourceOf = (node: JSONContent) => serializeBlocks(manager, { type: 'doc', content: [node] })[0]?.source;
   const indexOf = (id: unknown) => content.findIndex((node) => node.attrs?.id === id);
