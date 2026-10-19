@@ -209,6 +209,12 @@ pub(crate) fn api_for_provider(auth: &OpenAiProviderConfig) -> &'static str {
         OpenAiApiMode::AnthropicOAuth => "anthropic-messages",
         OpenAiApiMode::ChatCompletions if auth.provider == "anthropic" => "anthropic-messages",
         OpenAiApiMode::ChatCompletions if auth.provider == "google" => "google-generative-ai",
+        OpenAiApiMode::ChatCompletions
+            if auth.provider == "openai"
+                && auth.base_url.trim_end_matches('/') == "https://api.openai.com/v1" =>
+        {
+            "openai-responses"
+        }
         OpenAiApiMode::ChatCompletions => "openai-completions",
     }
 }

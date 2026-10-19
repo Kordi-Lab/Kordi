@@ -13,6 +13,7 @@ test('WorkspaceSidebar uses a destination-specific plus action and an agent pick
   const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
   const chromeSource = readFileSync(new URL('../src/pages/workspaceSidebar.chrome.tsx', import.meta.url), 'utf8');
   const dialogSource = readFileSync(new URL('../src/pages/ChatCreateDialog.tsx', import.meta.url), 'utf8');
+  const listChromeSource = readFileSync(new URL('../src/components/SidebarListChrome.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /const \[chatCreateInitialMode, setChatCreateInitialMode\]\s*=\s*useState<ChatCreateMode>\('menu'\)/);
   assert.match(source, /const openChatCreateDialog = useCallback\(\(event: ReactMouseEvent<HTMLElement>\) => \{[\s\S]*setChatCreateInitialMode\(activeNav === 'agent-chats' \? 'agent' : 'menu'\);[\s\S]*setIsChatCreateDialogOpen\(true\);[\s\S]*\}, \[activeNav\]\);/);
@@ -21,8 +22,10 @@ test('WorkspaceSidebar uses a destination-specific plus action and an agent pick
   assert.doesNotMatch(source, /initialMode=\{chatChannel === 'agent' \? 'agent' : 'menu'\}/);
   const stableChrome = source.match(/const chatSidebarChrome = useMemo\(\(\) => \([\s\S]*?\n  \), \[[\s\S]*?\n  \]\);/)?.[0] ?? '';
   assert.match(stableChrome, /ChatSidebarChrome/);
-  assert.match(chromeSource, /app-chat-sidebar-header/);
-  assert.match(chromeSource, /app-workspace-search/);
+  assert.match(chromeSource, /<SidebarListHeader/);
+  assert.match(chromeSource, /<SidebarSearchField/);
+  assert.match(listChromeSource, /app-chat-sidebar-header/);
+  assert.match(listChromeSource, /app-workspace-search/);
   assert.doesNotMatch(chromeSource, /app-filter-tabs/);
   assert.doesNotMatch(stableChrome, /showArchived/);
   assert.match(source, /\{chatSidebarChrome\}/);

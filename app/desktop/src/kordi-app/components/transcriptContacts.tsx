@@ -33,7 +33,7 @@ export function ContactRow({
       onClick={onSelect}
       aria-current={active ? 'true' : undefined}
       className={cn(
-        'app-contact-row app-list-item flex w-full items-center gap-3 rounded-[10px] px-2 py-2 text-left transition-none',
+        'app-contact-row app-list-item flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1 text-left transition-none',
         active && 'app-contact-row-selected',
       )}
     >
@@ -43,16 +43,16 @@ export function ContactRow({
         name={contact.name}
         imageUrl={contact.profileImageUrl}
         cornerRadius="50%"
-        className="app-contacts-avatar h-10 w-10"
+        className="app-contacts-avatar h-9 w-9"
         presenceStatus={contact.presenceStatus}
         presenceLabel={contact.presenceStatus ? `${contact.name} is ${contact.presenceStatus === 'online' ? 'online' : 'offline'}` : null}
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="truncate text-[14px] font-semibold leading-5">{contact.name}</span>
+          <span className="truncate text-[12px] font-semibold leading-4">{contact.name}</span>
           {typeLabel ? <span className="app-contact-row-meta shrink-0 text-[11px] leading-4">{typeLabel}</span> : null}
         </div>
-        <div className={cn('app-contact-row-meta truncate text-[12.5px] leading-[18px]', secondaryLine.online && 'app-contacts-presence-online')}>
+        <div className={cn('app-contact-row-meta mt-0.5 truncate text-[10.5px] leading-4', secondaryLine.online && 'app-contacts-presence-online')}>
           {secondaryLine.text}
         </div>
       </div>
@@ -88,7 +88,7 @@ export function ContactRequestRow({
   return (
     <div
       className={cn(
-        'app-contact-row app-contact-request-row relative flex w-full items-center gap-2 rounded-[10px] px-2 py-2 transition-none',
+        'app-contact-row app-contact-request-row relative flex w-full items-center gap-2 rounded-[10px] px-2.5 py-1 transition-none',
         active && 'app-contact-row-selected',
       )}
     >
@@ -97,7 +97,7 @@ export function ContactRequestRow({
         onClick={onSelect}
         disabled={!onSelect}
         aria-current={active ? 'true' : undefined}
-        className="app-contact-request-select flex min-w-0 flex-1 items-center gap-3 text-left"
+        className="app-contact-request-select flex min-w-0 flex-1 items-center gap-2.5 text-left"
       >
         <IdentityAvatar
           kind={requestAvatarKind(request)}
@@ -105,11 +105,11 @@ export function ContactRequestRow({
           name={name}
           imageUrl={request.profileImageUrl}
           cornerRadius="50%"
-          className="app-contacts-avatar h-10 w-10"
+          className="app-contacts-avatar h-9 w-9"
         />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[14px] font-semibold leading-5">{name}</span>
-          <span className="app-contact-row-meta block truncate text-[12.5px] leading-[18px]" aria-live={actionState ? 'polite' : undefined}>
+          <span className="block truncate text-[12px] font-semibold leading-4">{name}</span>
+          <span className="app-contact-row-meta block mt-0.5 truncate text-[10.5px] leading-4" aria-live={actionState ? 'polite' : undefined}>
             {summary}
           </span>
         </span>

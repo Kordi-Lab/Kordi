@@ -93,6 +93,7 @@ pub(crate) async fn run_facts(
     if child
         || run_id.starts_with(crate::digest::RUN_PREFIX)
         || run_id.starts_with(crate::pip::RUN_PREFIX)
+        || run_id.starts_with(crate::common_ground::RUN_PREFIX)
     {
         return Ok(None);
     }

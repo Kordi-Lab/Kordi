@@ -1,11 +1,12 @@
 mod authorization;
 mod claims;
-mod completion;
+pub(crate) mod completion;
 pub(super) mod context_read;
 mod delivery;
 mod desktop_takeover;
 mod envelopes;
 mod errors;
+mod feature_runs;
 mod group_mentions;
 mod group_target;
 pub(crate) mod identity;
