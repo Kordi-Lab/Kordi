@@ -223,7 +223,7 @@ export function AgentStudioRail({
           const capabilityCount = agent.loadedSkills.length + agent.loadedTools.length + agent.loadedPlugins.length;
           return (
             <button key={agent.id} type="button" aria-current={agent.id === activeAgentId ? 'true' : undefined} className={cn('app-agent-studio-agent-row', agent.id === activeAgentId && 'app-session-row-active')} onClick={() => onOpenAgent(agent.id)}>
-              <IdentityAvatar kind="agent" seed={agent.avatarSeed ?? agent.id} name={agent.name} imageUrl={agent.profileImageUrl} className="h-9 w-9 rounded-[12px]" />
+              <IdentityAvatar kind="agent" seed={agent.avatarSeed ?? agent.id} name={agent.name} imageUrl={agent.profileImageUrl} className="h-9 w-9" />
               <span className="min-w-0"><strong>{agent.name}</strong><small>{agent.role} · {capabilityCount} capabilities</small></span>
               <span className="app-agent-studio-agent-state">{agent.status}</span>
             </button>

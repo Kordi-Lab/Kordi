@@ -290,7 +290,7 @@ export function WorkspaceSidebar({
                     ) : null}
 
                     {desktopChatError ? (
-                      <div className="app-error-text mb-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">
+                      <div className="app-error-text mb-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">
                         {desktopChatError}
                       </div>
                     ) : null}
