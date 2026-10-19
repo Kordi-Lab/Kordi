@@ -228,6 +228,7 @@ export async function respondToCloudGroupAgentMention(
       responseText: reply.text,
       responseDeliveryState: reply.deliveryState === 'complete' ? 'complete' : 'failed',
       responseTools: [],
+      responseTiming: reply.turn,
       requestId: reply.requestId,
       agentId: presentation.agentId,
       agentDisplayName: presentation.displayName,
