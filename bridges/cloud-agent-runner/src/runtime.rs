@@ -254,6 +254,9 @@ where
             }
         };
     }
+    if run.run_id.starts_with(crate::common_ground::RUN_PREFIX) {
+        return crate::common_ground::step(client, provider, engine, run).await;
+    }
     if run.run_id.starts_with("digest_") {
         let response = {
             let generation = async {
@@ -436,6 +439,9 @@ fn model_failure_code(message: &str) -> &'static str {
     }
 }
 
+#[cfg(test)]
+#[path = "runtime_common_ground_tests.rs"]
+mod common_ground_tests;
 #[cfg(test)]
 #[path = "runtime_connector_tests.rs"]
 mod connector_tests;

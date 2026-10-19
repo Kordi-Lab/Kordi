@@ -5,8 +5,14 @@ import { cancelDesktopChatTurn, renewDesktopChatExecutionLease } from '@/lib/des
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { claimedProjectFromLease } from '@/features/projects/claimedProjectSession';
 
-// The native deadline is shorter than the server lease, including network delay.
-export const DESKTOP_EXECUTION_WATCHDOG_MS = 30_000;
+// A renewal extends the server lease by 45 s from when the server handles it.
+// The native deadline counts from when the last accepted renewal was sent, so
+// it always ends the turn before the server lease lapses.
+export const DESKTOP_EXECUTION_WATCHDOG_MS = 40_000;
+const RENEW_INTERVAL_MS = 5_000;
+
+/** Only the server's refusal ends a lease; a slow or failed request is retried. */
+const leaseRefused = (error: unknown) => error instanceof CloudAuthError && [401, 403, 404, 409].includes(error.status);
 
 /** `bindsProject`: this caller runs a project session in this Mac's folder of the project. */
 export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient, 'desktopAgentExecution'>, token: string, input: CloudAgentRunClaimInput, options: { bindsProject?: boolean } = {}) {
@@ -55,9 +61,13 @@ export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient,
         noteStop(response);
         deadline = sentAt + DESKTOP_EXECUTION_WATCHDOG_MS;
         if (deadline <= Date.now()) throw new Error('Execution lease expired during renewal.');
-        if (turnId) await renewDesktopChatExecutionLease(turnId, deadline);
+        if (turnId) await renewDesktopChatExecutionLease(turnId, deadline).catch(loseLease);
+      }, (error: unknown) => {
+        // A transient failure keeps the turn running; the next tick retries
+        // and the deadline above still bounds how long this Mac may continue.
+        if (leaseRefused(error)) loseLease();
       }).catch(loseLease).finally(() => { renewing = false; });
-  }, 10_000);
+  }, RENEW_INTERVAL_MS);
   return {
     runId: result.runId,
     claimId,

@@ -306,6 +306,16 @@ async fn claim_run_with_executor(
     })
 }
 
+/// The route an owner's Mac chose for a run it claims, to store on the run:
+/// the normalized route when it names a model, else `None`, which keeps the
+/// stored route. The Mac's hosted credentials are then resolved for exactly
+/// the account it chose.
+pub(crate) fn claimed_route_json(route: Option<&AgentRuntimeRoute>) -> Option<serde_json::Value> {
+    let route = route?.normalized()?;
+    route.default_model.as_ref()?;
+    serde_json::to_value(route).ok()
+}
+
 /// The route a claimed run executes with: the owner's own request route, or
 /// for any other requester the route stored on the targeted agent. A
 /// requester's route never selects the owner's saved account.

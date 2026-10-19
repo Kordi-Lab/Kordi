@@ -7,7 +7,7 @@ use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Default)]
-struct FakeClient {
+pub(super) struct FakeClient {
     run: Arc<Mutex<Option<CloudAgentRun>>>,
     calls: Arc<Mutex<Vec<String>>>,
     fail_provider_auth_fetch: bool,
@@ -18,7 +18,7 @@ struct FakeClient {
 use super::connector_tests::FakeModelProvider;
 
 impl FakeClient {
-    fn with_run(run: CloudAgentRun) -> Self {
+    pub(super) fn with_run(run: CloudAgentRun) -> Self {
         Self {
             run: Arc::new(Mutex::new(Some(run))),
             calls: Arc::new(Mutex::new(Vec::new())),
@@ -28,7 +28,7 @@ impl FakeClient {
         }
     }
 
-    fn calls(&self) -> Vec<String> {
+    pub(super) fn calls(&self) -> Vec<String> {
         self.calls.lock().unwrap().clone()
     }
 }
@@ -131,7 +131,7 @@ impl CloudAgentRunClient for FakeClient {
         })
     }
 }
-fn leased_run(run_id: &str, provider_auth_available: bool) -> CloudAgentRun {
+pub(super) fn leased_run(run_id: &str, provider_auth_available: bool) -> CloudAgentRun {
     CloudAgentRun {
         turn_identity: None,
         history_messages: Vec::new(),
@@ -314,7 +314,7 @@ async fn marks_failed_when_provider_auth_is_missing() {
     );
 }
 
-fn temp_sandbox() -> std::path::PathBuf {
+pub(super) fn temp_sandbox() -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
         "kordi-runtime-model-loop-test-{}",
         uuid::Uuid::new_v4().simple()
@@ -454,7 +454,7 @@ async fn long_digest_renews_its_lease_and_has_a_wall_clock_limit() {
     }
 }
 
-async fn legacy_fixture_run<C, P>(
+pub(super) async fn legacy_fixture_run<C, P>(
     client: &C,
     provider: &P,
     root: PathBuf,

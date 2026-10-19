@@ -40,10 +40,10 @@ export function useDesktopAgentReadiness({
       .filter(agent => agent.ownerAccountId === accountId && agent.status !== 'archived')
       .map(agent => agent.agentId)])].sort()
     : []);
-  // Digest runs wait for this Mac only while it can run them with its own provider.
-  const digest = Boolean(runtimeReady && accountId && macCanRunDigest(defaultRoute));
-  // Scheduled tasks wait for this Mac while it has a model route to run them.
-  const scheduled = Boolean(runtimeReady && accountId && defaultRoute?.model?.trim());
+  // Digest runs and scheduled tasks wait for this Mac whenever it can run the
+  // owner's default route, a hosted account included, as chat runs do.
+  const scheduled = Boolean(runtimeReady && accountId && macCanRunDigest(defaultRoute));
+  const digest = scheduled;
   const readinessKey = JSON.stringify([accountId, agentIdsKey, digest, scheduled]);
   const registration = useMemo(() => ({ readinessKey, client }), [readinessKey, client]);
   const publicationTail = useRef(Promise.resolve());

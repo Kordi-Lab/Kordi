@@ -69,6 +69,7 @@ pub(crate) async fn claim(
     session: &CloudSession,
     claim_id: Uuid,
     run_id: &str,
+    route: Option<&crate::cloud_agent_runtime::runs::AgentRuntimeRoute>,
 ) -> Result<Option<Value>> {
     let (ready,): (bool,) = query_as(
         "SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities ready \
@@ -96,7 +97,8 @@ pub(crate) async fn claim(
     query(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'leased', execution_backend = 'desktop', claimed_by = $3, \
-             lease_expires_at = $4, desktop_preferred_until = NULL, updated_at = $5 \
+             lease_expires_at = $4, desktop_preferred_until = NULL, updated_at = $5, \
+             runtime_route_json = COALESCE($6, runtime_route_json) \
          WHERE run_id = $1 AND owner_account_id = $2 AND status = 'queued' \
            AND cancel_requested_at IS NULL",
     )
@@ -105,6 +107,8 @@ pub(crate) async fn claim(
     .bind(&owner)
     .bind((now + chrono::Duration::seconds(LEASE_SECONDS)).to_rfc3339())
     .bind(now.to_rfc3339())
+    // The Mac's hosted account, so its credentials resolve for this run.
+    .bind(crate::cloud_agent_runtime::runs::claimed_route_json(route))
     .execute(pool)
     .await?;
     let Some(prompt) = held_input(pool, run_id, &owner).await? else {

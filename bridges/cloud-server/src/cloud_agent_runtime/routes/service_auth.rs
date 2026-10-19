@@ -12,7 +12,7 @@ pub(super) fn include_service_provider_auth(state: &ServerState, run: &mut Runne
     });
 }
 
-pub(super) fn service_provider_auths(state: &ServerState) -> Vec<ServiceProviderAuth<'_>> {
+pub(crate) fn service_provider_auths(state: &ServerState) -> Vec<ServiceProviderAuth<'_>> {
     let mut auths = Vec::new();
     if let Some(support) = state.support() {
         let config = support.config();
@@ -40,6 +40,17 @@ pub(super) fn service_provider_auths(state: &ServerState) -> Vec<ServiceProvider
             base_url: provider_auth.base_url(),
             model: provider_auth.model(),
             run_id_prefix: Some(crate::pip::RUN_PREFIX),
+        });
+        // Common ground card builds run on the same Kordi-operated key.
+        auths.push(ServiceProviderAuth {
+            owner_account_id: &config.account_id,
+            snapshot_id: provider_auth.snapshot_id(),
+            provider: provider_auth.provider(),
+            auth_choice: provider_auth.auth_choice(),
+            api_key: provider_auth.api_key(),
+            base_url: provider_auth.base_url(),
+            model: provider_auth.model(),
+            run_id_prefix: Some(crate::common_ground::RUN_PREFIX),
         });
     }
     auths

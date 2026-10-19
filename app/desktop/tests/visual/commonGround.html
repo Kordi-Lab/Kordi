@@ -208,17 +208,15 @@
   html.embedded body { font-size: 13px; line-height: 1.4; }
   html.embedded .wash { display: none; }
   html.embedded main { max-width: none; margin: 0; padding: 0; height: 100%; display: flex; flex-direction: column; }
-  .cg-head { height: 52px; flex: none; display: flex; align-items: center; padding: 0 20px; }
-  .cg-head h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
   .cg-cols, .cg-full { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
   .cg-cols[hidden], .cg-full[hidden] { display: none; }
-  .cg-col { padding: 4px 20px 28px; min-width: 0; }
+  .cg-col { padding: 16px 20px 28px; min-width: 0; }
   .cg-full > * { max-width: 520px; margin: 0 auto; }
-  .cg-full { padding: 4px 20px 28px; }
+  .cg-full { padding: 16px 20px 28px; }
   @media (min-width: 760px) {
     .cg-cols { display: grid; grid-template-columns: minmax(0, 1fr) 344px; overflow: hidden; }
     .cg-col { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-    .cg-col + .cg-col { border-left: 1px solid var(--line); padding-top: 4px; }
+    .cg-col + .cg-col { border-left: 1px solid var(--line); }
   }
   html.embedded .section { margin-top: 18px; }
   html.embedded .section:first-child { margin-top: 8px; }
@@ -255,7 +253,7 @@
   html.embedded .seg button { font-size: 12.5px; padding: 5px; border-radius: 6px; }
   html.embedded .seg button.on { background: var(--glass); box-shadow: 0 1px 2px rgba(0,0,0,.12), inset 0 0 0 1px var(--line); }
   html.embedded .primary { min-height: 36px; border-radius: 9px; font-size: 13.5px; margin-top: 16px; }
-  html.embedded .link { font-size: 13px; padding: 10px; }
+  html.embedded .link { font-size: 12.5px; font-weight: 500; padding: 14px 2px 0; width: auto; }
   html.embedded .small-btn { border-radius: 7px; padding: 5px 12px; font-size: 12.5px; flex: none; }
   html.embedded .small-btn.quiet { background: var(--fill); color: var(--text); }
   html.embedded textarea { font-size: 13px; min-height: 72px; padding: 10px 12px; }
@@ -285,7 +283,16 @@
     text-align: center; font: 600 17px ui-monospace, "SF Mono", Menlo, monospace; outline: none; }
   .digits input:focus { border-color: color-mix(in srgb, var(--tint) 60%, transparent); }
   .digits .sp { flex: 1; }
-  .small-btn:disabled { opacity: .42; cursor: default; }
+  .icon.accent { background: color-mix(in srgb, var(--tint) 18%, transparent); color: var(--tint); }
+  .code-row { align-items: flex-start; }
+  .code-row .icon, .code-row .small-btn { margin-top: 2px; }
+  .code-row .digits { padding: 6px 0 2px; gap: 5px; }
+  .code-row .digits input { width: 30px; height: 34px; }
+  .small-btn:disabled { background: var(--fill); color: var(--muted); }
+  .tag.older i { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--muted); }
+  .section-title.disclosure { display: flex; align-items: center; gap: 6px; border: 0; background: none; padding: 0; cursor: pointer; font-family: inherit; }
+  .section-title.disclosure .chev { font-size: 13px; }
+  .small-btn:disabled { cursor: default; }
 </style>
 </head>
 <body>
@@ -303,6 +310,7 @@ const ICONS = {
   eval: '<path d="M12 3l2.4 1.6 2.9-.2 1 2.7 2.3 1.8-.9 2.8.9 2.8-2.3 1.8-1 2.7-2.9-.2L12 21l-2.4-1.6-2.9.2-1-2.7-2.3-1.8.9-2.8-.9-2.8 2.3-1.8 1-2.7 2.9.2z"/><path d="M8.5 12l2.3 2.3 4.7-4.6"/>',
   lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   learn: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2 9 2 12 0v-5"/>',
+  hash: '<path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16"/>',
   device: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18h2"/>',
   social: '<path d="M4 5h11v8H8l-4 3z"/><path d="M15 9h5v8l-3-2h-6v-2"/>',
   robot: '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01"/>',
@@ -336,6 +344,7 @@ function gridAvatar(people, size) {
   const tile = (size - gap * (cols - 1)) / cols;
   return `<div class="grid-av" style="width:${size}px;height:${size}px;gap:${gap}px;grid-template-columns:repeat(${cols},${tile}px);grid-auto-rows:${tile}px">${shown.map((p) => `<div style="font-size:${tile * 0.36}px">${esc(initials(p.name))}</div>`).join("")}</div>`;
 }
+const iconTileNamed = (name) => `<div class="icon accent">${svg(name)}</div>`;
 const iconTile = (topic) => { const s = topicStyle(topic); return `<div class="icon" style="background:var(${s.color})">${svg(s.icon)}</div>`; };
 const pill = (topic) => { const s = topicStyle(topic); return `<span class="pill" style="background:color-mix(in srgb, var(${s.color}) 14%, transparent)"><i style="background:var(${s.color})"></i>${esc(topic)}</span>`; };
 const shownTopics = (card) => [...card.working_on, ...card.interests].filter((t) => !card.hidden.includes(t));
@@ -363,8 +372,7 @@ const current = () => stack[stack.length - 1];
 // column; building the card takes the whole pane.
 const regions = {};
 if (EMBED) {
-  app.innerHTML = `<header class="cg-head"><h1>Common ground</h1></header>
-    <div class="cg-cols" id="cg-cols"><div class="cg-col" id="cg-left"></div><div class="cg-col" id="cg-right"></div></div>
+  app.innerHTML = `<div class="cg-cols" id="cg-cols"><div class="cg-col" id="cg-left"></div><div class="cg-col" id="cg-right"></div></div>
     <div class="cg-full" id="cg-full" hidden></div>`;
   for (const id of ["cols", "left", "right", "full"]) regions[id] = document.getElementById(`cg-${id}`);
 }
@@ -380,8 +388,7 @@ function useRegion(screen) {
 function paintLeft() {
   if (state.me?.card) return paintCard(undefined, regions.left);
   if (!state.me) { regions.left.innerHTML = ""; return; }
-  regions.left.innerHTML = `<div class="cardhead">${avatar("You", 40)}<div class="grow"><div class="t">Your card</div><div class="s">Your agent writes it</div></div></div>
-    <div class="section"><div class="group"><div class="row click" onclick="go('build')"><div class="grow">Build your card</div><span class="chev">›</span></div></div></div>`;
+  regions.left.innerHTML = `<div class="section"><div class="group"><div class="row click" onclick="go('build')"><div class="grow">Build your card</div><span class="chev">›</span></div></div></div>`;
 }
 
 function go(screen, arg) { clearTimers(); stack.push([screen, arg]); render(); }
@@ -442,15 +449,13 @@ async function paintHome() {
 function drawEmbedded() {
   const digits = ["", "", "", ""];
   app.innerHTML = `
-    <div class="section"><div class="section-title">Pair</div><div class="group" style="--inset:48px">
-      <div class="row">${iconTile("device")}<div class="grow"><div>Someone nearby</div><div class="sub">${APP ? "Available after launch" : "Both of you open Common ground"}</div></div>
-        <button class="small-btn" onclick="start('tap')" ${APP ? "disabled" : ""}>Pair</button></div></div></div>
-    <div class="section"><div class="section-title">Pair code</div><div class="group"><div class="digits">
+    <div class="section"><div class="group" style="--inset:48px">
+      <div class="row">${iconTileNamed("device")}<div class="grow"><div>Someone nearby</div><div class="sub">${APP ? "Available after launch" : "Both of you open Common ground"}</div></div>
+        <button class="small-btn" onclick="start('tap')" ${APP ? "disabled" : ""}>Pair</button></div>
+      <div class="row code-row">${iconTileNamed("hash")}<div class="grow"><div>Pair code</div><div class="digits">
       ${digits.map((_, i) => `<input data-i="${i}" inputmode="numeric" maxlength="1" aria-label="Digit ${i + 1}" autocomplete="off" ${APP ? "disabled" : ""}>`).join("")}
-      <div class="sp"></div><button class="small-btn" id="join" disabled>Join</button></div></div></div>
-    <div class="section"><div class="section-title">Recent</div><div class="group" style="--inset:62px">
-      ${state.recent.length ? state.recent.map(rankedRow).join("") : `<div class="row"><span style="color:var(--muted)">No matches yet</span></div>`}
-    </div></div>`;
+      </div></div><button class="small-btn" id="join" disabled>Join</button></div></div></div>
+    ${state.recent.length ? `<div class="section"><div class="section-title">Recent</div><div class="group" style="--inset:62px">${state.recent.map(rankedRow).join("")}</div></div>` : ""}`;
   const inputs = [...app.querySelectorAll(".digits input")];
   const join = document.getElementById("join");
   const code = () => inputs.map((el) => el.value).join("");
@@ -700,6 +705,7 @@ function showRefs(topic) {
   document.body.appendChild(back);
 }
 
+let timelineOpen = false;
 function paintCard(_arg, host = app) {
   if (!state.me?.card) { if (EMBED) return; stack.pop(); return go("build"); }
   let adding = null;
@@ -707,7 +713,8 @@ function paintCard(_arg, host = app) {
 
   const tint = (t) => `background:color-mix(in srgb, var(${topicStyle(t).color}) 13%, transparent)`;
   const dot = (t) => `<i style="background:var(${topicStyle(t).color})"></i>`;
-  const tag = (key, t, i) => `<span class="tag" style="${tint(t)}">${dot(t)}<span class="txt" data-ref="${esc(t)}">${esc(t)}</span>
+  const isNow = (t) => (card().profile?.latest || []).includes(t);
+  const tag = (key, t, i) => `<span class="tag${isNow(t) ? "" : " older"}" style="${tint(t)}" ${isNow(t) ? 'title="Active now"' : ""}>${dot(t)}<span class="txt" data-ref="${esc(t)}">${esc(t)}</span>
       <button class="tag-x" data-key="${key}" data-i="${i}" aria-label="Remove ${esc(t)}">×</button></span>`;
   const refTag = (t, extra = "") => `<button class="tag ref ${extra}" style="${tint(t)}" data-ref="${esc(t)}" title="${esc(t)}">${dot(t)}<span class="txt">${esc(t)}</span></button>`;
 
@@ -720,15 +727,16 @@ function paintCard(_arg, host = app) {
     const undated = [...past].filter((t) => !placed.has(t));
     if (undated.length) rows.push(`<div class="tl-row past"><div class="tl-when">Earlier</div>
       <div class="tags">${undated.map((t) => refTag(t, "small muted")).join("")}</div></div>`);
-    return rows.length ? `<div class="section"><div class="section-title">Timeline</div><div class="group timeline">${rows.join("")}</div></div>` : "";
+    if (!rows.length) return "";
+    return `<div class="section"><button class="section-title disclosure" data-timeline aria-expanded="${timelineOpen}">Timeline<span class="chev">${timelineOpen ? "⌄" : "›"}</span></button>
+      ${timelineOpen ? `<div class="group timeline">${rows.join("")}</div>` : ""}</div>`;
   };
 
   const draw = () => {
     const c = card(), prof = c.profile || {};
     host.innerHTML = `${EMBED
-        ? `<div class="cardhead">${avatar("You", 40)}<div class="grow"><div class="t">Your card</div><div class="s">Built by your agent</div></div><button class="small-btn quiet" onclick="go('build')">Rebuild card</button></div>`
+        ? ""
         : `${backButton()}<div class="hero">${avatar("You", 92, "hero-avatar")}<h1>Your card</h1><div class="status">Built by your agent</div></div>`}
-      ${prof.latest?.length ? `<div class="section"><div class="section-title">Now</div><div class="group tags">${prof.latest.map((t) => refTag(t)).join("")}</div></div>` : ""}
       ${CARD_SECTIONS.map(([key, title]) => `<div class="section"><div class="section-title">${title}</div>
         <div class="group tags">${c[key].map((t, i) => tag(key, t, i)).join("")}
           ${adding === key
@@ -736,8 +744,9 @@ function paintCard(_arg, host = app) {
             : `<button class="tag add" data-add="${key}" aria-label="Add a topic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add</button>`}
         </div></div>`).join("")}
       ${timeline(prof)}
-      ${EMBED ? "" : `<button class="link" onclick="go('build')">Rebuild card</button>`}`;
+      <button class="link" onclick="go('build')">Rebuild card</button>`;
     host.querySelectorAll("[data-ref]").forEach((el) => (el.onclick = () => showRefs(el.dataset.ref)));
+    host.querySelectorAll("[data-timeline]").forEach((el) => (el.onclick = () => { timelineOpen = !timelineOpen; draw(); }));
     host.querySelectorAll(".tag-x").forEach((el) => (el.onclick = () => {
       const next = edited();
       next[el.dataset.key].splice(Number(el.dataset.i), 1);

@@ -49,3 +49,33 @@ pub(super) fn exported_agent_intent_matches(
         params![cloud.source_event_id,local.session_id,local.id], |row|row.get(0),
     ).map_err(|error|error.to_string())
 }
+
+/// A background follow-up reply answers its runtime notice. Its Cloud copy
+/// names that notice's runtime entry as its request and has no canonical
+/// parent of its own, so it matches the local reply whose parent is the notice.
+pub(super) fn background_follow_up_matches(
+    conn: &Connection,
+    local: &crate::canonical_sessions::CanonicalSessionMessage,
+    cloud: &crate::canonical_sessions::CanonicalSessionMessage,
+) -> Result<bool, String> {
+    let request_id = cloud
+        .content
+        .as_ref()
+        .and_then(|content| content.get("cloudRequestMessageId"))
+        .and_then(Value::as_str)
+        .filter(|id| id.starts_with(kordi_cli::desktop_runtime::BACKGROUND_FOLLOW_UP_ENTRY_PREFIX));
+    let (Some(request_id), Some(parent_id), None) = (
+        request_id,
+        local.parent_message_id.as_deref(),
+        cloud.parent_message_id.as_deref(),
+    ) else {
+        return Ok(false);
+    };
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM session_messages WHERE id=?1 AND session_id=?2 AND sender_role='system'
+         AND json_extract(content_json,'$.desktopEntryId')=?3)",
+        params![parent_id, local.session_id, request_id],
+        |row| row.get(0),
+    )
+    .map_err(|error| error.to_string())
+}

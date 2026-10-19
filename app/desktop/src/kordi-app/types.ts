@@ -628,7 +628,7 @@ export type DesktopChatMessage = {
   detail?: string | null;
   timeLabel: string;
   timestampMs: number;
-  failed?: boolean;
+  failed?: boolean; error?: string | null; // A failed turn's failure, when `text` is its partial reply.
   cancelled?: boolean;
   attachments?: DesktopChatAttachment[];
   mentions?: MessageMention[];

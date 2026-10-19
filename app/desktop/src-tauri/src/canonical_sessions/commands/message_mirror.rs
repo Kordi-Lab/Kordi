@@ -2,7 +2,7 @@
 
 mod exported_intent;
 pub(super) use exported_intent::cloud_request_client_message_id;
-use exported_intent::exported_agent_intent_matches;
+use exported_intent::{background_follow_up_matches, exported_agent_intent_matches};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
@@ -318,7 +318,8 @@ pub(crate) fn reconcile_canonical_message_mirror_in_db(
     } else {
         local.parent_message_id.is_some()
             && (local.parent_message_id == cloud.parent_message_id
-                || exported_agent_intent_matches(&transaction, local, cloud)?)
+                || exported_agent_intent_matches(&transaction, local, cloud)?
+                || background_follow_up_matches(&transaction, local, cloud)?)
     };
     if !cloud_reply_echo
         && (local.session_id != cloud.session_id

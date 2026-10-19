@@ -33,9 +33,9 @@ function runtime(overrides: Partial<DigestMacRuntime> & { claim?: unknown } = {}
   return { value, calls };
 }
 
-test('a Mac runs digests only with a provider on this Mac', () => {
+test('a Mac runs digests with any model route, a hosted account included', () => {
   assert.equal(macCanRunDigest(localRoute), true);
-  assert.equal(macCanRunDigest({ ...localRoute, authChoice: 'cloud-login:work' }), false);
+  assert.equal(macCanRunDigest({ ...localRoute, authChoice: 'cloud-login:work' }), true);
   assert.equal(macCanRunDigest({ ...localRoute, model: '' }), false);
   assert.equal(macCanRunDigest(null), false);
 });
@@ -80,7 +80,21 @@ test('a run held elsewhere or for another account is left alone', async () => {
   const other = runtime();
   assert.equal(await runDigestOnMac({ ...request, sessionId: 'digest:acct_other' }, other.value), 'skipped');
   assert.equal(other.calls.length, 0);
-  const hosted = runtime({ route: { ...localRoute, authChoice: 'cloud-api-key:work' } });
-  assert.equal(await runDigestOnMac(request, hosted.value), 'skipped');
-  assert.equal(hosted.calls.length, 0, 'a hosted-only route never claims');
+});
+
+test('a hosted account runs the digest on this Mac and names that account in the claim', async () => {
+  const hostedRoute = { ...localRoute, authChoice: 'cloud-login:work' };
+  const hosted = runtime({ route: hostedRoute });
+  let ran: unknown = null;
+  hosted.value.run = async (input) => { ran = input; return '{"claims":[]}'; };
+  assert.equal(await runDigestOnMac(request, hosted.value), 'completed');
+  const claim = hosted.calls.find((call) => call.path === 'claim')!.body as Record<string, unknown>;
+  assert.deepEqual(claim.runtimeRoute, {
+    defaultModel: hostedRoute.model, defaultAuthProvider: 'openai', defaultAuthChoice: 'cloud-login:work', thinking: null,
+  });
+  assert.deepEqual((ran as { route: unknown }).route, hostedRoute);
+  const local = runtime();
+  await runDigestOnMac(request, local.value);
+  const localClaim = local.calls.find((call) => call.path === 'claim')!.body as Record<string, unknown>;
+  assert.equal(localClaim.runtimeRoute, undefined, 'a Mac-local route never replaces the cloud route');
 });

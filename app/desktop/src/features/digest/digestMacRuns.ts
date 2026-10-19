@@ -33,9 +33,22 @@ export type DigestMacRuntime = {
   run?: typeof runDesktopDigest;
 };
 
-/** Whether this Mac runs digests itself: only with a provider on this Mac. */
+/**
+ * Whether this Mac runs digests: whenever it has a model route, as for chat.
+ * A hosted account's credentials are resolved for the claimed run.
+ */
 export function macCanRunDigest(route: DesktopChatMessageRoute | null | undefined): boolean {
-  return Boolean(route?.model?.trim()) && !hasHostedOnlyPrefix(route?.authChoice);
+  return Boolean(route?.model?.trim());
+}
+
+/**
+ * The route a Mac sends with its claim: only a hosted account, which the
+ * server then stores on the run so that account's credentials resolve for it.
+ * A Mac-local route stays on this Mac and never replaces the cloud's route.
+ */
+export function claimRuntimeRoute(route: DesktopChatMessageRoute | null | undefined) {
+  if (!route?.model?.trim() || !hasHostedOnlyPrefix(route.authChoice)) return undefined;
+  return { defaultModel: route.model, defaultAuthProvider: route.authProvider, defaultAuthChoice: route.authChoice, thinking: route.thinking };
 }
 
 export function runDesktopDigest(input: {
@@ -99,6 +112,7 @@ export async function runDigestOnMac(
   const claim = await client.desktopAgentExecution<DigestClaim>(token, 'claim', {
     claimId, requestMessageId: request.runId, sessionId: request.sessionId,
     ownerAccountId: accountId, requesterAccountId: accountId, prompt: 'digest', idempotencyKey: request.runId,
+    runtimeRoute: claimRuntimeRoute(route),
   });
   if (!claim.acquired || !claim.digest) return 'not-acquired';
   let lost = false;

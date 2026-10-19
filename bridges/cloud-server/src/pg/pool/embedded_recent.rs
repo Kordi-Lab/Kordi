@@ -296,6 +296,7 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "0132_cloud_agent_run_documents.sql"
     ),
     migration!(133, "device review window", "0133_device_review_window.sql"),
+    migration!(134, "common ground", "0134_common_ground.sql"),
     migration!(135, "digest run cadence", "0135_digest_run_cadence.sql"),
     migration!(
         136,

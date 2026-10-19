@@ -321,6 +321,8 @@ pub(super) async fn prepare_desktop_session_for_send(
             skill_names: Some(agent.loaded_skills),
             ..DesktopRuntimeProfile::default()
         };
+        // The owner's own request keeps its tools in background sessions.
+        let owner_tools = owner_requester.then(|| runtime.next_turn_tool_names().ok());
         // ponytail: this per-turn registry is enough for background navigation;
         // keep one registry across turns only when parent-side child control is required.
         let runner = ManagedChildAgentRunner::new(
@@ -341,6 +343,7 @@ pub(super) async fn prepare_desktop_session_for_send(
             }),
         )
         .with_parent_runtime_session(runtime.session_id().to_string())
+        .with_owner_local_tools(owner_tools.flatten())
         .with_group_documents(group_documents);
         let _ = runtime.set_task_operator_runner(Arc::new(runner));
     }

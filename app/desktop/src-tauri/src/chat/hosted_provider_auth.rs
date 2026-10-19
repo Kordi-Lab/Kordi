@@ -253,6 +253,15 @@ pub(super) async fn resolve_for_turn(
     resolve_with_lease(route, lease_from_context(context_messages)?).await
 }
 
+/// Credentials for `route` on a run this Mac claimed outside a chat turn,
+/// such as a digest run, resolved like a chat turn's.
+pub(super) async fn resolve_for_lease(
+    route: &DesktopChatMessageRoute,
+    lease: &DesktopCloudExecutionLease,
+) -> Result<HostedTurnAuth, String> {
+    resolve_with_lease(route, lease).await
+}
+
 async fn resolve_with_lease(
     route: &DesktopChatMessageRoute,
     lease: &DesktopCloudExecutionLease,
