@@ -22,6 +22,10 @@ import {
   cloudGroupTerminalRepairReplayKey,
   cloudGroupTerminalRepairReplayRows,
 } from './cloudGroupTerminalRepair';
+import {
+  cloudGroupAttachmentRepairReplayKey,
+  cloudGroupAttachmentRepairReplayRows,
+} from './cloudGroupAttachmentRepair';
 import type {
   CloudGroupReplayCoordinator,
 } from './cloudGroupReplayCoordinator';
@@ -250,9 +254,15 @@ export function useCloudGroupReplay({
         canonicalStateRef.current?.messages ?? [],
       );
       const terminalRepairRowSet = new Set(terminalRepairRows);
+      // A loaded reply missing a document its stored copy carries.
+      const attachmentRepairRows = cloudGroupAttachmentRepairReplayRows(
+        messageIndex.replayRows,
+        canonicalStateRef.current?.messages ?? [],
+      ).filter((row) => !terminalRepairRowSet.has(row));
+      const repairRowSet = new Set([...terminalRepairRows, ...attachmentRepairRows]);
       const entries = [
         ...replayRows
-          .filter((row) => !terminalRepairRowSet.has(row))
+          .filter((row) => !repairRowSet.has(row))
           .map((row) => ({
             key: cloudGroupReplayKeyForRow(row),
             row,
@@ -262,6 +272,10 @@ export function useCloudGroupReplay({
           // is durable. Repair the stale in-memory processing slot through a
           // separate monotonic coordinator key.
           key: cloudGroupTerminalRepairReplayKey(row),
+          row,
+        })),
+        ...attachmentRepairRows.map((row) => ({
+          key: cloudGroupAttachmentRepairReplayKey(row),
           row,
         })),
       ];
