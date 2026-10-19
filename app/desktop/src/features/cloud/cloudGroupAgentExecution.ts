@@ -32,6 +32,7 @@ import {
 import { cloudAgentTurnReplyText } from './cloudAgentReplyText';
 import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
+import { handBackDesktopRun } from './cloudDesktopRunHandback';
 import type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.types';
 import { handleCloudGroupAgentFailure } from './cloudGroupAgentFailure';
 import {
@@ -148,6 +149,7 @@ export async function respondToCloudGroupAgentMention(
     runtimeRoute: requestedRoute ? { defaultModel: requestedRoute.model, defaultAuthProvider: requestedRoute.authProvider, defaultAuthChoice: requestedRoute.authChoice, thinking: requestedRoute.thinking } : undefined,
   });
   if (!lease) { void runtime.syncDiff(); return; }
+  let localTurnStarted = false;
   try {
   if (!await lease.admitted()) return;
   const presentation = await ensureCloudGroupAgentIdentity(input, signal);
@@ -208,6 +210,7 @@ export async function respondToCloudGroupAgentMention(
     if (desktopSharedRequestAlreadyStarted(error)) return;
     throw error;
   }
+  localTurnStarted = true;
   lease.attach(startedTurn.id);
   const replyContext = threadMessageAction ? {
     ...context,
@@ -460,6 +463,16 @@ export async function respondToCloudGroupAgentMention(
     agentHandoff,
     signal,
   }).catch((error) => runtime.reportFailure('local-response', error));
+  } catch (error) {
+    // Before a local turn starts, this Mac hands the run back so the cloud
+    // answers at once instead of the mention failing.
+    if (!localTurnStarted && !signal.aborted
+      && await handBackDesktopRun(runtime.client, session.token, lease)) {
+      runtime.reportFailure('local-response', error);
+      void runtime.syncDiff();
+      return;
+    }
+    throw error;
   } finally {
     if (signal.aborted) await lease.cancel().catch(() => undefined);
     lease.dispose();
