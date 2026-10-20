@@ -120,6 +120,12 @@ Routes under `/v1/cloud/common-ground/`. Every person returned in Common ground 
 - Avatars are `IdentityAvatar` clipped to circles; the room uses a grid of circles without a backing.
 - Tags are 32 pt high, 8 pt radius, tinted by topic color, with a leading dot.
 - References, start group and sources open as sheets with medium and large detents.
+- The first version pairs by short text code only: Home shows your code with its expiry and a field for the other person's code; Tap and QR come later.
+- Sources show Connectors as one switch, plus Memory, Calendar and Reminders; there is no Connect row per connector.
+- The card opens from Home and holds Share my card and Delete card; there is no Settings row yet.
+- Tapping a tag opens its references, where the topic can be hidden or shown.
+- Rooms are not named from iOS.
+- Match and person actions are Add (or Accept, Requested, Message) and Meet; Joint idea and Share come later.
 
 ### macOS
 
