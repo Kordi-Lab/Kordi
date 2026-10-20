@@ -14,7 +14,7 @@ import {
   INK,
   inlineMarkSvg,
   launchMarkSvg,
-  readmeTitleSvg,
+  readmeTitleHtml,
   macIconSvg,
   silhouetteSvg,
   squareIconSvg,
@@ -135,7 +135,7 @@ try {
 
   // Kordi Support avatar and the README title image.
   writeFileSync(join(repoRoot, 'app/desktop/public/kordi-support-avatar.svg'), supportAvatarSvg());
-  raster.renderWide(readmeTitleSvg(), join(repoRoot, '.github/assets/kordi-title.png'), 1774, 887);
+  raster.renderWide(readmeTitleHtml(), join(repoRoot, '.github/assets/kordi-title.png'), 1774, 887);
 } finally {
   raster.dispose();
 }

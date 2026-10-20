@@ -147,14 +147,28 @@ export function supportAvatarSvg() {
 `;
 }
 
-// README title: the paper-cut bird, the wordmark, and the tagline on white.
-export function readmeTitleSvg({ width = 1774, height = 887 } = {}) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 1774 887">
-  <rect width="1774" height="887" fill="#ffffff"/>
-  <svg x="250" y="110" width="560" height="560" viewBox="0 0 512 512">${birdMarkup()}</svg>
-  <text x="820" y="500" font-family="-apple-system, 'SF Pro Display', system-ui, sans-serif" font-size="300" font-weight="800" letter-spacing="-8" fill="${INK}">kordi</text>
-  <text x="887" y="760" text-anchor="middle" font-family="-apple-system, 'SF Pro Text', system-ui, sans-serif" font-size="58" font-weight="500" fill="#4a423c">Building AI-Native Supercollaboration</text>
-</svg>`;
+// README title: the bird and the wordmark on one optical centre line, the tagline
+// centred beneath. HTML so the browser measures the text; SF Pro Rounded matches
+// the bird's soft shapes (system font on macOS, where the generator runs).
+export function readmeTitleHtml() {
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  @font-face { font-family: 'Kordi Rounded'; src: url('file:///System/Library/Fonts/SFNSRounded.ttf'); font-weight: 1 1000; }
+  html, body { margin: 0; width: 1774px; height: 887px; background: #ffffff; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 44px; padding-bottom: 36px; box-sizing: border-box;
+    font-family: 'Kordi Rounded', ui-rounded, system-ui, sans-serif; color: ${INK}; }
+  .lockup { display: flex; align-items: center; gap: 40px; transform: translateX(-16px); }
+  .bird { width: 400px; height: 400px; margin: -40px 0 -40px -24px; transform: translateY(2px); }
+  .word { font-size: 270px; font-weight: 700; letter-spacing: -0.035em; line-height: 1; transform: translateY(-14px); }
+  .tagline { font-size: 52px; font-weight: 500; letter-spacing: 0.005em; color: #6b625b; }
+</style></head><body>
+  <div class="lockup">
+    <svg class="bird" viewBox="0 0 512 512">${birdMarkup()}</svg>
+    <div class="word">kordi</div>
+  </div>
+  <div class="tagline">Building AI-Native Supercollaboration</div>
+</body></html>
+`;
 }
 
 // Flat silhouette for favicons and the macOS menu bar template image.

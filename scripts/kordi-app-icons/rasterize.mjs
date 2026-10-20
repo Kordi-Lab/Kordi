@@ -51,15 +51,17 @@ export function createRasterizer() {
     execFileSync('sips', ['-z', String(size), String(size), shot, '--out', outPath], { stdio: 'ignore' });
   }
 
-  // Renders a non-square SVG at its own pixel size.
-  function renderWide(svg, outPath, width, height) {
-    const source = join(workDir, `wide-${++counter}.svg`);
-    writeFileSync(source, svg);
+  // Renders a non-square SVG or HTML document at its own pixel size.
+  function renderWide(markup, outPath, width, height) {
+    const extension = markup.trimStart().startsWith('<svg') ? 'svg' : 'html';
+    const source = join(workDir, `wide-${++counter}.${extension}`);
+    writeFileSync(source, markup);
     runChrome(chrome, [
       '--headless=new',
       '--disable-gpu',
       '--hide-scrollbars',
       '--force-device-scale-factor=1',
+      '--allow-file-access-from-files',
       `--window-size=${width},${height}`,
       `--screenshot=${outPath}`,
       `file://${source}`,
