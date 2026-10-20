@@ -127,4 +127,34 @@ test('a stored row matches its request regardless of key order, and a refused wr
   recordSentCloudSelfAgentRequests(memo, [moved], [row]);
   assert.equal(cloudSelfAgentRequestIsSettled(moved, row, memo), true);
   assert.equal(cloudSelfAgentRequestIsSettled(moved, { ...row, updatedAtMs: 30 }, memo), false, 'a row changed since is written again');
+  assert.equal(cloudSelfAgentRequestIsSettled(moved, { ...row, updatedAtMs: 15 }, memo), true, 'an older loaded copy is not a change');
+});
+
+test('a row outside the loaded transcript is not written again once the store answered it', () => {
+  const request = {
+    id: 'msg:cloud:self:old-model-change', sessionId: sessions[0], senderIdentityId: 'agent:me', senderRole: 'system',
+    messageKind: 'agent-model-change', contentText: 'Model: synthetic', content: { agentRuntimeRoute: { model: 'synthetic' } },
+    status: 'sent', createdAtMs: 10, sourceTransport: 'cloud-self-agent', sourceEventId: 'old-model-change',
+  } as AppendCanonicalMessageRequest;
+  const memo: CloudSelfAgentSentRequestMemo = new Map();
+  assert.equal(cloudSelfAgentRequestIsSettled(request, undefined, memo), false, 'the first time it is written');
+  // The store answers in request order, here with the row it already had.
+  recordSentCloudSelfAgentRequests(memo, [request], [{ ...request, id: request.id!, parentMessageId: null, delegatedExchangeId: null, sequenceNum: 1, updatedAtMs: 12 } as CanonicalSessionMessage]);
+  assert.equal(cloudSelfAgentRequestIsSettled(request, undefined, memo), true);
+  assert.equal(cloudSelfAgentRequestIsSettled({ ...request, contentText: 'Model: other' }, undefined, memo), false, 'a changed request is written');
+  // The same holds for the plan filter, which must not treat a row it has not loaded as new.
+  const plan = { agentIdentityRequest: {}, sessionRequests: [], messageRequests: [request], mirrorReconciliations: [] } as never;
+  assert.equal(withoutStoredMessageRequests(plan, [], memo).messageRequests.length, 0);
+  assert.equal(withoutStoredMessageRequests(plan, [], new Map()).messageRequests.length, 1);
+});
+
+test('a title change replans only its conversation', () => {
+  const settled = { current: null };
+  const messages = [...conversation(sessions[0], 1), ...conversation(sessions[1], 1)];
+  const select = (titles: Record<string, unknown>) => selectCloudSelfAgentMessagesToPlan({
+    settled, accountId: account.accountId, inputs: ['Agent'], messages, state: baseState, titlesBySessionId: titles,
+  });
+  select({ [sessions[0]]: { title: 'One' } }).markSettled();
+  assert.equal(select({ [sessions[0]]: { title: 'One' } }).sessionIds?.size, 0);
+  assert.deepEqual([...select({ [sessions[0]]: { title: 'One renamed' } }).sessionIds ?? []], [sessions[0]]);
 });

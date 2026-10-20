@@ -178,7 +178,7 @@ export function useCloudSelfAgentCanonicalSync({
     // Only conversations whose messages or stored rows changed are planned again.
     const selection = selectCloudSelfAgentMessagesToPlan({
       settled: settledFingerprintsRef, accountId: account.accountId, messages: selfMessages, state: canonicalState,
-      inputs: [agentDisplayName, forksBySessionId, titlesBySessionId], forksBySessionId,
+      inputs: [agentDisplayName], forksBySessionId, titlesBySessionId,
       isGroupRow: (messageId) => messageIndex.groupRowByWireMessageId.has(messageId),
     });
     const headPlan = withoutStoredMessageRequests(planCloudSelfAgentCanonicalSync({

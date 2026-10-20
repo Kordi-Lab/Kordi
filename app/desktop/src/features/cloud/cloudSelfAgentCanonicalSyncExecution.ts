@@ -119,7 +119,9 @@ export function withoutStoredMessageRequests(
   const reconciled = new Set(plan.mirrorReconciliations.flatMap((item) => [item.preferredMessageId, item.duplicateMessageId]));
   const messageRequests = plan.messageRequests.filter((request) => {
     const row = request.id ? byId.get(request.id) : undefined;
-    return !row || reconciled.has(row.id) || !cloudSelfAgentRequestIsSettled(request, row, memo);
+    if (row && reconciled.has(row.id)) return true;
+    // A row outside the loaded transcript is settled when the store already answered the same request.
+    return !cloudSelfAgentRequestIsSettled(request, row, memo);
   });
   return messageRequests.length === plan.messageRequests.length ? plan : { ...plan, messageRequests };
 }

@@ -27,6 +27,8 @@ export function cloudSelfAgentSessionFingerprints(
   messages: readonly CloudMessage[],
   state: CanonicalSessionState,
   isGroupRow: (messageId: string) => boolean = () => false,
+  /** What else one conversation's plan reads, such as its title or fork. */
+  sessionInputs: (sessionId: string) => unknown = () => null,
 ): Map<string, string> {
   const wire = new Map<string, string[]>();
   for (const message of messages) {
@@ -44,7 +46,7 @@ export function cloudSelfAgentSessionFingerprints(
   }
   return new Map([...wire].map(([sessionId, parts]) => [
     sessionId,
-    `${parts.join(',')}|${(stored.get(sessionId) ?? []).join(',')}`,
+    `${parts.join(',')}|${(stored.get(sessionId) ?? []).join(',')}|${stableJson(sessionInputs(sessionId) ?? null)}`,
   ]));
 }
 
@@ -101,10 +103,12 @@ export function cloudSelfAgentRequestIsSettled(
   row: CanonicalSessionMessage | undefined,
   memo?: CloudSelfAgentSentRequestMemo,
 ): boolean {
-  if (!row) return false;
-  if (sameStoredMessage(row, request)) return true;
   const sent = request.id ? memo?.get(request.id) : undefined;
-  return Boolean(sent && sent.request === stableJson(request) && sent.storedUpdatedAtMs === row.updatedAtMs);
+  // A row outside the loaded transcript window: the store already answered this exact request.
+  if (!row) return Boolean(sent && sent.request === stableJson(request));
+  if (sameStoredMessage(row, request)) return true;
+  // The row is as the store answered, or the loaded copy is older than that answer.
+  return Boolean(sent && sent.request === stableJson(request) && row.updatedAtMs <= sent.storedUpdatedAtMs);
 }
 
 export function recordSentCloudSelfAgentRequests(
@@ -112,11 +116,11 @@ export function recordSentCloudSelfAgentRequests(
   requests: readonly AppendCanonicalMessageRequest[],
   storedRows: readonly CanonicalSessionMessage[],
 ) {
-  const storedById = new Map(storedRows.map((row) => [row.id, row]));
-  for (const request of requests) {
-    const stored = request.id ? storedById.get(request.id) : undefined;
+  // The store answers each request in order, sometimes with a row under another id.
+  requests.forEach((request, index) => {
+    const stored = storedRows[index];
     if (request.id && stored) memo.set(request.id, { request: stableJson(request), storedUpdatedAtMs: stored.updatedAtMs });
-  }
+  });
 }
 
 /** What each conversation looked like when it last settled, for one account and set of plan inputs. */
@@ -139,6 +143,7 @@ export function selectCloudSelfAgentMessagesToPlan({
   messages,
   state,
   forksBySessionId,
+  titlesBySessionId,
   isGroupRow,
 }: {
   settled: { current: CloudSelfAgentSettledSessions | null };
@@ -148,13 +153,24 @@ export function selectCloudSelfAgentMessagesToPlan({
   messages: readonly CloudMessage[];
   state: CanonicalSessionState;
   forksBySessionId?: Readonly<Record<string, CloudSessionForkSummary>>;
+  titlesBySessionId?: Readonly<Record<string, unknown>>;
   isGroupRow?: (messageId: string) => boolean;
 }) {
   inputs = inputs.map((input) => stableJson(input ?? null));
   const last = settled.current;
   const previous = last?.accountId === accountId && last.inputs.length === inputs.length
     && last.inputs.every((input, index) => input === inputs[index]) ? last.bySession : null;
-  const fingerprints = cloudSelfAgentSessionFingerprints(messages, state, isGroupRow);
+  // A title or fork belongs to its conversation, so changing one replans only that conversation.
+  const forksByMember = new Map<string, unknown[]>();
+  for (const fork of Object.values(forksBySessionId ?? {})) {
+    for (const member of [fork.forkSessionId, fork.parentSessionId]) {
+      const id = member?.trim();
+      if (id) forksByMember.set(id, [...forksByMember.get(id) ?? [], fork]);
+    }
+  }
+  const fingerprints = cloudSelfAgentSessionFingerprints(messages, state, isGroupRow, (sessionId) => [
+    titlesBySessionId?.[sessionId] ?? null, forksByMember.get(sessionId) ?? null,
+  ]);
   const changed = changedCloudSelfAgentSessionIds(fingerprints, previous, forksBySessionId);
   return {
     sessionIds: changed,
