@@ -53,7 +53,8 @@ export function projectCloudSelfAgentLiveTurns(
   ).map(identity => identity.id));
   let changed = false;
   const messages = state.messages.map(message => {
-    if (message.messageKind !== 'agent-turn' || message.sourceTransport !== 'cloud-self-agent'
+    // The hosted progress row is the same reply while the Mac runs the request.
+    if (message.messageKind !== 'agent-turn' || !['cloud-self-agent', 'cloud-self-agent-progress'].includes(message.sourceTransport ?? '')
       || !ownedAgents.has(message.senderIdentityId) || isTerminalCloudAgentTurn(message)) return message;
     const requestId = record(message.content).cloudRequestMessageId;
     const turn = typeof requestId === 'string' ? turns[requestId] : undefined;
@@ -68,11 +69,11 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
-function withLiveTurn(
+export function withLiveTurn(
   message: CanonicalSessionState['messages'][number],
   turn: DesktopChatTurnSnapshot,
 ): CanonicalSessionState['messages'][number] {
-  const content = record(message.content);
+  const { hostedRunStatus: _hostedRunStatus, ...content } = record(message.content);
   return {
     ...message,
     contentText: turn.assistantText,

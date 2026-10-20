@@ -7,6 +7,7 @@ import { projectCloudSelfAgentLiveTurns } from '../src/features/cloud/cloudGroup
 import { cloudSelfAgentRequestClientMessageId } from '../src/features/cloud/cloudSelfAgentIdentity';
 import { projectPendingSelfAgentReplies } from '../src/features/cloud/cloudSelfAgentPendingReply';
 import { removeHostedSelfAgentProgress, updateHostedSelfAgentProgress } from '../src/features/cloud/hostedSelfAgentRunProgress';
+import { cloudSelfAgentLocalTurnsToOmit, cloudSelfAgentTerminalOrLocalRequestIds, omitTerminalCloudSelfAgentLocalTurns } from '../src/features/cloud/cloudSelfAgentExecutionState';
 import { planCloudSelfAgentCanonicalSync } from '../src/features/cloud/useCloudCollaborationState';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { agentRequestStopTarget } from '../src/features/chat/agentRequestStop';
@@ -51,14 +52,14 @@ const cloud = (messageId: string, body: string, offsetMs: number, extra: Partial
 const serverRequest = cloud(wireRequestId, encodeCloudDirectMessageEnvelope({
   schemaVersion: 1, kind: 'message', text: 'Three steps to make tea', agentRuntimeRoute: route,
 }), 1_000, { clientMessageId: cloudSelfAgentRequestClientMessageId(sessionId, localRequest.id) });
-const progress = (messageId: string, text: string, offsetMs: number, deliveryState: 'processing' | 'complete' = 'processing') => cloud(
+const progress = (messageId: string, text: string, offsetMs: number, deliveryState: 'processing' | 'complete' | 'cancelled' = 'processing') => cloud(
   messageId,
   encodeCloudAgentResponse({
     requestId: wireRequestId, text, deliveryState,
     execution: {
-      phase: deliveryState === 'complete' ? 'complete' : text ? 'writing' : 'preparing',
+      phase: deliveryState === 'processing' ? (text ? 'writing' : 'preparing') : deliveryState,
       summary: 'Working', steps: [], startedAtMs: sentAtMs + 2_000, updatedAtMs: sentAtMs + offsetMs,
-      completed: deliveryState === 'complete',
+      completed: deliveryState !== 'processing',
     },
   }),
   offsetMs,
@@ -154,4 +155,74 @@ test('a published request is linked to its Cloud id before the native turn start
   const again = await linkPublishedSelfAgentRequest({ ...baseState, messages: [linked!] }, localRequest.id, wireRequestId, async (request) => { persisted.push(request); });
   assert.equal(again, null, 'an already linked request is left as it is');
   assert.equal(persisted.length, 1);
+});
+
+/** The Mac's turn for the request, as the executor records it. */
+const localTurn = (status: string, text: string, completed: boolean, succeeded = completed): DesktopChatTurnSnapshot => ({
+  id: 'native-turn', sessionId, prompt: 'Three steps to make tea', status, message: '', assistantText: text,
+  thinkingText: '', tools: [], completed, succeeded, startedAtMs: sentAtMs + 2_000, replyToMessageId: wireRequestId,
+});
+
+/** Renders one step the way the app does: stored rows, the Mac's turn and the pending reply. */
+function renderStep(state: CanonicalSessionState, wire: CloudMessage[], turns: Record<string, DesktopChatTurnSnapshot>) {
+  // The executor drops a finished request's turn once the stored reply caught up.
+  const kept = omitTerminalCloudSelfAgentLocalTurns(turns, cloudSelfAgentLocalTurnsToOmit(
+    cloudSelfAgentTerminalOrLocalRequestIds(wire, state), wire, state,
+  ));
+  const projected = projectPendingSelfAgentReplies(projectCloudSelfAgentLiveTurns(state, kept), Date.now(), { turns: kept, cloudMessages: wire })!;
+  const rows = createCanonicalSessionReadModel(projected as never).messages(sessionId).filter((message) => message.role === 'owned-agent');
+  return { rows, kept };
+}
+
+// Recorded in the preview: the stored rows trail the message index by seconds,
+// so the final or stopped reply reaches the index long before the transcript.
+for (const ending of ['complete', 'cancelled'] as const) test(`the trace sequence never shows a finished request running again (${ending})`, () => {
+  let state = baseState;
+  let wire: CloudMessage[] = [];
+  let turns: Record<string, DesktopChatTurnSnapshot> = {};
+  let finished = false;
+  const check = (label: string) => {
+    const { rows, kept } = renderStep(state, wire, turns);
+    turns = kept;
+    assert.equal(rows.length, 1, `${label}: ${rows.length} agent rows`);
+    if (finished) {
+      assert.equal(rows[0]?.turn?.completed, true, `${label}: a finished request shows running again`);
+      assert.equal(agentRequestStopTarget(rows[0]?.turn, rows[0]!), null, `${label}: stop shows after the end`);
+    }
+  };
+  check('sent');
+  wire = [serverRequest];
+  check('published and indexed');
+  state = updateHostedSelfAgentProgress(state, { request: serverRequest, runStatus: 'queued', cloudMessages: wire })!;
+  check('hosted run queued');
+  turns = { [wireRequestId]: localTurn('preparing', '', false) };
+  check('the Mac starts the turn');
+  wire = [...wire, progress('progress-1', '', 2_100)];
+  check('first progress in the index only');
+  state = removeHostedSelfAgentProgress(state, wireRequestId)!;
+  check('hosted progress stops');
+  if (ending === 'complete') {
+    state = applyPlan(state, wire);
+    turns = { [wireRequestId]: localTurn('writing', '1. Boil', false) };
+    check('stored processing row with streaming turn');
+    turns = { [wireRequestId]: localTurn('succeeded', '1. Boil water', true) };
+    finished = true;
+    check('turn done');
+    wire = [...wire, progress('final', '1. Boil water', 9_000, 'complete')];
+    check('final reply in the index, stored row still processing');
+    wire = [...wire.filter((message) => message.messageId !== 'final'), progress('progress-2', '1. Boil', 7_000), progress('final', '1. Boil water', 9_000, 'complete')];
+    state = applyPlan(state, wire.filter((message) => message.messageId !== 'final'));
+    check('a stale progress row is stored');
+  } else {
+    turns = { [wireRequestId]: localTurn('cancelled', '', true, false) };
+    finished = true;
+    check('stopped before any stored reply');
+    wire = [...wire, progress('stopped', 'Request stopped.', 4_000, 'cancelled')];
+    check('stopped reply in the index only');
+    state = applyPlan(state, wire.filter((message) => message.messageId !== 'stopped'));
+    check('the first progress row is stored late');
+  }
+  state = applyPlan(state, wire);
+  check('stored terminal reply');
+  assert.deepEqual(turns, {}, 'the turn goes once the stored reply is terminal');
 });

@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
-import type { CanonicalSessionMessage, CanonicalSessionState } from '@/kordi-app/types';
+import type { CanonicalSessionMessage, CanonicalSessionState, DesktopChatTurnSnapshot } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import { routeRunsOnKordiCloud } from './cloudAgentRuntimeRoute';
 import { cloudSyncedLocalAgentSessionIds } from './cloudSelfAgentSessionIdentity';
+import { withLiveTurn } from './cloudGroupLiveProjection';
+import { cloudSelfAgentRequestClientMessageId } from './cloudSelfAgentIdentity';
+import type { CloudMessage } from './authClient';
 
 /** How long a request may wait for its run before the reply says it did not start. */
 export const PENDING_SELF_AGENT_START_TIMEOUT_MS = 15_000;
@@ -78,8 +81,13 @@ export function usePendingSelfAgentReplyClock(state: CanonicalSessionState | nul
 export function projectPendingSelfAgentReplies(
   state: CanonicalSessionState | null,
   nowMs = Date.now(),
+  /** The Mac's turns by Cloud request id, and this account's Cloud messages to find that id. */
+  local: { turns?: Readonly<Record<string, DesktopChatTurnSnapshot>>; cloudMessages?: readonly CloudMessage[] } = {},
 ): CanonicalSessionState | null {
   if (!state) return state;
+  const wireIdByClientId = new Map((local.cloudMessages ?? []).flatMap((message) => (
+    message.clientMessageId ? [[message.clientMessageId, message.messageId] as const] : []
+  )));
   const sessionIds = cloudSyncedLocalAgentSessionIds(state);
   if (sessionIds.size === 0) return state;
   const newestUserBySession = new Map<string, CanonicalSessionMessage>();
@@ -96,9 +104,12 @@ export function projectPendingSelfAgentReplies(
     if (state.messages.some((message) => message.senderRole !== 'user' && repliesTo(message, request.id))) continue;
     const agentIdentityId = sessionById.get(request.sessionId)?.primaryIdentityId?.trim();
     if (!agentIdentityId) continue;
+    // The Mac runs it before its stored reply exists: show that turn here.
+    const wireId = wireIdByClientId.get(cloudSelfAgentRequestClientMessageId(request.sessionId, request.id));
+    const localTurn = wireId ? local.turns?.[wireId] : undefined;
     // No run answered in time: say so instead of showing a run that does not exist.
-    const notStarted = nowMs - request.createdAtMs > startTimeoutMs(request);
-    pending.push({
+    const notStarted = !localTurn && nowMs - request.createdAtMs > startTimeoutMs(request);
+    const row: CanonicalSessionMessage = {
       id: pendingSelfAgentReplyId(request.id),
       sessionId: request.sessionId,
       senderIdentityId: agentIdentityId,
@@ -117,7 +128,8 @@ export function projectPendingSelfAgentReplies(
       updatedAtMs: request.createdAtMs + 1,
       sourceTransport: PENDING_SOURCE,
       sourceEventId: request.id,
-    });
+    };
+    pending.push(localTurn && localTurn.sessionId === request.sessionId ? withLiveTurn(row, localTurn) : row);
   }
   return pending.length ? { ...state, messages: [...state.messages, ...pending] } : state;
 }

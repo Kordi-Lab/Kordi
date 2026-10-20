@@ -21,6 +21,7 @@ import {
 import {
   cloudSelfAgentCanonicalSyncPlanSignature,
   persistCloudSelfAgentCanonicalSyncPlan,
+  withoutStoredMessageRequests,
 } from './cloudSelfAgentCanonicalSyncExecution';
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import {
@@ -166,7 +167,7 @@ export function useCloudSelfAgentCanonicalSync({
     };
     nativeHistoryRef.current = nativeHistory;
     const selfMessages = messagesByPeer[account.accountId] ?? [];
-    const headPlan = planCloudSelfAgentCanonicalSync({
+    const headPlan = withoutStoredMessageRequests(planCloudSelfAgentCanonicalSync({
       account,
       agentDisplayName,
       messages: selfMessages,
@@ -176,7 +177,7 @@ export function useCloudSelfAgentCanonicalSync({
         messageIndex.groupRowByWireMessageId,
       cloudTitlesBySessionId: titlesBySessionId,
       requestSyncLedger: loadCloudSelfAgentSyncLedger(account.accountId),
-    });
+    }), canonicalState.messages);
     const currentAgentIdentity = canonicalState.identities.find((identity) => (
       identity.id === headPlan.agentIdentityRequest.id
     ));

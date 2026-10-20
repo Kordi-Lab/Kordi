@@ -1,3 +1,4 @@
+import { isTerminalCloudAgentTurn } from '@/features/canonical/cloudAgentTurnLifecycle';
 import type {
   CanonicalSessionState,
   DesktopChatTurnSnapshot,
@@ -156,4 +157,25 @@ export function cloudSelfAgentExecutionCanStart({
   runtimeReady: boolean;
 }) {
   return Boolean(account && initialMessagesSettled && runtimeReady);
+}
+
+/**
+ * The finished requests whose local turns can go. A request answered on the
+ * server keeps its local turn until the transcript's stored reply is
+ * terminal too: the stored rows can trail the message index by seconds, and
+ * without the turn the reply showed as processing again in that gap.
+ */
+export function cloudSelfAgentLocalTurnsToOmit(
+  terminalRequestIds: ReadonlySet<string>,
+  messages: readonly CloudMessage[],
+  state: CanonicalSessionState | null | undefined,
+): Set<string> {
+  const answered = cloudSelfAgentTerminalResponseRequestIds(messages);
+  const storedTerminal = new Set((state?.messages ?? []).flatMap((message) => {
+    const requestId = (message.content as { cloudRequestMessageId?: unknown } | null)?.cloudRequestMessageId;
+    return typeof requestId === 'string' && isTerminalCloudAgentTurn(message) ? [requestId] : [];
+  }));
+  return new Set([...terminalRequestIds].filter((requestId) => (
+    !answered.has(requestId) || storedTerminal.has(requestId)
+  )));
 }
