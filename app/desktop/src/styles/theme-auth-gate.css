@@ -315,14 +315,19 @@ html.kordi-native-shell .app-cloud-workspace-surface {
 }
 
 /* The Kordi bird in flight: the body bobs and the wing flaps from its root. */
+.app-cloud-starting-bird {
+  --app-kordi-bird: var(--app-cloud-starting-bird);
+  --app-kordi-bird-cut: var(--app-cloud-starting-bird-cut);
+}
+
 .app-kordi-flying-bird-fill {
-  fill: var(--app-cloud-starting-bird);
-  stroke: var(--app-cloud-starting-bird);
+  fill: var(--app-kordi-bird, currentColor);
+  stroke: var(--app-kordi-bird, currentColor);
 }
 
 .app-kordi-flying-bird-wing {
-  fill: var(--app-cloud-starting-bird);
-  stroke: var(--app-cloud-starting-bird-cut);
+  fill: var(--app-kordi-bird, currentColor);
+  stroke: var(--app-kordi-bird-cut, var(--utility-background));
   transform-box: fill-box;
   transform-origin: 0% 50%;
   animation: app-kordi-bird-flap 0.36s ease-in-out infinite;
