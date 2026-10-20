@@ -19,6 +19,13 @@ import {
   waitForCloudOAuthOrCancellation,
 } from './cloudOAuthCancellation';
 
+let pendingAuthUrl: string | null = null;
+
+/** Reopens the provider page for the sign-in still waiting on the loopback. */
+export function reopenCloudOAuthBrowser(): void {
+  if (pendingAuthUrl) void openDesktopExternalUrl(pendingAuthUrl).catch(() => undefined);
+}
+
 export async function startCloudOAuthSignIn(
   authClient: CloudAuthClient,
   provider: CloudOAuthProvider,
@@ -34,6 +41,7 @@ export async function startCloudOAuthSignIn(
         authClient.startOAuth(provider, loopback.redirectUrl), signal,
       );
       throwIfCloudOAuthCancelled(signal);
+      pendingAuthUrl = result.authUrl;
       await waitForCloudOAuthOrCancellation(openDesktopExternalUrl(result.authUrl), signal);
       throwIfCloudOAuthCancelled(signal);
       const fragment = await waitForCloudOAuthOrCancellation(
@@ -61,6 +69,7 @@ export async function startCloudOAuthSignIn(
     if (typeof window !== 'undefined') window.location.assign(result.authUrl);
     return null;
   } finally {
+    pendingAuthUrl = null;
     if (loopback) {
       await invokeDesktop<void>('cloud_oauth_loopback_cancel', { requestId: loopback.requestId })
         .catch(() => undefined);

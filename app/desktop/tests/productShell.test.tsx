@@ -292,13 +292,19 @@ test('cloud starting timeout provides an explicit retry action', () => {
   assert.match(markup, /button/);
 });
 
-test('pending social sign-in offers a cancel action', () => {
+test('pending social sign-in shows the provider with reopen and cancel actions', () => {
   const markup = renderToStaticMarkup(createElement(CloudStartingScreen, {
     onCancelSignIn: () => {},
+    onReopenSignIn: () => {},
+    signInProvider: 'github',
   }));
 
-  assert.match(markup, /Cancel sign-in/);
-  assert.match(markup, /<button/);
+  assert.match(markup, /Continue in your browser/);
+  assert.match(markup, /Signing in with GitHub/);
+  assert.match(markup, />Reopen browser</);
+  assert.match(markup, />Cancel</);
+  assert.match(markup, /app-cloud-signin-ring/);
+  assert.doesNotMatch(markup, /app-cloud-starting-dot/);
 });
 
 test('cloud starting dots are flat and non-glowy in CSS', () => {

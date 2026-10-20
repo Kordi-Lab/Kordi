@@ -355,29 +355,13 @@ html.kordi-native-shell .app-cloud-workspace-surface {
   transition: background-color 160ms var(--app-motion-ease), border-color 160ms var(--app-motion-ease), color 160ms var(--app-motion-ease);
 }
 
-.app-cloud-starting-cancel {
-  margin-top: 2px;
-  border: 1px solid var(--app-cloud-starting-retry-border);
-  border-radius: 999px;
-  background: var(--app-cloud-starting-retry-bg);
-  color: var(--app-cloud-starting-retry-text);
-  min-height: 44px;
-  min-width: 152px;
-  padding: 0 20px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 160ms var(--app-motion-ease), border-color 160ms var(--app-motion-ease), color 160ms var(--app-motion-ease);
-}
 
-.app-cloud-starting-retry:hover,
-.app-cloud-starting-cancel:hover {
+.app-cloud-starting-retry:hover {
   color: var(--utility-foreground);
   border-color: var(--utility-secondary-text);
 }
 
-.app-cloud-starting-retry:focus-visible,
-.app-cloud-starting-cancel:focus-visible {
+.app-cloud-starting-retry:focus-visible {
   outline: 2px solid var(--app-cloud-login-focus-border);
   outline-offset: 3px;
 }

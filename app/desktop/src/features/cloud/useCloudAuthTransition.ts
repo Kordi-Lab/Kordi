@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { UseCloudSessionResult } from './useCloudSession';
+import type { CloudOAuthProvider } from './authClient';
 import { CloudOAuthCancelledError } from './cloudOAuthCancellation';
 
 export type CloudAuthTransition = 'signing-in' | 'signing-out' | 'social-signing-in';
@@ -31,6 +32,7 @@ type AuthActions = Pick<UseCloudSessionResult, 'signIn' | 'signUp' | 'signInWith
 
 export function useCloudAuthTransition({ signIn, signUp, signInWithProvider, signOut }: AuthActions) {
   const [activity, setActivity] = useState<CloudAuthTransition | null>(null);
+  const [socialProvider, setSocialProvider] = useState<CloudOAuthProvider | null>(null);
   const mounted = useRef(true);
   const pending = useRef<Promise<void> | null>(null);
   const socialAbort = useRef<AbortController | null>(null);
@@ -69,12 +71,14 @@ export function useCloudAuthTransition({ signIn, signUp, signInWithProvider, sig
       if (pending.current) return pending.current;
       const controller = new AbortController();
       socialAbort.current = controller;
+      setSocialProvider(provider);
       return run(
         'social-signing-in',
         () => signInWithProvider(provider, controller.signal),
         controller.signal,
       ).finally(() => {
         if (socialAbort.current === controller) socialAbort.current = null;
+        if (mounted.current) setSocialProvider(null);
       });
     },
     [run, signInWithProvider],
@@ -83,5 +87,7 @@ export function useCloudAuthTransition({ signIn, signUp, signInWithProvider, sig
     socialAbort.current?.abort();
   }, []);
   const leave = useCallback(() => run('signing-out', signOut), [run, signOut]);
-  return { activity, signIn: enter, signUp: register, socialSignIn: social, cancelSocialSignIn, signOut: leave };
+  return {
+    activity, socialProvider, signIn: enter, signUp: register, socialSignIn: social, cancelSocialSignIn, signOut: leave,
+  };
 }
