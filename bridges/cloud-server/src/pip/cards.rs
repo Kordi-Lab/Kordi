@@ -156,6 +156,49 @@ fn refreshed_card_content(mut content: Value, row: &PlanCardRow) -> Option<Value
     changed.then_some(content)
 }
 
+/// Refreshes in place every message from `sender` that carries `row`'s card,
+/// keeping each one's view. Returns whether any message carries the card and
+/// whether one already shows the view the card now wants. A member who
+/// proposed a card in their own chat (Common ground's Meet) carries it in
+/// their own message, so their card stays current the same way PiP's does.
+pub(crate) async fn refresh_card_carriers(
+    pool: &PgPool,
+    sender: &str,
+    row: &PlanCardRow,
+) -> Result<(bool, bool), sqlx_core::Error> {
+    let Ok(conversation_id) = Uuid::parse_str(&row.conversation_id) else {
+        return Ok((false, false));
+    };
+    let wanted = card_view(row);
+    let probe = json!([{"type": "plan_card", "eventId": row.event_id}]);
+    let carriers: Vec<(Uuid, Value)> = query_as(
+        "SELECT message_id, content FROM cloud_chat_messages
+         WHERE conversation_id = $1 AND sender_account_id = $2 AND deleted_at IS NULL
+           AND content->'blocks' @> $3::jsonb
+         ORDER BY conversation_sequence DESC LIMIT 6",
+    )
+    .bind(conversation_id)
+    .bind(sender)
+    .bind(&probe)
+    .fetch_all(pool)
+    .await?;
+    let has_carrier = !carriers.is_empty();
+    let mut shows_wanted = false;
+    for (message_id, content) in carriers {
+        shows_wanted |=
+            card_blocks(&content, &row.event_id).any(|block| block_view(block) == wanted);
+        crate::chat_sync::store::refresh_server_message_content(
+            pool,
+            sender,
+            message_id,
+            |content| refreshed_card_content(content, row),
+        )
+        .await
+        .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
+    }
+    Ok((has_carrier, shows_wanted))
+}
+
 /// Brings PiP's card messages for a plan up to date. Every message already
 /// carrying the card is refreshed in place, keeping its own view, so votes and
 /// answers show on the card with no new chat line. When the plan needs a view
@@ -171,32 +214,7 @@ pub(crate) async fn sync_card_messages(
         return Ok(None);
     };
     let wanted = card_view(row);
-    let probe = json!([{"type": "plan_card", "eventId": row.event_id}]);
-    let carriers: Vec<(Uuid, Value)> = query_as(
-        "SELECT message_id, content FROM cloud_chat_messages
-         WHERE conversation_id = $1 AND sender_account_id = $2 AND deleted_at IS NULL
-           AND content->'blocks' @> $3::jsonb
-         ORDER BY conversation_sequence DESC LIMIT 6",
-    )
-    .bind(conversation_id)
-    .bind(pip_account_id)
-    .bind(&probe)
-    .fetch_all(pool)
-    .await?;
-    let has_carrier = !carriers.is_empty();
-    let mut shows_wanted = false;
-    for (message_id, content) in carriers {
-        shows_wanted |=
-            card_blocks(&content, &row.event_id).any(|block| block_view(block) == wanted);
-        crate::chat_sync::store::refresh_server_message_content(
-            pool,
-            pip_account_id,
-            message_id,
-            |content| refreshed_card_content(content, row),
-        )
-        .await
-        .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
-    }
+    let (has_carrier, shows_wanted) = refresh_card_carriers(pool, pip_account_id, row).await?;
     // A canceled plan updates the cards it already has; it never adds one.
     if shows_wanted || (row.state == PlanCardState::Canceled && has_carrier) {
         return Ok(None);

@@ -7,6 +7,7 @@
 //! card's topics, minus hidden ones, only while they share an open room or a
 //! pairing with its owner and the owner shares the card.
 
+mod actions;
 mod build;
 mod card;
 mod matching;
@@ -85,6 +86,19 @@ pub(super) const PAIR_IP_LIMIT: AccountActionLimit = AccountActionLimit {
     window: Duration::from_secs(60),
 };
 
+/// Plans proposed from Common ground per account.
+pub(super) const MEET_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "common-ground-meet",
+    limit: 30,
+    window: Duration::from_secs(60 * 60),
+};
+/// Groups started from rooms per account.
+pub(super) const GROUP_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "common-ground-group",
+    limit: 10,
+    window: Duration::from_secs(60 * 60),
+};
+
 /// Common ground needs the Kordi-operated credential for card builds.
 pub fn available(state: &ServerState) -> bool {
     state.pip().is_some()
@@ -137,6 +151,26 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
         .route(
             "/v1/cloud/common-ground/people/:account_id",
             get(people::read),
+        )
+        .route(
+            "/v1/cloud/common-ground/people/:account_id/contact",
+            post(actions::add_contact),
+        )
+        .route(
+            "/v1/cloud/common-ground/people/:account_id/chat",
+            post(actions::chat),
+        )
+        .route(
+            "/v1/cloud/common-ground/people/:account_id/meet",
+            post(actions::meet),
+        )
+        .route(
+            "/v1/cloud/common-ground/rooms/:code/group",
+            post(actions::start_group),
+        )
+        .route(
+            "/v1/cloud/common-ground/rooms/:code/invitations/:invitation_ref/join",
+            post(actions::join),
         )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),

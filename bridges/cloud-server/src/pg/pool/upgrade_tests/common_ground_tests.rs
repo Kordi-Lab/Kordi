@@ -120,3 +120,52 @@ async fn upgrade_from_136_adds_matching_runs_and_room_themes() {
         .unwrap();
     assert_eq!(counts, (0, 0), "a deleted room takes its runs and themes");
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_137_adds_room_invitations() {
+    let pool = fixture(137).await;
+    execute(&pool, "INSERT INTO cloud_common_ground_rooms(room_id,code,created_by) VALUES('00000000-0000-0000-0000-000000000001','0427','fixture-owner')").await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let (rooms,): (i64,) = query_as("SELECT COUNT(*) FROM cloud_common_ground_rooms")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(rooms, 1, "rooms are untouched");
+
+    execute(&pool, "INSERT INTO cloud_common_ground_room_groups(group_space_id,room_id,conversation_id,name,created_by) VALUES('session:group:a','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-00000000000a','Agents','fixture-owner')").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_room_invitations(invitation_ref,room_id,group_space_id,group_invitation_id,inviter_account_id,invitee_account_id) VALUES('cgi_a','00000000-0000-0000-0000-000000000001','session:group:a','groupinv_a','fixture-owner','fixture-peer')").await;
+    let (accepted,): (Option<chrono::DateTime<chrono::Utc>>,) =
+        query_as("SELECT accepted_at FROM cloud_common_ground_room_invitations")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(accepted, None, "invitations start pending");
+    for invalid in [
+        // One invitation per person per group.
+        "INSERT INTO cloud_common_ground_room_invitations(invitation_ref,room_id,group_space_id,group_invitation_id,inviter_account_id,invitee_account_id) VALUES('cgi_b','00000000-0000-0000-0000-000000000001','session:group:a','groupinv_a','fixture-owner','fixture-peer')",
+        "INSERT INTO cloud_common_ground_room_invitations(invitation_ref,room_id,group_space_id,group_invitation_id,inviter_account_id,invitee_account_id) VALUES('cgi_c','00000000-0000-0000-0000-000000000009','session:group:a','groupinv_a','fixture-owner','fixture-owner')",
+        "INSERT INTO cloud_common_ground_room_groups(group_space_id,room_id,conversation_id,name,created_by) VALUES('session:group:b','00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-00000000000b','Other','fixture-owner')",
+    ] {
+        assert!(sqlx_core::raw_sql::raw_sql(invalid).execute(&pool).await.is_err(), "{invalid}");
+    }
+    execute(
+        &pool,
+        "DELETE FROM cloud_accounts WHERE account_id='fixture-peer'",
+    )
+    .await;
+    let counts: (i64, i64) = query_as("SELECT (SELECT COUNT(*) FROM cloud_common_ground_room_groups),(SELECT COUNT(*) FROM cloud_common_ground_room_invitations)")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(counts, (1, 0), "a deleted invitee takes their invitations");
+    execute(&pool, "DELETE FROM cloud_common_ground_rooms").await;
+    let (groups,): (i64,) = query_as("SELECT COUNT(*) FROM cloud_common_ground_room_groups")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(groups, 0, "a deleted room takes its groups");
+}

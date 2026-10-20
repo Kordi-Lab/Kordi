@@ -7,6 +7,8 @@ mod creation;
 mod lookup;
 
 pub(super) use acceptance::{accept_group_invitation, revoke_group_invitation};
+pub(crate) use acceptance::{audit_join, redeem_group_invitation_by_id, Redemption};
+pub(crate) use creation::create_invitation_in_transaction;
 pub(super) use creation::{
     create_group_invitation, get_group_invitation, group_invitation_landing,
     list_active_group_invitations,
@@ -16,6 +18,10 @@ use lookup::*;
 const GROUP_INVITE_TOKEN_PREFIX: &str = "kordi_gi_";
 const GROUP_INVITE_LIFETIME_DAYS: i64 = 7;
 const GROUP_INVITE_MAX_MEMBERS: usize = 50;
+const GROUP_INVITE_MIN_MEMBERS: usize = 2;
+/// A group started from a Common ground room may invite while it has only its
+/// creator.
+pub(crate) const ROOM_GROUP_MIN_MEMBERS: usize = 1;
 const GROUP_INVITE_MAX_TITLE_CHARS: usize = 120;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

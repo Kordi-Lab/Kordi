@@ -16,13 +16,44 @@ fn stable_contact_acceptance_uuid(scope: &str, value: &str) -> Uuid {
     Uuid::from_bytes(bytes)
 }
 
-fn direct_person_session_id(left_account_id: &str, right_account_id: &str) -> String {
+pub(crate) fn direct_person_session_id(left_account_id: &str, right_account_id: &str) -> String {
     let mut account_ids = [left_account_id.trim(), right_account_id.trim()];
     account_ids.sort_unstable();
     format!(
         "session:direct-person:{}:{}",
         account_ids[0], account_ids[1]
     )
+}
+
+/// Finds or creates the direct conversation between two contacts, opened by
+/// `opener`. Every caller derives the same session id and operation id, so a
+/// conversation that already exists is returned, never duplicated.
+pub(crate) async fn open_direct_conversation(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    opener: &str,
+    peer: &str,
+) -> Result<crate::chat_sync::models::ConversationSnapshot, store::StoreError> {
+    let session_id = direct_person_session_id(opener, peer);
+    store::create_conversation_in_transaction(
+        tx,
+        opener,
+        CreateConversationRequest {
+            client_operation_id: stable_contact_acceptance_uuid(
+                "contact-acceptance-conversation",
+                &session_id,
+            ),
+            kind: ConversationKind::Direct,
+            shared_title: None,
+            client_session_id: session_id,
+            member_account_ids: vec![peer.to_string()],
+        },
+    )
+    .await
+    .map(|outcome| outcome.value)
+}
+
+fn failed(code: &'static str, message: &str, status: StatusCode) -> ContactOutcome {
+    ContactOutcome::Failed(err(code, message, status))
 }
 
 // ---------- helpers ----------
@@ -38,13 +69,13 @@ pub(super) async fn finalize_request_acceptance(
     request_id: &str,
     from_id: &str,
     to_id: &str,
-) -> Response {
+) -> ContactOutcome {
     let now = Utc::now().to_rfc3339();
 
     let mut tx = match pool.begin().await {
         Ok(value) => value,
         Err(_) => {
-            return err(
+            return failed(
                 "server_error",
                 "Could not start transaction.",
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -63,7 +94,7 @@ pub(super) async fn finalize_request_acceptance(
     .await
     .is_err()
     {
-        return err(
+        return failed(
             "server_error",
             "Could not accept request.",
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -85,7 +116,7 @@ pub(super) async fn finalize_request_acceptance(
         .await
         .is_err()
         {
-            return err(
+            return failed(
                 "server_error",
                 "Could not record contact.",
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -98,25 +129,10 @@ pub(super) async fn finalize_request_acceptance(
     // share this transaction so clients never observe a permanently empty
     // contact caused by a partial acceptance.
     let hello_session_id = direct_person_session_id(from_id, to_id);
-    let hello_conversation = match store::create_conversation_in_transaction(
-        &mut tx,
-        to_id,
-        CreateConversationRequest {
-            client_operation_id: stable_contact_acceptance_uuid(
-                "contact-acceptance-conversation",
-                &hello_session_id,
-            ),
-            kind: ConversationKind::Direct,
-            shared_title: None,
-            client_session_id: hello_session_id.clone(),
-            member_account_ids: vec![from_id.to_string()],
-        },
-    )
-    .await
-    {
-        Ok(outcome) => outcome.value,
+    let hello_conversation = match open_direct_conversation(&mut tx, to_id, from_id).await {
+        Ok(conversation) => conversation,
         Err(_) => {
-            return err(
+            return failed(
                 "server_error",
                 "Could not open the contact conversation.",
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -146,7 +162,7 @@ pub(super) async fn finalize_request_acceptance(
     {
         Ok(outcome) => outcome.value,
         Err(_) => {
-            return err(
+            return failed(
                 "server_error",
                 "Could not record the contact greeting.",
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -155,7 +171,7 @@ pub(super) async fn finalize_request_acceptance(
     };
 
     if tx.commit().await.is_err() {
-        return err(
+        return failed(
             "server_error",
             "Could not commit acceptance.",
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -237,14 +253,13 @@ pub(super) async fn finalize_request_acceptance(
         },
         attachments: Vec::new(),
     };
-    (
+    ContactOutcome::Done(
         StatusCode::OK,
-        Json(ContactRequestResponse {
+        Box::new(ContactRequestResponse {
             request: summary,
             hello_message: Some(hello_summary),
         }),
     )
-        .into_response()
 }
 
 pub(super) fn account_to_summary(account: AccountResponse) -> ContactSummary {

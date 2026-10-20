@@ -15,6 +15,7 @@ use sqlx_core::{query::query, query_as::query_as};
 use super::store::{self, Pending, Queued, MAX_THEME_MEMBERS};
 use super::{shared_cards, suggestion, MatchResult, SharedCard};
 use crate::auth::rate_limit::CloudRateLimiter;
+use crate::common_ground::actions::{attach, relationship, relationships, room_extras};
 use crate::common_ground::{card, db_error, limited, people, rooms};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
@@ -133,10 +134,23 @@ pub(in crate::common_ground) async fn results(
         .filter_map(|o| fresh.get(&o.account_id).map(|r| (o, r)))
         .collect();
     ranked.sort_by(|a, b| b.1.score.cmp(&a.1.score).then(a.0.name.cmp(&b.0.name)));
+    let ranked_ids: Vec<String> = ranked.iter().map(|(c, _)| c.account_id.clone()).collect();
+    let relationships = match relationships(pool, account, &ranked_ids).await {
+        Ok(relationships) => relationships,
+        Err(error) => return db_error(error),
+    };
     let people: Vec<Value> = ranked
         .iter()
-        .map(|(card, result)| json!({ "person": person(card), "score": result.score, "headline": result.headline }))
+        .map(|(card, result)| {
+            let mut entry = json!({ "person": person(card), "score": result.score, "headline": result.headline });
+            attach(&mut entry, &card.account_id, &relationships);
+            entry
+        })
         .collect();
+    let (groups, invitations) = match room_extras(pool, room_id, account).await {
+        Ok(extras) => extras,
+        Err(error) => return db_error(error),
+    };
     let by_id = |id: &String| cards.iter().find(|c| &c.account_id == id);
     let theme_view = |(label, ids): &(String, Vec<String>)| {
         // You come first, then everyone else in join order.
@@ -152,6 +166,8 @@ pub(in crate::common_ground) async fn results(
             "people": people,
             "topics": themes.iter().map(theme_view).collect::<Vec<_>>(),
             "suggestion": suggestion(&themes, account).map(theme_view),
+            "groups": groups,
+            "invitations": invitations,
         })),
     )
         .into_response()
@@ -208,6 +224,10 @@ pub(in crate::common_ground) async fn match_detail(
         let mut body = json!(result);
         body["status"] = json!("ready");
         body["person"] = person(other_card);
+        match relationship(pool, account, &other).await {
+            Ok(relationship) => body["relationship"] = relationship,
+            Err(error) => return db_error(error),
+        }
         return (StatusCode::OK, Json(body)).into_response();
     }
     match store::queue_matches(
@@ -220,11 +240,18 @@ pub(in crate::common_ground) async fn match_detail(
     )
     .await
     {
-        Ok(Queued::Pending(pending)) => (
-            StatusCode::ACCEPTED,
-            Json(json!({ "status": status(Some(pending)), "person": person(other_card) })),
-        )
-            .into_response(),
+        Ok(Queued::Pending(pending)) => match relationship(pool, account, &other).await {
+            Ok(relationship) => (
+                StatusCode::ACCEPTED,
+                Json(json!({
+                    "status": status(Some(pending)),
+                    "person": person(other_card),
+                    "relationship": relationship,
+                })),
+            )
+                .into_response(),
+            Err(error) => db_error(error),
+        },
         Ok(Queued::Limited(retry_after)) => limited(retry_after),
         Err(error) => db_error(error),
     }
@@ -264,10 +291,16 @@ pub(in crate::common_ground) async fn recent(
          ORDER BY m.opened_at DESC LIMIT 50",
         people::visible_sql("m.viewer_account_id", "m.other_account_id"),
     );
+    let pool = state.db_pool();
     let rows: Result<Vec<RecentRow>, _> = query_as(&sql)
         .bind(&session.account_id)
-        .fetch_all(state.db_pool())
+        .fetch_all(pool)
         .await;
+    let ids: Vec<String> = rows.iter().flatten().map(|row| row.0.clone()).collect();
+    let relationships = match relationships(pool, &session.account_id, &ids).await {
+        Ok(relationships) => relationships,
+        Err(error) => return db_error(error),
+    };
     match rows {
         Ok(rows) => {
             let people: Vec<Value> = rows
@@ -276,12 +309,14 @@ pub(in crate::common_ground) async fn recent(
                     let result = current
                         .then(|| serde_json::from_value::<MatchResult>(value).ok())
                         .flatten();
-                    json!({
+                    let mut entry = json!({
                         "person": people::person(&id, name.as_deref(), avatar_url.as_deref()),
                         "score": result.as_ref().map(|r| r.score),
                         "headline": result.as_ref().map(|r| &r.headline),
                         "openedAt": opened_at,
-                    })
+                    });
+                    attach(&mut entry, &id, &relationships);
+                    entry
                 })
                 .collect();
             (StatusCode::OK, Json(json!({ "people": people }))).into_response()

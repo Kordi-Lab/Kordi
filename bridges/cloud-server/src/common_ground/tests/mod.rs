@@ -1,3 +1,6 @@
+mod actions_contact_tests;
+mod actions_group_tests;
+mod actions_meet_tests;
 mod db_fixture;
 mod flow_tests;
 mod matching_guard_tests;
