@@ -5,26 +5,16 @@ import { copySurfaceProps, type KordiCopySurface } from '@/features/contentSelec
 import { cn } from '@/lib/utils';
 import type { MessageMention } from '../types';
 import { MarkdownInlineContent, type MarkdownInlineOptions, type MarkdownTone } from './markdownInline';
+import { matchListLine, parseMarkdownList, type MarkdownList } from './markdownList';
 import { MarkdownTable } from './markdownTable';
 
 export { openExternalMessageLink as openExternalMarkdownLink } from './messageLinks';
-
-type MarkdownList = {
-  ordered: boolean;
-  items: MarkdownListItem[];
-};
-
-type MarkdownListItem = {
-  text: string;
-  checked: boolean | null;
-  children: MarkdownList[];
-};
 
 type MarkdownBlock =
   | { type: 'heading'; level: 1 | 2 | 3; text: string }
   | { type: 'paragraph'; text: string }
   | { type: 'code'; language?: string; code: string }
-  | { type: 'list'; ordered: boolean; items: MarkdownListItem[] }
+  | { type: 'list'; list: MarkdownList }
   | { type: 'blockquote'; text: string }
   | { type: 'table'; headers: string[]; rows: string[][] };
 
@@ -42,17 +32,6 @@ function leadingIndentWidth(line: string) {
   return indent.replace(/\t/g, '    ').length;
 }
 
-function parseTaskPrefix(text: string) {
-  const task = text.match(/^\[( |x|X)\]\s+(.*)$/);
-  if (!task) {
-    return { checked: null, text };
-  }
-  return {
-    checked: task[1].toLowerCase() === 'x',
-    text: task[2],
-  };
-}
-
 function splitTableRow(line: string) {
   const trimmed = line.trim();
   const content = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed;
@@ -64,63 +43,6 @@ function isTableSeparator(line: string) {
   const trimmed = line.trim();
   if (!trimmed.includes('|')) return false;
   return splitTableRow(trimmed).every((cell) => /^:?-{3,}:?$/.test(cell));
-}
-
-function matchListLine(line: string) {
-  const match = line.match(/^(\s*)([-*+]|(\d+)\.)\s+(.*)$/);
-  if (!match) return null;
-  return {
-    indent: match[1].replace(/\t/g, '    ').length,
-    ordered: Boolean(match[3]),
-    content: match[4],
-  };
-}
-
-function parseMarkdownList(lines: string[], startIndex: number): { list: MarkdownList; nextIndex: number } | null {
-  const firstLine = matchListLine(lines[startIndex]);
-  if (!firstLine) return null;
-
-  const rootList: MarkdownList = { ordered: firstLine.ordered, items: [] };
-  const stack: Array<{ indent: number; list: MarkdownList }> = [{ indent: firstLine.indent, list: rootList }];
-  let index = startIndex;
-
-  while (index < lines.length) {
-    const line = lines[index];
-    if (!line.trim()) break;
-
-    const matched = matchListLine(line);
-    if (!matched) break;
-    if (matched.indent < stack[0].indent) break;
-
-    while (
-      stack.length > 1 &&
-      (matched.indent < stack[stack.length - 1].indent ||
-        (matched.indent === stack[stack.length - 1].indent && matched.ordered !== stack[stack.length - 1].list.ordered))
-    ) {
-      stack.pop();
-    }
-
-    if (matched.indent > stack[stack.length - 1].indent) {
-      const parentItem = stack[stack.length - 1].list.items[stack[stack.length - 1].list.items.length - 1];
-      if (!parentItem) break;
-      const childList: MarkdownList = { ordered: matched.ordered, items: [] };
-      parentItem.children.push(childList);
-      stack.push({ indent: matched.indent, list: childList });
-    } else if (matched.ordered !== stack[stack.length - 1].list.ordered && matched.indent === stack[0].indent) {
-      break;
-    }
-
-    const currentList = stack[stack.length - 1].list;
-    const parsedTask = parseTaskPrefix(matched.content);
-    currentList.items.push({
-      text: parsedTask.text,
-      checked: parsedTask.checked,
-      children: [],
-    });
-    index += 1;
-  }
-
-  return { list: rootList, nextIndex: index };
 }
 
 function parseMarkdownBlocks(text: string, preserveLineBreaks = false): MarkdownBlock[] {
@@ -186,7 +108,7 @@ function parseMarkdownBlocks(text: string, preserveLineBreaks = false): Markdown
 
     const list = parseMarkdownList(lines, index);
     if (list) {
-      blocks.push({ type: 'list', ordered: list.list.ordered, items: list.list.items });
+      blocks.push({ type: 'list', list: list.list });
       index = list.nextIndex;
       continue;
     }
@@ -502,7 +424,7 @@ function MarkdownListView({
   const inheritColor = inlineOptions.tone === 'inherit';
 
   return (
-    <Wrapper data-kordi-copy-block={depth === 0 ? 'true' : undefined}
+    <Wrapper data-kordi-copy-block={depth === 0 ? 'true' : undefined} start={list.ordered && list.start !== 1 ? list.start : undefined}
       className={cn(
         'space-y-1 text-sm leading-6',
         inheritColor ? 'text-[color:inherit] marker:text-[color:inherit]' : 'text-slate-100 marker:text-slate-500',
@@ -523,7 +445,9 @@ function MarkdownListView({
                 {item.checked ? '✓' : ''}
               </span>
             ) : null}
-            <div className="min-w-0"><MarkdownInlineContent text={item.text} {...inlineOptions} /></div>
+            <div className="min-w-0 space-y-2">{item.paragraphs.map((paragraph, paragraphIndex) => (
+              <div key={`${depth}-${index}-p-${paragraphIndex}`}><MarkdownInlineContent text={paragraph} {...inlineOptions} /></div>
+            ))}</div>
           </div>
           {item.children.map((child, childIndex) => (
             <MarkdownListView key={`${depth}-${index}-child-${childIndex}`} list={child} depth={depth + 1} inlineOptions={inlineOptions} />
@@ -595,7 +519,7 @@ function MarkdownContent({
             : <MarkdownCodeBlock key={`code-${index}`} language={block.language} code={block.code} />;
         }
         if (block.type === 'list') {
-          return <MarkdownListView key={`list-${index}`} list={{ ordered: block.ordered, items: block.items }} inlineOptions={defaultBlockInlineOptions} />;
+          return <MarkdownListView key={`list-${index}`} list={block.list} inlineOptions={defaultBlockInlineOptions} />;
         }
         if (block.type === 'blockquote') {
           return (

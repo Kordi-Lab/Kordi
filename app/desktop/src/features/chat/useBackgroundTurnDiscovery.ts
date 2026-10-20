@@ -6,6 +6,7 @@ import { publishModelSubsession } from '@/features/cloud/agentSubsessionSync';
 import { loadSession } from '@/features/cloud/session';
 import { discoverSubsessionFollowups } from '@/features/cloud/subsessionFollowExecution';
 import { publishCloudBackgroundFollowUp } from '@/features/cloud/cloudBackgroundFollowUps';
+import { sessionRunsLeasedTurn } from '@/features/cloud/cloudLeasedTurnSessions';
 
 export function useBackgroundTurnDiscovery({
   enabled,
@@ -37,6 +38,8 @@ export function useBackgroundTurnDiscovery({
       for (const turn of turns) {
         if (turn.backgroundFollowUp) void publishCloudBackgroundFollowUp(turn);
         if (discoveredTurnIdsRef.current.has(turn.id)) continue;
+        // An Ask Agent request's reply row already shows its leased turn.
+        if (sessionRunsLeasedTurn(turn.sessionId)) continue;
         discoveredTurnIdsRef.current.add(turn.id);
         if (subsessionIds.has(turn.sessionId)) void publishModelSubsession(turn.sessionId).catch(() => undefined);
         else void watchTurn(turn);

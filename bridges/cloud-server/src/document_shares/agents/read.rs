@@ -70,7 +70,7 @@ pub(crate) async fn session_documents(
 }
 
 /// The session's documents by canonical id, each once.
-async fn canonical_session_documents(
+pub(super) async fn canonical_session_documents(
     pool: &PgPool,
     session_id: &str,
 ) -> Result<Vec<(String, String)>, sqlx_core::Error> {

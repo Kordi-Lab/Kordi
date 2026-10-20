@@ -122,64 +122,106 @@ pub async fn lease_next_run(
     lease_run(pool, runner_id, None).await
 }
 
+/// Lease eligibility of `candidate`: $1 is now, $2 an optional run id and $3
+/// the project-device online window. The checks read other runs of the same
+/// parent session, so they run under that session's lock.
+const ELIGIBLE: &str = concat!(
+    "WHERE (status = 'queued' ",
+    "OR ( ",
+    "status IN ('leased', 'running') ",
+    "AND lease_expires_at IS NOT NULL ",
+    "AND lease_expires_at::timestamptz <= $1::timestamptz ",
+    ")) ",
+    "AND NOT EXISTS(SELECT 1 FROM cloud_project_devices p JOIN cloud_devices d USING(device_id), jsonb_array_elements(p.projects) project WHERE p.account_id=candidate.owner_account_id AND (project->'sessions') ? candidate.session_id AND d.revoked_at IS NULL AND (candidate.execution_backend='desktop' OR p.updated_at>now()-make_interval(secs=>$3))) ",
+    "AND NOT candidate.legacy_duplicate AND candidate.cancel_requested_at IS NULL ",
+    "AND (candidate.desktop_preferred_until IS NULL OR candidate.desktop_preferred_until <= now()) ",
+    "AND ($2::text IS NULL OR candidate.run_id=$2) ",
+    "AND (NOT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat q WHERE q.run_id=candidate.run_id) OR ( ",
+    "NOT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs earlier LEFT JOIN cloud_agent_subsession_chat e ON e.run_id=earlier.run_id JOIN cloud_agent_subsession_chat current ON current.run_id=candidate.run_id WHERE earlier.subsession_id=candidate.subsession_id AND earlier.run_id<>candidate.run_id AND earlier.status IN ('queued','leased','running') AND (e.sequence IS NULL OR e.sequence<current.sequence)) ",
+    "AND NOT EXISTS(SELECT 1 FROM cloud_agent_subsessions s WHERE s.subsession_id=candidate.subsession_id AND s.execution_backend='desktop' AND s.status='running' AND s.heartbeat_at>now()-interval '45 seconds') ",
+    "AND NOT EXISTS(SELECT 1 FROM cloud_agent_subsessions s JOIN cloud_agent_desktop_capabilities ready ON ready.agent_id=s.agent_id AND ready.updated_at>now()-interval '35 seconds' JOIN cloud_devices d ON d.device_id=ready.device_id AND d.account_id=s.owner_account_id AND d.revoked_at IS NULL WHERE s.subsession_id=candidate.subsession_id AND s.execution_backend='desktop' AND candidate.created_at::timestamptz>now()-interval '10 seconds') ",
+    ")) ",
+    "AND (candidate.subsession_id IS NOT NULL OR NOT EXISTS(SELECT 1 FROM cloud_chat_conversations c WHERE c.legacy_session_id=candidate.session_id AND c.kind='ai') ",
+    "OR NOT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs active WHERE active.run_id<>candidate.run_id AND active.session_id=candidate.session_id AND active.execution_agent_id=candidate.execution_agent_id AND active.status IN ('queued','leased','running') AND (active.created_at<candidate.created_at OR (active.status='running' AND active.lease_expires_at::timestamptz>now())))) ",
+);
+
+/// Oldest eligible runs, read without locks. Each is re-checked under its
+/// session lock before it is leased.
+const LEASE_CANDIDATES: usize = 8;
+
 async fn lease_run(
     pool: &PgPool,
     runner_id: &str,
     canary_run_id: Option<&str>,
 ) -> RunResult<Option<RunnerRunResponse>> {
-    let now = Utc::now();
-    let lease_expires_at = (now + chrono::Duration::seconds(120)).to_rfc3339();
-    let mut tx = pool.begin().await?;
-    // ponytail: serialize ownership transitions, not agent work; use per-session
-    // locks if admission or terminal publication becomes a measured bottleneck.
-    sqlx_core::query::query("SELECT pg_advisory_xact_lock(81208411)")
-        .execute(&mut *tx)
-        .await?;
-    // A project chat may wait for its Mac but never falls back to another
-    // filesystem: the cloud leases a project run only while the project Mac is
-    // offline, and never one a desktop claimed. A lapsed desktop lease on a
-    // project run ends through the lost-desktop sweep instead. A comment run
-    // that prefers the owner's Mac waits until `desktop_preferred_until`.
-    let row: Option<RunnerRunRow> = query_as(
-        "UPDATE cloud_agent_fallback_runs \
-         SET status = 'leased', execution_backend = 'cloud', claimed_by = $1, lease_expires_at = $2, updated_at = $3 \
-         WHERE run_id = ( \
-             SELECT candidate.run_id FROM cloud_agent_fallback_runs candidate \
-             WHERE (status = 'queued' \
-                OR ( \
-                    status IN ('leased', 'running') \
-                    AND lease_expires_at IS NOT NULL \
-                    AND lease_expires_at::timestamptz <= $3::timestamptz \
-                )) \
-             AND NOT EXISTS(SELECT 1 FROM cloud_project_devices p JOIN cloud_devices d USING(device_id), jsonb_array_elements(p.projects) project WHERE p.account_id=candidate.owner_account_id AND (project->'sessions') ? candidate.session_id AND d.revoked_at IS NULL AND (candidate.execution_backend='desktop' OR p.updated_at>now()-make_interval(secs=>$5))) \
-             AND NOT candidate.legacy_duplicate AND candidate.cancel_requested_at IS NULL \
-             AND (candidate.desktop_preferred_until IS NULL OR candidate.desktop_preferred_until <= now()) \
-             AND ($4::text IS NULL OR candidate.run_id=$4) \
-             AND (NOT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat q WHERE q.run_id=candidate.run_id) OR ( \
-                 NOT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs earlier LEFT JOIN cloud_agent_subsession_chat e ON e.run_id=earlier.run_id JOIN cloud_agent_subsession_chat current ON current.run_id=candidate.run_id WHERE earlier.subsession_id=candidate.subsession_id AND earlier.run_id<>candidate.run_id AND earlier.status IN ('queued','leased','running') AND (e.sequence IS NULL OR e.sequence<current.sequence)) \
-                 AND NOT EXISTS(SELECT 1 FROM cloud_agent_subsessions s WHERE s.subsession_id=candidate.subsession_id AND s.execution_backend='desktop' AND s.status='running' AND s.heartbeat_at>now()-interval '45 seconds') \
-                 AND NOT EXISTS(SELECT 1 FROM cloud_agent_subsessions s JOIN cloud_agent_desktop_capabilities ready ON ready.agent_id=s.agent_id AND ready.updated_at>now()-interval '35 seconds' JOIN cloud_devices d ON d.device_id=ready.device_id AND d.account_id=s.owner_account_id AND d.revoked_at IS NULL WHERE s.subsession_id=candidate.subsession_id AND s.execution_backend='desktop' AND candidate.created_at::timestamptz>now()-interval '10 seconds') \
-             )) \
-             AND (candidate.subsession_id IS NOT NULL OR NOT EXISTS(SELECT 1 FROM cloud_chat_conversations c WHERE c.legacy_session_id=candidate.session_id AND c.kind='ai') \
-                  OR NOT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs active WHERE active.run_id<>candidate.run_id AND active.session_id=candidate.session_id AND active.execution_agent_id=candidate.execution_agent_id AND active.status IN ('queued','leased','running') AND (active.created_at<candidate.created_at OR (active.status='running' AND active.lease_expires_at::timestamptz>now())))) \
-             ORDER BY created_at ASC \
-             LIMIT 1 \
-             FOR UPDATE SKIP LOCKED \
-         ) \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message, system_prompt",
-    )
-    .bind(runner_id)
-    .bind(&lease_expires_at)
-    .bind(now.to_rfc3339())
-    .bind(canary_run_id)
-    .bind(crate::projects::PROJECT_DEVICE_ONLINE_SECONDS as f64)
-    .fetch_optional(&mut *tx)
-    .await?;
-    tx.commit().await?;
-    let Some(row) = row else {
+    let started = std::time::Instant::now();
+    let leased = lease_eligible(pool, runner_id, canary_run_id).await;
+    let outcome = match &leased {
+        Ok(Some(_)) => "leased",
+        Ok(None) => "idle",
+        Err(_) => "error",
+    };
+    let run_id = leased
+        .as_ref()
+        .ok()
+        .and_then(|row| row.as_ref())
+        .map(|row| row.0.as_str());
+    super::super::run_locks::log_op("runner_lease", run_id, outcome, started);
+    let Some(row) = leased? else {
         return Ok(None);
     };
     runner_response_from_row(pool, row).await.map(Some)
+}
+
+async fn lease_eligible(
+    pool: &PgPool,
+    runner_id: &str,
+    canary_run_id: Option<&str>,
+) -> RunResult<Option<RunnerRunRow>> {
+    let candidates: Vec<(String, String)> = query_as(&format!(
+        "SELECT candidate.run_id, candidate.session_id FROM cloud_agent_fallback_runs candidate \
+         {ELIGIBLE} ORDER BY candidate.created_at ASC LIMIT {LEASE_CANDIDATES}"
+    ))
+    .bind(Utc::now().to_rfc3339())
+    .bind(canary_run_id)
+    .bind(crate::projects::PROJECT_DEVICE_ONLINE_SECONDS as f64)
+    .fetch_all(pool)
+    .await?;
+    for (run_id, session_id) in candidates {
+        let mut tx = pool.begin().await?;
+        // A poll skips a conversation another transition holds; the next poll
+        // sees it again. A canary lease targets one run and waits instead.
+        if canary_run_id.is_some() {
+            super::super::run_locks::lock_session(&mut tx, &session_id).await?;
+        } else if !super::super::run_locks::try_lock_session(&mut tx, &session_id).await? {
+            continue;
+        }
+        let now = Utc::now();
+        let lease_expires_at = (now + chrono::Duration::seconds(120)).to_rfc3339();
+        // A project chat may wait for its Mac but never falls back to another
+        // filesystem: the cloud leases a project run only while the project Mac is
+        // offline, and never one a desktop claimed. A lapsed desktop lease on a
+        // project run ends through the lost-desktop sweep instead. A comment run
+        // that prefers the owner's Mac waits until `desktop_preferred_until`.
+        let row: Option<RunnerRunRow> = query_as(&format!(
+            "UPDATE cloud_agent_fallback_runs \
+             SET status = 'leased', execution_backend = 'cloud', claimed_by = $4, lease_expires_at = $5, updated_at = $1 \
+             WHERE run_id = (SELECT candidate.run_id FROM cloud_agent_fallback_runs candidate {ELIGIBLE} FOR UPDATE SKIP LOCKED) \
+             RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message, system_prompt"
+        ))
+        .bind(now.to_rfc3339())
+        .bind(&run_id)
+        .bind(crate::projects::PROJECT_DEVICE_ONLINE_SECONDS as f64)
+        .bind(runner_id)
+        .bind(&lease_expires_at)
+        .fetch_optional(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        if row.is_some() {
+            return Ok(row);
+        }
+    }
+    Ok(None)
 }
 
 pub async fn lease_canary_run(

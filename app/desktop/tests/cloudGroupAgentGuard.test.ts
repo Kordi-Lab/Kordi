@@ -111,6 +111,7 @@ test('group terminal fanout preserves only sanitized linked background tools', (
   const application = source('../src/features/cloud/cloudGroupMessageControl.ts');
 
   assert.match(execution, /responseTools: cloudAgentPublicBackgroundToolsFromTurn\(finalTurn\)/);
-  assert.match(publication, /structuredContent: responseTools\.length > 0/);
+  assert.match(publication, /structuredContent: cloudGroupAgentStructuredContent\(responseTools, responseTiming\)/);
+  assert.match(publication, /tools\.length > 0 \? \{ tools \} : \{\}/);
   assert.match(application, /content: senderIsAgent \? \{\s*\.\.\.structuredContent,/);
 });

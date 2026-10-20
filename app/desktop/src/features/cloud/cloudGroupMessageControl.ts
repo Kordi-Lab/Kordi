@@ -120,9 +120,14 @@ export async function applyCloudGroupMessageControl({
   const senderIdentityId = senderIsAgent
     ? cloudAgentCanonicalIdentityId(senderAgentId, message.senderAccountId)
     : senderHumanIdentityId;
-  const messageReplyToId = message.replyToMessageId?.trim()
-    || message.requestId?.trim()
+  // The request id keys the agent's reply slot; the reply-to id only threads
+  // the row. A background follow-up carries its own request id while replying
+  // to the original request, so it gets a row of its own (issue 1888).
+  const messageRequestId = message.requestId?.trim()
+    || message.replyToMessageId?.trim()
     || null;
+  const messageReplyToId = message.replyToMessageId?.trim()
+    || messageRequestId;
   const agentDeliveryState = senderIsAgent
     ? (message.deliveryState?.trim()
       || (stateOps.isProcessingPlaceholder(message.text) ? 'processing' : 'complete'))
@@ -132,7 +137,7 @@ export async function applyCloudGroupMessageControl({
     ? (cloudMessage.readAt ? 'read' : 'delivered')
     : null;
   const ownAgentProcessingId = isOwnAgentResponseRoundTrip
-    ? `msg:cloud-agent-processing:${(message.replyToMessageId || message.requestId || '').trim()}:${account.accountId}`
+    ? `msg:cloud-agent-processing:${messageRequestId}:${account.accountId}`
     : null;
   const incomingSource = cloudGroupCanonicalMessageSource(cloudMessage, envelope);
   if (!incomingSource) {
@@ -220,13 +225,13 @@ export async function applyCloudGroupMessageControl({
   }
 
   const responseProcessingSlot = senderIsAgent
-    && messageReplyToId
+    && messageRequestId
     && !isPendingAgentDeliveryState(agentDeliveryState)
     ? [canonicalState, nextState]
         .map((state) => stateOps.processingSlot(
           state.messages,
           envelope.groupId,
-          messageReplyToId,
+          messageRequestId,
           message.senderAccountId,
         ))
         .find((candidate): candidate is CanonicalSessionMessage => Boolean(candidate)) ?? null
@@ -241,8 +246,8 @@ export async function applyCloudGroupMessageControl({
   }
 
   if (!messageAlreadyExists) {
-    const stableAgentNoticeId = senderIsAgent && messageReplyToId
-      ? `msg:cloud-agent-processing:${messageReplyToId}:${message.senderAccountId}`
+    const stableAgentNoticeId = senderIsAgent && messageRequestId
+      ? `msg:cloud-agent-processing:${messageRequestId}:${message.senderAccountId}`
       : null;
     const terminalStableAgentNoticeId = stableAgentNoticeId
       && !isPendingAgentDeliveryState(agentDeliveryState)
@@ -312,7 +317,7 @@ export async function applyCloudGroupMessageControl({
         // A document the agent created for the group (issue 1808) rides its message.
         ...(mappedAttachments.length > 0 ? { attachments: mappedAttachments } : {}),
         sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
-        requestId: messageReplyToId,
+        requestId: messageRequestId,
         replyToMessageId: messageReplyToId,
         ...(message.messageAction?.kind === 'thread' ? { messageAction: message.messageAction } : {}),
         ...(cloudMessage.planCard ? { planCard: cloudMessage.planCard } : {}),
@@ -355,30 +360,30 @@ export async function applyCloudGroupMessageControl({
     const persistedMessage = await upsertCanonicalMessageFast(messageRequest);
     nextState = mergeCanonicalMessageRow(nextState, persistedMessage) ?? nextState;
     setCanonicalState((current) => mergeCanonicalMessageRow(current, persistedMessage));
-    if (senderIsAgent && messageReplyToId) {
-      const offlinePlaceholderId = `msg:cloud-agent-offline:${messageReplyToId}:${message.senderAccountId}`;
+    if (senderIsAgent && messageRequestId) {
+      const offlinePlaceholderId = `msg:cloud-agent-offline:${messageRequestId}:${message.senderAccountId}`;
       nextState = isPendingAgentDeliveryState(agentDeliveryState)
         ? stateOps.removeOfflinePlaceholder(nextState, offlinePlaceholderId) ?? nextState
-        : stateOps.removePendingRows(nextState, messageReplyToId, message.senderAccountId) ?? nextState;
+        : stateOps.removePendingRows(nextState, messageRequestId, message.senderAccountId) ?? nextState;
       setCanonicalState((current) => isPendingAgentDeliveryState(agentDeliveryState)
         ? stateOps.removeOfflinePlaceholder(current, offlinePlaceholderId) ?? current
-        : stateOps.removePendingRows(current, messageReplyToId, message.senderAccountId) ?? current);
+        : stateOps.removePendingRows(current, messageRequestId, message.senderAccountId) ?? current);
     }
   }
 
   if (
     messageAlreadyExists
     && senderIsAgent
-    && messageReplyToId
+    && messageRequestId
     && !isPendingAgentDeliveryState(agentDeliveryState)
   ) {
-    const offlinePlaceholderId = `msg:cloud-agent-offline:${messageReplyToId}:${message.senderAccountId}`;
-    const cleanedState = stateOps.removePendingRows(nextState, messageReplyToId, message.senderAccountId)
+    const offlinePlaceholderId = `msg:cloud-agent-offline:${messageRequestId}:${message.senderAccountId}`;
+    const cleanedState = stateOps.removePendingRows(nextState, messageRequestId, message.senderAccountId)
       ?? stateOps.removeTimeoutPlaceholder(nextState, offlinePlaceholderId)
       ?? nextState;
     if (cleanedState !== nextState) {
       nextState = cleanedState;
-      setCanonicalState((current) => stateOps.removePendingRows(current, messageReplyToId, message.senderAccountId)
+      setCanonicalState((current) => stateOps.removePendingRows(current, messageRequestId, message.senderAccountId)
         ?? stateOps.removeTimeoutPlaceholder(current, offlinePlaceholderId)
         ?? current);
     }

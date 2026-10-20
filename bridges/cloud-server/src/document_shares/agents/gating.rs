@@ -1,10 +1,14 @@
 //! Which document tools a run gets.
 //!
 //! `read_document` goes to every comment run and to chat runs in a session
-//! that carries a document. `edit_document` goes only to a comment run a
-//! person started with their own agent, when that person can edit the
-//! document: never to a public reader's run, a background run, or a
-//! scheduled run. `create_document` goes to chat runs in a group, whoever
+//! that carries a document. `edit_document` goes to a comment run a person
+//! started with their own agent, when that person can edit the document,
+//! and to a chat run the agent's owner started in a session that carries a
+//! document. On the owner's Mac the approval card asks before every edit;
+//! on the cloud runner, as for comment runs, the server checks alone. Per
+//! call the server checks that the named document is in the run's session
+//! and that the owner can edit it. Never to another member's request, a
+//! public reader's run, a background run, or a scheduled run. `create_document` goes to chat runs in a group, whoever
 //! asked: the document is posted in that group as the agent's own message,
 //! so it reaches exactly the people who already read the agent's reply
 //! (issue 1808). The same gate is evaluated when the lease is delivered and
@@ -36,6 +40,8 @@ pub(crate) struct ToolGate {
     pub session_has_document: bool,
     /// The run's session is a group conversation.
     pub group_session: bool,
+    /// The agent's owner made the request.
+    pub owner_request: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,11 +54,14 @@ pub(crate) struct OfferedTools {
 pub(crate) fn offered_tools(gate: &ToolGate) -> OfferedTools {
     OfferedTools {
         read: gate.comment_run || gate.session_has_document,
-        edit: gate.comment_run
-            && gate.trigger == RunTrigger::PersonStarted
+        edit: gate.trigger == RunTrigger::PersonStarted
             && !gate.scheduled
             && !gate.public_reader
-            && gate.requester_can_edit,
+            && if gate.comment_run {
+                gate.requester_can_edit
+            } else {
+                gate.owner_request && gate.session_has_document
+            },
         create: !gate.comment_run && gate.group_session && !gate.public_reader,
     }
 }
@@ -106,6 +115,7 @@ pub(crate) async fn run_facts(
         requester_can_edit: false,
         session_has_document: false,
         group_session: false,
+        owner_request: owner == requester,
     };
     let mut document = None;
     if comment_run {

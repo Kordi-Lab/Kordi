@@ -30,6 +30,11 @@ pub(super) use ready::ready;
 #[path = "desktop_interrupted.rs"]
 mod interrupted;
 pub(super) use interrupted::interrupted;
+#[path = "desktop_release.rs"]
+mod release;
+#[path = "desktop_reply_row.rs"]
+mod reply_row;
+pub(super) use release::release;
 
 pub(super) async fn prefer_ready_desktop(
     pool: &PgPool,
@@ -204,9 +209,10 @@ pub(super) async fn admit(
     Path(run_id): Path<String>,
     Json(input): Json<RenewalInput>,
 ) -> Response {
+    let started = std::time::Instant::now();
     let result = async {
         let mut tx = state.db_pool().begin().await?;
-        query("SELECT pg_advisory_xact_lock(81208411)").execute(&mut *tx).await?;
+        super::run_locks::lock_run(&mut tx, &run_id).await?;
         let owned: Option<(String,String,String)> = query_as("SELECT session_id,execution_agent_id,created_at FROM cloud_agent_fallback_runs WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='desktop' AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() FOR UPDATE")
             .bind(&run_id).bind(executor(&session,input.claim_id)).fetch_optional(&mut *tx).await?;
         let Some((session_id,agent_id,created_at))=owned else { return Ok::<_,sqlx_core::Error>(None); };
@@ -218,6 +224,13 @@ pub(super) async fn admit(
         if !blocked.0 { super::subsession_execution::mark_active(state.db_pool(),&run_id,"desktop").await.map_err(|e|sqlx_core::Error::Protocol(e.to_string()))?; }
         Ok(Some((!blocked.0, cancel_requested)))
     }.await;
+    let outcome = match &result {
+        Ok(Some((true, _))) => "admitted",
+        Ok(Some((false, _))) => "waiting",
+        Ok(None) => "lease_lost",
+        Err(_) => "error",
+    };
+    super::run_locks::log_op("desktop_admit", Some(&run_id), outcome, started);
     match result {
         Ok(Some((admitted, cancel_requested))) => {
             Json(json!({"admitted":admitted,"cancelRequested":cancel_requested})).into_response()
@@ -285,11 +298,25 @@ pub(super) struct ProgressInput {
 }
 
 pub(super) async fn progress(
+    state: State<Arc<ServerState>>,
+    session: Extension<CloudSession>,
+    Path(run_id): Path<String>,
+    input: Json<ProgressInput>,
+) -> Response {
+    let started = std::time::Instant::now();
+    let response = publish_progress(state, session, &run_id, input).await;
+    let outcome = response.status();
+    super::run_locks::log_op("desktop_progress", Some(&run_id), outcome.as_str(), started);
+    response
+}
+
+async fn publish_progress(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
-    Path(run_id): Path<String>,
+    run_id: &str,
     Json(input): Json<ProgressInput>,
 ) -> Response {
+    let run_id = run_id.to_string();
     let parts = input.body.split_once(':').filter(|(prefix, body)| {
         matches!(*prefix, "kordi-cloud-agent-response" | "kordi-cloud-group")
             && body.len() <= 1_048_576
@@ -363,7 +390,7 @@ pub(super) async fn progress(
     }
     let result = async {
         let mut tx = state.db_pool().begin().await?;
-        let row: Option<(String,String,String,String)> = query_as("SELECT session_id,request_message_id,requester_account_id,execution_agent_id FROM cloud_agent_fallback_runs WHERE run_id=$1 AND owner_account_id=$2 AND claimed_by=$3 AND execution_backend='desktop' AND ((status IN ('leased','running') AND lease_expires_at::timestamptz>now()) OR (status=$4 AND status IN ('completed','failed','cancelled') AND EXISTS(SELECT 1 FROM cloud_chat_messages WHERE sender_account_id=$2 AND client_message_id=$5))) FOR UPDATE")
+        let row: Option<(String,String,String,String)> = query_as("SELECT session_id,request_message_id,requester_account_id,execution_agent_id FROM cloud_agent_fallback_runs WHERE run_id=$1 AND owner_account_id=$2 AND claimed_by=$3 AND execution_backend='desktop' AND ((status IN ('leased','running') AND lease_expires_at::timestamptz>now()) OR (status=$4 AND status IN ('completed','failed','cancelled') AND EXISTS(SELECT 1 FROM cloud_chat_messages WHERE sender_account_id=$2 AND (client_message_id=$5 OR message_id::text=response_message_id)))) FOR UPDATE")
             .bind(&run_id).bind(&session.account_id).bind(executor(&session,input.claim_id)).bind(phase).bind(input.client_message_id).fetch_optional(&mut *tx).await?;
         let Some((session_id,request_id,requester,agent))=row else { return Ok::<_,crate::chat_sync::store::StoreError>(None); };
         if response.get("requestId").and_then(Value::as_str)!=Some(request_id.as_str()) { return Ok(None); }
@@ -376,11 +403,16 @@ pub(super) async fn progress(
             .bind(&session_id).bind(&session.account_id).bind(&requester).fetch_one(&mut *tx).await?;
         let reply = crate::chat_sync::models::SendMessageRequest { client_message_id: input.client_message_id, kind: "text".into(), content: json!({"schema":1,"blocks":[{"type":"text","text":input.body}]}), reply_to_message_id: None, attachment_ids:vec![] };
         let reply = if phase == "completed" { crate::document_shares::agents::create::reply::attach_run_documents(&mut tx, &run_id, reply).await? } else { reply }; // A completed reply carries the run's documents (issue 1808).
-        let message = crate::chat_sync::store::send_message_in_transaction(&mut tx, &session.account_id, conversation.0, reply).await?.value;
+        let message = if group { crate::chat_sync::store::send_message_in_transaction(&mut tx, &session.account_id, conversation.0, reply).await?.value }
+            else { reply_row::publish_into_reply_row(&mut tx, &run_id, &session.account_id, conversation.0, reply).await? };
         query("UPDATE cloud_agent_fallback_runs SET status=$2, response_message_id=$3, updated_at=$4, completed_at=CASE WHEN $2 IN ('completed','failed','cancelled') THEN $4 ELSE NULL END WHERE run_id=$1")
             .bind(&run_id).bind(phase).bind(message.id.to_string()).bind(Utc::now().to_rfc3339()).execute(&mut *tx).await?;
         tx.commit().await?;
-        Ok(Some(json!({"messageId":message.id,"clientMessageId":message.client_message_id,"conversationId":message.conversation_id,"conversationSequence":message.conversation_sequence,"version":message.version,"fromAccountId":session.account_id,"toAccountId":conversation.1,"sessionId":session_id,"body":input.body,"createdAt":message.created_at,"deliveredAt":null,"readAt":null})))
+        // Answer with the stored reply, which carries the run's documents.
+        let (body, attachments) = crate::document_shares::agents::create::reply::stored_reply_fields(&message.content, &input.body);
+        let mut value = json!({"messageId":message.id,"clientMessageId":message.client_message_id,"conversationId":message.conversation_id,"conversationSequence":message.conversation_sequence,"version":message.version,"fromAccountId":session.account_id,"toAccountId":conversation.1,"sessionId":session_id,"body":body,"createdAt":message.created_at,"deliveredAt":null,"readAt":null});
+        if let Some(attachments) = attachments { value["attachments"] = attachments; }
+        Ok(Some(value))
     }.await;
     match result {
         Ok(Some(value)) => {

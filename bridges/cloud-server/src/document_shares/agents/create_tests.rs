@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use super::group_message::{document_envelope, DocumentMessage};
 use super::record::derived_attachment_id;
-use super::reply::{add_to_request, RunDocument};
+use super::reply::{add_to_request, stored_reply_fields, RunDocument};
 use super::{file_name_for, parse, placeholder_title, schema, NewDocument};
 use crate::chat_sync::models::SendMessageRequest;
 use crate::document_shares::agents::tools::ToolError;
@@ -159,6 +159,27 @@ fn a_reply_carries_the_document_in_its_envelope_and_attachments() {
     .unwrap();
     assert_eq!(decoded["message"]["text"], "Done");
     assert_eq!(decoded["message"]["attachments"][0]["name"], "plan.md");
+}
+
+#[test]
+fn the_mac_is_answered_with_the_reply_as_stored() {
+    let mut request = SendMessageRequest {
+        client_message_id: Uuid::nil(),
+        kind: "text".into(),
+        content: json!({ "schema": 1, "blocks": [{ "type": "text", "text": "sent" }] }),
+        reply_to_message_id: None,
+        attachment_ids: Vec::new(),
+    };
+    assert_eq!(
+        stored_reply_fields(&request.content, "sent"),
+        ("sent".to_string(), None)
+    );
+    add_to_request(&mut request, &[document()]);
+    request.content["blocks"][0]["text"] = json!("stored");
+    let (body, attachments) = stored_reply_fields(&request.content, "sent");
+    assert_eq!(body, "stored");
+    assert_eq!(attachments.unwrap()[0]["attachmentId"], "att_agentdoc_1");
+    assert_eq!(stored_reply_fields(&json!({}), "sent").0, "sent");
 }
 
 #[test]

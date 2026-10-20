@@ -13,6 +13,10 @@ const RENEW_INTERVAL_MS = 5_000;
 
 /** Only the server's refusal ends a lease; a slow or failed request is retried. */
 const leaseRefused = (error: unknown) => error instanceof CloudAuthError && [401, 403, 404, 409].includes(error.status);
+/** A request that may succeed when sent again: no response, a timeout, or a server error. */
+const transientFailure = (error: unknown) => error instanceof CloudAuthError
+  && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500);
+const ADMIT_RETRY_MS = 1_000;
 
 /** `bindsProject`: this caller runs a project session in this Mac's folder of the project. */
 export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient, 'desktopAgentExecution'>, token: string, input: CloudAgentRunClaimInput, options: { bindsProject?: boolean } = {}) {
@@ -83,11 +87,20 @@ export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient,
     get lost() { return lost || deadline <= Date.now(); },
     get deadline() { if (lost || deadline <= Date.now()) throw new Error('Execution lease lost.'); return deadline; },
     attach(id: string) { turnId = id; if (lost || deadline <= Date.now()) loseLease(); },
+    // Admission is idempotent, so one slow or failed request is sent again
+    // while renewals keep the lease; only a refusal or the deadline ends it.
     async admitted() {
-      if (lost || deadline <= Date.now()) { loseLease(); throw new Error('Execution lease lost.'); }
-      const response = await client.desktopAgentExecution<{admitted:boolean; cancelRequested?: boolean}>(token, `${encodeURIComponent(result.runId)}/admit`, { claimId });
-      noteStop(response);
-      return response.admitted;
+      for (;;) {
+        if (lost || deadline <= Date.now()) { loseLease(); throw new Error('Execution lease lost.'); }
+        try {
+          const response = await client.desktopAgentExecution<{admitted:boolean; cancelRequested?: boolean}>(token, `${encodeURIComponent(result.runId)}/admit`, { claimId });
+          noteStop(response);
+          return response.admitted;
+        } catch (error) {
+          if (disposed || !transientFailure(error)) throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, ADMIT_RETRY_MS));
+      }
     },
     /** Runs `handler` once when a stop is requested, including one already noted. */
     onStopRequested(handler: () => void) { onStop = handler; if (stopRequested) handler(); },

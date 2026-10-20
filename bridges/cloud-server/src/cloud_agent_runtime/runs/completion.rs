@@ -12,46 +12,16 @@ use super::delivery::{
     ensure_group_response_messages, ensure_scheduled_direct_person_response_message,
     is_scheduled_run_request_id, GroupResponse,
 };
-use super::envelopes::{
-    encode_cloud_agent_response_body, encode_cloud_agent_response_body_with_state,
-};
+use super::envelopes::encode_cloud_agent_response_body;
 use super::leases::{runner_response_from_row, RunnerRunResponse, RunnerRunRow};
 use super::{RunError, RunResult};
 
 type FailedRunRow = (String, String, String, String, Option<String>);
 
+mod failure_text;
 mod requests;
+use failure_text::{cloud_agent_failure_response_text, encode_failed_cloud_agent_response_body};
 pub use requests::{CompleteRunRequest, FailRunRequest};
-
-fn cloud_agent_failure_response_text(error_code: &str, is_support_agent: bool) -> &'static str {
-    if is_support_agent {
-        return "Kordi Support couldn’t complete this request. Please try again shortly.";
-    }
-    match error_code {
-        "missing_provider_auth" => "No provider configured yet.",
-        // Desktop clients match this text to offer "Open authentication".
-        "provider_auth_rejected" => "Sign in again to use this account.",
-        "model_provider_error" => {
-            "Cloud fallback could not complete this request because the configured provider/model failed."
-        }
-        "sandbox_error" => {
-            "Cloud fallback could not complete this request because the sandbox failed."
-        }
-        _ => "Cloud fallback could not complete this request.",
-    }
-}
-
-fn encode_failed_cloud_agent_response_body(
-    request_message_id: &str,
-    error_code: &str,
-    is_support_agent: bool,
-) -> String {
-    encode_cloud_agent_response_body_with_state(
-        request_message_id,
-        cloud_agent_failure_response_text(error_code, is_support_agent),
-        "failed",
-    )
-}
 
 pub async fn complete_run(
     pool: &PgPool,
@@ -73,6 +43,25 @@ pub async fn complete_run_with_state(
 }
 
 pub(crate) async fn complete_run_with_service_auth(
+    pool: &PgPool,
+    run_id: &str,
+    runner_id: &str,
+    response_text: &str,
+    omp_state: Option<&super::omp_state::OmpState>,
+    service_auths: &[super::super::provider_auth::ServiceProviderAuth<'_>],
+) -> RunResult<RunnerRunResponse> {
+    let work = complete(
+        pool,
+        run_id,
+        runner_id,
+        response_text,
+        omp_state,
+        service_auths,
+    );
+    super::super::run_locks::timed("runner_complete", Some(run_id), work).await
+}
+
+async fn complete(
     pool: &PgPool,
     run_id: &str,
     runner_id: &str,
@@ -106,9 +95,7 @@ pub(crate) async fn complete_run_with_service_auth(
         return Err(RunError::NotFound);
     }
     let mut tx = pool.begin().await?;
-    sqlx_core::query::query("SELECT pg_advisory_xact_lock(81208411)")
-        .execute(&mut *tx)
-        .await?;
+    super::super::run_locks::lock_run(&mut tx, run_id).await?;
     let existing: Option<(String, String, String, String, String, Option<String>)> = query_as(
         "SELECT owner_account_id, requester_account_id, session_id, request_message_id, status, response_message_id \
          FROM cloud_agent_fallback_runs \
@@ -265,6 +252,25 @@ pub async fn fail_run(
     message: &str,
     support_agent_id: Option<&str>,
 ) -> RunResult<RunnerRunResponse> {
+    let work = fail(
+        pool,
+        run_id,
+        runner_id,
+        error_code,
+        message,
+        support_agent_id,
+    );
+    super::super::run_locks::timed("runner_fail", Some(run_id), work).await
+}
+
+async fn fail(
+    pool: &PgPool,
+    run_id: &str,
+    runner_id: &str,
+    error_code: &str,
+    message: &str,
+    support_agent_id: Option<&str>,
+) -> RunResult<RunnerRunResponse> {
     if let Some(run) = super::subsession_lifecycle::finish(
         pool,
         run_id,
@@ -284,9 +290,7 @@ pub async fn fail_run(
         return digest_run_response(pool, run_id).await;
     }
     let mut tx = pool.begin().await?;
-    sqlx_core::query::query("SELECT pg_advisory_xact_lock(81208411)")
-        .execute(&mut *tx)
-        .await?;
+    super::super::run_locks::lock_run(&mut tx, run_id).await?;
     let existing: Option<FailedRunRow> = query_as(
         "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id \
          FROM cloud_agent_fallback_runs \

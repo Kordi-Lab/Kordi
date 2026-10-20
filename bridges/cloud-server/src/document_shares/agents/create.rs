@@ -21,7 +21,6 @@ use sqlx_postgres::PgPool;
 
 use super::tools::ToolError;
 use super::MAX_TOOL_TEXT_BYTES;
-use crate::connectors::delivery::{tools_from_json, LeaseConnectorTool, LeaseHolder};
 
 pub(crate) mod fallback;
 mod group_message;
@@ -34,9 +33,6 @@ pub(crate) use record::execute;
 pub(crate) const MAX_TITLE_CHARS: usize = 200;
 /// Most documents one run may create.
 pub(crate) const MAX_DOCUMENTS_PER_RUN: i64 = 10;
-/// How long after its run answered a background task of that run may still
-/// deliver a document from the owner's Mac.
-pub(crate) const FINISHED_RUN_WINDOW_HOURS: i32 = 12;
 /// Longest file name stem derived from a title.
 const MAX_FILE_STEM_CHARS: usize = 80;
 
@@ -209,37 +205,6 @@ pub(crate) async fn is_group_session(
     .fetch_one(pool)
     .await?;
     Ok(group)
-}
-
-/// The tools of a desktop run that already answered, for the Mac that held
-/// its claim, within [`FINISHED_RUN_WINDOW_HOURS`] of the answer. A
-/// background task the run started keeps the run's claim, so its document
-/// still reaches the run's group.
-pub(crate) async fn finished_desktop_lease_tools(
-    pool: &PgPool,
-    run_id: &str,
-    holder: &LeaseHolder,
-) -> Result<Option<Vec<LeaseConnectorTool>>, sqlx_core::Error> {
-    let LeaseHolder::Desktop {
-        account_id,
-        executor,
-    } = holder
-    else {
-        return Ok(None);
-    };
-    let row: Option<(Value,)> = query_as(
-        "SELECT connector_tools_json FROM cloud_agent_fallback_runs \
-         WHERE run_id = $1 AND execution_backend = 'desktop' AND claimed_by = $2 \
-           AND owner_account_id = $3 AND status = 'completed' AND completed_at IS NOT NULL \
-           AND completed_at::timestamptz > now() - make_interval(hours => $4)",
-    )
-    .bind(run_id)
-    .bind(executor)
-    .bind(account_id)
-    .bind(FINISHED_RUN_WINDOW_HOURS)
-    .fetch_optional(pool)
-    .await?;
-    Ok(row.map(|(tools,)| tools_from_json(tools)))
 }
 
 #[cfg(test)]

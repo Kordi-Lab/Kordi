@@ -87,7 +87,8 @@ export function settledCloudSelfAgentTurn(
     ...turn,
     status: complete ? 'complete' : reply.deliveryState,
     message: complete ? 'Complete' : reply.deliveryState === 'cancelled' ? 'Stopped' : 'Failed',
-    assistantText: complete || reply.ending ? reply.text : reply.deliveryState === 'cancelled' ? '' : turn.assistantText,
+    // A stopped reply shows the stopped notice the stored row will carry.
+    assistantText: complete || reply.ending || reply.deliveryState === 'cancelled' ? reply.text : turn.assistantText,
     completed: true,
     succeeded: complete,
     completedAtMs: turn.completedAtMs ?? completedAtMs,

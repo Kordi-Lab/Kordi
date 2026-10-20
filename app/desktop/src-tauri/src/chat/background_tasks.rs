@@ -1,4 +1,5 @@
 mod follow_up;
+pub(super) mod follow_up_routes;
 mod group_documents;
 mod managed_child;
 pub mod snapshots;
@@ -34,7 +35,15 @@ pub async fn desktop_chat_start_shared_message(
     visible_task_records: Option<Vec<DesktopVisibleTaskRecord>>,
     scheduled_task_session_id: Option<String>,
     execution_lease_deadline_ms: Option<i64>,
+    background_follow_up_route: Option<serde_json::Value>,
 ) -> Result<DesktopChatTurnSnapshot, String> {
+    if let Some(follow_up_route) = background_follow_up_route {
+        manager
+            .background_follow_up_routes
+            .lock()
+            .await
+            .remember(&request_id, follow_up_route);
+    }
     message_execution::start_shared_message(
         manager.inner(),
         request_id,
@@ -54,4 +63,13 @@ pub async fn desktop_chat_start_shared_message(
         },
     )
     .await
+}
+
+/// Records that the webview published a follow-up turn's reply.
+#[tauri::command]
+pub async fn desktop_chat_mark_background_follow_up_published(
+    manager: State<'_, DesktopChatManager>,
+    turn_id: String,
+) -> Result<bool, String> {
+    Ok(follow_up::mark_published(manager.inner(), &turn_id).await)
 }
