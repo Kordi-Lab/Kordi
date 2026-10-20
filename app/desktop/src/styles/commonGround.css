@@ -138,13 +138,8 @@ button.cg-tag-text { cursor: pointer; }
 .cg-seg button.is-on { background: var(--app-main-bg); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12), inset 0 0 0 1px var(--cg-line); font-weight: 600; }
 
 .cg-progress { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 0; color: var(--utility-muted-text); }
-.cg-mark { position: relative; width: 48px; height: 48px; }
-.cg-mark i { position: absolute; width: 48%; height: 48%; border-radius: 999px; opacity: 0.92; animation: cg-relay 1.65s ease-in-out infinite; }
-.cg-mark i:nth-child(1) { left: 26%; top: 11%; background: var(--cg-pink); }
-.cg-mark i:nth-child(2) { left: 9%; top: 41%; background: var(--cg-cyan); animation-delay: 0.25s; }
-.cg-mark i:nth-child(3) { left: 43%; top: 41%; background: var(--cg-amber); animation-delay: 0.5s; }
-@keyframes cg-relay { 0%, 100% { transform: scale(0.92); } 50% { transform: scale(1.1); } }
-@media (prefers-reduced-motion: reduce) { .cg-mark i { animation: none; } }
+.cg-mark { --app-kordi-bird: var(--utility-foreground); --app-kordi-bird-cut: var(--utility-background); width: 72px; height: 72px; }
+
 
 .cg-notice { margin-top: 10px; color: var(--app-transient-danger-text, oklch(58% 0.2 27)); font-size: 12.5px; }
 .cg-actions-end .cg-notice { margin: 0 0 4px; }

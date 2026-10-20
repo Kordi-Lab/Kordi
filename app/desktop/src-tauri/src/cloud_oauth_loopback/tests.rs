@@ -20,7 +20,8 @@ mod completion_page_tests {
         assert!(html.contains("<span>kordi</span>"));
         assert!(html.contains("rel=\"icon\" type=\"image/svg+xml\""));
         assert!(html.contains(KORDI_FAVICON_DATA_URL));
-        assert_eq!(html.matches("<circle ").count(), 3);
+        assert!(html.contains("mask='url(#kordi-bird-cut)'"));
+        assert!(!html.contains("<circle cx=\"18\" cy=\"10\""));
         assert!(html.contains("&copy; Kordi 2026"));
         assert!(!html.contains("state-marker"));
 
@@ -156,10 +157,9 @@ mod completion_page_tests {
         assert!(!html.contains("border-left: 4px"));
         assert!(!html.contains("border-left: 3px"));
         assert!(!html.contains("class=\"card\""));
-        assert!(
-            !html.contains("<path"),
-            "the removed status icon must stay removed"
-        );
+        // Only the bird mark's beak, tail and wing paths; the removed
+        // status icon must stay removed.
+        assert_eq!(html.matches("<path").count(), 3);
     }
 }
 
