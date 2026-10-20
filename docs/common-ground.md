@@ -22,7 +22,7 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
 
 ## Flows
 
-### 1. First run: build your card
+### 1. First run: build your profile
 
 1. **Intro.** Your avatar, the title "Find your common ground", one line: "Your agent writes a card from sources you choose. Only people you meet see it." Primary button **Build my card**.
 2. **Sources.** One screen, grouped. Every source is off until the person turns it on.
@@ -31,7 +31,7 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
    - **Agents on this Mac** (macOS only): instruction and memory files from local coding agents, redacted before use.
    - **Links**: URLs and text separated by `;` (homepage, ORCID, papers). Sites that need sign-in are skipped with a reason.
    - **Notes**: free text.
-   - Primary button **Build card**, enabled when at least one source is on.
+   - Primary button **Build profile**, enabled when at least one source is on.
 3. **Building.** The Kordi mark and two steps ("Reading sources", "Writing your card"). Usually 10 to 30 seconds.
 4. **Your card.** See [Card](#card). The first visit shows a single line under the title: "Remove anything you don't want to share."
 
@@ -117,7 +117,7 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
 
 ## Copy
 
-Sentence case. A title and at most one short line per screen. Buttons are verbs: Build card, Tap, Pair, Pair code, Find common ground, Start group, Add, Message, Joint idea, Meet, Share, Rebuild card.
+Sentence case. A title and at most one short line per screen. Buttons are verbs: Build profile, Tap, Pair, Pair code, Find common ground, Start group, Add, Message, Joint idea, Meet, Share, Rebuild card.
 
 ## Decisions from review
 
