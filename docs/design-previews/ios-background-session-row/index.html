@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Background session row · Kordi proposal</title>
+<style>
+:root{
+  --font:-apple-system,"SF Pro Text",system-ui,sans-serif;
+  --blue:rgb(37,99,235);--green:rgb(52,199,89);--red:rgb(255,59,48);--violet:rgb(132,122,196);
+  --page:#f2f2f7;--bg:#fff;--bubble:#EEEBFA;--primary:#000;--secondary:rgba(60,60,67,.6);
+  --separator:rgba(60,60,67,.29);--frame:#d1d1d6;--stop:rgba(120,120,128,.16);--chip:rgba(120,120,128,.12);
+}
+:root[data-theme="dark"]{
+  --page:#1c1c1e;--bg:#000;--bubble:#2A2740;--primary:#fff;--secondary:rgba(235,235,245,.6);
+  --separator:rgba(84,84,88,.6);--frame:#3a3a3c;--stop:rgba(120,120,128,.32);--chip:rgba(120,120,128,.24);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--primary);font-family:var(--font);-webkit-font-smoothing:antialiased}
+.bar{display:flex;flex-wrap:wrap;gap:16px;align-items:center;padding:14px 24px;font-size:13px;color:var(--secondary)}
+.bar strong{color:var(--primary);font-weight:600;margin-right:8px}
+.seg{display:inline-flex;gap:2px;background:var(--chip);border-radius:8px;padding:2px;margin-left:6px}
+.seg button{font:inherit;font-size:12px;border:0;background:transparent;color:var(--primary);padding:4px 10px;border-radius:6px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--bg);box-shadow:0 1px 2px rgba(0,0,0,.15);font-weight:600}
+.stage{display:flex;gap:28px;overflow-x:auto;padding:8px 24px 24px}
+.option{flex:0 0 auto}
+.caption{font-size:13px;font-weight:600;margin:0 0 10px 6px;display:flex;align-items:center;gap:8px}
+.tag{font-size:11px;font-weight:600;color:var(--blue);background:rgba(37,99,235,.12);padding:2px 8px;border-radius:10px}
+.phone{width:393px;height:330px;border-radius:44px;background:var(--bg);border:1px solid var(--frame);padding:28px 0 0;overflow:hidden;position:relative}
+.day{text-align:center;font-size:11px;color:var(--secondary);margin-bottom:12px}
+.col{margin-left:40px;width:288px}
+.sender{font-size:12px;font-weight:500;color:var(--violet);margin:0 0 4px 12px}
+.bubble{background:var(--bubble);border-radius:18px;padding:12px}
+.bubble h3{margin:0 0 4px;font-size:17px;font-weight:600}
+.bubble p{margin:0;font-size:16px;line-height:1.3}
+.list{position:relative;padding-left:16px;margin-top:14px;max-width:360px;display:flex;flex-direction:column;gap:2px}
+.connector{position:absolute;left:4px;top:-12px;width:12px;height:28px;overflow:visible}
+.connector path{fill:none;stroke:var(--separator);stroke-width:.75;stroke-linecap:round}
+.rowwrap{display:flex;gap:8px;align-items:center}
+.row{flex:1;min-width:0;display:flex;gap:8px;align-items:center;padding:4px 6px;min-height:44px}
+.icon{width:20px;height:20px;flex:0 0 20px;display:grid;place-items:center;color:var(--blue)}
+.text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.l1{display:flex;align-items:baseline;gap:8px}
+.title{font-size:12px;font-weight:600;flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.open{font-size:11px;font-weight:600;color:var(--blue);white-space:nowrap;flex:0 0 auto;margin-left:auto}
+.l2{display:flex;align-items:flex-start;gap:5px;font-size:11px;color:var(--secondary);line-height:1.25}
+.name{font-weight:500;color:var(--primary)}
+.meta{display:flex;gap:5px;min-width:0}
+.spacer{flex:1 0 6px}
+.status{white-space:nowrap;flex:0 0 auto;display:inline-flex;align-items:center;gap:4px}
+.dot{width:6px;height:6px;border-radius:50%;display:inline-block;background:var(--dotc,var(--secondary));flex:0 0 6px}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.inline .dot{vertical-align:1px;margin-right:4px}
+.stopbtn{width:22px;height:22px;border-radius:50%;background:var(--stop);display:grid;place-items:center;flex:0 0 22px}
+.stopbtn i{width:7px;height:7px;border-radius:1.5px;background:var(--secondary)}
+.note{max-width:880px;padding:0 24px;font-size:13px;line-height:1.5;color:var(--secondary)}
+footer{padding:16px 24px 32px;font-size:12px;color:var(--secondary)}
+footer a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="bar" id="bar">
+  <strong>Background session row</strong>
+  <label>Theme<span class="seg" data-key="theme"><button data-v="light">Light</button><button data-v="dark">Dark</button></span></label>
+  <label>Status<span class="seg" data-key="status"><button data-v="sync">Sync unavailable</button><button data-v="running">Running</button><button data-v="done">Done</button><button data-v="stopping">Stopping…</button></span></label>
+  <label>Title<span class="seg" data-key="title"><button data-v="short">Short</button><button data-v="long">Long</button></span></label>
+  <label>Agent name<span class="seg" data-key="agent"><button data-v="short">BabyTREE</button><button data-v="long">Research Agent</button></span></label>
+</div>
+<div class="stage" id="stage"></div>
+<p class="note">On a 393pt iPhone the row’s text column is about 232pt, so “Name · Background session” plus the fixed-width status no longer fits and “session” wraps onto a third line. Option A drops “Background session”, which the sparkles icon and the thread line already imply, and lets the name and status flow on one line. In every option the accessibility label still says “background session”.</p>
+<footer>Design proposal · Sample data · <a href="https://github.com/Kordi-Lab/Kordi/issues/1938">Issue #1938</a></footer>
+<script>
+const OPTIONS=[
+  {id:"current",label:"Current"},
+  {id:"a",label:"Option A · Name and status",rec:true},
+  {id:"b",label:"Option B · Name left, status right"},
+  {id:"c",label:"Option C · Mac parity"}
+];
+const TITLES={short:"Review the TestFlight checklist",long:"Compare the TestFlight checklist with the latest device results"};
+const AGENTS={short:"BabyTREE",long:"Research Agent"};
+const STATUS={sync:["Sync unavailable","var(--secondary)"],running:["Running","var(--blue)"],done:["Done","var(--green)"],stopping:["Stopping…","var(--secondary)"]};
+const DEFAULTS={theme:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light",status:"sync",title:"short",agent:"short"};
+const ALLOWED={theme:["light","dark"],status:Object.keys(STATUS),title:["short","long"],agent:["short","long"]};
+const params=new URLSearchParams(location.search);
+const state={};
+for(const k in DEFAULTS){const v=params.get(k);state[k]=ALLOWED[k].includes(v)?v:DEFAULTS[k];}
+const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const SPARKLES='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 2.5l1.9 5.6 5.6 1.9-5.6 1.9L10 17.5l-1.9-5.6L2.5 10l5.6-1.9z"/><path d="M18.5 13l1 2.9 2.9 1-2.9 1-1 3-1-3-2.9-1 2.9-1z"/></svg>';
+const CHEVRON='<svg width="6" height="9" viewBox="0 0 6 9" aria-hidden="true" style="margin-left:2px;vertical-align:-0.5px"><path d="M1 1l3.5 3.5L1 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function line2(opt,name,statusText){
+  const status=`<span class="status"><span class="dot"></span>${statusText}</span>`;
+  if(opt==="current")return `<div class="l2"><span class="meta"><span class="name">${name}</span><span>·</span><span>Background session</span></span><span class="spacer"></span>${status}</div>`;
+  if(opt==="a")return `<div class="l2"><span class="ell inline"><span class="name">${name}</span> · <span class="dot"></span>${statusText}</span></div>`;
+  if(opt==="b")return `<div class="l2"><span class="name ell">${name}</span><span class="spacer"></span>${status}</div>`;
+  return `<div class="l2"><span class="ell"><span class="name">${name}</span> · Background session</span><span class="spacer"></span>${status}</div>`;
+}
+function render(){
+  document.documentElement.dataset.theme=state.theme;
+  const [statusText,dotc]=STATUS[state.status];
+  const title=esc(TITLES[state.title]),name=esc(AGENTS[state.agent]);
+  const stop=state.status==="running"?'<span class="stopbtn" role="img" aria-label="Stop"><i></i></span>':"";
+  document.getElementById("stage").innerHTML=OPTIONS.map(o=>`
+  <section class="option" aria-label="${o.label}">
+    <div class="caption">${o.label}${o.rec?'<span class="tag">Recommended</span>':""}</div>
+    <div class="phone">
+      <div class="day">Sunday 10:45</div>
+      <div class="col">
+        <div class="sender">BabyTREE</div>
+        <div class="bubble"><h3>Mobile release</h3><p>Start with the <strong>mobile API contract</strong>, then validate one complete chat flow.</p></div>
+        <div class="list" style="--dotc:${dotc}">
+          <svg class="connector" viewBox="0 0 12 28" aria-hidden="true"><path d="M0 0V19Q0 28 9 28H12"/></svg>
+          <div class="rowwrap">
+            <div class="row" role="button" aria-label="${title}, ${name}, background session, ${statusText}">
+              <span class="icon">${SPARKLES}</span>
+              <div class="text">
+                <div class="l1"><span class="title">${title}</span><span class="open">Open${CHEVRON}</span></div>
+                ${line2(o.id,name,statusText)}
+              </div>
+            </div>${stop}
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>`).join("");
+  document.querySelectorAll(".seg").forEach(seg=>seg.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===state[seg.dataset.key]))));
+  const q=new URLSearchParams(state);
+  history.replaceState(null,"","?"+q.toString());
+}
+document.getElementById("bar").addEventListener("click",e=>{
+  const b=e.target.closest("button");if(!b)return;
+  state[b.closest(".seg").dataset.key]=b.dataset.v;render();
+});
+render();
+</script>
+</body>
+</html>
