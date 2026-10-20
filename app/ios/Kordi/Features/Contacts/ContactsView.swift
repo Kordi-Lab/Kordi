@@ -11,8 +11,8 @@ struct ContactsView<PinnedRows: View>: View {
     /// Rows shown above requests and contacts, for entries that live outside this screen.
     private let pinnedRows: PinnedRows
 
-    private let showsCommonGroundEntry = CommonGroundAvailability.isEnabled()
-    private let commonGroundInvitationWaiting = CommonGroundAvailability.hasWaitingInvitation()
+    private var showsCommonGroundEntry: Bool { model.isCommonGroundAvailable }
+    private var commonGroundInvitationWaiting: Bool { CommonGroundAvailability.hasWaitingInvitation() }
 
     init(
         onOpenConversation: ((ConversationSummary) -> Void)? = nil,
@@ -140,11 +140,9 @@ struct ContactsView<PinnedRows: View>: View {
             }
         }
         .sheet(isPresented: $showAddContact) { AddContactSheet() }
-#if DEBUG
         .fullScreenCover(isPresented: $showsCommonGround) {
-            CommonGroundView { showsCommonGround = false }
+            CommonGroundView(appModel: model, onClose: { showsCommonGround = false }) { showsCommonGround = false; onOpenConversation?($0) }
         }
-#endif
         .task { await model.refreshContactRequests() }
     }
 

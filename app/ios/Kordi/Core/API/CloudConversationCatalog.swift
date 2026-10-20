@@ -436,13 +436,11 @@ enum CloudConversationCatalog {
             let spaceId = normalizedGroupSpaceId(conversation.groupSpaceId)
                 ?? normalizedGroupSpaceId(lineage[sessionId]?.spaceId)
                 ?? sessionId
-            consider(
-                spaceId: spaceId,
-                title: conversation.groupTitle,
-                priority: 2,
-                updatedAt: parseCloudDate(conversation.updatedAt),
-                sourceId: conversation.id
-            )
+            // A server-started group (Common ground) is named by its root channel's shared title, as on the Mac.
+            let rootTitle = sessionId == spaceId ? conversation.sharedTitle?.replacingOccurrences(of: #"^Channel \d+$"#, with: "", options: .regularExpression) : nil
+            for (title, priority) in [(conversation.groupTitle, 2), (rootTitle, 0)] {
+                consider(spaceId: spaceId, title: title, priority: priority, updatedAt: parseCloudDate(conversation.updatedAt), sourceId: conversation.id)
+            }
         }
         for (wire, envelope) in controls where [
             "group-invite", "group-update", "group-title-update"

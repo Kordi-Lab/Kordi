@@ -2,8 +2,7 @@ import EventKit
 import SwiftUI
 import UIKit
 
-#if DEBUG
-/// One on-device data source the tester can opt into for their card.
+/// One on-device data source the person can opt into for their card.
 /// Modeled on PermissionsKit's API (status, request, open Settings) but kept
 /// in-house: two EventKit calls do not justify a dependency.
 enum CommonGroundDeviceSource: String, CaseIterable, Identifiable {
@@ -165,4 +164,3 @@ final class CommonGroundDeviceAccess: ObservableObject {
         }
     }
 }
-#endif

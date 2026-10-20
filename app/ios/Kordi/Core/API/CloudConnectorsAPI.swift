@@ -15,21 +15,25 @@ struct CloudAuthCapabilities: Decodable, Equatable {
     /// Present when the server offers account memory and replay state routes.
     /// Older servers omit it, and the Memory screen stays hidden.
     let memoryVersion: Int?
+    /// Present when the server serves `/v1/cloud/common-ground`.
+    let commonGroundVersion: Int?
 
     private enum CodingKeys: String, CodingKey {
-        case password, oauthProviders, connectorsVersion, memoryVersion
+        case password, oauthProviders, connectorsVersion, memoryVersion, commonGroundVersion
     }
 
     init(
         password: Bool? = nil,
         oauthProviders: [String] = [],
         connectorsVersion: Int? = nil,
-        memoryVersion: Int? = nil
+        memoryVersion: Int? = nil,
+        commonGroundVersion: Int? = nil
     ) {
         self.password = password
         self.oauthProviders = oauthProviders
         self.connectorsVersion = connectorsVersion
         self.memoryVersion = memoryVersion
+        self.commonGroundVersion = commonGroundVersion
     }
 
     init(from decoder: Decoder) throws {
@@ -38,6 +42,7 @@ struct CloudAuthCapabilities: Decodable, Equatable {
         oauthProviders = (try? container.decodeIfPresent([String].self, forKey: .oauthProviders)) ?? []
         connectorsVersion = try? container.decodeIfPresent(Int.self, forKey: .connectorsVersion)
         memoryVersion = try? container.decodeIfPresent(Int.self, forKey: .memoryVersion)
+        commonGroundVersion = try? container.decodeIfPresent(Int.self, forKey: .commonGroundVersion)
     }
 }
 

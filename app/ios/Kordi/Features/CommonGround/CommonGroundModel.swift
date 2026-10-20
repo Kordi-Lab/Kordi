@@ -1,472 +1,400 @@
+import Foundation
 import SwiftUI
 
-/// Decides whether the Common ground entry exists in Contacts. The server
-/// side does not exist yet, so only debug builds show it: with the
-/// `--preview-common-ground` launch argument, or with the
-/// `kordi.debug.common-ground` defaults flag. Release builds never do.
-enum CommonGroundAvailability {
-    static let previewArgument = "--preview-common-ground"
-    static let defaultsKey = "kordi.debug.common-ground"
-
-    static func isPreviewRequested(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
-#if DEBUG
-        arguments.contains(previewArgument)
-#else
-        false
-#endif
-    }
-
-    static func isEnabled(
-        arguments: [String] = ProcessInfo.processInfo.arguments,
-        defaults: UserDefaults = .standard
-    ) -> Bool {
-#if DEBUG
-        isPreviewRequested(arguments: arguments) || defaults.bool(forKey: defaultsKey)
-#else
-        false
-#endif
-    }
-
-    /// Whether a room invitation is waiting. There is no invitation feed yet;
-    /// the preview argument shows the waiting state.
-    static func hasWaitingInvitation(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
-        isPreviewRequested(arguments: arguments)
-    }
-}
-
-#if DEBUG
-/// Network-backed state for the Common ground preview. Talks to the local demo
-/// server described in experiments/common-ground-lab/demo/API.md.
-
-// MARK: - Wire types
-
-struct CommonGroundCard: Codable, Hashable {
-    var workingOn: [String]
-    var interests: [String]
-    var canHelp: [String]
-    var lookingFor: [String]
-    var hidden: [String]
-    /// Absent in older server responses.
-    var profile: CommonGroundProfile?
-}
-
-/// Where each topic came from and when it was active. Keys arrive in
-/// snake_case and are converted by the decoder's key strategy.
-struct CommonGroundProfile: Codable, Hashable {
-    struct Period: Codable, Hashable {
-        let period: String
-        let topics: [String]
-    }
-
-    struct TopicInfo: Codable, Hashable {
-        let refs: [String]
-        let firstSeen: String?
-        let lastSeen: String?
-        let score: Double?
-    }
-
-    struct Evidence: Codable, Hashable {
-        let source: String
-        let title: String
-        let date: String?
-        let url: String?
-        let snippet: String
-    }
-
-    var latest: [String]
-    var earlier: [String]
-    var timeline: [Period]
-    var topics: [String: TopicInfo]
-    var evidence: [String: Evidence]
-
-    /// The decoder's snake_case strategy also rewrites dictionary keys, so a
-    /// label with underscores is looked up under its converted form too.
-    func info(for label: String) -> TopicInfo? {
-        topics[label] ?? topics[Self.convertedKey(label)]
-    }
-
-    func evidence(for label: String) -> [(id: String, item: Evidence)] {
-        (info(for: label)?.refs ?? []).compactMap { id in
-            (evidence[id] ?? evidence[Self.convertedKey(id)]).map { (id, $0) }
-        }
-    }
-
-    /// Mirrors JSONDecoder.KeyDecodingStrategy.convertFromSnakeCase.
-    private static func convertedKey(_ key: String) -> String {
-        guard key.contains("_"),
-              let first = key.firstIndex(where: { $0 != "_" }),
-              let last = key.lastIndex(where: { $0 != "_" }) else { return key }
-        let parts = key[first...last].split(separator: "_")
-        guard parts.count > 1 else { return key }
-        let joined = ([parts[0].lowercased()] + parts.dropFirst().map(\.capitalized)).joined()
-        return String(key[..<first]) + joined + String(key[key.index(after: last)...])
-    }
-}
-
-struct CommonGroundPerson: Codable, Identifiable, Hashable {
-    let id: String
-    let name: String
-    let lab: String
-}
-
-struct CommonGroundRanked: Codable, Identifiable, Hashable {
-    let person: CommonGroundPerson
-    let score: Int
-    let headline: String
-    var id: String { person.id }
-}
-
-struct CommonGroundTopic: Codable, Identifiable, Hashable {
-    let label: String
-    let people: [CommonGroundPerson]
-    var id: String { label }
-}
-
-struct CommonGroundReason: Codable, Hashable {
-    let topic: String
-    let theirTopic: String
-    let why: String
-}
-
-struct CommonGroundMatch: Codable, Hashable {
-    let person: CommonGroundPerson
-    let score: Int
-    let shared: [CommonGroundReason]
-    let youBring: [CommonGroundTrade]
-    let theyBring: [CommonGroundTrade]
-    let nextStep: String
-}
-
-/// A skill one person offers and the other person's topic it helps.
-struct CommonGroundTrade: Codable, Hashable {
-    let topic: String
-    let target: String
-
-    enum CodingKeys: String, CodingKey {
-        case topic
-        case target = "for"
-    }
-}
-
-struct CommonGroundResults: Codable, Hashable {
-    let people: [CommonGroundRanked]
-    let topics: [CommonGroundTopic]
-    let suggestion: CommonGroundTopic?
-}
-
-struct CommonGroundSource: Codable, Hashable {
-    let label: String
-    let chars: Int
-}
-
-private struct CommonGroundMeResponse: Decodable {
-    let name: String
-    let card: CommonGroundCard?
-    /// Connected GitHub login, "" when none. Absent on older servers.
-    let github: String?
-}
-
-/// GitHub device sign-in state: "idle", "pending", "done", "denied", or "expired".
-struct CommonGroundGitHubConnection: Decodable, Hashable {
-    let status: String
-    let userCode: String?
-    let verificationUri: String?
-    let login: String
-}
-
-private struct CommonGroundSourcesResponse: Decodable { let agents: [CommonGroundSource] }
-private struct CommonGroundCardResponse: Decodable { let card: CommonGroundCard }
-private struct CommonGroundSkipped: Decodable { let source: String; let reason: String }
-private struct CommonGroundBuildResponse: Decodable { let card: CommonGroundCard; let skipped: [CommonGroundSkipped]? }
-private struct CommonGroundRoomResponse: Decodable { let code: String; let members: [CommonGroundPerson] }
-private struct CommonGroundTapResponse: Decodable { let person: CommonGroundPerson }
-private struct CommonGroundRecentResponse: Decodable { let people: [CommonGroundRanked] }
-struct CommonGroundDeviceItem: Encodable, Hashable { let title: String; let date: String? }
-struct CommonGroundDeviceItems: Encodable { let source: String; let items: [CommonGroundDeviceItem] }
-private struct CommonGroundBuildRequest: Encodable { let useAgents: Bool; let links: String; let notes: String; let device: [CommonGroundDeviceItems] }
-private struct CommonGroundHiddenRequest: Encodable { let hidden: [String] }
-private struct CommonGroundTopicsRequest: Encodable { let workingOn: [String]; let interests: [String]; let canHelp: [String]; let lookingFor: [String] }
-private struct CommonGroundServerError: Decodable { let error: String }
-
-struct CommonGroundAPIError: LocalizedError {
-    let message: String
-    var errorDescription: String? { message }
-}
-
-// MARK: - Client
-
-private struct CommonGroundAPI {
-    let baseURL: URL
-
-    init() {
-        let raw = ProcessInfo.processInfo.environment["KORDI_COMMON_GROUND_URL"] ?? ""
-        baseURL = URL(string: raw.isEmpty ? "http://127.0.0.1:18190" : raw) ?? URL(string: "http://127.0.0.1:18190")!
-    }
-
-    func get<T: Decodable>(_ path: String) async throws -> T {
-        try await send("GET", path, body: nil)
-    }
-
-    func send<T: Decodable>(_ method: String, _ path: String, body: (any Encodable)? = nil) async throws -> T {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
-        request.httpMethod = method
-        // Card builds and room results can take up to a minute the first time.
-        request.timeoutInterval = 120
-        if let body {
-            let encoder = JSONEncoder()
-            encoder.keyEncodingStrategy = .convertToSnakeCase
-            request.httpBody = try encoder.encode(body)
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        }
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch let error as URLError where error.code == .cancelled {
-            throw CancellationError()
-        } catch {
-            throw CommonGroundAPIError(message: "Demo server not reachable")
-        }
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            let message = (try? decoder.decode(CommonGroundServerError.self, from: data))?.error
-            throw CommonGroundAPIError(message: message ?? "Request failed (\(http.statusCode))")
-        }
-        do {
-            return try decoder.decode(T.self, from: data)
-        } catch {
-            throw CommonGroundAPIError(message: "Unexpected server response")
-        }
-    }
-}
-
-// MARK: - Model
-
+/// Common ground state for the signed-in account: the owner's card, rooms,
+/// results, matches and people. Screens drive polling
+/// through the wait and refresh calls; every failure becomes `notice`.
 @MainActor
 final class CommonGroundModel: ObservableObject {
-    static let meID = "me"
-    /// The server calls the tester "You"; avatars need a real name for initials.
-    private static let fallbackName = "Alex"
+    typealias Context = @MainActor () throws -> (CloudAPIClient, String)
 
-    private let api = CommonGroundAPI()
+    nonisolated static let buildPollInterval: Duration = .seconds(3)
+    nonisolated static let lobbyPollInterval: Duration = .seconds(2)
+    nonisolated static let matchPollInterval: Duration = .seconds(3)
+    /// Typed tags stay short enough to read at a glance.
+    static let tagMax = 40
 
-    @Published private(set) var me = CommonGroundPerson(id: meID, name: fallbackName, lab: "")
-    @Published private(set) var card: CommonGroundCard?
-    /// Connected GitHub account, "" when none.
-    @Published private(set) var githubLogin = ""
-    @Published private(set) var loadedMe = false
-    @Published private(set) var sources: [CommonGroundSource] = []
-    @Published private(set) var recent: [CommonGroundRanked] = []
-    @Published private(set) var roomCode = ""
-    @Published private(set) var members: [CommonGroundPerson] = []
-    @Published private(set) var results: CommonGroundResults?
+    let me: CommonGroundPerson
+    private let context: Context
+
+    @Published private(set) var owner: CommonGroundOwnerView?
+    @Published private(set) var loaded = false
+    @Published private(set) var recent: [CommonGroundRecentEntry] = []
+    @Published private(set) var rooms: [String: CommonGroundRoom] = [:]
+    /// Rooms to come back to; nil while unknown or when the server has no list.
+    @Published private(set) var roomList: [CommonGroundRoomSummary]?
+    @Published private(set) var results: [String: CommonGroundResults] = [:]
     @Published private(set) var matches: [String: CommonGroundMatch] = [:]
-    /// Short error or status line shown as a toast over every screen.
+    @Published private(set) var people: [String: CommonGroundPersonCard] = [:]
+    /// Relationship updates after an action, newer than any loaded view.
+    @Published private(set) var relationships: [String: CommonGroundRelationship] = [:]
+    @Published private(set) var busy: String?
+    /// One line shown as a toast over every screen.
     @Published var notice: String?
 
-    var hasCard: Bool { card != nil }
-
-    func shown(_ topics: [String]) -> [String] {
-        let hidden = Set(card?.hidden ?? [])
-        return topics.filter { !hidden.contains($0) }
+    init(me: CommonGroundPerson, context: @escaping Context) {
+        self.me = me
+        self.context = context
     }
 
+    var card: CommonGroundOwnCard? { owner?.card }
+    var hasCard: Bool { owner?.card != nil }
+    var isBuilding: Bool { owner?.build.status == "building" }
+    var buildFailed: Bool { owner?.build.status == "failed" }
+    var sharing: Bool { owner?.sharing ?? true }
+
+    /// The topics others see: the card minus hidden ones.
     var myTopics: [String] {
         guard let card else { return [] }
-        return shown(card.workingOn + card.interests)
+        let hidden = Set(card.hidden)
+        return card.topics.all.filter { !hidden.contains($0) }
     }
 
     func isHidden(_ topic: String) -> Bool { card?.hidden.contains(topic) ?? false }
 
-    /// Replaces the server's "me" entry with the tester's display identity.
-    func resolve(_ person: CommonGroundPerson) -> CommonGroundPerson {
-        person.id == Self.meID ? me : person
+    // MARK: Errors
+
+    static let messages: [String: String] = [
+        "common_ground_no_sources": "Turn on a source first.",
+        "common_ground_build_in_progress": "Your card is already being built.",
+        "common_ground_room_not_found": "Room not found.",
+        "common_ground_code_not_found": "Code not found.",
+        "common_ground_sharing_off": "Turn on sharing first.",
+        "common_ground_no_card": "Build your card first.",
+    ]
+
+    /// One line for a failed call; nil for a cancelled one.
+    static func message(for error: Error) -> String? {
+        if error is CancellationError { return nil }
+        guard let error = error as? CloudAPIError else { return "Something went wrong. Try again." }
+        if error.statusCode == 429 || error.code == "rate_limited" {
+            let seconds = Double(error.retryAfterSeconds ?? 60)
+            return "Try again in \(max(1, Int((seconds / 60).rounded(.up)))) min."
+        }
+        return messages[error.code] ?? error.message
     }
 
     func report(_ error: Error) {
-        guard !(error is CancellationError) else { return }
-        notice = (error as? LocalizedError)?.errorDescription ?? "Something went wrong"
+        if let message = Self.message(for: error) { notice = message }
+    }
+
+    private func call<T>(_ work: (CloudAPIClient, String) async throws -> T) async throws -> T {
+        let (api, token) = try context()
+        return try await work(api, token)
+    }
+
+    /// Runs one user action: marks it busy, clears the notice, reports failures.
+    private func run<T>(_ key: String, _ work: (CloudAPIClient, String) async throws -> T) async -> T? {
+        busy = key
+        notice = nil
+        defer { if busy == key { busy = nil } }
+        do {
+            return try await call(work)
+        } catch {
+            report(error)
+            return nil
+        }
     }
 
     // MARK: Home
 
     func loadHome() async {
         do {
-            let response: CommonGroundMeResponse = try await api.get("v1/me")
-            let name = response.name.trimmingCharacters(in: .whitespaces)
-            me = CommonGroundPerson(
-                id: Self.meID,
-                name: name.isEmpty || name == "You" ? Self.fallbackName : name,
-                lab: ""
-            )
-            card = response.card
-            githubLogin = response.github ?? ""
-            loadedMe = true
+            apply(try await call { try await $0.commonGroundCard(token: $1) })
         } catch {
+            loaded = true
             report(error)
             return
         }
-        guard card != nil else { return }
-        do {
-            let response: CommonGroundRecentResponse = try await api.get("v1/recent")
+        guard hasCard else { return }
+        if let response = try? await call({ try await $0.commonGroundRecent(token: $1) }) {
             recent = response.people
-        } catch {
-            report(error)
         }
+        await loadRooms()
+    }
+
+    private func apply(_ view: CommonGroundOwnerView) {
+        let wasBuilding = isBuilding
+        let revision = owner?.card?.revision
+        owner = view
+        loaded = true
+        if (wasBuilding && !isBuilding) || revision != view.card?.revision {
+            matches = [:]
+            results = [:]
+        }
+    }
+
+    /// One line for a failed build, from the last build state.
+    var buildFailureMessage: String? {
+        guard buildFailed else { return nil }
+        return owner?.build.errorCode.flatMap { Self.messages[$0] } ?? "Could not build your card."
     }
 
     // MARK: Card
 
-    func loadSources() async {
+    func build(_ request: CommonGroundBuildRequest) async {
+        if let view = await run("build", { try await $0.buildCommonGroundCard(token: $1, request: request) }) {
+            apply(view)
+        }
+    }
+
+    func refreshCard() async {
         do {
-            let response: CommonGroundSourcesResponse = try await api.get("v1/me/sources")
-            sources = response.agents
+            apply(try await call { try await $0.commonGroundCard(token: $1) })
         } catch {
             report(error)
         }
     }
 
-    /// Starts GitHub's device sign-in; the response carries the code to show.
-    func connectGitHub() async throws -> CommonGroundGitHubConnection {
-        let response: CommonGroundGitHubConnection = try await api.send("POST", "v1/connect/github")
-        githubLogin = response.login
-        return response
-    }
-
-    func githubStatus() async throws -> CommonGroundGitHubConnection {
-        let response: CommonGroundGitHubConnection = try await api.get("v1/connect/github")
-        githubLogin = response.login
-        return response
-    }
-
-    func disconnectGitHub() async throws {
-        let response: CommonGroundGitHubConnection = try await api.send("DELETE", "v1/connect/github")
-        githubLogin = response.login
-    }
-
-    /// `links` holds URLs and text separated by ";". Links the server could not
-    /// read (sign-in walls, private pages) come back as a notice.
-    func buildCard(useAgents: Bool, links: String, notes: String, device: [CommonGroundDeviceItems] = []) async throws {
-        let body = CommonGroundBuildRequest(useAgents: useAgents, links: links, notes: notes, device: device)
-        let response: CommonGroundBuildResponse = try await api.send("POST", "v1/me/card/build", body: body)
-        card = response.card
-        if let skipped = response.skipped, !skipped.isEmpty {
-            notice = skipped.map(\.reason).joined(separator: " ")
-        }
-        matches = [:]
-        results = nil
-    }
-
-    /// Replaces the card's topics after the tester removes or adds tags.
-    func updateCard(_ next: CommonGroundCard) {
-        guard let previous = card else { return }
-        card = next
-        let body = CommonGroundTopicsRequest(workingOn: next.workingOn, interests: next.interests, canHelp: next.canHelp, lookingFor: next.lookingFor)
-        Task {
-            do {
-                let response: CommonGroundCardResponse = try await api.send("PUT", "v1/me/card", body: body)
-                card = response.card
-                matches = [:]
-                results = nil
-            } catch {
-                card = previous
-                report(error)
-            }
+    /// Polls `GET card` until the build ends or the caller is cancelled.
+    func waitForBuild(every interval: Duration = buildPollInterval) async {
+        while isBuilding, !Task.isCancelled {
+            try? await Task.sleep(for: interval)
+            guard !Task.isCancelled else { return }
+            await refreshCard()
         }
     }
 
-    func toggle(_ topic: String) {
-        guard var next = card else { return }
-        let previous = next
-        if let index = next.hidden.firstIndex(of: topic) {
-            next.hidden.remove(at: index)
+    func saveTopics(_ topics: CommonGroundTopics) async {
+        guard let previous = owner, var next = previous.card else { return }
+        next.topics = topics
+        owner?.card = next
+        if let saved = await run("topics", { try await $0.saveCommonGroundTopics(token: $1, topics: topics) }) {
+            apply(saved)
         } else {
-            next.hidden.append(topic)
-        }
-        card = next
-        let hidden = next.hidden
-        Task {
-            do {
-                let response: CommonGroundCardResponse = try await api.send("PUT", "v1/me/card/hidden", body: CommonGroundHiddenRequest(hidden: hidden))
-                card = response.card
-                matches = [:]
-            } catch {
-                card = previous
-                report(error)
-            }
+            owner = previous
         }
     }
 
-    // MARK: Room
-
-    func join(code: String) async throws {
-        let response: CommonGroundRoomResponse = try await api.send("POST", "v1/rooms/\(code)/join")
-        roomCode = response.code
-        members = response.members.filter { $0.id != Self.meID }
-        results = nil
+    /// Adds a typed topic to one section; ignores blanks and duplicates.
+    func addTopic(_ text: String, to key: WritableKeyPath<CommonGroundTopics, [String]>) async {
+        let clean = String(text.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(Self.tagMax))
+        guard !clean.isEmpty, var topics = card?.topics,
+              !topics[keyPath: key].contains(where: { $0.caseInsensitiveCompare(clean) == .orderedSame }) else { return }
+        topics[keyPath: key].append(clean)
+        await saveTopics(topics)
     }
 
-    func refreshRoom() async {
-        guard !roomCode.isEmpty else { return }
+    func removeTopic(_ topic: String, from key: WritableKeyPath<CommonGroundTopics, [String]>) async {
+        guard var topics = card?.topics else { return }
+        topics[keyPath: key].removeAll { $0 == topic }
+        await saveTopics(topics)
+    }
+
+    func toggleHidden(_ topic: String) async {
+        guard let card else { return }
+        let hidden = card.hidden.contains(topic) ? card.hidden.filter { $0 != topic } : card.hidden + [topic]
+        if let saved = await run("hidden", { try await $0.setCommonGroundHidden(token: $1, hidden: hidden) }) {
+            apply(saved)
+        }
+    }
+
+    func setSharing(_ sharing: Bool) async {
+        guard let saved = await run("sharing", { try await $0.setCommonGroundSharing(token: $1, sharing: sharing) }) else { return }
+        apply(saved)
+    }
+
+    func deleteCard() async -> Bool {
+        guard let view = await run("delete", { try await $0.deleteCommonGroundCard(token: $1) }) else { return false }
+        apply(view)
+        recent = []
+        rooms = [:]
+        people = [:]
+        return true
+    }
+
+    // MARK: Rooms
+
+    /// Loads the rooms list. A 404 without a Common ground code means the
+    /// server has no list yet, so the section stays hidden.
+    func loadRooms() async {
         do {
-            let response: CommonGroundRoomResponse = try await api.get("v1/rooms/\(roomCode)")
-            let next = response.members.filter { $0.id != Self.meID }
-            if next != members {
-                withAnimation(.snappy) { members = next }
-            }
+            roomList = try await call { try await $0.commonGroundRooms(token: $1) }.rooms
+        } catch let error as CloudAPIError where error.statusCode == 404 && !error.code.hasPrefix("common_ground") {
+            roomList = nil
+        } catch {}
+    }
+
+    /// Whether a room is closed, from the room or the rooms list.
+    func isClosed(_ code: String) -> Bool {
+        if let room = rooms[code] { return !room.open }
+        return roomList?.first { $0.code == code }?.open == false
+    }
+
+    func roomTitle(_ code: String) -> String {
+        rooms[code]?.title ?? roomList?.first { $0.code == code }?.title ?? "Room \(code)"
+    }
+
+    func joinRoom(_ code: String) async -> Bool {
+        guard let room = await run("join", { try await $0.joinCommonGroundRoom(token: $1, code: code) }) else { return false }
+        rooms[code] = room
+        results[code] = nil
+        Task { await loadRooms() }
+        return true
+    }
+
+    /// Reloads a room; false when it is gone.
+    @discardableResult
+    func refreshRoom(_ code: String) async -> Bool {
+        do {
+            let room = try await call { try await $0.commonGroundRoom(token: $1, code: code) }
+            if rooms[code] != room { withAnimation(.snappy) { rooms[code] = room } }
+            return true
+        } catch let error as CloudAPIError where error.code == "common_ground_room_not_found" {
+            report(error)
+            return false
+        } catch {
+            return true
+        }
+    }
+
+    func leaveRoom(_ code: String) async {
+        _ = try? await call { try await $0.leaveCommonGroundRoom(token: $1, code: code) }
+        withAnimation(.snappy) { roomList?.removeAll { $0.code == code } }
+        rooms[code] = nil
+        results[code] = nil
+    }
+
+    @discardableResult
+    func loadResults(_ code: String, quiet: Bool = false) async -> Bool {
+        do {
+            if !quiet { busy = "find" }
+            defer { if busy == "find" { busy = nil } }
+            results[code] = try await call { try await $0.commonGroundResults(token: $1, code: code) }
+            return true
+        } catch {
+            if !quiet { report(error) }
+            return false
+        }
+    }
+
+    /// Polls results while the server is still matching; a closed room's
+    /// results are stored, so they are never polled.
+    func waitForResults(_ code: String, every interval: Duration = matchPollInterval) async {
+        while results[code]?.isMatching == true, !isClosed(code), !Task.isCancelled {
+            try? await Task.sleep(for: interval)
+            guard !Task.isCancelled else { return }
+            await loadResults(code, quiet: true)
+        }
+    }
+
+    func createGroup(code: String, name: String, memberIds: [String], topic: String? = nil) async -> CommonGroundCreatedGroup? {
+        guard let created = await run("group", {
+            try await $0.createCommonGroundGroup(token: $1, code: code, name: name, memberIds: memberIds, topic: topic)
+        }) else { return nil }
+        var group = created.group
+        group.joined = true
+        if group.topic == nil { group.topic = topic }
+        results[code]?.groups.removeAll { $0.groupSpaceId == group.groupSpaceId }
+        results[code]?.groups.append(group)
+        return created
+    }
+
+    func joinInvitation(code: String, invitationRef: String) async -> CommonGroundJoinedGroup? {
+        guard let joined = await run("invite:\(invitationRef)", {
+            try await $0.joinCommonGroundInvitation(token: $1, code: code, invitationRef: invitationRef)
+        }) else { return nil }
+        let group = CommonGroundGroup(
+            groupSpaceId: joined.groupSpaceId, conversationId: joined.conversationId,
+            name: joined.name ?? "", memberCount: 0, joined: true
+        )
+        results[code]?.invitations.removeAll { $0.invitationRef == invitationRef }
+        results[code]?.groups.removeAll { $0.groupSpaceId == group.groupSpaceId }
+        results[code]?.groups.append(group)
+        rooms[code]?.invitations.removeAll { $0.invitationRef == invitationRef }
+        return joined
+    }
+
+    // MARK: People
+
+    func loadPerson(_ accountId: String) async {
+        do {
+            people[accountId] = try await call { try await $0.commonGroundPerson(token: $1, accountId: accountId) }
         } catch {
             report(error)
         }
     }
 
-    func loadResults() async throws {
-        let response: CommonGroundResults = try await api.send("POST", "v1/rooms/\(roomCode)/results")
-        results = CommonGroundResults(
-            people: response.people,
-            topics: response.topics.map(resolve),
-            suggestion: response.suggestion.map(resolve)
-        )
+    func loadMatch(_ accountId: String) async {
+        do {
+            matches[accountId] = try await call { try await $0.commonGroundMatch(token: $1, accountId: accountId) }
+        } catch {
+            report(error)
+        }
     }
 
-    private func resolve(_ topic: CommonGroundTopic) -> CommonGroundTopic {
-        CommonGroundTopic(label: topic.label, people: topic.people.map(resolve))
+    /// Polls a match while the server is still finding it.
+    func waitForMatch(_ accountId: String, every interval: Duration = matchPollInterval) async {
+        while matches[accountId]?.isMatching == true, !Task.isCancelled {
+            try? await Task.sleep(for: interval)
+            guard !Task.isCancelled else { return }
+            await loadMatch(accountId)
+        }
     }
 
-    // MARK: Match
-
-    func tap() async throws -> CommonGroundPerson {
-        let response: CommonGroundTapResponse = try await api.send("POST", "v1/tap")
-        return response.person
+    /// The person as last seen in any loaded view.
+    func person(_ accountId: String) -> CommonGroundPerson? {
+        matches[accountId]?.person
+            ?? people[accountId]?.person
+            ?? recent.first { $0.person.accountId == accountId }?.person
+            ?? results.values.lazy.flatMap(\.people).first { $0.person.accountId == accountId }?.person
+            ?? rooms.values.lazy.flatMap(\.members).first { $0.accountId == accountId }
     }
 
-    func loadMatch(_ personID: String) async throws {
-        let response: CommonGroundMatch = try await api.get("v1/match/\(personID)")
-        matches[personID] = response
+    /// The newest relationship known for a person, from any view that carries one.
+    func relationship(for accountId: String) -> CommonGroundRelationship? {
+        if let local = relationships[accountId] { return local }
+        if let match = matches[accountId], let relationship = match.relationship ?? match.person.relationship { return relationship }
+        if let card = people[accountId], let relationship = card.relationship ?? card.person.relationship { return relationship }
+        if let entry = recent.first(where: { $0.person.accountId == accountId }), let relationship = entry.relationship { return relationship }
+        for result in results.values {
+            if let entry = result.people.first(where: { $0.person.accountId == accountId }), let relationship = entry.relationship {
+                return relationship
+            }
+        }
+        return rooms.values.lazy.flatMap(\.members).first { $0.accountId == accountId }?.relationship
+    }
+
+    func setRelationship(_ accountId: String, _ relationship: CommonGroundRelationship) {
+        relationships[accountId] = relationship
+    }
+
+    func markContact(_ accountId: String) {
+        var next = relationship(for: accountId) ?? CommonGroundRelationship()
+        next.contact = true
+        next.request = nil
+        next.requestId = nil
+        relationships[accountId] = next
+    }
+
+    /// Add: sends a contact request, or accepts theirs when they asked first.
+    func addContact(_ accountId: String) async {
+        do {
+            busy = "contact"
+            defer { busy = nil }
+            let response = try await call { try await $0.addCommonGroundContact(token: $1, accountId: accountId) }
+            relationships[accountId] = response.relationship
+        } catch let error as CloudAPIError where error.code == "already_contact" {
+            markContact(accountId)
+        } catch {
+            report(error)
+        }
+    }
+
+    /// Finds or creates the direct conversation with a contact.
+    func openChat(_ accountId: String) async -> CommonGroundChatResponse? {
+        guard let response = await run("chat", { try await $0.openCommonGroundChat(token: $1, accountId: accountId) }) else {
+            return nil
+        }
+        if let relationship = response.relationship { relationships[accountId] = relationship }
+        return response
+    }
+
+    func meet(_ accountId: String, input: CommonGroundMeetInput) async -> CommonGroundMeetResponse? {
+        guard let response = await run("meet", { try await $0.proposeCommonGroundMeeting(token: $1, accountId: accountId, input: input) }) else {
+            return nil
+        }
+        if let relationship = response.relationship { relationships[accountId] = relationship }
+        return response
     }
 }
-
-// MARK: - Topic styling
-
-/// Settings-style icon tile for a topic, picked by keyword so any server
-/// string gets a stable icon and brand colour.
-func commonGroundStyle(for topic: String) -> (symbol: String, color: Color) {
-    let text = topic.lowercased()
-    func has(_ words: String...) -> Bool { words.contains { text.contains($0) } }
-    if has("memory") { return ("brain", KordiTheme.brandPink) }
-    if has("eval", "benchmark") { return ("checkmark.seal", KordiTheme.signalBlue) }
-    if has("privacy", "security") { return ("lock", Color(uiColor: .systemGray)) }
-    if has("education", "learn", "tutor") { return ("graduationcap", KordiTheme.brandCyan) }
-    if has("device", "quantiz", "edge", "compression") { return ("iphone", KordiTheme.brandAmber) }
-    if has("moderation", "community", "social") { return ("bubble.left.and.bubble.right", KordiTheme.agentViolet) }
-    if has("robot") { return ("gearshape.2", KordiTheme.agentViolet) }
-    if has("study", "user", "qualitative") { return ("person.2", KordiTheme.brandCyan) }
-    let palette = [KordiTheme.brandPink, KordiTheme.brandCyan, KordiTheme.brandAmber, KordiTheme.signalBlue, KordiTheme.agentViolet]
-    // djb2: String.hashValue is seeded per launch, this stays stable.
-    var hash: UInt64 = 5381
-    for byte in text.utf8 { hash = (hash &* 33) &+ UInt64(byte) }
-    return ("sparkles", palette[Int(hash % UInt64(palette.count))])
-}
-#endif
