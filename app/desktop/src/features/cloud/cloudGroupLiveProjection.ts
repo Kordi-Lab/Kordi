@@ -69,11 +69,20 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+/**
+ * Native statuses the transcript reads as an unacknowledged optimistic turn
+ * and hides. The runtime reports them after admission (`starting`) and after
+ * the answer ended (`finalizing`), so the row keeps its processing placeholder
+ * instead of disappearing for that moment.
+ */
+const ADMISSION_STATUSES = new Set(['starting', 'finalizing']);
+
 export function withLiveTurn(
   message: CanonicalSessionState['messages'][number],
   turn: DesktopChatTurnSnapshot,
 ): CanonicalSessionState['messages'][number] {
   const { hostedRunStatus: _hostedRunStatus, ...content } = record(message.content);
+  const localExecutionStatus = turn.completed || !ADMISSION_STATUSES.has(turn.status) ? turn.status : undefined;
   return {
     ...message,
     contentText: turn.assistantText,
@@ -82,10 +91,12 @@ export function withLiveTurn(
     content: {
       ...content,
       deliveryState: turn.completed ? turn.status === 'cancelled' ? 'cancelled' : turn.succeeded ? 'complete' : 'failed' : 'processing',
-      localExecutionStatus: turn.status, localExecutionMessage: turn.message,
+      localExecutionStatus, localExecutionMessage: turn.message,
       thinkingText: turn.thinkingText, tools: turn.tools,
       startedAtMs: turn.startedAtMs, completedAtMs: turn.completedAtMs,
       ...(turn.error ? { error: turn.error } : {}),
+      // A reply that ended early keeps how it ended, as its stored row will.
+      ...(turn.completed && turn.ending ? { ending: turn.ending } : {}),
     },
   };
 }

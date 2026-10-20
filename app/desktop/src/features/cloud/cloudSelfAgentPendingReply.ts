@@ -5,6 +5,7 @@ import { routeRunsOnKordiCloud } from './cloudAgentRuntimeRoute';
 import { cloudSyncedLocalAgentSessionIds } from './cloudSelfAgentSessionIdentity';
 import { withLiveTurn } from './cloudGroupLiveProjection';
 import { cloudSelfAgentRequestClientMessageId } from './cloudSelfAgentIdentity';
+import { cloudSelfAgentStableResponseId } from './cloudSelfAgentResponseLifecycle';
 import type { CloudMessage } from './authClient';
 
 /** How long a request may wait for its run before the reply says it did not start. */
@@ -16,6 +17,17 @@ const PENDING_SOURCE = 'cloud-self-agent-pending';
 
 export function pendingSelfAgentReplyId(requestMessageId: string) {
   return `msg:cloud:self:pending:${requestMessageId}`;
+}
+
+/**
+ * The row id of a request's pending reply. Once the request's Cloud id is
+ * known, it is the id its stored reply row will have, so that row replaces
+ * the pending one in place: the same transcript row, with its waiting
+ * animation and stop control, carries on instead of being remounted.
+ */
+export function pendingSelfAgentReplyRowId(requestMessageId: string, cloudRequestMessageId?: string | null) {
+  const wireId = cloudRequestMessageId?.trim();
+  return wireId ? cloudSelfAgentStableResponseId(wireId) : pendingSelfAgentReplyId(requestMessageId);
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -105,20 +117,22 @@ export function projectPendingSelfAgentReplies(
     const agentIdentityId = sessionById.get(request.sessionId)?.primaryIdentityId?.trim();
     if (!agentIdentityId) continue;
     // The Mac runs it before its stored reply exists: show that turn here.
-    const wireId = wireIdByClientId.get(cloudSelfAgentRequestClientMessageId(request.sessionId, request.id));
+    const linkedWireId = record(request.content).desktopEntryId;
+    const wireId = wireIdByClientId.get(cloudSelfAgentRequestClientMessageId(request.sessionId, request.id))
+      ?? (typeof linkedWireId === 'string' && linkedWireId.trim() ? linkedWireId.trim() : undefined);
     const localTurn = wireId ? local.turns?.[wireId] : undefined;
     // No run answered in time: say so instead of showing a run that does not exist.
     const notStarted = !localTurn && nowMs - request.createdAtMs > startTimeoutMs(request);
     const row: CanonicalSessionMessage = {
-      id: pendingSelfAgentReplyId(request.id),
+      id: pendingSelfAgentReplyRowId(request.id, wireId),
       sessionId: request.sessionId,
       senderIdentityId: agentIdentityId,
       senderRole: 'owned-agent',
       messageKind: 'agent-turn',
       contentText: '',
       content: notStarted
-        ? { requestId: request.id, replyToMessageId: request.id, deliveryState: 'failed', error: PENDING_SELF_AGENT_NOT_STARTED_TEXT }
-        : { requestId: request.id, replyToMessageId: request.id, deliveryState: 'processing' },
+        ? { requestId: request.id, replyToMessageId: request.id, deliveryState: 'failed', error: PENDING_SELF_AGENT_NOT_STARTED_TEXT, ...(wireId ? { cloudRequestMessageId: wireId } : {}) }
+        : { requestId: request.id, replyToMessageId: request.id, deliveryState: 'processing', ...(wireId ? { cloudRequestMessageId: wireId } : {}) },
       parentMessageId: request.id,
       delegatedExchangeId: null,
       status: notStarted ? 'failed' : 'processing',

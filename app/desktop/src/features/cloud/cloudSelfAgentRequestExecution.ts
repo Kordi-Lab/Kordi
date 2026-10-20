@@ -21,6 +21,7 @@ import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
 import { handBackDesktopRun } from './cloudDesktopRunHandback';
 import { cloudSelfAgentRequestPrompt } from './cloudSelfAgentRequestPrompt';
 import { holdLeasedTurnSession } from './cloudLeasedTurnSessions';
+import { createCloudSelfAgentTurnPresenter } from './cloudSelfAgentTurnPresentation';
 import { bindClaimedProjectSession } from '@/features/projects/claimedProjectSession';
 import {
   cloudDirectMessageAgentRuntimeRoute,
@@ -108,22 +109,17 @@ export async function executeCloudSelfAgentRequest({
   activeRequestsRef,
   streamedTextByRequestIdRef,
 }: CloudSelfAgentRequestExecutionInput): Promise<void> {
+  const sessionId = request.sessionId?.trim() ?? '';
+  const presenter = createCloudSelfAgentTurnPresenter({
+    requestMessageId: request.messageId, sessionId, setLocalTurns,
+    canPresent: () => !isInactive() && !supersededRequestIdsRef.current.has(request.messageId),
+  });
   const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
-    if (turn.assistantText.trim()) {
-      streamedTextByRequestIdRef.current.set(request.messageId, turn.assistantText);
-    }
-    if (
-      isInactive()
-      || supersededRequestIdsRef.current.has(request.messageId)
-    ) return;
-    setLocalTurns((current) => ({
-      ...current,
-      [request.messageId]: turn,
-    }));
+    presenter.remember(turn);
+    if (presenter.streamedText) streamedTextByRequestIdRef.current.set(request.messageId, presenter.streamedText);
   };
 
   const session = await loadSession();
-  const sessionId = request.sessionId?.trim() ?? '';
   if (!session?.token || !sessionId || isInactive()) {
     processedRequestIdsRef.current.delete(request.messageId);
     return;
@@ -160,6 +156,7 @@ export async function executeCloudSelfAgentRequest({
   const stop = () => {
     if (stopRequested) return;
     stopRequested = true;
+    presenter.stop();
     const turnId = turnIdsByRequestIdRef.current.get(request.messageId);
     if (!turnId) return;
     void cancelDesktopChatTurn(turnId).catch((error) => reportWarning(
@@ -230,7 +227,7 @@ export async function executeCloudSelfAgentRequest({
       reportWarning,
     });
     const turn = options.turn ?? lastTurn;
-    if (turn) rememberLocalTurn(settledCloudSelfAgentTurn(turn, reply));
+    if (turn) presenter.settle(settledCloudSelfAgentTurn(turn, reply));
     if (isInactive()) return;
     if (response) mergeMessage(response);
     await syncMessages().catch((error) => reportWarning(
