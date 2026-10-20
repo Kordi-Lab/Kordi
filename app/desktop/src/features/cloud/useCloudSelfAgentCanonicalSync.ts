@@ -23,6 +23,12 @@ import {
   persistCloudSelfAgentCanonicalSyncPlan,
   withoutStoredMessageRequests,
 } from './cloudSelfAgentCanonicalSyncExecution';
+import {
+  recordSentCloudSelfAgentRequests,
+  selectCloudSelfAgentMessagesToPlan,
+  type CloudSelfAgentSentRequestMemo,
+  type CloudSelfAgentSettledSessions,
+} from './cloudSelfAgentIncrementalSync';
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import {
   loadChatSyncMessagesPage,
@@ -97,6 +103,8 @@ export function useCloudSelfAgentCanonicalSync({
     accountId: string;
     signature: string;
   } | null>(null);
+  const settledFingerprintsRef = useRef<CloudSelfAgentSettledSessions | null>(null);
+  const sentRequestMemoRef = useRef<CloudSelfAgentSentRequestMemo>(new Map());
   const nativeHistoryRef = useRef<{
     accountId: string | null;
     recovered: boolean;
@@ -167,17 +175,23 @@ export function useCloudSelfAgentCanonicalSync({
     };
     nativeHistoryRef.current = nativeHistory;
     const selfMessages = messagesByPeer[account.accountId] ?? [];
+    // Only conversations whose messages or stored rows changed are planned again.
+    const selection = selectCloudSelfAgentMessagesToPlan({
+      settled: settledFingerprintsRef, accountId: account.accountId, messages: selfMessages, state: canonicalState,
+      inputs: [agentDisplayName, forksBySessionId, titlesBySessionId], forksBySessionId,
+      isGroupRow: (messageId) => messageIndex.groupRowByWireMessageId.has(messageId),
+    });
     const headPlan = withoutStoredMessageRequests(planCloudSelfAgentCanonicalSync({
       account,
       agentDisplayName,
-      messages: selfMessages,
+      messages: selection.messages,
       state: canonicalState,
       forksBySessionId,
       groupRowByWireMessageId:
         messageIndex.groupRowByWireMessageId,
       cloudTitlesBySessionId: titlesBySessionId,
       requestSyncLedger: loadCloudSelfAgentSyncLedger(account.accountId),
-    }), canonicalState.messages);
+    }), canonicalState.messages, sentRequestMemoRef.current);
     const currentAgentIdentity = canonicalState.identities.find((identity) => (
       identity.id === headPlan.agentIdentityRequest.id
     ));
@@ -202,6 +216,7 @@ export function useCloudSelfAgentCanonicalSync({
         completedRef.current?.accountId === account.accountId
         && completedRef.current.signature === signature
       );
+      if (headAlreadyPersisted) selection.markSettled();
       if (!headAlreadyPersisted) {
         if (
           failedRef.current?.accountId === account.accountId
@@ -223,6 +238,8 @@ export function useCloudSelfAgentCanonicalSync({
           ) return;
           completedRef.current = { accountId, signature };
           failedRef.current = null;
+          recordSentCloudSelfAgentRequests(sentRequestMemoRef.current, syncPlan.messageRequests, batch.messages);
+          selection.markSettled();
           latestInputRef.current.setCanonicalState?.((current) => (
             mergeCloudSelfAgentCanonicalSyncBatch(current, batch)
           ));
@@ -244,6 +261,8 @@ export function useCloudSelfAgentCanonicalSync({
         });
         return;
       }
+    } else {
+      selection.markSettled();
     }
     // Cached heads can render before bootstrap. Only authoritative history
     // may finish recovery, and a completed head must not skip that phase.

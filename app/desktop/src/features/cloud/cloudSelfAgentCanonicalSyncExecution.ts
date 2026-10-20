@@ -14,6 +14,7 @@ import type {
 } from '@/kordi-app/types';
 import type { CloudSelfAgentCanonicalSyncBatch } from './cloudCanonicalStateMerge';
 import type { CloudSelfAgentCanonicalSyncPlan } from './cloudSelfAgentCanonicalSync';
+import { cloudSelfAgentRequestIsSettled, type CloudSelfAgentSentRequestMemo } from './cloudSelfAgentIncrementalSync';
 
 export type CloudSelfAgentCanonicalPersistence = {
   upsertIdentity: (
@@ -103,20 +104,6 @@ export async function persistCloudSelfAgentCanonicalSyncPlan(
   };
 }
 
-function sameStoredMessage(row: CanonicalSessionMessage, request: AppendCanonicalMessageRequest) {
-  return row.sessionId === request.sessionId
-    && row.senderIdentityId === request.senderIdentityId
-    && row.senderRole === request.senderRole
-    && row.messageKind === request.messageKind
-    && row.contentText === request.contentText
-    && (row.parentMessageId ?? null) === (request.parentMessageId ?? null)
-    && row.status === (request.status ?? row.status)
-    && (request.createdAtMs == null || row.createdAtMs === request.createdAtMs)
-    && (row.sourceTransport ?? null) === (request.sourceTransport ?? null)
-    && (row.sourceEventId ?? null) === (request.sourceEventId ?? null)
-    && JSON.stringify(row.content ?? null) === JSON.stringify(request.content ?? null);
-}
-
 /**
  * Drops message writes that would store a row exactly as it is. The plan
  * covers every Ask Agent message, so without this each new message rewrote
@@ -126,12 +113,13 @@ function sameStoredMessage(row: CanonicalSessionMessage, request: AppendCanonica
 export function withoutStoredMessageRequests(
   plan: CloudSelfAgentCanonicalSyncPlan,
   messages: readonly CanonicalSessionMessage[],
+  memo?: CloudSelfAgentSentRequestMemo,
 ): CloudSelfAgentCanonicalSyncPlan {
   const byId = new Map(messages.map((message) => [message.id, message]));
   const reconciled = new Set(plan.mirrorReconciliations.flatMap((item) => [item.preferredMessageId, item.duplicateMessageId]));
   const messageRequests = plan.messageRequests.filter((request) => {
     const row = request.id ? byId.get(request.id) : undefined;
-    return !row || reconciled.has(row.id) || !sameStoredMessage(row, request);
+    return !row || reconciled.has(row.id) || !cloudSelfAgentRequestIsSettled(request, row, memo);
   });
   return messageRequests.length === plan.messageRequests.length ? plan : { ...plan, messageRequests };
 }
