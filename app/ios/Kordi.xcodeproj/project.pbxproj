@@ -98,6 +98,7 @@
 		480A130EB65FBB18B897158F /* DocumentEditorWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D5794592A8AF567F9D888A2 /* DocumentEditorWebView.swift */; };
 		48BE2FCA830AFA150AD871D6 /* ProviderLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE43BDAB68DA338BEF6D11B8 /* ProviderLogin.swift */; };
 		4962DC7D1F6C588C1AA0C142 /* CloudDocuments.swift in Sources */ = {isa = PBXBuildFile; fileRef = B829E6583F62108007ADC212 /* CloudDocuments.swift */; };
+		49B9F4B68E95A82517BBC34D /* AppIconSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 942DF88B34C4810542A55879 /* AppIconSettingsTests.swift */; };
 		4A886D02260191D4F6FD154E /* CloudGroupMessageCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B4F4E132BAF9FF02E0EE58 /* CloudGroupMessageCodecTests.swift */; };
 		4B2AACF2322CB489C28DB2C0 /* KeychainSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 276E693EF06321E619FD4D1B /* KeychainSessionStore.swift */; };
 		4C4FB202DD4C0FA3462A86DF /* ConversationReadVisibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9342AD4F8DA861194BABA573 /* ConversationReadVisibility.swift */; };
@@ -270,6 +271,7 @@
 		D469A952DDE0D5B95CE7EDE9 /* ThreadDateDivider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81F192D04307F7B834A388E8 /* ThreadDateDivider.swift */; };
 		D4B22EFD2E1B14A28811D742 /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = 07939B8DB3FE481325EF13B3 /* LiveKit */; };
 		D56E6BBDAA5127DF2DF0C865 /* DocumentEditorToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB20B780BCC307EE18CF24D3 /* DocumentEditorToolbar.swift */; };
+		D65ED09543D8CF7ABC146FF0 /* AppIconSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 434C5BEAA53589C21BDC6197 /* AppIconSettings.swift */; };
 		D6E3FF1559CAAAE57EDC446B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A3A55FE7BDA62F4175A28D2 /* Assets.xcassets */; };
 		D6EEB258E7B80832B07A67DC /* DocumentTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDB84E1E2B58F553721951F1 /* DocumentTabBar.swift */; };
 		D799149952AEEC85476E82B6 /* LivePhotoAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C2D1BC4DA20D76871039412 /* LivePhotoAttachment.swift */; };
@@ -446,6 +448,7 @@
 		4283D70BD56B4D3DC3CF784D /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		429CDBD0C83D6E209FAE2D3F /* KeyboardBehaviorUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardBehaviorUITests.swift; sourceTree = "<group>"; };
 		4341AB98A04360584EC3B4BD /* PhotoSendReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoSendReviewSheet.swift; sourceTree = "<group>"; };
+		434C5BEAA53589C21BDC6197 /* AppIconSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconSettings.swift; sourceTree = "<group>"; };
 		442174FAD2A3DF14419AC2C0 /* ComposerTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerTextView.swift; sourceTree = "<group>"; };
 		44A3C66207D7BD48F04030BF /* CloudConversationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudConversationCatalogTests.swift; sourceTree = "<group>"; };
 		44C7E9E4C6857663B73F5B81 /* KordiShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KordiShareExtension.entitlements; sourceTree = "<group>"; };
@@ -547,6 +550,7 @@
 		91F583054F514DF4B9CE1523 /* ProviderAuthenticationDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAuthenticationDetailView.swift; sourceTree = "<group>"; };
 		9342AD4F8DA861194BABA573 /* ConversationReadVisibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationReadVisibility.swift; sourceTree = "<group>"; };
 		935EFE99E0807E1CF8BE8FA7 /* ComposerMentionMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerMentionMenuTests.swift; sourceTree = "<group>"; };
+		942DF88B34C4810542A55879 /* AppIconSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconSettingsTests.swift; sourceTree = "<group>"; };
 		947D36AE16CB8FC9349B6169 /* EmojiAnimationDiskCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiAnimationDiskCache.swift; sourceTree = "<group>"; };
 		958064210641FA020E27EF19 /* ChatHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHomeView.swift; sourceTree = "<group>"; };
 		95C1CA4FAB75E8423430A5D4 /* MessageDeletionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageDeletionUITests.swift; sourceTree = "<group>"; };
@@ -768,6 +772,7 @@
 				B59AC51FDAA0275E9CB6B4F1 /* AccountEmailVerificationSheet.swift */,
 				D103773112752246FE1B75D5 /* AccountSheet.swift */,
 				1B88DF41D19006D8E991CD1A /* AppearanceSettingsView.swift */,
+				434C5BEAA53589C21BDC6197 /* AppIconSettings.swift */,
 				AE6836951918DDB7B33A33B6 /* CloudDeviceGroups.swift */,
 				8232EDB843A4459373D95A16 /* MemoryRows.swift */,
 				3E2DC6199D18F50DD5C5DBC4 /* MemorySettingsModel.swift */,
@@ -1088,6 +1093,7 @@
 				9937A528C34DE6A3E1ADC0D5 /* AgentSubsessionStopTests.swift */,
 				D31C58A675895E2F82B65D1F /* AgentTrajectoryLayoutTests.swift */,
 				159FD254209B064E61263E63 /* AppearanceSettingsTests.swift */,
+				942DF88B34C4810542A55879 /* AppIconSettingsTests.swift */,
 				E2EB23221667A825E421722D /* AttachmentReactionMutationQueueTests.swift */,
 				A21B553E883C637AF55134AE /* AttachmentTransferTests.swift */,
 				8DB852A1AC3BAABE284AC4D5 /* AvatarIdentityTests.swift */,
@@ -1544,6 +1550,7 @@
 				0B72A6AC80380063ABDC7755 /* AgentSessionPresentationTests.swift in Sources */,
 				7D759868D8B2AC1940DA003C /* AgentSubsessionStopTests.swift in Sources */,
 				7B59FD457626E06D06B121EC /* AgentTrajectoryLayoutTests.swift in Sources */,
+				49B9F4B68E95A82517BBC34D /* AppIconSettingsTests.swift in Sources */,
 				BFA9C1BD28C6BAF230728C89 /* AppearanceSettingsTests.swift in Sources */,
 				82F8E9F873B0DC7C0CF81168 /* AttachmentReactionMutationQueueTests.swift in Sources */,
 				688B8035C36DDCB0F8505288 /* AttachmentTransferTests.swift in Sources */,
@@ -1643,6 +1650,7 @@
 				1B01D5196E4A8A7D4D26742B /* AgentSubsessionStopButton.swift in Sources */,
 				A1A37E6BA1FAA2744376AD88 /* AgentSubsessionStopPreview.swift in Sources */,
 				3E99C2FE90CDE57668D8E4CA /* AgentSubsessionView.swift in Sources */,
+				D65ED09543D8CF7ABC146FF0 /* AppIconSettings.swift in Sources */,
 				7B0A2530B19830857AC137E9 /* AppModel+CommonGround.swift in Sources */,
 				BE7A0C420EAEE2B706EFF49E /* AppModel+Digest.swift in Sources */,
 				E1DA88F3DADA025B847BEA95 /* AppModel+Projects.swift in Sources */,
@@ -1880,6 +1888,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APNS_ENVIRONMENT = production;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-frosted AppIcon-rice AppIcon-coral AppIcon-sakura AppIcon-butter AppIcon-mint AppIcon-sky AppIcon-lavender AppIcon-night AppIcon-midnight AppIcon-forest AppIcon-plum AppIcon-cocoa AppIcon-slate AppIcon-night-sakura AppIcon-midnight-sky";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Kordi/Supporting/Kordi.entitlements;
@@ -2138,6 +2147,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APNS_ENVIRONMENT = development;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-frosted AppIcon-rice AppIcon-coral AppIcon-sakura AppIcon-butter AppIcon-mint AppIcon-sky AppIcon-lavender AppIcon-night AppIcon-midnight AppIcon-forest AppIcon-plum AppIcon-cocoa AppIcon-slate AppIcon-night-sakura AppIcon-midnight-sky";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Kordi/Supporting/Kordi.entitlements;
@@ -2183,6 +2193,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APNS_ENVIRONMENT = development;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-frosted AppIcon-rice AppIcon-coral AppIcon-sakura AppIcon-butter AppIcon-mint AppIcon-sky AppIcon-lavender AppIcon-night AppIcon-midnight AppIcon-forest AppIcon-plum AppIcon-cocoa AppIcon-slate AppIcon-night-sakura AppIcon-midnight-sky";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIconBeta;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Kordi/Supporting/Kordi.entitlements;

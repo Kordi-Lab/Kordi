@@ -1,3 +1,4 @@
+mod app_icon;
 mod auth;
 mod auth_window;
 mod avatar_picker;
@@ -198,6 +199,7 @@ pub fn run() {
             transcript_trace::desktop_transcript_trace,
             auth_window::desktop_set_auth_window_surface,
             window_backdrop::desktop_set_window_backdrop,
+            app_icon::desktop_set_app_icon,
             desktop_workspace_status,
             desktop_read_workspace_text_file,
             desktop_write_workspace_text_file,
@@ -215,6 +217,7 @@ pub fn run() {
             mac_local::common_ground::common_ground_device_status,
             mac_local::common_ground::common_ground_device_request,
             mac_local::common_ground::common_ground_device_titles,
+            mac_local::common_ground::common_ground_agent_files,
             digest_calendar::desktop_digest_calendars,
             digest_calendar::desktop_digest_fetch_ics,
             digest_calendar::desktop_digest_calendar_events,

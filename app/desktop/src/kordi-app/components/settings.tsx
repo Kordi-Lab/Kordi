@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import { ChevronDown } from 'lucide-react';
 
 import {
@@ -7,8 +7,16 @@ import {
   writeStoredChatTheme,
   type ChatTheme,
 } from '@/app/themePreference';
+import {
+  KORDI_APP_ICONS,
+  applyAppIcon,
+  readStoredAppIcon,
+  writeStoredAppIcon,
+  type AppIconKey,
+} from '@/app/appIconPreference';
 import { settingsSections } from '../data';
-import { SettingsSelect, SettingsSwitch } from './settingsLayout';
+import { AppIconThumbnail } from './AppIconThumbnail';
+import { SettingsRow, SettingsSelect, SettingsSwitch } from './settingsLayout';
 import type { ThemeMode } from '../types';
 
 const THEME_OPTIONS: Array<{ mode: ThemeMode; label: string }> = [
@@ -51,6 +59,51 @@ function ChatThemeSelector() {
   );
 }
 
+/** Every app icon shown at once; clicking one switches the Dock icon. */
+export function AppIconPicker() {
+  const [appIcon, setAppIcon] = useState<AppIconKey>(() => readStoredAppIcon());
+  const choose = (key: AppIconKey) => {
+    if (key === appIcon) return;
+    setAppIcon(key);
+    writeStoredAppIcon(key);
+    applyAppIcon(key);
+  };
+  // Radio group keyboard model: one tab stop, arrow keys move the selection.
+  const moveSelection = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    const index = KORDI_APP_ICONS.findIndex((icon) => icon.key === appIcon);
+    const next = KORDI_APP_ICONS[(index + step + KORDI_APP_ICONS.length) % KORDI_APP_ICONS.length];
+    choose(next.key);
+    event.currentTarget.querySelector<HTMLButtonElement>(`[data-app-icon="${next.key}"]`)?.focus();
+  };
+
+  return (
+    <div role="radiogroup" aria-label="App icon" onKeyDown={moveSelection} className="app-settings-app-icon-grid flex flex-wrap gap-2">
+      {KORDI_APP_ICONS.map((icon) => {
+        const selected = icon.key === appIcon;
+        return (
+          <button
+            key={icon.key}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            aria-label={icon.label}
+            title={icon.label}
+            tabIndex={selected ? 0 : -1}
+            data-app-icon={icon.key}
+            onClick={() => choose(icon.key)}
+            className={`app-settings-app-icon grid h-14 w-14 place-items-center rounded-[14px] outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-[var(--app-quiet-control-focus-ring)] ${selected ? 'ring-2 ring-[var(--app-quiet-control-focus-ring)]' : 'hover:bg-[color:var(--app-quiet-control-hover-bg)]'}`}
+          >
+            <AppIconThumbnail icon={icon} className="h-10 w-10 rounded-[10px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.12)]" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function SettingsValueControl({
   item,
   themeMode,
@@ -76,6 +129,10 @@ export function SettingsValueControl({
 
   if (controlType === 'chat-theme') {
     return <ChatThemeSelector />;
+  }
+
+  if (controlType === 'app-icon') {
+    return <AppIconPicker />;
   }
 
   if (controlType === 'toggle') {
@@ -106,5 +163,30 @@ export function SettingsValueControl({
       </div>
       <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
     </button>
+  );
+}
+
+type SettingsItem = (typeof settingsSections)[number]['items'][number];
+
+/** One Appearance row; the app icon grid sits below its title instead of beside it. */
+export function AppearanceSettingsRow({
+  item,
+  themeMode,
+  onSelectThemeMode,
+}: {
+  item: SettingsItem;
+  themeMode: ThemeMode;
+  onSelectThemeMode: (mode: ThemeMode) => void;
+}) {
+  const isAppIcon = item.control?.type === 'app-icon';
+  return (
+    <SettingsRow
+      className="app-settings-option-row"
+      title={item.label}
+      description={item.hint}
+      control={isAppIcon ? undefined : <SettingsValueControl item={item} themeMode={themeMode} onSelectThemeMode={onSelectThemeMode} />}
+    >
+      {isAppIcon ? <AppIconPicker /> : null}
+    </SettingsRow>
   );
 }

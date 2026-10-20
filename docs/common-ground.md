@@ -15,7 +15,7 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
 
 | Where | iOS | macOS |
 |---|---|---|
-| Primary | The Contacts toolbar icon beside **Add contact**: a hug glyph (two people and a small heart) in the same style as the other toolbar icons, with a red dot when a room invitation is waiting. No pinned row in the list. | A **Common ground** row with the same hug glyph, pinned at the top of the Contacts list. Selecting it opens Common ground in the Contacts detail area, the way selecting a contact opens their profile. No separate sidebar item. |
+| Primary | The Contacts toolbar icon beside **Add contact**: a hug glyph (two people) in the same style as the other toolbar icons, with a red dot when a room invitation is waiting. No pinned row in the list. | A **Common ground** row with the same hug glyph, pinned at the top of the Contacts list. Selecting it opens Common ground in the Contacts detail area, the way selecting a contact opens their profile. No separate sidebar item. |
 | Card and sources | **Settings › Common ground**: your card, sources, sharing on or off, delete card. | The card column on the page; the same settings in **Settings › Common ground**. |
 | Deep links | `kordi://common-ground/room/<code>` and pairing QR codes open the app at the right step. | The same links open the page. |
 | Availability | Shown only when the server reports the `commonGroundVersion` capability. | Same. |
@@ -29,6 +29,7 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
    - **Kordi**: Memory (the account's saved memories) and each connected connector (Gmail, Google Calendar, GitHub, Slack). A connector that is not connected shows **Connect**, which opens Settings › Connectors and returns here.
    - **On this iPhone** (iOS) / **On this Mac** (macOS): Calendar, Reminders. **Allow** shows the system prompt; the row then shows the count found and a switch.
    - **Agents on this Mac** (macOS only): instruction and memory files from local coding agents, redacted before use.
+     The server reads up to 12 files, keeps at most 2,000 characters of each after redaction, and rejects a build whose agent text passes 60,000 characters.
    - **Links**: URLs and text separated by `;` (homepage, ORCID, papers). Sites that need sign-in are skipped with a reason.
    - **Notes**: free text.
    - Primary button **Build profile**, enabled when at least one source is on.

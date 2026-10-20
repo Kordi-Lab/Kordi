@@ -252,7 +252,7 @@ struct CommonGroundThinking: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            KordiMark(size: 72, colorRelay: true)
+            KordiMark(size: 72, flying: true)
             Text(steps[min(index, steps.count - 1)])
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
