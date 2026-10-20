@@ -24,6 +24,7 @@ pub(crate) mod create;
 pub(crate) mod delivery;
 pub(crate) mod desktop;
 mod edit;
+pub(crate) mod finished_run;
 pub(crate) mod gating;
 pub(crate) mod mentions;
 pub(crate) mod operations;

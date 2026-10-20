@@ -115,3 +115,19 @@ test('account switch rejects late claim and late lookup without restoring old pr
     assert.equal(harness.state().messages.some((message) => message.id === hostedSelfAgentProgressId(requestId)), false);
   });
 });
+
+test('a run the Mac takes from the queue clears the hosted progress row', async () => {
+  await withHarness(async (harness) => {
+    await act(async () => { harness.track(claim, run('queued'), 'synthetic-token'); });
+    const progressId = hostedSelfAgentProgressId(requestId);
+    assert.equal(harness.state().messages.find((message) => message.id === progressId)?.status, 'queued');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1_100)); });
+    await act(async () => {
+      harness.releaseLookup({ ...run('running'), executionBackend: 'desktop' });
+      await Promise.resolve();
+    });
+    assert.equal(harness.state().messages.some((message) => message.id === progressId), false);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1_100)); });
+    assert.equal(harness.lookups(), 1, 'tracking stops once the Mac owns the run');
+  });
+});

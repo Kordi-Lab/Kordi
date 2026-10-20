@@ -17,6 +17,18 @@ pub(crate) async fn agent_desktop_ready(
 }
 
 pub(in crate::cloud_agent_runtime) async fn claim(
+    state: State<Arc<ServerState>>,
+    session: Extension<CloudSession>,
+    input: Json<DesktopClaimInput>,
+) -> Response {
+    let started = std::time::Instant::now();
+    let response = claim_request(state, session, input).await;
+    let outcome = response.status();
+    super::super::run_locks::log_op("desktop_claim", None, outcome.as_str(), started);
+    response
+}
+
+async fn claim_request(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Json(mut input): Json<DesktopClaimInput>,

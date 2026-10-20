@@ -91,6 +91,10 @@ pub(crate) fn edit_document_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
+            "attachmentId": {
+                "type": "string",
+                "description": "The document to edit, as read_document returned it. Omit it for the document this request is about."
+            },
             "baseRevision": {
                 "type": "integer",
                 "description": "The revision read_document returned."
@@ -150,9 +154,10 @@ pub(crate) fn descriptors(read: bool, edit: bool) -> Vec<LeaseConnectorTool> {
         tools.push(descriptor(
             EDIT_DOCUMENT_TOOL,
             ConnectorToolGroup::Act,
-            "Edit the shared Kordi document this request is about by replacing, inserting \
-             after, or deleting blocks. Read the document first and pass its revision. Use it \
-             only when the person asked for a change, then say what you changed.",
+            "Edit a shared Kordi document of this conversation by replacing, inserting after, \
+             or deleting blocks. Read the document first and pass its attachmentId and \
+             revision. Use it only when the person asked for a change, then say what you \
+             changed.",
         ));
     }
     tools
@@ -234,9 +239,12 @@ pub(crate) async fn call(
     let lease = match load_active_lease(pool, run_id, holder).await {
         Ok(Some(lease)) => lease.tools,
         // A background task of a finished desktop run may still deliver its
-        // document to the run's group.
-        Ok(None) if tool == CREATE_DOCUMENT_TOOL => {
-            match super::create::finished_desktop_lease_tools(pool, run_id, holder).await {
+        // document to the run's group, and the owner's own task may still
+        // read the conversation's documents.
+        Ok(None) if tool != EDIT_DOCUMENT_TOOL => {
+            match super::finished_run::finished_desktop_lease_tools(pool, run_id, holder, tool)
+                .await
+            {
                 Ok(Some(tools)) => tools,
                 Ok(None) => {
                     return refuse(

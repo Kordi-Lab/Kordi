@@ -51,3 +51,16 @@ export function cloudSelfAgentProgressPolicy(
     activeSessionIds.has(sessionId),
   );
 }
+
+/**
+ * Whether a published message enters this Mac's message index at once. A
+ * live hosted request always does, so its run is admitted without waiting for
+ * the next full sync; a history session's other rows wait for that sync.
+ */
+export function cloudSelfAgentPublishedMessageEntersIndex(
+  operation: Pick<CloudSelfAgentSyncOperation, 'sessionId' | 'agentRuntimeRoute' | 'queued' | 'cancelledWhileQueued' | 'historyOnly'>,
+  shouldPublishProgress: (sessionId: string) => boolean,
+): boolean {
+  return shouldPublishProgress(operation.sessionId)
+    || !publishedSelfAgentRequestAlreadyExecutedLocally(operation);
+}

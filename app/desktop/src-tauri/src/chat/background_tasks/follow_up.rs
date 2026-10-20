@@ -76,6 +76,31 @@ pub(super) async fn claim(manager: &DesktopChatManager, id: &str) -> bool {
         .insert(id.to_string())
 }
 
+/// The follow-up's identity, with the route the webview registered for the
+/// parent request, so a reloaded webview can still publish the reply.
+pub(super) async fn origin(
+    manager: &DesktopChatManager,
+    id: String,
+    task: &super::managed_child::ManagedTask,
+    parent_request_id: Option<String>,
+    status: &str,
+) -> DesktopBackgroundFollowUp {
+    let route = manager
+        .background_follow_up_routes
+        .lock()
+        .await
+        .get(parent_request_id.as_deref());
+    DesktopBackgroundFollowUp {
+        id,
+        session_id: task.session_id.clone(),
+        parent_request_id,
+        title: task.title.clone(),
+        status: status.to_string(),
+        route,
+        published: false,
+    }
+}
+
 /// Labels the started turn and exposes it to the background turn discovery,
 /// which publishes its reply like any other agent reply.
 pub(super) async fn expose_turn(
@@ -93,6 +118,23 @@ pub(super) async fn expose_turn(
         .lock()
         .await
         .insert(turn_id.to_string());
+}
+
+/// Marks a follow-up turn's reply as published. Returns false for a turn
+/// that is unknown or not a follow-up.
+pub(super) async fn mark_published(manager: &DesktopChatManager, turn_id: &str) -> bool {
+    let turns = manager.turns.lock().await;
+    let Some(turn) = turns.get(turn_id.trim()) else {
+        return false;
+    };
+    let mut marked = false;
+    update_turn(&turn.snapshot, |state| {
+        if let Some(follow_up) = state.background_follow_up.as_mut() {
+            follow_up.published = true;
+            marked = true;
+        }
+    });
+    marked
 }
 
 #[cfg(test)]
@@ -229,6 +271,8 @@ mod tests {
             parent_request_id: Some("request".into()),
             title: "Count lines".into(),
             status: "done".into(),
+            route: Some(serde_json::json!({"kind": "direct", "peerId": "peer"})),
+            published: false,
         };
 
         expose_turn(&manager, "follow-up-turn", origin.clone()).await;
@@ -236,6 +280,81 @@ mod tests {
         let turns = crate::chat::active_turn_snapshots(&manager).await.unwrap();
         assert_eq!(turns.len(), 1);
         assert_eq!(turns[0].background_follow_up.as_ref(), Some(&origin));
+    }
+
+    #[tokio::test]
+    async fn a_follow_up_carries_the_route_of_its_parent_request() {
+        let manager = DesktopChatManager::default();
+        let route = serde_json::json!({"kind": "group", "groupId": "group-1"});
+        manager
+            .background_follow_up_routes
+            .lock()
+            .await
+            .remember("request", route.clone());
+        let task = super::super::managed_child::ManagedTask {
+            session_id: "child".into(),
+            turn_id: "child-turn".into(),
+            title: "Count lines".into(),
+        };
+
+        let routed = origin(
+            &manager,
+            follow_up_id("child", "done"),
+            &task,
+            Some("request".into()),
+            "done",
+        )
+        .await;
+        assert_eq!(routed.route, Some(route));
+        assert!(!routed.published);
+        assert_eq!(routed.parent_request_id.as_deref(), Some("request"));
+
+        let unrouted = origin(
+            &manager,
+            follow_up_id("child", "failed"),
+            &task,
+            None,
+            "failed",
+        )
+        .await;
+        assert_eq!(unrouted.route, None);
+        assert_eq!(unrouted.status, "failed");
+    }
+
+    #[tokio::test]
+    async fn a_published_follow_up_stays_published_for_the_next_discovery() {
+        let manager = DesktopChatManager::default();
+        manager
+            .turns
+            .lock()
+            .await
+            .insert("plain-turn".into(), handle("plain-turn"));
+        manager
+            .turns
+            .lock()
+            .await
+            .insert("follow-up-turn".into(), handle("follow-up-turn"));
+        let origin = DesktopBackgroundFollowUp {
+            id: follow_up_id("child", "done"),
+            session_id: "child".into(),
+            parent_request_id: Some("request".into()),
+            title: "Count lines".into(),
+            status: "done".into(),
+            route: None,
+            published: false,
+        };
+        expose_turn(&manager, "follow-up-turn", origin).await;
+
+        assert!(!mark_published(&manager, "unknown-turn").await);
+        assert!(!mark_published(&manager, "plain-turn").await);
+        assert!(mark_published(&manager, "follow-up-turn").await);
+
+        let turns = crate::chat::active_turn_snapshots(&manager).await.unwrap();
+        let follow_up = turns[0].background_follow_up.as_ref().unwrap();
+        assert!(follow_up.published);
+        let json = serde_json::to_value(follow_up).unwrap();
+        assert_eq!(json["published"], serde_json::json!(true));
+        assert!(json.get("route").is_none());
     }
 
     #[test]

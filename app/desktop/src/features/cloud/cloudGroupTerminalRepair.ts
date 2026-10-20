@@ -59,8 +59,8 @@ function agentSlotCoordinatesKey(
         : ''
     );
   if (!senderAccountId) return null;
-  const linkedRequestId = cleanText(message.parentMessageId)
-    || cleanText(content.requestId)
+  const linkedRequestId = cleanText(content.requestId)
+    || cleanText(message.parentMessageId)
     || cleanText(content.replyToMessageId);
   if (!linkedRequestId) return null;
   return coordinatesKey({

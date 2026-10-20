@@ -20,7 +20,7 @@ import {
   startDesktopSharedChatMessage,
 } from '@/lib/desktopBackgroundSessions';
 import { publishModelSubsessions } from './agentSubsessionSync';
-import { registerCloudBackgroundFollowUpPublisher } from './cloudBackgroundFollowUps';
+import { cloudGroupBackgroundFollowUpRoute } from './cloudGroupBackgroundFollowUp';
 import { cloudAgentPublicBackgroundToolsFromTurn } from './cloudAgentBackgroundSessions';
 import {
   cloudAgentProviderFailureNotice,
@@ -32,6 +32,7 @@ import {
 import { cloudAgentTurnReplyText } from './cloudAgentReplyText';
 import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
+import { handBackDesktopRun } from './cloudDesktopRunHandback';
 import type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.types';
 import { handleCloudGroupAgentFailure } from './cloudGroupAgentFailure';
 import {
@@ -148,6 +149,7 @@ export async function respondToCloudGroupAgentMention(
     runtimeRoute: requestedRoute ? { defaultModel: requestedRoute.model, defaultAuthProvider: requestedRoute.authProvider, defaultAuthChoice: requestedRoute.authChoice, thinking: requestedRoute.thinking } : undefined,
   });
   if (!lease) { void runtime.syncDiff(); return; }
+  let localTurnStarted = false;
   try {
   if (!await lease.admitted()) return;
   const presentation = await ensureCloudGroupAgentIdentity(input, signal);
@@ -181,6 +183,15 @@ export async function respondToCloudGroupAgentMention(
       [message.id]: { ...snapshot, replyToMessageId: message.id, messageAction: threadMessageAction },
     }));
   };
+  // A background follow-up of this request publishes its reply here, also
+  // after the webview reloads.
+  const backgroundFollowUpRoute = cloudGroupBackgroundFollowUpRoute({
+    context,
+    messageAction: threadMessageAction ?? null,
+    targetAccountIds,
+    agentId: presentation.agentId,
+    agentDisplayName: presentation.displayName,
+  });
   const runtimeStartSpan = beginChatPerformanceSpan(
     'cloud-agent-runtime-start',
   );
@@ -201,6 +212,7 @@ export async function respondToCloudGroupAgentMention(
       ),
       envelope.groupId,
       lease.deadline,
+      backgroundFollowUpRoute,
     );
     finishChatPerformanceSpan(runtimeStartSpan, { resultClass: 'success' });
   } catch (error) {
@@ -208,33 +220,12 @@ export async function respondToCloudGroupAgentMention(
     if (desktopSharedRequestAlreadyStarted(error)) return;
     throw error;
   }
+  localTurnStarted = true;
   lease.attach(startedTurn.id);
   const replyContext = threadMessageAction ? {
     ...context,
     envelope: { ...envelope, message: { ...message, messageAction: threadMessageAction } },
   } : context;
-  registerCloudBackgroundFollowUpPublisher(message.id, async (reply) => {
-    const current = await loadSession();
-    if (!current?.token || current.accountId !== account.accountId) return;
-    await publishCloudGroupAgentTerminalAfterGuards({
-      publisher: runtime.client,
-      context: replyContext,
-      runtime,
-      policy,
-      token: current.token,
-      targetAccountIds,
-      responseMessageId: `msg:cloud-agent:${reply.turn.id}`,
-      responseCreatedAtMs: reply.turn.completedAtMs ?? Date.now(),
-      responseText: reply.text,
-      responseDeliveryState: reply.deliveryState === 'complete' ? 'complete' : 'failed',
-      responseTools: [],
-      requestId: reply.requestId,
-      agentId: presentation.agentId,
-      agentDisplayName: presentation.displayName,
-      agentHandoff: null,
-      signal: new AbortController().signal,
-    });
-  });
   const processingMessageId =
     `msg:cloud-agent-processing:${message.id}:${account.accountId}`;
   const processingCreatedAtMs = Date.now();
@@ -460,6 +451,16 @@ export async function respondToCloudGroupAgentMention(
     agentHandoff,
     signal,
   }).catch((error) => runtime.reportFailure('local-response', error));
+  } catch (error) {
+    // Before a local turn starts, this Mac hands the run back so the cloud
+    // answers at once instead of the mention failing.
+    if (!localTurnStarted && !signal.aborted
+      && await handBackDesktopRun(runtime.client, session.token, lease)) {
+      runtime.reportFailure('local-response', error);
+      void runtime.syncDiff();
+      return;
+    }
+    throw error;
   } finally {
     if (signal.aborted) await lease.cancel().catch(() => undefined);
     lease.dispose();

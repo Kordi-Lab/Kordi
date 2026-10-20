@@ -86,7 +86,7 @@ import {
   dispatchLocalAgentVoiceTurn,
   localAgentNoProviderCompletion,
   markLocalAgentMessageDelivered,
-  releaseLocalChatSend, routeRunsOnKordiCloud, startLocalAgentTurn,
+  appendOptimisticAgentRequest, releaseLocalChatSend, routeRunsOnKordiCloud, startLocalAgentTurn,
 } from './localAgentTurnDispatch';
 import { localChatSendDelayReason,localChatTargetHasRunningTurn,queuedDesktopChatMessageFromDraft } from "./localChatQueue";
 import { mentionsLocalAgent } from './mentions';
@@ -530,8 +530,8 @@ export function useChatMessageActions({
       quote,
     );
     let resolvedMaterializedState = materializedState;
-
-    setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
+    const route = runtimeRoute ?? resolveChatRuntimeRoute(canonicalSessionId);
+    setCanonicalSessionState((current) => appendOptimisticAgentRequest(current, preparedCanonicalMessage, { route, contextMessages }));
     if (!preserveComposer) clearComposerAfterSend(clearDraftSessionIds);
 
     try {
@@ -544,7 +544,7 @@ export function useChatMessageActions({
       await persistCanonicalUserMessage(preparedCanonicalMessage);
       const turnContext = {
         targetConversationId, canonicalSessionId, canonicalSessionState, text, attachmentPaths, contextMessages,
-        route: runtimeRoute ?? resolveChatRuntimeRoute(canonicalSessionId),
+        route,
         setCanonicalSessionState, setDesktopChatError, watchTurn: watchLocalTurnAndFlushQueue,
       };
       if (agentVoiceTranscription) {

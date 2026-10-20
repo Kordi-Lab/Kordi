@@ -16,6 +16,7 @@ import {
 import { cloudDirectMessageAgentRuntimeRoute } from './cloudDirectMessages';
 import {
   cloudSelfAgentExecutionCanStart,
+  cloudSelfAgentLocalTurnsToOmit,
   cloudSelfAgentTerminalOrLocalRequestIds,
   omitTerminalCloudSelfAgentLocalTurns,
   pendingCloudSelfAgentExecutionRequests,
@@ -97,7 +98,7 @@ export function useCloudSelfAgentExecution({
     const terminalRequestIds = cloudSelfAgentTerminalOrLocalRequestIds(selfMessages, canonicalState);
     setLocalTurns((current) => omitTerminalCloudSelfAgentLocalTurns(
       current,
-      terminalRequestIds,
+      cloudSelfAgentLocalTurnsToOmit(terminalRequestIds, selfMessages, canonicalState),
     ));
     for (const requestId of terminalRequestIds) {
       const activeTurnId = turnIdsByRequestIdRef.current.get(requestId);

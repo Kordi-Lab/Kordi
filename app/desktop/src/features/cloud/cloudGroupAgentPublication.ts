@@ -32,6 +32,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   responseText,
   responseDeliveryState,
   responseTools,
+  responseTiming,
   requestId,
   agentId,
   agentDisplayName,
@@ -49,6 +50,8 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   responseText: string;
   responseDeliveryState: 'complete' | 'failed';
   responseTools: CloudAgentExecutionTool[];
+  /** The turn's own timing, so a follow-up reply shows how long it worked. */
+  responseTiming?: { startedAtMs?: number | null; completedAtMs?: number | null };
   /** A follow-up reply carries its own request id so it never replaces the first reply. */
   requestId?: string;
   agentId: string;
@@ -120,9 +123,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
           replyToMessageId: message.id,
           requestId: requestId ?? message.id,
           ...(message.messageAction?.kind === 'thread' ? { messageAction: message.messageAction } : {}),
-          structuredContent: responseTools.length > 0
-            ? { tools: responseTools }
-            : null,
+          structuredContent: cloudGroupAgentStructuredContent(responseTools, responseTiming),
           ...(agentHandoff ?? {}),
         },
       }),
@@ -146,6 +147,16 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
     });
   }
   if (!signal.aborted) void runtime.syncDiff();
+}
+
+function cloudGroupAgentStructuredContent(
+  tools: CloudAgentExecutionTool[],
+  timing?: { startedAtMs?: number | null; completedAtMs?: number | null },
+): Record<string, unknown> | null {
+  const content: Record<string, unknown> = tools.length > 0 ? { tools } : {};
+  if (typeof timing?.startedAtMs === 'number') content.startedAtMs = timing.startedAtMs;
+  if (typeof timing?.completedAtMs === 'number') content.completedAtMs = timing.completedAtMs;
+  return Object.keys(content).length > 0 ? content : null;
 }
 
 export async function publishCloudGroupAgentEnvelope({
