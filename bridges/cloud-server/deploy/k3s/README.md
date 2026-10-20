@@ -176,10 +176,14 @@ the desktop to remain open. Production addresses are stored in Kubernetes
 Secrets rather than this repository. The locked support-owner account,
 notification inbox, and outbound-mail identity are configured independently.
 
-Never use a Google account password for SMTP and never place mail credentials
-in a manifest, shell history, desktop environment, or repository. Enable
-two-step verification on the mailbox, create a dedicated Gmail app password,
-then create the Kubernetes Secret from a trusted operator shell:
+Never use the mailbox's account password for SMTP and never place mail
+credentials in a manifest, shell history, desktop environment, or repository.
+Enable two-step verification on the mailbox and create an application-specific
+password (Zoho Mail: Accounts > Security > Application-Specific Passwords; the
+authenticated user must be allowed to send as the From address, which for a Zoho
+group is the member's "Send using group email address" permission). Production
+currently uses Zoho Mail (`smtp.zoho.com`, port 587, STARTTLS). Create the
+Kubernetes Secret from a trusted operator shell:
 
 ```bash
 read -r -p "Support owner email: " KORDI_SUPPORT_OWNER_EMAIL
@@ -201,6 +205,30 @@ kubectl -n kordi-cloud create secret generic kordi-support-smtp \
 unset KORDI_SUPPORT_OWNER_EMAIL KORDI_SUPPORT_INBOX
 unset KORDI_SUPPORT_SMTP_USERNAME KORDI_SUPPORT_SMTP_FROM KORDI_SUPPORT_SMTP_PASSWORD
 ```
+
+Signup verification codes use a separate `kordi-auth-email` Secret with the same
+SMTP account rules. `code-secret` is a random value of at least 32 bytes:
+
+```bash
+read -r -p "SMTP host: " KORDI_AUTH_SMTP_HOST
+read -r -p "SMTP username: " KORDI_AUTH_SMTP_USERNAME
+read -r -p "SMTP From mailbox: " KORDI_AUTH_SMTP_FROM
+read -s -p "SMTP app password: " KORDI_AUTH_SMTP_PASSWORD
+echo
+kubectl -n kordi-cloud create secret generic kordi-auth-email \
+  --from-literal=smtp-host="$KORDI_AUTH_SMTP_HOST" \
+  --from-literal=smtp-port=587 \
+  --from-literal=smtp-username="$KORDI_AUTH_SMTP_USERNAME" \
+  --from-literal=smtp-password="$KORDI_AUTH_SMTP_PASSWORD" \
+  --from-literal=smtp-from="$KORDI_AUTH_SMTP_FROM" \
+  --from-literal=code-secret="$(openssl rand -hex 32)" \
+  --dry-run=client -o yaml | kubectl apply -f -
+unset KORDI_AUTH_SMTP_HOST KORDI_AUTH_SMTP_USERNAME KORDI_AUTH_SMTP_FROM KORDI_AUTH_SMTP_PASSWORD
+```
+
+At startup the server logs "Kordi signup email verification is configured" when
+the Secret is complete, otherwise "Kordi password signup is unavailable until
+signup email delivery is configured".
 
 The hosted support chat uses a dedicated OpenAI API key owned by the service.
 It never borrows a provider-auth snapshot from the support owner or the person
