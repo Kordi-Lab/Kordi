@@ -61,11 +61,12 @@ export type CgBuildRequest = {
   notes: string;
 };
 
-export type CgPersonCard = { person: CgPerson; card: CgTopicLists };
+/** The server sends `relationship` beside `person`; the client folds it into `person`. */
+export type CgPersonCard = { person: CgPerson; card: CgTopicLists; relationship?: CgRelationship };
 
 export type CgPairCode = { code: string; expiresAt: string };
 
-export type CgRecentEntry = { person: CgPerson; score: number | null; headline: string | null; openedAt?: string };
+export type CgRecentEntry = { person: CgPerson; score: number | null; headline: string | null; openedAt?: string; relationship?: CgRelationship };
 
 export type CgGroup = {
   groupSpaceId: string;
@@ -90,7 +91,7 @@ export type CgRoom = {
 };
 
 export type CgTheme = { label: string; people: CgPerson[] };
-export type CgRankedPerson = { person: CgPerson; score: number; headline: string };
+export type CgRankedPerson = { person: CgPerson; score: number; headline: string; relationship?: CgRelationship };
 export type CgMatchStatus = 'ready' | 'matching' | 'failed';
 
 export type CgResults = {
@@ -114,6 +115,7 @@ export type CgMatch = {
   youBring?: CgTrade[];
   theyBring?: CgTrade[];
   nextStep?: string;
+  relationship?: CgRelationship;
 };
 
 export type CgMeetInput = { title?: string; startAt: string; endAt?: string; location?: string };

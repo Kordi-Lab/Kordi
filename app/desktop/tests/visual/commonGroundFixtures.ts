@@ -49,9 +49,11 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
     groups: [{ groupSpaceId: 'gs_eval', conversationId: 'group:gs_eval', name: 'Eval reading group', memberCount: 4, createdBy: maya, joined: true }],
     invitations: [{ invitationRef: 'inv_1', groupSpaceId: 'gs_ret', name: 'Retrieval', from: rafa, createdAt: '2026-10-20T09:00:00Z' }],
   };
+  // As the server sends it: the relationship beside the person, not inside it.
+  const { relationship: _hanaRelationship, ...hanaPerson } = hana;
   const match = {
     status: 'ready',
-    person: hana,
+    person: hanaPerson,
     score: 82,
     headline: 'Agent memory',
     shared: [

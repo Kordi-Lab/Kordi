@@ -5,7 +5,7 @@
 
 import { CommonGroundError, commonGroundErrorCode, commonGroundErrorMessage, isRouteMissing, type CommonGroundClient } from './client';
 import type {
-  CgBuildRequest, CgMatch, CgOwnerView, CgPairCode, CgPersonCard, CgRecentEntry, CgRelationship, CgResults, CgRoom,
+  CgBuildRequest, CgMatch, CgOwnerView, CgPersonCard, CgRecentEntry, CgRelationship, CgResults, CgRoom,
   CgTopicLists,
 } from './types';
 
@@ -13,7 +13,6 @@ export type CgScreen =
   | { name: 'home' }
   | { name: 'build' }
   | { name: 'card' }
-  | { name: 'pair'; accountId: string }
   | { name: 'lobby'; code: string }
   | { name: 'results'; code: string }
   | { name: 'match'; accountId: string }
@@ -27,7 +26,6 @@ export type CgState = {
   owner: CgOwnerView | null;
   loaded: boolean;
   recent: CgRecentEntry[];
-  pairCode: CgPairCode | null;
   rooms: Record<string, CgRoom>;
   results: Record<string, CgResults>;
   matches: Record<string, CgMatch>;
@@ -49,7 +47,6 @@ const initialState = (): CgState => ({
   owner: null,
   loaded: false,
   recent: [],
-  pairCode: null,
   rooms: {},
   results: {},
   matches: {},
@@ -70,7 +67,7 @@ export class CommonGroundStore {
   private listeners = new Set<() => void>();
   private disposed = false;
 
-  constructor(private readonly client: CommonGroundClient, private readonly now = Date.now) {}
+  constructor(private readonly client: CommonGroundClient) {}
 
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
@@ -147,8 +144,7 @@ export class CommonGroundStore {
           });
         }
         case 'match': return this.set({ matches: { ...this.state.matches, [screen.accountId]: await this.client.match(screen.accountId) } });
-        case 'person':
-        case 'pair': return this.set({ people: { ...this.state.people, [screen.accountId]: await this.client.person(screen.accountId) } });
+        case 'person': return this.set({ people: { ...this.state.people, [screen.accountId]: await this.client.person(screen.accountId) } });
         default: return undefined;
       }
     } catch (error) {
@@ -163,8 +159,6 @@ export class CommonGroundStore {
       if (!owner.card) return;
       const recent = await this.client.recent().catch(() => ({ people: this.state.recent }));
       this.set({ recent: recent.people });
-      const code = this.state.pairCode;
-      if (owner.sharing && (!code || Date.parse(code.expiresAt) <= this.now())) await this.newPairCode(true);
     } catch (error) {
       this.set({ loaded: true, notice: commonGroundErrorMessage(error) });
     }
@@ -248,31 +242,13 @@ export class CommonGroundStore {
 
   async setSharing(sharing: boolean): Promise<void> {
     const saved = await this.run('sharing', () => this.client.setSharing(sharing));
-    if (saved) this.set({ owner: saved, pairCode: sharing ? this.state.pairCode : null });
+    if (saved) this.set({ owner: saved });
   }
 
   async deleteCard(): Promise<boolean> {
     const view = await this.run('delete', () => this.client.deleteCard());
     if (!view) return false;
     this.set({ ...initialState(), owner: view, loaded: true, support: this.state.support });
-    return true;
-  }
-
-  // Pairing
-
-  async newPairCode(quiet = false): Promise<void> {
-    try {
-      this.set({ pairCode: await this.client.newPairCode() });
-    } catch (error) {
-      if (!quiet) this.set({ notice: commonGroundErrorMessage(error) });
-    }
-  }
-
-  async redeem(code: string): Promise<boolean> {
-    const result = await this.run('redeem', () => this.client.redeem(code.trim()));
-    if (!result) return false;
-    const id = result.person.accountId;
-    this.set({ people: { ...this.state.people, [id]: result }, stack: [...this.state.stack, { name: 'pair', accountId: id }] });
     return true;
   }
 

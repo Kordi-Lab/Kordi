@@ -2,12 +2,12 @@ import { expect, test } from '@playwright/test';
 
 // One screenshot per Common ground screen in the real Contacts page, against fixture replies.
 const SCREENS: Array<[string, (page: import('@playwright/test').Page) => import('@playwright/test').Locator]> = [
-  ['home', (page) => page.getByText('86PV-D68G')],
+  ['home', (page) => page.getByText('Recent', { exact: true })],
   ['build', (page) => page.getByText('24 titles')],
   ['card', (page) => page.getByRole('switch', { name: 'Share my card' })],
   ['lobby', (page) => page.locator('.cg-member', { hasText: 'Hana Sato' })],
   ['results', (page) => page.getByText('Eval reading group')],
-  ['match', (page) => page.getByText('Compare your memory evals over coffee.')],
+  ['match', (page) => page.getByRole('button', { name: 'Chat' })],
 ];
 
 test.use({ viewport: { width: 1180, height: 860 } });

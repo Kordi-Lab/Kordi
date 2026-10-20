@@ -75,6 +75,12 @@ async function sessionToken(): Promise<string> {
 
 const enc = encodeURIComponent;
 
+/** Match and card replies carry `relationship` beside `person`; keep it on the person too. */
+function withRelationship<T extends { person: CgPerson; relationship?: CgRelationship }>(body: T): T {
+  const relationship = body.relationship ?? body.person?.relationship;
+  return relationship && body.person ? { ...body, person: { ...body.person, relationship } } : body;
+}
+
 export function createCommonGroundClient(options: CommonGroundClientOptions = {}) {
   const baseUrl = options.baseUrl ?? (() => cloudApiBaseUrl());
   const fetchImpl = options.fetchImpl ?? (() => cloudFetchImpl());
@@ -126,16 +132,22 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
     room: (code: string) => data<CgRoom>('GET', cg(`rooms/${enc(code)}`)),
     joinRoom: (code: string, name?: string) => data<CgRoom>('POST', cg(`rooms/${enc(code)}/join`), name ? { name } : {}),
     leaveRoom: (code: string) => data<null>('POST', cg(`rooms/${enc(code)}/leave`)),
-    results: (code: string) => data<CgResults>('POST', cg(`rooms/${enc(code)}/results`)),
+    results: async (code: string) => {
+      const results = await data<CgResults>('POST', cg(`rooms/${enc(code)}/results`));
+      return { ...results, people: (results.people ?? []).map(withRelationship) };
+    },
     createGroup: (code: string, name: string, memberIds: string[]) => data<CgCreatedGroup>('POST', cg(`rooms/${enc(code)}/group`), { name, memberIds }),
     joinInvitation: (code: string, ref: string) => data<{ status: string } & Omit<CgGroup, 'memberCount'>>(
       'POST', cg(`rooms/${enc(code)}/invitations/${enc(ref)}/join`),
     ),
-    person: (accountId: string) => data<CgPersonCard>('GET', cg(`people/${enc(accountId)}`)),
+    person: async (accountId: string) => withRelationship(await data<CgPersonCard>('GET', cg(`people/${enc(accountId)}`))),
     /** 200 with the match, or 202 while it is being found. */
     match: async (accountId: string): Promise<CgMatch> => {
       const { status, body } = await send<CgMatch>('GET', cg(`people/${enc(accountId)}/match`));
-      return status === 202 ? { status: body.status === 'failed' ? 'failed' : 'matching', person: body.person } : { ...body, status: 'ready' };
+      const match: CgMatch = status === 202
+        ? { status: body.status === 'failed' ? 'failed' : 'matching', person: body.person, relationship: body.relationship }
+        : { ...body, status: 'ready' };
+      return withRelationship(match);
     },
     addContact: (accountId: string, message?: string) => data<{ relationship: CgRelationship }>(
       'POST', cg(`people/${enc(accountId)}/contact`), message ? { message } : {},
@@ -144,10 +156,13 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
     meet: (accountId: string, input: CgMeetInput) => data<{ conversationId: string; planCardId: string; relationship: CgRelationship }>(
       'POST', cg(`people/${enc(accountId)}/meet`), input,
     ),
-    recent: () => data<{ people: CgRecentEntry[] }>('GET', cg('recent')),
+    recent: async () => {
+      const recent = await data<{ people: CgRecentEntry[] }>('GET', cg('recent'));
+      return { people: (recent.people ?? []).map(withRelationship) };
+    },
     pairings: () => data<{ people: CgPerson[] }>('GET', cg('pairings')),
     newPairCode: () => data<CgPairCode>('POST', cg('pairings/code')),
-    redeem: (code: string) => data<CgPersonCard>('POST', cg('pairings/redeem'), { code }),
+    redeem: async (code: string) => withRelationship(await data<CgPersonCard>('POST', cg('pairings/redeem'), { code })),
   };
 }
 

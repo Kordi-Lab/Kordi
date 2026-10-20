@@ -4,10 +4,9 @@ import { CgAvatar, CgBack, CgGroup, CgHero, CgNotice, CgProgress, CgSection, CgT
 import type { CgState, CommonGroundStore } from './store';
 import { CG_TOPIC_SECTIONS } from './types';
 
-/** Someone's card as you may see it: after pairing, or from a room member. */
-export function PersonScreen({ accountId, paired, state, store, host }: {
+/** Someone's card as you may see it, opened from a room member. */
+export function PersonScreen({ accountId, state, store, host }: {
   accountId: string;
-  paired: boolean;
   state: CgState;
   store: CommonGroundStore;
   host: CgHost;
@@ -25,7 +24,7 @@ export function PersonScreen({ accountId, paired, state, store, host }: {
   return (
     <>
       <CgBack onBack={() => store.back()} />
-      <CgHero avatar={<CgAvatar person={person} size={72} />} title={person.name} line={paired ? 'Paired' : undefined} />
+      <CgHero avatar={<CgAvatar person={person} size={72} />} title={person.name} />
       <PersonActions
         person={person}
         state={state}

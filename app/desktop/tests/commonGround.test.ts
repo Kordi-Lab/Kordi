@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+
 import {
   CommonGroundError,
   commonGroundErrorMessage,
@@ -8,6 +11,8 @@ import {
   isRouteMissing,
 } from '../src/features/commonGround/client';
 import { meetTimes } from '../src/features/commonGround/format';
+import { HomeScreen } from '../src/features/commonGround/HomeScreen';
+import type { CgHost } from '../src/features/commonGround/host';
 import { canMeet, contactActionFor } from '../src/features/commonGround/relationship';
 import { CommonGroundStore, LOBBY_POLL_MS, MATCH_POLL_MS } from '../src/features/commonGround/store';
 import type { CgOwnerView, CgPerson, CgRelationship } from '../src/features/commonGround/types';
@@ -146,6 +151,48 @@ test('store: match 202 polls until 200', async () => {
   assert.equal(await store.poll(), null);
   assert.equal(store.getSnapshot().matches.acct_b.score, 40);
   assert.deepEqual(store.relationshipFor('acct_b'), rel());
+});
+
+test('client keeps the relationship sent beside the person', async () => {
+  const contact = rel({ contact: true, conversationId: 'dm_b' });
+  const { client } = mockServer({
+    'GET people/acct_b/match': [
+      { status: 202, body: { status: 'matching', person: person('acct_b'), relationship: contact } },
+      { status: 200, body: { score: 72, headline: 'x', shared: [], status: 'ready', person: person('acct_b'), relationship: contact } },
+    ],
+    'GET people/acct_b': { status: 200, body: { person: person('acct_b'), relationship: contact, card } },
+    'POST rooms/4821/results': { status: 200, body: { status: 'ready', people: [{ person: person('acct_b'), score: 80, headline: 'x', relationship: contact }], topics: [], suggestion: null } },
+    'GET recent': { status: 200, body: { people: [{ person: person('acct_b'), score: 80, headline: 'x', relationship: contact }] } },
+  });
+  assert.deepEqual((await client.match('acct_b')).person.relationship, contact);
+  assert.deepEqual((await client.match('acct_b')).person.relationship, contact);
+  assert.deepEqual((await client.person('acct_b')).person.relationship, contact);
+  assert.deepEqual((await client.results('4821')).people[0].person.relationship, contact);
+  assert.deepEqual((await client.recent()).people[0].person.relationship, contact);
+});
+
+test('store: a match with a relationship shows the actions', async () => {
+  const { client } = mockServer({
+    'GET people/acct_b/match': { status: 200, body: { score: 72, headline: 'x', shared: [], status: 'ready', person: person('acct_b'), relationship: rel({ contact: true, conversationId: 'dm_b' }) } },
+  });
+  const store = new CommonGroundStore(client);
+  await store.loadScreen({ name: 'match', accountId: 'acct_b' });
+  const { support } = store.getSnapshot();
+  assert.equal(support.contact && support.chat && support.meet, true);
+  assert.equal(contactActionFor(store.relationshipFor('acct_b'), support.contact), 'message');
+  assert.equal(canMeet(store.relationshipFor('acct_b')), true);
+});
+
+test('home shows pair digits and no text pair code', async () => {
+  const { client } = mockServer({ 'GET card': { status: 200, body: owner() }, 'GET recent': { status: 200, body: { people: [] } } });
+  const store = new CommonGroundStore(client);
+  await store.loadHome();
+  const host = { self: { accountId: 'me', name: 'Me', avatarUrl: null } } as unknown as CgHost;
+  const html = renderToStaticMarkup(createElement(HomeScreen, { state: store.getSnapshot(), store, host }));
+  assert.match(html, /Pair code/);
+  assert.match(html, />Join</);
+  assert.doesNotMatch(html, /Their code|New code|Room code/);
+  assert.equal('pairCode' in store.getSnapshot(), false);
 });
 
 test('store: missing action routes hide the action', async () => {

@@ -33,7 +33,7 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
   } else if (screen.name === 'match') {
     body = <MatchScreen accountId={screen.accountId} {...props} />;
   } else {
-    body = <PersonScreen accountId={screen.accountId} paired={screen.name === 'pair'} {...props} />;
+    body = <PersonScreen accountId={screen.accountId} {...props} />;
   }
   return (
     <section aria-label="Common ground" className="cg-page">
