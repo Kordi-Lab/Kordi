@@ -110,3 +110,42 @@ pub(super) async fn build_card(
 pub(super) fn free_code() -> String {
     format!("{:04}", rand::thread_rng().gen_range(0..10_000))
 }
+
+/// The open run of `kind` for this viewer or room, claimed by the runner,
+/// with the account ids of the cards it read, in prompt order.
+pub(super) async fn claim_open(
+    pool: &PgPool,
+    kind: &str,
+    viewer: Option<&str>,
+) -> (String, Vec<String>) {
+    let (run_id, cards): (String, Value) = query_as(
+        "SELECT run_id, cards_json FROM cloud_common_ground_match_runs
+         WHERE kind = $1 AND ($2::text IS NULL OR viewer_account_id = $2) AND finished_at IS NULL
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(kind)
+    .bind(viewer)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    let lease = (chrono::Utc::now() + chrono::Duration::minutes(5)).to_rfc3339();
+    claim_run(pool, &run_id, &lease).await;
+    let ids = cards
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["accountId"].as_str().unwrap().to_string())
+        .collect();
+    (run_id, ids)
+}
+
+pub(super) async fn open_runs(pool: &PgPool, account: &str) -> i64 {
+    let (count,): (i64,) = query_as(
+        "SELECT COUNT(*) FROM cloud_agent_fallback_runs WHERE requester_account_id = $1 AND run_id LIKE 'cg\\_%' AND run_id NOT LIKE 'cg\\_card\\_%' AND status = 'queued'",
+    )
+    .bind(account)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    count
+}
