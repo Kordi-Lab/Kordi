@@ -118,6 +118,46 @@ final class CommonGroundTests: XCTestCase {
         XCTAssertTrue(room.groups.isEmpty)
     }
 
+    func testRoomListDecodesAndDefaultsOpen() throws {
+        let list = try decode(CommonGroundRoomList.self, #"""
+        {"rooms":[{"code":"4821","name":"","open":false,"memberCount":3,"joinedAt":"2026-10-20T09:00:00Z",
+                   "lastActivityAt":"2026-10-20T10:00:00Z","themeCount":1},
+                  {"code":"1234","name":"Agents meetup","memberCount":1,"themeCount":4}]}
+        """#)
+        XCTAssertEqual(list.rooms.map(\.code), ["4821", "1234"])
+        XCTAssertEqual(list.rooms[0].title, "Room 4821")
+        XCTAssertEqual(list.rooms[0].subtitle, "3 people · 1 topic · Closed")
+        XCTAssertTrue(list.rooms[1].open)
+        XCTAssertEqual(list.rooms[1].subtitle, "1 person · 4 topics")
+        XCTAssertTrue(try decode(CommonGroundRoomList.self, "{}").rooms.isEmpty)
+
+        let room = try decode(CommonGroundRoom.self, #"{"code":"4821","open":false}"#)
+        XCTAssertFalse(room.open)
+        XCTAssertTrue(try decode(CommonGroundRoom.self, #"{"code":"4821"}"#).open)
+        let group = try decode(CommonGroundGroup.self, #"{"groupSpaceId":"gs_1","name":"Memory agents","topic":"Agent memory"}"#)
+        XCTAssertEqual(group.topic, "Agent memory")
+        XCTAssertNil(try decode(CommonGroundGroup.self, #"{"groupSpaceId":"gs_1"}"#).topic)
+    }
+
+    /// A room group has only its root channel's shared title; Chats names the group by it.
+    func testServerStartedGroupIsNamedByItsSharedTitle() {
+        let account = PreviewData.make(now: Date(timeIntervalSince1970: 1_800_000_000)).account
+        func canonical(_ sessionId: String, title: String) -> CloudChatConversation {
+            CloudChatConversation(id: "c-\(sessionId)", kind: "group", sharedTitle: title, version: 1,
+                createdByAccountId: "acct_b", legacySessionId: sessionId, forkedFromSessionId: nil,
+                forkedFromMessageId: nil, latestMessageSequence: 0, createdAt: "2026-10-20T09:00:00Z",
+                updatedAt: "2026-10-20T09:00:00Z", members: [],
+                preferences: CloudChatPreferences(conversationId: "c-\(sessionId)", accountId: account.accountId, personalTitle: nil, version: 1))
+        }
+        let conversations = CloudConversationCatalog.build(
+            account: account, contacts: [], ownedAgents: [], sharedAgents: [], messagesByPeer: [:],
+            canonicalConversations: [canonical("session:group:room", title: "Memory agents"), canonical("session:group:plain", title: "Channel 1")]
+        )
+        let spaces = GroupSpaceCatalog.build(conversations: conversations, ownAccountId: account.accountId)
+        XCTAssertEqual(spaces.first { $0.id == "group:session:group:room" }?.displayName, "Memory agents")
+        XCTAssertNotEqual(spaces.first { $0.id == "group:session:group:plain" }?.displayName, "Channel 1")
+    }
+
     // MARK: Relationship
 
     func testContactActionFollowsRelationship() {
@@ -160,16 +200,66 @@ final class CommonGroundTests: XCTestCase {
 
     // MARK: Model
 
-    func testBuildPollsUntilTheCardIsReady() async throws {
+    private func stubbedModel() -> CommonGroundModel {
         CommonGroundURLProtocol.reset()
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CommonGroundURLProtocol.self]
         let api = CloudAPIClient(baseURL: Self.baseURL, session: URLSession(configuration: configuration))
-        let model = CommonGroundModel(me: CommonGroundPerson(accountId: "acct_a", name: "Alex")) { (api, "session-value") }
+        return CommonGroundModel(me: CommonGroundPerson(accountId: "acct_a", name: "Alex")) { (api, "session-value") }
+    }
+
+    func testClosedRoomResultsDoNotPollAndRemoveLeaves() async throws {
+        let model = stubbedModel()
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/rooms", [(200, #"{"rooms":[{"code":"4821","name":"","open":false,"memberCount":3,"themeCount":1}]}"#)])
+        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/rooms/4821/results", [(200, Self.resultsJSON)])
+        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/rooms/4821/leave", [(204, "")])
+
+        await model.loadRooms()
+        XCTAssertTrue(model.isClosed("4821"))
+        XCTAssertEqual(model.roomTitle("4821"), "Room 4821")
+        await model.loadResults("4821", quiet: true)
+        await model.waitForResults("4821", every: .milliseconds(1))
+        XCTAssertEqual(CommonGroundURLProtocol.paths.filter { $0.hasSuffix("/results") }.count, 1)
+
+        await model.leaveRoom("4821")
+        XCTAssertEqual(model.roomList?.isEmpty, true)
+        XCTAssertTrue(CommonGroundURLProtocol.paths.contains("POST /v1/cloud/common-ground/rooms/4821/leave"))
+    }
+
+    func testRoomListHiddenWhenServerHasNoRoute() async {
+        let model = stubbedModel()
+        await model.loadRooms()
+        XCTAssertNil(model.roomList)
+        XCTAssertNil(model.notice)
+    }
+
+    func testTopicGroupRequestCarriesTopic() async throws {
+        let model = stubbedModel()
+        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/rooms/4821/group", [(201, #"""
+        {"group":{"groupSpaceId":"gs_2","conversationId":"c_2","name":"Agent memory","memberCount":3,"joined":true},
+         "added":[],"invited":[]}
+        """#)])
+        let theme = CommonGroundTheme(label: "Agent memory", people: [
+            CommonGroundPerson(accountId: "acct_a", name: "Alex"), CommonGroundPerson(accountId: "acct_b", name: "Priya"),
+        ])
+        let draft = CommonGroundGroupDraft(theme: theme, me: "acct_a")
+        XCTAssertEqual(draft.name, "Agent memory")
+        XCTAssertEqual(draft.selected, ["acct_b"])
+
+        let created = await model.createGroup(code: "4821", name: draft.name, memberIds: Array(draft.selected), topic: draft.topic)
+        XCTAssertEqual(created?.group.groupSpaceId, "gs_2")
+        let post = try XCTUnwrap(CommonGroundURLProtocol.requests.first)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(post.body)) as? [String: Any])
+        XCTAssertEqual(body["topic"] as? String, "Agent memory")
+        XCTAssertEqual(body["name"] as? String, "Agent memory")
+        XCTAssertEqual(body["memberIds"] as? [String], ["acct_b"])
+    }
+
+    func testBuildPollsUntilTheCardIsReady() async throws {
+        let model = stubbedModel()
 
         CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/card/build", [(202, Self.buildingJSON)])
         CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/card", [(200, Self.buildingJSON), (200, Self.ownerJSON)])
-        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/pairings/code", [(201, #"{"code":"AB12-CD34","expiresAt":"2099-01-01T00:00:00Z"}"#)])
 
         let device = [CommonGroundDeviceItems(source: "iPhone Calendar", items: [.init(title: "Memory sync", date: "2026-10-01")])]
         await model.build(CommonGroundBuildRequest(memory: false, connectors: true, device: device, links: "", notes: "Agents"))
@@ -180,7 +270,6 @@ final class CommonGroundTests: XCTestCase {
         XCTAssertFalse(model.isBuilding)
         XCTAssertEqual(model.card?.topics.workingOn, ["Agent memory"])
         XCTAssertEqual(model.myTopics, ["Agent memory", "Rust"])
-        XCTAssertEqual(model.pairCode?.code, "AB12-CD34")
         XCTAssertNil(model.notice)
 
         XCTAssertEqual(CommonGroundURLProtocol.paths.filter { $0 == "GET /v1/cloud/common-ground/card" }.count, 2)

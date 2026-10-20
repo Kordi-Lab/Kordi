@@ -44,6 +44,7 @@
 		1AC36BD7EB5D806BCCE18ABB /* AttachmentTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC2D15EF36CFC29FD9543A9 /* AttachmentTransfer.swift */; };
 		1B01D5196E4A8A7D4D26742B /* AgentSubsessionStopButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22AC313E53BCA366D3B33384 /* AgentSubsessionStopButton.swift */; };
 		1C253D2F974D61285F03E88B /* ConversationTimelinePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1842E2B788ED63E756E81116 /* ConversationTimelinePresentation.swift */; };
+		1D66CC9EE8FEA4BCD2B5B2EB /* CommonGroundRoomList.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCAF2EDCCD5927A31300D1C3 /* CommonGroundRoomList.swift */; };
 		1E32950D425FE7487A3B4875 /* MemorySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5101422FFF620FF837A563E8 /* MemorySettingsView.swift */; };
 		1FCDD235F91F0863905604AB /* DocumentReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C57FE38A8F4FA092BB2316DC /* DocumentReaderView.swift */; };
 		22A8E54BEF31249E570DABA2 /* GroupAgentTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B58CB494BE1FE3E64175CFF /* GroupAgentTarget.swift */; };
@@ -617,6 +618,7 @@
 		C89A8FB63D5B1DFD7576809C /* MarkdownMessageContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMessageContent.swift; sourceTree = "<group>"; };
 		CB6037E13EA0BCC18AA44625 /* AttachmentReactionMutationQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentReactionMutationQueue.swift; sourceTree = "<group>"; };
 		CC9D282C0E391AFB2885E0C1 /* CommonGroundTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundTests.swift; sourceTree = "<group>"; };
+		CCAF2EDCCD5927A31300D1C3 /* CommonGroundRoomList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundRoomList.swift; sourceTree = "<group>"; };
 		CEB09654088CAEF319E56FEC /* KordiMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiMark.swift; sourceTree = "<group>"; };
 		CF2ED6EF5EAC14BB658712DE /* KordiShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = KordiShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		CFBF26ED85E73419AE80D43F /* SharedDocumentLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDocumentLinkTests.swift; sourceTree = "<group>"; };
@@ -1048,6 +1050,7 @@
 				EC1B3DD7AACC2899FDBB384C /* CommonGroundModel.swift */,
 				D74570B49B4FD614FE68DAF0 /* CommonGroundPersonActions.swift */,
 				AB004F6B7BACCE373E946958 /* CommonGroundResultsView.swift */,
+				CCAF2EDCCD5927A31300D1C3 /* CommonGroundRoomList.swift */,
 				F357ED39C59FAD90F5BF85AB /* CommonGroundRoomViews.swift */,
 				99CD429A25D6DE32F1B1AD49 /* CommonGroundTimelineView.swift */,
 				984BC333F4F3D18492F73B14 /* CommonGroundTypes.swift */,
@@ -1690,6 +1693,7 @@
 				40DC85F96BE77990B330A8C1 /* CommonGroundModel.swift in Sources */,
 				FA6CE34F968233B873B48465 /* CommonGroundPersonActions.swift in Sources */,
 				A082484169F35E02D7235624 /* CommonGroundResultsView.swift in Sources */,
+				1D66CC9EE8FEA4BCD2B5B2EB /* CommonGroundRoomList.swift in Sources */,
 				54E213B51A1D5B127679B739 /* CommonGroundRoomViews.swift in Sources */,
 				80A95422E8CFC11EC99E011D /* CommonGroundTimelineView.swift in Sources */,
 				C40B9082A83E84CC3D56EBD0 /* CommonGroundTypes.swift in Sources */,

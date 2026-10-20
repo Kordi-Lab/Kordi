@@ -262,18 +262,21 @@ struct CommonGroundGroup: Decodable, Hashable, Identifiable {
     let memberCount: Int
     let createdBy: CommonGroundPerson?
     var joined: Bool
+    /// The shared topic the group was started from.
+    var topic: String?
     var id: String { groupSpaceId }
 
-    init(groupSpaceId: String, conversationId: String?, name: String, memberCount: Int, createdBy: CommonGroundPerson? = nil, joined: Bool) {
+    init(groupSpaceId: String, conversationId: String?, name: String, memberCount: Int, createdBy: CommonGroundPerson? = nil, joined: Bool, topic: String? = nil) {
         self.groupSpaceId = groupSpaceId
         self.conversationId = conversationId
         self.name = name
         self.memberCount = memberCount
         self.createdBy = createdBy
         self.joined = joined
+        self.topic = topic
     }
 
-    private enum CodingKeys: String, CodingKey { case groupSpaceId, conversationId, name, memberCount, createdBy, joined }
+    private enum CodingKeys: String, CodingKey { case groupSpaceId, conversationId, name, memberCount, createdBy, joined, topic }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -283,6 +286,7 @@ struct CommonGroundGroup: Decodable, Hashable, Identifiable {
         memberCount = c.cgValue(.memberCount, 0)
         createdBy = c.cgValue(.createdBy, nil as CommonGroundPerson?)
         joined = c.cgValue(.joined, false)
+        topic = c.cgValue(.topic, nil as String?)
     }
 }
 
@@ -298,19 +302,22 @@ struct CommonGroundRoom: Decodable, Hashable {
     let code: String
     let name: String
     let openedByYou: Bool
+    /// False once the room is closed; its results stay readable.
+    let open: Bool
     let expiresAt: String?
     /// Everyone in the room except you.
     let members: [CommonGroundPerson]
     var groups: [CommonGroundGroup]
     var invitations: [CommonGroundInvitation]
 
-    private enum CodingKeys: String, CodingKey { case code, name, openedByYou, expiresAt, members, groups, invitations }
+    private enum CodingKeys: String, CodingKey { case code, name, openedByYou, open, expiresAt, members, groups, invitations }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         code = try c.decode(String.self, forKey: .code)
         name = c.cgValue(.name, "")
         openedByYou = c.cgValue(.openedByYou, false)
+        open = c.cgValue(.open, true)
         expiresAt = c.cgValue(.expiresAt, nil as String?)
         members = c.cgValue(.members, [])
         groups = c.cgValue(.groups, [])

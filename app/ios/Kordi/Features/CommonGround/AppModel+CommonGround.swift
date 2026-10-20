@@ -70,6 +70,15 @@ extension AppModel {
         return nil
     }
 
+    /// A group just started or joined from a room. The server may not have
+    /// synced it yet, so after one refresh it tries once more a second later.
+    func commonGroundGroupConversation(groupSpaceId: String, conversationId: String?) async -> ConversationSummary? {
+        if let found = await commonGroundConversation(groupSpaceId: groupSpaceId, conversationId: conversationId) { return found }
+        try? await Task.sleep(for: .seconds(1))
+        guard !Task.isCancelled else { return nil }
+        return await commonGroundConversation(groupSpaceId: groupSpaceId, conversationId: conversationId)
+    }
+
     /// Accepts a pending incoming request with the regular contacts call.
     /// Returns false when the request is not in the loaded list.
     func acceptCommonGroundRequest(requestId: String) async -> Bool {

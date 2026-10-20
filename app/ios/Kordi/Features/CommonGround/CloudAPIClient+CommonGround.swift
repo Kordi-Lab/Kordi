@@ -43,6 +43,11 @@ extension CloudAPIClient {
 
     // MARK: Rooms
 
+    /// Rooms the viewer joined and has not left, newest first.
+    func commonGroundRooms(token: String) async throws -> CommonGroundRoomList {
+        try await send(path: cg("rooms"), method: "GET", token: token, fallback: "Could not load your rooms.")
+    }
+
     func commonGroundRoom(token: String, code: String) async throws -> CommonGroundRoom {
         try await send(path: cg("rooms/\(cgSegment(code))"), method: "GET", token: token, fallback: "Could not load the room.")
     }
@@ -60,11 +65,11 @@ extension CloudAPIClient {
         try await send(path: cg("rooms/\(cgSegment(code))/results"), method: "POST", token: token, fallback: "Could not find common ground.")
     }
 
-    func createCommonGroundGroup(token: String, code: String, name: String, memberIds: [String]) async throws -> CommonGroundCreatedGroup {
-        struct Body: Encodable { let name: String; let memberIds: [String] }
+    func createCommonGroundGroup(token: String, code: String, name: String, memberIds: [String], topic: String? = nil) async throws -> CommonGroundCreatedGroup {
+        struct Body: Encodable { let name: String; let memberIds: [String]; let topic: String? }
         return try await send(
             path: cg("rooms/\(cgSegment(code))/group"), method: "POST", token: token,
-            body: Body(name: name, memberIds: memberIds), fallback: "Could not start the group."
+            body: Body(name: name, memberIds: memberIds, topic: topic), fallback: "Could not start the group."
         )
     }
 

@@ -6,8 +6,22 @@ private enum CommonGroundRoomTab: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+/// What the Start group sheet opens with: a topic's name and people.
+struct CommonGroundGroupDraft: Identifiable {
+    let name: String
+    let topic: String?
+    let selected: Set<String>
+    var id: String { "\(topic ?? name)|\(selected.sorted().joined(separator: ","))" }
+
+    init(theme: CommonGroundTheme, me: String) {
+        name = theme.label
+        topic = theme.label
+        selected = Set(theme.people.map(\.accountId).filter { $0 != me })
+    }
+}
+
 /// Room results: the suggested group, people ranked by match, shared topics,
-/// and the groups started from this room.
+/// and the groups started from this room. A closed room is read-only.
 struct CommonGroundResultsView: View {
     @EnvironmentObject private var model: CommonGroundModel
     @EnvironmentObject private var appModel: AppModel
@@ -15,32 +29,26 @@ struct CommonGroundResultsView: View {
     let code: String
     @Binding var path: [CommonGroundRoute]
     @State private var tab = CommonGroundRoomTab.people
-    @State private var startsGroup = false
+    @State private var draft: CommonGroundGroupDraft?
 
     private var results: CommonGroundResults? { model.results[code] }
     private var room: CommonGroundRoom? { model.rooms[code] }
+    private var closed: Bool { model.isClosed(code) }
     private var members: [CommonGroundPerson] { room?.members ?? results?.people.map(\.person) ?? [] }
 
     var body: some View {
         let topics = results?.topics ?? []
         CommonGroundPage(onBack: { path = [] }) {
-            CommonGroundHero(title: room?.title ?? "Room \(code)", status: status(topics: topics.count)) {
+            CommonGroundHero(title: model.roomTitle(code), status: status(topics: topics.count)) {
                 CommonGroundStack(people: [model.me] + members, size: 92)
             } actions: {
-                CommonGroundActions(columns: 3) {
-                    SessionProfileActionButton(title: "Start group", symbol: "person.3", tint: commonGroundTint) {
-                        startsGroup = true
-                    }
-                    .disabled(members.isEmpty)
-                    ShareLink(item: code) {
-                        SessionProfileActionLabel(title: "Share code", symbol: "square.and.arrow.up", tint: commonGroundTint, isSelected: false)
-                    }
-                    .buttonStyle(.plain)
-                    SessionProfileActionButton(title: "Leave", symbol: "rectangle.portrait.and.arrow.right", tint: commonGroundTint) {
-                        Task {
-                            await model.leaveRoom(code)
-                            path = []
+                if !closed {
+                    CommonGroundActions(columns: 2) {
+                        ShareLink(item: code) {
+                            SessionProfileActionLabel(title: "Share code", symbol: "square.and.arrow.up", tint: commonGroundTint, isSelected: false)
                         }
+                        .buttonStyle(.plain)
+                        SessionProfileActionButton(title: "Leave", symbol: "rectangle.portrait.and.arrow.right", tint: commonGroundTint, action: leave)
                     }
                 }
             }
@@ -61,6 +69,12 @@ struct CommonGroundResultsView: View {
                     case .topics: topicRows(topics)
                     }
                 }
+                if closed {
+                    Button("Remove", role: .destructive, action: leave)
+                        .font(.subheadline)
+                        .buttonStyle(.borderless)
+                        .padding(.top, 8)
+                }
             }
             .padding(.horizontal, 16)
         }
@@ -69,13 +83,13 @@ struct CommonGroundResultsView: View {
             await model.waitForResults(code)
         }
         .task { if room == nil { await model.refreshRoom(code) } }
-        .sheet(isPresented: $startsGroup) {
+        .sheet(item: $draft) { draft in
             CommonGroundStartGroupSheet(
-                defaultName: results?.suggestion?.label ?? room?.title ?? "Room \(code)",
-                people: members,
-                preselected: Set(results?.suggestion?.people.map(\.accountId) ?? [])
+                defaultName: draft.name,
+                people: sheetPeople(draft),
+                preselected: draft.selected
             ) { name, ids in
-                guard let created = await model.createGroup(code: code, name: name, memberIds: ids) else { return false }
+                guard let created = await model.createGroup(code: code, name: name, memberIds: ids, topic: draft.topic) else { return false }
                 await openGroup(created.group.groupSpaceId, conversationId: created.group.conversationId)
                 return true
             }
@@ -86,9 +100,24 @@ struct CommonGroundResultsView: View {
     }
 
     private func status(topics: Int) -> String {
-        if results?.isMatching == true { return "Finding common ground" }
+        if results?.isMatching == true, !closed { return "Finding common ground" }
         if results?.status == "failed" { return "Matching failed for some people" }
-        return "\(members.count + 1) people · \(topics) shared topics"
+        return "\(members.count + 1) people · \(topics) shared topics" + (closed ? " · Closed" : "")
+    }
+
+    private func leave() {
+        Task {
+            await model.leaveRoom(code)
+            path = []
+        }
+    }
+
+    /// Room members plus anyone in the topic the room no longer lists.
+    private func sheetPeople(_ draft: CommonGroundGroupDraft) -> [CommonGroundPerson] {
+        let extra = (results?.topics ?? []).flatMap(\.people)
+            .filter { draft.selected.contains($0.accountId) && !members.map(\.accountId).contains($0.accountId) }
+        var seen = Set<String>()
+        return (members + extra).filter { $0.accountId != model.me.accountId && seen.insert($0.accountId).inserted }
     }
 
     private func suggestionCard(_ suggestion: CommonGroundTheme) -> some View {
@@ -106,9 +135,11 @@ struct CommonGroundResultsView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
-                Button("Start group") { startsGroup = true }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                if !closed {
+                    Button("Start group") { draft = CommonGroundGroupDraft(theme: suggestion, me: model.me.accountId) }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                }
             }
             .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
             .padding(.vertical, 10)
@@ -125,10 +156,12 @@ struct CommonGroundResultsView: View {
                         Text("\(invitation.from.displayName) invited you to \(invitation.name)")
                             .font(.body)
                         Spacer(minLength: 8)
-                        Button("Join") { Task { await join(invitation) } }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                            .disabled(model.busy == "invite:\(invitation.invitationRef)")
+                        if !closed {
+                            Button("Join") { Task { await join(invitation) } }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .disabled(model.busy == "invite:\(invitation.invitationRef)")
+                        }
                     }
                     .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
                     .padding(.vertical, 8)
@@ -147,7 +180,12 @@ struct CommonGroundResultsView: View {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(group.name).font(.body)
-                            if group.memberCount > 0 {
+                            if let topic = group.topic?.trimmingCharacters(in: .whitespaces), !topic.isEmpty {
+                                Text("From \(topic)")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            } else if group.memberCount > 0 {
                                 Text(group.memberCount == 1 ? "1 person" : "\(group.memberCount) people")
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
@@ -189,13 +227,19 @@ struct CommonGroundResultsView: View {
                 let style = commonGroundStyle(for: topic.label)
                 SessionSettingsIconTile(systemImage: style.symbol, color: style.color)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(topic.label).font(.body)
+                    Text(topic.label).font(.body).lineLimit(2)
                     Text("\(topic.people.count) people")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
-                CommonGroundStack(people: topic.people, size: 34)
+                CommonGroundStack(people: topic.people, size: 28)
+                if !closed {
+                    Button("Start") { draft = CommonGroundGroupDraft(theme: topic, me: model.me.accountId) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(!topic.people.contains { $0.accountId != model.me.accountId })
+                }
             }
             .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
             .padding(.vertical, 8)
@@ -209,7 +253,7 @@ struct CommonGroundResultsView: View {
     }
 
     private func openGroup(_ groupSpaceId: String, conversationId: String?) async {
-        if let conversation = await appModel.commonGroundConversation(groupSpaceId: groupSpaceId, conversationId: conversationId) {
+        if let conversation = await appModel.commonGroundGroupConversation(groupSpaceId: groupSpaceId, conversationId: conversationId) {
             openConversation(conversation)
         } else {
             model.notice = "The group is in Chats."

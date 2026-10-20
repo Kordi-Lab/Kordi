@@ -1,8 +1,8 @@
 import Foundation
 import SwiftUI
 
-/// Common ground state for the signed-in account: the owner's card, the
-/// pairing code, rooms, results, matches and people. Screens drive polling
+/// Common ground state for the signed-in account: the owner's card, rooms,
+/// results, matches and people. Screens drive polling
 /// through the wait and refresh calls; every failure becomes `notice`.
 @MainActor
 final class CommonGroundModel: ObservableObject {
@@ -20,8 +20,9 @@ final class CommonGroundModel: ObservableObject {
     @Published private(set) var owner: CommonGroundOwnerView?
     @Published private(set) var loaded = false
     @Published private(set) var recent: [CommonGroundRecentEntry] = []
-    @Published private(set) var pairCode: CommonGroundPairCode?
     @Published private(set) var rooms: [String: CommonGroundRoom] = [:]
+    /// Rooms to come back to; nil while unknown or when the server has no list.
+    @Published private(set) var roomList: [CommonGroundRoomSummary]?
     @Published private(set) var results: [String: CommonGroundResults] = [:]
     @Published private(set) var matches: [String: CommonGroundMatch] = [:]
     @Published private(set) var people: [String: CommonGroundPersonCard] = [:]
@@ -109,7 +110,7 @@ final class CommonGroundModel: ObservableObject {
         if let response = try? await call({ try await $0.commonGroundRecent(token: $1) }) {
             recent = response.people
         }
-        if sharing, isPairCodeExpired() { await newPairCode(quiet: true) }
+        await loadRooms()
     }
 
     private func apply(_ view: CommonGroundOwnerView) {
@@ -152,7 +153,6 @@ final class CommonGroundModel: ObservableObject {
             guard !Task.isCancelled else { return }
             await refreshCard()
         }
-        if !isBuilding, hasCard, sharing, isPairCodeExpired() { await newPairCode(quiet: true) }
     }
 
     func saveTopics(_ topics: CommonGroundTopics) async {
@@ -192,53 +192,44 @@ final class CommonGroundModel: ObservableObject {
     func setSharing(_ sharing: Bool) async {
         guard let saved = await run("sharing", { try await $0.setCommonGroundSharing(token: $1, sharing: sharing) }) else { return }
         apply(saved)
-        if sharing {
-            await newPairCode(quiet: true)
-        } else {
-            pairCode = nil
-        }
     }
 
     func deleteCard() async -> Bool {
         guard let view = await run("delete", { try await $0.deleteCommonGroundCard(token: $1) }) else { return false }
         apply(view)
         recent = []
-        pairCode = nil
         rooms = [:]
         people = [:]
         return true
     }
 
-    // MARK: Pairing
-
-    func isPairCodeExpired(now: Date = .now) -> Bool {
-        guard let expiry = pairCode?.expiry else { return true }
-        return expiry <= now
-    }
-
-    func newPairCode(quiet: Bool = false) async {
-        do {
-            pairCode = try await call { try await $0.newCommonGroundPairCode(token: $1) }
-        } catch {
-            if !quiet { report(error) }
-        }
-    }
-
-    /// Pairs with someone's code; returns their account id.
-    func redeem(_ code: String) async -> String? {
-        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              let result = await run("redeem", { try await $0.redeemCommonGroundPairCode(token: $1, code: trimmed) }) else { return nil }
-        people[result.person.accountId] = result
-        return result.person.accountId
-    }
-
     // MARK: Rooms
+
+    /// Loads the rooms list. A 404 without a Common ground code means the
+    /// server has no list yet, so the section stays hidden.
+    func loadRooms() async {
+        do {
+            roomList = try await call { try await $0.commonGroundRooms(token: $1) }.rooms
+        } catch let error as CloudAPIError where error.statusCode == 404 && !error.code.hasPrefix("common_ground") {
+            roomList = nil
+        } catch {}
+    }
+
+    /// Whether a room is closed, from the room or the rooms list.
+    func isClosed(_ code: String) -> Bool {
+        if let room = rooms[code] { return !room.open }
+        return roomList?.first { $0.code == code }?.open == false
+    }
+
+    func roomTitle(_ code: String) -> String {
+        rooms[code]?.title ?? roomList?.first { $0.code == code }?.title ?? "Room \(code)"
+    }
 
     func joinRoom(_ code: String) async -> Bool {
         guard let room = await run("join", { try await $0.joinCommonGroundRoom(token: $1, code: code) }) else { return false }
         rooms[code] = room
         results[code] = nil
+        Task { await loadRooms() }
         return true
     }
 
@@ -259,6 +250,7 @@ final class CommonGroundModel: ObservableObject {
 
     func leaveRoom(_ code: String) async {
         _ = try? await call { try await $0.leaveCommonGroundRoom(token: $1, code: code) }
+        withAnimation(.snappy) { roomList?.removeAll { $0.code == code } }
         rooms[code] = nil
         results[code] = nil
     }
@@ -276,21 +268,23 @@ final class CommonGroundModel: ObservableObject {
         }
     }
 
-    /// Polls results while the server is still matching.
+    /// Polls results while the server is still matching; a closed room's
+    /// results are stored, so they are never polled.
     func waitForResults(_ code: String, every interval: Duration = matchPollInterval) async {
-        while results[code]?.isMatching == true, !Task.isCancelled {
+        while results[code]?.isMatching == true, !isClosed(code), !Task.isCancelled {
             try? await Task.sleep(for: interval)
             guard !Task.isCancelled else { return }
             await loadResults(code, quiet: true)
         }
     }
 
-    func createGroup(code: String, name: String, memberIds: [String]) async -> CommonGroundCreatedGroup? {
+    func createGroup(code: String, name: String, memberIds: [String], topic: String? = nil) async -> CommonGroundCreatedGroup? {
         guard let created = await run("group", {
-            try await $0.createCommonGroundGroup(token: $1, code: code, name: name, memberIds: memberIds)
+            try await $0.createCommonGroundGroup(token: $1, code: code, name: name, memberIds: memberIds, topic: topic)
         }) else { return nil }
         var group = created.group
         group.joined = true
+        if group.topic == nil { group.topic = topic }
         results[code]?.groups.removeAll { $0.groupSpaceId == group.groupSpaceId }
         results[code]?.groups.append(group)
         return created
