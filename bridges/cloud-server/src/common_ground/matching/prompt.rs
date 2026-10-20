@@ -268,7 +268,7 @@ pub(in crate::common_ground) fn parse_themes(
         }
         themes.push((label, people));
     }
-    themes.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+    themes.sort_by_key(|theme| std::cmp::Reverse(theme.1.len()));
     themes.truncate(MAX_THEMES);
     Some(themes)
 }
