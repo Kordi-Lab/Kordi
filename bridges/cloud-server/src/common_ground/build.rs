@@ -25,6 +25,11 @@ const MAX_NOTES_CHARS: usize = 4000;
 const MAX_TEXT_CHARS: usize = 600;
 const MAX_TITLE_CHARS: usize = 140;
 const MAX_MEMORIES: usize = 200;
+const MAX_AGENT_FILES: usize = 12;
+const MAX_AGENT_TEXT_CHARS: usize = 2000;
+/// Total agent file text one request may carry, before redaction.
+const MAX_AGENT_TOTAL_CHARS: usize = 60_000;
+const AGENTS_SOURCE: &str = "Agents on this Mac";
 /// Connector events from about the last six months.
 const CONNECTOR_DAYS: i64 = 183;
 
@@ -42,6 +47,25 @@ pub(super) struct BuildRequest {
     /// the server does not fetch pages.
     links: String,
     notes: String,
+    /// Agent instruction and memory files the app read on the Mac.
+    agents: Vec<AgentFile>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub(super) struct AgentFile {
+    label: String,
+    text: String,
+}
+
+impl BuildRequest {
+    fn agents_too_long(&self) -> bool {
+        self.agents
+            .iter()
+            .map(|file| file.text.chars().count())
+            .sum::<usize>()
+            > MAX_AGENT_TOTAL_CHARS
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -207,6 +231,24 @@ pub(super) async fn gather(
             used.push(source);
         }
     }
+    let mut agent_files = 0;
+    for file in request.agents.iter().take(MAX_AGENT_FILES) {
+        let text = squeeze(&redact(&file.text), MAX_AGENT_TEXT_CHARS);
+        if text.is_empty() {
+            continue;
+        }
+        evidence.push(Gathered {
+            source: AGENTS_SOURCE.into(),
+            title: squeeze(&redact(&file.label), MAX_TITLE_CHARS),
+            date: None,
+            url: None,
+            text,
+        });
+        agent_files += 1;
+    }
+    if agent_files > 0 {
+        used.push("Agents".to_string());
+    }
     let today = Utc::now().date_naive().to_string();
     let entries: Vec<&str> = request
         .links
@@ -254,6 +296,13 @@ pub(super) async fn start(
     };
     let pool = state.db_pool();
     let account = session.account_id.as_str();
+    if request.agents_too_long() {
+        return err(
+            "common_ground_invalid_build",
+            "Agent files are too long.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
     let (evidence, used) = match gather(pool, account, &request).await {
         Ok(gathered) => gathered,
         Err(error) => return db_error(error),

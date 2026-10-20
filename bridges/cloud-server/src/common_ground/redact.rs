@@ -14,14 +14,23 @@ fn patterns() -> &'static [(Regex, &'static str)] {
             (r"\bhttps?://\S+", "[link]"),
             (r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "[ip]"),
             (
-                r"\b(?:sk|ghp|gho|ghs|xox[bpa]|AKIA|AIza)[-_A-Za-z0-9]{12,}\b",
+                r"\b(?:sk|ghp|gho|ghs|github_pat|glpat|xox[bpae]|AKIA|AIza)[-_A-Za-z0-9]{12,}\b",
                 "[secret]",
+            ),
+            (r"\bBearer\s+[-._~+/A-Za-z0-9]{16,}=*", "Bearer [secret]"),
+            // Assignments in env files and shell snippets: `API_KEY=...`.
+            (
+                r#"\b([A-Z][A-Z0-9_]*(?:_KEY|_TOKEN|_SECRET|PASSWORD))\s*[=:]\s*["']?[^\s"'`]+["']?"#,
+                "$1=[secret]",
             ),
             (
                 r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b",
                 "[id]",
             ),
-            (r"(?:~|/Users|/home|/private|/var)/[^\s`'\x22)]+", "[path]"),
+            (
+                r"(?:~|\$HOME|/Users|/home|/root|/Volumes|/private|/var)/[^\s`'\x22)\]>]+",
+                "[path]",
+            ),
         ]
         .into_iter()
         .map(|(pattern, replacement)| (Regex::new(pattern).expect("valid pattern"), replacement))
