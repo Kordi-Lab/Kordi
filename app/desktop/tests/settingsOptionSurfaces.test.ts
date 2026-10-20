@@ -17,11 +17,12 @@ test('settings pages render titled sections of divided rows without card shells'
   for (const source of [settingsPage, cloudSettings]) {
     assert.match(source, /<SettingsSection title=/);
     assert.match(source, /<SettingsRow/);
-    assert.match(source, /app-settings-option-row/);
+    assert.match(source, /app-settings-option-row|<AppearanceSettingsRow/);
     assert.doesNotMatch(source, /app-surface-muted app-settings-surface/);
     assert.doesNotMatch(source, /border-t border-white\/10/);
   }
   assert.match(cloudSettings, /app-cloud-account-theme app-settings-option-list/);
+  assert.match(readSource('kordi-app/components/settings.tsx'), /className="app-settings-option-row"/);
   assert.doesNotMatch(cloudSettings, /app-cloud-account-settings-divider border-t/);
   assert.doesNotMatch(cloudSettings, /app-cloud-account-settings-meta-row[^\n]*border-t/);
 
@@ -63,6 +64,8 @@ test('setting controls are compact right-hand selects, switches and buttons', ()
   assert.match(controls, /mode: 'auto', label: 'System'/);
   assert.match(controls, /<SettingsSelect\s+label="App appearance"/);
   assert.match(controls, /<SettingsSelect\s+label="Chat theme"/);
+  assert.match(controls, /role="radiogroup" aria-label="App icon"/);
+  assert.match(controls, /role="radio"\s+aria-checked=\{selected\}/);
   assert.match(controls, /<SettingsSwitch/);
   assert.match(controls, /type="button" className="app-button-quiet app-settings-action-button/);
   assert.match(controls, /type="button" className="app-input-shell app-settings-control/);

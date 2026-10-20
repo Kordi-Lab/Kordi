@@ -6,7 +6,7 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AuthPage } from '@/kordi-app/auth/AuthPage';
-import { SettingsNav, SettingsRow, SettingsSection, SettingsValueControl } from '@/kordi-app/components';
+import { AppearanceSettingsRow, SettingsNav, SettingsRow, SettingsSection } from '@/kordi-app/components';
 import { EditableIdentityAvatar } from '@/kordi-app/components/EditableIdentityAvatar';
 import type { SettingsSection as SettingsSectionData, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { DesktopAuthProvider, DesktopAuthState, ThemeMode } from '@/kordi-app/types';
@@ -418,13 +418,7 @@ export function CloudAccountSettingsDialog({
       <SettingsSection title="Appearance">
         <MessageLayoutSetting />
         {(appearanceSection?.items ?? []).map((item) => (
-          <SettingsRow
-            key={item.label}
-            className="app-settings-option-row"
-            title={item.label}
-            description={item.hint}
-            control={<SettingsValueControl item={item} themeMode={themeMode} onSelectThemeMode={setThemeMode} />}
-          />
+          <AppearanceSettingsRow key={item.label} item={item} themeMode={themeMode} onSelectThemeMode={setThemeMode} />
         ))}
       </SettingsSection>
     </div>

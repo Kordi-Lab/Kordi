@@ -162,12 +162,13 @@
   .dots span { width: 13px; height: 13px; border-radius: 50%; background: var(--fill); }
   .dots span.on { background: var(--text); }
   .center { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; }
-  .mark { position: relative; width: 72px; height: 72px; }
-  .mark i { position: absolute; width: 48%; height: 48%; border-radius: 50%; opacity: .92; animation: relay 1.65s ease-in-out infinite; }
-  .mark i:nth-child(1) { background: var(--pink); left: 26%; top: 11%; }
-  .mark i:nth-child(2) { background: var(--cyan); left: 9%; top: 41%; animation-delay: .25s; }
-  .mark i:nth-child(3) { background: var(--amber); left: 43%; top: 41%; animation-delay: .5s; }
-  @keyframes relay { 0%, 100% { transform: scale(.92); } 50% { transform: scale(1.1); } }
+  /* The Kordi bird in flight, matching the app's loading mark. */
+  .mark { width: 96px; height: 96px; color: var(--text); }
+  .mark .body { transform-box: view-box; transform-origin: 256px 256px; animation: bird-bob .72s ease-in-out infinite; }
+  .mark .wing { transform-box: fill-box; transform-origin: 0% 50%; animation: bird-flap .36s ease-in-out infinite; }
+  @keyframes bird-flap { 0%, 100% { transform: rotate(32deg); } 50% { transform: rotate(-78deg); } }
+  @keyframes bird-bob { 0%, 100% { transform: translate(-10px, 34px) rotate(-6deg); } 50% { transform: translate(10px, -40px) rotate(4deg); } }
+  @media (prefers-reduced-motion: reduce) { .mark .body, .mark .wing { animation: none; } }
   .pulse { position: relative; height: 280px; display: grid; place-items: center; }
   .pulse b { position: absolute; width: 120px; height: 120px; border-radius: 50%; border: 1.5px solid; animation: ping 2.4s ease-out infinite; opacity: 0; }
   .pulse b:nth-child(2) { animation-delay: .8s; } .pulse b:nth-child(3) { animation-delay: 1.6s; }
@@ -407,7 +408,7 @@ function toast(text) {
   setTimeout(() => { t.style.opacity = 0; setTimeout(() => t.remove(), 200); }, Math.max(1700, text.length * 50));
 }
 function thinking(steps) {
-  app.innerHTML = `<div class="center"><div class="mark"><i></i><i></i><i></i></div><div id="step" style="color:var(--muted)">${esc(steps[0])}</div></div>`;
+  app.innerHTML = `<div class="center"><svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><g transform="translate(256,250) scale(0.94) translate(-270,-292)"><g class="body"><path d="M120,276 L82,294 L120,312Z" fill="#f7b32b" stroke="#f7b32b" stroke-width="12" stroke-linejoin="round"/><path fill="currentColor" fill-rule="evenodd" d="M112,292 A150,136 0 1,0 412,292 A150,136 0 1,0 112,292Z M177,266 A17,17 0 1,0 211,266 A17,17 0 1,0 177,266Z"/><path fill="currentColor" stroke="currentColor" stroke-width="4" stroke-linejoin="round" d="M400,342 C436,322 462,272 470,204 C448,236 420,244 386,218Z"/><g transform="translate(296,262)"><path class="wing" fill="currentColor" stroke="var(--bg, #f2f2f7)" stroke-width="14" stroke-linejoin="round" d="M0,0 C40,-34 120,-36 165,0 C120,30 40,30 0,0Z"/></g></g></g></svg><div id="step" style="color:var(--muted)">${esc(steps[0])}</div></div>`;
   steps.forEach((s, i) => i && later(() => { const el = document.getElementById("step"); if (el) el.textContent = s; }, i * 1600));
 }
 function start(screen) { if (state.me?.card) go(screen); else go("build", screen); }

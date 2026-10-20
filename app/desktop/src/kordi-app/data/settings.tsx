@@ -19,7 +19,8 @@ export type SettingsControl =
   | { type: 'toggle'; enabled: boolean }
   | { type: 'action'; actionLabel?: string }
   | { type: 'theme' }
-  | { type: 'chat-theme' };
+  | { type: 'chat-theme' }
+  | { type: 'app-icon' };
 
 export type SettingsItem = {
   label: string;
@@ -68,6 +69,11 @@ export const settingsSections: SettingsSection[] = [
         value: 'Quiet Signal',
         hint: 'Changes conversation backgrounds and message colors on this Mac.',
         control: { type: 'chat-theme' },
+      },
+      {
+        label: 'App icon',
+        value: 'White',
+        control: { type: 'app-icon' },
       },
     ],
   },
