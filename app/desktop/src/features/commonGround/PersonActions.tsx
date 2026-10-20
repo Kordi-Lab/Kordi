@@ -10,7 +10,10 @@ import type { CgPerson } from './types';
 
 const ICON = 'h-5 w-5';
 
-/** Add, Accept, Requested or Message, then Meet; driven by the person's relationship. */
+/**
+ * The tile row under a person's hero: Add (or Requested, Accept), Meet and Chat, driven
+ * by the relationship the server sent. Hidden only when the server has no action routes.
+ */
 export function PersonActions({ person, state, store, host, onFind }: {
   person: CgPerson;
   state: CgState;
@@ -23,72 +26,45 @@ export function PersonActions({ person, state, store, host, onFind }: {
   // `state` keeps this in step with the store; the lookup reads the newest relationship.
   const relationship = state.relationships[person.accountId] ?? store.relationshipFor(person.accountId) ?? person.relationship;
   const action = contactActionFor(relationship, state.support.contact);
+  const contact = canMeet(relationship);
   const showMeet = state.support.meet && Boolean(relationship);
-  const meetOk = canMeet(relationship);
+  const showChat = state.support.chat && Boolean(relationship);
   const act = async (work: () => Promise<void>) => {
     setBusy(true);
     try { await work(); } finally { setBusy(false); }
   };
+  const openChat = () => void act(async () => { if (await store.chat(person.accountId)) host.openChat(person); });
+  const accept = () => void act(async () => {
+    const requestId = relationship?.requestId;
+    if (!requestId || !relationship) return;
+    await host.acceptRequest(requestId);
+    store.setRelationship(person.accountId, { ...relationship, contact: true, request: null, requestId: null });
+    host.contactsChanged();
+  });
+  const add = () => void act(async () => { await store.addContact(person.accountId); host.contactsChanged(); });
 
+  // A contact's Message is the Chat tile, so the contact slot only shows before that.
   const contactTile = () => {
     if (action === 'hidden') return null;
     const label = CONTACT_ACTION_LABELS[action];
-    if (action === 'message') {
-      return (
-        <DetailTile
-          key="contact"
-          icon={<MessageCircle className={ICON} aria-hidden="true" />}
-          label={label}
-          tone="primary"
-          disabled={busy}
-          onClick={() => void act(async () => { if (await store.chat(person.accountId)) host.openChat(person); })}
-        />
-      );
-    }
+    if (action === 'message') return showChat ? null : <DetailTile key="contact" icon={<MessageCircle className={ICON} aria-hidden="true" />} label={label} tone="primary" disabled={busy} onClick={openChat} />;
     if (action === 'requested') return <DetailTile key="contact" icon={<Clock className={ICON} aria-hidden="true" />} label={label} disabled onClick={() => undefined} />;
-    if (action === 'accept') {
-      return (
-        <DetailTile
-          key="contact"
-          icon={<Check className={ICON} aria-hidden="true" />}
-          label={label}
-          tone="primary"
-          disabled={busy}
-          onClick={() => void act(async () => {
-            const requestId = relationship?.requestId;
-            if (!requestId || !relationship) return;
-            await host.acceptRequest(requestId);
-            store.setRelationship(person.accountId, { ...relationship, contact: true, request: null, requestId: null });
-            host.contactsChanged();
-          })}
-        />
-      );
-    }
-    return (
-      <DetailTile
-        key="contact"
-        icon={<UserPlus className={ICON} aria-hidden="true" />}
-        label={label}
-        tone="primary"
-        disabled={busy}
-        onClick={() => void act(async () => { await store.addContact(person.accountId); host.contactsChanged(); })}
-      />
-    );
+    if (action === 'accept') return <DetailTile key="contact" icon={<Check className={ICON} aria-hidden="true" />} label={label} tone="primary" disabled={busy} onClick={accept} />;
+    return <DetailTile key="contact" icon={<UserPlus className={ICON} aria-hidden="true" />} label={label} tone="primary" disabled={busy} onClick={add} />;
   };
 
   const tiles = [
     onFind ? <DetailTile key="find" icon={<Sparkles className={ICON} aria-hidden="true" />} label="Find common ground" onClick={onFind} /> : null,
     contactTile(),
-    showMeet ? (
-      <DetailTile key="meet" icon={<CalendarPlus className={ICON} aria-hidden="true" />} label="Meet" disabled={!meetOk || busy} onClick={() => setMeeting(true)} />
-    ) : null,
+    showMeet ? <DetailTile key="meet" icon={<CalendarPlus className={ICON} aria-hidden="true" />} label="Meet" disabled={!contact || busy} onClick={() => setMeeting(true)} /> : null,
+    showChat ? <DetailTile key="chat" icon={<MessageCircle className={ICON} aria-hidden="true" />} label="Chat" disabled={!contact || busy} onClick={openChat} /> : null,
   ].filter(Boolean);
   if (!tiles.length) return null;
 
   return (
     <>
       <DetailTiles>{tiles}</DetailTiles>
-      {showMeet && !meetOk ? <div className="cg-hint">Add each other to meet</div> : null}
+      {(showMeet || showChat) && !contact ? <div className="cg-hint">Add each other to meet or chat</div> : null}
       {meeting ? (
         <MeetDialog
           name={person.name}

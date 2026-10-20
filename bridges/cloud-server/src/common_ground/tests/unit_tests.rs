@@ -167,6 +167,32 @@ fn redaction_removes_contact_details_keys_and_paths() {
 }
 
 #[test]
+fn redaction_covers_long_agent_markdown() {
+    let block =
+        "# Agent notes\n\n- Work in `~/code/kordi` and [docs](https://example.test/docs).\n\
+                 - Ask ada@example.test; logs in /Users/example/logs.\n\
+                 ```sh\nexport OPENAI_API_KEY=\"abc123abc123abc123\"\n\
+                 curl -H \"Authorization: Bearer abcdefghijklmnopqrstuv\"\n\
+                 git push github_pat_abcdefghijklmnop12 $HOME/work\n```\n\
+                 Prefer small reviewed PRs.\n";
+    let text = block.repeat(400);
+    let out = redact::redact(&text);
+    for leaked in [
+        "~/code",
+        "example.test",
+        "/Users/",
+        "abc123abc",
+        "abcdefghijklmnopqrstuv",
+        "github_pat_",
+        "$HOME/",
+    ] {
+        assert!(!out.contains(leaked), "{leaked} leaked");
+    }
+    assert!(out.contains("OPENAI_API_KEY=[secret]"));
+    assert_eq!(out.matches("Prefer small reviewed PRs.").count(), 400);
+}
+
+#[test]
 fn links_are_recognized_without_fetching() {
     assert_eq!(
         build::link_url_for_tests("example.test/papers").as_deref(),
