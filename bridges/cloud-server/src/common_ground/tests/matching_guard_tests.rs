@@ -3,57 +3,10 @@
 
 use serde_json::{json, Value};
 use sqlx_core::{query::query, query_as::query_as};
-use sqlx_postgres::PgPool;
 
 use super::db_fixture::{account, app, pool, send, signed_in};
-use super::support::{build_card_with, card_reply, claim, claim_open, free_code, RUNNER};
+use super::support::{answer_match, card_reply, claim, claim_open, two_in_a_room, RUNNER};
 use crate::common_ground::{complete, fail};
-
-/// Two people with cards in a fresh room. Returns the room code.
-async fn two_in_a_room(app: &axum::Router, pool: &PgPool, people: [(&str, &str); 2]) -> String {
-    let cards = [
-        card_reply(&["Agent memory"], &["Retrieval"], &["Eval design"], &[]),
-        card_reply(&["Memory for agents"], &["Retrieval"], &[], &[]),
-    ];
-    for ((account, token), reply) in people.iter().zip(&cards) {
-        build_card_with(app, pool, account, token, reply).await;
-    }
-    let code = free_code();
-    query("UPDATE cloud_common_ground_rooms SET closed_at = now() WHERE code = $1 AND closed_at IS NULL")
-        .bind(&code)
-        .execute(pool)
-        .await
-        .unwrap();
-    for (_, token) in people {
-        let (status, _) = send(
-            app,
-            "POST",
-            &format!("/v1/cloud/common-ground/rooms/{code}/join"),
-            token,
-            None,
-        )
-        .await;
-        assert_eq!(status, 200);
-    }
-    code
-}
-
-/// Answers the viewer's open match run with one shared topic for everyone.
-async fn answer_match(pool: &PgPool, viewer: &str) -> String {
-    let (run_id, cards) = claim_open(pool, "match", Some(viewer)).await;
-    let people: Vec<Value> = (0..cards.len() - 1)
-        .map(|i| json!({"person": i, "shared": [{"mine": "Agent memory", "theirs": "Memory for agents", "why": "Same area"}], "next_step": "Meet"}))
-        .collect();
-    complete(
-        pool,
-        &run_id,
-        RUNNER,
-        &json!({ "people": people }).to_string(),
-    )
-    .await
-    .unwrap();
-    run_id
-}
 
 async fn recent_first(app: &axum::Router, token: &str) -> Value {
     let (status, body) = send(app, "GET", "/v1/cloud/common-ground/recent", token, None).await;

@@ -10,6 +10,26 @@ pub(super) fn snapshot_from_rows(
     group_space_id: &str,
     requested_group_title: &str,
 ) -> Option<GroupInvitationSnapshot> {
+    snapshot_from_rows_with_min(
+        conversation,
+        rows,
+        group_id,
+        group_space_id,
+        requested_group_title,
+        GROUP_INVITE_MIN_MEMBERS,
+    )
+}
+
+/// A group started from a Common ground room may invite before anyone else
+/// joined it, so its snapshot allows a single member.
+fn snapshot_from_rows_with_min(
+    conversation: GroupConversationRow,
+    rows: Vec<GroupParticipantRow>,
+    group_id: &str,
+    group_space_id: &str,
+    requested_group_title: &str,
+    min_members: usize,
+) -> Option<GroupInvitationSnapshot> {
     let participants = rows
         .into_iter()
         .map(
@@ -32,7 +52,7 @@ pub(super) fn snapshot_from_rows(
             },
         )
         .collect::<Vec<_>>();
-    if participants.len() < 2 || participants.len() > GROUP_INVITE_MAX_MEMBERS {
+    if participants.len() < min_members || participants.len() > GROUP_INVITE_MAX_MEMBERS {
         return None;
     }
     let group_title = conversation
@@ -94,12 +114,13 @@ pub(super) async fn authorized_group_invitation_snapshot(
     ))
 }
 
-async fn authorized_group_invitation_snapshot_in_transaction(
+pub(super) async fn authorized_group_invitation_snapshot_in_transaction(
     tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     inviter_account_id: &str,
     group_id: &str,
     group_space_id: &str,
     group_title: &str,
+    min_members: usize,
 ) -> Result<Option<GroupInvitationSnapshot>, sqlx_core::Error> {
     let conversation: Option<GroupConversationRow> = query_as(
         "SELECT conversation.conversation_id, conversation.created_by_account_id,
@@ -131,12 +152,13 @@ async fn authorized_group_invitation_snapshot_in_transaction(
     .bind(conversation.0)
     .fetch_all(&mut **tx)
     .await?;
-    Ok(snapshot_from_rows(
+    Ok(snapshot_from_rows_with_min(
         conversation,
         participants,
         group_id,
         group_space_id,
         group_title,
+        min_members,
     ))
 }
 
@@ -162,6 +184,7 @@ pub(super) async fn refresh_group_invitation_record(
 pub(super) async fn refresh_group_invitation_record_in_transaction(
     tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     mut record: GroupInvitationRecord,
+    min_members: usize,
 ) -> Result<Option<GroupInvitationRecord>, sqlx_core::Error> {
     let snapshot = authorized_group_invitation_snapshot_in_transaction(
         tx,
@@ -169,6 +192,7 @@ pub(super) async fn refresh_group_invitation_record_in_transaction(
         &record.snapshot.group_id,
         &record.snapshot.group_space_id,
         &record.snapshot.group_title,
+        min_members,
     )
     .await?;
     let Some(snapshot) = snapshot else {
@@ -178,6 +202,11 @@ pub(super) async fn refresh_group_invitation_record_in_transaction(
     Ok(Some(record))
 }
 
+const GROUP_INVITATION_SELECT: &str = "SELECT invite.invitation_id, invite.inviter_account_id, account.display_name, \
+        account.public_account_number, account.avatar_url, invite.group_snapshot, invite.expires_at \
+ FROM cloud_group_invitations invite \
+ JOIN cloud_accounts account ON account.account_id = invite.inviter_account_id";
+
 pub(super) async fn lookup_group_invitation(
     pool: &PgPool,
     token: &str,
@@ -185,17 +214,31 @@ pub(super) async fn lookup_group_invitation(
     if !token.starts_with(GROUP_INVITE_TOKEN_PREFIX) {
         return Ok(GroupInvitationLookup::Invalid);
     }
-    let row: Option<GroupInvitationRow> = query_as(
-        "SELECT invite.invitation_id, invite.inviter_account_id, account.display_name, \
-                account.public_account_number, account.avatar_url, invite.group_snapshot, invite.expires_at \
-         FROM cloud_group_invitations invite \
-         JOIN cloud_accounts account ON account.account_id = invite.inviter_account_id \
-         WHERE invite.token_hash = $1 AND invite.revoked_at IS NULL",
-    )
+    let row: Option<GroupInvitationRow> = query_as(&format!(
+        "{GROUP_INVITATION_SELECT} WHERE invite.token_hash = $1 AND invite.revoked_at IS NULL"
+    ))
     .bind(hash_group_invite_token(token))
     .fetch_optional(pool)
     .await?;
+    Ok(lookup_from_row(row))
+}
 
+/// The invitation with this id, for a server-side redemption that never
+/// handled its token.
+pub(super) async fn lookup_group_invitation_by_id(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    invitation_id: &str,
+) -> Result<GroupInvitationLookup, sqlx_core::Error> {
+    let row: Option<GroupInvitationRow> = query_as(&format!(
+        "{GROUP_INVITATION_SELECT} WHERE invite.invitation_id = $1 AND invite.revoked_at IS NULL"
+    ))
+    .bind(invitation_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    Ok(lookup_from_row(row))
+}
+
+fn lookup_from_row(row: Option<GroupInvitationRow>) -> GroupInvitationLookup {
     let Some((
         invitation_id,
         inviter_account_id,
@@ -206,28 +249,26 @@ pub(super) async fn lookup_group_invitation(
         expires_at,
     )) = row
     else {
-        return Ok(GroupInvitationLookup::Invalid);
+        return GroupInvitationLookup::Invalid;
     };
     let is_expired = DateTime::parse_from_rfc3339(&expires_at)
         .map(|value| value.with_timezone(&Utc) <= Utc::now())
         .unwrap_or(true);
     if is_expired {
-        return Ok(GroupInvitationLookup::Expired);
+        return GroupInvitationLookup::Expired;
     }
     let Ok(snapshot) = serde_json::from_value::<GroupInvitationSnapshot>(snapshot) else {
-        return Ok(GroupInvitationLookup::Invalid);
+        return GroupInvitationLookup::Invalid;
     };
-    Ok(GroupInvitationLookup::Valid(Box::new(
-        GroupInvitationRecord {
-            invitation_id,
-            inviter_account_id,
-            inviter_display_name,
-            inviter_public_account_number,
-            inviter_avatar_url,
-            snapshot,
-            expires_at,
-        },
-    )))
+    GroupInvitationLookup::Valid(Box::new(GroupInvitationRecord {
+        invitation_id,
+        inviter_account_id,
+        inviter_display_name,
+        inviter_public_account_number,
+        inviter_avatar_url,
+        snapshot,
+        expires_at,
+    }))
 }
 
 pub(super) fn group_invitation_preview(

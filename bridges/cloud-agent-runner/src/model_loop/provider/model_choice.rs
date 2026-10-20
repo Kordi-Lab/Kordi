@@ -64,10 +64,11 @@ pub(super) fn model_fits_provider(model: &str, provider: &str) -> bool {
     }
 }
 
-/// The default model of the `openai-codex` provider in the OMP provider
-/// catalog. A ChatGPT account serves only Codex models, so an OpenAI API
-/// model such as `gpt-4.1-mini` fails there.
-pub(super) const OPENAI_CODEX_DEFAULT_MODEL: &str = "gpt-5.5";
+/// The model a ChatGPT (`openai-codex`) snapshot runs when it stores none:
+/// the same default the Mac and iOS pickers use. A ChatGPT account serves
+/// only Codex models, so an OpenAI API model such as `gpt-4.1-mini` fails there.
+pub(super) const OPENAI_CODEX_DEFAULT_MODEL: &str =
+    kordi_core::agent_session::DEFAULT_OPENAI_MODEL_ID;
 
 pub(super) fn default_model_for_provider(provider: &str) -> &'static str {
     match provider {

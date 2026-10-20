@@ -180,7 +180,7 @@ private struct CommonGroundHome: View {
                 } else {
                     Button { path.append(.build) } label: {
                         HStack(spacing: 12) {
-                            Text(model.loadedMe ? "Build your card" : "Loading")
+                            Text(model.loadedMe ? "Build your profile" : "Loading")
                                 .font(.body)
                                 .foregroundStyle(.primary)
                             Spacer(minLength: 8)
@@ -296,7 +296,7 @@ private struct CommonGroundBuildView: View {
             }
         } else {
             CommonGroundPage {
-                CommonGroundHero(title: "Build your card", status: "Your agent writes it") {
+                CommonGroundHero(title: "Build your profile", status: "Your agent writes it") {
                     CommonGroundAvatar(person: model.me, size: 92)
                 } actions: {
                     EmptyView()
@@ -327,7 +327,7 @@ private struct CommonGroundBuildView: View {
                     CommonGroundSection(title: "Notes") {
                         field("What are you working on?", text: $notes)
                     }
-                    Button("Build card") { building = true }
+                    Button("Build profile") { building = true }
                         .buttonStyle(CommonGroundPrimaryButtonStyle())
                         .disabled(!canBuild)
                         .padding(.horizontal, 4)
@@ -554,7 +554,7 @@ private struct CommonGroundCardView: View {
                 } else {
                     CommonGroundSection {
                         Button { path.append(.build) } label: {
-                            Text("Build your card")
+                            Text("Build your profile")
                                 .font(.body)
                                 .foregroundStyle(.primary)
                                 .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)

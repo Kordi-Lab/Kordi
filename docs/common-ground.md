@@ -22,7 +22,7 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
 
 ## Flows
 
-### 1. First run: build your card
+### 1. First run: build your profile
 
 1. **Intro.** Your avatar, the title "Find your common ground", one line: "Your agent writes a card from sources you choose. Only people you meet see it." Primary button **Build my card**.
 2. **Sources.** One screen, grouped. Every source is off until the person turns it on.
@@ -31,7 +31,7 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
    - **Agents on this Mac** (macOS only): instruction and memory files from local coding agents, redacted before use.
    - **Links**: URLs and text separated by `;` (homepage, ORCID, papers). Sites that need sign-in are skipped with a reason.
    - **Notes**: free text.
-   - Primary button **Build card**, enabled when at least one source is on.
+   - Primary button **Build profile**, enabled when at least one source is on.
 3. **Building.** The Kordi mark and two steps ("Reading sources", "Writing your card"). Usually 10 to 30 seconds.
 4. **Your card.** See [Card](#card). The first visit shows a single line under the title: "Remove anything you don't want to share."
 
@@ -99,6 +99,18 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
 - Others see your topics only after you share a room or a pairing with them, and never see references or hidden topics.
 - Card building and matching run on Kordi's servers; source text is kept only as the short references your card cites.
 
+## Server
+
+### Actions
+
+Routes under `/v1/cloud/common-ground/`. Every person returned in Common ground carries a `relationship` (contact, pending request either way, direct conversation).
+
+- `POST people/:id/contact`: Add; sends a contact request, or accepts theirs when they asked first.
+- `POST people/:id/chat`: Chat; finds or creates the direct conversation with a contact.
+- `POST people/:id/meet`: Meet; proposes a plan card in the direct conversation with a contact.
+- `POST rooms/:code/group`: Start group; adds your contacts and invites the other room members.
+- `POST rooms/:code/invitations/:ref/join`: Join; accepts a room group invitation addressed to you.
+
 ## Platform layout
 
 ### iOS
@@ -114,10 +126,16 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
 - Opened from the pinned row in Contacts, it fills the Contacts detail area; two columns at widths above 980 pt: **left**, your card (Now, sections, timeline); **right**, Pair and Pair code, then Recent. Narrower windows stack the columns.
 - Rooms and matches replace the right column; a back button returns. References and start group open as dialogs (`AppDialog`).
 - Tailwind with the semantic tokens in `theme-palette.css`, `lucide-react` icons, `IdentityAvatar` and the circle grid avatar, settings rows from `settingsLayout`.
+- The first version uses one column: Home shows the card summary, Pair, Room and Recent, and the card opens as its own screen.
+- Pair shows your short text code, not a QR code.
+- There is no Agents on this Mac source.
+- Rooms are not named from the Mac; a room shows its name when someone else named it.
+- Match actions are Add (or Accept, Requested, Message) and Meet; Joint idea and Share come later.
+- The card has no timeline or references yet; clicking a tag hides or shows it.
 
 ## Copy
 
-Sentence case. A title and at most one short line per screen. Buttons are verbs: Build card, Tap, Pair, Pair code, Find common ground, Start group, Add, Message, Joint idea, Meet, Share, Rebuild card.
+Sentence case. A title and at most one short line per screen. Buttons are verbs: Build profile, Tap, Pair, Pair code, Find common ground, Start group, Add, Message, Joint idea, Meet, Share, Rebuild card.
 
 ## Decisions from review
 

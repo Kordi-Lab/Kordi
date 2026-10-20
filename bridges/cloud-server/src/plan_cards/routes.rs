@@ -79,6 +79,19 @@ async fn handle(
                     eprintln!("[pip] Could not update the plan card messages: {error}");
                 }
             }
+            // An organizer who carries the card in their own message (a Meet
+            // from Common ground) sees it refreshed the same way.
+            for organizer in row.participants.iter().filter(|p| p.organizer) {
+                if let Err(error) = crate::pip::cards::refresh_card_carriers(
+                    state.db_pool(),
+                    &organizer.account_id,
+                    &row,
+                )
+                .await
+                {
+                    eprintln!("[plan-card] Could not update the organizer's card: {error}");
+                }
+            }
             Json(row).into_response()
         }
         Err(response) => *response,

@@ -253,7 +253,9 @@
   html.embedded .seg { margin-top: 18px; border-radius: 8px; }
   html.embedded .seg button { font-size: 12.5px; padding: 5px; border-radius: 6px; }
   html.embedded .seg button.on { background: var(--glass); box-shadow: 0 1px 2px rgba(0,0,0,.12), inset 0 0 0 1px var(--line); }
-  html.embedded .primary { min-height: 36px; border-radius: 9px; font-size: 13.5px; margin-top: 16px; }
+  html.embedded .primary { width: auto; min-width: 120px; min-height: 32px; padding: 0 16px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-top: 12px; display: block; margin-left: auto; }
+  html.embedded .build-actions { margin-top: 0; }
+  html.embedded .build-actions .error { text-align: right; }
   html.embedded .link { font-size: 12.5px; font-weight: 500; padding: 14px 2px 0; width: auto; }
   html.embedded .small-btn { border-radius: 7px; padding: 5px 12px; font-size: 12.5px; flex: none; }
   html.embedded .small-btn.quiet { background: var(--fill); color: var(--text); }
@@ -389,7 +391,7 @@ function useRegion(screen) {
 function paintLeft() {
   if (state.me?.card) return paintCard(undefined, regions.left);
   if (!state.me) { regions.left.innerHTML = ""; return; }
-  regions.left.innerHTML = `<div class="section"><div class="group"><div class="row click" onclick="go('build')"><div class="grow">Build your card</div><span class="chev">›</span></div></div></div>`;
+  regions.left.innerHTML = `<div class="section"><div class="group"><div class="row click" onclick="go('build')"><div class="grow">Build your profile</div><span class="chev">›</span></div></div></div>`;
 }
 
 function go(screen, arg) { clearTimers(); stack.push([screen, arg]); render(); }
@@ -438,7 +440,7 @@ async function paintHome() {
         ${card ? `<div class="row click" style="flex-direction:column;align-items:stretch;gap:12px;padding:16px" onclick="go('card')">
             <div style="display:flex;justify-content:space-between;color:var(--muted)"><span>${topics.length} topics shared</span><span class="chev">›</span></div>
             <div class="pills">${topics.map(pill).join("")}</div></div>`
-          : `<div class="row click" onclick="go('build')"><div class="grow">Build your card</div><span class="chev">›</span></div>`}
+          : `<div class="row click" onclick="go('build')"><div class="grow">Build your profile</div><span class="chev">›</span></div>`}
       </div></div>
       <div class="section"><div class="section-title">Recent</div><div class="group" style="--inset:68px">
         ${state.recent.length ? state.recent.map(rankedRow).join("") : `<div class="row"><span style="color:var(--muted)">No matches yet</span></div>`}
@@ -614,7 +616,7 @@ async function paintBuild(next) {
     const files = state.sources.map((s) => s.label.split("/").pop());
     const summary = files.length ? files.slice(0, 2).join(", ") + (files.length > 2 ? ` +${files.length - 2}` : "") : "No agent files found";
     app.innerHTML = `${backButton()}
-      <div class="hero">${avatar("You", 92, "hero-avatar")}<h1>Build your card</h1><div class="status">Your agent writes it</div></div>
+      <div class="hero">${avatar("You", 92, "hero-avatar")}<h1>Build your profile</h1><div class="status">Your agent writes it</div></div>
       <div class="section"><div class="section-title">Connectors</div><div class="group" style="--inset:58px">
         ${CONNECTORS.map(connectorRow).join("")}
         <div class="row">${iconTile("device")}<div class="grow"><div>Agents on this Mac</div><div class="sub">${esc(summary)}</div></div>
@@ -623,7 +625,7 @@ async function paintBuild(next) {
       ${tauriInvoke ? `<div class="section"><div class="section-title">On this Mac</div><div class="group" style="--inset:58px">${DEVICE.map(deviceRow).join("")}</div></div>` : ""}
       <div class="section"><div class="section-title">Links</div><div class="group"><textarea id="links" placeholder="Homepage; Google Scholar; ORCID; papers; anything about you">${esc(links)}</textarea></div></div>
       <div class="section"><div class="section-title">Notes</div><div class="group"><textarea id="notes" placeholder="What are you working on?">${esc(notes)}</textarea></div></div>
-      <button class="primary" id="build">Build card</button><div class="error">${esc(error)}</div>`;
+      <div class="section build-actions"><button class="primary" id="build">Build profile</button><div class="error">${esc(error)}</div></div>`;
     const btn = document.getElementById("build");
     const sync = () => {
       links = document.getElementById("links").value; notes = document.getElementById("notes").value;

@@ -260,6 +260,11 @@
   background: color-mix(in oklab, var(--utility-card) 70%, transparent);
 }
 
+/* Rows span the same edges as the search field: no gutter reserved on both sides of the list. */
+.app-contacts-list-scroll.app-scroll-area {
+  scrollbar-gutter: auto;
+}
+
 /* Grid tracks may not grow past the column, so long request titles truncate instead of pushing rows out. */
 .app-contacts-list-scroll .grid {
   grid-template-columns: minmax(0, 1fr);

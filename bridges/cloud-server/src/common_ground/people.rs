@@ -111,8 +111,10 @@ pub(super) async fn shared_view(
         return Ok(None);
     };
     let topics = card.shared_topics();
+    let relationship = super::actions::relationship(pool, viewer, other).await?;
     Ok(Some(json!({
         "person": person(other, name.as_deref(), avatar_url.as_deref()),
+        "relationship": relationship,
         "card": {
             "workingOn": topics.working_on,
             "interests": topics.interests,
