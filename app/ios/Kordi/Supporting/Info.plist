@@ -56,8 +56,6 @@
 	</dict>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Kordi reads calendar events for your private Digest and, if you choose, to build your Common ground card. It does not send invitations or change events.</string>
-	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>If you choose, Kordi reads reminder titles to build your Common ground card. It does not change reminders.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Kordi uses the camera when you record a video message, attach a photo, or join a video call.</string>
 	<key>NSLocalNetworkUsageDescription</key>
@@ -68,6 +66,8 @@
 	<string>Kordi saves Live Photos you choose to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Kordi shows your photo library when you choose images to send in a conversation.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>If you choose, Kordi reads reminder titles to build your Common ground card. It does not change reminders.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Kordi transcribes voice messages on this iPhone so people and agents can read them.</string>
 	<key>UIBackgroundModes</key>
@@ -78,6 +78,8 @@
 	</array>
 	<key>UILaunchScreen</key>
 	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
 		<key>UIImageName</key>
 		<string>KordiLaunchMark</string>
 	</dict>

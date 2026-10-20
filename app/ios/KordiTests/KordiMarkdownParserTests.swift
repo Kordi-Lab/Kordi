@@ -1620,111 +1620,85 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertEqual(KordiSyncMarkGeometry.pullProgress(for: 120, triggerDistance: 68), 1)
     }
 
-    func testColorRelayPulsesBrandCirclesInOrder() {
-        let initial = (0..<3).map {
-            KordiColorRelayMotion.sample(index: $0, elapsed: 0)
-        }
-        let samples = (0..<3).map {
-            KordiColorRelayMotion.sample(
-                index: $0,
-                elapsed: KordiColorRelayMotion.handoffDuration
-                    + (KordiColorRelayMotion.cycleDuration / 4)
-            )
-        }
-
-        XCTAssertEqual(initial.map(\.scale), [1, 1, 1])
-        XCTAssertEqual(initial.map(\.opacity), [1, 1, 1])
-        XCTAssertEqual(samples[0].scale, 1.12, accuracy: 0.001)
-        XCTAssertEqual(samples[0].opacity, 1, accuracy: 0.001)
-        XCTAssertGreaterThan(samples[0].scale, samples[1].scale)
-        XCTAssertGreaterThan(samples[1].scale, samples[2].scale)
+    func testBirdFlightStartsAtTheFirstPoseWithTheWingDown() {
+        let rest = KordiBirdFlightMotion.sample(elapsed: 0)
+        XCTAssertEqual(rest, KordiBirdFlightMotion.rest)
+        XCTAssertEqual(rest.wingAngle, 32, accuracy: 0.001)
+        XCTAssertEqual(rest.bodyOffsetX, -10, accuracy: 0.001)
+        XCTAssertEqual(rest.bodyOffsetY, 34, accuracy: 0.001)
+        XCTAssertEqual(rest.bodyRotation, -6, accuracy: 0.001)
+        XCTAssertEqual(KordiBirdFlightMotion.sample(elapsed: -3), rest)
     }
 
-    func testThreeBallMarkReturnsToNormalSpacingWhileRefreshing() {
-        for index in 0..<3 {
-            let pull = KordiSyncMarkGeometry.sample(
-                index: index,
-                motion: .pulling(progress: 1),
-                elapsed: 0
-            )
-            let refresh = KordiSyncMarkGeometry.sample(
-                index: index,
-                motion: .refreshing,
-                elapsed: 0
-            )
+    func testBirdFlightStaysWithinItsRangeAndReachesBothEnds() {
+        var samples: [KordiBirdFlightSample] = []
+        for step in 0...720 {
+            samples.append(KordiBirdFlightMotion.sample(elapsed: Double(step) / 1000))
+        }
+        let wingAngles = samples.map(\.wingAngle)
+        let offsetsX = samples.map(\.bodyOffsetX)
+        let offsetsY = samples.map(\.bodyOffsetY)
+        let rotations = samples.map(\.bodyRotation)
+        XCTAssertEqual(wingAngles.max()!, 32, accuracy: 0.01)
+        XCTAssertEqual(wingAngles.min()!, -78, accuracy: 0.01)
+        XCTAssertEqual(offsetsX.max()!, 10, accuracy: 0.01)
+        XCTAssertEqual(offsetsX.min()!, -10, accuracy: 0.01)
+        XCTAssertEqual(offsetsY.max()!, 34, accuracy: 0.01)
+        XCTAssertEqual(offsetsY.min()!, -40, accuracy: 0.01)
+        XCTAssertEqual(rotations.max()!, 4, accuracy: 0.01)
+        XCTAssertEqual(rotations.min()!, -6, accuracy: 0.01)
 
-            XCTAssertEqual(pull.offset.width, 0, accuracy: 0.001)
-            XCTAssertEqual(refresh.offset.height, 0, accuracy: 0.001)
-            if index != 1 {
-                XCTAssertGreaterThan(abs(pull.offset.height), abs(refresh.offset.width))
-                XCTAssertEqual(abs(refresh.offset.width), KordiSyncMarkGeometry.ballSpacing, accuracy: 0.001)
-            }
+        let wingUp = KordiBirdFlightMotion.sample(elapsed: KordiBirdFlightMotion.flapDuration / 2)
+        XCTAssertEqual(wingUp.wingAngle, -78, accuracy: 0.001)
+        let high = KordiBirdFlightMotion.sample(elapsed: KordiBirdFlightMotion.swoopDuration / 2)
+        XCTAssertEqual(high.bodyOffsetX, 10, accuracy: 0.001)
+        XCTAssertEqual(high.bodyOffsetY, -40, accuracy: 0.001)
+        XCTAssertEqual(high.bodyRotation, 4, accuracy: 0.001)
+    }
+
+    func testBirdFlightRepeatsEachCycle() {
+        XCTAssertEqual(KordiBirdFlightMotion.flapDuration, 0.36)
+        XCTAssertEqual(KordiBirdFlightMotion.swoopDuration, 0.72)
+        for elapsed in [0.05, 0.13, 0.31, 0.77] {
+            let sample = KordiBirdFlightMotion.sample(elapsed: elapsed)
+            let nextFlap = KordiBirdFlightMotion.sample(elapsed: elapsed + KordiBirdFlightMotion.flapDuration)
+            let nextSwoop = KordiBirdFlightMotion.sample(elapsed: elapsed + KordiBirdFlightMotion.swoopDuration)
+            XCTAssertEqual(sample.wingAngle, nextFlap.wingAngle, accuracy: 0.001)
+            XCTAssertEqual(sample.bodyOffsetX, nextSwoop.bodyOffsetX, accuracy: 0.001)
+            XCTAssertEqual(sample.bodyOffsetY, nextSwoop.bodyOffsetY, accuracy: 0.001)
+            XCTAssertEqual(sample.bodyRotation, nextSwoop.bodyRotation, accuracy: 0.001)
         }
     }
 
-    func testRefreshWaitsForTheReturnBeforeStartingTheBounce() {
-        let atRelease = KordiSyncMarkGeometry.sample(
-            index: 0,
-            motion: .refreshing,
-            elapsed: 0
-        )
-        let afterReturn = KordiSyncMarkGeometry.sample(
-            index: 0,
-            motion: .refreshing,
-            elapsed: KordiSyncMarkGeometry.refreshBounceDelay + 0.24
-        )
-
-        XCTAssertEqual(atRelease.offset.height, 0, accuracy: 0.001)
-        XCTAssertLessThan(afterReturn.offset.height, 0)
-        XCTAssertGreaterThan(afterReturn.scale, 1)
-    }
-
-    func testThreeBallMarkUsesSeparatedHorizontalAndVerticalLines() {
-        let idle = (0..<3).map {
-            KordiSyncMarkGeometry.sample(index: $0, motion: .idle, elapsed: 0).offset
-        }
-        XCTAssertEqual(idle.map(\.height), [0, 0, 0])
-        XCTAssertEqual(idle[1].width - idle[0].width, KordiSyncMarkGeometry.ballSpacing)
-        XCTAssertEqual(idle[2].width - idle[1].width, KordiSyncMarkGeometry.ballSpacing)
-        XCTAssertGreaterThan(KordiSyncMarkGeometry.ballSpacing, KordiSyncMarkGeometry.ballDiameter)
-
-        let pulled = (0..<3).map {
-            KordiSyncMarkGeometry.sample(index: $0, motion: .pulling(progress: 1), elapsed: 0).offset
-        }
-        XCTAssertEqual(pulled[0].width, 0, accuracy: 0.001)
-        XCTAssertEqual(pulled[1].width, 0, accuracy: 0.001)
-        XCTAssertEqual(pulled[2].width, 0, accuracy: 0.001)
+    func testSyncMarkPoseFollowsTheSyncState() {
+        XCTAssertEqual(KordiSyncMarkGeometry.pose(motion: .idle, elapsed: 1, reduceMotion: false), .still)
+        XCTAssertEqual(KordiSyncMarkGeometry.pose(motion: .offline, elapsed: 1, reduceMotion: false), .still)
         XCTAssertEqual(
-            pulled[1].height - pulled[0].height,
-            KordiSyncMarkGeometry.expandedBallSpacing,
-            accuracy: 0.001
+            KordiSyncMarkGeometry.pose(motion: .syncing, elapsed: 0.3, reduceMotion: false),
+            .flight(KordiBirdFlightMotion.sample(elapsed: 0.3))
         )
         XCTAssertEqual(
-            pulled[2].height - pulled[1].height,
-            KordiSyncMarkGeometry.expandedBallSpacing,
-            accuracy: 0.001
+            KordiSyncMarkGeometry.pose(motion: .refreshing, elapsed: 0.3, reduceMotion: false),
+            .flight(KordiBirdFlightMotion.sample(elapsed: 0.3))
         )
+        XCTAssertEqual(KordiSyncMarkGeometry.pose(motion: .syncing, elapsed: 0.3, reduceMotion: true), .still)
+        XCTAssertEqual(KordiSyncMarkGeometry.pose(motion: .refreshing, elapsed: 0.3, reduceMotion: true), .still)
     }
 
-    func testThreeBallSpacingGrowsWithPullDistance() {
-        let start = KordiSyncMarkGeometry.sample(
-            index: 0,
-            motion: .pulling(progress: 0),
-            elapsed: 0
-        ).offset
-        let middle = KordiSyncMarkGeometry.sample(
-            index: 0,
-            motion: .pulling(progress: 0.5),
-            elapsed: 0
-        ).offset
-        let end = KordiSyncMarkGeometry.sample(
-            index: 0,
-            motion: .pulling(progress: 1),
-            elapsed: 0
-        ).offset
-
-        XCTAssertLessThan(hypot(start.width, start.height), hypot(middle.width, middle.height))
-        XCTAssertLessThan(hypot(middle.width, middle.height), hypot(end.width, end.height))
+    func testSyncMarkWingLiftsWithPullDistance() {
+        func wingAngle(_ progress: CGFloat) -> Double? {
+            guard case let .flight(sample) = KordiSyncMarkGeometry.pose(
+                motion: .pulling(progress: progress),
+                elapsed: 0,
+                reduceMotion: false
+            ) else { return nil }
+            XCTAssertEqual(sample, .holding(wingAngle: sample.wingAngle))
+            return sample.wingAngle
+        }
+        XCTAssertEqual(wingAngle(0) ?? .nan, 32, accuracy: 0.001)
+        XCTAssertEqual(wingAngle(0.5) ?? .nan, -23, accuracy: 0.001)
+        XCTAssertEqual(wingAngle(1) ?? .nan, -78, accuracy: 0.001)
+        XCTAssertEqual(wingAngle(2) ?? .nan, -78, accuracy: 0.001)
     }
 
     private func timelineMessage(
