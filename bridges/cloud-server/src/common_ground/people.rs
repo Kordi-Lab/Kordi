@@ -1,6 +1,6 @@
-//! Who can see whose card. A card is visible to people who share an open
-//! room or a pairing with its owner, only while the owner shares it, and
-//! never with hidden topics or references.
+//! Who can see whose card. A card is visible to people who share a room
+//! (open or closed, until either leaves) or a pairing with its owner, only
+//! while the owner shares it, and never with hidden topics or references.
 
 use std::sync::Arc;
 
@@ -28,8 +28,18 @@ pub(super) fn person(account_id: &str, name: Option<&str>, avatar_url: Option<&s
 
 /// SQL that is true when the account in `viewer` may see the shared card of
 /// the account in `other` (both SQL expressions): they are paired, or both
-/// are still in the same open room.
+/// are still in the same room, open or closed. Leaving a room withdraws it.
 pub(super) fn visible_sql(viewer: &str, other: &str) -> String {
+    visibility_sql(viewer, other, "true")
+}
+
+/// Like [`visible_sql`], but only through a pairing or an open room: the
+/// pairs for which new matching may still run.
+pub(super) fn live_sql(viewer: &str, other: &str) -> String {
+    visibility_sql(viewer, other, ROOM_OPEN_SQL)
+}
+
+fn visibility_sql(viewer: &str, other: &str, room_filter: &str) -> String {
     format!(
         "(EXISTS (
              SELECT 1 FROM cloud_common_ground_pairings
@@ -40,7 +50,7 @@ pub(super) fn visible_sql(viewer: &str, other: &str) -> String {
                ON theirs.room_id = mine.room_id AND theirs.account_id = {other}
                   AND theirs.left_at IS NULL
              JOIN cloud_common_ground_rooms room ON room.room_id = mine.room_id
-             WHERE mine.account_id = {viewer} AND mine.left_at IS NULL AND {ROOM_OPEN_SQL}
+             WHERE mine.account_id = {viewer} AND mine.left_at IS NULL AND {room_filter}
          ))"
     )
 }
@@ -57,7 +67,25 @@ where
     if viewer == other {
         return Ok(true);
     }
-    let sql = format!("SELECT {}", visible_sql("$1", "$2"));
+    check(executor, &visible_sql("$1", "$2"), viewer, other).await
+}
+
+/// Whether new matching may run for `viewer` and `other`: a pairing or an
+/// open room, not only a closed one.
+pub(super) async fn is_live(pool: &PgPool, viewer: &str, other: &str) -> sqlx_core::Result<bool> {
+    check(pool, &live_sql("$1", "$2"), viewer, other).await
+}
+
+async fn check<'e, E>(
+    executor: E,
+    condition: &str,
+    viewer: &str,
+    other: &str,
+) -> sqlx_core::Result<bool>
+where
+    E: sqlx_core::executor::Executor<'e, Database = Postgres>,
+{
+    let sql = format!("SELECT {condition}");
     let (visible,): (bool,) = query_as(&sql)
         .bind(viewer)
         .bind(other)

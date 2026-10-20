@@ -6,5 +6,6 @@ mod flow_tests;
 mod matching_guard_tests;
 mod matching_tests;
 mod matching_unit_tests;
+mod rooms_list_tests;
 mod support;
 mod unit_tests;

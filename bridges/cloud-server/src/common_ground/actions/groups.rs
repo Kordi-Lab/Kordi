@@ -31,6 +31,8 @@ const DEFAULT_NAME: &str = "Common ground group";
 pub(in crate::common_ground) struct GroupRequest {
     name: Option<String>,
     member_ids: Vec<String>,
+    /// The room topic the group is for, shown with the group.
+    topic: Option<String>,
 }
 
 fn bad_request(message: &str) -> Response {
@@ -54,7 +56,8 @@ struct Created {
 }
 
 /// `POST /v1/cloud/common-ground/rooms/:code/group`: starts a group with
-/// people in this room.
+/// people in this room, optionally for one of its topics. Members of a
+/// closed room may still start one with the people who have not left.
 pub(in crate::common_ground) async fn start_group(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
@@ -65,7 +68,7 @@ pub(in crate::common_ground) async fn start_group(
     let pool = state.db_pool();
     let viewer = session.account_id.as_str();
     let room_id = match rooms::my_room(pool, &code, viewer).await {
-        Ok(Some(room_id)) => room_id,
+        Ok(Some((room_id, _))) => room_id,
         Ok(None) => return rooms::room_not_found(),
         Err(error) => return db_error(error),
     };
@@ -107,6 +110,11 @@ pub(in crate::common_ground) async fn start_group(
     if name.chars().count() > MAX_NAME_CHARS {
         return bad_request("Use a shorter name.");
     }
+    let topic = collapse(body.topic.as_deref().unwrap_or_default());
+    if topic.chars().count() > MAX_NAME_CHARS {
+        return bad_request("Use a shorter topic.");
+    }
+    let topic = (!topic.is_empty()).then_some(topic);
     let name = [name, room_name]
         .into_iter()
         .find(|n| !n.is_empty())
@@ -118,7 +126,15 @@ pub(in crate::common_ground) async fn start_group(
         return limited(retry_after);
     }
 
-    let created = match create(pool, room_id, &code, viewer, &name, &ids).await {
+    let group = NewGroup {
+        room_id,
+        code: &code,
+        viewer,
+        name: &name,
+        topic: topic.as_deref(),
+        ids: &ids,
+    };
+    let created = match create(pool, group).await {
         Ok(created) => created,
         Err(response) => return *response,
     };
@@ -150,6 +166,7 @@ pub(in crate::common_ground) async fn start_group(
                 "groupSpaceId": created.group_space_id,
                 "conversationId": created.conversation_id,
                 "name": name,
+                "topic": topic,
                 "memberCount": 1 + created.added.len(),
             },
             "added": list(&created.added),
@@ -168,16 +185,30 @@ fn failed(error: impl std::fmt::Display) -> Box<Response> {
     ))
 }
 
+/// What to create.
+struct NewGroup<'a> {
+    room_id: Uuid,
+    code: &'a str,
+    viewer: &'a str,
+    name: &'a str,
+    topic: Option<&'a str>,
+    ids: &'a [String],
+}
+
 /// Creates the group, its invitation and the room's records in one
 /// transaction.
 async fn create(
     pool: &sqlx_postgres::PgPool,
-    room_id: Uuid,
-    code: &str,
-    viewer: &str,
-    name: &str,
-    ids: &[String],
+    group: NewGroup<'_>,
 ) -> Result<Created, Box<Response>> {
+    let NewGroup {
+        room_id,
+        code,
+        viewer,
+        name,
+        topic,
+        ids,
+    } = group;
     let mut tx = pool.begin().await.map_err(failed)?;
     let contacts: Vec<(String,)> = query_as(
         "SELECT peer_account_id FROM cloud_contacts
@@ -208,14 +239,15 @@ async fn create(
     .value;
     query(
         "INSERT INTO cloud_common_ground_room_groups
-             (group_space_id, room_id, conversation_id, name, created_by)
-         VALUES ($1, $2, $3, $4, $5)",
+             (group_space_id, room_id, conversation_id, name, created_by, topic)
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(&group_space_id)
     .bind(room_id)
     .bind(conversation.id)
     .bind(name)
     .bind(viewer)
+    .bind(topic)
     .execute(&mut *tx)
     .await
     .map_err(failed)?;
