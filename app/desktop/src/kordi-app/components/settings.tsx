@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import { ChevronDown } from 'lucide-react';
 
 import {
@@ -62,9 +62,25 @@ function ChatThemeSelector() {
 /** Every app icon shown at once; clicking one switches the Dock icon. */
 export function AppIconPicker() {
   const [appIcon, setAppIcon] = useState<AppIconKey>(() => readStoredAppIcon());
+  const choose = (key: AppIconKey) => {
+    if (key === appIcon) return;
+    setAppIcon(key);
+    writeStoredAppIcon(key);
+    applyAppIcon(key);
+  };
+  // Radio group keyboard model: one tab stop, arrow keys move the selection.
+  const moveSelection = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    const index = KORDI_APP_ICONS.findIndex((icon) => icon.key === appIcon);
+    const next = KORDI_APP_ICONS[(index + step + KORDI_APP_ICONS.length) % KORDI_APP_ICONS.length];
+    choose(next.key);
+    event.currentTarget.querySelector<HTMLButtonElement>(`[data-app-icon="${next.key}"]`)?.focus();
+  };
 
   return (
-    <div role="radiogroup" aria-label="App icon" className="app-settings-app-icon-grid flex flex-wrap gap-2">
+    <div role="radiogroup" aria-label="App icon" onKeyDown={moveSelection} className="app-settings-app-icon-grid flex flex-wrap gap-2">
       {KORDI_APP_ICONS.map((icon) => {
         const selected = icon.key === appIcon;
         return (
@@ -75,12 +91,9 @@ export function AppIconPicker() {
             aria-checked={selected}
             aria-label={icon.label}
             title={icon.label}
-            onClick={() => {
-              if (selected) return;
-              setAppIcon(icon.key);
-              writeStoredAppIcon(icon.key);
-              applyAppIcon(icon.key);
-            }}
+            tabIndex={selected ? 0 : -1}
+            data-app-icon={icon.key}
+            onClick={() => choose(icon.key)}
             className={`app-settings-app-icon grid h-14 w-14 place-items-center rounded-[14px] outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-[var(--app-quiet-control-focus-ring)] ${selected ? 'ring-2 ring-[var(--app-quiet-control-focus-ring)]' : 'hover:bg-[color:var(--app-quiet-control-hover-bg)]'}`}
           >
             <img alt="" src={appIconPreviewUrl(icon.key)} className="h-12 w-12" draggable={false} />

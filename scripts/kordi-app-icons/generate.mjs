@@ -58,14 +58,15 @@ function writeImageSet(dir, file) {
 }
 
 function writeIcns(raster, svg, outPath) {
-  const iconset = mkdtempSync(join(tmpdir(), 'kordi-iconset-')) + '.iconset';
+  const workDir = mkdtempSync(join(tmpdir(), 'kordi-iconset-'));
+  const iconset = join(workDir, 'icon.iconset');
   mkdirSync(iconset);
   for (const size of [16, 32, 128, 256, 512]) {
     raster.render(svg, join(iconset, `icon_${size}x${size}.png`), size);
     raster.render(svg, join(iconset, `icon_${size}x${size}@2x.png`), size * 2);
   }
   execFileSync('iconutil', ['-c', 'icns', iconset, '-o', outPath]);
-  rmSync(iconset, { recursive: true, force: true });
+  rmSync(workDir, { recursive: true, force: true });
 }
 
 const raster = createRasterizer();

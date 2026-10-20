@@ -339,8 +339,9 @@ html.kordi-native-shell .app-cloud-workspace-surface {
 }
 
 .app-kordi-flying-bird-body {
+  /* Body centre in the bird's own coordinates. */
   transform-box: view-box;
-  transform-origin: 256px 256px;
+  transform-origin: 262px 292px;
   animation: app-kordi-bird-bob 0.72s ease-in-out infinite;
 }
 
