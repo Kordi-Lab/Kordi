@@ -11,7 +11,7 @@ import {
   isRouteMissing,
 } from '../src/features/commonGround/client';
 import { agentFilesSummary, canBuildProfile, commonGroundBuildRequest, type CgBuildChoices } from '../src/features/commonGround/buildRequest';
-import { meetTimes } from '../src/features/commonGround/format';
+import { meetTimes, topicGroupDraft } from '../src/features/commonGround/format';
 import { HomeScreen } from '../src/features/commonGround/HomeScreen';
 import type { CgHost } from '../src/features/commonGround/host';
 import { canMeet, contactActionFor } from '../src/features/commonGround/relationship';
@@ -267,4 +267,60 @@ test('agent files summary names two files and counts the rest', () => {
   assert.equal(agentFilesSummary([]), 'No agent files found');
   assert.equal(agentFilesSummary([file('AGENTS.md'), file('.claude/CLAUDE.md'), file('a/b.md'), file('c.md'), file('d.md')]), 'AGENTS.md, CLAUDE.md +3');
   assert.equal(agentFilesSummary([file('.codex/AGENTS.md')]), 'AGENTS.md');
+});
+
+test('rooms list decodes with and without open, and a 404 without a code hides it', async () => {
+  const { client } = mockServer({
+    'GET rooms': { status: 200, body: { rooms: [
+      { code: '4821', name: 'Poster session', open: true, memberCount: 5, joinedAt: 'a', lastActivityAt: 'b', themeCount: 3 },
+      { code: '1907', name: '', open: false, memberCount: 3, joinedAt: 'a', lastActivityAt: 'b', themeCount: 2 },
+      { code: '5550', name: 'Old', memberCount: 2, joinedAt: 'a', lastActivityAt: 'b', themeCount: 1 },
+    ] } },
+  });
+  const rooms = await client.rooms();
+  assert.deepEqual(rooms.map((room) => room.open), [true, false, true]);
+  assert.equal(rooms[1].themeCount, 2);
+  const old = new CommonGroundStore(mockServer({}).client);
+  await old.loadRooms();
+  assert.equal(old.getSnapshot().support.rooms, false);
+  assert.deepEqual(old.getSnapshot().roomList, []);
+});
+
+test('store: a closed room opens read-only results without polling', async () => {
+  const room = { roomId: 'r', code: '1907', name: '', openedByYou: false, expiresAt: '', members: [person('a')], open: false };
+  const { calls, client } = mockServer({
+    'GET rooms': { status: 200, body: { rooms: [{ code: '1907', name: '', open: false, memberCount: 2, joinedAt: '', lastActivityAt: '', themeCount: 1 }] } },
+    'GET rooms/1907': { status: 200, body: room },
+    'POST rooms/1907/results': { status: 200, body: { status: 'matching', people: [], topics: [], suggestion: null } },
+    'POST rooms/1907/leave': { status: 204 },
+  });
+  const store = new CommonGroundStore(client);
+  await store.loadRooms();
+  store.openRoom('1907');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(store.top(), { name: 'results', code: '1907' });
+  assert.equal(await store.poll(), null);
+  assert.equal(calls.filter((call) => call.url.endsWith('/results')).length, 1);
+  await store.leaveRoom('1907');
+  assert.deepEqual(store.top(), { name: 'home' });
+  assert.ok(calls.some((call) => call.method === 'POST' && call.url.endsWith('/rooms/1907/leave')));
+});
+
+test('a topic group request carries the topic and the group keeps it', async () => {
+  const { calls, client } = mockServer({
+    'POST rooms/4821/results': { status: 200, body: { status: 'ready', people: [], topics: [], suggestion: null, groups: [{ groupSpaceId: 'g0', conversationId: 'c0', name: 'Old', memberCount: 2 }] } },
+    'POST rooms/4821/group': { status: 200, body: { group: { groupSpaceId: 'g1', conversationId: 'c1', name: 'Retrieval', memberCount: 2 }, added: [], invited: [] } },
+  });
+  const store = new CommonGroundStore(client);
+  await store.findCommonGround('4821');
+  assert.equal(store.getSnapshot().results['4821'].groups?.[0].topic, null);
+  const created = await store.createGroup('4821', 'Retrieval', ['b'], 'Retrieval');
+  assert.equal(created?.group.groupSpaceId, 'g1');
+  assert.deepEqual(calls.at(-1)?.body, { name: 'Retrieval', memberIds: ['b'], topic: 'Retrieval' });
+  assert.equal(store.getSnapshot().results['4821'].groups?.at(-1)?.topic, 'Retrieval');
+});
+
+test('Start from a topic row names the group after the topic and selects its people', () => {
+  const draft = topicGroupDraft({ label: 'Agent memory', people: [person('me'), person('hana'), person('maya')] }, 'me');
+  assert.deepEqual(draft, { name: 'Agent memory', topic: 'Agent memory', selected: ['hana', 'maya'] });
 });

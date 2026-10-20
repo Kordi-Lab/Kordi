@@ -7,7 +7,7 @@ import { cloudFetchImpl } from '@/features/cloud/cloudTransport';
 import { loadSession } from '@/features/cloud/session';
 import type {
   CgBuildRequest, CgCreatedGroup, CgGroup, CgMatch, CgMeetInput, CgOwnerView, CgPairCode, CgPerson,
-  CgPersonCard, CgRecentEntry, CgRelationship, CgResults, CgRoom, CgTopicLists,
+  CgPersonCard, CgRecentEntry, CgRelationship, CgResults, CgRoom, CgRoomSummary, CgTopicLists,
 } from './types';
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -81,6 +81,24 @@ function withRelationship<T extends { person: CgPerson; relationship?: CgRelatio
   return relationship && body.person ? { ...body, person: { ...body.person, relationship } } : body;
 }
 
+/** Groups carry `topic` from newer servers; a missing field is null. */
+function withTopic(group: CgGroup): CgGroup {
+  return { ...group, topic: typeof group.topic === 'string' && group.topic ? group.topic : null };
+}
+
+/** A missing `open` means the room is open; missing counts are zero. */
+function roomSummary(entry: Partial<CgRoomSummary> & { code: string }): CgRoomSummary {
+  return {
+    code: entry.code,
+    name: entry.name ?? '',
+    open: entry.open !== false,
+    memberCount: entry.memberCount ?? 0,
+    joinedAt: entry.joinedAt ?? '',
+    lastActivityAt: entry.lastActivityAt ?? '',
+    themeCount: entry.themeCount ?? 0,
+  };
+}
+
 export function createCommonGroundClient(options: CommonGroundClientOptions = {}) {
   const baseUrl = options.baseUrl ?? (() => cloudApiBaseUrl());
   const fetchImpl = options.fetchImpl ?? (() => cloudFetchImpl());
@@ -129,14 +147,25 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
     build: (request: CgBuildRequest) => data<CgOwnerView>('POST', cg('card/build'), request),
     setHidden: (hidden: string[]) => data<CgOwnerView>('PUT', cg('card/hidden'), { hidden }),
     setSharing: (sharing: boolean) => data<CgOwnerView>('PUT', cg('settings'), { sharing }),
+    rooms: async () => {
+      const list = await data<{ rooms?: Array<Partial<CgRoomSummary> & { code: string }> }>('GET', cg('rooms'));
+      return (list?.rooms ?? []).map(roomSummary);
+    },
     room: (code: string) => data<CgRoom>('GET', cg(`rooms/${enc(code)}`)),
     joinRoom: (code: string, name?: string) => data<CgRoom>('POST', cg(`rooms/${enc(code)}/join`), name ? { name } : {}),
     leaveRoom: (code: string) => data<null>('POST', cg(`rooms/${enc(code)}/leave`)),
     results: async (code: string) => {
       const results = await data<CgResults>('POST', cg(`rooms/${enc(code)}/results`));
-      return { ...results, people: (results.people ?? []).map(withRelationship) };
+      return {
+        ...results,
+        people: (results.people ?? []).map(withRelationship),
+        ...(results.groups ? { groups: results.groups.map(withTopic) } : {}),
+      };
     },
-    createGroup: (code: string, name: string, memberIds: string[]) => data<CgCreatedGroup>('POST', cg(`rooms/${enc(code)}/group`), { name, memberIds }),
+    createGroup: async (code: string, name: string, memberIds: string[], topic?: string) => {
+      const created = await data<CgCreatedGroup>('POST', cg(`rooms/${enc(code)}/group`), topic ? { name, memberIds, topic } : { name, memberIds });
+      return { ...created, group: withTopic(created.group) };
+    },
     joinInvitation: (code: string, ref: string) => data<{ status: string } & Omit<CgGroup, 'memberCount'>>(
       'POST', cg(`rooms/${enc(code)}/invitations/${enc(ref)}/join`),
     ),

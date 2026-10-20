@@ -20,6 +20,12 @@ for (const theme of ['light', 'dark'] as const) {
       await page.clock.setFixedTime(new Date('2026-10-20T10:00:00Z'));
       await page.goto(`/tests/visual/commonGroundPage.html?screen=${screen}&theme=${theme}`);
       await expect(ready(page)).toBeVisible();
+      if (screen === 'home') await expect(page.getByText('Reading club')).toBeVisible();
+      if (screen === 'results') {
+        await page.getByRole('tab', { name: 'Topics' }).click();
+        await expect(page.getByRole('button', { name: 'Start a group for Retrieval' })).toBeVisible();
+        await expect(page.getByText('From Eval design · 4 members')).toBeVisible();
+      }
       if (screen === 'build') {
         await expect(page.getByText('AGENTS.md, CLAUDE.md +3')).toBeVisible();
         await expect(page.getByText('Connected', { exact: true })).toBeVisible();

@@ -24,6 +24,7 @@ const fx = commonGroundFixtures(theme);
 const ROUTES: Record<string, () => unknown> = {
   'GET card': () => (screen === 'build' ? { ...fx.owner, card: null } : fx.owner),
   'GET recent': () => fx.recent,
+  'GET rooms': () => fx.rooms,
   'GET rooms/4821': () => fx.room,
   'POST rooms/4821/results': () => fx.results,
   'GET people/acct_hana/match': () => fx.match,

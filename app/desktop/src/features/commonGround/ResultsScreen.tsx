@@ -3,10 +3,10 @@ import { Copy, LogOut, Users } from 'lucide-react';
 
 import { DetailTile, DetailTiles } from '@/kordi-app/contacts/ContactDetailParts';
 import type { CgHost } from './host';
-import { peopleCount, roomTitle } from './format';
+import { peopleCount, roomTitle, topicGroupDraft, type CgGroupDraft } from './format';
 import { CgAvatar, CgAvatarGrid, CgBack, CgButton, CgGroup, CgHero, CgNotice, CgProgress, CgRow, CgScore, CgSection, CgSegmented, CgTopicDot } from './parts';
 import { StartGroupDialog } from './StartGroupDialog';
-import type { CgState, CommonGroundStore } from './store';
+import { roomClosed, type CgState, type CommonGroundStore } from './store';
 import type { CgPerson, CgResults } from './types';
 
 function names(people: CgPerson[], selfId: string) {
@@ -35,7 +35,7 @@ function GroupsSection({ code, results, state, store, host }: { code: string; re
             key={group.groupSpaceId}
             lead={<span className="cg-icon" aria-hidden="true"><Users className="h-4 w-4" /></span>}
             title={group.name}
-            sub={group.memberCount ? `${group.memberCount} members` : undefined}
+            sub={[group.topic ? `From ${group.topic}` : '', group.memberCount ? `${group.memberCount} members` : ''].filter(Boolean).join(' · ') || undefined}
             trailing={group.joined ? <CgButton onClick={() => host.openGroup(group.groupSpaceId)}>Open</CgButton> : null}
           />
         ))}
@@ -58,36 +58,38 @@ function GroupsSection({ code, results, state, store, host }: { code: string; re
 
 export function ResultsScreen({ code, state, store, host }: { code: string; state: CgState; store: CommonGroundStore; host: CgHost }) {
   const [tab, setTab] = useState<'people' | 'topics'>('people');
-  const [starting, setStarting] = useState<{ name: string; selected: string[] } | null>(null);
+  const [starting, setStarting] = useState<CgGroupDraft | null>(null);
   const [copied, setCopied] = useState(false);
   const results = state.results[code];
   const room = state.rooms[code];
   const selfId = host.self.accountId;
-  if (!results) return <><CgBack onBack={() => store.back()} />{state.notice ? <CgNotice text={state.notice} /> : <CgProgress line="Finding overlap" />}</>;
+  const closed = roomClosed(state, code);
+  if (!results) return <><CgBack onBack={() => store.home()} />{state.notice ? <CgNotice text={state.notice} /> : <CgProgress line="Finding overlap" />}</>;
   const members = room?.members ?? [];
   const everyone = [host.self, ...members];
   const suggestion = results.suggestion;
   const canGroup = state.support.group;
-  const startGroup = (name: string, selected: string[]) => setStarting({ name, selected: selected.filter((id) => id !== selfId) });
-  const defaultName = suggestion?.label ?? roomTitle(code, room?.name);
+  const startGroup = (theme: { label: string; people: CgPerson[] }) => setStarting(topicGroupDraft(theme, selfId));
+  const line = `${peopleCount(everyone.length)} · ${results.topics.length} shared topics`;
 
   return (
     <>
-      <CgBack onBack={() => store.back()} />
+      <CgBack onBack={() => store.home()} />
       <CgHero
         avatar={<CgAvatarGrid people={everyone} size={72} />}
         title={roomTitle(code, room?.name)}
-        line={`${peopleCount(everyone.length)} · ${results.topics.length} shared topics`}
+        line={closed ? `${line} · Closed` : line}
       />
-      <DetailTiles>
-        {canGroup ? <DetailTile icon={<Users className="h-5 w-5" aria-hidden="true" />} label="Start group" onClick={() => startGroup(defaultName, suggestion?.people.map((p) => p.accountId) ?? [])} /> : null}
-        <DetailTile
-          icon={<Copy className="h-5 w-5" aria-hidden="true" />}
-          label={copied ? 'Copied' : 'Share code'}
-          onClick={() => void navigator.clipboard?.writeText(code).then(() => setCopied(true), () => undefined)}
-        />
-        <DetailTile icon={<LogOut className="h-5 w-5" aria-hidden="true" />} label="Leave" onClick={() => void store.leaveRoom(code)} />
-      </DetailTiles>
+      {closed ? null : (
+        <DetailTiles>
+          <DetailTile
+            icon={<Copy className="h-5 w-5" aria-hidden="true" />}
+            label={copied ? 'Copied' : 'Share code'}
+            onClick={() => void navigator.clipboard?.writeText(code).then(() => setCopied(true), () => undefined)}
+          />
+          <DetailTile icon={<LogOut className="h-5 w-5" aria-hidden="true" />} label="Leave" onClick={() => void store.leaveRoom(code)} />
+        </DetailTiles>
+      )}
       <CgNotice text={state.notice} />
       {results.status === 'matching' ? <CgProgress line="Finding overlap" /> : null}
       {suggestion ? (
@@ -97,7 +99,7 @@ export function ResultsScreen({ code, state, store, host }: { code: string; stat
               lead={<CgAvatarGrid people={suggestion.people} size={36} />}
               title={suggestion.label}
               sub={names(suggestion.people, selfId)}
-              trailing={canGroup ? <CgButton onClick={() => startGroup(suggestion.label, suggestion.people.map((p) => p.accountId))}>Start group</CgButton> : null}
+              trailing={canGroup ? <CgButton onClick={() => startGroup(suggestion)}>Start group</CgButton> : null}
             />
           </CgGroup>
         </CgSection>
@@ -122,7 +124,12 @@ export function ResultsScreen({ code, state, store, host }: { code: string; stat
                 lead={<CgTopicDot topic={theme.label} />}
                 title={theme.label}
                 sub={peopleCount(theme.people.length)}
-                trailing={<CgAvatarGrid people={theme.people} size={30} />}
+                trailing={(
+                  <span className="cg-row-actions">
+                    <CgAvatarGrid people={theme.people} size={30} />
+                    {canGroup ? <CgButton onClick={() => startGroup(theme)} label={`Start a group for ${theme.label}`}>Start</CgButton> : null}
+                  </span>
+                )}
               />
             ))}
           {(tab === 'people' ? results.people : results.topics).length === 0 && results.status !== 'matching'
@@ -131,6 +138,11 @@ export function ResultsScreen({ code, state, store, host }: { code: string; stat
         </CgGroup>
       </CgSection>
       <GroupsSection code={code} results={results} state={state} store={store} host={host} />
+      {closed ? (
+        <div className="cg-actions-end">
+          <button type="button" className="cg-button is-danger-quiet" onClick={() => void store.leaveRoom(code)}>Remove</button>
+        </div>
+      ) : null}
       {starting ? (
         <StartGroupDialog
           name={starting.name}
@@ -138,7 +150,11 @@ export function ResultsScreen({ code, state, store, host }: { code: string; stat
           selected={starting.selected}
           busy={state.busy === 'group'}
           onCancel={() => setStarting(null)}
-          onCreate={(name, ids) => void store.createGroup(code, name, ids).then((created) => { if (created) setStarting(null); })}
+          onCreate={(name, ids) => void store.createGroup(code, name, ids, starting.topic ?? undefined).then((created) => {
+            if (!created) return;
+            host.openGroup(created.group.groupSpaceId);
+            setStarting(null);
+          })}
         />
       ) : null}
     </>

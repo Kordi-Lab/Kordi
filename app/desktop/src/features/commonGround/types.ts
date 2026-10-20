@@ -81,6 +81,8 @@ export type CgGroup = {
   memberCount: number;
   createdBy?: CgPerson;
   joined?: boolean;
+  /** The topic the group was started from; null on older servers. */
+  topic?: string | null;
 };
 
 export type CgInvitation = { invitationRef: string; groupSpaceId: string; name: string; from: CgPerson; createdAt: string };
@@ -91,9 +93,22 @@ export type CgRoom = {
   name: string;
   openedByYou: boolean;
   expiresAt: string;
+  /** False once the room has closed; absent on older servers. */
+  open?: boolean;
   members: CgPerson[];
   groups?: CgGroup[];
   invitations?: CgInvitation[];
+};
+
+/** A room the viewer joined and has not left, open or closed. */
+export type CgRoomSummary = {
+  code: string;
+  name: string;
+  open: boolean;
+  memberCount: number;
+  joinedAt: string;
+  lastActivityAt: string;
+  themeCount: number;
 };
 
 export type CgTheme = { label: string; people: CgPerson[] };

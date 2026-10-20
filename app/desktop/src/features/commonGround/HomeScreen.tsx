@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
-import { ChevronRight, Hash } from 'lucide-react';
+import { ChevronRight, Hash, Users } from 'lucide-react';
 
+import { peopleCount, roomTitle, topicCount } from './format';
 import type { CgHost } from './host';
 import { CgAvatar, CgButton, CgGroup, CgHero, CgNotice, CgRow, CgScore, CgSection, CgTag } from './parts';
 import type { CgState, CommonGroundStore } from './store';
@@ -75,6 +76,21 @@ export function HomeScreen({ state, store, host }: { state: CgState; store: Comm
         </CgGroup>
       </CgSection>
       <CgNotice text={state.notice} />
+      {state.support.rooms && state.roomList.length ? (
+        <CgSection title="Rooms">
+          <CgGroup>
+            {state.roomList.map((room) => (
+              <CgRow
+                key={room.code}
+                lead={<span className="cg-icon" aria-hidden="true"><Users className="h-4 w-4" /></span>}
+                title={roomTitle(room.code, room.name)}
+                sub={[peopleCount(room.memberCount), topicCount(room.themeCount), room.open ? '' : 'Closed'].filter(Boolean).join(' · ')}
+                onClick={() => store.openRoom(room.code)}
+              />
+            ))}
+          </CgGroup>
+        </CgSection>
+      ) : null}
       {state.recent.length ? (
         <CgSection title="Recent">
           <CgGroup>

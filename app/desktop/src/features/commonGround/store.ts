@@ -6,7 +6,7 @@
 import { CommonGroundError, commonGroundErrorCode, commonGroundErrorMessage, isRouteMissing, type CommonGroundClient } from './client';
 import type {
   CgBuildRequest, CgMatch, CgOwnerView, CgPersonCard, CgRecentEntry, CgRelationship, CgResults, CgRoom,
-  CgTopicLists,
+  CgRoomSummary, CgTopicLists,
 } from './types';
 
 export type CgScreen =
@@ -19,13 +19,15 @@ export type CgScreen =
   | { name: 'person'; accountId: string };
 
 /** Routes the server may not have yet; a 404 without an error code turns one off. */
-export type CgSupport = { contact: boolean; chat: boolean; meet: boolean; group: boolean; invitations: boolean };
+export type CgSupport = { contact: boolean; chat: boolean; meet: boolean; group: boolean; invitations: boolean; rooms: boolean };
 
 export type CgState = {
   stack: CgScreen[];
   owner: CgOwnerView | null;
   loaded: boolean;
   recent: CgRecentEntry[];
+  /** Rooms the viewer joined and has not left, newest first. */
+  roomList: CgRoomSummary[];
   rooms: Record<string, CgRoom>;
   results: Record<string, CgResults>;
   matches: Record<string, CgMatch>;
@@ -47,15 +49,21 @@ const initialState = (): CgState => ({
   owner: null,
   loaded: false,
   recent: [],
+  roomList: [],
   rooms: {},
   results: {},
   matches: {},
   people: {},
   relationships: {},
-  support: { contact: true, chat: true, meet: true, group: true, invitations: true },
+  support: { contact: true, chat: true, meet: true, group: true, invitations: true, rooms: true },
   notice: null,
   busy: null,
 });
+
+/** True when the server says the room has closed, from the room or the rooms list. */
+export function roomClosed(state: CgState, code: string): boolean {
+  return state.rooms[code]?.open === false || state.roomList.some((room) => room.code === code && !room.open);
+}
 
 const BUILD_ERRORS: Record<string, string> = {
   common_ground_no_sources: 'Turn on a source first.',
@@ -121,7 +129,9 @@ export class CommonGroundStore {
   }
 
   back() {
-    if (this.state.stack.length > 1) this.set({ stack: this.state.stack.slice(0, -1), notice: null });
+    if (this.state.stack.length <= 1) return;
+    this.set({ stack: this.state.stack.slice(0, -1), notice: null });
+    if (this.top().name === 'home') void this.loadRooms();
   }
 
   home() {
@@ -135,7 +145,7 @@ export class CommonGroundStore {
         case 'home': return await this.loadHome();
         case 'lobby': return this.set({ rooms: { ...this.state.rooms, [screen.code]: await this.client.room(screen.code) } });
         case 'results': {
-          const room = this.state.rooms[screen.code] ? null : this.client.room(screen.code).catch(() => null);
+          const room = this.client.room(screen.code).catch(() => null);
           const results = await this.client.results(screen.code);
           const loaded = await room;
           return this.set({
@@ -157,10 +167,20 @@ export class CommonGroundStore {
       const owner = await this.client.card();
       this.set({ owner, loaded: true });
       if (!owner.card) return;
-      const recent = await this.client.recent().catch(() => ({ people: this.state.recent }));
+      const [recent] = await Promise.all([this.client.recent().catch(() => ({ people: this.state.recent })), this.loadRooms()]);
       this.set({ recent: recent.people });
     } catch (error) {
       this.set({ loaded: true, notice: commonGroundErrorMessage(error) });
+    }
+  }
+
+  /** Refreshes the Rooms list; an older server without the route hides it. */
+  async loadRooms(): Promise<void> {
+    if (!this.state.support.rooms) return;
+    try {
+      this.set({ roomList: await this.client.rooms() });
+    } catch (error) {
+      if (isRouteMissing(error)) this.set({ support: { ...this.state.support, rooms: false }, roomList: [] });
     }
   }
 
@@ -178,7 +198,7 @@ export class CommonGroundStore {
         this.set({ rooms: { ...this.state.rooms, [screen.code]: room } });
         return LOBBY_POLL_MS;
       }
-      if (screen.name === 'results' && this.state.results[screen.code]?.status === 'matching') {
+      if (screen.name === 'results' && this.state.results[screen.code]?.status === 'matching' && !roomClosed(this.state, screen.code)) {
         const results = await this.client.results(screen.code);
         this.set({ results: { ...this.state.results, [screen.code]: results } });
         return results.status === 'matching' ? MATCH_POLL_MS : null;
@@ -259,6 +279,7 @@ export class CommonGroundStore {
       this.set({ busy: 'join', notice: null });
       const room = await this.client.joinRoom(code);
       this.set({ rooms: { ...this.state.rooms, [code]: room }, stack: [...this.state.stack, { name: 'lobby', code }] });
+      void this.loadRooms();
       return true;
     } catch (error) {
       const code = commonGroundErrorCode(error);
@@ -274,7 +295,7 @@ export class CommonGroundStore {
     await this.client.leaveRoom(code).catch(() => undefined);
     const { [code]: _room, ...rooms } = this.state.rooms;
     const { [code]: _results, ...results } = this.state.results;
-    this.set({ rooms, results });
+    this.set({ rooms, results, roomList: this.state.roomList.filter((room) => room.code !== code) });
     this.home();
   }
 
@@ -285,13 +306,18 @@ export class CommonGroundStore {
     this.set({ stack: [...this.state.stack.slice(0, -1), { name: 'results', code }] });
   }
 
-  async createGroup(code: string, name: string, memberIds: string[]) {
+  /** Opens Results for a room from the Rooms list. */
+  openRoom(code: string) {
+    this.open({ name: 'results', code });
+  }
+
+  async createGroup(code: string, name: string, memberIds: string[], topic?: string) {
     try {
       this.set({ busy: 'group', notice: null });
-      const created = await this.client.createGroup(code, name, memberIds);
+      const created = await this.client.createGroup(code, name, memberIds, topic);
       const results = this.state.results[code];
       if (results) {
-        const groups = [...(results.groups ?? []), { ...created.group, joined: true }];
+        const groups = [...(results.groups ?? []), { ...created.group, topic: created.group.topic ?? topic ?? null, joined: true }];
         this.set({ results: { ...this.state.results, [code]: { ...results, groups } } });
       }
       return created;

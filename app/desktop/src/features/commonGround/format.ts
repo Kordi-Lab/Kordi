@@ -35,3 +35,14 @@ export function meetTimes(date: string, time: string, minutes: number): { startA
 export function peopleCount(count: number) {
   return count === 1 ? '1 person' : `${count} people`;
 }
+
+export function topicCount(count: number) {
+  return count === 1 ? '1 topic' : `${count} topics`;
+}
+
+/** The Start group dialog for a topic: its label as the name and topic, its people (without the viewer) selected. */
+export type CgGroupDraft = { name: string; topic: string | null; selected: string[] };
+
+export function topicGroupDraft(theme: { label: string; people: Array<{ accountId: string }> }, selfId: string): CgGroupDraft {
+  return { name: theme.label, topic: theme.label, selected: theme.people.map((person) => person.accountId).filter((id) => id !== selfId) };
+}
