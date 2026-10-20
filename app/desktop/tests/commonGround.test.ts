@@ -10,6 +10,7 @@ import {
   createCommonGroundClient,
   isRouteMissing,
 } from '../src/features/commonGround/client';
+import { agentFilesSummary, canBuildProfile, commonGroundBuildRequest, type CgBuildChoices } from '../src/features/commonGround/buildRequest';
 import { meetTimes } from '../src/features/commonGround/format';
 import { HomeScreen } from '../src/features/commonGround/HomeScreen';
 import type { CgHost } from '../src/features/commonGround/host';
@@ -235,4 +236,35 @@ test('meet times turn a local slot into ISO start and end', () => {
 test('rate limits without Retry-After ask for a minute', () => {
   assert.equal(commonGroundErrorMessage(new CommonGroundError('x', 429, 'rate_limited')), 'Try again in 1 min.');
   assert.equal(MATCH_POLL_MS, 3_000);
+});
+
+test('build request sends agents only with the switch on and connectors when one is connected', () => {
+  const files = [{ label: '.claude/CLAUDE.md', text: 'a' }, { label: 'AGENTS.md', text: 'b' }];
+  const base: CgBuildChoices = { memory: false, connectedCount: 0, useAgents: false, agentFiles: files, device: [], links: '', notes: '' };
+  assert.deepEqual(commonGroundBuildRequest(base), { memory: false, connectors: false, device: [], links: '', notes: '' });
+  assert.equal(canBuildProfile(base), false);
+  const withAgents = commonGroundBuildRequest({ ...base, useAgents: true });
+  assert.deepEqual(withAgents.agents, files);
+  assert.equal(withAgents.connectors, false);
+  assert.equal('agents' in commonGroundBuildRequest({ ...base, useAgents: true, agentFiles: [] }), false);
+  const withConnector = commonGroundBuildRequest({ ...base, connectedCount: 1 });
+  assert.equal(withConnector.connectors, true);
+  assert.equal('agents' in withConnector, false);
+  assert.equal(canBuildProfile({ ...base, connectedCount: 1 }), true);
+  assert.equal(canBuildProfile({ ...base, useAgents: true }), true);
+  assert.equal(canBuildProfile({ ...base, notes: ' x ' }), true);
+});
+
+test('client sends the agent files in the build body', async () => {
+  const { calls, client } = mockServer({ 'POST card/build': { status: 202, body: owner({ card: null, build: { status: 'building', errorCode: null } }) } });
+  const agents = [{ label: 'AGENTS.md', text: 'Be brief.' }];
+  await client.build(commonGroundBuildRequest({ memory: false, connectedCount: 2, useAgents: true, agentFiles: agents, device: [], links: '', notes: '' }));
+  assert.deepEqual(calls[0].body, { memory: false, connectors: true, device: [], links: '', notes: '', agents });
+});
+
+test('agent files summary names two files and counts the rest', () => {
+  const file = (label: string) => ({ label, text: '' });
+  assert.equal(agentFilesSummary([]), 'No agent files found');
+  assert.equal(agentFilesSummary([file('AGENTS.md'), file('.claude/CLAUDE.md'), file('a/b.md'), file('c.md'), file('d.md')]), 'AGENTS.md, CLAUDE.md +3');
+  assert.equal(agentFilesSummary([file('.codex/AGENTS.md')]), 'AGENTS.md');
 });

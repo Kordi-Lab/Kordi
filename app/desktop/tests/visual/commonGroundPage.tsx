@@ -55,7 +55,14 @@ const host: CgHost = {
   acceptRequest: async () => undefined,
   contactsChanged: () => undefined,
   openGroup: () => undefined,
-  listConnectors: async () => [{ id: 'gmail', name: 'Gmail' }, { id: 'github', name: 'GitHub' }],
+  connectors: {
+    client: {
+      list: async () => ({ states: fx.connectors, agents: [] }),
+      disconnect: async () => undefined,
+    },
+    openSettings: () => undefined,
+  },
+  agentFiles: async () => fx.agentFiles,
   device: {
     status: async () => ({ calendar: 'granted', reminders: 'not_determined' }),
     request: async () => ({ calendar: 'granted', reminders: 'granted' }),

@@ -1,6 +1,7 @@
 // Fictional people and server replies for the login-free Common ground preview.
 
-import type { CgPerson, CgRelationship } from '../../src/features/commonGround/types';
+import type { CgAgentFile, CgPerson, CgRelationship } from '../../src/features/commonGround/types';
+import type { ConnectorProviderId, ConnectorState } from '../../src/features/connectors/connectorsModel';
 
 export function initialsAvatar(name: string, theme: 'light' | 'dark') {
   const initials = name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
@@ -65,6 +66,18 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
     nextStep: 'Compare your memory evals over coffee.',
     relationship: stranger,
   };
+  const connector = (providerId: ConnectorProviderId, connected: boolean): ConnectorState => ({
+    providerId,
+    status: connected ? 'connected' : 'not_connected',
+    connectedAt: connected ? '2026-10-12T09:00:00Z' : null,
+    grantedScopeIds: [],
+    actEnabled: false,
+    agentIds: [],
+    lastEventAt: null,
+  });
+  const connectors = [connector('gmail', false), connector('google_calendar', false), connector('github', true), connector('slack', false)];
+  const agentFiles: CgAgentFile[] = ['AGENTS.md', '.claude/CLAUDE.md', '.codex/AGENTS.md', '.codex/instructions/style.md', '.claude/projects/notes/memory/evals.md']
+    .map((label) => ({ label, text: 'Fictional preview text.' }));
   const recent = { people: results.people.slice(0, 3).map((entry, index) => ({ ...entry, openedAt: `2026-10-${18 - index}T10:00:00Z` })) };
-  return { self, owner, room, results, match, recent };
+  return { self, owner, room, results, match, recent, connectors, agentFiles };
 }

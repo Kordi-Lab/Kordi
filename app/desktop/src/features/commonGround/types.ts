@@ -53,12 +53,18 @@ export type CgOwnerView = {
 export type CgDeviceSource = 'calendar' | 'reminders';
 export type CgDeviceItem = { title: string; date: string | null };
 
+/** An agent instruction or memory file from this Mac; `label` is the path under the home directory. */
+export type CgAgentFile = { label: string; text: string };
+
 export type CgBuildRequest = {
   memory: boolean;
+  /** True when any connector is connected; the server reads events for all of them. */
   connectors: boolean;
   device: Array<{ source: string; items: CgDeviceItem[] }>;
   links: string;
   notes: string;
+  /** Sent only when the Agents on this Mac switch is on. */
+  agents?: CgAgentFile[];
 };
 
 /** The server sends `relationship` beside `person`; the client folds it into `person`. */

@@ -215,6 +215,7 @@ pub fn run() {
             mac_local::common_ground::common_ground_device_status,
             mac_local::common_ground::common_ground_device_request,
             mac_local::common_ground::common_ground_device_titles,
+            mac_local::common_ground::common_ground_agent_files,
             digest_calendar::desktop_digest_calendars,
             digest_calendar::desktop_digest_fetch_ics,
             digest_calendar::desktop_digest_calendar_events,
