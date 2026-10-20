@@ -252,7 +252,9 @@
   html.embedded .seg { margin-top: 18px; border-radius: 8px; }
   html.embedded .seg button { font-size: 12.5px; padding: 5px; border-radius: 6px; }
   html.embedded .seg button.on { background: var(--glass); box-shadow: 0 1px 2px rgba(0,0,0,.12), inset 0 0 0 1px var(--line); }
-  html.embedded .primary { min-height: 36px; border-radius: 9px; font-size: 13.5px; margin-top: 16px; }
+  html.embedded .primary { width: auto; min-width: 120px; min-height: 32px; padding: 0 16px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-top: 12px; display: block; margin-left: auto; }
+  html.embedded .build-actions { margin-top: 0; }
+  html.embedded .build-actions .error { text-align: right; }
   html.embedded .link { font-size: 12.5px; font-weight: 500; padding: 14px 2px 0; width: auto; }
   html.embedded .small-btn { border-radius: 7px; padding: 5px 12px; font-size: 12.5px; flex: none; }
   html.embedded .small-btn.quiet { background: var(--fill); color: var(--text); }
@@ -622,7 +624,7 @@ async function paintBuild(next) {
       ${tauriInvoke ? `<div class="section"><div class="section-title">On this Mac</div><div class="group" style="--inset:58px">${DEVICE.map(deviceRow).join("")}</div></div>` : ""}
       <div class="section"><div class="section-title">Links</div><div class="group"><textarea id="links" placeholder="Homepage; Google Scholar; ORCID; papers; anything about you">${esc(links)}</textarea></div></div>
       <div class="section"><div class="section-title">Notes</div><div class="group"><textarea id="notes" placeholder="What are you working on?">${esc(notes)}</textarea></div></div>
-      <button class="primary" id="build">Build profile</button><div class="error">${esc(error)}</div>`;
+      <div class="section build-actions"><button class="primary" id="build">Build profile</button><div class="error">${esc(error)}</div></div>`;
     const btn = document.getElementById("build");
     const sync = () => {
       links = document.getElementById("links").value; notes = document.getElementById("notes").value;

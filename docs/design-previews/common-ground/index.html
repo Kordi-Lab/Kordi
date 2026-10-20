@@ -1282,7 +1282,7 @@ function contactsMac() {
   return `<section class="m-list"><div class="m-listhead"><h2>Contacts</h2><button class="m-iconbtn" aria-label="Add contact" title="Add contact">${ic('personAdd')}</button></div>
     <div class="m-search">${ic('search')}<span>Search</span></div>
     <div class="m-clist" id="mList">
-      <button class="m-crow ${sel === 'cg' ? 'on' : ''}" data-act="mSel" data-a="cg"><span class="m-cgtile">${ic('cg')}</span><span class="grow"><span class="nm" style="display:block">Common ground</span><span class="sub" style="display:block">Meet people at this event</span></span>${S.inviteWaiting ? '<span class="rdot" aria-label="Invitation waiting"></span>' : ''}</button>
+      <button class="m-crow ${sel === 'cg' ? 'on' : ''}" data-act="mSel" data-a="cg"><span class="m-cgtile">${ic('cg')}</span><span class="grow"><span class="nm" style="display:block">Common ground</span><span class="sub" style="display:block">Match. Meet. Build.</span></span>${S.inviteWaiting ? '<span class="rdot" aria-label="Invitation waiting"></span>' : ''}</button>
       <div class="m-gap"></div>
       ${CONTACTS.map((id) => `<button class="m-crow ${sel === id ? 'on' : ''}" data-act="mSel" data-a="${id}">${avatar(id, 34)}<span class="grow"><span class="nm" style="display:block">${esc(P[id].name)}</span><span class="sub" style="display:block">${esc(P[id].lab)}</span></span></button>`).join('')}
     </div></section>`;

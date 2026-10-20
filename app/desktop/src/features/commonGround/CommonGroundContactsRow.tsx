@@ -26,7 +26,7 @@ export function CommonGroundContactsRow({ selected, hasInvitation = false, onSel
       </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[12px] font-semibold leading-4">Common ground</div>
-        <div className="app-contact-row-meta mt-0.5 truncate text-[10.5px] leading-4">Meet people at this event</div>
+        <div className="app-contact-row-meta mt-0.5 truncate text-[10.5px] leading-4">Match. Meet. Build.</div>
       </div>
     </button>
   );
