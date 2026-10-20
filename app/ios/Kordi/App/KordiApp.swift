@@ -548,7 +548,7 @@ private struct GroupInvitePreviewHost: View {
 private struct LaunchingView: View {
     var body: some View {
         ZStack {
-            KordiMark(size: 58, colorRelay: true)
+            KordiMark(size: 96, flying: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(uiColor: .systemGroupedBackground))

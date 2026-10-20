@@ -3,9 +3,12 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { applyChatTheme, readStoredChatTheme } from './app/themePreference'
+import { DEFAULT_APP_ICON, applyAppIcon, readStoredAppIcon } from './app/appIconPreference'
 import { preloadNotoEmojiThumbnails } from './features/emoji/notoEmojiThumbnails'
 
 applyChatTheme(readStoredChatTheme())
+const appIcon = readStoredAppIcon()
+if (appIcon !== DEFAULT_APP_ICON) applyAppIcon(appIcon)
 const root = createRoot(document.getElementById('root'))
 const authPreview = new URLSearchParams(window.location.search).get('authPreview')
 

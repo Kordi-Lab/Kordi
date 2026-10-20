@@ -273,12 +273,12 @@ test('cloud window surfaces keep their compact and workspace dimensions', async 
   await applyKordiMainWindowSize();
 });
 
-test('cloud starting screen renders only the quiet watercolor dots', () => {
+test('cloud starting screen renders only the flying Kordi bird', () => {
   const markup = renderToStaticMarkup(createElement(CloudStartingScreen));
 
   assert.match(markup, /app-cloud-starting-screen/);
-  assert.match(markup, /app-cloud-starting-dots/);
-  assert.equal((markup.match(/<span class="app-cloud-starting-dot/g) ?? []).length, 3);
+  assert.equal((markup.match(/class="app-kordi-flying-bird app-cloud-starting-bird"/g) ?? []).length, 1);
+  assert.match(markup, /app-kordi-flying-bird-wing/);
   assert.doesNotMatch(markup, /Starting/);
   assert.doesNotMatch(markup, /Restoring session/);
 });
@@ -287,7 +287,7 @@ test('cloud starting timeout provides an explicit retry action', () => {
   const markup = renderToStaticMarkup(createElement(CloudStartingScreen, { status: 'error', onRetry: () => {} }));
 
   assert.match(markup, /app-cloud-starting-screen-error/);
-  assert.equal((markup.match(/<span class="app-cloud-starting-dot/g) ?? []).length, 3);
+  assert.match(markup, /app-cloud-starting-bird/);
   assert.match(markup, /Retry sync/);
   assert.match(markup, /button/);
 });
@@ -304,23 +304,20 @@ test('pending social sign-in shows the provider with reopen and cancel actions',
   assert.match(markup, />Reopen browser</);
   assert.match(markup, />Cancel</);
   assert.match(markup, /app-cloud-signin-ring/);
-  assert.doesNotMatch(markup, /app-cloud-starting-dot/);
+  assert.doesNotMatch(markup, /app-cloud-starting-bird/);
 });
 
-test('cloud starting dots are flat and non-glowy in CSS', () => {
+test('cloud starting bird flaps flat, without glow, and stops for reduced motion', () => {
   const css = readDesktopShellCss();
-  const dotBlock = cssBlock(css, '.app-cloud-starting-dot');
+  const wingBlock = cssBlock(css, '.app-kordi-flying-bird-wing');
 
-  assert.match(dotBlock, /width:\s*9px/);
-  assert.match(dotBlock, /height:\s*9px/);
-  assert.match(dotBlock, /border-radius:\s*999px/);
-  assert.match(dotBlock, /background:\s*currentColor/);
-  assert.doesNotMatch(dotBlock, /filter:|drop-shadow|box-shadow/);
-  assert.doesNotMatch(css, /\.app-cloud-starting-dot::before/);
-  assert.doesNotMatch(css, /\.app-cloud-starting-dot-[123]\s*\{[\s\S]*?radial-gradient/);
+  assert.match(wingBlock, /animation:\s*app-kordi-bird-flap/);
+  assert.match(wingBlock, /transform-origin:\s*0% 50%/);
+  assert.doesNotMatch(css, /\.app-kordi-flying-bird[^{]*\{[^}]*(filter:|drop-shadow|box-shadow)/);
+  assert.match(css, /prefers-reduced-motion: reduce\)\s*\{\s*\.app-kordi-flying-bird-body,\s*\.app-kordi-flying-bird-wing\s*\{\s*animation:\s*none;/);
 });
 
-test('session restore uses the same dot loading screen', () => {
+test('session restore uses the same bird loading screen', () => {
   const markup = renderToStaticMarkup(createElement(KordiAppRoot, {
     cloudSessionStatus: 'loading',
     cloudSession: {
@@ -333,7 +330,7 @@ test('session restore uses the same dot loading screen', () => {
   }));
 
   assert.match(markup, /app-cloud-starting-screen/);
-  assert.equal((markup.match(/<span class="app-cloud-starting-dot/g) ?? []).length, 3);
+  assert.match(markup, /app-cloud-starting-bird/);
   assert.doesNotMatch(markup, /Restoring session/);
 });
 
