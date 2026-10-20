@@ -1596,16 +1596,12 @@ struct BackgroundAgentSessionRow: View {
     }
 
     private var metadataLabel: some View {
-        HStack(spacing: 5) {
-            Text(snapshot?.agentDisplayName ?? agentName)
-                .fontWeight(.medium)
-                .foregroundStyle(.primary)
-            Text("·")
-                .accessibilityHidden(true)
-            Text("Background session")
-        }
-        .font(.caption2)
-        .foregroundStyle(.secondary)
+        Text(snapshot?.agentDisplayName ?? agentName)
+            .font(.caption2)
+            .fontWeight(.medium)
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .truncationMode(.tail)
     }
 
     private var statusLabel: some View {
@@ -1619,6 +1615,7 @@ struct BackgroundAgentSessionRow: View {
         .font(.caption2)
         .foregroundStyle(.secondary)
         .fixedSize()
+        .layoutPriority(1)
     }
 
     private var statusColor: Color {
