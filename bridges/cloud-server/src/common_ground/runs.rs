@@ -71,14 +71,16 @@ pub(super) async fn mark_completed(
     Ok(changed.rows_affected() > 0)
 }
 
+/// Marks an unfinished run failed. Returns false when the run is no longer
+/// this runner's (re-leased, or already completed or failed).
 pub(super) async fn mark_failed(
     tx: &mut Transaction<'_, Postgres>,
     run_id: &str,
     runner_id: Option<&str>,
     code: &str,
     message: &str,
-) -> sqlx_core::Result<()> {
-    query(
+) -> sqlx_core::Result<bool> {
+    let changed = query(
         "UPDATE cloud_agent_fallback_runs SET status = 'failed', error_code = $3,
              error_message = $4, updated_at = $5
          WHERE run_id = $1 AND ($2::text IS NULL OR claimed_by = $2)
@@ -91,7 +93,7 @@ pub(super) async fn mark_failed(
     .bind(Utc::now().to_rfc3339())
     .execute(&mut **tx)
     .await?;
-    Ok(())
+    Ok(changed.rows_affected() > 0)
 }
 
 /// Stores a finished run's reply with the feature that queued it.

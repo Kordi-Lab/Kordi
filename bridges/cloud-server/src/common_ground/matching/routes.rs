@@ -12,10 +12,10 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use sqlx_core::{query::query, query_as::query_as};
 
-use super::store::{self, Pending, MAX_THEME_MEMBERS};
+use super::store::{self, Pending, Queued, MAX_THEME_MEMBERS};
 use super::{shared_cards, suggestion, MatchResult, SharedCard};
-use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
-use crate::common_ground::{card, db_error, limited, people, rooms, MATCH_LIMIT};
+use crate::auth::rate_limit::CloudRateLimiter;
+use crate::common_ground::{card, db_error, limited, people, rooms};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
 fn person(card: &SharedCard) -> Value {
@@ -31,17 +31,6 @@ fn status(pending: Option<Pending>) -> &'static str {
         None => "ready",
         Some(Pending::Running) => "matching",
         Some(Pending::Failed) => "failed",
-    }
-}
-
-/// Charges the matching budget only when a run would be queued.
-async fn allowed(rate_limiter: &CloudRateLimiter, account: &str) -> Result<(), Box<Response>> {
-    match rate_limiter
-        .observe_account_limit(MATCH_LIMIT, account)
-        .await
-    {
-        RateLimitDecision::Allowed => Ok(()),
-        RateLimitDecision::Limited { retry_after } => Err(Box::new(limited(retry_after))),
     }
 }
 
@@ -104,21 +93,37 @@ pub(in crate::common_ground) async fn results(
         Err(error) => return db_error(error),
     };
     let needs_themes = themes.is_none() && theme_members.len() >= 2;
-    if (!stale.is_empty() || needs_themes) && !queued_recently(pool, account, room_id).await {
-        if let Err(response) = allowed(&rate_limiter, account).await {
-            return *response;
-        }
-    }
+    // Each queued run is charged; polling while one works or pauses is free.
     let mut pending = None;
     if !stale.is_empty() {
-        match store::queue_matches(pool, pip.config(), &viewer, &stale, Some(room_id)).await {
-            Ok(state) => pending = Some(state),
+        let queued = store::queue_matches(
+            pool,
+            pip.config(),
+            &rate_limiter,
+            &viewer,
+            &stale,
+            Some(room_id),
+        )
+        .await;
+        match queued {
+            Ok(Queued::Pending(state)) => pending = Some(state),
+            Ok(Queued::Limited(retry_after)) => return limited(retry_after),
             Err(error) => return db_error(error),
         }
     }
     if needs_themes {
-        match store::queue_themes(pool, pip.config(), room_id, account, &theme_members).await {
-            Ok(state) => pending = pending.or(Some(state)),
+        let queued = store::queue_themes(
+            pool,
+            pip.config(),
+            &rate_limiter,
+            room_id,
+            account,
+            &theme_members,
+        )
+        .await;
+        match queued {
+            Ok(Queued::Pending(state)) => pending = pending.or(Some(state)),
+            Ok(Queued::Limited(retry_after)) => return limited(retry_after),
             Err(error) => return db_error(error),
         }
     }
@@ -150,20 +155,6 @@ pub(in crate::common_ground) async fn results(
         })),
     )
         .into_response()
-}
-
-/// A run queued for this viewer or room in the last few seconds means the
-/// client is polling; only the first request of a burst is charged.
-async fn queued_recently(pool: &sqlx_postgres::PgPool, account: &str, room_id: uuid::Uuid) -> bool {
-    let row: Result<(bool,), _> = query_as(
-        "SELECT EXISTS (SELECT 1 FROM cloud_common_ground_match_runs
-             WHERE (viewer_account_id = $1 OR room_id = $2) AND finished_at IS NULL)",
-    )
-    .bind(account)
-    .bind(room_id)
-    .fetch_one(pool)
-    .await;
-    row.map(|(open,)| open).unwrap_or(false)
 }
 
 /// `GET /v1/cloud/common-ground/people/:account_id/match`: what you share
@@ -219,57 +210,78 @@ pub(in crate::common_ground) async fn match_detail(
         body["person"] = person(other_card);
         return (StatusCode::OK, Json(body)).into_response();
     }
-    if let Err(response) = allowed(&rate_limiter, account).await {
-        return *response;
-    }
     match store::queue_matches(
         pool,
         pip.config(),
+        &rate_limiter,
         viewer,
         std::slice::from_ref(other_card),
         None,
     )
     .await
     {
-        Ok(pending) => (
+        Ok(Queued::Pending(pending)) => (
             StatusCode::ACCEPTED,
             Json(json!({ "status": status(Some(pending)), "person": person(other_card) })),
         )
             .into_response(),
+        Ok(Queued::Limited(retry_after)) => limited(retry_after),
         Err(error) => db_error(error),
     }
 }
 
-type RecentRow = (String, Option<String>, Option<String>, Value, DateTime<Utc>);
+type RecentRow = (
+    String,
+    Option<String>,
+    Option<String>,
+    Value,
+    DateTime<Utc>,
+    bool,
+);
 
 /// `GET /v1/cloud/common-ground/recent`: people whose match you opened,
-/// newest first.
+/// newest first. The score and headline are shown only while the match is
+/// still current: both cards are at the revisions it was computed from, the
+/// other person still shares, and you may still see them. Otherwise the
+/// person stays in your history without them.
 pub(in crate::common_ground) async fn recent(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Response {
-    let rows: Result<Vec<RecentRow>, _> = query_as(
-        "SELECT account.account_id, account.display_name, account.avatar_url, m.result_json, m.opened_at
+    let sql = format!(
+        "SELECT account.account_id, account.display_name, account.avatar_url, m.result_json, m.opened_at,
+                COALESCE(viewer_card.built_at IS NOT NULL
+                    AND viewer_card.revision = m.viewer_revision
+                    AND other_card.built_at IS NOT NULL
+                    AND other_card.sharing_enabled
+                    AND other_card.revision = m.other_revision
+                    AND {}, false)
          FROM cloud_common_ground_matches m
          JOIN cloud_accounts account ON account.account_id = m.other_account_id
+         LEFT JOIN cloud_common_ground_cards viewer_card ON viewer_card.account_id = m.viewer_account_id
+         LEFT JOIN cloud_common_ground_cards other_card ON other_card.account_id = m.other_account_id
          WHERE m.viewer_account_id = $1 AND m.opened_at IS NOT NULL
          ORDER BY m.opened_at DESC LIMIT 50",
-    )
-    .bind(&session.account_id)
-    .fetch_all(state.db_pool())
-    .await;
+        people::visible_sql("m.viewer_account_id", "m.other_account_id"),
+    );
+    let rows: Result<Vec<RecentRow>, _> = query_as(&sql)
+        .bind(&session.account_id)
+        .fetch_all(state.db_pool())
+        .await;
     match rows {
         Ok(rows) => {
             let people: Vec<Value> = rows
                 .into_iter()
-                .filter_map(|(id, name, avatar_url, value, opened_at)| {
-                    let result: MatchResult = serde_json::from_value(value).ok()?;
-                    Some(json!({
+                .map(|(id, name, avatar_url, value, opened_at, current)| {
+                    let result = current
+                        .then(|| serde_json::from_value::<MatchResult>(value).ok())
+                        .flatten();
+                    json!({
                         "person": people::person(&id, name.as_deref(), avatar_url.as_deref()),
-                        "score": result.score,
-                        "headline": result.headline,
+                        "score": result.as_ref().map(|r| r.score),
+                        "headline": result.as_ref().map(|r| &r.headline),
                         "openedAt": opened_at,
-                    }))
+                    })
                 })
                 .collect();
             (StatusCode::OK, Json(json!({ "people": people }))).into_response()

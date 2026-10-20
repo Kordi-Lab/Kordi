@@ -41,7 +41,7 @@ pub(crate) fn service_provider_auths(state: &ServerState) -> Vec<ServiceProvider
             model: provider_auth.model(),
             run_id_prefix: Some(crate::pip::RUN_PREFIX),
         });
-        // Common ground card builds run on the same Kordi-operated key.
+        // Common ground runs use the same Kordi-operated key.
         auths.push(ServiceProviderAuth {
             owner_account_id: &config.account_id,
             snapshot_id: provider_auth.snapshot_id(),

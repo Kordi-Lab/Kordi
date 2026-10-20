@@ -72,12 +72,12 @@ where
         }
     };
     if text.trim().is_empty() {
-        return Err("the model finished without writing a card".into());
+        return Err("the model finished without a reply".into());
     }
     Ok(text)
 }
 
-/// Runs one card build, keeping its lease alive while the model works.
+/// Runs one Common ground run, keeping its lease alive while the model works.
 pub(crate) async fn step<C, P>(
     client: &C,
     provider: &P,

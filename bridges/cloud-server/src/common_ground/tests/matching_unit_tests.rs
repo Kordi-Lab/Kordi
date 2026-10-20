@@ -98,8 +98,14 @@ fn replies_may_only_use_labels_from_the_right_card_and_list() {
 
 #[test]
 fn people_left_out_have_nothing_in_common_and_bad_replies_fail() {
-    let found = parse_matches(r#"{"people":[{"person":5}]}"#, &viewer(), &[other()]).unwrap();
-    assert_eq!(found, vec![Found::default()]);
+    let sam = card("Sam", &["Robot grasping"], &[], &[], &[]);
+    let found = parse_matches(
+        r#"{"people":[{"person":5},{"person":1}]}"#,
+        &viewer(),
+        &[other(), sam.clone()],
+    )
+    .unwrap();
+    assert_eq!(found, vec![Found::default(), Found::default()]);
     let empty = parse_matches(
         r#"{"people":[{"person":0,"next_step":"Say hi"}]}"#,
         &viewer(),
@@ -108,6 +114,57 @@ fn people_left_out_have_nothing_in_common_and_bad_replies_fail() {
     .unwrap();
     assert_eq!(empty[0].next_step, "", "no next step without common ground");
     assert!(parse_matches("I can't help with that.", &viewer(), &[other()]).is_none());
+}
+
+#[test]
+fn a_reply_that_names_nobody_fails_the_run() {
+    for reply in [
+        "{}",
+        r#"{"people":[]}"#,
+        r#"{"people":[{"person":7}]}"#,
+        r#"{"people":{"person":0}}"#,
+    ] {
+        assert!(
+            parse_matches(reply, &viewer(), &[other()]).is_none(),
+            "{reply}"
+        );
+    }
+    assert_eq!(
+        parse_matches(r#"{"people":[]}"#, &viewer(), &[]),
+        Some(vec![]),
+        "an empty batch has nobody to name"
+    );
+}
+
+#[test]
+fn the_first_entry_for_a_person_wins() {
+    let reply = json!({"people": [
+        {"person": 0, "shared": [{"mine": "Agent memory", "theirs": "Memory for agents", "why": "first"}], "next_step": "Meet"},
+        {"person": 0, "shared": [], "next_step": ""},
+    ]})
+    .to_string();
+    let found = parse_matches(&reply, &viewer(), &[other()]).unwrap();
+    assert_eq!(found[0].shared.len(), 1);
+    assert_eq!(found[0].shared[0].why, "first");
+    assert_eq!(found[0].next_step, "Meet");
+}
+
+#[test]
+fn labels_match_ignoring_spacing_on_the_card_too() {
+    let spaced = card(
+        "Priya",
+        &["Memory  for\tagents"],
+        &[],
+        &["GPU   clusters"],
+        &[],
+    );
+    let reply = json!({"people": [{"person": 0,
+        "shared": [{"mine": "Agent memory", "theirs": "memory for agents", "why": "x"}],
+        "they_bring": [{"topic": "gpu clusters", "for": "GPU access", "why": "y"}]}]})
+    .to_string();
+    let found = parse_matches(&reply, &viewer(), &[spaced]).unwrap();
+    assert_eq!(found[0].shared[0].their_topic, "Memory  for\tagents");
+    assert_eq!(found[0].they_bring[0].topic, "GPU   clusters");
 }
 
 #[test]
@@ -122,6 +179,11 @@ fn themes_need_two_people_and_come_largest_first() {
         ]
     );
     assert!(parse_themes("no", 3).is_none());
+    assert!(
+        parse_themes("{}", 3).is_none(),
+        "a reply without themes is not a theme list"
+    );
+    assert_eq!(parse_themes(r#"{"themes":[]}"#, 3), Some(vec![]));
 }
 
 #[test]

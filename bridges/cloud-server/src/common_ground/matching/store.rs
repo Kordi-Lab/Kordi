@@ -1,6 +1,7 @@
 //! Queueing match and room-theme runs, and storing what they find.
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -10,7 +11,9 @@ use uuid::Uuid;
 
 use super::prompt::{self, MATCH_SYSTEM, ROOM_SYSTEM};
 use super::{result, MatchResult, SharedCard};
+use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::common_ground::runs::{self, NewRun, MATCH_PREFIX, ROOM_PREFIX};
+use crate::common_ground::MATCH_LIMIT;
 
 /// People matched by one run; larger rooms fill in over several runs.
 pub(super) const MATCH_BATCH: usize = 20;
@@ -61,6 +64,27 @@ pub(super) enum Pending {
     Failed,
 }
 
+/// What asking for a run did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Queued {
+    /// A run is working or paused after a failure; nothing was charged.
+    Pending(Pending),
+    /// A new run would exceed the matching budget; nothing was queued.
+    Limited(Duration),
+}
+
+/// Charges the matching budget for one run about to be queued. Only called
+/// once no open or paused run blocks a new one, so polling is free.
+async fn charge(rate_limiter: &CloudRateLimiter, account: &str) -> Option<Duration> {
+    match rate_limiter
+        .observe_account_limit(MATCH_LIMIT, account)
+        .await
+    {
+        RateLimitDecision::Allowed => None,
+        RateLimitDecision::Limited { retry_after } => Some(retry_after),
+    }
+}
+
 async fn blocking_run(
     pool: &PgPool,
     column: &str,
@@ -94,21 +118,26 @@ async fn blocking_run(
 }
 
 /// Queues a run matching `viewer` with up to [`MATCH_BATCH`] of `stale`,
-/// unless one is already working for this viewer.
+/// unless one is already working for this viewer. Only a queued run is
+/// charged to the viewer's matching budget.
 pub(super) async fn queue_matches(
     pool: &PgPool,
     service: &crate::pip::PipConfig,
+    rate_limiter: &CloudRateLimiter,
     viewer: &SharedCard,
     stale: &[SharedCard],
     room_id: Option<Uuid>,
-) -> sqlx_core::Result<Pending> {
+) -> sqlx_core::Result<Queued> {
     let mut tx = pool.begin().await?;
     query("SELECT pg_advisory_xact_lock(hashtext('common-ground-match:' || $1))")
         .bind(&viewer.account_id)
         .execute(&mut *tx)
         .await?;
     if let Some(pending) = blocking_run(pool, "viewer_account_id", &viewer.account_id).await? {
-        return Ok(pending);
+        return Ok(Queued::Pending(pending));
+    }
+    if let Some(retry_after) = charge(rate_limiter, &viewer.account_id).await {
+        return Ok(Queued::Limited(retry_after));
     }
     let batch = &stale[..stale.len().min(MATCH_BATCH)];
     let run_id = runs::new_run_id(MATCH_PREFIX);
@@ -131,7 +160,7 @@ pub(super) async fn queue_matches(
     };
     runs::insert(&mut tx, service, new_run).await?;
     tx.commit().await?;
-    Ok(Pending::Running)
+    Ok(Queued::Pending(Pending::Running))
 }
 
 /// Identifies a room's member set and card revisions.
@@ -160,20 +189,26 @@ pub(super) async fn stored_themes(
     Ok(row.and_then(|(value,)| serde_json::from_value(value).ok()))
 }
 
+/// Queues a room-theme run unless one is already working for this room.
+/// The run is charged to `requester`'s matching budget.
 pub(super) async fn queue_themes(
     pool: &PgPool,
     service: &crate::pip::PipConfig,
+    rate_limiter: &CloudRateLimiter,
     room_id: Uuid,
     requester: &str,
     members: &[SharedCard],
-) -> sqlx_core::Result<Pending> {
+) -> sqlx_core::Result<Queued> {
     let mut tx = pool.begin().await?;
     query("SELECT pg_advisory_xact_lock(hashtext('common-ground-room:' || $1))")
         .bind(room_id.to_string())
         .execute(&mut *tx)
         .await?;
     if let Some(pending) = blocking_run(pool, "room_id", &room_id.to_string()).await? {
-        return Ok(pending);
+        return Ok(Queued::Pending(pending));
+    }
+    if let Some(retry_after) = charge(rate_limiter, requester).await {
+        return Ok(Queued::Limited(retry_after));
     }
     let run_id = runs::new_run_id(ROOM_PREFIX);
     query(
@@ -193,7 +228,7 @@ pub(super) async fn queue_themes(
     };
     runs::insert(&mut tx, service, new_run).await?;
     tx.commit().await?;
-    Ok(Pending::Running)
+    Ok(Queued::Pending(Pending::Running))
 }
 
 type RunRow = (String, Option<String>, Option<Uuid>, Value);
@@ -293,7 +328,9 @@ pub(in crate::common_ground) async fn complete(
         }
         notify_room(&mut tx, room_id).await?;
     }
-    finish(&mut tx, run_id, None).await?;
+    if !finish(&mut tx, run_id, None).await? {
+        return Err(sqlx_core::Error::RowNotFound);
+    }
     tx.commit().await
 }
 
@@ -304,14 +341,19 @@ pub(in crate::common_ground) async fn fail(
     code: &str,
 ) -> sqlx_core::Result<()> {
     let mut tx = pool.begin().await?;
-    runs::mark_failed(&mut tx, run_id, runner_id, code, "Matching failed.").await?;
+    // A runner that lost its lease, or a repeated report, changes nothing.
+    if !runs::mark_failed(&mut tx, run_id, runner_id, code, "Matching failed.").await? {
+        return Ok(());
+    }
     let row: Option<(Option<String>, Option<Uuid>)> = query_as(
         "SELECT viewer_account_id, room_id FROM cloud_common_ground_match_runs WHERE run_id = $1 AND finished_at IS NULL",
     )
     .bind(run_id)
     .fetch_optional(&mut *tx)
     .await?;
-    finish(&mut tx, run_id, Some(code)).await?;
+    if !finish(&mut tx, run_id, Some(code)).await? {
+        return Ok(());
+    }
     match row {
         Some((Some(viewer), _)) => {
             crate::common_ground::hint(
@@ -328,22 +370,23 @@ pub(in crate::common_ground) async fn fail(
     tx.commit().await
 }
 
-/// Marks the run finished and drops the cards it read: other people's
-/// topics are not kept with a finished run.
+/// Marks an open run finished and drops the cards it read: other people's
+/// topics are not kept with a finished run. Returns false when the run was
+/// already finished.
 async fn finish(
     tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     run_id: &str,
     error_code: Option<&str>,
-) -> sqlx_core::Result<()> {
-    query(
+) -> sqlx_core::Result<bool> {
+    let changed = query(
         "UPDATE cloud_common_ground_match_runs SET finished_at = now(), error_code = $2, cards_json = '[]'::jsonb
-         WHERE run_id = $1",
+         WHERE run_id = $1 AND finished_at IS NULL",
     )
     .bind(run_id)
     .bind(error_code)
     .execute(&mut **tx)
     .await?;
-    Ok(())
+    Ok(changed.rows_affected() > 0)
 }
 
 async fn notify_room(

@@ -26,6 +26,25 @@ pub(super) fn person(account_id: &str, name: Option<&str>, avatar_url: Option<&s
     })
 }
 
+/// SQL that is true when the account in `viewer` may see the shared card of
+/// the account in `other` (both SQL expressions): they are paired, or both
+/// are still in the same open room.
+pub(super) fn visible_sql(viewer: &str, other: &str) -> String {
+    format!(
+        "(EXISTS (
+             SELECT 1 FROM cloud_common_ground_pairings
+             WHERE account_a = LEAST({viewer}, {other}) AND account_b = GREATEST({viewer}, {other})
+         ) OR EXISTS (
+             SELECT 1 FROM cloud_common_ground_room_members mine
+             JOIN cloud_common_ground_room_members theirs
+               ON theirs.room_id = mine.room_id AND theirs.account_id = {other}
+                  AND theirs.left_at IS NULL
+             JOIN cloud_common_ground_rooms room ON room.room_id = mine.room_id
+             WHERE mine.account_id = {viewer} AND mine.left_at IS NULL AND {ROOM_OPEN_SQL}
+         ))"
+    )
+}
+
 /// Whether `viewer` may see `other`'s shared card.
 pub(super) async fn can_see<'e, E>(
     executor: E,
@@ -38,19 +57,7 @@ where
     if viewer == other {
         return Ok(true);
     }
-    let sql = format!(
-        "SELECT EXISTS (
-             SELECT 1 FROM cloud_common_ground_pairings
-             WHERE account_a = LEAST($1, $2) AND account_b = GREATEST($1, $2)
-         ) OR EXISTS (
-             SELECT 1 FROM cloud_common_ground_room_members mine
-             JOIN cloud_common_ground_room_members theirs
-               ON theirs.room_id = mine.room_id AND theirs.account_id = $2
-                  AND theirs.left_at IS NULL
-             JOIN cloud_common_ground_rooms room ON room.room_id = mine.room_id
-             WHERE mine.account_id = $1 AND mine.left_at IS NULL AND {ROOM_OPEN_SQL}
-         )"
-    );
+    let sql = format!("SELECT {}", visible_sql("$1", "$2"));
     let (visible,): (bool,) = query_as(&sql)
         .bind(viewer)
         .bind(other)

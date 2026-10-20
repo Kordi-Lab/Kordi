@@ -389,7 +389,10 @@ pub(super) async fn fail(
     code: &str,
 ) -> sqlx_core::Result<()> {
     let mut tx = pool.begin().await?;
-    runs::mark_failed(&mut tx, run_id, runner_id, code, "Card build failed.").await?;
+    // A runner that lost its lease, or a repeated report, changes nothing.
+    if !runs::mark_failed(&mut tx, run_id, runner_id, code, "Card build failed.").await? {
+        return Ok(());
+    }
     let account: Option<(String,)> = query_as(
         "UPDATE cloud_common_ground_cards SET active_run_id = NULL, build_evidence_json = NULL,
              build_error_code = $2, updated_at = now()
