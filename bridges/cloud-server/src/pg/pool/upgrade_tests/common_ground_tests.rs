@@ -72,3 +72,51 @@ async fn upgrade_from_133_adds_common_ground() {
         .unwrap();
     assert_eq!(created_by, None, "rooms outlive the person who opened them");
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_136_adds_matching_runs_and_room_themes() {
+    let pool = fixture(136).await;
+    execute(&pool, "INSERT INTO cloud_common_ground_rooms(room_id,code,created_by) VALUES('00000000-0000-0000-0000-000000000001','0427','fixture-owner')").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_matches(viewer_account_id,other_account_id,viewer_revision,other_revision,result_json,opened_at) VALUES('fixture-owner','fixture-peer',1,1,'{\"score\":40}',now())").await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let (score,): (Value,) =
+        query_as("SELECT result_json->'score' FROM cloud_common_ground_matches")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(score, json!(40), "stored matches are untouched");
+
+    execute(&pool, "INSERT INTO cloud_common_ground_match_runs(run_id,kind,viewer_account_id,room_id,cards_json) VALUES('cg_match_a','match','fixture-owner','00000000-0000-0000-0000-000000000001','[]')").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_match_runs(run_id,kind,room_id,cards_json) VALUES('cg_room_a','room','00000000-0000-0000-0000-000000000001','[]')").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_room_themes(room_id,members_key,themes_json) VALUES('00000000-0000-0000-0000-000000000001','key','[]')").await;
+    for invalid in [
+        "INSERT INTO cloud_common_ground_match_runs(run_id,kind,cards_json) VALUES('cg_match_b','match','[]')",
+        "INSERT INTO cloud_common_ground_match_runs(run_id,kind,viewer_account_id,cards_json) VALUES('cg_room_b','room','fixture-owner','[]')",
+        "INSERT INTO cloud_common_ground_match_runs(run_id,kind,viewer_account_id,cards_json) VALUES('cg_x','other','fixture-owner','[]')",
+    ] {
+        assert!(sqlx_core::raw_sql::raw_sql(invalid).execute(&pool).await.is_err(), "{invalid}");
+    }
+    execute(
+        &pool,
+        "DELETE FROM cloud_accounts WHERE account_id='fixture-owner'",
+    )
+    .await;
+    let (runs,): (i64,) = query_as("SELECT COUNT(*) FROM cloud_common_ground_match_runs")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        runs, 1,
+        "a deleted viewer takes their match runs; the room's run stays"
+    );
+    execute(&pool, "DELETE FROM cloud_common_ground_rooms").await;
+    let counts: (i64, i64) = query_as("SELECT (SELECT COUNT(*) FROM cloud_common_ground_match_runs),(SELECT COUNT(*) FROM cloud_common_ground_room_themes)")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(counts, (0, 0), "a deleted room takes its runs and themes");
+}

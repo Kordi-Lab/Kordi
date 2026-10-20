@@ -303,4 +303,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "digest incremental model",
         "0136_digest_incremental_model.sql"
     ),
+    migration!(
+        137,
+        "common ground matching",
+        "0137_common_ground_matching.sql"
+    ),
 ];

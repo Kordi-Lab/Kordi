@@ -15,13 +15,14 @@ pub const DEFAULT_PIP_OPENAI_MODEL: &str = "gpt-5.6-luna";
 
 const PIP_OPENAI_PROVIDER: &str = "openai";
 const PIP_OPENAI_AUTH_CHOICE: &str = "pip-service-api-key";
-const PIP_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+pub const DEFAULT_PIP_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 const PIP_OPENAI_SNAPSHOT_ID: &str = "pip-service-openai";
 
 #[derive(Clone)]
 pub struct PipProviderAuth {
     api_key: String,
     model: String,
+    base_url: String,
 }
 
 impl PipProviderAuth {
@@ -41,7 +42,17 @@ impl PipProviderAuth {
                 "KORDI_PIP_OPENAI_MODEL is required",
             ));
         }
-        Ok(Self { api_key, model })
+        Ok(Self {
+            api_key,
+            model,
+            base_url: DEFAULT_PIP_OPENAI_BASE_URL.to_string(),
+        })
+    }
+
+    /// Points the credential at an OpenAI-compatible gateway.
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = base_url.into();
+        self
     }
 
     pub fn provider(&self) -> &'static str {
@@ -52,8 +63,8 @@ impl PipProviderAuth {
         PIP_OPENAI_AUTH_CHOICE
     }
 
-    pub fn base_url(&self) -> &'static str {
-        PIP_OPENAI_BASE_URL
+    pub fn base_url(&self) -> &str {
+        &self.base_url
     }
 
     pub fn snapshot_id(&self) -> &'static str {
@@ -76,6 +87,7 @@ impl fmt::Debug for PipProviderAuth {
             .field("provider", &self.provider())
             .field("auth_choice", &self.auth_choice())
             .field("model", &self.model)
+            .field("base_url", &self.base_url)
             .field("api_key", &"[REDACTED]")
             .finish()
     }
@@ -148,6 +160,27 @@ fn optional(get: &mut impl FnMut(&str) -> Option<String>, key: &str) -> Option<S
         .filter(|value| !value.is_empty())
 }
 
+fn validated_base_url(raw: Option<String>) -> Result<String, PipConfigError> {
+    let Some(raw) = raw else {
+        return Ok(DEFAULT_PIP_OPENAI_BASE_URL.to_string());
+    };
+    let url = raw.trim().trim_end_matches('/');
+    let loopback = ["http://127.0.0.1", "http://localhost"]
+        .iter()
+        .any(|prefix| {
+            url.strip_prefix(prefix).is_some_and(|rest| {
+                rest.is_empty() || rest.starts_with(':') || rest.starts_with('/')
+            })
+        });
+    if url.len() > "https://".len() && url.starts_with("https://") || loopback {
+        Ok(url.to_string())
+    } else {
+        Err(PipConfigError::Invalid(
+            "KORDI_PIP_OPENAI_BASE_URL must be an https URL",
+        ))
+    }
+}
+
 fn required_or_default(
     get: &mut impl FnMut(&str) -> Option<String>,
     key: &str,
@@ -181,6 +214,7 @@ impl PendingPipConfig {
         };
         let model =
             required_or_default(&mut get, "KORDI_PIP_OPENAI_MODEL", DEFAULT_PIP_OPENAI_MODEL);
+        let base_url = validated_base_url(optional(&mut get, "KORDI_PIP_OPENAI_BASE_URL"))?;
         let owner_email =
             required_or_default(&mut get, "KORDI_PIP_OWNER_EMAIL", DEFAULT_PIP_OWNER_EMAIL);
         if !owner_email.contains('@') {
@@ -202,7 +236,7 @@ impl PendingPipConfig {
                 "KORDI_PIP_AGENT_SUBTITLE",
                 DEFAULT_PIP_SUBTITLE,
             ),
-            provider_auth: PipProviderAuth::openai_api_key(api_key, model)?,
+            provider_auth: PipProviderAuth::openai_api_key(api_key, model)?.with_base_url(base_url),
         }))
     }
 }
@@ -296,5 +330,47 @@ mod tests {
         assert_eq!(config.provider_auth.api_key(), "sk-test");
         assert_eq!(config.provider_auth.model(), DEFAULT_PIP_OPENAI_MODEL);
         assert!(!format!("{:?}", config.provider_auth).contains("sk-test"));
+    }
+
+    fn lookup(extra: Option<&'static str>) -> Result<PendingPipConfig, PipConfigError> {
+        let mut values = HashMap::from([("KORDI_PIP_OPENAI_API_KEY", "sk-test")]);
+        if let Some(url) = extra {
+            values.insert("KORDI_PIP_OPENAI_BASE_URL", url);
+        }
+        PendingPipConfig::from_lookup(|key| values.get(key).map(|value| value.to_string()))
+            .map(|config| config.expect("configured"))
+    }
+
+    #[test]
+    fn base_url_defaults_to_openai_when_unset() {
+        let config = lookup(None).unwrap();
+        assert_eq!(config.provider_auth.base_url(), DEFAULT_PIP_OPENAI_BASE_URL);
+    }
+
+    #[test]
+    fn base_url_override_is_used_and_trailing_slash_stripped() {
+        let config = lookup(Some(" https://gateway.example.invalid/v1/ ")).unwrap();
+        assert_eq!(
+            config.provider_auth.base_url(),
+            "https://gateway.example.invalid/v1"
+        );
+        let config = lookup(Some("http://127.0.0.1:4000/v1")).unwrap();
+        assert_eq!(config.provider_auth.base_url(), "http://127.0.0.1:4000/v1");
+    }
+
+    #[test]
+    fn non_https_base_url_is_rejected() {
+        for bad in [
+            "http://gateway.example.invalid/v1",
+            "ftp://x",
+            "gateway.example.invalid",
+            "http://localhost.evil.invalid/v1",
+        ] {
+            let error = lookup(Some(bad)).unwrap_err();
+            assert!(
+                matches!(error, PipConfigError::Invalid(m) if m == "KORDI_PIP_OPENAI_BASE_URL must be an https URL"),
+                "{bad}"
+            );
+        }
     }
 }

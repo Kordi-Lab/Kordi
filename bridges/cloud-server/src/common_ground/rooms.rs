@@ -29,7 +29,7 @@ fn valid_code(code: &str) -> bool {
     code.len() == 4 && code.bytes().all(|b| b.is_ascii_digit())
 }
 
-fn room_not_found() -> Response {
+pub(super) fn room_not_found() -> Response {
     err(
         "common_ground_room_not_found",
         "Room not found.",
@@ -163,7 +163,11 @@ pub(super) async fn join(
 }
 
 /// The open room with this code that `account` is in.
-async fn my_room(pool: &PgPool, code: &str, account: &str) -> sqlx_core::Result<Option<Uuid>> {
+pub(super) async fn my_room(
+    pool: &PgPool,
+    code: &str,
+    account: &str,
+) -> sqlx_core::Result<Option<Uuid>> {
     if !valid_code(code) {
         return Ok(None);
     }
