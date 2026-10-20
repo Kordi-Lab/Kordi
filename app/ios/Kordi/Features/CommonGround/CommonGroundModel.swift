@@ -60,7 +60,7 @@ final class CommonGroundModel: ObservableObject {
         "common_ground_room_not_found": "Room not found.",
         "common_ground_code_not_found": "Code not found.",
         "common_ground_sharing_off": "Turn on sharing first.",
-        "common_ground_no_card": "Build your card first.",
+        "common_ground_no_card": "Build your profile first.",
     ]
 
     /// One line for a failed call; nil for a cancelled one.
