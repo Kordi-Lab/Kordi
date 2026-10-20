@@ -100,8 +100,8 @@ test('light cloud login and loading gates use the cool main-shell palette', () =
   assert.match(lightCloudBlock, /--app-cloud-login-page-bg:\s*linear-gradient\(180deg,\s*rgb\(248 250 252\) 0%,\s*rgb\(241 245 249\) 54%,\s*rgb\(226 232 240\) 100%\);/);
   assert.match(lightAccentsBlock, /oklch\(0\.70 0\.13 232 \/ 0\.12\)/);
   assert.match(lightAccentsBlock, /oklch\(0\.74 0\.11 190 \/ 0\.10\)/);
-  assert.match(lightStartingBlock, /--app-cloud-starting-dot-a:\s*oklch\(0\.56 0\.13 232 \/ 0\.68\);/);
-  assert.match(lightStartingBlock, /--app-cloud-starting-dot-c:\s*oklch\(0\.50 0\.07 255 \/ 0\.62\);/);
+  assert.match(lightStartingBlock, /--app-cloud-starting-bird:\s*#1f1a17;/);
+  assert.match(lightStartingBlock, /--app-cloud-starting-bird-cut:\s*rgb\(241 245 249\);/);
   assert.doesNotMatch(`${lightCloudTokenBlock}\n${lightCloudBlock}\n${lightAccentsBlock}\n${lightStartingBlock}`, /oklch\([^)]*\s82(?:\s|\/|\))|rgba\(255,\s*252|rgb\(245 241 232\)|0\.955 0\.026 82/);
 });
 

@@ -14,26 +14,30 @@ const faviconDataUrl = (source: string) => {
   return match[1];
 };
 
-test('desktop entry point uses the canonical three-circle Kordi favicon', () => {
+test('desktop entry point uses the generated Kordi bird favicon', async () => {
+  const { inlineMarkSvg, inlineMarkDataUrl, AMBER, INK } = await import('../../../scripts/kordi-app-icons/icons.mjs');
   const indexHtml = readDesktopSource('index.html');
   const favicon = readDesktopSource('public/favicon.svg');
 
   assert.match(indexHtml, /<link rel="icon" type="image\/svg\+xml" href="\/favicon\.svg" \/>/);
-  assert.equal((favicon.match(/<circle /g) ?? []).length, 3);
-  assert.match(favicon, /<circle cx="18" cy="10" r="9"/);
-  assert.match(favicon, /<circle cx="11" cy="22" r="9"/);
-  assert.match(favicon, /<circle cx="25" cy="22" r="9"/);
-  assert.equal((favicon.match(/fill="#1a1714"/g) ?? []).length, 3);
+  assert.equal(favicon.trim(), inlineMarkSvg({ color: INK, beak: AMBER }).replace(" aria-hidden='true'", ''));
+  assert.doesNotMatch(favicon, /<circle cx="18" cy="10"/);
+  assert.ok(inlineMarkDataUrl().startsWith('data:image/svg+xml,%3Csvg'));
 });
 
-test('self-contained OAuth pages embed the same Kordi favicon', () => {
+test('self-contained OAuth pages embed the same Kordi bird favicon and mark', async () => {
+  const { inlineMarkDataUrl } = await import('../../../scripts/kordi-app-icons/icons.mjs');
   const desktopCallback = readDesktopSource('src-tauri/src/cloud_oauth_loopback.rs');
   const cliCallback = readRepositorySource('agent/crates/cli/src/oauth/callback_server.rs');
+  const capturePage = readDesktopSource('src-tauri/src/auth/login_callback_capture/callback_page.html');
 
-  assert.equal(faviconDataUrl(desktopCallback), faviconDataUrl(cliCallback));
-  assert.match(faviconDataUrl(desktopCallback), /%3Ccircle cx='18' cy='10' r='9'/);
-  assert.match(faviconDataUrl(desktopCallback), /fill='%231a1714'/);
-  assert.doesNotMatch(faviconDataUrl(desktopCallback), /^https?:/);
+  assert.equal(faviconDataUrl(desktopCallback), inlineMarkDataUrl());
+  assert.equal(faviconDataUrl(cliCallback), inlineMarkDataUrl());
+  assert.ok(capturePage.includes(`href="${inlineMarkDataUrl()}"`));
+  for (const page of [desktopCallback, cliCallback, capturePage]) {
+    assert.match(page, /mask='url\(#kordi-bird-cut\)'/);
+    assert.doesNotMatch(page, /circle cx=.18. cy=.10/);
+  }
 });
 
 test('hosted invitation pages reuse the homepage favicon asset', () => {

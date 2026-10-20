@@ -261,9 +261,8 @@ html.kordi-native-shell .app-cloud-workspace-surface {
 }
 
 .app-cloud-starting-screen {
-  --app-cloud-starting-dot-a: oklch(0.72 0.11 212 / 0.72);
-  --app-cloud-starting-dot-b: oklch(0.74 0.10 165 / 0.70);
-  --app-cloud-starting-dot-c: oklch(0.76 0.11 78 / 0.68);
+  --app-cloud-starting-bird: #f4ede1;
+  --app-cloud-starting-bird-cut: #0d0f13;
   --app-cloud-starting-retry-bg: oklch(1 0 0 / 0.06);
   --app-cloud-starting-retry-border: oklch(1 0 0 / 0.12);
   --app-cloud-starting-retry-text: var(--utility-secondary-text);
@@ -285,19 +284,11 @@ html.kordi-native-shell .app-cloud-workspace-surface {
 
 .kordi-app.theme-light .app-cloud-starting-screen {
   --app-cloud-login-page-bg: linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 54%, rgb(226 232 240) 100%);
-  --app-cloud-starting-dot-a: oklch(0.56 0.13 232 / 0.68);
-  --app-cloud-starting-dot-b: oklch(0.58 0.10 190 / 0.64);
-  --app-cloud-starting-dot-c: oklch(0.50 0.07 255 / 0.62);
+  --app-cloud-starting-bird: #1f1a17;
+  --app-cloud-starting-bird-cut: rgb(241 245 249);
   --app-cloud-starting-retry-bg: rgba(255, 255, 255, 0.58);
   --app-cloud-starting-retry-border: rgba(100, 116, 139, 0.20);
   --app-cloud-starting-retry-text: rgb(51 65 85);
-}
-
-.app-cloud-starting-dots {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 11px;
 }
 
 .app-cloud-starting-content {
@@ -318,29 +309,40 @@ html.kordi-native-shell .app-cloud-workspace-surface {
   line-height: 1.4;
 }
 
-.app-cloud-starting-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 999px;
-  background: currentColor;
-  opacity: 0.68;
-  transform-origin: center;
-  animation: app-cloud-starting-pulse 1.35s var(--app-motion-ease) infinite;
+.app-cloud-starting-bird {
+  width: 112px;
+  height: 112px;
 }
 
-.app-cloud-starting-dot-1 {
-  color: var(--app-cloud-starting-dot-a);
-  animation-delay: 0ms;
+/* The Kordi bird in flight: the body bobs and the wing flaps from its root. */
+.app-cloud-starting-bird {
+  --app-kordi-bird: var(--app-cloud-starting-bird);
+  --app-kordi-bird-cut: var(--app-cloud-starting-bird-cut);
 }
 
-.app-cloud-starting-dot-2 {
-  color: var(--app-cloud-starting-dot-b);
-  animation-delay: 120ms;
+.app-kordi-flying-bird-fill {
+  fill: var(--app-kordi-bird, currentColor);
+  stroke: var(--app-kordi-bird, currentColor);
 }
 
-.app-cloud-starting-dot-3 {
-  color: var(--app-cloud-starting-dot-c);
-  animation-delay: 240ms;
+.app-kordi-flying-bird-wing {
+  fill: var(--app-kordi-bird, currentColor);
+  stroke: var(--app-kordi-bird-cut, var(--utility-background));
+  transform-box: fill-box;
+  transform-origin: 0% 50%;
+  animation: app-kordi-bird-flap 0.36s ease-in-out infinite;
+}
+
+.app-kordi-flying-bird-beak {
+  fill: #f7b32b;
+  stroke: #f7b32b;
+}
+
+.app-kordi-flying-bird-body {
+  /* Body centre in the bird's own coordinates. */
+  transform-box: view-box;
+  transform-origin: 262px 292px;
+  animation: app-kordi-bird-bob 0.72s ease-in-out infinite;
 }
 
 .app-cloud-starting-retry {
@@ -366,19 +368,28 @@ html.kordi-native-shell .app-cloud-workspace-surface {
   outline-offset: 3px;
 }
 
-@keyframes app-cloud-starting-pulse {
+@keyframes app-kordi-bird-flap {
   0%, 100% {
-    transform: translateY(0) scale(0.94);
-    opacity: 0.46;
+    transform: rotate(32deg);
   }
-  45% {
-    transform: translateY(-2px) scale(1);
-    opacity: 0.82;
+  50% {
+    transform: rotate(-78deg);
+  }
+}
+
+/* Each wingbeat lifts the bird, then it glides down: two beats per bob. */
+@keyframes app-kordi-bird-bob {
+  0%, 100% {
+    transform: translate(-10px, 34px) rotate(-6deg);
+  }
+  50% {
+    transform: translate(10px, -40px) rotate(4deg);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-cloud-starting-dot {
+  .app-kordi-flying-bird-body,
+  .app-kordi-flying-bird-wing {
     animation: none;
   }
 }
@@ -425,7 +436,7 @@ html.kordi-native-shell .app-cloud-workspace-surface {
   opacity: 0;
 }
 
-.app-cloud-starting-screen[data-visible="false"] .app-cloud-starting-dot,
-.app-cloud-login-shell[data-active="false"] .app-cloud-starting-dot {
+.app-cloud-starting-screen[data-visible="false"] .app-cloud-starting-bird *,
+.app-cloud-login-shell[data-active="false"] .app-cloud-starting-bird * {
   animation-play-state: paused;
 }

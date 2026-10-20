@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
 import { GitHubMark, GoogleMark } from '@/kordi-app/cloud/CloudLoginMarks';
 import type { CloudOAuthProvider } from './authClient';
+import { KordiFlyingBird } from './KordiFlyingBird';
 
 const SIGN_IN_PROVIDERS: Record<CloudOAuthProvider, { label: string; Mark: ComponentType }> = {
   google: { label: 'Google', Mark: GoogleMark },
@@ -71,11 +72,7 @@ export function CloudStartingScreen({
             </div>
           </>
         ) : (
-          <div className="app-cloud-starting-dots" aria-hidden="true">
-            <span className="app-cloud-starting-dot app-cloud-starting-dot-1" />
-            <span className="app-cloud-starting-dot app-cloud-starting-dot-2" />
-            <span className="app-cloud-starting-dot app-cloud-starting-dot-3" />
-          </div>
+          <KordiFlyingBird className="app-cloud-starting-bird" />
         )}
         {status === 'error' && onRetry ? (
           <button

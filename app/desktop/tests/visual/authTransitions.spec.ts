@@ -62,9 +62,9 @@ for (const theme of ['light', 'dark']) {
   });
 }
 
-test('loading dots stay centered as the workspace contracts to the login window', async ({ page }) => {
+test('loading bird stays centered as the workspace contracts to the login window', async ({ page }) => {
   await page.goto('/tests/visual/authTransitions.html?loading=1');
-  const dots = page.locator('.app-cloud-starting-dots');
+  const dots = page.locator('.app-cloud-starting-bird');
   await expect(dots).toBeVisible();
   for (const size of [
     { width: 1480, height: 980 }, { width: 1200, height: 900 },
