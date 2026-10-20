@@ -334,7 +334,7 @@ class Demo:
 
     def require_card(self):
         if not self.my_card:
-            raise ApiError(409, "build your card first")
+            raise ApiError(409, "build your profile first")
 
     def join(self, code: str) -> dict:
         self.require_card()

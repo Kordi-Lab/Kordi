@@ -1094,7 +1094,7 @@ const IOS = {
       <div class="section"><div class="section-title">On this iPhone</div><div class="group">${dev}</div></div>
       <div class="section"><div class="section-title">Links</div><div class="group"><textarea class="ta" data-model="links" placeholder="Homepage; ORCID; papers">${esc(S.links)}</textarea></div></div>
       <div class="section"><div class="section-title">Notes</div><div class="group"><textarea class="ta" data-model="notes" placeholder="What are you working on?">${esc(S.notes)}</textarea></div></div>`,
-      dock: `${S.buildError ? `<div class="err">Couldn't build your card.</div>` : ''}<button class="primary" data-act="build" data-build ${buildReady() ? '' : 'disabled'}>${S.buildError ? 'Try again' : 'Build card'}</button>` });
+      dock: `${S.buildError ? `<div class="err">Couldn't build your profile.</div>` : ''}<button class="primary" data-act="build" data-build ${buildReady() ? '' : 'disabled'}>${S.buildError ? 'Try again' : 'Build profile'}</button>` });
   },
   building() {
     const st = (i, label) => { const cls = S.build > i ? 'done' : S.build === i ? 'on' : ''; return `<div class="step ${cls}"><span class="st">${cls === 'done' ? ic('check') : ''}</span>${label}</div>`; };
@@ -1236,7 +1236,7 @@ function overlayIOS() {
   if (sh.type === 'alert') {
     const d = DEVICE_SRC.find((x) => x.id === sh.src);
     const title = d.id === 'calendar' ? '“Kordi” Would Like Full Access to Your Calendar' : '“Kordi” Would Like Full Access to Your Reminders';
-    return `<div class="dimmer" style="background:rgba(0,0,0,.22)"></div><div class="alert"><div class="at"><b>${title}</b><p>Kordi reads titles and dates to build your card.</p></div><div class="ab"><button data-act="permit" data-a="${d.id}:denied">Don’t Allow</button><button data-act="permit" data-a="${d.id}:granted">Allow</button></div></div>`;
+    return `<div class="dimmer" style="background:rgba(0,0,0,.22)"></div><div class="alert"><div class="at"><b>${title}</b><p>Kordi reads titles and dates to build your profile.</p></div><div class="ab"><button data-act="permit" data-a="${d.id}:denied">Don’t Allow</button><button data-act="permit" data-a="${d.id}:granted">Allow</button></div></div>`;
   }
   if (sh.type === 'delete') {
     return dim + `<div class="asheet"><div class="ag"><div class="t"><b>Delete your card?</b>People you met can no longer see it.</div><button class="danger" data-act="deleteCard">Delete card</button></div><button class="cancel" data-act="closeSheet">Cancel</button></div>`;
@@ -1282,7 +1282,7 @@ function contactsMac() {
   return `<section class="m-list"><div class="m-listhead"><h2>Contacts</h2><button class="m-iconbtn" aria-label="Add contact" title="Add contact">${ic('personAdd')}</button></div>
     <div class="m-search">${ic('search')}<span>Search</span></div>
     <div class="m-clist" id="mList">
-      <button class="m-crow ${sel === 'cg' ? 'on' : ''}" data-act="mSel" data-a="cg"><span class="m-cgtile">${ic('cg')}</span><span class="grow"><span class="nm" style="display:block">Common ground</span><span class="sub" style="display:block">Meet people at this event</span></span>${S.inviteWaiting ? '<span class="rdot" aria-label="Invitation waiting"></span>' : ''}</button>
+      <button class="m-crow ${sel === 'cg' ? 'on' : ''}" data-act="mSel" data-a="cg"><span class="m-cgtile">${ic('cg')}</span><span class="grow"><span class="nm" style="display:block">Common ground</span><span class="sub" style="display:block">Match. Meet. Build.</span></span>${S.inviteWaiting ? '<span class="rdot" aria-label="Invitation waiting"></span>' : ''}</button>
       <div class="m-gap"></div>
       ${CONTACTS.map((id) => `<button class="m-crow ${sel === id ? 'on' : ''}" data-act="mSel" data-a="${id}">${avatar(id, 34)}<span class="grow"><span class="nm" style="display:block">${esc(P[id].name)}</span><span class="sub" style="display:block">${esc(P[id].lab)}</span></span></button>`).join('')}
     </div></section>`;
@@ -1320,7 +1320,7 @@ const MAC_PHASE = {
       <div class="m-sec">Agents on this Mac</div><div class="m-panel">${mSrcRow({ name: 'Agent files', icon: 'robot', color: '--violet' }, `<button class="sw" role="switch" aria-checked="${S.agents}" data-act="agents" aria-label="Agent files"></button>`, '5 files')}</div>
       <div class="m-sec">Links</div><textarea class="mfield" data-model="links" placeholder="Homepage; ORCID; papers">${esc(S.links)}</textarea>
       <div class="m-sec">Notes</div><textarea class="mfield" data-model="notes" placeholder="What are you working on?">${esc(S.notes)}</textarea>
-      <div class="m-formfoot"><div class="err">${S.buildError ? "Couldn't build your card." : ''}</div>${S.hasCard ? '<button class="mbtn big" data-act="mPhase" data-a="page">Cancel</button>' : ''}<button class="mbtn prim big" data-act="build" data-build ${buildReady() ? '' : 'disabled'}>${S.buildError ? 'Try again' : 'Build card'}</button></div>
+      <div class="m-formfoot"><div class="err">${S.buildError ? "Couldn't build your profile." : ''}</div>${S.hasCard ? '<button class="mbtn big" data-act="mPhase" data-a="page">Cancel</button>' : ''}<button class="mbtn prim big" data-act="build" data-build ${buildReady() ? '' : 'disabled'}>${S.buildError ? 'Try again' : 'Build profile'}</button></div>
     </div></div>`;
   },
   building() {
@@ -1413,7 +1413,7 @@ function dialogMac() {
   if (d.type === 'sharing') return wrap(`${head('Sharing is off')}<div class="db"><div class="msg">Turn it on so people can find you.</div></div><div class="df"><button class="mbtn" data-act="mClose">Not now</button><button class="mbtn prim" data-act="sharingOn">Turn on sharing</button></div>`, 'sm');
   if (d.type === 'alert') {
     const src = DEVICE_SRC.find((x) => x.id === d.src);
-    return `<div class="m-dim"><div class="m-dlg m-sysalert" role="alertdialog"><div class="appic">${ic(src.icon)}</div><b>“Kordi” would like to access your ${src.id === 'calendar' ? 'calendar' : 'reminders'}.</b><p>Kordi reads titles and dates to build your card.</p><div class="two"><button class="mbtn" data-act="permit" data-a="${src.id}:denied">Don’t Allow</button><button class="mbtn tint" data-act="permit" data-a="${src.id}:granted">Allow</button></div></div></div>`;
+    return `<div class="m-dim"><div class="m-dlg m-sysalert" role="alertdialog"><div class="appic">${ic(src.icon)}</div><b>“Kordi” would like to access your ${src.id === 'calendar' ? 'calendar' : 'reminders'}.</b><p>Kordi reads titles and dates to build your profile.</p><div class="two"><button class="mbtn" data-act="permit" data-a="${src.id}:denied">Don’t Allow</button><button class="mbtn tint" data-act="permit" data-a="${src.id}:granted">Allow</button></div></div></div>`;
   }
   return '';
 }

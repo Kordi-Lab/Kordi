@@ -375,7 +375,7 @@ test('leading detail replaces the contact detail pane and leaves the default unc
   assert.doesNotMatch(markup, /No contact selected/);
   assert.match(markup, /aria-label="Contacts list"/);
   assert.match(markup, /app-common-ground-row[^"]*app-contact-row-selected/);
-  assert.match(markup, />Meet people at this event</);
+  assert.match(markup, />Match. Meet. Build.</);
   assert.match(markup, /aria-label="Room invitation waiting"/);
 
   const cleared = renderContactsPage([], { contactOverlayMode: 'contact', activeContact: selected, leadingDetail: null });
