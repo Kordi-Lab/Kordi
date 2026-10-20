@@ -95,6 +95,7 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         UILaunchScreen:
+          UIColorName: LaunchBackground
           UIImageName: KordiLaunchMark
         UIBackgroundModes:
           - audio
@@ -108,6 +109,8 @@ targets:
     settings:
       base:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # Home screen icons the Appearance screen can switch to.
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: AppIcon-frosted AppIcon-rice AppIcon-coral AppIcon-sakura AppIcon-butter AppIcon-mint AppIcon-sky AppIcon-lavender AppIcon-night AppIcon-midnight AppIcon-forest AppIcon-plum AppIcon-cocoa AppIcon-slate AppIcon-night-sakura AppIcon-midnight-sky
         ENABLE_PREVIEWS: YES
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Kordi/Supporting/Info.plist

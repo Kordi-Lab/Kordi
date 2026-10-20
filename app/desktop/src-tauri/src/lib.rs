@@ -1,3 +1,4 @@
+mod app_icon;
 mod auth;
 mod auth_window;
 mod avatar_picker;
@@ -198,6 +199,7 @@ pub fn run() {
             transcript_trace::desktop_transcript_trace,
             auth_window::desktop_set_auth_window_surface,
             window_backdrop::desktop_set_window_backdrop,
+            app_icon::desktop_set_app_icon,
             desktop_workspace_status,
             desktop_read_workspace_text_file,
             desktop_write_workspace_text_file,

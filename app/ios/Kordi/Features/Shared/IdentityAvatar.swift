@@ -220,27 +220,17 @@ enum KordiSupportIdentity {
     }
 }
 
+/// Kordi Support: the ink paper-cut bird on white, in both color schemes.
 private struct KordiSupportAvatar: View {
     var body: some View {
-        Canvas { context, size in
-            let scale = min(size.width, size.height) / 256
-            context.fill(
-                Path(ellipseIn: CGRect(x: 0, y: 0, width: 256 * scale, height: 256 * scale)),
-                with: .color(.white)
-            )
-            for (rect, color) in [
-                (CGRect(x: 87, y: 47, width: 90, height: 90), Color(red: 0.957, green: 0.247, blue: 0.616)),
-                (CGRect(x: 45, y: 105, width: 92, height: 92), Color(red: 0.141, green: 0.722, blue: 0.835)),
-                (CGRect(x: 124, y: 106, width: 90, height: 90), Color(red: 1.000, green: 0.710, blue: 0.145))
-            ] {
-                let scaled = CGRect(
-                    x: rect.origin.x * scale,
-                    y: rect.origin.y * scale,
-                    width: rect.size.width * scale,
-                    height: rect.size.height * scale
-                )
-                context.fill(Path(ellipseIn: scaled), with: .color(color))
+        GeometryReader { proxy in
+            let side = min(proxy.size.width, proxy.size.height)
+            ZStack {
+                Color.white
+                KordiMark(size: side * 0.86)
+                    .environment(\.colorScheme, .light)
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
     }
 }
