@@ -9,7 +9,7 @@ import '../../src/index.css';
 // Login-free preview of the Contacts page with fictional people.
 // Query params: ?theme=light|dark, ?empty=1 (no requests or invites), ?groups=2 (adds a My agents group),
 // ?invite=1 (the Common ground row shows a waiting room invitation).
-// The Common ground row opens commonGround.html in the detail pane; it talks to the demo API on 127.0.0.1:18190.
+// The Common ground page itself has its own preview, commonGroundPage.html.
 const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
 const withActivity = params.get('empty') !== '1';
@@ -79,17 +79,6 @@ const LOOKUP: Record<string, { accountId: string; displayName: string }> = {
   '846203915': { accountId: 'acct_oskar', displayName: 'Oskar Berg' },
 };
 
-// Preview only: the standalone Common ground page fills the detail pane until the React port lands.
-function CommonGroundFrame() {
-  const api = params.get('api');
-  const src = `./commonGround.html?embedded=1&theme=${theme}${api ? `&api=${encodeURIComponent(api)}` : ''}`;
-  return (
-    <section aria-label="Common ground" className="flex min-h-0 min-w-0 flex-1">
-      <iframe title="Common ground" src={src} className="block h-full w-full border-0" style={{ background: 'transparent', colorScheme: theme }} />
-    </section>
-  );
-}
-
 function ContactsPreview() {
   const [contacts, setContacts] = useState(INITIAL_CONTACTS);
   const [requests, setRequests] = useState(INITIAL_REQUESTS);
@@ -99,7 +88,7 @@ function ContactsPreview() {
   const [activeContactId, setActiveContactId] = useState('');
   const [activeRequestId, setActiveRequestId] = useState('');
   const [overlayMode, setOverlayMode] = useState<'contact' | 'request' | null>(null);
-  const [commonGroundSelected, setCommonGroundSelected] = useState(true);
+  const [commonGroundSelected, setCommonGroundSelected] = useState(false);
 
   useLayoutEffect(() => {
     document.body.classList.toggle('theme-light', theme === 'light');
@@ -156,7 +145,6 @@ function ContactsPreview() {
             }}
           />
         )}
-        leadingDetail={commonGroundSelected ? <CommonGroundFrame /> : null}
         onAcceptRequest={(request) => resolveRequest(request, true)}
         onRejectRequest={(request) => resolveRequest(request, false)}
         onLookupContact={async (raw) => {

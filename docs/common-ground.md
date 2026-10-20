@@ -114,6 +114,12 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
 - Opened from the pinned row in Contacts, it fills the Contacts detail area; two columns at widths above 980 pt: **left**, your card (Now, sections, timeline); **right**, Pair and Pair code, then Recent. Narrower windows stack the columns.
 - Rooms and matches replace the right column; a back button returns. References and start group open as dialogs (`AppDialog`).
 - Tailwind with the semantic tokens in `theme-palette.css`, `lucide-react` icons, `IdentityAvatar` and the circle grid avatar, settings rows from `settingsLayout`.
+- The first version uses one column: Home shows the card summary, Pair, Room and Recent, and the card opens as its own screen.
+- Pair shows your short text code, not a QR code.
+- There is no Agents on this Mac source.
+- Rooms are not named from the Mac; a room shows its name when someone else named it.
+- Match actions are Add (or Accept, Requested, Message) and Meet; Joint idea and Share come later.
+- The card has no timeline or references yet; clicking a tag hides or shows it.
 
 ## Copy
 

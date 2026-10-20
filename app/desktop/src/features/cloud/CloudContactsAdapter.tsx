@@ -19,7 +19,7 @@ import { ContactsPage } from '@/kordi-app/pages';
 import type { Contact, ContactRequest } from '@/kordi-app/types';
 import { formatKordiHandle, normalizeKordiId } from './kordiId';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
-import { useCommonGroundPreviewEntry } from '@/features/commonGround/useCommonGroundPreviewEntry';
+import { useCommonGroundEntry } from '@/features/commonGround/useCommonGroundEntry';
 
 type CloudContactsAdapterProps = {
   account: CloudAccount;
@@ -38,11 +38,11 @@ type CloudContactsAdapterProps = {
 export function CloudContactsAdapter({ account, contactsPageProps }: CloudContactsAdapterProps) {
   const cloud = useCloudContacts(account);
   const presence = useCloudPresence(account);
-  const commonGround = useCommonGroundPreviewEntry({
+  const commonGround = useCommonGroundEntry({
     onSelectContact: contactsPageProps.onSelectContact,
     onSelectRequest: contactsPageProps.onSelectRequest,
     onCloseOverlay: contactsPageProps.onCloseOverlay,
-  }, account.displayName ?? undefined);
+  }, { account, onMessageContact: contactsPageProps.onMessageContact, cloud });
 
   const visibleCloudContacts = useMemo(() => {
     const search = contactsPageProps.contactSearch?.trim().toLowerCase() ?? '';
