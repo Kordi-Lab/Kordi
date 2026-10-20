@@ -9,13 +9,13 @@ import {
 } from '@/app/themePreference';
 import {
   KORDI_APP_ICONS,
-  appIconPreviewUrl,
   applyAppIcon,
   readStoredAppIcon,
   writeStoredAppIcon,
   type AppIconKey,
 } from '@/app/appIconPreference';
 import { settingsSections } from '../data';
+import { AppIconThumbnail } from './AppIconThumbnail';
 import { SettingsRow, SettingsSelect, SettingsSwitch } from './settingsLayout';
 import type { ThemeMode } from '../types';
 
@@ -96,7 +96,7 @@ export function AppIconPicker() {
             onClick={() => choose(icon.key)}
             className={`app-settings-app-icon grid h-14 w-14 place-items-center rounded-[14px] outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-[var(--app-quiet-control-focus-ring)] ${selected ? 'ring-2 ring-[var(--app-quiet-control-focus-ring)]' : 'hover:bg-[color:var(--app-quiet-control-hover-bg)]'}`}
           >
-            <img alt="" src={appIconPreviewUrl(icon.key)} className="h-12 w-12" draggable={false} />
+            <AppIconThumbnail icon={icon} className="h-10 w-10 rounded-[10px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.12)]" />
           </button>
         );
       })}

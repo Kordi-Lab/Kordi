@@ -16,9 +16,9 @@ Outputs:
   `AppIcon-<key>` alternate icons, and `AppIconPreview-<key>` picker thumbnails in
   `app/ios/Kordi/Resources/Assets.xcassets`.
 - Desktop: `icon.png`/`icon.icns` (white), `icon-dev.png`/`icon-dev.icns` (gray
-  development icon), `menu-bar-template.png`, runtime Dock icons in
-  `app/desktop/src-tauri/icons/app-icons/`, and picker thumbnails in
-  `app/desktop/public/app-icons/`.
+  development icon), `menu-bar-template.png`, and runtime Dock icons in
+  `app/desktop/src-tauri/icons/app-icons/`. The desktop picker draws its
+  thumbnails from the colors in `KORDI_APP_ICONS`.
 
 When adding or renaming a variant, update the iOS picker model, the desktop
 `KORDI_APP_ICONS` list, the `APP_ICONS` table in `app_icon.rs`, and the iOS

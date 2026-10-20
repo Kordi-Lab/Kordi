@@ -25,7 +25,6 @@ import { createRasterizer } from './rasterize.mjs';
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const iosAssets = join(repoRoot, 'app/ios/Kordi/Resources/Assets.xcassets');
 const desktopIcons = join(repoRoot, 'app/desktop/src-tauri/icons');
-const desktopPublic = join(repoRoot, 'app/desktop/public/app-icons');
 
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const catalogInfo = { author: 'xcode', version: 1 };
@@ -125,16 +124,14 @@ try {
   raster.render(silhouetteSvg({ color: '#000000', crop: true }), join(desktopIcons, 'menu-bar-template.png'), 36);
 
   mkdirSync(join(desktopIcons, 'app-icons'), { recursive: true });
-  mkdirSync(desktopPublic, { recursive: true });
   for (const variant of APP_ICON_VARIANTS) {
     raster.render(macIconSvg(variant), join(desktopIcons, 'app-icons', `${variant.key}.png`), 512);
-    raster.render(macIconSvg(variant), join(desktopPublic, `${variant.key}.png`), 128);
   }
 
-  // Browser favicon (SVG plus a 512 PNG for the hosted pages).
+  // Browser favicon (SVG plus a 256 PNG).
   const faviconSvg = inlineMarkSvg({ color: INK, beak: AMBER }).replace(" aria-hidden='true'", '');
   writeFileSync(join(repoRoot, 'app/desktop/public/favicon.svg'), `${faviconSvg}\n`);
-  raster.render(faviconSvg.replace('<svg ', '<svg width="512" height="512" '), join(repoRoot, 'app/desktop/public/favicon.png'), 512);
+  raster.render(faviconSvg.replace('<svg ', '<svg width="512" height="512" '), join(repoRoot, 'app/desktop/public/favicon.png'), 256);
 
   // Kordi Support avatar and the README title image.
   writeFileSync(join(repoRoot, 'app/desktop/public/kordi-support-avatar.svg'), supportAvatarSvg());

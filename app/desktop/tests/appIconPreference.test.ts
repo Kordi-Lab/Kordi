@@ -6,7 +6,6 @@ import {
   DEFAULT_APP_ICON,
   KORDI_APP_ICONS,
   KORDI_APP_ICON_STORAGE_KEY,
-  appIconPreviewUrl,
   readStoredAppIcon,
   writeStoredAppIcon,
 } from '../src/app/appIconPreference';
@@ -16,16 +15,16 @@ const desktopFile = (relativePath: string) => new URL(`../${relativePath}`, impo
 
 test('app icon choices match the generated icon variants', () => {
   assert.deepEqual(
-    KORDI_APP_ICONS.map((icon) => [icon.key, icon.label]),
-    APP_ICON_VARIANTS.map((variant: { key: string; name: string }) => [variant.key, variant.name]),
+    KORDI_APP_ICONS.map((icon) => [icon.key, icon.label, icon.bg, 'bird' in icon ? icon.bird : null, 'beak' in icon ? icon.beak : null, 'frosted' in icon]),
+    APP_ICON_VARIANTS.map((variant: { key: string; name: string; bg: string; bird?: string; beak?: string; frosted?: boolean }) => [
+      variant.key, variant.name, variant.bg, variant.bird ?? null, variant.beak ?? null, Boolean(variant.frosted),
+    ]),
   );
   assert.equal(DEFAULT_APP_ICON, 'white');
 });
 
-test('every app icon ships a picker preview and a Dock image', () => {
+test('every app icon ships a Dock image', () => {
   for (const { key } of KORDI_APP_ICONS) {
-    assert.equal(appIconPreviewUrl(key), `/app-icons/${key}.png`);
-    assert.ok(existsSync(desktopFile(`public/app-icons/${key}.png`)), `missing preview for ${key}`);
     assert.ok(existsSync(desktopFile(`src-tauri/icons/app-icons/${key}.png`)), `missing Dock image for ${key}`);
   }
 });
