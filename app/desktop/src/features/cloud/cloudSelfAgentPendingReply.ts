@@ -1,3 +1,4 @@
+import { askAgentTrace } from '@/lib/askAgentTrace';
 import { useEffect, useState } from 'react';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
@@ -120,4 +121,36 @@ export function projectPendingSelfAgentReplies(
     });
   }
   return pending.length ? { ...state, messages: [...state.messages, ...pending] } : state;
+}
+
+/** TEMPORARY TRACE (debug/ask-agent-row-trace): canonical rows of each Ask Agent session's newest request. */
+export function traceSelfAgentRequestRows(
+  state: CanonicalSessionState | null,
+  localTurns: Readonly<Record<string, { status: string; completed: boolean; assistantText: string; id: string }>>,
+  nowMs = Date.now(),
+) {
+  if (!state) return;
+  const sessionIds = cloudSyncedLocalAgentSessionIds(state);
+  const newest = new Map<string, CanonicalSessionMessage>();
+  for (const message of state.messages) {
+    if (!sessionIds.has(message.sessionId) || message.senderRole !== 'user') continue;
+    const current = newest.get(message.sessionId);
+    if (!current || message.createdAtMs > current.createdAtMs) newest.set(message.sessionId, message);
+  }
+  for (const request of newest.values()) {
+    if (nowMs - request.createdAtMs > 10 * 60_000) continue;
+    const users = state.messages.filter((message) => message.sessionId === request.sessionId && message.senderRole === 'user'
+      && message.createdAtMs >= request.createdAtMs - 60_000);
+    const rows = state.messages.filter((message) => message.senderRole !== 'user' && repliesTo(message, request.id));
+    const wireIds = new Set(rows.map((row) => record(row.content).cloudRequestMessageId).filter((id): id is string => typeof id === 'string'));
+    askAgentTrace(`canonical:${request.sessionId}`, {
+      request: { id: request.id, status: request.status, transport: request.sourceTransport, deliveryState: record(request.content).deliveryState, desktopEntryId: record(request.content).desktopEntryId },
+      recentUsers: users.map((message) => ({ id: message.id, transport: message.sourceTransport, status: message.status })),
+      rows: rows.map((row) => ({
+        id: row.id, transport: row.sourceTransport, status: row.status, deliveryState: record(row.content).deliveryState,
+        phase: record(record(row.content).execution).phase, hostedRunStatus: record(row.content).hostedRunStatus, textLen: row.contentText.length,
+      })),
+      localTurns: [...wireIds].map((id) => localTurns[id] ? { wire: id, id: localTurns[id].id, status: localTurns[id].status, completed: localTurns[id].completed, textLen: localTurns[id].assistantText.length } : { wire: id, none: true }),
+    });
+  }
 }

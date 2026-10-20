@@ -1,3 +1,4 @@
+import { askAgentTraceEvent } from '@/lib/askAgentTrace';
 import { useCallback, useEffect, useLayoutEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type { CanonicalSessionState } from '@/kordi-app/types';
 import type { CloudAgentRun, CloudAgentRunClaimInput, CloudAuthClient, CloudMessage } from './authClient';
@@ -61,7 +62,9 @@ export function useHostedSelfAgentRunProgress({
     const entry: TrackedRun = { timer: null, startedAtMs: Date.now() };
     trackedRef.current.set(requestId, entry);
 
+    askAgentTraceEvent('hosted-progress', { request: requestId, step: 'track', status: run.status, backend: run.executionBackend ?? null });
     const stop = () => {
+      askAgentTraceEvent('hosted-progress', { request: requestId, step: 'stop' });
       if (entry.timer) clearTimeout(entry.timer);
       trackedRef.current.delete(requestId);
       setCanonicalSessionState((current) => removeHostedSelfAgentProgress(current, requestId));
@@ -86,6 +89,7 @@ export function useHostedSelfAgentRunProgress({
         stop();
         return;
       }
+      askAgentTraceEvent('hosted-progress', { request: requestId, step: 'refresh', status: lastRun.status, backend: lastRun.executionBackend ?? null, indexed: Boolean(request) });
       if (request) {
         setCanonicalSessionState((current) => updateHostedSelfAgentProgress(current, {
           request,

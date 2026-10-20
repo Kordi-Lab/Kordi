@@ -1,3 +1,4 @@
+import { askAgentTrace } from '@/lib/askAgentTrace';
 import type { CompanionToolbarProps } from './chatsPage.companionToolbar';
 import { PinnedMessageShelf } from './PinnedMessageShelf';
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
@@ -147,6 +148,12 @@ export function ChatMainWorkspace({
     liveTurnIsRunning: presentation.activeLiveTurnIsRunning,
     onStopActiveTurn: runtime.onStopDesktopChatTurn,
     onStopCollaborationAgentRequest: runtime.onStopCollaborationAgentRequest,
+  });
+  // TEMPORARY TRACE (debug/ask-agent-row-trace): the composer's stop.
+  askAgentTrace(`composer:${activeConv.id}`, {
+    stop: composerStop ? composerStop.requestKey : null,
+    liveTurn: presentation.liveTurn ? { id: presentation.liveTurn.id, status: presentation.liveTurn.status, completed: presentation.liveTurn.completed } : null,
+    liveTurnIsRunning: presentation.activeLiveTurnIsRunning,
   });
   const handleSend = (draftOverride?: string, attachmentOverride?: AttachmentItem[]) => {
     const draft = draftOverride ?? composer.chatComposerText;

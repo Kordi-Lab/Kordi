@@ -1,7 +1,9 @@
+import { askAgentRowSource, askAgentTrace } from '@/lib/askAgentTrace';
+import { agentRequestStopTarget } from '@/features/chat/agentRequestStop';
 import { canDisplayAgentTurn } from '@/features/chat/agentProcessingVisibility';
 import {TranscriptLoadingSkeleton} from './chatsPage.loadingSkeleton';
 import { TranscriptNavigationControls } from '@/features/chat/TranscriptLatestButton';
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type {
   Dispatch,
   ReactNode,
@@ -224,6 +226,27 @@ export function ChatSessionPane({
       ? visibleMessages
       : [...visibleMessages, liveTurnMessage];
   }, [attributedTranscript.messages, liveTurnMessage]);
+  // TEMPORARY TRACE (debug/ask-agent-row-trace): the rendered rows after the latest request.
+  useEffect(() => {
+    const all = attributedTranscript.messages;
+    let requestIndex = -1;
+    for (let index = all.length - 1; index >= 0; index -= 1) {
+      if (all[index].role === 'user') { requestIndex = index; break; }
+    }
+    if (requestIndex < 0) return;
+    const request = all[requestIndex];
+    const visibleIds = new Set(transcriptMessages.map((message) => message.id ?? message.turn?.id));
+    askAgentTrace(`render:${request.id ?? 'request'}`, {
+      request: { id: request.id, entryId: request.entryId, chips: request.statusChips, text: request.text.length },
+      userBubbles: transcriptMessages.filter((message) => message.role === 'user' && message.text === request.text).length,
+      rows: all.slice(requestIndex + 1).filter((message) => message.role !== 'user').map((message) => ({
+        id: message.id, source: askAgentRowSource(message.id, message.turn?.id), visible: visibleIds.has(message.id ?? message.turn?.id),
+        status: message.turn?.status, completed: message.turn?.completed, textLen: (message.turn?.assistantText ?? message.text ?? '').length,
+        stop: Boolean(agentRequestStopTarget(message.turn, message)),
+      })),
+      liveTurn: liveTurn ? { id: liveTurn.id, status: liveTurn.status, completed: liveTurn.completed, rendered: Boolean(liveTurnMessage) } : null,
+    });
+  }, [attributedTranscript.messages, liveTurn, liveTurnMessage, transcriptMessages]);
   const transcriptEntries = useMemo(
     () =>
       transcriptMessages.map((message, index) => ({

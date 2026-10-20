@@ -1,3 +1,4 @@
+import { askAgentTraceEvent } from '@/lib/askAgentTrace';
 import { uploadSelfAgentMessageAttachments } from './cloudSelfAgentAttachments';
 import type {
   CloudAuthClient,
@@ -206,6 +207,7 @@ async function publishCloudSelfAgentOperationBatch({
         },
       );
       if (request) {
+        askAgentTraceEvent('forward-sync', { local: operation.localMessageId, step: 'request-published', wire: request.messageId, merged: shouldMergeMessage(operation) });
         ledger[operation.localMessageId] = { cloudMessageId: request.messageId, syncedAtMs: Date.now() };
         saveLedger(ledger);
         if (shouldMergeMessage(operation)) mergeMessage(request);

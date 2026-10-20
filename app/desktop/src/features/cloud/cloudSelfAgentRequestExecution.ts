@@ -1,3 +1,4 @@
+import { askAgentTraceEvent } from '@/lib/askAgentTrace';
 import { voiceAgentText } from '@/features/chat/voiceTranscription';
 import type { CanonicalSessionState, DesktopChatTurnSnapshot } from '@/kordi-app/types';
 import { cancelDesktopChatTurn, startDesktopChatMessage } from '@/lib/desktop';
@@ -155,11 +156,13 @@ export async function executeCloudSelfAgentRequest({
       defaultAuthChoice: executionRoute.authChoice, thinking: executionRoute.thinking } : undefined,
     idempotencyKey: `request:${request.messageId}`,
   }, { bindsProject: true });
+  askAgentTraceEvent('executor', { request: request.messageId, step: 'claim', acquired: Boolean(lease) });
   if (!lease) return;
   let stopRequested = false;
   const stop = () => {
     if (stopRequested) return;
     stopRequested = true;
+    askAgentTraceEvent('executor', { request: request.messageId, step: 'stop-requested' });
     const turnId = turnIdsByRequestIdRef.current.get(request.messageId);
     if (!turnId) return;
     void cancelDesktopChatTurn(turnId).catch((error) => reportWarning(
@@ -214,6 +217,7 @@ export async function executeCloudSelfAgentRequest({
     } = {},
   ) => {
     settled = true;
+    askAgentTraceEvent('executor', { request: request.messageId, step: 'settle', deliveryState: reply.deliveryState, publish: options.publish ?? true });
     const response = await settleCloudSelfAgentTerminalReply({
       client,
       publisher: lease.publisher,
@@ -232,6 +236,7 @@ export async function executeCloudSelfAgentRequest({
     const turn = options.turn ?? lastTurn;
     if (turn) rememberLocalTurn(settledCloudSelfAgentTurn(turn, reply));
     if (isInactive()) return;
+    askAgentTraceEvent('executor', { request: request.messageId, step: 'settled', response: response?.messageId ?? null, version: response?.version ?? null });
     if (response) mergeMessage(response);
     await syncMessages().catch((error) => reportWarning(
       '[cloud-self-agent-execution] terminal sync failed',
@@ -341,6 +346,7 @@ export async function executeCloudSelfAgentRequest({
               token: session.token,
             });
         // A snapshot that returns after the turn ended would show it running again.
+        askAgentTraceEvent('executor', { request: request.messageId, step: 'progress-returned', revision: publishRevision, message: progress.messageId, version: progress.version, phase: execution.phase, merged: !(isInactive() || settled || stopRequested || lastTurn?.completed) });
         if (isInactive() || settled || stopRequested || lastTurn?.completed) return;
         mergeMessage(progress);
         // The terminal reply waits on this chain; a full sync must not delay it.
@@ -400,6 +406,7 @@ export async function executeCloudSelfAgentRequest({
         lease.deadline,
       );
       localTurnStarted = true;
+      askAgentTraceEvent('executor', { request: request.messageId, step: 'turn-started', turn: startedTurn.id, status: startedTurn.status });
       lease.attach(startedTurn.id);
       lastTurn = startedTurn;
       rememberLocalTurn(startedTurn);
