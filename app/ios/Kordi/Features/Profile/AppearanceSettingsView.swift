@@ -30,17 +30,23 @@ enum AppearanceSettingsSelection {
             + AppAppearance.allCases.map { optionIdentifier($0.rawValue) }
     }
 
+    static func appIconIdentifier(_ key: String) -> String {
+        "appearance-app-icon-\(key)"
+    }
+
     static func optionIdentifier(_ rawValue: String) -> String {
         "appearance-option-\(rawValue)"
     }
 }
 
-/// Chat theme, message display, and color mode on one screen.
+/// Chat theme, message display, color mode, and app icon on one screen.
 struct AppearanceSettingsView: View {
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
     @AppStorage(MessageLayout.storageKey) private var messageLayoutRawValue = MessageLayout.chat.rawValue
     @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var selectedAppIcon = KordiAppIcon.primary
+    @State private var supportsAppIcons = false
 
     private var selectedChatTheme: KordiChatTheme { AppearanceSettingsSelection.chatTheme(chatThemeRawValue) }
     private var selectedLayout: MessageLayout { AppearanceSettingsSelection.messageLayout(messageLayoutRawValue) }
@@ -97,10 +103,44 @@ struct AppearanceSettingsView: View {
                 }
             }
             .padding(.top, 4)
+
+            if supportsAppIcons {
+                SettingsDivider()
+
+                SettingsSectionTitle("App icon")
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: AppIconThumbnail.size, maximum: AppIconThumbnail.size + 16), spacing: 12)],
+                    alignment: .leading,
+                    spacing: 14
+                ) {
+                    ForEach(KordiAppIcon.all) { icon in
+                        AppIconThumbnail(icon: icon, isSelected: icon == selectedAppIcon) {
+                            selectAppIcon(icon)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            }
         }
         .navigationTitle("Appearance")
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: appearanceRawValue + ":" + messageLayoutRawValue + ":" + chatThemeRawValue)
+        .sensoryFeedback(.selection, trigger: selectedAppIcon)
+        .onAppear {
+            supportsAppIcons = AppIconSettings.isSupported
+            selectedAppIcon = AppIconSettings.current
+        }
+    }
+
+    private func selectAppIcon(_ icon: KordiAppIcon) {
+        guard icon != selectedAppIcon else { return }
+        select { selectedAppIcon = icon }
+        Task { @MainActor in
+            let applied = await AppIconSettings.select(icon)
+            if applied != selectedAppIcon {
+                select { selectedAppIcon = applied }
+            }
+        }
     }
 
     private func select(_ change: () -> Void) {
@@ -144,6 +184,54 @@ private struct ChatThemeDot: View {
         .accessibilityLabel(theme.label)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier(AppearanceSettingsSelection.optionIdentifier(theme.rawValue))
+    }
+}
+
+/// Rounded-square home screen icon thumbnail.
+private struct AppIconThumbnail: View {
+    static let size: CGFloat = 58
+
+    let icon: KordiAppIcon
+    let isSelected: Bool
+    let action: () -> Void
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: Self.size * 0.2237, style: .continuous)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Image(icon.previewImageName)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fill)
+                .frame(width: Self.size, height: Self.size)
+                .clipShape(shape)
+                .overlay { shape.strokeBorder(AppearanceExampleColors.hairline, lineWidth: 1) }
+                .padding(3)
+                .overlay {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: Self.size * 0.2237 + 3, style: .continuous)
+                            .strokeBorder(KordiTheme.signalBlue, lineWidth: 2)
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 16, height: 16)
+                            .background(KordiTheme.signalBlue, in: Circle())
+                            .offset(x: 2, y: -2)
+                    }
+                }
+                .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(icon.displayName)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier(AppearanceSettingsSelection.appIconIdentifier(icon.key))
     }
 }
 

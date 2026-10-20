@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { ChevronLeft } from 'lucide-react';
 
+import { KordiFlyingBird } from '@/features/cloud/KordiFlyingBird';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { cn } from '@/lib/utils';
 import { topicTone } from './format';
@@ -138,7 +139,7 @@ export function CgSegmented<T extends string>({ value, options, onChange, label 
 export function CgProgress({ line }: { line: string }) {
   return (
     <div className="cg-progress" role="status">
-      <span className="cg-mark" aria-hidden="true"><i /><i /><i /></span>
+      <KordiFlyingBird className="cg-mark" />
       <span>{line}</span>
     </div>
   );

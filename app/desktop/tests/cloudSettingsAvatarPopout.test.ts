@@ -38,7 +38,7 @@ test('cloud settings modal contains profile authentication and theme sections', 
   assert.match(modal, /Appearance/);
   assert.match(modal, /Theme/);
   assert.match(modal, /AuthPage/);
-  assert.match(modal, /SettingsValueControl/);
+  assert.match(modal, /AppearanceSettingsRow/);
   assert.match(avatarEditor, /fileToAvatarDataUrl/);
   assert.match(modal, /onUpdateProfile\(input\)/);
   assert.match(modal, /initialTab/);
