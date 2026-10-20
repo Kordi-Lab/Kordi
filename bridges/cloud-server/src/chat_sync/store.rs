@@ -240,8 +240,10 @@ mod thread_reads;
 mod titles;
 pub use thread_reads::{advance_thread_read, thread_reads};
 
-pub(crate) use conversation::create_conversation_in_transaction;
 pub use conversation::{create_conversation, create_conversation_with_trusted_peer};
+pub(crate) use conversation::{
+    create_conversation_in_transaction, create_room_group_in_transaction,
+};
 pub use cursors::{advance_delivery_cursor, advance_read_cursor, bootstrap, history, sync_batch};
 pub use members::{accept_invited_conversation_member, add_conversation_members};
 pub use message::{

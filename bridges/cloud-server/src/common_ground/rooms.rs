@@ -260,7 +260,7 @@ pub(super) async fn announce(pool: &PgPool, room_id: Uuid) {
     }
 }
 
-async fn notify_members(
+pub(super) async fn notify_members(
     tx: &mut Transaction<'_, Postgres>,
     room_id: Uuid,
     code: &str,
@@ -309,15 +309,19 @@ pub(super) async fn view(pool: &PgPool, room_id: Uuid, viewer: &str) -> sqlx_cor
     .bind(viewer)
     .fetch_all(pool)
     .await?;
+    let ids: Vec<String> = members.iter().map(|m| m.0.clone()).collect();
+    let relationships = super::actions::relationships(pool, viewer, &ids).await?;
     let members: Vec<Value> = members
         .into_iter()
         .map(|(account_id, display_name, avatar_url, has_card)| {
             let mut person =
                 people::person(&account_id, display_name.as_deref(), avatar_url.as_deref());
             person["hasCard"] = json!(has_card);
+            super::actions::attach(&mut person, &account_id, &relationships);
             person
         })
         .collect();
+    let (groups, invitations) = super::actions::room_extras(pool, room_id, viewer).await?;
     Ok(json!({
         "roomId": room_id,
         "code": code,
@@ -325,6 +329,8 @@ pub(super) async fn view(pool: &PgPool, room_id: Uuid, viewer: &str) -> sqlx_cor
         "openedByYou": created_by.as_deref() == Some(viewer),
         "expiresAt": last_join_at + chrono::Duration::hours(24),
         "members": members,
+        "groups": groups,
+        "invitations": invitations,
     }))
 }
 

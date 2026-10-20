@@ -84,11 +84,35 @@ pub(crate) async fn create_conversation_in_transaction(
         .await
 }
 
+/// Creates a group started from a Common ground room. It may begin with its
+/// creator alone: people who are not contacts yet join through an invitation.
+pub(crate) async fn create_room_group_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    request: CreateConversationRequest,
+) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
+    if request.kind != ConversationKind::Group {
+        return Err(StoreError::InvalidInput("a room group must be a group"));
+    }
+    create_conversation_with_options(transaction, account_id, request, None, 1).await
+}
+
 async fn create_conversation_in_transaction_with_trusted_peer(
     transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
     request: CreateConversationRequest,
     trusted_peer_account_id: Option<&str>,
+) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
+    create_conversation_with_options(transaction, account_id, request, trusted_peer_account_id, 2)
+        .await
+}
+
+async fn create_conversation_with_options(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    request: CreateConversationRequest,
+    trusted_peer_account_id: Option<&str>,
+    min_group_members: usize,
 ) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
     let shared_title = normalize_title(request.shared_title.as_deref())?;
     let members = normalized_members(account_id, &request.member_account_ids);
@@ -104,7 +128,9 @@ async fn create_conversation_in_transaction_with_trusted_peer(
                 "a direct conversation must have exactly two members",
             ));
         }
-        ConversationKind::Group if !(2..=MAX_GROUP_MEMBERS).contains(&members.len()) => {
+        ConversationKind::Group
+            if !(min_group_members..=MAX_GROUP_MEMBERS).contains(&members.len()) =>
+        {
             return Err(StoreError::InvalidInput("group member count is invalid"));
         }
         ConversationKind::Ai if members.is_empty() || members.len() > MAX_GROUP_MEMBERS => {

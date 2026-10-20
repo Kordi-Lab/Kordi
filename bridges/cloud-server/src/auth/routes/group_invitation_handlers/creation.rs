@@ -37,16 +37,27 @@ pub(crate) async fn create_group_invitation(
         );
     }
 
-    let snapshot = match authorized_group_invitation_snapshot(
-        state.db_pool(),
+    let failed = || {
+        err(
+            "server_error",
+            "Could not create invitation.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        )
+    };
+    let Ok(mut tx) = state.db_pool().begin().await else {
+        return failed();
+    };
+    let created = create_invitation_in_transaction(
+        &mut tx,
         &session.account_id,
         group_id,
         group_space_id,
         &group_title,
+        GROUP_INVITE_MIN_MEMBERS,
     )
-    .await
-    {
-        Ok(Some(snapshot)) => snapshot,
+    .await;
+    let invitation = match created {
+        Ok(Some(invitation)) => invitation,
         Ok(None) => {
             return err(
                 "group_invitation_permission_denied",
@@ -54,81 +65,16 @@ pub(crate) async fn create_group_invitation(
                 StatusCode::FORBIDDEN,
             );
         }
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not verify group membership.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
+        Err(_) => return failed(),
     };
-
-    let token = new_group_invite_token();
-    let invitation_id = format!("groupinv_{}", uuid::Uuid::new_v4().simple());
-    let created_at = Utc::now();
-    let expires_at = created_at + ChronoDuration::days(GROUP_INVITE_LIFETIME_DAYS);
-    let snapshot_json = match serde_json::to_value(&snapshot) {
-        Ok(value) => value,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not create invitation.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
-    };
-    let mut tx = match state.db_pool().begin().await {
-        Ok(tx) => tx,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not create invitation.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
-    };
-    let created_at_text = created_at.to_rfc3339();
-    if query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
-        .bind(group_space_id)
-        .execute(&mut *tx)
-        .await
-        .is_err()
-        || query(
-            "UPDATE cloud_group_invitations SET revoked_at = $1 \
-             WHERE inviter_account_id = $2 AND group_space_id = $3 \
-               AND revoked_at IS NULL AND expires_at > $1",
-        )
-        .bind(&created_at_text)
-        .bind(&session.account_id)
-        .bind(group_space_id)
-        .execute(&mut *tx)
-        .await
-        .is_err()
-        || query(
-        "INSERT INTO cloud_group_invitations \
-         (invitation_id, inviter_account_id, token_hash, group_id, group_space_id, group_title, group_snapshot, created_at, expires_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-    )
-    .bind(&invitation_id)
-    .bind(&session.account_id)
-    .bind(hash_group_invite_token(&token))
-    .bind(group_id)
-    .bind(group_space_id)
-    .bind(&group_title)
-    .bind(snapshot_json)
-    .bind(&created_at_text)
-    .bind(expires_at.to_rfc3339())
-    .execute(&mut *tx)
-    .await
-    .is_err()
-        || tx.commit().await.is_err()
-    {
-        return err(
-            "server_error",
-            "Could not create invitation.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
+    if tx.commit().await.is_err() {
+        return failed();
     }
+    let NewGroupInvitation {
+        invitation_id,
+        token,
+        expires_at,
+    } = invitation;
 
     let _ = write_audit(
         state.db_pool(),
@@ -145,9 +91,84 @@ pub(crate) async fn create_group_invitation(
     Json(GroupInvitationResponse {
         invitation_id,
         invite_url: group_invite_url(&token),
-        expires_at: expires_at.to_rfc3339(),
+        expires_at,
     })
     .into_response()
+}
+
+/// A new invitation link: its id, its token (shown only to the route that
+/// asked for a shareable link) and when it expires.
+pub(crate) struct NewGroupInvitation {
+    pub(crate) invitation_id: String,
+    pub(crate) token: String,
+    pub(crate) expires_at: String,
+}
+
+/// Creates an invitation link for a group `inviter` is an owner or admin of,
+/// revoking their earlier live links for it. `None` when the inviter may not
+/// invite or the group has fewer than `min_members` members.
+pub(crate) async fn create_invitation_in_transaction(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    inviter: &str,
+    group_id: &str,
+    group_space_id: &str,
+    group_title: &str,
+    min_members: usize,
+) -> Result<Option<NewGroupInvitation>, sqlx_core::Error> {
+    query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(group_space_id)
+        .execute(&mut **tx)
+        .await?;
+    let snapshot = authorized_group_invitation_snapshot_in_transaction(
+        tx,
+        inviter,
+        group_id,
+        group_space_id,
+        group_title,
+        min_members,
+    )
+    .await?;
+    let Some(snapshot) = snapshot else {
+        return Ok(None);
+    };
+    let snapshot_json = serde_json::to_value(&snapshot)
+        .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
+    let token = new_group_invite_token();
+    let invitation_id = format!("groupinv_{}", uuid::Uuid::new_v4().simple());
+    let created_at = Utc::now();
+    let expires_at = created_at + ChronoDuration::days(GROUP_INVITE_LIFETIME_DAYS);
+    let created_at_text = created_at.to_rfc3339();
+    query(
+        "UPDATE cloud_group_invitations SET revoked_at = $1 \
+         WHERE inviter_account_id = $2 AND group_space_id = $3 \
+           AND revoked_at IS NULL AND expires_at > $1",
+    )
+    .bind(&created_at_text)
+    .bind(inviter)
+    .bind(group_space_id)
+    .execute(&mut **tx)
+    .await?;
+    query(
+        "INSERT INTO cloud_group_invitations \
+         (invitation_id, inviter_account_id, token_hash, group_id, group_space_id, group_title, group_snapshot, created_at, expires_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+    )
+    .bind(&invitation_id)
+    .bind(inviter)
+    .bind(hash_group_invite_token(&token))
+    .bind(group_id)
+    .bind(group_space_id)
+    .bind(group_title)
+    .bind(snapshot_json)
+    .bind(&created_at_text)
+    .bind(expires_at.to_rfc3339())
+    .execute(&mut **tx)
+    .await?;
+    Ok(Some(NewGroupInvitation {
+        invitation_id,
+        token,
+        expires_at: expires_at.to_rfc3339(),
+    }))
 }
 
 pub(crate) async fn get_group_invitation(
