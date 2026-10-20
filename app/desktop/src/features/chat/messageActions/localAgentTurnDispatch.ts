@@ -19,7 +19,7 @@ import type { VoiceTranscriptionOutcome } from '../voiceTranscription';
 import { canonicalNoProviderFailedAgentMessageRequest } from './agentMessageLifecycle';
 import { markOptimisticCanonicalMessageSent, sentPreparedCanonicalUserMessage } from './canonicalDelivery';
 import { appendCanonicalRequestToLocalState } from './canonicalSendState';
-import { markOptimisticCanonicalMessageFailed, type PreparedCanonicalUserMessage } from './optimistic';
+import { appendOptimisticCanonicalMessage, markOptimisticCanonicalMessageFailed, type PreparedCanonicalUserMessage } from './optimistic';
 import { voiceMessageAgentText } from './optimisticAttachments';
 import { transcribeAgentVoiceAttachments } from './voiceAgentTranscription';
 import { preparedCanonicalUserMessageWithAttachments, replaceOptimisticCanonicalMessageContent } from './voiceCanonicalContent';
@@ -79,8 +79,25 @@ export async function startLocalAgentTurn(
     : turn;
 }
 
+/**
+ * Adds the just-sent request to the local state. A Kordi Cloud request is
+ * delivered to the local store as sent at once, so its processing reply shows
+ * with the bubble instead of after two native writes.
+ */
+export function appendOptimisticAgentRequest(
+  current: CanonicalSessionState | null,
+  prepared: PreparedCanonicalUserMessage | null,
+  context: Pick<LocalAgentTurnContext, 'route' | 'contextMessages'>,
+): CanonicalSessionState | null {
+  const appended = appendOptimisticCanonicalMessage(current, prepared);
+  const hostedContent = hostedDeliveryContent(context);
+  return hostedContent && prepared
+    ? markOptimisticCanonicalMessageSent(appended, prepared.request.sessionId, prepared.messageId, hostedContent)
+    : appended;
+}
+
 /** Fields a Kordi Cloud request stores for forwarding: its route and bounded reference context. */
-function hostedDeliveryContent(context: LocalAgentTurnContext): Record<string, unknown> | null {
+function hostedDeliveryContent(context: Pick<LocalAgentTurnContext, 'route' | 'contextMessages'>): Record<string, unknown> | null {
   if (!context.route || !routeRunsOnKordiCloud(context.route)) return null;
   return { agentRuntimeRoute: context.route, ...hostedRequestContextContent(context.contextMessages) };
 }

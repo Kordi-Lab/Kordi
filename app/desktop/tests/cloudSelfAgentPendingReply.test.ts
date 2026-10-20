@@ -47,6 +47,22 @@ test('any reply row for the request replaces the pending row', () => {
   }
 });
 
+test('the server run\'s progress row is folded into the pending row', () => {
+  const hosted = {
+    ...request, id: 'msg:cloud:self:progress:wire', senderIdentityId: 'agent:me', senderRole: 'owned-agent',
+    messageKind: 'agent-turn', contentText: '', content: { cloudRequestMessageId: 'wire', deliveryState: 'queued', hostedRunStatus: 'queued' },
+    parentMessageId: request.id, status: 'queued', sourceTransport: 'cloud-self-agent-progress', sourceEventId: 'wire',
+  } as CanonicalSessionMessage;
+  const projected = projectPendingSelfAgentReplies(state([request, hosted]), 10_050)!;
+  const row = pendingRow(projected);
+  assert.equal(row?.status, 'processing', 'the pending row stays and keeps processing');
+  assert.equal(projected.messages.some((message) => message.id === hosted.id), false, 'the run row does not show as a second reply');
+  // A run that exists on the server did start: the row never says it did not.
+  const late = pendingRow(projectPendingSelfAgentReplies(state([request, hosted]), 10_000 + 60_000)!);
+  assert.equal(late?.status, 'processing');
+  assert.equal(nextPendingSelfAgentDeadlineMs(state([request, hosted]), 10_050), null, 'no not-started deadline while the run exists');
+});
+
 test('no pending row for failed, queued, local or older requests', () => {
   const cases: CanonicalSessionMessage[][] = [
     [{ ...request, status: 'failed' }],

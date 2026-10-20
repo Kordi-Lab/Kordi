@@ -13,6 +13,7 @@ import { cloudSelfAgentLocalTurnsToOmit, cloudSelfAgentTerminalOrLocalRequestIds
 import { planCloudSelfAgentCanonicalSync } from '../src/features/cloud/cloudSelfAgentCanonicalSync';
 import { cloudSelfAgentStoppedReply, settledCloudSelfAgentTurn } from '../src/features/cloud/cloudSelfAgentTerminalReply';
 import { createCloudSelfAgentTurnPresenter } from '../src/features/cloud/cloudSelfAgentTurnPresentation';
+import { removeHostedSelfAgentProgress, updateHostedSelfAgentProgress } from '../src/features/cloud/hostedSelfAgentRunProgress';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import type { CanonicalSessionMessage, CanonicalSessionState, DesktopChatTurnSnapshot } from '../src/kordi-app/types';
 import type { ChatSessionPaneProps } from '../src/pages/chatsPage.types';
@@ -232,12 +233,19 @@ test('the recorded Ask Agent run shows one continuous processing row until its s
     scene.state = { ...scene.state, messages: scene.state.messages.map((message) => (message.id === localRequest.id
       ? { ...message, content: { ...(message.content as object), desktopEntryId: wireRequestId } } : message)) };
     await check('published', (r) => expectRunning('published', r), { newRow: true });
+    // T+1.6 s: the server created the run and holds it for this Mac; the hosted progress hook tracks it.
+    scene.state = updateHostedSelfAgentProgress(scene.state, { request: serverRequest, runStatus: 'queued', cloudMessages: scene.wire })!;
+    await check('hosted run queued (T+1.6 s)', (r) => expectRunning('hosted queued', r));
     turns.remember(nativeTurn('starting', ''));
     await check('native turn starting (T+1.8 s)', (r) => expectRunning('starting', r));
+    scene.state = updateHostedSelfAgentProgress(scene.state, { request: serverRequest, runStatus: 'leased', cloudMessages: scene.wire })!;
+    await check('hosted run leased while the turn starts', (r) => expectRunning('hosted leased', r));
     turns.remember(nativeTurn('preparing', ''));
     await check('preparing', (r) => expectRunning('preparing', r));
     scene.wire = [...scene.wire, progress('progress-1', '', 2_160)];
     await check('first progress row indexed (T+2.2 s)', (r) => expectRunning('progress indexed', r));
+    scene.state = removeHostedSelfAgentProgress(scene.state, wireRequestId)!;
+    await check('hosted progress stops (T+2.8 s)', (r) => expectRunning('hosted stopped', r));
     scene.state = applyPlan(scene.state, scene.wire);
     await check('stored processing row (T+5.1 s)', (r) => expectRunning('stored row', r));
     turns.remember(nativeTurn('streaming', ''));

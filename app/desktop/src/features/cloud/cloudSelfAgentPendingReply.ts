@@ -14,6 +14,8 @@ export const PENDING_SELF_AGENT_START_TIMEOUT_MS = 15_000;
 export const PENDING_SELF_AGENT_ATTACHMENT_START_TIMEOUT_MS = 60_000;
 export const PENDING_SELF_AGENT_NOT_STARTED_TEXT = 'This request did not start. Send it again.';
 const PENDING_SOURCE = 'cloud-self-agent-pending';
+/** The server-confirmed run's progress row (`hostedSelfAgentRunProgress`). */
+const HOSTED_PROGRESS_SOURCE = 'cloud-self-agent-progress';
 
 export function pendingSelfAgentReplyId(requestMessageId: string) {
   return `msg:cloud:self:pending:${requestMessageId}`;
@@ -58,12 +60,19 @@ function startTimeoutMs(message: CanonicalSessionMessage) {
     : PENDING_SELF_AGENT_START_TIMEOUT_MS;
 }
 
+function hostedRunRequestIds(state: CanonicalSessionState) {
+  return new Set(state.messages.flatMap((message) => (
+    message.sourceTransport === HOSTED_PROGRESS_SOURCE && message.parentMessageId ? [message.parentMessageId] : []
+  )));
+}
+
 /** When the newest waiting request's processing reply turns into its not-started notice. */
 export function nextPendingSelfAgentDeadlineMs(state: CanonicalSessionState | null, nowMs: number): number | null {
   if (!state) return null;
   let next: number | null = null;
+  const started = hostedRunRequestIds(state);
   for (const message of state.messages) {
-    if (message.senderRole !== 'user' || !waitingHostedRequest(message)) continue;
+    if (message.senderRole !== 'user' || !waitingHostedRequest(message) || started.has(message.id)) continue;
     const deadline = message.createdAtMs + startTimeoutMs(message);
     if (deadline > nowMs && (next === null || deadline < next)) next = deadline;
   }
@@ -86,9 +95,12 @@ export function usePendingSelfAgentReplyClock(state: CanonicalSessionState | nul
  * Shows the agent's processing row as soon as a hosted Ask Agent request is
  * sent, as a group chat does for its agent's request. The row is a read-model
  * projection, never stored or synchronized, so it cannot become history. Any
- * reply row for the request (the hosted progress, the executor's progress,
- * the final, stopped or failed reply) replaces it in the same render. When
- * no reply row appears in time, the row becomes a failed notice.
+ * stored reply row for the request (the executor's progress, the final,
+ * stopped or failed reply) replaces it in the same render, under the same id.
+ * The server run's own progress row is folded into it: that row only says the
+ * run is queued, leased or running, which this row already shows, and as a
+ * second row it took the reply's place for a moment and gave it back. When no
+ * run or reply appears in time, the row becomes a failed notice.
  */
 export function projectPendingSelfAgentReplies(
   state: CanonicalSessionState | null,
@@ -111,9 +123,12 @@ export function projectPendingSelfAgentReplies(
   }
   const sessionById = new Map(state.sessions.map((session) => [session.id, session]));
   const pending: CanonicalSessionMessage[] = [];
+  const folded = new Set<string>();
   for (const request of newestUserBySession.values()) {
     if (!waitingHostedRequest(request)) continue;
-    if (state.messages.some((message) => message.senderRole !== 'user' && repliesTo(message, request.id))) continue;
+    const replies = state.messages.filter((message) => message.senderRole !== 'user' && repliesTo(message, request.id));
+    const hostedRuns = replies.filter((message) => message.sourceTransport === HOSTED_PROGRESS_SOURCE);
+    if (replies.length > hostedRuns.length) continue;
     const agentIdentityId = sessionById.get(request.sessionId)?.primaryIdentityId?.trim();
     if (!agentIdentityId) continue;
     // The Mac runs it before its stored reply exists: show that turn here.
@@ -122,7 +137,8 @@ export function projectPendingSelfAgentReplies(
       ?? (typeof linkedWireId === 'string' && linkedWireId.trim() ? linkedWireId.trim() : undefined);
     const localTurn = wireId ? local.turns?.[wireId] : undefined;
     // No run answered in time: say so instead of showing a run that does not exist.
-    const notStarted = !localTurn && nowMs - request.createdAtMs > startTimeoutMs(request);
+    const notStarted = !localTurn && hostedRuns.length === 0 && nowMs - request.createdAtMs > startTimeoutMs(request);
+    for (const run of hostedRuns) folded.add(run.id);
     const row: CanonicalSessionMessage = {
       id: pendingSelfAgentReplyRowId(request.id, wireId),
       sessionId: request.sessionId,
@@ -145,5 +161,7 @@ export function projectPendingSelfAgentReplies(
     };
     pending.push(localTurn && localTurn.sessionId === request.sessionId ? withLiveTurn(row, localTurn) : row);
   }
-  return pending.length ? { ...state, messages: [...state.messages, ...pending] } : state;
+  if (pending.length === 0) return state;
+  const messages = folded.size ? state.messages.filter((message) => !folded.has(message.id)) : state.messages;
+  return { ...state, messages: [...messages, ...pending] };
 }
