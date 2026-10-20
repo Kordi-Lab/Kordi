@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import {
   catalog, ompProvider, shortName, anthropicName, googleName, defaultModel,
   secretLikeText, callbackHint, openPreview, providerRows, providerRow, section,
@@ -318,21 +318,32 @@ test('a completed ChatGPT device sign-in returns with the account added and read
   expect(offOrigin).toEqual([]);
 });
 
+// The session's model picker: a pick applies at once, and another account asks once.
+const routePicker = (page: Page) => section(page, 'Agent session').getByRole('button', { name: /^Select model, current / });
+async function changeAccount(page: Page, name: RegExp) {
+  await page.getByRole('dialog', { name: 'Choose account' }).getByRole('button', { name }).click();
+  await page.getByRole('dialog', { name: 'Change shared account' }).getByRole('button', { name: 'Change account' }).click();
+}
+
 test('a session routed to a removed account opens its route on the signed-in account of the same provider', async ({ page }) => {
   await openPreview(page, 'settings', { provider: 'openai', flags: ['missingAccount'] });
   const session = section(page, 'Agent session');
   await expect(session.getByRole('status')).toContainText('Account unavailable');
   await expect(session.getByRole('button', { name: 'Send' })).toBeDisabled();
   await expect(session.getByRole('button', { name: 'Test route' })).toBeDisabled();
-  await session.getByRole('button', { name: 'model route · Account unavailable' }).click();
-  const menu = page.getByRole('dialog', { name: 'Agent model' });
-  // The dialog offers the ChatGPT account in place of the removed one; saving applies it.
-  await expect(menu).not.toContainText('account unavailable');
-  await expect(menu.getByRole('button', { name: 'save' })).toBeEnabled();
-  await menu.getByRole('button', { name: 'save' }).click();
+  await expect(routePicker(page)).toHaveAccessibleName('Select model, current GPT-5.5, Account unavailable');
+  await routePicker(page).click();
+  await page.locator('.app-model-picker-account').click();
+  // The picker offers the ChatGPT accounts in place of the removed one; nothing applies until one is chosen.
+  const accounts = page.getByRole('dialog', { name: 'Choose account' });
+  await expect(accounts.getByRole('status')).toContainText('Account unavailable');
+  await expect(accounts.getByRole('button', { name: /^ChatGPT/ })).toHaveCount(2);
+  await expect(session.getByRole('button', { name: 'Send' })).toBeDisabled();
+  await changeAccount(page, /^ChatGPT\s*Work/);
+  await expect(page.locator('.app-model-picker')).toHaveCount(0);
   await expect(session.getByRole('status')).toHaveCount(0);
   await expect(session.getByRole('button', { name: 'Send' })).toBeEnabled();
-  await expect(session.getByRole('button', { name: 'model route', exact: true })).toBeVisible();
+  await expect(routePicker(page)).toHaveAccessibleName('Select model, current GPT-5.5');
 });
 
 test('a session routed to a removed account with no account of its provider stays unavailable and blocks send until another account is chosen', async ({ page }) => {
@@ -341,52 +352,63 @@ test('a session routed to a removed account with no account of its provider stay
   await expect(session.getByRole('status')).toContainText('Account unavailable');
   await expect(session.getByRole('button', { name: 'Send' })).toBeDisabled();
   await expect(session.getByRole('button', { name: 'Test route' })).toBeDisabled();
-  await session.getByRole('button', { name: 'model route · Account unavailable' }).click();
-  const menu = page.getByRole('dialog', { name: 'Agent model' });
-  await expect(menu).toContainText('account unavailable');
-  await expect(menu.getByRole('button', { name: 'save' })).toBeDisabled();
-  await menu.getByText('provider', { exact: true }).click();
-  await menu.getByRole('button', { name: /^chatgpt\s*work/ }).click();
-  await expect(menu.getByRole('button', { name: 'save' })).toBeEnabled();
-  await menu.getByRole('button', { name: 'save' }).click();
+  await expect(routePicker(page)).toHaveAccessibleName('Select model, current Claude Fable 5, Account unavailable');
+  await routePicker(page).click();
+  await page.locator('.app-model-picker-account').click();
+  const accounts = page.getByRole('dialog', { name: 'Choose account' });
+  await expect(accounts.getByRole('status')).toContainText('Account unavailable');
+  await expect(accounts).toContainText('No signed-in account for Claude.');
+  await expect(accounts.locator('.app-model-picker-row')).toHaveCount(0);
+  await accounts.getByRole('button', { name: 'Back to models' }).click();
+  // The first GPT-5.5 row is the ChatGPT model; picking it asks for a ChatGPT account.
+  await page.getByRole('dialog', { name: 'Select model' }).getByRole('button', { name: /^GPT-5\.5/ }).first().click();
+  await expect(session.getByRole('button', { name: 'Send' })).toBeDisabled();
+  await changeAccount(page, /^ChatGPT\s*Work/);
   await expect(session.getByRole('status')).toHaveCount(0);
   await expect(session.getByRole('button', { name: 'Send' })).toBeEnabled();
-  await expect(session.getByRole('button', { name: 'model route', exact: true })).toBeVisible();
+  await expect(routePicker(page)).toHaveAccessibleName('Select model, current GPT-5.5');
 });
 
 test('the composer identifies saved accounts by name and provider', async ({ page }) => {
   await openPreview(page, 'settings', { provider: 'openai', flags: ['hostedAccounts'] });
   const session = section(page, 'Agent session');
   await expect(session.getByText('Runs on Kordi Cloud', { exact: true })).toHaveCount(0);
-  const openProviders = async () => {
-    await session.getByRole('button', { name: 'model route', exact: true }).click();
-    const menu = page.getByRole('dialog', { name: 'Agent model' });
-    await menu.getByText('provider', { exact: true }).click();
-    return menu;
+  const menu = page.getByRole('dialog', { name: 'Select model' });
+  const accounts = page.getByRole('dialog', { name: 'Choose account' });
+  // A model of another provider opens that provider's saved accounts.
+  const pickModel = async (name: string) => {
+    await routePicker(page).click();
+    await menu.getByRole('button', { name: 'More models' }).click();
+    await menu.getByRole('button', { name: new RegExp(`^${name}`) }).click();
   };
-  let menu = await openProviders();
-  for (const [name, detail] of [['research', /cerebras/], ['team', /chatgpt/], ['gateway', /custom api/]] as const) {
-    await expect(menu.getByRole('button', { name: new RegExp(`^${name}`) })).toContainText(detail);
-  }
-  const reconnect = menu.getByRole('button', { name: /^old laptop/ });
+  await routePicker(page).click();
+  await page.locator('.app-model-picker-account').click();
+  await expect(accounts.getByRole('button', { name: /^ChatGPT • Team/ })).toContainText('ChatGPT');
+  const reconnect = accounts.getByRole('button', { name: /^ChatGPT • Old laptop/ });
   await expect(reconnect).toBeDisabled();
   await expect(reconnect).toHaveAttribute('title', 'Account needs reconnecting');
-  await expect(reconnect).toContainText('account needs reconnecting');
+  await expect(reconnect).toContainText('Account needs reconnecting');
+  await page.keyboard.press('Escape');
 
   // A saved account applies its route with its provider's catalog models.
-  await menu.getByRole('button', { name: /^research/ }).click();
-  await menu.getByRole('button', { name: 'save' }).click();
+  await pickModel('gemma-4-31b');
+  await expect(accounts.getByRole('button', { name: /^Cerebras • Research/ })).toContainText('Cerebras');
+  await changeAccount(page, /^Cerebras • Research/);
   await expect(session.getByText('Runs on Kordi Cloud', { exact: true })).toHaveCount(0);
 
-  menu = await openProviders();
-  await expect(menu.getByRole('button', { name: /^research/ })).toContainText('selected');
-  await menu.getByRole('button', { name: /^gateway/ }).click();
-  await menu.getByRole('button', { name: 'save' }).click();
+  await routePicker(page).click();
+  await expect(page.locator('.app-model-picker-account')).toHaveText('Cerebras • Research');
+  await page.keyboard.press('Escape');
+  await pickModel('deepseek-chat');
+  await expect(accounts.getByRole('button', { name: /^Custom API • Gateway/ })).toContainText('Custom API');
+  await changeAccount(page, /^Custom API • Gateway/);
 
-  menu = await openProviders();
-  await expect(menu.getByRole('button', { name: /^gateway/ })).toContainText('selected');
-  await menu.getByRole('button', { name: /^chatgpt\s*work/ }).click();
-  await menu.getByRole('button', { name: 'save' }).click();
+  await routePicker(page).click();
+  await expect(page.locator('.app-model-picker-account')).toHaveText('Custom API • Gateway');
+  await page.keyboard.press('Escape');
+  await pickModel('GPT-5\\.6 Sol');
+  await changeAccount(page, /^ChatGPT\s*Work/);
+  await expect(routePicker(page)).toHaveAccessibleName('Select model, current GPT-5.6 Sol');
   await expect(session.getByText('Runs on Kordi Cloud', { exact: true })).toHaveCount(0);
 });
 

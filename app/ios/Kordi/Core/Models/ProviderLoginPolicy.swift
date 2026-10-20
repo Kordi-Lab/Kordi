@@ -139,9 +139,10 @@ extension OMPProviderCatalogEntry {
     /// Keeps a live entry's login flow, or borrows the bundled one when a
     /// worker catalog predates the `login` field.
     func withLogin(from fallback: OMPProviderCatalogEntry?) -> OMPProviderCatalogEntry {
-        guard login == nil, let login = fallback?.login else { return self }
+        guard let fallback, login == nil || modelThinking.isEmpty else { return self }
         return OMPProviderCatalogEntry(
-            id: id, name: name, defaultModel: defaultModel, auth: auth, login: login, models: models
+            id: id, name: name, defaultModel: defaultModel, auth: auth, login: login ?? fallback.login,
+            models: models, modelThinking: modelThinking.isEmpty ? fallback.modelThinking : modelThinking
         )
     }
 }

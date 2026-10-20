@@ -149,12 +149,13 @@ fn openai_codex_oauth_candidates_exclude_platform_only_models() {
     assert_eq!(
         model_ids,
         [
+            "gpt-6.1-sol",
             "gpt-6-astra",
             "gpt-6-sol",
             "gpt-6-luna",
-            "gpt-5.6-luna",
             "gpt-5.6-sol",
             "gpt-5.6-terra",
+            "gpt-5.6-luna",
             "gpt-5.5",
             "gpt-5.4-mini",
             "gpt-5.4",
@@ -177,7 +178,7 @@ fn openai_codex_oauth_candidates_exclude_platform_only_models() {
     ));
     assert_eq!(
         available_model_for_provider(&Settings::default(), "openai", Some("gpt-5")),
-        Some("gpt-5.6-sol".to_string()),
+        Some("gpt-6.1-sol".to_string()),
     );
     assert_eq!(
         available_model_for_provider(&Settings::default(), "openai", Some("gpt-5.4")),
@@ -185,7 +186,7 @@ fn openai_codex_oauth_candidates_exclude_platform_only_models() {
     );
     assert_eq!(
         available_model_for_provider(&Settings::default(), "openai", Some("gpt-5.2")),
-        Some("gpt-5.6-sol".to_string()),
+        Some("gpt-6.1-sol".to_string()),
     );
 }
 
@@ -203,7 +204,7 @@ fn openai_api_key_candidates_keep_platform_models() {
     assert!(model_ids.contains(&"gpt-5.5".to_string()));
     assert_eq!(
         available_model_for_provider(&Settings::default(), "openai", None),
-        Some("gpt-5.6-sol".to_string()),
+        Some("gpt-6.1-sol".to_string()),
     );
 }
 
@@ -322,7 +323,7 @@ fn anthropic_catalog_rank_uses_shared_subscription_order() {
         model_catalog_rank("anthropic", "CLAUDE-OPUS-4-8"),
         usize::MAX
     );
-    assert_eq!(model_catalog_rank("openai", "GPT-5.5"), 6);
+    assert_eq!(model_catalog_rank("openai", "GPT-5.5"), 7);
     assert_eq!(model_catalog_rank("google", "claude-opus-4-8"), usize::MAX);
 }
 
@@ -340,7 +341,7 @@ fn startup_fallback_uses_codex_compatible_model_when_openai_oauth_is_active() {
 
     assert_eq!(
         preferred_startup_provider_and_model(&settings),
-        Some(("openai".to_string(), "gpt-5.6-sol".to_string())),
+        Some(("openai".to_string(), "gpt-6.1-sol".to_string())),
     );
 
     let explicit_settings = Settings {

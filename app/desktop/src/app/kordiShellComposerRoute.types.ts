@@ -9,7 +9,7 @@ export type KordiShellComposerRouteArgs = {
   composerAuthOptionsChat: ComposerAuthOption[];
   resolveChatRuntimeRoute?: (sessionId?: string | null) => DesktopChatMessageRoute | null;
   selectComposerAuthChoice: (scope: 'chat' | 'project', providerId: string, choice: string, configTargetOverride?: ComposerConfigTargetOverride) => void;
-  selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => void;
+  selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => void | Promise<void | boolean>;
   composerProviderOptions: ComposerProviderOption[];
   chatModelOptions: ComposerModelOption[] | undefined;
   defaultCloudAgentRuntimeRoute: DesktopChatMessageRoute | null;

@@ -1,0 +1,56 @@
+/* A plain-text route label (model, then effort) and compact, theme-inheriting popovers. */
+.app-model-effort-pill { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; height: 29px; }
+.app-model-effort-pill > button { display: inline-flex; align-items: center; min-width: 0; padding: 4px 0; border-radius: 6px; font-size: 12px; line-height: 1; white-space: nowrap; background: none; color: var(--utility-foreground); }
+.app-model-effort-pill > button:first-child { overflow: hidden; text-overflow: ellipsis; max-width: 15rem; font-weight: 550; }
+.app-model-effort-pill > button:last-child { color: var(--utility-muted-text); flex-shrink: 0; }
+.app-model-effort-pill > button:hover { opacity: .7; }
+/* The title row stays pinned; only the row list scrolls within the measured maxHeight. */
+.app-model-picker { position: fixed; z-index: 2147483000; display: flex; flex-direction: column; width: 288px; padding: 12px; border-radius: 20px; overflow: hidden; color: var(--app-transient-text); }
+.app-model-picker > * { flex-shrink: 0; }
+.app-model-picker.app-model-picker-effort { display: block; width: 232px; padding: 12px; }
+.app-model-picker button:disabled { opacity: .5; cursor: not-allowed; }
+.app-model-picker button:hover:not(:disabled) { background: var(--app-transient-hover-bg); }
+.app-model-picker button:focus-visible, .app-model-picker input:focus-visible, .app-model-effort-pill > button:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
+.app-model-picker-heading { display: flex; align-items: center; gap: 6px; padding: 2px 4px 6px; font-size: 12px; }
+.app-model-picker-heading strong { flex: 1; font-weight: 600; }
+.app-model-picker-heading button { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; }
+.app-model-picker .app-model-picker-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 10px; min-height: 34px; border-radius: 9px; text-align: left; font-size: 12px; }
+.app-model-picker-row small { display: block; margin-top: 1px; font-size: 10px; color: var(--app-transient-muted-text); }
+.app-model-picker-row > span:last-child:not(:first-child) { display: flex; align-items: center; gap: 4px; color: var(--app-transient-muted-text); }
+.app-model-picker-row > svg { flex-shrink: 0; }
+.app-model-picker-row[aria-pressed=true] { background: var(--app-transient-selected-bg); }
+.app-model-picker-row[aria-pressed=true] > svg { color: var(--app-accent); }
+.app-model-picker > .app-model-picker-list { flex: 0 1 auto; min-height: 0; max-height: 245px; overflow: auto; overscroll-behavior: contain; }
+.app-model-picker-divider { border-top: 1px solid var(--app-transient-divider); margin: 5px 3px; }
+.app-model-picker-account { color: var(--app-transient-muted-text); font-size: 11px; }
+.app-model-picker-message { margin: 6px; font-size: 12px; overflow-wrap: anywhere; }
+.app-model-picker-message button { margin-left: 6px; text-decoration: underline; }
+.app-model-picker-actions { display: flex; justify-content: flex-end; gap: 6px; padding: 6px; }
+.app-model-picker-actions button { padding: 6px 9px; border-radius: 8px; background: var(--app-transient-selected-bg); font-size: 12px; }
+.app-model-picker-search { width: 100%; margin-bottom: 5px; padding: 7px 9px; border: 1px solid var(--app-transient-border); border-radius: 8px; background: var(--app-control-bg); font-size: 12px; }
+.app-effort-heading { display: flex; position: relative; justify-content: center; }
+.app-effort-identity { min-width: 104px; max-width: calc(100% - 56px); padding: 2px 10px; text-align: center; border-radius: 6px; background: var(--app-control-bg); }
+.app-effort-identity strong { display: block; font-size: 12px; font-weight: 550; line-height: 16px; color: var(--app-accent); }
+.app-effort-identity button { display: flex; align-items: center; justify-content: center; gap: 2px; max-width: 100%; margin: auto; font-size: 10px; line-height: 16px; color: var(--app-transient-muted-text); }
+.app-effort-reset { display: grid; place-items: center; position: absolute; right: 0; top: 0; width: 28px; height: 28px; border-radius: 7px; color: var(--app-transient-muted-text); }
+.app-effort-track { position: relative; height: 24px; margin-top: 7px; border-radius: 999px; background: var(--app-control-bg); }
+/* The fill shares the thumb's radius and centre, so at the lowest level it is hidden under the thumb. */
+.app-effort-fill { position: absolute; inset: 2px auto 2px 2px; width: calc(10px + (100% - 24px) * var(--effort-t, 0)); border-radius: 10px 0 0 10px; background: var(--app-accent); }
+/* The thumb is drawn here so it can move smoothly; the native thumb only keeps the hit area. */
+.app-effort-thumb { position: absolute; top: 2px; left: calc(2px + (100% - 24px) * var(--effort-t, 0)); width: 20px; height: 20px; border-radius: 50%; background: var(--app-palette-accent-ink); box-shadow: 0 1px 4px #0003; pointer-events: none; }
+.app-effort-dots { position: absolute; inset: 0 10px; display: flex; align-items: center; justify-content: space-between; pointer-events: none; }
+.app-effort-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--app-transient-muted-text); opacity: .45; }
+.app-effort-track input { appearance: none; -webkit-appearance: none; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: transparent; cursor: pointer; border-radius: inherit; }
+.app-effort-track input::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 24px; height: 24px; border-radius: 50%; background: transparent; border: 0; }
+.app-effort-track input::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: transparent; border: 0; }
+.app-model-pill-label { display: inline-block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+@media (prefers-reduced-motion: no-preference) {
+  .app-model-picker { animation: app-model-picker-enter 150ms var(--app-motion-ease, ease-out) both; }
+  .app-model-pill-label { animation: app-model-pill-change 180ms var(--app-motion-ease, ease-out) both; }
+  .app-effort-fill { transition: width 160ms var(--app-motion-ease, ease-out); }
+  .app-effort-thumb { transition: left 160ms var(--app-motion-ease, ease-out); }
+  .app-model-picker .app-model-picker-row { transition: background-color 160ms var(--app-motion-ease, ease-out); }
+}
+/* `translate` and `scale` compose with the inline placement transform. */
+@keyframes app-model-picker-enter { from { opacity: 0; translate: 0 var(--app-model-picker-enter-y, 4px); scale: .985; } }
+@keyframes app-model-pill-change { from { opacity: 0; translate: 0 3px; } }

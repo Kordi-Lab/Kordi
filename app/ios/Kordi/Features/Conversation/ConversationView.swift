@@ -330,6 +330,8 @@ struct ConversationView: View {
     @State private var selectedBackgroundSession: BackgroundAgentSession?
     @State private var callJoinTask: Task<Void, Never>?
     @State private var showAgentModel = false
+    @State private var agentModelPickerPage: AgentModelPickerPage = .models
+    @State private var agentModelFieldOffset: CGFloat = 0
     @State private var highlightedMessageID: String?
     @State private var selectedMessageIDs = Set<String>()
     @State private var forwardRequest: MessageForwardRequest?
@@ -764,6 +766,9 @@ struct ConversationView: View {
                                 .padding(.horizontal, 12)
                                 .padding(.top, timelineVerticalInset)
                             }
+                            // The composer strip is transparent: messages scrolled past the
+                            // viewport keep drawing under the glass field instead of being clipped.
+                            .scrollClipDisabled()
                             .modifier(ConversationOutgoingAvatarOverlay())
                             .modifier(ConversationScrollAnchorPolicy(preservesTrajectoryPosition: trajectoryViewport.isPinned))
                             .modifier(ConversationTopScrollEdge())
@@ -877,6 +882,8 @@ struct ConversationView: View {
                                 }
                             ),
                             isAgentModelPickerPresented: $showAgentModel,
+                            agentModelPickerPage: $agentModelPickerPage,
+                            agentModelFieldOffset: $agentModelFieldOffset,
                             voiceHoldPresentation: voiceHoldPresentation,
                             conversation: conversation,
                             mentionTargets: mentionTargets,
@@ -997,6 +1004,19 @@ struct ConversationView: View {
                 )
             }
             .overlay {
+                // The picker covers the whole screen, header included, from a window overlay.
+                if showAgentModel {
+                    WindowOverlayPresenter(passthroughFrame: nil, removalDuration: 0.15) { _ in
+                        AgentModelPickerOverlay(
+                            conversation: conversation,
+                            page: $agentModelPickerPage,
+                            fieldOffset: agentModelFieldOffset,
+                            onDismiss: { showAgentModel = false }
+                        )
+                        .environmentObject(model)
+                        .environment(\.kordiChatTheme, chatTheme)
+                    }
+                }
                 // Driven by the gesture, not the recorder phase, so it appears as the
                 // long press begins. The window host keeps its coordinates equal to
                 // the window coordinates the gesture reports.
@@ -1503,7 +1523,7 @@ struct ConversationView: View {
             }
 
             if message.isSystemNotice {
-                SystemNoticeRow(text: message.text)
+                SystemNoticeRow(text: AgentModelPresentation.notice(message))
                     .padding(.vertical, 8)
             } else {
                 MessageBubble(

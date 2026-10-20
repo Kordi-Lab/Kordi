@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Locator, type Page } from '@playwright/test';
+import { withChatGptModelCatalog } from '../../src/features/cloud/chatgptModelCatalog';
 
 // Shared steps for the provider-configuration specs. They drive the synthetic,
 // offline AuthPreview fixture and its simulated OMP sign-in sessions.
@@ -18,10 +19,11 @@ export const catalog = JSON.parse(readFileSync(
   new URL('../../../../shared/omp-catalog/omp-provider-catalog.json', import.meta.url),
   'utf8',
 )) as CatalogPayload;
+// The app lists ChatGPT models newest first with GPT-6.1 Sol as the default.
 export const ompProvider = (id: string) => {
   const entry = catalog.providers.find((provider) => provider.id === id);
   if (!entry) throw new Error(`The pinned OMP catalog has no ${id} provider.`);
-  return entry;
+  return withChatGptModelCatalog(entry);
 };
 // List rows use the short name; the full OMP name appears once, in the detail header.
 export const shortName = (name: string) => name.replace(/\s*\([^()]*\)$/, '').replace(/\s+[A-Za-z+]+(?:\/[A-Za-z+]+)+$/, '');

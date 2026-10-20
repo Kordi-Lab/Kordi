@@ -1,4 +1,5 @@
 import { canonicalCloudProviderId } from '@/features/cloud/providerAuthSnapshot';
+import { withChatGptModelCatalog } from '@/features/cloud/chatgptModelCatalog';
 import { DEVICE_ACTIVE_CHOICES } from '@/features/cloud/routeAccountChoice';
 import type { CloudProviderAuthSnapshot } from '@/features/cloud/cloudAgentRuntimeTypes';
 import type { OmpLoginKind, OmpLoginSpec } from '@/features/cloud/providerLogin';
@@ -13,7 +14,11 @@ export type OmpCatalogEntry = {
   defaultModel?: string | null;
   auth?: OmpProviderAuth;
   login?: OmpLoginSpec | null;
+  /** OMP thinking efforts by model id, resolved from the catalog's shared profiles; models without a controllable effort are absent. */
+  modelThinking?: Record<string, OmpModelThinking>;
 };
+
+export type OmpModelThinking = { efforts: string[]; defaultLevel?: string };
 
 export type OmpCatalog = {
   version: string | null;
@@ -46,16 +51,31 @@ function ompLoginKind(kind: string): OmpLoginKind {
 
 type PinnedCatalogPayload = typeof import('../../../../../shared/omp-catalog/omp-provider-catalog.json');
 
+/** Resolves a provider's `modelThinking` profile ids against the catalog's shared `thinkingProfiles`. */
+function resolvedModelThinking(
+  modelThinking: Record<string, string | undefined>,
+  profiles: Record<string, OmpModelThinking | undefined>,
+): Record<string, OmpModelThinking> {
+  const resolved: Record<string, OmpModelThinking> = {};
+  for (const [modelId, profileId] of Object.entries(modelThinking)) {
+    const profile = profileId ? profiles[profileId] : undefined;
+    if (profile) resolved[modelId] = profile;
+  }
+  return resolved;
+}
+
 function pinnedCatalogFrom(payload: PinnedCatalogPayload): OmpCatalog {
+  const profiles: Record<string, OmpModelThinking | undefined> = payload.thinkingProfiles;
   return {
     version: payload.version,
-    providers: payload.providers.map((entry) => ({
+    providers: payload.providers.map((entry) => withChatGptModelCatalog({
       id: entry.id,
       name: entry.name,
       models: entry.models,
       defaultModel: entry.defaultModel,
       auth: { ...entry.auth, kind: ompAuthKind(entry.auth.kind) },
       login: entry.login ? { ...entry.login, kind: ompLoginKind(entry.login.kind) } : null,
+      modelThinking: resolvedModelThinking(entry.modelThinking, profiles),
     })),
   };
 }
@@ -95,11 +115,17 @@ export async function refreshOmpCatalog(
     const result = await load();
     const providers = Array.isArray(result?.providers) ? result.providers : [];
     if (!providers.some((entry) => entry.models?.length > 0)) return current;
-    // Older servers omit login steps; keep the pinned ones for those providers.
-    const pinnedLogins = new Map(current.providers.map((entry) => [entry.id, entry.login]));
+    // Older servers omit login steps; keep the pinned ones for those providers. Thinking efforts
+    // always come from the pinned catalog, which resolves its shared profiles.
+    const pinned = new Map(current.providers.map((entry) => [entry.id, entry]));
     return {
       version: result.version ?? null,
-      providers: providers.map((entry) => (entry.login ? entry : { ...entry, login: pinnedLogins.get(entry.id) ?? null })),
+      providers: providers.map((entry) => {
+        const pinnedEntry = pinned.get(entry.id);
+        const { modelThinking: _served, ...served } = entry;
+        const login = entry.login ? served : { ...served, login: pinnedEntry?.login ?? null };
+        return withChatGptModelCatalog(pinnedEntry?.modelThinking ? { ...login, modelThinking: pinnedEntry.modelThinking } : login);
+      }),
     };
   } catch {
     return current;

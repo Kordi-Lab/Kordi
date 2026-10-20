@@ -382,7 +382,6 @@ export function ChatMainWorkspace({
                         enabled: models.routing.enabled,
                         notice: models.routing.notice,
                         error: models.routing.error,
-                        replaceUnavailableAccount: models.routing.replaceUnavailableAccount,
                         model: models.routing.selectedAgent ? {
                           agents: models.routing.agents,
                           selectedAgent: models.routing.selectedAgent,

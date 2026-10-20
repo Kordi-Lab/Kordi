@@ -33,7 +33,7 @@
   },
   "src/app/mainContentShellBuilders.ts": {
     "@typescript-eslint/no-misused-promises": {
-      "count": 2
+      "count": 1
     }
   },
   "src/app/nativeWindowTheme.ts": {
@@ -487,9 +487,6 @@
     }
   },
   "src/kordi-app/components/composer.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    },
     "react-refresh/only-export-components": {
       "count": 3
     }

@@ -646,7 +646,7 @@ mod tests {
 
     #[test]
     fn cloud_auth_snapshot_uses_root_openai_default() {
-        assert_eq!(cloud_provider_auth_snapshot_model(None), "gpt-5.6-sol");
+        assert_eq!(cloud_provider_auth_snapshot_model(None), "gpt-6.1-sol");
         assert_eq!(
             cloud_provider_auth_snapshot_model(Some("gpt-5.4")),
             "gpt-5.4"

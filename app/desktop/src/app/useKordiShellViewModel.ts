@@ -22,9 +22,9 @@ type UseKordiShellViewModelArgs = {
   activeConv: Conversation;
   activeConversationUsesCollaboration: boolean;
   chatModelOptions: ComposerModelOption[];
-  selectComposerValue: (scope: ComposerScope, type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, configTargetOverride?: ComposerConfigTargetOverride) => Promise<void>;
+  selectComposerValue: (scope: ComposerScope, type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, configTargetOverride?: ComposerConfigTargetOverride) => Promise<void | boolean>;
   selectComposerAuthChoice: (scope: ComposerScope, providerId: string, choice: string, configTargetOverride?: ComposerConfigTargetOverride) => Promise<void>;
-  selectComposerProviderChoice: (scope: ComposerScope, option: ComposerProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => Promise<void>;
+  selectComposerProviderChoice: (scope: ComposerScope, option: ComposerProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => Promise<void | boolean>;
   handleStopDesktopChatTurn: DesktopChatTurnStopHandler;
   handleSendProjectMessage: (draftOverride?: string) => Promise<void> | void;
   handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[], attachmentOverride?: AttachmentItem[], quoteOverride?: ComposerQuoteState | null) => Promise<void> | void;
@@ -81,7 +81,7 @@ export function useKordiShellViewModel({
   }, [selectComposerAuthChoice]);
 
   const wrappedSelectComposerProviderChoice = useCallback((scope: ComposerScope, option: ComposerProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => {
-    void selectComposerProviderChoice(scope, option, configTargetOverride);
+    return selectComposerProviderChoice(scope, option, configTargetOverride);
   }, [selectComposerProviderChoice]);
 
   const wrappedStopDesktopChatTurn = useCallback((target?: DesktopChatTurnStopTarget) => (

@@ -53,7 +53,9 @@ final class ProviderAccountTests: XCTestCase {
         XCTAssertTrue(chat.isLocalDraft)
         let route = model.runtimeRouting(for: chat)
         XCTAssertEqual(route.defaultAuthChoice, "ios-codex:preview-work")
-        let expectedModel = try XCTUnwrap(OMPProviderCatalog.pinned.first { $0.id == "openai-codex" }?.defaultModel)
+        // ChatGPT sign-ins start on Kordi's ChatGPT default, not the catalog's alphabetical default.
+        let expectedModel = try XCTUnwrap(AgentModelPicker.modelNamesByProvider["openai"]?.first)
+        XCTAssertEqual(expectedModel, "gpt-6.1-sol")
         XCTAssertEqual(route.defaultModel, "openai-codex/\(expectedModel)")
 
         let groq = try XCTUnwrap(model.authenticationProviderDefinitions.first { $0.id == "groq" })

@@ -55,7 +55,10 @@ fn normalized_model_id(model_id: &str) -> String {
 }
 
 pub fn is_gpt_6_variant(model_id: &str) -> bool {
-    matches!(model_id, "gpt-6-astra" | "gpt-6-sol" | "gpt-6-luna")
+    matches!(
+        model_id,
+        "gpt-6.1-sol" | "gpt-6-astra" | "gpt-6-sol" | "gpt-6-luna"
+    )
 }
 
 fn is_gpt_56_variant(model_id: &str) -> bool {
@@ -156,7 +159,7 @@ mod tests {
 
     #[test]
     fn gpt_6_preserves_supported_effort_and_migrates_disabled_thinking() {
-        for (model, route) in ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]
+        for (model, route) in ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]
             .into_iter()
             .flat_map(|model| {
                 [

@@ -231,7 +231,7 @@ test('split-pane Agent bottom controls stay compact without changing composer he
   assert.match(side, /<ComposerModelControls[\s\S]*compact=\{true\}/, 'side-panel model controls should use compact button widths');
   assert.match(main, /className=\{cn\([\s\S]*display\.showCompanionPane \? 'shrink gap-2' : 'shrink-0 gap-3'/, 'main split-pane composer controls should be allowed to shrink when a companion pane is open');
   assert.match(main, /<ComposerModelControls[\s\S]*compact=\{display\.showCompanionPane\}/, 'main split-pane model controls should also use compact widths');
-  // Equal widths, narrow-pane bounds and stable positions across selections
+  // Compact widths and narrow-pane bounds across selections
   // are measured with the real controls in composerModelControls.spec.ts.
 });
 
@@ -239,17 +239,16 @@ test('split-pane Agent model selection menu escapes the right panel clipping bou
   const composerSource = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
   const popoversSource = readFileSync(new URL('../src/styles/shell-popovers.css', import.meta.url), 'utf8');
   const themeTokensSource = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
-  const controlsStart = composerSource.indexOf('export function ComposerModelControls');
-  assert.notEqual(controlsStart, -1, 'ComposerModelControls should exist');
-  const controlsSource = composerSource.slice(controlsStart);
-
+  const controlsSource = readFileSync(new URL('../src/kordi-app/components/modelEffortPicker.tsx', import.meta.url), 'utf8');
+  const pickerStyles = readFileSync(new URL('../src/styles/model-effort-picker.css', import.meta.url), 'utf8');
+  assert.match(composerSource, /<ModelEffortPicker/, 'composer routes should use the shared picker');
   assert.match(controlsSource, /getBoundingClientRect\(\)/, 'model selector should measure its trigger for viewport-aware placement');
-  assert.match(controlsSource, /app-composer-model-menu-layer fixed/, 'model selector menu should be fixed-positioned so overflow-hidden panes do not clip it');
-  assert.match(controlsSource, /createPortal\(renderSelectorMenu\(\), document\.body\)/, 'model selector menu should render through a body portal');
-  assert.match(controlsSource, /const selectorMenuRef = useRef<HTMLDivElement \| null>\(null\)/, 'body-portaled selector should keep a ref for outside-click detection');
-  assert.match(controlsSource, /document\.addEventListener\('pointerdown', handlePointerDown, true\)/, 'body-portaled selector should close when users click outside');
-  assert.match(controlsSource, /document\.addEventListener\('keydown', handleKeyDown, true\)/, 'body-portaled selector should close when users press Escape');
-  assert.match(controlsSource, /selectorMenuRef\.current\?\.contains\(target\)/, 'clicking inside the body-portaled selector should not close it');
+  assert.match(pickerStyles, /\.app-model-picker \{ position: fixed;/, 'menus should escape overflow-hidden panes');
+  assert.match(controlsSource, /createPortal\(menu, document\.body\)/, 'model selector should render through a body portal');
+  assert.match(controlsSource, /menuRef = useRef<HTMLDivElement>\(null\)/, 'the portal needs an outside-click boundary');
+  assert.match(controlsSource, /document\.addEventListener\('pointerdown', pointer, true\)/);
+  assert.match(controlsSource, /document\.addEventListener\('keydown', key, true\)/);
+  assert.match(controlsSource, /menuRef\.current\?\.contains\(event\.target\)/);
   assert.match(popoversSource, /\.app-composer-model-menu-layer \{[\s\S]*--app-modal-bg:/, 'body-portaled selector should define its own dark theme variables');
   assert.match(popoversSource, /\.app-composer-model-menu-layer\.app-compact-model-menu-light \{[^}]*color-scheme:\s*light;/s, 'body-portaled selector should opt into light color controls');
   assert.match(popoversSource, /\.app-composer-model-menu-layer \.app-composer-popover-item,[\s\S]*background:\s*transparent;/, 'model selector options should stay flat against the popup surface');

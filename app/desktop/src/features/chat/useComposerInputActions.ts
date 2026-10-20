@@ -209,6 +209,7 @@ export function useComposerInputActions({
             ? error.message
             : 'Unable to synchronize the session model',
         );
+        return false;
       }
       return;
     }
@@ -267,6 +268,7 @@ export function useComposerInputActions({
           await refreshDesktopChat();
         }
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to update session');
+        return false;
       } finally {
         if (configRequestsRef.current.get(targetSessionId) === request) {
           configRequestsRef.current.delete(targetSessionId);
@@ -360,17 +362,16 @@ export function useComposerInputActions({
       return;
     }
     if (nextModelValue) {
-      await selectComposerValue(scope, 'model', nextModelValue, configTargetOverride);
-      return;
+      return selectComposerValue(scope, 'model', nextModelValue, configTargetOverride);
     }
 
     if (isLocalProvider(normalizedProviderId)) {
       setDesktopChatError('Run and save a local model from Authentication before selecting this provider.');
       setOpenComposerSelector(null);
-      return;
+      return false;
     }
 
-    await selectComposerValue(scope, 'provider', normalizedProviderId, configTargetOverride);
+    return selectComposerValue(scope, 'provider', normalizedProviderId, configTargetOverride);
   }, [chatModelOptions, composerSelections, handleSelectAuthChoice, preferredModelValueForProvider, routeComposerChange, routeTargetSessionId, selectComposerValue, setComposerSelections, setDesktopChatError, setOpenComposerSelector]);
 
   const updateComposerDraft = useCallback((scope: ComposerScope, value: string, target: HTMLTextAreaElement | HTMLDivElement) => {
