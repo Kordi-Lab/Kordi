@@ -1,4 +1,5 @@
 import { backfillLocalHistoryImages } from './cloudSelfAgentImageBackfill';
+import { linkPublishedSelfAgentRequest } from './cloudSelfAgentRequestEntryLink';
 import {
   useEffect,
   useRef,
@@ -43,6 +44,7 @@ import {
   cloudSelfAgentShouldPublishProgress,
   localSelfAgentRequestCanPublishExecution,
   publishedSelfAgentRequestAlreadyExecutedLocally,
+  cloudSelfAgentPublishedMessageEntersIndex,
 } from './cloudSelfAgentForwardPolicy';
 import {
   CLOUD_SELF_AGENT_HEARTBEAT_MS,
@@ -93,6 +95,8 @@ export function useCloudSelfAgentForwardSync({
   reportWarning: (message: string, error: unknown) => void;
 }) {
   const syncFlightRef = useRef(createSingleFlightState());
+  const followUpFlightRef = useRef(createSingleFlightState());
+  const followUpDiffRef = useRef(false);
   // Bumped after a failed or stuck run, so a send is retried without waiting for another local change.
   const [reconcileRetryTick, setReconcileRetryTick] = useState(0);
   const reconcileRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -427,6 +431,10 @@ export function useCloudSelfAgentForwardSync({
                 && publishedSelfAgentRequestAlreadyExecutedLocally(operation)) {
                 processedRequestIdsRef.current.add(message.messageId);
               }
+              if (!publishedSelfAgentRequestAlreadyExecutedLocally(operation)) {
+                void linkPublishedSelfAgentRequest(canonicalStateRef.current, operation.localMessageId, message.messageId)
+                  .catch((error: unknown) => reportWarning('[cloud-self-agent-sync] request link failed', error));
+              }
             },
             operations,
             saveLedger: (nextLedger) => {
@@ -437,7 +445,7 @@ export function useCloudSelfAgentForwardSync({
             },
             shouldContinue: () => !stopped(),
             shouldMergeMessage: (operation) => (
-              shouldPublishProgress(operation.sessionId)
+              cloudSelfAgentPublishedMessageEntersIndex(operation, shouldPublishProgress)
             ),
             shouldPublishProcessing: (operation) => (
               shouldPublishProgress(operation.sessionId)
@@ -450,12 +458,15 @@ export function useCloudSelfAgentForwardSync({
             token: session.token,
           });
         }
-        const restoredImages = await backfillLocalHistoryImages({ accountId: account.accountId, token: session.token,
-          state: latestState, conversations: localConversations, client, shouldContinue: () => !stopped() });
-        if (
-          restoredImages || reconciliation.length > 0
-          || operations.length > 0
-        ) await syncCloudCollaborationDiff();
+        // Image repair and the full diff run after this pass, so the next send never waits behind them.
+        followUpDiffRef.current ||= reconciliation.length > 0 || operations.length > 0;
+        void requestSingleFlightRun(followUpFlightRef.current, async () => {
+          const restoredImages = await backfillLocalHistoryImages({ accountId: account.accountId, token: session.token,
+            state: latestState, conversations: localConversations, client, shouldContinue: () => !cancelledRef.current });
+          const diff = restoredImages || followUpDiffRef.current;
+          followUpDiffRef.current = false;
+          if (diff) await syncCloudCollaborationDiff();
+        })?.catch((error: unknown) => reportWarning('[cloud-self-agent-sync] follow-up sync failed', error));
         saveCloudSelfAgentRecoverySessionIds(
           account.accountId,
           new Set(),

@@ -15,16 +15,17 @@ import {
   waitForCloudAgentTurn,
 } from './cloudAgentLocalExecution';
 import { cloudAgentRunAlreadyOwnsRequest } from './cloudAgentRequestState';
-import { cloudAgentRunExecutingRequest } from './cloudAgentRunOwnership';
 import { cloudSelfAgentRuntimeSessionId } from './cloudAgentRuntime';
 import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
 import { handBackDesktopRun } from './cloudDesktopRunHandback';
+import { cloudSelfAgentRequestPrompt } from './cloudSelfAgentRequestPrompt';
+import { holdLeasedTurnSession } from './cloudLeasedTurnSessions';
+import { createCloudSelfAgentTurnPresenter } from './cloudSelfAgentTurnPresentation';
 import { bindClaimedProjectSession } from '@/features/projects/claimedProjectSession';
 import {
   cloudDirectMessageAgentRuntimeRoute,
   cloudDirectMessageContextMessages,
-  cloudDirectMessageDisplayText,
   cloudDirectMessageTargetCloudAgentId,
 } from './cloudDirectMessages';
 import { planCloudSelfAgentCanonicalSync } from './cloudSelfAgentCanonicalSync';
@@ -108,31 +109,24 @@ export async function executeCloudSelfAgentRequest({
   activeRequestsRef,
   streamedTextByRequestIdRef,
 }: CloudSelfAgentRequestExecutionInput): Promise<void> {
+  const sessionId = request.sessionId?.trim() ?? '';
+  const presenter = createCloudSelfAgentTurnPresenter({
+    requestMessageId: request.messageId, sessionId, setLocalTurns,
+    canPresent: () => !isInactive() && !supersededRequestIdsRef.current.has(request.messageId),
+  });
   const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
-    if (turn.assistantText.trim()) {
-      streamedTextByRequestIdRef.current.set(request.messageId, turn.assistantText);
-    }
-    if (
-      isInactive()
-      || supersededRequestIdsRef.current.has(request.messageId)
-    ) return;
-    setLocalTurns((current) => ({
-      ...current,
-      [request.messageId]: turn,
-    }));
+    presenter.remember(turn);
+    if (presenter.streamedText) streamedTextByRequestIdRef.current.set(request.messageId, presenter.streamedText);
   };
 
   const session = await loadSession();
-  const sessionId = request.sessionId?.trim() ?? '';
   if (!session?.token || !sessionId || isInactive()) {
     processedRequestIdsRef.current.delete(request.messageId);
     return;
   }
-  const existingRun = await client
-    .lookupCloudAgentRunForRequest(session.token, request.messageId)
-    .catch(() => null);
-  // A queued run is held for this Mac first; only an executing run blocks it.
-  if (cloudAgentRunExecutingRequest(existingRun) || isInactive()) return;
+  // The claim itself refuses a run that already executes elsewhere, so no
+  // lookup round trip precedes it.
+  if (isInactive()) return;
 
   const targetCloudAgentId =
     cloudDirectMessageTargetCloudAgentId(request.body)
@@ -152,7 +146,7 @@ export async function executeCloudSelfAgentRequest({
   });
   const lease = await acquireDesktopExecutionLease(client, session.token, {
     requestMessageId: request.messageId, sessionId, ownerAccountId: account.accountId,
-    requesterAccountId: account.accountId, prompt: (voice ? voiceAgentText(voice) : cloudDirectMessageDisplayText(request.body)),
+    requesterAccountId: account.accountId, prompt: (voice ? voiceAgentText(voice) : cloudSelfAgentRequestPrompt(request)),
     runtimeRoute: executionRoute ? { defaultModel: executionRoute.model, defaultAuthProvider: executionRoute.authProvider,
       defaultAuthChoice: executionRoute.authChoice, thinking: executionRoute.thinking } : undefined,
     idempotencyKey: `request:${request.messageId}`,
@@ -162,6 +156,7 @@ export async function executeCloudSelfAgentRequest({
   const stop = () => {
     if (stopRequested) return;
     stopRequested = true;
+    presenter.stop();
     const turnId = turnIdsByRequestIdRef.current.get(request.messageId);
     if (!turnId) return;
     void cancelDesktopChatTurn(turnId).catch((error) => reportWarning(
@@ -175,6 +170,7 @@ export async function executeCloudSelfAgentRequest({
   let lastTurn: DesktopChatTurnSnapshot | null = null;
   let settled = false;
   let localTurnStarted = false;
+  let releaseLeasedSession = () => {};
   // Before a local turn starts, a failure on this Mac (a slow cloud call, an
   // attachment, the runtime refusing the turn) hands the run back to the
   // cloud, which answers instead of the request failing. Returns `false` when
@@ -231,7 +227,7 @@ export async function executeCloudSelfAgentRequest({
       reportWarning,
     });
     const turn = options.turn ?? lastTurn;
-    if (turn) rememberLocalTurn(settledCloudSelfAgentTurn(turn, reply));
+    if (turn) presenter.settle(settledCloudSelfAgentTurn(turn, reply));
     if (isInactive()) return;
     if (response) mergeMessage(response);
     await syncMessages().catch((error) => reportWarning(
@@ -256,7 +252,7 @@ export async function executeCloudSelfAgentRequest({
       processedRequestIdsRef.current.delete(request.messageId);
       return;
     }
-    const prompt = (voice ? voiceAgentText(voice) : cloudDirectMessageDisplayText(request.body)).trim();
+    const prompt = (voice ? voiceAgentText(voice) : cloudSelfAgentRequestPrompt(request)).trim();
     if (!prompt) {
       processedRequestIdsRef.current.delete(request.messageId);
       return;
@@ -296,7 +292,8 @@ export async function executeCloudSelfAgentRequest({
     const queueProgress = (turn: DesktopChatTurnSnapshot) => {
       lastTurn = turn;
       rememberLocalTurn(turn);
-      if (turn.completed || isInactive()) return;
+      // After a stop only the terminal reply is published.
+      if (turn.completed || stopRequested || isInactive()) return;
       const execution = cloudAgentExecutionSnapshotFromTurn(turn);
       const fingerprint = cloudAgentExecutionFingerprint(
         execution,
@@ -340,9 +337,11 @@ export async function executeCloudSelfAgentRequest({
               sessionId,
               token: session.token,
             });
-        if (isInactive()) return;
+        // A snapshot that returns after the turn ended would show it running again.
+        if (isInactive() || settled || stopRequested || lastTurn?.completed) return;
         mergeMessage(progress);
-        await syncMessages();
+        // The terminal reply waits on this chain; a full sync must not delay it.
+        void syncMessages().catch((error) => reportWarning('[cloud-self-agent-execution] progress sync failed', error));
       }).catch((error) => {
         reportWarning(
           '[cloud-self-agent-execution] progress publish failed',
@@ -383,6 +382,7 @@ export async function executeCloudSelfAgentRequest({
             attachments: request.attachments,
           })
         : request.attachments ?? [];
+      releaseLeasedSession = holdLeasedTurnSession(runtimeSessionId);
       const startedTurn = await startDesktopChatMessage(
         runtimeSessionId,
         prompt,
@@ -482,6 +482,7 @@ export async function executeCloudSelfAgentRequest({
   } finally {
     activeRequestsRef.current.delete(request.messageId);
     streamedTextByRequestIdRef.current.delete(request.messageId);
+    releaseLeasedSession();
     lease.dispose();
   }
 }
