@@ -1,6 +1,7 @@
 // Fictional people and server replies for the login-free Common ground preview.
 
-import type { CgPerson, CgRelationship } from '../../src/features/commonGround/types';
+import type { CgAgentFile, CgPerson, CgRelationship } from '../../src/features/commonGround/types';
+import type { ConnectorProviderId, ConnectorState } from '../../src/features/connectors/connectorsModel';
 
 export function initialsAvatar(name: string, theme: 'light' | 'dark') {
   const initials = name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
@@ -31,7 +32,7 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
     builtAt: '2026-10-19T09:00:00Z',
   };
   const owner = { card, sharing: true, build: { status: 'idle', errorCode: null } };
-  const room = { roomId: 'room_1', code: '4821', name: 'Poster session', openedByYou: true, expiresAt: '2026-10-21T10:00:00Z', members: [maya, hana, ines, rafa] };
+  const room = { roomId: 'room_1', code: '4821', name: 'Poster session', openedByYou: true, expiresAt: '2026-10-21T10:00:00Z', open: true, members: [maya, hana, ines, rafa] };
   const results = {
     status: 'ready',
     people: [
@@ -46,12 +47,14 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
       { label: 'Eval design', people: [hana, ines] },
     ],
     suggestion: { label: 'Agent memory', people: [self, hana, maya] },
-    groups: [{ groupSpaceId: 'gs_eval', conversationId: 'group:gs_eval', name: 'Eval reading group', memberCount: 4, createdBy: maya, joined: true }],
+    groups: [{ groupSpaceId: 'gs_eval', conversationId: 'group:gs_eval', name: 'Eval reading group', memberCount: 4, createdBy: maya, joined: true, topic: 'Eval design' }],
     invitations: [{ invitationRef: 'inv_1', groupSpaceId: 'gs_ret', name: 'Retrieval', from: rafa, createdAt: '2026-10-20T09:00:00Z' }],
   };
+  // As the server sends it: the relationship beside the person, not inside it.
+  const { relationship: _hanaRelationship, ...hanaPerson } = hana;
   const match = {
     status: 'ready',
-    person: hana,
+    person: hanaPerson,
     score: 82,
     headline: 'Agent memory',
     shared: [
@@ -63,6 +66,22 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
     nextStep: 'Compare your memory evals over coffee.',
     relationship: stranger,
   };
+  const connector = (providerId: ConnectorProviderId, connected: boolean): ConnectorState => ({
+    providerId,
+    status: connected ? 'connected' : 'not_connected',
+    connectedAt: connected ? '2026-10-12T09:00:00Z' : null,
+    grantedScopeIds: [],
+    actEnabled: false,
+    agentIds: [],
+    lastEventAt: null,
+  });
+  const connectors = [connector('gmail', false), connector('google_calendar', false), connector('github', true), connector('slack', false)];
+  const agentFiles: CgAgentFile[] = ['AGENTS.md', '.claude/CLAUDE.md', '.codex/AGENTS.md', '.codex/instructions/style.md', '.claude/projects/notes/memory/evals.md']
+    .map((label) => ({ label, text: 'Fictional preview text.' }));
   const recent = { people: results.people.slice(0, 3).map((entry, index) => ({ ...entry, openedAt: `2026-10-${18 - index}T10:00:00Z` })) };
-  return { self, owner, room, results, match, recent };
+  const rooms = { rooms: [
+    { code: '4821', name: 'Poster session', open: true, memberCount: 5, joinedAt: '2026-10-20T09:00:00Z', lastActivityAt: '2026-10-20T09:40:00Z', themeCount: 3 },
+    { code: '1907', name: 'Reading club', open: false, memberCount: 3, joinedAt: '2026-10-14T18:00:00Z', lastActivityAt: '2026-10-14T19:30:00Z', themeCount: 2 },
+  ] };
+  return { self, owner, room, rooms, results, match, recent, connectors, agentFiles };
 }
