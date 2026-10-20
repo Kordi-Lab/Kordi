@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 
+import { acceptedCloudGroupConversationId } from '@/app/acceptedCloudGroupConversationId';
 import {
   CLOUD_GROUP_INVITATION_ACCEPTED_EVENT,
   type CloudGroupInvitationAcceptedDetail,
@@ -20,12 +21,12 @@ export function useAcceptedCloudGroupNavigation({
   useEffect(() => {
     const openAcceptedGroup = (event: Event) => {
       const detail = (event as CustomEvent<CloudGroupInvitationAcceptedDetail>).detail;
-      const groupSpaceId = detail?.groupSpaceId?.trim();
-      if (!groupSpaceId) return;
+      const conversationId = acceptedCloudGroupConversationId(detail?.groupSpaceId);
+      if (!conversationId) return;
       void refreshCloudMessages()
         .then(() => {
           setActiveNavigation('chats');
-          setActiveConversationId(`group:${groupSpaceId}`);
+          setActiveConversationId(conversationId);
         })
         .catch((error) => {
           setDesktopChatError(

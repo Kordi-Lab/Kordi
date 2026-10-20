@@ -161,3 +161,51 @@ button.cg-member:hover { background: var(--cg-fill); }
 .cg-pick:hover { background: var(--cg-fill); }
 .cg-check { display: grid; place-items: center; width: 18px; height: 18px; margin-left: auto; border: 1px solid var(--cg-line); border-radius: 999px; }
 .cg-pick.is-on .cg-check { border-color: var(--app-accent); background: var(--app-accent); color: var(--app-button-primary-text); }
+
+/* Meet: laid out like the Digest event sheet (12px panel, labels above fields, 7px controls), with in-app pickers. */
+.cg-meet {
+  --cg-line: var(--app-divider);
+  --cg-fill: color-mix(in oklab, var(--utility-foreground) 6%, transparent);
+  font-size: 13px; line-height: 1.5;
+}
+.cg-meet-form { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+.cg-meet-field { display: grid; min-width: 0; gap: 6px; font-size: 12px; }
+.cg-meet-field > span:first-child { color: var(--utility-muted-text); }
+.cg-meet-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cg-meet-input, .cg-meet-stepper {
+  width: 100%; min-height: 36px; border: 1px solid var(--cg-line); border-radius: 7px; background: transparent; color: inherit; font: inherit; font-size: 13px;
+}
+.cg-meet-input { padding: 8px 10px; outline: none; }
+.cg-meet-input::placeholder { color: var(--utility-muted-text); }
+.cg-meet-input:focus { border-color: var(--app-quiet-control-focus-ring); }
+.cg-meet-anchor { position: relative; }
+.cg-meet-stepper { display: flex; align-items: stretch; }
+.cg-meet-step { display: grid; place-items: center; width: 30px; flex: none; border: 0; border-radius: 6px; background: none; color: var(--utility-muted-text); cursor: pointer; }
+.cg-meet-step:hover:not(:disabled) { background: var(--cg-fill); color: var(--utility-foreground); }
+.cg-meet .cg-meet-step:disabled { background: none; color: var(--utility-muted-text); opacity: 0.35; cursor: default; }
+.cg-meet-value { flex: 1; min-width: 0; padding: 0 4px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.cg-meet-value:hover { background: var(--cg-fill); }
+.cg-meet-pop {
+  position: absolute; z-index: 10; top: calc(100% + 6px); left: 0; right: 0; padding: 6px; border: 1px solid var(--cg-line); border-radius: 10px;
+  background: var(--app-transient-surface-fallback, var(--app-main-bg)); box-shadow: 0 10px 28px rgb(0 0 0 / 0.18);
+}
+.cg-meet-month { right: auto; width: 248px; }
+.cg-meet-month-head { display: flex; align-items: center; justify-content: space-between; height: 28px; margin-bottom: 4px; font-weight: 600; }
+.cg-meet-month-head .cg-meet-step { height: 28px; }
+.cg-meet-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.cg-meet-weekday { padding: 2px 0; color: var(--utility-muted-text); font-size: 11px; }
+.cg-meet-day { height: 30px; border: 0; border-radius: 999px; background: none; color: inherit; font: inherit; font-variant-numeric: tabular-nums; cursor: pointer; }
+.cg-meet-day:hover:not(:disabled) { background: var(--cg-fill); }
+.cg-meet .cg-meet-day:disabled { background: none; color: inherit; opacity: 0.3; cursor: default; }
+.cg-meet-day.is-today { color: var(--app-accent); font-weight: 600; }
+.cg-meet-day.is-on, .cg-meet-time.is-on { background: var(--app-accent); color: var(--app-button-primary-text); font-weight: 600; }
+.cg-meet-times { display: flex; max-height: 216px; flex-direction: column; overflow-y: auto; scrollbar-width: thin; }
+.cg-meet-time { flex: none; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; font-variant-numeric: tabular-nums; cursor: pointer; }
+.cg-meet-time:hover:not(:disabled):not(.is-on) { background: var(--cg-fill); }
+.cg-meet-time:disabled { display: none; }
+.cg-meet-chips { display: flex; gap: 6px; }
+.cg-meet-chip { flex: 1; min-height: 32px; border: 1px solid var(--cg-line); border-radius: 7px; background: none; color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
+.cg-meet-chip:hover:not(.is-on) { background: var(--cg-fill); }
+.cg-meet-chip.is-on { border-color: var(--app-accent); background: color-mix(in oklab, var(--app-accent) 14%, transparent); font-weight: 600; }
+.cg-meet-people { display: flex; flex-wrap: wrap; gap: 6px; }
+.cg-meet-person { display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px 3px 3px; border-radius: 999px; background: var(--cg-fill); font-size: 13px; }
