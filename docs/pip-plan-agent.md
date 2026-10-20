@@ -23,6 +23,7 @@ excluded until both clients render a third member there.
 | `KORDI_PIP_OPENAI_API_KEY` | Kordi-operated OpenAI key; PiP is on whenever it is set |
 | `KORDI_PIP_ENABLED` | `false` switches PiP off; `true` without a key is a startup error |
 | `KORDI_PIP_OPENAI_MODEL` | Model name; defaults to the support agent's default |
+| `KORDI_PIP_OPENAI_BASE_URL` | OpenAI-compatible gateway; https only (plain http for loopback); defaults to the OpenAI API |
 | `KORDI_PIP_ACCOUNT_ID`, `KORDI_PIP_AGENT_ID`, `KORDI_PIP_AGENT_NAME`, `KORDI_PIP_OWNER_EMAIL` | Identity overrides; defaults are fine for every environment |
 
 The isolated development stack passes these through `deploy/dev/compose.yaml`
