@@ -56,29 +56,135 @@ pub(crate) async fn accept_group_invitation(
             );
         }
     };
+    let invitation_id = record.invitation_id.clone();
+    let response = match redeem_in_transaction(
+        &mut tx,
+        record,
+        &session.account_id,
+        GROUP_INVITE_MIN_MEMBERS,
+    )
+    .await
+    {
+        Redemption::Done(response) => response,
+        Redemption::Failed(response) => return response,
+    };
+    if response.status == "already_joined" {
+        return Json(response).into_response();
+    }
+    if tx.commit().await.is_err() {
+        return err(
+            "server_error",
+            "Could not finish joining the group. Try again.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+    audit_join(&state, &session, &invitation_id, &response.group_space_id).await;
+    Json(response).into_response()
+}
+
+/// Records that `session`'s account joined a group through an invitation.
+pub(crate) async fn audit_join(
+    state: &Arc<ServerState>,
+    session: &CloudSession,
+    invitation_id: &str,
+    group_space_id: &str,
+) {
+    let _ = write_audit(
+        state.db_pool(),
+        Some(&session.account_id),
+        Some(&session.device_id),
+        "group.invitation.accepted",
+        serde_json::json!({
+            "invitation_id": invitation_id,
+            "group_space_id": group_space_id,
+        }),
+    )
+    .await;
+}
+
+/// What redeeming an invitation did: joined or already joined, or the error
+/// response to send. Nothing is committed; the caller owns the transaction.
+pub(crate) enum Redemption {
+    Done(GroupInvitationAcceptanceResponse),
+    Failed(Response),
+}
+
+fn failed(code: &'static str, message: &str, status: StatusCode) -> Redemption {
+    Redemption::Failed(err(code, message, status))
+}
+
+/// Redeems the invitation with this id for `account_id` without its token,
+/// for a server-side join (a Common ground room invitation).
+pub(crate) async fn redeem_group_invitation_by_id(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    invitation_id: &str,
+    account_id: &str,
+    min_members: usize,
+) -> Redemption {
+    let record = match lookup_group_invitation_by_id(tx, invitation_id).await {
+        Ok(GroupInvitationLookup::Valid(record)) => *record,
+        Ok(GroupInvitationLookup::Invalid) => {
+            return failed(
+                "invalid_group_invitation",
+                "This group invitation is invalid or was revoked.",
+                StatusCode::NOT_FOUND,
+            );
+        }
+        Ok(GroupInvitationLookup::Expired) => {
+            return failed(
+                "group_invitation_expired",
+                "This group invitation has expired.",
+                StatusCode::GONE,
+            );
+        }
+        Err(_) => {
+            return failed(
+                "server_error",
+                "Could not load group invitation.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    if record.inviter_account_id == account_id {
+        return failed(
+            "self_group_invitation",
+            "You created this invitation.",
+            StatusCode::CONFLICT,
+        );
+    }
+    redeem_in_transaction(tx, record, account_id, min_members).await
+}
+
+async fn redeem_in_transaction(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    record: GroupInvitationRecord,
+    account_id: &str,
+    min_members: usize,
+) -> Redemption {
     if query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
         .bind(&record.snapshot.group_id)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await
         .is_err()
     {
-        return err(
+        return failed(
             "server_error",
             "Could not lock the group invitation.",
             StatusCode::INTERNAL_SERVER_ERROR,
         );
     }
-    let record = match refresh_group_invitation_record_in_transaction(&mut tx, record).await {
+    let record = match refresh_group_invitation_record_in_transaction(tx, record, min_members).await
+    {
         Ok(Some(record)) => record,
         Ok(None) => {
-            return err(
+            return failed(
                 "invalid_group_invitation",
                 "This invitation is no longer available because its creator cannot invite members.",
                 StatusCode::NOT_FOUND,
             );
         }
         Err(_) => {
-            return err(
+            return failed(
                 "server_error",
                 "Could not verify the group invitation.",
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -90,13 +196,13 @@ pub(crate) async fn accept_group_invitation(
         "SELECT 1 FROM cloud_group_invitation_acceptances WHERE invitation_id = $1 AND account_id = $2",
     )
     .bind(&record.invitation_id)
-    .bind(&session.account_id)
-    .fetch_optional(&mut *tx)
+    .bind(account_id)
+    .fetch_optional(&mut **tx)
     .await
     {
         Ok(value) => value,
         Err(_) => {
-            return err(
+            return failed(
                 "server_error",
                 "Could not check invitation status.",
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -108,18 +214,17 @@ pub(crate) async fn accept_group_invitation(
             .snapshot
             .participants
             .iter()
-            .any(|participant| participant.account_id == session.account_id)
+            .any(|participant| participant.account_id == account_id)
     {
-        return Json(GroupInvitationAcceptanceResponse {
+        return Redemption::Done(GroupInvitationAcceptanceResponse {
             status: "already_joined",
             group_id: record.snapshot.group_id,
             group_space_id: record.snapshot.group_space_id,
             group_title: record.snapshot.group_title,
-        })
-        .into_response();
+        });
     }
     if !group_invitation_has_capacity(&record.snapshot) {
-        return err(
+        return failed(
             "group_invitation_full",
             "This group already has the maximum number of members.",
             StatusCode::CONFLICT,
@@ -128,14 +233,14 @@ pub(crate) async fn accept_group_invitation(
 
     let accepted_at = Utc::now();
     if let Err(error) = crate::chat_sync::store::accept_invited_conversation_member(
-        &mut tx,
+        tx,
         &record.inviter_account_id,
         &record.snapshot.group_id,
-        &session.account_id,
+        account_id,
     )
     .await
     {
-        return match error {
+        return Redemption::Failed(match error {
             crate::chat_sync::store::StoreError::Forbidden
             | crate::chat_sync::store::StoreError::NotFound => err(
                 "invalid_group_invitation",
@@ -152,7 +257,7 @@ pub(crate) async fn accept_group_invitation(
                 "Could not join the group. No changes were saved; try again.",
                 StatusCode::INTERNAL_SERVER_ERROR,
             ),
-        };
+        });
     }
 
     if query(
@@ -160,45 +265,24 @@ pub(crate) async fn accept_group_invitation(
          VALUES ($1, $2, $3) ON CONFLICT (invitation_id, account_id) DO NOTHING",
     )
     .bind(&record.invitation_id)
-    .bind(&session.account_id)
+    .bind(account_id)
     .bind(accepted_at.to_rfc3339())
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await
     .is_err()
     {
-        return err(
+        return failed(
             "server_error",
             "Could not save the invitation acceptance. No changes were saved; try again.",
             StatusCode::INTERNAL_SERVER_ERROR,
         );
     }
-    if tx.commit().await.is_err() {
-        return err(
-            "server_error",
-            "Could not finish joining the group. Try again.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
-    }
-
-    let _ = write_audit(
-        state.db_pool(),
-        Some(&session.account_id),
-        Some(&session.device_id),
-        "group.invitation.accepted",
-        serde_json::json!({
-            "invitation_id": record.invitation_id,
-            "group_space_id": record.snapshot.group_space_id,
-        }),
-    )
-    .await;
-
-    Json(GroupInvitationAcceptanceResponse {
+    Redemption::Done(GroupInvitationAcceptanceResponse {
         status: "joined",
         group_id: record.snapshot.group_id,
         group_space_id: record.snapshot.group_space_id,
         group_title: record.snapshot.group_title,
     })
-    .into_response()
 }
 
 pub(crate) async fn revoke_group_invitation(

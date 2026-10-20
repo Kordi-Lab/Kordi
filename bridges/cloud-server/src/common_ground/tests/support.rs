@@ -149,3 +149,100 @@ pub(super) async fn open_runs(pool: &PgPool, account: &str) -> i64 {
     .unwrap();
     count
 }
+
+/// Two people with cards in a fresh room. Returns the room code.
+pub(super) async fn two_in_a_room(
+    app: &axum::Router,
+    pool: &PgPool,
+    people: [(&str, &str); 2],
+) -> String {
+    let cards = [
+        card_reply(&["Agent memory"], &["Retrieval"], &["Eval design"], &[]),
+        card_reply(&["Memory for agents"], &["Retrieval"], &[], &[]),
+    ];
+    for ((account, token), reply) in people.iter().zip(&cards) {
+        build_card_with(app, pool, account, token, reply).await;
+    }
+    let tokens: Vec<&str> = people.iter().map(|(_, token)| *token).collect();
+    join_fresh_room(app, pool, &tokens).await
+}
+
+/// Opens a fresh room and joins everyone, in order. Each needs a shared card.
+pub(super) async fn join_fresh_room(app: &axum::Router, pool: &PgPool, tokens: &[&str]) -> String {
+    let code = free_code();
+    query("UPDATE cloud_common_ground_rooms SET closed_at = now() WHERE code = $1 AND closed_at IS NULL")
+        .bind(&code)
+        .execute(pool)
+        .await
+        .unwrap();
+    for token in tokens {
+        let (status, _) = send(
+            app,
+            "POST",
+            &format!("/v1/cloud/common-ground/rooms/{code}/join"),
+            token,
+            None,
+        )
+        .await;
+        assert_eq!(status, 200);
+    }
+    code
+}
+
+/// Answers the viewer's open match run with one shared topic for everyone.
+pub(super) async fn answer_match(pool: &PgPool, viewer: &str) -> String {
+    let (run_id, cards) = claim_open(pool, "match", Some(viewer)).await;
+    let people: Vec<Value> = (0..cards.len() - 1)
+        .map(|i| json!({"person": i, "shared": [{"mine": "Agent memory", "theirs": "Memory for agents", "why": "Same area"}], "next_step": "Meet"}))
+        .collect();
+    complete(
+        pool,
+        &run_id,
+        RUNNER,
+        &json!({ "people": people }).to_string(),
+    )
+    .await
+    .unwrap();
+    run_id
+}
+
+/// Signed-in people with cards in one fresh room, in join order, with the
+/// app (PiP configured) and the room code.
+pub(super) async fn people_in_a_room(
+    pool: &PgPool,
+    labels: &[&str],
+) -> (axum::Router, String, Vec<(String, String)>) {
+    use super::db_fixture::{account, app, signed_in};
+    // PiP's account is process-wide once set, and member counts leave it out;
+    // settle it first so a group's PiP is never counted as a person, even
+    // when tests run in parallel.
+    if crate::pip::service_account_id().is_none() {
+        let candidate = account(pool, "service").await;
+        crate::pip::PipService::new(crate::pip::test_config(&candidate));
+    }
+    let service = crate::pip::service_account_id().unwrap().to_string();
+    let app = app(pool, Some(&service));
+    let mut people = Vec::new();
+    for label in labels {
+        let (id, token) = signed_in(pool, label).await;
+        let reply = card_reply(&["Agent memory"], &["Retrieval"], &[], &[]);
+        build_card_with(&app, pool, &id, &token, &reply).await;
+        people.push((id, token));
+    }
+    let tokens: Vec<&str> = people.iter().map(|(_, token)| token.as_str()).collect();
+    let code = join_fresh_room(&app, pool, &tokens).await;
+    (app, code, people)
+}
+
+/// Makes two accounts contacts directly, both ways.
+pub(super) async fn make_contacts(pool: &PgPool, a: &str, b: &str) {
+    for (owner, peer) in [(a, b), (b, a)] {
+        query("INSERT INTO cloud_contacts (account_id, peer_account_id, created_at) VALUES ($1, $2, $3)")
+            .bind(owner)
+            .bind(peer)
+            .bind(chrono::Utc::now().to_rfc3339())
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+}

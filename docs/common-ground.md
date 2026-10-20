@@ -99,6 +99,18 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
 - Others see your topics only after you share a room or a pairing with them, and never see references or hidden topics.
 - Card building and matching run on Kordi's servers; source text is kept only as the short references your card cites.
 
+## Server
+
+### Actions
+
+Routes under `/v1/cloud/common-ground/`. Every person returned in Common ground carries a `relationship` (contact, pending request either way, direct conversation).
+
+- `POST people/:id/contact`: Add; sends a contact request, or accepts theirs when they asked first.
+- `POST people/:id/chat`: Chat; finds or creates the direct conversation with a contact.
+- `POST people/:id/meet`: Meet; proposes a plan card in the direct conversation with a contact.
+- `POST rooms/:code/group`: Start group; adds your contacts and invites the other room members.
+- `POST rooms/:code/invitations/:ref/join`: Join; accepts a room group invitation addressed to you.
+
 ## Platform layout
 
 ### iOS

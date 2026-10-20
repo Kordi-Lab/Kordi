@@ -9,6 +9,7 @@ use super::*;
 pub(super) struct SmtpSignupCodeSender {
     transport: AsyncSmtpTransport<Tokio1Executor>,
     from: Mailbox,
+    host: String,
 }
 
 impl SmtpSignupCodeSender {
@@ -27,7 +28,11 @@ impl SmtpSignupCodeSender {
             .timeout(Some(Duration::from_secs(8)))
             .credentials(Credentials::new(username, password))
             .build();
-        Some(Self { transport, from })
+        Some(Self {
+            transport,
+            from,
+            host,
+        })
     }
 }
 
@@ -45,9 +50,18 @@ impl SignupCodeSender for SmtpSignupCodeSender {
         // Complete before the desktop client's 15-second request timeout.
         tokio::time::timeout(Duration::from_secs(10), self.transport.send(message))
             .await
-            .map_err(|_| "Verification email delivery timed out")?
+            .map_err(|_| {
+                eprintln!("[auth] signup email delivery via {} timed out", self.host);
+                "Verification email delivery timed out"
+            })?
             .map(|_| ())
-            .map_err(|_| "Could not deliver verification email")
+            .map_err(|error| {
+                eprintln!(
+                    "[auth] signup email delivery via {} failed: {error}",
+                    self.host
+                );
+                "Could not deliver verification email"
+            })
     }
 }
 
