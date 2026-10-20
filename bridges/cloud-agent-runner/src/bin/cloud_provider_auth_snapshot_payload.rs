@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     let model = std::env::var("KORDI_CLOUD_REAL_PROVIDER_MODEL")
         .ok()
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "gpt-5.5".to_string());
+        .unwrap_or_else(|| kordi_core::agent_session::DEFAULT_OPENAI_MODEL_ID.to_string());
 
     let (provider, auth_choice, payload) = match auth.method {
         ProviderAuthMethod::ApiKey => (

@@ -1,4 +1,6 @@
-use super::model_choice::{default_model_for_provider, OPENAI_CODEX_DEFAULT_MODEL};
+use super::model_choice::{
+    default_model_for_provider, model_fits_provider, OPENAI_CODEX_DEFAULT_MODEL,
+};
 use super::*;
 
 fn codex_material(payload: Value) -> ProviderAuthMaterial {
@@ -11,20 +13,26 @@ fn codex_material(payload: Value) -> ProviderAuthMaterial {
 }
 
 #[test]
-fn codex_default_model_matches_the_omp_provider_catalog() {
-    let catalog: Value = serde_json::from_str(include_str!(
-        "../../../../../shared/omp-catalog/omp-provider-catalog.json"
-    ))
-    .unwrap();
-    let default_model = catalog["providers"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|provider| provider["id"] == "openai-codex")
-        .and_then(|provider| provider["defaultModel"].as_str())
-        .unwrap();
-    assert_eq!(OPENAI_CODEX_DEFAULT_MODEL, default_model);
-    assert_eq!(default_model_for_provider("openai-codex"), default_model);
+fn codex_default_model_is_the_shared_chatgpt_default_and_a_known_codex_model() {
+    assert_eq!(
+        OPENAI_CODEX_DEFAULT_MODEL,
+        kordi_core::agent_session::DEFAULT_OPENAI_MODEL_ID
+    );
+    assert_eq!(
+        default_model_for_provider("openai-codex"),
+        OPENAI_CODEX_DEFAULT_MODEL
+    );
+    assert!(model_fits_provider(
+        OPENAI_CODEX_DEFAULT_MODEL,
+        "openai-codex"
+    ));
+    let registry = kordi_provider::registry::ModelRegistry::new();
+    assert!(
+        registry
+            .find("openai", OPENAI_CODEX_DEFAULT_MODEL)
+            .is_some(),
+        "the ChatGPT default model must exist in the provider registry"
+    );
 }
 
 #[test]
