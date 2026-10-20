@@ -35,6 +35,8 @@ struct AgentSessionRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let conversation: ConversationSummary
     var compact = false
+    /// A session inside a project folder: lighter title, larger meta line, taller row.
+    var nested = false
     var isFork = false
     var isPinned = false
     var isMuted = false
@@ -48,7 +50,7 @@ struct AgentSessionRow: View {
                     .padding(.vertical, compact ? 4 : 0)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : (compact ? 44 : 46), alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : (nested ? 56 : compact ? 44 : 46), alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
@@ -107,7 +109,7 @@ struct AgentSessionRow: View {
                     .accessibilityHidden(true)
             }
             Text(sessionTitle)
-                .font(compact ? .subheadline.weight(.semibold) : .headline)
+                .font(nested ? .subheadline.weight(.medium) : compact ? .subheadline.weight(.semibold) : .headline)
                 .foregroundStyle(.primary)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                 .layoutPriority(1)
@@ -124,13 +126,13 @@ struct AgentSessionRow: View {
             BlobEmojiPreviewText(text: conversation.lastMessage.nonEmpty ?? "No messages yet")
                 .foregroundStyle(.secondary)
         }
-        .font(compact ? .caption : .subheadline)
+        .font(nested ? .footnote : compact ? .caption : .subheadline)
         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 1)
     }
 
     private var timestamp: some View {
         Text(relativeTimestamp)
-            .font(compact ? .caption2 : .caption)
+            .font(nested ? .footnote : compact ? .caption2 : .caption)
             .fixedSize(horizontal: true, vertical: false)
             .foregroundStyle(conversation.hasUnreadAttention && !isMuted ? KordiTheme.signalBlue : .secondary)
             .lineLimit(1)

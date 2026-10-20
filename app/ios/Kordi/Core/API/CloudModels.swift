@@ -895,6 +895,22 @@ struct CloudProviderRouteTest: Decodable, Hashable {
 
 struct OMPProviderCatalog: Decodable {
     let providers: [OMPProviderCatalogEntry]
+
+    private enum CodingKeys: String, CodingKey {
+        case providers, thinkingProfiles
+    }
+
+    init(providers: [OMPProviderCatalogEntry]) {
+        self.providers = providers
+    }
+
+    /// Providers name a shared `thinkingProfiles` entry per model; resolve them here.
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let profiles = (try? values.decodeIfPresent([String: OMPModelThinking].self, forKey: .thinkingProfiles)) ?? [:]
+        providers = try values.decode([OMPProviderCatalogEntry].self, forKey: .providers)
+            .map { $0.resolvingThinkingProfiles(profiles) }
+    }
 }
 
 /// OMP's authentication policy for one provider. Every field is optional on the
@@ -950,6 +966,9 @@ struct OMPProviderCatalogEntry: Decodable, Identifiable, Hashable {
     /// OMP's login flow; see `loginPolicy` for the env-only fallback.
     let login: OMPProviderLoginPolicy?
     let models: [String]
+    /// OMP's reasoning efforts per model id; absent in older catalogs.
+    let modelThinking: [String: OMPModelThinking]
+    private var modelThinkingProfileIDs: [String: String] = [:]
 
     init(
         id: String,
@@ -957,7 +976,8 @@ struct OMPProviderCatalogEntry: Decodable, Identifiable, Hashable {
         defaultModel: String? = nil,
         auth: OMPProviderAuthPolicy? = nil,
         login: OMPProviderLoginPolicy? = nil,
-        models: [String]
+        models: [String],
+        modelThinking: [String: OMPModelThinking] = [:]
     ) {
         self.id = id
         self.name = name
@@ -965,10 +985,11 @@ struct OMPProviderCatalogEntry: Decodable, Identifiable, Hashable {
         self.auth = auth
         self.login = login
         self.models = models
+        self.modelThinking = modelThinking
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, defaultModel, auth, login, models
+        case id, name, defaultModel, auth, login, models, modelThinking
     }
 
     init(from decoder: Decoder) throws {
@@ -979,7 +1000,21 @@ struct OMPProviderCatalogEntry: Decodable, Identifiable, Hashable {
         auth = try values.decodeIfPresent(OMPProviderAuthPolicy.self, forKey: .auth)
         login = try values.decodeIfPresent(OMPProviderLoginPolicy.self, forKey: .login)
         models = try values.decodeIfPresent([String].self, forKey: .models) ?? []
+        modelThinking = [:]
+        modelThinkingProfileIDs = (try? values.decodeIfPresent([String: String].self, forKey: .modelThinking)) ?? [:]
     }
+
+    func resolvingThinkingProfiles(_ profiles: [String: OMPModelThinking]) -> OMPProviderCatalogEntry {
+        OMPProviderCatalogEntry(
+            id: id, name: name, defaultModel: defaultModel, auth: auth, login: login, models: models,
+            modelThinking: modelThinkingProfileIDs.compactMapValues { profiles[$0] }
+        )
+    }
+}
+
+struct OMPModelThinking: Decodable, Hashable {
+    let efforts: [String]
+    let defaultLevel: String?
 }
 
 struct CloudSessionTaskActivity: Codable, Hashable, Identifiable {

@@ -1,3 +1,4 @@
+import { modelDisplayName } from '@/lib/modelDisplayName';
 import { useCallback, useEffect, useMemo } from 'react';
 
 import {
@@ -6,8 +7,10 @@ import {
   normalizeSelectedProviderId,
   type AuthDisplayProvider,
 } from '@/kordi-app/auth/model';
+import type { OmpCatalogEntry } from '@/kordi-app/auth/ompCatalog';
 import type { ComposerAuthOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import { useHostedAccounts } from '@/features/cloud/hostedAccounts';
+import { catalogModelThinkingLevels } from '@/features/cloud/modelThinkingLevels';
 import { setLocalAccountChoices, setLocalProviderIds } from '@/features/cloud/hostedAccountRegistry';
 import { routeRunsOnKordiCloud } from '@/features/cloud/cloudAgentRuntimeRoute';
 import { useActiveChatRoute } from './kordiCloudChatRoute';
@@ -32,6 +35,13 @@ type ComposerDrafts = Record<ComposerScope, string>;
 function localModelMatchesAny(modelId: string, needles: string[]) {
   const normalizedModel = modelId.trim().toLowerCase().replace(/[\s_]/g, '-');
   return needles.some((needle) => normalizedModel.includes(needle));
+}
+
+/** This Mac's model option's efforts from the catalog, keyed by its `provider/model` value. */
+function localCatalogThinkingLevels(catalog: OmpCatalogEntry[], value: string) {
+  const separator = value.indexOf('/');
+  if (separator <= 0) return null;
+  return catalogModelThinkingLevels(catalog, value.slice(0, separator), value.slice(separator + 1));
 }
 
 function inferLocalThinkingLevels(providerId: string, modelId: string) {
@@ -130,7 +140,7 @@ export function preferredModelValueForProviderFromOptions(
   const preferredNeedles = modelProviderId === 'anthropic'
     ? ['claude-opus-4-7', 'claude-opus-4.7', 'claude-opus-4-6', 'claude-opus']
     : modelProviderId === 'openai'
-      ? ['gpt-5.6-sol', 'gpt-5-6-sol', 'gpt-5.5', 'gpt-5.4', 'gpt-5']
+      ? ['gpt-6.1-sol', 'gpt-6-1-sol', 'gpt-5.6-sol', 'gpt-5-6-sol', 'gpt-5.5', 'gpt-5.4', 'gpt-5']
       : [];
 
   for (const needle of preferredNeedles) {
@@ -182,7 +192,7 @@ export function useComposerViewModel({
       detail: option.detail,
       provider: option.provider,
       providerLabel: option.providerLabel,
-      thinkingLevels: option.thinkingLevels,
+      thinkingLevels: localCatalogThinkingLevels(hostedState.catalog, option.value) ?? option.thinkingLevels,
     }));
 
     for (const provider of authDisplayProviders) {
@@ -200,7 +210,7 @@ export function useComposerViewModel({
         detail: `${provider.label} • saved local model`,
         provider: providerId,
         providerLabel: provider.label,
-        thinkingLevels: inferLocalThinkingLevels(providerId, modelId),
+        thinkingLevels: catalogModelThinkingLevels(hostedState.catalog, providerId, modelId) ?? inferLocalThinkingLevels(providerId, modelId),
       });
     }
 
@@ -218,12 +228,12 @@ export function useComposerViewModel({
       });
     }
 
-    for (const option of hostedModelOptions(hostedAccounts)) {
+    for (const option of hostedModelOptions(hostedAccounts, hostedState.catalog)) {
       if (!options.some((existing) => existing.value === option.value)) options.push(option);
     }
 
-    return options;
-  }, [authDisplayProviders, composerSelections.chat.model, composerSelections.project.model, desktopChatState?.modelOptions, hostedAccounts, isNativeShell]);
+    return options.map((option) => ({ ...option, label: modelDisplayName(option.value, option.label) }));
+  }, [authDisplayProviders, composerSelections.chat.model, composerSelections.project.model, desktopChatState?.modelOptions, hostedAccounts, hostedState.catalog, isNativeShell]);
 
   const composerProviderOptions = useMemo<ComposerProviderOption[]>(() => {
     const displayProviders = authDisplayProviders;

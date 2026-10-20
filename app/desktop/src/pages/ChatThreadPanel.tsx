@@ -302,7 +302,6 @@ export function ChatThreadPanel({
                 </div>
                 <div className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
                   <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
-                    <CompactComposerModelMenu scope="chat" {...compactModelMenu} />
                     {!voice.surfaceActive ? <ComposerAttachmentAddMenu inputRef={inputRef} /> : null}
                     {!voice.surfaceActive ? <ComposerExpressivePicker
                       accountId={accountId}
@@ -321,12 +320,15 @@ export function ChatThreadPanel({
                       onSendMedia={(attachment) => { void sendThread('', [attachment]).catch(() => undefined); }}
                     /> : null}
                   </div>
-                  <VoiceComposerControls
-                    voice={voice}
-                    hasSendableDraft={Boolean(draft.trim() || attachments.length)}
-                    activeLiveTurnIsRunning={false}
-                    onSend={() => { void send(); }}
-                  />
+                  <div className="flex min-w-0 items-center gap-2">
+                    <CompactComposerModelMenu scope="chat" {...compactModelMenu} />
+                    <VoiceComposerControls
+                      voice={voice}
+                      hasSendableDraft={Boolean(draft.trim() || attachments.length)}
+                      activeLiveTurnIsRunning={false}
+                      onSend={() => { void send(); }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>

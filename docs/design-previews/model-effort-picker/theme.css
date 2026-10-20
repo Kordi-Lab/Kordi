@@ -1,0 +1,57 @@
+/* Palette values from the existing Kordi theme system. */
+/* One restrained palette coordinates the entire workspace. Surfaces retain
+ * translucency; AppKit continues to supply the native sidebar material. */
+:where(body, .app-chat-theme-preview) {
+  --app-palette-hue: 250;
+  --app-palette-accent-light: #365F98;
+  --app-palette-accent-dark: #AEC4E3;
+}
+body[data-kordi-chat-theme='ocean'],
+.app-chat-theme-preview[data-kordi-chat-theme='ocean'] {
+  --app-palette-hue: 190;
+  --app-palette-accent-light: #246775;
+  --app-palette-accent-dark: #A1CBD1;
+}
+body[data-kordi-chat-theme='midnight'],
+.app-chat-theme-preview[data-kordi-chat-theme='midnight'] {
+  --app-palette-hue: 295;
+  --app-palette-accent-light: #6B5686;
+  --app-palette-accent-dark: #C7B5DD;
+}
+body[data-kordi-chat-theme='sand'],
+.app-chat-theme-preview[data-kordi-chat-theme='sand'] {
+  --app-palette-hue: 70;
+  --app-palette-accent-light: #875837;
+  --app-palette-accent-dark: #D9B999;
+}
+
+body {
+  --app-palette-accent: var(--app-palette-accent-light);
+  --accent: var(--app-palette-accent);
+  --paper: oklch(99% 0.005 var(--app-palette-hue));
+  --canvas: oklch(96% 0.008 var(--app-palette-hue));
+  --side: oklch(96% 0.01 var(--app-palette-hue));
+  --ink: oklch(26% 0.025 var(--app-palette-hue));
+  --muted: oklch(46% 0.025 var(--app-palette-hue));
+  --soft: color-mix(in oklab, var(--accent) 10%, var(--paper));
+  --hover: color-mix(in oklab, var(--accent) 7%, var(--paper));
+  --track: color-mix(in oklab, var(--accent) 14%, var(--paper));
+  --line: color-mix(in oklab, var(--accent) 16%, var(--paper));
+  --bubble: var(--hover);
+  --accent-ink: oklch(98% 0.005 var(--app-palette-hue));
+}
+[data-theme=dark] body {
+  --app-palette-accent: var(--app-palette-accent-dark);
+  --paper: oklch(24% 0.018 var(--app-palette-hue));
+  --canvas: oklch(18% 0.018 var(--app-palette-hue));
+  --side: oklch(21% 0.022 var(--app-palette-hue));
+  --ink: oklch(92% 0.016 var(--app-palette-hue));
+  --muted: oklch(73% 0.023 var(--app-palette-hue));
+  --accent-ink: oklch(22% 0.025 var(--app-palette-hue));
+}
+.palette-label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.confirm-actions .primary { color: var(--accent-ink); }
+@media (max-width: 760px) {
+  .palette-label { font-size: 0; }
+  .palette-label select { font-size: 11px; }
+}

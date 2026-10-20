@@ -1,124 +1,170 @@
 import XCTest
 
-/// Offline checks for the agent model sheet: separate route controls, Test
-/// route, and routes whose saved account is gone.
+/// Offline coverage for the composer model row, immediate picks, effort, and account recovery.
 final class AgentModelRouteUITests: ProviderUITestCase {
-    /// The model sheet has separate Provider, Account, Model, and Thinking
-    /// controls, and Test route reports the confirmed runner, account, and model
-    /// for each selected account.
-    func testModelSheetTestRouteReportsRunnerAccountAndModel() {
+    /// List pages are centred on the full window, below the status bar, whatever the keyboard did.
+    private func assertPanelCentered(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let panel = element("agent-model-panel", in: app)
+        XCTAssertTrue(panel.waitForExistence(timeout: 5), file: file, line: line)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertLessThan(abs(panel.frame.midY - app.frame.midY), 8, file: file, line: line)
+        XCTAssertGreaterThan(panel.frame.minY, 62, file: file, line: line)
+        XCTAssertLessThanOrEqual(panel.frame.height, app.frame.height * 0.6 + 1, file: file, line: line)
+    }
+
+    func testModelPickAppliesWithoutSaveAndEffortPanelIsCentered() {
+        let app = launch("--preview-agent-model", "-kordi.chatTheme.v1", "sand")
+        let option = app.buttons["agent-model-option-openai/gpt-6-astra"]
+        XCTAssertTrue(option.waitForExistence(timeout: 15))
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        assertPanelCentered(in: app)
+        XCTAssertFalse(app.buttons["agent-model-save"].exists)
+        option.tap()
+        XCTAssertFalse(option.exists)
+        let pill = app.buttons["composer-model-picker"]
+        XCTAssertFalse(pill.exists)
+        let editor = app.textViews.firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        capture("Idle", app: app)
+        editor.tap()
+        XCTAssertTrue(pill.waitForExistence(timeout: 5))
+        editor.typeText("Looks good, one more pass on the slider")
+        capture("Typing", app: app)
+        XCTAssertEqual(pill.value as? String, "GPT-6 Astra")
+        app.buttons["composer-effort-picker"].tap()
+        let slider = element("agent-effort-slider", in: app)
+        XCTAssertTrue(slider.waitForExistence(timeout: 5))
+        XCTAssertLessThan(abs(slider.frame.midX - app.frame.midX), 8)
+        XCTAssertFalse(app.buttons["Reset effort to model default"].exists)
+        XCTAssertFalse(app.staticTexts["More effort may take longer"].exists)
+        // The keyboard steps aside under the full-screen blur and returns on close.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        // Anchored above the resting two-row field: home indicator 34 + padding 9 + field 102
+        // + gap 24 + panel padding 16 = 185 points from the bottom, whatever the keyboard did.
+        XCTAssertLessThan(abs(slider.frame.maxY - (app.frame.maxY - 185)), 12)
+        capture("Effort", app: app)
+        element("agent-model-backdrop", in: app).tap()
+        XCTAssertTrue(slider.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Model: GPT-6 Astra")).firstMatch.exists)
+        app.terminate()
+    }
+
+    func testEffortKeepsDraftAndKeyboardAndModelMenuSitsAboveField() {
         let app = launch("--preview-agent-model")
-        let provider = app.buttons["Provider"]
-        let account = app.buttons["Account"]
-        let model = app.buttons["Model"]
-        let thinking = app.buttons["Thinking level"]
-        XCTAssertTrue(provider.waitForExistence(timeout: 15))
-        XCTAssertTrue(account.exists)
-        XCTAssertTrue(model.exists)
-        XCTAssertTrue(thinking.exists)
-        XCTAssertEqual(provider.value as? String, "OpenAI")
-        XCTAssertEqual(account.value as? String, "Work")
-        XCTAssertEqual(model.value as? String, "gpt-5.6-sol")
-        XCTAssertEqual(thinking.value as? String, "Medium")
-        assertNoLoadFailure(in: app)
-        capture("Agent model controls", app: app)
-
-        runRouteTest(expectingAccount: "Work", model: "gpt-5.6-sol", in: app)
-
+        app.buttons["agent-model-option-openai/gpt-6-astra"].tap()
+        let editor = app.textViews.firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("Keep this draft")
+        let pill = app.buttons["composer-model-picker"]
+        pill.tap()
+        let account = app.buttons["agent-model-account"]
+        XCTAssertTrue(account.waitForExistence(timeout: 5))
+        // Centred, below the status bar and the navigation header, at most 60% tall.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        assertPanelCentered(in: app)
+        capture("Models", app: app)
+        XCTAssertGreaterThan(app.buttons["Close model picker"].frame.minY, 110)
+        XCTAssertLessThan(abs(account.frame.midX - app.frame.midX), 8)
         account.tap()
-        let personal = app.buttons["Personal"]
-        XCTAssertTrue(personal.waitForExistence(timeout: 5))
-        personal.tap()
-        XCTAssertEqual(account.value as? String, "Personal")
-        XCTAssertEqual(model.value as? String, "gpt-5.6-sol", "Changing the account must keep the model")
-        XCTAssertFalse(element("agent-model-route-test-result", in: app).exists)
-
-        runRouteTest(expectingAccount: "Personal", model: "gpt-5.6-sol", in: app)
+        XCTAssertTrue(app.buttons["Personal"].waitForExistence(timeout: 5))
+        assertPanelCentered(in: app)
+        app.buttons["Close model picker"].tap()
+        XCTAssertTrue(account.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(pill.value as? String, "GPT-6 Astra")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        app.buttons["composer-effort-picker"].tap()
+        XCTAssertTrue(element("agent-effort-slider", in: app).waitForExistence(timeout: 5))
+        element("agent-model-backdrop", in: app).tap()
+        XCTAssertTrue(element("agent-effort-slider", in: app).waitForNonExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, "Keep this draft")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         app.terminate()
     }
 
-    /// Removing an account keeps the other one. A session routed to the removed
-    /// account stays attached to it, shows Account unavailable, and cannot test
-    /// or save until another account is chosen.
-    func testRemovedRoutedAccountShowsUnavailableAndDisablesTestRoute() {
-        let settings = launch("--preview-authentication-detail")
-        let removeWork = settings.buttons["Remove Work"]
-        XCTAssertTrue(removeWork.waitForExistence(timeout: 15))
-        removeWork.tap()
-        let confirm = settings.buttons["Remove account"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
-        confirm.tap()
-        XCTAssertTrue(settings.staticTexts["Work"].waitForNonExistence(timeout: 5))
-        XCTAssertTrue(settings.staticTexts["Personal"].exists)
-        capture("Work removed and Personal kept", app: settings)
-        settings.terminate()
+    func testSendKeepsTranscriptAndBlurCollapsesComposer() {
+        let app = launch("--preview-agent-model", "-kordi.chatTheme.v1", "sand")
+        app.buttons["agent-model-option-openai/gpt-6-astra"].tap()
+        let editor = app.textViews.firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("Checking the floating composer")
+        app.buttons["Send message"].tap()
+        let sent = app.staticTexts["Checking the floating composer"]
+        XCTAssertTrue(sent.waitForExistence(timeout: 5))
+        XCTAssertTrue(sent.isHittable)
+        XCTAssertLessThan(sent.frame.maxY, editor.frame.minY)
+        // The keyboard stays up and the newest message stays visible above the field.
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.exists)
+        editor.typeText("Second message under the glass")
+        app.buttons["Send message"].tap()
+        let newest = app.staticTexts["Second message under the glass"]
+        XCTAssertTrue(newest.waitForExistence(timeout: 5))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+        XCTAssertTrue(keyboard.exists)
+        XCTAssertTrue(newest.isHittable)
+        XCTAssertLessThan(newest.frame.maxY, editor.frame.minY)
+        XCTAssertGreaterThan(newest.frame.minY, 100)
+        XCTAssertTrue(sent.exists)
+        capture("After send", app: app)
+        // Empty transcript space beside an outgoing bubble; timestamps and bubbles own their taps.
+        sent.coordinate(withNormalizedOffset: CGVector(dx: -0.18, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["composer-model-picker"].waitForNonExistence(timeout: 5))
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        capture("Collapsed after blur", app: app)
+        app.terminate()
+    }
 
-        let app = launch("--preview-agent-model", "--preview-account-unavailable")
-        let account = app.buttons["Account"]
+    func testAccountPickAppliesImmediately() {
+        let app = launch("--preview-agent-model")
+        let account = app.buttons["agent-model-account"]
         XCTAssertTrue(account.waitForExistence(timeout: 15))
-        XCTAssertEqual(account.value as? String, "Account unavailable")
-        XCTAssertEqual(app.buttons["Provider"].value as? String, "OpenAI")
-        XCTAssertEqual(app.buttons["Model"].value as? String, "gpt-5.6-sol")
-        XCTAssertTrue(element("agent-model-account-unavailable", in: app).exists)
-        XCTAssertFalse(app.buttons["agent-model-test-route"].isEnabled)
-        XCTAssertFalse(app.buttons["agent-model-save"].isEnabled)
-        capture("Routed account unavailable", app: app)
-
         account.tap()
         let personal = app.buttons["Personal"]
         XCTAssertTrue(personal.waitForExistence(timeout: 5))
+        assertPanelCentered(in: app)
         personal.tap()
-        XCTAssertEqual(account.value as? String, "Personal")
-        XCTAssertTrue(element("agent-model-account-unavailable", in: app).waitForNonExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["agent-model-test-route"].isEnabled)
-        capture("Another account explicitly selected", app: app)
+        app.buttons["Close model picker"].tap()
+        XCTAssertTrue(app.buttons["composer-model-picker"].waitForNonExistence(timeout: 5))
+        app.textViews.firstMatch.tap()
+        XCTAssertTrue(app.buttons["composer-model-picker"].waitForExistence(timeout: 5))
+        app.buttons["composer-model-picker"].tap()
+        XCTAssertTrue(app.buttons["agent-model-account"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["agent-model-account"].label, "Personal")
+        app.buttons["agent-model-account"].tap()
+        XCTAssertFalse(app.buttons["agent-model-test-route"].exists)
+        XCTAssertFalse(app.staticTexts["Test route uses provider quota."].exists)
+        capture("Accounts", app: app)
         app.terminate()
     }
 
-    /// Removing a provider's last account keeps the routed provider selected
-    /// with Account unavailable instead of moving the route to another provider.
-    func testRoutedProviderWithoutAccountsStaysSelectedAndUnavailable() {
+    func testRemovedAccountRequiresExplicitReplacement() {
+        let app = launch("--preview-agent-model", "--preview-account-unavailable")
+        let unavailable = element("agent-model-account-unavailable", in: app)
+        XCTAssertTrue(unavailable.waitForExistence(timeout: 15))
+        XCTAssertEqual(app.buttons["composer-model-picker"].value as? String, "Account unavailable")
+        app.buttons["agent-model-account"].tap()
+        app.buttons["Personal"].tap()
+        XCTAssertEqual(app.buttons["composer-model-picker"].value as? String, "GPT-5.6 Sol")
+        app.terminate()
+    }
+
+    func testMissingProviderNeverSilentlyChangesAccount() {
         let app = launch("--preview-agent-model", "--preview-provider-unavailable")
-        let provider = app.buttons["Provider"]
-        let account = app.buttons["Account"]
-        XCTAssertTrue(provider.waitForExistence(timeout: 15))
-        XCTAssertEqual(provider.value as? String, "OpenAI")
-        XCTAssertEqual(account.value as? String, "Account unavailable")
-        XCTAssertEqual(app.buttons["Model"].value as? String, "gpt-5.6-sol")
-        XCTAssertTrue(element("agent-model-account-unavailable", in: app).exists)
-        XCTAssertFalse(app.buttons["agent-model-test-route"].isEnabled)
-        XCTAssertFalse(app.buttons["agent-model-save"].isEnabled)
-        capture("Routed provider without accounts", app: app)
-
-        provider.tap()
-        let anthropic = app.buttons["Anthropic"]
-        XCTAssertTrue(anthropic.waitForExistence(timeout: 5))
-        anthropic.tap()
-        XCTAssertEqual(account.value as? String, "Team")
-        XCTAssertTrue(element("agent-model-account-unavailable", in: app).waitForNonExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["agent-model-test-route"].isEnabled)
-        capture("Another provider explicitly selected", app: app)
+        XCTAssertTrue(element("agent-model-account-unavailable", in: app).waitForExistence(timeout: 15))
+        app.buttons["agent-model-account"].tap()
+        XCTAssertTrue(app.staticTexts["No signed-in account. Connect one in Settings → Authentication."].exists)
+        XCTAssertEqual(app.buttons["composer-model-picker"].value as? String, "Account unavailable")
         app.terminate()
     }
 
-    private func runRouteTest(expectingAccount account: String, model: String, in app: XCUIApplication) {
-        let testRoute = app.buttons["agent-model-test-route"]
-        XCTAssertTrue(testRoute.isEnabled)
-        testRoute.tap()
-        let pending = element("agent-model-route-test-pending", in: app)
-        XCTAssertTrue(pending.waitForExistence(timeout: 5))
-        XCTAssertFalse(testRoute.isEnabled)
-        capture("Test route pending for \(account)", app: app)
-
-        let result = element("agent-model-route-test-result", in: app)
-        XCTAssertTrue(result.waitForExistence(timeout: 15))
-        XCTAssertTrue(result.label.contains("Runner OMP"), result.label)
-        XCTAssertTrue(result.label.contains(account), result.label)
-        XCTAssertTrue(result.label.contains(model), result.label)
-        for secret in ["token", "preview-token", "ios-codex:", "provider_auth_"] {
-            XCTAssertFalse(result.label.lowercased().contains(secret), result.label)
-        }
-        XCTAssertFalse(pending.exists)
-        capture("Test route result for \(account)", app: app)
+    func testProjectsListHierarchyCapture() {
+        let app = launch("--preview-agent-page", "--preview-projects")
+        XCTAssertTrue(app.staticTexts["website"].firstMatch.waitForExistence(timeout: 15))
+        capture("Projects", app: app)
+        app.terminate()
     }
 }

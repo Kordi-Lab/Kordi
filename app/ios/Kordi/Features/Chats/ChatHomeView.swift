@@ -595,15 +595,15 @@ struct ChatHomeView: View {
                 Button {
                     if !collapsedProjectIDs.insert(section.id).inserted { collapsedProjectIDs.remove(section.id) }
                 } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: collapsedProjectIDs.contains(section.id) ? "chevron.right" : "chevron.down").font(.caption2)
-                        Image(systemName: "folder")
-                        Text(project.name)
+                    HStack(spacing: 8) {
+                        Image(systemName: collapsedProjectIDs.contains(section.id) ? "chevron.right" : "chevron.down")
+                            .font(.footnote.weight(.semibold)).foregroundStyle(.secondary).frame(width: 16)
+                        Image(systemName: "folder").font(.system(size: 20)).foregroundStyle(.tint)
+                        Text(project.name).font(.body.weight(.semibold)).lineLimit(1)
                         Spacer()
-                        if section.device?.online == false { Text("Offline").font(.caption2).foregroundStyle(.secondary) }
+                        if section.device?.online == false { Text("Offline").font(.footnote).foregroundStyle(.secondary) }
                     }
-                    .font(.footnote)
-                    .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 44 : 32, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .padding(.horizontal, 16)
                     .contentShape(Rectangle())
                 }
@@ -614,8 +614,8 @@ struct ChatHomeView: View {
             }
             if !collapsedProjectIDs.contains(section.id) || !searchQuery.isEmpty {
                 ForEach(section.sessions) { item in
-                    agentSessionActionRow(item)
-                        .padding(.leading, section.project == nil ? 0 : 20)
+                    agentSessionActionRow(item, nested: section.project != nil)
+                        .padding(.leading, section.project == nil ? 0 : 28)
                 }
             }
         }
@@ -670,11 +670,11 @@ struct ChatHomeView: View {
         .chatHomeRow(separatorLeading: 71)
     }
 
-    private func agentSessionActionRow(_ item: AgentSessionListItem) -> some View {
+    private func agentSessionActionRow(_ item: AgentSessionListItem, nested: Bool = false) -> some View {
         Group {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 0) {
-                    agentSessionButton(item)
+                    agentSessionButton(item, nested: nested)
                     if item.childCount > 0 {
                         agentForkButton(item)
                             .frame(maxWidth: .infinity, alignment: .trailing)
@@ -682,7 +682,7 @@ struct ChatHomeView: View {
                 }
             } else {
                 HStack(spacing: 0) {
-                    agentSessionButton(item)
+                    agentSessionButton(item, nested: nested)
                     if item.childCount > 0 {
                         agentForkButton(item)
                     }
@@ -717,7 +717,7 @@ struct ChatHomeView: View {
         .chatHomeRow(separatorLeading: 16, verticalPadding: 0)
     }
 
-    private func agentSessionButton(_ item: AgentSessionListItem) -> some View {
+    private func agentSessionButton(_ item: AgentSessionListItem, nested: Bool = false) -> some View {
         Button {
             guard !dismissActiveSwipeActions() else { return }
             openConversation(item.conversation)
@@ -725,6 +725,7 @@ struct ChatHomeView: View {
             AgentSessionRow(
                 conversation: item.conversation,
                 compact: true,
+                nested: nested,
                 isFork: item.isFork,
                 isPinned: model.pinnedSessionIds.contains(item.conversation.sessionId),
                 isMuted: model.mutedSessionIds.contains(item.conversation.sessionId)

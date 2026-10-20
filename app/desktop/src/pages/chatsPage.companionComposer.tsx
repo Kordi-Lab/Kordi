@@ -63,7 +63,7 @@ type CompanionCollaborationRouting = {
   visibility: ReturnType<typeof collaborationChatRoutingControlVisibility>;
   selectorOpen: boolean;
   setSelectedAgentId: Dispatch<SetStateAction<string | null>>;
-  update: (patch: CollaborationRoutingPatch) => void;
+  update: (patch: CollaborationRoutingPatch) => void | boolean | Promise<void | boolean>;
   defaultThinkingForModel: (
     modelValue: string | null | undefined,
     currentThinking: string | null | undefined,

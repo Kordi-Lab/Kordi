@@ -1456,6 +1456,8 @@ final class AppModel: ObservableObject {
             return account.modelHint?.nonEmpty
         }
         return account.modelHint?.nonEmpty
+            // The pinned catalog's ChatGPT default predates the newest model.
+            ?? (account.provider == "openai-codex" ? AgentModelPicker.modelNamesByProvider["openai"]?.first : nil)
             ?? ompProviderCatalog.first(where: { $0.id == account.provider })?.defaultModel?.nonEmpty
             ?? ompProviderCatalog.first(where: { $0.id == account.provider })?.models.first
             ?? provider.defaultModel?.nonEmpty
@@ -1480,7 +1482,7 @@ final class AppModel: ObservableObject {
             provider: active.provider,
             authChoice: active.authChoice,
             model: modelID,
-            thinking: AgentModelPicker.normalizedThinking("medium", for: modelID)
+            thinking: AgentModelPicker.normalizedThinking("medium", for: modelID, catalog: ompProviderCatalog)
         )
         guard saved else { return nil }
         startedAgentChat = session

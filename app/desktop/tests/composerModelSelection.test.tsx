@@ -156,12 +156,12 @@ test('agent-session portaled model menu commits Claude Fable 5 before closing', 
     await act(async () => root?.render(<Harness />));
 
     const modelTrigger = [...host.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent?.includes('claude-opus-4-8'));
+      .find((button) => button.textContent?.includes('Claude Opus 4.8'));
     assert.ok(modelTrigger, 'the selected agent-session model should render its trigger');
     await act(async () => modelTrigger.click());
 
     const fableButton = [...document.querySelectorAll<HTMLButtonElement>('.app-composer-model-menu-layer button')]
-      .find((button) => button.textContent?.includes('claude-fable-5'));
+      .find((button) => button.textContent?.includes('Claude Fable 5'));
     assert.ok(fableButton, 'Claude Fable 5 should be rendered in the portaled model menu');
 
     await act(async () => {

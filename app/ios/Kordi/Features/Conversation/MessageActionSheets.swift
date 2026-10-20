@@ -1152,6 +1152,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
     private let hitTestRegions: WindowOverlayHitTestRegions?
     private let allowsInteraction: Bool
     private let animatesRemoval: Bool
+    private let removalDuration: TimeInterval
     private let onDismissComplete: () -> Void
     private let content: (CGRect) -> Content
 
@@ -1160,6 +1161,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
         hitTestRegions: WindowOverlayHitTestRegions? = nil,
         allowsInteraction: Bool = true,
         animatesRemoval: Bool = true,
+        removalDuration: TimeInterval = 0.18,
         onDismissComplete: @escaping () -> Void = {},
         @ViewBuilder content: @escaping (CGRect) -> Content
     ) {
@@ -1167,6 +1169,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
         self.hitTestRegions = hitTestRegions
         self.allowsInteraction = allowsInteraction
         self.animatesRemoval = animatesRemoval
+        self.removalDuration = removalDuration
         self.onDismissComplete = onDismissComplete
         self.content = content
     }
@@ -1190,6 +1193,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
         coordinator.onDismissComplete = onDismissComplete
         coordinator.allowsInteraction = allowsInteraction
         coordinator.animatesRemoval = animatesRemoval
+        coordinator.removalDuration = removalDuration
         let update = { [weak uiView, weak coordinator] in
             guard let uiView, let coordinator else { return }
             coordinator.scheduleInstall(
@@ -1220,6 +1224,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
         var onDismissComplete: () -> Void = {}
         var allowsInteraction = true
         var animatesRemoval = true
+        var removalDuration: TimeInterval = 0.18
         var isDismantled = false
         private var installGeneration = 0
 
@@ -1284,7 +1289,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
             }
             container.isUserInteractionEnabled = false
             UIView.animate(
-                withDuration: 0.18,
+                withDuration: removalDuration,
                 delay: 0,
                 options: [.beginFromCurrentState, .curveEaseOut, .allowAnimatedContent]
             ) {

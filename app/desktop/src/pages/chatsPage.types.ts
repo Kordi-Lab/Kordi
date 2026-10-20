@@ -184,7 +184,7 @@ export type ChatsPageRuntime = {
     type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking',
     value: string,
     configTargetOverride?: ComposerConfigTargetOverride,
-  ) => void;
+  ) => void | Promise<void | boolean>;
   composerAuthLabel: string;
   composerAuthOptions: ComposerAuthOption[];
   selectComposerAuthChoice: (
@@ -197,7 +197,7 @@ export type ChatsPageRuntime = {
     scope: 'chat' | 'project',
     option: ComposerProviderOption,
     configTargetOverride?: ComposerConfigTargetOverride,
-  ) => void;
+  ) => void | Promise<void | boolean>;
   composerProviderOptions: ComposerProviderOption[];
   chatModelOptions?: ComposerModelOption[];
   isDesktopChatSending: boolean;

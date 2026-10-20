@@ -4,31 +4,13 @@ use crate::registry::{ApiType, Model};
 pub(super) fn builtin_models() -> Vec<Model> {
     vec![
         model(
-            "gpt-5.6-luna",
-            "GPT-5.6 Luna",
+            "gpt-6.1-sol",
+            "GPT-6.1 Sol",
             "openai",
             ApiType::OpenaiResponses,
-            (272_000, 128_000),
+            (1_050_000, 128_000),
             runtime(ReasoningCapability::Supported, "https://api.openai.com/v1"),
-            cost(1.0, 6.0, 0.1, 1.25),
-        ),
-        model(
-            "gpt-5.6-sol",
-            "GPT-5.6 Sol",
-            "openai",
-            ApiType::OpenaiResponses,
-            (272_000, 128_000),
-            runtime(ReasoningCapability::Supported, "https://api.openai.com/v1"),
-            cost(5.0, 30.0, 0.5, 6.25),
-        ),
-        model(
-            "gpt-5.6-terra",
-            "GPT-5.6 Terra",
-            "openai",
-            ApiType::OpenaiResponses,
-            (272_000, 128_000),
-            runtime(ReasoningCapability::Supported, "https://api.openai.com/v1"),
-            cost(2.5, 15.0, 0.25, 3.125),
+            cost(2.0, 10.0, 0.2, 2.5),
         ),
         model(
             "gpt-6-astra",
@@ -56,6 +38,33 @@ pub(super) fn builtin_models() -> Vec<Model> {
             (1_050_000, 128_000),
             runtime(ReasoningCapability::Supported, "https://api.openai.com/v1"),
             cost(0.1, 0.5, 0.01, 0.125),
+        ),
+        model(
+            "gpt-5.6-sol",
+            "GPT-5.6 Sol",
+            "openai",
+            ApiType::OpenaiResponses,
+            (272_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.openai.com/v1"),
+            cost(5.0, 30.0, 0.5, 6.25),
+        ),
+        model(
+            "gpt-5.6-terra",
+            "GPT-5.6 Terra",
+            "openai",
+            ApiType::OpenaiResponses,
+            (272_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.openai.com/v1"),
+            cost(2.5, 15.0, 0.25, 3.125),
+        ),
+        model(
+            "gpt-5.6-luna",
+            "GPT-5.6 Luna",
+            "openai",
+            ApiType::OpenaiResponses,
+            (272_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.openai.com/v1"),
+            cost(1.0, 6.0, 0.1, 1.25),
         ),
         model(
             "gpt-5.5",
@@ -206,9 +215,13 @@ mod tests {
     }
 
     #[test]
-    fn gpt_6_sol_and_luna_share_the_family_limits_with_their_own_prices() {
+    fn gpt_6_sol_variants_and_luna_share_the_family_limits_with_their_own_prices() {
         let models = builtin_models();
-        for (id, input, output) in [("gpt-6-sol", 2.0, 10.0), ("gpt-6-luna", 0.1, 0.5)] {
+        for (id, input, output) in [
+            ("gpt-6.1-sol", 2.0, 10.0),
+            ("gpt-6-sol", 2.0, 10.0),
+            ("gpt-6-luna", 0.1, 0.5),
+        ] {
             let model = models.iter().find(|model| model.id == id).unwrap();
             assert_eq!(model.context_window, 1_050_000);
             assert_eq!(model.max_tokens, 128_000);

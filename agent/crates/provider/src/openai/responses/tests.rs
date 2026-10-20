@@ -135,6 +135,10 @@ fn gpt_6_routes_tools_and_continuations_through_responses() {
         &request,
         &request_options("https://api.openai.com/v1")
     ));
+    assert!(should_use_responses_api(
+        &completion_request("gpt-6.1-sol"),
+        &request_options("https://api.openai.com/v1")
+    ));
     assert!(!should_use_responses_api(
         &request,
         &request_options("https://openrouter.ai/api/v1")

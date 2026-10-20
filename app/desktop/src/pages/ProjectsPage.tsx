@@ -95,11 +95,11 @@ type ProjectsPageProps = {
   composerSelection: { mode: string; model: string; thinking: string };
   openComposerSelector: { scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
   toggleComposerSelector: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking') => void;
-  selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string) => void;
+  selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string) => void | Promise<void | boolean>;
   composerAuthLabel: string;
   composerAuthOptions: ComposerAuthOption[];
   selectComposerAuthChoice: (scope: 'chat' | 'project', providerId: string, choice: string) => void;
-  selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption) => void;
+  selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption) => void | Promise<void | boolean>;
   composerProviderOptions: ComposerProviderOption[];
   chatModelOptions?: ComposerModelOption[];
   isDesktopChatSending: boolean;
