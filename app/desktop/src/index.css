@@ -57,6 +57,7 @@
 @import './styles/theme-shell-controls.css';
 @import './styles/theme-auth-controls.css';
 @import './styles/theme-auth-gate.css';
+@import './styles/theme-cloud-signin.css';
 @import './styles/transient-surfaces.css';
 @import './styles/whats-new.css';
 @import './features/digest/digest.css';

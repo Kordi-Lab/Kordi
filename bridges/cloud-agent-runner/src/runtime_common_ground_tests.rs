@@ -33,8 +33,8 @@ fn card_run(run_id: &str) -> CloudAgentRun {
 }
 
 #[tokio::test]
-async fn card_builds_complete_without_a_sandbox_or_tools() {
-    let client = FakeClient::with_run(card_run("cgcard_fixture"));
+async fn common_ground_runs_complete_without_a_sandbox_or_tools() {
+    let client = FakeClient::with_run(card_run("cg_card_fixture"));
     let root = temp_sandbox();
     let outcome = legacy_fixture_run(&client, &CardProvider("{\"working_on\":[]}"), root.clone())
         .await
@@ -42,7 +42,7 @@ async fn card_builds_complete_without_a_sandbox_or_tools() {
     assert_eq!(
         outcome,
         RunnerStepOutcome::Completed {
-            run_id: "cgcard_fixture".into()
+            run_id: "cg_card_fixture".into()
         }
     );
     assert!(!root.exists());
@@ -50,26 +50,26 @@ async fn card_builds_complete_without_a_sandbox_or_tools() {
         client.calls(),
         vec![
             "lease",
-            "running:cgcard_fixture",
-            "provider-auth:cgcard_fixture",
-            "complete:cgcard_fixture:{\"working_on\":[]}"
+            "running:cg_card_fixture",
+            "provider-auth:cg_card_fixture",
+            "complete:cg_card_fixture:{\"working_on\":[]}"
         ]
     );
 }
 
 #[tokio::test]
-async fn an_empty_reply_fails_the_card_build() {
-    let client = FakeClient::with_run(card_run("cgcard_empty"));
+async fn an_empty_reply_fails_the_run() {
+    let client = FakeClient::with_run(card_run("cg_card_empty"));
     let outcome = legacy_fixture_run(&client, &CardProvider("  "), temp_sandbox())
         .await
         .unwrap();
     assert_eq!(
         outcome,
         RunnerStepOutcome::FailedProviderError {
-            run_id: "cgcard_empty".into()
+            run_id: "cg_card_empty".into()
         }
     );
     assert!(client
         .calls()
-        .contains(&"fail:cgcard_empty:common_ground_build_failed".to_string()));
+        .contains(&"fail:cg_card_empty:common_ground_run_failed".to_string()));
 }

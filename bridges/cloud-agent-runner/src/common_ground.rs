@@ -1,5 +1,6 @@
-//! Common ground card builds: one completion with no tools and no sandbox.
-//! The prompt is the member's redacted evidence; the server parses the reply.
+//! Common ground runs (card builds, matching, room themes): one completion
+//! with no tools and no sandbox.
+//! The prompt holds redacted evidence or shared cards; the server parses the reply.
 
 use serde_json::json;
 
@@ -7,7 +8,7 @@ use crate::client::{CloudAgentRun, CloudAgentRunClient, RunnerClientError};
 use crate::model_loop::{CloudModelProvider, ModelProviderResponse, OpenAiProviderConfig};
 use crate::runtime::{CloudModelEngine, RunnerStepOutcome};
 
-pub const RUN_PREFIX: &str = "cgcard_";
+pub const RUN_PREFIX: &str = "cg_";
 const TIMEOUT_SECONDS: u64 = 180;
 
 struct NoTools;
@@ -71,12 +72,12 @@ where
         }
     };
     if text.trim().is_empty() {
-        return Err("the model finished without writing a card".into());
+        return Err("the model finished without a reply".into());
     }
     Ok(text)
 }
 
-/// Runs one card build, keeping its lease alive while the model works.
+/// Runs one Common ground run, keeping its lease alive while the model works.
 pub(crate) async fn step<C, P>(
     client: &C,
     provider: &P,
@@ -110,12 +111,12 @@ where
         }
         Err(detail) => {
             // The detail can quote provider errors, so only its length is logged.
-            tracing::warn!(run_id = %run.run_id, detail_len = detail.len(), "common ground card build failed");
+            tracing::warn!(run_id = %run.run_id, detail_len = detail.len(), "common ground run failed");
             client
                 .fail_run(
                     &run.run_id,
-                    "common_ground_build_failed",
-                    "Card build failed.",
+                    "common_ground_run_failed",
+                    "Common ground run failed.",
                 )
                 .await?;
             Ok(RunnerStepOutcome::FailedProviderError { run_id })

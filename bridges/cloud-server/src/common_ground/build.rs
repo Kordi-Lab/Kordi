@@ -10,11 +10,11 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
-use uuid::Uuid;
 
 use super::prompt::{self, Gathered};
 use super::redact::{redact, squeeze};
-use super::{card, db_error, err, limited, BUILD_LIMIT, RUN_PREFIX};
+use super::runs::{self, NewRun, CARD_PREFIX};
+use super::{card, db_error, err, limited, BUILD_LIMIT};
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
@@ -272,14 +272,16 @@ pub(super) async fn start(
         return limited(retry_after);
     }
     let config = pip.config();
-    let run_id = format!("{RUN_PREFIX}{}", Uuid::new_v4().simple());
+    let run_id = runs::new_run_id(CARD_PREFIX);
     let today = Utc::now().date_naive().to_string();
     let result = async {
         let mut tx = pool.begin().await?;
-        query("INSERT INTO cloud_common_ground_cards (account_id) VALUES ($1) ON CONFLICT DO NOTHING")
-            .bind(account)
-            .execute(&mut *tx)
-            .await?;
+        query(
+            "INSERT INTO cloud_common_ground_cards (account_id) VALUES ($1) ON CONFLICT DO NOTHING",
+        )
+        .bind(account)
+        .execute(&mut *tx)
+        .await?;
         let sql = format!(
             "UPDATE cloud_common_ground_cards card SET active_run_id = $2, build_started_at = now(),
                  build_evidence_json = $3, build_error_code = NULL, updated_at = now()
@@ -295,27 +297,14 @@ pub(super) async fn start(
         if reserved.rows_affected() == 0 {
             return Ok(false);
         }
-        // The run belongs to the Kordi-operated service account, so it uses
-        // the Kordi key rather than the member's own provider. It has no
-        // chat and no connector tools; the member's evidence is the prompt.
-        let now = Utc::now().to_rfc3339();
-        query(
-            "INSERT INTO cloud_agent_fallback_runs (
-                 run_id, idempotency_key, request_message_id, session_id, owner_account_id,
-                 requester_account_id, status, prompt, system_prompt, runtime_route_json,
-                 created_at, updated_at, run_trigger, connector_audience
-             ) VALUES ($1, $1, $1, $2, $3, $4, 'queued', $5, $6, $7, $8, $8, 'background', 'owner_private')",
-        )
-        .bind(&run_id)
-        .bind(format!("common-ground:{account}"))
-        .bind(&config.account_id)
-        .bind(account)
-        .bind(prompt::user_prompt(&today, &evidence))
-        .bind(prompt::SYSTEM_PROMPT)
-        .bind(config.model_routing())
-        .bind(&now)
-        .execute(&mut *tx)
-        .await?;
+        // The member's redacted evidence is the whole prompt.
+        let new_run = NewRun {
+            run_id: &run_id,
+            requester: account,
+            prompt: prompt::user_prompt(&today, &evidence),
+            system_prompt: prompt::SYSTEM_PROMPT,
+        };
+        runs::insert(&mut tx, config, new_run).await?;
         tx.commit().await?;
         Ok::<_, sqlx_core::Error>(true)
     }
@@ -342,7 +331,7 @@ pub(super) async fn start(
 
 /// Stores the card from a finished run. A reply that is not a card fails
 /// the build instead.
-pub async fn complete(
+pub(super) async fn complete(
     pool: &PgPool,
     run_id: &str,
     runner_id: &str,
@@ -367,17 +356,7 @@ pub async fn complete(
         return fail(pool, run_id, Some(runner_id), "invalid_output").await;
     };
     let mut tx = pool.begin().await?;
-    let now = Utc::now().to_rfc3339();
-    let changed = query(
-        "UPDATE cloud_agent_fallback_runs SET status = 'completed', completed_at = $3, updated_at = $3
-         WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
-    )
-    .bind(run_id)
-    .bind(runner_id)
-    .bind(&now)
-    .execute(&mut *tx)
-    .await?;
-    if changed.rows_affected() == 0 {
+    if !runs::mark_completed(&mut tx, run_id, runner_id).await? {
         return Err(sqlx_core::Error::RowNotFound);
     }
     // A rebuild starts with nothing hidden: the topics are new.
@@ -403,25 +382,17 @@ pub async fn complete(
     tx.commit().await
 }
 
-pub async fn fail(
+pub(super) async fn fail(
     pool: &PgPool,
     run_id: &str,
     runner_id: Option<&str>,
     code: &str,
 ) -> sqlx_core::Result<()> {
     let mut tx = pool.begin().await?;
-    query(
-        "UPDATE cloud_agent_fallback_runs SET status = 'failed', error_code = $3,
-             error_message = 'Card build failed.', updated_at = $4
-         WHERE run_id = $1 AND ($2::text IS NULL OR claimed_by = $2)
-           AND status IN ('queued', 'leased', 'running')",
-    )
-    .bind(run_id)
-    .bind(runner_id)
-    .bind(code)
-    .bind(Utc::now().to_rfc3339())
-    .execute(&mut *tx)
-    .await?;
+    // A runner that lost its lease, or a repeated report, changes nothing.
+    if !runs::mark_failed(&mut tx, run_id, runner_id, code, "Card build failed.").await? {
+        return Ok(());
+    }
     let account: Option<(String,)> = query_as(
         "UPDATE cloud_common_ground_cards SET active_run_id = NULL, build_evidence_json = NULL,
              build_error_code = $2, updated_at = now()

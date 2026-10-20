@@ -35,6 +35,7 @@ const SHELL_STYLE_FILES = [
   '../../src/styles/theme-shell-controls.css',
   '../../src/styles/theme-auth-controls.css',
   '../../src/styles/theme-auth-gate.css',
+  '../../src/styles/theme-cloud-signin.css',
   '../../src/styles/transient-surfaces.css',
 ] as const;
 

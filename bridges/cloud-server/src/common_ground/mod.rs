@@ -9,12 +9,14 @@
 
 mod build;
 mod card;
+mod matching;
 mod pairing;
 mod people;
 mod profile;
 mod prompt;
 mod redact;
 mod rooms;
+mod runs;
 
 #[cfg(test)]
 mod tests;
@@ -36,12 +38,10 @@ use sqlx_postgres::Postgres;
 use crate::auth::rate_limit::{AccountActionLimit, CloudRateLimiter};
 use crate::{auth::routes::cloud_session_middleware, server::ServerState};
 
-pub use build::{complete, fail};
+pub use runs::{complete, fail, RUN_PREFIX};
 
 /// Advertised as `commonGroundVersion` in the auth capabilities.
 pub const COMMON_GROUND_VERSION: u32 = 1;
-/// Card build runs.
-pub const RUN_PREFIX: &str = "cgcard_";
 
 /// A room is open until 24 hours after its last join.
 pub(super) const ROOM_OPEN_SQL: &str =
@@ -50,6 +50,13 @@ pub(super) const ROOM_OPEN_SQL: &str =
 pub(super) const BUILD_LIMIT: AccountActionLimit = AccountActionLimit {
     action: "common-ground-card-build",
     limit: 6,
+    window: Duration::from_secs(60 * 60),
+};
+/// Matching runs queued per account; polling a room's results while a run
+/// works is not charged.
+pub(super) const MATCH_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "common-ground-match",
+    limit: 60,
     window: Duration::from_secs(60 * 60),
 };
 pub(super) const ROOM_JOIN_LIMIT: AccountActionLimit = AccountActionLimit {
@@ -109,6 +116,15 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
             "/v1/cloud/common-ground/rooms/:code/leave",
             post(rooms::leave),
         )
+        .route(
+            "/v1/cloud/common-ground/rooms/:code/results",
+            post(matching::results),
+        )
+        .route(
+            "/v1/cloud/common-ground/people/:account_id/match",
+            get(matching::match_detail),
+        )
+        .route("/v1/cloud/common-ground/recent", get(matching::recent))
         .route("/v1/cloud/common-ground/pairings", get(pairing::list))
         .route(
             "/v1/cloud/common-ground/pairings/code",

@@ -1,5 +1,5 @@
 //! Background runs that belong to a feature instead of a chat: the digest,
-//! PiP, and Common ground card builds. Each feature stores its own result.
+//! PiP, and Common ground runs. Each feature stores its own result.
 
 use sqlx_postgres::PgPool;
 
