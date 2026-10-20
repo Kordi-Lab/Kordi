@@ -1,6 +1,7 @@
 //! Rooms: everyone at an event enters the same 4-digit code. The first
 //! person to enter a free code opens the room and may name it. A room closes
-//! 24 hours after its last join; the code is then free again.
+//! 24 hours after its last join; the code is then free again. Members who
+//! have not left keep read-only access to a closed room and its results.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -162,30 +163,84 @@ pub(super) async fn join(
     }
 }
 
-/// The open room with this code that `account` is in.
+/// A room with this code that `account` is in and has not left, with
+/// whether it is still open. Codes are reused once a room closes, so an open
+/// room comes first, then the newest closed one.
 pub(super) async fn my_room(
     pool: &PgPool,
     code: &str,
     account: &str,
-) -> sqlx_core::Result<Option<Uuid>> {
+) -> sqlx_core::Result<Option<(Uuid, bool)>> {
     if !valid_code(code) {
         return Ok(None);
     }
     let sql = format!(
-        "SELECT room.room_id FROM cloud_common_ground_rooms room
+        "SELECT room.room_id, {ROOM_OPEN_SQL} AS open FROM cloud_common_ground_rooms room
          JOIN cloud_common_ground_room_members member
            ON member.room_id = room.room_id AND member.account_id = $2 AND member.left_at IS NULL
-         WHERE room.code = $1 AND {ROOM_OPEN_SQL}"
+         WHERE room.code = $1
+         ORDER BY open DESC, room.created_at DESC, room.room_id LIMIT 1"
     );
-    let row: Option<(Uuid,)> = query_as(&sql)
+    query_as(&sql)
         .bind(code)
         .bind(account)
         .fetch_optional(pool)
-        .await?;
-    Ok(row.map(|(room_id,)| room_id))
+        .await
+}
+
+type ListRow = (String, String, bool, i64, DateTime<Utc>, DateTime<Utc>, i32);
+
+/// `GET /v1/cloud/common-ground/rooms`: rooms you are in, open or closed,
+/// newest activity first. Leaving a room removes it. Only the room a code
+/// opens for you is listed.
+pub(super) async fn list(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+) -> Response {
+    let sql = format!(
+        "SELECT code, name, open, member_count, joined_at, last_activity_at, theme_count FROM (
+             SELECT DISTINCT ON (room.code) room.code, room.name, {ROOM_OPEN_SQL} AS open,
+                    (SELECT COUNT(*) FROM cloud_common_ground_room_members active
+                     WHERE active.room_id = room.room_id AND active.left_at IS NULL) AS member_count,
+                    member.joined_at,
+                    GREATEST(room.last_join_at, themes.computed_at) AS last_activity_at,
+                    COALESCE(jsonb_array_length(themes.themes_json), 0) AS theme_count
+             FROM cloud_common_ground_rooms room
+             JOIN cloud_common_ground_room_members member
+               ON member.room_id = room.room_id AND member.account_id = $1 AND member.left_at IS NULL
+             LEFT JOIN cloud_common_ground_room_themes themes ON themes.room_id = room.room_id
+             ORDER BY room.code, open DESC, room.created_at DESC, room.room_id
+         ) mine
+         ORDER BY last_activity_at DESC, code LIMIT 50"
+    );
+    let rows: Result<Vec<ListRow>, _> = query_as(&sql)
+        .bind(&session.account_id)
+        .fetch_all(state.db_pool())
+        .await;
+    match rows {
+        Ok(rows) => {
+            let rooms: Vec<Value> = rows
+                .into_iter()
+                .map(|(code, name, open, members, joined_at, activity, themes)| {
+                    json!({
+                        "code": code,
+                        "name": name,
+                        "open": open,
+                        "memberCount": members,
+                        "joinedAt": joined_at,
+                        "lastActivityAt": activity,
+                        "themeCount": themes,
+                    })
+                })
+                .collect();
+            (StatusCode::OK, Json(json!({ "rooms": rooms }))).into_response()
+        }
+        Err(error) => db_error(error),
+    }
 }
 
 /// `GET /v1/cloud/common-ground/rooms/:code`: the lobby, for members only.
+/// A closed room still answers, read-only, for members who have not left.
 pub(super) async fn read(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -193,12 +248,14 @@ pub(super) async fn read(
 ) -> Response {
     let pool = state.db_pool();
     match my_room(pool, &code, &session.account_id).await {
-        Ok(Some(room_id)) => view_response(pool, room_id, &session.account_id).await,
+        Ok(Some((room_id, _))) => view_response(pool, room_id, &session.account_id).await,
         Ok(None) => room_not_found(),
         Err(error) => db_error(error),
     }
 }
 
+/// `POST /v1/cloud/common-ground/rooms/:code/leave`: leaves an open room,
+/// or removes a closed one from your rooms.
 pub(super) async fn leave(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -207,7 +264,7 @@ pub(super) async fn leave(
     let pool = state.db_pool();
     let account = session.account_id.as_str();
     let room_id = match my_room(pool, &code, account).await {
-        Ok(Some(room_id)) => room_id,
+        Ok(Some((room_id, _))) => room_id,
         Ok(None) => return room_not_found(),
         Err(error) => return db_error(error),
     };
@@ -285,16 +342,15 @@ pub(super) async fn notify_members(
 }
 
 type MemberRow = (String, Option<String>, Option<String>, bool);
+type RoomRow = (String, String, Option<String>, DateTime<Utc>, bool);
 
 pub(super) async fn view(pool: &PgPool, room_id: Uuid, viewer: &str) -> sqlx_core::Result<Value> {
-    let (code, name, created_by, last_join_at): (String, String, Option<String>, DateTime<Utc>) =
-        query_as(
-            "SELECT code, name, created_by, last_join_at FROM cloud_common_ground_rooms
-             WHERE room_id = $1",
-        )
-        .bind(room_id)
-        .fetch_one(pool)
-        .await?;
+    let sql = format!(
+        "SELECT code, name, created_by, last_join_at, {ROOM_OPEN_SQL} FROM cloud_common_ground_rooms room
+         WHERE room_id = $1"
+    );
+    let (code, name, created_by, last_join_at, open): RoomRow =
+        query_as(&sql).bind(room_id).fetch_one(pool).await?;
     // Members arrive in join order; you are never in the list.
     let members: Vec<MemberRow> = query_as(
         "SELECT member.account_id, account.display_name, account.avatar_url,
@@ -327,6 +383,7 @@ pub(super) async fn view(pool: &PgPool, room_id: Uuid, viewer: &str) -> sqlx_cor
         "code": code,
         "name": name,
         "openedByYou": created_by.as_deref() == Some(viewer),
+        "open": open,
         "expiresAt": last_join_at + chrono::Duration::hours(24),
         "members": members,
         "groups": groups,

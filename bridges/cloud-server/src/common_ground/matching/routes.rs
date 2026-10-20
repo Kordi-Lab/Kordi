@@ -38,7 +38,8 @@ fn status(pending: Option<Pending>) -> &'static str {
 /// `POST /v1/cloud/common-ground/rooms/:code/results`: everyone in the room
 /// ranked by match with you, the themes several people share, and the
 /// suggested group. People still being matched are left out until ready;
-/// `status` is "matching" until everything is in.
+/// `status` is "matching" until everything is in. A closed room shows what
+/// was stored for it and never queues a run.
 pub(in crate::common_ground) async fn results(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
@@ -50,8 +51,8 @@ pub(in crate::common_ground) async fn results(
     };
     let pool = state.db_pool();
     let account = session.account_id.as_str();
-    let room_id = match rooms::my_room(pool, &code, account).await {
-        Ok(Some(room_id)) => room_id,
+    let (room_id, open) = match rooms::my_room(pool, &code, account).await {
+        Ok(Some(room)) => room,
         Ok(None) => return rooms::room_not_found(),
         Err(error) => return db_error(error),
     };
@@ -78,7 +79,12 @@ pub(in crate::common_ground) async fn results(
         .filter(|c| c.account_id != account)
         .cloned()
         .collect();
-    let fresh = match store::fresh_results(pool, &viewer, &others).await {
+    let fresh = if open {
+        store::fresh_results(pool, &viewer, &others).await
+    } else {
+        store::stored_results(pool, &viewer, &others).await
+    };
+    let fresh = match fresh {
         Ok(fresh) => fresh,
         Err(error) => return db_error(error),
     };
@@ -89,14 +95,19 @@ pub(in crate::common_ground) async fn results(
         .collect();
     let theme_members: Vec<SharedCard> = cards.iter().take(MAX_THEME_MEMBERS).cloned().collect();
     let key = store::members_key(&theme_members);
-    let themes = match store::stored_themes(pool, room_id, &key).await {
+    let themes = if open {
+        store::stored_themes(pool, room_id, &key).await
+    } else {
+        store::latest_themes(pool, room_id).await
+    };
+    let themes = match themes {
         Ok(themes) => themes,
         Err(error) => return db_error(error),
     };
-    let needs_themes = themes.is_none() && theme_members.len() >= 2;
+    let needs_themes = open && themes.is_none() && theme_members.len() >= 2;
     // Each queued run is charged; polling while one works or pauses is free.
     let mut pending = None;
-    if !stale.is_empty() {
+    if open && !stale.is_empty() {
         let queued = store::queue_matches(
             pool,
             pip.config(),
@@ -174,7 +185,8 @@ pub(in crate::common_ground) async fn results(
 }
 
 /// `GET /v1/cloud/common-ground/people/:account_id/match`: what you share
-/// with someone you may see. Opening a ready match adds it to Recent.
+/// with someone you may see. Opening a ready match adds it to Recent. Someone
+/// you only share a closed room with shows the stored match; nothing new runs.
 pub(in crate::common_ground) async fn match_detail(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
@@ -205,7 +217,16 @@ pub(in crate::common_ground) async fn match_detail(
             card::no_card()
         };
     };
-    let fresh = match store::fresh_results(pool, viewer, std::slice::from_ref(other_card)).await {
+    let live = match people::is_live(pool, account, &other).await {
+        Ok(live) => live,
+        Err(error) => return db_error(error),
+    };
+    let fresh = if live {
+        store::fresh_results(pool, viewer, std::slice::from_ref(other_card)).await
+    } else {
+        store::stored_results(pool, viewer, std::slice::from_ref(other_card)).await
+    };
+    let fresh = match fresh {
         Ok(fresh) => fresh,
         Err(error) => return db_error(error),
     };
@@ -229,6 +250,13 @@ pub(in crate::common_ground) async fn match_detail(
             Err(error) => return db_error(error),
         }
         return (StatusCode::OK, Json(body)).into_response();
+    }
+    if !live {
+        return crate::common_ground::err(
+            "common_ground_match_not_found",
+            "No match was saved for this person.",
+            StatusCode::NOT_FOUND,
+        );
     }
     match store::queue_matches(
         pool,
