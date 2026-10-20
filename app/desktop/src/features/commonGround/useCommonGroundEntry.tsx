@@ -7,15 +7,15 @@ import { CloudConnectorsHttpClient } from '@/features/cloud/cloudConnectorsClien
 import { commonGroundVersionFromCapabilities } from '@/features/cloud/commonGroundCapability';
 import { dispatchCloudGroupInvitationAccepted } from '@/features/cloud/groupInvitationDeepLink';
 import { memoryVersionFromCapabilities } from '@/features/cloud/memoryCapability';
-import { loadSession } from '@/features/cloud/session';
 import { cloudContactToContact, type UseCloudContactsResult } from '@/features/cloud/useCloudContacts';
-import { connectorCatalog } from '@/features/connectors/connectorsModel';
+import { connectorsClientForAccount } from '@/features/connectors/connectorsClientSelection';
+import { CONNECTORS_SETTINGS_LINK_EVENT, type ConnectorsSettingsTarget } from '@/features/connectors/connectorsSettingsLink';
 import { openDesktopExternalUrl } from '@/lib/desktop';
 import type { Contact, ContactClass, ContactRequest } from '@/kordi-app/types';
 import { CommonGroundContactsRow } from './CommonGroundContactsRow';
 import { CommonGroundLazyPanel } from './CommonGroundLazyPanel';
-import { desktopDeviceAccess } from './deviceAccess';
-import type { CgConnector, CgHost } from './host';
+import { desktopAgentFiles, desktopDeviceAccess } from './deviceAccess';
+import type { CgConnectorsAccess, CgHost } from './host';
 import type { CgPerson } from './types';
 
 type ContactsSelectionHandlers = {
@@ -42,17 +42,9 @@ function contactForPerson(contacts: Contact[], person: CgPerson): Contact {
     ?? cloudContactToContact({ accountId: person.accountId, displayName: person.name, avatarUrl: person.avatarUrl, nodeId: null, createdAt: '' });
 }
 
-async function connectedConnectors(enabled: boolean): Promise<CgConnector[]> {
-  if (!enabled) return [];
-  const session = await loadSession();
-  if (!session?.token) return [];
-  const { connectors } = await new CloudConnectorsHttpClient().list(session.token);
-  return connectors
-    .filter((connector) => connector.status === 'connected')
-    .map((connector) => ({
-      id: connector.provider,
-      name: connectorCatalog.find((definition) => definition.providerId === connector.provider)?.name ?? connector.provider,
-    }));
+/** Opens account settings on the Connectors tab, as a Connectors link in a message does. */
+function openConnectorsSettings(providerId: ConnectorsSettingsTarget['providerId']) {
+  window.dispatchEvent(new CustomEvent<ConnectorsSettingsTarget>(CONNECTORS_SETTINGS_LINK_EVENT, { detail: { tab: 'connectors', providerId } }));
 }
 
 /**
@@ -62,7 +54,7 @@ async function connectedConnectors(enabled: boolean): Promise<CgConnector[]> {
 export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, options: CommonGroundEntryOptions): CommonGroundEntry {
   const [selected, setSelected] = useState(false);
   const authClient = useMemo(() => defaultCloudAuthClient(), []);
-  const { capabilities } = useCloudAuthCapabilitiesState(options.account ? authClient : null, cloudApiBaseUrl());
+  const { capabilities, status: capabilitiesStatus } = useCloudAuthCapabilitiesState(options.account ? authClient : null, cloudApiBaseUrl());
   const available = Boolean(options.account) && commonGroundVersionFromCapabilities(capabilities) !== null;
   const accountId = options.account?.accountId ?? '';
   // The host stays stable across renders; its callbacks read the latest options.
@@ -71,7 +63,20 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
   const displayName = options.account?.displayName;
   const avatarUrl = options.account?.avatarUrl ?? null;
   const memoryAvailable = memoryVersionFromCapabilities(capabilities) !== null;
-  const connectorsAvailable = typeof capabilities?.connectorsVersion === 'number';
+  const defaultAgentName = options.account?.defaultAgent?.displayName ?? undefined;
+  // The same client the Connectors settings use; rows show only when the server serves them.
+  const connectors = useMemo<CgConnectorsAccess | null>(() => {
+    if (!accountId) return null;
+    const selection = connectorsClientForAccount({
+      accountId,
+      http: new CloudConnectorsHttpClient(),
+      capabilities,
+      capabilitiesStatus,
+      defaultAgentName,
+    });
+    if (!selection || selection.servicesStatus !== 'ready') return null;
+    return { client: selection.client, openSettings: openConnectorsSettings };
+  }, [accountId, capabilities, capabilitiesStatus, defaultAgentName]);
 
   const host = useMemo<CgHost>(() => ({
     self: { accountId, name: displayName || 'You', avatarUrl },
@@ -86,10 +91,11 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
       setSelected(false);
       dispatchCloudGroupInvitationAccepted({ groupId: groupSpaceId, groupSpaceId, groupTitle: '' });
     },
-    listConnectors: () => connectedConnectors(connectorsAvailable),
+    connectors,
+    agentFiles: desktopAgentFiles(),
     device: desktopDeviceAccess(),
     openUrl: (url) => { void openDesktopExternalUrl(url); },
-  }), [accountId, displayName, avatarUrl, memoryAvailable, connectorsAvailable]);
+  }), [accountId, displayName, avatarUrl, memoryAvailable, connectors]);
 
   if (!available) return handlers;
   const { onSelectRequest } = handlers;

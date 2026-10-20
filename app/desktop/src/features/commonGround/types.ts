@@ -53,19 +53,26 @@ export type CgOwnerView = {
 export type CgDeviceSource = 'calendar' | 'reminders';
 export type CgDeviceItem = { title: string; date: string | null };
 
+/** An agent instruction or memory file from this Mac; `label` is the path under the home directory. */
+export type CgAgentFile = { label: string; text: string };
+
 export type CgBuildRequest = {
   memory: boolean;
+  /** True when any connector is connected; the server reads events for all of them. */
   connectors: boolean;
   device: Array<{ source: string; items: CgDeviceItem[] }>;
   links: string;
   notes: string;
+  /** Sent only when the Agents on this Mac switch is on. */
+  agents?: CgAgentFile[];
 };
 
-export type CgPersonCard = { person: CgPerson; card: CgTopicLists };
+/** The server sends `relationship` beside `person`; the client folds it into `person`. */
+export type CgPersonCard = { person: CgPerson; card: CgTopicLists; relationship?: CgRelationship };
 
 export type CgPairCode = { code: string; expiresAt: string };
 
-export type CgRecentEntry = { person: CgPerson; score: number | null; headline: string | null; openedAt?: string };
+export type CgRecentEntry = { person: CgPerson; score: number | null; headline: string | null; openedAt?: string; relationship?: CgRelationship };
 
 export type CgGroup = {
   groupSpaceId: string;
@@ -74,6 +81,8 @@ export type CgGroup = {
   memberCount: number;
   createdBy?: CgPerson;
   joined?: boolean;
+  /** The topic the group was started from; null on older servers. */
+  topic?: string | null;
 };
 
 export type CgInvitation = { invitationRef: string; groupSpaceId: string; name: string; from: CgPerson; createdAt: string };
@@ -84,13 +93,26 @@ export type CgRoom = {
   name: string;
   openedByYou: boolean;
   expiresAt: string;
+  /** False once the room has closed; absent on older servers. */
+  open?: boolean;
   members: CgPerson[];
   groups?: CgGroup[];
   invitations?: CgInvitation[];
 };
 
+/** A room the viewer joined and has not left, open or closed. */
+export type CgRoomSummary = {
+  code: string;
+  name: string;
+  open: boolean;
+  memberCount: number;
+  joinedAt: string;
+  lastActivityAt: string;
+  themeCount: number;
+};
+
 export type CgTheme = { label: string; people: CgPerson[] };
-export type CgRankedPerson = { person: CgPerson; score: number; headline: string };
+export type CgRankedPerson = { person: CgPerson; score: number; headline: string; relationship?: CgRelationship };
 export type CgMatchStatus = 'ready' | 'matching' | 'failed';
 
 export type CgResults = {
@@ -114,6 +136,7 @@ export type CgMatch = {
   youBring?: CgTrade[];
   theyBring?: CgTrade[];
   nextStep?: string;
+  relationship?: CgRelationship;
 };
 
 export type CgMeetInput = { title?: string; startAt: string; endAt?: string; location?: string };

@@ -98,16 +98,17 @@ export function CgRow({ lead, title, sub, trailing, onClick, label }: {
     : <div className="cg-row">{body}</div>;
 }
 
-export function CgButton({ children, onClick, disabled, quiet = false, type = 'button', label }: {
+export function CgButton({ children, onClick, disabled, quiet = false, danger = false, type = 'button', label }: {
   children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   quiet?: boolean;
+  danger?: boolean;
   type?: 'button' | 'submit';
   label?: string;
 }) {
   return (
-    <button type={type} className={cn('cg-button', quiet && 'is-quiet')} onClick={onClick} disabled={disabled} aria-label={label}>
+    <button type={type} className={cn('cg-button', quiet && 'is-quiet', danger && 'is-danger')} onClick={onClick} disabled={disabled} aria-label={label}>
       {children}
     </button>
   );
@@ -142,6 +143,11 @@ export function CgProgress({ line }: { line: string }) {
       <span>{line}</span>
     </div>
   );
+}
+
+/** A rounded icon tile for a row, tinted with a `tone-*` colour. */
+export function CgIcon({ children, tone = 'accent' }: { children: ReactNode; tone?: string }) {
+  return <span className={cn('cg-icon', `tone-${tone}`)} aria-hidden="true">{children}</span>;
 }
 
 export function CgNotice({ text }: { text: string | null }) {
