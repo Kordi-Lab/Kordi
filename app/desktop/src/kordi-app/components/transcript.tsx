@@ -620,10 +620,10 @@ function MessageBubbleView({
   const deliveryStatus = primaryMessageStatus(msg);
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage; const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
-  const hasVoice = Boolean(msg.voiceMessage); const hasPlanCard = Boolean(msg.planCard); const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0);
+  const hasVoice = Boolean(msg.voiceMessage); const hasPlanCard = Boolean(msg.planCard); const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0); const planCardOnly = showCompactFooter && hasPlanCard && !hasText && !hasVoice && !((msg.attachments?.length ?? 0) > 0) && !msg.supportContactTyping && !msg.supportContactResponse;
   const hasAttachments = (msg.attachments?.length ?? 0) > 0; const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasOnlyBorderlessMediaAttachments = hasOnlyImageAttachments || (!hasText && !hasVoice && attachmentsAreOnlyMp4Videos(msg.attachments)); const hasMixedImageAttachments = hasText && (msg.attachments ?? []).some((attachment) => attachment.kind === 'image');
   const hasGroupedImageAttachments = hasAttachments && (msg.attachments?.length ?? 0) > 1 && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasDetachedImageGroup = hasGroupedImageAttachments && hasText;
-  const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage); const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus; const hasLinkPreview = (isOwnHumanMessage || isPeerHumanMessage) && hasText && !msg.callActivity && !hasVoice && !hasPlanCard && !hasAttachments && Boolean(standaloneExternalMessageLink(msg.text));
+  const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage); const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus; const hasLinkPreview = (isOwnHumanMessage || isPeerHumanMessage) && hasText && !msg.callActivity && !hasVoice && !hasPlanCard && !hasAttachments && Boolean(standaloneExternalMessageLink(msg.text)); const bareSurface = hasOnlyBorderlessMediaAttachments || planCardOnly;
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !hasPlanCard && !msg.supportContactResponse && !hasLinkPreview && !(/\r?\n/.test(msg.text) || /^\s*(?:`{3,}|#{1,3}\s+|>|[-*+]\s+|\d+\.\s+)/.test(msg.text));
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = selfDisplayName(msg.sender || (isOwnHumanMessage ? 'Me' : avatarKind === 'agent' ? 'Agent' : 'Person'), isOwnHumanMessage);
@@ -794,7 +794,7 @@ function MessageBubbleView({
         <TranscriptMessageSurface data-message-context-menu-anchor="true"
           data-message-media-side={hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined} data-message-mixed-images={hasMixedImageAttachments ? 'true' : undefined}
           data-message-detached-image-group={hasDetachedImageGroup ? 'true' : undefined}
-          attachmentPreview={<AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} />} borderless={hasOnlyBorderlessMediaAttachments || Boolean(standaloneEmojiItem)}
+          attachmentPreview={<AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} />} borderless={bareSurface || Boolean(standaloneEmojiItem)}
           bubbleClassName={bubble} compact={useHumanCompactDensity} detachedImageGroup={hasDetachedImageGroup}
           enter={shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus)} groupedWithPrevious={isGroupedWithPrevious}
           side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'agent'} tail={!isGroupedWithNext}
@@ -811,16 +811,16 @@ function MessageBubbleView({
           'app-message-hover-time-trigger min-w-0',
           hasDetachedImageGroup ? cn('flex flex-col gap-2', isOwnHumanMessage ? 'items-end' : 'items-start') : '',
           hasGroupedImageAttachments ? (isOwnHumanMessage ? 'mr-4' : isPeerHumanMessage ? 'ml-4' : '') : '',
-          hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup || standaloneEmojiItem ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
+          bareSurface || hasDetachedImageGroup || standaloneEmojiItem ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
           isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
           isOwnHumanMessage
-            ? hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup || standaloneEmojiItem
+            ? bareSurface || hasDetachedImageGroup || standaloneEmojiItem
               ? 'w-fit max-w-[31rem] p-0'
               : useHumanCompactDensity
                 ? cn('app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
                 : cn('w-fit px-4 py-2.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
-              ? hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup || standaloneEmojiItem
+              ? bareSurface || hasDetachedImageGroup || standaloneEmojiItem
                 ? 'w-fit max-w-[31rem] p-0'
                 : useHumanCompactDensity
                   ? cn(
@@ -834,7 +834,7 @@ function MessageBubbleView({
                     humanMessageBubbleShapeClass('peer'),
                   )
                : hasDetachedImageGroup ? 'w-fit max-w-[31rem] p-0' : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyBorderlessMediaAttachments ? 'pl-2.5 py-1.5' : '',
-          !hasOnlyBorderlessMediaAttachments && !hasDetachedImageGroup && !standaloneEmojiItem && bubble,
+          !bareSurface && !hasDetachedImageGroup && !standaloneEmojiItem && bubble,
         )}
         >
         {messageSurfaceContent}
