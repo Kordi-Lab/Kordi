@@ -41,6 +41,7 @@ export function useCommonGround(store: CommonGroundStore) {
       if (!stopped) timer = setTimeout(loop, next ?? IDLE_CHECK_MS);
     };
     if (!store.getSnapshot().loaded) void store.loadHome();
+    else if (store.top().name === 'home') void store.loadRooms();
     if (store.top().name !== 'home') void store.loadScreen();
     timer = setTimeout(loop, IDLE_CHECK_MS);
     return () => {

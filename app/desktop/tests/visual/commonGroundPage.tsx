@@ -24,7 +24,7 @@ const fx = commonGroundFixtures(theme);
 const ROUTES: Record<string, () => unknown> = {
   'GET card': () => (screen === 'build' ? { ...fx.owner, card: null } : fx.owner),
   'GET recent': () => fx.recent,
-  'POST pairings/code': () => ({ code: '86PV-D68G', expiresAt: new Date(Date.now() + 120_000).toISOString() }),
+  'GET rooms': () => fx.rooms,
   'GET rooms/4821': () => fx.room,
   'POST rooms/4821/results': () => fx.results,
   'GET people/acct_hana/match': () => fx.match,
@@ -56,7 +56,14 @@ const host: CgHost = {
   acceptRequest: async () => undefined,
   contactsChanged: () => undefined,
   openGroup: () => undefined,
-  listConnectors: async () => [{ id: 'gmail', name: 'Gmail' }, { id: 'github', name: 'GitHub' }],
+  connectors: {
+    client: {
+      list: async () => ({ states: fx.connectors, agents: [] }),
+      disconnect: async () => undefined,
+    },
+    openSettings: () => undefined,
+  },
+  agentFiles: async () => fx.agentFiles,
   device: {
     status: async () => ({ calendar: 'granted', reminders: 'not_determined' }),
     request: async () => ({ calendar: 'granted', reminders: 'granted' }),

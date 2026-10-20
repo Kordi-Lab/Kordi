@@ -1,4 +1,6 @@
-import type { CgDeviceItem, CgDeviceSource, CgPerson } from './types';
+import type { ConnectorsClient } from '@/features/connectors/connectorsClient';
+import type { ConnectorsLinkProviderId } from '@/features/connectors/connectorsSettingsLink';
+import type { CgAgentFile, CgDeviceItem, CgDeviceSource, CgPerson } from './types';
 
 export type CgDeviceStatus = 'granted' | 'denied' | 'not_determined' | 'full_disk_access_missing' | 'unavailable';
 export type CgDeviceStatuses = Record<CgDeviceSource, CgDeviceStatus>;
@@ -10,7 +12,12 @@ export type CgDeviceAccess = {
   titles: (source: CgDeviceSource) => Promise<CgDeviceItem[]>;
 };
 
-export type CgConnector = { id: string; name: string };
+/** The account's connectors, through the Connectors client. */
+export type CgConnectorsAccess = {
+  client: Pick<ConnectorsClient, 'list' | 'disconnect'>;
+  /** Opens account settings on the Connectors tab with this provider. */
+  openSettings: (providerId: ConnectorsLinkProviderId) => void;
+};
 
 /** What the Common ground page needs from the app around it. */
 export type CgHost = {
@@ -20,7 +27,10 @@ export type CgHost = {
   acceptRequest: (requestId: string) => Promise<void>;
   contactsChanged: () => void;
   openGroup: (groupSpaceId: string) => void;
-  listConnectors: () => Promise<CgConnector[]>;
+  /** Null when this build has no Connectors client for the account. */
+  connectors: CgConnectorsAccess | null;
+  /** Agent instruction and memory files on this Mac; null elsewhere. */
+  agentFiles: (() => Promise<CgAgentFile[]>) | null;
   device: CgDeviceAccess | null;
   openUrl: (url: string) => void;
 };
