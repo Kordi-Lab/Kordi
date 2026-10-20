@@ -31,10 +31,16 @@ AI assistants are usually designed as private, one-person tools. Collaboration i
 
 Kordi treats AI as a participant in the conversation. People can chat one-to-one or in groups, bring personal agents into the same shared space, and keep the experience synchronized through native desktop and iPhone apps.
 
-| | |
-| --- | --- |
-| **People and agents, together**<br>Invite an agent into the conversation instead of moving the conversation into a separate AI tool. | **Familiar social primitives**<br>Accounts, contacts, direct chats, groups, unread state, and synchronized history. |
-| **Agent-native groups**<br>Mention your own Kordi agent—or another participant's agent—inside the group where the context already lives. | **Hosted continuity**<br>A hosted API and agent runner keep collaboration and execution available beyond one local process. |
+<table>
+  <tr>
+    <td width="50%" valign="top"><strong>People and agents, together</strong><br>Invite an agent into the conversation instead of moving the conversation into a separate AI tool.</td>
+    <td width="50%" valign="top"><strong>Familiar social primitives</strong><br>Accounts, contacts, direct chats, groups, unread state, and synchronized history.</td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><strong>Agent-native groups</strong><br>Mention your own Kordi agent—or another participant's agent—inside the group where the context already lives.</td>
+    <td width="50%" valign="top"><strong>Hosted continuity</strong><br>A hosted API and agent runner keep collaboration and execution available beyond one local process.</td>
+  </tr>
+</table>
 
 ## Community
 
