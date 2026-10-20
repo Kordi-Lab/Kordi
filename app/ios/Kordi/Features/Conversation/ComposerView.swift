@@ -175,6 +175,9 @@ struct ComposerView: View {
     @Binding var isFocused: Bool
     @Binding var isExpressivePickerPresented: Bool
     @Binding var isAgentModelPickerPresented: Bool
+    @Binding var agentModelPickerPage: AgentModelPickerPage
+    /// How far the field's top edge sits above the composer's bottom, for placing the effort panel.
+    @Binding var agentModelFieldOffset: CGFloat
     let voiceHoldPresentation: VoiceHoldToTalkPresentation
     let conversation: ConversationSummary
     let mentionTargets: [ComposerMentionTarget]
@@ -193,8 +196,9 @@ struct ComposerView: View {
     @State private var textSelection = ComposerTextSelection(location: 0, length: 0)
     @State private var keyboardSurfaceHeight: CGFloat = 0
     @State private var composerContentHeight: CGFloat = 0
-    @State private var modelPickerPage: AgentModelPickerPage = .models
-    @State private var modelPillFrame: CGRect = .zero
+    @State private var restoresFocusAfterModelPicker = false
+    @State private var isMessageFieldExpanded = false
+    @State private var fieldOffsetFromBottom: CGFloat = 0
     @State private var messageEditorHeight: CGFloat = 44
     @State private var isDraftPanePresented = false
     @State private var keyboardFocusRequest = 0
@@ -222,7 +226,6 @@ struct ComposerView: View {
 
     private var composerBody: some View {
         composerContainer
-            .coordinateSpace(name: "composerControls")
             .overlay(alignment: .bottomTrailing) {
                 VoiceRecordingGestureCapture(
                     isEnabled: canCaptureHoldToTalk,
@@ -244,13 +247,6 @@ struct ComposerView: View {
             }
             .padding(.top, 9)
             .padding(.bottom, 9)
-            .background {
-                if #available(iOS 26.0, *) {
-                    Color.clear
-                } else {
-                    Rectangle().fill(.bar)
-                }
-            }
             .animation(.snappy(duration: 0.2), value: attachments.count)
             .animation(.snappy(duration: 0.2), value: replySource?.sourceMessageId)
             .animation(.snappy(duration: 0.2), value: editingMessage?.id)
@@ -352,6 +348,7 @@ struct ComposerView: View {
 
             inputSurfaceAssembly
         }
+        .coordinateSpace(.named(Self.composerSpace))
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.height
         } action: { height in
@@ -361,19 +358,7 @@ struct ComposerView: View {
 
     private var floatingPanelLayer: some View {
         ZStack(alignment: .bottom) {
-            if isAgentModelPickerPresented {
-                AgentModelPicker(
-                    conversation: conversation,
-                    onDismiss: dismissAgentModelPicker,
-                    page: $modelPickerPage
-                )
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.leading, 10)
-                .padding(.trailing, sendButtonDiameter + 20)
-                .offset(y: -max(44, composerContentHeight - modelPillFrame.minY + 4))
-                .transition(mentionPickerTransition)
-                .zIndex(10)
-            } else if showsMentionPicker {
+            if showsMentionPicker {
                 mentionPicker
                     .padding(.horizontal, 10)
                     .offset(y: -composerContentHeight - 8)
@@ -383,7 +368,6 @@ struct ComposerView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .animation(inputSurfaceAnimation, value: showsMentionPicker)
-        .animation(inputSurfaceAnimation, value: isAgentModelPickerPresented)
     }
 
     private var inputSurfaceAssembly: some View {
@@ -401,6 +385,34 @@ struct ComposerView: View {
                 newValue != .hold && voiceHoldPresentation.stage == .recording
             }
             .animation(voiceRecordingTransitionAnimation, value: showsVoiceDraftPill)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.frame(in: .named(Self.composerSpace)).minY
+            } action: { minY in
+                fieldOffsetFromBottom = composerContentHeight + 9 - minY
+                if isAgentModelPickerPresented { agentModelFieldOffset = fieldOffsetFromBottom }
+            }
+            // One explicit transaction drives the field height, the composer's position
+            // in the conversation overlay and the transcript inset together.
+            .onChange(of: wantsExpandedMessageField, initial: true) { _, expanded in
+                guard expanded != isMessageFieldExpanded else { return }
+                if reduceMotion {
+                    isMessageFieldExpanded = expanded
+                } else {
+                    withAnimation(.easeOut(duration: 0.18)) { isMessageFieldExpanded = expanded }
+                }
+            }
+            // The system keyboard cannot sit under the picker's blur, so it steps
+            // aside while the picker is open and returns when it closes.
+            .onChange(of: isAgentModelPickerPresented) { _, isPresented in
+                if isPresented {
+                    agentModelFieldOffset = fieldOffsetFromBottom
+                    restoresFocusAfterModelPicker = isFocused
+                    if isFocused { isFocused = false }
+                } else if restoresFocusAfterModelPicker {
+                    restoresFocusAfterModelPicker = false
+                    isFocused = true
+                }
+            }
     }
 
     private var holdToTalkHint: some View {
@@ -514,17 +526,40 @@ struct ComposerView: View {
                     .animation(messageFieldAnimation) { content in
                         content.frame(height: messageFieldHeight, alignment: .bottom)
                     }
+                    .overlay(alignment: .bottomTrailing) {
+                        if !isMessageFieldExpanded, editingMessage == nil && conversation.subsessionId == nil {
+                            expressivePickerButton
+                                .padding(.trailing, 8 + sendButtonDiameter)
+                                .padding(.bottom, 3)
+                                // Fades in once the row's own emoji button has mostly faded out.
+                                .transition(.asymmetric(
+                                    insertion: .opacity.animation(reduceMotion ? nil : .easeOut(duration: 0.1).delay(0.08)),
+                                    removal: .opacity.animation(reduceMotion ? nil : .easeOut(duration: 0.08))))
+                        }
+                    }
                     .overlay(alignment: .topTrailing) {
                         if showsDraftPaneButton { draftPaneButton }
                     }
-                HStack(spacing: 2) {
-                    if editingMessage == nil && conversation.subsessionId == nil { expressivePickerButton }
-                    Spacer(minLength: 0)
-                    if editingMessage == nil && model.canChangeRuntimeRouting(for: conversation) { modelEffortPill }
-                    sendButton
+                if isMessageFieldExpanded {
+                    HStack(alignment: .center, spacing: 0) {
+                        if editingMessage == nil && conversation.subsessionId == nil { expressivePickerButton }
+                        Spacer(minLength: 0)
+                        if editingMessage == nil && model.canChangeRuntimeRouting(for: conversation) {
+                            modelEffortPill.padding(.trailing, 12)
+                        }
+                        Color.clear.frame(width: sendButtonDiameter)
+                    }
+                    .frame(height: sendButtonDiameter)
+                    .padding([.horizontal, .bottom], 8)
+                    .transition(.opacity)
                 }
-                .padding(.leading, 6)
-                .padding(.bottom, 3)
+            }
+            // One send button glides between the one-line and two-row layouts
+            // instead of cross-fading two copies.
+            .overlay(alignment: .bottomTrailing) {
+                sendButton
+                    .padding(.trailing, 8)
+                    .padding(.bottom, isMessageFieldExpanded ? 8 : 3)
             }
         }
     }
@@ -595,7 +630,10 @@ struct ComposerView: View {
             onRequestExpressiveMediaImport: requestExpressiveMediaImport,
             measuredHeight: $messageEditorHeight,
             draftButtonThreshold: draftPaneExpansionThreshold,
-            trailingExclusionWidth: showsDraftPaneButton ? 44 : 0,
+            trailingExclusionWidth: isMessageFieldExpanded
+                ? (showsDraftPaneButton ? 44 : 0)
+                : ComposerTextExclusionLayout.defaultTrailingWidth
+                    + (showsStopBesideSend ? ComposerTextExclusionLayout.stopControlWidth : 0),
             accessibilityLabel: editingMessage == nil
                 ? "Message \(destinationName)"
                 : "Edit message"
@@ -630,6 +668,13 @@ struct ComposerView: View {
         // The sent message and empty composer must share the same final layout.
         reduceMotion || text.isEmpty ? nil : .smooth(duration: 0.18)
     }
+
+    /// The model row joins the field while typing or choosing a model; idle it stays one line.
+    private var wantsExpandedMessageField: Bool {
+        isFocused || !text.isEmpty || isAgentModelPickerPresented || restoresFocusAfterModelPicker
+    }
+
+    private static let composerSpace = "composer"
 
     private var resolvedMessageEditorHeight: CGFloat {
         ComposerTextViewLayout.resolvedHeight(
@@ -1128,45 +1173,44 @@ struct ComposerView: View {
         let unavailable = route.defaultAuthChoice?.nonEmpty.map { choice in
             !model.authenticationSnapshots(for: route.defaultAuthProvider ?? "").contains { $0.authChoice == choice }
         } ?? false
-        return HStack(spacing: 0) {
+        return HStack(alignment: .center, spacing: 0) {
             Button {
                 showAgentModelPicker()
             } label: {
-                Text(unavailable ? "Account unavailable" : AgentModelPresentation.name(route.defaultModel ?? ""))
-                    .font(.caption2.weight(.medium)).lineLimit(1)
+                Text(unavailable ? "Account unavailable" : AgentModelPresentation.shortName(route.defaultModel ?? ""))
+                    .font(.subheadline.weight(.medium)).foregroundStyle(.primary).lineLimit(1)
                     .truncationMode(.middle)
-                    .padding(.leading, 9).padding(.trailing, 4).frame(minHeight: 32)
+                    .contentTransition(reduceMotion ? .identity : .opacity)
+                    .padding(.trailing, 2).frame(height: sendButtonDiameter)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel("Select model")
             .accessibilityValue(unavailable ? "Account unavailable" : AgentModelPresentation.name(route.defaultModel ?? ""))
             .accessibilityIdentifier("composer-model-picker")
             Button {
                 dismissExpressivePicker()
-                if isAgentModelPickerPresented && modelPickerPage == .effort {
+                if isAgentModelPickerPresented && agentModelPickerPage == .effort {
                     dismissAgentModelPicker()
                 } else {
-                    modelPickerPage = .effort
+                    agentModelPickerPage = .effort
                     isAgentModelPickerPresented = true
                 }
             } label: {
-                HStack(spacing: 3) {
-                    Text(AgentModelPresentation.effort(route.thinking ?? "default")).lineLimit(1)
-                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
-                }
-                .font(.caption2).foregroundStyle(.secondary)
-                .padding(.leading, 4).padding(.trailing, 8).frame(minHeight: 32)
+                Text(AgentModelPresentation.effort(route.thinking ?? "default")).lineLimit(1)
+                    .contentTransition(reduceMotion ? .identity : .opacity)
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .padding(.leading, 2).frame(height: sendButtonDiameter)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel("Adjust effort")
             .accessibilityValue(AgentModelPresentation.effort(route.thinking ?? "default"))
             .accessibilityIdentifier("composer-effort-picker")
         }
         .buttonStyle(.plain)
-        .fixedSize(horizontal: false, vertical: true)
-        .onGeometryChange(for: CGRect.self) { proxy in
-            proxy.frame(in: .named("composerControls"))
-        } action: { frame in
-            modelPillFrame = frame
-        }
+        .frame(height: sendButtonDiameter)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: route.defaultModel)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: route.thinking)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: unavailable)
     }
 
     private func dismissAgentModelPicker() {
@@ -1174,7 +1218,7 @@ struct ComposerView: View {
     }
 
     private func showAgentModelPicker() {
-        modelPickerPage = .models
+        agentModelPickerPage = .models
         dismissExpressivePicker()
         isAgentModelPickerPresented = true
     }

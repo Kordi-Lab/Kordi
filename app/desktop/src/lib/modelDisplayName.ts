@@ -12,6 +12,12 @@ export function modelDisplayName(value: string, label?: string | null): string {
     .join(' ').replace(/^GPT /, 'GPT-');
 }
 
+/** Composer label: the display name without a leading "GPT-" ("GPT-6.1 Sol" → "6.1 Sol"). */
+export function modelShortName(value: string, label?: string | null): string {
+  const name = modelDisplayName(value, label);
+  return name.replace(/^GPT-(?=\S)/, '');
+}
+
 export function modelEffortLabel(value: string): string {
   if (!value || value === 'auto' || value === 'default' || value === 'thinking') return 'Default';
   if (['xhigh', 'extrahigh', 'extra_high'].includes(value.toLowerCase())) return 'Extra high';

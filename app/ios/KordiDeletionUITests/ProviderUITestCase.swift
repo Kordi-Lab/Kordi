@@ -65,9 +65,17 @@ class ProviderUITestCase: XCTestCase {
     }
 
     func capture(_ name: String, app: XCUIApplication) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+        // Let panel and keyboard transitions settle so the capture shows the final layout.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+        // Optional local copy for design review, set with TEST_RUNNER_KORDI_UI_CAPTURE_DIR.
+        if let directory = ProcessInfo.processInfo.environment["KORDI_UI_CAPTURE_DIR"], !directory.isEmpty {
+            let file = name.lowercased().replacingOccurrences(of: " ", with: "-") + ".png"
+            try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: directory).appendingPathComponent(file))
+        }
     }
 }

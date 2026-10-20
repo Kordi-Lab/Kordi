@@ -1,6 +1,6 @@
 use crate::types::ThinkingLevel;
 
-pub const DEFAULT_OPENAI_MODEL_ID: &str = "gpt-5.6-sol";
+pub const DEFAULT_OPENAI_MODEL_ID: &str = "gpt-6.1-sol";
 
 pub fn parse_model_arg(
     provider: Option<&str>,
@@ -45,9 +45,9 @@ mod tests {
     use super::parse_model_arg;
 
     #[test]
-    fn openai_default_model_is_gpt_56_sol() {
-        assert_eq!(parse_model_arg(Some("openai"), None).1, "gpt-5.6-sol");
-        assert_eq!(parse_model_arg(Some("openai-codex"), None).1, "gpt-5.6-sol");
+    fn openai_default_model_is_gpt_61_sol() {
+        assert_eq!(parse_model_arg(Some("openai"), None).1, "gpt-6.1-sol");
+        assert_eq!(parse_model_arg(Some("openai-codex"), None).1, "gpt-6.1-sol");
     }
 
     #[test]

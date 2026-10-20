@@ -103,7 +103,7 @@ test('composer model controls offer sign-in instead of blank controls when no ac
   assert.doesNotMatch(markup, />OpenAI</);
 
   const withoutSignIn = renderToStaticMarkup(createElement(ComposerModelControls, props));
-  assert.match(withoutSignIn, />GPT-5.6 Sol</);
+  assert.match(withoutSignIn, />5\.6 Sol</);
   assert.match(withoutSignIn, />Medium</);
   assert.doesNotMatch(withoutSignIn, />-<\/span>/);
 });

@@ -2,9 +2,9 @@
 
 `omp-provider-catalog.json` is a pinned, checked-in snapshot of the oh-my-pi (OMP) provider
 catalog from `@oh-my-pi/pi-catalog@18.2.11`. It lists every provider OMP bundles, each with
-its id, display name, default model, endpoint, auth method, login policy, and text-model IDs, so the
-desktop app, iOS app, and offline previews can load the full provider list without a backend
-or network call. It also lists login-only providers that OMP omits from its bundled
+its id, display name, default model, endpoint, auth method, login policy, text-model IDs, and
+per-model thinking efforts, so the desktop app, iOS app, and offline previews can load the full
+provider list without a backend or network call. It also lists login-only providers that OMP omits from its bundled
 model-provider list but that add accounts for a listed provider (currently
 `openai-codex-device`, which stores its credential as `openai-codex`); these rows have no
 models.
@@ -45,6 +45,19 @@ Kordi clients. Kordi's own local provider definitions should not redeclare or ov
 that — they only add Kordi-specific concerns on top: saved accounts (credentials, profiles) and
 interactive sign-in adapters (OAuth flows, paste-key UI) that drive the auth method this catalog
 already describes.
+
+## Model thinking
+
+Thinking efforts are stored once per distinct setting. The top-level `thinkingProfiles` maps a
+profile id (`p1`, `p2`, ..., assigned by first appearance in provider then model order, so
+regeneration is stable) to `{ "efforts": string[], "defaultLevel"?: string }`. Each provider's
+`modelThinking` maps a model ID to one of those profile ids. `efforts` lists the efforts OMP
+supports for the model (least to most intensive, from `minimal`, `low`, `medium`, `high`,
+`xhigh`, `max`; never empty), read with `getSupportedEfforts()` from the bundled model metadata;
+`defaultLevel` is OMP's default effort when the model declares one. Only models in `models`
+that have a controllable effort appear; a model absent from `modelThinking` has no effort
+control. `off` is never listed. Login-only rows have an empty object. `models` is unchanged, so
+readers that ignore these fields keep working.
 
 ## Login policy
 

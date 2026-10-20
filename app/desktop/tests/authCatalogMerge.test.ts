@@ -10,6 +10,7 @@ import {
   withKnownLoginMethods,
   type OmpCatalog,
 } from '../src/kordi-app/auth/ompCatalog';
+import { orderChatGptModels } from '../src/features/cloud/chatgptModelCatalog';
 import { BUNDLED_CATALOG_FALLBACK_NOTICE, CATALOG_UNAVAILABLE_NOTICE, loadAuthOmpCatalog } from '../src/kordi-app/auth/useAuthOmpCatalog';
 import type { CloudProviderAuthSnapshot } from '../src/features/cloud/cloudAgentRuntimeTypes';
 import type { DesktopAuthOption, DesktopAuthProvider, DesktopAuthState } from '../src/kordi-app/types';
@@ -85,8 +86,9 @@ test('one OpenAI row spans ChatGPT sign-in and API keys with per-method OMP mode
   assert.equal(openAi?.label, 'OpenAI');
   assert.deepEqual(openAi?.methods.map((method) => [method.mode, method.providerId]), [['oauth', 'openai-codex'], ['api-key', 'openai']]);
   assert.deepEqual(openAi?.methods.map((method) => method.options.map((option) => option.label)), [['Work'], ['Billing key']]);
-  const codexModels = pinnedPayload.providers.find((entry) => entry.id === 'openai-codex')?.models;
-  const apiModels = pinnedPayload.providers.find((entry) => entry.id === 'openai')?.models;
+  const pinnedModels = (id: string) => orderChatGptModels(['gpt-6.1-sol', ...pinnedPayload.providers.find((entry) => entry.id === id)?.models ?? []]);
+  const codexModels = pinnedModels('openai-codex');
+  const apiModels = pinnedModels('openai');
   assert.deepEqual(openAi?.methods[0].modelIds, codexModels);
   assert.deepEqual(openAi?.methods[1].modelIds, apiModels);
   assert.notDeepEqual(codexModels, apiModels);

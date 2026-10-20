@@ -10,7 +10,8 @@ for (const width of [1100, 500, 360]) {
       await page.getByRole('button', { name: 'Adjust effort, current Medium' }).click();
       const menu = page.getByRole('dialog', { name: 'Thinking effort' });
       await expect(menu).toBeVisible();
-      expect((await menu.boundingBox())!.width).toBe(232);
+      // Measure once the enter animation has settled its scale.
+      await expect.poll(async () => (await menu.boundingBox())!.width).toBe(232);
       await expect(menu).not.toContainText('More effort');
       const slider = menu.getByRole('slider', { name: 'Thinking effort' });
       await slider.focus(); await slider.press('End');

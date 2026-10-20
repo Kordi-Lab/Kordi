@@ -247,10 +247,15 @@ struct ModelReleaseTests {
     @Test func releasedModelsSortFirstAndNormalizeThinking() {
         #expect(AgentModelPicker.modelNamesByProvider["openai"]?.contains("gpt-6-astra") == true)
         #expect(AgentModelPicker.modelNamesByProvider["anthropic"]?.contains("claude-fable-5-1") == true)
-        #expect(AgentModelPicker.modelNamesByProvider["openai"]?.prefix(3) == ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"])
-        #expect(AgentModelPicker.modelNamesByProvider["openai"]?.first == "gpt-6-astra")
+        #expect(AgentModelPicker.modelNamesByProvider["openai"]?.prefix(7) == [
+            "gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+        ])
+        #expect(AgentModelPicker.modelNamesByProvider["openai"]?.first == "gpt-6.1-sol")
+        #expect(AgentModelPicker.modelNamesByProvider["openai"]?.contains(where: { $0.contains("daybreak") }) == false)
+        #expect(ProviderAuthenticationDefinition.all.first(where: { $0.id == "openai" })?.defaultModel == "gpt-6.1-sol")
         #expect(AgentModelPicker.modelNamesByProvider["anthropic"]?.first == "claude-fable-5-1")
-        for route in ["gpt-6-astra", "openai/gpt-6-astra", "openai-codex/gpt-6-astra", "openai/gpt-6-sol", "openai-codex/gpt-6-luna"] {
+        for route in ["gpt-6-astra", "openai/gpt-6-astra", "openai-codex/gpt-6-astra", "openai/gpt-6-sol", "openai-codex/gpt-6-luna",
+                      "openai-codex/gpt-6.1-sol"] {
             #expect(AgentModelPicker.thinkingLevels(for: route) == ["default", "low", "medium", "high", "xhigh", "max"])
             #expect(AgentModelPicker.normalizedThinking("off", for: route) == "low")
             #expect(AgentModelPicker.normalizedThinking("minimal", for: route) == "low")
@@ -260,7 +265,20 @@ struct ModelReleaseTests {
         #expect(!AgentModelPicker.thinkingLevels(for: fable).contains("off"))
         #expect(AgentModelPicker.normalizedThinking("off", for: fable) == "default")
         #expect(AgentModelPicker.normalizedThinking("xhigh", for: fable) == "xhigh")
-        #expect(AgentModelPicker.normalizedThinking("off", for: "openai/gpt-5.6-sol") == "off")
+        #expect(AgentModelPicker.normalizedThinking("off", for: "openai/gpt-5.6-sol") == "default")
+    }
+
+    @Test func effortStepsFollowTheOMPCatalog() {
+        #expect(AgentModelPicker.thinkingLevels(for: "openai-codex/gpt-5.5") == ["default", "low", "medium", "high", "xhigh"])
+        #expect(AgentModelPicker.thinkingLevels(for: "anthropic/claude-fable-5-1") == ["default", "low", "medium", "high", "xhigh", "max"])
+        #expect(AgentModelPicker.thinkingLevels(for: "anthropic/claude-haiku-4-5")
+            == ["default", "minimal", "low", "medium", "high", "xhigh"])
+        let thinking = ["gpt-6-sol": OMPModelThinking(efforts: ["low", "high"], defaultLevel: nil)]
+        let catalog = [OMPProviderCatalogEntry(id: "openai", models: ["gpt-6-sol"], modelThinking: thinking)]
+        #expect(AgentModelPicker.thinkingLevels(for: "openai-codex/gpt-6.1-sol", catalog: catalog) == ["default", "low", "high"])
+        #expect(AgentModelPicker.normalizedThinking("max", for: "openai-codex/gpt-6.1-sol", catalog: catalog) == "low")
+        #expect(AgentModelPicker.thinkingLevels(for: "openai/gpt-5.4", catalog: [])
+            == ["off", "default", "minimal", "low", "medium", "high", "xhigh", "max"])
     }
 }
 
@@ -268,10 +286,18 @@ struct ModelReleaseTests {
 struct ModelPresentationTests {
     @Test func readableNamesPreserveCustomModels() {
         #expect(AgentModelPresentation.name("openai/gpt-6-astra") == "GPT-6 Astra")
+        #expect(AgentModelPresentation.name("openai-codex/gpt-6.1-sol") == "GPT-6.1 Sol")
         #expect(AgentModelPresentation.name("anthropic/claude-opus-4-8") == "Claude Opus 4.8")
         #expect(AgentModelPresentation.name("openrouter/anthropic/claude-fable-5-1") == "Claude Fable 5.1")
         #expect(AgentModelPresentation.name("custom/research-model") == "research-model")
         #expect(AgentModelPresentation.effort("xhigh") == "Extra high")
         #expect(AgentModelPresentation.effort("default") == "Default")
+    }
+
+    @Test func shortNamesDropOnlyTheGPTPrefix() {
+        #expect(AgentModelPresentation.shortName("openai-codex/gpt-6.1-sol") == "6.1 Sol")
+        #expect(AgentModelPresentation.shortName("openai/gpt-5.4-mini") == "5.4 Mini")
+        #expect(AgentModelPresentation.shortName("anthropic/claude-fable-5-1") == "Claude Fable 5.1")
+        #expect(AgentModelPresentation.shortName("custom/research-model") == "research-model")
     }
 }

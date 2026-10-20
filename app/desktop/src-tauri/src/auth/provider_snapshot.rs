@@ -210,7 +210,7 @@ mod tests {
         );
         assert_eq!(
             cloud_provider_auth_snapshot_model_for("openai-codex", None),
-            "gpt-5.6-sol"
+            "gpt-6.1-sol"
         );
     }
 }

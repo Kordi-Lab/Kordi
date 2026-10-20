@@ -60,7 +60,7 @@ struct ProviderAuthenticationDefinition: Identifiable, Hashable {
             systemImage: "circle.hexagongrid.fill",
             runtime: .cloudAPI,
             baseURL: "https://api.openai.com/v1",
-            defaultModel: "gpt-5.6-sol"
+            defaultModel: "gpt-6.1-sol"
         ),
         .init(
             id: "anthropic",

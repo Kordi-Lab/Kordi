@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { getBundledModels, getSupportedEfforts, type GeneratedProvider } from '@oh-my-pi/pi-catalog';
 import { bundledProviderCatalog } from './live-server';
 import type { ProviderLoginPolicy } from './login-policy';
 
@@ -22,12 +23,22 @@ export type OmpCatalogProvider = {
   /** OMP login policy; see login-policy.ts for field meanings. */
   login: ProviderLoginPolicy;
   models: string[];
+  /** Thinking profile id (a `thinkingProfiles` key) by model id; models without a controllable effort are absent. */
+  modelThinking: Record<string, string>;
+};
+
+export type OmpThinkingProfile = {
+  /** Supported efforts, least to most intensive. Never empty. */
+  efforts: string[];
+  defaultLevel?: string;
 };
 
 export type OmpCatalogOutput = {
   source: '@oh-my-pi/pi-catalog';
   version: string;
   generatedBy: 'experiments/omp-provider-routing/export-catalog.ts';
+  /** Distinct thinking settings shared by models, ids assigned by first appearance. */
+  thinkingProfiles: Record<string, OmpThinkingProfile>;
   providers: OmpCatalogProvider[];
 };
 
@@ -108,6 +119,45 @@ function sanitizeLoginPolicy(login: ProviderLoginPolicy, fallbackId: string): Pr
   };
 }
 
+/** Thinking settings for each listed model that has a controllable effort, from the bundled model metadata. */
+function modelThinkingFor(providerId: string, models: string[]): Record<string, OmpThinkingProfile> {
+  const listed = new Set(models);
+  const result: Record<string, OmpThinkingProfile> = {};
+  for (const model of getBundledModels(providerId as GeneratedProvider)) {
+    if (!listed.has(model.id)) continue;
+    const efforts = getSupportedEfforts(model);
+    if (efforts.length === 0) continue;
+    const defaultLevel = model.thinking?.defaultLevel;
+    result[model.id] = defaultLevel ? { efforts: [...efforts], defaultLevel } : { efforts: [...efforts] };
+  }
+  return result;
+}
+
+/**
+ * Replaces each provider's per-model thinking settings with ids into one shared
+ * profile table. Ids follow first appearance in provider, then model, order, so
+ * regeneration is stable.
+ */
+function withThinkingProfiles(rows: Array<Omit<OmpCatalogProvider, 'modelThinking'> & { thinking: Record<string, OmpThinkingProfile> }>) {
+  const thinkingProfiles: Record<string, OmpThinkingProfile> = {};
+  const idsByKey = new Map<string, string>();
+  const providers: OmpCatalogProvider[] = rows.map(({ thinking, ...row }) => {
+    const modelThinking: Record<string, string> = {};
+    for (const [modelId, profile] of Object.entries(thinking)) {
+      const key = JSON.stringify(profile);
+      let id = idsByKey.get(key);
+      if (!id) {
+        id = `p${idsByKey.size + 1}`;
+        idsByKey.set(key, id);
+        thinkingProfiles[id] = profile;
+      }
+      modelThinking[modelId] = id;
+    }
+    return { ...row, modelThinking };
+  });
+  return { thinkingProfiles, providers };
+}
+
 /** Reads the pinned `@oh-my-pi/pi-catalog` version from this package's installed node_modules. */
 export async function pinnedCatalogVersion(): Promise<string> {
   const pinnedCatalogPackageJsonPath = path.join(import.meta.dir, 'node_modules/@oh-my-pi/pi-catalog/package.json');
@@ -123,7 +173,7 @@ export async function pinnedCatalogVersion(): Promise<string> {
 export async function buildCatalogOutput(): Promise<OmpCatalogOutput> {
   const version = await pinnedCatalogVersion();
 
-  const providers: OmpCatalogProvider[] = bundledProviderCatalog()
+  const rows = bundledProviderCatalog()
     .map((provider) => {
       const name = sanitizeRequiredText(provider.auth.name, provider.id);
       return {
@@ -143,14 +193,17 @@ export async function buildCatalogOutput(): Promise<OmpCatalogOutput> {
         },
         login: sanitizeLoginPolicy(provider.login, provider.id),
         models: provider.models,
+        thinking: modelThinkingFor(provider.id, provider.models),
       };
     })
     .sort((a, b) => a.id.localeCompare(b.id));
+  const { thinkingProfiles, providers } = withThinkingProfiles(rows);
 
   return {
     source: '@oh-my-pi/pi-catalog',
     version,
     generatedBy: 'experiments/omp-provider-routing/export-catalog.ts',
+    thinkingProfiles,
     providers,
   };
 }

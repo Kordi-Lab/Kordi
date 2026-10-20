@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, X } from 'lucide-react';
-import { modelDisplayName, modelEffortLabel } from '@/lib/modelDisplayName';
+import { Check, ChevronLeft, ChevronRight, RotateCcw, X } from 'lucide-react';
+import { modelDisplayName, modelEffortLabel, modelShortName } from '@/lib/modelDisplayName';
 import { cn } from '@/lib/utils';
 import { composerThinkingLevelsIncludingCurrent } from './composerThinking';
 import {
@@ -45,6 +45,7 @@ export function ModelEffortPicker({ selection, providerOptions, modelOptions, on
   const resolved = resolveComposerModelSelection({ selection, providerOptions, modelOptions });
   const account = resolved.selectedProviderOption;
   const name = modelDisplayName(selection.model, resolved.selectedModelOption?.label);
+  const shortName = modelShortName(selection.model, resolved.selectedModelOption?.label);
   const levels = composerThinkingLevelsIncludingCurrent(
     resolved.selectedModelOption?.thinkingLevels ?? ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], selection.thinking,
   ).filter((value) => !['default', 'auto', 'thinking'].includes(value));
@@ -82,6 +83,8 @@ export function ModelEffortPicker({ selection, providerOptions, modelOptions, on
       const value = styles.getPropertyValue(token).trim();
       if (value) tokens[token] = value;
     }
+    // The enter animation slides away from the trigger.
+    tokens['--app-model-picker-enter-y'] = above ? '4px' : '-4px';
     setPosition({ ...tokens, width, left: Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12)),
       top: above ? rect.top - 8 : rect.bottom + 8,
       maxHeight: Math.max(80, above ? rect.top - 20 : window.innerHeight - rect.bottom - 20),
@@ -165,8 +168,8 @@ export function ModelEffortPicker({ selection, providerOptions, modelOptions, on
       <div className="app-effort-heading"><div className="app-effort-identity"><strong>{modelEffortLabel(draftEffort)}</strong>
         <button type="button" onClick={() => setView('model')}><span className="truncate">{name}</span><ChevronRight size={11} aria-hidden="true" /></button></div>
         <button type="button" className="app-effort-reset" onClick={reset} disabled={saving || !composerProviderOptionUsable(account)} aria-label="Reset effort to model default"><RotateCcw size={14} /></button></div>
-      {uniqueLevels.length > 1 ? <div className="app-effort-track" style={{ '--effort-fill': `${uniqueLevels.includes(draftEffort) ? 5 + effortIndex / (uniqueLevels.length - 1) * 90 : 0}%` } as CSSProperties}>
-        <div className="app-effort-fill" /><div className="app-effort-dots" aria-hidden="true">{uniqueLevels.map((level) => <i key={level} />)}</div>
+      {uniqueLevels.length > 1 ? <div className="app-effort-track" style={{ '--effort-t': uniqueLevels.includes(draftEffort) ? effortIndex / (uniqueLevels.length - 1) : 0 } as CSSProperties}>
+        <div className="app-effort-fill" /><div className="app-effort-dots" aria-hidden="true">{uniqueLevels.map((level) => <i key={level} />)}</div><span className="app-effort-thumb" aria-hidden="true" />
         <input type="range" aria-label="Thinking effort" aria-valuetext={modelEffortLabel(draftEffort)} min={0} max={uniqueLevels.length - 1} step={1} value={effortIndex}
           disabled={saving || !composerProviderOptionUsable(account)}
           onChange={(event) => setDraftEffort(uniqueLevels[Number(event.target.value)])}
@@ -183,11 +186,11 @@ export function ModelEffortPicker({ selection, providerOptions, modelOptions, on
         <div className="app-model-picker-actions"><button type="button" onClick={close}>Cancel</button><button type="button" disabled={saving} onClick={() => void apply(pending.route, pending.type)}>Change account</button></div>
       </> : view === 'provider' ? <>
         {account?.unavailable ? <p role="status" className="app-model-picker-message">Account unavailable. Choose a signed-in account.</p> : null}
-        {accounts.map((option) => <button key={option.value} type="button" className="app-transient-action-row app-model-picker-row" disabled={saving || !composerProviderOptionUsable(option)} title={option.disabledReason}
+        <div className="app-model-picker-list">{accounts.map((option) => <button key={option.value} type="button" className="app-transient-action-row app-model-picker-row" disabled={saving || !composerProviderOptionUsable(option)} title={option.disabledReason}
           onClick={() => {
             const route = resolveComposerRoutePick({ selection: { ...selection, model: accountModel ?? selection.model }, providerOptions, modelOptions, pick: { type: 'provider', option } });
             if (route) submit(route, 'provider');
-          }}><span>{option.selectionLabel ?? option.label}{option.detail ? <small className="app-transient-metadata">{option.detail}</small> : null}</span>{account?.value === option.value ? <Check size={14} /> : null}</button>)}
+          }}><span>{option.selectionLabel ?? option.label}{option.detail ? <small className="app-transient-metadata">{option.detail}</small> : null}</span>{account?.value === option.value ? <Check size={14} /> : null}</button>)}</div>
         {!accounts.some(composerProviderOptionUsable) ? <p className="app-model-picker-message">No signed-in account for {providerDisplayLabel(accountProvider)}.</p> : null}
         {onSignIn ? <button type="button" className="app-transient-action-row app-model-picker-row" onClick={onSignIn}>Sign in</button> : null}
       </> : <>
@@ -216,10 +219,11 @@ export function ModelEffortPicker({ selection, providerOptions, modelOptions, on
     <button type="button" aria-haspopup="dialog" aria-expanded={view !== null && view !== 'thinking'} aria-controls={id}
       aria-label={`Select model, current ${name}${account?.unavailable ? ', Account unavailable' : ''}`}
       onClick={(event) => { returnFocusRef.current = event.currentTarget; setView(view === 'model' ? null : 'model'); setError(null); }}>
-      <span className="truncate">{account?.unavailable ? 'Account unavailable' : name}</span></button>
+      {/* Keyed by its text so a model change replays the label animation. */}
+      <span key={account?.unavailable ? 'unavailable' : shortName} className="app-model-pill-label truncate">{account?.unavailable ? 'Account unavailable' : shortName}</span></button>
     <button type="button" aria-haspopup="dialog" aria-expanded={view === 'thinking'} aria-controls={id} aria-label={`Adjust effort, current ${modelEffortLabel(selection.thinking)}`}
       onClick={(event) => { returnFocusRef.current = event.currentTarget; setView(view === 'thinking' ? null : 'thinking'); setError(null); }}>
-      {modelEffortLabel(selection.thinking)}<ChevronDown size={12} aria-hidden="true" /></button>
+      <span key={selection.thinking} className="app-model-pill-label">{modelEffortLabel(selection.thinking)}</span></button>
     {view ? typeof document !== 'undefined' ? createPortal(menu, document.body) : menu : null}
   </div>;
 }

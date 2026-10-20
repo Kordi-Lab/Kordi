@@ -1,4 +1,6 @@
 import { canonicalCloudProviderId } from '@/features/cloud/providerAuthSnapshot';
+import { isChatGptCatalogProvider, isHiddenChatGptModel, orderChatGptModels } from '@/features/cloud/chatgptModelCatalog';
+import { catalogModelThinkingLevels } from '@/features/cloud/modelThinkingLevels';
 import { routeRunsOnKordiCloud } from '@/features/cloud/cloudAgentRuntimeRoute';
 import type { HostedAccount } from '@/features/cloud/hostedAccounts';
 import { DEVICE_ACTIVE_CHOICES, hasHostedOnlyPrefix } from '@/features/cloud/routeAccountChoice';
@@ -15,7 +17,7 @@ import type { DesktopChatMessageRoute } from '@/lib/desktop';
 export const CUSTOM_ROUTE_PROVIDER = 'custom';
 export const SAVED_ACCOUNT_METHOD_LABEL = 'Saved account';
 export const RECONNECT_ACCOUNT_REASON = 'Account needs reconnecting';
-const catalogThinkingLevels = ['off', 'low', 'medium', 'high'];
+const fallbackThinkingLevels = ['off', 'low', 'medium', 'high'];
 
 export function isCustomRouteModel(model: string) {
   return model.trim().startsWith(`${CUSTOM_ROUTE_PROVIDER}/`);
@@ -52,11 +54,15 @@ export function hostedRouteAccounts(
     const entry = catalog.find((item) => item.id === providerId);
     const custom = providerId === CUSTOM_ROUTE_PROVIDER;
     const models = custom ? [] : entry?.models ?? [];
+    const chatGpt = isChatGptCatalogProvider(providerId);
+    const model = chatGpt && account.model && isHiddenChatGptModel(account.model) ? null : account.model;
+    const offeredModels = [...new Set([model, ...models].filter((item): item is string => Boolean(item)))];
     return {
       ...account,
+      model,
       providerId,
       providerLabel: custom ? 'Custom API' : providerShortName(ompProviderName(providerId, entry)),
-      models: [...new Set([account.model, ...models].filter((model): model is string => Boolean(model)))],
+      models: chatGpt ? orderChatGptModels(offeredModels) : offeredModels,
     };
   });
 }
@@ -68,7 +74,13 @@ function accountDefaultModel(account: HostedRouteAccount, catalog?: OmpCatalogEn
   return account.model ?? preferred ?? account.models[0] ?? null;
 }
 
-export function hostedModelOptions(accounts: HostedRouteAccount[]): ComposerModelOption[] {
+/** Custom API takes no effort; other models use the catalog's efforts, else the generic list. */
+function hostedThinkingLevels(providerId: string, model: string, catalog?: OmpCatalogEntry[]) {
+  if (providerId === CUSTOM_ROUTE_PROVIDER) return ['off'];
+  return catalogModelThinkingLevels(catalog, providerId, model) ?? fallbackThinkingLevels;
+}
+
+export function hostedModelOptions(accounts: HostedRouteAccount[], catalog?: OmpCatalogEntry[]): ComposerModelOption[] {
   const options: ComposerModelOption[] = [];
   for (const account of accounts) {
     if (account.needsReconnect) continue;
@@ -78,7 +90,7 @@ export function hostedModelOptions(accounts: HostedRouteAccount[]): ComposerMode
       options.push({
         value, label: model, detail: account.providerLabel,
         provider: normalizeComposerProviderId(account.providerId), providerLabel: account.providerLabel,
-        thinkingLevels: account.providerId === CUSTOM_ROUTE_PROVIDER ? ['off'] : catalogThinkingLevels,
+        thinkingLevels: hostedThinkingLevels(account.providerId, model, catalog),
       });
     }
   }

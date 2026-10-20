@@ -85,7 +85,7 @@ test('a ChatGPT model on this Mac keeps its account, model, and thinking control
     modelOptions,
   }));
   assert.doesNotMatch(markup, />ChatGPT • Work</);
-  assert.match(markup, />GPT-6 Sol</);
+  assert.match(markup, />6 Sol</);
   assert.match(markup, />Medium</);
   assert.doesNotMatch(markup, />-<\/span>/);
   assert.doesNotMatch(markup, /disabled=""/);

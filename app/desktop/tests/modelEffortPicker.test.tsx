@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 import React, { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ModelEffortPicker, type ModelEffortPickerProps } from '../src/kordi-app/components/modelEffortPicker';
-import { modelDisplayName } from '../src/lib/modelDisplayName';
+import { modelDisplayName, modelShortName } from '../src/lib/modelDisplayName';
 import { authChoiceFromProviderOption, type ComposerRoute } from '../src/kordi-app/components/composerModelSelection';
 
 const providers = [
@@ -57,9 +57,27 @@ async function harness(options: { unavailable?: boolean; fail?: boolean; shared?
 
 test('friendly names preserve protocol identifiers and supplied custom labels', () => {
   assert.equal(modelDisplayName('openai/gpt-6-astra'),'GPT-6 Astra');
+  assert.equal(modelDisplayName('openai-codex/gpt-6.1-sol'),'GPT-6.1 Sol');
   assert.equal(modelDisplayName('anthropic/claude-opus-4-8'),'Claude Opus 4.8');
   assert.equal(modelDisplayName('openrouter/anthropic/claude-fable-5-1'),'Claude Fable 5.1');
   assert.equal(modelDisplayName('custom/private-model','Research deployment'),'Research deployment');
+});
+
+test('composer short names drop only a leading GPT- prefix', () => {
+  assert.equal(modelShortName('openai-codex/gpt-6.1-sol'),'6.1 Sol');
+  assert.equal(modelShortName('openai/gpt-6-astra','GPT-6 Astra'),'6 Astra');
+  assert.equal(modelShortName('anthropic/claude-opus-4-8'),'Claude Opus 4.8');
+  assert.equal(modelShortName('custom/private-model','Research deployment'),'Research deployment');
+  assert.equal(modelShortName('custom/model','My GPT-6 build'),'My GPT-6 build');
+});
+
+test('the route label is plain text: short model name, then effort, with full names for assistive tech', async () => {
+  const h = await harness();
+  try {
+    const [model, effort] = [...document.querySelectorAll<HTMLButtonElement>('.app-model-effort-pill > button')];
+    assert.equal(model.textContent,'6 Astra'); assert.equal(model.getAttribute('aria-label'),'Select model, current GPT-6 Astra');
+    assert.equal(effort.textContent,'High'); assert.equal(effort.querySelector('svg'),null);
+  } finally { await h.cleanup(); }
 });
 
 test('model picks apply immediately; shared account picks wait for confirmation and cancellation preserves the route', async () => {

@@ -123,12 +123,13 @@ async fn desktop_model_options_filter_openai_codex_oauth_models_and_do_not_readd
             .filter(|value| value.starts_with("openai/"))
             .collect::<Vec<_>>(),
         vec![
+            "openai/gpt-6.1-sol",
             "openai/gpt-6-astra",
             "openai/gpt-6-sol",
             "openai/gpt-6-luna",
-            "openai/gpt-5.6-luna",
             "openai/gpt-5.6-sol",
             "openai/gpt-5.6-terra",
+            "openai/gpt-5.6-luna",
             "openai/gpt-5.5",
             "openai/gpt-5.4-mini",
             "openai/gpt-5.4",
@@ -140,8 +141,8 @@ async fn desktop_model_options_filter_openai_codex_oauth_models_and_do_not_readd
     assert_eq!(
         options
             .iter()
-            .find(|option| option.value == "openai/gpt-6-astra")
-            .expect("GPT-6 OAuth option")
+            .find(|option| option.value == "openai/gpt-6.1-sol")
+            .expect("GPT-6.1 OAuth option")
             .thinking_levels,
         ["low", "medium", "high", "xhigh", "max"]
     );
