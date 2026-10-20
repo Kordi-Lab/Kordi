@@ -29,6 +29,7 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
    - **Kordi**: Memory (the account's saved memories) and each connected connector (Gmail, Google Calendar, GitHub, Slack). A connector that is not connected shows **Connect**, which opens Settings › Connectors and returns here.
    - **On this iPhone** (iOS) / **On this Mac** (macOS): Calendar, Reminders. **Allow** shows the system prompt; the row then shows the count found and a switch.
    - **Agents on this Mac** (macOS only): instruction and memory files from local coding agents, redacted before use.
+     The server reads up to 12 files, keeps at most 2,000 characters of each after redaction, and rejects a build whose agent text passes 60,000 characters.
    - **Links**: URLs and text separated by `;` (homepage, ORCID, papers). Sites that need sign-in are skipped with a reason.
    - **Notes**: free text.
    - Primary button **Build profile**, enabled when at least one source is on.
