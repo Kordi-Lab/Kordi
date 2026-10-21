@@ -459,7 +459,9 @@ fn capabilities_report_memory_version() {
         connectors_version: None,
         memory_version: 1,
         common_ground_version: None,
+        contact_profile_version: CONTACT_PROFILE_VERSION,
     })
     .unwrap();
     assert_eq!(value["memoryVersion"], 1);
+    assert_eq!(value["contactProfileVersion"], 1);
 }

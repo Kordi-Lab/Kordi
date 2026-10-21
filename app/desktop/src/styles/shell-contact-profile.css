@@ -1,0 +1,126 @@
+/* Contact profile (issue #1945): tinted header, shared counts, common ground chips, and the
+ * share and group popovers. Colors come from the shared theme tokens. */
+
+.app-contacts-detail-wash {
+  left: 50%;
+  width: min(100vw, 980px);
+  height: 340px;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    90% 100% at 50% 0%,
+    color-mix(in oklab, var(--app-accent) 18%, transparent) 0%,
+    color-mix(in oklab, var(--app-accent) 8%, transparent) 38%,
+    transparent 78%
+  );
+}
+
+.app-contacts-page:not(.is-narrow) .app-contacts-detail-pane {
+  overflow-x: hidden;
+}
+
+.app-contact-detail-dialog .app-contacts-detail-wash {
+  left: 0;
+  width: 100%;
+  border-radius: 18px 18px 0 0;
+  transform: none;
+}
+
+.app-contacts-detail-content > :not(.app-contacts-detail-wash) {
+  position: relative;
+}
+
+.app-contacts-detail-content > .app-contacts-detail-close {
+  position: absolute;
+}
+
+.app-contacts-card-button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.app-contacts-card-button:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--utility-foreground) 5%, transparent);
+}
+
+.app-contacts-card-button:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: -2px;
+}
+
+.app-contacts-card > .app-contacts-card-row:first-child,
+.app-contacts-card > .app-contacts-card-row:first-child > .app-contacts-card-button {
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+
+.app-contacts-card > .app-contacts-card-row:last-child,
+.app-contacts-card > .app-contacts-card-row:last-child > .app-contacts-card-button {
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+/* Shared rows sit behind an 18px icon, so their dividers start past it. */
+.app-contacts-shared-row + .app-contacts-card-row::before,
+.app-contacts-shared-row + .app-contacts-shared-row::before {
+  left: 46px;
+}
+
+.app-contacts-chevron {
+  color: color-mix(in oklab, var(--utility-muted-text) 60%, transparent);
+}
+
+.app-contacts-shared-count,
+.app-contacts-shared-row.is-zero .app-contacts-shared-label {
+  color: var(--utility-muted-text);
+}
+
+.app-contacts-shared-row.is-zero .app-contacts-shared-count {
+  color: color-mix(in oklab, var(--utility-muted-text) 60%, transparent);
+}
+
+.app-contacts-group-avatars > * + * {
+  margin-left: -6px;
+}
+
+.app-contacts-group-avatars > * {
+  box-shadow: 0 0 0 1.5px var(--app-main-bg);
+}
+
+.app-contacts-chip {
+  background: color-mix(in oklab, var(--utility-foreground) 9%, transparent);
+  color: var(--utility-foreground);
+  white-space: nowrap;
+}
+
+.app-contacts-menu-item {
+  border: 0;
+  background: transparent;
+  color: var(--utility-foreground);
+}
+
+.app-contacts-menu-item:hover:not(:disabled) {
+  background: var(--app-quiet-control-hover-bg);
+}
+
+.app-contacts-menu-item:disabled {
+  color: var(--utility-muted-text);
+  opacity: 0.7;
+}
+
+.app-contacts-menu-separator {
+  background: var(--app-transient-border);
+}
+
+.app-contact-share-code {
+  background: color-mix(in oklab, var(--utility-foreground) 6%, transparent);
+  color: var(--utility-foreground);
+  font-family: inherit;
+}
+
+/* Inside a chat's detail page the profile sits in a scroll area that does not clip sideways. */
+.app-chat-person-info .app-contacts-detail-wash {
+  left: 0;
+  width: 100%;
+  transform: none;
+}

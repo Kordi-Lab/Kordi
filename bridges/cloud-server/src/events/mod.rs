@@ -148,6 +148,25 @@ impl EventBus {
         self.publish_raw(subject, body).await;
     }
 
+    /// Fire `kordi.events.contact.removed.<peer_account_id>`: `actor`
+    /// removed `peer`, or the reverse side of that removal.
+    pub async fn publish_contact_removed(&self, actor_account_id: &str, peer_account_id: &str) {
+        if self.inner.is_none() {
+            return;
+        }
+        let payload = ContactAdded {
+            event_type: "contact.removed",
+            actor_account_id,
+            peer_account_id,
+            occurred_at: chrono::Utc::now().to_rfc3339(),
+        };
+        let Ok(body) = serde_json::to_vec(&payload) else {
+            return;
+        };
+        let subject = format!("kordi.events.contact.removed.{peer_account_id}");
+        self.publish_raw(subject, Bytes::from(body)).await;
+    }
+
     /// Fire `kordi.events.contact.request.<event>.<recipient_account_id>`.
     /// For `created`, the recipient is the one being asked. For
     /// `accepted`/`rejected`, the recipient is the original requester
@@ -317,6 +336,7 @@ struct AccountSignedUp<'a> {
     occurred_at: String,
 }
 
+/// `contact.added` and `contact.removed` payloads.
 #[derive(Serialize)]
 struct ContactAdded<'a> {
     event_type: &'static str,

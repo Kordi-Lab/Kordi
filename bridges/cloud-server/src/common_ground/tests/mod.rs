@@ -2,7 +2,7 @@ mod actions_contact_tests;
 mod actions_group_tests;
 mod actions_meet_tests;
 mod build_agents_tests;
-mod db_fixture;
+pub(crate) mod db_fixture;
 mod flow_tests;
 mod group_intro_tests;
 mod matching_guard_tests;

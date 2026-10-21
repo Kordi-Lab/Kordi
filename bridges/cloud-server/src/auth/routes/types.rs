@@ -89,6 +89,9 @@ pub struct AuthCapabilitiesResponse {
         skip_serializing_if = "Option::is_none"
     )]
     pub common_ground_version: Option<u32>,
+    /// Present when `/v1/cloud/contacts/:account_id/profile` exists (#1945).
+    #[serde(rename = "contactProfileVersion")]
+    pub contact_profile_version: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]

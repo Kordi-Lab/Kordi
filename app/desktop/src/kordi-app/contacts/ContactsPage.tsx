@@ -26,6 +26,9 @@ export function ContactsPage(props: ContactsPageProps) {
     onCloseOverlay,
     onMessageContact,
     onRemoveContact,
+    contactProfileHost,
+    contactMute,
+    onOpenAgentSettings,
     leadingDetail,
   } = props;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -49,6 +52,9 @@ export function ContactsPage(props: ContactsPageProps) {
     onCloseOverlay,
     onMessageContact,
     onRemoveContact,
+    contactProfileHost,
+    contactMute,
+    onOpenAgentSettings,
     requestActions,
   } : null;
 

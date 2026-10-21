@@ -62,6 +62,8 @@ mod account_email_handlers;
 mod app_invitation_handlers;
 mod contact_acceptance;
 mod contact_handlers;
+mod contact_profile;
+mod contact_removal;
 mod contact_request_handlers;
 mod contact_send;
 mod device_handlers;
@@ -89,6 +91,9 @@ mod types;
 use app_invitation_handlers::*;
 use contact_acceptance::*;
 use contact_handlers::*;
+use contact_profile::get_contact_profile;
+pub(crate) use contact_profile::CONTACT_PROFILE_VERSION;
+use contact_removal::remove_contact;
 use contact_request_handlers::*;
 use device_handlers::*;
 use device_query_handlers::*;
@@ -219,6 +224,11 @@ pub fn routes_with_shared_rate_limiter(
             delete(revoke_group_invitation),
         )
         .route("/v1/cloud/contacts", get(list_contacts).post(add_contact))
+        .route("/v1/cloud/contacts/:account_id", delete(remove_contact))
+        .route(
+            "/v1/cloud/contacts/:account_id/profile",
+            get(get_contact_profile),
+        )
         .route(
             "/v1/cloud/contacts/requests",
             get(list_contact_requests).post(send_contact_request),
