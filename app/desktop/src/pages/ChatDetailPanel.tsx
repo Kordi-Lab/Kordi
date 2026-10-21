@@ -132,6 +132,8 @@ type ChatDetailPanelProps = {
   onOpenArtifact?: (artifactId: string) => void;
   onNavigateToResponse?: (messageId: string) => void;
   onOpenOutreachThread?: (conversationId: string) => void;
+  /** Replaces the Info tab of a direct person chat with the contact profile; receives today's Info. */
+  renderPersonInfo?: (legacy: ReactNode) => ReactNode;
 };
 
 function countLabel(count: number, noun: string): string {
@@ -161,6 +163,7 @@ function ChatDetailPanelView({
   onSelectArtifact,
   onOpenArtifact,
   onNavigateToResponse,
+  renderPersonInfo,
 }: ChatDetailPanelProps) {
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
   const activeSessionId = activeConv.canonicalSessionId ?? activeConv.id;
@@ -187,7 +190,7 @@ function ChatDetailPanelView({
   }, [activeLiveTurn?.completed, scheduledTasks.refresh]);
 
   if (activeDetailTab === 'info') {
-    return (
+    const legacyInfo = (
       <div className="app-detail-sheet">
         <section className="app-detail-section">
           <div className="app-detail-kicker">Overview</div>
@@ -313,6 +316,7 @@ function ChatDetailPanelView({
         ) : null}
       </div>
     );
+    return renderPersonInfo ? renderPersonInfo(legacyInfo) : legacyInfo;
   }
 
   if (activeDetailTab === 'context') {

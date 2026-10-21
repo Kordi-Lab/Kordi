@@ -20,6 +20,7 @@ import type { Contact, ContactRequest } from '@/kordi-app/types';
 import { formatKordiHandle, normalizeKordiId } from './kordiId';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
 import { useCommonGroundEntry } from '@/features/commonGround/useCommonGroundEntry';
+import { cloudContactAccountId as cloudAccountIdForContact, useCloudContactProfileHost } from './useCloudContactProfileHost';
 
 type CloudContactsAdapterProps = {
   account: CloudAccount;
@@ -43,6 +44,14 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     onSelectRequest: contactsPageProps.onSelectRequest,
     onCloseOverlay: contactsPageProps.onCloseOverlay,
   }, { account, onMessageContact: contactsPageProps.onMessageContact, cloud });
+  const contactProfile = useCloudContactProfileHost({
+    account,
+    contacts: cloud.contacts,
+    onMessageContact: contactsPageProps.onMessageContact,
+    onSelectContact: commonGround.onSelectContact,
+    onCloseOverlay: commonGround.onCloseOverlay,
+    refreshContacts: () => cloud.refresh(),
+  });
 
   const visibleCloudContacts = useMemo(() => {
     const search = contactsPageProps.contactSearch?.trim().toLowerCase() ?? '';
@@ -175,6 +184,9 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       onAddContactByNodeId={onAddContactByNodeId}
       onLookupContact={onLookupContact}
       onMessageContact={contactsPageProps.onMessageContact}
+      contactProfileHost={contactProfile.host}
+      // Hosted removal needs the server's delete route; older servers keep the unsupported path.
+      onRemoveContact={contactProfile.removeContact ?? contactsPageProps.onRemoveContact}
       {...commonGround}
     />
   );
@@ -193,7 +205,9 @@ export function resolveCloudActiveContact({
   cloudContacts: Contact[];
   visibleCloudContacts: Contact[];
 }): Contact | undefined {
-  const directCloudMatch = cloudContacts.find((contact) => contact.id === activeContactId);
+  // Visible rows carry presence; the pane shows the same line as the list.
+  const directCloudMatch = visibleCloudContacts.find((contact) => contact.id === activeContactId)
+    ?? cloudContacts.find((contact) => contact.id === activeContactId);
   if (directCloudMatch) return directCloudMatch;
 
   const parentCloudAccountId = cloudAccountIdForContact(parentActiveContact);
@@ -207,11 +221,6 @@ export function resolveCloudActiveContact({
   }
 
   return parentActiveContact;
-}
-
-function cloudAccountIdForContact(contact: Contact | undefined): string | null {
-  if (!contact) return null;
-  return (contact.sourceHumanId || contact.sourceParticipantId || (contact.id.startsWith('cloud:') ? contact.id.slice('cloud:'.length) : '')).trim() || null;
 }
 
 function isCloudSelfAgentContact(contact: Contact | undefined): boolean {
