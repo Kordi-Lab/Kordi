@@ -17,7 +17,7 @@ use crate::common_ground::runs::{self, NewRun, MATCH_PREFIX, ROOM_PREFIX};
 use crate::common_ground::MATCH_LIMIT;
 
 /// People matched by one run; larger rooms fill in over several runs.
-pub(super) const MATCH_BATCH: usize = 20;
+pub(super) const MATCH_BATCH: usize = 8;
 /// Members whose topics a room-theme run reads, in join order.
 pub(super) const MAX_THEME_MEMBERS: usize = 60;
 
