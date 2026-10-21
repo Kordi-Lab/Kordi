@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Check, Copy, MoreHorizontal, Trash2 } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Check, ChevronRight, Copy } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -49,7 +49,7 @@ export function DetailTile({
   disabled?: boolean;
   tone?: 'default' | 'primary' | 'danger';
   ariaLabel?: string;
-  ariaHasPopup?: 'menu';
+  ariaHasPopup?: 'menu' | 'dialog';
   ariaExpanded?: boolean;
 }) {
   return (
@@ -72,64 +72,16 @@ export function DetailTile({
   );
 }
 
-/** "More" tile with the overflow menu; today it only holds Delete contact. */
-export function MoreTile({ onDelete }: { onDelete: () => void }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return undefined;
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', handlePointerDown);
-    return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [open]);
-
-  return (
-    <div
-      ref={rootRef}
-      className="app-contacts-tile-slot relative"
-      onKeyDown={(event) => {
-        if (event.key === 'Escape' && open) {
-          event.preventDefault();
-          setOpen(false);
-        }
-      }}
-    >
-      <DetailTile
-        icon={<MoreHorizontal className="h-5 w-5" aria-hidden="true" />}
-        label="More"
-        ariaLabel="More actions"
-        ariaHasPopup="menu"
-        ariaExpanded={open}
-        onClick={() => setOpen((current) => !current)}
-      />
-      {open ? (
-        <div role="menu" className="app-contacts-menu absolute right-0 top-[68px] z-10 min-w-[168px] rounded-[10px] p-1">
-          <button
-            type="button"
-            role="menuitem"
-            className="app-contacts-danger-action flex h-8 w-full items-center gap-2 rounded-[7px] px-2.5 text-left text-[13px]"
-            onClick={() => {
-              setOpen(false);
-              onDelete();
-            }}
-          >
-            <Trash2 className="h-4 w-4" aria-hidden="true" />
-            Delete contact
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export type InfoCardRow = {
   key: string;
   value: ReactNode;
   caption: string;
   accent?: boolean;
   trailing?: ReactNode;
+  /** Small avatar before the text, for rows that name an account. */
+  lead?: ReactNode;
+  /** Makes the whole row a button with a trailing chevron. */
+  onClick?: () => void;
 };
 
 /** Grouped card of value-over-caption rows. */
@@ -137,15 +89,31 @@ export function InfoCard({ rows }: { rows: InfoCardRow[] }) {
   if (rows.length === 0) return null;
   return (
     <div className="app-contacts-card mt-5 rounded-[12px]">
-      {rows.map((row) => (
-        <div key={row.key} className="app-contacts-card-row flex items-center gap-3 px-4 py-2.5">
-          <div className="min-w-0 flex-1">
-            <div className={cn('app-contacts-card-value break-words text-[14px] leading-5', row.accent && 'is-accent')}>{row.value}</div>
-            <div className="app-contacts-muted text-[12px] leading-4">{row.caption}</div>
-          </div>
-          {row.trailing}
-        </div>
-      ))}
+      {rows.map((row) => {
+        const content = (
+          <>
+            {row.lead}
+            <div className="min-w-0 flex-1">
+              <div className={cn('app-contacts-card-value break-words text-[14px] leading-5', row.accent && 'is-accent')}>{row.value}</div>
+              <div className="app-contacts-muted text-[12px] leading-4">{row.caption}</div>
+            </div>
+            {row.trailing}
+            {row.onClick ? <ChevronRight className="app-contacts-chevron h-[15px] w-[15px] shrink-0" aria-hidden="true" /> : null}
+          </>
+        );
+        return row.onClick ? (
+          <button
+            key={row.key}
+            type="button"
+            className="app-contacts-card-row app-contacts-card-button flex w-full items-center gap-3 px-4 py-2.5 text-left"
+            onClick={row.onClick}
+          >
+            {content}
+          </button>
+        ) : (
+          <div key={row.key} className="app-contacts-card-row flex items-center gap-3 px-4 py-2.5">{content}</div>
+        );
+      })}
     </div>
   );
 }

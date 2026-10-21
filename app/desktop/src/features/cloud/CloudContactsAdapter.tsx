@@ -20,6 +20,7 @@ import type { Contact, ContactRequest } from '@/kordi-app/types';
 import { formatKordiHandle, normalizeKordiId } from './kordiId';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
 import { useCommonGroundEntry } from '@/features/commonGround/useCommonGroundEntry';
+import { cloudContactAccountId as cloudAccountIdForContact, useCloudContactProfileHost } from './useCloudContactProfileHost';
 
 type CloudContactsAdapterProps = {
   account: CloudAccount;
@@ -43,6 +44,12 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     onSelectRequest: contactsPageProps.onSelectRequest,
     onCloseOverlay: contactsPageProps.onCloseOverlay,
   }, { account, onMessageContact: contactsPageProps.onMessageContact, cloud });
+  const contactProfileHost = useCloudContactProfileHost({
+    account,
+    contacts: cloud.contacts,
+    onMessageContact: contactsPageProps.onMessageContact,
+    onSelectContact: commonGround.onSelectContact,
+  });
 
   const visibleCloudContacts = useMemo(() => {
     const search = contactsPageProps.contactSearch?.trim().toLowerCase() ?? '';
@@ -175,6 +182,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       onAddContactByNodeId={onAddContactByNodeId}
       onLookupContact={onLookupContact}
       onMessageContact={contactsPageProps.onMessageContact}
+      contactProfileHost={contactProfileHost}
       {...commonGround}
     />
   );
@@ -207,11 +215,6 @@ export function resolveCloudActiveContact({
   }
 
   return parentActiveContact;
-}
-
-function cloudAccountIdForContact(contact: Contact | undefined): string | null {
-  if (!contact) return null;
-  return (contact.sourceHumanId || contact.sourceParticipantId || (contact.id.startsWith('cloud:') ? contact.id.slice('cloud:'.length) : '')).trim() || null;
 }
 
 function isCloudSelfAgentContact(contact: Contact | undefined): boolean {

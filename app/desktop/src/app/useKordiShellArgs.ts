@@ -152,6 +152,8 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         activeContact: args.activeContact,
         activeContactRequest: args.activeContactRequest,
         getStatusBadgeClass: args.getStatusBadgeClass,
+        mutedChatSessionIds: args.mutedChatSessionIds,
+        handleSetChatSessionMuted: args.handleSetChatSessionMuted,
         handleOpenCollaborationConversation: args.handleOpenCollaborationConversation,
         handleStartCollaborationPersonSession: args.handleStartCollaborationPersonSession,
         displayedAgents: args.displayedAgents,
