@@ -279,6 +279,50 @@ final class CommonGroundTests: XCTestCase {
         XCTAssertEqual(body["connectors"] as? Bool, true)
         XCTAssertEqual((body["device"] as? [[String: Any]])?.first?["source"] as? String, "iPhone Calendar")
     }
+
+    func testCanBuildOnlyWhenSomethingIsSent() {
+        var choices = CommonGroundBuildChoices(memoryOn: true, memoryCount: 0)
+        XCTAssertFalse(choices.canBuild, "memory on with no memories sends nothing")
+        choices.memoryCount = nil
+        XCTAssertFalse(choices.canBuild)
+        choices.memoryCount = 12
+        XCTAssertTrue(choices.canBuild)
+
+        choices = CommonGroundBuildChoices(device: [CommonGroundDeviceItems(source: "iPhone Calendar", items: [])])
+        XCTAssertFalse(choices.canBuild, "a device source without items sends nothing")
+        choices.device = [CommonGroundDeviceItems(source: "iPhone Calendar", items: [.init(title: "Memory sync", date: "2026-10-01")])]
+        XCTAssertTrue(choices.canBuild)
+
+        XCTAssertFalse(CommonGroundBuildChoices(links: "  ", notes: "\n").canBuild)
+        XCTAssertTrue(CommonGroundBuildChoices(notes: "Agent memory").canBuild)
+        XCTAssertTrue(CommonGroundBuildChoices(links: "https://example.com").canBuild)
+        XCTAssertTrue(CommonGroundBuildChoices(connectedCount: 1).canBuild)
+        XCTAssertFalse(CommonGroundBuildChoices().canBuild)
+    }
+
+    func testBuildRequestSendsConnectorsOnlyWhenConnected() throws {
+        let none = CommonGroundBuildChoices(memoryOn: true, memoryCount: 0, connectedCount: 0, notes: " Agents ").request
+        XCTAssertFalse(none.connectors)
+        XCTAssertFalse(none.memory)
+        XCTAssertEqual(none.notes, "Agents")
+
+        let connected = CommonGroundBuildChoices(memoryOn: false, memoryCount: 3, connectedCount: 2).request
+        XCTAssertTrue(connected.connectors)
+        XCTAssertFalse(connected.memory)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(connected)) as? [String: Any])
+        XCTAssertEqual(body["connectors"] as? Bool, true)
+        XCTAssertEqual(body["memory"] as? Bool, false)
+    }
+
+    func testBuildCopy() {
+        XCTAssertEqual(CommonGroundBuildCopy.memoryLine(12), "12 memories")
+        XCTAssertEqual(CommonGroundBuildCopy.memoryLine(1), "1 memory")
+        XCTAssertEqual(CommonGroundBuildCopy.memoryLine(0), "No memories yet")
+        XCTAssertEqual(CommonGroundBuildCopy.connectorLine(.gmail, status: nil), "Paper, review and conference threads")
+        XCTAssertEqual(CommonGroundBuildCopy.connectorLine(.github, status: .connected), "Connected")
+        XCTAssertEqual(CommonGroundBuildCopy.connectorLine(.slack, status: .needsReauth), "Sign in again")
+        XCTAssertEqual(CommonGroundModel.messages["common_ground_no_card"], "Build your profile first.")
+    }
 }
 
 /// Serves queued responses per "METHOD /path"; the last one repeats.
