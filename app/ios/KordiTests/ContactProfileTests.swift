@@ -77,7 +77,7 @@ final class ContactProfileTests: XCTestCase {
     }
 
     func testPersonPresentation() throws {
-        let presentation = ContactProfilePresentation(subject: subject, profile: try decode(Self.personJSON), isFallback: false)
+        let presentation = ContactProfilePresentation(subject: subject, profile: try decode(Self.personJSON), isFallback: false, canDelete: true)
         XCTAssertEqual(presentation.tiles, [.message, .mute, .share, .more])
         XCTAssertEqual(presentation.statusLine(), "online")
         XCTAssertEqual(presentation.statusTone, .online)
@@ -88,7 +88,7 @@ final class ContactProfileTests: XCTestCase {
         XCTAssertTrue(presentation.showsDelete)
     }
 
-    func testFallbackShowsOnlyKordiIdMessageAndDelete() {
+    func testFallbackHidesTheDeleteRowWithoutTheFlag() {
         let presentation = ContactProfilePresentation(subject: subject, profile: nil, isFallback: true)
         XCTAssertTrue(presentation.showsKordiId)
         XCTAssertNil(presentation.about)
@@ -96,7 +96,43 @@ final class ContactProfileTests: XCTestCase {
         XCTAssertNil(presentation.commonGround)
         XCTAssertNil(presentation.theirAgent)
         XCTAssertTrue(presentation.tiles.contains(.message))
-        XCTAssertTrue(presentation.showsDelete)
+        XCTAssertFalse(presentation.showsDelete)
+        XCTAssertTrue(presentation.offersDelete)
+        XCTAssertFalse(ContactProfileModel(loader: nil).canDelete)
+
+        var withFlag = presentation
+        withFlag.canDelete = true
+        XCTAssertTrue(withFlag.showsDelete)
+    }
+
+    func testDeleteCallsTheRemoverAndReportsErrors() async throws {
+        var calls = 0
+        let model = ContactProfileModel(loader: nil, profile: try decode(Self.personJSON)) { calls += 1 }
+        XCTAssertTrue(model.canDelete)
+        try await model.removeContact()
+        XCTAssertEqual(calls, 1)
+        XCTAssertFalse(model.isDeleting)
+
+        let failing = ContactProfileModel(loader: nil, profile: nil) {
+            throw CloudAPIError(code: "not_found", message: "Not a contact.", statusCode: 404)
+        }
+        do {
+            try await failing.removeContact()
+            XCTFail("Expected the server error")
+        } catch let error as CloudAPIError {
+            XCTAssertEqual(error.statusCode, 404)
+        }
+    }
+
+    func testRemoveContactUsesTheDeleteRoute() async throws {
+        ContactProfileURLProtocol.status = 204
+        ContactProfileURLProtocol.body = ""
+        defer { ContactProfileURLProtocol.status = 200 }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ContactProfileURLProtocol.self]
+        let api = CloudAPIClient(baseURL: URL(string: "http://127.0.0.1:17082")!, session: URLSession(configuration: configuration))
+        try await api.removeContact(token: "session-value", accountId: "acct_nadia")
+        XCTAssertEqual(ContactProfileURLProtocol.lastPath, "DELETE /v1/cloud/contacts/acct_nadia")
     }
 
     func testAgentOwnAgentAndSystemPresentations() {
@@ -125,7 +161,7 @@ final class ContactProfileTests: XCTestCase {
         XCTAssertEqual(mine.tiles, [.message, .settings, .more])
         XCTAssertNil(mine.shared)
         XCTAssertNil(mine.owner)
-        XCTAssertFalse(mine.showsDelete)
+        XCTAssertFalse(mine.offersDelete)
 
         let system = ContactProfilePresentation(
             subject: ContactProfileSubject(accountId: "acct_support", name: "Kordi Support", kordiId: "100000001", kind: .system),
@@ -135,7 +171,7 @@ final class ContactProfileTests: XCTestCase {
         XCTAssertEqual(system.statusLine(), "Kordi")
         XCTAssertEqual(system.tiles, [.message])
         XCTAssertFalse(system.showsKordiId)
-        XCTAssertFalse(system.showsDelete)
+        XCTAssertFalse(system.offersDelete)
     }
 
     func testOfflineStatusAndEmptyShared() {
@@ -212,7 +248,7 @@ final class ContactProfileTests: XCTestCase {
             for (name, subject, profile) in states {
                 let sheet = ContactProfileView(
                     subject: subject,
-                    profileModel: ContactProfileModel(loader: nil, profile: profile),
+                    profileModel: ContactProfileModel(loader: nil, profile: profile, remover: profile == nil ? nil : {}),
                     onOpenConversation: { _ in }
                 )
                 .environmentObject(appModel)
@@ -240,6 +276,7 @@ final class ContactProfileTests: XCTestCase {
 
 private final class ContactProfileURLProtocol: URLProtocol {
     static var body = ""
+    static var status = 200
     static var lastPath: String?
 
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -247,7 +284,7 @@ private final class ContactProfileURLProtocol: URLProtocol {
 
     override func startLoading() {
         Self.lastPath = "\(request.httpMethod ?? "GET") \(request.url?.path ?? "")"
-        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
+        let response = HTTPURLResponse(url: request.url!, statusCode: Self.status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(Self.body.utf8))
         client?.urlProtocolDidFinishLoading(self)

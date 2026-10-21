@@ -17,6 +17,8 @@ struct ContactProfileView: View {
     @State private var showsShare = false
     @State private var ownerSubject: ContactProfileSubject?
     @State private var isMuting = false
+    @State private var confirmsDelete = false
+    @State private var deleteError: String?
 
     init(
         subject: ContactProfileSubject,
@@ -34,7 +36,8 @@ struct ContactProfileView: View {
             profile: profileModel.profile,
             isFallback: profileModel.isFallback,
             selfAccountId: model.account?.accountId,
-            presence: model.contactPresenceByAccountID[subject.accountId]
+            presence: model.contactPresenceByAccountID[subject.accountId],
+            canDelete: profileModel.canDelete
         )
     }
 
@@ -70,6 +73,19 @@ struct ContactProfileView: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .task { await profileModel.load() }
+        .confirmationDialog("Delete contact?", isPresented: $confirmsDelete, titleVisibility: .visible) {
+            Button("Delete contact", role: .destructive, action: deleteContact)
+        } message: {
+            Text("They will need approval before messages can reach you again.")
+        }
+        .alert(
+            "Could not delete contact",
+            isPresented: Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteError ?? "")
+        }
         .sheet(isPresented: $showsShare) {
             ContactProfileShareSheet(name: presentation.name, kordiId: presentation.kordiId ?? "")
         }
@@ -97,7 +113,8 @@ struct ContactProfileView: View {
                     ContactProfileCommonGroundSection(ground: ground)
                 }
                 if presentation.showsDelete {
-                    ContactProfileDeleteRow(action: nil)
+                    ContactProfileDeleteRow { confirmsDelete = true }
+                        .disabled(profileModel.isDeleting)
                 }
             }
             .padding(.top, 52)
@@ -208,7 +225,10 @@ struct ContactProfileView: View {
                     Button("Block", systemImage: "nosign") {}.disabled(true)
                     Button("Report", systemImage: "flag") {}.disabled(true)
                     Divider()
-                    Button("Delete contact", systemImage: "trash", role: .destructive) {}.disabled(true)
+                    if presentation.offersDelete {
+                        Button("Delete contact", systemImage: "trash", role: .destructive) { confirmsDelete = true }
+                            .disabled(!presentation.canDelete || profileModel.isDeleting)
+                    }
                 }
             } label: {
                 ContactProfileTileLabel(title: "More", systemImage: "ellipsis")
@@ -321,6 +341,17 @@ struct ContactProfileView: View {
 
     private func openOwnAgentSettings() {
         if let ownAgentConversation { path.append(.details(ownAgentConversation)) }
+    }
+
+    private func deleteContact() {
+        Task {
+            do {
+                try await profileModel.removeContact()
+                dismiss()
+            } catch {
+                deleteError = (error as? CloudAPIError)?.message.nonEmpty ?? "Could not delete this contact."
+            }
+        }
     }
 
     private func toggleMute() {

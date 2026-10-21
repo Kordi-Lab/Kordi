@@ -165,4 +165,16 @@ extension CloudAPIClient {
             fallback: "Could not load this profile."
         )
     }
+
+    /// `DELETE /v1/cloud/contacts/{account_id}`: 204 on success, 404 when not a
+    /// contact, 403 for the system contact or yourself.
+    func removeContact(token: String, accountId: String) async throws {
+        let segment = accountId.addingPercentEncoding(withAllowedCharacters: Self.contactProfileSegment) ?? accountId
+        try await sendWithoutResponse(
+            path: "/v1/cloud/contacts/\(segment)",
+            method: "DELETE",
+            token: token,
+            fallback: "Could not delete this contact."
+        )
+    }
 }

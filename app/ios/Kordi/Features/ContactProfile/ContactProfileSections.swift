@@ -244,12 +244,13 @@ struct ContactProfileCommonGroundSection: View {
     }
 }
 
-/// Red "Delete contact" row. Disabled while the server has no route to remove a contact.
+/// Red "Delete contact" row, shown only when the server can remove contacts.
 struct ContactProfileDeleteRow: View {
-    let action: (() -> Void)?
+    let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
-        Button(role: .destructive) { action?() } label: {
+        Button(role: .destructive, action: action) {
             Label("Delete contact", systemImage: "trash")
                 .font(.body)
                 .foregroundStyle(.red)
@@ -258,8 +259,7 @@ struct ContactProfileDeleteRow: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(action == nil)
-        .opacity(action == nil ? 0.45 : 1)
+        .opacity(isEnabled ? 1 : 0.45)
         .padding(.top, 24)
     }
 }

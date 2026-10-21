@@ -55,6 +55,8 @@ struct ContactProfilePresentation: Equatable {
     let isFallback: Bool
     var selfAccountId: String? = nil
     var presence: CloudPresenceAccount? = nil
+    /// The server can remove contacts (`contactProfileVersion` present).
+    var canDelete: Bool = false
 
     var kind: CloudContactProfile.Kind { profile?.kind ?? subject.kind }
     var name: String { profile?.displayName?.nonEmpty ?? subject.name }
@@ -123,7 +125,10 @@ struct ContactProfilePresentation: Equatable {
         return ground
     }
 
-    var showsDelete: Bool { kind != .system && !isOwnAgent }
+    /// Whether the person can be deleted at all; the More menu keeps a disabled item otherwise.
+    var offersDelete: Bool { kind != .system && !isOwnAgent }
+    /// The bottom red row shows only when deleting works.
+    var showsDelete: Bool { offersDelete && canDelete }
 
     /// "@482 731 906", the way the preview groups the nine digits.
     static func formattedKordiId(_ value: String) -> String {
@@ -152,14 +157,20 @@ struct ContactProfilePresentation: Equatable {
 @MainActor
 final class ContactProfileModel: ObservableObject {
     typealias Loader = () async throws -> CloudContactProfile
+    typealias Remover = () async throws -> Void
 
     @Published private(set) var profile: CloudContactProfile?
     @Published private(set) var isFallback: Bool
     @Published private(set) var isLoading: Bool
+    @Published private(set) var isDeleting = false
     private let loader: Loader?
+    private let remover: Remover?
 
-    init(loader: Loader?, profile: CloudContactProfile? = nil) {
+    var canDelete: Bool { remover != nil }
+
+    init(loader: Loader?, profile: CloudContactProfile? = nil, remover: Remover? = nil) {
         self.loader = loader
+        self.remover = remover
         self.profile = profile
         isFallback = loader == nil && profile == nil
         isLoading = loader != nil && profile == nil
@@ -175,6 +186,14 @@ final class ContactProfileModel: ObservableObject {
         } catch {
             if !(error is CancellationError) { isFallback = true }
         }
+    }
+
+    /// Removes the contact; throws the server error for the caller to show.
+    func removeContact() async throws {
+        guard let remover, !isDeleting else { return }
+        isDeleting = true
+        defer { isDeleting = false }
+        try await remover()
     }
 }
 
@@ -194,11 +213,19 @@ extension AppModel {
             return ContactProfileModel(loader: nil)
         }
         let accountId = subject.accountId
-        return ContactProfileModel { [weak self] in
-            guard let self else { throw CancellationError() }
-            let (api, token, _) = try self.digestContext()
-            return try await api.fetchContactProfile(token: token, accountId: accountId)
-        }
+        return ContactProfileModel(
+            loader: { [weak self] in
+                guard let self else { throw CancellationError() }
+                let (api, token, _) = try self.digestContext()
+                return try await api.fetchContactProfile(token: token, accountId: accountId)
+            },
+            remover: { [weak self] in
+                guard let self else { throw CancellationError() }
+                let (api, token, _) = try self.digestContext()
+                try await api.removeContact(token: token, accountId: accountId)
+                await self.refreshWorkspace(showSyncActivity: false)
+            }
+        )
     }
 
     /// The direct chat with an account, existing or new.
