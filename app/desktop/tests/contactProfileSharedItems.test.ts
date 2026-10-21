@@ -8,6 +8,7 @@ import {
   sharedConversationIsComplete,
   sharedItemDateLabel,
   sharedLinkDisplayUrl,
+  sharedPageCountLabel,
 } from '../src/pages/contactProfileSharedItems';
 import { contactProfileSharedSummary } from '../src/pages/memberContactProfileModel';
 
@@ -95,4 +96,12 @@ test('only a fully held conversation backs the pane pages', () => {
   assert.equal(sharedConversationIsComplete({ messages } as Conversation), true);
   assert.equal(sharedConversationIsComplete({ messages, canonicalMessageCount: 4 } as Conversation), true);
   assert.equal(sharedConversationIsComplete({ messages, canonicalMessageCount: 40 } as Conversation), false);
+});
+
+test('page headers count items quietly and hide the count at zero', () => {
+  assert.equal(sharedPageCountLabel('photos', 12), '12 photos');
+  assert.equal(sharedPageCountLabel('photos', 1), '1 photo');
+  assert.equal(sharedPageCountLabel('files', 3), '3 files');
+  assert.equal(sharedPageCountLabel('links', 9), '9 links');
+  assert.equal(sharedPageCountLabel('links', 0), '');
 });
