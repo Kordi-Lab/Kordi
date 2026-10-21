@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import type { Contact, ContactClass, ContactRequest } from '../types';
+import type { ContactMuteControl, ContactProfileHost } from './contactProfileHost';
 
 export type ContactGroup = { id: ContactClass; label: string; items: Contact[] };
 
@@ -33,6 +34,11 @@ export type ContactsPageProps = {
   getStatusBadgeClass: (value: string) => string;
   onMessageContact?: (contact: Contact) => void;
   onRemoveContact?: (contact: Contact) => Promise<void> | void;
+  /** Richer profile (issue #1945); without it the pane keeps today's content. */
+  contactProfileHost?: ContactProfileHost;
+  contactMute?: ContactMuteControl;
+  /** The Settings tile on the user's own agent. */
+  onOpenAgentSettings?: () => void;
   /** Optional rows pinned above the request inbox at the top of the list column. */
   leadingListItems?: ReactNode;
   /**

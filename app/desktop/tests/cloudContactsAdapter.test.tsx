@@ -77,6 +77,20 @@ test('resolveCloudActiveContact maps stale Cloud self selection to the visible C
   assert.equal(resolved?.sourceParticipantId, 'acct_peer');
 });
 
+test('resolveCloudActiveContact keeps the presence the list row shows', () => {
+  const cloudContact = cloudContactToContact({ accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, nodeId: null, createdAt: '' });
+  const visible = { ...cloudContact, presenceStatus: 'offline', presenceLastSeenAt: '2026-10-20T10:00:00Z' };
+  const resolved = resolveCloudActiveContact({
+    account,
+    activeContactId: cloudContact.id,
+    parentActiveContact: undefined,
+    cloudContacts: [cloudContact],
+    visibleCloudContacts: [visible],
+  });
+  assert.equal(resolved?.presenceStatus, 'offline');
+  assert.equal(resolved?.presenceLastSeenAt, '2026-10-20T10:00:00Z');
+});
+
 test('CloudContactsAdapter hides Cloud self agent rows and local-agent detail copy', () => {
   const markup = renderToStaticMarkup(createElement(CloudContactsAdapter, {
     account,

@@ -3,6 +3,8 @@ import { isEmptyChatSelectionId } from '@/features/chat/draftSessions';
 import { Brain, CheckCircle2, FolderOpen, Info, Layers3 } from 'lucide-react';
 
 import { ChatDetailPanel } from '@/pages/ChatDetailPanel';
+import { CloudChatPersonInfo } from '@/features/cloud/CloudChatPersonInfo';
+import { cloudDirectChatPeerAccountId } from '@/features/cloud/cloudDirectChatPeer';
 import { DocumentReaderHostContext, documentReaderHostForConversation } from '@/features/documents/documentReaderHost';
 import { ProjectDetailPanel } from '@/pages/ProjectDetailPanel';
 import { RightDetailRail } from '@/pages/RightDetailRail';
@@ -42,6 +44,23 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
         { id: 'memory', label: 'Memory', icon: Brain },
       ];
   const detailTabs = allDetailTabs;
+  const account = args.cloudSession?.account ?? null;
+  const personPeerAccountId = account && args.activeConversationUsesCollaboration && isChatNavigation(args.activeNav)
+    ? cloudDirectChatPeerAccountId(args.activeConv, account.accountId)
+    : null;
+  const renderPersonInfo = account && personPeerAccountId
+    ? (legacy: React.ReactNode) => (
+        <CloudChatPersonInfo
+          account={account}
+          conversation={args.activeConv}
+          peerAccountId={personPeerAccountId}
+          muted={activeChatSessionId ? args.mutedChatSessionIds.has(activeChatSessionId) : null}
+          onSetMuted={(muted) => args.handleSetChatSessionMuted(activeChatSessionId, muted)}
+          onReturnToChat={() => args.setIsDetailPanelCollapsed(true)}
+          legacy={legacy}
+        />
+      )
+    : undefined;
 
   return (
     <RightDetailRail
@@ -114,6 +133,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
             args.setActiveNav('chats');
             args.setActiveConvId(conversationId);
           }}
+          renderPersonInfo={renderPersonInfo}
         />
         </DocumentReaderHostContext.Provider>
       )}
