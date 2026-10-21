@@ -16,6 +16,7 @@ import { cloudGroupAgentRuntimeSessionId } from '../../src/features/cloud/cloudA
 import type { CanonicalSessionState, DesktopChatTurnSnapshot, Message } from '../../src/kordi-app/types';
 import '../../src/index.css';
 
+const ordered = new URLSearchParams(location.search).has('ordered');
 const count = Number(new URLSearchParams(location.search).get('count') ?? 50);
 const now = Date.now();
 const coldProjection = new URLSearchParams(location.search).has('cold');
@@ -30,15 +31,22 @@ Object.assign(window, { processingTrajectory: driver });
 document.documentElement.classList.add('kordi-native-shell');
 document.body.classList.add('kordi-native-shell', 'theme-light');
 function Fixture() {
-  const [phase, setPhase] = useState(0);
+  const [phase, setPhase] = useState(Number(new URLSearchParams(location.search).get('phase') ?? 0));
   const [draft, setDraft] = useState('Synthetic request');
   useLayoutEffect(() => {
     driver.step = next => { if (next === 1) { setDraft(''); scheduleTranscriptScrollToBottom(scrollRef); } setPhase(next); };
   }, []);
   const tools = phase >= 6 ? [{ id: 'tool-one', name: 'read', status: phase === 6 ? 'running' : 'done', arguments: '{"path":"synthetic.md"}', liveOutput: 'Synthetic result', isError: false }] : [];
+  if (ordered && phase >= 7) tools.push({ id: 'tool-two', name: 'edit', status: phase === 7 ? 'running' : 'done', arguments: '{"path":"synthetic.md"}', liveOutput: 'Updated the example.', isError: false });
+  const segments: DesktopChatTurnSnapshot['segments'] = ordered && phase >= 5 ? [
+    { id: 'text:0', kind: 'text', text: 'I will inspect the example before making a change.' },
+    ...(phase >= 6 ? [{ id: 'tool:one', kind: 'tool' as const, toolId: 'tool-one' }] : []),
+    ...(phase >= 7 ? [{ id: 'text:2', kind: 'text' as const, text: 'The example needs one change. I will apply it now.' }, { id: 'tool:two', kind: 'tool' as const, toolId: 'tool-two' }] : []),
+    ...(phase >= 8 ? [{ id: 'text:4', kind: 'text' as const, text: 'The example is ready. The check passed.' }] : []),
+  ] : undefined;
   const turn: DesktopChatTurnSnapshot = { id: 'local-turn', sessionId: `${cloudGroupAgentRuntimeSessionId('acct_owner', 'group')}:request:request`, replyToMessageId: 'request',
     prompt: '', status: phase === 4 ? 'starting' : phase === 5 || phase === 7 ? 'streaming' : phase === 6 ? 'tooling' : phase === 8 ? 'writing' : 'complete',
-    message: '', thinkingText: '', assistantText: phase >= 8 ? 'Synthetic final answer that fits on one line.' : '', tools, completed: phase >= 9, succeeded: phase >= 9, startedAtMs: now };
+    message: '', thinkingText: '', segments, completedAtMs: phase >= 9 ? now + 12000 : null, assistantText: phase >= 8 ? 'Synthetic final answer that fits on one line.' : '', tools, completed: phase >= 9, succeeded: phase >= 9, startedAtMs: now };
   const canonical = { profile: { id: 'profile', humanIdentityId: 'human:owner' },
     identities: [{ id: 'agent:owner', kind: 'agent', ownerIdentityId: 'human:owner', displayName: 'Synthetic Agent' }],
     sessions: [{ id: 'group', kind: 'group', title: 'Synthetic group', status: 'active', createdAtMs: now - 100000, updatedAtMs: now, metadata: {} }],
@@ -46,7 +54,7 @@ function Fixture() {
     messages: [{ id: 'processing-slot', sessionId: 'group', senderIdentityId: 'agent:owner', senderRole: 'owned-agent', messageKind: 'agent-turn',
       sourceTransport: 'cloud-group-agent', parentMessageId: 'request', createdAtMs: now, updatedAtMs: now, sequenceNum: count + 2,
       status: phase === 2 ? 'queued' : phase >= 10 ? 'received' : 'processing', contentText: phase >= 10 ? turn.assistantText : '',
-      content: { requestId: 'request', sourceConversationId: 'cloud-group-agent:group', senderOwnerAccountId: 'acct_owner', deliveryState: phase === 2 ? 'queued' : phase >= 10 ? 'complete' : 'processing', ...(phase >= 10 ? { tools } : {}) } }],
+      content: { requestId: 'request', sourceConversationId: 'cloud-group-agent:group', senderOwnerAccountId: 'acct_owner', deliveryState: phase === 2 ? 'queued' : phase >= 10 ? 'complete' : 'processing', ...(phase >= 10 ? { tools, segments } : {}) } }],
   } as CanonicalSessionState;
   const projected = projectCloudGroupLiveTurns(canonical, phase >= 4 ? { request: turn } : {}, 'acct_owner')!;
   const readModel = createCanonicalSessionReadModel(projected)!;

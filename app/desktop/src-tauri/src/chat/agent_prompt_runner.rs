@@ -109,6 +109,7 @@ async fn run_agent_prompt_once(
         message: String::new(),
         assistant_text: String::new(),
         thinking_text: String::new(),
+        segments: Vec::new(),
         tools: Vec::new(),
         completed: false,
         succeeded: false,
@@ -169,6 +170,7 @@ async fn run_agent_prompt_once(
                 state.succeeded = assistant.is_some();
                 if let Some(message) = assistant {
                     state.assistant_text = message.text;
+                    state.segments = message.segments;
                     state.thinking_text = message.thinking_text.unwrap_or_default();
                     state.tools = task_tools;
                 } else {
@@ -285,6 +287,7 @@ mod tests {
             cancelled: false,
             attachments: Vec::new(),
             thinking_text: None,
+            segments: Vec::new(),
             tools,
             entry_id: None,
         }
@@ -398,6 +401,7 @@ mod tests {
             message: "default auth failed".to_string(),
             assistant_text: String::new(),
             thinking_text: String::new(),
+            segments: Vec::new(),
             tools: Vec::new(),
             completed: true,
             succeeded: false,

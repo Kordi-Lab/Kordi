@@ -161,3 +161,29 @@ test('first request after opening a group does not reset its transcript when the
     await expect(page.getByText('Synthetic final answer that fits on one line.', { exact: true })).toBeVisible();
   }
 });
+
+test('ordered commentary keeps disclosures open through streaming and completion', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&count=2&phase=6');
+  const first = page.locator('.app-turn-progress-summary').first();
+  await expect(page.getByText('I will inspect the example before making a change.')).toBeVisible();
+  await first.focus();
+  await page.keyboard.press('Enter');
+  await expect(first).toHaveAttribute('aria-expanded', 'true');
+  const step = (phase: number) => page.evaluate(phase => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(phase), phase);
+  await step(7);
+  await expect(first).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.app-turn-progress-dots')).toHaveCount(1);
+  await expect(page.getByText('The example needs one change. I will apply it now.')).toBeVisible();
+  await step(9);
+  await expect(first).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.app-turn-progress-dots')).toHaveCount(0);
+  await expect(page.getByText('The example is ready. The check passed.')).toHaveCount(1);
+  await expect(page.getByText('Synthetic final answer that fits on one line.')).toHaveCount(0);
+  await first.click();
+  await expect(first).toHaveAttribute('aria-expanded', 'false');
+  await page.screenshot({ path: info.outputPath('ordered-progress.png'), fullPage: true });
+  const card = page.locator('.app-live-turn-card');
+  await card.evaluate(element => { (element as HTMLElement).style.width = '280px'; });
+  await expect(page.getByText('The example is ready. The check passed.')).toBeVisible();
+  expect(await card.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+});

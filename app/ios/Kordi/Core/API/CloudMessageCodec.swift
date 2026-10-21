@@ -410,6 +410,7 @@ enum CloudAgentLifecycleProjector {
             steps: snapshot.steps,
             thinkingText: snapshot.thinkingText,
             tools: snapshot.tools,
+            segments: snapshot.segments,
             startedAtMs: snapshot.startedAtMs,
             updatedAtMs: max(
                 snapshot.updatedAtMs,

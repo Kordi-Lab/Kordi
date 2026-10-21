@@ -10,6 +10,7 @@ export function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
     turn.message,
     turn.assistantText,
     turn.thinkingText,
+    JSON.stringify(turn.segments ?? []),
     turn.completed ? 'completed' : 'running',
     turn.succeeded ? 'succeeded' : 'pending',
     turn.error ?? '',

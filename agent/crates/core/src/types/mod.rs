@@ -14,3 +14,6 @@ pub use session::{
     CompactionSettings, EntryBase, EntryId, ModelInfo, SessionContext, SessionEntry, SessionHeader,
     ThinkingLevel,
 };
+
+mod turn_segment;
+pub use turn_segment::TurnSegment;

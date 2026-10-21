@@ -1,4 +1,3 @@
-use anyhow::Result;
 use kordi_core::types::{AgentMessage, AssistantContent, ContentBlock, SessionEntry};
 use std::collections::HashMap;
 
@@ -15,28 +14,7 @@ use super::historical_turn::{
 };
 use crate::omp_turn::RAW_OMP_MESSAGE;
 
-pub(in crate::desktop_runtime) fn load_session_messages(
-    conn: &rusqlite::Connection,
-    session_id: &str,
-) -> Result<Vec<DesktopChatMessage>> {
-    let path = kordi_session::tree::active_path(conn, session_id)?;
-    let mut out = Vec::new();
-    let mut current_turn = None;
-
-    for row in path {
-        match kordi_session::store::parse_entry(&row)? {
-            SessionEntry::Message { message, .. } => {
-                append_agent_message(&mut out, &mut current_turn, &row.entry_id, message)
-            }
-            entry => append_session_metadata(&mut out, &mut current_turn, entry),
-        }
-    }
-
-    flush_historical_turn(&mut out, &mut current_turn);
-    Ok(out)
-}
-
-fn append_agent_message(
+pub(super) fn append_agent_message(
     out: &mut Vec<DesktopChatMessage>,
     current_turn: &mut Option<HistoricalTurnBuilder>,
     entry_id: &str,
@@ -61,6 +39,7 @@ fn append_agent_message(
                 cancelled: false,
                 attachments: image_attachments_from_blocks(&user.content),
                 thinking_text: None,
+                segments: Vec::new(),
                 tools: Vec::new(),
                 entry_id: Some(entry_id.to_string()),
             });
@@ -92,10 +71,12 @@ fn append_agent_message(
                 turn.cancelled = true;
             }
 
+            kordi_core::types::TurnSegment::start_text(&mut turn.segments);
             for item in message.content {
                 match item {
                     AssistantContent::Text { text } => {
                         if !text.trim().is_empty() {
+                            kordi_core::types::TurnSegment::append_text(&mut turn.segments, &text);
                             turn.assistant_text_parts.push(text);
                         }
                     }
@@ -109,6 +90,7 @@ fn append_agent_message(
                         name,
                         arguments,
                     } => {
+                        kordi_core::types::TurnSegment::push_tool(&mut turn.segments, &id);
                         let raw_args = arguments.to_string();
                         let next_index = turn.tools.len();
                         turn.tool_index_by_id.insert(id.clone(), next_index);
@@ -145,6 +127,10 @@ fn append_agent_message(
                 if let Some(index) = turn.tool_index_by_id.get(&message.tool_call_id).copied() {
                     index
                 } else {
+                    kordi_core::types::TurnSegment::push_tool(
+                        &mut turn.segments,
+                        &message.tool_call_id,
+                    );
                     let index = turn.tools.len();
                     turn.tool_index_by_id
                         .insert(message.tool_call_id.clone(), index);
@@ -197,6 +183,7 @@ fn append_agent_message(
             };
             *current_turn = Some(HistoricalTurnBuilder {
                 assistant_text_parts: Vec::new(),
+                segments: Vec::new(),
                 thinking_parts: Vec::new(),
                 tools: vec![DesktopChatStoredTool {
                     id: format!("bash-exec-{}", message.timestamp),
@@ -243,6 +230,7 @@ fn append_agent_message(
                     cancelled: false,
                     attachments: Vec::new(),
                     thinking_text: None,
+                    segments: Vec::new(),
                     tools: Vec::new(),
                     entry_id: None,
                 });
@@ -261,6 +249,7 @@ fn append_agent_message(
                 cancelled: false,
                 attachments: Vec::new(),
                 thinking_text: None,
+                segments: Vec::new(),
                 tools: Vec::new(),
                 entry_id: None,
             });
@@ -281,6 +270,7 @@ fn append_agent_message(
                 cancelled: false,
                 attachments: Vec::new(),
                 thinking_text: None,
+                segments: Vec::new(),
                 tools: Vec::new(),
                 entry_id: None,
             });
@@ -288,7 +278,7 @@ fn append_agent_message(
     }
 }
 
-fn append_session_metadata(
+pub(super) fn append_session_metadata(
     out: &mut Vec<DesktopChatMessage>,
     current_turn: &mut Option<HistoricalTurnBuilder>,
     entry: SessionEntry,
@@ -312,6 +302,7 @@ fn append_session_metadata(
                 cancelled: false,
                 attachments: Vec::new(),
                 thinking_text: None,
+                segments: Vec::new(),
                 tools: Vec::new(),
                 entry_id: None,
             })
@@ -335,6 +326,7 @@ fn append_session_metadata(
                 cancelled: false,
                 attachments: Vec::new(),
                 thinking_text: None,
+                segments: Vec::new(),
                 tools: Vec::new(),
                 entry_id: None,
             })
@@ -370,6 +362,7 @@ fn append_session_metadata(
                     cancelled: false,
                     attachments: Vec::new(),
                     thinking_text: None,
+                    segments: Vec::new(),
                     tools: Vec::new(),
                     entry_id: None,
                 });
@@ -396,6 +389,7 @@ fn append_session_metadata(
                 cancelled: false,
                 attachments: Vec::new(),
                 thinking_text: None,
+                segments: Vec::new(),
                 tools: Vec::new(),
                 entry_id: None,
             })
@@ -413,6 +407,7 @@ fn append_session_metadata(
                 cancelled: false,
                 attachments: Vec::new(),
                 thinking_text: None,
+                segments: Vec::new(),
                 tools: Vec::new(),
                 entry_id: None,
             })
@@ -431,6 +426,7 @@ fn append_session_metadata(
                     cancelled: false,
                     attachments: Vec::new(),
                     thinking_text: None,
+                    segments: Vec::new(),
                     tools: Vec::new(),
                     entry_id: None,
                 });
@@ -450,6 +446,7 @@ fn append_session_metadata(
                     cancelled: false,
                     attachments: Vec::new(),
                     thinking_text: None,
+                    segments: Vec::new(),
                     tools: Vec::new(),
                     entry_id: None,
                 });

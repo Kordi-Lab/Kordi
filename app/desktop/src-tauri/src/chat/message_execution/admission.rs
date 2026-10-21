@@ -44,6 +44,7 @@ mod tests {
             message: "Working…".into(),
             assistant_text: String::new(),
             thinking_text: String::new(),
+            segments: Vec::new(),
             tools: vec![],
             completed: false,
             succeeded: false,

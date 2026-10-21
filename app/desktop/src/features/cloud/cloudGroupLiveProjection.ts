@@ -93,6 +93,7 @@ export function withLiveTurn(
       deliveryState: turn.completed ? turn.status === 'cancelled' ? 'cancelled' : turn.succeeded ? 'complete' : 'failed' : 'processing',
       localExecutionStatus, localExecutionMessage: turn.message,
       thinkingText: turn.thinkingText, tools: turn.tools,
+      segments: turn.segments,
       startedAtMs: turn.startedAtMs, completedAtMs: turn.completedAtMs,
       ...(turn.error ? { error: turn.error } : {}),
       // A reply that ended early keeps how it ended, as its stored row will.

@@ -18,23 +18,10 @@ test('transcript human avatars are large enough to read beside message bubbles',
   assert.doesNotMatch(avatarBlock, /h-5\.5 w-5\.5/);
 });
 
-test('expanded thinking content uses a compact secondary type scale relative to the final answer', () => {
-  const source = readFileSync(new URL('../src/kordi-app/components/transcriptLiveTurns.tsx', import.meta.url), 'utf8');
-  const answerSource = readFileSync(new URL('../src/kordi-app/components/transcriptAssistantAnswer.tsx', import.meta.url), 'utf8');
-  const timelineStyles = readFileSync(new URL('../src/styles/shell-transcript-timeline.css', import.meta.url), 'utf8');
-  const answerStart = answerSource.indexOf('export function FoldableAssistantAnswer');
-  const thinkingStart = source.indexOf('function ToolTimelineThinkingRow');
-  const thinkingEnd = source.indexOf('function useRunningElapsedLabel', thinkingStart);
-  assert.ok(answerStart >= 0, 'expected FoldableAssistantAnswer source block');
-  assert.ok(thinkingStart >= 0 && thinkingEnd > thinkingStart, 'expected ToolTimelineThinkingRow source block');
-  const answerBlock = answerSource.slice(answerStart);
-  const thinkingBlock = source.slice(thinkingStart, thinkingEnd);
-
-  assert.match(answerBlock, /app-live-assistant-answer w-full text-\[13px\]/);
-  assert.match(thinkingBlock, /app-transcript-thinking-markdown/);
-  assert.doesNotMatch(thinkingBlock, /leading-\[1\.55rem\]|text-\[1[234](?:\.5)?px\]/);
-  assert.match(timelineStyles, /\.app-transcript-thinking-markdown\s*\{[^}]*font-size:\s*0\.75rem;[^}]*line-height:\s*1\.55;/s);
-  assert.match(timelineStyles, /\.app-transcript-thinking-markdown :where\(p, li, blockquote, td, th\)\s*\{[^}]*font-size:\s*inherit;[^}]*line-height:\s*inherit;/s);
+test('reasoning remains a secondary disclosure', () => {
+  const source = readFileSync(new URL('../src/kordi-app/components/TurnProgress.tsx', import.meta.url), 'utf8');
+  assert.match(source, /<details><summary>Reasoning<\/summary>/);
+  assert.match(source, /app-transcript-thinking-markdown/);
 });
 
 test('code blocks remove the header bar and reveal copy controls on hover', () => {
@@ -149,26 +136,14 @@ test('completed activity summary renders before the final assistant result', () 
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
   const answerIndex = markup.indexOf('Primary answer');
-  const toolsIndex = markup.indexOf('app-transcript-tool-timeline');
+  const toolsIndex = markup.indexOf('app-turn-progress');
 
   assert.ok(answerIndex >= 0);
   assert.ok(toolsIndex >= 0);
   assert.ok(toolsIndex < answerIndex, 'completed activity should remain above the final answer');
   assert.match(markup, /Worked for 5m 52s/);
   assert.match(markup, /data-transcript-stable-disclosure="true"/);
-  const timelineSource = readFileSync(new URL('../src/kordi-app/components/transcriptLiveTurns.tsx', import.meta.url), 'utf8');
-  const timelineStart = timelineSource.indexOf('function FoldableToolTimeline');
-  const timelineEnd = timelineSource.indexOf('function longerText', timelineStart);
-  const timelineBlock = timelineSource.slice(timelineStart, timelineEnd);
-  const timelineStyles = readFileSync(new URL('../src/styles/shell-transcript-timeline.css', import.meta.url), 'utf8');
-  assert.ok(
-    timelineBlock.indexOf('app-transcript-tool-timeline-row') < timelineBlock.indexOf('app-transcript-timeline-list'),
-    'expanded activity should unfold below its stable summary control',
-  );
-  assert.match(timelineBlock, /app-transcript-timeline-reveal-open/);
-  assert.match(timelineStyles, /\.app-transcript-timeline-reveal\s*\{[^}]*grid-template-rows:\s*0fr;[^}]*transition:\s*grid-template-rows/s);
-  assert.match(timelineStyles, /\.app-transcript-timeline-reveal-open\s*\{[^}]*grid-template-rows:\s*1fr;/s);
-  assert.match(timelineStyles, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.app-transcript-timeline-reveal/);
+
 });
 
 test('failed tool details never replace live or completed turn utility', () => {
@@ -213,7 +188,7 @@ test('failed tool details never replace live or completed turn utility', () => {
     },
   }));
 
-  assert.match(activeMarkup, />Thinking</);
+  assert.match(activeMarkup, />Working</);
   assert.doesNotMatch(activeMarkup, /tool failed|circle-alert/);
 });
 

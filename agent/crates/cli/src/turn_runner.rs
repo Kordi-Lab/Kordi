@@ -47,6 +47,8 @@ pub(crate) struct TurnConfig {
 
 #[derive(Clone, Debug)]
 pub enum TurnEvent {
+    /// Begins a user-facing assistant message; thinking remains separate.
+    TextStart,
     TurnStart {
         turn_index: u32,
     },

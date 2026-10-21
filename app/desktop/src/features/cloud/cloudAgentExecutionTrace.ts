@@ -180,6 +180,7 @@ export function cloudAgentExecutionSnapshotFromTurn(
     phase,
     summary,
     steps,
+    ...(turn.segments?.length ? { segments: turn.segments.map(segment => segment.kind === 'text' ? { ...segment, text: redactSensitiveToolText(segment.text) } : segment) } : {}),
     ...(turn.thinkingText.trim()
       ? { thinkingText: redactSensitiveToolText(turn.thinkingText) }
       : {}),
@@ -233,6 +234,7 @@ export function cloudAgentExecutionFingerprint(
     snapshot.summary,
     snapshot.completed ? '1' : '0',
     snapshot.thinkingText ?? '',
+    JSON.stringify(snapshot.segments ?? []),
     ...(snapshot.tools ?? []).map((tool) => [
       tool.id,
       tool.name,
@@ -283,6 +285,7 @@ export function cloudAgentExecutionTurnSnapshot({
       ? ''
       : response.text,
     thinkingText: execution.thinkingText ?? '',
+    segments: execution.segments,
     tools: execution.tools ?? [],
     completed: execution.completed,
     succeeded: response.deliveryState === 'complete',
@@ -302,6 +305,7 @@ export function cloudAgentExecutionCanonicalContent(
     executionSummary: execution.summary,
     executionUpdatedAtMs: execution.updatedAtMs,
     thinkingText: execution.thinkingText ?? '',
+    segments: execution.segments,
     tools: execution.tools ?? [],
   };
 }

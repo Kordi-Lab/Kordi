@@ -240,7 +240,7 @@ test('light theme keeps folded assistant markdown readable against the answer su
   assert.match(lightAnswerListBlock, /color:\s*var\(--utility-foreground\)\s*!important;/);
 });
 
-const quoteToolAnswerSurfacePattern = /app-live-turn-response-panel app-live-assistant-answer-surface[\s\S]*app-transcript-tool-timeline[\s\S]*app-live-assistant-answer[\s\S]*<\/div><div class="flex min-w-0 max-w-full mt-1"><button type="button" class="app-source-message-quote" data-quote-side="agent"/;
+const quoteToolAnswerSurfacePattern = /app-live-turn-response-panel app-live-assistant-answer-surface[\s\S]*app-turn-progress[\s\S]*app-live-assistant-answer[\s\S]*<\/div><div class="flex min-w-0 max-w-full mt-1"><button type="button" class="app-source-message-quote" data-quote-side="agent"/;
 
 test('keeps the tool summary inside the assistant response and the source quote under it', () => {
   const turn: DesktopChatTurnSnapshot = {
