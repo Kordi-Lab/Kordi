@@ -10,7 +10,12 @@ async fn upgrade_from_133_adds_common_ground() {
     a.unwrap();
     b.unwrap();
     latest_version(&pool).await;
-    let after: Vec<(Value,)> = query_as(accounts).fetch_all(&pool).await.unwrap();
+    // Migrations 139 and 140 add empty profile columns.
+    let after: Vec<(Value,)> =
+        query_as("SELECT to_jsonb(a) - ARRAY['public_handle','about','location','time_zone','website','birthday','public_handle_changed_at'] FROM cloud_accounts a ORDER BY account_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
     assert_eq!(before, after, "accounts are untouched");
 
     execute(&pool, "INSERT INTO cloud_common_ground_cards(account_id) VALUES('fixture-owner'),('fixture-peer')").await;

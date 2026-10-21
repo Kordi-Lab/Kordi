@@ -117,7 +117,7 @@ export type CloudOAuthStartResponse = {
   authUrl: string;
 };
 
-export type CloudProfileUpdateInput = {
+export type CloudProfileUpdateInput = import('./cloudIdentityTypes').CloudProfileFieldsInput & {
   displayName?: string; avatarMutation?: import('./canonicalAvatar').CanonicalAvatarMutation;
   agentDisplayName?: string; agentAvatarMutation?: import('./canonicalAvatar').CanonicalAvatarMutation;
 };

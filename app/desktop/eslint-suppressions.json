@@ -589,9 +589,6 @@
     }
   },
   "src/pages/CloudAccountSettingsDialog.tsx": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 2
-    },
     "react-refresh/only-export-components": {
       "count": 1
     }

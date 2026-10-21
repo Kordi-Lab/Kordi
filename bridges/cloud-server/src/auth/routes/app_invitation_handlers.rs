@@ -9,7 +9,7 @@ const KORDI_FAVICON_URL: &str = "/assets/favicon.png";
 
 struct AppInvitationRecord {
     display_name: Option<String>,
-    public_account_number: i64,
+    kordi_id: String,
     avatar_url: Option<String>,
     expires_at: String,
 }
@@ -50,8 +50,8 @@ async fn lookup_app_invitation(
         return Ok(AppInvitationLookup::Invalid);
     }
 
-    let row: Option<(Option<String>, i64, Option<String>, String)> = query_as(
-        "SELECT account.display_name, account.public_account_number, account.avatar_url, invite.expires_at \
+    let row: Option<(Option<String>, String, Option<String>, String)> = query_as(
+        "SELECT account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url, invite.expires_at \
          FROM cloud_app_invitations invite \
          JOIN cloud_accounts account ON account.account_id = invite.inviter_account_id \
          WHERE invite.token_hash = $1 AND invite.revoked_at IS NULL",
@@ -60,7 +60,7 @@ async fn lookup_app_invitation(
     .fetch_optional(pool)
     .await?;
 
-    let Some((display_name, public_account_number, avatar_url, expires_at)) = row else {
+    let Some((display_name, kordi_id, avatar_url, expires_at)) = row else {
         return Ok(AppInvitationLookup::Invalid);
     };
     let is_expired = DateTime::parse_from_rfc3339(&expires_at)
@@ -72,7 +72,7 @@ async fn lookup_app_invitation(
 
     Ok(AppInvitationLookup::Valid(AppInvitationRecord {
         display_name,
-        public_account_number,
+        kordi_id,
         avatar_url,
         expires_at,
     }))
@@ -362,7 +362,7 @@ pub(super) async fn get_app_invitation(
         AppInvitationLookup::Valid(record) => Json(AppInvitationPreviewResponse {
             inviter: AppInvitationInviterResponse {
                 display_name: record.display_name,
-                kordi_id: record.public_account_number.to_string(),
+                kordi_id: record.kordi_id,
                 avatar_url: record.avatar_url,
             },
             expires_at: record.expires_at,
@@ -409,7 +409,7 @@ pub(super) async fn app_invitation_landing(
                 &format!("{inviter} invited you to Kordi."),
                 &format!(
                     "Join @{} in a shared workspace where people and agents work together.",
-                    record.public_account_number
+                    record.kordi_id
                 ),
                 release_download_url.as_deref(),
             )

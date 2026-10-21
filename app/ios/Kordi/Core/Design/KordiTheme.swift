@@ -2,6 +2,8 @@ import SwiftUI
 
 enum KordiTheme {
     static let destructiveText = adaptive(light: 0x9F1239, dark: 0xFDA4AF)
+    /// Editable values and the active Save in the profile editor.
+    static let profileAccent = adaptive(light: 0x365F98, dark: 0xAEC4E3)
     /// The current-time indicator in calendar views.
     static let nowIndicator = adaptive(light: 0xEA580C, dark: 0xF97316)
     static let signalBlue = Color(red: 37 / 255, green: 99 / 255, blue: 235 / 255)

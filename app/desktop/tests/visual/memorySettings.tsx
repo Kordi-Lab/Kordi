@@ -27,6 +27,11 @@ const account: CloudAccount = {
   kordiId: '517309264',
   displayName: 'Taylor Preview',
   primaryEmail: 'taylor@memory.example',
+  about: 'Design and research at a small studio.',
+  location: 'Lisbon',
+  timeZone: 'Europe/Lisbon',
+  website: null,
+  birthday: '1996-03-04',
   avatarUrl: null,
   avatar: {
     entityType: 'human',

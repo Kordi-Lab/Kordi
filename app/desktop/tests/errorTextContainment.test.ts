@@ -25,7 +25,8 @@ test('common app error surfaces opt into contained error text', () => {
   const sources = [
     'AuthPopup.tsx',
     'pages/ArtifactInspector.tsx',
-    'pages/CloudAccountSettingsDialog.tsx',
+    'pages/CloudProfilePanel.tsx',
+    'kordi-app/cloud/CloudProfileFieldRow.tsx',
     'pages/SessionActionOverlays.tsx',
     'pages/WorkspaceSidebar.tsx',
     'features/cloud/CloudContactsPanel.tsx',
