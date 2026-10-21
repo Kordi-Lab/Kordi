@@ -16,13 +16,16 @@ export function useAcceptedCloudGroupNavigation({
   refreshCloudMessages: () => Promise<unknown>;
   setActiveConversationId: (conversationId: string) => void;
   setActiveNavigation: (navigation: 'chats') => void;
-  setDesktopChatError: (message: string) => void;
+  setDesktopChatError: (message: string | null) => void;
 }) {
   useEffect(() => {
     const openAcceptedGroup = (event: Event) => {
       const detail = (event as CustomEvent<CloudGroupInvitationAcceptedDetail>).detail;
       const conversationId = acceptedCloudGroupConversationId(detail?.groupSpaceId);
       if (!conversationId) return;
+      // A sidebar click clears the previous chat's banner; opening from
+      // Common ground or an invite must too, or it shows over the new group.
+      setDesktopChatError(null);
       void refreshCloudMessages()
         .then(() => {
           setActiveNavigation('chats');

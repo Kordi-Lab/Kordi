@@ -8,6 +8,8 @@ import { acceptedCloudGroupConversationId } from '../src/app/acceptedCloudGroupC
 import { useAcceptedCloudGroupNavigation } from '../src/app/useAcceptedCloudGroupNavigation';
 import { activeConversationForSelection } from '../src/app/viewModels/conversationSelection';
 import { nativeChatPlaceholderForSelection } from '../src/app/viewModels/nativeChatSelection';
+import { collaborationGroupSessionSendTargets } from '../src/features/chat/messageActions/collaborationRouting';
+import { cloudGroupTargetAccountIds } from '../src/features/cloud/cloudGroupMessages';
 import { dispatchCloudGroupInvitationAccepted } from '../src/features/cloud/groupInvitationDeepLink';
 import type { Conversation } from '../src/kordi-app/types';
 
@@ -71,13 +73,19 @@ test('accepted group navigation opens the new group, before and after it syncs',
   let refreshes = 0;
   let activeId = nadia.id;
   let navigation = '';
-  const errors: string[] = [];
+  // A banner left over from the previous chat (a failed send there).
+  let banner: string | null = 'This chat is unavailable. Try again from the chat list.';
+  const errors: Array<string | null> = [];
   function Harness() {
     useAcceptedCloudGroupNavigation({
-      refreshCloudMessages: async () => { refreshes += 1; },
+      refreshCloudMessages: async () => {
+        refreshes += 1;
+        // conversation.created lands a moment after the refresh resolves.
+        setTimeout(() => { chats = [nadia, newGroup]; }, 20);
+      },
       setActiveConversationId: (id) => { activeId = id; },
       setActiveNavigation: (next) => { navigation = next; },
-      setDesktopChatError: (message) => { errors.push(message); },
+      setDesktopChatError: (message) => { banner = message; errors.push(message); },
     });
     return null;
   }
@@ -90,16 +98,20 @@ test('accepted group navigation opens the new group, before and after it syncs',
     assert.equal(refreshes, 1);
     assert.equal(navigation, 'chats');
     assert.equal(activeId, GROUP_SESSION_ID);
-    assert.deepEqual(errors, []);
+    // Opening clears the stale banner and raises none of its own.
+    assert.deepEqual(errors, [null]);
+    assert.equal(banner, null);
 
     // Not synced yet: a group placeholder, never another chat.
+    assert.deepEqual(chats, [nadia]);
     const pending = select(activeId, chats);
     assert.equal(pending.id, GROUP_SESSION_ID);
     assert.equal(pending.directness, 'Group chat');
     assert.deepEqual(pending.messages, []);
 
     // Once conversation.created is applied, the same id selects the group.
-    chats = [nadia, newGroup];
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(chats, [nadia, newGroup]);
     const opened = select(activeId, chats);
     assert.equal(opened, newGroup);
     assert.equal(opened.name, 'Personal agent memory');
@@ -109,6 +121,7 @@ test('accepted group navigation opens the new group, before and after it syncs',
       dispatchCloudGroupInvitationAccepted({ groupId: GROUP_SESSION_ID, groupSpaceId: `group:${GROUP_SESSION_ID}`, groupTitle: '' });
     });
     assert.equal(activeId, GROUP_SESSION_ID);
+    assert.ok(errors.every((message) => message === null));
   } finally {
     await act(async () => { root.unmount(); });
     for (const [key, descriptor] of previous) {
@@ -116,4 +129,16 @@ test('accepted group navigation opens the new group, before and after it syncs',
       else delete (globalThis as Record<string, unknown>)[key];
     }
   }
+});
+
+test('a group whose invitees have not joined yet has no Cloud send target', () => {
+  // Documents the send-path condition behind "This chat is unavailable":
+  // chatMessages.ts only takes the Cloud group branch when targets exist.
+  const soloGroup = {
+    canonicalParticipants: [
+      { id: 'me', name: 'Me', kind: 'human', role: 'self', source: 'cloud', sourceHostId: 'cloud', sourceIdentityId: 'acct_me' },
+      { id: 'agent', name: 'Kordi', kind: 'agent', role: 'agent', source: 'cloud', sourceHostId: 'cloud', sourceIdentityId: 'acct_me' },
+    ],
+  } as unknown as Pick<Conversation, 'canonicalParticipants'>;
+  assert.deepEqual(cloudGroupTargetAccountIds(collaborationGroupSessionSendTargets(soloGroup, null, ['acct_me'])), []);
 });
