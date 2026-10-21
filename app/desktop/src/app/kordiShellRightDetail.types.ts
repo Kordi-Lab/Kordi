@@ -36,6 +36,4 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleStartChatWithPerson'
   | 'onForwardMessage'
   | 'handleSendChatMessage'
-  | 'mutedChatSessionIds'
-  | 'handleSetChatSessionMuted'
 >;
