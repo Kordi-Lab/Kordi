@@ -69,7 +69,7 @@ struct MainNavigationDestination: View {
             ConversationView(conversation: route.conversation, initialMessageID: route.messageID,
                 onOpenSessionDetails: openSessionDetails)
         case .sessionDetails(let conversation):
-            SessionDetailView(conversation: conversation) {
+            ConversationDetailsPage(conversation: conversation) {
                 if path.last == route { path.removeLast() }
             }
         case .newChat(.addContact):
