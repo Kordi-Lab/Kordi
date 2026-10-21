@@ -94,14 +94,17 @@ struct ContactProfileShareSheet: View {
     }
 }
 
-/// On the pushed page, rows scrolling up pass under a visible bar edge
-/// instead of sliding behind the back button.
+/// The pushed page keeps the standard bar transparent, so the tinted header
+/// runs under the status bar and the back button floats on it, as on the
+/// session details page.
 struct ContactProfilePageBar: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content.scrollEdgeEffectStyle(.hard, for: .top)
+            content
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .scrollEdgeEffectHidden(true, for: .top)
         } else {
-            content.toolbarBackground(.visible, for: .navigationBar)
+            content.toolbarBackground(.hidden, for: .navigationBar)
         }
     }
 }

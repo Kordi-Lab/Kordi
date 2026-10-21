@@ -163,7 +163,7 @@ struct ContactProfileView: View {
                         .disabled(profileModel.isDeleting)
                 }
             }
-            .padding(.top, 52)
+            .padding(.top, pageConversation == nil ? 52 : 12)
             .padding(.bottom, 44)
             .frame(maxWidth: .infinity, alignment: .leading)
             // Inside the scroll content, so it scrolls away with the header
@@ -400,13 +400,13 @@ struct ContactProfileView: View {
         switch row {
         case .media:
             if let pageConversation { route = .focused(pageConversation, .media) } else { openDirectChat() }
-        case .files:
-            if let pageConversation { route = .focused(pageConversation, .files) }
+        case .documents:
+            if let pageConversation { route = .focused(pageConversation, .files) } else { openDirectChat() }
         case .todo:
             if let pageConversation { route = .focused(pageConversation, .todo) }
         case .memory:
             if let pageConversation { route = .focused(pageConversation, .memory) }
-        case .links, .documents:
+        case .links:
             openDirectChat()
         case .groups:
             if presentation.shared == nil, let pageConversation {

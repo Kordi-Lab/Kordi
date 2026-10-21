@@ -149,7 +149,7 @@ final class ContactProfileTests: XCTestCase {
         XCTAssertEqual(page.tiles, [.call, .video, .mute, .more])
         XCTAssertFalse(page.tiles.contains(.message))
         XCTAssertFalse(page.tiles.contains(.share))
-        XCTAssertEqual(page.sharedRows, [.media, .files, .links, .documents, .groups, .todo, .memory])
+        XCTAssertEqual(page.sharedRows, [.media, .links, .documents, .groups, .todo, .memory])
         XCTAssertEqual(page.sharedCount(.media), 24)
         XCTAssertNil(page.sharedCount(.todo))
         XCTAssertTrue(page.showsSharedSection)
@@ -173,6 +173,8 @@ final class ContactProfileTests: XCTestCase {
         )
         XCTAssertFalse(empty.showsNothingShared)
         XCTAssertTrue(empty.isSharedRowEnabled(.media))
+        XCTAssertTrue(empty.isSharedRowEnabled(.documents))
+        XCTAssertEqual(empty.sharedCount(.documents), 0)
         XCTAssertFalse(empty.isSharedRowEnabled(.links))
 
         let sheet = ContactProfilePresentation(subject: subject, profile: CloudContactProfile(accountId: "acct_nadia", shared: .init()), isFallback: false)

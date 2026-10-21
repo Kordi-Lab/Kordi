@@ -46,14 +46,13 @@ enum ContactProfileTile: String, Identifiable, Hashable {
 }
 
 enum ContactProfileSharedRow: String, Identifiable, Hashable {
-    case media, files, links, documents, groups, todo, memory
+    case media, links, documents, groups, todo, memory
 
     var id: Self { self }
 
     var title: String {
         switch self {
         case .media: "Photos and files"
-        case .files: "Files"
         case .links: "Links"
         case .documents: "Documents"
         case .groups: "Groups in common"
@@ -65,7 +64,6 @@ enum ContactProfileSharedRow: String, Identifiable, Hashable {
     var systemImage: String {
         switch self {
         case .media: "photo"
-        case .files: "folder"
         case .links: "link"
         case .documents: "doc.text"
         case .groups: "person.2"
@@ -141,7 +139,7 @@ struct ContactProfilePresentation: Equatable {
 
     var sharedRows: [ContactProfileSharedRow] {
         guard isPage else { return [.media, .links, .documents, .groups] }
-        return [.media, .files, .links, .documents, .groups, .todo] + (memoryAvailable ? [.memory] : [])
+        return [.media, .links, .documents, .groups, .todo] + (memoryAvailable ? [.memory] : [])
     }
 
     /// Nil for rows without a server count.
@@ -152,14 +150,15 @@ struct ContactProfilePresentation: Equatable {
         case .links: return shared.linkCount
         case .documents: return shared.documentCount
         case .groups: return shared.groups.count
-        case .files, .todo, .memory: return nil
+        case .todo, .memory: return nil
         }
     }
 
-    /// Zero-count rows that only lead back to the chat are disabled; the page's
-    /// media, files, todo and memory views have their own empty states.
+    /// Zero-count rows that only lead back to the chat are disabled; on the page
+    /// media, documents (the Files tab), todo and memory open views with their
+    /// own empty states.
     func isSharedRowEnabled(_ row: ContactProfileSharedRow) -> Bool {
-        if isPage, [.media, .files, .todo, .memory].contains(row) { return true }
+        if isPage, [.media, .documents, .todo, .memory].contains(row) { return true }
         return sharedCount(row).map { $0 > 0 } ?? true
     }
 
