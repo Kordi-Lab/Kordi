@@ -228,3 +228,50 @@ pub(super) async fn shared_view(
         },
     })))
 }
+
+/// The card lists shown on a contact profile (#1945).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProfileCommonGround {
+    pub working_on: Vec<String>,
+    pub can_help: Vec<String>,
+    pub looking_for: Vec<String>,
+}
+
+/// The card lists of the profile `other` shares with `viewer`, at most
+/// `limit` topics each, under the same rule as [`shared_view`]: the most
+/// recent pairing or room decides which profile that is. The owner sees
+/// their default profile while sharing is on. `None` when no card is
+/// visible or built.
+pub(crate) async fn profile_common_ground(
+    pool: &PgPool,
+    viewer: &str,
+    other: &str,
+    limit: usize,
+) -> sqlx_core::Result<Option<ProfileCommonGround>> {
+    let profile_id = if viewer == other {
+        profiles::default_profile(pool, other)
+            .await?
+            .map(|profile| profile.profile_id)
+    } else {
+        link(pool, viewer, other, None)
+            .await?
+            .map(|link| link.other_profile)
+    };
+    let Some(profile_id) = profile_id else {
+        return Ok(None);
+    };
+    let Some(card) = card::load(pool, &profile_id).await? else {
+        return Ok(None);
+    };
+    if !card.has_card() || !card.sharing {
+        return Ok(None);
+    }
+    let topics = card.shared_topics();
+    let take = |list: Vec<String>| list.into_iter().take(limit).collect();
+    Ok(Some(ProfileCommonGround {
+        working_on: take(topics.working_on),
+        can_help: take(topics.can_help),
+        looking_for: take(topics.looking_for),
+    }))
+}

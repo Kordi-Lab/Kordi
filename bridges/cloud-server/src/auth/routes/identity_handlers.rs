@@ -40,6 +40,7 @@ pub(super) async fn auth_capabilities(
         memory_version: 1,
         common_ground_version: crate::common_ground::available(&state)
             .then_some(crate::common_ground::COMMON_GROUND_VERSION),
+        contact_profile_version: CONTACT_PROFILE_VERSION,
     })
 }
 
