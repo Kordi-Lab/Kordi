@@ -147,13 +147,42 @@ async fn contacts_are_added_and_the_rest_invited() {
         members(&pool, &body["group"]["conversationId"]).await,
         expected
     );
-    let (title,): (Option<String>,) =
-        query_as("SELECT shared_title FROM cloud_chat_conversations WHERE legacy_session_id = $1")
-            .bind(body["group"]["groupSpaceId"].as_str().unwrap())
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(title.as_deref(), Some("Agent memory"));
+    // The name titles the group, as in a group made in the app; its first
+    // channel keeps no title of its own.
+    let space = body["group"]["groupSpaceId"].as_str().unwrap();
+    let (shared, group_space, group_title): (Option<String>, Option<String>, Option<String>) =
+        query_as(
+            "SELECT shared_title, group_space_id, group_title FROM cloud_chat_conversations
+             WHERE legacy_session_id = $1",
+        )
+        .bind(space)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(shared, None);
+    assert_eq!(group_space.as_deref(), Some(space));
+    assert_eq!(group_title.as_deref(), Some("Agent memory"));
+    let (payload,): (Value,) = query_as(
+        "SELECT payload FROM cloud_chat_user_sync_events
+         WHERE account_id = $1 AND event_type = 'conversation.created'
+           AND conversation_id = $2::uuid",
+    )
+    .bind(&priya)
+    .bind(body["group"]["conversationId"].as_str().unwrap())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(payload["conversation"]["group_title"], "Agent memory");
+    let snapshot = crate::chat_sync::store::bootstrap(&pool, &priya)
+        .await
+        .unwrap();
+    let conversation = snapshot
+        .conversations
+        .iter()
+        .find(|conversation| conversation.legacy_session_id.as_deref() == Some(space))
+        .expect("the group is in the member's snapshot");
+    assert_eq!(conversation.group_title.as_deref(), Some("Agent memory"));
+    assert_eq!(conversation.shared_title, None);
 }
 
 #[tokio::test]

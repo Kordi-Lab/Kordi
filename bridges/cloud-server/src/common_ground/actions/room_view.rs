@@ -13,6 +13,7 @@ type GroupRow = (
     String,
     Uuid,
     String,
+    Option<String>,
     String,
     Option<String>,
     Option<String>,
@@ -42,7 +43,7 @@ pub(in crate::common_ground) async fn room_extras(
         .collect();
     let groups: Vec<GroupRow> = query_as(
         "SELECT room_group.group_space_id, room_group.conversation_id, room_group.name,
-                room_group.created_by, account.display_name, account.avatar_url,
+                room_group.topic, room_group.created_by, account.display_name, account.avatar_url,
                 (SELECT COUNT(*) FROM cloud_chat_conversation_members member
                  WHERE member.conversation_id = room_group.conversation_id
                    AND member.membership_state = 'active' AND NOT (member.account_id = ANY($3))),
@@ -62,11 +63,12 @@ pub(in crate::common_ground) async fn room_extras(
     let groups: Vec<Value> = groups
         .into_iter()
         .map(
-            |(space, conversation, name, creator, creator_name, avatar, count, joined)| {
+            |(space, conversation, name, topic, creator, creator_name, avatar, count, joined)| {
                 json!({
                     "groupSpaceId": space,
                     "conversationId": conversation,
                     "name": name,
+                    "topic": topic,
                     "memberCount": count,
                     "createdBy": person(&creator, creator_name.as_deref(), avatar.as_deref()),
                     "joined": joined,

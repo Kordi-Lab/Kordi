@@ -37,7 +37,7 @@ pub(in crate::common_ground) async fn join(
     let pool = state.db_pool();
     let viewer = session.account_id.as_str();
     let room_id = match rooms::my_room(pool, &code, viewer).await {
-        Ok(Some(room_id)) => room_id,
+        Ok(Some((room_id, _))) => room_id,
         Ok(None) => return rooms::room_not_found(),
         Err(error) => return db_error(error),
     };

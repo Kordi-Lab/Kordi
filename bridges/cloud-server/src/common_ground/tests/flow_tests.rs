@@ -262,10 +262,17 @@ async fn cards_rooms_and_pairings() {
         .execute(&pool)
         .await
         .unwrap();
-    let (status, _) = send(&app, "GET", &room, &priya_token, None).await;
-    assert_eq!(status, 404);
+    let (status, body) = send(&app, "GET", &room, &priya_token, None).await;
+    assert_eq!(
+        (status, &body["open"]),
+        (200, &json!(false)),
+        "members keep a closed room, read-only"
+    );
     let (status, _) = send(&app, "GET", &person(&alex), &priya_token, None).await;
-    assert_eq!(status, 404, "an expired room no longer shares cards");
+    assert_eq!(
+        status, 200,
+        "members of an expired room still see each other"
+    );
     let (status, body) = send(&app, "POST", &join, &priya_token, None).await;
     assert_eq!(
         (
