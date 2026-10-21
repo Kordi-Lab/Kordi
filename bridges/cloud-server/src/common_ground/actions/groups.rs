@@ -19,7 +19,7 @@ use super::people_by_id;
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::routes::{create_invitation_in_transaction, CloudSession, ROOM_GROUP_MIN_MEMBERS};
 use crate::chat_sync::models::{ConversationKind, CreateConversationRequest};
-use crate::common_ground::{db_error, err, limited, rooms, GROUP_LIMIT};
+use crate::common_ground::{db_error, err, intro, limited, rooms, GROUP_LIMIT};
 use crate::server::ServerState;
 
 const MAX_NAME_CHARS: usize = 80;
@@ -138,7 +138,8 @@ pub(in crate::common_ground) async fn start_group(
         Ok(created) => created,
         Err(response) => return *response,
     };
-    // A group started here gets PiP like any other new group.
+    // A group started here gets PiP like any other new group, and PiP
+    // opens it by introducing everyone.
     if let Some(pip) = state.pip() {
         if let Err(error) = crate::pip::membership::join_conversation(
             pool,
@@ -148,6 +149,19 @@ pub(in crate::common_ground) async fn start_group(
         .await
         {
             eprintln!("[pip] Could not join a new conversation: {error}");
+        }
+        let intro = intro::NewIntro {
+            room_id,
+            group_space_id: &created.group_space_id,
+            conversation_id: created.conversation_id,
+            name: &name,
+            topic: topic.as_deref(),
+            creator: viewer,
+            added: &created.added,
+            invited: &created.invited,
+        };
+        if let Err(error) = intro::queue(pool, pip.config(), intro).await {
+            eprintln!("[common-ground] Could not queue a group intro: {error}");
         }
     }
     let people = match people_by_id(pool, &ids).await {

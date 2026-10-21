@@ -69,6 +69,7 @@ tests=(
   account_handle_tests::upgrade_from_139_adds_account_handles
   account_handle_tests::upgrade_from_140_adds_profile_fields
   common_ground_tests::upgrade_from_141_adds_profiles
+  common_ground_tests::upgrade_from_142_adds_group_intros
 )
 index=0
 for test_name in "${tests[@]}"; do

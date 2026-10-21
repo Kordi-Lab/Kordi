@@ -320,3 +320,44 @@ async fn upgrade_from_141_adds_profiles() {
         .unwrap();
     assert_eq!(left, 1, "a deleted account takes its profiles");
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_142_adds_group_intros() {
+    let pool = fixture(142).await;
+    execute(&pool, "INSERT INTO cloud_common_ground_rooms(room_id,code,created_by) VALUES('00000000-0000-0000-0000-000000000001','0427','fixture-owner')").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_room_groups(group_space_id,room_id,conversation_id,name,created_by,topic) VALUES('session:group:a','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-00000000000a','Agents','fixture-owner','Agent memory')").await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let (topic,): (Option<String>,) = query_as("SELECT topic FROM cloud_common_ground_room_groups")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        topic.as_deref(),
+        Some("Agent memory"),
+        "groups are untouched"
+    );
+
+    execute(&pool, "INSERT INTO cloud_common_ground_group_intros(run_id,conversation_id,group_space_id) VALUES('cg_intro_a','00000000-0000-0000-0000-00000000000a','session:group:a')").await;
+    let (posted, error): (Option<chrono::DateTime<chrono::Utc>>, Option<String>) =
+        query_as("SELECT posted_at, error_code FROM cloud_common_ground_group_intros")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((posted, error), (None, None), "intros start unposted");
+    for invalid in [
+        "INSERT INTO cloud_common_ground_group_intros(run_id,conversation_id,group_space_id) VALUES('cg_intro_a','00000000-0000-0000-0000-00000000000a','session:group:a')",
+        "INSERT INTO cloud_common_ground_group_intros(run_id,conversation_id,group_space_id) VALUES('cg_intro_b','00000000-0000-0000-0000-00000000000a','session:group:missing')",
+    ] {
+        assert!(sqlx_core::raw_sql::raw_sql(invalid).execute(&pool).await.is_err(), "{invalid}");
+    }
+    execute(&pool, "DELETE FROM cloud_common_ground_rooms").await;
+    let (intros,): (i64,) = query_as("SELECT COUNT(*) FROM cloud_common_ground_group_intros")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(intros, 0, "a deleted group takes its intro");
+}
