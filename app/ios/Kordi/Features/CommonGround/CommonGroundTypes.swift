@@ -78,18 +78,22 @@ struct CommonGroundPerson: Decodable, Hashable, Identifiable {
     let avatarUrl: String?
     var hasCard: Bool?
     var relationship: CommonGroundRelationship?
+    /// The profile this person shares with you; nil before profiles.
+    var profile: CommonGroundProfileTag?
 
     var id: String { accountId }
 
-    init(accountId: String, name: String, avatarUrl: String? = nil, hasCard: Bool? = nil, relationship: CommonGroundRelationship? = nil) {
+    init(accountId: String, name: String, avatarUrl: String? = nil, hasCard: Bool? = nil,
+         relationship: CommonGroundRelationship? = nil, profile: CommonGroundProfileTag? = nil) {
         self.accountId = accountId
         self.name = name
         self.avatarUrl = avatarUrl
         self.hasCard = hasCard
         self.relationship = relationship
+        self.profile = profile
     }
 
-    private enum CodingKeys: String, CodingKey { case accountId, name, avatarUrl, hasCard, relationship }
+    private enum CodingKeys: String, CodingKey { case accountId, name, avatarUrl, hasCard, relationship, profile }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -98,10 +102,14 @@ struct CommonGroundPerson: Decodable, Hashable, Identifiable {
         avatarUrl = c.cgValue(.avatarUrl, nil as String?)
         hasCard = c.cgValue(.hasCard, nil as Bool?)
         relationship = c.cgValue(.relationship, nil as CommonGroundRelationship?)
+        profile = c.cgValue(.profile, nil as CommonGroundProfileTag?)
     }
 
     /// The name to show; the server may send an empty one.
     var displayName: String { name.isEmpty ? "Kordi user" : name }
+
+    /// "Nadia · Health": the name with the shared profile unless it is Work.
+    var labeledName: String { profile?.badge.map { "\(displayName) · \($0)" } ?? displayName }
 }
 
 /// The four topic lists of a card.
@@ -211,14 +219,17 @@ struct CommonGroundOwnerView: Decodable, Hashable {
     var card: CommonGroundOwnCard?
     var sharing: Bool
     var build: CommonGroundBuildState
+    /// The profile this card belongs to; nil before profiles.
+    var profile: CommonGroundProfileTag?
 
-    private enum CodingKeys: String, CodingKey { case card, sharing, build }
+    private enum CodingKeys: String, CodingKey { case card, sharing, build, profile }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         card = c.cgValue(.card, nil as CommonGroundOwnCard?)
         sharing = c.cgValue(.sharing, true)
         build = c.cgValue(.build, CommonGroundBuildState(status: "idle", errorCode: nil))
+        profile = c.cgValue(.profile, nil as CommonGroundProfileTag?)
     }
 }
 
@@ -231,6 +242,8 @@ struct CommonGroundBuildRequest: Encodable, Hashable {
     var device: [CommonGroundDeviceItems]
     var links: String
     var notes: String
+    /// The profile to build; omitted before profiles.
+    var profileId: String? = nil
 }
 
 /// Someone's shared card: topics only.
@@ -247,12 +260,14 @@ struct CommonGroundPairCode: Decodable, Hashable {
     var expiry: Date? { commonGroundParseDate(expiresAt) }
 }
 
+/// One per person and profile they shared; `profileId` is yours.
 struct CommonGroundRecentEntry: Decodable, Hashable, Identifiable {
     let person: CommonGroundPerson
     let score: Int?
     let headline: String?
     let relationship: CommonGroundRelationship?
-    var id: String { person.accountId }
+    var profileId: String?
+    var id: String { person.accountId + "|" + (person.profile?.profileId ?? "") }
 }
 
 struct CommonGroundGroup: Decodable, Hashable, Identifiable {
@@ -309,8 +324,11 @@ struct CommonGroundRoom: Decodable, Hashable {
     let members: [CommonGroundPerson]
     var groups: [CommonGroundGroup]
     var invitations: [CommonGroundInvitation]
+    /// The profile kind the room suggests, and the profile you share here.
+    var kind: String?
+    var profileId: String?
 
-    private enum CodingKeys: String, CodingKey { case code, name, openedByYou, open, expiresAt, members, groups, invitations }
+    private enum CodingKeys: String, CodingKey { case code, name, openedByYou, open, expiresAt, members, groups, invitations, kind, profileId }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -322,6 +340,8 @@ struct CommonGroundRoom: Decodable, Hashable {
         members = c.cgValue(.members, [])
         groups = c.cgValue(.groups, [])
         invitations = c.cgValue(.invitations, [])
+        kind = c.cgValue(.kind, nil as String?)
+        profileId = c.cgValue(.profileId, nil as String?)
     }
 
     var title: String { name.trimmingCharacters(in: .whitespaces).isEmpty ? "Room \(code)" : name }
@@ -415,40 +435,6 @@ struct CommonGroundMatch: Decodable, Hashable {
 
     var isReady: Bool { status == "ready" }
     var isMatching: Bool { status == "matching" }
-}
-
-struct CommonGroundMeetInput: Encodable, Hashable {
-    var title: String?
-    var startAt: String
-    var endAt: String?
-    var location: String?
-}
-
-struct CommonGroundCreatedGroup: Decodable, Hashable {
-    let group: CommonGroundGroup
-    let added: [CommonGroundPerson]
-    let invited: [CommonGroundPerson]
-}
-
-struct CommonGroundJoinedGroup: Decodable, Hashable {
-    let status: String?
-    let groupSpaceId: String
-    let conversationId: String?
-    let name: String?
-}
-
-struct CommonGroundRelationshipResponse: Decodable, Hashable { let relationship: CommonGroundRelationship }
-
-struct CommonGroundChatResponse: Decodable, Hashable {
-    let conversationId: String
-    let sessionId: String?
-    let relationship: CommonGroundRelationship?
-}
-
-struct CommonGroundMeetResponse: Decodable, Hashable {
-    let conversationId: String
-    let planCardId: String?
-    let relationship: CommonGroundRelationship?
 }
 
 struct CommonGroundPeopleResponse<Entry: Decodable>: Decodable { let people: [Entry] }

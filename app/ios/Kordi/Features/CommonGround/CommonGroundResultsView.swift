@@ -54,6 +54,7 @@ struct CommonGroundResultsView: View {
             }
 
             VStack(spacing: 16) {
+                CommonGroundSharingRow(code: code)
                 if let suggestion = results?.suggestion {
                     suggestionCard(suggestion)
                 }
@@ -213,7 +214,10 @@ struct CommonGroundResultsView: View {
         } else {
             CommonGroundPeopleRows(
                 entries: people.map { .init(person: $0.person, subtitle: $0.headline, score: $0.score) }
-            ) { path.append(.match($0.accountId)) }
+            ) { person in
+                model.view(person.accountId, through: model.sharedProfileID(inRoom: code))
+                path.append(.match(person.accountId))
+            }
         }
     }
 

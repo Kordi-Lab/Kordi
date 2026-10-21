@@ -23,7 +23,12 @@ struct CommonGroundHome: View {
 
             VStack(spacing: 16) {
                 CommonGroundRoomsSection(path: $path)
-                cardSection
+                VStack(spacing: 10) {
+                    if model.profilesEnabled, !model.profiles.isEmpty {
+                        CommonGroundProfileSwitcher().padding(.horizontal, -16)
+                    }
+                    cardSection
+                }
                 recentSection
             }
             .padding(.horizontal, 16)
@@ -47,6 +52,8 @@ struct CommonGroundHome: View {
         CommonGroundSection(title: "Your card") {
             if model.isBuilding {
                 CommonGroundRow(title: "Building your card")
+            } else if model.profilesEnabled, model.loaded, !model.hasCard {
+                CommonGroundRow(title: model.buildTitle) { path.append(.build) }
             } else {
                 Button { path.append(.card) } label: {
                     VStack(alignment: .leading, spacing: 12) {
@@ -82,7 +89,10 @@ struct CommonGroundHome: View {
             } else {
                 CommonGroundPeopleRows(
                     entries: model.recent.map { .init(person: $0.person, subtitle: $0.headline ?? "", score: $0.score) }
-                ) { path.append(.match($0.accountId)) }
+                ) { person in
+                    model.view(person.accountId, through: model.recent.first { $0.person == person }?.profileId)
+                    path.append(.match(person.accountId))
+                }
             }
         }
     }

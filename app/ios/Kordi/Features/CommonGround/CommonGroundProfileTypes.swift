@@ -1,0 +1,186 @@
+import Foundation
+
+// Profiles (`commonGroundVersion` 2): a person keeps up to five cards, one
+// per profile, and shares exactly one profile in each room or pairing.
+
+private extension KeyedDecodingContainer {
+    func cgProfileValue<T: Decodable>(_ key: Key, _ fallback: T) -> T {
+        ((try? decodeIfPresent(T.self, forKey: key)) ?? nil) ?? fallback
+    }
+}
+
+enum CommonGroundProfileKind: String, CaseIterable, Identifiable {
+    case work, health, daily, custom
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .work: "Work"
+        case .health: "Health"
+        case .daily: "Daily tasks"
+        case .custom: "Custom"
+        }
+    }
+
+    /// Work, Health and Daily tasks exist at most once per person.
+    var isFixed: Bool { self != .custom }
+}
+
+/// `{profileId, kind, name, focus}`: a profile as a card, room or person carries it.
+struct CommonGroundProfileTag: Codable, Hashable {
+    let profileId: String
+    let kind: String
+    let name: String
+    var focus: String?
+
+    init(profileId: String, kind: String, name: String, focus: String? = nil) {
+        self.profileId = profileId
+        self.kind = kind
+        self.name = name
+        self.focus = focus
+    }
+
+    private enum CodingKeys: String, CodingKey { case profileId, kind, name, focus }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        profileId = c.cgProfileValue(.profileId, "")
+        kind = c.cgProfileValue(.kind, "work")
+        name = c.cgProfileValue(.name, "")
+        focus = c.cgProfileValue(.focus, nil as String?)
+    }
+
+    var title: String { CommonGroundProfileSummary.title(kind: kind, name: name) }
+
+    /// The label beside a person's name; nil for Work, which needs none.
+    var badge: String? { kind == CommonGroundProfileKind.work.rawValue ? nil : title }
+}
+
+/// One entry of `GET profiles`, as the owner sees it.
+struct CommonGroundProfileSummary: Decodable, Hashable, Identifiable {
+    let profileId: String
+    let kind: String
+    var name: String
+    var focus: String?
+    let position: Int
+    var hasCard: Bool
+    var sharing: Bool
+    var builtAt: String?
+    var topicCount: Int
+
+    var id: String { profileId }
+
+    init(profileId: String, kind: String, name: String, focus: String? = nil, position: Int = 0,
+         hasCard: Bool = false, sharing: Bool = true, builtAt: String? = nil, topicCount: Int = 0) {
+        self.profileId = profileId
+        self.kind = kind
+        self.name = name
+        self.focus = focus
+        self.position = position
+        self.hasCard = hasCard
+        self.sharing = sharing
+        self.builtAt = builtAt
+        self.topicCount = topicCount
+    }
+
+    private enum CodingKeys: String, CodingKey { case profileId, kind, name, focus, position, hasCard, sharing, builtAt, topicCount }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        profileId = try c.decode(String.self, forKey: .profileId)
+        kind = c.cgProfileValue(.kind, "work")
+        name = c.cgProfileValue(.name, "")
+        focus = c.cgProfileValue(.focus, nil as String?)
+        position = c.cgProfileValue(.position, 0)
+        hasCard = c.cgProfileValue(.hasCard, false)
+        sharing = c.cgProfileValue(.sharing, true)
+        builtAt = c.cgProfileValue(.builtAt, nil as String?)
+        topicCount = c.cgProfileValue(.topicCount, 0)
+    }
+
+    var profileKind: CommonGroundProfileKind? { CommonGroundProfileKind(rawValue: kind) }
+    var title: String { Self.title(kind: kind, name: name) }
+    var isWork: Bool { kind == CommonGroundProfileKind.work.rawValue }
+    var focusLine: String? {
+        guard let focus = focus?.trimmingCharacters(in: .whitespacesAndNewlines), !focus.isEmpty else { return nil }
+        return focus
+    }
+
+    /// "Build your profile" for Work, "Build your Health profile" otherwise.
+    var buildTitle: String { isWork ? "Build your profile" : "Build your \(title) profile" }
+
+    static func title(kind: String, name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty { return trimmed }
+        return CommonGroundProfileKind(rawValue: kind)?.title ?? "Profile"
+    }
+}
+
+struct CommonGroundProfileList: Decodable {
+    let profiles: [CommonGroundProfileSummary]
+
+    private enum CodingKeys: String, CodingKey { case profiles }
+
+    init(from decoder: Decoder) throws {
+        profiles = try decoder.container(keyedBy: CodingKeys.self).cgProfileValue(.profiles, [])
+    }
+}
+
+/// `POST profiles`.
+struct CommonGroundNewProfile: Encodable, Hashable {
+    var kind: String
+    var name: String?
+    var focus: String?
+
+    /// Trims the fields and drops empty ones; a fixed kind sends no name.
+    init(kind: CommonGroundProfileKind, name: String = "", focus: String = "") {
+        self.kind = kind.rawValue
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let focus = focus.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.name = kind.isFixed || name.isEmpty ? nil : name
+        self.focus = focus.isEmpty ? nil : focus
+    }
+
+    var isValid: Bool { kind != CommonGroundProfileKind.custom.rawValue || name != nil }
+}
+
+/// `PUT profiles/:id`; nil leaves a field, an empty focus clears it.
+struct CommonGroundProfileEdit: Encodable, Hashable {
+    var name: String?
+    var focus: String?
+}
+
+/// `POST rooms/:code/join`. `name` and `kind` apply only when this join opens the room.
+struct CommonGroundJoinRequest: Encodable, Hashable {
+    var name: String?
+    var kind: String?
+    var profileId: String?
+}
+
+/// Which profile is current on Home, per account, and which one a join shares.
+enum CommonGroundProfileChoice {
+    static func key(account: String) -> String { "commonGround.currentProfile.\(account)" }
+
+    static func saved(account: String, defaults: UserDefaults) -> String? {
+        defaults.string(forKey: key(account: account))
+    }
+
+    static func save(_ profileId: String?, account: String, defaults: UserDefaults) {
+        if let profileId { defaults.set(profileId, forKey: key(account: account)) } else { defaults.removeObject(forKey: key(account: account)) }
+    }
+
+    /// The saved profile when it still exists, else Work, else the first one.
+    static func current(saved: String?, in profiles: [CommonGroundProfileSummary]) -> String? {
+        if let saved, profiles.contains(where: { $0.profileId == saved }) { return saved }
+        return (profiles.first(where: \.isWork) ?? profiles.first)?.profileId
+    }
+
+    /// The profile a join preselects: one of the room's kind with a card,
+    /// else the current profile, else the first one with a card.
+    static func preselected(roomKind: String?, current: String?, in choices: [CommonGroundProfileSummary]) -> String? {
+        if let roomKind, let match = choices.first(where: { $0.kind == roomKind }) { return match.profileId }
+        if let current, choices.contains(where: { $0.profileId == current }) { return current }
+        return choices.first?.profileId
+    }
+}

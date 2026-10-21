@@ -326,7 +326,8 @@ final class CommonGroundTests: XCTestCase {
 }
 
 /// Serves queued responses per "METHOD /path"; the last one repeats.
-private final class CommonGroundURLProtocol: URLProtocol {
+/// Shared with CommonGroundProfileTests.
+final class CommonGroundURLProtocol: URLProtocol {
     struct Recorded {
         let request: URLRequest
         let body: Data?

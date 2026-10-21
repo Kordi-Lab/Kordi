@@ -72,7 +72,7 @@ struct CommonGroundView: View {
 
     /// First run shows the sources until a card exists.
     @ViewBuilder private var root: some View {
-        if model.owner != nil && !model.hasCard {
+        if model.owner != nil && !model.hasCard && !model.anyProfileHasCard {
             CommonGroundBuildView(onClose: onClose)
         } else {
             CommonGroundHome(path: $path, onClose: onClose)
