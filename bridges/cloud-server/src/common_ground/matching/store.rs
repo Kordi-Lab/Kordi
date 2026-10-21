@@ -1,4 +1,5 @@
-//! Queueing match and room-theme runs, and storing what they find.
+//! Queueing match and room-theme runs, and reading what they stored. Match
+//! results are kept per pair of profiles.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -10,7 +11,7 @@ use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
 use super::prompt::{self, MATCH_SYSTEM, ROOM_SYSTEM};
-use super::{result, MatchResult, SharedCard};
+use super::{MatchResult, SharedCard};
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::common_ground::runs::{self, NewRun, MATCH_PREFIX, ROOM_PREFIX};
 use crate::common_ground::MATCH_LIMIT;
@@ -25,7 +26,8 @@ pub(super) const MAX_THEME_MEMBERS: usize = 60;
 const BLOCKING_RUN_SQL: &str = "created_at > now() - interval '15 minutes'
     AND (finished_at IS NULL OR (error_code IS NOT NULL AND finished_at > now() - interval '2 minutes'))";
 
-/// Stored results for `viewer` that are still valid for both current cards.
+/// Stored results for `viewer`, keyed by the other profile, that are still
+/// valid for both current cards.
 pub(super) async fn fresh_results(
     pool: &PgPool,
     viewer: &SharedCard,
@@ -50,19 +52,19 @@ async fn load_results(
     others: &[SharedCard],
     current_only: bool,
 ) -> sqlx_core::Result<HashMap<String, MatchResult>> {
-    let ids: Vec<&str> = others.iter().map(|o| o.account_id.as_str()).collect();
+    let ids: Vec<&str> = others.iter().map(|o| o.profile_id.as_str()).collect();
     let rows: Vec<(String, i64, i64, Value)> = query_as(
-        "SELECT other_account_id, viewer_revision, other_revision, result_json
+        "SELECT other_profile_id, viewer_revision, other_revision, result_json
          FROM cloud_common_ground_matches
-         WHERE viewer_account_id = $1 AND other_account_id = ANY($2)",
+         WHERE viewer_profile_id = $1 AND other_profile_id = ANY($2)",
     )
-    .bind(&viewer.account_id)
+    .bind(&viewer.profile_id)
     .bind(&ids)
     .fetch_all(pool)
     .await?;
     let revisions: HashMap<&str, i64> = others
         .iter()
-        .map(|o| (o.account_id.as_str(), o.revision))
+        .map(|o| (o.profile_id.as_str(), o.revision))
         .collect();
     Ok(rows
         .into_iter()
@@ -138,7 +140,7 @@ async fn blocking_run(
 }
 
 /// Queues a run matching `viewer` with up to [`MATCH_BATCH`] of `stale`,
-/// unless one is already working for this viewer. Only a queued run is
+/// unless one is already working for this viewer profile. Only a queued run is
 /// charged to the viewer's matching budget.
 pub(super) async fn queue_matches(
     pool: &PgPool,
@@ -150,10 +152,10 @@ pub(super) async fn queue_matches(
 ) -> sqlx_core::Result<Queued> {
     let mut tx = pool.begin().await?;
     query("SELECT pg_advisory_xact_lock(hashtext('common-ground-match:' || $1))")
-        .bind(&viewer.account_id)
+        .bind(&viewer.profile_id)
         .execute(&mut *tx)
         .await?;
-    if let Some(pending) = blocking_run(pool, "viewer_account_id", &viewer.account_id).await? {
+    if let Some(pending) = blocking_run(pool, "viewer_profile_id", &viewer.profile_id).await? {
         return Ok(Queued::Pending(pending));
     }
     if let Some(retry_after) = charge(rate_limiter, &viewer.account_id).await {
@@ -163,11 +165,13 @@ pub(super) async fn queue_matches(
     let run_id = runs::new_run_id(MATCH_PREFIX);
     let cards: Vec<&SharedCard> = std::iter::once(viewer).chain(batch).collect();
     query(
-        "INSERT INTO cloud_common_ground_match_runs (run_id, kind, viewer_account_id, room_id, cards_json)
-         VALUES ($1, 'match', $2, $3, $4)",
+        "INSERT INTO cloud_common_ground_match_runs
+             (run_id, kind, viewer_account_id, viewer_profile_id, room_id, cards_json)
+         VALUES ($1, 'match', $2, $3, $4, $5)",
     )
     .bind(&run_id)
     .bind(&viewer.account_id)
+    .bind(&viewer.profile_id)
     .bind(room_id)
     .bind(json!(cards))
     .execute(&mut *tx)
@@ -183,11 +187,11 @@ pub(super) async fn queue_matches(
     Ok(Queued::Pending(Pending::Running))
 }
 
-/// Identifies a room's member set and card revisions.
+/// Identifies a room's member set, shared profiles and card revisions.
 pub(super) fn members_key(members: &[SharedCard]) -> String {
     let mut parts: Vec<String> = members
         .iter()
-        .map(|m| format!("{}:{}", m.account_id, m.revision))
+        .map(|m| format!("{}:{}:{}", m.account_id, m.profile_id, m.revision))
         .collect();
     parts.sort();
     hex::encode(Sha256::digest(parts.join(",").as_bytes()))
@@ -263,202 +267,4 @@ pub(super) async fn queue_themes(
     runs::insert(&mut tx, service, new_run).await?;
     tx.commit().await?;
     Ok(Queued::Pending(Pending::Running))
-}
-
-type RunRow = (String, Option<String>, Option<Uuid>, Value);
-
-/// Stores what a finished match or room run found. A reply that is not the
-/// expected JSON fails the run instead.
-pub(in crate::common_ground) async fn complete(
-    pool: &PgPool,
-    run_id: &str,
-    runner_id: &str,
-    text: &str,
-) -> sqlx_core::Result<()> {
-    let row: Option<RunRow> = query_as(
-        "SELECT kind, viewer_account_id, room_id, cards_json FROM cloud_common_ground_match_runs
-         WHERE run_id = $1 AND finished_at IS NULL",
-    )
-    .bind(run_id)
-    .fetch_optional(pool)
-    .await?;
-    let Some((kind, viewer, room_id, cards)) = row else {
-        return Err(sqlx_core::Error::RowNotFound);
-    };
-    let cards: Vec<SharedCard> = serde_json::from_value(cards).unwrap_or_default();
-    let current = current_revisions(pool, &cards).await?;
-    let is_current = |card: &SharedCard| current.get(&card.account_id) == Some(&card.revision);
-    let mut tx = pool.begin().await?;
-    if !runs::mark_completed(&mut tx, run_id, runner_id).await? {
-        return Err(sqlx_core::Error::RowNotFound);
-    }
-    if kind == "match" {
-        let (Some(viewer_card), others) = (cards.first(), cards.get(1..).unwrap_or_default())
-        else {
-            return Err(sqlx_core::Error::RowNotFound);
-        };
-        let Some(found) = prompt::parse_matches(text, viewer_card, others) else {
-            drop(tx);
-            eprintln!("[common-ground] Rejected run {run_id}: the reply is not a match list");
-            return fail(pool, run_id, Some(runner_id), "invalid_output").await;
-        };
-        // Cards that changed while the run worked are matched again later.
-        if is_current(viewer_card) {
-            for (other, found) in others.iter().zip(found) {
-                if !is_current(other) {
-                    continue;
-                }
-                query(
-                    "INSERT INTO cloud_common_ground_matches
-                         (viewer_account_id, other_account_id, viewer_revision, other_revision, result_json)
-                     VALUES ($1, $2, $3, $4, $5)
-                     ON CONFLICT (viewer_account_id, other_account_id) DO UPDATE SET
-                         viewer_revision = EXCLUDED.viewer_revision, other_revision = EXCLUDED.other_revision,
-                         result_json = EXCLUDED.result_json, computed_at = now()",
-                )
-                .bind(&viewer_card.account_id)
-                .bind(&other.account_id)
-                .bind(viewer_card.revision)
-                .bind(other.revision)
-                .bind(json!(result(viewer_card, other, found)))
-                .execute(&mut *tx)
-                .await?;
-            }
-        }
-        if let Some(viewer) = &viewer {
-            crate::common_ground::hint(&mut tx, viewer, "common_ground.matches.updated", json!({}))
-                .await?;
-        }
-    } else if let Some(room_id) = room_id {
-        let Some(themes) = prompt::parse_themes(text, cards.len()) else {
-            drop(tx);
-            eprintln!("[common-ground] Rejected run {run_id}: the reply is not a theme list");
-            return fail(pool, run_id, Some(runner_id), "invalid_output").await;
-        };
-        let themes: Vec<(String, Vec<String>)> = themes
-            .into_iter()
-            .map(|(label, people)| {
-                (
-                    label,
-                    people
-                        .into_iter()
-                        .map(|i| cards[i].account_id.clone())
-                        .collect(),
-                )
-            })
-            .collect();
-        if cards.iter().all(is_current) {
-            query(
-                "INSERT INTO cloud_common_ground_room_themes (room_id, members_key, themes_json)
-                 VALUES ($1, $2, $3)
-                 ON CONFLICT (room_id) DO UPDATE SET members_key = EXCLUDED.members_key,
-                     themes_json = EXCLUDED.themes_json, computed_at = now()",
-            )
-            .bind(room_id)
-            .bind(members_key(&cards))
-            .bind(json!(themes))
-            .execute(&mut *tx)
-            .await?;
-        }
-        notify_room(&mut tx, room_id).await?;
-    }
-    if !finish(&mut tx, run_id, None).await? {
-        return Err(sqlx_core::Error::RowNotFound);
-    }
-    tx.commit().await
-}
-
-pub(in crate::common_ground) async fn fail(
-    pool: &PgPool,
-    run_id: &str,
-    runner_id: Option<&str>,
-    code: &str,
-) -> sqlx_core::Result<()> {
-    let mut tx = pool.begin().await?;
-    // A runner that lost its lease, or a repeated report, changes nothing.
-    if !runs::mark_failed(&mut tx, run_id, runner_id, code, "Matching failed.").await? {
-        return Ok(());
-    }
-    let row: Option<(Option<String>, Option<Uuid>)> = query_as(
-        "SELECT viewer_account_id, room_id FROM cloud_common_ground_match_runs WHERE run_id = $1 AND finished_at IS NULL",
-    )
-    .bind(run_id)
-    .fetch_optional(&mut *tx)
-    .await?;
-    if !finish(&mut tx, run_id, Some(code)).await? {
-        return Ok(());
-    }
-    match row {
-        Some((Some(viewer), _)) => {
-            crate::common_ground::hint(
-                &mut tx,
-                &viewer,
-                "common_ground.matches.updated",
-                json!({}),
-            )
-            .await?;
-        }
-        Some((None, Some(room_id))) => notify_room(&mut tx, room_id).await?,
-        _ => {}
-    }
-    tx.commit().await
-}
-
-/// Marks an open run finished and drops the cards it read: other people's
-/// topics are not kept with a finished run. Returns false when the run was
-/// already finished.
-async fn finish(
-    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
-    run_id: &str,
-    error_code: Option<&str>,
-) -> sqlx_core::Result<bool> {
-    let changed = query(
-        "UPDATE cloud_common_ground_match_runs SET finished_at = now(), error_code = $2, cards_json = '[]'::jsonb
-         WHERE run_id = $1 AND finished_at IS NULL",
-    )
-    .bind(run_id)
-    .bind(error_code)
-    .execute(&mut **tx)
-    .await?;
-    Ok(changed.rows_affected() > 0)
-}
-
-async fn notify_room(
-    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
-    room_id: Uuid,
-) -> sqlx_core::Result<()> {
-    let members: Vec<(String, String)> = query_as(
-        "SELECT member.account_id, room.code FROM cloud_common_ground_room_members member
-         JOIN cloud_common_ground_rooms room ON room.room_id = member.room_id
-         WHERE member.room_id = $1 AND member.left_at IS NULL",
-    )
-    .bind(room_id)
-    .fetch_all(&mut **tx)
-    .await?;
-    for (account, code) in members {
-        crate::common_ground::hint(
-            tx,
-            &account,
-            "common_ground.room.updated",
-            json!({ "code": code }),
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-/// Current revisions of the cards that are still shared.
-async fn current_revisions(
-    pool: &PgPool,
-    cards: &[SharedCard],
-) -> sqlx_core::Result<HashMap<String, i64>> {
-    let ids: Vec<&str> = cards.iter().map(|c| c.account_id.as_str()).collect();
-    let rows: Vec<(String, i64)> = query_as(
-        "SELECT account_id, revision FROM cloud_common_ground_cards
-         WHERE account_id = ANY($1) AND built_at IS NOT NULL AND sharing_enabled",
-    )
-    .bind(&ids)
-    .fetch_all(pool)
-    .await?;
-    Ok(rows.into_iter().collect())
 }

@@ -10,6 +10,8 @@ struct CommonGroundCodeView: View {
     @State private var code = ""
     @State private var joining = false
     @State private var error: String?
+    /// The full code while the share sheet asks which profile to share.
+    @State private var asking: String?
 
     private let keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "delete"]
 
@@ -54,6 +56,24 @@ struct CommonGroundCodeView: View {
             code = ""
             joining = false
         }
+        .sheet(isPresented: Binding(get: { asking != nil }, set: { if !$0 { cancelAsking() } })) {
+            if let entered = asking {
+                CommonGroundShareProfileSheet(code: entered) { request in
+                    asking = nil
+                    join(entered, request: request)
+                }
+                .environmentObject(model)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+        }
+    }
+
+    private func cancelAsking() {
+        guard asking != nil else { return }
+        asking = nil
+        code = ""
+        joining = false
     }
 
     @ViewBuilder
@@ -92,9 +112,16 @@ struct CommonGroundCodeView: View {
         code.append(key)
         guard code.count == 4 else { return }
         joining = true
-        let entered = code
+        if model.asksWhichProfile {
+            asking = code
+        } else {
+            join(code, request: model.joinRequest(profileId: model.shareChoices.first?.profileId))
+        }
+    }
+
+    private func join(_ entered: String, request: CommonGroundJoinRequest) {
         Task {
-            if await model.joinRoom(entered) {
+            if await model.joinRoom(entered, request: request) {
                 path.removeLast()
                 path.append(.lobby(entered))
             } else {
@@ -137,11 +164,17 @@ struct CommonGroundLobbyView: View {
                     }
                 }
             }
-            CommonGroundSection {
-                CommonGroundPeopleRows(
-                    entries: [.init(person: model.me, subtitle: "You", selectable: false)]
-                        + members.map { .init(person: $0, subtitle: "", selectable: $0.hasCard != false) }
-                ) { path.append(.person($0.accountId, paired: false)) }
+            VStack(spacing: 16) {
+                CommonGroundSharingRow(code: code)
+                CommonGroundSection {
+                    CommonGroundPeopleRows(
+                        entries: [.init(person: model.me, subtitle: "You", selectable: false)]
+                            + members.map { .init(person: $0, subtitle: "", selectable: $0.hasCard != false) }
+                    ) { person in
+                        model.view(person.accountId, through: model.sharedProfileID(inRoom: code))
+                        path.append(.person(person.accountId, paired: false))
+                    }
+                }
             }
             .padding(.horizontal, 16)
         }

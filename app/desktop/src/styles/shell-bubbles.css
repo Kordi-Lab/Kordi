@@ -26,6 +26,8 @@
   color: var(--app-chat-bubble-user-text);
 }
 
+body[data-kordi-chat-theme="classic"] .kordi-app.theme-light .app-chat-bubble-user,
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="classic"] .app-chat-bubble-user,
 body[data-kordi-chat-theme="sand"] .kordi-app.theme-light .app-chat-bubble-user,
 .kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="sand"] .app-chat-bubble-user,
 body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-user,
@@ -55,6 +57,11 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-user
 body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer,
 .kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="quiet"] .app-chat-bubble-peer {
   --app-message-bubble-fill: color-mix(in oklab, var(--app-chat-bubble-peer-text) 7%, var(--app-chat-bubble-peer-bg));
+}
+
+body[data-kordi-chat-theme="classic"] .kordi-app.theme-light .app-chat-bubble-peer,
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="classic"] .app-chat-bubble-peer {
+  --app-message-bubble-fill: var(--app-chat-bubble-peer-bg);
 }
 
 .app-chat-bubble-agent {

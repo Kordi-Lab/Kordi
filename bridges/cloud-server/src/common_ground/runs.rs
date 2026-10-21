@@ -13,6 +13,7 @@ pub const RUN_PREFIX: &str = "cg_";
 pub(super) const CARD_PREFIX: &str = "cg_card_";
 pub(super) const MATCH_PREFIX: &str = "cg_match_";
 pub(super) const ROOM_PREFIX: &str = "cg_room_";
+pub(super) const INTRO_PREFIX: &str = "cg_intro_";
 
 pub(super) fn new_run_id(prefix: &str) -> String {
     format!("{prefix}{}", Uuid::new_v4().simple())
@@ -105,6 +106,8 @@ pub async fn complete(
 ) -> sqlx_core::Result<()> {
     if run_id.starts_with(CARD_PREFIX) {
         super::build::complete(pool, run_id, runner_id, text).await
+    } else if run_id.starts_with(INTRO_PREFIX) {
+        super::intro::complete(pool, run_id, runner_id, text).await
     } else {
         super::matching::complete(pool, run_id, runner_id, text).await
     }
@@ -118,6 +121,8 @@ pub async fn fail(
 ) -> sqlx_core::Result<()> {
     if run_id.starts_with(CARD_PREFIX) {
         super::build::fail(pool, run_id, runner_id, code).await
+    } else if run_id.starts_with(INTRO_PREFIX) {
+        super::intro::fail(pool, run_id, runner_id, code).await
     } else {
         super::matching::fail(pool, run_id, runner_id, code).await
     }

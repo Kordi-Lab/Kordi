@@ -3,7 +3,8 @@ import { useState } from 'react';
 import type { CgHost } from './host';
 import { PersonActions } from './PersonActions';
 import { CgAvatar, CgBack, CgGroup, CgNotice, CgProgress, CgRow, CgSection, CgSegmented, CgTopicDot } from './parts';
-import type { CgState, CommonGroundStore } from './store';
+import { personTitle } from './profiles';
+import { personKey, type CgState, type CommonGroundStore } from './store';
 import type { CgTrade } from './types';
 
 function lowerFirst(text: string) {
@@ -20,9 +21,15 @@ function TradeRows({ items, whose }: { items: CgTrade[]; whose: string }) {
   );
 }
 
-export function MatchScreen({ accountId, state, store, host }: { accountId: string; state: CgState; store: CommonGroundStore; host: CgHost }) {
+export function MatchScreen({ accountId, profileId, state, store, host }: {
+  accountId: string;
+  profileId?: string;
+  state: CgState;
+  store: CommonGroundStore;
+  host: CgHost;
+}) {
   const [tab, setTab] = useState<'shared' | 'trade'>('shared');
-  const match = state.matches[accountId];
+  const match = state.matches[personKey(accountId, profileId)];
   if (!match) {
     return (
       <>
@@ -45,7 +52,7 @@ export function MatchScreen({ accountId, state, store, host }: { accountId: stri
           <CgAvatar person={person} size={64} ring />
         </span>
         {ready ? <span className="cg-badge">{match.score ?? 0}%</span> : null}
-        <h1>{person.name}</h1>
+        <h1>{personTitle(person)}</h1>
         {ready && match.headline ? <div className="cg-hero-line">{match.headline}</div> : null}
       </div>
       <PersonActions person={person} state={state} store={store} host={host} />

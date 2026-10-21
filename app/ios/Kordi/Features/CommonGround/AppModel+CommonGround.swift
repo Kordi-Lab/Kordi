@@ -18,6 +18,11 @@ enum CommonGroundAvailability {
         signedIn && (capabilities?.commonGroundVersion ?? 0) >= 1
     }
 
+    /// Version 2 has profiles; version 1 hides every profile control.
+    static func hasProfiles(capabilities: CloudAuthCapabilities?) -> Bool {
+        (capabilities?.commonGroundVersion ?? 0) >= 2
+    }
+
     /// Whether a room invitation is waiting. There is no invitation feed
     /// outside a room yet, so the dot stays off.
     static func hasWaitingInvitation() -> Bool { false }
@@ -37,7 +42,8 @@ extension AppModel {
             name: account?.preferredName ?? "",
             avatarUrl: account?.avatarUrl
         )
-        return CommonGroundModel(me: me) { [weak self] in
+        let profiles = CommonGroundAvailability.hasProfiles(capabilities: memoryCapabilities)
+        return CommonGroundModel(me: me, profilesEnabled: profiles) { [weak self] in
             guard let self else { throw CancellationError() }
             let (api, token, _) = try self.digestContext()
             return (api, token)

@@ -3,8 +3,10 @@ import { Copy, LogOut, Users } from 'lucide-react';
 
 import { DetailTile, DetailTiles } from '@/kordi-app/contacts/ContactDetailParts';
 import type { CgHost } from './host';
-import { peopleCount, roomTitle, topicGroupDraft, type CgGroupDraft } from './format';
-import { CgAvatar, CgAvatarGrid, CgBack, CgButton, CgGroup, CgHero, CgNotice, CgProgress, CgRow, CgScore, CgSection, CgSegmented, CgTopicDot } from './parts';
+import { groupLine, peopleCount, roomTitle, topicGroupDraft, type CgGroupDraft } from './format';
+import { CgAvatar, CgAvatarGrid, CgAvatarStack, CgBack, CgButton, CgGroup, CgHero, CgNotice, CgProgress, CgRow, CgScore, CgSection, CgSegmented, CgTopicDot } from './parts';
+import { personTitle } from './profiles';
+import { RoomSharing } from './ShareProfileDialog';
 import { StartGroupDialog } from './StartGroupDialog';
 import { roomClosed, type CgState, type CommonGroundStore } from './store';
 import type { CgPerson, CgResults } from './types';
@@ -33,9 +35,11 @@ function GroupsSection({ code, results, state, store, host }: { code: string; re
         {groups.map((group) => (
           <CgRow
             key={group.groupSpaceId}
-            lead={<span className="cg-icon" aria-hidden="true"><Users className="h-4 w-4" /></span>}
+            lead={group.members?.length
+              ? <CgAvatarStack people={group.members} total={group.memberCount} size={26} />
+              : <span className="cg-icon" aria-hidden="true"><Users className="h-4 w-4" /></span>}
             title={group.name}
-            sub={[group.topic ? `From ${group.topic}` : '', group.memberCount ? `${group.memberCount} members` : ''].filter(Boolean).join(' · ') || undefined}
+            sub={groupLine(group) || undefined}
             trailing={group.joined ? <CgButton onClick={() => host.openGroup(group.groupSpaceId)}>Open</CgButton> : null}
           />
         ))}
@@ -71,6 +75,7 @@ export function ResultsScreen({ code, state, store, host }: { code: string; stat
   const canGroup = state.support.group;
   const startGroup = (theme: { label: string; people: CgPerson[] }) => setStarting(topicGroupDraft(theme, selfId));
   const line = `${peopleCount(everyone.length)} · ${results.topics.length} shared topics`;
+  const profileId = results.profileId ?? room?.profileId ?? undefined;
 
   return (
     <>
@@ -80,6 +85,7 @@ export function ResultsScreen({ code, state, store, host }: { code: string; stat
         title={roomTitle(code, room?.name)}
         line={closed ? `${line} · Closed` : line}
       />
+      <RoomSharing code={code} state={state} store={store} />
       {closed ? null : (
         <DetailTiles>
           <DetailTile
@@ -112,10 +118,10 @@ export function ResultsScreen({ code, state, store, host }: { code: string; stat
               <CgRow
                 key={entry.person.accountId}
                 lead={<CgAvatar person={entry.person} size={36} />}
-                title={entry.person.name}
+                title={personTitle(entry.person)}
                 sub={entry.headline}
                 trailing={<CgScore score={entry.score} />}
-                onClick={() => store.open({ name: 'match', accountId: entry.person.accountId })}
+                onClick={() => store.open({ name: 'match', accountId: entry.person.accountId, profileId })}
               />
             ))
             : results.topics.map((theme) => (

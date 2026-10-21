@@ -3,14 +3,15 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { cloudApiBaseUrl } from '@/features/cloud/cloudApiEnvironment';
 import { CLOUD_SESSION_CHANGED_EVENT, CLOUD_SESSION_SIGNED_OUT_EVENT } from '@/features/cloud/session';
 import { createCommonGroundClient } from './client';
+import { localProfileMemory } from './profiles';
 import { CommonGroundStore } from './store';
 
 const IDLE_CHECK_MS = 1_000;
 const stores = new Map<string, CommonGroundStore>();
 let listening = false;
 
-/** One store per server and account; a session change drops them all. */
-export function commonGroundStoreFor(accountId: string): CommonGroundStore {
+/** One store per server, account and route version; a session change drops them all. */
+export function commonGroundStoreFor(accountId: string, profiles = false): CommonGroundStore {
   if (!listening && typeof window !== 'undefined') {
     listening = true;
     const clear = () => {
@@ -20,10 +21,10 @@ export function commonGroundStoreFor(accountId: string): CommonGroundStore {
     window.addEventListener(CLOUD_SESSION_CHANGED_EVENT, clear);
     window.addEventListener(CLOUD_SESSION_SIGNED_OUT_EVENT, clear);
   }
-  const key = JSON.stringify([cloudApiBaseUrl(), accountId]);
+  const key = JSON.stringify([cloudApiBaseUrl(), accountId, profiles]);
   let store = stores.get(key);
   if (!store) {
-    store = new CommonGroundStore(createCommonGroundClient());
+    store = new CommonGroundStore(createCommonGroundClient(), { profiles, memory: localProfileMemory(accountId) });
     stores.set(key, store);
   }
   return store;

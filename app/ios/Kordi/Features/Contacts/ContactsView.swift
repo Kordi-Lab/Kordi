@@ -85,7 +85,7 @@ struct ContactsView<PinnedRows: View>: View {
                         ContentUnavailableView(
                             searchText.isEmpty ? "No contacts yet" : "No contacts found",
                             systemImage: searchText.isEmpty ? "person.crop.circle.badge.plus" : "magnifyingglass",
-                            description: Text(searchText.isEmpty ? "Add someone with their nine-digit Kordi ID." : "Try another name or Kordi ID.")
+                            description: Text(searchText.isEmpty ? "Add someone with their Kordi ID." : "Try another name or Kordi ID.")
                         )
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -153,7 +153,7 @@ struct ContactsView<PinnedRows: View>: View {
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
-        .accessibilityLabel("Common ground")
+        .accessibilityLabel("Grounding")
         .accessibilityValue(commonGroundInvitationWaiting ? "Invitation waiting" : "")
     }
 
@@ -488,12 +488,12 @@ struct AddContactSearchView: View {
     @State private var result: CloudPublicProfile?
     @State private var isWorking = false
 
-    private var normalizedKordiID: String {
-        String(kordiId.filter(\.isNumber).prefix(9))
+    private var normalizedKordiID: String? {
+        KordiID.normalize(kordiId)
     }
 
     private var canSearch: Bool {
-        normalizedKordiID.count == 9 && !isWorking
+        normalizedKordiID != nil && !isWorking
     }
 
     var body: some View {
@@ -501,7 +501,7 @@ struct AddContactSearchView: View {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
                     searchField
-                    Text("Enter the nine-digit ID shown on their profile.")
+                    Text("Enter the Kordi ID shown on their profile.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 2)
@@ -533,14 +533,15 @@ struct AddContactSearchView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
 
-            TextField("Nine-digit Kordi ID", text: $kordiId)
-                .keyboardType(.numberPad)
+            TextField("Kordi ID", text: $kordiId)
+                .keyboardType(.asciiCapable)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
                 .textContentType(.username)
                 .textFieldStyle(.plain)
-                .font(.body.monospacedDigit())
+                .font(.body)
                 .onChange(of: kordiId) { _, newValue in
-                    let digits = String(newValue.filter(\.isNumber).prefix(9))
-                    if digits != newValue { kordiId = digits }
+                    if newValue.count > 32 { kordiId = String(newValue.prefix(32)) }
                     result = nil
                     model.errorMessage = nil
                 }
@@ -641,10 +642,10 @@ struct AddContactSearchView: View {
     }
 
     private func search() {
-        guard canSearch else { return }
+        guard canSearch, let lookupID = normalizedKordiID else { return }
         isWorking = true
         Task {
-            result = await model.lookupContact(kordiId: normalizedKordiID)
+            result = await model.lookupContact(kordiId: lookupID)
             isWorking = false
         }
     }

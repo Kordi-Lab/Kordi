@@ -10,12 +10,31 @@ export type CgRelationship = {
   conversationId: string | null;
 };
 
+export type CgProfileKind = 'work' | 'health' | 'daily' | 'custom';
+
+/** The profile someone shares with you in a room or pairing. */
+export type CgProfileTag = { profileId: string; kind: CgProfileKind; name: string };
+
+/** One of the owner's profiles, as `GET profiles` lists it (`commonGroundVersion` 2). */
+export type CgProfile = CgProfileTag & {
+  focus: string | null;
+  position: number;
+  hasCard: boolean;
+  sharing: boolean;
+  builtAt: string | null;
+  topicCount: number;
+};
+
+export type CgProfileInput = { kind: CgProfileKind; name?: string; focus?: string };
+
 export type CgPerson = {
   accountId: string;
   name: string;
   avatarUrl: string | null;
   hasCard?: boolean;
   relationship?: CgRelationship;
+  /** The profile they share with you; absent on servers before profiles. */
+  profile?: CgProfileTag;
 };
 
 export type CgTopicLists = {
@@ -48,6 +67,8 @@ export type CgOwnerView = {
   sharing: boolean;
   build: { status: CgBuildStatus; errorCode: string | null };
   used?: string[];
+  /** The profile this card belongs to; absent before profiles. */
+  profile?: (CgProfileTag & { focus: string | null }) | null;
 };
 
 export type CgDeviceSource = 'calendar' | 'reminders';
@@ -72,7 +93,18 @@ export type CgPersonCard = { person: CgPerson; card: CgTopicLists; relationship?
 
 export type CgPairCode = { code: string; expiresAt: string };
 
-export type CgRecentEntry = { person: CgPerson; score: number | null; headline: string | null; openedAt?: string; relationship?: CgRelationship };
+/** `profileId` is the viewer's profile the match was found through. */
+export type CgRecentEntry = {
+  person: CgPerson;
+  score: number | null;
+  headline: string | null;
+  openedAt?: string;
+  relationship?: CgRelationship;
+  profileId?: string;
+};
+
+/** What a join sends: the room name and kind apply only when this join opens the room. */
+export type CgJoinInput = { name?: string; kind?: CgProfileKind; profileId?: string };
 
 export type CgGroup = {
   groupSpaceId: string;
@@ -83,6 +115,8 @@ export type CgGroup = {
   joined?: boolean;
   /** The topic the group was started from; null on older servers. */
   topic?: string | null;
+  /** Humans only, creator first, up to eight; missing on older servers. */
+  members?: CgPerson[];
 };
 
 export type CgInvitation = { invitationRef: string; groupSpaceId: string; name: string; from: CgPerson; createdAt: string };
@@ -95,6 +129,9 @@ export type CgRoom = {
   expiresAt: string;
   /** False once the room has closed; absent on older servers. */
   open?: boolean;
+  /** The profile kind the room suggests, and the profile you share in it. */
+  kind?: CgProfileKind | null;
+  profileId?: string | null;
   members: CgPerson[];
   groups?: CgGroup[];
   invitations?: CgInvitation[];
@@ -109,6 +146,8 @@ export type CgRoomSummary = {
   joinedAt: string;
   lastActivityAt: string;
   themeCount: number;
+  kind?: CgProfileKind | null;
+  profileId?: string | null;
 };
 
 export type CgTheme = { label: string; people: CgPerson[] };
@@ -120,6 +159,8 @@ export type CgResults = {
   people: CgRankedPerson[];
   topics: CgTheme[];
   suggestion: CgTheme | null;
+  /** Your profile shared in the room. */
+  profileId?: string;
   groups?: CgGroup[];
   invitations?: CgInvitation[];
 };
@@ -137,6 +178,7 @@ export type CgMatch = {
   theyBring?: CgTrade[];
   nextStep?: string;
   relationship?: CgRelationship;
+  profileId?: string;
 };
 
 export type CgMeetInput = { title?: string; startAt: string; endAt?: string; location?: string };

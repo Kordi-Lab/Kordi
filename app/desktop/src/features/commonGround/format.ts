@@ -32,6 +32,30 @@ export function meetTimes(date: string, time: string, minutes: number): { startA
   return { startAt: start.toISOString(), endAt: new Date(start.getTime() + minutes * 60_000).toISOString() };
 }
 
+/** Meet lengths, in minutes, with their chip labels. */
+export const MEET_DURATIONS: Array<[number, string]> = [[30, '30 min'], [60, '1 h'], [90, '1.5 h'], [120, '2 h']];
+
+/** A local `YYYY-MM-DD` date moved by whole days. */
+export function shiftMeetDate(date: string, days: number): string {
+  const [year, month, day] = date.split('-').map(Number);
+  const next = new Date(year, month - 1, day + days);
+  return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}`;
+}
+
+/** Start times in 15-minute steps, `00:00` to `23:45`. */
+export function meetTimeSlots(): string[] {
+  return Array.from({ length: 96 }, (_, index) => `${pad(Math.floor(index / 4))}:${pad((index % 4) * 15)}`);
+}
+
+/** The Meet dialog's fields as the request: a title, ISO start, start plus duration as the end, and a location when set. */
+export function meetRequest(draft: { name: string; title: string; date: string; time: string; minutes: number; location: string }):
+  { title: string; startAt: string; endAt: string; location?: string } | null {
+  const times = meetTimes(draft.date, draft.time, draft.minutes);
+  if (!times) return null;
+  const location = draft.location.trim();
+  return { title: draft.title.trim() || `Meet ${draft.name}`, ...times, ...(location ? { location } : {}) };
+}
+
 export function peopleCount(count: number) {
   return count === 1 ? '1 person' : `${count} people`;
 }
@@ -45,4 +69,10 @@ export type CgGroupDraft = { name: string; topic: string | null; selected: strin
 
 export function topicGroupDraft(theme: { label: string; people: Array<{ accountId: string }> }, selfId: string): CgGroupDraft {
   return { name: theme.label, topic: theme.label, selected: theme.people.map((person) => person.accountId).filter((id) => id !== selfId) };
+}
+
+/** "From Eval design · 3 members", or just "3 members"; empty when the count is unknown. */
+export function groupLine(group: { topic?: string | null; memberCount: number }): string {
+  const members = group.memberCount > 0 ? `${group.memberCount} ${group.memberCount === 1 ? 'member' : 'members'}` : '';
+  return [group.topic ? `From ${group.topic}` : '', members].filter(Boolean).join(' · ');
 }

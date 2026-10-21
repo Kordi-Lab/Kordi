@@ -54,6 +54,7 @@ struct CommonGroundResultsView: View {
             }
 
             VStack(spacing: 16) {
+                CommonGroundSharingRow(code: code)
                 if let suggestion = results?.suggestion {
                     suggestionCard(suggestion)
                 }
@@ -178,17 +179,14 @@ struct CommonGroundResultsView: View {
                 ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
                     if index > 0 { SessionDetailSeparator(leading: SessionDetailMetrics.rowHorizontalInset) }
                     HStack(spacing: 12) {
+                        CommonGroundMemberCluster(members: group.members, total: group.memberCount)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(group.name).font(.body)
-                            if let topic = group.topic?.trimmingCharacters(in: .whitespaces), !topic.isEmpty {
-                                Text("From \(topic)")
+                            if let line = group.detailLine {
+                                Text(line)
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
-                            } else if group.memberCount > 0 {
-                                Text(group.memberCount == 1 ? "1 person" : "\(group.memberCount) people")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
                             }
                         }
                         Spacer(minLength: 8)
@@ -213,7 +211,10 @@ struct CommonGroundResultsView: View {
         } else {
             CommonGroundPeopleRows(
                 entries: people.map { .init(person: $0.person, subtitle: $0.headline, score: $0.score) }
-            ) { path.append(.match($0.accountId)) }
+            ) { person in
+                model.view(person.accountId, through: model.sharedProfileID(inRoom: code))
+                path.append(.match(person.accountId))
+            }
         }
     }
 

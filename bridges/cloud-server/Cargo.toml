@@ -23,6 +23,7 @@ semver = "1"
 tokio.workspace = true
 thiserror.workspace = true
 chrono.workspace = true
+chrono-tz = "0.10"
 uuid.workspace = true
 sha2.workspace = true
 regex.workspace = true

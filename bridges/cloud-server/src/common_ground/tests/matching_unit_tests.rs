@@ -16,6 +16,9 @@ fn card(
     let list = |items: &[&str]| items.iter().map(|s| s.to_string()).collect();
     SharedCard {
         account_id: id.into(),
+        profile_id: format!("cgp_{id}"),
+        profile_kind: "work".into(),
+        profile_name: "Work".into(),
         name: id.into(),
         avatar_url: None,
         revision: 1,
