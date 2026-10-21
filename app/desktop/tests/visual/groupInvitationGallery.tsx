@@ -8,6 +8,7 @@ import { GroupDetailsDialog } from '../../src/pages/GroupDetailsDialog';
 import { GroupInvitationDialog } from '../../src/pages/GroupInvitationDialog';
 import { ContactInfoPopover } from '../../src/pages/ContactInfoPopover';
 import { contact, conversation } from '../helpers/workspaceSidebarParticipantSpacesFixtures';
+import { contactSharedVisualMessages } from './contactSharedFixtures';
 
 const theme = new URLSearchParams(window.location.search).get('theme') === 'dark'
   ? 'dark'
@@ -132,28 +133,7 @@ createRoot(document.querySelector('#root')!).render(
             { id: 'human:me', humanId: 'acct_visual_self', name: 'Me', kind: 'human', role: 'self', source: 'cloud' },
             { id: 'human:maya', humanId: 'acct_maya', name: 'Maya Chen', kind: 'human', role: 'person', source: 'cloud' },
           ],
-          messages: [
-            {
-              role: 'person',
-              sender: 'Maya Chen',
-              text: 'Here is the launch brief https://example.com/launch',
-              time: '10:24',
-              attachments: [
-                { kind: 'image', name: 'launch-board.png' },
-                { kind: 'image', name: 'flow.png' },
-              ],
-            },
-            {
-              role: 'user',
-              sender: 'Me',
-              text: 'I also attached the notes.',
-              time: '10:28',
-              attachments: [
-                { kind: 'file', name: 'demo.mov', mimeType: 'video/quicktime' },
-                { kind: 'file', name: 'notes.pdf', mimeType: 'application/pdf' },
-              ],
-            },
-          ],
+          messages: contactSharedVisualMessages(),
         })}
         commonGroups={[space]}
         presenceStatus="online"
@@ -200,4 +180,19 @@ createRoot(document.querySelector('#root')!).render(
   </CloudCallProvider>,
 );
 
-document.body.dataset.visualReady = 'true';
+// ?mode=contact&page=photos|files|links opens that shared page in the popover.
+const sharedPage = { photos: 'Photos', files: 'Files', links: 'Links' }[
+  new URLSearchParams(window.location.search).get('page') ?? ''
+];
+if (mode === 'contact' && sharedPage) {
+  const openSharedPage = (attempt = 0) => {
+    const rows = document.querySelectorAll<HTMLButtonElement>('[data-contact-profile-surface="true"] button');
+    const row = [...rows].find((item) => item.textContent?.trim().startsWith(sharedPage));
+    if (row) row.click();
+    if (row || attempt > 50) document.body.dataset.visualReady = 'true';
+    else setTimeout(() => openSharedPage(attempt + 1), 50);
+  };
+  setTimeout(openSharedPage, 0);
+} else {
+  document.body.dataset.visualReady = 'true';
+}
