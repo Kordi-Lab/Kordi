@@ -83,7 +83,11 @@ function withRelationship<T extends { person: CgPerson; relationship?: CgRelatio
 
 /** Groups carry `topic` from newer servers; a missing field is null. */
 function withTopic(group: CgGroup): CgGroup {
-  return { ...group, topic: typeof group.topic === 'string' && group.topic ? group.topic : null };
+  return {
+    ...group,
+    topic: typeof group.topic === 'string' && group.topic ? group.topic : null,
+    members: Array.isArray(group.members) ? group.members : [],
+  };
 }
 
 /** A missing `open` means the room is open; missing counts are zero. */
