@@ -45,9 +45,11 @@ function kordiIdRow(handle: string): InfoCardRow {
   };
 }
 
-type ContactDetailBodyProps = Pick<ContactsPageProps, 'onMessageContact' | 'onRemoveContact' | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings'> & {
+export type ContactDetailBodyProps = Pick<ContactsPageProps, 'onMessageContact' | 'onRemoveContact' | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings'> & {
   contact: Contact;
   onCloseOverlay: () => void;
+  /** False inside the contact's own chat, where a Message tile would lead back to the same place. */
+  showMessageTile?: boolean;
 };
 
 function avatarLead(kind: 'agent' | 'human', seed: string, name: string, imageUrl: string | null) {
@@ -67,7 +69,10 @@ function withProfilePresence(contact: Contact, state: ContactProfileState): Cont
   return presence ? { ...contact, presenceStatus: presence.status, presenceLastSeenAt: presence.lastSeenAt } : contact;
 }
 
-function ContactDetailBody({ contact: row, onCloseOverlay, onMessageContact, onRemoveContact, contactProfileHost, contactMute, onOpenAgentSettings }: ContactDetailBodyProps) {
+/** The contact profile: header, tiles, info card, shared and common ground cards, and Delete. */
+export function ContactDetailBody({
+  contact: row, onCloseOverlay, onMessageContact, onRemoveContact, contactProfileHost, contactMute, onOpenAgentSettings, showMessageTile = true,
+}: ContactDetailBodyProps) {
   const now = usePresenceNow();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [removeState, setRemoveState] = useState<'idle' | 'saving' | 'error'>('idle');
@@ -167,12 +172,14 @@ function ContactDetailBody({ contact: row, onCloseOverlay, onMessageContact, onR
         lineAccent={secondaryLine.online && headerLine === secondaryLine.text}
       />
       <DetailTiles>
-        <DetailTile
-          icon={<MessageCircle className="h-5 w-5" aria-hidden="true" />}
-          label="Message"
-          onClick={() => onMessageContact?.(contact)}
-          disabled={!canMessage}
-        />
+        {showMessageTile ? (
+          <DetailTile
+            icon={<MessageCircle className="h-5 w-5" aria-hidden="true" />}
+            label="Message"
+            onClick={() => onMessageContact?.(contact)}
+            disabled={!canMessage}
+          />
+        ) : null}
         {rich && kind === 'person' ? (
           <MuteTile muted={muted} onToggle={contactMute && muted !== null ? () => { void contactMute.setMuted(contact, !muted); } : undefined} />
         ) : null}

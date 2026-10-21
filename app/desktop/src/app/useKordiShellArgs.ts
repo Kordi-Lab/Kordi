@@ -323,6 +323,8 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         activeDetailTab: args.activeDetailTab,
         setActiveDetailTab: args.setActiveDetailTab,
         setIsDetailPanelCollapsed: args.setIsDetailPanelCollapsed,
+        mutedChatSessionIds: args.mutedChatSessionIds,
+        handleSetChatSessionMuted: args.handleSetChatSessionMuted,
         activeSourcePreview: args.activeSourcePreview,
         setActiveSourcePreview: args.setActiveSourcePreview,
         activeArtifactId: args.activeArtifactId,

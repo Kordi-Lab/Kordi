@@ -117,3 +117,10 @@
   color: var(--utility-foreground);
   font-family: inherit;
 }
+
+/* Inside a chat's detail page the profile sits in a scroll area that does not clip sideways. */
+.app-chat-person-info .app-contacts-detail-wash {
+  left: 0;
+  width: 100%;
+  transform: none;
+}
