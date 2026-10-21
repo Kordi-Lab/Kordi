@@ -10,6 +10,7 @@ import {
   CONTACT_PROFILE_SHARED_PAGE_TITLES,
   groupSharedItemsByMonth,
   sharedItemDateLabel,
+  sharedPageCountLabel,
   sharedLinkDisplayUrl,
   type ContactProfileSharedItems,
   type ContactProfileSharedPage,
@@ -143,19 +144,23 @@ function LinksPage({ groups, now }: { groups: SharedMonthGroup<SharedLinkItem>[]
 
 /**
  * A shared Photos, Files or Links page that replaces the profile inside the same card or pane.
- * Escape and the back button return to the profile.
+ * The header is a toolbar row: a back control ("Back" in panes, icon only in the popover), the
+ * title and a quiet item count. Escape and the back control return to the profile.
  */
 export function ContactProfileSharedPageView({
   page,
   items,
   variant,
   onBack,
+  backLabel = 'Back to profile',
   trailing,
 }: {
   page: ContactProfileSharedPage;
   items: ContactProfileSharedItems;
   variant: 'popover' | 'pane';
   onBack: () => void;
+  /** Accessible name of the back control. */
+  backLabel?: string;
   trailing?: ReactNode;
 }) {
   const backRef = useRef<HTMLButtonElement>(null);
@@ -178,13 +183,18 @@ export function ContactProfileSharedPageView({
   }, []);
 
   const count = items[page].length;
+  const countLabel = sharedPageCountLabel(page, count);
   return (
     <div className={cn('app-contact-shared-page', `is-${variant}`)} role="region" aria-label={title}>
       <div className="app-contact-shared-header">
-        <button ref={backRef} type="button" className="app-contact-shared-back" onClick={onBack} aria-label="Back to profile">
-          <ChevronLeft className="app-contact-shared-back-icon" aria-hidden="true" />
-          <span>{title}</span>
-        </button>
+        <div className="app-contact-shared-header-row">
+          <button ref={backRef} type="button" className="app-contact-shared-back" onClick={onBack} aria-label={backLabel} title="Back">
+            <ChevronLeft className="app-contact-shared-back-icon" aria-hidden="true" />
+            {variant === 'pane' ? <span className="app-contact-shared-back-label">Back</span> : null}
+          </button>
+          <span className="app-contact-shared-title truncate">{title}</span>
+          {countLabel ? <span className="app-contact-shared-count">{countLabel}</span> : null}
+        </div>
         {trailing}
       </div>
       <div className="app-contact-shared-body app-transient-scroll">

@@ -1,0 +1,49 @@
+/* Info tab of a direct person chat: participants and the shared rows in a 640px column, and the
+ * shared pages in place. Colors come from the theme tokens. */
+
+.app-chat-person-info:not(.is-page) {
+  width: 100%;
+  max-width: 592px;
+  margin-inline: auto;
+  padding: 2px 0 40px;
+}
+
+.app-chat-person-info:not(.is-page) > .app-contacts-section-label:first-child {
+  margin-top: 14px;
+}
+
+.app-chat-person-info-participant {
+  min-height: 56px;
+  padding: 10px 14px 10px 16px;
+}
+
+.app-chat-person-info-participant + .app-chat-person-info-participant::before {
+  left: 64px;
+}
+
+.app-chat-person-info-name {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 19px;
+}
+
+.app-chat-person-info-line {
+  color: var(--utility-muted-text);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.app-chat-person-info .app-contact-shared-page.is-pane {
+  --shared-col: 640px;
+  --shared-header-bg: var(--app-main-bg);
+  margin: calc(-1 * var(--app-chat-pane-detail-top, 0px)) 0 0;
+}
+
+.app-chat-person-info .app-contact-shared-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* The scroll area's top padding would hold the sticky header below the tab bar. */
+.app-chat-person-info .app-contact-shared-page.is-pane .app-contact-shared-header {
+  top: calc(-1 * var(--app-chat-pane-detail-top, 0px));
+}
