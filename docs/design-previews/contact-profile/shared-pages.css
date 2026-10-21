@@ -1,0 +1,98 @@
+/* Shared media sub-pages (Photos, Files, Links) and the Mac chat info popover frame. */
+
+/* Sub-page shell: reuses the profile skin variables through .pv */
+.pv.sp{padding:0;max-width:none;margin:0}
+.sheet .pv.sp{padding:0 0 32px}
+.sp-hd{position:sticky;top:0;z-index:2;height:44px;display:flex;align-items:center;padding:0 12px;background:var(--sp-bg);border-bottom:1px solid var(--rowline)}
+.sp-back{display:inline-flex;align-items:center;gap:4px;height:30px;padding:0 8px 0 4px;border-radius:7px;font-size:14px;font-weight:600;color:var(--m-fg)}
+.sp-back:hover{background:var(--rowhover)}
+.sp-back svg.i{width:18px;height:18px;stroke-width:2.2;color:var(--tint)}
+.sp-body{max-width:420px;margin:0 auto;padding-bottom:28px}
+.sp-mon{font-size:12px;line-height:16px;color:var(--muted);padding:14px 16px 6px}
+.sp-empty{padding:40px 16px;text-align:center;color:var(--muted);font-size:14px}
+
+/* Photos: tight edge-to-edge square grid */
+.sp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px}
+.sp-ph{aspect-ratio:1;display:block;width:100%;
+  background:radial-gradient(70% 60% at 30% 25%,rgba(255,255,255,.28),transparent 70%),linear-gradient(140deg,var(--ph),color-mix(in oklab,var(--ph) 62%,#000))}
+.sp-ph:hover{filter:brightness(1.06)}
+
+/* Files and links rows: flat list, month label sits right above */
+.sp .sp-mon + .card{margin-top:0}
+.sp .card{background:transparent;border-radius:0}
+.sp .card > .row{border-radius:0}
+.sp .row{--inset:68px;gap:12px}
+.sp-lead{width:40px;height:40px;border-radius:9px;display:grid;place-items:center;flex:none}
+.sp-lead.doc{background:color-mix(in oklab,var(--tint) 14%,transparent);color:var(--tint)}
+.sp-lead.doc svg.i{width:20px;height:20px}
+.sp-lead.fav{background:var(--fav);color:#fff;font-weight:600;font-size:16px}
+.sp .row .d{font-size:12px;color:var(--muted);flex:none;align-self:flex-start;margin-top:3px;font-variant-numeric:tabular-nums}
+.sp .row .v{font-weight:500}
+.sp .row .c.accent{color:var(--tint)}
+
+/* Mac pane skin */
+.m-pane .sp{--sp-bg:var(--m-pane)}
+.m-pane .sp-hd{padding-left:14px}
+
+/* iPhone skin: chevron only, centred title */
+.sheet .sp{--sp-bg:var(--i-sheet)}
+.sheet .sp-hd{height:52px;padding:6px 8px 0;justify-content:center;border-bottom-color:transparent}
+.sheet .sp-back{position:absolute;left:8px;top:10px;width:40px;height:40px;padding:0;justify-content:center;border-radius:50%}
+.sheet .sp-back svg.i{width:24px;height:24px}
+.sheet .sp-title{font-size:17px;font-weight:600}
+.sheet .sp-body{max-width:none}
+.sheet .sp-mon{font-size:13px;padding:16px 20px 6px}
+.sheet .sp .row{padding-left:20px;--inset:72px}
+.sheet .sp .row .v{font-size:16px}
+.sheet .sp .row .c{font-size:13px}
+.sheet .sp .row .d{font-size:13px}
+
+/* Mac chat info popover frame */
+.chatwin{position:relative;width:460px;height:640px;border-radius:12px;overflow:hidden;background:var(--m-win);color:var(--m-fg);box-shadow:0 0 0 .5px var(--m-edge),var(--shadow);flex:none}
+.fakechat{position:absolute;inset:0;opacity:.5;filter:blur(1.2px);pointer-events:none}
+.fc-top{height:52px;border-bottom:1px solid var(--m-line);display:flex;align-items:center;gap:8px;padding:0 16px}
+.fc-top i{width:12px;height:12px;border-radius:50%;background:var(--m-fg3)}
+.fc-top b{width:120px;height:12px;border-radius:6px;background:var(--m-tile-h);margin-left:12px}
+.fc-msgs{display:flex;flex-direction:column;gap:12px;padding:20px 18px}
+.fc-msgs span{display:block;height:36px;border-radius:18px;background:var(--m-tile-h);width:var(--w,55%)}
+.fc-msgs span.me{align-self:flex-end;background:color-mix(in oklab,var(--tint) 35%,transparent)}
+.fc-comp{position:absolute;left:16px;right:16px;bottom:16px;height:40px;border-radius:20px;background:var(--m-field)}
+.popcard{position:absolute;top:58px;right:22px;width:300px;height:480px;border-radius:14px;background:var(--m-menu);border:1px solid var(--m-menu-line);box-shadow:var(--pop);overflow:hidden;z-index:2}
+.pop-x{position:absolute;top:10px;right:10px;width:26px;height:26px;border-radius:50%;background:var(--m-tile);color:var(--m-fg2);display:grid;place-items:center;z-index:4}
+.pop-x:hover{background:var(--m-tile-h);color:var(--m-fg)}
+.pop-x svg.i{width:13px;height:13px;stroke-width:2.4}
+.pop-scroll{position:absolute;inset:0;overflow-y:auto;scrollbar-width:thin;--ring:var(--m-menu)}
+
+/* Popover: compact Mac skin */
+.pop-scroll .pv{--tilebg:var(--m-tile);--tilebg-h:var(--m-tile-h);--cardbg:var(--m-card);--rowline:var(--m-line);--rowhover:var(--m-tile);--mfg2:var(--m-fg2);--dangerhover:color-mix(in oklab,var(--red) 10%,transparent);--sp-bg:var(--m-menu);padding:28px 14px 18px}
+.pop-scroll .pv.sp{padding:0}
+.pop-scroll .wash{height:240px}
+.pop-scroll .hd h2{font-size:16px;line-height:22px;margin-top:10px}
+.pop-scroll .hd .st{font-size:12px;line-height:18px}
+.pop-scroll .tiles{gap:6px;margin-top:16px}
+.pop-scroll .tile{height:56px;font-size:11.5px;border-radius:10px;gap:3px}
+.pop-scroll .tile svg.i{width:18px;height:18px}
+.pop-scroll .menu{top:62px}
+.pop-scroll .card{margin-top:14px;border-radius:10px}
+.pop-scroll .sec + .card{margin-top:0}
+.pop-scroll .card.after{margin-top:10px}
+.pop-scroll .row{padding:8px 12px;min-height:44px;gap:10px;--inset:12px}
+.pop-scroll .row .v{font-size:13px;line-height:18px}
+.pop-scroll .row .c{font-size:11.5px;line-height:15px}
+.pop-scroll .srow{min-height:38px;padding:0 10px 0 12px;--inset:40px}
+.pop-scroll .srow .lb{font-size:13px}
+.pop-scroll .srow .n{font-size:12px}
+.pop-scroll .srow .ic svg.i{width:16px;height:16px}
+.pop-scroll .sec{margin:14px 4px 5px;font-size:11.5px}
+.pop-scroll .danger-row{height:38px;min-height:38px;font-size:13px;padding:0 12px}
+.pop-scroll .cg{padding:10px 12px 12px;gap:8px}
+.pop-scroll .cgr .lb{width:74px;font-size:11.5px}
+.pop-scroll .chip{font-size:11.5px;padding:3px 8px}
+.pop-scroll .sp-hd{padding:0 44px 0 8px}
+.pop-scroll .sp-back{font-size:13px}
+.pop-scroll .sp-mon{font-size:11.5px;padding:12px 12px 5px}
+.pop-scroll .sp .row{--inset:58px}
+.pop-scroll .sp-lead{width:34px;height:34px;border-radius:8px}
+.pop-scroll .sp-lead.fav{font-size:14px}
+.pop-scroll .sp-lead.doc svg.i{width:17px;height:17px}
+.pop-scroll .sp .row .d{font-size:11px}

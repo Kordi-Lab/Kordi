@@ -202,6 +202,7 @@ button.row:hover,.row.click:hover{background:var(--rowhover)}
 .sheet .cgr .lb{width:80px;font-size:13px}
 .sheet .menu{right:0}
 </style>
+<link rel="stylesheet" href="shared-pages.css">
 </head>
 <body>
 <div class="bar" id="bar">
@@ -209,9 +210,11 @@ button.row:hover,.row.click:hover{background:var(--rowhover)}
   <label>Platform<span class="seg" data-key="platform"><button data-v="both">Both</button><button data-v="mac">Mac</button><button data-v="ios">iPhone</button></span></label>
   <label>Theme<span class="seg" data-key="theme"><button data-v="light">Light</button><button data-v="dark">Dark</button></span></label>
   <label>State<span class="seg" data-key="state"><button data-v="current">Current</button><button data-v="person-online">Online</button><button data-v="person-offline">Offline</button><button data-v="person-new">New contact</button><button data-v="common-ground">Common ground</button><button data-v="agent">Agent</button><button data-v="own-agent">Own agent</button><button data-v="system">System</button></span></label>
+  <label>Page<span class="seg" data-key="page"><button data-v="profile">Profile</button><button data-v="photos">Photos</button><button data-v="files">Files</button><button data-v="links">Links</button></span></label>
   <label>Height<span class="seg" data-key="fit"><button data-v="window">Window</button><button data-v="full">Full length</button></span></label>
 </div>
 <div class="stage" id="stage"></div>
+<script src="shared-pages.js"></script>
 <footer>Design proposal · Synthetic data · <a href="https://github.com/Kordi-Lab/Kordi/issues/1945">Issue #1945</a></footer>
 <script>
 const I={
@@ -225,6 +228,7 @@ const I={
   check:'<path d="M20 6 9 17l-5-5"/>',
   trash:'<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/>',
   chev:'<path d="m9 18 6-6-6-6"/>',
+  chevl:'<path d="m15 18-6-6 6-6"/>',
   image:'<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
   link:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
   doc:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>',
@@ -246,21 +250,22 @@ const PEOPLE={
   support:{name:"Kordi Support",ini:"K",seed:"#5b6270"},
   g1:{ini:"R",seed:"#e08a3c"},g2:{ini:"L",seed:"#3c8de0"}
 };
-const SHARED_NADIA=[["image","Photos and files",24],["link","Links",9],["doc","Documents",3],["users","Groups in common",2]];
+/* [icon, label, count, sub-page] */
+const SHARED_NADIA=[["image","Photos",12,"photos"],["doc","Files",3,"files"],["link","Links",9,"links"],["users","Groups in common",2]];
 const STATES={
   current:{who:"nadia",online:true,baseline:true,id:"@482 731 906"},
   "person-online":{who:"nadia",online:true,status:"online",id:"@482 731 906",about:"Robotics PhD at KAUST. Building a tabletop manipulation lab.",agent:"nagent",since:"12 Aug 2026",tiles:["msg","mute","share","more"],shared:SHARED_NADIA,del:true},
-  "person-offline":{who:"priya",status:"last seen today at 13:09",id:"@315 208 774",since:"3 Oct 2026",tiles:["msg","mute","share","more"],shared:[["image","Photos and files",4],["link","Links",0],["doc","Documents",0],["users","Groups in common",1]],del:true},
-  "person-new":{who:"priya",status:"last seen 3 days ago",id:"@315 208 774",since:"20 Oct 2026",tiles:["msg","mute","share","more"],shared:[["image","Photos and files",0],["link","Links",0],["doc","Documents",0],["users","Groups in common",0]],del:true},
+  "person-offline":{who:"priya",status:"last seen today at 13:09",id:"@315 208 774",since:"3 Oct 2026",tiles:["msg","mute","share","more"],shared:[["image","Photos",4,"photos"],["doc","Files",0,"files"],["link","Links",0,"links"],["users","Groups in common",1]],del:true},
+  "person-new":{who:"priya",status:"last seen 3 days ago",id:"@315 208 774",since:"20 Oct 2026",tiles:["msg","mute","share","more"],shared:[["image","Photos",0,"photos"],["doc","Files",0,"files"],["link","Links",0,"links"],["users","Groups in common",0]],del:true},
   "common-ground":{who:"nadia",online:true,status:"online",id:"@482 731 906",about:"Robotics PhD at KAUST. Building a tabletop manipulation lab.",agent:"nagent",since:"12 Aug 2026",tiles:["msg","mute","share","more"],shared:SHARED_NADIA,cg:true,del:true},
-  agent:{who:"nagent",status:"Agent · owned by Nadia",id:"@482 731 907",type:"Agent",owner:"nadia",tiles:["msg","share","more"],shared:[["image","Photos and files",6],["link","Links",2],["doc","Documents",5],["users","Groups in common",1]],del:true},
+  agent:{who:"nagent",status:"Agent · owned by Nadia",id:"@482 731 907",type:"Agent",owner:"nadia",tiles:["msg","share","more"],shared:[["image","Photos",6,"photos"],["doc","Files",5,"files"],["link","Links",2,"links"],["users","Groups in common",1]],del:true},
   "own-agent":{who:"mine",status:"Your agent",statusAccent:false,id:"@700 112 450",type:"Agent",tiles:["msg","settings","more"],ownMenu:true},
   system:{who:"support",status:"Kordi",about:"Help with your account and the app.",tiles:["msg"]}
 };
 const CG=[["Working on",["tabletop manipulation","sim-to-real"]],["Can help",["grant writing","lab setup"]],["Looking for",["robot datasets","co-authors"]]];
 
-const DEFAULTS={platform:"both",theme:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light",state:"person-online",fit:"window"};
-const ALLOWED={platform:["both","mac","ios"],theme:["light","dark"],state:Object.keys(STATES),fit:["window","full"]};
+const DEFAULTS={platform:"both",theme:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light",state:"person-online",fit:"window",page:"profile"};
+const ALLOWED={platform:["both","mac","ios"],theme:["light","dark"],state:Object.keys(STATES),fit:["window","full"],page:["profile","photos","files","links"]};
 const q=new URLSearchParams(location.search);const S={};
 for(const k in DEFAULTS){const v=q.get(k);S[k]=ALLOWED[k].includes(v)?v:DEFAULTS[k];}
 const UI={muted:false,menu:null,copied:null};
@@ -290,16 +295,17 @@ function copyBtn(where){const done=UI.copied===where;return `<button class="icon
 
 function profile(where){
   const st=STATES[S.state],p=PEOPLE[st.who];
-  const parts=[];
+  if(S.page!=="profile"&&st.shared)return sharedPage(where);
+  const parts=[],size=where==="pop"?72:96;
   const wash=`<div class="wash" style="--seed:${p.seed}"></div>`;
   if(st.baseline){
-    parts.push(`<div class="hd">${av(p,96,{dot:st.online,cls:"today"})}<h2 class="ell">${esc(p.name)}</h2><div class="st accent">online</div></div>`);
+    parts.push(`<div class="hd">${av(p,size,{dot:st.online,cls:"today"})}<h2 class="ell">${esc(p.name)}</h2><div class="st accent">online</div></div>`);
     parts.push(`<div class="tiles">${tile("msg",where,st)}${tile("more",where,st)}</div>`);
     parts.push(`<div class="card">${infoRow(st.id,"Kordi ID",{accent:true,trailing:copyBtn(where)})}</div>`);
     parts.push(`<div class="card after"><button class="row danger-row" data-act="delete">${ic("trash")}Delete contact</button></div>`);
     return `<div class="pv">${parts.join("")}</div>`; /* today's pane has no header wash */
   }
-  parts.push(`<div class="hd">${av(p,96,{dot:st.online})}<h2 class="ell">${esc(p.name)}</h2><div class="st ell${st.online?" online":""}">${esc(st.status)}</div></div>`);
+  parts.push(`<div class="hd">${av(p,size,{dot:st.online})}<h2 class="ell">${esc(p.name)}</h2><div class="st ell${st.online?" online":""}">${esc(st.status)}</div></div>`);
   parts.push(`<div class="tiles">${st.tiles.map(t=>tile(t,where,st)).join("")}</div>`);
   const rows=[];
   if(st.id)rows.push(infoRow(st.id,"Kordi ID",{accent:true,trailing:copyBtn(where)}));
@@ -311,9 +317,10 @@ function profile(where){
   if(rows.length)parts.push(`<div class="card">${rows.join("")}</div>`);
   if(st.shared){
     const all0=st.shared.every(r=>r[2]===0);
-    const body=all0?`<div class="row srow empty">Nothing shared yet</div>`:st.shared.map(([k,l,n])=>{
+    const body=all0?`<div class="row srow empty">Nothing shared yet</div>`:st.shared.map(([k,l,n,pg])=>{
       const g=k==="users"&&n>0?`<span class="gav">${av(PEOPLE.g1,20)}${n>1?av(PEOPLE.g2,20):""}</span>`:"";
-      return `<button class="row srow${n===0?" zero":""}"><span class="ic">${ic(k)}</span><span class="lb ell">${l}</span>${g}<span class="n">${n}</span>${chev}</button>`;
+      const nav=pg&&n>0?` data-act="page" data-page="${pg}"`:"";
+      return `<button class="row srow${n===0?" zero":""}"${nav}><span class="ic">${ic(k)}</span><span class="lb ell">${l}</span>${g}<span class="n">${n}</span>${chev}</button>`;
     }).join("");
     parts.push(`<div class="sec">Shared with you</div><div class="card">${body}</div>`);
   }
@@ -346,7 +353,7 @@ function render(){
   document.documentElement.dataset.theme=S.theme;
   const stage=document.getElementById("stage");
   stage.classList.toggle("full",S.fit==="full");
-  stage.innerHTML=(S.platform!=="ios"?mac():"")+(S.platform!=="mac"?ios():"");
+  stage.innerHTML=(S.platform!=="ios"?mac()+pop():"")+(S.platform!=="mac"?ios():"");
   document.querySelectorAll(".seg").forEach(seg=>seg.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===S[seg.dataset.key]))));
   history.replaceState(null,"","?"+new URLSearchParams(S).toString());
 }
@@ -361,11 +368,16 @@ document.getElementById("stage").addEventListener("click",e=>{
   if(a==="more"){UI.menu=UI.menu===w?null:w;}
   else{UI.menu=null;
     if(a==="mute")UI.muted=!UI.muted;
+    if(a==="page")S.page=b.dataset.page;
     if(a==="copy"){UI.copied=w;setTimeout(()=>{UI.copied=null;render();},1500);}
   }
   render();
 });
-document.addEventListener("keydown",e=>{if(e.key==="Escape"&&UI.menu){UI.menu=null;render();}});
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Escape")return;
+  if(UI.menu){UI.menu=null;render();}
+  else if(S.page!=="profile"){S.page="profile";render();}
+});
 render();
 </script>
 </body>
