@@ -147,12 +147,12 @@ export function supportAvatarSvg() {
 `;
 }
 
-// System notice avatar: the development-gray bird on a light gray disc, flat so it
+// System notice avatar: the development-gray bird on a light gray square (the avatar frame rounds it), flat so it
 // stays crisp at 28px and reads the same in light and dark mode.
 export function systemAvatarSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="System">
-  <circle cx="256" cy="256" r="256" fill="#e5e5ea"/>
-  <g transform="translate(56,56) scale(0.78)">${birdMarkup({ bird: DEVELOPMENT_VARIANT.bird, beak: DEVELOPMENT_VARIANT.beak, shadow: false })}</g>
+  <rect width="512" height="512" fill="#e5e5ea"/>
+  <g transform="translate(41,41) scale(0.84)">${birdMarkup({ bird: DEVELOPMENT_VARIANT.bird, beak: DEVELOPMENT_VARIANT.beak, shadow: false })}</g>
 </svg>
 `;
 }
