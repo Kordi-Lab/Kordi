@@ -1060,7 +1060,7 @@ final class ConversationReadPresentationTests: XCTestCase {
 
         XCTAssertFalse(contacts.contains("if let conversation = model.conversations.first"))
         XCTAssertTrue(contacts.contains("if let conversation = model.conversationForContact(contact)"))
-        XCTAssertTrue(contacts.contains("NavigationLink(value: conversation)"))
+        XCTAssertTrue(try String(contentsOf: root.appendingPathComponent("ContactProfile/ContactProfilePresenter.swift"), encoding: .utf8).contains("NavigationLink(value: conversation)"))
         XCTAssertTrue(contacts.contains(".task { _ = await model.restoreConversationIfNeeded(conversation) }"))
         XCTAssertTrue(contacts.contains(".navigationDestination(for: ConversationSummary.self)"))
         XCTAssertFalse(contacts.contains("selectedConversation"))

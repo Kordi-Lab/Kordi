@@ -40,9 +40,39 @@ struct ContactProfileSubject: Identifiable, Hashable {
 }
 
 enum ContactProfileTile: String, Identifiable, Hashable {
-    case message, mute, share, settings, more
+    case message, call, video, mute, share, settings, more
 
     var id: Self { self }
+}
+
+enum ContactProfileSharedRow: String, Identifiable, Hashable {
+    case media, files, links, documents, groups, todo, memory
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .media: "Photos and files"
+        case .files: "Files"
+        case .links: "Links"
+        case .documents: "Documents"
+        case .groups: "Groups in common"
+        case .todo: "Todo"
+        case .memory: "Memory"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .media: "photo"
+        case .files: "folder"
+        case .links: "link"
+        case .documents: "doc.text"
+        case .groups: "person.2"
+        case .todo: "checkmark.circle"
+        case .memory: "brain"
+        }
+    }
 }
 
 /// The pure part of the sheet: which status line, tiles and rows a profile shows.
@@ -57,6 +87,10 @@ struct ContactProfilePresentation: Equatable {
     var presence: CloudPresenceAccount? = nil
     /// The server can remove contacts (`contactProfileVersion` present).
     var canDelete: Bool = false
+    /// Pushed from the direct chat's header instead of shown as a sheet.
+    var isPage: Bool = false
+    /// Memory is offered (the Memory row on the page).
+    var memoryAvailable: Bool = false
 
     var kind: CloudContactProfile.Kind { profile?.kind ?? subject.kind }
     var name: String { profile?.displayName?.nonEmpty ?? subject.name }
@@ -98,9 +132,39 @@ struct ContactProfilePresentation: Equatable {
         switch kind {
         case .system: return [.message]
         case .agent: return isOwnAgent ? [.message, .settings, .more] : [.message, .share, .more]
-        case .person: return [.message, .mute, .share, .more]
+        case .person: return isPage ? [.call, .video, .mute, .more] : [.message, .mute, .share, .more]
         }
     }
+
+    /// The page always lists the chat's content rows; the sheet only when the profile has counts.
+    var showsSharedSection: Bool { isPage ? kind == .person : shared != nil }
+
+    var sharedRows: [ContactProfileSharedRow] {
+        guard isPage else { return [.media, .links, .documents, .groups] }
+        return [.media, .files, .links, .documents, .groups, .todo] + (memoryAvailable ? [.memory] : [])
+    }
+
+    /// Nil for rows without a server count.
+    func sharedCount(_ row: ContactProfileSharedRow) -> Int? {
+        guard let shared else { return nil }
+        switch row {
+        case .media: return shared.mediaCount
+        case .links: return shared.linkCount
+        case .documents: return shared.documentCount
+        case .groups: return shared.groups.count
+        case .files, .todo, .memory: return nil
+        }
+    }
+
+    /// Zero-count rows that only lead back to the chat are disabled; the page's
+    /// media, files, todo and memory views have their own empty states.
+    func isSharedRowEnabled(_ row: ContactProfileSharedRow) -> Bool {
+        if isPage, [.media, .files, .todo, .memory].contains(row) { return true }
+        return sharedCount(row).map { $0 > 0 } ?? true
+    }
+
+    /// The sheet collapses to one muted line when nothing is shared.
+    var showsNothingShared: Bool { !isPage && shared?.isEmpty == true }
 
     var showsKordiId: Bool { kind != .system && kordiId != nil }
     var about: String? { isFallback ? nil : profile?.about?.nonEmpty }

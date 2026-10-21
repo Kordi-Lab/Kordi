@@ -1394,7 +1394,7 @@ struct ConversationView: View {
             ActivityShareSheet(items: [item.item])
         }
         .navigationDestination(isPresented: $showSessionDetails) {
-            SessionDetailView(conversation: conversation)
+            ConversationDetailsPage(conversation: conversation)
         }
         .navigationDestination(item: $documentReader) { DocumentReaderScreen(request: $0) }
         .authorProfileDestination(item: $authorProfileConversation, source: conversation)

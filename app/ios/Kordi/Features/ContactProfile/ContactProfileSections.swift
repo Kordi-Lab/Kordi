@@ -135,47 +135,44 @@ struct ContactProfilePersonRow: View {
     }
 }
 
-/// "Shared with you": four counted rows, or one muted line when nothing is shared.
+/// "Shared with you": counted rows (plus the chat's Files, Todo and Memory on
+/// the page), or one muted line when nothing is shared.
 struct ContactProfileSharedSection: View {
-    let shared: CloudContactProfile.Shared
-    let onOpenChat: () -> Void
-    let onOpenGroups: () -> Void
+    let presentation: ContactProfilePresentation
+    let onOpen: (ContactProfileSharedRow) -> Void
 
     var body: some View {
         ContactProfileSectionLabel("Shared with you")
-        if shared.isEmpty {
+        if presentation.showsNothingShared {
             Text("Nothing shared yet")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: ContactProfileMetrics.sharedRowMinHeight, alignment: .leading)
                 .padding(.horizontal, ContactProfileMetrics.gutter)
         } else {
-            row("photo", "Photos and files", shared.mediaCount, action: onOpenChat)
-            ContactProfileDivider(inset: ContactProfileMetrics.sharedDividerInset)
-            row("link", "Links", shared.linkCount, action: onOpenChat)
-            ContactProfileDivider(inset: ContactProfileMetrics.sharedDividerInset)
-            row("doc.text", "Documents", shared.documentCount, action: onOpenChat)
-            ContactProfileDivider(inset: ContactProfileMetrics.sharedDividerInset)
-            row("person.2", "Groups in common", shared.groups.count, groups: Array(shared.groups.prefix(2)), action: onOpenGroups)
+            let rows = presentation.sharedRows
+            ForEach(Array(rows.enumerated()), id: \.element) { index, row in
+                VStack(spacing: 0) {
+                    if index > 0 { ContactProfileDivider(inset: ContactProfileMetrics.sharedDividerInset) }
+                    rowView(row)
+                }
+            }
         }
     }
 
-    private func row(
-        _ systemImage: String,
-        _ title: String,
-        _ count: Int,
-        groups: [CloudContactProfile.SharedGroup] = [],
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
+    private func rowView(_ row: ContactProfileSharedRow) -> some View {
+        let count = presentation.sharedCount(row)
+        let enabled = presentation.isSharedRowEnabled(row)
+        let groups = row == .groups ? Array((presentation.shared?.groups ?? []).prefix(2)) : []
+        return Button { onOpen(row) } label: {
             HStack(spacing: 12) {
-                Image(systemName: systemImage)
+                Image(systemName: row.systemImage)
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .frame(width: 20)
-                Text(title)
+                Text(row.title)
                     .font(.body)
-                    .foregroundStyle(count == 0 ? .secondary : .primary)
+                    .foregroundStyle(enabled && count != 0 ? .primary : .secondary)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if !groups.isEmpty {
@@ -186,9 +183,11 @@ struct ContactProfileSharedSection: View {
                         }
                     }
                 }
-                Text("\(count)")
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(count == 0 ? .tertiary : .secondary)
+                if let count {
+                    Text("\(count)")
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(count == 0 ? .tertiary : .secondary)
+                }
                 SettingsChevron()
             }
             .padding(.leading, ContactProfileMetrics.gutter)
@@ -197,9 +196,9 @@ struct ContactProfileSharedSection: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(count == 0)
+        .disabled(!enabled)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title), \(count)")
+        .accessibilityLabel(count.map { "\(row.title), \($0)" } ?? row.title)
     }
 }
 

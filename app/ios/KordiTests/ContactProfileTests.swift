@@ -137,6 +137,66 @@ final class ContactProfileTests: XCTestCase {
         XCTAssertTrue(presentation.showsDelete)
     }
 
+    func testPagePresentationFromTheChatHeader() throws {
+        var page = ContactProfilePresentation(
+            subject: subject,
+            profile: try decode(Self.personJSON),
+            isFallback: false,
+            canDelete: true,
+            isPage: true,
+            memoryAvailable: true
+        )
+        XCTAssertEqual(page.tiles, [.call, .video, .mute, .more])
+        XCTAssertFalse(page.tiles.contains(.message))
+        XCTAssertFalse(page.tiles.contains(.share))
+        XCTAssertEqual(page.sharedRows, [.media, .files, .links, .documents, .groups, .todo, .memory])
+        XCTAssertEqual(page.sharedCount(.media), 24)
+        XCTAssertNil(page.sharedCount(.todo))
+        XCTAssertTrue(page.showsSharedSection)
+
+        page.memoryAvailable = false
+        XCTAssertEqual(page.sharedRows.last, .todo)
+
+        // Without the profile the page still reaches the chat's media, files, todo and memory.
+        let fallback = ContactProfilePresentation(subject: subject, profile: nil, isFallback: true, isPage: true)
+        XCTAssertTrue(fallback.showsSharedSection)
+        XCTAssertFalse(fallback.showsNothingShared)
+        XCTAssertTrue(fallback.isSharedRowEnabled(.media))
+        XCTAssertTrue(fallback.isSharedRowEnabled(.todo))
+
+        // An empty profile keeps the rows on the page; zero counts that lead to the chat are disabled.
+        let empty = ContactProfilePresentation(
+            subject: subject,
+            profile: CloudContactProfile(accountId: "acct_nadia", shared: .init()),
+            isFallback: false,
+            isPage: true
+        )
+        XCTAssertFalse(empty.showsNothingShared)
+        XCTAssertTrue(empty.isSharedRowEnabled(.media))
+        XCTAssertFalse(empty.isSharedRowEnabled(.links))
+
+        let sheet = ContactProfilePresentation(subject: subject, profile: CloudContactProfile(accountId: "acct_nadia", shared: .init()), isFallback: false)
+        XCTAssertEqual(sheet.sharedRows, [.media, .links, .documents, .groups])
+        XCTAssertTrue(sheet.showsNothingShared)
+        XCTAssertFalse(sheet.isSharedRowEnabled(.media))
+    }
+
+    func testChatHeaderOpensTheProfileOnlyForPeople() {
+        func conversation(_ kind: ConversationKind, peer: String = "acct_nadia", name: String = "Nadia") -> ConversationSummary {
+            ConversationSummary(
+                id: "\(kind):\(peer)", kind: kind, peerAccountId: peer, agentId: kind == .agent ? "agent_1" : nil,
+                ownerDisplayName: nil, displayName: name, lastMessage: "", lastActivityAt: Date(),
+                unreadCount: 0, avatarSource: nil, agentActivity: nil, sessionId: "session:\(kind):\(peer)"
+            )
+        }
+        XCTAssertTrue(ConversationDetailsPage.showsContactProfile(for: conversation(.person)))
+        XCTAssertFalse(ConversationDetailsPage.showsContactProfile(for: conversation(.agent)))
+        XCTAssertFalse(ConversationDetailsPage.showsContactProfile(for: conversation(.group)))
+        XCTAssertFalse(ConversationDetailsPage.showsContactProfile(
+            for: conversation(.person, peer: KordiSupportIdentity.accountId, name: KordiSupportIdentity.displayName)
+        ))
+    }
+
     func testFallbackHidesTheDeleteRowWithoutTheFlag() {
         let presentation = ContactProfilePresentation(subject: subject, profile: nil, isFallback: true)
         XCTAssertTrue(presentation.showsKordiId)

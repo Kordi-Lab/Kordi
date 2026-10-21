@@ -119,3 +119,37 @@ struct ContactsContactEntry: View {
         ContactIdentityRow(contact: contact, onOpenProfile: onOpenProfile)
     }
 }
+
+enum ContactProfileRoute: Hashable {
+    case groups
+    case details(ConversationSummary)
+    case focused(ConversationSummary, SessionDetailTab)
+    case chat(ConversationSummary)
+}
+
+/// The header of a chat opens the contact profile page for a person and the
+/// session details page for everything else (agents, groups, Kordi Support).
+struct ConversationDetailsPage: View {
+    @EnvironmentObject private var model: AppModel
+    let conversation: ConversationSummary
+    var onBack: (() -> Void)? = nil
+
+    static func showsContactProfile(for conversation: ConversationSummary) -> Bool {
+        conversation.kind == .person && !conversation.representsKordiSupport && !conversation.isAgentLaunchTemplate
+    }
+
+    var body: some View {
+        if Self.showsContactProfile(for: conversation) {
+            let subject = model.contactProfileSubject(for: conversation)
+            ContactProfileView(
+                subject: subject,
+                profileModel: model.makeContactProfileModel(for: subject),
+                style: .page(conversation: conversation, onBack: onBack),
+                onOpenConversation: { _ in }
+            )
+            .id(subject.id)
+        } else {
+            SessionDetailView(conversation: conversation, onBack: onBack)
+        }
+    }
+}
