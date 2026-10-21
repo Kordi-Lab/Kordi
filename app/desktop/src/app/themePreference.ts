@@ -1,7 +1,9 @@
 import type { ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
 
 export const KORDI_THEME_MODE_STORAGE_KEY = 'kordi.themeMode.v1';
-export const KORDI_CHAT_THEME_STORAGE_KEY = 'kordi.chatTheme.v1';
+export const KORDI_CHAT_THEME_STORAGE_KEY = 'kordi.chatTheme.v2';
+/** Pre-Classic key; 'quiet' there was the old implicit default, so it migrates to 'classic'. */
+export const KORDI_CHAT_THEME_LEGACY_STORAGE_KEY = 'kordi.chatTheme.v1';
 export const KORDI_CHAT_THEMES = ['classic', 'quiet', 'midnight', 'sand', 'ocean'] as const;
 export type ChatTheme = (typeof KORDI_CHAT_THEMES)[number];
 
@@ -46,12 +48,26 @@ export function resolveThemeMode(themeMode: ThemeMode, systemThemeMode: Resolved
   return themeMode === 'auto' ? systemThemeMode : themeMode;
 }
 
+export function migrateLegacyChatTheme(value: string | null | undefined): ChatTheme {
+  if (value === 'quiet') return 'classic';
+  return isChatTheme(value) ? value : 'classic';
+}
+
 export function readStoredChatTheme(
-  storage: Pick<Storage, 'getItem'> | undefined = browserStorage(),
+  storage: Pick<Storage, 'getItem'> & Partial<Pick<Storage, 'setItem'>> | undefined = browserStorage(),
 ): ChatTheme {
   try {
     const value = storage?.getItem(KORDI_CHAT_THEME_STORAGE_KEY);
-    return isChatTheme(value) ? value : 'classic';
+    if (value !== null && value !== undefined) return isChatTheme(value) ? value : 'classic';
+    const migrated = migrateLegacyChatTheme(storage?.getItem(KORDI_CHAT_THEME_LEGACY_STORAGE_KEY));
+    if (typeof storage?.setItem === 'function') {
+      try {
+        storage.setItem(KORDI_CHAT_THEME_STORAGE_KEY, migrated);
+      } catch {
+        // Ignore write failures; the migration simply runs again next launch.
+      }
+    }
+    return migrated;
   } catch {
     return 'classic';
   }

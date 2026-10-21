@@ -112,11 +112,24 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
     case sand
     case ocean
 
-    static let storageKey = "kordi.chatTheme.v1"
+    static let storageKey = "kordi.chatTheme.v2"
+    /// Pre-Classic key. "quiet" there was the old implicit default, so it migrates to Classic.
+    static let legacyStorageKey = "kordi.chatTheme.v1"
     static let ownMetadataOpacity = 0.88
     static let otherMetadataOpacity = 0.68
 
     var id: String { rawValue }
+
+    /// One-time move from the v1 key: runs only while v2 is absent and leaves v1 in place.
+    static func migrateStoredSelection(in defaults: UserDefaults = .standard) {
+        guard defaults.object(forKey: storageKey) == nil else { return }
+        let legacy = defaults.string(forKey: legacyStorageKey).flatMap(KordiChatTheme.init(rawValue:))
+        let migrated: KordiChatTheme = switch legacy {
+        case nil, .quiet: .classic
+        case let theme?: theme
+        }
+        defaults.set(migrated.rawValue, forKey: storageKey)
+    }
 
     var label: String {
         switch self {

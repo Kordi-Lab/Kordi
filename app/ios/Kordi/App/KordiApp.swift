@@ -86,6 +86,8 @@ struct KordiApp: App {
     @State private var showsConnectorsSettings = false
 
     init() {
+        // Before any @AppStorage(KordiChatTheme.storageKey) is read.
+        KordiChatTheme.migrateStoredSelection()
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview-data"),
            ProcessInfo.processInfo.arguments.contains("--preview-native-thread") {

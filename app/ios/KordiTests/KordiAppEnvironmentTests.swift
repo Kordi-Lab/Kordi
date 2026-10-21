@@ -3,7 +3,8 @@ import XCTest
 
 final class KordiAppEnvironmentTests: XCTestCase {
     func testChatThemesHaveStablePersistedIdentifiers() {
-        XCTAssertEqual(KordiChatTheme.storageKey, "kordi.chatTheme.v1")
+        XCTAssertEqual(KordiChatTheme.storageKey, "kordi.chatTheme.v2")
+        XCTAssertEqual(KordiChatTheme.legacyStorageKey, "kordi.chatTheme.v1")
         XCTAssertEqual(
             KordiChatTheme.allCases.map(\.rawValue),
             ["classic", "quiet", "midnight", "sand", "ocean"]
