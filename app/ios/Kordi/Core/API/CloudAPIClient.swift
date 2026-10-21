@@ -252,7 +252,9 @@ actor CloudAPIClient {
     func updateProfile(
         token: String,
         displayName: String,
-        avatarMutation: CanonicalAvatarMutation?
+        avatarMutation: CanonicalAvatarMutation?,
+        kordiId: String? = nil,
+        details: CloudProfileDetailsUpdate = CloudProfileDetailsUpdate()
     ) async throws -> CloudAccount {
         let avatarMutation = try await referenceBackedAvatarMutation(
             token: token,
@@ -264,7 +266,16 @@ actor CloudAPIClient {
             path: "/v1/cloud/auth/me",
             method: "PATCH",
             token: token,
-            body: UpdateProfileRequest(displayName: displayName, avatarMutation: avatarMutation),
+            body: UpdateProfileRequest(
+                displayName: displayName,
+                avatarMutation: avatarMutation,
+                kordiId: kordiId,
+                about: details.about,
+                location: details.location,
+                timeZone: details.timeZone,
+                website: details.website,
+                birthday: details.birthday
+            ),
             fallback: "Could not update your profile."
         )
     }
@@ -3139,6 +3150,12 @@ private struct LoginRequest: Encodable {
 private struct UpdateProfileRequest: Encodable {
     let displayName: String
     let avatarMutation: CanonicalAvatarMutation?
+    let kordiId: String?
+    let about: String?
+    let location: String?
+    let timeZone: String?
+    let website: String?
+    let birthday: String?
 }
 private struct SignupRequest: Encodable {
     let email: String

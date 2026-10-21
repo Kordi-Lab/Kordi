@@ -16,7 +16,7 @@ for (const appearance of ['light', 'dark'] as const) {
         await expect(page.locator('#app-transcript-message-contrast-read')).not.toHaveClass(/app-thread-message-row/);
       }
 
-      for (const theme of ['default', 'quiet', 'midnight', 'sand', 'ocean']) {
+      for (const theme of ['default', 'classic', 'quiet', 'midnight', 'sand', 'ocean']) {
         await page.getByRole('combobox', { name: 'Preview chat theme' }).selectOption(theme);
         await expect(page.locator('body')).toHaveAttribute('data-kordi-chat-theme', theme);
         const contrast = await page.locator([

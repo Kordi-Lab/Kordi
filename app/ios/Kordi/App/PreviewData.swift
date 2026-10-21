@@ -47,7 +47,12 @@ enum PreviewData {
                 updatedAt: "2026-08-19T00:00:00Z"
             ),
             nodeId: nil,
-            passwordSet: true
+            passwordSet: true,
+            accountNumber: "482731906",
+            about: "Design and research at a small studio.",
+            location: "Lisbon",
+            timeZone: "Europe/Lisbon",
+            birthday: "1996-03-04"
         )
         let contacts = [
             CloudContact(accountId: KordiSupportIdentity.accountId, kordiId: "100000001", displayName: KordiSupportIdentity.displayName, avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -300), subtitle: "Ask questions or suggest improvements", contactKind: "system_agent"),

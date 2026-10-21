@@ -24,7 +24,7 @@ function row(overrides: Partial<CloudDeviceAuthorization> & { deviceId: string }
     authorizationState: 'confirmed',
     currentDevice: false,
     sessionExpiresAt: null,
-    approximateLocation: 'Thuwal, Saudi Arabia',
+    approximateLocation: 'Lisbon, Portugal',
     syncStatus: { protocolVersion: 2, lastAppliedSequence: 0, lastSuccessfulCatchUpAt: null },
     online: false,
     sessionCount: 1,

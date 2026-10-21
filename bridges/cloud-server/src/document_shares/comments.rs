@@ -35,7 +35,8 @@ pub(crate) const MAX_LIVE_COMMENTS: i64 = 500;
 
 const COMMENT_SELECT: &str = "SELECT comment.comment_id, comment.block_id, \
         comment.parent_comment_id, comment.author_account_id, comment.author_reader_key, \
-        comment.author_name, account.display_name, account.public_account_number, \
+        comment.author_name, account.display_name, \
+        COALESCE(account.public_handle, account.public_account_number::TEXT), \
         account.avatar_url, comment.body, comment.mentions_agent, comment.created_at, \
         comment.edited_at, comment.resolved_at \
      FROM cloud_document_comments comment \
@@ -49,7 +50,7 @@ type CommentRow = (
     Option<String>,
     String,
     Option<String>,
-    Option<i64>,
+    Option<String>,
     Option<String>,
     String,
     bool,
@@ -111,9 +112,7 @@ fn comment_from_row(row: CommentRow, document_owner: &str, caller: &Caller) -> D
         Some(account) => CommentAuthor {
             account_id: (!caller.is_public()).then(|| account.clone()),
             display_name: clean_display_name(name.as_deref().or(Some(&author_name))),
-            kordi_id: number
-                .filter(|_| !caller.is_public() || account == document_owner)
-                .map(|value| value.to_string()),
+            kordi_id: number.filter(|_| !caller.is_public() || account == document_owner),
             avatar_url: avatar.as_deref().and_then(syncable_avatar_url),
             agent_id: None,
             owner_account_id: None,
