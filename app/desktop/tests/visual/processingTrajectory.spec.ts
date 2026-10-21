@@ -187,3 +187,28 @@ test('ordered commentary keeps disclosures open through streaming and completion
   await expect(page.getByText('The example is ready. The check passed.')).toBeVisible();
   expect(await card.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
 });
+
+
+test('ordered activity opens output directly and local files in reusable side-panel tabs', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&count=0&phase=7');
+  await page.getByRole('button', { name: 'Read files', exact: true }).click();
+  await page.getByRole('button', { name: 'Read example.ts', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Details', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Synthetic result', { exact: true })).toBeVisible();
+  await expect(page.locator('.app-ordered-turn-surface')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await page.getByRole('button', { name: 'example.ts', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'example.ts', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tabpanel').getByText('export const example = true;', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /Editing files/ }).click();
+  await page.getByRole('button', { name: 'updated.ts', exact: true }).click();
+  await expect(page.getByRole('tab')).toHaveCount(2);
+  await page.getByRole('button', { name: 'example.ts', exact: true }).click();
+  await expect(page.getByRole('tab')).toHaveCount(2);
+  await expect(page.getByRole('tab', { name: 'example.ts', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.screenshot({ path: info.outputPath('progress-source-tabs.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Hide panel' }).click();
+  await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(9));
+  await page.getByRole('button', { name: 'Worked for 12s', exact: true }).click();
+  await expect(page.getByText('I will inspect the example before making a change.')).toBeHidden();
+  await expect(page.getByText('The example is ready. The check passed.')).toBeVisible();
+});

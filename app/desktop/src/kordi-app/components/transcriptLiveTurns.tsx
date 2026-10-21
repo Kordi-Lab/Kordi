@@ -1,3 +1,4 @@
+import { ToolActivityRow } from './ToolActivityRow';
 import { TurnProgress } from './TurnProgress';
 import { useMessageLayout } from '@/app/messageLayoutPreference';
 import { LiveTurnMessageFrame } from './LiveTurnMessageFrame';
@@ -7,21 +8,9 @@ import { agentTurnHasStarted, canDisplayAgentTurn, shouldShowAgentWaitingAnimati
 import { cancelledTurnContent } from '@/features/chat/cancellation';
 import { memo, useEffect, useState } from 'react';
 import {
-  ArrowRightLeft,
-  Braces,
   CheckCircle2,
-  ChevronRight,
   CircleAlert,
-  FileText,
-  FolderOpen,
-  Globe,
-  Image,
-  Link2,
   LoaderCircle,
-  Pencil,
-  Search,
-  TerminalSquare,
-  Wrench,
 } from 'lucide-react';
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
 import { useVisibleLiveTurn } from '@/features/chat/useVisibleLiveTurn';
@@ -30,154 +19,13 @@ import { cn } from '@/lib/utils';
 import { AgentWaitingWave } from './AgentWaitingWave';
 import { SourceMessageQuoteRow } from './transcriptReplyAttribution';
 import { MarkdownContent } from './markdown';
-import { ToolTranscriptBlock } from './transcriptToolOutput';
 import { FoldableAssistantAnswer } from './transcriptAssistantAnswer';
 import { InlineChangedFiles } from './transcriptChangedFiles';
 import {
-  LEGACY_PARTICIPANT_REQUEST_TOOL_NAME,
-  toolTimelineDisplayArguments,
-  toolTimelineRunningToolLabel,
-  toolTimelineToolLabel,
   toolTimelineTypeLabel,
 } from './toolTimeline';
 import type { DesktopChatTurnSnapshot, MessageSourceReference } from '../types';
 import { AgentRequestHeaderStop, CollaborationAgentStopButton, TurnStopButton, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptTurnStopControls';
-
-function toolDisplayConfig(toolName: string) {
-  const normalized = toolName.toLowerCase();
-
-  if (normalized === LEGACY_PARTICIPANT_REQUEST_TOOL_NAME) {
-    return { icon: ArrowRightLeft, label: '@ participant', argumentsLabel: 'Request', resultLabel: 'Participant response' };
-  }
-  if (normalized.includes('web_fetch')) {
-    return { icon: Globe };
-  }
-  if (normalized.includes('browser_fetch')) {
-    return { icon: Link2 };
-  }
-  if (normalized.includes('search') || normalized.includes('grep')) {
-    return { icon: Search };
-  }
-  if (normalized.includes('read') || normalized.includes('view') || normalized.includes('cat')) {
-    return { icon: FileText };
-  }
-  if (normalized.includes('list') || normalized.includes('glob') || normalized.includes('find') || normalized.includes('dir')) {
-    return { icon: FolderOpen };
-  }
-  if (normalized.includes('bash') || normalized.includes('shell') || normalized.includes('command') || normalized.includes('terminal')) {
-    return { icon: TerminalSquare };
-  }
-  if (normalized.includes('edit') || normalized.includes('write') || normalized.includes('patch')) {
-    return { icon: Pencil };
-  }
-  if (normalized.includes('image')) {
-    return { icon: Image };
-  }
-
-  return { icon: Wrench };
-}
-
-type ToolSnapshot = DesktopChatTurnSnapshot['tools'][number];
-type ToolDisplay = ReturnType<typeof toolDisplayConfig>;
-
-
-function normalizedToolStatus(tool: ToolSnapshot) {
-  return (tool.isError ? 'error' : tool.status || 'pending').trim().toLowerCase();
-}
-
-function isFailedTool(tool: ToolSnapshot) {
-  const status = normalizedToolStatus(tool);
-  return tool.isError || status === 'error' || status.includes('failed');
-}
-
-function isDoneTool(tool: ToolSnapshot) {
-  const status = normalizedToolStatus(tool);
-  return !isFailedTool(tool) && (status === 'done' || status === 'complete' || status === 'completed');
-}
-
-function isRunningTool(tool: ToolSnapshot) {
-  return !isDoneTool(tool) && !isFailedTool(tool);
-}
-
-function statusLabelForTool(tool: ToolSnapshot) {
-  if (isFailedTool(tool)) return 'error';
-  if (isDoneTool(tool)) return 'done';
-  const status = normalizedToolStatus(tool);
-  return status || 'running';
-}
-
-function toolMetaText(tool: ToolSnapshot) {
-  return tool.detail || tool.status;
-}
-
-function toolDetailsAvailable(tool: ToolSnapshot) {
-  return Boolean(tool.arguments || tool.liveOutput || tool.resultText);
-}
-
-function ToolDetailBlocks({ tool, display }: { tool: ToolSnapshot; display: ToolDisplay }) {
-  return (
-    <div>
-      {tool.arguments ? <ToolTranscriptBlock label={display.argumentsLabel ?? 'Arguments'} icon={Braces} text={toolTimelineDisplayArguments(tool)} language="json" maxHeightClass="max-h-56" wrapLines /> : null}
-      {tool.liveOutput ? <ToolTranscriptBlock label="Live output" icon={TerminalSquare} text={tool.liveOutput} language="text" maxHeightClass="max-h-64" /> : null}
-      {tool.resultText ? <ToolTranscriptBlock label={display.resultLabel ?? 'Result'} icon={CheckCircle2} text={tool.resultText} language="text" maxHeightClass="max-h-72" /> : null}
-    </div>
-  );
-}
-
-function ToolTimelineDetails({ tool, display }: { tool: ToolSnapshot; display: ToolDisplay }) {
-  const [expandedDetails, setExpandedDetails] = useState(false);
-
-  if (!toolDetailsAvailable(tool)) return null;
-
-  return (
-    <div className="app-transcript-timeline-details" data-transcript-stable-disclosure-root="true">
-      <button
-        type="button"
-        className="app-button-quiet app-transcript-timeline-details-toggle"
-        data-transcript-stable-disclosure="true"
-        onClick={() => setExpandedDetails((current) => !current)}
-        aria-expanded={expandedDetails}
-      >
-        <ChevronRight className={cn('h-3 w-3 transition-transform', expandedDetails && 'rotate-90')} />
-        <span>Details</span>
-      </button>
-      {expandedDetails ? (
-        <div className="app-transcript-timeline-details-body" data-transcript-stable-disclosure-body="true">
-          <ToolDetailBlocks tool={tool} display={display} />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function ToolTimelineToolRow({ tool }: { tool: ToolSnapshot }) {
-  const display = toolDisplayConfig(tool.name);
-  const Icon = display.icon;
-  const status = statusLabelForTool(tool);
-  const metaText = toolMetaText(tool);
-  const running = isRunningTool(tool);
-  const label = running ? toolTimelineRunningToolLabel(tool) : toolTimelineToolLabel(tool);
-
-  return (
-    <div className={cn('app-transcript-timeline-row', running && 'app-transcript-timeline-row-running')}>
-      <span className="app-transcript-timeline-rail" aria-hidden="true">
-        <span className="app-transcript-timeline-node">
-          <Icon className="h-3.5 w-3.5" />
-        </span>
-      </span>
-      <div
-        className="app-transcript-timeline-row-body"
-        aria-label={`${label}, ${status}${metaText ? `, ${metaText}` : ''}`}
-      >
-        <div className="app-transcript-timeline-row-line">
-          <span className="app-transcript-timeline-row-title">{label}</span>
-        </div>
-        {isFailedTool(tool) && metaText && metaText !== status ? <div className="app-transcript-timeline-row-meta truncate">{metaText}</div> : null}
-        <ToolTimelineDetails tool={tool} display={display} />
-      </div>
-    </div>
-  );
-}
 
 function useDelayedLiveStatus(shouldShow: boolean, turnId: string, delayMs = 180) {
   const [visible, setVisible] = useState(false);
@@ -348,7 +196,7 @@ function LiveChatTurnCardView({
   return (
     <div data-live-turn-status={visibleTurn.status} className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
-        <div data-live-turn-pending={statusOnly ? 'true' : undefined} className={cn('app-live-turn-response-panel', hasResponseSurface && !plainAgentResponse && 'app-live-assistant-answer-surface', !hasAssistant && !isCompressionStatus && changedFileRows.length === 0 ? 'w-fit' : 'w-full', 'max-w-[min(100%,58rem)] space-y-2.5')}>
+        <div data-live-turn-pending={statusOnly ? 'true' : undefined} className={cn('app-live-turn-response-panel', visibleTurn.segments?.length ? 'app-ordered-turn-surface' : hasResponseSurface && !plainAgentResponse && 'app-live-assistant-answer-surface', !visibleTurn.segments?.length && !hasAssistant && !isCompressionStatus && changedFileRows.length === 0 ? 'w-fit' : 'w-full', 'max-w-[min(100%,58rem)] space-y-2.5')}>
           {showLiveStatusHeader ? (
             <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
               {visibleTurn.status === 'cancelling' || visibleTurn.status === 'retrying' ? (
@@ -397,7 +245,7 @@ function LiveChatTurnCardView({
 
           {hasTimelineActivity || hasAssistant ? (
             <TurnProgress turn={visibleTurn}
-              renderTool={tool => <ToolTimelineToolRow key={tool.id} tool={tool} />}
+              renderTool={tool => <ToolActivityRow key={tool.id} tool={tool} onOpenFile={onOpenArtifact} />}
               trailing={cardCollaborationStop && onStopCollaborationAgentRequest ? (
                 <CollaborationAgentStopButton request={cardCollaborationStop} onStop={onStopCollaborationAgentRequest} />
               ) : cardStopAvailable ? <TurnStopButton onStop={onStopActiveTurn} /> : null}

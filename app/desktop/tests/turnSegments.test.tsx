@@ -41,9 +41,9 @@ test('snapshot replay does not duplicate or reorder segments and keeps partial t
 
 test('ordered rendering has one active signal and no duplicated aggregate or raw reasoning', () => {
   const markup = renderToStaticMarkup(createElement(TurnProgress, { turn, renderTool: tool => createElement('div', { key: tool.id }, tool.id), legacyAnswer: 'Legacy aggregate must not repeat' }));
-  const texts = ['I will inspect the example.', 'Used 2 tools', 'The example needs one change.', 'Used 1 tool', 'The example is ready.'];
+  const texts = ['I will inspect the example.', 'Read context', 'The example needs one change.', 'Read context', 'The example is ready.'];
   let position = -1;
-  for (const text of texts) { const next = markup.indexOf(text); assert.ok(next > position, text); position = next; }
+  for (const text of texts) { const next = markup.indexOf(text, position + 1); assert.ok(next > position, text); position = next; }
   assert.equal((markup.match(/app-turn-progress-dots/g) ?? []).length, 1);
   assert.doesNotMatch(markup, /Legacy aggregate|Private reasoning|Observation|Execution ×|done|complete/);
 });
@@ -60,4 +60,19 @@ test('terminal duration comes from stored timestamps and tool errors do not fail
 test('owner execution transport preserves ordered prose and tool references', () => {
   const snapshot = cloudAgentExecutionSnapshotFromTurn(turn, 9000);
   assert.deepEqual(parseCloudAgentExecutionSnapshot(JSON.parse(JSON.stringify(snapshot)))?.segments, segments);
+});
+
+test('activity summaries combine observed actions without repeating every tool', async () => {
+  const { settledProgressLabel } = await import('../src/kordi-app/components/turnProgressLabels');
+  const read = { ...turn.tools[0], arguments: '{"path":"src/example.ts"}' };
+  assert.equal(settledProgressLabel([read, read, { ...read, name: 'bash', arguments: '{"command":"pnpm test"}' }]), 'Read files, ran tests');
+  assert.equal(settledProgressLabel([], 2), 'Earlier activity');
+});
+
+test('file links use explicit file arguments and tolerate incomplete tool streams', async () => {
+  const { toolActivityMetadata } = await import('../src/kordi-app/components/toolActivityMetadata');
+  assert.equal(toolActivityMetadata({ ...turn.tools[0], arguments: '{"file_path":"src/example.ts"}' }).path, 'src/example.ts');
+  assert.equal(toolActivityMetadata({ ...turn.tools[0], arguments: '{"path":"https://example.invalid/file.ts"}' }).path, undefined);
+  for (const argumentsJson of ['{', 'null', '1', '[]']) assert.equal(toolActivityMetadata({ ...turn.tools[0], arguments: argumentsJson }).path, undefined);
+  assert.equal(toolActivityMetadata({ ...turn.tools[0], name: 'bash', arguments: '{"command":"cat src/example.ts"}' }).path, undefined);
 });

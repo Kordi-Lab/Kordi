@@ -1,3 +1,6 @@
+import { CompanionDocumentPane } from '../../src/pages/chatsPage.companionDocument';
+import { useCompanionDocument, useCompanionDocumentRequests } from '../../src/features/documents/useCompanionDocument';
+import { openTranscriptFile } from '../../src/features/documents/companionDocument';
 import { PinMotionFixture } from './pinMotionFixture';
 import { createRef, useLayoutEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -32,12 +35,14 @@ document.documentElement.classList.add('kordi-native-shell');
 document.body.classList.add('kordi-native-shell', 'theme-light');
 function Fixture() {
   const [phase, setPhase] = useState(Number(new URLSearchParams(location.search).get('phase') ?? 0));
+  const tabs = useCompanionDocument('synthetic-preview');
+  useCompanionDocumentRequests(document => tabs.open({ ...document, readLocally: false, preview: { path: document.artifact.path, truncated: false, lines: [{ number: 1, text: 'export const example = true;' }, { number: 2, text: '// Synthetic source for the interactive preview.' }] } }));
   const [draft, setDraft] = useState('Synthetic request');
   useLayoutEffect(() => {
     driver.step = next => { if (next === 1) { setDraft(''); scheduleTranscriptScrollToBottom(scrollRef); } setPhase(next); };
   }, []);
-  const tools = phase >= 6 ? [{ id: 'tool-one', name: 'read', status: phase === 6 ? 'running' : 'done', arguments: '{"path":"synthetic.md"}', liveOutput: 'Synthetic result', isError: false }] : [];
-  if (ordered && phase >= 7) tools.push({ id: 'tool-two', name: 'edit', status: phase === 7 ? 'running' : 'done', arguments: '{"path":"synthetic.md"}', liveOutput: 'Updated the example.', isError: false });
+  const tools = phase >= 6 ? [{ id: 'tool-one', name: 'read', status: phase === 6 ? 'running' : 'done', arguments: '{"path":"src/example.ts"}', liveOutput: 'Synthetic result', isError: false }] : [];
+  if (ordered && phase >= 7) tools.push({ id: 'tool-two', name: 'edit', status: phase === 7 ? 'running' : 'done', arguments: '{"path":"src/updated.ts"}', liveOutput: 'Updated the example.', isError: false });
   const segments: DesktopChatTurnSnapshot['segments'] = ordered && phase >= 5 ? [
     { id: 'text:0', kind: 'text', text: 'I will inspect the example before making a change.' },
     ...(phase >= 6 ? [{ id: 'tool:one', kind: 'tool' as const, toolId: 'tool-one' }] : []),
@@ -77,13 +82,13 @@ function Fixture() {
       isSingleWorkspacePage={false} showSessionRail collapseChatSessions={false} showRightDetailRail={false} isDetailPanelCollapsed detailRailWidth={0}
       onSessionResizeMouseDown={noop} onDetailResizeMouseDown={noop}
       sidebar={<aside data-testid="sidebar" className="app-side-shell flex h-full"><nav style={{ width: 72 }}>Chats</nav><div className="app-session-panel flex-1">Synthetic group</div></aside>}
-      mainContent={<ChatPaneLayout hasHeader>
+      mainContent={<div className="flex h-full min-w-0 flex-1"><div className="flex min-w-0 flex-1"><ChatPaneLayout hasHeader>
         <header data-testid="header" className="app-page-header app-chat-pane-header">Synthetic group</header>
         <ChatSessionPane viewport={{ sessionKey: coldProjection ? conversation.id : 'group', messages, scrollRef, scrollClassName: 'app-chat-pane-transcript-scroll min-h-0 flex-1 overflow-x-hidden overscroll-contain',
           composer: <textarea data-testid="composer" aria-label="Message" value={draft} onChange={e => setDraft(e.target.value)} /> }}
           presentation={{ liveTurnSender: 'Synthetic Agent', shouldRenderLiveTurn: false }}
-          actions={{ onOpenSource: noop, onOpenArtifact: noop, onOpenAuthSettings: noop, onStopCollaborationAgentRequest: noop }} selection={{}} />
-      </ChatPaneLayout>} />
+          actions={{ onOpenSource: noop, onOpenArtifact: path => { openTranscriptFile(path); }, onOpenAuthSettings: noop, onStopCollaborationAgentRequest: noop }} selection={{}} />
+      </ChatPaneLayout></div>{tabs.document ? <div style={{ width: 440, minWidth: 0, borderLeft: '1px solid var(--app-control-border)' }}><CompanionDocumentPane tabs={tabs} host={{ viewer: null, sessionId: 'synthetic-preview', agentName: null, people: [] }} onClose={tabs.close} /></div> : null}</div>} />
   </>;
 }
 createRoot(document.getElementById('root')!).render(new URLSearchParams(location.search).has('pin-motion') ? <PinMotionFixture /> : <Fixture />);

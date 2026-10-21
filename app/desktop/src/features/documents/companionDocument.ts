@@ -10,6 +10,10 @@ export type CompanionDocument = {
   preview: DesktopArtifactPreview | null;
   /** Root the Artifacts tab resolves relative artifact paths against. */
   previewBaseRoot?: string | null;
+  /** Tool file links open a read-only source tab, including Markdown source. */
+  sourceView?: boolean;
+  /** False for remote traces without a known workspace on this device. */
+  readLocally?: boolean;
 };
 
 export const COMPANION_DOCUMENT_OPEN_EVENT = 'kordi-companion-document-open';
@@ -92,4 +96,13 @@ export function openAttachmentInCompanion(sent: MessageAttachment): boolean {
   const document = attachmentDocument(attachment);
   if (!openCompanionDocument(document)) pendingDocument = document;
   return true;
+}
+
+/** An explicit tool-file click opens source; a remote path never falls back to this Mac's cwd. */
+export function openTranscriptFile(path: string, workspaceRoot?: string | null): boolean {
+  const root = workspaceRoot?.trim() || null;
+  return openCompanionDocument({
+    artifact: { id: path, path, name: path.split('/').pop() || path, kind: 'file', summary: '' },
+    preview: null, previewBaseRoot: root, sourceView: true, readLocally: Boolean(root),
+  });
 }

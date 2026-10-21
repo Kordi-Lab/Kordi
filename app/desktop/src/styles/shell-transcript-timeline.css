@@ -436,20 +436,3 @@
 }
 
 /* One current activity signal; commentary and settled groups remain still. */
-.app-turn-progress { padding: 2px 0; }
-.app-turn-progress-line { display: flex; align-items: center; gap: 8px; }
-.app-turn-progress-summary { display: flex; align-items: center; gap: 8px; min-width: 0; border: 0; background: transparent; color: var(--utility-muted-text); font-size: 13px; line-height: 1.5; text-align: left; padding: 4px 0; }
-.app-turn-progress-summary:disabled { opacity: 1; cursor: default; }
-.app-turn-progress-summary > span:first-of-type { overflow-wrap: anywhere; }
-.app-turn-progress-summary svg { flex-shrink: 0; }
-.app-turn-progress-time { color: var(--utility-muted-text); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.app-turn-progress-details { margin-top: 6px; padding-left: 12px; border-left: 1px solid var(--app-control-border); }
-.app-turn-commentary { padding: 2px 0; }
-.app-turn-progress-dots { display: flex; align-items: center; gap: 2px; width: 17px; flex-shrink: 0; }
-.app-turn-progress-dots i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; animation: app-transcript-quiet-text-pulse 1.2s ease-in-out infinite; }
-.app-turn-progress-dots i:nth-child(2) { animation-delay: .15s; }
-.app-turn-progress-dots i:nth-child(3) { animation-delay: .3s; }
-.app-turn-progress-details .app-transcript-timeline-row-running .app-transcript-timeline-node,
-.app-turn-progress-details .app-transcript-timeline-row-running .app-transcript-timeline-row-title { animation: none; }
-@media (prefers-reduced-motion: reduce) { .app-turn-progress-dots i { animation: none; } }
-@media (pointer: coarse) { .app-turn-progress-summary { min-height: 44px; } }

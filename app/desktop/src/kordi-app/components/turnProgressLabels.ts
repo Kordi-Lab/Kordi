@@ -38,3 +38,20 @@ export function turnProgressLabel(turn: DesktopChatTurnSnapshot) {
   if (active.length) return `${progressAction(active[0])}${active.length > 1 ? ` · ${active.length} active` : ''}`;
   return turn.status === 'writing' ? 'Writing the response' : 'Working';
 }
+
+/** Action summaries describe observed tools, never infer a model's private reasoning. */
+export function settledProgressLabel(tools: DesktopChatToolSnapshot[], unavailable = 0) {
+  const labels: Record<string, string> = {
+    'Read file': 'Read files', 'Read context': 'Read context', 'Inspect file': 'Read files',
+    'Search code': 'Searched the codebase', 'Find files': 'Found files', 'List files': 'Listed files',
+    'Run tests': 'Ran tests', 'Run lint': 'Ran lint', 'Run typecheck': 'Checked types',
+    'Build project': 'Built the project', 'Run script': 'Ran commands', 'Edit file': 'Edited files',
+    'Edit files': 'Edited files', 'Fetch web page': 'Read web pages', 'Inspect image': 'Inspected images',
+    'Inspect repository': 'Inspected the repository', 'Update plan': 'Updated the plan',
+  };
+  const actions = [...new Set(tools.map(tool => labels[toolTimelineToolLabel(tool)] ?? 'Used tools'))];
+  if (unavailable) actions.push('Earlier activity');
+  if (!actions.length) return 'Activity';
+  const visible = actions.slice(0, 3).map((action, i) => i ? action.charAt(0).toLowerCase() + action.slice(1) : action);
+  return visible.join(', ') + (actions.length > 3 ? ` +${actions.length - 3}` : '');
+}
