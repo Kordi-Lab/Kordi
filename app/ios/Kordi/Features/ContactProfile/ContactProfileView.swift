@@ -51,7 +51,8 @@ struct ContactProfileView: View {
             presence: model.contactPresenceByAccountID[subject.accountId],
             canDelete: profileModel.canDelete,
             isPage: pageConversation != nil,
-            memoryAvailable: MemoryPresentation.isAvailable(model.memoryCapabilities)
+            memoryAvailable: MemoryPresentation.isAvailable(model.memoryCapabilities),
+            localShared: sharedConversation.flatMap(model.contactProfileSharedItems(for:))?.counts
         )
     }
 
@@ -62,6 +63,11 @@ struct ContactProfileView: View {
 
     private var directConversation: ConversationSummary? {
         pageConversation ?? model.directConversation(withAccountId: subject.accountId)
+    }
+
+    /// The chat whose photos, files and links the rows count.
+    private var sharedConversation: ConversationSummary? {
+        pageConversation ?? model.contactProfileSharedConversation(for: subject)
     }
 
     private var isMuted: Bool {
@@ -93,6 +99,9 @@ struct ContactProfileView: View {
             }
         }
         .task(id: subject.accountId) { await profileModel.load() }
+        .task(id: sharedConversation?.id) {
+            if let sharedConversation { await model.loadContactProfileHistory(for: sharedConversation) }
+        }
         .onDisappear { callStartTask?.cancel() }
         .alert(
             "Call unavailable",
@@ -136,6 +145,8 @@ struct ContactProfileView: View {
                 SessionDetailView(conversation: conversation)
             case let .focused(conversation, tab):
                 SessionDetailView(conversation: conversation, focusedTab: tab)
+            case let .shared(page, conversation):
+                ContactProfileSharedPageView(page: page, conversation: conversation)
             case let .chat(conversation):
                 ConversationView(conversation: conversation)
                     .task { _ = await model.restoreConversationIfNeeded(conversation) }
@@ -397,23 +408,23 @@ struct ContactProfileView: View {
     }
 
     private func openSharedRow(_ row: ContactProfileSharedRow) {
+        if let page = row.page {
+            if let sharedConversation { route = .shared(page, sharedConversation) }
+            return
+        }
         switch row {
-        case .media:
-            if let pageConversation { route = .focused(pageConversation, .media) } else { openDirectChat() }
-        case .documents:
-            if let pageConversation { route = .focused(pageConversation, .files) } else { openDirectChat() }
         case .todo:
             if let pageConversation { route = .focused(pageConversation, .todo) }
         case .memory:
             if let pageConversation { route = .focused(pageConversation, .memory) }
-        case .links:
-            openDirectChat()
         case .groups:
             if presentation.shared == nil, let pageConversation {
                 route = .focused(pageConversation, .groups)
             } else {
                 openGroups()
             }
+        case .photos, .files, .links:
+            break
         }
     }
 
