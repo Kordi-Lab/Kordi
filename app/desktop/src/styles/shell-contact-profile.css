@@ -3,7 +3,7 @@
 
 .app-contacts-detail-wash {
   left: 50%;
-  width: min(100vw, 980px);
+  width: 100vw;
   height: 340px;
   transform: translateX(-50%);
   background: radial-gradient(
@@ -14,8 +14,15 @@
   );
 }
 
+/* The wash sits in the centered profile column but spans the whole pane (100cqw), so it starts
+ * flush against the list divider at any window width. */
 .app-contacts-page:not(.is-narrow) .app-contacts-detail-pane {
   overflow-x: hidden;
+  container-type: inline-size;
+}
+
+.app-contacts-page:not(.is-narrow) .app-contacts-detail-wash {
+  width: 100cqw;
 }
 
 .app-contact-detail-dialog .app-contacts-detail-wash {
