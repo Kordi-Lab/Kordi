@@ -225,7 +225,7 @@ enum ConversationAuthorProfileResolver {
         contacts: [CloudContact],
         conversations: [ConversationSummary]
     ) -> ConversationSummary? {
-        guard message.author == .person else { return nil }
+        guard message.author == .person, !KordiSystemIdentity.isSystemNotice(message) else { return nil }
         if currentConversation.kind == .person { return currentConversation }
         guard currentConversation.kind == .group else { return nil }
 
