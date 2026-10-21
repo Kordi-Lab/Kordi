@@ -44,9 +44,16 @@ export function cloudAccountsEqual(left: CloudAccount | null, right: CloudAccoun
     && right
     && left.accountId === right.accountId
     && left.kordiId === right.kordiId
+    && left.accountNumber === right.accountNumber
+    && left.kordiIdChangeAvailableAt === right.kordiIdChangeAvailableAt
     && left.displayName === right.displayName
     && left.primaryEmail === right.primaryEmail
     && left.primaryEmailVerified === right.primaryEmailVerified
+    && left.about === right.about
+    && left.location === right.location
+    && left.timeZone === right.timeZone
+    && left.website === right.website
+    && left.birthday === right.birthday
     && left.avatarUrl === right.avatarUrl
     && cloudAvatarsEqual(left.avatar, right.avatar)
     && left.defaultAgent?.agentId === right.defaultAgent?.agentId

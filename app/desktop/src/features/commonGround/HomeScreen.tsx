@@ -56,7 +56,7 @@ export function HomeScreen({ state, store, host }: { state: CgState; store: Comm
   const topics = CG_TOPIC_SECTIONS.flatMap(([key]) => card[key]).filter((topic) => !card.hidden.includes(topic));
   return (
     <>
-      <CgHero avatar={<CgAvatar person={host.self} size={72} isSelf />} title="Common ground" line="Find what you share" />
+      <CgHero avatar={<CgAvatar person={host.self} size={72} isSelf />} title="Grounding" line="Find what you share" />
       <CgSection>
         <CgGroup>
           <button type="button" className="cg-card-summary" onClick={() => store.open({ name: 'card' })}>

@@ -179,6 +179,18 @@ struct CloudAccount: Codable, Hashable {
     var defaultAgent: CloudDefaultAgentProfile? = nil
     let nodeId: String?
     let passwordSet: Bool
+    /// The nine-digit number, even when a custom handle is the Kordi ID; nil from older servers.
+    var accountNumber: String? = nil
+    /// RFC 3339 time the Kordi ID can change again (once per year); nil when it can change now.
+    var kordiIdChangeAvailableAt: String? = nil
+    // Profile details; nil when unset or when the server predates them.
+    var about: String? = nil
+    var location: String? = nil
+    /// IANA identifier, such as "Europe/Lisbon".
+    var timeZone: String? = nil
+    var website: String? = nil
+    /// "YYYY-MM-DD".
+    var birthday: String? = nil
 
     var preferredName: String {
         displayName?.nonEmpty ?? primaryEmail?.nonEmpty ?? "Kordi user"
@@ -494,6 +506,10 @@ struct CloudPublicProfile: Codable, Hashable {
     let nodeId: String?
     let isContact: Bool
     let isSelf: Bool
+    var about: String? = nil
+    var location: String? = nil
+    var timeZone: String? = nil
+    var website: String? = nil
 
     var preferredName: String { displayName?.nonEmpty ?? kordiId }
 }

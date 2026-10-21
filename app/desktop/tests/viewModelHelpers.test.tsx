@@ -323,14 +323,14 @@ test('drops local tool-only alias turn when next local alias turn contains the f
 test('drops local intro fragment when the following final local turn extends it', () => {
   const intro = agentMessage('Kordi', turn({
     id: 'turn-intro',
-    assistantText: 'I’ll check current web sources for today’s weather in Thuwal.',
-    thinkingText: '**Checking weather in Thuwal**',
+    assistantText: 'I’ll check current web sources for today’s weather in Lisbon.',
+    thinkingText: '**Checking weather in Lisbon**',
     tools: [],
   }));
   const finalAnswer = agentMessage('My Kordi', turn({
     id: 'turn-final-weather',
-    assistantText: 'I’ll check current web sources for today’s weather in Thuwal.\n\nToday’s weather in **Thuwal, Saudi Arabia**:',
-    thinkingText: '**Checking weather in Thuwal**',
+    assistantText: 'I’ll check current web sources for today’s weather in Lisbon.\n\nToday’s weather in **Lisbon, Portugal**:',
+    thinkingText: '**Checking weather in Lisbon**',
   }));
 
   const deduped = dedupeAdjacentAgentTurns([intro, finalAnswer]);
@@ -431,13 +431,13 @@ test('suppresses all local owned-agent runtime fragments after the triggering us
   const thinkingFragment = agentMessage('Kordi', turn({
     id: 'raw-fragment-1',
     completed: true,
-    assistantText: 'I’ll check current web sources for today’s weather in Thuwal.',
-    thinkingText: '**Checking weather in Thuwal**',
+    assistantText: 'I’ll check current web sources for today’s weather in Lisbon.',
+    thinkingText: '**Checking weather in Lisbon**',
   }));
   const toolFragment = agentMessage('Kordi', turn({
     id: 'raw-fragment-2',
     completed: true,
-    assistantText: 'I’ll check current web sources for today’s weather in Thuwal.Today’s weather in **Thuwal, Saudi Arabia**:',
+    assistantText: 'I’ll check current web sources for today’s weather in Lisbon.Today’s weather in **Lisbon, Portugal**:',
     tools: [{
       id: 'tool-web-fetch',
       name: 'web_fetch',
@@ -454,8 +454,8 @@ test('suppresses all local owned-agent runtime fragments after the triggering us
     status: 'running',
     message: 'Running',
     completed: false,
-    assistantText: 'I’ll check current web sources for today’s weather in Thuwal.',
-    thinkingText: '**Checking weather in Thuwal**',
+    assistantText: 'I’ll check current web sources for today’s weather in Lisbon.',
+    thinkingText: '**Checking weather in Lisbon**',
   });
 
   assert.deepEqual(

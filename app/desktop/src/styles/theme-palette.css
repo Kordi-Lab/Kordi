@@ -2,8 +2,16 @@
  * translucency; AppKit continues to supply the native sidebar material. */
 :where(body, .app-chat-theme-preview) {
   --app-palette-hue: 250;
+  --app-palette-chroma: 1;
   --app-palette-accent-light: #365F98;
   --app-palette-accent-dark: #AEC4E3;
+}
+/* Classic drops the tint entirely: neutral grays and a plain blue accent. */
+body[data-kordi-chat-theme='classic'],
+.app-chat-theme-preview[data-kordi-chat-theme='classic'] {
+  --app-palette-chroma: 0;
+  --app-palette-accent-light: #0A66D6;
+  --app-palette-accent-dark: #5EA2FF;
 }
 body[data-kordi-chat-theme='ocean'],
 .app-chat-theme-preview[data-kordi-chat-theme='ocean'] {
@@ -26,25 +34,25 @@ body[data-kordi-chat-theme='sand'],
 
 :where(body, .kordi-app, .app-chat-theme-preview) {
   --app-palette-accent: var(--app-palette-accent-dark);
-  --app-palette-ink: oklch(92% 0.016 var(--app-palette-hue));
-  --app-palette-muted: oklch(73% 0.023 var(--app-palette-hue));
-  --app-palette-meta: oklch(71% 0.018 var(--app-palette-hue));
-  --app-palette-canvas: oklch(21.5% 0.018 var(--app-palette-hue));
-  --app-palette-surface: oklch(26% 0.022 var(--app-palette-hue));
-  --app-palette-sidebar-glass: oklch(21% 0.022 var(--app-palette-hue) / 0.56);
-  --app-palette-title-glass: oklch(22% 0.023 var(--app-palette-hue) / 0.60);
-  --app-palette-composer-glass: oklch(29% 0.025 var(--app-palette-hue) / 0.70);
-  --app-palette-popup-glass: oklch(27% 0.023 var(--app-palette-hue) / 0.95);
-  --app-palette-control: oklch(34% 0.025 var(--app-palette-hue) / 0.50);
-  --app-palette-hover: oklch(38% 0.03 var(--app-palette-hue) / 0.66);
-  --app-palette-selected: oklch(35% 0.041 var(--app-palette-hue) / 0.86);
-  --app-palette-border: oklch(85% 0.018 var(--app-palette-hue) / 0.16);
-  --app-palette-divider: oklch(85% 0.018 var(--app-palette-hue) / 0.10);
-  --app-palette-highlight: oklch(97% 0.008 var(--app-palette-hue) / 0.09);
-  --app-palette-shadow: 0 10px 28px oklch(12% 0.02 var(--app-palette-hue) / 0.24);
-  --app-palette-popup-shadow: 0 12px 32px oklch(10% 0.018 var(--app-palette-hue) / 0.40);
-  --app-palette-accent-ink: oklch(22% 0.025 var(--app-palette-hue));
-  --app-palette-message-fill: oklch(36% 0.052 var(--app-palette-hue));
+  --app-palette-ink: oklch(92% calc(0.016 * var(--app-palette-chroma)) var(--app-palette-hue));
+  --app-palette-muted: oklch(73% calc(0.023 * var(--app-palette-chroma)) var(--app-palette-hue));
+  --app-palette-meta: oklch(71% calc(0.018 * var(--app-palette-chroma)) var(--app-palette-hue));
+  --app-palette-canvas: oklch(21.5% calc(0.018 * var(--app-palette-chroma)) var(--app-palette-hue));
+  --app-palette-surface: oklch(26% calc(0.022 * var(--app-palette-chroma)) var(--app-palette-hue));
+  --app-palette-sidebar-glass: oklch(21% calc(0.022 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.56);
+  --app-palette-title-glass: oklch(22% calc(0.023 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.60);
+  --app-palette-composer-glass: oklch(29% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.70);
+  --app-palette-popup-glass: oklch(27% calc(0.023 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.95);
+  --app-palette-control: oklch(34% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.50);
+  --app-palette-hover: oklch(38% calc(0.03 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.66);
+  --app-palette-selected: oklch(35% calc(0.041 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.86);
+  --app-palette-border: oklch(85% calc(0.018 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.16);
+  --app-palette-divider: oklch(85% calc(0.018 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.10);
+  --app-palette-highlight: oklch(97% calc(0.008 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.09);
+  --app-palette-shadow: 0 10px 28px oklch(12% calc(0.02 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.24);
+  --app-palette-popup-shadow: 0 12px 32px oklch(10% calc(0.018 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.40);
+  --app-palette-accent-ink: oklch(22% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue));
+  --app-palette-message-fill: oklch(36% calc(0.052 * var(--app-palette-chroma)) var(--app-palette-hue));
   --app-palette-message-ink: var(--app-palette-ink);
 }
 
@@ -52,26 +60,47 @@ body[data-kordi-chat-theme='sand'],
   .app-compact-model-menu-light, .app-composer-mention-menu-light,
   .kordi-app.theme-light .app-chat-theme-preview) {
   --app-palette-accent: var(--app-palette-accent-light);
-  --app-palette-ink: oklch(26% 0.025 var(--app-palette-hue));
-  --app-palette-muted: oklch(46% 0.025 var(--app-palette-hue));
-  --app-palette-meta: oklch(49% 0.018 var(--app-palette-hue));
-  --app-palette-canvas: oklch(95.5% 0.012 var(--app-palette-hue));
-  --app-palette-surface: oklch(97% 0.013 var(--app-palette-hue));
-  --app-palette-sidebar-glass: oklch(95% 0.016 var(--app-palette-hue) / 0.60);
-  --app-palette-title-glass: oklch(94% 0.017 var(--app-palette-hue) / 0.65);
-  --app-palette-composer-glass: oklch(98% 0.012 var(--app-palette-hue) / 0.65);
-  --app-palette-popup-glass: oklch(97% 0.015 var(--app-palette-hue) / 0.94);
-  --app-palette-control: oklch(93% 0.019 var(--app-palette-hue) / 0.56);
-  --app-palette-hover: oklch(89% 0.027 var(--app-palette-hue) / 0.62);
-  --app-palette-selected: oklch(89% 0.035 var(--app-palette-hue) / 0.84);
-  --app-palette-border: oklch(36% 0.025 var(--app-palette-hue) / 0.15);
-  --app-palette-divider: oklch(36% 0.025 var(--app-palette-hue) / 0.10);
-  --app-palette-highlight: oklch(99% 0.004 var(--app-palette-hue) / 0.70);
-  --app-palette-shadow: 0 10px 28px oklch(28% 0.025 var(--app-palette-hue) / 0.075);
-  --app-palette-popup-shadow: 0 12px 32px oklch(28% 0.025 var(--app-palette-hue) / 0.16);
-  --app-palette-accent-ink: oklch(98% 0.005 var(--app-palette-hue));
+  --app-palette-ink: oklch(26% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue));
+  --app-palette-muted: oklch(46% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue));
+  --app-palette-meta: oklch(49% calc(0.018 * var(--app-palette-chroma)) var(--app-palette-hue));
+  --app-palette-canvas: oklch(95.5% calc(0.012 * var(--app-palette-chroma)) var(--app-palette-hue));
+  --app-palette-surface: oklch(97% calc(0.013 * var(--app-palette-chroma)) var(--app-palette-hue));
+  --app-palette-sidebar-glass: oklch(95% calc(0.016 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.60);
+  --app-palette-title-glass: oklch(94% calc(0.017 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.65);
+  --app-palette-composer-glass: oklch(98% calc(0.012 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.65);
+  --app-palette-popup-glass: oklch(97% calc(0.015 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.94);
+  --app-palette-control: oklch(93% calc(0.019 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.56);
+  --app-palette-hover: oklch(89% calc(0.027 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.62);
+  --app-palette-selected: oklch(89% calc(0.035 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.84);
+  --app-palette-border: oklch(36% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.15);
+  --app-palette-divider: oklch(36% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.10);
+  --app-palette-highlight: oklch(99% calc(0.004 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.70);
+  --app-palette-shadow: 0 10px 28px oklch(28% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.075);
+  --app-palette-popup-shadow: 0 12px 32px oklch(28% calc(0.025 * var(--app-palette-chroma)) var(--app-palette-hue) / 0.16);
+  --app-palette-accent-ink: oklch(98% calc(0.005 * var(--app-palette-chroma)) var(--app-palette-hue));
   --app-palette-message-fill: var(--app-palette-accent);
   --app-palette-message-ink: var(--app-palette-accent-ink);
+}
+
+body[data-kordi-chat-theme='classic'],
+body[data-kordi-chat-theme='classic'] :where(.kordi-app),
+.app-chat-theme-preview[data-kordi-chat-theme='classic'] {
+  --app-palette-canvas: #171717;
+  --app-palette-surface: #1F1F1F;
+  --app-palette-control: rgba(255, 255, 255, 0.05);
+  --app-palette-hover: rgba(255, 255, 255, 0.065);
+  --app-palette-selected: rgba(255, 255, 255, 0.08);
+}
+
+body[data-kordi-chat-theme='classic'].theme-light,
+body[data-kordi-chat-theme='classic'] :where(.kordi-app.theme-light, .app-transient-theme-light,
+  .app-compact-model-menu-light, .app-composer-mention-menu-light),
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme='classic'] {
+  --app-palette-canvas: #FFFFFF;
+  --app-palette-surface: #FFFFFF;
+  --app-palette-control: rgba(0, 0, 0, 0.035);
+  --app-palette-hover: rgba(0, 0, 0, 0.045);
+  --app-palette-selected: rgba(0, 0, 0, 0.06);
 }
 
 body,
@@ -197,9 +226,59 @@ body[data-kordi-chat-theme] .kordi-app:is(.theme-light, .theme-dark),
   --app-copy-selection-text: var(--app-palette-ink);
 }
 
+/* Classic sets its plain chat colors directly instead of deriving them from the
+ * palette, so these blocks follow the mapping above and win on source order. */
+body[data-kordi-chat-theme='classic'] .kordi-app:is(.theme-light, .theme-dark),
+.kordi-app:is(.theme-light, .theme-dark) .app-chat-theme-preview[data-kordi-chat-theme='classic'] {
+  --app-chat-bubble-user-bg: #343434;
+  --app-chat-bubble-user-text: #F5F5F5;
+  --app-chat-bubble-peer-bg: #262626;
+  --app-chat-bubble-peer-text: #F2F2F2;
+  --app-chat-bubble-peer-border: #333333;
+  --app-chat-bubble-agent-bg: #262626;
+  --app-chat-bubble-agent-text: #F2F2F2;
+  --app-chat-mention-own: #DCEBFA;
+  --app-chat-mention-own-person: #ADFFD7;
+  --app-chat-mention-own-agent: #BFF5FF;
+  --app-chat-reply-own: #FFF0A3;
+  --app-chat-mention-peer: #5EA2FF;
+  --app-chat-meta-own: rgb(245 245 245 / 0.70);
+  --app-chat-meta-peer: rgb(242 242 242 / 0.62);
+  --app-chat-accent: #5EA2FF;
+  --app-chat-accent-text: #0B1A2E;
+  --app-chat-wallpaper: #171717;
+  --app-chat-wallpaper-size: auto;
+}
+
+body[data-kordi-chat-theme='classic'] .kordi-app.theme-light,
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme='classic'] {
+  --app-chat-bubble-user-bg: #E9E9EB;
+  --app-chat-bubble-user-text: #111111;
+  --app-chat-bubble-peer-bg: #F2F2F4;
+  --app-chat-bubble-peer-text: #111111;
+  --app-chat-bubble-peer-border: #E4E4E7;
+  --app-chat-bubble-agent-bg: #F2F2F4;
+  --app-chat-bubble-agent-text: #111111;
+  /* Slightly deeper blue keeps own mentions at 4.5:1 on the gray outgoing bubble. */
+  --app-chat-mention-own: #0961CC;
+  --app-chat-mention-own-person: #176B4D;
+  --app-chat-mention-own-agent: #0961CC;
+  --app-chat-reply-own: #805500;
+  --app-chat-mention-peer: #0A66D6;
+  --app-chat-meta-own: rgb(17 17 17 / 0.62);
+  --app-chat-meta-peer: rgb(17 17 17 / 0.62);
+  --app-chat-accent: #0A66D6;
+  --app-chat-accent-text: #FFFFFF;
+  --app-chat-wallpaper: #FFFFFF;
+  --app-chat-wallpaper-size: auto;
+}
+
 .kordi-app .app-page-header.app-chat-pane-header {
   --app-chat-header-bg: color-mix(in oklab, var(--app-palette-canvas) 95%, var(--app-palette-accent));
   border-color: var(--app-palette-divider);
+}
+body[data-kordi-chat-theme='classic'] .kordi-app .app-page-header.app-chat-pane-header {
+  --app-chat-header-bg: var(--app-palette-canvas);
 }
 .kordi-app .app-native-titlebar {
   box-shadow: inset 0 1px 0 var(--app-palette-highlight);

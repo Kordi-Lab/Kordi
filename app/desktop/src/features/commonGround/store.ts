@@ -5,7 +5,7 @@
 
 import { CommonGroundError, commonGroundErrorCode, commonGroundErrorMessage, isRouteMissing, type CommonGroundClient } from './client';
 import type {
-  CgBuildRequest, CgMatch, CgOwnerView, CgPersonCard, CgRecentEntry, CgRelationship, CgResults, CgRoom,
+  CgBuildRequest, CgMatch, CgMeetInput, CgOwnerView, CgPersonCard, CgRecentEntry, CgRelationship, CgResults, CgRoom,
   CgRoomSummary, CgTopicLists,
 } from './types';
 
@@ -380,7 +380,7 @@ export class CommonGroundStore {
     }
   }
 
-  async meet(accountId: string, input: { title?: string; startAt: string; endAt?: string }): Promise<boolean> {
+  async meet(accountId: string, input: CgMeetInput): Promise<boolean> {
     try {
       const { relationship } = await this.client.meet(accountId, input);
       this.setRelationship(accountId, relationship);

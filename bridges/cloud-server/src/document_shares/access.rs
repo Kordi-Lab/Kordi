@@ -366,18 +366,18 @@ pub(crate) async fn load_author(
     pool: &PgPool,
     account_id: &str,
 ) -> Result<DocumentAuthor, sqlx_core::Error> {
-    let row: Option<(Option<String>, Option<i64>, Option<String>)> = query_as(
-        "SELECT display_name, public_account_number, avatar_url \
+    let row: Option<(Option<String>, Option<String>, Option<String>)> = query_as(
+        "SELECT display_name, COALESCE(public_handle, public_account_number::TEXT), avatar_url \
          FROM cloud_accounts WHERE account_id = $1",
     )
     .bind(account_id)
     .fetch_optional(pool)
     .await?;
-    let (display_name, number, avatar_url) = row.unwrap_or((None, None, None));
+    let (display_name, kordi_id, avatar_url) = row.unwrap_or((None, None, None));
     Ok(DocumentAuthor {
         account_id: account_id.to_string(),
         display_name: clean_display_name(display_name.as_deref()),
-        kordi_id: number.map(|value| value.to_string()).unwrap_or_default(),
+        kordi_id: kordi_id.unwrap_or_default(),
         avatar_url: avatar_url.as_deref().and_then(syncable_avatar_url),
     })
 }
