@@ -119,11 +119,14 @@ struct ContactProfileView: View {
             }
             .padding(.top, 52)
             .padding(.bottom, 44)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Inside the scroll content, so it scrolls away with the header
+            // and no row can pass underneath it.
+            .overlay(alignment: .topTrailing) { closeButton }
             .animation(.easeOut(duration: 0.2), value: profileModel.profile)
         }
         .background(alignment: .top) { wash }
         .background(Color(uiColor: .systemBackground))
-        .overlay(alignment: .topTrailing) { closeButton }
     }
 
     private var wash: some View {
