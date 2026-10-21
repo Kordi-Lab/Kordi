@@ -1397,15 +1397,7 @@ struct ConversationView: View {
             SessionDetailView(conversation: conversation)
         }
         .navigationDestination(item: $documentReader) { DocumentReaderScreen(request: $0) }
-        .navigationDestination(item: $authorProfileConversation) { destination in
-            SessionDetailView(
-                conversation: destination,
-                presentationContext: .authorProfile(
-                    sourceConversation: conversation,
-                    destination: destination
-                )
-            )
-        }
+        .authorProfileDestination(item: $authorProfileConversation, source: conversation)
         .navigationDestination(item: $selectedBackgroundSession) { session in
             AgentSubsessionView(sessionId: session.sessionId)
         }
