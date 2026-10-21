@@ -16,10 +16,11 @@ Query parameters (kept in sync with the controls): `platform=both|mac|ios`, `the
 - `agent`: someone else's agent, with the owner row.
 - `own-agent`: your own agent.
 - `system`: the Kordi support contact.
+- `chat-info`: the Info tab of a Mac person chat (Mac frame only): participants and the Shared with you rows, no repeated profile.
 
 Layout, top to bottom: tinted header with a 96px avatar and online dot, name and one status line, equal action tiles (Message, Mute, Share, More), an info card (Kordi ID, About, Their agent, Contact since), a Shared with you card (Photos, Files, Links, Groups in common), common ground chips when visible, and Delete contact. Mac geometry follows `ContactDetailPane.tsx` and `ContactDetailParts.tsx` in `app/desktop/src/kordi-app/contacts/`; the iPhone sheet uses the flat Settings-sheet style.
 
-Shared media pages: Photos, Files and Links rows open a page inside the same frame, with a back chevron and title, items grouped by month (photos as a 3-column square grid, files and links as rows). `page` opens one directly; Escape or the chevron returns to the profile. Rows with a count of 0 do nothing.
+Shared media pages: Photos, Files and Links rows open a page inside the same frame, with a macOS-style toolbar header on Mac (Back control, title, item count, aligned to the content column; a hairline only under the popover header) and the native nav bar on iPhone, items grouped by month (photos as a 3-column square grid, files and links as rows). `page` opens one directly; Escape or the chevron returns to the profile. Rows with a count of 0 do nothing.
 
 Frames: the Mac contacts window, a Mac chat info popover (a compact 300px card over a faded chat, shown with `platform=both|mac`), and the iPhone sheet. Sub-page code lives in `shared-pages.js` and `shared-pages.css`.
 

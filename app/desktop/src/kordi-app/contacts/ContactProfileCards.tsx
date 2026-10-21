@@ -8,7 +8,7 @@ import { GroupAvatar } from '../components/GroupAvatar';
 import { usePopover } from './contactProfileHooks';
 import type { ContactSharedCounts } from './useContactSharedPages';
 
-function SectionLabel({ children }: { children: ReactNode }) {
+export function SectionLabel({ children }: { children: ReactNode }) {
   return <div className="app-contacts-muted app-contacts-section-label mx-1 mb-1.5 mt-5 text-[12px] leading-4">{children}</div>;
 }
 
