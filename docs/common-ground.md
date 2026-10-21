@@ -84,6 +84,17 @@ A person keeps up to five profiles instead of one card: **Work**, **Health** and
 - **Data.** `cloud_common_ground_profiles` (`profile_id`, `account_id`, `kind`, `name` up to 40 characters, `focus` up to 200, `position`). Cards are keyed by profile; room members, pairing codes, pairings, matches and match runs carry profile ids; rooms carry an optional `kind`. Deleting a profile deletes its card, matches and pairings and leaves the rooms where it was shared.
 - **Routes.** `GET|POST profiles`, `PUT|DELETE profiles/:id`; card routes take `?profile=` or `profileId`; `POST rooms/:code/join` takes `kind` and `profileId`; `POST rooms/:code/profile` switches; `POST pairings/code` and `pairings/redeem` take `profileId`; `GET people/:id` and `people/:id/match` take `?profile=` for the viewer's profile. Person objects carry `profile` (`profileId`, `kind`, `name`). `commonGroundVersion` 2 has profiles.
 
+## Profiles
+
+A person keeps up to five profiles instead of one card: **Work**, **Health** and **Daily tasks** (each at most once) plus custom profiles with their own name, such as "KAUST" and "MIT" for two research groups. Each profile has a full card of its own, built from the same sources through the profile's lens.
+
+- **Lens.** The build prompt names the profile's kind, name and focus line, keeps only topics that belong to that profile and drops the rest: a health profile ignores papers, a daily tasks profile ignores research, a "KAUST" profile ignores work done at MIT. Device items, links and notes sent with a build apply to that build only.
+- **Sharing one profile.** Every room membership and pairing shares exactly one profile of each person, and people only see the profile shared with them there. Matches, match detail, the person page and Recent are computed per pair of profiles; Recent lists one entry per person and profile.
+- **Rooms suggest a kind.** The person who opens a room may set its kind; joiners get their profile of that kind preselected when it has a card, else their default profile. A member can switch the profile they share in an open room, which clears their matches there and matches again.
+- **Default profile.** The work profile, else the first one. Clients that send no profile id act on it, and a build or sharing change from an account without profiles creates the work profile.
+- **Data.** `cloud_common_ground_profiles` (`profile_id`, `account_id`, `kind`, `name` up to 40 characters, `focus` up to 200, `position`). Cards are keyed by profile; room members, pairing codes, pairings, matches and match runs carry profile ids; rooms carry an optional `kind`. Deleting a profile deletes its card, matches and pairings and leaves the rooms where it was shared.
+- **Routes.** `GET|POST profiles`, `PUT|DELETE profiles/:id`; card routes take `?profile=` or `profileId`; `POST rooms/:code/join` takes `kind` and `profileId`; `POST rooms/:code/profile` switches; `POST pairings/code` and `pairings/redeem` take `profileId`; `GET people/:id` and `people/:id/match` take `?profile=` for the viewer's profile. Person objects carry `profile` (`profileId`, `kind`, `name`). `commonGroundVersion` 2 has profiles.
+
 ## Card
 
 Each profile has one card.
