@@ -46,13 +46,11 @@ function kordiIdRow(handle: string): InfoCardRow {
   };
 }
 
-export type ContactDetailBodyProps = Pick<ContactsPageProps,
+type ContactDetailBodyProps = Pick<ContactsPageProps,
   'onMessageContact' | 'onRemoveContact' | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings' | 'sharedConversationFor'
 > & {
   contact: Contact;
   onCloseOverlay: () => void;
-  /** False inside the contact's own chat, where a Message tile would lead back to the same place. */
-  showMessageTile?: boolean;
 };
 
 function avatarLead(kind: 'agent' | 'human', seed: string, name: string, imageUrl: string | null) {
@@ -73,9 +71,8 @@ function withProfilePresence(contact: Contact, state: ContactProfileState): Cont
 }
 
 /** The contact profile: header, tiles, info card, shared and common ground cards, and Delete. */
-export function ContactDetailBody({
+function ContactDetailBody({
   contact: row, onCloseOverlay, onMessageContact, onRemoveContact, contactProfileHost, contactMute, onOpenAgentSettings, sharedConversationFor,
-  showMessageTile = true,
 }: ContactDetailBodyProps) {
   const now = usePresenceNow();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -179,14 +176,12 @@ export function ContactDetailBody({
         lineAccent={secondaryLine.online && headerLine === secondaryLine.text}
       />
       <DetailTiles>
-        {showMessageTile ? (
-          <DetailTile
-            icon={<MessageCircle className="h-5 w-5" aria-hidden="true" />}
-            label="Message"
-            onClick={() => onMessageContact?.(contact)}
-            disabled={!canMessage}
-          />
-        ) : null}
+        <DetailTile
+          icon={<MessageCircle className="h-5 w-5" aria-hidden="true" />}
+          label="Message"
+          onClick={() => onMessageContact?.(contact)}
+          disabled={!canMessage}
+        />
         {rich && kind === 'person' ? (
           <MuteTile muted={muted} onToggle={contactMute && muted !== null ? () => { void contactMute.setMuted(contact, !muted); } : undefined} />
         ) : null}

@@ -14,6 +14,17 @@ export const CONTACT_PROFILE_SHARED_PAGE_TITLES: Record<ContactProfileSharedPage
   links: 'Links',
 };
 
+const SHARED_PAGE_NOUNS: Record<ContactProfileSharedPage, [string, string]> = {
+  photos: ['photo', 'photos'],
+  files: ['file', 'files'],
+  links: ['link', 'links'],
+};
+
+/** The quiet count beside a page title, such as "12 photos"; empty at zero. */
+export function sharedPageCountLabel(page: ContactProfileSharedPage, count: number) {
+  return count > 0 ? `${count} ${SHARED_PAGE_NOUNS[page][count === 1 ? 0 : 1]}` : '';
+}
+
 type SharedItemBase = {
   key: string;
   /** The parent message's time; attachments and links carry none of their own. */

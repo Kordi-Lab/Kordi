@@ -1,0 +1,27 @@
+/* Mac person chat detail panel, Info tab. */
+.ci-chat .ci-top{display:flex;align-items:baseline;gap:8px}
+.ci-chat .ci-top .nm{flex:1}
+.ci-time{font-size:11.5px;color:var(--m-fg3);flex:none;font-variant-numeric:tabular-nums}
+.ci-chat:not(.on){opacity:1}
+
+.ci-pane{display:flex;flex-direction:column;overflow:hidden}
+.ci-tabs{flex:none;display:flex;justify-content:center;gap:4px;height:44px;border-bottom:1px solid var(--m-line);padding:0 16px;background:var(--m-pane)}
+.ci-tab{position:relative;display:inline-flex;align-items:center;gap:6px;padding:0 12px;font-size:13px;font-weight:500;color:var(--m-fg2)}
+.ci-tab svg.i{width:15px;height:15px}
+.ci-tab:hover{color:var(--m-fg)}
+.ci-tab.on{color:var(--tint);font-weight:600}
+.ci-tab.on::after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;border-radius:2px;background:var(--tint)}
+.ci-body{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin}
+.full .ci-pane{overflow:visible}
+.full .ci-body{overflow:visible}
+
+.m-pane .pv.ci-col{max-width:640px;padding:8px 24px 40px}
+.ci-col .sec{margin-top:22px}
+.ci-p{min-height:56px;padding:10px 14px 10px 16px;--inset:64px}
+.ci-p .av{--ring:var(--m-pane)}
+.ci-p .av.sm .pd{width:11px;height:11px}
+.ci-nm{font-size:14px;font-weight:600;line-height:19px}
+.ci-sub{font-size:12px;line-height:16px;color:var(--muted)}
+.ci-sub.online{color:var(--green)}
+.ci-body .pv.sp{--col:640px}
+.ci-body .sp-grid{grid-template-columns:repeat(4,1fr)}

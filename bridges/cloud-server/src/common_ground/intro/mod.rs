@@ -2,6 +2,7 @@
 //! everyone, written by one plain completion on the Kordi key. Invited
 //! people who join later get a templated line instead, with no model call.
 
+mod mentions;
 mod prompt;
 
 use std::collections::HashMap;
@@ -11,6 +12,7 @@ use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
+use self::mentions::{at_names, envelope, Member};
 use self::prompt::{intro_prompt, joined_line, Introduced, Relation, Role, INTRO_SYSTEM};
 use super::card::Topics;
 use super::matching::{shared_cards, stored_results};
@@ -116,13 +118,14 @@ pub(super) async fn queue(
     tx.commit().await
 }
 
-fn notice_message(client_message_id: Uuid, text: &str) -> SendMessageRequest {
+/// A system notice with `text`, mentioning `people` wherever it says "@Name".
+fn notice_message(client_message_id: Uuid, text: &str, people: &[Member]) -> SendMessageRequest {
     SendMessageRequest {
         client_message_id,
         kind: SYSTEM_NOTICE_KIND.to_string(),
         content: json!({
             "schema": 1,
-            "blocks": [{ "type": "text", "text": text }],
+            "blocks": [{ "type": "text", "text": envelope(text, people) }],
             "legacy_attachments": [],
         }),
         reply_to_message_id: None,
@@ -142,6 +145,42 @@ fn clean_reply(text: &str) -> String {
         .collect::<String>()
 }
 
+/// Everyone an intro names, as it names them: the creator, the people added
+/// and the people invited, without System or PiP.
+async fn intro_members(
+    pool: &PgPool,
+    group_space_id: &str,
+    conversation_id: Uuid,
+) -> sqlx_core::Result<Vec<Member>> {
+    let rows: Vec<(String, Option<String>)> = query_as(
+        "SELECT people.account_id, account.display_name FROM (
+             SELECT created_by AS account_id, 0 AS rank, created_at AS at
+             FROM cloud_common_ground_room_groups WHERE group_space_id = $1
+             UNION ALL
+             SELECT account_id, 1, joined_at FROM cloud_chat_conversation_members
+             WHERE conversation_id = $2 AND membership_state = 'active'
+             UNION ALL
+             SELECT invitee_account_id, 2, created_at FROM cloud_common_ground_room_invitations
+             WHERE group_space_id = $1
+         ) people
+         JOIN cloud_accounts account ON account.account_id = people.account_id
+         ORDER BY people.rank, people.at, people.account_id",
+    )
+    .bind(group_space_id)
+    .bind(conversation_id)
+    .fetch_all(pool)
+    .await?;
+    let mut members: Vec<Member> = Vec::new();
+    for (id, name) in rows {
+        let skip = crate::system_account::is_service_account(&id)
+            || members.iter().any(|member| member.account_id == id);
+        if !skip {
+            members.push(Member::new(clean_display_name(name.as_deref()), id));
+        }
+    }
+    Ok(members)
+}
+
 /// Posts a finished intro run's reply into its group as System. An empty reply,
 /// or one that cannot be posted, fails the run instead.
 pub(super) async fn complete(
@@ -150,8 +189,8 @@ pub(super) async fn complete(
     runner_id: &str,
     text: &str,
 ) -> sqlx_core::Result<()> {
-    let row: Option<(Uuid, String)> = query_as(
-        "SELECT intro.conversation_id, run.owner_account_id
+    let row: Option<(Uuid, String, String)> = query_as(
+        "SELECT intro.conversation_id, run.owner_account_id, intro.group_space_id
          FROM cloud_common_ground_group_intros intro
          JOIN cloud_agent_fallback_runs run ON run.run_id = intro.run_id
          WHERE intro.run_id = $1 AND intro.posted_at IS NULL AND intro.error_code IS NULL",
@@ -159,10 +198,12 @@ pub(super) async fn complete(
     .bind(run_id)
     .fetch_optional(pool)
     .await?;
-    let Some((conversation_id, _)) = row else {
+    let Some((conversation_id, _, group_space_id)) = row else {
         return Err(sqlx_core::Error::RowNotFound);
     };
-    let text = clean_reply(text);
+    let members = intro_members(pool, &group_space_id, conversation_id).await?;
+    // Mentions are found after the cap, so a cut name is left plain.
+    let text = clean_reply(&at_names(text.trim(), &members));
     if text.is_empty() {
         eprintln!("[common-ground] Rejected run {run_id}: the intro is empty");
         return fail(pool, run_id, Some(runner_id), "invalid_output").await;
@@ -181,7 +222,7 @@ pub(super) async fn complete(
         &mut tx,
         SYSTEM_ACCOUNT_ID,
         conversation_id,
-        notice_message(message_id, &text),
+        notice_message(message_id, &text, &members),
     )
     .await;
     if let Err(error) = posted {
@@ -227,7 +268,7 @@ async fn related_people(
     room_id: Uuid,
     conversation_id: Uuid,
     account: &str,
-) -> sqlx_core::Result<(Option<Topics>, Vec<(String, Relation)>)> {
+) -> sqlx_core::Result<(Option<Topics>, Vec<(Member, Relation)>)> {
     let mut skip: Vec<String> = crate::pip::service_account_id()
         .into_iter()
         .map(str::to_string)
@@ -264,13 +305,13 @@ async fn related_people(
         .iter()
         .filter_map(|card| {
             let relation = Relation::from_match(results.get(&card.profile_id)?)?;
-            Some((card.name.clone(), relation))
+            Some((Member::new(&card.name, &card.account_id), relation))
         })
         .collect();
     Ok((Some(viewer.topics), related))
 }
 
-/// Posts "<Name> joined. …" as a system notice in the group `account` just
+/// Posts "@Name joined. …" as a system notice in the group `account` just
 /// joined, naming how they relate to the people already there.
 pub(super) async fn post_joined(
     pool: &PgPool,
@@ -288,11 +329,8 @@ pub(super) async fn post_joined(
         return Ok(());
     };
     let (topics, related) = related_people(pool, sender, room_id, conversation_id, account).await?;
-    let line = joined_line(
-        &clean_display_name(name.as_deref()),
-        topics.as_ref(),
-        &related,
-    );
+    let joiner = Member::new(clean_display_name(name.as_deref()), account);
+    let (line, mentioned) = joined_line(&joiner, topics.as_ref(), &related);
     let message_id = Uuid::new_v5(
         &Uuid::NAMESPACE_OID,
         format!("common-ground-joined:{conversation_id}:{account}").as_bytes(),
@@ -301,7 +339,7 @@ pub(super) async fn post_joined(
         pool,
         sender,
         conversation_id,
-        notice_message(message_id, &line),
+        notice_message(message_id, &line, &mentioned),
     )
     .await
     .map(|_| ())

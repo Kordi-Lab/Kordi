@@ -17,6 +17,7 @@ export type ContactSharedCounts = { photos: number; files: number; links: number
 export function useContactSharedPages(
   contact: Contact,
   sharedConversationFor?: (contact: Contact) => Conversation | null,
+  options: { backLabel?: string } = {},
 ) {
   const conversation = sharedConversationFor?.(contact) ?? null;
   const items = useMemo(
@@ -28,7 +29,7 @@ export function useContactSharedPages(
     ? { photos: items.photos.length, files: items.files.length, links: items.links.length }
     : null;
   const page = items && openPage ? (
-    <ContactProfileSharedPageView page={openPage} items={items} variant="pane" onBack={() => setOpenPage(null)} />
+    <ContactProfileSharedPageView page={openPage} items={items} variant="pane" backLabel={options.backLabel} onBack={() => setOpenPage(null)} />
   ) : null;
   return { counts, page, open: items ? setOpenPage : undefined };
 }
