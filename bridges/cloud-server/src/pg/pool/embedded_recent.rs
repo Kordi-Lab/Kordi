@@ -324,4 +324,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "account profile fields",
         "0141_account_profile_fields.sql"
     ),
+    migration!(
+        142,
+        "common ground profiles",
+        "0142_common_ground_profiles.sql"
+    ),
 ];
