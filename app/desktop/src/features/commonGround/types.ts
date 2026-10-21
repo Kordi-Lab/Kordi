@@ -83,6 +83,8 @@ export type CgGroup = {
   joined?: boolean;
   /** The topic the group was started from; null on older servers. */
   topic?: string | null;
+  /** Humans only, creator first, up to eight; missing on older servers. */
+  members?: CgPerson[];
 };
 
 export type CgInvitation = { invitationRef: string; groupSpaceId: string; name: string; from: CgPerson; createdAt: string };
