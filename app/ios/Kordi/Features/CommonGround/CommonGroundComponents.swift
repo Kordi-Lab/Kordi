@@ -75,7 +75,8 @@ struct CommonGroundPeopleRows: View {
         let subtitle: String
         var score: Int? = nil
         var selectable = true
-        var id: String { person.accountId }
+        /// One row per person and the profile they share.
+        var id: String { person.accountId + "|" + (person.profile?.profileId ?? "") }
     }
 
     let entries: [Entry]
@@ -97,7 +98,7 @@ struct CommonGroundPeopleRows: View {
         HStack(spacing: 12) {
             CommonGroundAvatar(person: entry.person, size: 40)
             VStack(alignment: .leading, spacing: 2) {
-                Text(entry.person.displayName).font(.headline).foregroundStyle(.primary)
+                Text(entry.person.labeledName).font(.headline).foregroundStyle(.primary)
                 if !entry.subtitle.isEmpty {
                     Text(entry.subtitle)
                         .font(.subheadline)
