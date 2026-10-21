@@ -7,7 +7,7 @@ import { MatchScreen } from './MatchScreen';
 import { CgNotice, CgProgress } from './parts';
 import { PersonScreen } from './PersonScreen';
 import { ResultsScreen } from './ResultsScreen';
-import type { CommonGroundStore } from './store';
+import { hasAnyCard, type CommonGroundStore } from './store';
 import { useCommonGround } from './useCommonGround';
 
 /** Common ground in the Contacts detail pane. Navigation lives in the store. */
@@ -20,7 +20,7 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
     body = <CgProgress line="Opening your card" />;
   } else if (!state.owner) {
     body = <CgNotice text={state.notice ?? 'Could not open Grounding.'} />;
-  } else if (screen.name === 'build' || (screen.name === 'home' && !state.owner.card)) {
+  } else if (screen.name === 'build' || (screen.name === 'home' && !hasAnyCard(state))) {
     body = <BuildScreen {...props} />;
   } else if (screen.name === 'home') {
     body = <HomeScreen {...props} />;
@@ -31,9 +31,9 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
   } else if (screen.name === 'results') {
     body = <ResultsScreen code={screen.code} {...props} />;
   } else if (screen.name === 'match') {
-    body = <MatchScreen accountId={screen.accountId} {...props} />;
+    body = <MatchScreen accountId={screen.accountId} profileId={screen.profileId} {...props} />;
   } else {
-    body = <PersonScreen accountId={screen.accountId} {...props} />;
+    body = <PersonScreen accountId={screen.accountId} profileId={screen.profileId} {...props} />;
   }
   return (
     <section aria-label="Grounding" className="cg-page">

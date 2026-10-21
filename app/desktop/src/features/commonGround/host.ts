@@ -22,6 +22,8 @@ export type CgConnectorsAccess = {
 /** What the Common ground page needs from the app around it. */
 export type CgHost = {
   self: { accountId: string; name: string; avatarUrl: string | null };
+  /** True when the server has profiles (`commonGroundVersion` 2 or later). */
+  profiles?: boolean;
   memoryAvailable: boolean;
   openChat: (person: CgPerson) => void;
   acceptRequest: (requestId: string) => Promise<void>;
