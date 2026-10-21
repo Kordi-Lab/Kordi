@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { ChevronRight, FileText, Image as ImageIcon, Link, LoaderCircle, Trash2, Users } from 'lucide-react';
 
 import type { CloudContactProfile, CloudContactProfileGroup } from '@/features/cloud/contactProfileClient';
 import { cn } from '@/lib/utils';
 import { GroupAvatar } from '../components/GroupAvatar';
+import { usePopover } from './contactProfileHooks';
 
 function SectionLabel({ children }: { children: ReactNode }) {
   return <div className="app-contacts-muted app-contacts-section-label mx-1 mb-1.5 mt-5 text-[12px] leading-4">{children}</div>;
@@ -46,16 +47,7 @@ function SharedRow({
 }
 
 function GroupsRow({ groups, onOpenGroup }: { groups: CloudContactProfileGroup[]; onOpenGroup?: (group: CloudContactProfileGroup) => void }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return undefined;
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', handlePointerDown);
-    return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [open]);
+  const { open, setOpen, slotProps } = usePopover('app-contacts-card-row relative');
   const avatars = groups.length > 0 ? (
     <span className="app-contacts-group-avatars mr-0.5 flex items-center" aria-hidden="true">
       {groups.slice(0, 2).map((group) => (
@@ -65,16 +57,7 @@ function GroupsRow({ groups, onOpenGroup }: { groups: CloudContactProfileGroup[]
   ) : null;
   const multiple = groups.length > 1;
   return (
-    <div
-      ref={rootRef}
-      className="app-contacts-card-row relative"
-      onKeyDown={(event) => {
-        if (event.key === 'Escape' && open) {
-          event.preventDefault();
-          setOpen(false);
-        }
-      }}
-    >
+    <div {...slotProps}>
       <SharedRow
         icon={<Users className="h-[18px] w-[18px]" aria-hidden="true" />}
         label="Groups in common"

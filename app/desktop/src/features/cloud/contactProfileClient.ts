@@ -78,19 +78,23 @@ async function sessionToken(): Promise<string | null> {
   return session?.token ?? null;
 }
 
-/** Loads the richer profile of a contact, an agent whose owner is a contact, or a system contact. */
-export async function fetchContactProfile(accountId: string, options: FetchContactProfileOptions = {}): Promise<CloudContactProfile> {
+async function authorizedRequest<T>(path: string, method: string, options: FetchContactProfileOptions, fallback: string): Promise<T> {
+  const token = await (options.token ?? sessionToken)();
+  if (!token) throw new Error('Sign in again.');
+  const request: ProfileRequest = options.request
+    ?? ((target, init, message) => defaultCloudAuthClient().request(target, init, message));
+  return request<T>(path, { method, headers: { authorization: `Bearer ${token}` }, signal: options.signal }, fallback);
+}
+
+const contactPath = (accountId: string) => {
   const trimmed = accountId.trim();
   if (!trimmed) throw new Error('Missing account.');
-  const token = await (options.token ?? sessionToken)();
-  if (!token) throw new Error('Sign in again to load this profile.');
-  const request: ProfileRequest = options.request
-    ?? ((path, init, fallback) => defaultCloudAuthClient().request(path, init, fallback));
-  const body = await request<unknown>(
-    `/v1/cloud/contacts/${encodeURIComponent(trimmed)}/profile`,
-    { method: 'GET', headers: { authorization: `Bearer ${token}` }, signal: options.signal },
-    'Could not load profile.',
-  );
+  return `/v1/cloud/contacts/${encodeURIComponent(trimmed)}`;
+};
+
+/** Loads the richer profile of a contact, an agent whose owner is a contact, or a system contact. */
+export async function fetchContactProfile(accountId: string, options: FetchContactProfileOptions = {}): Promise<CloudContactProfile> {
+  const body = await authorizedRequest<unknown>(`${contactPath(accountId)}/profile`, 'GET', options, 'Could not load profile.');
   const profile = normalizeContactProfile(body);
   if (!profile) throw new Error('Could not load profile.');
   return profile;
@@ -188,15 +192,5 @@ export function normalizeContactProfile(value: unknown): CloudContactProfile | n
  * not a contact). Lives here rather than in authClient.ts, which is past the file-size ratchet.
  */
 export async function removeCloudContact(accountId: string, options: FetchContactProfileOptions = {}): Promise<void> {
-  const trimmed = accountId.trim();
-  if (!trimmed) throw new Error('Missing account.');
-  const token = await (options.token ?? sessionToken)();
-  if (!token) throw new Error('Sign in again to delete this contact.');
-  const request: ProfileRequest = options.request
-    ?? ((path, init, fallback) => defaultCloudAuthClient().request(path, init, fallback));
-  await request<void>(
-    `/v1/cloud/contacts/${encodeURIComponent(trimmed)}`,
-    { method: 'DELETE', headers: { authorization: `Bearer ${token}` }, signal: options.signal },
-    'Could not delete contact.',
-  );
+  await authorizedRequest<void>(contactPath(accountId), 'DELETE', options, 'Could not delete contact.');
 }

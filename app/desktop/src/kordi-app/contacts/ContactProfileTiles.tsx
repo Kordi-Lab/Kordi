@@ -1,33 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Bell, BellOff, Check, Copy, MoreHorizontal, Settings, Share } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { DetailTile } from './ContactDetailParts';
-
-/** Open state for a tile popover that closes on an outside pointer or Escape. */
-function usePopover() {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return undefined;
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', handlePointerDown);
-    return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [open]);
-  const slotProps = {
-    ref: rootRef,
-    className: 'app-contacts-tile-slot relative',
-    onKeyDown: (event: { key: string; preventDefault: () => void }) => {
-      if (event.key === 'Escape' && open) {
-        event.preventDefault();
-        setOpen(false);
-      }
-    },
-  };
-  return { open, setOpen, slotProps };
-}
+import { useCopyValue, usePopover } from './contactProfileHooks';
 
 export type TileMenuItem =
   | { kind: 'item'; key: string; label: string; icon: ReactNode; onSelect?: () => void; danger?: boolean; disabled?: boolean }
@@ -102,20 +78,13 @@ export function SettingsTile({ onOpen }: { onOpen?: () => void }) {
 }
 
 function CopyTextButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return undefined;
-    const timer = window.setTimeout(() => setCopied(false), 1500);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
+  const { copied, copy } = useCopyValue(value);
   const Icon = copied ? Check : Copy;
   return (
     <button
       type="button"
       className="app-contacts-tile is-primary inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-[8px] text-[13px] font-medium"
-      onClick={() => {
-        void navigator.clipboard?.writeText(value).then(() => setCopied(true), () => undefined);
-      }}
+      onClick={copy}
     >
       <Icon className="h-4 w-4" aria-hidden="true" />
       {copied ? 'Copied' : 'Copy'}

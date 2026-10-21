@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Check, ChevronRight, Copy } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { useCopyValue } from './contactProfileHooks';
 
 /** Centered avatar, name, and one quiet line, like a messaging-app profile. */
 export function DetailHeader({
@@ -120,21 +121,14 @@ export function InfoCard({ rows }: { rows: InfoCardRow[] }) {
 
 /** Copies a value to the clipboard and briefly confirms with a check mark. */
 export function CopyButton({ value, label }: { value: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return undefined;
-    const timer = window.setTimeout(() => setCopied(false), 1500);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
+  const { copied, copy } = useCopyValue(value);
   const Icon = copied ? Check : Copy;
   return (
     <button
       type="button"
       aria-label={copied ? 'Copied' : label}
       title={copied ? 'Copied' : label}
-      onClick={() => {
-        void navigator.clipboard?.writeText(value).then(() => setCopied(true), () => undefined);
-      }}
+      onClick={copy}
       className="app-contacts-icon-button inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]"
     >
       <Icon className="h-4 w-4" aria-hidden="true" />
