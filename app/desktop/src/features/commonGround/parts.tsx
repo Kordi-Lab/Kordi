@@ -42,6 +42,18 @@ export function CgAvatarGrid({ people, size }: { people: AvatarPerson[]; size: n
   );
 }
 
+/** Up to three overlapping avatars, then "+N" for the rest of the members. */
+export function CgAvatarStack({ people, total, size }: { people: AvatarPerson[]; total: number; size: number }) {
+  const shown = people.slice(0, 3);
+  const extra = Math.max(0, total - shown.length);
+  return (
+    <span className="cg-stack" style={{ height: size }} aria-hidden="true">
+      {shown.map((person) => <CgAvatar key={person.accountId} person={person} size={size} ring />)}
+      {extra ? <span className="cg-stack-more" style={{ height: size, minWidth: size }}>+{extra}</span> : null}
+    </span>
+  );
+}
+
 export function CgBack({ onBack }: { onBack: () => void }) {
   return (
     <button type="button" className="cg-back" onClick={onBack}>

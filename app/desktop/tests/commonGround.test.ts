@@ -11,7 +11,7 @@ import {
   isRouteMissing,
 } from '../src/features/commonGround/client';
 import { agentFilesSummary, canBuildProfile, commonGroundBuildRequest, type CgBuildChoices } from '../src/features/commonGround/buildRequest';
-import { meetTimes, topicGroupDraft } from '../src/features/commonGround/format';
+import { groupLine, meetTimes, topicGroupDraft } from '../src/features/commonGround/format';
 import { HomeScreen } from '../src/features/commonGround/HomeScreen';
 import type { CgHost } from '../src/features/commonGround/host';
 import { canMeet, contactActionFor } from '../src/features/commonGround/relationship';
@@ -323,4 +323,20 @@ test('a topic group request carries the topic and the group keeps it', async () 
 test('Start from a topic row names the group after the topic and selects its people', () => {
   const draft = topicGroupDraft({ label: 'Agent memory', people: [person('me'), person('hana'), person('maya')] }, 'me');
   assert.deepEqual(draft, { name: 'Agent memory', topic: 'Agent memory', selected: ['hana', 'maya'] });
+});
+
+test('group rows: member line grammar and missing members fall back to empty', async () => {
+  assert.equal(groupLine({ topic: 'Eval design', memberCount: 3 }), 'From Eval design · 3 members');
+  assert.equal(groupLine({ topic: null, memberCount: 1 }), '1 member');
+  assert.equal(groupLine({ topic: null, memberCount: 2 }), '2 members');
+  assert.equal(groupLine({ topic: 'Eval design', memberCount: 0 }), 'From Eval design');
+  const { client } = mockServer({
+    'POST rooms/4821/results': { status: 200, body: { status: 'ready', people: [], topics: [], suggestion: null, groups: [
+      { groupSpaceId: 'g1', conversationId: 'group:g1', name: 'Old', memberCount: 2 },
+      { groupSpaceId: 'g2', conversationId: 'group:g2', name: 'New', memberCount: 1, members: [person('acct_b')] },
+    ] } },
+  });
+  const groups = (await client.results('4821')).groups ?? [];
+  assert.deepEqual(groups[0].members, []);
+  assert.equal(groups[1].members?.length, 1);
 });
