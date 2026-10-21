@@ -1,28 +1,31 @@
-import { useMemo, type ReactNode } from 'react';
+import { lazy, Suspense, useMemo, type ReactNode } from 'react';
 
-import { ContactDetailBody } from '@/kordi-app/contacts/ContactDetailPane';
 import type { Contact, Conversation } from '@/kordi-app/types';
+import type { ChatSenderProfileOpener } from '@/pages/useChatSenderProfiles';
 import type { CloudAccount } from './authClient';
 import { cloudContactToContact } from './cloudContactMapping';
+import { directChatPeerParticipant } from './cloudDirectChatPeer';
 import { cloudContactAccountId, useCloudContactProfileHost } from './useCloudContactProfileHost';
 import { useCloudContacts } from './useCloudContacts';
 import { useCloudPresence } from './useCloudPresence';
+
+// Loaded with the first Info tab, outside the cloud chunk: the view and the shared pages come with it.
+const ChatPersonInfo = lazy(() => import('@/kordi-app/contacts/ChatPersonInfo').then((module) => ({ default: module.ChatPersonInfo })));
 
 type CloudChatPersonInfoProps = {
   account: CloudAccount;
   conversation: Conversation;
   peerAccountId: string;
-  /** Whether this chat is muted; null when the chat list has no mute for it. */
-  muted: boolean | null;
-  onSetMuted?: (muted: boolean) => Promise<void> | void;
   /** Leaves the detail page for the transcript; shared rows land there until the chat is fully loaded. */
   onReturnToChat: () => void;
   /** Today's Info content, shown while the server has no contact profile route. */
   legacy: ReactNode;
+  /** Opens a participant's profile popover, as the chat header and transcript do. */
+  openProfile?: ChatSenderProfileOpener | null;
 };
 
-/** Info tab of a direct person chat: the contact profile without a Message tile. */
-export function CloudChatPersonInfo({ account, conversation, peerAccountId, muted, onSetMuted, onReturnToChat, legacy }: CloudChatPersonInfoProps) {
+/** Info tab of a direct person chat: participants and what the two accounts share. */
+export function CloudChatPersonInfo({ account, conversation, peerAccountId, onReturnToChat, legacy, openProfile }: CloudChatPersonInfoProps) {
   const cloud = useCloudContacts(account);
   const presence = useCloudPresence(account);
   const contact = useMemo<Contact>(() => {
@@ -34,8 +37,7 @@ export function CloudChatPersonInfo({ account, conversation, peerAccountId, mute
       presenceLastSeenAt: presence.snapshot[peerAccountId]?.lastSeenAt ?? null,
     };
   }, [cloud.contacts, conversation.name, peerAccountId, presence]);
-  const isContact = cloud.contacts.some((item) => !item.systemContact && cloudContactAccountId(item) === peerAccountId);
-  const { host, removeContact } = useCloudContactProfileHost({
+  const { host } = useCloudContactProfileHost({
     account,
     contacts: cloud.contacts,
     onMessageContact: () => onReturnToChat(),
@@ -45,23 +47,18 @@ export function CloudChatPersonInfo({ account, conversation, peerAccountId, mute
   });
   if (!host) return <>{legacy}</>;
   return (
-    <div className="app-contacts-page app-chat-person-info relative mx-auto w-full max-w-[420px] px-6 pb-10 pt-8">
-      <div className="app-contacts-detail-content relative">
-        <ContactDetailBody
-          key={peerAccountId}
-          contact={contact}
-          showMessageTile={false}
-          onCloseOverlay={() => undefined}
-          onMessageContact={() => onReturnToChat()}
-          onRemoveContact={isContact ? removeContact : undefined}
-          contactProfileHost={host}
-          sharedConversationFor={() => conversation}
-          contactMute={{
-            isMuted: () => muted,
-            setMuted: (_contact, next) => onSetMuted?.(next),
-          }}
-        />
-      </div>
-    </div>
+    <Suspense fallback={null}>
+      <ChatPersonInfo
+        key={peerAccountId}
+        peer={contact}
+        self={{ id: account.accountId, name: account.displayName ?? '', imageUrl: account.avatarUrl }}
+        conversation={conversation}
+        host={host}
+        onReturnToChat={onReturnToChat}
+        onOpenPeer={openProfile
+          ? (anchorRect) => openProfile(conversation, directChatPeerParticipant(conversation, peerAccountId, contact), anchorRect)
+          : undefined}
+      />
+    </Suspense>
   );
 }

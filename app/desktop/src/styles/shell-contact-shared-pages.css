@@ -20,77 +20,97 @@
   flex: 1 1 auto;
 }
 
+/* Panes (Contacts and the chat Info tab): the header and the items share one centred column. */
 .app-contact-shared-page.is-pane {
   --shared-fg: var(--utility-foreground);
   --shared-muted: var(--utility-muted-text);
   --shared-faint: color-mix(in oklab, var(--utility-muted-text) 60%, transparent);
   --shared-line: var(--app-divider);
-  --shared-hover: color-mix(in oklab, var(--utility-foreground) 5%, transparent);
-  --shared-header-bg: transparent;
+  --shared-hover: color-mix(in oklab, var(--utility-foreground) 6%, transparent);
+  --shared-header-bg: linear-gradient(color-mix(in oklab, var(--utility-card) 70%, transparent), color-mix(in oklab, var(--utility-card) 70%, transparent)), var(--app-main-bg);
+  --shared-col: 420px;
+  --shared-gutter: 24px;
   --shared-lead: 40px;
-  --shared-inset: 68px;
+  --shared-inset: 62px;
   margin: -40px -24px 0;
 }
 
-.app-chat-person-info .app-contact-shared-page.is-pane {
-  margin-top: -32px;
+/* The page column is wider than the profile's, so the Contacts content box widens while a page is open. */
+.app-contacts-detail-pane .app-contacts-detail-content:has(> .app-contact-shared-page) {
+  max-width: 468px;
 }
 
 .app-contact-detail-dialog .app-contact-shared-page.is-pane {
   --shared-fg: var(--app-transient-text);
   --shared-muted: var(--app-transient-muted-text);
+  --shared-faint: color-mix(in oklab, var(--app-transient-muted-text) 60%, transparent);
   --shared-header-bg: var(--app-transient-surface-bg);
+  --shared-gutter: 20px;
   margin: -36px -20px 0;
+}
+
+/* Back replaces Close while a page is open. */
+.app-contacts-detail-content:has(> .app-contact-shared-page) > .app-contacts-detail-close {
+  display: none;
 }
 
 .app-contact-shared-header {
   position: relative;
   z-index: 2;
-  display: flex;
-  height: 44px;
   flex: none;
-  align-items: center;
-  border-bottom: 1px solid var(--shared-line);
   background: var(--shared-header-bg);
-  padding: 0 44px 0 8px;
+}
+
+.app-contact-shared-page.is-popover .app-contact-shared-header {
+  height: 44px;
+  border-bottom: 1px solid var(--shared-line);
+  padding: 0 46px 0 12px;
 }
 
 .app-contact-shared-page.is-pane .app-contact-shared-header {
   position: sticky;
   top: 0;
-  padding: 0 52px 0 14px;
-  backdrop-filter: blur(18px) saturate(1.2);
+  height: 52px;
+  padding: 0 var(--shared-gutter);
 }
 
-/* In the Contacts pane the header spans the whole pane while the items keep the 420px column. */
-.app-contacts-detail-pane:has(> .app-contacts-detail-content > .app-contact-shared-page) {
-  container-type: inline-size;
+.app-contact-shared-header-row {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  gap: 10px;
 }
 
-.app-contacts-detail-pane .app-contact-shared-page.is-pane .app-contact-shared-header {
-  margin-inline: min(0px, calc((100% - 100cqw) / 2));
+.app-contact-shared-page.is-pane .app-contact-shared-header-row {
+  max-width: var(--shared-col);
+  margin: 0 auto;
 }
 
+/* The chevron, not the pill edge, lines up with the column edge. */
 .app-contact-shared-back {
   display: inline-flex;
-  height: 30px;
+  width: 28px;
+  height: 28px;
+  flex: none;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 2px;
+  margin-left: -6px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   background: transparent;
-  padding: 0 8px 0 4px;
-  color: var(--shared-fg);
-  font-size: 13px;
-  font-weight: 600;
+  padding: 0;
+  color: var(--shared-muted);
 }
 
 .app-contact-shared-page.is-pane .app-contact-shared-back {
-  font-size: 14px;
+  width: auto;
+  padding: 0 10px 0 6px;
 }
 
 .app-contact-shared-back:hover {
   background: var(--shared-hover);
+  color: var(--shared-fg);
 }
 
 .app-contact-shared-back:focus-visible,
@@ -101,10 +121,32 @@
 }
 
 .app-contact-shared-back-icon {
-  width: 18px;
-  height: 18px;
-  stroke-width: 2.2;
-  color: var(--app-accent);
+  width: 16px;
+  height: 16px;
+  flex: none;
+  stroke-width: 2;
+}
+
+.app-contact-shared-back-label {
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.app-contact-shared-title {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--shared-fg);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.app-contact-shared-count {
+  flex: none;
+  color: var(--shared-faint);
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
 }
 
 .app-contact-shared-page.is-popover .app-contact-shared-body {
@@ -115,19 +157,26 @@
 }
 
 .app-contact-shared-page.is-pane .app-contact-shared-body {
-  padding-bottom: 28px;
+  box-sizing: content-box;
+  width: auto;
+  max-width: var(--shared-col);
+  margin: 0 auto;
+  padding: 0 var(--shared-gutter) 28px;
 }
 
 .app-contact-shared-month {
-  padding: 12px 12px 5px;
+  padding: 20px 0 8px;
   color: var(--shared-muted);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 16px;
 }
 
-.app-contact-shared-page.is-pane .app-contact-shared-month {
-  padding: 14px 16px 6px;
-  font-size: 12px;
+.app-contact-shared-body > section:first-child > .app-contact-shared-month {
+  padding-top: 18px;
+}
+
+.app-contact-shared-page.is-popover .app-contact-shared-month {
+  padding-inline: 12px;
 }
 
 .app-contact-shared-empty {
@@ -193,10 +242,20 @@
   text-align: left;
 }
 
+/* Pane rows reach 10px past the column so their icons line up with its edge. */
+.app-contact-shared-page.is-pane .app-contact-shared-list {
+  margin: 0 -10px;
+}
+
 .app-contact-shared-page.is-pane .app-contact-shared-row {
-  min-height: 52px;
+  min-height: 56px;
   gap: 12px;
-  padding: 10px 16px;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.app-contact-shared-page.is-pane .app-contact-shared-row + .app-contact-shared-row::before {
+  right: 10px;
 }
 
 .app-contact-shared-row:hover {
@@ -271,6 +330,10 @@
   height: 17px;
 }
 
+.app-contact-shared-page.is-pane .app-contact-shared-lead {
+  border-radius: 9px;
+}
+
 .app-contact-shared-page.is-pane .app-contact-shared-lead.is-file svg {
   width: 20px;
   height: 20px;
@@ -309,8 +372,4 @@
 .app-contact-shared-header > .app-contact-profile-close {
   top: 8px;
   right: 8px;
-}
-
-.app-contacts-detail-content > .app-contacts-detail-close {
-  z-index: 3;
 }

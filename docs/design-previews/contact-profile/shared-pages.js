@@ -14,6 +14,7 @@ const MEDIA_NADIA={
 const MEDIA={
   "person-online":MEDIA_NADIA,
   "common-ground":MEDIA_NADIA,
+  "chat-info":MEDIA_NADIA,
   "person-offline":{photos:[["October",4]],files:[],links:[]},
   "person-new":{photos:[],files:[],links:[]},
   agent:{
@@ -24,9 +25,16 @@ const MEDIA={
 };
 const EMPTY_MEDIA={photos:"No photos",files:"No files",links:"No links"};
 
-function spHeader(where,title){
+const COUNT_NOUN={photos:["photo","photos"],files:["file","files"],links:["link","links"]};
+function spCount(groups){
+  const n=groups.reduce((a,[,x])=>a+(Array.isArray(x)?x.length:x),0);
+  return n?`${n} ${COUNT_NOUN[S.page][n===1?0:1]}`:"";
+}
+function spHeader(where,title,count){
   if(where==="ios")return `<div class="sp-hd"><button class="sp-back" data-act="page" data-page="profile" aria-label="Back">${ic("chevl")}</button><span class="sp-title">${title}</span></div>`;
-  return `<div class="sp-hd"><button class="sp-back" data-act="page" data-page="profile" aria-label="Back to profile">${ic("chevl")}<span>${title}</span></button></div>`;
+  /* Mac toolbar: back control, title, quiet count; pane and chat tab show a "Back" label, the popover is icon only */
+  const label=where==="pop"?"":`<span class="sp-back-l">Back</span>`;
+  return `<div class="sp-hd"><div class="sp-hd-in"><button class="sp-back" data-act="page" data-page="profile" aria-label="${where==="chat"?"Back":"Back to profile"}" title="Back">${ic("chevl")}${label}</button><span class="sp-title ell">${title}</span>${count?`<span class="sp-count">${count}</span>`:""}</div></div>`;
 }
 function spPhotos(groups){
   let k=0;
@@ -48,7 +56,7 @@ function sharedPage(where){
   const groups=media[S.page]||[];
   const body=!groups.length?`<div class="sp-empty">${EMPTY_MEDIA[S.page]}</div>`
     :S.page==="photos"?spPhotos(groups):S.page==="files"?spFiles(groups):spLinks(groups);
-  return `<div class="pv sp">${spHeader(where,PAGE_TITLES[S.page])}<div class="sp-body">${body}</div></div>`;
+  return `<div class="pv sp">${spHeader(where,PAGE_TITLES[S.page],spCount(groups))}<div class="sp-body">${body}</div></div>`;
 }
 
 /* Mac chat info popover over a faded chat */

@@ -420,7 +420,16 @@ test('with the whole direct chat on hand the shared rows count it and open pages
     assert.equal((page.button('Files') as HTMLButtonElement).disabled, true, 'an empty row is inert');
     await page.click(page.button('Links'));
     assert.deepEqual(calls.messaged, [], 'the row opens a page, not the chat');
-    assert.ok(page.host.querySelector('[role="region"][aria-label="Links"]'));
+    const region = page.host.querySelector('[role="region"][aria-label="Links"]');
+    assert.ok(region);
+    assert.ok(region.classList.contains('is-pane'));
+    const row = region.querySelector('.app-contact-shared-header > .app-contact-shared-header-row');
+    assert.ok(row, 'the header row shares the content column');
+    const back = row.querySelector('.app-contact-shared-back');
+    assert.equal(back?.textContent, 'Back', 'the pane shows a Back pill');
+    assert.equal(back?.getAttribute('aria-label'), 'Back to profile');
+    assert.equal(row.querySelector('.app-contact-shared-title')?.textContent, 'Links');
+    assert.equal(row.querySelector('.app-contact-shared-count')?.textContent, '1 link');
     assert.match(page.text(), /arxiv\.org/);
     assert.doesNotMatch(page.text(), /Shared with you/);
     await act(async () => {
