@@ -72,7 +72,7 @@ struct ContactProfileView: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-        .task { await profileModel.load() }
+        .task(id: subject.accountId) { await profileModel.load() }
         .confirmationDialog("Delete contact?", isPresented: $confirmsDelete, titleVisibility: .visible) {
             Button("Delete contact", role: .destructive, action: deleteContact)
         } message: {
@@ -94,6 +94,7 @@ struct ContactProfileView: View {
                 ownerSubject = nil
                 onOpenConversation(conversation)
             }
+            .id(owner.id)
         }
     }
 
@@ -125,6 +126,7 @@ struct ContactProfileView: View {
             .overlay(alignment: .topTrailing) { closeButton }
             .animation(.easeOut(duration: 0.2), value: profileModel.profile)
         }
+        .id(subject.accountId)
         .background(alignment: .top) { wash }
         .background(Color(uiColor: .systemBackground))
     }

@@ -263,6 +263,25 @@ final class ContactProfileTests: XCTestCase {
         XCTAssertTrue(missingFlag.isFallback)
     }
 
+    func testEachSubjectGetsItsOwnFreshModel() async {
+        let appModel = AppModel(previewMode: true)
+        let maya = ContactProfileSubject(accountId: "acct_maya", name: "Maya Chen", kordiId: "284106395")
+        let priya = ContactProfileSubject(accountId: "acct_priya", name: "Priya Shah", kordiId: "650917284")
+        let first = appModel.makeContactProfileModel(for: maya)
+        await first.load()
+        XCTAssertEqual(first.profile?.accountId, "acct_maya")
+
+        let reopened = appModel.makeContactProfileModel(for: maya)
+        XCTAssertFalse(reopened === first)
+        XCTAssertNil(reopened.profile)
+        XCTAssertTrue(reopened.isLoading)
+
+        let other = appModel.makeContactProfileModel(for: priya)
+        await other.load()
+        XCTAssertEqual(other.profile?.accountId, "acct_priya")
+        XCTAssertEqual(first.profile?.accountId, "acct_maya")
+    }
+
     func testModelFillsTheProfile() async throws {
         let profile = try decode(Self.personJSON)
         let model = ContactProfileModel { profile }

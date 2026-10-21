@@ -39,6 +39,8 @@ private struct ContactProfileSheetModifier: ViewModifier {
                     pending = conversation
                     self.subject = nil
                 }
+                // A fresh view, model and scroll position for every subject.
+                .id(subject.id)
             }
             .navigationDestination(item: $pushed) { conversation in
                 ConversationView(conversation: conversation)
