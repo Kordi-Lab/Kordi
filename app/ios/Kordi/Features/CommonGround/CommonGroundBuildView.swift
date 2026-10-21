@@ -8,12 +8,13 @@ struct CommonGroundBuildView: View {
     @Environment(\.dismiss) private var dismiss
     /// Set on first run, where this screen is the root; nil when pushed.
     var onClose: (() -> Void)? = nil
-    @State private var connectors = false
     @State private var memory = false
     @State private var links = ""
     @State private var notes = ""
     @StateObject private var device = CommonGroundDeviceAccess()
+    @StateObject private var kordiSources = CommonGroundBuildSources()
     @State private var deviceIncluded: Set<CommonGroundDeviceSource> = []
+    @State private var setupProvider: ConnectorProviderId?
 
     private var deviceItems: [CommonGroundDeviceItems] {
         CommonGroundDeviceSource.allCases.compactMap { source in
@@ -22,22 +23,18 @@ struct CommonGroundBuildView: View {
         }
     }
 
-    private var request: CommonGroundBuildRequest {
-        CommonGroundBuildRequest(
-            memory: memory && showsMemory,
-            connectors: connectors && showsConnectors,
+    private var choices: CommonGroundBuildChoices {
+        CommonGroundBuildChoices(
+            memoryOn: memory && showsMemory,
+            memoryCount: showsMemory ? kordiSources.memoryCount : nil,
+            connectedCount: showsConnectors ? kordiSources.connectedCount : 0,
             device: deviceItems,
-            links: links.trimmingCharacters(in: .whitespacesAndNewlines),
-            notes: notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            links: links,
+            notes: notes
         )
     }
 
-    private var canBuild: Bool {
-        let request = request
-        return request.memory || request.connectors || !request.device.isEmpty || !request.links.isEmpty || !request.notes.isEmpty
-    }
-
-    private var showsConnectors: Bool { appModel.connectorsVersion != nil }
+    private var showsConnectors: Bool { kordiSources.connectors != nil }
     private var showsMemory: Bool { appModel.isMemoryCapabilityPresent }
 
     var body: some View {
@@ -61,22 +58,18 @@ struct CommonGroundBuildView: View {
 
     private var sources: some View {
         CommonGroundPage(onBack: back) {
-            CommonGroundHero(title: "Build your card", status: "Only people you meet see it") {
+            CommonGroundHero(title: "Build your profile", status: "Your agent writes it") {
                 CommonGroundAvatar(person: model.me, size: 92)
             }
             VStack(spacing: 16) {
                 if showsConnectors || showsMemory {
-                    CommonGroundSection(title: "Kordi") {
-                        if showsConnectors {
-                            toggleRow("Connectors", "Mail, calendar and code you connected", symbol: "link", color: KordiTheme.signalBlue, isOn: $connectors)
-                        }
-                        if showsConnectors && showsMemory {
-                            SessionDetailSeparator(leading: SessionDetailMetrics.rowHorizontalInset + 42)
-                        }
-                        if showsMemory {
-                            toggleRow("Memory", "Your saved memories", symbol: "brain", color: KordiTheme.brandPink, isOn: $memory)
-                        }
-                    }
+                    CommonGroundKordiSources(
+                        sources: kordiSources,
+                        showsConnectors: showsConnectors,
+                        showsMemory: showsMemory,
+                        memoryOn: $memory,
+                        onSetUp: { setupProvider = $0 }
+                    )
                 }
                 CommonGroundSection(title: "On this iPhone") {
                     ForEach(Array(CommonGroundDeviceSource.allCases.enumerated()), id: \.element) { index, source in
@@ -98,10 +91,10 @@ struct CommonGroundBuildView: View {
                         .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
                 }
                 Button(model.buildFailed ? "Try again" : "Build profile") {
-                    Task { await model.build(request) }
+                    Task { await model.build(choices.request) }
                 }
                 .buttonStyle(CommonGroundPrimaryButtonStyle())
-                .disabled(!canBuild || model.busy == "build")
+                .disabled(!choices.canBuild || model.busy == "build")
                 .padding(.horizontal, 4)
                 .padding(.top, 4)
             }
@@ -112,15 +105,21 @@ struct CommonGroundBuildView: View {
                 await device.read(source)
             }
         }
-    }
-
-    private func toggleRow(_ title: String, _ subtitle: String, symbol: String, color: Color, isOn: Binding<Bool>) -> some View {
-        Toggle(isOn: isOn) {
-            label(title, subtitle, symbol: symbol, color: color)
+        .task(id: "\(appModel.connectorsVersion ?? -1) \(showsMemory)") {
+            kordiSources.attach(
+                connectors: ConnectorsAvailability.makeClient(connectorsVersion: appModel.connectorsVersion, cloudClient: appModel.cloudConnectorsClient),
+                memory: showsMemory ? appModel.makeMemoryService() : nil
+            )
+            await kordiSources.load()
         }
-        .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
-        .padding(.vertical, 6)
-        .frame(minHeight: SessionDetailMetrics.rowMinHeight)
+        .sheet(isPresented: Binding(get: { setupProvider != nil }, set: { if !$0 { setupProvider = nil } }), onDismiss: {
+            Task { await kordiSources.loadConnectors() }
+        }) {
+            if let setupProvider, let client = kordiSources.connectors {
+                CommonGroundConnectorSetup(providerId: setupProvider, client: client)
+                    .environmentObject(appModel)
+            }
+        }
     }
 
     /// Explains what is read before iOS asks; after a choice, shows the count

@@ -42,7 +42,7 @@ struct CommonGroundCardView: View {
                     settings
                 } else {
                     CommonGroundSection {
-                        CommonGroundRow(title: "Build your card") { path.append(.build) }
+                        CommonGroundRow(title: "Build your profile") { path.append(.build) }
                     }
                 }
             }
