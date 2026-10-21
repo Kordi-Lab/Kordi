@@ -285,10 +285,11 @@ pub(in crate::common_ground) async fn meet(
             );
         }
     };
-    // The card travels in your own message in the chat; answers refresh it.
+    // The card travels in your own message in the chat, shown as a System
+    // notice; answers refresh it.
     let message = SendMessageRequest {
         client_message_id: Uuid::new_v5(&Uuid::NAMESPACE_OID, row.event_id.as_bytes()),
-        kind: "text".to_string(),
+        kind: crate::common_ground::SYSTEM_NOTICE_KIND.to_string(),
         content: json!({
             "schema": 1,
             "blocks": [crate::pip::cards::card_block_from_row(&row, "event")],

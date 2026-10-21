@@ -1,4 +1,4 @@
-//! Group intros: a group started from a room opens with PiP introducing
+//! Group intros: a group started from a room opens with System introducing
 //! everyone, written by one plain completion on the Kordi key. Invited
 //! people who join later get a templated line instead, with no model call.
 
@@ -15,10 +15,12 @@ use self::prompt::{intro_prompt, joined_line, Introduced, Relation, Role, INTRO_
 use super::card::Topics;
 use super::matching::{shared_cards, stored_results};
 use super::runs::{self, NewRun, INTRO_PREFIX};
+use super::SYSTEM_NOTICE_KIND;
 use crate::chat_sync::models::SendMessageRequest;
 use crate::document_shares::access::clean_display_name;
+use crate::system_account::{self, SYSTEM_ACCOUNT_ID};
 
-/// The longest intro PiP posts.
+/// The longest intro posted.
 const MAX_INTRO_CHARS: usize = 1_200;
 
 /// A new group to introduce.
@@ -114,10 +116,6 @@ pub(super) async fn queue(
     tx.commit().await
 }
 
-/// Server-only message kind that clients show as a notice from "System".
-/// Clients cannot post it; see `validate_message_request`.
-const SYSTEM_NOTICE_KIND: &str = "system-notice";
-
 fn notice_message(client_message_id: Uuid, text: &str) -> SendMessageRequest {
     SendMessageRequest {
         client_message_id,
@@ -144,7 +142,7 @@ fn clean_reply(text: &str) -> String {
         .collect::<String>()
 }
 
-/// Posts a finished intro run's reply into its group as PiP. An empty reply,
+/// Posts a finished intro run's reply into its group as System. An empty reply,
 /// or one that cannot be posted, fails the run instead.
 pub(super) async fn complete(
     pool: &PgPool,
@@ -161,13 +159,18 @@ pub(super) async fn complete(
     .bind(run_id)
     .fetch_optional(pool)
     .await?;
-    let Some((conversation_id, pip_account)) = row else {
+    let Some((conversation_id, _)) = row else {
         return Err(sqlx_core::Error::RowNotFound);
     };
     let text = clean_reply(text);
     if text.is_empty() {
         eprintln!("[common-ground] Rejected run {run_id}: the intro is empty");
         return fail(pool, run_id, Some(runner_id), "invalid_output").await;
+    }
+    // A group started before System posted notices has only PiP.
+    if let Err(error) = system_account::join(pool, conversation_id).await {
+        eprintln!("[common-ground] Could not add System for run {run_id}: {error}");
+        return fail(pool, run_id, Some(runner_id), "post_failed").await;
     }
     let mut tx = pool.begin().await?;
     if !runs::mark_completed(&mut tx, run_id, runner_id).await? {
@@ -176,7 +179,7 @@ pub(super) async fn complete(
     let message_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, run_id.as_bytes());
     let posted = crate::chat_sync::store::send_message_in_transaction(
         &mut tx,
-        &pip_account,
+        SYSTEM_ACCOUNT_ID,
         conversation_id,
         notice_message(message_id, &text),
     )
@@ -271,7 +274,7 @@ async fn related_people(
 /// joined, naming how they relate to the people already there.
 pub(super) async fn post_joined(
     pool: &PgPool,
-    pip_account: &str,
+    sender: &str,
     room_id: Uuid,
     conversation_id: Uuid,
     account: &str,
@@ -284,8 +287,7 @@ pub(super) async fn post_joined(
     let Some((name,)) = name else {
         return Ok(());
     };
-    let (topics, related) =
-        related_people(pool, pip_account, room_id, conversation_id, account).await?;
+    let (topics, related) = related_people(pool, sender, room_id, conversation_id, account).await?;
     let line = joined_line(
         &clean_display_name(name.as_deref()),
         topics.as_ref(),
@@ -297,7 +299,7 @@ pub(super) async fn post_joined(
     );
     crate::chat_sync::store::send_message(
         pool,
-        pip_account,
+        sender,
         conversation_id,
         notice_message(message_id, &line),
     )

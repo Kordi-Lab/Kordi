@@ -78,7 +78,7 @@ async fn pip_messages(pool: &PgPool, conversation_id: Uuid) -> Vec<String> {
          ORDER BY conversation_sequence",
     )
     .bind(conversation_id)
-    .bind(service())
+    .bind(crate::system_account::SYSTEM_ACCOUNT_ID)
     .fetch_all(pool)
     .await
     .unwrap();
@@ -95,7 +95,7 @@ async fn pip_kinds(pool: &PgPool, conversation_id: Uuid) -> Vec<String> {
          ORDER BY conversation_sequence",
     )
     .bind(conversation_id)
-    .bind(service())
+    .bind(crate::system_account::SYSTEM_ACCOUNT_ID)
     .fetch_all(pool)
     .await
     .unwrap()

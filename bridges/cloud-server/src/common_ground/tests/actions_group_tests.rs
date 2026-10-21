@@ -43,14 +43,17 @@ async fn join(app: &axum::Router, code: &str, token: &str, reference: &str) -> (
     .await
 }
 
+/// The people in a conversation, without PiP and System.
 async fn members(pool: &sqlx_postgres::PgPool, conversation_id: &Value) -> Vec<String> {
     let id: Uuid = conversation_id.as_str().unwrap().parse().unwrap();
     let rows: Vec<(String,)> = query_as(
         "SELECT account_id FROM cloud_chat_conversation_members
-         WHERE conversation_id = $1 AND membership_state = 'active' AND account_id NOT LIKE 'acct_cg_service%'
+         WHERE conversation_id = $1 AND membership_state = 'active'
+           AND NOT (account_id = ANY($2))
          ORDER BY account_id",
     )
     .bind(id)
+    .bind(crate::system_account::service_account_ids())
     .fetch_all(pool)
     .await
     .unwrap();

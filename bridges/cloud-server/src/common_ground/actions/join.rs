@@ -17,6 +17,7 @@ use crate::auth::routes::{
 };
 use crate::common_ground::{db_error, err, intro, rooms};
 use crate::server::ServerState;
+use crate::system_account::SYSTEM_ACCOUNT_ID;
 
 fn invitation_not_found() -> Response {
     err(
@@ -102,13 +103,15 @@ pub(in crate::common_ground) async fn join(
     }
     if response.status == "joined" {
         audit_join(&state, &session, &group_invitation_id, &group_space_id).await;
-        if let Some(pip) = state.pip() {
-            let pip_account = &pip.config().account_id;
-            let posted =
-                intro::post_joined(pool, pip_account, room_id, conversation_id, viewer).await;
-            if let Err(error) = posted {
-                eprintln!("[common-ground] Could not post a joined line: {error}");
-            }
+        // A group started before System posted notices has only PiP.
+        let posted = match crate::system_account::join(pool, conversation_id).await {
+            Ok(_) => intro::post_joined(pool, SYSTEM_ACCOUNT_ID, room_id, conversation_id, viewer)
+                .await
+                .map_err(|error| error.to_string()),
+            Err(error) => Err(error.to_string()),
+        };
+        if let Err(error) = posted {
+            eprintln!("[common-ground] Could not post a joined line: {error}");
         }
     }
     (StatusCode::OK, body(response.status)).into_response()
