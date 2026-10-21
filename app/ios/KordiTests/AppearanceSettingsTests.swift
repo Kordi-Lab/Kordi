@@ -5,8 +5,8 @@ import XCTest
 final class AppearanceSettingsTests: XCTestCase {
     func testSelectionResolvesStoredValuesWithDefaults() {
         XCTAssertEqual(AppearanceSettingsSelection.chatTheme("ocean").label, "Ocean Slate")
-        XCTAssertEqual(AppearanceSettingsSelection.chatTheme("unknown"), .quiet)
-        XCTAssertEqual(AppearanceSettingsSelection.chatTheme("").label, "Quiet Signal")
+        XCTAssertEqual(AppearanceSettingsSelection.chatTheme("unknown"), .classic)
+        XCTAssertEqual(AppearanceSettingsSelection.chatTheme("").label, "Classic")
         XCTAssertEqual(AppearanceSettingsSelection.messageLayout("threads"), .threads)
         XCTAssertEqual(AppearanceSettingsSelection.messageLayout("unknown"), .chat)
         XCTAssertEqual(AppearanceSettingsSelection.colorMode("dark"), .dark)
@@ -21,14 +21,14 @@ final class AppearanceSettingsTests: XCTestCase {
     }
 
     func testOptionsKeepDisplayOrderAndUniqueIdentifiers() {
-        XCTAssertEqual(KordiChatTheme.allCases.map(\.label), ["Quiet Signal", "Midnight Violet", "Warm Sand", "Ocean Slate"])
+        XCTAssertEqual(KordiChatTheme.allCases.map(\.label), ["Classic", "Quiet Signal", "Midnight Violet", "Warm Sand", "Ocean Slate"])
         XCTAssertEqual(MessageLayout.allCases.map(\.title), ["Chat", "Threads"])
         XCTAssertEqual(AppAppearance.allCases.map(\.label), ["System", "Light", "Dark"])
 
         let identifiers = AppearanceSettingsSelection.optionIdentifiers
-        XCTAssertEqual(identifiers.count, 9)
+        XCTAssertEqual(identifiers.count, 10)
         XCTAssertEqual(Set(identifiers).count, identifiers.count)
-        XCTAssertEqual(identifiers.first, "appearance-option-quiet")
+        XCTAssertEqual(identifiers.first, "appearance-option-classic")
         XCTAssertEqual(identifiers.last, "appearance-option-dark")
     }
 }

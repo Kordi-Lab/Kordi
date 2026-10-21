@@ -52,13 +52,13 @@ test('theme resolver follows system mode only when preference is auto', () => {
   assert.equal(resolveThemeMode('dark', 'light'), 'dark');
 });
 
-test('chat theme preference accepts the four bundled themes and rejects unknown values', () => {
-  assert.deepEqual(KORDI_CHAT_THEMES, ['quiet', 'midnight', 'sand', 'ocean']);
+test('chat theme preference accepts the five bundled themes and falls back to Classic', () => {
+  assert.deepEqual(KORDI_CHAT_THEMES, ['classic', 'quiet', 'midnight', 'sand', 'ocean']);
   for (const theme of KORDI_CHAT_THEMES) {
     assert.equal(readStoredChatTheme(storage({ [KORDI_CHAT_THEME_STORAGE_KEY]: theme })), theme);
   }
-  assert.equal(readStoredChatTheme(storage()), 'quiet');
-  assert.equal(readStoredChatTheme(storage({ [KORDI_CHAT_THEME_STORAGE_KEY]: 'custom' })), 'quiet');
+  assert.equal(readStoredChatTheme(storage()), 'classic');
+  assert.equal(readStoredChatTheme(storage({ [KORDI_CHAT_THEME_STORAGE_KEY]: 'custom' })), 'classic');
 
   const target = storage();
   writeStoredChatTheme('ocean', target);

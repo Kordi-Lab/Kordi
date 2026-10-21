@@ -81,7 +81,7 @@ struct KordiApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
-    @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
+    @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.classic.rawValue
     @State private var connectorsSettingsRequest: ConnectorsSettingsRequest?
     @State private var showsConnectorsSettings = false
 
@@ -235,7 +235,7 @@ struct KordiApp: App {
     }
 
     private var selectedChatTheme: KordiChatTheme {
-        KordiChatTheme(rawValue: chatThemeRawValue) ?? .quiet
+        KordiChatTheme(rawValue: chatThemeRawValue) ?? .classic
     }
 
     private var showsPreviewThemeControls: Bool {
@@ -331,7 +331,7 @@ private struct PreviewThemeControls: View {
     }
 
     private var selectedChatTheme: KordiChatTheme {
-        KordiChatTheme(rawValue: chatThemeRawValue) ?? .quiet
+        KordiChatTheme(rawValue: chatThemeRawValue) ?? .classic
     }
 }
 

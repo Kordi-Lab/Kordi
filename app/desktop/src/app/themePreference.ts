@@ -2,7 +2,7 @@ import type { ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
 
 export const KORDI_THEME_MODE_STORAGE_KEY = 'kordi.themeMode.v1';
 export const KORDI_CHAT_THEME_STORAGE_KEY = 'kordi.chatTheme.v1';
-export const KORDI_CHAT_THEMES = ['quiet', 'midnight', 'sand', 'ocean'] as const;
+export const KORDI_CHAT_THEMES = ['classic', 'quiet', 'midnight', 'sand', 'ocean'] as const;
 export type ChatTheme = (typeof KORDI_CHAT_THEMES)[number];
 
 export function isThemeMode(value: unknown): value is ThemeMode {
@@ -10,7 +10,7 @@ export function isThemeMode(value: unknown): value is ThemeMode {
 }
 
 export function isChatTheme(value: unknown): value is ChatTheme {
-  return value === 'quiet' || value === 'midnight' || value === 'sand' || value === 'ocean';
+  return value === 'classic' || value === 'quiet' || value === 'midnight' || value === 'sand' || value === 'ocean';
 }
 
 function browserStorage(): Pick<Storage, 'getItem' | 'setItem'> | undefined {
@@ -51,9 +51,9 @@ export function readStoredChatTheme(
 ): ChatTheme {
   try {
     const value = storage?.getItem(KORDI_CHAT_THEME_STORAGE_KEY);
-    return isChatTheme(value) ? value : 'quiet';
+    return isChatTheme(value) ? value : 'classic';
   } catch {
-    return 'quiet';
+    return 'classic';
   }
 }
 

@@ -26,6 +26,7 @@ const THEME_OPTIONS: Array<{ mode: ThemeMode; label: string }> = [
 ];
 
 const CHAT_THEME_OPTIONS: Array<{ theme: ChatTheme; label: string }> = [
+  { theme: 'classic', label: 'Classic' },
   { theme: 'quiet', label: 'Quiet Signal' },
   { theme: 'midnight', label: 'Midnight Violet' },
   { theme: 'sand', label: 'Warm Sand' },
