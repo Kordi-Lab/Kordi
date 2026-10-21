@@ -1,6 +1,7 @@
 //! The intro PiP posts when a group starts from a room, the line it posts
 //! when an invitee joins, and the members shown with each group.
 
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde_json::{json, Value};
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
@@ -70,8 +71,8 @@ async fn claim_intro(pool: &PgPool, group: &Value) -> (String, String, String) {
     (run_id, prompt, owner)
 }
 
-/// Texts of the messages PiP posted in a conversation, oldest first.
-async fn pip_messages(pool: &PgPool, conversation_id: Uuid) -> Vec<String> {
+/// The cloud message envelopes PiP posted in a conversation, oldest first.
+async fn pip_envelopes(pool: &PgPool, conversation_id: Uuid) -> Vec<Value> {
     let rows: Vec<(Value,)> = query_as(
         "SELECT content FROM cloud_chat_messages
          WHERE conversation_id = $1 AND sender_account_id = $2
@@ -83,7 +84,48 @@ async fn pip_messages(pool: &PgPool, conversation_id: Uuid) -> Vec<String> {
     .await
     .unwrap();
     rows.into_iter()
-        .map(|(content,)| content["blocks"][0]["text"].as_str().unwrap().to_string())
+        .map(|(content,)| {
+            let raw = content["blocks"][0]["text"].as_str().unwrap();
+            let encoded = raw.strip_prefix("kordi-cloud-message:").unwrap();
+            let payload: Value =
+                serde_json::from_slice(&URL_SAFE_NO_PAD.decode(encoded).unwrap()).unwrap();
+            assert_eq!(payload["kind"], "message");
+            payload
+        })
+        .collect()
+}
+
+/// Texts of the messages PiP posted in a conversation, oldest first.
+async fn pip_messages(pool: &PgPool, conversation_id: Uuid) -> Vec<String> {
+    pip_envelopes(pool, conversation_id)
+        .await
+        .into_iter()
+        .map(|payload| payload["text"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// (displayText, account id) per mention, after checking each range points
+/// at its "@Name" in the text.
+fn mentions(payload: &Value) -> Vec<(String, String)> {
+    let text: Vec<u16> = payload["text"].as_str().unwrap().encode_utf16().collect();
+    payload["mentions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|mention| {
+            let start = mention["startUtf16"].as_u64().unwrap() as usize;
+            let length = mention["lengthUtf16"].as_u64().unwrap() as usize;
+            let display = mention["displayText"].as_str().unwrap();
+            assert_eq!(
+                String::from_utf16(&text[start..start + length]).unwrap(),
+                display
+            );
+            let id = mention["humanId"].as_str().unwrap();
+            assert_eq!(mention["targetKind"], "person");
+            assert_eq!(mention["targetIdentityId"], format!("human:{id}"));
+            assert_eq!(mention["label"], &display[1..]);
+            (display.to_string(), id.to_string())
+        })
         .collect()
 }
 
@@ -158,24 +200,43 @@ async fn start_group_queues_an_intro_that_pip_posts() {
     for expected in [
         "Group: Memory group\n",
         "Topic: Agent memory\n",
-        "- Alex (started the group). Working on: Agent memory.",
-        "- Priya. Working on: Tool use. Can help with: Rust services.",
-        "- Sam (invited). Working on: Agent memory.",
+        "- @Alex (started the group). Working on: Agent memory.",
+        "- @Priya. Working on: Tool use. Can help with: Rust services.",
+        "- @Sam (invited). Working on: Agent memory.",
     ] {
         assert!(prompt.contains(expected), "{expected:?} in {prompt}");
     }
     assert!(pip_messages(&pool, conversation(&group)).await.is_empty());
 
-    let reply = format!("  Welcome to agent memory.\n{}  ", "x".repeat(2_000));
+    // The model wrote two names bare; the cap cuts the last "@Sam" in half.
+    let lines = "  Welcome, Alex, Priya and Sam.\nAlex: memory.\n@Priya: tool use.\n\
+                 Sam (invited): here.\n";
+    let reply = format!("{lines}{} @Sam", "x".repeat(1_200 - 89));
     complete(&pool, &run_id, RUNNER, &reply).await.unwrap();
-    let posted = pip_messages(&pool, conversation(&group)).await;
+    let posted = pip_envelopes(&pool, conversation(&group)).await;
     assert_eq!(posted.len(), 1);
     assert_eq!(
         pip_kinds(&pool, conversation(&group)).await,
         vec!["system-notice"]
     );
-    assert!(posted[0].starts_with("Welcome to agent memory.\n"));
-    assert_eq!(posted[0].chars().count(), 1_200, "the intro is capped");
+    let text = posted[0]["text"].as_str().unwrap();
+    assert!(
+        text.starts_with(
+            "Welcome, Alex, Priya and Sam.\n@Alex: memory.\n@Priya: tool use.\n\
+             @Sam (invited): here.\n"
+        ),
+        "{text}"
+    );
+    assert_eq!(text.chars().count(), 1_200, "the intro is capped");
+    assert!(text.ends_with(" @Sa"), "{}", &text[text.len() - 8..]);
+    assert_eq!(
+        mentions(&posted[0]),
+        vec![
+            ("@Alex".to_string(), alex.clone()),
+            ("@Priya".to_string(), priya.clone()),
+            ("@Sam".to_string(), sam.clone()),
+        ]
+    );
     assert_eq!(intro_state(&pool, &run_id).await, (true, None));
     // Priya was added, so the intro is in her chat.
     let snapshot = crate::chat_sync::store::bootstrap(&pool, &priya)
@@ -278,11 +339,18 @@ async fn joining_posts_a_line_and_groups_show_their_members() {
     )
     .await;
     assert_eq!(status, 200, "{body}");
+    let posted = pip_envelopes(&pool, conversation_id).await;
+    assert_eq!(posted.len(), 1);
     assert_eq!(
-        pip_messages(&pool, conversation_id).await,
+        posted[0]["text"],
+        "@Sam joined. Working on agent memory and tool use; can help with eval design and \
+         rust. Shares agent memory with @Priya."
+    );
+    assert_eq!(
+        mentions(&posted[0]),
         vec![
-            "Sam joined. Working on agent memory and tool use; can help with eval design and \
-             rust. Shares agent memory with Priya."
+            ("@Sam".to_string(), sam.clone()),
+            ("@Priya".to_string(), priya.clone()),
         ]
     );
     assert_eq!(
