@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Ban, Check, Flag, LoaderCircle, MessageCircle, Share, Trash2, X } from 'lucide-react';
 
 import { formatKordiHandle } from '@/features/cloud/kordiId';
+import { defaultAgentDisplayName } from '@/lib/identityLabels';
 import { formatDesktopContactRequestTimeLabel } from '@/lib/time';
 import { IdentityAvatar } from '../components/IdentityAvatar';
 import {
@@ -60,13 +61,20 @@ function headerLineFor(contact: Contact, kind: ContactProfileKind, state: Contac
   return presenceLine && presenceLine !== handle && presenceLine !== contact.name ? presenceLine : '';
 }
 
-function ContactDetailBody({ contact, onCloseOverlay, onMessageContact, onRemoveContact, contactProfileHost, contactMute, onOpenAgentSettings }: ContactDetailBodyProps) {
+/** The row's presence, replaced by the profile's once it loads. */
+function withProfilePresence(contact: Contact, state: ContactProfileState): Contact {
+  const presence = state.profile?.presence;
+  return presence ? { ...contact, presenceStatus: presence.status, presenceLastSeenAt: presence.lastSeenAt } : contact;
+}
+
+function ContactDetailBody({ contact: row, onCloseOverlay, onMessageContact, onRemoveContact, contactProfileHost, contactMute, onOpenAgentSettings }: ContactDetailBodyProps) {
   const now = usePresenceNow();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [removeState, setRemoveState] = useState<'idle' | 'saving' | 'error'>('idle');
   const [removeError, setRemoveError] = useState('');
-  const state = useContactProfile(contact, contactProfileHost);
+  const state = useContactProfile(row, contactProfileHost);
   const profile = state.profile;
+  const contact = withProfilePresence(row, state);
   // The richer layout shows whenever the server can serve a profile; the request only fills cards.
   const rich = state.status !== 'unavailable';
   const kind = contactProfileKind(contact, profile);
@@ -89,9 +97,10 @@ function ContactDetailBody({ contact, onCloseOverlay, onMessageContact, onRemove
     const openAgent = contactProfileHost?.openAgentChat;
     rows.push({
       key: 'agent',
-      value: agent.displayName,
+      // A stock "Kordi" agent reads as "<owner>'s Kordi", as in chats.
+      value: defaultAgentDisplayName(profile?.displayName ?? contact.name, agent.displayName),
       caption: 'Their agent',
-      lead: avatarLead('agent', agent.avatarSeed ?? agent.agentId, agent.displayName, agent.avatarUrl),
+      lead: avatarLead('agent', agent.avatarSeed ?? agent.agentId, agent.displayName || 'Kordi', agent.avatarUrl),
       onClick: openAgent ? () => openAgent(agent, contact) : undefined,
     });
   }

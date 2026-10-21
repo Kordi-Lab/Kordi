@@ -205,7 +205,9 @@ export function resolveCloudActiveContact({
   cloudContacts: Contact[];
   visibleCloudContacts: Contact[];
 }): Contact | undefined {
-  const directCloudMatch = cloudContacts.find((contact) => contact.id === activeContactId);
+  // Visible rows carry presence; the pane shows the same line as the list.
+  const directCloudMatch = visibleCloudContacts.find((contact) => contact.id === activeContactId)
+    ?? cloudContacts.find((contact) => contact.id === activeContactId);
   if (directCloudMatch) return directCloudMatch;
 
   const parentCloudAccountId = cloudAccountIdForContact(parentActiveContact);

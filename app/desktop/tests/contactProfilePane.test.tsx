@@ -359,3 +359,42 @@ test('the confirm step drives the hosted removal handler', async () => {
     await page.cleanup();
   }
 });
+
+test('the status line follows the profile presence, and a stock agent is named after its owner', async () => {
+  const bare = contact({
+    id: 'cloud:acct_nadia', name: 'Nadia Haddad', subtitle: '@482731906', detail: '@482731906',
+    sourceHostId: 'cloud', sourceParticipantId: 'acct_nadia', sourceHumanId: 'acct_nadia',
+  });
+  const page = await mount({
+    activeContact: bare,
+    contactProfileHost: hostFor({
+      acct_nadia: profile({
+        displayName: 'Nadia Haddad',
+        presence: { status: 'offline', lastSeenAt: new Date(Date.now() - 6 * 60_000).toISOString() },
+        defaultAgent: { agentId: 'agent_n', accountId: 'cloud-agent:acct_nadia', displayName: 'Kordi', avatarUrl: null, avatarSeed: null },
+      }),
+    }, newCalls()),
+  });
+  try {
+    const line = page.host.querySelector('.app-contacts-detail-presence');
+    assert.equal(line?.textContent, 'last seen 6 minutes ago');
+    assert.ok(line?.classList.contains('app-contacts-muted'));
+    assert.match(page.text(), /Nadia Haddad's KordiTheir agent/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test('before the profile loads the status line uses the list presence', async () => {
+  const page = await mount({
+    activeContact: nadia,
+    contactProfileHost: { ...hostFor({}, newCalls()), load: () => new Promise(() => undefined) },
+  });
+  try {
+    const line = page.host.querySelector('.app-contacts-detail-presence');
+    assert.equal(line?.textContent, 'online');
+    assert.ok(line?.classList.contains('app-contacts-presence-online'));
+  } finally {
+    await page.cleanup();
+  }
+});

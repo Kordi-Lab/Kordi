@@ -120,7 +120,8 @@ function normalizeAgent(value: unknown): CloudContactProfileAgent | null {
   return {
     agentId,
     accountId: text(row.accountId),
-    displayName: text(row.displayName) ?? 'Agent',
+    // Empty stays empty so the pane can name a stock agent after its owner.
+    displayName: text(row.displayName) ?? '',
     avatarUrl: text(row.avatarUrl),
     avatarSeed: text(record(row.avatar)?.seed),
   };
