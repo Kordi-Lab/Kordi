@@ -86,7 +86,7 @@ test('cancelled local turn with tools but empty text dedupes against canonical d
 
 test('cancelled local turn with thinking but no tools or text dedupes via thinking signature', () => {
   const sessionId = 'session:group:thinking-only';
-  const thinkingText = '**Looking for answers**\n\nI realize I need to find an answer about coffee shops in Thuwal.';
+  const thinkingText = '**Looking for answers**\n\nI realize I need to find an answer about coffee shops in Lisbon.';
   const canonicalState = {
     storagePath: '/tmp/canonical.sqlite3',
     profile: {

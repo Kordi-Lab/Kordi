@@ -55,6 +55,25 @@ test('Quiet light keeps blue for outgoing emphasis and uses neutral incoming sur
   );
 });
 
+test('Classic light keeps plain gray fills and a neutral palette', () => {
+  const css = readDesktopShellCss();
+  const palette = readFileSync(new URL('../src/styles/theme-palette.css', import.meta.url), 'utf8');
+
+  assert.match(
+    css,
+    /body\[data-kordi-chat-theme="classic"\] \.kordi-app\.theme-light \.app-chat-bubble-user,[\s\S]*?--app-message-bubble-fill:\s*var\(--app-chat-bubble-user-bg\);/,
+  );
+  assert.match(
+    css,
+    /body\[data-kordi-chat-theme="classic"\] \.kordi-app\.theme-light \.app-chat-bubble-peer,[\s\S]*?--app-message-bubble-fill:\s*var\(--app-chat-bubble-peer-bg\);/,
+  );
+  assert.match(palette, /body\[data-kordi-chat-theme='classic'\],[\s\S]*?--app-palette-chroma:\s*0;/);
+  assert.match(
+    palette,
+    /body\[data-kordi-chat-theme='classic'\] \.kordi-app\.theme-light,[\s\S]*?--app-chat-bubble-user-bg:\s*#E9E9EB;[\s\S]*?--app-chat-wallpaper:\s*#FFFFFF;/,
+  );
+});
+
 test('every chat theme keeps small metadata at its verified WCAG AA opacity floor', () => {
   const tokens = readFileSync(new URL('../src/styles/chat-theme-tokens.css', import.meta.url), 'utf8');
 

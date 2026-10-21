@@ -468,3 +468,20 @@ fn people_card_labels_its_action_and_shows_the_kordi_id_plainly() {
     );
     assert!(!page.contains("font-family: var(--mono); white-space: nowrap"));
 }
+
+#[test]
+fn people_card_shows_a_chosen_handle_with_an_at_sign() {
+    let token = format!("kordi_ds_{}", "E".repeat(43));
+    let mut record = sample_record(DocumentFormat::Markdown, "Alex Morgan");
+    record.author.kordi_id = "AlexMorgan".into();
+    let page = document_page(
+        &PageInput {
+            token: &token,
+            record: &record,
+            source: "Body.\n",
+        },
+        "n5",
+    );
+    assert!(page.contains(r#"<div class="sub">@AlexMorgan</div>"#));
+    assert!(!page.contains("Kordi Ale"));
+}

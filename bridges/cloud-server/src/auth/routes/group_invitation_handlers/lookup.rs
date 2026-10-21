@@ -203,7 +203,7 @@ pub(super) async fn refresh_group_invitation_record_in_transaction(
 }
 
 const GROUP_INVITATION_SELECT: &str = "SELECT invite.invitation_id, invite.inviter_account_id, account.display_name, \
-        account.public_account_number, account.avatar_url, invite.group_snapshot, invite.expires_at \
+        COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url, invite.group_snapshot, invite.expires_at \
  FROM cloud_group_invitations invite \
  JOIN cloud_accounts account ON account.account_id = invite.inviter_account_id";
 
@@ -243,7 +243,7 @@ fn lookup_from_row(row: Option<GroupInvitationRow>) -> GroupInvitationLookup {
         invitation_id,
         inviter_account_id,
         inviter_display_name,
-        inviter_public_account_number,
+        inviter_kordi_id,
         inviter_avatar_url,
         snapshot,
         expires_at,
@@ -264,7 +264,7 @@ fn lookup_from_row(row: Option<GroupInvitationRow>) -> GroupInvitationLookup {
         invitation_id,
         inviter_account_id,
         inviter_display_name,
-        inviter_public_account_number,
+        inviter_kordi_id,
         inviter_avatar_url,
         snapshot,
         expires_at,
@@ -277,7 +277,7 @@ pub(super) fn group_invitation_preview(
     GroupInvitationPreviewResponse {
         inviter: AppInvitationInviterResponse {
             display_name: record.inviter_display_name.clone(),
-            kordi_id: record.inviter_public_account_number.to_string(),
+            kordi_id: record.inviter_kordi_id.clone(),
             avatar_url: record.inviter_avatar_url.clone(),
         },
         group: GroupInvitationGroupResponse {

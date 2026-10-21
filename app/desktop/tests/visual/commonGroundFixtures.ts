@@ -47,7 +47,10 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
       { label: 'Eval design', people: [hana, ines] },
     ],
     suggestion: { label: 'Agent memory', people: [self, hana, maya] },
-    groups: [{ groupSpaceId: 'gs_eval', conversationId: 'group:gs_eval', name: 'Eval reading group', memberCount: 4, createdBy: maya, joined: true, topic: 'Eval design' }],
+    groups: [{ groupSpaceId: 'gs_eval', conversationId: 'group:gs_eval', name: 'Eval reading group', memberCount: 4, createdBy: maya, joined: true, topic: 'Eval design', members: [maya, hana, ines, rafa] },
+      { groupSpaceId: 'gs_memory', conversationId: 'group:gs_memory', name: 'Agent memory notes', memberCount: 2, createdBy: hana, joined: true, topic: null, members: [hana, rafa] },
+      { groupSpaceId: 'gs_solo', conversationId: 'group:gs_solo', name: 'Privacy review', memberCount: 1, createdBy: ines, joined: false, topic: 'Privacy review', members: [ines] },
+    ],
     invitations: [{ invitationRef: 'inv_1', groupSpaceId: 'gs_ret', name: 'Retrieval', from: rafa, createdAt: '2026-10-20T09:00:00Z' }],
   };
   // As the server sends it: the relationship beside the person, not inside it.

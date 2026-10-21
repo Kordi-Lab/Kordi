@@ -10,7 +10,12 @@ async fn upgrade_from_133_adds_common_ground() {
     a.unwrap();
     b.unwrap();
     latest_version(&pool).await;
-    let after: Vec<(Value,)> = query_as(accounts).fetch_all(&pool).await.unwrap();
+    // Migrations 139 and 140 add empty profile columns.
+    let after: Vec<(Value,)> =
+        query_as("SELECT to_jsonb(a) - ARRAY['public_handle','about','location','time_zone','website','birthday','public_handle_changed_at'] FROM cloud_accounts a ORDER BY account_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
     assert_eq!(before, after, "accounts are untouched");
 
     // Rows use the current schema, where everything hangs off a profile.
@@ -204,8 +209,8 @@ async fn upgrade_from_138_adds_group_topics() {
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_139_adds_profiles() {
-    let pool = fixture(139).await;
+async fn upgrade_from_141_adds_profiles() {
+    let pool = fixture(141).await;
     let room = "00000000-0000-0000-0000-000000000001";
     execute(&pool, "INSERT INTO cloud_common_ground_cards(account_id,topics_json,revision,built_at) VALUES('fixture-owner','{\"workingOn\":[\"Agent memory\"]}',3,now()),('fixture-peer','{}',1,now())").await;
     execute(&pool, &format!("INSERT INTO cloud_common_ground_rooms(room_id,code,created_by) VALUES('{room}','0427','fixture-owner')")).await;
