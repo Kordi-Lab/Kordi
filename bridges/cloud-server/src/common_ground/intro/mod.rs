@@ -11,9 +11,9 @@ use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
-use self::prompt::{intro_prompt, joined_line, Introduced, Role, INTRO_SYSTEM};
+use self::prompt::{intro_prompt, joined_line, Introduced, Relation, Role, INTRO_SYSTEM};
 use super::card::Topics;
-use super::matching::shared_cards;
+use super::matching::{shared_cards, stored_results};
 use super::runs::{self, NewRun, INTRO_PREFIX};
 use crate::chat_sync::models::SendMessageRequest;
 use crate::document_shares::access::clean_display_name;
@@ -114,10 +114,14 @@ pub(super) async fn queue(
     tx.commit().await
 }
 
-fn text_message(client_message_id: Uuid, text: &str) -> SendMessageRequest {
+/// Server-only message kind that clients show as a notice from "System".
+/// Clients cannot post it; see `validate_message_request`.
+const SYSTEM_NOTICE_KIND: &str = "system-notice";
+
+fn notice_message(client_message_id: Uuid, text: &str) -> SendMessageRequest {
     SendMessageRequest {
         client_message_id,
-        kind: "text".to_string(),
+        kind: SYSTEM_NOTICE_KIND.to_string(),
         content: json!({
             "schema": 1,
             "blocks": [{ "type": "text", "text": text }],
@@ -174,7 +178,7 @@ pub(super) async fn complete(
         &mut tx,
         &pip_account,
         conversation_id,
-        text_message(message_id, &text),
+        notice_message(message_id, &text),
     )
     .await;
     if let Err(error) = posted {
@@ -212,7 +216,59 @@ pub(super) async fn fail(
     tx.commit().await
 }
 
-/// Posts "<Name> joined. …" as PiP in the group `account` just joined.
+/// How `account` relates to the other people in the conversation, from the
+/// stored matches with `account`'s room card as viewer, in join order.
+async fn related_people(
+    pool: &PgPool,
+    pip_account: &str,
+    room_id: Uuid,
+    conversation_id: Uuid,
+    account: &str,
+) -> sqlx_core::Result<(Option<Topics>, Vec<(String, Relation)>)> {
+    let mut skip: Vec<String> = crate::pip::service_account_id()
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    skip.extend([pip_account.to_string(), account.to_string()]);
+    let others: Vec<(String,)> = query_as(
+        "SELECT account_id FROM cloud_chat_conversation_members
+         WHERE conversation_id = $1 AND membership_state = 'active'
+           AND NOT (account_id = ANY($2))
+         ORDER BY joined_at, account_id",
+    )
+    .bind(conversation_id)
+    .bind(&skip)
+    .fetch_all(pool)
+    .await?;
+    let mut ids: Vec<String> = vec![account.to_string()];
+    ids.extend(others.into_iter().map(|(id,)| id));
+    let profiles: HashMap<String, String> = room_profiles(pool, room_id, &ids)
+        .await?
+        .into_iter()
+        .collect();
+    // In join order, the joiner first.
+    let members: Vec<(String, String)> = ids
+        .iter()
+        .filter_map(|id| Some((id.clone(), profiles.get(id)?.clone())))
+        .collect();
+    let mut cards = shared_cards(pool, &members).await?;
+    let Some(position) = cards.iter().position(|card| card.account_id == account) else {
+        return Ok((None, Vec::new()));
+    };
+    let viewer = cards.remove(position);
+    let results = stored_results(pool, &viewer, &cards).await?;
+    let related = cards
+        .iter()
+        .filter_map(|card| {
+            let relation = Relation::from_match(results.get(&card.profile_id)?)?;
+            Some((card.name.clone(), relation))
+        })
+        .collect();
+    Ok((Some(viewer.topics), related))
+}
+
+/// Posts "<Name> joined. …" as a system notice in the group `account` just
+/// joined, naming how they relate to the people already there.
 pub(super) async fn post_joined(
     pool: &PgPool,
     pip_account: &str,
@@ -228,11 +284,12 @@ pub(super) async fn post_joined(
     let Some((name,)) = name else {
         return Ok(());
     };
-    let members = room_profiles(pool, room_id, &[account.to_string()]).await?;
-    let card = shared_cards(pool, &members).await?;
+    let (topics, related) =
+        related_people(pool, pip_account, room_id, conversation_id, account).await?;
     let line = joined_line(
         &clean_display_name(name.as_deref()),
-        card.first().map(|card| &card.topics),
+        topics.as_ref(),
+        &related,
     );
     let message_id = Uuid::new_v5(
         &Uuid::NAMESPACE_OID,
@@ -242,7 +299,7 @@ pub(super) async fn post_joined(
         pool,
         pip_account,
         conversation_id,
-        text_message(message_id, &line),
+        notice_message(message_id, &line),
     )
     .await
     .map(|_| ())
