@@ -5,6 +5,7 @@ struct ContactsView<PinnedRows: View>: View {
     @State private var searchText = ""
     @State private var showAddContact = false
     @State private var showsCommonGround = false
+    @State private var profileSubject: ContactProfileSubject?
     var onOpenConversation: ((ConversationSummary) -> Void)? = nil
     /// Pushes Common ground on the main stack; without it the screen opens full screen.
     var onOpenCommonGround: (() -> Void)? = nil
@@ -91,17 +92,8 @@ struct ContactsView<PinnedRows: View>: View {
                     } else {
                         ForEach(contacts) { contact in
                             if let conversation = model.conversationForContact(contact) {
-                                if let onOpenConversation {
-                                    Button { onOpenConversation(conversation) } label: {
-                                        ContactIdentityRow(contact: contact)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .contactsListRow()
-                                } else {
-                                    NavigationLink(value: conversation) {
-                                        ContactIdentityRow(contact: contact)
-                                    }
-                                    .contactsListRow()
+                                ContactsContactEntry(contact: contact, conversation: conversation, onOpenConversation: onOpenConversation) {
+                                    profileSubject = ContactProfileSubject(contact: contact)
                                 }
                             }
                         }
@@ -140,6 +132,7 @@ struct ContactsView<PinnedRows: View>: View {
             }
         }
         .sheet(isPresented: $showAddContact) { AddContactSheet() }
+        .contactProfileSheet(subject: $profileSubject, onOpenConversation: onOpenConversation)
         .fullScreenCover(isPresented: $showsCommonGround) {
             CommonGroundView(appModel: model, onClose: { showsCommonGround = false }) { showsCommonGround = false; onOpenConversation?($0) }
         }
@@ -346,11 +339,12 @@ private struct ContactAvatar: View {
 
 /// A person row: presence ("online", "last seen 9 minutes ago") under the name. The Kordi ID
 /// stays searchable and shows only when presence is unknown.
-private struct ContactIdentityRow: View {
+struct ContactIdentityRow: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
     let contact: CloudContact
+    var onOpenProfile: (() -> Void)? = nil
 
     private var handle: String? { contact.kordiId.nonEmpty.map { "@\($0)" } }
 
@@ -375,6 +369,7 @@ private struct ContactIdentityRow: View {
                 subtitleColor: presence?.status == .online ? KordiTheme.signalBlue : nil
             ) {
                 ContactAvatar(name: contact.preferredName, imageSource: contact.avatarUrl.nonEmpty, seed: contact.accountId)
+                    .highPriorityGesture(TapGesture().onEnded { onOpenProfile?() }, including: onOpenProfile == nil ? .subviews : .all)
             }
         }
     }
