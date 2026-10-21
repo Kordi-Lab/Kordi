@@ -8,6 +8,8 @@ import type { MessagePlanCard, MessagePlanCardOption } from '@/kordi-app/types/m
 import { planCardView } from '@/features/cloud/planCardSnapshot';
 import { isPipAvatarUrl, KORDI_PIP_TAG } from '@/features/pip/pipIdentity';
 import { shouldLoadAvatarThroughNativeProxy, useRemoteAvatarImage } from './remoteAvatarImage';
+import { PlanCardChangeTimeDialog } from './planCardChangeTime';
+import { planCardReviseRequest } from './planCardRevise';
 
 const STATE_LABEL: Record<MessagePlanCard['state'], string> = {
   polling: 'Planning',
@@ -87,9 +89,12 @@ export function PipSenderTag({ avatarUrl }: { avatarUrl?: string | null }) {
 export function PlanCardContent({
   card,
   ownAccountId,
+  conversationId,
 }: {
   card: MessagePlanCard;
   ownAccountId?: string | null;
+  /** The cloud chat the card lives in; the organizer needs it to change the time. */
+  conversationId?: string | null;
 }) {
   const [sessionAccountId, setSessionAccountId] = useState<string | null>(ownAccountId ?? null);
   useEffect(() => {
@@ -106,6 +111,7 @@ export function PlanCardContent({
   const [localState, setLocalState] = useState<MessagePlanCard | null>(null);
   // Which people list is open: `attendees`, or `voters:<optionId>`.
   const [panel, setPanel] = useState<string | null>(null);
+  const [changingTime, setChangingTime] = useState(false);
   const cardRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!panel) return;
@@ -130,7 +136,9 @@ export function PlanCardContent({
   const options = view.options ?? [];
   const polling = isVote && view.state === 'polling' && options.length > 0;
   const isOpen = view.state !== 'canceled';
-  const canRespond = !isVote && Boolean(self) && isOpen;
+  // The organizer is going by proposing it; they change the time instead of answering.
+  const canRespond = !isVote && Boolean(self) && !self?.organizer && isOpen;
+  const canChangeTime = !isVote && Boolean(self?.organizer && conversationId && accountId) && (view.state === 'polling' || view.state === 'awaiting_confirmation');
   const leading = isVote ? leadingOption(options) : null;
   const canConfirm = Boolean(self?.organizer || (accountId && view.managerIds?.includes(accountId))) && (isVote ? polling && leading !== null : view.state === 'awaiting_confirmation');
   const confirmationStart = leading?.startAt ?? view.startAt;
@@ -139,7 +147,7 @@ export function PlanCardContent({
     ? 'Set a date and time in chat before confirming.'
     : !isVote && view.state === 'confirmed' && !hasConfirmationTime
       ? 'Add a date and time in chat to put this plan on calendars.'
-      : !isVote && view.state === 'confirmed' && self?.rsvp === 'pending'
+      : canRespond && view.state === 'confirmed' && self?.rsvp === 'pending'
         ? 'Choose “I’m in” to add this plan to your calendar.' : null;
   const onCalendar = !isVote && view.state === 'confirmed' && self?.rsvp === 'yes' && hasConfirmationTime;
   const voterCount = new Set(options.flatMap((option) => option.votes)).size;
@@ -245,13 +253,14 @@ export function PlanCardContent({
         />
       )}
 
-      {canRespond || canConfirm ? (
+      {canRespond || canConfirm || canChangeTime ? (
         <div className="app-plan-card-actions">
           {canRespond ? (
             <>
               <button
                 type="button"
                 className={cn('app-plan-card-button', self?.rsvp === 'no' && 'app-plan-card-button-active')}
+                aria-pressed={self?.rsvp === 'no'}
                 disabled={Boolean(busy)}
                 onClick={() => { void act('no', { action: 'rsvp', eventId: view.eventId, participantId: accountId ?? '', rsvp: 'no' }); }}
               >
@@ -259,13 +268,19 @@ export function PlanCardContent({
               </button>
               <button
                 type="button"
-                className={cn('app-plan-card-button', self?.rsvp === 'yes' ? 'app-plan-card-button-active' : 'app-plan-card-button-primary')}
+                className={cn('app-plan-card-button', self?.rsvp === 'yes' && 'app-plan-card-button-active')}
+                aria-pressed={self?.rsvp === 'yes'}
                 disabled={Boolean(busy)}
                 onClick={() => { void act('yes', { action: 'rsvp', eventId: view.eventId, participantId: accountId ?? '', rsvp: 'yes' }); }}
               >
                 <Check size={12} aria-hidden /> I'm in
               </button>
             </>
+          ) : null}
+          {canChangeTime ? (
+            <button type="button" className="app-plan-card-button" disabled={Boolean(busy)} onClick={() => setChangingTime(true)}>
+              <CalendarClock size={12} aria-hidden /> Change time
+            </button>
           ) : null}
           {canConfirm ? (
             <button
@@ -281,6 +296,18 @@ export function PlanCardContent({
         </div>
       ) : null}
       {onCalendar ? <div className="app-plan-card-calendar-note"><CalendarCheck size={11} aria-hidden /> On your calendar</div> : null}
+      {changingTime && canChangeTime && conversationId && accountId ? (
+        <PlanCardChangeTimeDialog
+          card={view}
+          accountId={accountId}
+          busy={Boolean(busy)}
+          onCancel={() => setChangingTime(false)}
+          onSubmit={(input) => {
+            setChangingTime(false);
+            void act('time', planCardReviseRequest(view, conversationId, input));
+          }}
+        />
+      ) : null}
       {notice || calendarHint ? <div className={notice ? "app-plan-card-notice" : "app-plan-card-guidance"} role="status">{notice ?? calendarHint}</div> : null}
     </section>
   );

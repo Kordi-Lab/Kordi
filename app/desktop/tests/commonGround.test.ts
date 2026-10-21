@@ -11,6 +11,7 @@ import {
   isRouteMissing,
 } from '../src/features/commonGround/client';
 import { agentFilesSummary, canBuildProfile, commonGroundBuildRequest, type CgBuildChoices } from '../src/features/commonGround/buildRequest';
+import { meetRequest, meetTimes, meetTimeSlots, shiftMeetDate, topicGroupDraft } from '../src/features/commonGround/format';
 import { groupLine, meetTimes, topicGroupDraft } from '../src/features/commonGround/format';
 import { HomeScreen } from '../src/features/commonGround/HomeScreen';
 import type { CgHost } from '../src/features/commonGround/host';
@@ -231,6 +232,27 @@ test('meet times turn a local slot into ISO start and end', () => {
   assert.ok(times);
   assert.equal(Date.parse(times.endAt) - Date.parse(times.startAt), 90 * 60_000);
   assert.equal(meetTimes('', '', 30), null);
+});
+
+test('meet request ends at start plus the chosen duration', () => {
+  const draft = { name: 'Hana', title: '  ', date: '2026-10-21', time: '14:15', minutes: 90, location: '' };
+  const request = meetRequest(draft);
+  assert.ok(request);
+  assert.equal(request.title, 'Meet Hana');
+  assert.equal(request.startAt, new Date('2026-10-21T14:15').toISOString());
+  assert.equal(Date.parse(request.endAt) - Date.parse(request.startAt), 90 * 60_000);
+  assert.equal('location' in request, false);
+  const placed = meetRequest({ ...draft, title: 'Coffee', minutes: 120, location: ' Cafe ' });
+  assert.deepEqual(placed && { title: placed.title, location: placed.location, span: Date.parse(placed.endAt) - Date.parse(placed.startAt) }, { title: 'Coffee', location: 'Cafe', span: 120 * 60_000 });
+  assert.equal(meetRequest({ ...draft, date: '' }), null);
+});
+
+test('meet pickers step days across months and times in 15 minutes', () => {
+  assert.equal(shiftMeetDate('2026-10-31', 1), '2026-11-01');
+  assert.equal(shiftMeetDate('2026-01-01', -1), '2025-12-31');
+  const slots = meetTimeSlots();
+  assert.equal(slots.length, 96);
+  assert.deepEqual([slots[0], slots[1], slots[95]], ['00:00', '00:15', '23:45']);
 });
 
 test('rate limits without Retry-After ask for a minute', () => {

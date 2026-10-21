@@ -4,7 +4,6 @@ import { useMemo, useRef, useState } from 'react';
 import { useCompanionSessionRead } from '@/app/useCompanionSessionRead';
 import { useAppLayoutState } from '@/app/useAppLayoutState';
 import { useActiveConversationReadPresentation } from '@/app/useActiveConversationReadPresentation';
-import { useAcceptedCloudGroupNavigation } from '@/app/useAcceptedCloudGroupNavigation';
 import { projects } from '@/kordi-app/data';
 import { useKordiAuthNavigationState } from '@/app/useKordiAuthNavigationState';
 import {
@@ -343,13 +342,6 @@ export function useKordiAppFoundation({
     sendCloudCollaborationMessage,
     setRoutesBySessionId: setCloudAgentRuntimeRoutesBySessionId,
     updateCloudCollaborationSessionTitle,
-  });
-
-  useAcceptedCloudGroupNavigation({
-    refreshCloudMessages,
-    setActiveConversationId: setActiveConvId,
-    setActiveNavigation: setActiveNav,
-    setDesktopChatError,
   });
 
   // The desktop collaboration read model is derived only from hosted Cloud data.

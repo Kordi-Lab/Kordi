@@ -4,7 +4,8 @@ import { useKordiAppShellComposition } from '@/app/useKordiAppShellComposition';
 import { useKordiWorkspaceState } from '@/app/useKordiWorkspaceState';
 import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { useCloudCalls } from '@/features/cloud/useCloudCalls';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
+import { useAcceptedCloudGroupNavigation } from '@/app/useAcceptedCloudGroupNavigation';
 import { chatNavigationIndex } from '@/features/chat/chatNavigation';
 
 export function useKordiAppModel({
@@ -31,6 +32,16 @@ export function useKordiAppModel({
   ]), [archivedParticipantSpaces, chatConversations]);
   const updateChatNavigationIndex = foundation.navigation.updateChatNavigationIndex;
   useEffect(() => updateChatNavigationIndex(chatDestinations), [chatDestinations, updateChatNavigationIndex]);
+  // Accepted or newly started groups open once this same index holds them.
+  const hasChatDestination = useCallback((id: string) => chatDestinations.has(id), [chatDestinations]);
+  useAcceptedCloudGroupNavigation({
+    activeConversationId: foundation.navigation.activeConvId,
+    hasConversation: hasChatDestination,
+    refreshCloudMessages: foundation.cloud.refreshCloudMessages,
+    setActiveConversationId: foundation.navigation.setActiveConvId,
+    setActiveNavigation: foundation.navigation.setActiveNav,
+    setDesktopChatError: foundation.chat.setDesktopChatError,
+  });
   const actions = useKordiAppActions({ foundation, workspace });
   const cloudCalls = useCloudCalls({
     account: foundation.environment.cloudSession.account,
