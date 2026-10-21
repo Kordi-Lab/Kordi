@@ -1523,7 +1523,7 @@ struct ConversationView: View {
                     layout: messageLayout,
                     mentionTargets: mentionTargets,
                     showAuthor: message.author == .agent
-                        || (conversation.kind == .group
+                        || ((conversation.kind == .group || KordiSystemIdentity.isSystemNotice(message))
                             && message.author == .person
                             && !presentation.groupedWithPrevious),
                     showAvatar: presentation.showsAvatar,
