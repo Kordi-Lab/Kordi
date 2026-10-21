@@ -56,7 +56,7 @@ async fn relationship_follows_add_and_mutual_accept() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(message.as_deref(), Some("Found you on Common ground"));
+    assert_eq!(message.as_deref(), Some("Found you on Grounding"));
 
     // Adding back accepts their request and opens the chat.
     let (status, body) = send(&app, "POST", &path(&alex, "contact"), &priya_token, None).await;

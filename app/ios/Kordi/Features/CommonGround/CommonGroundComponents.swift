@@ -75,7 +75,8 @@ struct CommonGroundPeopleRows: View {
         let subtitle: String
         var score: Int? = nil
         var selectable = true
-        var id: String { person.accountId }
+        /// One row per person and the profile they share.
+        var id: String { person.accountId + "|" + (person.profile?.profileId ?? "") }
     }
 
     let entries: [Entry]
@@ -97,7 +98,7 @@ struct CommonGroundPeopleRows: View {
         HStack(spacing: 12) {
             CommonGroundAvatar(person: entry.person, size: 40)
             VStack(alignment: .leading, spacing: 2) {
-                Text(entry.person.displayName).font(.headline).foregroundStyle(.primary)
+                Text(entry.person.labeledName).font(.headline).foregroundStyle(.primary)
                 if !entry.subtitle.isEmpty {
                     Text(entry.subtitle)
                         .font(.subheadline)
@@ -308,4 +309,30 @@ func commonGroundDisplayDate(_ raw: String?) -> String? {
 func commonGroundNameList(_ names: [String]) -> String {
     guard names.count > 1 else { return names.first ?? "" }
     return names.dropLast().joined(separator: ", ") + " and " + (names.last ?? "")
+}
+
+/// A group row's leading mark: up to three overlapping member avatars and "+N",
+/// or the generic group icon when no members came with the group.
+struct CommonGroundMemberCluster: View {
+    let members: [CommonGroundPerson]
+    var total: Int? = nil
+    private let size: CGFloat = 28
+
+    var body: some View {
+        if members.isEmpty {
+            IdentityAvatar(name: "Group", imageSource: nil, kind: .group, size: 40)
+        } else {
+            let shown = Array(members.prefix(3))
+            let extra = max(0, (total ?? members.count) - shown.count)
+            HStack(spacing: -10) {
+                ForEach(shown) { CommonGroundAvatar(person: $0, size: size, ringed: true) }
+                if extra > 0 {
+                    Text("+\(extra)")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 14)
+                }
+            }
+        }
+    }
 }

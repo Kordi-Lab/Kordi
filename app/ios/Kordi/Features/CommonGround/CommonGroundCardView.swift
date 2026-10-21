@@ -10,13 +10,14 @@ struct CommonGroundCardView: View {
     @State private var adding: WritableKeyPath<CommonGroundTopics, [String]>?
     @State private var draft = ""
     @State private var confirmsDelete = false
+    @State private var editing: CommonGroundProfileEditTarget?
     @FocusState private var draftFocused: Bool
 
     private var profile: CommonGroundProfile? { model.card?.profile }
 
     var body: some View {
         CommonGroundPage {
-            CommonGroundHero(title: "Your card", status: model.hasCard ? "\(model.myTopics.count) topics shared" : "") {
+            CommonGroundHero(title: model.currentProfile?.title ?? "Your card", status: model.hasCard ? "\(model.myTopics.count) topics shared" : "") {
                 CommonGroundAvatar(person: model.me, size: 92)
             }
             VStack(spacing: 16) {
@@ -42,12 +43,30 @@ struct CommonGroundCardView: View {
                     settings
                 } else {
                     CommonGroundSection {
-                        CommonGroundRow(title: "Build your profile") { path.append(.build) }
+                        CommonGroundRow(title: model.buildTitle) { path.append(.build) }
                     }
                 }
             }
             .padding(.horizontal, 16)
         }
+        .overlay(alignment: .topTrailing) {
+            if let profile = model.currentProfile {
+                Menu {
+                    CommonGroundProfileMenuItems(profile: profile, editing: $editing)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 44, height: 44)
+                        .sessionGlass(in: Circle())
+                        .contentShape(Circle())
+                }
+                .padding(.trailing, 16)
+                .safeAreaPadding(.top, 8)
+                .accessibilityLabel("Profile")
+            }
+        }
+        .commonGroundProfileEditor($editing) { path = [] }
         .sheet(item: $references) { topic in
             CommonGroundReferences(topic: topic.label, profile: profile)
                 .environmentObject(model)

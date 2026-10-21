@@ -6,8 +6,8 @@ import { cloudApiBaseUrl } from '@/features/cloud/cloudApiEnvironment';
 import { cloudFetchImpl } from '@/features/cloud/cloudTransport';
 import { loadSession } from '@/features/cloud/session';
 import type {
-  CgBuildRequest, CgCreatedGroup, CgGroup, CgMatch, CgMeetInput, CgOwnerView, CgPairCode, CgPerson,
-  CgPersonCard, CgRecentEntry, CgRelationship, CgResults, CgRoom, CgRoomSummary, CgTopicLists,
+  CgBuildRequest, CgCreatedGroup, CgGroup, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPairCode, CgPerson,
+  CgPersonCard, CgProfile, CgProfileInput, CgRecentEntry, CgRelationship, CgResults, CgRoom, CgRoomSummary, CgTopicLists,
 } from './types';
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -69,11 +69,24 @@ export type CgResponse<T> = { status: number; body: T };
 
 async function sessionToken(): Promise<string> {
   const session = await loadSession();
-  if (!session?.token) throw new CommonGroundError('Sign in again to use Common ground.', 401, null);
+  if (!session?.token) throw new CommonGroundError('Sign in again to use Grounding.', 401, null);
   return session.token;
 }
 
 const enc = encodeURIComponent;
+
+/** `?profile=<id>` when a profile is named; nothing for servers before profiles. */
+const profileQuery = (profileId?: string | null) => (profileId ? `?profile=${enc(profileId)}` : '');
+const withProfileId = <T extends object>(body: T, profileId?: string | null) => (profileId ? { ...body, profileId } : body);
+
+/** The join body without empty fields. */
+function joinBody(input: CgJoinInput) {
+  return {
+    ...(input.name?.trim() ? { name: input.name.trim() } : {}),
+    ...(input.kind ? { kind: input.kind } : {}),
+    ...(input.profileId ? { profileId: input.profileId } : {}),
+  };
+}
 
 /** Match and card replies carry `relationship` beside `person`; keep it on the person too. */
 function withRelationship<T extends { person: CgPerson; relationship?: CgRelationship }>(body: T): T {
@@ -100,6 +113,8 @@ function roomSummary(entry: Partial<CgRoomSummary> & { code: string }): CgRoomSu
     joinedAt: entry.joinedAt ?? '',
     lastActivityAt: entry.lastActivityAt ?? '',
     themeCount: entry.themeCount ?? 0,
+    kind: entry.kind ?? null,
+    profileId: entry.profileId ?? null,
   };
 }
 
@@ -143,20 +158,31 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
   const cg = (path: string) => `common-ground/${path}`;
 
   return {
-    card: () => data<CgOwnerView>('GET', cg('card')),
-    saveTopics: (topics: CgTopicLists) => data<CgOwnerView>('PUT', cg('card'), {
+    profiles: async () => (await data<{ profiles?: CgProfile[] }>('GET', cg('profiles')))?.profiles ?? [],
+    createProfile: (input: CgProfileInput) => data<CgProfile>('POST', cg('profiles'), {
+      kind: input.kind,
+      ...(input.name?.trim() ? { name: input.name.trim() } : {}),
+      ...(input.focus?.trim() ? { focus: input.focus.trim() } : {}),
+    }),
+    /** An empty focus clears it; an empty name gives a fixed kind its default name back. */
+    updateProfile: (profileId: string, patch: { name?: string; focus?: string }) => data<CgProfile>('PUT', cg(`profiles/${enc(profileId)}`), patch),
+    deleteProfile: (profileId: string) => data<null>('DELETE', cg(`profiles/${enc(profileId)}`)),
+    card: (profileId?: string | null) => data<CgOwnerView>('GET', cg(`card${profileQuery(profileId)}`)),
+    saveTopics: (topics: CgTopicLists, profileId?: string | null) => data<CgOwnerView>('PUT', cg(`card${profileQuery(profileId)}`), {
       workingOn: topics.workingOn, interests: topics.interests, canHelp: topics.canHelp, lookingFor: topics.lookingFor,
     }),
-    deleteCard: () => data<CgOwnerView>('DELETE', cg('card')),
-    build: (request: CgBuildRequest) => data<CgOwnerView>('POST', cg('card/build'), request),
-    setHidden: (hidden: string[]) => data<CgOwnerView>('PUT', cg('card/hidden'), { hidden }),
-    setSharing: (sharing: boolean) => data<CgOwnerView>('PUT', cg('settings'), { sharing }),
+    deleteCard: (profileId?: string | null) => data<CgOwnerView>('DELETE', cg(`card${profileQuery(profileId)}`)),
+    build: (request: CgBuildRequest, profileId?: string | null) => data<CgOwnerView>('POST', cg('card/build'), withProfileId(request, profileId)),
+    setHidden: (hidden: string[], profileId?: string | null) => data<CgOwnerView>('PUT', cg('card/hidden'), withProfileId({ hidden }, profileId)),
+    setSharing: (sharing: boolean, profileId?: string | null) => data<CgOwnerView>('PUT', cg('settings'), withProfileId({ sharing }, profileId)),
     rooms: async () => {
       const list = await data<{ rooms?: Array<Partial<CgRoomSummary> & { code: string }> }>('GET', cg('rooms'));
       return (list?.rooms ?? []).map(roomSummary);
     },
     room: (code: string) => data<CgRoom>('GET', cg(`rooms/${enc(code)}`)),
-    joinRoom: (code: string, name?: string) => data<CgRoom>('POST', cg(`rooms/${enc(code)}/join`), name ? { name } : {}),
+    joinRoom: (code: string, input: CgJoinInput = {}) => data<CgRoom>('POST', cg(`rooms/${enc(code)}/join`), joinBody(input)),
+    /** Shares another of your profiles in an open room. */
+    switchRoomProfile: (code: string, profileId: string) => data<CgRoom>('POST', cg(`rooms/${enc(code)}/profile`), { profileId }),
     leaveRoom: (code: string) => data<null>('POST', cg(`rooms/${enc(code)}/leave`)),
     results: async (code: string) => {
       const results = await data<CgResults>('POST', cg(`rooms/${enc(code)}/results`));
@@ -173,12 +199,14 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
     joinInvitation: (code: string, ref: string) => data<{ status: string } & Omit<CgGroup, 'memberCount'>>(
       'POST', cg(`rooms/${enc(code)}/invitations/${enc(ref)}/join`),
     ),
-    person: async (accountId: string) => withRelationship(await data<CgPersonCard>('GET', cg(`people/${enc(accountId)}`))),
-    /** 200 with the match, or 202 while it is being found. */
-    match: async (accountId: string): Promise<CgMatch> => {
-      const { status, body } = await send<CgMatch>('GET', cg(`people/${enc(accountId)}/match`));
+    person: async (accountId: string, profileId?: string | null) => withRelationship(
+      await data<CgPersonCard>('GET', cg(`people/${enc(accountId)}${profileQuery(profileId)}`)),
+    ),
+    /** 200 with the match, or 202 while it is being found. `profileId` is the viewer's profile. */
+    match: async (accountId: string, profileId?: string | null): Promise<CgMatch> => {
+      const { status, body } = await send<CgMatch>('GET', cg(`people/${enc(accountId)}/match${profileQuery(profileId)}`));
       const match: CgMatch = status === 202
-        ? { status: body.status === 'failed' ? 'failed' : 'matching', person: body.person, relationship: body.relationship }
+        ? { status: body.status === 'failed' ? 'failed' : 'matching', person: body.person, relationship: body.relationship, profileId: body.profileId }
         : { ...body, status: 'ready' };
       return withRelationship(match);
     },
@@ -194,7 +222,7 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
       return { people: (recent.people ?? []).map(withRelationship) };
     },
     pairings: () => data<{ people: CgPerson[] }>('GET', cg('pairings')),
-    newPairCode: () => data<CgPairCode>('POST', cg('pairings/code')),
+    newPairCode: (profileId?: string | null) => data<CgPairCode>('POST', cg('pairings/code'), profileId ? { profileId } : undefined),
     redeem: async (code: string) => withRelationship(await data<CgPersonCard>('POST', cg('pairings/redeem'), { code })),
   };
 }

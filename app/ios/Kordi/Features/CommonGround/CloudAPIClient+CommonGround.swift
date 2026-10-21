@@ -13,32 +13,61 @@ extension CloudAPIClient {
         value.addingPercentEncoding(withAllowedCharacters: Self.commonGroundSegment) ?? value
     }
 
+    /// `?profile=<id>`; nothing before profiles.
+    private func cgProfile(_ profileId: String?) -> [URLQueryItem] {
+        profileId.map { [URLQueryItem(name: "profile", value: $0)] } ?? []
+    }
+
     // MARK: Card
 
-    func commonGroundCard(token: String) async throws -> CommonGroundOwnerView {
-        try await send(path: cg("card"), method: "GET", token: token, fallback: "Could not load your card.")
+    func commonGroundCard(token: String, profileId: String? = nil) async throws -> CommonGroundOwnerView {
+        try await send(path: cg("card"), method: "GET", token: token, query: cgProfile(profileId), fallback: "Could not load your card.")
     }
 
-    func saveCommonGroundTopics(token: String, topics: CommonGroundTopics) async throws -> CommonGroundOwnerView {
-        try await send(path: cg("card"), method: "PUT", token: token, body: topics, fallback: "Could not save your card.")
+    func saveCommonGroundTopics(token: String, topics: CommonGroundTopics, profileId: String? = nil) async throws -> CommonGroundOwnerView {
+        try await send(path: cg("card"), method: "PUT", token: token, query: cgProfile(profileId), body: topics, fallback: "Could not save your card.")
     }
 
-    func deleteCommonGroundCard(token: String) async throws -> CommonGroundOwnerView {
-        try await send(path: cg("card"), method: "DELETE", token: token, fallback: "Could not delete your card.")
+    func deleteCommonGroundCard(token: String, profileId: String? = nil) async throws -> CommonGroundOwnerView {
+        try await send(path: cg("card"), method: "DELETE", token: token, query: cgProfile(profileId), fallback: "Could not delete your card.")
     }
 
     func buildCommonGroundCard(token: String, request: CommonGroundBuildRequest) async throws -> CommonGroundOwnerView {
         try await send(path: cg("card/build"), method: "POST", token: token, body: request, fallback: "Could not build your card.")
     }
 
-    func setCommonGroundHidden(token: String, hidden: [String]) async throws -> CommonGroundOwnerView {
-        struct Body: Encodable { let hidden: [String] }
-        return try await send(path: cg("card/hidden"), method: "PUT", token: token, body: Body(hidden: hidden), fallback: "Could not update your card.")
+    func setCommonGroundHidden(token: String, hidden: [String], profileId: String? = nil) async throws -> CommonGroundOwnerView {
+        struct Body: Encodable { let hidden: [String]; let profileId: String? }
+        return try await send(
+            path: cg("card/hidden"), method: "PUT", token: token,
+            body: Body(hidden: hidden, profileId: profileId), fallback: "Could not update your card."
+        )
     }
 
-    func setCommonGroundSharing(token: String, sharing: Bool) async throws -> CommonGroundOwnerView {
-        struct Body: Encodable { let sharing: Bool }
-        return try await send(path: cg("settings"), method: "PUT", token: token, body: Body(sharing: sharing), fallback: "Could not change sharing.")
+    func setCommonGroundSharing(token: String, sharing: Bool, profileId: String? = nil) async throws -> CommonGroundOwnerView {
+        struct Body: Encodable { let sharing: Bool; let profileId: String? }
+        return try await send(
+            path: cg("settings"), method: "PUT", token: token,
+            body: Body(sharing: sharing, profileId: profileId), fallback: "Could not change sharing."
+        )
+    }
+
+    // MARK: Profiles
+
+    func commonGroundProfiles(token: String) async throws -> CommonGroundProfileList {
+        try await send(path: cg("profiles"), method: "GET", token: token, fallback: "Could not load your profiles.")
+    }
+
+    func createCommonGroundProfile(token: String, profile: CommonGroundNewProfile) async throws -> CommonGroundProfileSummary {
+        try await send(path: cg("profiles"), method: "POST", token: token, body: profile, fallback: "Could not create the profile.")
+    }
+
+    func updateCommonGroundProfile(token: String, profileId: String, edit: CommonGroundProfileEdit) async throws -> CommonGroundProfileSummary {
+        try await send(path: cg("profiles/\(cgSegment(profileId))"), method: "PUT", token: token, body: edit, fallback: "Could not save the profile.")
+    }
+
+    func deleteCommonGroundProfile(token: String, profileId: String) async throws {
+        try await sendWithoutResponse(path: cg("profiles/\(cgSegment(profileId))"), method: "DELETE", token: token, fallback: "Could not delete the profile.")
     }
 
     // MARK: Rooms
@@ -52,9 +81,17 @@ extension CloudAPIClient {
         try await send(path: cg("rooms/\(cgSegment(code))"), method: "GET", token: token, fallback: "Could not load the room.")
     }
 
-    func joinCommonGroundRoom(token: String, code: String, name: String? = nil) async throws -> CommonGroundRoom {
-        struct Body: Encodable { let name: String? }
-        return try await send(path: cg("rooms/\(cgSegment(code))/join"), method: "POST", token: token, body: Body(name: name), fallback: "Could not join the room.")
+    func joinCommonGroundRoom(token: String, code: String, request: CommonGroundJoinRequest = .init()) async throws -> CommonGroundRoom {
+        try await send(path: cg("rooms/\(cgSegment(code))/join"), method: "POST", token: token, body: request, fallback: "Could not join the room.")
+    }
+
+    /// Shares another of your profiles in an open room.
+    func switchCommonGroundRoomProfile(token: String, code: String, profileId: String) async throws -> CommonGroundRoom {
+        struct Body: Encodable { let profileId: String }
+        return try await send(
+            path: cg("rooms/\(cgSegment(code))/profile"), method: "POST", token: token,
+            body: Body(profileId: profileId), fallback: "Could not change the profile."
+        )
     }
 
     func leaveCommonGroundRoom(token: String, code: String) async throws {
@@ -82,12 +119,19 @@ extension CloudAPIClient {
 
     // MARK: People
 
-    func commonGroundPerson(token: String, accountId: String) async throws -> CommonGroundPersonCard {
-        try await send(path: cg("people/\(cgSegment(accountId))"), method: "GET", token: token, fallback: "Could not load this card.")
+    /// `profileId` is the viewer's profile to see them through.
+    func commonGroundPerson(token: String, accountId: String, profileId: String? = nil) async throws -> CommonGroundPersonCard {
+        try await send(
+            path: cg("people/\(cgSegment(accountId))"), method: "GET", token: token,
+            query: cgProfile(profileId), fallback: "Could not load this card."
+        )
     }
 
-    func commonGroundMatch(token: String, accountId: String) async throws -> CommonGroundMatch {
-        try await send(path: cg("people/\(cgSegment(accountId))/match"), method: "GET", token: token, fallback: "Could not load the match.")
+    func commonGroundMatch(token: String, accountId: String, profileId: String? = nil) async throws -> CommonGroundMatch {
+        try await send(
+            path: cg("people/\(cgSegment(accountId))/match"), method: "GET", token: token,
+            query: cgProfile(profileId), fallback: "Could not load the match."
+        )
     }
 
     func addCommonGroundContact(token: String, accountId: String, message: String? = nil) async throws -> CommonGroundRelationshipResponse {
@@ -116,8 +160,9 @@ extension CloudAPIClient {
         try await send(path: cg("pairings"), method: "GET", token: token, fallback: "Could not load pairings.")
     }
 
-    func newCommonGroundPairCode(token: String) async throws -> CommonGroundPairCode {
-        try await send(path: cg("pairings/code"), method: "POST", token: token, fallback: "Could not make a code.")
+    func newCommonGroundPairCode(token: String, profileId: String? = nil) async throws -> CommonGroundPairCode {
+        struct Body: Encodable { let profileId: String? }
+        return try await send(path: cg("pairings/code"), method: "POST", token: token, body: Body(profileId: profileId), fallback: "Could not make a code.")
     }
 
     func redeemCommonGroundPairCode(token: String, code: String) async throws -> CommonGroundPersonCard {
