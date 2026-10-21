@@ -15,7 +15,7 @@ type CloudChatPersonInfoProps = {
   /** Whether this chat is muted; null when the chat list has no mute for it. */
   muted: boolean | null;
   onSetMuted?: (muted: boolean) => Promise<void> | void;
-  /** Leaves the detail page for the transcript; Photos, Links and Documents land there for now. */
+  /** Leaves the detail page for the transcript; shared rows land there until the chat is fully loaded. */
   onReturnToChat: () => void;
   /** Today's Info content, shown while the server has no contact profile route. */
   legacy: ReactNode;
@@ -55,6 +55,7 @@ export function CloudChatPersonInfo({ account, conversation, peerAccountId, mute
           onMessageContact={() => onReturnToChat()}
           onRemoveContact={isContact ? removeContact : undefined}
           contactProfileHost={host}
+          sharedConversationFor={() => conversation}
           contactMute={{
             isMuted: () => muted,
             setMuted: (_contact, next) => onSetMuted?.(next),

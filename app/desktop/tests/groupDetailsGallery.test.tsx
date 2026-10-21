@@ -353,10 +353,10 @@ test('contact profile summarizes supported shared content without exposing messa
     ],
   }, 2);
 
+  // Only playable (MP4) videos sit with photos; the QuickTime clip is a file.
   assert.deepEqual(summary, {
     photos: 2,
-    videos: 1,
-    files: 1,
+    files: 2,
     links: 2,
     commonGroups: 2,
   });

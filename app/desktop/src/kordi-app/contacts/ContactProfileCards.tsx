@@ -3,8 +3,10 @@ import { ChevronRight, FileText, Image as ImageIcon, Link, LoaderCircle, Trash2,
 
 import type { CloudContactProfile, CloudContactProfileGroup } from '@/features/cloud/contactProfileClient';
 import { cn } from '@/lib/utils';
+import type { ContactProfileSharedPage } from '@/pages/contactProfileSharedItems';
 import { GroupAvatar } from '../components/GroupAvatar';
 import { usePopover } from './contactProfileHooks';
+import type { ContactSharedCounts } from './useContactSharedPages';
 
 function SectionLabel({ children }: { children: ReactNode }) {
   return <div className="app-contacts-muted app-contacts-section-label mx-1 mb-1.5 mt-5 text-[12px] leading-4">{children}</div>;
@@ -93,17 +95,26 @@ function GroupsRow({ groups, onOpenGroup }: { groups: CloudContactProfileGroup[]
   );
 }
 
-/** Counts of what the two accounts share; rows open the direct chat until filtered views exist. */
+/**
+ * Counts of what the two accounts share. With the whole direct chat on hand the rows count its
+ * items and open the shared pages; otherwise they show the server counts and open the chat.
+ */
 export function SharedWithYouCard({
   shared,
+  local,
+  onOpenPage,
   onOpenChat,
   onOpenGroup,
 }: {
   shared: CloudContactProfile['shared'];
+  local?: ContactSharedCounts | null;
+  onOpenPage?: (page: ContactProfileSharedPage) => void;
   onOpenChat?: () => void;
   onOpenGroup?: (group: CloudContactProfileGroup) => void;
 }) {
-  const empty = shared.mediaCount + shared.linkCount + shared.documentCount + shared.groups.length === 0;
+  const counts = local ?? { photos: shared.mediaCount, files: shared.documentCount, links: shared.linkCount };
+  const openFor = (page: ContactProfileSharedPage) => (local && onOpenPage ? () => onOpenPage(page) : onOpenChat);
+  const empty = counts.photos + counts.files + counts.links + shared.groups.length === 0;
   return (
     <>
       <SectionLabel>Shared with you</SectionLabel>
@@ -112,9 +123,9 @@ export function SharedWithYouCard({
           <div className="app-contacts-muted flex min-h-[44px] items-center px-4 text-[14px]">Nothing shared yet</div>
         ) : (
           <>
-            <SharedRow icon={<ImageIcon className="h-[18px] w-[18px]" aria-hidden="true" />} label="Photos and files" count={shared.mediaCount} onClick={onOpenChat} />
-            <SharedRow icon={<Link className="h-[18px] w-[18px]" aria-hidden="true" />} label="Links" count={shared.linkCount} onClick={onOpenChat} />
-            <SharedRow icon={<FileText className="h-[18px] w-[18px]" aria-hidden="true" />} label="Documents" count={shared.documentCount} onClick={onOpenChat} />
+            <SharedRow icon={<ImageIcon className="h-[18px] w-[18px]" aria-hidden="true" />} label="Photos" count={counts.photos} onClick={openFor('photos')} />
+            <SharedRow icon={<FileText className="h-[18px] w-[18px]" aria-hidden="true" />} label="Files" count={counts.files} onClick={openFor('files')} />
+            <SharedRow icon={<Link className="h-[18px] w-[18px]" aria-hidden="true" />} label="Links" count={counts.links} onClick={openFor('links')} />
             <GroupsRow groups={shared.groups} onOpenGroup={onOpenGroup} />
           </>
         )}

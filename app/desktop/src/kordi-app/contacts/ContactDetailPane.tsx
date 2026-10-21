@@ -24,10 +24,11 @@ import type { ContactsPageProps } from './contactsPageTypes';
 import { useContactProfile, type ContactProfileState } from './useContactProfile';
 import type { ContactRequestActions } from './useContactsPageState';
 import { usePresenceNow } from './usePresenceNow';
+import { useContactSharedPages } from './useContactSharedPages';
 
 type ContactDetailPaneProps = Pick<ContactsPageProps,
   | 'activeContact' | 'activeContactRequest' | 'onCloseOverlay' | 'onMessageContact' | 'onRemoveContact'
-  | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings'
+  | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings' | 'sharedConversationFor'
 > & {
   mode: 'contact' | 'request';
   requestActions: ContactRequestActions;
@@ -45,7 +46,9 @@ function kordiIdRow(handle: string): InfoCardRow {
   };
 }
 
-export type ContactDetailBodyProps = Pick<ContactsPageProps, 'onMessageContact' | 'onRemoveContact' | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings'> & {
+export type ContactDetailBodyProps = Pick<ContactsPageProps,
+  'onMessageContact' | 'onRemoveContact' | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings' | 'sharedConversationFor'
+> & {
   contact: Contact;
   onCloseOverlay: () => void;
   /** False inside the contact's own chat, where a Message tile would lead back to the same place. */
@@ -71,13 +74,15 @@ function withProfilePresence(contact: Contact, state: ContactProfileState): Cont
 
 /** The contact profile: header, tiles, info card, shared and common ground cards, and Delete. */
 export function ContactDetailBody({
-  contact: row, onCloseOverlay, onMessageContact, onRemoveContact, contactProfileHost, contactMute, onOpenAgentSettings, showMessageTile = true,
+  contact: row, onCloseOverlay, onMessageContact, onRemoveContact, contactProfileHost, contactMute, onOpenAgentSettings, sharedConversationFor,
+  showMessageTile = true,
 }: ContactDetailBodyProps) {
   const now = usePresenceNow();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [removeState, setRemoveState] = useState<'idle' | 'saving' | 'error'>('idle');
   const [removeError, setRemoveError] = useState('');
   const state = useContactProfile(row, contactProfileHost);
+  const shared = useContactSharedPages(row, sharedConversationFor);
   const profile = state.profile;
   const contact = withProfilePresence(row, state);
   // The richer layout shows whenever the server can serve a profile; the request only fills cards.
@@ -151,6 +156,8 @@ export function ContactDetailBody({
     }
   };
 
+  if (shared.page) return shared.page;
+
   return (
     <>
       {rich ? <div className="app-contacts-detail-wash pointer-events-none absolute top-0" aria-hidden="true" /> : null}
@@ -190,7 +197,13 @@ export function ContactDetailBody({
       <InfoCard rows={rows} />
       {showShared && state.status === 'loading' ? <SharedWithYouLoading /> : null}
       {showShared && profile ? (
-        <SharedWithYouCard shared={profile.shared} onOpenChat={openChat} onOpenGroup={contactProfileHost?.openGroup} />
+        <SharedWithYouCard
+          shared={profile.shared}
+          local={shared.counts}
+          onOpenPage={shared.open}
+          onOpenChat={openChat}
+          onOpenGroup={contactProfileHost?.openGroup}
+        />
       ) : null}
       {profile?.commonGround ? <CommonGroundCard card={profile.commonGround} /> : null}
       {canRemove ? (
@@ -301,6 +314,7 @@ export function ContactDetailContent({
   contactProfileHost,
   contactMute,
   onOpenAgentSettings,
+  sharedConversationFor,
   requestActions,
 }: ContactDetailPaneProps) {
   if (mode === 'request' && !activeContactRequest) return null;
@@ -326,6 +340,7 @@ export function ContactDetailContent({
           contactProfileHost={contactProfileHost}
           contactMute={contactMute}
           onOpenAgentSettings={onOpenAgentSettings}
+          sharedConversationFor={sharedConversationFor}
         />
       ) : activeContactRequest ? (
         <ContactRequestDetailBody request={activeContactRequest} requestActions={requestActions} />

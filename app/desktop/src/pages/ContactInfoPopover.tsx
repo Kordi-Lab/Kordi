@@ -19,6 +19,11 @@ import { useCloudCallContext } from '@/features/cloud/useCloudCallContext';
 import { useContactPresenceLabel } from '@/features/cloud/useCloudPresence';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { ContactProfileSharedContent } from '@/pages/ContactProfileSharedContent';
+import { ContactProfileSharedPageView } from '@/pages/ContactProfileSharedPages';
+import {
+  collectContactProfileSharedItems,
+  type ContactProfileSharedPage,
+} from '@/pages/contactProfileSharedItems';
 import type {
   Contact,
   Conversation,
@@ -111,6 +116,7 @@ export function ContactInfoPopover({
   const [requestState, setRequestState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [messageState, setMessageState] = useState<'idle' | 'opening' | 'error'>('idle');
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
+  const [sharedPage, setSharedPage] = useState<ContactProfileSharedPage | null>(null);
   const [viewport, setViewport] = useState(() => (
     typeof window === 'undefined'
       ? null
@@ -155,9 +161,13 @@ export function ContactInfoPopover({
   const handle = formatKordiHandle(participant.kordiId)
     || formatKordiHandle(contact?.detail)
     || formatKordiHandle(contact?.subtitle);
+  const sharedItems = useMemo(
+    () => collectContactProfileSharedItems(conversation?.messages),
+    [conversation?.messages],
+  );
   const summary = useMemo(
-    () => contactProfileSharedSummary(conversation, commonGroups.length),
-    [commonGroups.length, conversation],
+    () => contactProfileSharedSummary(conversation, commonGroups.length, sharedItems),
+    [commonGroups.length, conversation, sharedItems],
   );
   const { style, placement } = viewport
     ? contactProfileGeometry(anchorRect, viewport)
@@ -251,6 +261,18 @@ export function ContactInfoPopover({
 
   if (typeof document === 'undefined') return null;
 
+  const closeButton = (
+    <button
+      ref={closeButtonRef}
+      type="button"
+      className="app-contact-profile-close app-transient-flat-action absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-[8px]"
+      onClick={onClose}
+      aria-label="Close contact info"
+    >
+      <X className="h-4 w-4" />
+    </button>
+  );
+
   return createPortal(
     <>
       <button
@@ -270,116 +292,121 @@ export function ContactInfoPopover({
         style={style}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <header className="app-contact-profile-hero relative shrink-0 px-5 pb-3 pt-5 text-center">
-          <button
-            ref={closeButtonRef}
-            type="button"
-            className="app-contact-profile-close app-transient-flat-action absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-[8px]"
-            onClick={onClose}
-            aria-label="Close contact info"
-          >
-            <X className="h-4 w-4" />
-          </button>
-          <IdentityAvatar
-            kind="human"
-            seed={participant.avatarKey ?? memberStableId(participant)}
-            name={participant.name}
-            imageUrl={participant.profileImageUrl ?? contact?.profileImageUrl}
-            className="mx-auto h-[4.5rem] w-[4.5rem] border border-white/10"
-            presenceStatus={resolvedPresence}
-            presenceLabel={`${participant.name}, ${resolvedPresenceLabel}`}
+        {sharedPage ? (
+          <ContactProfileSharedPageView
+            page={sharedPage}
+            items={sharedItems}
+            variant="popover"
+            onBack={() => setSharedPage(null)}
+            trailing={closeButton}
           />
-          <h2 className="mx-auto mt-3 max-w-[17rem] truncate text-[17px] font-semibold leading-6" title={participant.name}>
-            {participant.name}
-          </h2>
-          <p className="mt-0.5 text-[11px] leading-4 text-[color:var(--app-transient-muted-text)]">
-            {sentenceCase(resolvedPresenceLabel)}
-          </p>
-          {handle ? (
-            <p className="mt-1 text-[11px] font-medium text-[color:var(--app-transient-muted-text)]">
-              {handle}
-            </p>
-          ) : null}
-        </header>
-
-        <div className="app-contact-profile-actions grid shrink-0 gap-1.5 px-3 pb-3">
-          {canMessage ? (
-            <ProfileAction
-              icon={messageState === 'opening'
-                ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                : <MessageCircle className="h-4 w-4" />}
-              label={messageState === 'opening' ? 'Opening…' : 'Message'}
-              onClick={() => { void openMessage(); }}
-              disabled={messageState === 'opening'}
-            />
-          ) : null}
-          {calls && callTarget ? (
-            activeCall ? (
-              <ProfileAction
-                icon={activeCall.kind === 'voice'
-                  ? <Phone className="h-4 w-4" />
-                  : <Video className="h-4 w-4" />}
-                label={callIsCurrent ? 'Return' : 'Join call'}
-                onClick={() => openCall(activeCall.kind === 'voice' ? 'voice' : 'video')}
-                disabled={callBusyElsewhere}
-                title={callBusyElsewhere ? 'Finish your current call first' : undefined}
+        ) : (
+          <>
+            <header className="app-contact-profile-hero relative shrink-0 px-5 pb-3 pt-5 text-center">
+              {closeButton}
+              <IdentityAvatar
+                kind="human"
+                seed={participant.avatarKey ?? memberStableId(participant)}
+                name={participant.name}
+                imageUrl={participant.profileImageUrl ?? contact?.profileImageUrl}
+                className="mx-auto h-[4.5rem] w-[4.5rem] border border-white/10"
+                presenceStatus={resolvedPresence}
+                presenceLabel={`${participant.name}, ${resolvedPresenceLabel}`}
               />
-            ) : (
-              <>
-                <ProfileAction
-                  icon={<Phone className="h-4 w-4" />}
-                  label="Call"
-                  onClick={() => openCall('voice')}
-                  disabled={callBusyElsewhere}
-                  title={callBusyElsewhere ? 'Finish your current call first' : undefined}
-                />
-                <ProfileAction
-                  icon={<Video className="h-4 w-4" />}
-                  label="Video"
-                  onClick={() => openCall('video')}
-                  disabled={callBusyElsewhere}
-                  title={callBusyElsewhere ? 'Finish your current call first' : undefined}
-                />
-              </>
-            )
-          ) : null}
-          {canAddContact || requestPending ? (
-            <ProfileAction
-              icon={requestState === 'sending'
-                ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                : requestPending
-                  ? <Check className="h-4 w-4" />
-                  : <UserPlus className="h-4 w-4" />}
-              label={requestState === 'sending' ? 'Sending…' : requestPending ? 'Requested' : 'Add contact'}
-              onClick={() => { void requestContact(); }}
-              disabled={requestState === 'sending' || requestPending}
-            />
-          ) : null}
-          {handle ? (
-            <ProfileAction
-              icon={copyState === 'copied' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              label={copyState === 'copied' ? 'Copied' : 'Copy ID'}
-              onClick={() => { void copyKordiId(); }}
-            />
-          ) : null}
-        </div>
+              <h2 className="mx-auto mt-3 max-w-[17rem] truncate text-[17px] font-semibold leading-6" title={participant.name}>
+                {participant.name}
+              </h2>
+              <p className="mt-0.5 text-[11px] leading-4 text-[color:var(--app-transient-muted-text)]">
+                {sentenceCase(resolvedPresenceLabel)}
+              </p>
+              {handle ? (
+                <p className="mt-1 text-[11px] font-medium text-[color:var(--app-transient-muted-text)]">
+                  {handle}
+                </p>
+              ) : null}
+            </header>
 
-        <div className="app-transient-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-          <ContactProfileSharedContent
-            summary={summary}
-            commonGroups={commonGroups}
-            onOpenCommonGroup={onOpenCommonGroup}
-          />
-          {requestState === 'error' || messageState === 'error' || copyState === 'error' ? (
-            <p role="alert" className="app-transient-status mt-2 px-1 text-rose-500">
-              {requestState === 'error'
-                ? 'Could not send the contact request.'
-                : messageState === 'error'
-                  ? 'Could not open the conversation.'
-                  : 'Could not copy the Kordi ID.'}
-            </p>
-          ) : null}
-        </div>
+            <div className="app-contact-profile-actions grid shrink-0 gap-1.5 px-3 pb-3">
+              {canMessage ? (
+                <ProfileAction
+                  icon={messageState === 'opening'
+                    ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                    : <MessageCircle className="h-4 w-4" />}
+                  label={messageState === 'opening' ? 'Opening…' : 'Message'}
+                  onClick={() => { void openMessage(); }}
+                  disabled={messageState === 'opening'}
+                />
+              ) : null}
+              {calls && callTarget ? (
+                activeCall ? (
+                  <ProfileAction
+                    icon={activeCall.kind === 'voice'
+                      ? <Phone className="h-4 w-4" />
+                      : <Video className="h-4 w-4" />}
+                    label={callIsCurrent ? 'Return' : 'Join call'}
+                    onClick={() => openCall(activeCall.kind === 'voice' ? 'voice' : 'video')}
+                    disabled={callBusyElsewhere}
+                    title={callBusyElsewhere ? 'Finish your current call first' : undefined}
+                  />
+                ) : (
+                  <>
+                    <ProfileAction
+                      icon={<Phone className="h-4 w-4" />}
+                      label="Call"
+                      onClick={() => openCall('voice')}
+                      disabled={callBusyElsewhere}
+                      title={callBusyElsewhere ? 'Finish your current call first' : undefined}
+                    />
+                    <ProfileAction
+                      icon={<Video className="h-4 w-4" />}
+                      label="Video"
+                      onClick={() => openCall('video')}
+                      disabled={callBusyElsewhere}
+                      title={callBusyElsewhere ? 'Finish your current call first' : undefined}
+                    />
+                  </>
+                )
+              ) : null}
+              {canAddContact || requestPending ? (
+                <ProfileAction
+                  icon={requestState === 'sending'
+                    ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                    : requestPending
+                      ? <Check className="h-4 w-4" />
+                      : <UserPlus className="h-4 w-4" />}
+                  label={requestState === 'sending' ? 'Sending…' : requestPending ? 'Requested' : 'Add contact'}
+                  onClick={() => { void requestContact(); }}
+                  disabled={requestState === 'sending' || requestPending}
+                />
+              ) : null}
+              {handle ? (
+                <ProfileAction
+                  icon={copyState === 'copied' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  label={copyState === 'copied' ? 'Copied' : 'Copy ID'}
+                  onClick={() => { void copyKordiId(); }}
+                />
+              ) : null}
+            </div>
+
+            <div className="app-transient-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+              <ContactProfileSharedContent
+                summary={summary}
+                commonGroups={commonGroups}
+                onOpenCommonGroup={onOpenCommonGroup}
+                onOpenPage={setSharedPage}
+              />
+              {requestState === 'error' || messageState === 'error' || copyState === 'error' ? (
+                <p role="alert" className="app-transient-status mt-2 px-1 text-rose-500">
+                  {requestState === 'error'
+                    ? 'Could not send the contact request.'
+                    : messageState === 'error'
+                      ? 'Could not open the conversation.'
+                      : 'Could not copy the Kordi ID.'}
+                </p>
+              ) : null}
+            </div>
+          </>
+        )}
       </section>
     </>,
     document.body,

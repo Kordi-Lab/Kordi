@@ -8,6 +8,10 @@ import type {
   Conversation,
   ConversationParticipant,
 } from '@/kordi-app/types';
+import {
+  collectContactProfileSharedItems,
+  type ContactProfileSharedItems,
+} from '@/pages/contactProfileSharedItems';
 
 function memberStableId(member: ConversationParticipant) {
   return member.humanId?.trim()
@@ -60,42 +64,21 @@ export function groupMemberAccountId(
 
 export type ContactProfileSharedSummary = {
   photos: number;
-  videos: number;
   files: number;
   links: number;
   commonGroups: number;
 };
 
-const VIDEO_FILE_EXTENSION = /\.(?:avi|m4v|mkv|mov|mp4|webm)$/iu;
-
-function attachmentIsVideo(attachment: NonNullable<Conversation['messages'][number]['attachments']>[number]) {
-  return attachment.mimeType?.trim().toLowerCase().startsWith('video/') === true
-    || VIDEO_FILE_EXTENSION.test(attachment.name.trim());
-}
-
+/** Row counts, equal to the number of items each shared page lists. */
 export function contactProfileSharedSummary(
   conversation?: Conversation | null,
   commonGroupCount = 0,
+  items: ContactProfileSharedItems = collectContactProfileSharedItems(conversation?.messages),
 ): ContactProfileSharedSummary {
-  let photos = 0;
-  let videos = 0;
-  let files = 0;
-  const links = new Set<string>();
-  for (const message of conversation?.messages ?? []) {
-    for (const attachment of message.attachments ?? []) {
-      if (attachment.kind === 'image') photos += 1;
-      else if (attachmentIsVideo(attachment)) videos += 1;
-      else files += 1;
-    }
-    for (const match of message.text.matchAll(/https?:\/\/[^\s<>()]+/giu)) {
-      links.add(match[0].replace(/[.,!?;:]+$/u, ''));
-    }
-  }
   return {
-    photos,
-    videos,
-    files,
-    links: links.size,
+    photos: items.photos.length,
+    files: items.files.length,
+    links: items.links.length,
     commonGroups: Math.max(0, commonGroupCount),
   };
 }
