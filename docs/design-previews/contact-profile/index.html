@@ -203,18 +203,20 @@ button.row:hover,.row.click:hover{background:var(--rowhover)}
 .sheet .menu{right:0}
 </style>
 <link rel="stylesheet" href="shared-pages.css">
+<link rel="stylesheet" href="chat-info.css">
 </head>
 <body>
 <div class="bar" id="bar">
   <strong>Contact profile</strong>
   <label>Platform<span class="seg" data-key="platform"><button data-v="both">Both</button><button data-v="mac">Mac</button><button data-v="ios">iPhone</button></span></label>
   <label>Theme<span class="seg" data-key="theme"><button data-v="light">Light</button><button data-v="dark">Dark</button></span></label>
-  <label>State<span class="seg" data-key="state"><button data-v="current">Current</button><button data-v="person-online">Online</button><button data-v="person-offline">Offline</button><button data-v="person-new">New contact</button><button data-v="common-ground">Common ground</button><button data-v="agent">Agent</button><button data-v="own-agent">Own agent</button><button data-v="system">System</button></span></label>
+  <label>State<span class="seg" data-key="state"><button data-v="current">Current</button><button data-v="person-online">Online</button><button data-v="person-offline">Offline</button><button data-v="person-new">New contact</button><button data-v="common-ground">Common ground</button><button data-v="agent">Agent</button><button data-v="own-agent">Own agent</button><button data-v="system">System</button><button data-v="chat-info">Chat Info</button></span></label>
   <label>Page<span class="seg" data-key="page"><button data-v="profile">Profile</button><button data-v="photos">Photos</button><button data-v="files">Files</button><button data-v="links">Links</button></span></label>
   <label>Height<span class="seg" data-key="fit"><button data-v="window">Window</button><button data-v="full">Full length</button></span></label>
 </div>
 <div class="stage" id="stage"></div>
 <script src="shared-pages.js"></script>
+<script src="chat-info.js"></script>
 <footer>Design proposal · Synthetic data · <a href="https://github.com/Kordi-Lab/Kordi/issues/1945">Issue #1945</a></footer>
 <script>
 const I={
@@ -260,7 +262,8 @@ const STATES={
   "common-ground":{who:"nadia",online:true,status:"online",id:"@482 731 906",about:"Robotics PhD at KAUST. Building a tabletop manipulation lab.",agent:"nagent",since:"12 Aug 2026",tiles:["msg","mute","share","more"],shared:SHARED_NADIA,cg:true,del:true},
   agent:{who:"nagent",status:"Agent · owned by Nadia",id:"@482 731 907",type:"Agent",owner:"nadia",tiles:["msg","share","more"],shared:[["image","Photos",6,"photos"],["doc","Files",5,"files"],["link","Links",2,"links"],["users","Groups in common",1]],del:true},
   "own-agent":{who:"mine",status:"Your agent",statusAccent:false,id:"@700 112 450",type:"Agent",tiles:["msg","settings","more"],ownMenu:true},
-  system:{who:"support",status:"Kordi",about:"Help with your account and the app.",tiles:["msg"]}
+  system:{who:"support",status:"Kordi",about:"Help with your account and the app.",tiles:["msg"]},
+  "chat-info":{who:"nadia",online:true,chat:true,shared:SHARED_NADIA}
 };
 const CG=[["Working on",["tabletop manipulation","sim-to-real"]],["Can help",["grant writing","lab setup"]],["Looking for",["robot datasets","co-authors"]]];
 
@@ -353,7 +356,7 @@ function render(){
   document.documentElement.dataset.theme=S.theme;
   const stage=document.getElementById("stage");
   stage.classList.toggle("full",S.fit==="full");
-  stage.innerHTML=(S.platform!=="ios"?mac()+pop():"")+(S.platform!=="mac"?ios():"");
+  stage.innerHTML=STATES[S.state].chat?chatInfo():(S.platform!=="ios"?mac()+pop():"")+(S.platform!=="mac"?ios():"");
   document.querySelectorAll(".seg").forEach(seg=>seg.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===S[seg.dataset.key]))));
   history.replaceState(null,"","?"+new URLSearchParams(S).toString());
 }
