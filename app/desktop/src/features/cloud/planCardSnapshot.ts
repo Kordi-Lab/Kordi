@@ -1,5 +1,5 @@
 import type { MessagePlanCard, MessagePlanCardOption, MessagePlanCardParticipant } from '@/kordi-app/types/message';
-import { isPipAccountId } from '@/features/pip/pipIdentity';
+import { isBuiltInAccountId } from '@/features/pip/pipIdentity';
 
 const PLAN_CARD_STATES = new Set(['polling', 'awaiting_confirmation', 'confirmed', 'canceled']);
 
@@ -21,9 +21,9 @@ export function normalizePlanCardSnapshot(value: unknown): MessagePlanCard | nul
       if (!entry || typeof entry !== 'object') return [];
       const participant = entry as Record<string, unknown>;
       const participantId = typeof participant.participantId === 'string' ? participant.participantId : '';
-      // PiP manages the card but never attends it; it is not a participant for
-      // counts, lists, or faces.
-      if (!participantId || isPipAccountId(participantId)) return [];
+      // PiP and the system account manage the card but never attend it; they are
+      // not participants for counts, lists, or faces.
+      if (!participantId || isBuiltInAccountId(participantId)) return [];
       const rsvp: MessagePlanCardParticipant['rsvp'] = participant.rsvp === 'yes' || participant.rsvp === 'no' ? participant.rsvp : 'pending';
       const avatarUrl = typeof participant.avatarUrl === 'string' && participant.avatarUrl.trim() ? participant.avatarUrl : null;
       return [{
