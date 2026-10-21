@@ -4,6 +4,7 @@ mod actions_meet_tests;
 mod build_agents_tests;
 mod db_fixture;
 mod flow_tests;
+mod group_intro_tests;
 mod matching_guard_tests;
 mod matching_tests;
 mod matching_unit_tests;

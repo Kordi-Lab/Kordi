@@ -10,6 +10,7 @@
 mod actions;
 mod build;
 mod card;
+mod intro;
 mod matching;
 mod pairing;
 mod people;

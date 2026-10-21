@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::auth::routes::{
     audit_join, redeem_group_invitation_by_id, CloudSession, Redemption, ROOM_GROUP_MIN_MEMBERS,
 };
-use crate::common_ground::{db_error, err, rooms};
+use crate::common_ground::{db_error, err, intro, rooms};
 use crate::server::ServerState;
 
 fn invitation_not_found() -> Response {
@@ -102,6 +102,13 @@ pub(in crate::common_ground) async fn join(
     }
     if response.status == "joined" {
         audit_join(&state, &session, &group_invitation_id, &group_space_id).await;
+        if let Some(pip) = state.pip() {
+            let posted =
+                intro::post_joined(pool, &pip.config().account_id, conversation_id, viewer).await;
+            if let Err(error) = posted {
+                eprintln!("[common-ground] Could not post a joined line: {error}");
+            }
+        }
     }
     (StatusCode::OK, body(response.status)).into_response()
 }
