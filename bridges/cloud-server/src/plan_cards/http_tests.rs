@@ -11,7 +11,7 @@ use crate::auth::session::issue_session;
 use crate::events::EventBus;
 use crate::server::{router, ServerState};
 
-async fn seed_account(pool: &sqlx_postgres::PgPool, account_id: &str) {
+pub(super) async fn seed_account(pool: &sqlx_postgres::PgPool, account_id: &str) {
     query("INSERT INTO cloud_accounts(account_id,created_at,updated_at,avatar_source,avatar_style,avatar_seed,avatar_renderer_version,avatar_version,avatar_updated_at,avatar_url) VALUES($1,$2,$2,'generated','lorelei',$1,'test',1,$2,$3)")
         .bind(account_id)
         .bind(chrono::Utc::now().to_rfc3339())
@@ -21,7 +21,7 @@ async fn seed_account(pool: &sqlx_postgres::PgPool, account_id: &str) {
         .unwrap();
 }
 
-async fn seed_conversation(
+pub(super) async fn seed_conversation(
     pool: &sqlx_postgres::PgPool,
     conversation_id: Uuid,
     created_by: &str,
@@ -48,7 +48,7 @@ async fn seed_conversation(
 
 /// Mints a real bearer token the same way login does: a device row, then a
 /// genuine session issued through `auth::session::issue_session`.
-async fn bearer_token_for(pool: &sqlx_postgres::PgPool, account_id: &str) -> String {
+pub(super) async fn bearer_token_for(pool: &sqlx_postgres::PgPool, account_id: &str) -> String {
     let device_id = format!("device_{}", Uuid::new_v4().simple());
     query("INSERT INTO cloud_devices(device_id,account_id,device_public_key,created_at,last_seen_at) VALUES($1,$2,'test-key',$3,$3)")
         .bind(&device_id)
