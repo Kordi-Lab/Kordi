@@ -27,6 +27,8 @@ enum MessageAuthorIdentity {
             )
         }
 
+        if KordiSystemIdentity.isSystemNotice(message) { return KordiSystemIdentity.avatar }
+
         // In an agent session the conversation is the agent itself; anywhere
         // else the conversation title and picture belong to someone else.
         let isAgentInSharedSpace = message.author == .agent && conversation.kind != .agent

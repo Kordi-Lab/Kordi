@@ -14,7 +14,7 @@ struct IdentityAvatar: View {
     var showsInitials = true
 
     private var normalizedImageSource: String? {
-        if isPip { return nil }
+        if isPip || isSystem { return nil }
         if let source = AvatarImageLoader.normalizedSource(imageSource) { return source }
         guard kind == .agent, !isKordiSupport, let seed = seed?.nonEmpty else { return nil }
         return CanonicalAvatarSystem.previewURL(
@@ -30,6 +30,8 @@ struct IdentityAvatar: View {
     private var isPip: Bool {
         KordiPipIdentity.matches(name: name, seed: seed)
     }
+
+    private var isSystem: Bool { KordiSystemIdentity.matches(seed: seed) }
 
     var body: some View {
         ZStack {
@@ -50,7 +52,9 @@ struct IdentityAvatar: View {
 
     @ViewBuilder
     private var fallback: some View {
-        if isPip {
+        if isSystem {
+            KordiSystemAvatar()
+        } else if isPip {
             PipMarkAvatar()
         } else if isKordiSupport {
             KordiSupportAvatar()
