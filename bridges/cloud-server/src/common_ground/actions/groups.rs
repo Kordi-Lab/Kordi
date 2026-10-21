@@ -198,10 +198,11 @@ async fn create(
         CreateConversationRequest {
             client_operation_id: Uuid::new_v4(),
             kind: ConversationKind::Group,
-            shared_title: Some(name.to_string()),
+            shared_title: None,
             client_session_id: group_space_id.clone(),
             member_account_ids: added.clone(),
         },
+        name,
     )
     .await
     .map_err(failed)?
