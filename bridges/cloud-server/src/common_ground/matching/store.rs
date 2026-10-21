@@ -31,6 +31,25 @@ pub(super) async fn fresh_results(
     viewer: &SharedCard,
     others: &[SharedCard],
 ) -> sqlx_core::Result<HashMap<String, MatchResult>> {
+    load_results(pool, viewer, others, true).await
+}
+
+/// The last stored result for `viewer` with each of `others`, whatever card
+/// revisions it was computed from. A closed room shows these as they were.
+pub(super) async fn stored_results(
+    pool: &PgPool,
+    viewer: &SharedCard,
+    others: &[SharedCard],
+) -> sqlx_core::Result<HashMap<String, MatchResult>> {
+    load_results(pool, viewer, others, false).await
+}
+
+async fn load_results(
+    pool: &PgPool,
+    viewer: &SharedCard,
+    others: &[SharedCard],
+    current_only: bool,
+) -> sqlx_core::Result<HashMap<String, MatchResult>> {
     let ids: Vec<&str> = others.iter().map(|o| o.account_id.as_str()).collect();
     let rows: Vec<(String, i64, i64, Value)> = query_as(
         "SELECT other_account_id, viewer_revision, other_revision, result_json
@@ -48,8 +67,9 @@ pub(super) async fn fresh_results(
     Ok(rows
         .into_iter()
         .filter(|(other, viewer_revision, other_revision, _)| {
-            *viewer_revision == viewer.revision
-                && revisions.get(other.as_str()) == Some(other_revision)
+            !current_only
+                || (*viewer_revision == viewer.revision
+                    && revisions.get(other.as_str()) == Some(other_revision))
         })
         .filter_map(|(other, _, _, value)| Some((other, serde_json::from_value(value).ok()?)))
         .collect())
@@ -186,6 +206,20 @@ pub(super) async fn stored_themes(
     .bind(key)
     .fetch_optional(pool)
     .await?;
+    Ok(row.and_then(|(value,)| serde_json::from_value(value).ok()))
+}
+
+/// The room's last stored themes, whatever member set they were computed
+/// for. A closed room shows these as they were.
+pub(super) async fn latest_themes(
+    pool: &PgPool,
+    room_id: Uuid,
+) -> sqlx_core::Result<Option<Vec<(String, Vec<String>)>>> {
+    let row: Option<(Value,)> =
+        query_as("SELECT themes_json FROM cloud_common_ground_room_themes WHERE room_id = $1")
+            .bind(room_id)
+            .fetch_optional(pool)
+            .await?;
     Ok(row.and_then(|(value,)| serde_json::from_value(value).ok()))
 }
 
