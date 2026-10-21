@@ -1,3 +1,4 @@
+import { isSystemNoticeKind } from './systemNotice';
 import type { CanonicalIdentity, CanonicalSessionMessage, Message } from '@/kordi-app/types';
 
 export function canonicalMessageRole(
@@ -5,8 +6,9 @@ export function canonicalMessageRole(
   identity?: CanonicalIdentity,
   profileHumanIdentityId?: string | null,
 ): Message['role'] {
-  const senderRole = message.senderRole;
-  if (message.messageKind === 'agent-model-change') return 'system';
+  const { senderRole, messageKind } = message;
+  if (messageKind === 'agent-model-change') return 'system';
+  if (isSystemNoticeKind(messageKind)) return 'person'; // Server notices keep the multi-line bubble.
   if (['system', 'user', 'owned-agent', 'external-agent', 'person'].includes(senderRole)) {
     if (
       senderRole === 'external-agent'

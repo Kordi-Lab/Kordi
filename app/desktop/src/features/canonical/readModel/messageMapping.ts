@@ -20,6 +20,7 @@ import { canonicalMentions } from './mentionMapping';
 import { canonicalMessageAction, canonicalMessageActionSourceReference } from './messageActionMapping';
 import { canonicalReadReceiptSummary, contentRecord, numberValue, stringValue } from "./messageContent";
 import { canonicalMessageReactionMetadata } from './messageReactionMetadata';
+import { systemNoticeSender } from './systemNotice';
 import { isInternalCloudAgentControlMessage, isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice, RETIRED_BY_RETRY_CONTENT_KEY } from './messageVisibility';
 
 export { ownerScopedAgentName } from './agentMessagePresentation';
@@ -308,7 +309,7 @@ export function mapCanonicalMessage(
   if (stringValue(content.kind) === 'delegation-join-event') return null;
   const identity = identityById.get(message.senderIdentityId);
   const role = canonicalMessageRole(message, identity, profileHumanIdentityId);
-  const isAgentTurn = message.messageKind === 'agent-turn' || role === 'owned-agent' || role === 'external-agent';
+  const messageKind = message.messageKind; const isAgentTurn = messageKind === 'agent-turn' || role === 'owned-agent' || role === 'external-agent';
   const completed = canonicalMessageIsComplete(message, content);
   const deliveryState = isAgentTurn && !completed && contentRecord(content.execution).phase === 'queued'
     ? 'queued'
@@ -451,13 +452,13 @@ export function mapCanonicalMessage(
     senderProfileImageUrl: identity?.profileImageUrl ?? null,
     senderAvatarSeed: canonicalIdentityAvatarSeed(identity),
     isOwnMessage,
-    showSenderMeta: role === 'person' || role === 'external-agent',
+    showSenderMeta: role === 'person' || role === 'external-agent', ...systemNoticeSender(messageKind),
     text: isAgentTurn ? '' : displayText,
     time,
     timestampMs: message.createdAtMs,
     conversationSequence: numberValue(content.conversationSequence),
     callActivity: canonicalCallActivity(message, content, isOwnMessage),
-    messageKind: voiceMessage ? 'voice' : role === 'system' ? stringValue(content.kind) ?? message.messageKind : undefined,
+    messageKind: voiceMessage ? 'voice' : role === 'system' ? stringValue(content.kind) ?? messageKind : undefined,
     voiceMessage,
     planCard: normalizePlanCardSnapshot(content.planCard),
     detail: stringValue(content.detail),

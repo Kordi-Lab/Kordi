@@ -22,11 +22,8 @@ import {
   Undo2
 } from 'lucide-react';
 import { memo,useLayoutEffect,useRef,useState,type PointerEvent as ReactPointerEvent } from 'react';
-import type {
-  EditFilePreview,
-  Message,MessageAttachment,
-  MessageSourceReference
-} from '../types';
+import type { EditFilePreview, Message, MessageAttachment, MessageSourceReference } from '../types';
+import { isSystemAvatarUrl } from '@/features/pip/pipIdentity';
 import { AgentHeaderMeta,AgentOwnerTag } from './AgentOwnerTag';
 import { IdentityAvatar,useLocalAgentAvatarSeed,useLocalProfileAvatarSeed,type IdentityAvatarKind } from './IdentityAvatar';
 import { ForwardedFromHeader } from './forwardedFromHeader';
@@ -639,7 +636,7 @@ function MessageBubbleView({
       && contactRequestFailureCanBeRetried(msg.detail),
   );
   const footerDetail = showContactRequestAction ? undefined : msg.detail; const showAvatarSlot = threadLayout || !isAgentMessage; const showAvatar = showAvatarSlot && (threadLayout ? !isGroupedWithPrevious || Boolean(msg.sourceMessage) : !isGroupedWithNext);
-  const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode); const isForwardedMessage = msg.messageAction?.kind === 'forward'; const forwardedSource = isForwardedMessage ? msg.messageAction?.source : null;
+  const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode && !isSystemAvatarUrl(msg.senderProfileImageUrl)); const isForwardedMessage = msg.messageAction?.kind === 'forward'; const forwardedSource = isForwardedMessage ? msg.messageAction?.source : null;
   const standaloneEmojiItem = standaloneEmojiItemForMessage(msg, { isHuman: showCompactFooter, showsSender: showInlineHumanSender, footerDetail });
   const messageSurfaceContent = (
     <>
