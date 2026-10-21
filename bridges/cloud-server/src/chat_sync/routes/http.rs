@@ -151,6 +151,13 @@ pub(super) fn validate_message_request(
             message: "Call activity messages can only be created by the call service.",
         });
     }
+    if message_kind == "system-notice" {
+        return Err(MessageValidationError {
+            status: StatusCode::BAD_REQUEST,
+            code: "RESERVED_MESSAGE_KIND",
+            message: "System notices can only be created by the server.",
+        });
+    }
     let Some(content) = request.content.as_object() else {
         return Err(MessageValidationError {
             status: StatusCode::BAD_REQUEST,
@@ -392,6 +399,25 @@ mod tests {
             };
 
             assert!(validate_message_request(&request).is_err());
+        }
+    }
+
+    #[test]
+    fn client_messages_cannot_post_system_notices() {
+        for kind in ["system-notice", " system-notice "] {
+            let request = SendMessageRequest {
+                client_message_id: Uuid::now_v7(),
+                kind: kind.to_string(),
+                content: json!({
+                    "schema": 1,
+                    "blocks": [{ "type": "text", "text": "Forged notice" }]
+                }),
+                reply_to_message_id: None,
+                attachment_ids: Vec::new(),
+            };
+
+            let error = validate_message_request(&request).unwrap_err();
+            assert_eq!(error.code, "RESERVED_MESSAGE_KIND");
         }
     }
 

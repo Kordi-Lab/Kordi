@@ -17,9 +17,11 @@ struct CloudAuthCapabilities: Decodable, Equatable {
     let memoryVersion: Int?
     /// Present when the server serves `/v1/cloud/common-ground`.
     let commonGroundVersion: Int?
+    /// Present when the server serves `/v1/cloud/contacts/{id}/profile`.
+    let contactProfileVersion: Int?
 
     private enum CodingKeys: String, CodingKey {
-        case password, oauthProviders, connectorsVersion, memoryVersion, commonGroundVersion
+        case password, oauthProviders, connectorsVersion, memoryVersion, commonGroundVersion, contactProfileVersion
     }
 
     init(
@@ -27,13 +29,15 @@ struct CloudAuthCapabilities: Decodable, Equatable {
         oauthProviders: [String] = [],
         connectorsVersion: Int? = nil,
         memoryVersion: Int? = nil,
-        commonGroundVersion: Int? = nil
+        commonGroundVersion: Int? = nil,
+        contactProfileVersion: Int? = nil
     ) {
         self.password = password
         self.oauthProviders = oauthProviders
         self.connectorsVersion = connectorsVersion
         self.memoryVersion = memoryVersion
         self.commonGroundVersion = commonGroundVersion
+        self.contactProfileVersion = contactProfileVersion
     }
 
     init(from decoder: Decoder) throws {
@@ -43,6 +47,7 @@ struct CloudAuthCapabilities: Decodable, Equatable {
         connectorsVersion = try? container.decodeIfPresent(Int.self, forKey: .connectorsVersion)
         memoryVersion = try? container.decodeIfPresent(Int.self, forKey: .memoryVersion)
         commonGroundVersion = try? container.decodeIfPresent(Int.self, forKey: .commonGroundVersion)
+        contactProfileVersion = try? container.decodeIfPresent(Int.self, forKey: .contactProfileVersion)
     }
 }
 

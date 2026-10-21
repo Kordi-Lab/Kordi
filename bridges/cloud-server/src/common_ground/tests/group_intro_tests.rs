@@ -87,6 +87,42 @@ async fn pip_messages(pool: &PgPool, conversation_id: Uuid) -> Vec<String> {
         .collect()
 }
 
+/// Kinds of the messages PiP posted in a conversation, oldest first.
+async fn pip_kinds(pool: &PgPool, conversation_id: Uuid) -> Vec<String> {
+    query_as(
+        "SELECT message_kind FROM cloud_chat_messages
+         WHERE conversation_id = $1 AND sender_account_id = $2
+         ORDER BY conversation_sequence",
+    )
+    .bind(conversation_id)
+    .bind(service())
+    .fetch_all(pool)
+    .await
+    .unwrap()
+    .into_iter()
+    .map(|(kind,): (String,)| kind)
+    .collect()
+}
+
+/// Stores a match result for `viewer` with `other`, between their room
+/// profiles.
+async fn store_match(pool: &PgPool, viewer: &str, other: &str, result: Value) {
+    sqlx_core::query::query(
+        "INSERT INTO cloud_common_ground_matches
+           (viewer_account_id, other_account_id, viewer_profile_id, other_profile_id,
+            viewer_revision, other_revision, result_json)
+         SELECT $1, $2, mine.profile_id, theirs.profile_id, 1, 1, $3
+         FROM cloud_common_ground_room_members mine, cloud_common_ground_room_members theirs
+         WHERE mine.account_id = $1 AND theirs.account_id = $2",
+    )
+    .bind(viewer)
+    .bind(other)
+    .bind(result)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
 async fn intro_state(pool: &PgPool, run_id: &str) -> (bool, Option<String>) {
     query_as(
         "SELECT posted_at IS NOT NULL, error_code FROM cloud_common_ground_group_intros
@@ -134,6 +170,10 @@ async fn start_group_queues_an_intro_that_pip_posts() {
     complete(&pool, &run_id, RUNNER, &reply).await.unwrap();
     let posted = pip_messages(&pool, conversation(&group)).await;
     assert_eq!(posted.len(), 1);
+    assert_eq!(
+        pip_kinds(&pool, conversation(&group)).await,
+        vec!["system-notice"]
+    );
     assert!(posted[0].starts_with("Welcome to agent memory.\n"));
     assert_eq!(posted[0].chars().count(), 1_200, "the intro is capped");
     assert_eq!(intro_state(&pool, &run_id).await, (true, None));
@@ -212,6 +252,21 @@ async fn joining_posts_a_line_and_groups_show_their_members() {
     assert_eq!(row["memberCount"], 2);
     assert!(!row.to_string().contains(&service()), "PiP is not a member");
 
+    // Sam's stored match with Priya names her; Alex has none and is left out.
+    store_match(
+        &pool,
+        &sam,
+        &priya,
+        json!({
+            "score": 60,
+            "headline": "Memory for agents",
+            "shared": [{"topic": "Agent memory", "theirTopic": "Memory for agents", "why": "Same area"}],
+            "youBring": [],
+            "theyBring": [],
+            "nextStep": "Meet",
+        }),
+    )
+    .await;
     let theirs = results(&app, &code, &sam_token).await;
     let reference = theirs["invitations"][0]["invitationRef"].as_str().unwrap();
     let (status, body) = send(
@@ -226,8 +281,13 @@ async fn joining_posts_a_line_and_groups_show_their_members() {
     assert_eq!(
         pip_messages(&pool, conversation_id).await,
         vec![
-            "Sam joined. Working on Agent memory and Tool use; can help with Eval design and Rust."
+            "Sam joined. Working on agent memory and tool use; can help with eval design and \
+             rust. Shares agent memory with Priya."
         ]
+    );
+    assert_eq!(
+        pip_kinds(&pool, conversation_id).await,
+        vec!["system-notice"]
     );
     let (_, again) = send(
         &app,

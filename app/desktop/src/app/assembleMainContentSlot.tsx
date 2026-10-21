@@ -4,9 +4,20 @@ import { openLocalAgentChatFromArgs, usesDefaultLocalAgentSession } from '@/app/
 import { collaborationAgentForChatStart } from '@/features/chat/chatCreateFlows';
 import { isCollaborationSelfContactId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
+import { cloudDirectPersonSessionId } from '@/features/collaboration/conversationIds';
+import type { Contact } from '@/kordi-app/types';
 import { renameDesktopAgent, setDesktopSkillLibraryEnabled, type DesktopChatMessageRoute } from '@/lib/desktop';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
+
+/** Direct chat session of a hosted person contact, the one the chat list mutes. */
+function directPersonSessionId(args: MainContentShellArgs, contact: Contact): string | null {
+  const selfAccountId = args.cloudSession?.account?.accountId?.trim();
+  const peerAccountId = (contact.sourceHumanId || contact.sourceParticipantId || '').trim();
+  if (!selfAccountId || !peerAccountId || contact.sourceHostId !== CLOUD_HOST_SENTINEL) return null;
+  if (contact.systemContact || contact.classType !== 'other-users' || peerAccountId === selfAccountId) return null;
+  return cloudDirectPersonSessionId(selfAccountId, peerAccountId);
+}
 
 export function assembleMainContentSlot(args: MainContentShellArgs) {
   const openLocalAgentChat = (preferredModelValue?: string, route?: DesktopChatMessageRoute) => openLocalAgentChatFromArgs(args, preferredModelValue, route);
@@ -63,6 +74,22 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         activeContactRequest: args.activeContactRequest,
         onCloseOverlay: () => args.setContactOverlayMode(null),
         getStatusBadgeClass: args.getStatusBadgeClass,
+        contactMute: {
+          isMuted: (contact) => {
+            const sessionId = directPersonSessionId(args, contact);
+            return sessionId ? args.mutedChatSessionIds.has(sessionId) : null;
+          },
+          setMuted: (contact, muted) => {
+            const sessionId = directPersonSessionId(args, contact);
+            return sessionId ? args.handleSetChatSessionMuted(sessionId, muted) : undefined;
+          },
+        },
+        sharedConversationFor: (contact) => {
+          const sessionId = directPersonSessionId(args, contact);
+          if (!sessionId) return null;
+          return args.chatConversations.find((item) => item.canonicalSessionId === sessionId || item.id === sessionId) ?? null;
+        },
+        onOpenAgentSettings: () => args.setActiveNav('agents'),
         onMessageContact: (contact) => {
           if (isCollaborationSelfContactId(contact.id) || contact.classType === 'my-agents') {
             void openLocalAgentChat();
