@@ -1,7 +1,7 @@
 import { cloudVoiceMessageMetadataOnly } from './cloudVoiceMessage';
 import type { MessagePlanCard } from '@/kordi-app/types/message';
 import { normalizePlanCardSnapshot } from './planCardSnapshot';
-import { isPipAccountId } from '@/features/pip/pipIdentity';
+import { isBuiltInAccountId, isSystemAccountId, KORDI_SYSTEM_NOTICE_KIND } from '@/features/pip/pipIdentity';
 import { normalizedLivePhoto } from '@/features/chat/livePhotos';
 import type { CloudMessage, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput } from './authClient';
 import type { ChatSyncConversation, ChatSyncMessage } from './chatSyncTypes';
@@ -335,9 +335,9 @@ export function conversationPeer(
   viewerAccountId: string,
   senderAccountId: string,
 ): string {
-  if (senderAccountId !== viewerAccountId) return senderAccountId;
+  if (senderAccountId !== viewerAccountId && !isSystemAccountId(senderAccountId)) return senderAccountId;
   return conversation.members
-    .find((member) => member.account_id !== viewerAccountId && member.membership_state === 'active' && !isPipAccountId(member.account_id))
+    .find((member) => member.account_id !== viewerAccountId && member.membership_state === 'active' && !isBuiltInAccountId(member.account_id))
     ?.account_id ?? viewerAccountId;
 }
 
@@ -349,7 +349,7 @@ export function cloudMessageFromChatSync(
   const peerAccountId = conversationPeer(conversation, viewerAccountId, message.sender_account_id);
   const outgoing = message.sender_account_id === viewerAccountId;
   const otherMembers = conversation.members.filter(
-    (member) => member.account_id !== viewerAccountId && member.membership_state === 'active' && !isPipAccountId(member.account_id),
+    (member) => member.account_id !== viewerAccountId && member.membership_state === 'active' && !isBuiltInAccountId(member.account_id),
   );
   const readByAccountIds = otherMembers
     .filter((member) => member.last_read_sequence >= message.conversation_sequence)
@@ -388,7 +388,7 @@ export function cloudMessageFromChatSync(
     conversationId: conversation.id,
     conversationSequence: message.conversation_sequence,
     clientMessageId: message.client_message_id,
-    messageKind: message.kind,
+    messageKind: isSystemAccountId(message.sender_account_id) ? KORDI_SYSTEM_NOTICE_KIND : message.kind,
     canonicalHistoryLocalMessageId:
       canonicalHistory?.localMessageId ?? null,
     version: message.version,
