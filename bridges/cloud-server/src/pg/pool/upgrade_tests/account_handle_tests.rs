@@ -2,8 +2,8 @@ use super::*;
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_138_adds_account_handles() {
-    let pool = fixture(138).await;
+async fn upgrade_from_139_adds_account_handles() {
+    let pool = fixture(139).await;
     let before: Vec<(String, i64)> = query_as(
         "SELECT account_id, public_account_number FROM cloud_accounts ORDER BY account_id",
     )
@@ -70,8 +70,8 @@ async fn upgrade_from_138_adds_account_handles() {
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_139_adds_profile_fields() {
-    let pool = fixture(139).await;
+async fn upgrade_from_140_adds_profile_fields() {
+    let pool = fixture(140).await;
     execute(
         &pool,
         "UPDATE cloud_accounts SET public_handle = 'FixtureOwner' WHERE account_id = 'fixture-owner'",

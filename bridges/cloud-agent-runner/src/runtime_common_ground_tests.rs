@@ -73,3 +73,11 @@ async fn an_empty_reply_fails_the_run() {
         .calls()
         .contains(&"fail:cg_card_empty:common_ground_run_failed".to_string()));
 }
+
+#[test]
+fn omp_common_ground_runs_send_medium_effort_for_a_default_route() {
+    use crate::common_ground::omp_thinking;
+    assert_eq!(omp_thinking("default"), "medium");
+    assert_eq!(omp_thinking("low"), "low");
+    assert_eq!(omp_thinking("high"), "high");
+}

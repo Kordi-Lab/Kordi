@@ -313,10 +313,15 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "common ground room groups",
         "0138_common_ground_room_groups.sql"
     ),
-    migration!(139, "account handles", "0139_account_handles.sql"),
     migration!(
-        140,
+        139,
+        "common ground group topics",
+        "0139_common_ground_group_topics.sql"
+    ),
+    migration!(140, "account handles", "0140_account_handles.sql"),
+    migration!(
+        141,
         "account profile fields",
-        "0140_account_profile_fields.sql"
+        "0141_account_profile_fields.sql"
     ),
 ];

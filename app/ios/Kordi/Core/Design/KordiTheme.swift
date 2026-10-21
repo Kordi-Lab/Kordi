@@ -108,19 +108,34 @@ enum KordiFileFamily: String {
 }
 
 enum KordiChatTheme: String, CaseIterable, Identifiable {
+    case classic
     case quiet
     case midnight
     case sand
     case ocean
 
-    static let storageKey = "kordi.chatTheme.v1"
+    static let storageKey = "kordi.chatTheme.v2"
+    /// Pre-Classic key. "quiet" there was the old implicit default, so it migrates to Classic.
+    static let legacyStorageKey = "kordi.chatTheme.v1"
     static let ownMetadataOpacity = 0.88
     static let otherMetadataOpacity = 0.68
 
     var id: String { rawValue }
 
+    /// One-time move from the v1 key: runs only while v2 is absent and leaves v1 in place.
+    static func migrateStoredSelection(in defaults: UserDefaults = .standard) {
+        guard defaults.object(forKey: storageKey) == nil else { return }
+        let legacy = defaults.string(forKey: legacyStorageKey).flatMap(KordiChatTheme.init(rawValue:))
+        let migrated: KordiChatTheme = switch legacy {
+        case nil, .quiet: .classic
+        case let theme?: theme
+        }
+        defaults.set(migrated.rawValue, forKey: storageKey)
+    }
+
     var label: String {
         switch self {
+        case .classic: "Classic"
         case .quiet: "Quiet Signal"
         case .midnight: "Midnight Violet"
         case .sand: "Warm Sand"
@@ -130,6 +145,7 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
+        case .classic: "circle.lefthalf.filled"
         case .quiet: "message.fill"
         case .midnight: "moon.stars.fill"
         case .sand: "sun.haze.fill"
@@ -139,6 +155,7 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
 
     var canvas: Color {
         switch self {
+        case .classic: KordiTheme.adaptive(light: 0xFFFFFF, dark: 0x171717)
         case .quiet: KordiTheme.adaptive(light: 0xF4F5F7, dark: 0x0F1115)
         case .midnight: KordiTheme.adaptive(light: 0xF1EFF8, dark: 0x100F18)
         case .sand: KordiTheme.adaptive(light: 0xF2EBDD, dark: 0x181411)
@@ -148,6 +165,7 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
 
     var ownBubble: Color {
         switch self {
+        case .classic: KordiTheme.adaptive(light: 0xE9E9EB, dark: 0x343434)
         case .quiet: KordiTheme.adaptive(light: 0xE2EBF5, dark: 0x2D425B)
         case .midnight: KordiTheme.adaptive(light: 0x6652A3, dark: 0x6554A2)
         case .sand: KordiTheme.adaptive(light: 0x854627, dark: 0x854627)
@@ -157,6 +175,7 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
 
     var ownText: Color {
         switch self {
+        case .classic: KordiTheme.adaptive(light: 0x111111, dark: 0xF5F5F5)
         case .quiet: KordiTheme.adaptive(light: 0x1F3145, dark: 0xF5F8FC)
         case .midnight, .sand, .ocean: .white
         }
@@ -164,6 +183,7 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
 
     var ownPersonMention: Color {
         switch self {
+        case .classic: KordiTheme.adaptive(light: 0x176B4D, dark: 0xADFFD7)
         case .quiet: KordiTheme.adaptive(light: 0x176B4D, dark: 0xADFFD7)
         case .sand: Color(red: 120 / 255, green: 239 / 255, blue: 181 / 255)
         case .midnight, .ocean: Color(red: 173 / 255, green: 255 / 255, blue: 215 / 255)
@@ -172,6 +192,7 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
 
     var ownAgentMention: Color {
         switch self {
+        case .classic: KordiTheme.adaptive(light: 0x0A66D6, dark: 0xBFF5FF)
         case .quiet: KordiTheme.adaptive(light: 0x245B9A, dark: 0xBFF5FF)
         case .sand: Color(red: 153 / 255, green: 223 / 255, blue: 255 / 255)
         case .midnight, .ocean: Color(red: 191 / 255, green: 245 / 255, blue: 255 / 255)
@@ -180,6 +201,7 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
 
     var ownReplyAccent: Color {
         switch self {
+        case .classic: KordiTheme.adaptive(light: 0x805500, dark: 0xFFF0A3)
         case .quiet: KordiTheme.adaptive(light: 0x805500, dark: 0xFFF0A3)
         case .sand: Color(red: 255 / 255, green: 223 / 255, blue: 128 / 255)
         case .midnight, .ocean: Color(red: 255 / 255, green: 240 / 255, blue: 163 / 255)
@@ -188,6 +210,7 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
 
     var peerBubble: Color {
         switch self {
+        case .classic: KordiTheme.adaptive(light: 0xF2F2F4, dark: 0x262626)
         case .quiet: KordiTheme.adaptive(light: 0xFFFFFF, dark: 0x20242C)
         case .midnight: KordiTheme.adaptive(light: 0xFCFAFF, dark: 0x242032)
         case .sand: KordiTheme.adaptive(light: 0xFFF9F0, dark: 0x2A221C)
@@ -197,6 +220,7 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
 
     var peerText: Color {
         switch self {
+        case .classic: KordiTheme.adaptive(light: 0x111111, dark: 0xF2F2F2)
         case .quiet: KordiTheme.adaptive(light: 0x111827, dark: 0xF8FAFC)
         case .midnight: KordiTheme.adaptive(light: 0x221D30, dark: 0xF8F6FC)
         case .sand: KordiTheme.adaptive(light: 0x2D2118, dark: 0xFBF6EF)
@@ -206,6 +230,7 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
 
     var agentBubble: Color {
         switch self {
+        case .classic: KordiTheme.adaptive(light: 0xF2F2F4, dark: 0x262626)
         case .quiet: KordiTheme.adaptive(light: 0xEEEAF8, dark: 0x262238)
         case .midnight: KordiTheme.adaptive(light: 0xE8E0F4, dark: 0x2A2340)
         case .sand: KordiTheme.adaptive(light: 0xECE6F3, dark: 0x2D2533)
@@ -215,6 +240,7 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
 
     var accent: Color {
         switch self {
+        case .classic: KordiTheme.adaptive(light: 0x0A66D6, dark: 0x5EA2FF)
         case .quiet: KordiTheme.adaptive(light: 0x2563EB, dark: 0x60A5FA)
         case .midnight: KordiTheme.adaptive(light: 0x6D5CB2, dark: 0xAFA3E9)
         case .sand: KordiTheme.adaptive(light: 0xA75C33, dark: 0xDE9968)
@@ -224,6 +250,7 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
 
     var patternColor: Color {
         let opacity = switch self {
+        case .classic: 0.0
         case .quiet: 0.055
         case .midnight: 0.14
         case .sand: 0.08
@@ -233,12 +260,12 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
     }
 
     var usesLightOwnTextInLightAppearance: Bool {
-        self != .quiet
+        self != .classic && self != .quiet
     }
 }
 
 extension EnvironmentValues {
-    @Entry var kordiChatTheme: KordiChatTheme = .quiet
+    @Entry var kordiChatTheme: KordiChatTheme = .classic
 }
 
 struct KordiChatWallpaper: View {
@@ -249,6 +276,8 @@ struct KordiChatWallpaper: View {
             .overlay {
                 Canvas { context, size in
                     switch theme {
+                    case .classic:
+                        break
                     case .quiet:
                         drawDots(in: &context, size: size, spacing: 18, radius: 0.65)
                     case .midnight:

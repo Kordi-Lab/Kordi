@@ -174,3 +174,33 @@ async fn upgrade_from_137_adds_room_invitations() {
         .unwrap();
     assert_eq!(groups, 0, "a deleted room takes its groups");
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_138_adds_group_topics() {
+    let pool = fixture(138).await;
+    execute(&pool, "INSERT INTO cloud_common_ground_rooms(room_id,code,created_by) VALUES('00000000-0000-0000-0000-000000000001','0427','fixture-owner')").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_room_groups(group_space_id,room_id,conversation_id,name,created_by) VALUES('session:group:a','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-00000000000a','Agents','fixture-owner')").await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let (name, topic): (String, Option<String>) =
+        query_as("SELECT name, topic FROM cloud_common_ground_room_groups")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        (name.as_str(), topic),
+        ("Agents", None),
+        "existing groups keep no topic"
+    );
+    execute(&pool, "INSERT INTO cloud_common_ground_room_groups(group_space_id,room_id,conversation_id,name,created_by,topic) VALUES('session:group:b','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-00000000000b','Memory','fixture-owner','Agent memory')").await;
+    let (topic,): (Option<String>,) = query_as(
+        "SELECT topic FROM cloud_common_ground_room_groups WHERE group_space_id='session:group:b'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(topic.as_deref(), Some("Agent memory"));
+}
