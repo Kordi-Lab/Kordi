@@ -10,6 +10,19 @@ use crate::runtime::{CloudModelEngine, RunnerStepOutcome};
 
 pub const RUN_PREFIX: &str = "cg_";
 const TIMEOUT_SECONDS: u64 = 180;
+/// OMP sends a route's "default" thinking as high effort. On a large matching
+/// batch, gpt-5-mini then reasons past the time limit before writing any reply.
+/// Medium is what the provider uses when no effort is sent (the Rust engine).
+const OMP_DEFAULT_THINKING: &str = "medium";
+
+/// The reasoning effort an OMP Common ground run sends for a route's thinking.
+pub(crate) fn omp_thinking(thinking: &str) -> &str {
+    if thinking == "default" {
+        OMP_DEFAULT_THINKING
+    } else {
+        thinking
+    }
+}
 
 struct NoTools;
 
@@ -43,6 +56,7 @@ where
         .map_err(|error| error.to_string())?;
     let text = match engine {
         CloudModelEngine::Omp => {
+            auth.thinking = omp_thinking(&auth.thinking).to_string();
             let job = crate::omp_job::Job {
                 run,
                 auth: &auth,
