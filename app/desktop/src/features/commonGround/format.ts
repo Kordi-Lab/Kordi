@@ -70,3 +70,9 @@ export type CgGroupDraft = { name: string; topic: string | null; selected: strin
 export function topicGroupDraft(theme: { label: string; people: Array<{ accountId: string }> }, selfId: string): CgGroupDraft {
   return { name: theme.label, topic: theme.label, selected: theme.people.map((person) => person.accountId).filter((id) => id !== selfId) };
 }
+
+/** "From Eval design · 3 members", or just "3 members"; empty when the count is unknown. */
+export function groupLine(group: { topic?: string | null; memberCount: number }): string {
+  const members = group.memberCount > 0 ? `${group.memberCount} ${group.memberCount === 1 ? 'member' : 'members'}` : '';
+  return [group.topic ? `From ${group.topic}` : '', members].filter(Boolean).join(' · ');
+}
