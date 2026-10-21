@@ -87,8 +87,10 @@ async fn joining_profile(
     code: &str,
     account: &str,
     body: &JoinRequest,
-) -> Result<Profile, Response> {
-    let room = open_room(pool, code, account).await.map_err(db_error)?;
+) -> Result<Profile, Box<Response>> {
+    let room = open_room(pool, code, account)
+        .await
+        .map_err(|error| Box::new(db_error(error)))?;
     let (room_kind, current) = match room {
         Some((kind, current)) => (kind, current),
         None => (body.kind.clone(), None),
@@ -105,10 +107,10 @@ async fn joining_profile(
     )
     .await?;
     let Some(profile) = chosen else {
-        return Err(card::no_card());
+        return Err(Box::new(card::no_card()));
     };
     if let Some(response) = profiles::require_shared_card(pool, &profile).await {
-        return Err(response);
+        return Err(Box::new(response));
     }
     Ok(profile)
 }
@@ -152,7 +154,7 @@ pub(super) async fn join(
     }
     let profile = match joining_profile(pool, &code, account, &body).await {
         Ok(profile) => profile,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let name: String = body
         .name

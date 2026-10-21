@@ -82,12 +82,12 @@ async fn sharing_profile(
     account: &str,
     requested: Option<&str>,
     suggested_kind: Option<&str>,
-) -> Result<Profile, Response> {
+) -> Result<Profile, Box<Response>> {
     let Some(profile) = profiles::choose(pool, account, requested, suggested_kind).await? else {
-        return Err(card::no_card());
+        return Err(Box::new(card::no_card()));
     };
     match profiles::require_shared_card(pool, &profile).await {
-        Some(response) => Err(response),
+        Some(response) => Err(Box::new(response)),
         None => Ok(profile),
     }
 }
@@ -114,7 +114,7 @@ pub(super) async fn create(
     let body = body.map(|Json(body)| body).unwrap_or_default();
     let profile = match sharing_profile(pool, account, body.profile_id.as_deref(), None).await {
         Ok(profile) => profile,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let code = new_code();
     let result = async {
@@ -215,7 +215,7 @@ pub(super) async fn redeem(
     let profile =
         match sharing_profile(pool, account, body.profile_id.as_deref(), kind.as_deref()).await {
             Ok(profile) => profile,
-            Err(response) => return response,
+            Err(response) => return *response,
         };
     let mine = profile.profile_id.as_str();
     let result = async {

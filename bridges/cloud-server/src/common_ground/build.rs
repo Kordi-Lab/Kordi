@@ -36,7 +36,7 @@ pub(super) async fn start(
     let requested = request.profile_id.as_deref();
     let existing = match profiles::resolve(pool, account, requested).await {
         Ok(profile) => profile,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     if request.agents_too_long() {
         return err(
@@ -67,7 +67,7 @@ pub(super) async fn start(
         Some(profile) => profile,
         None => match profiles::resolve_or_create(pool, account, requested).await {
             Ok(profile) => profile,
-            Err(response) => return response,
+            Err(response) => return *response,
         },
     };
     let profile_id = profile.profile_id.as_str();

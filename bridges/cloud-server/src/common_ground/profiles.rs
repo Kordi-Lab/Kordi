@@ -124,17 +124,17 @@ pub(super) async fn resolve(
     pool: &PgPool,
     account: &str,
     requested: Option<&str>,
-) -> Result<Option<Profile>, Response> {
+) -> Result<Option<Profile>, Box<Response>> {
     let requested = requested.map(str::trim).filter(|id| !id.is_empty());
     let found = match requested {
         Some(id) => match get(pool, account, id).await {
             Ok(Some(profile)) => Ok(Some(profile)),
-            Ok(None) => return Err(not_found()),
+            Ok(None) => return Err(Box::new(not_found())),
             Err(error) => Err(error),
         },
         None => default_profile(pool, account).await,
     };
-    found.map_err(db_error)
+    found.map_err(|error| Box::new(db_error(error)))
 }
 
 /// Like [`resolve`], but creates the work profile for an account that has
@@ -143,7 +143,7 @@ pub(super) async fn resolve_or_create(
     pool: &PgPool,
     account: &str,
     requested: Option<&str>,
-) -> Result<Profile, Response> {
+) -> Result<Profile, Box<Response>> {
     if let Some(profile) = resolve(pool, account, requested).await? {
         return Ok(profile);
     }
@@ -159,9 +159,9 @@ pub(super) async fn resolve_or_create(
         // Another request created one first.
         Ok(Err(_)) => match resolve(pool, account, None).await? {
             Some(profile) => Ok(profile),
-            None => Err(not_found()),
+            None => Err(Box::new(not_found())),
         },
-        Err(error) => Err(db_error(error)),
+        Err(error) => Err(Box::new(db_error(error))),
     }
 }
 
@@ -288,7 +288,7 @@ pub(super) async fn choose(
     account: &str,
     requested: Option<&str>,
     suggested_kind: Option<&str>,
-) -> Result<Option<Profile>, Response> {
+) -> Result<Option<Profile>, Box<Response>> {
     if requested.is_some_and(|id| !id.trim().is_empty()) {
         return resolve(pool, account, requested).await;
     }
@@ -296,7 +296,7 @@ pub(super) async fn choose(
         match built_of_kind(pool, account, kind).await {
             Ok(Some(profile)) => return Ok(Some(profile)),
             Ok(None) => {}
-            Err(error) => return Err(db_error(error)),
+            Err(error) => return Err(Box::new(db_error(error))),
         }
     }
     resolve(pool, account, None).await

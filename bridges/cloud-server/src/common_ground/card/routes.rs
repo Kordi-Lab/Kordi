@@ -62,7 +62,7 @@ pub(in crate::common_ground) async fn read(
     let pool = state.db_pool();
     match profiles::resolve(pool, &session.account_id, params.profile.as_deref()).await {
         Ok(profile) => owner_response(pool, profile.as_ref(), StatusCode::OK).await,
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 
@@ -90,7 +90,7 @@ pub(in crate::common_ground) async fn update_topics(
         match profiles::resolve(pool, &session.account_id, params.profile.as_deref()).await {
             Ok(Some(profile)) => profile,
             Ok(None) => return no_card(),
-            Err(response) => return response,
+            Err(response) => return *response,
         };
     let id = profile.profile_id.as_str();
     let result = async {
@@ -207,7 +207,7 @@ pub(in crate::common_ground) async fn update_hidden(
         match profiles::resolve(pool, &session.account_id, body.profile_id.as_deref()).await {
             Ok(Some(profile)) => profile,
             Ok(None) => return no_card(),
-            Err(response) => return response,
+            Err(response) => return *response,
         };
     let id = profile.profile_id.as_str();
     let result = async {
@@ -271,7 +271,7 @@ pub(in crate::common_ground) async fn update_settings(
     let profile = match profiles::resolve_or_create(pool, account, body.profile_id.as_deref()).await
     {
         Ok(profile) => profile,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let result = query(
         "INSERT INTO cloud_common_ground_cards (profile_id, account_id, sharing_enabled)
@@ -304,7 +304,7 @@ pub(in crate::common_ground) async fn delete(
         match profiles::resolve(pool, &session.account_id, params.profile.as_deref()).await {
             Ok(Some(profile)) => profile,
             Ok(None) => return owner_response(pool, None, StatusCode::OK).await,
-            Err(response) => return response,
+            Err(response) => return *response,
         };
     let id = profile.profile_id.as_str();
     let result = async {
