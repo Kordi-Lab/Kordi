@@ -83,6 +83,7 @@
 		3C0D1EFE87F4929F5963E148 /* ProviderLoginControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEFE5854F35FB895C4354C9D /* ProviderLoginControllerTests.swift */; };
 		3CC711F13705BF9F23A3EBDF /* LivePhotoSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFCC37295C93ECDF39C84206 /* LivePhotoSurface.swift */; };
 		3D7A4357454B74FB0D27E7C0 /* ProviderAuthenticationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BAE23D56402398862849C56 /* ProviderAuthenticationTests.swift */; };
+		3DB9C6BBACC78C543D37BE2E /* CommonGroundBuildSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4425B9621280D563DAAB4492 /* CommonGroundBuildSources.swift */; };
 		3DECEFF6E4E2E1A3DDBA1B6E /* DigestImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0216215122D9CFCEADED62A /* DigestImportView.swift */; };
 		3E99C2FE90CDE57668D8E4CA /* AgentSubsessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E76191F25479D67EEA9A848 /* AgentSubsessionView.swift */; };
 		40DC85F96BE77990B330A8C1 /* CommonGroundModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1B3DD7AACC2899FDBB384C /* CommonGroundModel.swift */; };
@@ -156,6 +157,7 @@
 		7D759868D8B2AC1940DA003C /* AgentSubsessionStopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9937A528C34DE6A3E1ADC0D5 /* AgentSubsessionStopTests.swift */; };
 		7DFA4853671269DDB4276A23 /* CompanionChatPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57000316D6B453E1690DA350 /* CompanionChatPanel.swift */; };
 		7F061BEB50E2E1B902DA1683 /* ConversationMessageOrdering.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4662EDE7761CB6739BB4959E /* ConversationMessageOrdering.swift */; };
+		7F30F10656CEEF82FA6AA960 /* CommonGroundBuildChoices.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40A2AB1FF5FE1CD5DC388C7 /* CommonGroundBuildChoices.swift */; };
 		7FC028D51428D718A78FDFBC /* SessionDetailStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 260B81738036B5419DF04E25 /* SessionDetailStyle.swift */; };
 		801B1286BE27D9D500B36DE9 /* MessageLinkPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D362AF4BAC14A082A9A6A849 /* MessageLinkPreview.swift */; };
 		80A95422E8CFC11EC99E011D /* CommonGroundTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99CD429A25D6DE32F1B1AD49 /* CommonGroundTimelineView.swift */; };
@@ -450,6 +452,7 @@
 		4341AB98A04360584EC3B4BD /* PhotoSendReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoSendReviewSheet.swift; sourceTree = "<group>"; };
 		434C5BEAA53589C21BDC6197 /* AppIconSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconSettings.swift; sourceTree = "<group>"; };
 		442174FAD2A3DF14419AC2C0 /* ComposerTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerTextView.swift; sourceTree = "<group>"; };
+		4425B9621280D563DAAB4492 /* CommonGroundBuildSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundBuildSources.swift; sourceTree = "<group>"; };
 		44A3C66207D7BD48F04030BF /* CloudConversationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudConversationCatalogTests.swift; sourceTree = "<group>"; };
 		44C7E9E4C6857663B73F5B81 /* KordiShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KordiShareExtension.entitlements; sourceTree = "<group>"; };
 		45283A731378FF0892492602 /* CloudWireCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudWireCacheTests.swift; sourceTree = "<group>"; };
@@ -612,6 +615,7 @@
 		C0A87BEB6341F1E394022C91 /* VoiceMessageRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageRecorder.swift; sourceTree = "<group>"; };
 		C2C10B9D09B7992549A6CE35 /* ExpressiveMediaPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpressiveMediaPicker.swift; sourceTree = "<group>"; };
 		C36D8E21FB8E12DA41407C6F /* PlanCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanCardView.swift; sourceTree = "<group>"; };
+		C40A2AB1FF5FE1CD5DC388C7 /* CommonGroundBuildChoices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundBuildChoices.swift; sourceTree = "<group>"; };
 		C57FE38A8F4FA092BB2316DC /* DocumentReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentReaderView.swift; sourceTree = "<group>"; };
 		C6973B0CB3175E03F69AAA6A /* PinnedMessageBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedMessageBar.swift; sourceTree = "<group>"; };
 		C6AF7C0755E63E50264115EE /* KordiDeletionUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KordiDeletionUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -1046,6 +1050,8 @@
 			children = (
 				B33DA1A3FD4E618DBB7273C3 /* AppModel+CommonGround.swift */,
 				9924459336FA89A2D5AFE50C /* CloudAPIClient+CommonGround.swift */,
+				C40A2AB1FF5FE1CD5DC388C7 /* CommonGroundBuildChoices.swift */,
+				4425B9621280D563DAAB4492 /* CommonGroundBuildSources.swift */,
 				D0654876F37DB3E41E4BAD14 /* CommonGroundBuildView.swift */,
 				E7805CAF02455FD762B57398 /* CommonGroundCardView.swift */,
 				91BD8430D07B85FB968BF18E /* CommonGroundComponents.swift */,
@@ -1692,6 +1698,8 @@
 				6316C7A33ABEDDA7248784C4 /* CloudPresencePublisher.swift in Sources */,
 				564CD6F8EA26FC0916093F42 /* CloudSessionPin.swift in Sources */,
 				715CD4AE535A1B1B2B6D4973 /* CloudWireCache.swift in Sources */,
+				7F30F10656CEEF82FA6AA960 /* CommonGroundBuildChoices.swift in Sources */,
+				3DB9C6BBACC78C543D37BE2E /* CommonGroundBuildSources.swift in Sources */,
 				BD16E2E93D7318B5F733E87A /* CommonGroundBuildView.swift in Sources */,
 				68545B137503BCCB74EC902C /* CommonGroundCardView.swift in Sources */,
 				A5399ACC0B15D32A035D48CF /* CommonGroundComponents.swift in Sources */,

@@ -64,7 +64,7 @@ struct CommonGroundView: View {
                     }
                 }
         }
-        .overlay(alignment: .bottom) { CommonGroundToast(text: $model.notice) }
+        .overlay(alignment: .top) { CommonGroundToast(text: $model.notice) }
         .environmentObject(model)
         .environment(\.commonGroundOpenConversation, onOpenConversation)
         .tint(commonGroundTint)
@@ -194,6 +194,7 @@ struct CommonGroundPrimaryButtonStyle: ButtonStyle {
     }
 }
 
+/// One line at the top of the screen, clear of the bottom buttons.
 struct CommonGroundToast: View {
     @Binding var text: String?
 
@@ -206,15 +207,16 @@ struct CommonGroundToast: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .sessionGlass(in: Capsule())
-                    .padding(.horizontal, 24)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    // Clears the round back button at the top leading corner.
+                    .padding(.horizontal, 64)
+                    .transition(.move(edge: .top).combined(with: .opacity))
                     .task(id: text) {
                         try? await Task.sleep(for: .seconds(2.4))
                         withAnimation { self.text = nil }
                     }
             }
         }
-        .padding(.bottom, 24)
+        .padding(.top, 8)
         .animation(.snappy, value: text)
     }
 }
