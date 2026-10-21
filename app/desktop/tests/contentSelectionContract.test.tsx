@@ -18,8 +18,7 @@ test('base styles disable shell selection and opt in only declared copy surfaces
   assert.match(css, /\[data-message-selection-mode="true"\][\s\S]*?user-select: none;/);
   assert.match(css, /\[data-kordi-copy-surface\][\s\S]*?::selection[\s\S]*?--app-copy-selection-bg/);
   assert.match(css, /--app-copy-selection-text/);
-  assert.match(css, /data-kordi-copy-selection="unified"[\s\S]*?--app-copy-selection-height/);
-  assert.match(css, /data-kordi-copy-selection="unified"[\s\S]*?background-color: transparent/);
+  assert.doesNotMatch(css, /data-kordi-copy-selection="unified"/);
 });
 
 test('selection colors use a quiet blue tint with explicit light and dark contrast', () => {
