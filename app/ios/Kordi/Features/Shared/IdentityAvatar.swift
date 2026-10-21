@@ -248,7 +248,7 @@ struct GroupAvatarStack: View {
     var imageSource: String? = nil
 
     private var visibleParticipants: [CloudGroupParticipant] {
-        Array(participants.filter { !KordiPipIdentity.isPip(accountId: $0.accountId) }
+        Array(participants.filter { !KordiSystemIdentity.isServiceAccount($0.accountId) }
             .sorted(by: CloudGroupParticipant.canonicalPrecedes).prefix(9))
     }
 

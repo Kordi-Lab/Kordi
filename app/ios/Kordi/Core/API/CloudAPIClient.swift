@@ -512,7 +512,7 @@ actor CloudAPIClient {
         var result: [String: [CloudGroupParticipant]] = [:]
         for conversation in chatConversationsById.values where conversation.kind == "group" {
             let participants = conversation.members
-                .filter { $0.membershipState == "active" && !KordiPipIdentity.isPip(accountId: $0.accountId) }
+                .filter { $0.membershipState == "active" && !KordiSystemIdentity.isServiceAccount($0.accountId) }
                 .map { member in
                     CloudGroupParticipant(
                         accountId: member.accountId,
@@ -2414,15 +2414,15 @@ actor CloudAPIClient {
     ) async throws -> CloudChatConversation {
         let accountId = try requireActiveAccountId()
         _ = try await bootstrapChat(token: token)
-        // PiP is a server-managed member: clients never list it, so it never
-        // counts as a difference to synchronize, and a client never removes it.
+        // PiP and System are server-managed members: clients never list them, so
+        // they never count as a difference to sync, and a client never removes them.
         let desiredMembers = Set(
-            memberAccountIds.compactMap(\.nonEmpty).filter { !KordiPipIdentity.isPip(accountId: $0) }
+            memberAccountIds.compactMap(\.nonEmpty).filter { !KordiSystemIdentity.isServiceAccount($0) }
         ).union([accountId])
         if var cached = chatConversationsBySessionId[sessionId] {
             if cached.kind == "group" {
                 let activeMembers = Set(cached.members.filter {
-                    $0.membershipState == "active" && !KordiPipIdentity.isPip(accountId: $0.accountId)
+                    $0.membershipState == "active" && !KordiSystemIdentity.isServiceAccount($0.accountId)
                 }.map(\.accountId))
                 if activeMembers != desiredMembers {
                     let response: ChatConversationResponse = try await send(
@@ -2508,7 +2508,7 @@ actor CloudAPIClient {
         let outgoing = message.senderAccountId == viewerAccountId
         let otherMembers = conversation.members.filter {
             $0.accountId != viewerAccountId && $0.membershipState == "active"
-                && !KordiPipIdentity.isPip(accountId: $0.accountId)
+                && !KordiSystemIdentity.isServiceAccount($0.accountId)
         }
         let peerAccountId = message.senderAccountId != viewerAccountId
             ? message.senderAccountId

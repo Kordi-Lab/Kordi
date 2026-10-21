@@ -1,13 +1,15 @@
 import SwiftUI
 import UIKit
 
-/// Server notices in a group, such as the introduction and "joined" lines.
-/// The server posts them from PiP's account with this message kind; the app
-/// shows them as a normal message from "System" with a gray Kordi bird.
+/// Server notices, such as a group's introduction and "joined" lines or the
+/// plan card in a direct chat. They carry this message kind and come from the
+/// hidden System account, PiP, or a member (a plan card stays the organizer's);
+/// the app always shows them from "System" with a gray Kordi bird.
 enum KordiSystemIdentity {
     static let messageKind = "system-notice"
     static let displayName = "System"
     static let seed = "kordi_system"
+    static let accountId = "acct_kordi_system"
 
     static let avatar = ConversationAvatarIdentity(name: displayName, source: nil, seed: seed)
 
@@ -23,6 +25,28 @@ enum KordiSystemIdentity {
         seed?.trimmingCharacters(in: .whitespacesAndNewlines) == Self.seed
     }
 
+    static func isSystem(accountId: String?) -> Bool {
+        accountId?.trimmingCharacters(in: .whitespacesAndNewlines) == Self.accountId
+    }
+
+    /// PiP and the System account are server-managed: never listed, counted,
+    /// pictured, or synchronized as members.
+    static func isServiceAccount(_ accountId: String?) -> Bool {
+        KordiPipIdentity.isPip(accountId: accountId) || isSystem(accountId: accountId)
+    }
+
+    /// A notice is never the viewer's own bubble, even when the viewer's
+    /// account sent it.
+    static func author(messageKind: String?, fromAccountId: String, ownAccountId: String) -> MessageAuthor {
+        if isSystemNotice(kind: messageKind) || isSystem(accountId: fromAccountId) { return .person }
+        return fromAccountId == ownAccountId ? .me : .person
+    }
+
+    /// The name on a direct-chat message from someone other than the viewer.
+    static func directAuthorName(messageKind: String?, fromAccountId: String, fallback: String) -> String {
+        isSystemNotice(kind: messageKind) || isSystem(accountId: fromAccountId) ? displayName : fallback
+    }
+
     /// The name on a group message that has no envelope: "System" for a
     /// notice, then the member's name, PiP, or the conversation's name.
     static func groupAuthorName(
@@ -31,7 +55,7 @@ enum KordiSystemIdentity {
         participantNames: [String: String],
         fallback: String
     ) -> String {
-        if isSystemNotice(kind: messageKind) { return displayName }
+        if isSystemNotice(kind: messageKind) || isSystem(accountId: fromAccountId) { return displayName }
         if let name = participantNames[fromAccountId] { return name }
         return KordiPipIdentity.isPip(accountId: fromAccountId) ? KordiPipIdentity.displayName : fallback
     }
