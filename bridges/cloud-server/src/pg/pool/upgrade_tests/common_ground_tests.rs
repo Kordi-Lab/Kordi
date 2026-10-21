@@ -13,12 +13,14 @@ async fn upgrade_from_133_adds_common_ground() {
     let after: Vec<(Value,)> = query_as(accounts).fetch_all(&pool).await.unwrap();
     assert_eq!(before, after, "accounts are untouched");
 
-    execute(&pool, "INSERT INTO cloud_common_ground_cards(account_id) VALUES('fixture-owner'),('fixture-peer')").await;
+    // Rows use the current schema, where everything hangs off a profile.
+    execute(&pool, "INSERT INTO cloud_common_ground_profiles(profile_id,account_id,kind,name,position) VALUES('cgp_owner','fixture-owner','work','Work',0),('cgp_peer','fixture-peer','work','Work',0)").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_cards(profile_id,account_id) VALUES('cgp_owner','fixture-owner'),('cgp_peer','fixture-peer')").await;
     execute(&pool, "INSERT INTO cloud_common_ground_rooms(room_id,code,created_by) VALUES('00000000-0000-0000-0000-000000000001','0427','fixture-owner')").await;
-    execute(&pool, "INSERT INTO cloud_common_ground_room_members(room_id,account_id) VALUES('00000000-0000-0000-0000-000000000001','fixture-owner'),('00000000-0000-0000-0000-000000000001','fixture-peer')").await;
-    execute(&pool, "INSERT INTO cloud_common_ground_pairings(account_a,account_b) VALUES('fixture-owner','fixture-peer')").await;
-    execute(&pool, "INSERT INTO cloud_common_ground_pairing_codes(code_hash,account_id,expires_at) VALUES('hash','fixture-peer',now())").await;
-    execute(&pool, "INSERT INTO cloud_common_ground_matches(viewer_account_id,other_account_id,viewer_revision,other_revision,result_json) VALUES('fixture-owner','fixture-peer',1,1,'{}')").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_room_members(room_id,account_id,profile_id) VALUES('00000000-0000-0000-0000-000000000001','fixture-owner','cgp_owner'),('00000000-0000-0000-0000-000000000001','fixture-peer','cgp_peer')").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_pairings(account_a,account_b,profile_a,profile_b) VALUES('fixture-owner','fixture-peer','cgp_owner','cgp_peer')").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_pairing_codes(code_hash,account_id,profile_id,expires_at) VALUES('hash','fixture-peer','cgp_peer',now())").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_matches(viewer_account_id,other_account_id,viewer_profile_id,other_profile_id,viewer_revision,other_revision,result_json) VALUES('fixture-owner','fixture-peer','cgp_owner','cgp_peer',1,1,'{}')").await;
     let (sharing, revision, topics): (bool, i64, Value) = query_as("SELECT sharing_enabled,revision,topics_json FROM cloud_common_ground_cards WHERE account_id='fixture-owner'")
         .fetch_one(&pool)
         .await
@@ -34,8 +36,8 @@ async fn upgrade_from_133_adds_common_ground() {
         "INSERT INTO cloud_common_ground_rooms(room_id,code) VALUES('00000000-0000-0000-0000-000000000003','42')",
         "INSERT INTO cloud_common_ground_rooms(room_id,code) VALUES('00000000-0000-0000-0000-000000000004','04a7')",
         // Pairings are stored with the smaller id first, once.
-        "INSERT INTO cloud_common_ground_pairings(account_a,account_b) VALUES('fixture-peer','fixture-owner')",
-        "INSERT INTO cloud_common_ground_matches(viewer_account_id,other_account_id,viewer_revision,other_revision,result_json) VALUES('fixture-peer','fixture-peer',1,1,'{}')",
+        "INSERT INTO cloud_common_ground_pairings(account_a,account_b,profile_a,profile_b) VALUES('fixture-peer','fixture-owner','cgp_peer','cgp_owner')",
+        "INSERT INTO cloud_common_ground_matches(viewer_account_id,other_account_id,viewer_profile_id,other_profile_id,viewer_revision,other_revision,result_json) VALUES('fixture-peer','fixture-peer','cgp_peer','cgp_peer',1,1,'{}')",
     ] {
         assert!(sqlx_core::raw_sql::raw_sql(invalid).execute(&pool).await.is_err(), "{invalid}");
     }
@@ -198,4 +200,118 @@ async fn upgrade_from_138_adds_group_topics() {
     .await
     .unwrap();
     assert_eq!(topic.as_deref(), Some("Agent memory"));
+}
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_139_adds_profiles() {
+    let pool = fixture(139).await;
+    let room = "00000000-0000-0000-0000-000000000001";
+    execute(&pool, "INSERT INTO cloud_common_ground_cards(account_id,topics_json,revision,built_at) VALUES('fixture-owner','{\"workingOn\":[\"Agent memory\"]}',3,now()),('fixture-peer','{}',1,now())").await;
+    execute(&pool, &format!("INSERT INTO cloud_common_ground_rooms(room_id,code,created_by) VALUES('{room}','0427','fixture-owner')")).await;
+    execute(&pool, &format!("INSERT INTO cloud_common_ground_room_members(room_id,account_id) VALUES('{room}','fixture-owner'),('{room}','fixture-peer')")).await;
+    execute(&pool, "INSERT INTO cloud_common_ground_pairings(account_a,account_b) VALUES('fixture-owner','fixture-peer')").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_pairing_codes(code_hash,account_id,expires_at) VALUES('hash','fixture-peer',now())").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_matches(viewer_account_id,other_account_id,viewer_revision,other_revision,result_json,opened_at) VALUES('fixture-owner','fixture-peer',3,1,'{\"score\":40}',now())").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_match_runs(run_id,kind,viewer_account_id,cards_json) VALUES('cg_match_a','match','fixture-owner','[]')").await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+
+    let profiles: Vec<(String, String, String, String, i32)> = query_as("SELECT profile_id,account_id,kind,name,position FROM cloud_common_ground_profiles ORDER BY account_id")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        profiles.len(),
+        2,
+        "one work profile per person: {profiles:?}"
+    );
+    for (id, _, kind, name, position) in &profiles {
+        assert!(id.starts_with("cgp_") && id.len() == 36, "{id}");
+        assert_eq!(
+            (kind.as_str(), name.as_str(), *position),
+            ("work", "Work", 0)
+        );
+    }
+    let owner = profiles[0].0.clone();
+    let peer = profiles[1].0.clone();
+    assert_eq!(profiles[0].1, "fixture-owner");
+    let (card, revision, topics): (String, i64, Value) = query_as("SELECT profile_id,revision,topics_json FROM cloud_common_ground_cards WHERE account_id='fixture-owner'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        (card, revision),
+        (owner.clone(), 3),
+        "the card moves to the work profile"
+    );
+    assert_eq!(topics, json!({"workingOn": ["Agent memory"]}));
+    let check: (String, String, String, String, String, String, Option<String>, Option<String>) = query_as(
+        "SELECT (SELECT profile_id FROM cloud_common_ground_room_members WHERE account_id='fixture-owner'),
+                (SELECT profile_id FROM cloud_common_ground_room_members WHERE account_id='fixture-peer'),
+                (SELECT profile_a FROM cloud_common_ground_pairings), (SELECT profile_b FROM cloud_common_ground_pairings),
+                (SELECT viewer_profile_id FROM cloud_common_ground_matches), (SELECT other_profile_id FROM cloud_common_ground_matches),
+                (SELECT profile_id FROM cloud_common_ground_pairing_codes),
+                (SELECT viewer_profile_id FROM cloud_common_ground_match_runs)",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        check,
+        (
+            owner.clone(),
+            peer.clone(),
+            owner.clone(),
+            peer.clone(),
+            owner.clone(),
+            peer.clone(),
+            Some(peer.clone()),
+            Some(owner.clone())
+        )
+    );
+    let (kind,): (Option<String>,) = query_as("SELECT kind FROM cloud_common_ground_rooms")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(kind, None, "existing rooms suggest no kind");
+
+    // A second card for a new profile; fixed kinds once, five at most.
+    execute(&pool, "INSERT INTO cloud_common_ground_profiles(profile_id,account_id,kind,name,position) VALUES('cgp_health','fixture-owner','health','Health',1),('cgp_kaust','fixture-owner','custom','KAUST',2),('cgp_mit','fixture-owner','custom','MIT',3)").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_cards(profile_id,account_id) VALUES('cgp_health','fixture-owner')").await;
+    for invalid in [
+        "INSERT INTO cloud_common_ground_profiles(profile_id,account_id,kind,name,position) VALUES('cgp_w2','fixture-owner','work','Work',4)",
+        "INSERT INTO cloud_common_ground_profiles(profile_id,account_id,kind,name,position) VALUES('cgp_x','fixture-owner','custom','X',1)",
+        "INSERT INTO cloud_common_ground_profiles(profile_id,account_id,kind,name,position) VALUES('cgp_y','fixture-owner','school','Y',5)",
+        "INSERT INTO cloud_common_ground_profiles(profile_id,account_id,kind,name,position) VALUES('cgp_z','fixture-owner','custom','',5)",
+        "INSERT INTO cloud_common_ground_cards(profile_id,account_id) VALUES('cgp_health','fixture-owner')",
+        "INSERT INTO cloud_common_ground_rooms(room_id,code,kind) VALUES('00000000-0000-0000-0000-000000000002','0428','school')",
+    ] {
+        assert!(sqlx_core::raw_sql::raw_sql(invalid).execute(&pool).await.is_err(), "{invalid}");
+    }
+    execute(&pool, "INSERT INTO cloud_common_ground_rooms(room_id,code,kind) VALUES('00000000-0000-0000-0000-000000000002','0428','health')").await;
+
+    // Deleting a profile takes its card, memberships, pairings and matches.
+    execute(
+        &pool,
+        &format!("DELETE FROM cloud_common_ground_profiles WHERE profile_id='{owner}'"),
+    )
+    .await;
+    let counts: (i64, i64, i64, i64, i64) = query_as("SELECT (SELECT COUNT(*) FROM cloud_common_ground_cards),(SELECT COUNT(*) FROM cloud_common_ground_room_members),(SELECT COUNT(*) FROM cloud_common_ground_pairings),(SELECT COUNT(*) FROM cloud_common_ground_matches),(SELECT COUNT(*) FROM cloud_common_ground_match_runs)")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(counts, (2, 1, 0, 0, 0));
+    execute(
+        &pool,
+        "DELETE FROM cloud_accounts WHERE account_id='fixture-owner'",
+    )
+    .await;
+    let (left,): (i64,) = query_as("SELECT COUNT(*) FROM cloud_common_ground_profiles")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(left, 1, "a deleted account takes its profiles");
 }

@@ -1,14 +1,13 @@
-//! Room results, match detail and Recent.
+//! Room results and match detail, per pair of shared profiles.
 
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     Extension, Json,
 };
-use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use sqlx_core::{query::query, query_as::query_as};
 
@@ -16,15 +15,19 @@ use super::store::{self, Pending, Queued, MAX_THEME_MEMBERS};
 use super::{shared_cards, suggestion, MatchResult, SharedCard};
 use crate::auth::rate_limit::CloudRateLimiter;
 use crate::common_ground::actions::{attach, relationship, relationships, room_extras};
+use crate::common_ground::profiles::ProfileQuery;
 use crate::common_ground::{card, db_error, limited, people, rooms};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
-fn person(card: &SharedCard) -> Value {
-    people::person(
+/// A person with the profile they share with the viewer.
+pub(super) fn person(card: &SharedCard) -> Value {
+    let mut person = people::person(
         &card.account_id,
         Some(&card.name),
         card.avatar_url.as_deref(),
-    )
+    );
+    person["profile"] = card.profile_tag();
+    person
 }
 
 fn status(pending: Option<Pending>) -> &'static str {
@@ -56,15 +59,15 @@ pub(in crate::common_ground) async fn results(
         Ok(None) => return rooms::room_not_found(),
         Err(error) => return db_error(error),
     };
-    let members: Result<Vec<(String,)>, _> = query_as(
-        "SELECT account_id FROM cloud_common_ground_room_members
+    let members: Result<Vec<(String, String)>, _> = query_as(
+        "SELECT account_id, profile_id FROM cloud_common_ground_room_members
          WHERE room_id = $1 AND left_at IS NULL ORDER BY joined_at, account_id",
     )
     .bind(room_id)
     .fetch_all(pool)
     .await;
-    let members: Vec<String> = match members {
-        Ok(rows) => rows.into_iter().map(|(id,)| id).collect(),
+    let members = match members {
+        Ok(rows) => rows,
         Err(error) => return db_error(error),
     };
     let cards = match shared_cards(pool, &members).await {
@@ -90,7 +93,7 @@ pub(in crate::common_ground) async fn results(
     };
     let stale: Vec<SharedCard> = others
         .iter()
-        .filter(|o| !fresh.contains_key(&o.account_id))
+        .filter(|o| !fresh.contains_key(&o.profile_id))
         .cloned()
         .collect();
     let theme_members: Vec<SharedCard> = cards.iter().take(MAX_THEME_MEMBERS).cloned().collect();
@@ -142,7 +145,7 @@ pub(in crate::common_ground) async fn results(
 
     let mut ranked: Vec<(&SharedCard, &MatchResult)> = others
         .iter()
-        .filter_map(|o| fresh.get(&o.account_id).map(|r| (o, r)))
+        .filter_map(|o| fresh.get(&o.profile_id).map(|r| (o, r)))
         .collect();
     ranked.sort_by(|a, b| b.1.score.cmp(&a.1.score).then(a.0.name.cmp(&b.0.name)));
     let ranked_ids: Vec<String> = ranked.iter().map(|(c, _)| c.account_id.clone()).collect();
@@ -174,6 +177,7 @@ pub(in crate::common_ground) async fn results(
         StatusCode::OK,
         Json(json!({
             "status": status(pending),
+            "profileId": viewer.profile_id,
             "people": people,
             "topics": themes.iter().map(theme_view).collect::<Vec<_>>(),
             "suggestion": suggestion(&themes, account).map(theme_view),
@@ -184,26 +188,35 @@ pub(in crate::common_ground) async fn results(
         .into_response()
 }
 
-/// `GET /v1/cloud/common-ground/people/:account_id/match`: what you share
-/// with someone you may see. Opening a ready match adds it to Recent. Someone
-/// you only share a closed room with shows the stored match; nothing new runs.
+/// `GET /v1/cloud/common-ground/people/:account_id/match?profile=<id>`:
+/// what you share with someone you may see, between the profile you share
+/// with them and the one they share with you. `profile` picks your profile;
+/// by default the most recent room or pairing decides. Opening a ready
+/// match adds it to Recent. Someone you only share a closed room with shows
+/// the stored match; nothing new runs.
 pub(in crate::common_ground) async fn match_detail(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
     Path(other): Path<String>,
+    Query(params): Query<ProfileQuery>,
 ) -> Response {
     let Some(pip) = state.pip() else {
         return crate::common_ground::unavailable();
     };
     let pool = state.db_pool();
     let account = session.account_id.as_str();
-    match people::can_see(pool, account, &other).await {
-        Ok(true) if other != account => {}
-        Ok(_) => return people::not_found(),
+    let requested = params.profile.as_deref().filter(|id| !id.is_empty());
+    let link = match people::link(pool, account, &other, requested).await {
+        Ok(Some(link)) => link,
+        Ok(None) => return people::not_found(),
         Err(error) => return db_error(error),
-    }
-    let cards = match shared_cards(pool, &[account.to_string(), other.clone()]).await {
+    };
+    let pair = [
+        (account.to_string(), link.viewer_profile.clone()),
+        (other.clone(), link.other_profile.clone()),
+    ];
+    let cards = match shared_cards(pool, &pair).await {
         Ok(cards) => cards,
         Err(error) => return db_error(error),
     };
@@ -217,11 +230,7 @@ pub(in crate::common_ground) async fn match_detail(
             card::no_card()
         };
     };
-    let live = match people::is_live(pool, account, &other).await {
-        Ok(live) => live,
-        Err(error) => return db_error(error),
-    };
-    let fresh = if live {
+    let fresh = if link.live {
         store::fresh_results(pool, viewer, std::slice::from_ref(other_card)).await
     } else {
         store::stored_results(pool, viewer, std::slice::from_ref(other_card)).await
@@ -230,13 +239,13 @@ pub(in crate::common_ground) async fn match_detail(
         Ok(fresh) => fresh,
         Err(error) => return db_error(error),
     };
-    if let Some(result) = fresh.get(&other) {
+    if let Some(result) = fresh.get(&other_card.profile_id) {
         if let Err(error) = query(
             "UPDATE cloud_common_ground_matches SET opened_at = now()
-             WHERE viewer_account_id = $1 AND other_account_id = $2",
+             WHERE viewer_profile_id = $1 AND other_profile_id = $2",
         )
-        .bind(account)
-        .bind(&other)
+        .bind(&viewer.profile_id)
+        .bind(&other_card.profile_id)
         .execute(pool)
         .await
         {
@@ -245,13 +254,14 @@ pub(in crate::common_ground) async fn match_detail(
         let mut body = json!(result);
         body["status"] = json!("ready");
         body["person"] = person(other_card);
+        body["profileId"] = json!(viewer.profile_id);
         match relationship(pool, account, &other).await {
             Ok(relationship) => body["relationship"] = relationship,
             Err(error) => return db_error(error),
         }
         return (StatusCode::OK, Json(body)).into_response();
     }
-    if !live {
+    if !link.live {
         return crate::common_ground::err(
             "common_ground_match_not_found",
             "No match was saved for this person.",
@@ -274,6 +284,7 @@ pub(in crate::common_ground) async fn match_detail(
                 Json(json!({
                     "status": status(Some(pending)),
                     "person": person(other_card),
+                    "profileId": viewer.profile_id,
                     "relationship": relationship,
                 })),
             )
@@ -281,74 +292,6 @@ pub(in crate::common_ground) async fn match_detail(
             Err(error) => db_error(error),
         },
         Ok(Queued::Limited(retry_after)) => limited(retry_after),
-        Err(error) => db_error(error),
-    }
-}
-
-type RecentRow = (
-    String,
-    Option<String>,
-    Option<String>,
-    Value,
-    DateTime<Utc>,
-    bool,
-);
-
-/// `GET /v1/cloud/common-ground/recent`: people whose match you opened,
-/// newest first. The score and headline are shown only while the match is
-/// still current: both cards are at the revisions it was computed from, the
-/// other person still shares, and you may still see them. Otherwise the
-/// person stays in your history without them.
-pub(in crate::common_ground) async fn recent(
-    State(state): State<Arc<ServerState>>,
-    Extension(session): Extension<CloudSession>,
-) -> Response {
-    let sql = format!(
-        "SELECT account.account_id, account.display_name, account.avatar_url, m.result_json, m.opened_at,
-                COALESCE(viewer_card.built_at IS NOT NULL
-                    AND viewer_card.revision = m.viewer_revision
-                    AND other_card.built_at IS NOT NULL
-                    AND other_card.sharing_enabled
-                    AND other_card.revision = m.other_revision
-                    AND {}, false)
-         FROM cloud_common_ground_matches m
-         JOIN cloud_accounts account ON account.account_id = m.other_account_id
-         LEFT JOIN cloud_common_ground_cards viewer_card ON viewer_card.account_id = m.viewer_account_id
-         LEFT JOIN cloud_common_ground_cards other_card ON other_card.account_id = m.other_account_id
-         WHERE m.viewer_account_id = $1 AND m.opened_at IS NOT NULL
-         ORDER BY m.opened_at DESC LIMIT 50",
-        people::visible_sql("m.viewer_account_id", "m.other_account_id"),
-    );
-    let pool = state.db_pool();
-    let rows: Result<Vec<RecentRow>, _> = query_as(&sql)
-        .bind(&session.account_id)
-        .fetch_all(pool)
-        .await;
-    let ids: Vec<String> = rows.iter().flatten().map(|row| row.0.clone()).collect();
-    let relationships = match relationships(pool, &session.account_id, &ids).await {
-        Ok(relationships) => relationships,
-        Err(error) => return db_error(error),
-    };
-    match rows {
-        Ok(rows) => {
-            let people: Vec<Value> = rows
-                .into_iter()
-                .map(|(id, name, avatar_url, value, opened_at, current)| {
-                    let result = current
-                        .then(|| serde_json::from_value::<MatchResult>(value).ok())
-                        .flatten();
-                    let mut entry = json!({
-                        "person": people::person(&id, name.as_deref(), avatar_url.as_deref()),
-                        "score": result.as_ref().map(|r| r.score),
-                        "headline": result.as_ref().map(|r| &r.headline),
-                        "openedAt": opened_at,
-                    });
-                    attach(&mut entry, &id, &relationships);
-                    entry
-                })
-                .collect();
-            (StatusCode::OK, Json(json!({ "people": people }))).into_response()
-        }
         Err(error) => db_error(error),
     }
 }

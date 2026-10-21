@@ -4,286 +4,23 @@
 
 use std::sync::Arc;
 
+mod gather;
+
+#[cfg(test)]
+pub(super) use gather::{link_url_for_tests, request_for_tests};
+
 use axum::{extract::State, http::StatusCode, response::Response, Extension, Json};
-use chrono::{Duration, Utc};
-use serde::Deserialize;
+use chrono::Utc;
 use serde_json::{json, Value};
 use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
 
 use super::prompt::{self, Gathered};
-use super::redact::{redact, squeeze};
 use super::runs::{self, NewRun, CARD_PREFIX};
-use super::{card, db_error, err, limited, BUILD_LIMIT};
+use super::{card, db_error, err, limited, profiles, BUILD_LIMIT};
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::{auth::routes::CloudSession, server::ServerState};
-
-const MAX_DEVICE_GROUPS: usize = 4;
-const MAX_DEVICE_ITEMS: usize = 300;
-const MAX_LINKS: usize = 20;
-const MAX_NOTES_CHARS: usize = 4000;
-const MAX_TEXT_CHARS: usize = 600;
-const MAX_TITLE_CHARS: usize = 140;
-const MAX_MEMORIES: usize = 200;
-const MAX_AGENT_FILES: usize = 12;
-const MAX_AGENT_TEXT_CHARS: usize = 2000;
-/// Total agent file text one request may carry, before redaction.
-const MAX_AGENT_TOTAL_CHARS: usize = 60_000;
-const AGENTS_SOURCE: &str = "Agents on this Mac";
-/// Connector events from about the last six months.
-const CONNECTOR_DAYS: i64 = 183;
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub(super) struct BuildRequest {
-    /// The account's own saved memories.
-    memory: bool,
-    /// Recent events from connected accounts.
-    connectors: bool,
-    /// Titles and dates the app read on the device after the person allowed
-    /// access (calendar events, reminders).
-    device: Vec<DeviceGroup>,
-    /// Links and text separated by `;` or new lines. Links are kept as given;
-    /// the server does not fetch pages.
-    links: String,
-    notes: String,
-    /// Agent instruction and memory files the app read on the Mac.
-    agents: Vec<AgentFile>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-pub(super) struct AgentFile {
-    label: String,
-    text: String,
-}
-
-impl BuildRequest {
-    fn agents_too_long(&self) -> bool {
-        self.agents
-            .iter()
-            .map(|file| file.text.chars().count())
-            .sum::<usize>()
-            > MAX_AGENT_TOTAL_CHARS
-    }
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-pub(super) struct DeviceGroup {
-    source: String,
-    items: Vec<DeviceItem>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-pub(super) struct DeviceItem {
-    title: String,
-    date: Option<String>,
-}
-
-fn day(value: Option<&str>) -> Option<String> {
-    let value = value?.get(..10)?;
-    chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
-        .ok()
-        .map(|d| d.to_string())
-}
-
-fn item(
-    source: &str,
-    title: &str,
-    date: Option<String>,
-    url: Option<String>,
-    text: &str,
-) -> Gathered {
-    Gathered {
-        source: squeeze(source, 40),
-        title: squeeze(&redact(title), MAX_TITLE_CHARS),
-        date,
-        url,
-        text: squeeze(&redact(text), MAX_TEXT_CHARS),
-    }
-}
-
-fn link_url(entry: &str) -> Option<String> {
-    let lower = entry.to_ascii_lowercase();
-    if (lower.starts_with("https://") || lower.starts_with("http://")) && !entry.contains(' ') {
-        return Some(entry.to_string());
-    }
-    let host = entry.split('/').next()?;
-    let looks_like_host = !entry.contains(' ')
-        && host.contains('.')
-        && host
-            .rsplit('.')
-            .next()
-            .is_some_and(|tld| tld.len() >= 2 && tld.chars().all(|c| c.is_ascii_alphabetic()));
-    looks_like_host.then(|| format!("https://{entry}"))
-}
-
-/// The text fields of a connector event summary, in order.
-fn summary_strings(value: &Value, out: &mut Vec<String>) {
-    match value {
-        Value::String(text) if !text.trim().is_empty() => out.push(text.clone()),
-        Value::Array(items) => items.iter().for_each(|v| summary_strings(v, out)),
-        Value::Object(map) => map.values().for_each(|v| summary_strings(v, out)),
-        _ => {}
-    }
-}
-
-fn summary_title(summary: &Value) -> Option<String> {
-    ["title", "subject", "summary", "name"]
-        .iter()
-        .find_map(|key| summary.get(key).and_then(Value::as_str))
-        .map(str::to_string)
-}
-
-fn provider_label(provider: &str) -> &str {
-    match provider {
-        "gmail" => "Gmail",
-        "google_calendar" => "Google Calendar",
-        "github" => "GitHub",
-        "slack" => "Slack",
-        other => other,
-    }
-}
-
-/// What the build reads, in the order the model sees it.
-pub(super) async fn gather(
-    pool: &PgPool,
-    account: &str,
-    request: &BuildRequest,
-) -> sqlx_core::Result<(Vec<Gathered>, Vec<String>)> {
-    let mut evidence = Vec::new();
-    let mut used = Vec::new();
-    if request.memory {
-        let list = crate::memory_store::list(pool, account)
-            .await
-            .map_err(|_| sqlx_core::Error::Protocol("Could not read memories.".into()))?;
-        // Only memories the account saved itself: group memories can be
-        // about other people.
-        let own: Vec<_> = if list.settings.memory_enabled {
-            list.memories
-                .iter()
-                .filter(|m| m.owner_account_id == account)
-                .take(MAX_MEMORIES)
-                .collect()
-        } else {
-            Vec::new()
-        };
-        for memory in &own {
-            let title: String = memory.text.chars().take(80).collect();
-            evidence.push(item(
-                "Memory",
-                &title,
-                day(Some(&memory.updated_at)),
-                None,
-                &memory.text,
-            ));
-        }
-        if !own.is_empty() {
-            used.push("Memory".to_string());
-        }
-    }
-    if request.connectors {
-        let since = Utc::now() - Duration::days(CONNECTOR_DAYS);
-        let events = crate::connectors::digest_input::recent_events(pool, account, since).await?;
-        let mut providers = Vec::new();
-        for event in events {
-            let mut strings = Vec::new();
-            summary_strings(&event.summary, &mut strings);
-            let title = summary_title(&event.summary).unwrap_or_else(|| event.kind.clone());
-            let source = provider_label(&event.provider).to_string();
-            evidence.push(item(
-                &source,
-                &title,
-                day(Some(&event.occurred_at)),
-                None,
-                &strings.join(" · "),
-            ));
-            if !providers.contains(&source) {
-                providers.push(source);
-            }
-        }
-        used.extend(providers);
-    }
-    for group in request.device.iter().take(MAX_DEVICE_GROUPS) {
-        let source = squeeze(&group.source, 40);
-        let source = if source.is_empty() {
-            "Device".to_string()
-        } else {
-            source
-        };
-        let mut count = 0;
-        for entry in group.items.iter().take(MAX_DEVICE_ITEMS) {
-            let title = squeeze(&entry.title, MAX_TITLE_CHARS);
-            if !title.is_empty() {
-                evidence.push(item(
-                    &source,
-                    &title,
-                    day(entry.date.as_deref()),
-                    None,
-                    &title,
-                ));
-                count += 1;
-            }
-        }
-        if count > 0 {
-            used.push(source);
-        }
-    }
-    let mut agent_files = 0;
-    for file in request.agents.iter().take(MAX_AGENT_FILES) {
-        let text = squeeze(&redact(&file.text), MAX_AGENT_TEXT_CHARS);
-        if text.is_empty() {
-            continue;
-        }
-        evidence.push(Gathered {
-            source: AGENTS_SOURCE.into(),
-            title: squeeze(&redact(&file.label), MAX_TITLE_CHARS),
-            date: None,
-            url: None,
-            text,
-        });
-        agent_files += 1;
-    }
-    if agent_files > 0 {
-        used.push("Agents".to_string());
-    }
-    let today = Utc::now().date_naive().to_string();
-    let entries: Vec<&str> = request
-        .links
-        .split([';', '\n'])
-        .map(str::trim)
-        .filter(|entry| !entry.is_empty())
-        .take(MAX_LINKS)
-        .collect();
-    for entry in &entries {
-        let url = link_url(entry);
-        let source = if url.is_some() { "Link" } else { "Your words" };
-        // The link itself is the reference; its text is what the model reads.
-        let mut gathered = item(source, entry, Some(today.clone()), url.clone(), entry);
-        if let Some(url) = url {
-            gathered.title = squeeze(&url, MAX_TITLE_CHARS);
-            gathered.text = squeeze(entry, MAX_TEXT_CHARS);
-        }
-        evidence.push(gathered);
-    }
-    if !entries.is_empty() {
-        used.push("Links".to_string());
-    }
-    let notes: String = request.notes.trim().chars().take(MAX_NOTES_CHARS).collect();
-    if !notes.is_empty() {
-        evidence.push(Gathered {
-            source: "Notes".into(),
-            title: "Your notes".into(),
-            date: Some(today),
-            url: None,
-            text: redact(&notes),
-        });
-        used.push("Notes".to_string());
-    }
-    Ok((evidence, used))
-}
+use gather::{gather, BuildRequest};
 
 pub(super) async fn start(
     State(state): State<Arc<ServerState>>,
@@ -296,6 +33,11 @@ pub(super) async fn start(
     };
     let pool = state.db_pool();
     let account = session.account_id.as_str();
+    let requested = request.profile_id.as_deref();
+    let existing = match profiles::resolve(pool, account, requested).await {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
     if request.agents_too_long() {
         return err(
             "common_ground_invalid_build",
@@ -320,25 +62,37 @@ pub(super) async fn start(
     {
         return limited(retry_after);
     }
+    // Clients that never send a profile build the work profile.
+    let profile = match existing {
+        Some(profile) => profile,
+        None => match profiles::resolve_or_create(pool, account, requested).await {
+            Ok(profile) => profile,
+            Err(response) => return response,
+        },
+    };
+    let profile_id = profile.profile_id.as_str();
+    let system_prompt = prompt::system_prompt(&profile);
     let config = pip.config();
     let run_id = runs::new_run_id(CARD_PREFIX);
     let today = Utc::now().date_naive().to_string();
     let result = async {
         let mut tx = pool.begin().await?;
         query(
-            "INSERT INTO cloud_common_ground_cards (account_id) VALUES ($1) ON CONFLICT DO NOTHING",
+            "INSERT INTO cloud_common_ground_cards (profile_id, account_id) VALUES ($1, $2)
+             ON CONFLICT DO NOTHING",
         )
+        .bind(profile_id)
         .bind(account)
         .execute(&mut *tx)
         .await?;
         let sql = format!(
             "UPDATE cloud_common_ground_cards card SET active_run_id = $2, build_started_at = now(),
                  build_evidence_json = $3, build_error_code = NULL, updated_at = now()
-             WHERE card.account_id = $1 AND NOT ({})",
+             WHERE card.profile_id = $1 AND NOT ({})",
             card::BUILD_IN_FLIGHT_SQL
         );
         let reserved = query(&sql)
-            .bind(account)
+            .bind(profile_id)
             .bind(&run_id)
             .bind(serde_json::to_value(&evidence).unwrap_or_default())
             .execute(&mut *tx)
@@ -350,8 +104,8 @@ pub(super) async fn start(
         let new_run = NewRun {
             run_id: &run_id,
             requester: account,
-            prompt: prompt::user_prompt(&today, &evidence),
-            system_prompt: prompt::SYSTEM_PROMPT,
+            prompt: prompt::user_prompt(&today, &profile, &evidence),
+            system_prompt: &system_prompt,
         };
         runs::insert(&mut tx, config, new_run).await?;
         tx.commit().await?;
@@ -359,14 +113,12 @@ pub(super) async fn start(
     }
     .await;
     match result {
-        Ok(true) => match card::load(pool, account).await {
-            Ok(Some(row)) => {
+        Ok(true) => match card::owner_view(pool, Some(&profile)).await {
+            Ok(mut view) => {
                 use axum::response::IntoResponse;
-                let mut view = row.owner_view(Utc::now().date_naive());
                 view["used"] = json!(used);
                 (StatusCode::ACCEPTED, Json(view)).into_response()
             }
-            Ok(None) => db_error(sqlx_core::Error::RowNotFound),
             Err(error) => db_error(error),
         },
         Ok(false) => err(
@@ -386,8 +138,8 @@ pub(super) async fn complete(
     runner_id: &str,
     text: &str,
 ) -> sqlx_core::Result<()> {
-    let row: Option<(String, Value)> = query_as(
-        "SELECT card.account_id, card.build_evidence_json
+    let row: Option<(String, String, Value)> = query_as(
+        "SELECT card.account_id, card.profile_id, card.build_evidence_json
          FROM cloud_common_ground_cards card
          JOIN cloud_agent_fallback_runs run ON run.run_id = card.active_run_id
          WHERE run.run_id = $1 AND run.claimed_by = $2 AND run.status IN ('leased', 'running')",
@@ -396,7 +148,7 @@ pub(super) async fn complete(
     .bind(runner_id)
     .fetch_optional(pool)
     .await?;
-    let Some((account, gathered)) = row else {
+    let Some((account, profile_id, gathered)) = row else {
         return Err(sqlx_core::Error::RowNotFound);
     };
     let gathered: Vec<Gathered> = serde_json::from_value(gathered).unwrap_or_default();
@@ -413,9 +165,9 @@ pub(super) async fn complete(
         "UPDATE cloud_common_ground_cards SET topics_json = $2, evidence_json = $3,
              hidden_json = '[]'::jsonb, active_run_id = NULL, build_evidence_json = NULL,
              build_error_code = NULL, built_at = now(), revision = revision + 1, updated_at = now()
-         WHERE account_id = $1 AND active_run_id = $4",
+         WHERE profile_id = $1 AND active_run_id = $4",
     )
-    .bind(&account)
+    .bind(&profile_id)
     .bind(serde_json::to_value(&topics).unwrap_or_default())
     .bind(serde_json::to_value(&evidence).unwrap_or_default())
     .bind(run_id)
@@ -425,7 +177,7 @@ pub(super) async fn complete(
         &mut tx,
         &account,
         "common_ground.card.updated",
-        json!({ "built": true }),
+        json!({ "built": true, "profileId": profile_id }),
     )
     .await?;
     tx.commit().await
@@ -442,37 +194,23 @@ pub(super) async fn fail(
     if !runs::mark_failed(&mut tx, run_id, runner_id, code, "Card build failed.").await? {
         return Ok(());
     }
-    let account: Option<(String,)> = query_as(
+    let account: Option<(String, String)> = query_as(
         "UPDATE cloud_common_ground_cards SET active_run_id = NULL, build_evidence_json = NULL,
              build_error_code = $2, updated_at = now()
-         WHERE active_run_id = $1 RETURNING account_id",
+         WHERE active_run_id = $1 RETURNING account_id, profile_id",
     )
     .bind(run_id)
     .bind(code)
     .fetch_optional(&mut *tx)
     .await?;
-    if let Some((account,)) = account {
+    if let Some((account, profile_id)) = account {
         super::hint(
             &mut tx,
             &account,
             "common_ground.card.updated",
-            json!({ "built": false }),
+            json!({ "built": false, "profileId": profile_id }),
         )
         .await?;
     }
     tx.commit().await
-}
-
-#[cfg(test)]
-pub(super) fn request_for_tests(notes: &str, links: &str) -> BuildRequest {
-    BuildRequest {
-        notes: notes.into(),
-        links: links.into(),
-        ..BuildRequest::default()
-    }
-}
-
-#[cfg(test)]
-pub(super) fn link_url_for_tests(entry: &str) -> Option<String> {
-    link_url(entry)
 }

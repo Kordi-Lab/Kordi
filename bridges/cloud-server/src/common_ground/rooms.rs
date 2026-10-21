@@ -2,6 +2,8 @@
 //! person to enter a free code opens the room and may name it. A room closes
 //! 24 hours after its last join; the code is then free again. Members who
 //! have not left keep read-only access to a closed room and its results.
+//! Each member shares one of their profiles in a room; the opener may set
+//! the profile kind the room suggests.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -12,14 +14,21 @@ use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
 };
-use chrono::{DateTime, Utc};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::json;
 use sqlx_core::{query::query, query_as::query_as, transaction::Transaction};
 use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
-use super::{card, db_error, err, limited, people, ROOM_IP_LIMIT, ROOM_JOIN_LIMIT, ROOM_OPEN_SQL};
+mod switch;
+mod view;
+
+pub(super) use switch::switch_profile;
+use view::view_response;
+pub(super) use view::{list, read};
+
+use super::profiles::{self, Profile};
+use super::{card, db_error, err, limited, ROOM_IP_LIMIT, ROOM_JOIN_LIMIT, ROOM_OPEN_SQL};
 use crate::auth::rate_limit::{rate_limit_client_key, CloudRateLimiter, RateLimitDecision};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
@@ -39,10 +48,69 @@ pub(super) fn room_not_found() -> Response {
 }
 
 #[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub(super) struct JoinRequest {
     /// Used only when this join opens the room.
     name: String,
+    /// The profile kind the room suggests; used only when this join opens
+    /// the room.
+    kind: Option<String>,
+    /// The profile to share here. Without it: the profile you already share
+    /// in the room, else your built profile of the room's kind, else your
+    /// default profile.
+    profile_id: Option<String>,
+}
+
+/// The open room for this code: its suggested kind and the profile
+/// `account` shares there, if a member.
+async fn open_room(
+    pool: &PgPool,
+    code: &str,
+    account: &str,
+) -> sqlx_core::Result<Option<(Option<String>, Option<String>)>> {
+    let sql = format!(
+        "SELECT room.kind, member.profile_id FROM cloud_common_ground_rooms room
+         LEFT JOIN cloud_common_ground_room_members member
+           ON member.room_id = room.room_id AND member.account_id = $2 AND member.left_at IS NULL
+         WHERE room.code = $1 AND {ROOM_OPEN_SQL}"
+    );
+    query_as(&sql)
+        .bind(code)
+        .bind(account)
+        .fetch_optional(pool)
+        .await
+}
+
+/// The profile a join shares, or the response to send instead.
+async fn joining_profile(
+    pool: &PgPool,
+    code: &str,
+    account: &str,
+    body: &JoinRequest,
+) -> Result<Profile, Response> {
+    let room = open_room(pool, code, account).await.map_err(db_error)?;
+    let (room_kind, current) = match room {
+        Some((kind, current)) => (kind, current),
+        None => (body.kind.clone(), None),
+    };
+    let explicit = body
+        .profile_id
+        .as_deref()
+        .filter(|id| !id.trim().is_empty());
+    let chosen = profiles::choose(
+        pool,
+        account,
+        explicit.or(current.as_deref()),
+        room_kind.as_deref(),
+    )
+    .await?;
+    let Some(profile) = chosen else {
+        return Err(card::no_card());
+    };
+    if let Some(response) = profiles::require_shared_card(pool, &profile).await {
+        return Err(response);
+    }
+    Ok(profile)
 }
 
 pub(super) async fn join(
@@ -70,15 +138,24 @@ pub(super) async fn join(
         }
     }
     let pool = state.db_pool();
-    match card::load(pool, account).await {
-        Ok(Some(row)) if row.has_card() && row.sharing => {}
-        Ok(Some(row)) if row.has_card() => return super::sharing_off(),
-        Ok(_) => return card::no_card(),
-        Err(error) => return db_error(error),
+    let body = body.map(|Json(body)| body).unwrap_or_default();
+    if body
+        .kind
+        .as_deref()
+        .is_some_and(|kind| !profiles::valid_kind(kind))
+    {
+        return err(
+            "common_ground_invalid_room",
+            "Pick work, health, daily or custom.",
+            StatusCode::BAD_REQUEST,
+        );
     }
+    let profile = match joining_profile(pool, &code, account, &body).await {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
     let name: String = body
-        .map(|Json(body)| body.name)
-        .unwrap_or_default()
+        .name
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
@@ -110,13 +187,14 @@ pub(super) async fn join(
             None => {
                 let room_id = Uuid::new_v4();
                 query(
-                    "INSERT INTO cloud_common_ground_rooms (room_id, code, name, created_by)
-                     VALUES ($1, $2, $3, $4)",
+                    "INSERT INTO cloud_common_ground_rooms (room_id, code, name, created_by, kind)
+                     VALUES ($1, $2, $3, $4, $5)",
                 )
                 .bind(room_id)
                 .bind(&code)
                 .bind(&name)
                 .bind(account)
+                .bind(&body.kind)
                 .execute(&mut *tx)
                 .await?;
                 room_id
@@ -133,16 +211,8 @@ pub(super) async fn join(
         if members >= MAX_MEMBERS {
             return Ok(None);
         }
-        query(
-            "INSERT INTO cloud_common_ground_room_members (room_id, account_id) VALUES ($1, $2)
-             ON CONFLICT (room_id, account_id) DO UPDATE SET left_at = NULL,
-                 joined_at = CASE WHEN cloud_common_ground_room_members.left_at IS NULL
-                     THEN cloud_common_ground_room_members.joined_at ELSE now() END",
-        )
-        .bind(room_id)
-        .bind(account)
-        .execute(&mut *tx)
-        .await?;
+        // Joining again with another profile switches the shared profile.
+        switch::share(&mut tx, room_id, account, &profile.profile_id).await?;
         query("UPDATE cloud_common_ground_rooms SET last_join_at = now() WHERE room_id = $1")
             .bind(room_id)
             .execute(&mut *tx)
@@ -188,72 +258,6 @@ pub(super) async fn my_room(
         .await
 }
 
-type ListRow = (String, String, bool, i64, DateTime<Utc>, DateTime<Utc>, i32);
-
-/// `GET /v1/cloud/common-ground/rooms`: rooms you are in, open or closed,
-/// newest activity first. Leaving a room removes it. Only the room a code
-/// opens for you is listed.
-pub(super) async fn list(
-    State(state): State<Arc<ServerState>>,
-    Extension(session): Extension<CloudSession>,
-) -> Response {
-    let sql = format!(
-        "SELECT code, name, open, member_count, joined_at, last_activity_at, theme_count FROM (
-             SELECT DISTINCT ON (room.code) room.code, room.name, {ROOM_OPEN_SQL} AS open,
-                    (SELECT COUNT(*) FROM cloud_common_ground_room_members active
-                     WHERE active.room_id = room.room_id AND active.left_at IS NULL) AS member_count,
-                    member.joined_at,
-                    GREATEST(room.last_join_at, themes.computed_at) AS last_activity_at,
-                    COALESCE(jsonb_array_length(themes.themes_json), 0) AS theme_count
-             FROM cloud_common_ground_rooms room
-             JOIN cloud_common_ground_room_members member
-               ON member.room_id = room.room_id AND member.account_id = $1 AND member.left_at IS NULL
-             LEFT JOIN cloud_common_ground_room_themes themes ON themes.room_id = room.room_id
-             ORDER BY room.code, open DESC, room.created_at DESC, room.room_id
-         ) mine
-         ORDER BY last_activity_at DESC, code LIMIT 50"
-    );
-    let rows: Result<Vec<ListRow>, _> = query_as(&sql)
-        .bind(&session.account_id)
-        .fetch_all(state.db_pool())
-        .await;
-    match rows {
-        Ok(rows) => {
-            let rooms: Vec<Value> = rows
-                .into_iter()
-                .map(|(code, name, open, members, joined_at, activity, themes)| {
-                    json!({
-                        "code": code,
-                        "name": name,
-                        "open": open,
-                        "memberCount": members,
-                        "joinedAt": joined_at,
-                        "lastActivityAt": activity,
-                        "themeCount": themes,
-                    })
-                })
-                .collect();
-            (StatusCode::OK, Json(json!({ "rooms": rooms }))).into_response()
-        }
-        Err(error) => db_error(error),
-    }
-}
-
-/// `GET /v1/cloud/common-ground/rooms/:code`: the lobby, for members only.
-/// A closed room still answers, read-only, for members who have not left.
-pub(super) async fn read(
-    State(state): State<Arc<ServerState>>,
-    Extension(session): Extension<CloudSession>,
-    Path(code): Path<String>,
-) -> Response {
-    let pool = state.db_pool();
-    match my_room(pool, &code, &session.account_id).await {
-        Ok(Some((room_id, _))) => view_response(pool, room_id, &session.account_id).await,
-        Ok(None) => room_not_found(),
-        Err(error) => db_error(error),
-    }
-}
-
 /// `POST /v1/cloud/common-ground/rooms/:code/leave`: leaves an open room,
 /// or removes a closed one from your rooms.
 pub(super) async fn leave(
@@ -283,16 +287,17 @@ pub(super) async fn leave(
     StatusCode::NO_CONTENT.into_response()
 }
 
-/// Leaves every room `account` is in and returns them, for announcing.
-pub(super) async fn leave_all(
+/// Leaves every room where `profile_id` is the shared profile and returns
+/// them, for announcing.
+pub(super) async fn leave_profile(
     tx: &mut Transaction<'_, Postgres>,
-    account: &str,
+    profile_id: &str,
 ) -> sqlx_core::Result<Vec<Uuid>> {
     let rows: Vec<(Uuid,)> = query_as(
         "UPDATE cloud_common_ground_room_members SET left_at = now()
-         WHERE account_id = $1 AND left_at IS NULL RETURNING room_id",
+         WHERE profile_id = $1 AND left_at IS NULL RETURNING room_id",
     )
-    .bind(account)
+    .bind(profile_id)
     .fetch_all(&mut **tx)
     .await?;
     Ok(rows.into_iter().map(|(room_id,)| room_id).collect())
@@ -339,63 +344,6 @@ pub(super) async fn notify_members(
         .await?;
     }
     Ok(())
-}
-
-type MemberRow = (String, Option<String>, Option<String>, bool);
-type RoomRow = (String, String, Option<String>, DateTime<Utc>, bool);
-
-pub(super) async fn view(pool: &PgPool, room_id: Uuid, viewer: &str) -> sqlx_core::Result<Value> {
-    let sql = format!(
-        "SELECT code, name, created_by, last_join_at, {ROOM_OPEN_SQL} FROM cloud_common_ground_rooms room
-         WHERE room_id = $1"
-    );
-    let (code, name, created_by, last_join_at, open): RoomRow =
-        query_as(&sql).bind(room_id).fetch_one(pool).await?;
-    // Members arrive in join order; you are never in the list.
-    let members: Vec<MemberRow> = query_as(
-        "SELECT member.account_id, account.display_name, account.avatar_url,
-                COALESCE(card.built_at IS NOT NULL AND card.sharing_enabled, false)
-         FROM cloud_common_ground_room_members member
-         JOIN cloud_accounts account ON account.account_id = member.account_id
-         LEFT JOIN cloud_common_ground_cards card ON card.account_id = member.account_id
-         WHERE member.room_id = $1 AND member.left_at IS NULL AND member.account_id <> $2
-         ORDER BY member.joined_at, member.account_id",
-    )
-    .bind(room_id)
-    .bind(viewer)
-    .fetch_all(pool)
-    .await?;
-    let ids: Vec<String> = members.iter().map(|m| m.0.clone()).collect();
-    let relationships = super::actions::relationships(pool, viewer, &ids).await?;
-    let members: Vec<Value> = members
-        .into_iter()
-        .map(|(account_id, display_name, avatar_url, has_card)| {
-            let mut person =
-                people::person(&account_id, display_name.as_deref(), avatar_url.as_deref());
-            person["hasCard"] = json!(has_card);
-            super::actions::attach(&mut person, &account_id, &relationships);
-            person
-        })
-        .collect();
-    let (groups, invitations) = super::actions::room_extras(pool, room_id, viewer).await?;
-    Ok(json!({
-        "roomId": room_id,
-        "code": code,
-        "name": name,
-        "openedByYou": created_by.as_deref() == Some(viewer),
-        "open": open,
-        "expiresAt": last_join_at + chrono::Duration::hours(24),
-        "members": members,
-        "groups": groups,
-        "invitations": invitations,
-    }))
-}
-
-async fn view_response(pool: &PgPool, room_id: Uuid, viewer: &str) -> Response {
-    match view(pool, room_id, viewer).await {
-        Ok(view) => (StatusCode::OK, Json(view)).into_response(),
-        Err(error) => db_error(error),
-    }
 }
 
 #[cfg(test)]
