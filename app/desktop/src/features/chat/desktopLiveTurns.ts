@@ -154,7 +154,9 @@ export function mergeDesktopTurnSnapshot(
   current: DesktopChatTurnSnapshot | undefined,
   next: DesktopChatTurnSnapshot,
 ): DesktopChatTurnSnapshot {
-  if (!current || current.id !== next.id) return next;
+  if (!current || current.id !== next.id || current.sessionId !== next.sessionId) return next;
+  // A delayed poll or sync echo cannot reopen this completed run.
+  if (current.completed && !next.completed) return current;
 
   const currentToolsById = new Map(current.tools.map((tool) => [tool.id, tool]));
   const nextToolIds = new Set(next.tools.map((tool) => tool.id));

@@ -19,6 +19,8 @@ import { cloudGroupAgentRuntimeSessionId } from '../../src/features/cloud/cloudA
 import type { CanonicalSessionState, DesktopChatTurnSnapshot, Message } from '../../src/kordi-app/types';
 import '../../src/index.css';
 
+const simple = new URLSearchParams(location.search).has('simple');
+const reasoning = new URLSearchParams(location.search).has('reasoning');
 const ordered = new URLSearchParams(location.search).has('ordered');
 const count = Number(new URLSearchParams(location.search).get('count') ?? 50);
 const now = Date.now();
@@ -41,9 +43,9 @@ function Fixture() {
   useLayoutEffect(() => {
     driver.step = next => { if (next === 1) { setDraft(''); scheduleTranscriptScrollToBottom(scrollRef); } setPhase(next); };
   }, []);
-  const tools = phase >= 6 ? [{ id: 'tool-one', name: 'read', status: phase === 6 ? 'running' : 'done', arguments: '{"path":"src/example.ts"}', liveOutput: 'Synthetic result', isError: false }] : [];
-  if (ordered && phase >= 7) tools.push({ id: 'tool-two', name: 'edit', status: phase === 7 ? 'running' : 'done', arguments: '{"path":"src/updated.ts"}', liveOutput: 'Updated the example.', isError: false });
-  const segments: DesktopChatTurnSnapshot['segments'] = ordered && phase >= 5 ? [
+  const tools = !simple && phase >= 6 ? [{ id: 'tool-one', name: 'read', status: phase === 6 ? 'running' : 'done', arguments: '{"path":"src/example.ts"}', liveOutput: 'Synthetic result', isError: false }] : [];
+  if (ordered && !simple && phase >= 7) tools.push({ id: 'tool-two', name: 'edit', status: phase === 7 ? 'running' : 'done', arguments: '{"path":"src/updated.ts"}', liveOutput: 'Updated the example.', isError: false });
+  const segments: DesktopChatTurnSnapshot['segments'] = simple ? [{ id: 'text:0', kind: 'text', text: 'Hello. How can I help?' }] : ordered && phase >= 5 ? [
     { id: 'text:0', kind: 'text', text: 'I will inspect the example before making a change.' },
     ...(phase >= 6 ? [{ id: 'tool:one', kind: 'tool' as const, toolId: 'tool-one' }] : []),
     ...(phase >= 7 ? [{ id: 'text:2', kind: 'text' as const, text: 'The example needs one change. I will apply it now.' }, { id: 'tool:two', kind: 'tool' as const, toolId: 'tool-two' }] : []),
@@ -51,7 +53,7 @@ function Fixture() {
   ] : undefined;
   const turn: DesktopChatTurnSnapshot = { id: 'local-turn', sessionId: `${cloudGroupAgentRuntimeSessionId('acct_owner', 'group')}:request:request`, replyToMessageId: 'request',
     prompt: '', status: phase === 4 ? 'starting' : phase === 5 || phase === 7 ? 'streaming' : phase === 6 ? 'tooling' : phase === 8 ? 'writing' : 'complete',
-    message: '', thinkingText: '', segments, completedAtMs: phase >= 9 ? now + 12000 : null, assistantText: phase >= 8 ? 'Synthetic final answer that fits on one line.' : '', tools, completed: phase >= 9, succeeded: phase >= 9, startedAtMs: now };
+    message: '', thinkingText: reasoning ? 'Checking the request.' : '', segments, completedAtMs: phase >= 9 ? now + 12000 : null, assistantText: phase >= 8 ? 'Synthetic final answer that fits on one line.' : '', tools, completed: phase >= 9, succeeded: phase >= 9, startedAtMs: now };
   const canonical = { profile: { id: 'profile', humanIdentityId: 'human:owner' },
     identities: [{ id: 'agent:owner', kind: 'agent', ownerIdentityId: 'human:owner', displayName: 'Synthetic Agent' }],
     sessions: [{ id: 'group', kind: 'group', title: 'Synthetic group', status: 'active', createdAtMs: now - 100000, updatedAtMs: now, metadata: {} }],

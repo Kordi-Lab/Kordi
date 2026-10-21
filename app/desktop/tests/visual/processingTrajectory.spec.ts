@@ -164,6 +164,7 @@ test('first request after opening a group does not reset its transcript when the
 
 test('ordered commentary keeps disclosures open through streaming and completion', async ({ page }, info) => {
   await page.goto('/tests/visual/processingTrajectory.html?ordered=1&count=2&phase=6');
+  const header = await page.locator('.app-turn-worked-header').elementHandle();
   const first = page.locator('.app-turn-progress-summary').first();
   await expect(page.getByText('I will inspect the example before making a change.')).toBeVisible();
   await first.focus();
@@ -175,6 +176,8 @@ test('ordered commentary keeps disclosures open through streaming and completion
   await expect(page.locator('.app-turn-progress-dots')).toHaveCount(1);
   await expect(page.getByText('The example needs one change. I will apply it now.')).toBeVisible();
   await step(9);
+  expect(await header!.evaluate(element => element === document.querySelector('.app-turn-worked-header'))).toBe(true);
+  await expect(page.locator('.app-turn-worked-header')).toHaveAttribute('aria-label', 'Worked for 12s');
   await expect(first).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator('.app-turn-progress-dots')).toHaveCount(0);
   await expect(page.getByText('The example is ready. The check passed.')).toHaveCount(1);
@@ -211,4 +214,24 @@ test('ordered activity opens output directly and local files in reusable side-pa
   await page.getByRole('button', { name: 'Worked for 12s', exact: true }).click();
   await expect(page.getByText('I will inspect the example before making a change.')).toBeHidden();
   await expect(page.getByText('The example is ready. The check passed.')).toBeVisible();
+});
+
+test('plain replies stay compact and reasoning opens with one disclosure', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&simple=1&count=0&phase=9');
+  await expect(page.getByText('Hello. How can I help?', { exact: true })).toBeVisible();
+  await expect(page.locator('.app-turn-worked-header')).toHaveCount(0);
+  await expect(page.locator('.app-turn-progress-summary')).toHaveCount(0);
+  const prose = page.locator('.app-turn-commentary p');
+  await expect(prose).toHaveCSS('font-size', '13px');
+  expect(await page.locator('.app-ordered-progress').evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(40);
+  await page.screenshot({ path: info.outputPath('compact-greeting.png'), fullPage: true });
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&simple=1&reasoning=1&count=0&phase=9');
+  const reasoning = page.getByRole('button', { name: 'Reasoning', exact: true });
+  await expect(reasoning).toHaveCSS('font-size', '12px');
+  await expect(page.getByText('Checking the request.', { exact: true })).toHaveCount(0);
+  await reasoning.click();
+  await expect(page.getByText('Checking the request.', { exact: true })).toBeVisible();
+  await expect(page.locator('.app-turn-progress-details details')).toHaveCount(0);
+  await expect(page.getByText('Activity', { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath('compact-reasoning.png'), fullPage: true });
 });

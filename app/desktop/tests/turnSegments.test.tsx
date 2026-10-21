@@ -1,3 +1,4 @@
+import { LiveChatTurnCard } from '../src/kordi-app/components/transcriptLiveTurns';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createElement } from 'react';
@@ -75,4 +76,22 @@ test('file links use explicit file arguments and tolerate incomplete tool stream
   assert.equal(toolActivityMetadata({ ...turn.tools[0], arguments: '{"path":"https://example.invalid/file.ts"}' }).path, undefined);
   for (const argumentsJson of ['{', 'null', '1', '[]']) assert.equal(toolActivityMetadata({ ...turn.tools[0], arguments: argumentsJson }).path, undefined);
   assert.equal(toolActivityMetadata({ ...turn.tools[0], name: 'bash', arguments: '{"command":"cat src/example.ts"}' }).path, undefined);
+});
+
+test('a plain completed response has no duration section or empty activity wrapper', () => {
+  const simple = { ...turn, thinkingText: '', tools: [], completed: true, succeeded: true, status: 'succeeded', completedAtMs: 9000,
+    segments: [{ id: 'text:0', kind: 'text' as const, text: 'Hello.' }] };
+  const markup = renderToStaticMarkup(createElement(TurnProgress, { turn: simple, renderTool: () => null }));
+  assert.match(markup, /Hello\./);
+  assert.doesNotMatch(markup, /Worked for|app-turn-worked-header|app-turn-progress-summary|app-turn-final/);
+});
+
+
+test('ordered commentary replaces the initial processing placeholder even before aggregate text arrives', () => {
+  const streaming = { ...turn, status: 'starting', assistantText: '', thinkingText: '', tools: [],
+    segments: [{ id: 'text:0', kind: 'text' as const, text: 'I will check the example.' }] };
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: streaming, showReasoning: true, onStopActiveTurn: () => {} }));
+  assert.match(markup, /I will check the example/);
+  assert.match(markup, /Stop agent request/);
+  assert.doesNotMatch(markup, /app-agent-waiting-wave|app-transcript-live-status|app-turn-progress-dots/);
 });

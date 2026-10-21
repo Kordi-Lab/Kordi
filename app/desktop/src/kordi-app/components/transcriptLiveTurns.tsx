@@ -148,8 +148,9 @@ function LiveChatTurnCardView({
     return false;
   })();
   const hasAssistant = assistantText.trim().length > 0 && !assistantTextDuplicatesError;
+  const hasOrderedContent = visibleTurn.segments?.some(segment => segment.kind === 'tool' || segment.text.trim()) ?? false;
   const hasThinking = visibleTurn.thinkingText.trim().length > 0;
-  const hasVisibleContent = hasAssistant || hasThinking || visibleTurn.tools.length > 0 || Boolean(visibleTurn.error);
+  const hasVisibleContent = hasOrderedContent || hasAssistant || hasThinking || visibleTurn.tools.length > 0 || Boolean(visibleTurn.error);
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
   const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus
     && (visibleTurn.status === 'queued' || agentTurnHasStarted(visibleTurn) || Boolean(visibleTurn.pendingCollaborationAgentRequest) || Boolean(visibleTurn.hostedRunStatus));
@@ -185,6 +186,7 @@ function LiveChatTurnCardView({
     (shouldShowSourceQuote && visibleTurn.error)
       || showLiveStatusHeader
       || isCompressionStatus
+      || hasOrderedContent
       || hasTimelineActivity
       || hasAssistant
       || cancellationNotice
@@ -243,7 +245,7 @@ function LiveChatTurnCardView({
         </div>
       ) : null}
 
-          {hasTimelineActivity || hasAssistant ? (
+          {hasOrderedContent || hasTimelineActivity || hasAssistant ? (
             <TurnProgress turn={visibleTurn}
               renderTool={tool => <ToolActivityRow key={tool.id} tool={tool} onOpenFile={onOpenArtifact} />}
               trailing={cardCollaborationStop && onStopCollaborationAgentRequest ? (
