@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
-import type { Contact, ContactClass, ContactRequest } from '../types';
+import type { Contact, ContactClass, ContactRequest, Conversation } from '../types';
 import type { ContactMuteControl, ContactProfileHost } from './contactProfileHost';
 
 export type ContactGroup = { id: ContactClass; label: string; items: Contact[] };
@@ -37,6 +37,8 @@ export type ContactsPageProps = {
   /** Richer profile (issue #1945); without it the pane keeps today's content. */
   contactProfileHost?: ContactProfileHost;
   contactMute?: ContactMuteControl;
+  /** The direct chat with a contact as the client holds it; complete chats open the shared pages. */
+  sharedConversationFor?: (contact: Contact) => Conversation | null;
   /** The Settings tile on the user's own agent. */
   onOpenAgentSettings?: () => void;
   /** Optional rows pinned above the request inbox at the top of the list column. */
