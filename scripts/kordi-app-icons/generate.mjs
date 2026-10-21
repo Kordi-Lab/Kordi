@@ -19,6 +19,7 @@ import {
   silhouetteSvg,
   squareIconSvg,
   supportAvatarSvg,
+  systemAvatarSvg,
 } from './icons.mjs';
 import { createRasterizer } from './rasterize.mjs';
 
@@ -133,8 +134,9 @@ try {
   writeFileSync(join(repoRoot, 'app/desktop/public/favicon.svg'), `${faviconSvg}\n`);
   raster.render(faviconSvg.replace('<svg ', '<svg width="512" height="512" '), join(repoRoot, 'app/desktop/public/favicon.png'), 256);
 
-  // Kordi Support avatar and the README title image.
+  // Kordi Support and System avatars, and the README title image.
   writeFileSync(join(repoRoot, 'app/desktop/public/kordi-support-avatar.svg'), supportAvatarSvg());
+  writeFileSync(join(repoRoot, 'app/desktop/public/kordi-system-avatar.svg'), systemAvatarSvg());
   raster.renderWide(readmeTitleHtml(), join(repoRoot, '.github/assets/kordi-title.png'), 1774, 470);
 } finally {
   raster.dispose();
