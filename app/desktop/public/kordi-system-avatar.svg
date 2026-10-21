@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="System">
+  <rect width="512" height="512" fill="#e5e5ea"/>
+  <g transform="translate(41,41) scale(0.84)"><defs>
+    <mask id="cut" maskUnits="userSpaceOnUse" x="-100" y="-100" width="712" height="712">
+      <g fill="#fff" stroke="#fff"><ellipse cx="262" cy="292" rx="150" ry="136"/><path d="M400,342 C436,322 462,272 470,204 C448,236 420,244 386,218Z" stroke-width="4" stroke-linejoin="round"/></g>
+      <g fill="#000"><circle cx="194" cy="266" r="17"/><path transform="translate(332,322) scale(0.8) translate(-326,-312)" d="M248,326 C276,284 346,262 408,266 C388,316 332,356 272,354 C252,352 242,340 248,326Z"/></g>
+    </mask>
+  </defs>
+  <g transform="translate(256,250) scale(0.94) translate(-270,-292)">
+    <g fill="#a1a1a6" stroke="#a1a1a6"><path d="M120,276 L82,294 L120,312Z" stroke-width="12" stroke-linejoin="round"/></g>
+    <g><rect x="-100" y="-100" width="712" height="712" fill="#6e6e73" mask="url(#cut)"/></g>
+  </g></g>
+</svg>
