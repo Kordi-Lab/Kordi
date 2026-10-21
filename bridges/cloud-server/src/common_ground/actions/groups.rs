@@ -151,6 +151,7 @@ pub(in crate::common_ground) async fn start_group(
             eprintln!("[pip] Could not join a new conversation: {error}");
         }
         let intro = intro::NewIntro {
+            room_id,
             group_space_id: &created.group_space_id,
             conversation_id: created.conversation_id,
             name: &name,

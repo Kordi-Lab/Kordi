@@ -23,6 +23,7 @@ const MAX_INTRO_CHARS: usize = 1_200;
 
 /// A new group to introduce.
 pub(super) struct NewIntro<'a> {
+    pub room_id: Uuid,
     pub group_space_id: &'a str,
     pub conversation_id: Uuid,
     pub name: &'a str,
@@ -32,13 +33,31 @@ pub(super) struct NewIntro<'a> {
     pub invited: &'a [String],
 }
 
-/// Display names and shared cards of `accounts`, which all share the room.
+/// The (account, profile) pairs these accounts joined `room_id` with.
+async fn room_profiles(
+    pool: &PgPool,
+    room_id: Uuid,
+    ids: &[String],
+) -> sqlx_core::Result<Vec<(String, String)>> {
+    query_as(
+        "SELECT account_id, profile_id FROM cloud_common_ground_room_members
+         WHERE room_id = $1 AND account_id = ANY($2)",
+    )
+    .bind(room_id)
+    .bind(ids)
+    .fetch_all(pool)
+    .await
+}
+
+/// Display names and the cards `accounts` share in the room.
 async fn introduced(
     pool: &PgPool,
+    room_id: Uuid,
     accounts: &[(String, Role)],
 ) -> sqlx_core::Result<Vec<Introduced>> {
     let ids: Vec<String> = accounts.iter().map(|(id, _)| id.clone()).collect();
-    let mut cards: HashMap<String, Topics> = shared_cards(pool, &ids)
+    let members = room_profiles(pool, room_id, &ids).await?;
+    let mut cards: HashMap<String, Topics> = shared_cards(pool, &members)
         .await?
         .into_iter()
         .map(|card| (card.account_id, card.topics))
@@ -73,7 +92,7 @@ pub(super) async fn queue(
         .chain(intro.added.iter().map(|id| (id.clone(), Role::Added)))
         .chain(intro.invited.iter().map(|id| (id.clone(), Role::Invited)))
         .collect();
-    let people = introduced(pool, &accounts).await?;
+    let people = introduced(pool, intro.room_id, &accounts).await?;
     let run_id = runs::new_run_id(INTRO_PREFIX);
     let mut tx = pool.begin().await?;
     query(
@@ -197,6 +216,7 @@ pub(super) async fn fail(
 pub(super) async fn post_joined(
     pool: &PgPool,
     pip_account: &str,
+    room_id: Uuid,
     conversation_id: Uuid,
     account: &str,
 ) -> sqlx_core::Result<()> {
@@ -208,7 +228,8 @@ pub(super) async fn post_joined(
     let Some((name,)) = name else {
         return Ok(());
     };
-    let card = shared_cards(pool, &[account.to_string()]).await?;
+    let members = room_profiles(pool, room_id, &[account.to_string()]).await?;
+    let card = shared_cards(pool, &members).await?;
     let line = joined_line(
         &clean_display_name(name.as_deref()),
         card.first().map(|card| &card.topics),

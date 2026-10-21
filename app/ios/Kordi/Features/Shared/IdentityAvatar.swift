@@ -10,6 +10,8 @@ struct IdentityAvatar: View {
     var size: CGFloat = 52
     var seed: String? = nil
     var cornerRadius: CGFloat? = nil
+    /// False leaves the person fallback as a plain fill, for avatars under an overlay.
+    var showsInitials = true
 
     private var normalizedImageSource: String? {
         if isPip { return nil }
@@ -64,6 +66,7 @@ struct IdentityAvatar: View {
             case .person:
                 Rectangle().fill(Color(uiColor: .secondarySystemFill))
                 Text(initials)
+                    .opacity(showsInitials ? 1 : 0)
                     .font(.system(size: size * 0.36, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
             }

@@ -103,8 +103,9 @@ pub(in crate::common_ground) async fn join(
     if response.status == "joined" {
         audit_join(&state, &session, &group_invitation_id, &group_space_id).await;
         if let Some(pip) = state.pip() {
+            let pip_account = &pip.config().account_id;
             let posted =
-                intro::post_joined(pool, &pip.config().account_id, conversation_id, viewer).await;
+                intro::post_joined(pool, pip_account, room_id, conversation_id, viewer).await;
             if let Err(error) = posted {
                 eprintln!("[common-ground] Could not post a joined line: {error}");
             }

@@ -176,8 +176,8 @@ test('canonical read model replaces bridge relay copy with active local owned-ag
 
 test('canonical read model dedupes owned-agent runtime and bridge relay when only whitespace differs', () => {
   const sessionId = 'session:bridge:humans:whitespace-duplicate-runtime';
-  const localText = 'I’ll check current web weather info for Thuwal today and summarize it.\n\nToday in **Thuwal, Saudi Arabia**:\n\n- **Current temperature:** about **29°C**';
-  const relayText = 'I’ll check current web weather info for Thuwal today and summarize it.Today in **Thuwal, Saudi Arabia**:\n\n- **Current temperature:** about **29°C**';
+  const localText = 'I’ll check current web weather info for Lisbon today and summarize it.\n\nToday in **Lisbon, Portugal**:\n\n- **Current temperature:** about **29°C**';
+  const relayText = 'I’ll check current web weather info for Lisbon today and summarize it.Today in **Lisbon, Portugal**:\n\n- **Current temperature:** about **29°C**';
   const canonicalState = {
     storagePath: '/tmp/canonical.sqlite3',
     profile: {

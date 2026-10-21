@@ -124,7 +124,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
 
   const onLookupContact = async (rawId: string): Promise<AddContactLookupResult | null> => {
     const kordiId = normalizeKordiId(rawId);
-    if (!kordiId) throw new Error('Enter a nine-digit Kordi ID.');
+    if (!kordiId) throw new Error('Enter a Kordi ID.');
     const profile = await cloud.lookupProfile(kordiId);
     if (!profile) return null;
     return {

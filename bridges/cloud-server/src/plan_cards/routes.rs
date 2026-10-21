@@ -17,7 +17,7 @@ use crate::{
     server::ServerState,
 };
 
-use super::models::{PlanCardRow, PlanCardRsvp};
+use super::models::{PlanCardProposeArgs, PlanCardRow, PlanCardRsvp, PlanCardStoreError};
 use super::store;
 use super::wire::{blank_to_none, error, store_error, Rejection, Request};
 
@@ -193,6 +193,57 @@ async fn require_plan_manager(
     }
 }
 
+/// A signed-in member never opens a card; PiP does. The organizer of a card
+/// may revise it (a new time, place, or title) for the same people while it is
+/// still open. The store rejects a confirmed or canceled card and a stale
+/// revision, and resets answers when the time or place changes.
+async fn organizer_revision(
+    pool: &PgPool,
+    account_id: &str,
+    mut args: PlanCardProposeArgs,
+) -> Result<PlanCardProposeArgs, Rejection> {
+    let Some(event_id) = args.existing_event_id.as_deref() else {
+        return Err(forbidden("Plan cards are proposed by PiP."));
+    };
+    if !is_active_member(pool, args.conversation_id, account_id).await {
+        return Err(store_error(PlanCardStoreError::Forbidden));
+    }
+    let card = store::load(pool, event_id)
+        .await
+        .map_err(|err| store_error(err.into()))?
+        .filter(|card| card.conversation_id == args.conversation_id.to_string())
+        .ok_or_else(|| store_error(PlanCardStoreError::NotFound))?;
+    let organizes = card
+        .participants
+        .iter()
+        .any(|participant| participant.organizer && participant.account_id == account_id);
+    if !organizes {
+        return Err(forbidden("Only the organizer can change this plan."));
+    }
+    let current: BTreeSet<&str> = card
+        .participants
+        .iter()
+        .map(|participant| participant.account_id.as_str())
+        .collect();
+    let requested: BTreeSet<&str> = args
+        .participants
+        .iter()
+        .map(|participant| participant.account_id.as_str())
+        .collect();
+    if current != requested || requested.len() != args.participants.len() {
+        return Err(error(
+            "invalid_participants",
+            "Changing a plan keeps the same people.",
+            StatusCode::BAD_REQUEST,
+        ));
+    }
+    // The organizer stays the organizer; nobody else becomes one.
+    for participant in &mut args.participants {
+        participant.organizer = participant.account_id == account_id;
+    }
+    Ok(args)
+}
+
 fn forbidden(message: &str) -> Rejection {
     error("plan_card_forbidden", message, StatusCode::FORBIDDEN)
 }
@@ -220,8 +271,12 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
         require_in_scope(pool, actor, &event_id).await?;
     }
     match request {
-        Request::Propose(_) if actor.on_behalf_of_conversation.is_none() => {
-            Err(forbidden("Plan cards are proposed by PiP."))
+        Request::Propose(propose) if actor.on_behalf_of_conversation.is_none() => {
+            let args = propose.into_args(None)?;
+            let args = organizer_revision(pool, &actor.account_id, args).await?;
+            store::propose(pool, &actor.account_id, args)
+                .await
+                .map_err(store_error)
         }
         Request::Propose(propose) => {
             let mut args = propose.into_args(actor.on_behalf_of_conversation)?;
