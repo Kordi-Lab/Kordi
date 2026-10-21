@@ -19,7 +19,7 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
   if (!state.loaded) {
     body = <CgProgress line="Opening your card" />;
   } else if (!state.owner) {
-    body = <CgNotice text={state.notice ?? 'Could not open Common ground.'} />;
+    body = <CgNotice text={state.notice ?? 'Could not open Grounding.'} />;
   } else if (screen.name === 'build' || (screen.name === 'home' && !state.owner.card)) {
     body = <BuildScreen {...props} />;
   } else if (screen.name === 'home') {
@@ -36,7 +36,7 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
     body = <PersonScreen accountId={screen.accountId} {...props} />;
   }
   return (
-    <section aria-label="Common ground" className="cg-page">
+    <section aria-label="Grounding" className="cg-page">
       <div key={`${state.stack.length}:${screen.name}`} className="cg-scroll">
         <div className="cg-body">{body}</div>
       </div>

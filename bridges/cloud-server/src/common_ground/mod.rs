@@ -217,7 +217,7 @@ pub(super) fn db_error(error: sqlx_core::Error) -> Response {
 pub(super) fn unavailable() -> Response {
     err(
         "common_ground_unavailable",
-        "Common ground isn't available on this server.",
+        "Grounding isn't available on this server.",
         StatusCode::SERVICE_UNAVAILABLE,
     )
 }
@@ -251,5 +251,5 @@ pub(super) async fn hint(
 ) -> sqlx_core::Result<()> {
     crate::chat_sync::store::append_account_hint(tx, account, event_type, &payload)
         .await
-        .map_err(|_| sqlx_core::Error::Protocol("Could not publish a Common ground update.".into()))
+        .map_err(|_| sqlx_core::Error::Protocol("Could not publish a Grounding update.".into()))
 }
