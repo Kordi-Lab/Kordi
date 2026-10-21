@@ -44,6 +44,8 @@ mod confirmation_tests;
 #[cfg(test)]
 mod http_tests;
 #[cfg(test)]
+mod organizer_revise_tests;
+#[cfg(test)]
 mod projection_tests;
 #[cfg(test)]
 mod revise_tests;
