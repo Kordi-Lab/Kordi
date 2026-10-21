@@ -12,7 +12,9 @@ async fn upgrade_from_109_preserves_existing_accounts_without_certifying_email()
             .unwrap();
     apply_migrations(&pool).await.unwrap();
     latest_version(&pool).await;
-    let after: Vec<(Value,)> = query_as("SELECT to_jsonb(a) - 'primary_email_verified_at' FROM cloud_accounts a ORDER BY account_id")
+    // Later migrations add columns to cloud_accounts (0140 `about`); drop them
+    // so the snapshot compares only what existed at version 109.
+    let after: Vec<(Value,)> = query_as("SELECT to_jsonb(a) - 'primary_email_verified_at' - 'about' FROM cloud_accounts a ORDER BY account_id")
         .fetch_all(&pool).await.unwrap();
     assert_eq!(before, after);
     let (verified,): (i64,) = query_as(

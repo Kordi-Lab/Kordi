@@ -10,7 +10,11 @@ async fn upgrade_from_133_adds_common_ground() {
     a.unwrap();
     b.unwrap();
     latest_version(&pool).await;
-    let after: Vec<(Value,)> = query_as(accounts).fetch_all(&pool).await.unwrap();
+    let after: Vec<(Value,)> =
+        query_as("SELECT to_jsonb(a) - 'about' FROM cloud_accounts a ORDER BY account_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
     assert_eq!(before, after, "accounts are untouched");
 
     execute(&pool, "INSERT INTO cloud_common_ground_cards(account_id) VALUES('fixture-owner'),('fixture-peer')").await;
