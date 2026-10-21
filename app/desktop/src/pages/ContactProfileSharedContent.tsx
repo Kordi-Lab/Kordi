@@ -10,7 +10,7 @@ import {
   Users,
 } from 'lucide-react';
 
-import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { GroupAvatar } from '@/kordi-app/components/GroupAvatar';
 import type { ParticipantSpaceViewModel } from '@/kordi-app/types';
 import type { ContactProfileSharedSummary } from '@/pages/memberContactProfileModel';
 
@@ -67,36 +67,6 @@ function SharedProfileRow({
   );
 }
 
-function CommonGroupAvatar({ space }: { space: ParticipantSpaceViewModel }) {
-  const avatars = space.avatarStack.slice(0, 2);
-  if (avatars.length === 0) {
-    return (
-      <IdentityAvatar kind="human" seed={space.id} name={space.title} className="h-7 w-7" />
-    );
-  }
-  return (
-    <span className="flex h-7 w-9 shrink-0 items-center -space-x-2" aria-hidden="true">
-      {avatars.map((avatar, index) => (
-        <IdentityAvatar
-          key={`${avatar.seed}-${index}`}
-          kind={avatar.kind}
-          seed={avatar.seed}
-          isSelf={avatar.isSelf}
-          name={space.participants.find((participant) => (
-            participant.avatarKey === avatar.seed
-            || participant.agentId === avatar.seed
-            || participant.humanId === avatar.seed
-            || participant.id === avatar.seed
-            || participant.name === avatar.seed
-          ))?.name ?? space.title}
-          imageUrl={avatar.imageUrl ?? undefined}
-          className="h-7 w-7 border border-[color:var(--app-transient-surface-fallback)]"
-        />
-      ))}
-    </span>
-  );
-}
-
 export function ContactProfileSharedContent({
   commonGroups,
   onOpenCommonGroup,
@@ -149,7 +119,12 @@ export function ContactProfileSharedContent({
           {commonGroups.map((space) => {
             const content = (
               <>
-                <CommonGroupAvatar space={space} />
+                <GroupAvatar
+                  avatars={space.avatarStack}
+                  imageUrl={space.groupAvatar?.imageUrl}
+                  name={space.title}
+                  className="h-7 w-7"
+                />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[11.5px] font-medium" title={space.title}>
                     {space.title}

@@ -51,7 +51,7 @@ function GroupsRow({ groups, onOpenGroup }: { groups: CloudContactProfileGroup[]
   const avatars = groups.length > 0 ? (
     <span className="app-contacts-group-avatars mr-0.5 flex items-center" aria-hidden="true">
       {groups.slice(0, 2).map((group) => (
-        <GroupAvatar key={group.groupId} avatars={[]} imageUrl={group.avatarUrl} name={group.title} className="h-5 w-5 rounded-full" />
+        <GroupAvatar key={group.groupId} avatars={[]} imageUrl={group.avatarUrl} name={group.title} className="h-5 w-5" />
       ))}
     </span>
   ) : null;
@@ -83,7 +83,7 @@ function GroupsRow({ groups, onOpenGroup }: { groups: CloudContactProfileGroup[]
                 onOpenGroup?.(group);
               }}
             >
-              <GroupAvatar avatars={[]} imageUrl={group.avatarUrl} name={group.title} className="h-6 w-6 rounded-full" />
+              <GroupAvatar avatars={[]} imageUrl={group.avatarUrl} name={group.title} className="h-6 w-6" />
               <span className="min-w-0 flex-1 truncate">{group.title}</span>
             </button>
           ))}

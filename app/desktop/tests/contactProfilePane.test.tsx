@@ -189,6 +189,9 @@ test('a person profile fills the info, shared, and common ground cards', async (
     await page.click(page.button('Groups in common'));
     const groupMenu = page.host.querySelector('[role="menu"][aria-label="Groups in common"]');
     assert.ok(groupMenu, 'two groups open a list');
+    const menuAvatars = [...groupMenu.querySelectorAll('.app-group-avatar')];
+    assert.equal(menuAvatars.length, 2);
+    assert.ok(menuAvatars.every((avatar) => !avatar.classList.contains('rounded-full')), 'group avatars stay square');
     await page.click([...groupMenu.querySelectorAll('button')].find((button) => button.textContent === 'Lab'));
     assert.deepEqual(calls.groups, ['gs_2']);
 

@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createElement, type ReactNode } from 'react';
+import { act, createElement, type ReactNode } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { cloudDirectChatPeerAccountId } from '../src/features/cloud/cloudDirectChatPeer';
 import { cloudCollaborationConversationId, cloudDirectPersonSessionId } from '../src/features/collaboration/conversationIds';
 import { ContactDetailBody } from '../src/kordi-app/contacts/ContactDetailPane';
+import type { ParticipantSpaceViewModel } from '../src/kordi-app/types';
 import { ChatDetailPanel } from '../src/pages/ChatDetailPanel';
+import { ContactProfileSharedContent } from '../src/pages/ContactProfileSharedContent';
 import { contact } from './helpers/contactsPageFixtures';
+import { installDom } from './helpers/transcriptAttachmentDom';
 
 const self = 'acct_me';
 
@@ -68,4 +72,35 @@ test('inside a chat the profile has no Message tile', () => {
   assert.match(markup, />Share</);
   assert.match(markup, /aria-label="More actions"/);
   assert.match(markup, /Delete contact/);
+});
+
+test('the popover lists groups in common with the square member mosaic', async () => {
+  const installed = installDom();
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  const space = {
+    id: 'group:gs_1', kind: 'group', title: 'Robotics reading group', participants: [], participantCount: 3,
+    sessionCount: 1, unread: 0, updatedAtMs: 0, preview: '', sessions: [],
+    avatarStack: [{ kind: 'human', seed: 'acct_me', isSelf: true }, { kind: 'human', seed: 'acct_nadia' }, { kind: 'agent', seed: 'agent_n' }],
+  } satisfies ParticipantSpaceViewModel;
+  try {
+    await act(async () => {
+      root.render(createElement(ContactProfileSharedContent, {
+        commonGroups: [space],
+        summary: { photos: 0, videos: 0, files: 0, links: 0, commonGroups: 1 },
+      }));
+    });
+    const toggle = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('group in common'));
+    await act(async () => { toggle?.dispatchEvent(new installed.dom.window.MouseEvent('click', { bubbles: true })); });
+    const row = host.querySelector('.app-contact-profile-group-row');
+    assert.ok(row, 'the group row renders');
+    const avatar = row.querySelector('.app-group-avatar');
+    assert.ok(avatar, 'the row uses the group avatar');
+    assert.ok(!avatar.classList.contains('rounded-full'));
+    assert.equal(row.querySelector('.-space-x-2'), null, 'no overlapping member stack');
+  } finally {
+    await act(async () => root.unmount());
+    installed.restore();
+  }
 });
