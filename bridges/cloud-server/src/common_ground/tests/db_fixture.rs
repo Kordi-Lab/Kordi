@@ -19,7 +19,7 @@ use uuid::Uuid;
 use crate::events::EventBus;
 use crate::server::ServerState;
 
-pub(super) async fn pool() -> Option<PgPool> {
+pub(crate) async fn pool() -> Option<PgPool> {
     let skip_requested = std::env::var("KORDI_CONNECTOR_DB_TESTS").as_deref() == Ok("skip");
     let url = match std::env::var("DATABASE_URL") {
         Ok(url) if !url.trim().is_empty() => url,
@@ -34,7 +34,7 @@ pub(super) async fn pool() -> Option<PgPool> {
     Some(crate::pg::init_pool(&url).await.expect("init test pool"))
 }
 
-pub(super) async fn account(pool: &PgPool, label: &str) -> String {
+pub(crate) async fn account(pool: &PgPool, label: &str) -> String {
     let account_id = format!("acct_cg_{label}_{}", Uuid::new_v4().simple());
     let now = Utc::now().to_rfc3339();
     query(
@@ -54,7 +54,7 @@ pub(super) async fn account(pool: &PgPool, label: &str) -> String {
 }
 
 /// An account with a device and a session; returns (account_id, token).
-pub(super) async fn signed_in(pool: &PgPool, label: &str) -> (String, String) {
+pub(crate) async fn signed_in(pool: &PgPool, label: &str) -> (String, String) {
     let account_id = account(pool, label).await;
     let device_id = format!("dev_{account_id}");
     let now = Utc::now().to_rfc3339();
@@ -76,7 +76,7 @@ pub(super) async fn signed_in(pool: &PgPool, label: &str) -> (String, String) {
 }
 
 /// The router with PiP configured as `service`, so card builds can queue.
-pub(super) fn app(pool: &PgPool, service: Option<&str>) -> Router {
+pub(crate) fn app(pool: &PgPool, service: Option<&str>) -> Router {
     let mut state = ServerState::new(pool.clone(), EventBus::noop());
     if let Some(service) = service {
         state = state.with_pip(crate::pip::PipService::new(crate::pip::test_config(
@@ -86,7 +86,7 @@ pub(super) fn app(pool: &PgPool, service: Option<&str>) -> Router {
     crate::server::router(Arc::new(state))
 }
 
-pub(super) async fn send(
+pub(crate) async fn send(
     app: &Router,
     method: &str,
     path: &str,

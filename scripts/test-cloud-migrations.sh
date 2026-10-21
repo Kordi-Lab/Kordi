@@ -94,3 +94,8 @@ DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
 # Common ground tests follow the same rule.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib common_ground:: -- --test-threads=1
+# Contact profile and removal tests (#1945) use the Common ground fixture.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib auth::routes::contact_profile:: -- --test-threads=1
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib auth::routes::contact_removal:: -- --test-threads=1
