@@ -80,7 +80,7 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
   >(() => {
     return async (rawId: string) => {
       const kordiId = normalizeKordiId(rawId);
-      if (!kordiId) throw new Error('Enter a nine-digit Kordi ID.');
+      if (!kordiId) throw new Error('Enter a Kordi ID.');
       const session = await loadSession();
       if (!session?.token) {
         throw new Error('Account is not ready yet.');

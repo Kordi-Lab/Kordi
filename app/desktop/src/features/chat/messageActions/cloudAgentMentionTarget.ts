@@ -8,6 +8,8 @@ import { conversationHasGroupMentionScope, localAgentMentionLabels, resolveMenti
 import { mentionTextStartsWithLabel } from './localAgentMentions';
 import { normalizeMentionLabel } from './mentionHandles';
 
+export { cloudGroupSendPlan } from './cloudGroupSendPlan';
+
 export function selectedComposerAgentMentionTarget(
   text: string,
   option: ComposerMentionOption | null,

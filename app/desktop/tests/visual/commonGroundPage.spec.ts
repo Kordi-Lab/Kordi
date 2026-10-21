@@ -8,6 +8,7 @@ const SCREENS: Array<[string, (page: import('@playwright/test').Page) => import(
   ['lobby', (page) => page.locator('.cg-member', { hasText: 'Hana Sato' })],
   ['results', (page) => page.getByText('Eval reading group')],
   ['match', (page) => page.getByRole('button', { name: 'Chat' })],
+  ['meet', (page) => page.getByRole('button', { name: 'Meet', exact: true })],
 ];
 
 test.use({ viewport: { width: 1180, height: 860 } });
@@ -29,6 +30,19 @@ for (const theme of ['light', 'dark'] as const) {
       if (screen === 'build') {
         await expect(page.getByText('AGENTS.md, CLAUDE.md +3')).toBeVisible();
         await expect(page.getByText('Connected', { exact: true })).toBeVisible();
+      }
+      if (screen === 'meet') {
+        await page.getByRole('button', { name: 'Meet', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: 'Meet' }).getByText('Tue, Oct 20')).toBeVisible();
+        if (process.env.CG_MEET_SHOTS) {
+          await page.getByRole('button', { name: '11:00 AM' }).click();
+          await page.screenshot({ path: `${process.env.CG_MEET_SHOTS}/meet-time-${theme}.png` });
+          await page.keyboard.press('Escape');
+          await page.getByRole('button', { name: 'Tue, Oct 20' }).click();
+          await page.screenshot({ path: `${process.env.CG_MEET_SHOTS}/meet-date-${theme}.png` });
+          await page.keyboard.press('Escape');
+          await expect(page.getByRole('dialog', { name: 'Choose date' })).toBeHidden();
+        }
       }
       await page.evaluate(() => document.fonts.ready);
       await expect(page).toHaveScreenshot(`commonGroundPage-${screen}-${theme}.png`);

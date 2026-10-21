@@ -50,7 +50,7 @@ initialCloudAgentSessionTitle,
 noProviderPendingLiveTurn,
 ownedAgentIdentityId,
 } from './agentMessageLifecycle';
-import { cloudAgentMentionIdentity,resolveCloudAgentMentionTargetIds,resolvePreferredAgentMentionTarget,selectedComposerAgentMentionTarget } from './cloudAgentMentionTarget';
+import { cloudAgentMentionIdentity,cloudGroupSendPlan,resolveCloudAgentMentionTargetIds,resolvePreferredAgentMentionTarget,selectedComposerAgentMentionTarget } from './cloudAgentMentionTarget';
 import { prefetchNativeVideoRetry,terminalCollaborationRetryFailure } from './collaborationRetry';
 import {
 collaborationDirectSessionParticipants,
@@ -915,7 +915,7 @@ export function useChatMessageActions({
     const allGroupSendTargets = activeGroupSessionIsGroup
       ? collaborationGroupSessionSendTargets(activeGroupSessionScope, activeConvCollaborationTarget, localCollaborationNodeIds)
       : [];
-    const cloudGroupTargetIds = cloudGroupTargetAccountIds(allGroupSendTargets);
+    const { cloudGroupTargetIds, cloudGroupSendable } = cloudGroupSendPlan(allGroupSendTargets, activeConvCanonicalSessionId);
     const cloudAgentMentionTargetIds = resolveCloudAgentMentionTargetIds(activeGroupSessionIsGroup, cloudGroupTargetIds, mentionedCloudSharedAgentOwnerAccountId);
     const cloudAgentMentionParticipants = activeGroupSessionIsGroup
       ? activeGroupSessionParticipants
@@ -935,7 +935,7 @@ export function useChatMessageActions({
         activeConversationUsesCollaborationRouting
         && activeGroupSessionIsGroup
         && activeConvCanonicalSessionId
-        && cloudGroupTargetIds.length > 0
+        && cloudGroupSendable
         && sendCloudGroupControl
       ) {
         try {
@@ -1159,7 +1159,7 @@ export function useChatMessageActions({
       return;
     }
 
-    if (activeConversationUsesCollaborationRouting && activeGroupSessionIsGroup && cloudGroupTargetIds.length > 0) {
+    if (activeConversationUsesCollaborationRouting && activeGroupSessionIsGroup && cloudGroupSendable) {
       if (!activeConvCanonicalSessionId) {
         setDesktopChatError('Unable to open group chat.');
         return;

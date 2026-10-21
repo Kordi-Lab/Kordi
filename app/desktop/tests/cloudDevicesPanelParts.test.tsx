@@ -18,7 +18,7 @@ function device(overrides: Partial<CloudDeviceAuthorization> = {}): CloudDeviceA
     authorizationState: 'confirmed',
     currentDevice: false,
     sessionExpiresAt: null,
-    approximateLocation: 'Thuwal, Saudi Arabia',
+    approximateLocation: 'Lisbon, Portugal',
     syncStatus: { protocolVersion: 2, lastAppliedSequence: 0, lastSuccessfulCatchUpAt: null },
     ...overrides,
   };

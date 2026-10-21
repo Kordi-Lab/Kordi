@@ -1,13 +1,12 @@
 import { MessageLayoutSetting } from '@/kordi-app/components/MessageLayoutSetting';
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AuthPage } from '@/kordi-app/auth/AuthPage';
-import { AppearanceSettingsRow, SettingsNav, SettingsRow, SettingsSection } from '@/kordi-app/components';
-import { EditableIdentityAvatar } from '@/kordi-app/components/EditableIdentityAvatar';
+import { AppearanceSettingsRow, SettingsNav, SettingsSection } from '@/kordi-app/components';
 import type { SettingsSection as SettingsSectionData, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { DesktopAuthProvider, DesktopAuthState, ThemeMode } from '@/kordi-app/types';
 import {
@@ -20,10 +19,7 @@ import {
 } from '@/features/cloud/authClient';
 import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
 import { CloudConnectorsHttpClient } from '@/features/cloud/cloudConnectorsClient';
-import { CloudAccountEmailRow } from '@/kordi-app/cloud/CloudAccountEmailRow';
 import { CloudDevicesPanel } from '@/features/cloud/CloudDevicesPanel';
-import { formatKordiHandle } from '@/features/cloud/kordiId';
-import { cn } from '@/lib/utils';
 import { NotificationSettingsPanel } from '@/features/notifications/NotificationSettingsPanel';
 import { ConnectorsSettingsPanel } from '@/features/connectors/ConnectorsSettingsPanel';
 import type { ConnectorsClient } from '@/features/connectors/connectorsClient';
@@ -32,14 +28,11 @@ import { useConnectorsLinkSelection } from '@/features/connectors/useConnectorsL
 import { MemorySettingsPanel } from '@/features/memory/MemorySettingsPanel';
 import { memoryClientForEnvironment, type MemoryClient } from '@/features/memory/memoryClient';
 import { cloudAccountSettingsNavGroups, type CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
-import {
-  canonicalAvatarImageSource,
-  generatedAvatarPreviewUrl,
-  newCanonicalAvatarSeed,
-  type CanonicalAvatarMutation,
-} from '@/features/cloud/canonicalAvatar';
+import { CloudProfilePanel } from './CloudProfilePanel';
+import { useCloudProfileEditor } from './useCloudProfileEditor';
 
 export type { CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
+export { cloudProfileSaveInput } from './cloudProfileDraft';
 
 // Created once per app load so preview state survives closing the dialog.
 const environmentMemoryClient = memoryClientForEnvironment();
@@ -85,30 +78,6 @@ type CloudAccountSettingsDialogProps = CloudAccountSettingsConfig & {
   memoryClient?: MemoryClient | null;
 };
 
-function profileDisplayName(account: CloudAccount | null) {
-  return account?.displayName?.trim() || account?.primaryEmail?.trim() || 'Profile';
-}
-
-function cloudProfileRows(account: CloudAccount | null) {
-  if (!account) return [];
-  const kordiHandle = formatKordiHandle(account.kordiId);
-  return [
-    kordiHandle ? { label: 'Kordi ID', value: kordiHandle } : null,
-  ].filter((row): row is { label: string; value: string } => Boolean(row));
-}
-
-export function cloudProfileSaveInput({
-  displayNameDraft,
-  avatarMutationDraft,
-}: {
-  displayNameDraft: string;
-  avatarMutationDraft: CanonicalAvatarMutation | null;
-}): CloudProfileUpdateInput {
-  const input: CloudProfileUpdateInput = { displayName: displayNameDraft.trim() };
-  if (avatarMutationDraft) input.avatarMutation = avatarMutationDraft;
-  return input;
-}
-
 export function CloudAccountSettingsDialog({
   isOpen,
   initialTab = 'profile',
@@ -140,13 +109,8 @@ export function CloudAccountSettingsDialog({
   setThemeMode,
 }: CloudAccountSettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<CloudAccountSettingsTabId>('profile');
-  const [displayNameDraft, setDisplayNameDraft] = useState('');
-  const [avatarUrlDraft, setAvatarUrlDraft] = useState('');
-  const [avatarMutationDraft, setAvatarMutationDraft] = useState<CanonicalAvatarMutation | null>(null);
-  const [profileError, setProfileError] = useState('');
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [isSigningOut, setIsSigningOut] = useState(false);
-  const profileErrorId = useId();
+  const profileEditor = useCloudProfileEditor({ account, onUpdateProfile });
+  const resetProfileEditor = profileEditor.reset;
   const openedAccountIdRef = useRef<string | null>(null);
   const wasOpenRef = useRef(false);
   const hasConnectorsOverride = connectorsClientOverride !== undefined;
@@ -201,14 +165,8 @@ export function CloudAccountSettingsDialog({
     if (initialTab === 'auth' || initialTab === 'notifications' || initialTab === 'appearance') {
       setActiveSettingsSectionId(initialTab);
     }
-    const nextAvatarUrl = account ? canonicalAvatarImageSource(account.avatar) ?? '' : '';
-    setDisplayNameDraft(account?.displayName?.trim() || '');
-    setAvatarUrlDraft(nextAvatarUrl);
-    setAvatarMutationDraft(null);
-    setProfileError('');
-    setIsSavingProfile(false);
-    setIsSigningOut(false);
-  }, [account, initialTab, isOpen, setActiveSettingsSectionId]);
+    resetProfileEditor(account);
+  }, [account, initialTab, isOpen, resetProfileEditor, setActiveSettingsSectionId]);
 
   useEffect(() => {
     if (!isOpen || typeof window === 'undefined') return;
@@ -222,9 +180,6 @@ export function CloudAccountSettingsDialog({
 
   if (!isOpen || !account || typeof document === 'undefined') return null;
 
-  const displayName = profileDisplayName(account);
-  const isDisplayNameInvalid = Boolean(profileError && !displayNameDraft.trim());
-  const avatarSeed = account.avatar.seed;
   const appearanceSection = settingsSections.find((section) => section.id === 'appearance');
   const navGroups = cloudAccountSettingsNavGroups({
     connectorsAvailable: connectorsClient !== null,
@@ -241,154 +196,16 @@ export function CloudAccountSettingsDialog({
     }
   };
 
-  const saveProfile = async () => {
-    if (isSavingProfile) return;
-    const nextDisplayName = displayNameDraft.trim();
-    if (!nextDisplayName) {
-      setProfileError('Enter a display name.');
-      return;
-    }
-    try {
-      setIsSavingProfile(true);
-      setProfileError('');
-      const input = cloudProfileSaveInput({
-        displayNameDraft,
-        avatarMutationDraft,
-      });
-      await onUpdateProfile(input);
-      setAvatarMutationDraft(null);
-    } catch (caught) {
-      setProfileError(caught instanceof Error ? caught.message : 'Could not save profile.');
-    } finally {
-      setIsSavingProfile(false);
-    }
-  };
-
-  const handleAvatarUpload = (dataUrl: string) => {
-    setAvatarUrlDraft(dataUrl);
-    setAvatarMutationDraft({
-      action: 'upload',
-      uploadedAsset: dataUrl,
-      expectedVersion: account.avatar.version,
-    });
-    setProfileError('');
-  };
-
-  const useAnotherGeneratedAvatar = () => {
-    const seed = newCanonicalAvatarSeed();
-    const style = account.avatar.style;
-    const previewUrl = generatedAvatarPreviewUrl(style, seed);
-    if (!previewUrl) {
-      setProfileError('Could not create a random avatar.');
-      return;
-    }
-    setAvatarUrlDraft(previewUrl);
-    setAvatarMutationDraft({
-      action: 'regenerate',
-      seed,
-      expectedVersion: account.avatar.version,
-    });
-    setProfileError('');
-  };
-
-  const signOut = async () => {
-    if (!onSignOut || isSigningOut) return;
-    try {
-      setIsSigningOut(true);
-      setProfileError('');
-      await onSignOut();
-      onClose();
-    } catch (caught) {
-      setProfileError(caught instanceof Error ? caught.message : 'Could not sign out.');
-      setIsSigningOut(false);
-    }
-  };
-
   const profilePanel = (
-    <div className="app-cloud-account-settings-section app-cloud-account-profile max-w-[620px]">
-      <SettingsSection title="Profile">
-        <div className="grid grid-cols-[96px_minmax(0,1fr)] items-center gap-5 py-4">
-          <div className="flex justify-center">
-            <EditableIdentityAvatar
-              kind="human"
-              seed={avatarSeed}
-              name={displayNameDraft || displayName}
-              imageUrl={avatarUrlDraft || undefined}
-              className="h-16 w-16 border border-white/10"
-              label="Profile avatar"
-              generateLabel="Random avatar"
-              onUpload={handleAvatarUpload}
-              onGenerate={useAnotherGeneratedAvatar}
-            />
-          </div>
-          <label className="grid min-w-0 gap-2 text-[13px] font-medium text-white">
-            Display name
-            <input
-              value={displayNameDraft}
-              onChange={(event) => {
-                setDisplayNameDraft(event.currentTarget.value);
-                if (profileError) setProfileError('');
-              }}
-              className={cn(
-                'app-input-shell app-flat-input app-cloud-account-profile-name-input h-10 w-full rounded-[10px] px-3 text-[13px] font-normal text-white outline-none',
-                isDisplayNameInvalid && 'app-flat-input-error',
-              )}
-              placeholder="Your display name"
-              aria-invalid={isDisplayNameInvalid || undefined}
-              aria-describedby={profileError ? profileErrorId : undefined}
-            />
-          </label>
-        </div>
-        {cloudProfileRows(account).map((row) => (
-          <SettingsRow
-            key={row.label}
-            title={row.label}
-            control={<span className="max-w-[280px] truncate text-[13px] text-slate-300" title={row.value}>{row.value}</span>}
-          />
-        ))}
-        {account.primaryEmail?.trim() ? (
-          <CloudAccountEmailRow
-            key={account.accountId}
-            email={account.primaryEmail.trim()}
-            verified={account.primaryEmailVerified}
-            onRequestCode={onRequestEmailCode}
-            onVerify={onVerifyEmail}
-            onAlreadyVerified={onEmailAlreadyVerified}
-          />
-        ) : null}
-        <SettingsRow
-          title="Save changes"
-          description={profileError
-            ? <span id={profileErrorId} className="app-error-text text-rose-200" aria-live="polite">{profileError}</span>
-            : 'Your name and avatar are shown to your contacts.'}
-          control={(
-            <Button type="button" className="h-8 rounded-lg px-3.5 text-[12px]" disabled={isSavingProfile} onClick={saveProfile}>
-              {isSavingProfile ? 'Saving…' : 'Save profile'}
-            </Button>
-          )}
-        />
-      </SettingsSection>
-      {onSignOut ? (
-        <SettingsSection title="Session">
-          <SettingsRow
-            title="Sign out"
-            description="Sign out of Kordi on this Mac."
-            className="app-cloud-account-settings-meta-row"
-            control={(
-              <Button
-                type="button"
-                variant="secondary"
-                className="h-8 rounded-lg border border-rose-400/20 bg-rose-500/10 px-3.5 text-[12px] text-rose-200 hover:bg-rose-500/15 hover:text-rose-100"
-                disabled={isSigningOut}
-                onClick={signOut}
-              >
-                {isSigningOut ? 'Signing out…' : 'Sign out'}
-              </Button>
-            )}
-          />
-        </SettingsSection>
-      ) : null}
-    </div>
+    <CloudProfilePanel
+      account={account}
+      editor={profileEditor}
+      onRequestEmailCode={onRequestEmailCode}
+      onVerifyEmail={onVerifyEmail}
+      onEmailAlreadyVerified={onEmailAlreadyVerified}
+      onSignOut={onSignOut}
+      onClose={onClose}
+    />
   );
 
   const authPanel = (
