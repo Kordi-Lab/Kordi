@@ -15,7 +15,7 @@ import '../../src/index.css';
 
 // Login-free preview of Common ground in the real Contacts page. A fetch stub answers the
 // `/v1/cloud/common-ground` routes from fixtures, with two profiles (`commonGroundVersion` 2).
-// Query: ?screen=home|build|card|lobby|results|match, ?theme=light|dark.
+// Query: ?screen=home|build|card|lobby|results|match|meet, ?theme=light|dark.
 const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
 const screen = params.get('screen') ?? 'home';
@@ -29,7 +29,8 @@ const ROUTES: Record<string, (query: string) => unknown> = {
   'GET rooms': () => fx.rooms,
   'GET rooms/4821': () => fx.room,
   'POST rooms/4821/results': () => fx.results,
-  'GET people/acct_hana/match': () => fx.match,
+  // The Meet case shows Hana as a contact, so the Meet tile opens the dialog.
+  'GET people/acct_hana/match': () => (screen === 'meet' ? { ...fx.match, relationship: { ...fx.match.relationship, contact: true } } : fx.match),
 };
 
 const realFetch = window.fetch.bind(window);
@@ -51,6 +52,7 @@ const STACKS: Record<string, CgScreen[]> = {
   lobby: [{ name: 'lobby', code: '4821' }],
   results: [{ name: 'results', code: '4821' }],
   match: [{ name: 'match', accountId: 'acct_hana' }],
+  meet: [{ name: 'match', accountId: 'acct_hana' }],
 };
 
 const host: CgHost = {

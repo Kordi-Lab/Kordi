@@ -7,8 +7,8 @@ import { CommonGroundError, commonGroundErrorCode, commonGroundErrorMessage, isR
 import type { CgProfileMemory } from './profiles';
 import * as profileOps from './storeProfiles';
 import type {
-  CgBuildRequest, CgJoinInput, CgMatch, CgOwnerView, CgPersonCard, CgProfile, CgProfileInput, CgRecentEntry, CgRelationship,
-  CgResults, CgRoom, CgRoomSummary, CgTopicLists,
+  CgBuildRequest, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPersonCard, CgProfile, CgProfileInput, CgRecentEntry,
+  CgRelationship, CgResults, CgRoom, CgRoomSummary, CgTopicLists,
 } from './types';
 
 export type CgScreen =
@@ -432,7 +432,7 @@ export class CommonGroundStore {
     }
   }
 
-  async meet(accountId: string, input: { title?: string; startAt: string; endAt?: string }): Promise<boolean> {
+  async meet(accountId: string, input: CgMeetInput): Promise<boolean> {
     try {
       const { relationship } = await this.client.meet(accountId, input);
       this.setRelationship(accountId, relationship);

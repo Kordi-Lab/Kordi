@@ -77,7 +77,7 @@ export function HomeScreen({ state, store, host }: { state: CgState; store: Comm
   const profileName = (profileId: string | null | undefined) => state.profiles.find((item) => item.profileId === profileId)?.name ?? '';
   return (
     <>
-      <CgHero avatar={<CgAvatar person={host.self} size={72} isSelf />} title="Common ground" line="Find what you share" />
+      <CgHero avatar={<CgAvatar person={host.self} size={72} isSelf />} title="Grounding" line="Find what you share" />
       {state.profilesOn && state.profiles.length ? <ProfileSwitcher state={state} store={store} /> : null}
       <CgSection className={state.profilesOn ? 'is-tight' : undefined}>
         <CgGroup>

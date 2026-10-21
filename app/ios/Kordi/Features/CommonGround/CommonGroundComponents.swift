@@ -309,3 +309,29 @@ func commonGroundNameList(_ names: [String]) -> String {
     guard names.count > 1 else { return names.first ?? "" }
     return names.dropLast().joined(separator: ", ") + " and " + (names.last ?? "")
 }
+
+/// A group row's leading mark: up to three overlapping member avatars and "+N",
+/// or the generic group icon when no members came with the group.
+struct CommonGroundMemberCluster: View {
+    let members: [CommonGroundPerson]
+    var total: Int? = nil
+    private let size: CGFloat = 28
+
+    var body: some View {
+        if members.isEmpty {
+            IdentityAvatar(name: "Group", imageSource: nil, kind: .group, size: 40)
+        } else {
+            let shown = Array(members.prefix(3))
+            let extra = max(0, (total ?? members.count) - shown.count)
+            HStack(spacing: -10) {
+                ForEach(shown) { CommonGroundAvatar(person: $0, size: size, ringed: true) }
+                if extra > 0 {
+                    Text("+\(extra)")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 14)
+                }
+            }
+        }
+    }
+}
