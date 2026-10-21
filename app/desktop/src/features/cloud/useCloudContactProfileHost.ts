@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import type { Contact, ContactClass } from '@/kordi-app/types';
 import type { ContactProfileHost } from '@/kordi-app/contacts/contactProfileHost';
 import { cloudApiBaseUrl, defaultCloudAuthClient, type CloudAccount } from './authClient';
 import { useCloudAuthCapabilitiesState } from './cloudAuthCapabilities';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
-import { contactProfileVersionFromCapabilities, fetchContactProfile } from './contactProfileClient';
+import { contactProfileVersionFromCapabilities, fetchContactProfile, removeCloudContact } from './contactProfileClient';
 import { dispatchCloudGroupInvitationAccepted } from './groupInvitationDeepLink';
 
 type ContactProfileHostOptions = {
@@ -13,7 +13,30 @@ type ContactProfileHostOptions = {
   contacts: Contact[];
   onMessageContact?: (contact: Contact) => void;
   onSelectContact: (groupId: ContactClass, contactId: string) => void;
+  onCloseOverlay: () => void;
+  refreshContacts: () => Promise<void>;
 };
+
+export type CloudContactProfileAccess = {
+  host: ContactProfileHost | undefined;
+  /** Hosted contact removal, present when the server serves the profile routes (and the delete route with them). */
+  removeContact: ((contact: Contact) => Promise<void>) | undefined;
+};
+
+/** Deletes the contact, refreshes the list, then closes the pane; errors reach the pane's confirm. */
+export function cloudContactRemover(deps: {
+  remove: (accountId: string) => Promise<void>;
+  refresh: () => Promise<void>;
+  close: () => void;
+}) {
+  return async (contact: Contact) => {
+    const accountId = cloudContactAccountId(contact);
+    if (!accountId || contact.systemContact || contact.locked) throw new Error('This contact cannot be deleted.');
+    await deps.remove(accountId);
+    await deps.refresh().catch(() => undefined);
+    deps.close();
+  };
+}
 
 /** The account a hosted contact row stands for. */
 export function cloudContactAccountId(contact: Contact | undefined): string | null {
@@ -29,7 +52,7 @@ function contactForAccount(contacts: Contact[], accountId: string): Contact | nu
  * Profile access for the Contacts pane, present only when the server reports
  * `contactProfileVersion`. Self and local (non-hosted) contacts keep today's pane.
  */
-export function useCloudContactProfileHost(options: ContactProfileHostOptions): ContactProfileHost | undefined {
+export function useCloudContactProfileHost(options: ContactProfileHostOptions): CloudContactProfileAccess {
   const authClient = useMemo(() => defaultCloudAuthClient(), []);
   const { capabilities } = useCloudAuthCapabilitiesState(authClient, cloudApiBaseUrl());
   const available = contactProfileVersionFromCapabilities(capabilities) !== null;
@@ -37,7 +60,7 @@ export function useCloudContactProfileHost(options: ContactProfileHostOptions): 
   useEffect(() => { latest.current = options; });
   const selfAccountId = options.account.accountId;
 
-  return useMemo<ContactProfileHost | undefined>(() => {
+  const host = useMemo<ContactProfileHost | undefined>(() => {
     if (!available) return undefined;
     return {
       accountIdFor: (contact) => {
@@ -61,4 +84,12 @@ export function useCloudContactProfileHost(options: ContactProfileHostOptions): 
       },
     };
   }, [authClient, available, selfAccountId]);
+
+  const removeContact = useCallback((contact: Contact) => cloudContactRemover({
+    remove: (accountId) => removeCloudContact(accountId, { request: (path, init, fallback) => authClient.request(path, init, fallback) }),
+    refresh: () => latest.current.refreshContacts(),
+    close: () => latest.current.onCloseOverlay(),
+  })(contact), [authClient]);
+
+  return { host, removeContact: available ? removeContact : undefined };
 }

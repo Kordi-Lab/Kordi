@@ -261,5 +261,6 @@ test('auth notice opens the cloud account settings authentication panel', () => 
 
 test('cloud contact websocket refreshes when a contact profile changes', () => {
   assert.equal(shouldRefreshCloudContactsForWsSubject('kordi.events.account.profile.updated.acct_peer'), true);
+  assert.equal(shouldRefreshCloudContactsForWsSubject('kordi.events.contact.removed.acct_peer'), true);
   assert.equal(shouldRefreshCloudContactsForWsSubject('kordi.events.account.signed_up.acct_peer'), false);
 });

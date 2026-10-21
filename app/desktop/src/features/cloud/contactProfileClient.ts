@@ -8,9 +8,12 @@ export type CloudContactProfileKind = 'person' | 'agent' | 'system';
 
 export type CloudContactProfileAgent = {
   agentId: string;
+  /** `cloud-agent:<owner>` on current servers, not a contacts-list account. */
   accountId: string | null;
   displayName: string;
+  /** An https URL or a `kordi-avatar://` marker; avatar components resolve both. */
   avatarUrl: string | null;
+  avatarSeed: string | null;
 };
 
 export type CloudContactProfileOwner = {
@@ -114,7 +117,13 @@ function normalizeAgent(value: unknown): CloudContactProfileAgent | null {
   const row = record(value);
   const agentId = text(row?.agentId);
   if (!row || !agentId) return null;
-  return { agentId, accountId: text(row.accountId), displayName: text(row.displayName) ?? 'Agent', avatarUrl: text(row.avatarUrl) };
+  return {
+    agentId,
+    accountId: text(row.accountId),
+    displayName: text(row.displayName) ?? 'Agent',
+    avatarUrl: text(row.avatarUrl),
+    avatarSeed: text(record(row.avatar)?.seed),
+  };
 }
 
 function normalizeOwner(value: unknown): CloudContactProfileOwner | null {
@@ -171,4 +180,22 @@ export function normalizeContactProfile(value: unknown): CloudContactProfile | n
     },
     commonGround: normalizeCommonGround(row.commonGround),
   };
+}
+
+/**
+ * Deletes a contact in both directions: `DELETE /v1/cloud/contacts/{accountId}` (204, 404 when
+ * not a contact). Lives here rather than in authClient.ts, which is past the file-size ratchet.
+ */
+export async function removeCloudContact(accountId: string, options: FetchContactProfileOptions = {}): Promise<void> {
+  const trimmed = accountId.trim();
+  if (!trimmed) throw new Error('Missing account.');
+  const token = await (options.token ?? sessionToken)();
+  if (!token) throw new Error('Sign in again to delete this contact.');
+  const request: ProfileRequest = options.request
+    ?? ((path, init, fallback) => defaultCloudAuthClient().request(path, init, fallback));
+  await request<void>(
+    `/v1/cloud/contacts/${encodeURIComponent(trimmed)}`,
+    { method: 'DELETE', headers: { authorization: `Bearer ${token}` }, signal: options.signal },
+    'Could not delete contact.',
+  );
 }

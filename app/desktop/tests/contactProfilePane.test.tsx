@@ -8,8 +8,10 @@ import {
   contactProfileVersionFromCapabilities,
   fetchContactProfile,
   normalizeContactProfile,
+  removeCloudContact,
   type CloudContactProfile,
 } from '../src/features/cloud/contactProfileClient';
+import { cloudContactRemover } from '../src/features/cloud/useCloudContactProfileHost';
 import type { ContactMuteControl, ContactProfileHost } from '../src/kordi-app/contacts/contactProfileHost';
 import type { ContactsPageProps } from '../src/kordi-app/contacts/contactsPageTypes';
 import { ContactsPage } from '../src/kordi-app/pages';
@@ -120,6 +122,21 @@ test('fetchContactProfile calls the contact profile route and normalizes the bod
   assert.deepEqual(result.shared, { mediaCount: 0, linkCount: 0, documentCount: 0, groups: [] });
   assert.equal(result.commonGround, null);
   await assert.rejects(fetchContactProfile('acct_nadia', { token: async () => null }));
+});
+
+test('profile normalization follows the server shapes for agents, groups, and default agents', () => {
+  const person = normalizeContactProfile({
+    accountId: 'acct_p', kind: 'person', kordiId: '1', presence: null,
+    defaultAgent: { agentId: 'ag', accountId: 'cloud-agent:acct_p', displayName: 'P agent', avatarUrl: 'kordi-avatar://x', avatar: { seed: 'seed-1' } },
+    shared: { mediaCount: 1, linkCount: 0, documentCount: 0, groups: [{ groupId: 'gs', title: null, avatarUrl: 'kordi-avatar://g' }] },
+  })!;
+  assert.equal(person.defaultAgent?.avatarSeed, 'seed-1');
+  assert.equal(person.defaultAgent?.avatarUrl, 'kordi-avatar://x');
+  assert.deepEqual(person.shared.groups, [{ groupId: 'gs', title: 'Group', avatarUrl: 'kordi-avatar://g' }]);
+  assert.equal(person.presence, null);
+  const agent = normalizeContactProfile({ accountId: 'acct_a', kind: 'agent', kordiId: null, presence: null, commonGround: null, shared: { mediaCount: 0, linkCount: 0, documentCount: 0, groups: [] } })!;
+  assert.equal(agent.kordiId, null);
+  assert.equal(agent.commonGround, null);
 });
 
 test('without the flag the pane keeps today\'s content', () => {
@@ -287,6 +304,57 @@ test('a failed profile request leaves today\'s info card in place', async () => 
     assert.doesNotMatch(page.text(), /Shared with you|Contact since|boom/);
     assert.equal(page.host.querySelector('[aria-busy="true"]'), null);
     assert.match(page.text(), /Delete contact/);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test('hosted removal deletes the contact, refreshes the list, then closes the pane', async () => {
+  const requests: { path: string; method: string | undefined }[] = [];
+  const steps: string[] = [];
+  const remove = cloudContactRemover({
+    remove: (accountId) => removeCloudContact(accountId, {
+      token: async () => 'tok',
+      request: async <T,>(path: string, init: RequestInit) => {
+        requests.push({ path, method: init.method });
+        steps.push('delete');
+        return undefined as T;
+      },
+    }),
+    refresh: async () => { steps.push('refresh'); },
+    close: () => { steps.push('close'); },
+  });
+  await remove(nadia);
+  assert.deepEqual(requests, [{ path: '/v1/cloud/contacts/acct_nadia', method: 'DELETE' }]);
+  assert.deepEqual(steps, ['delete', 'refresh', 'close']);
+
+  await assert.rejects(remove(support), /cannot be deleted/);
+  const failing = cloudContactRemover({
+    remove: async () => { throw new Error('Could not delete contact.'); },
+    refresh: async () => { steps.push('refresh-after-failure'); },
+    close: () => { steps.push('close-after-failure'); },
+  });
+  await assert.rejects(failing(nadia), /Could not delete contact/);
+  assert.deepEqual(steps, ['delete', 'refresh', 'close'], 'a failed delete neither refreshes nor closes');
+});
+
+test('the confirm step drives the hosted removal handler', async () => {
+  const removed: string[] = [];
+  const page = await mount({
+    activeContact: nadia,
+    contactProfileHost: hostFor({ acct_nadia: profile() }, newCalls()),
+    onRemoveContact: cloudContactRemover({
+      remove: async (accountId) => { removed.push(accountId); },
+      refresh: async () => undefined,
+      close: () => undefined,
+    }),
+  });
+  try {
+    await page.click(page.button('Delete contact'));
+    assert.match(page.text(), /Deleting removes both contact directions/);
+    assert.deepEqual(removed, []);
+    await page.click([...page.host.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Delete'));
+    assert.deepEqual(removed, ['acct_nadia']);
   } finally {
     await page.cleanup();
   }

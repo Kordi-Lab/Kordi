@@ -44,11 +44,13 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     onSelectRequest: contactsPageProps.onSelectRequest,
     onCloseOverlay: contactsPageProps.onCloseOverlay,
   }, { account, onMessageContact: contactsPageProps.onMessageContact, cloud });
-  const contactProfileHost = useCloudContactProfileHost({
+  const contactProfile = useCloudContactProfileHost({
     account,
     contacts: cloud.contacts,
     onMessageContact: contactsPageProps.onMessageContact,
     onSelectContact: commonGround.onSelectContact,
+    onCloseOverlay: commonGround.onCloseOverlay,
+    refreshContacts: () => cloud.refresh(),
   });
 
   const visibleCloudContacts = useMemo(() => {
@@ -182,7 +184,9 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       onAddContactByNodeId={onAddContactByNodeId}
       onLookupContact={onLookupContact}
       onMessageContact={contactsPageProps.onMessageContact}
-      contactProfileHost={contactProfileHost}
+      contactProfileHost={contactProfile.host}
+      // Hosted removal needs the server's delete route; older servers keep the unsupported path.
+      onRemoveContact={contactProfile.removeContact ?? contactsPageProps.onRemoveContact}
       {...commonGround}
     />
   );

@@ -91,7 +91,7 @@ function ContactDetailBody({ contact, onCloseOverlay, onMessageContact, onRemove
       key: 'agent',
       value: agent.displayName,
       caption: 'Their agent',
-      lead: avatarLead('agent', agent.accountId ?? agent.agentId, agent.displayName, agent.avatarUrl),
+      lead: avatarLead('agent', agent.avatarSeed ?? agent.agentId, agent.displayName, agent.avatarUrl),
       onClick: openAgent ? () => openAgent(agent, contact) : undefined,
     });
   }
