@@ -46,6 +46,14 @@ export type CloudAuthErrorCode =
   | 'not_a_group_member'
   | 'not_a_participant'
   | 'device_review_required'
+  | 'invalid_kordi_id'
+  | 'kordi_id_taken'
+  | 'kordi_id_change_locked'
+  | 'invalid_about'
+  | 'invalid_location'
+  | 'invalid_time_zone'
+  | 'invalid_website'
+  | 'invalid_birthday'
   | 'unknown';
 
 export class CloudAuthError extends Error {
@@ -104,6 +112,8 @@ const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'server_error', 'plan_card_revision_conflict', 'omp_unavailable',
   'memory_rejected', 'memory_disabled', 'memory_id_conflict', 'memory_not_found',
   'not_a_group_member', 'not_a_participant', 'device_review_required',
+  'invalid_kordi_id', 'kordi_id_taken', 'kordi_id_change_locked', 'invalid_about', 'invalid_location',
+  'invalid_time_zone', 'invalid_website', 'invalid_birthday',
 ]);
 
 function isErrorCode(value: unknown): value is CloudAuthErrorCode {

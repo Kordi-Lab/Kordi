@@ -66,7 +66,7 @@ export const settingsSections: SettingsSection[] = [
       },
       {
         label: 'Chat theme',
-        value: 'Quiet Signal',
+        value: 'Classic',
         hint: 'Changes conversation backgrounds and message colors on this Mac.',
         control: { type: 'chat-theme' },
       },

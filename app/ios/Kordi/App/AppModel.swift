@@ -307,6 +307,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastMessageSyncAt: Date?
     @Published private(set) var loadingConversationIDs = Set<String>()
     @Published var errorMessage: String?
+    /// A profile save rejected for one field, shown under that row in the editor.
+    @Published var profileFieldError: ProfileFieldError?
     @Published private(set) var accountEmailCodeState: AccountEmailCodeState?
     /// `connectorsVersion` from `/v1/cloud/auth/capabilities`; nil hides Connectors.
     @Published private(set) var connectorsVersion: Int?
@@ -1083,8 +1085,11 @@ final class AppModel: ObservableObject {
 
     func updateProfile(
         displayName: String,
-        avatarMutation: CanonicalAvatarMutation?
+        avatarMutation: CanonicalAvatarMutation?,
+        kordiId: String? = nil,
+        details: CloudProfileDetailsUpdate = CloudProfileDetailsUpdate()
     ) async -> Bool {
+        profileFieldError = nil
         guard let token else { return false }
         let cleanName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else {
@@ -1095,14 +1100,24 @@ final class AppModel: ObservableObject {
             let updated = try await api.updateProfile(
                 token: token,
                 displayName: cleanName,
-                avatarMutation: avatarMutation
+                avatarMutation: avatarMutation,
+                kordiId: kordiId,
+                details: details
             )
             account = updated.preservingEmailVerification(from: account)
             errorMessage = nil
             await rebuildConversationCatalog()
             return true
         } catch {
-            errorMessage = userFacing(error, fallback: "Could not update your profile.")
+            // Field validation errors show under the matching editor row.
+            if let apiError = error as? CloudAPIError,
+               let field = ProfileField(errorCode: apiError.code),
+               let message = apiError.message.nonEmpty {
+                profileFieldError = ProfileFieldError(field: field, message: message)
+                errorMessage = nil
+            } else {
+                errorMessage = userFacing(error, fallback: "Could not update your profile.")
+            }
             return false
         }
     }
@@ -4337,9 +4352,8 @@ final class AppModel: ObservableObject {
 
     func lookupContact(kordiId: String) async -> CloudPublicProfile? {
         guard let token else { return nil }
-        let normalized = kordiId.filter(\.isNumber)
-        guard normalized.count == 9 else {
-            errorMessage = "Enter a nine-digit Kordi ID."
+        guard let normalized = KordiID.normalize(kordiId) else {
+            errorMessage = "Enter a Kordi ID."
             return nil
         }
         do {

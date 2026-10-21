@@ -1,3 +1,5 @@
+/* Classic's chat tokens live after the palette mapping in theme-palette.css,
+ * because that mapping overrides the blocks in this file. */
 body[data-kordi-chat-theme="quiet"] .kordi-app,
 .app-chat-theme-preview[data-kordi-chat-theme="quiet"] {
   --app-chat-bubble-user-bg: #2D425B;

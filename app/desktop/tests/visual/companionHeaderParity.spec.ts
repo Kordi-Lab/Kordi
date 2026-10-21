@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 const preview = '/tests/visual/chatProjectWorkspace.html';
 const tabs = ['Messages', 'Info', 'Artifacts', 'Tasks'];
-const chatThemes = ['default', 'quiet', 'midnight', 'sand', 'ocean'] as const;
+const chatThemes = ['default', 'classic', 'quiet', 'midnight', 'sand', 'ocean'] as const;
 
 const mainPane = '.app-chat-main-workspace';
 const panel = '[data-chat-side-agent-panel]';

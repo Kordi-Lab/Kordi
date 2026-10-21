@@ -328,26 +328,21 @@ async fn account_display_name(
     transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
 ) -> Result<String, CallStoreError> {
-    let display_name: Option<(Option<String>, i64)> = query_as(
-        "SELECT display_name, public_account_number FROM cloud_accounts WHERE account_id = $1",
+    let display_name: Option<(Option<String>, String)> = query_as(
+        "SELECT display_name, COALESCE(public_handle, public_account_number::TEXT) FROM cloud_accounts WHERE account_id = $1",
     )
     .bind(account_id)
     .fetch_optional(&mut **transaction)
     .await?;
     Ok(display_name
-        .map(|(display_name, public_account_number)| {
-            preferred_account_display_name(display_name, public_account_number)
-        })
+        .map(|(display_name, kordi_id)| preferred_account_display_name(display_name, kordi_id))
         .unwrap_or_else(|| "Kordi user".to_string()))
 }
 
-fn preferred_account_display_name(
-    display_name: Option<String>,
-    public_account_number: i64,
-) -> String {
+fn preferred_account_display_name(display_name: Option<String>, kordi_id: String) -> String {
     display_name
         .filter(|name| !name.trim().is_empty())
-        .unwrap_or_else(|| public_account_number.to_string())
+        .unwrap_or(kordi_id)
 }
 
 pub async fn decline(

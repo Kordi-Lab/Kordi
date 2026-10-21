@@ -1,0 +1,149 @@
+/* Profile table in account settings: label column, borderless accent values.
+ * Matches the iPhone "Edit profile" rows. */
+.app-cloud-profile-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  min-height: 46px;
+  padding: 7px 0;
+}
+
+.app-cloud-profile-row-top {
+  align-items: start;
+}
+
+.app-cloud-profile-row-top > .app-cloud-profile-row-label {
+  padding-top: 5px;
+}
+
+.app-cloud-profile-row-value {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 30px;
+  margin: 0 -6px;
+  padding: 0 6px;
+  border-radius: 6px;
+}
+
+.app-cloud-profile-row-value:focus-within {
+  outline: 2px solid color-mix(in oklab, var(--app-palette-accent) 42%, transparent);
+  outline-offset: 0;
+}
+
+.app-cloud-account-profile .app-cloud-profile-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: 5px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--app-palette-accent);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.app-cloud-account-profile .app-cloud-profile-input::placeholder {
+  color: var(--app-transient-subtle-text);
+  opacity: 1;
+}
+
+.app-cloud-account-profile .app-cloud-profile-input[aria-invalid='true'] {
+  color: var(--app-transient-danger-text);
+}
+
+/* Locked Kordi ID: plain muted text with the editable geometry. The transient
+ * surface gives disabled controls a filled background, so reset it here. */
+.app-cloud-account-profile .app-cloud-profile-input:disabled {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--app-transient-muted-text);
+  -webkit-text-fill-color: var(--app-transient-muted-text);
+  cursor: default;
+  opacity: 1;
+}
+
+.app-cloud-account-profile .app-cloud-profile-input:disabled::placeholder {
+  color: var(--app-transient-muted-text);
+  -webkit-text-fill-color: var(--app-transient-muted-text);
+}
+
+.app-cloud-account-profile .app-cloud-profile-textarea {
+  display: block;
+  max-height: 90px; /* four lines plus padding */
+  overflow-y: auto;
+  resize: none;
+}
+
+.app-cloud-account-profile .app-cloud-profile-select {
+  padding-right: 20px;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
+.app-cloud-profile-chevron {
+  margin-left: -16px;
+  color: var(--app-transient-subtle-text);
+  pointer-events: none;
+}
+
+.app-cloud-account-profile .app-cloud-profile-date {
+  flex: 0 1 auto;
+  width: auto;
+  cursor: text;
+}
+
+.app-cloud-account-profile .app-cloud-profile-date-empty {
+  color: var(--app-transient-subtle-text);
+}
+
+.app-cloud-account-profile .app-cloud-profile-date::-webkit-calendar-picker-indicator {
+  opacity: 0.5;
+  cursor: pointer;
+}
+
+.app-cloud-profile-clear {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--app-transient-icon-bg);
+  color: var(--app-transient-muted-text);
+  cursor: pointer;
+}
+
+.app-cloud-profile-clear:hover {
+  color: var(--app-transient-text);
+}
+
+.app-cloud-profile-at {
+  color: var(--app-transient-muted-text);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.app-cloud-profile-row-error {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--app-transient-danger-text);
+}
+
+.app-cloud-profile-row-note {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--app-transient-muted-text);
+}
