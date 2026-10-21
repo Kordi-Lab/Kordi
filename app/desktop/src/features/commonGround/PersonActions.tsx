@@ -67,7 +67,8 @@ export function PersonActions({ person, state, store, host, onFind }: {
       {(showMeet || showChat) && !contact ? <div className="cg-hint">Add each other to meet or chat</div> : null}
       {meeting ? (
         <MeetDialog
-          name={person.name}
+          self={host.self}
+          person={person}
           busy={busy}
           onCancel={() => setMeeting(false)}
           onSubmit={(input) => void act(async () => {

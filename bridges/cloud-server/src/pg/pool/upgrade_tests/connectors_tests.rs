@@ -11,8 +11,9 @@ async fn upgrade_from_113_adds_connectors_without_touching_accounts() {
             .unwrap();
     apply_migrations(&pool).await.unwrap();
     latest_version(&pool).await;
+    // Migrations 139 and 140 add empty profile columns.
     let after: Vec<(Value,)> =
-        query_as("SELECT to_jsonb(a) - 'about' FROM cloud_accounts a ORDER BY account_id")
+        query_as("SELECT to_jsonb(a) - ARRAY['public_handle','about','location','time_zone','website','birthday','public_handle_changed_at'] FROM cloud_accounts a ORDER BY account_id")
             .fetch_all(&pool)
             .await
             .unwrap();

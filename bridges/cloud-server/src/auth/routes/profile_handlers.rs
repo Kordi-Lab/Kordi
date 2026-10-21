@@ -1,38 +1,39 @@
 use super::*;
 
-mod about;
 mod default_agent;
-pub(super) use about::present;
+mod fields;
+mod lookup;
 use default_agent::*;
+pub(super) use fields::double_option;
+use fields::ProfileFieldChanges;
+pub(super) use lookup::get_profile;
 
 pub(super) async fn update_me(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Json(req): Json<UpdateProfileRequest>,
 ) -> Response {
-    let about = match req
-        .about
-        .as_ref()
-        .map(|value| about::clean_about(value.as_deref()))
-    {
-        Some(Ok(value)) => Some(value),
-        Some(Err(())) => {
-            return err(
-                "invalid_about",
-                format!(
-                    "About must be {} characters or fewer.",
-                    about::MAX_ABOUT_CHARS
-                ),
-                StatusCode::BAD_REQUEST,
-            )
-        }
-        None => None,
+    let field_changes = match ProfileFieldChanges::from_request(&req) {
+        Ok(value) => value,
+        Err(error) => return err(error.code, error.message, StatusCode::BAD_REQUEST),
     };
     let display_name = clean_profile_display_name(req.display_name.as_deref());
     let mut avatar_mutation = req.avatar_mutation;
     let agent_display_name = clean_default_agent_display_name(req.agent_display_name.as_deref());
     let mut agent_avatar_mutation = req.agent_avatar_mutation;
-    let now = Utc::now().to_rfc3339();
+    let public_handle = match req.kordi_id.as_deref().map(normalize_public_handle) {
+        None => None,
+        Some(Ok(handle)) => Some(handle),
+        Some(Err(InvalidPublicHandle)) => {
+            return err(
+                "invalid_kordi_id",
+                INVALID_PUBLIC_HANDLE_MESSAGE,
+                StatusCode::BAD_REQUEST,
+            );
+        }
+    };
+    let now_at = Utc::now();
+    let now = now_at.to_rfc3339();
     let pool = state.db_pool();
     if let Some(mutation) = avatar_mutation.as_mut() {
         if let Err(error) = crate::avatars::assets::materialize_legacy_avatar_mutation(
@@ -94,6 +95,36 @@ pub(super) async fn update_me(
             StatusCode::NOT_FOUND,
         );
     };
+    let current_handle: (Option<String>, Option<DateTime<Utc>>) = match query_as(
+        "SELECT public_handle, public_handle_changed_at FROM cloud_accounts WHERE account_id = $1",
+    )
+    .bind(&session.account_id)
+    .fetch_one(&mut *tx)
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not update profile.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+    // Repeating the current handle (same case) is a no-op and never locks.
+    let public_handle = public_handle.filter(|requested| *requested != current_handle.0);
+    if public_handle.is_some() {
+        if let Some(available_at) = current_handle
+            .1
+            .and_then(|changed_at| public_handle_locked_until(changed_at, now_at))
+        {
+            return err(
+                "kordi_id_change_locked",
+                public_handle_locked_message(available_at),
+                StatusCode::CONFLICT,
+            );
+        }
+    }
     let current_avatar = descriptor_from_parts(
         "human".to_string(),
         session.account_id.clone(),
@@ -166,17 +197,29 @@ pub(super) async fn update_me(
         Err(response) => return *response,
     };
     let avatar_url = next_avatar.image_url();
-    let row: Option<OwnerAccountRecordRow> = match query_as(
+    let ProfileFieldChanges {
+        about,
+        location,
+        time_zone,
+        website,
+        birthday,
+    } = field_changes;
+    let row: Option<OwnerAccountRecordRow> = match query_as(&format!(
         "UPDATE cloud_accounts SET \
             display_name = COALESCE($1, display_name), avatar_url = $2, avatar_source = $3, \
             avatar_style = $4, avatar_seed = $5, avatar_renderer_version = $6, avatar_version = $7, \
             avatar_updated_at = $8, updated_at = $9, \
-            about = CASE WHEN $11 THEN $12 ELSE about END \
+            public_handle = CASE WHEN $11::BOOLEAN THEN $12 ELSE public_handle END, \
+            public_handle_changed_at = CASE WHEN $11::BOOLEAN THEN $13::TIMESTAMPTZ \
+                ELSE public_handle_changed_at END, \
+            about = CASE WHEN $14::BOOLEAN THEN $15 ELSE about END, \
+            location = CASE WHEN $16::BOOLEAN THEN $17 ELSE location END, \
+            time_zone = CASE WHEN $18::BOOLEAN THEN $19 ELSE time_zone END, \
+            website = CASE WHEN $20::BOOLEAN THEN $21 ELSE website END, \
+            birthday = CASE WHEN $22::BOOLEAN THEN $23::DATE ELSE birthday END \
          WHERE account_id = $10 \
-         RETURNING account_id, public_account_number, display_name, primary_email, avatar_url, password_hash, \
-            avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at, \
-            primary_email_verified_at IS NOT NULL, about",
-    )
+         RETURNING {OWNER_ACCOUNT_RECORD_COLUMNS}",
+    ))
     .bind(display_name.as_deref())
     .bind(&avatar_url)
     .bind(&next_avatar.source)
@@ -187,12 +230,30 @@ pub(super) async fn update_me(
     .bind(&next_avatar.updated_at)
     .bind(&now)
     .bind(&session.account_id)
+    .bind(public_handle.is_some())
+    .bind(public_handle.clone().flatten())
+    .bind(now_at)
     .bind(about.is_some())
     .bind(about.flatten())
+    .bind(location.is_some())
+    .bind(location.flatten())
+    .bind(time_zone.is_some())
+    .bind(time_zone.flatten())
+    .bind(website.is_some())
+    .bind(website.flatten())
+    .bind(birthday.is_some())
+    .bind(birthday.flatten())
     .fetch_optional(&mut *tx)
     .await
     {
         Ok(value) => value,
+        Err(error) if is_public_handle_taken(&error) => {
+            return err(
+                "kordi_id_taken",
+                "That Kordi ID is already taken.",
+                StatusCode::CONFLICT,
+            );
+        }
         Err(_) => return err("server_error", "Could not update profile.", StatusCode::INTERNAL_SERVER_ERROR),
     };
     let Some(row) = row else {
@@ -273,6 +334,14 @@ pub(super) async fn update_me(
     Json(account).into_response()
 }
 
+/// Whether `error` is another account already holding the requested handle.
+fn is_public_handle_taken(error: &sqlx_core::Error) -> bool {
+    error.as_database_error().is_some_and(|database_error| {
+        database_error.code().as_deref() == Some("23505")
+            && database_error.constraint() == Some("idx_cloud_accounts_public_handle_lower")
+    })
+}
+
 fn avatar_activation_error(error: crate::avatars::assets::AvatarAssetError) -> Response {
     match error {
         crate::avatars::assets::AvatarAssetError::Invalid(message) => {
@@ -336,108 +405,6 @@ pub(super) async fn logout(
     )
     .await;
     StatusCode::NO_CONTENT.into_response()
-}
-
-pub(super) async fn get_profile(
-    State(state): State<Arc<ServerState>>,
-    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
-    Extension(session): Extension<CloudSession>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
-    axum::extract::Path(account_id): axum::extract::Path<String>,
-) -> Response {
-    let target = account_id.trim().to_string();
-    if target.is_empty() {
-        return err(
-            "invalid_account_id",
-            "Kordi ID is required.",
-            StatusCode::BAD_REQUEST,
-        );
-    }
-
-    if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(client_ip(&headers, connect_info.as_ref()))
-        .await
-    {
-        return limited_response(retry_after);
-    }
-
-    let legacy_account_id = target.starts_with("acct_").then_some(target.as_str());
-    let public_account_number = normalize_public_kordi_id(&target);
-    if legacy_account_id.is_none() && public_account_number.is_none() {
-        return err(
-            "invalid_account_id",
-            "Enter a nine-digit Kordi ID.",
-            StatusCode::BAD_REQUEST,
-        );
-    }
-
-    let pool = state.db_pool();
-
-    let row: Option<(String, i64, Option<String>, Option<String>)> = match query_as(
-        "SELECT account_id, public_account_number, display_name, avatar_url \
-         FROM cloud_accounts \
-         WHERE ($1::BIGINT IS NOT NULL AND public_account_number = $1) \
-            OR ($2::TEXT IS NOT NULL AND account_id = $2)",
-    )
-    .bind(public_account_number)
-    .bind(legacy_account_id)
-    .fetch_optional(pool)
-    .await
-    {
-        Ok(value) => value,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Database error.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
-    };
-
-    let Some((account_id, public_account_number, display_name, avatar_url)) = row else {
-        return err(
-            "account_missing",
-            "No account found with that Kordi ID.",
-            StatusCode::NOT_FOUND,
-        );
-    };
-
-    let is_self = account_id == session.account_id;
-    let is_contact = if is_self {
-        false
-    } else {
-        let contact_row: Option<(i32,)> =
-            query_as("SELECT 1 FROM cloud_contacts WHERE account_id = $1 AND peer_account_id = $2")
-                .bind(&session.account_id)
-                .bind(&account_id)
-                .fetch_optional(pool)
-                .await
-                .unwrap_or(None);
-        contact_row.is_some()
-    };
-    let default_agent = match default_agent_profile_row(pool, &account_id).await {
-        Ok(row) => default_agent_profile_from_row(&account_id, row, &Utc::now().to_rfc3339()),
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not fetch agent profile.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
-
-    Json(PublicProfileResponse {
-        account_id,
-        kordi_id: public_account_number.to_string(),
-        display_name,
-        avatar_url,
-        default_agent,
-        node_id: None,
-        is_contact,
-        is_self,
-    })
-    .into_response()
 }
 
 #[cfg(test)]

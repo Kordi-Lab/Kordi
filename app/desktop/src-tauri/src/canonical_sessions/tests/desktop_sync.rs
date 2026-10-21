@@ -348,7 +348,7 @@ fn desktop_sync_enriches_bridge_agent_message_when_relay_collapses_whitespace() 
             sender_identity_id: "agent:local".to_string(),
             sender_role: "owned-agent".to_string(),
             message_kind: "agent-turn".to_string(),
-            content_text: "I’ll check current web weather info for Thuwal today and summarize it.Today in **Thuwal, Saudi Arabia**:\n\n- **Current temperature:** about **29°C**".to_string(),
+            content_text: "I’ll check current web weather info for Lisbon today and summarize it.Today in **Lisbon, Portugal**:\n\n- **Current temperature:** about **29°C**".to_string(),
             content: Some(serde_json::json!({
                 "sender": "My Kordi",
                 "timeLabel": "13:37",
@@ -368,7 +368,7 @@ fn desktop_sync_enriches_bridge_agent_message_when_relay_collapses_whitespace() 
     let desktop_message = kordi_cli::desktop_runtime::DesktopChatMessage {
         role: "assistant".to_string(),
         sender: Some("My Kordi".to_string()),
-        text: "I’ll check current web weather info for Thuwal today and summarize it.\n\nToday in **Thuwal, Saudi Arabia**:\n\n- **Current temperature:** about **29°C**".to_string(),
+        text: "I’ll check current web weather info for Lisbon today and summarize it.\n\nToday in **Lisbon, Portugal**:\n\n- **Current temperature:** about **29°C**".to_string(),
         detail: None,
         time_label: "13:37".to_string(),
         timestamp_ms: 1_100,

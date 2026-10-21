@@ -22,7 +22,7 @@ const broadcastText = '@all The mobile review is ready. Please check your sectio
 const themeContrastPreview = new URLSearchParams(window.location.search).has('themeContrast');
 const replyContrastPreview = themeContrastPreview || new URLSearchParams(window.location.search).has('replyContrast');
 type PreviewAppearance = 'light' | 'dark';
-type PreviewChatTheme = 'default' | 'quiet' | 'midnight' | 'sand' | 'ocean';
+type PreviewChatTheme = 'default' | 'classic' | 'quiet' | 'midnight' | 'sand' | 'ocean';
 const previewConversation: Conversation = {
   id: groupSessionId,
   canonicalSessionId: groupSessionId,
@@ -419,6 +419,7 @@ function GroupMentionPreview() {
               onChange={(event) => setChatTheme(event.target.value as PreviewChatTheme)}
             >
               <option value="default">Default</option>
+              <option value="classic">Classic</option>
               <option value="quiet">Quiet</option>
               <option value="midnight">Midnight</option>
               <option value="sand">Sand</option>

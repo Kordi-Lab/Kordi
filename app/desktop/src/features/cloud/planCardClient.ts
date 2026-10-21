@@ -5,7 +5,23 @@ export type PlanCardActionRequest =
   | { action: 'rsvp'; eventId: string; participantId: string; rsvp: 'yes' | 'no'; note?: string }
   | { action: 'vote'; eventId: string; participantId: string; optionId: string }
   | { action: 'confirm'; eventId: string; revision: number; confirmedBy: string; optionId?: string }
-  | { action: 'cancel'; eventId: string; revision: number; canceledBy: string; reason?: string };
+  | { action: 'cancel'; eventId: string; revision: number; canceledBy: string; reason?: string }
+  | PlanCardReviseRequest;
+
+/** A new time and place for an existing card; the server keeps answers only when neither changed. */
+export type PlanCardReviseRequest = {
+  action: 'propose';
+  conversationId: string;
+  existingEventId: string;
+  existingRevision: number;
+  title: string;
+  startAt: string;
+  endAt?: string;
+  location?: string;
+  state: 'polling' | 'awaitingConfirmation';
+  unresolvedFields: string[];
+  participants: Array<{ participantId: string; displayName: string; organizer: boolean }>;
+};
 
 /** Acts on a shared plan card as the signed-in member. */
 export async function planCardAction(token: string, request: PlanCardActionRequest): Promise<MessagePlanCard> {
@@ -24,7 +40,7 @@ export async function planCardAction(token: string, request: PlanCardActionReque
     if (!(error instanceof CloudAuthError) || error.code !== 'plan_card_revision_conflict') throw error;
     // Refresh only. Confirming changed details requires another deliberate click.
     response = await defaultCloudAuthClient().request<MessagePlanCard>(
-      `/v1/cloud/plan_cards/${encodeURIComponent(request.eventId)}`,
+      `/v1/cloud/plan_cards/${encodeURIComponent(request.action === 'propose' ? request.existingEventId : request.eventId)}`,
       { method: 'GET', headers: { authorization: `Bearer ${token}` } },
       'Could not refresh the plan card. Try again.',
     );

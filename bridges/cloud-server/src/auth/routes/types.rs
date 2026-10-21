@@ -2,7 +2,9 @@ use super::*;
 pub use crate::chat_sync::models::CloudSessionPinSummary;
 
 mod group_invitations;
+mod profile;
 pub use group_invitations::*;
+pub use profile::*;
 
 #[derive(Debug, Clone)]
 pub struct CloudSession {
@@ -92,21 +94,6 @@ pub struct AuthCapabilitiesResponse {
     pub contact_profile_version: u32,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct UpdateProfileRequest {
-    #[serde(rename = "displayName")]
-    pub display_name: Option<String>,
-    #[serde(rename = "avatarMutation")]
-    pub avatar_mutation: Option<AvatarMutationRequest>,
-    #[serde(rename = "agentDisplayName")]
-    pub agent_display_name: Option<String>,
-    #[serde(rename = "agentAvatarMutation")]
-    pub agent_avatar_mutation: Option<AvatarMutationRequest>,
-    /// Absent leaves `about` unchanged; a string or null replaces it.
-    #[serde(default, deserialize_with = "super::profile_handlers::present")]
-    pub about: Option<Option<String>>,
-}
-
 #[derive(Clone, Debug, Serialize)]
 pub struct DefaultAgentProfileResponse {
     #[serde(rename = "agentId")]
@@ -116,36 +103,6 @@ pub struct DefaultAgentProfileResponse {
     #[serde(rename = "avatarUrl")]
     pub avatar_url: Option<String>,
     pub avatar: AvatarDescriptor,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct AccountResponse {
-    #[serde(rename = "accountId")]
-    pub account_id: String,
-    #[serde(rename = "kordiId")]
-    pub kordi_id: String,
-    #[serde(rename = "displayName")]
-    pub display_name: Option<String>,
-    #[serde(rename = "primaryEmail")]
-    pub primary_email: Option<String>,
-    #[serde(rename = "avatarUrl")]
-    pub avatar_url: Option<String>,
-    pub avatar: AvatarDescriptor,
-    #[serde(rename = "defaultAgent")]
-    pub default_agent: DefaultAgentProfileResponse,
-    #[serde(rename = "nodeId")]
-    pub node_id: Option<String>,
-    #[serde(rename = "passwordSet")]
-    pub password_set: bool,
-    /// Set only on payloads for the signed-in owner; never describes others.
-    #[serde(
-        rename = "primaryEmailVerified",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub primary_email_verified: Option<bool>,
-    /// The owner's `about` line (null when unset), on owner payloads only.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub about: Option<Option<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -161,26 +118,6 @@ pub struct SessionResponse {
 pub struct AuthResponse {
     pub account: AccountResponse,
     pub session: SessionResponse,
-}
-
-#[derive(Debug, Serialize)]
-pub struct PublicProfileResponse {
-    #[serde(rename = "accountId")]
-    pub account_id: String,
-    #[serde(rename = "kordiId")]
-    pub kordi_id: String,
-    #[serde(rename = "displayName")]
-    pub display_name: Option<String>,
-    #[serde(rename = "avatarUrl")]
-    pub avatar_url: Option<String>,
-    #[serde(rename = "defaultAgent")]
-    pub default_agent: DefaultAgentProfileResponse,
-    #[serde(rename = "nodeId")]
-    pub node_id: Option<String>,
-    #[serde(rename = "isContact")]
-    pub is_contact: bool,
-    #[serde(rename = "isSelf")]
-    pub is_self: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -203,6 +140,14 @@ pub struct ContactSummary {
     pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subtitle: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub about: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    #[serde(rename = "timeZone", skip_serializing_if = "Option::is_none")]
+    pub time_zone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub website: Option<String>,
     #[serde(rename = "avatarUrl")]
     pub avatar_url: Option<String>,
     #[serde(rename = "defaultAgent", skip_serializing_if = "Option::is_none")]

@@ -4,7 +4,7 @@ import UIKit
 /// Resolves the stored appearance preferences the Appearance screen edits.
 enum AppearanceSettingsSelection {
     static func chatTheme(_ rawValue: String) -> KordiChatTheme {
-        KordiChatTheme(rawValue: rawValue) ?? .quiet
+        KordiChatTheme(rawValue: rawValue) ?? .classic
     }
 
     static func colorMode(_ rawValue: String) -> AppAppearance {
@@ -43,7 +43,7 @@ enum AppearanceSettingsSelection {
 struct AppearanceSettingsView: View {
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
     @AppStorage(MessageLayout.storageKey) private var messageLayoutRawValue = MessageLayout.chat.rawValue
-    @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
+    @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.classic.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedAppIcon = KordiAppIcon.primary
     @State private var supportsAppIcons = false
@@ -310,7 +310,7 @@ private struct MessageLayoutExample: View {
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 8)
-        .background(KordiChatTheme.quiet.canvas)
+        .background(KordiChatTheme.classic.canvas)
     }
 
     private func bubble(_ color: Color, width: CGFloat, alignment: Alignment) -> some View {

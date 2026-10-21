@@ -68,7 +68,7 @@ async fn a_group_without_contacts_invites_and_invitees_join() {
     let (status, body) = start(&app, &code, &alex_token, json!({"memberIds": [priya, sam]})).await;
     assert_eq!(status, 201, "{body}");
     let group = body["group"].clone();
-    assert_eq!(group["name"], "Common ground group");
+    assert_eq!(group["name"], "Grounding group");
     assert_eq!(group["memberCount"], 1);
     assert_eq!(body["added"], json!([]));
     assert_eq!(body["invited"].as_array().unwrap().len(), 2);
@@ -88,7 +88,7 @@ async fn a_group_without_contacts_invites_and_invitees_join() {
     assert_eq!(theirs["groups"][0]["joined"], false);
     let invitation = theirs["invitations"][0].clone();
     assert_eq!(invitation["from"]["accountId"], alex.as_str());
-    assert_eq!(invitation["name"], "Common ground group");
+    assert_eq!(invitation["name"], "Grounding group");
     let (_, room) = send(
         &app,
         "GET",

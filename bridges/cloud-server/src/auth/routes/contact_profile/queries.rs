@@ -10,11 +10,18 @@ use super::types::{SharedGroup, SharedSummary};
 /// Groups in common returned on a profile.
 const MAX_GROUPS: i64 = 20;
 
-type AccountTuple = (String, i64, Option<String>, Option<String>, Option<String>);
+type AccountTuple = (
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
 
 pub(super) struct AccountRow {
     pub account_id: String,
-    pub kordi_id: i64,
+    /// The chosen handle, or the public account number when none is set.
+    pub kordi_id: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
     pub about: Option<String>,
@@ -25,7 +32,8 @@ pub(super) async fn account(
     account_id: &str,
 ) -> Result<Option<AccountRow>, sqlx_core::Error> {
     let row: Option<AccountTuple> = query_as(
-        "SELECT account_id, public_account_number, display_name, avatar_url, about \
+        "SELECT account_id, COALESCE(public_handle, public_account_number::TEXT), display_name, \
+            avatar_url, about \
          FROM cloud_accounts WHERE account_id = $1",
     )
     .bind(account_id)

@@ -3,6 +3,7 @@
 
 use serde_json::json;
 use sqlx_core::query::query;
+use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
@@ -114,12 +115,40 @@ pub(super) async fn share(pool: &PgPool, attachment: &str, owner: &str, revoked:
     .unwrap();
 }
 
-pub(super) async fn card(pool: &PgPool, account: &str, sharing: bool) {
-    query(
-        "INSERT INTO cloud_common_ground_cards (account_id, topics_json, hidden_json, \
-         sharing_enabled, built_at) VALUES ($1, $2, '[\"Secret plan\"]', $3, now())",
+/// The account's work profile, created on first use.
+pub(super) async fn work_profile(pool: &PgPool, account: &str) -> String {
+    let existing: Option<(String,)> = query_as(
+        "SELECT profile_id FROM cloud_common_ground_profiles \
+         WHERE account_id = $1 AND kind = 'work'",
     )
     .bind(account)
+    .fetch_optional(pool)
+    .await
+    .unwrap();
+    if let Some((profile_id,)) = existing {
+        return profile_id;
+    }
+    let profile_id = format!("cgp_{}", Uuid::new_v4().simple());
+    query(
+        "INSERT INTO cloud_common_ground_profiles (profile_id, account_id, kind, name, position) \
+         VALUES ($1, $2, 'work', 'Work', 0)",
+    )
+    .bind(&profile_id)
+    .bind(account)
+    .execute(pool)
+    .await
+    .unwrap();
+    profile_id
+}
+
+pub(super) async fn card(pool: &PgPool, account: &str, sharing: bool) {
+    let profile_id = work_profile(pool, account).await;
+    query(
+        "INSERT INTO cloud_common_ground_cards (account_id, profile_id, topics_json, hidden_json, \
+         sharing_enabled, built_at) VALUES ($1, $2, $3, '[\"Secret plan\"]', $4, now())",
+    )
+    .bind(account)
+    .bind(&profile_id)
     .bind(json!({
         "workingOn": ["Tabletop manipulation", "Sim-to-real", "Secret plan", "Grasping", "Tactile", "Sixth"],
         "canHelp": ["Grant writing"],
@@ -137,10 +166,16 @@ pub(super) async fn pair(pool: &PgPool, left: &str, right: &str) {
     } else {
         (right, left)
     };
-    query("INSERT INTO cloud_common_ground_pairings (account_a, account_b) VALUES ($1, $2)")
-        .bind(a)
-        .bind(b)
-        .execute(pool)
-        .await
-        .unwrap();
+    let (profile_a, profile_b) = (work_profile(pool, a).await, work_profile(pool, b).await);
+    query(
+        "INSERT INTO cloud_common_ground_pairings (account_a, account_b, profile_a, profile_b) \
+         VALUES ($1, $2, $3, $4)",
+    )
+    .bind(a)
+    .bind(b)
+    .bind(profile_a)
+    .bind(profile_b)
+    .execute(pool)
+    .await
+    .unwrap();
 }

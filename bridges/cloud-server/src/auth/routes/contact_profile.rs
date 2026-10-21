@@ -120,7 +120,7 @@ async fn person_profile(
             .await?;
     Ok(Some(ContactProfileResponse {
         account_id: account.account_id,
-        kordi_id: Some(account.kordi_id.to_string()),
+        kordi_id: Some(account.kordi_id),
         display_name: account.display_name,
         avatar_url: account.avatar_url,
         about: account.about,
@@ -178,7 +178,7 @@ async fn agent_profile(
         default_agent: None,
         owner: Some(ProfileOwner {
             account_id: owner.account_id,
-            kordi_id: owner.kordi_id.to_string(),
+            kordi_id: owner.kordi_id,
             display_name: owner.display_name,
             avatar_url: owner.avatar_url,
         }),

@@ -7,43 +7,19 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {
   CommonGroundError,
   commonGroundErrorMessage,
-  createCommonGroundClient,
   isRouteMissing,
 } from '../src/features/commonGround/client';
 import { agentFilesSummary, canBuildProfile, commonGroundBuildRequest, type CgBuildChoices } from '../src/features/commonGround/buildRequest';
-import { meetTimes, topicGroupDraft } from '../src/features/commonGround/format';
+import { meetRequest, meetTimes, meetTimeSlots, shiftMeetDate, topicGroupDraft } from '../src/features/commonGround/format';
+import { groupLine, meetTimes, topicGroupDraft } from '../src/features/commonGround/format';
 import { HomeScreen } from '../src/features/commonGround/HomeScreen';
 import type { CgHost } from '../src/features/commonGround/host';
 import { canMeet, contactActionFor } from '../src/features/commonGround/relationship';
 import { CommonGroundStore, LOBBY_POLL_MS, MATCH_POLL_MS } from '../src/features/commonGround/store';
 import type { CgOwnerView, CgPerson, CgRelationship } from '../src/features/commonGround/types';
 
-type Call = { url: string; method: string; body: unknown; auth: string | null };
-type Reply = { status: number; body?: unknown; headers?: Record<string, string> };
+import { card, mockServer, owner, person, rel } from './helpers/commonGroundServer';
 
-/** A fetch that records calls and answers from a route table, in order per route. */
-function mockServer(routes: Record<string, Reply | Reply[]>) {
-  const calls: Call[] = [];
-  const queues = new Map(Object.entries(routes).map(([key, value]) => [key, Array.isArray(value) ? [...value] : [value]]));
-  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    const method = init?.method ?? 'GET';
-    const headers = new Headers(init?.headers);
-    calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined, auth: headers.get('authorization') });
-    const key = `${method} ${url.replace('https://cloud.test/v1/cloud/common-ground/', '')}`;
-    const queue = queues.get(key);
-    const reply = queue && (queue.length > 1 ? queue.shift()! : queue[0]);
-    if (!reply) return new Response('', { status: 404 });
-    return new Response(reply.body === undefined ? '' : JSON.stringify(reply.body), { status: reply.status, headers: reply.headers });
-  }) as typeof fetch;
-  const client = createCommonGroundClient({ baseUrl: () => 'https://cloud.test', fetchImpl: () => fetchImpl, token: async () => 'tok' });
-  return { calls, client };
-}
-
-const person = (accountId: string, relationship?: CgRelationship): CgPerson => ({ accountId, name: accountId, avatarUrl: null, relationship });
-const rel = (patch: Partial<CgRelationship> = {}): CgRelationship => ({ contact: false, request: null, requestId: null, conversationId: null, ...patch });
-const card = { workingOn: ['Agent memory'], interests: [], canHelp: [], lookingFor: [], hidden: [], revision: 2, builtAt: '2026-10-20T00:00:00Z' };
-const owner = (patch: Partial<CgOwnerView> = {}): CgOwnerView => ({ card, sharing: true, build: { status: 'idle', errorCode: null }, ...patch });
 
 test('client sends bearer JSON requests with the documented bodies', async () => {
   const { calls, client } = mockServer({
@@ -52,7 +28,7 @@ test('client sends bearer JSON requests with the documented bodies', async () =>
     'PUT card': { status: 200, body: owner() },
   });
   await client.build({ memory: true, connectors: false, device: [{ source: 'Mac Calendar', items: [{ title: 'Talk', date: '2026-10-01' }] }], links: '', notes: 'x' });
-  await client.joinRoom('4821', 'Poster session');
+  await client.joinRoom('4821', { name: 'Poster session' });
   await client.saveTopics({ workingOn: ['A'], interests: [], canHelp: ['B'], lookingFor: [] });
   assert.equal(calls[0].url, 'https://cloud.test/v1/cloud/common-ground/card/build');
   assert.equal(calls[0].auth, 'Bearer tok');
@@ -233,6 +209,27 @@ test('meet times turn a local slot into ISO start and end', () => {
   assert.equal(meetTimes('', '', 30), null);
 });
 
+test('meet request ends at start plus the chosen duration', () => {
+  const draft = { name: 'Hana', title: '  ', date: '2026-10-21', time: '14:15', minutes: 90, location: '' };
+  const request = meetRequest(draft);
+  assert.ok(request);
+  assert.equal(request.title, 'Meet Hana');
+  assert.equal(request.startAt, new Date('2026-10-21T14:15').toISOString());
+  assert.equal(Date.parse(request.endAt) - Date.parse(request.startAt), 90 * 60_000);
+  assert.equal('location' in request, false);
+  const placed = meetRequest({ ...draft, title: 'Coffee', minutes: 120, location: ' Cafe ' });
+  assert.deepEqual(placed && { title: placed.title, location: placed.location, span: Date.parse(placed.endAt) - Date.parse(placed.startAt) }, { title: 'Coffee', location: 'Cafe', span: 120 * 60_000 });
+  assert.equal(meetRequest({ ...draft, date: '' }), null);
+});
+
+test('meet pickers step days across months and times in 15 minutes', () => {
+  assert.equal(shiftMeetDate('2026-10-31', 1), '2026-11-01');
+  assert.equal(shiftMeetDate('2026-01-01', -1), '2025-12-31');
+  const slots = meetTimeSlots();
+  assert.equal(slots.length, 96);
+  assert.deepEqual([slots[0], slots[1], slots[95]], ['00:00', '00:15', '23:45']);
+});
+
 test('rate limits without Retry-After ask for a minute', () => {
   assert.equal(commonGroundErrorMessage(new CommonGroundError('x', 429, 'rate_limited')), 'Try again in 1 min.');
   assert.equal(MATCH_POLL_MS, 3_000);
@@ -324,3 +321,21 @@ test('Start from a topic row names the group after the topic and selects its peo
   const draft = topicGroupDraft({ label: 'Agent memory', people: [person('me'), person('hana'), person('maya')] }, 'me');
   assert.deepEqual(draft, { name: 'Agent memory', topic: 'Agent memory', selected: ['hana', 'maya'] });
 });
+
+test('group rows: member line grammar and missing members fall back to empty', async () => {
+  assert.equal(groupLine({ topic: 'Eval design', memberCount: 3 }), 'From Eval design · 3 members');
+  assert.equal(groupLine({ topic: null, memberCount: 1 }), '1 member');
+  assert.equal(groupLine({ topic: null, memberCount: 2 }), '2 members');
+  assert.equal(groupLine({ topic: 'Eval design', memberCount: 0 }), 'From Eval design');
+  const { client } = mockServer({
+    'POST rooms/4821/results': { status: 200, body: { status: 'ready', people: [], topics: [], suggestion: null, groups: [
+      { groupSpaceId: 'g1', conversationId: 'group:g1', name: 'Old', memberCount: 2 },
+      { groupSpaceId: 'g2', conversationId: 'group:g2', name: 'New', memberCount: 1, members: [person('acct_b')] },
+    ] } },
+  });
+  const groups = (await client.results('4821')).groups ?? [];
+  assert.deepEqual(groups[0].members, []);
+  assert.equal(groups[1].members?.length, 1);
+});
+
+// Profiles (`commonGroundVersion` 2)

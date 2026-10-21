@@ -58,7 +58,7 @@ struct CommonGroundBuildView: View {
 
     private var sources: some View {
         CommonGroundPage(onBack: back) {
-            CommonGroundHero(title: "Build your profile", status: "Your agent writes it") {
+            CommonGroundHero(title: model.buildTitle, status: model.currentProfile?.focusLine ?? "Your agent writes it") {
                 CommonGroundAvatar(person: model.me, size: 92)
             }
             VStack(spacing: 16) {

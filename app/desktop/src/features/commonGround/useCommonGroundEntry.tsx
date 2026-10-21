@@ -55,7 +55,9 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
   const [selected, setSelected] = useState(false);
   const authClient = useMemo(() => defaultCloudAuthClient(), []);
   const { capabilities, status: capabilitiesStatus } = useCloudAuthCapabilitiesState(options.account ? authClient : null, cloudApiBaseUrl());
-  const available = Boolean(options.account) && commonGroundVersionFromCapabilities(capabilities) !== null;
+  const version = commonGroundVersionFromCapabilities(capabilities);
+  const available = Boolean(options.account) && version !== null;
+  const profiles = (version ?? 0) >= 2;
   const accountId = options.account?.accountId ?? '';
   // The host stays stable across renders; its callbacks read the latest options.
   const latest = useRef(options);
@@ -80,6 +82,7 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
 
   const host = useMemo<CgHost>(() => ({
     self: { accountId, name: displayName || 'You', avatarUrl },
+    profiles,
     memoryAvailable,
     openChat: (person) => {
       setSelected(false);
@@ -95,7 +98,7 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
     agentFiles: desktopAgentFiles(),
     device: desktopDeviceAccess(),
     openUrl: (url) => { void openDesktopExternalUrl(url); },
-  }), [accountId, displayName, avatarUrl, memoryAvailable, connectors]);
+  }), [accountId, displayName, avatarUrl, profiles, memoryAvailable, connectors]);
 
   if (!available) return handlers;
   const { onSelectRequest } = handlers;

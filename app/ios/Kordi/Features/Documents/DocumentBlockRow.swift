@@ -138,7 +138,7 @@ struct DocumentPeopleCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// "123 456 789" for a nine-digit Kordi ID; anything else as is.
+    /// "123 456 789" for a nine-digit number; handles as is.
     static func formattedKordiId(_ value: String) -> String {
         let digits = value.filter(\.isNumber)
         guard digits.count == 9, digits.count == value.count else { return value }
