@@ -1,0 +1,249 @@
+//! The intro PiP posts when a group starts from a room, the line it posts
+//! when an invitee joins, and the members shown with each group.
+
+use serde_json::{json, Value};
+use sqlx_core::query_as::query_as;
+use sqlx_postgres::PgPool;
+use uuid::Uuid;
+
+use super::db_fixture::send;
+use super::support::{
+    build_card_with, card_reply, claim_run, make_contacts, people_in_a_room, RUNNER,
+};
+use crate::common_ground::{complete, fail};
+
+async fn start(app: &axum::Router, code: &str, token: &str, body: Value) -> Value {
+    let (status, body) = send(
+        app,
+        "POST",
+        &format!("/v1/cloud/common-ground/rooms/{code}/group"),
+        token,
+        Some(body),
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    body
+}
+
+async fn results(app: &axum::Router, code: &str, token: &str) -> Value {
+    let (status, body) = send(
+        app,
+        "POST",
+        &format!("/v1/cloud/common-ground/rooms/{code}/results"),
+        token,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    body
+}
+
+fn service() -> String {
+    crate::pip::service_account_id().unwrap().to_string()
+}
+
+fn conversation(group: &Value) -> Uuid {
+    group["group"]["conversationId"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap()
+}
+
+/// The group's intro run, claimed by the runner: (run id, prompt, owner).
+async fn claim_intro(pool: &PgPool, group: &Value) -> (String, String, String) {
+    let space = group["group"]["groupSpaceId"].as_str().unwrap();
+    let (run_id, prompt, owner, status): (String, String, String, String) = query_as(
+        "SELECT run.run_id, run.prompt, run.owner_account_id, run.status
+         FROM cloud_common_ground_group_intros intro
+         JOIN cloud_agent_fallback_runs run ON run.run_id = intro.run_id
+         WHERE intro.group_space_id = $1",
+    )
+    .bind(space)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    assert!(run_id.starts_with("cg_intro_"), "{run_id}");
+    assert_eq!(status, "queued");
+    let lease = (chrono::Utc::now() + chrono::Duration::minutes(5)).to_rfc3339();
+    claim_run(pool, &run_id, &lease).await;
+    (run_id, prompt, owner)
+}
+
+/// Texts of the messages PiP posted in a conversation, oldest first.
+async fn pip_messages(pool: &PgPool, conversation_id: Uuid) -> Vec<String> {
+    let rows: Vec<(Value,)> = query_as(
+        "SELECT content FROM cloud_chat_messages
+         WHERE conversation_id = $1 AND sender_account_id = $2
+         ORDER BY conversation_sequence",
+    )
+    .bind(conversation_id)
+    .bind(service())
+    .fetch_all(pool)
+    .await
+    .unwrap();
+    rows.into_iter()
+        .map(|(content,)| content["blocks"][0]["text"].as_str().unwrap().to_string())
+        .collect()
+}
+
+async fn intro_state(pool: &PgPool, run_id: &str) -> (bool, Option<String>) {
+    query_as(
+        "SELECT posted_at IS NOT NULL, error_code FROM cloud_common_ground_group_intros
+         WHERE run_id = $1",
+    )
+    .bind(run_id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn start_group_queues_an_intro_that_pip_posts() {
+    let Some(pool) = super::db_fixture::pool().await else {
+        return;
+    };
+    let (app, code, people) = people_in_a_room(&pool, &["Alex", "Priya", "Sam"]).await;
+    let [(alex, alex_token), (priya, priya_token), (sam, _)] =
+        [people[0].clone(), people[1].clone(), people[2].clone()];
+    let priya_card = card_reply(&["Tool use"], &["Retrieval"], &["Rust services"], &[]);
+    build_card_with(&app, &pool, &priya, &priya_token, &priya_card).await;
+    make_contacts(&pool, &alex, &priya).await;
+    let group = start(
+        &app,
+        &code,
+        &alex_token,
+        json!({"name": "Memory group", "topic": "Agent memory", "memberIds": [priya, sam]}),
+    )
+    .await;
+
+    let (run_id, prompt, owner) = claim_intro(&pool, &group).await;
+    assert_eq!(owner, service(), "the intro runs on PiP's account");
+    for expected in [
+        "Group: Memory group\n",
+        "Topic: Agent memory\n",
+        "- Alex (started the group). Working on: Agent memory.",
+        "- Priya. Working on: Tool use. Can help with: Rust services.",
+        "- Sam (invited). Working on: Agent memory.",
+    ] {
+        assert!(prompt.contains(expected), "{expected:?} in {prompt}");
+    }
+    assert!(pip_messages(&pool, conversation(&group)).await.is_empty());
+
+    let reply = format!("  Welcome to agent memory.\n{}  ", "x".repeat(2_000));
+    complete(&pool, &run_id, RUNNER, &reply).await.unwrap();
+    let posted = pip_messages(&pool, conversation(&group)).await;
+    assert_eq!(posted.len(), 1);
+    assert!(posted[0].starts_with("Welcome to agent memory.\n"));
+    assert_eq!(posted[0].chars().count(), 1_200, "the intro is capped");
+    assert_eq!(intro_state(&pool, &run_id).await, (true, None));
+    // Priya was added, so the intro is in her chat.
+    let snapshot = crate::chat_sync::store::bootstrap(&pool, &priya)
+        .await
+        .unwrap();
+    assert!(snapshot
+        .conversations
+        .iter()
+        .any(|c| c.id == conversation(&group)));
+    // A repeated report posts nothing more.
+    assert!(complete(&pool, &run_id, RUNNER, "Again").await.is_err());
+    assert_eq!(pip_messages(&pool, conversation(&group)).await.len(), 1);
+}
+
+#[tokio::test]
+async fn a_failed_intro_posts_nothing() {
+    let Some(pool) = super::db_fixture::pool().await else {
+        return;
+    };
+    let (app, code, people) = people_in_a_room(&pool, &["Alex", "Priya"]).await;
+    let [(_, alex_token), (priya, _)] = [people[0].clone(), people[1].clone()];
+    let group = start(&app, &code, &alex_token, json!({"memberIds": [priya]})).await;
+    let (run_id, _, _) = claim_intro(&pool, &group).await;
+    fail(&pool, &run_id, Some(RUNNER), "provider_error")
+        .await
+        .unwrap();
+    assert_eq!(
+        intro_state(&pool, &run_id).await,
+        (false, Some("provider_error".into()))
+    );
+    assert!(complete(&pool, &run_id, RUNNER, "Hello").await.is_err());
+    assert!(pip_messages(&pool, conversation(&group)).await.is_empty());
+
+    // An empty reply fails the run the same way.
+    let group = start(&app, &code, &alex_token, json!({"memberIds": [priya]})).await;
+    let (run_id, _, _) = claim_intro(&pool, &group).await;
+    complete(&pool, &run_id, RUNNER, "   ").await.unwrap();
+    assert_eq!(
+        intro_state(&pool, &run_id).await,
+        (false, Some("invalid_output".into()))
+    );
+    assert!(pip_messages(&pool, conversation(&group)).await.is_empty());
+}
+
+#[tokio::test]
+async fn joining_posts_a_line_and_groups_show_their_members() {
+    let Some(pool) = super::db_fixture::pool().await else {
+        return;
+    };
+    let (app, code, people) = people_in_a_room(&pool, &["Alex", "Priya", "Sam"]).await;
+    let [(alex, alex_token), (priya, _), (sam, sam_token)] =
+        [people[0].clone(), people[1].clone(), people[2].clone()];
+    let sam_card = card_reply(
+        &["Agent memory", "Tool use", "Evals"],
+        &["Retrieval"],
+        &["Eval design", "Rust", "Writing"],
+        &[],
+    );
+    build_card_with(&app, &pool, &sam, &sam_token, &sam_card).await;
+    make_contacts(&pool, &alex, &priya).await;
+    let group = start(&app, &code, &alex_token, json!({"memberIds": [sam, priya]})).await;
+    let conversation_id = conversation(&group);
+
+    let mine = results(&app, &code, &alex_token).await;
+    let row = &mine["groups"][0];
+    let shown: Vec<&str> = row["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["accountId"].as_str().unwrap())
+        .collect();
+    assert_eq!(shown, vec![alex.as_str(), priya.as_str()], "creator first");
+    assert_eq!(row["members"][0]["name"], "Alex");
+    assert_eq!(row["memberCount"], 2);
+    assert!(!row.to_string().contains(&service()), "PiP is not a member");
+
+    let theirs = results(&app, &code, &sam_token).await;
+    let reference = theirs["invitations"][0]["invitationRef"].as_str().unwrap();
+    let (status, body) = send(
+        &app,
+        "POST",
+        &format!("/v1/cloud/common-ground/rooms/{code}/invitations/{reference}/join"),
+        &sam_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        pip_messages(&pool, conversation_id).await,
+        vec![
+            "Sam joined. Working on Agent memory and Tool use; can help with Eval design and Rust."
+        ]
+    );
+    let (_, again) = send(
+        &app,
+        "POST",
+        &format!("/v1/cloud/common-ground/rooms/{code}/invitations/{reference}/join"),
+        &sam_token,
+        None,
+    )
+    .await;
+    assert_eq!(again["status"], "already_joined");
+    assert_eq!(pip_messages(&pool, conversation_id).await.len(), 1);
+
+    let theirs = results(&app, &code, &sam_token).await;
+    let row = &theirs["groups"][0];
+    assert_eq!(row["memberCount"], 3);
+    assert_eq!(row["members"].as_array().unwrap().len(), 3);
+    assert_eq!(row["members"][0]["accountId"], alex.as_str());
+    assert_eq!(row["members"][2]["accountId"], sam.as_str());
+}

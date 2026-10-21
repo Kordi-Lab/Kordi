@@ -17,9 +17,12 @@ struct CommonGroundRoomSummary: Decodable, Hashable, Identifiable {
     let joinedAt: String?
     let lastActivityAt: String?
     let themeCount: Int
+    /// The kind the room suggests and the profile you share there.
+    var kind: String?
+    var profileId: String?
     var id: String { code }
 
-    private enum CodingKeys: String, CodingKey { case code, name, open, memberCount, joinedAt, lastActivityAt, themeCount }
+    private enum CodingKeys: String, CodingKey { case code, name, open, memberCount, joinedAt, lastActivityAt, themeCount, kind, profileId }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -30,6 +33,8 @@ struct CommonGroundRoomSummary: Decodable, Hashable, Identifiable {
         joinedAt = c.cgListValue(.joinedAt, nil as String?)
         lastActivityAt = c.cgListValue(.lastActivityAt, nil as String?)
         themeCount = c.cgListValue(.themeCount, 0)
+        kind = c.cgListValue(.kind, nil as String?)
+        profileId = c.cgListValue(.profileId, nil as String?)
     }
 
     var title: String { name.trimmingCharacters(in: .whitespaces).isEmpty ? "Room \(code)" : name }
@@ -65,7 +70,7 @@ struct CommonGroundRoomsSection: View {
                 ForEach(Array(rooms.enumerated()), id: \.element.id) { index, room in
                     if index > 0 { SessionDetailSeparator(leading: SessionDetailMetrics.rowHorizontalInset) }
                     CommonGroundSwipeToRemove {
-                        CommonGroundRow(title: room.title, subtitle: room.subtitle) { path.append(.results(room.code)) }
+                        CommonGroundRow(title: model.roomRowTitle(room), subtitle: room.subtitle) { path.append(.results(room.code)) }
                     } remove: {
                         Task { await model.leaveRoom(room.code) }
                     }

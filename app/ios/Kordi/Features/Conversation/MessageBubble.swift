@@ -1232,8 +1232,8 @@ struct MessageBubble: View, Equatable {
         if isThreadLayout { return .clear }
         guard colorScheme == .light else { return .clear }
         return switch message.author {
-        case .me: chatTheme == .quiet || chatTheme == .sand ? .clear : chatTheme.accent.opacity(0.12)
-        case .person: chatTheme == .quiet
+        case .me: chatTheme == .classic || chatTheme == .quiet || chatTheme == .sand ? .clear : chatTheme.accent.opacity(0.12)
+        case .person: chatTheme == .classic || chatTheme == .quiet
             ? chatTheme.peerText.opacity(0.12)
             : chatTheme.accent.opacity(0.16)
         case .agent: .clear

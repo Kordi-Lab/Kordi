@@ -1,6 +1,8 @@
 //! One-to-one pairing. One person shows a short code (as a QR code or
 //! text, or sends it over a phone tap); the other redeems it. A code lasts
-//! two minutes and works once. Pairing makes each card visible to the other.
+//! two minutes and works once. Each side shares one profile: the code
+//! carries the profile of the person who shows it, and pairing makes each
+//! of the two profiles' cards visible to the other person.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -18,6 +20,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use sqlx_core::{query::query, query_as::query_as};
 
+use super::profiles::{self, Profile};
 use super::{
     card, db_error, err, limited, people, PAIR_CODE_LIMIT, PAIR_IP_LIMIT, PAIR_REDEEM_LIMIT,
 };
@@ -72,14 +75,28 @@ async fn observe(
     None
 }
 
-/// The response to send instead when `account` has no shared card.
-async fn require_shared_card(pool: &sqlx_postgres::PgPool, account: &str) -> Option<Response> {
-    match card::load(pool, account).await {
-        Ok(Some(row)) if row.has_card() && row.sharing => None,
-        Ok(Some(row)) if row.has_card() => Some(super::sharing_off()),
-        Ok(_) => Some(card::no_card()),
-        Err(error) => Some(db_error(error)),
+/// The profile to share, chosen as [`profiles::choose`] does, with a shared
+/// card; or the response to send instead.
+async fn sharing_profile(
+    pool: &sqlx_postgres::PgPool,
+    account: &str,
+    requested: Option<&str>,
+    suggested_kind: Option<&str>,
+) -> Result<Profile, Box<Response>> {
+    let Some(profile) = profiles::choose(pool, account, requested, suggested_kind).await? else {
+        return Err(Box::new(card::no_card()));
+    };
+    match profiles::require_shared_card(pool, &profile).await {
+        Some(response) => Err(Box::new(response)),
+        None => Ok(profile),
     }
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub(super) struct CodeRequest {
+    /// The profile to share; the default profile when omitted.
+    profile_id: Option<String>,
 }
 
 /// `POST /v1/cloud/common-ground/pairings/code`: a fresh code to show.
@@ -87,15 +104,18 @@ pub(super) async fn create(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
+    body: Option<Json<CodeRequest>>,
 ) -> Response {
     let pool = state.db_pool();
     let account = session.account_id.as_str();
     if let Some(response) = observe(&rate_limiter, &[(PAIR_CODE_LIMIT, account)]).await {
         return response;
     }
-    if let Some(response) = require_shared_card(pool, account).await {
-        return response;
-    }
+    let body = body.map(|Json(body)| body).unwrap_or_default();
+    let profile = match sharing_profile(pool, account, body.profile_id.as_deref(), None).await {
+        Ok(profile) => profile,
+        Err(response) => return *response,
+    };
     let code = new_code();
     let result = async {
         let mut tx = pool.begin().await?;
@@ -108,11 +128,13 @@ pub(super) async fn create(
         .execute(&mut *tx)
         .await?;
         let (expires_at,): (DateTime<Utc>,) = query_as(
-            "INSERT INTO cloud_common_ground_pairing_codes (code_hash, account_id, expires_at)
-             VALUES ($1, $2, now() + make_interval(secs => $3)) RETURNING expires_at",
+            "INSERT INTO cloud_common_ground_pairing_codes
+                 (code_hash, account_id, profile_id, expires_at)
+             VALUES ($1, $2, $3, now() + make_interval(secs => $4)) RETURNING expires_at",
         )
         .bind(hash(&code))
         .bind(account)
+        .bind(&profile.profile_id)
         .bind(CODE_SECONDS as f64)
         .fetch_one(&mut *tx)
         .await?;
@@ -123,7 +145,11 @@ pub(super) async fn create(
     match result {
         Ok(expires_at) => (
             StatusCode::CREATED,
-            Json(json!({ "code": display(&code), "expiresAt": expires_at })),
+            Json(json!({
+                "code": display(&code),
+                "expiresAt": expires_at,
+                "profileId": profile.profile_id,
+            })),
         )
             .into_response(),
         Err(error) => db_error(error),
@@ -131,8 +157,13 @@ pub(super) async fn create(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct RedeemRequest {
     code: String,
+    /// The profile to share. Without it: your built profile of the same
+    /// kind as the one behind the code, else your default profile.
+    #[serde(default)]
+    profile_id: Option<String>,
 }
 
 fn code_not_found() -> Response {
@@ -168,30 +199,54 @@ pub(super) async fn redeem(
     if normalize(&body.code).len() != CODE_CHARS {
         return code_not_found();
     }
-    if let Some(response) = require_shared_card(pool, account).await {
-        return response;
-    }
+    // The kind behind the code preselects the profile you share back.
+    let shown: Result<Option<(String,)>, _> = query_as(
+        "SELECT profile.kind FROM cloud_common_ground_pairing_codes code
+         JOIN cloud_common_ground_profiles profile ON profile.profile_id = code.profile_id
+         WHERE code.code_hash = $1 AND code.redeemed_at IS NULL AND code.expires_at > now()",
+    )
+    .bind(hash(&body.code))
+    .fetch_optional(pool)
+    .await;
+    let kind = match shown {
+        Ok(shown) => shown.map(|(kind,)| kind),
+        Err(error) => return db_error(error),
+    };
+    let profile =
+        match sharing_profile(pool, account, body.profile_id.as_deref(), kind.as_deref()).await {
+            Ok(profile) => profile,
+            Err(response) => return *response,
+        };
+    let mine = profile.profile_id.as_str();
     let result = async {
         let mut tx = pool.begin().await?;
-        let owner: Option<(String,)> = query_as(
+        let owner: Option<(String, String)> = query_as(
             "UPDATE cloud_common_ground_pairing_codes SET redeemed_at = now(), redeemed_by = $2
              WHERE code_hash = $1 AND account_id <> $2 AND redeemed_at IS NULL
                AND expires_at > now()
-             RETURNING account_id",
+             RETURNING account_id, profile_id",
         )
         .bind(hash(&body.code))
         .bind(account)
         .fetch_optional(&mut *tx)
         .await?;
-        let Some((owner,)) = owner else {
+        let Some((owner, theirs)) = owner else {
             return Ok(None);
         };
+        // `profile_a` belongs to the smaller account id.
+        let (a, b, profile_a, profile_b) = if account < owner.as_str() {
+            (account, owner.as_str(), mine, theirs.as_str())
+        } else {
+            (owner.as_str(), account, theirs.as_str(), mine)
+        };
         query(
-            "INSERT INTO cloud_common_ground_pairings (account_a, account_b)
-             VALUES (LEAST($1, $2), GREATEST($1, $2)) ON CONFLICT DO NOTHING",
+            "INSERT INTO cloud_common_ground_pairings (account_a, account_b, profile_a, profile_b)
+             VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
         )
-        .bind(account)
-        .bind(&owner)
+        .bind(a)
+        .bind(b)
+        .bind(profile_a)
+        .bind(profile_b)
         .execute(&mut *tx)
         .await?;
         super::hint(
@@ -217,7 +272,7 @@ pub(super) async fn redeem(
         Ok(None) => return code_not_found(),
         Err(error) => return db_error(error),
     };
-    match people::shared_view(pool, account, &owner).await {
+    match people::shared_view(pool, account, &owner, Some(mine)).await {
         Ok(Some(view)) => (StatusCode::OK, Json(view)).into_response(),
         // They turned sharing off a moment ago; the pairing stands.
         Ok(None) => people::not_found(),
@@ -225,19 +280,32 @@ pub(super) async fn redeem(
     }
 }
 
-type PairedRow = (String, Option<String>, Option<String>, DateTime<Utc>);
+type PairedRow = (
+    String,
+    Option<String>,
+    Option<String>,
+    DateTime<Utc>,
+    String,
+    String,
+    String,
+    String,
+);
 
 /// `GET /v1/cloud/common-ground/pairings`: people you paired with, newest
-/// first.
+/// first, once per pair of profiles, with the profile each side shares.
 pub(super) async fn list(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Response {
     let rows: sqlx_core::Result<Vec<PairedRow>> = query_as(
-        "SELECT account.account_id, account.display_name, account.avatar_url, pairing.created_at
+        "SELECT account.account_id, account.display_name, account.avatar_url, pairing.created_at,
+                CASE WHEN pairing.account_a = $1 THEN pairing.profile_a ELSE pairing.profile_b END,
+                theirs.profile_id, theirs.kind, theirs.name
          FROM cloud_common_ground_pairings pairing
          JOIN cloud_accounts account ON account.account_id =
              CASE WHEN pairing.account_a = $1 THEN pairing.account_b ELSE pairing.account_a END
+         JOIN cloud_common_ground_profiles theirs ON theirs.profile_id =
+             CASE WHEN pairing.account_a = $1 THEN pairing.profile_b ELSE pairing.profile_a END
          WHERE pairing.account_a = $1 OR pairing.account_b = $1
          ORDER BY pairing.created_at DESC LIMIT 200",
     )
@@ -248,12 +316,16 @@ pub(super) async fn list(
         Ok(rows) => {
             let people: Vec<_> = rows
                 .into_iter()
-                .map(|(account_id, name, avatar_url, paired_at)| {
-                    let mut person =
-                        people::person(&account_id, name.as_deref(), avatar_url.as_deref());
-                    person["pairedAt"] = json!(paired_at);
-                    person
-                })
+                .map(
+                    |(account_id, name, avatar_url, paired_at, mine, theirs, kind, label)| {
+                        let mut person =
+                            people::person(&account_id, name.as_deref(), avatar_url.as_deref());
+                        person["pairedAt"] = json!(paired_at);
+                        person["profile"] = profiles::tag(&theirs, &kind, &label);
+                        person["profileId"] = json!(mine);
+                        person
+                    },
+                )
                 .collect();
             (StatusCode::OK, Json(json!({ "people": people }))).into_response()
         }

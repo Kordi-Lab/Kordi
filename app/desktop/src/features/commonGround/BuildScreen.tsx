@@ -8,7 +8,8 @@ import { agentFilesSummary, canBuildProfile, commonGroundBuildRequest, type CgBu
 import { DEVICE_SOURCES } from './deviceAccess';
 import type { CgHost } from './host';
 import { CgAvatar, CgBack, CgGroup, CgHero, CgIcon, CgNotice, CgProgress, CgRow, CgSection } from './parts';
-import type { CgState, CommonGroundStore } from './store';
+import { buildTitle } from './profiles';
+import { currentProfile, hasAnyCard, type CgState, type CommonGroundStore } from './store';
 import type { CgAgentFile, CgDeviceSource } from './types';
 import { useConnectorStates } from './useConnectorStates';
 
@@ -33,6 +34,7 @@ export function BuildScreen({ state, store, host }: { state: CgState; store: Com
   const [titles, setTitles] = useState<CgDeviceTitles>({});
   const [included, setIncluded] = useState<CgDeviceSource[]>([]);
 
+  const profile = currentProfile(state);
   const building = state.owner?.build.status === 'building' || state.busy === 'build';
   if (building) return <CgProgress line="Your agent is writing your card" />;
 
@@ -68,8 +70,8 @@ export function BuildScreen({ state, store, host }: { state: CgState; store: Com
 
   return (
     <>
-      {state.owner?.card ? <CgBack onBack={() => store.back()} /> : null}
-      <CgHero avatar={<CgAvatar person={host.self} size={72} isSelf />} title="Build your profile" line="Your agent writes it" />
+      {hasAnyCard(state) && state.stack.length > 1 ? <CgBack onBack={() => store.back()} /> : null}
+      <CgHero avatar={<CgAvatar person={host.self} size={72} isSelf />} title={buildTitle(profile)} line={profile?.focus || 'Your agent writes it'} />
       {host.connectors || agentsRow || memoryRow ? (
         <ConnectorsSection access={host.connectors} connectors={connectors}>
           {agentsRow || memoryRow ? <>{agentsRow}{memoryRow}</> : undefined}

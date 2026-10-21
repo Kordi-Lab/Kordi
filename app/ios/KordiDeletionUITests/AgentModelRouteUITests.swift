@@ -13,7 +13,7 @@ final class AgentModelRouteUITests: ProviderUITestCase {
     }
 
     func testModelPickAppliesWithoutSaveAndEffortPanelIsCentered() {
-        let app = launch("--preview-agent-model", "-kordi.chatTheme.v1", "sand")
+        let app = launch("--preview-agent-model", "-kordi.chatTheme.v2", "sand")
         let option = app.buttons["agent-model-option-openai/gpt-6-astra"]
         XCTAssertTrue(option.waitForExistence(timeout: 15))
         XCTAssertFalse(app.keyboards.firstMatch.exists)
@@ -85,7 +85,7 @@ final class AgentModelRouteUITests: ProviderUITestCase {
     }
 
     func testSendKeepsTranscriptAndBlurCollapsesComposer() {
-        let app = launch("--preview-agent-model", "-kordi.chatTheme.v1", "sand")
+        let app = launch("--preview-agent-model", "-kordi.chatTheme.v2", "sand")
         app.buttons["agent-model-option-openai/gpt-6-astra"].tap()
         let editor = app.textViews.firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 5))

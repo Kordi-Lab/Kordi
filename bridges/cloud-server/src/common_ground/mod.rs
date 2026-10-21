@@ -1,19 +1,23 @@
 //! Common ground (#1847): interest cards, event rooms joined with a 4-digit
 //! code, and one-to-one pairings.
 //!
-//! A card is built by a background run on the Kordi-operated key (PiP's
-//! service credential) from the sources the owner turns on. Every topic
+//! A person keeps up to five profiles (work, health, daily tasks, custom),
+//! each with its own card. A card is built by a background run on the
+//! Kordi-operated key (PiP's service credential) from the sources the owner
+//! turns on, through the profile's lens. Every topic
 //! cites redacted, dated evidence that only the owner sees. Others see a
-//! card's topics, minus hidden ones, only while they share an open room or a
-//! pairing with its owner and the owner shares the card.
+//! card's topics, minus hidden ones, only while they share a room or a
+//! pairing with its owner in which the owner shares that profile.
 
 mod actions;
 mod build;
 mod card;
+mod intro;
 mod matching;
 mod pairing;
 mod people;
 mod profile;
+mod profiles;
 mod prompt;
 mod redact;
 mod rooms;
@@ -42,7 +46,8 @@ use crate::{auth::routes::cloud_session_middleware, server::ServerState};
 pub use runs::{complete, fail, RUN_PREFIX};
 
 /// Advertised as `commonGroundVersion` in the auth capabilities.
-pub const COMMON_GROUND_VERSION: u32 = 1;
+/// Version 2 adds profiles.
+pub const COMMON_GROUND_VERSION: u32 = 2;
 
 /// A room is open until 24 hours after its last join.
 pub(super) const ROOM_OPEN_SQL: &str =
@@ -114,6 +119,14 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
         )
         .route("/v1/cloud/common-ground/card/build", post(build::start))
         .route(
+            "/v1/cloud/common-ground/profiles",
+            get(profiles::list).post(profiles::create),
+        )
+        .route(
+            "/v1/cloud/common-ground/profiles/:profile_id",
+            put(profiles::update).delete(profiles::delete),
+        )
+        .route(
             "/v1/cloud/common-ground/card/hidden",
             put(card::update_hidden),
         )
@@ -126,6 +139,10 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
         .route(
             "/v1/cloud/common-ground/rooms/:code/join",
             post(rooms::join),
+        )
+        .route(
+            "/v1/cloud/common-ground/rooms/:code/profile",
+            post(rooms::switch_profile),
         )
         .route(
             "/v1/cloud/common-ground/rooms/:code/leave",
@@ -201,7 +218,7 @@ pub(super) fn db_error(error: sqlx_core::Error) -> Response {
 pub(super) fn unavailable() -> Response {
     err(
         "common_ground_unavailable",
-        "Common ground isn't available on this server.",
+        "Grounding isn't available on this server.",
         StatusCode::SERVICE_UNAVAILABLE,
     )
 }
@@ -235,5 +252,5 @@ pub(super) async fn hint(
 ) -> sqlx_core::Result<()> {
     crate::chat_sync::store::append_account_hint(tx, account, event_type, &payload)
         .await
-        .map_err(|_| sqlx_core::Error::Protocol("Could not publish a Common ground update.".into()))
+        .map_err(|_| sqlx_core::Error::Protocol("Could not publish a Grounding update.".into()))
 }

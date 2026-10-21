@@ -16,6 +16,9 @@ final class CommonGroundModel: ObservableObject {
 
     let me: CommonGroundPerson
     private let context: Context
+    /// `commonGroundVersion` 2: profiles. Off, every call acts as before.
+    let profilesEnabled: Bool
+    let defaults: UserDefaults
 
     @Published private(set) var owner: CommonGroundOwnerView?
     @Published private(set) var loaded = false
@@ -24,18 +27,29 @@ final class CommonGroundModel: ObservableObject {
     /// Rooms to come back to; nil while unknown or when the server has no list.
     @Published private(set) var roomList: [CommonGroundRoomSummary]?
     @Published private(set) var results: [String: CommonGroundResults] = [:]
-    @Published private(set) var matches: [String: CommonGroundMatch] = [:]
-    @Published private(set) var people: [String: CommonGroundPersonCard] = [:]
+    /// Set here and in CommonGroundModel+People.swift.
+    @Published var matches: [String: CommonGroundMatch] = [:]
+    @Published var people: [String: CommonGroundPersonCard] = [:]
     /// Relationship updates after an action, newer than any loaded view.
-    @Published private(set) var relationships: [String: CommonGroundRelationship] = [:]
-    @Published private(set) var busy: String?
+    @Published var relationships: [String: CommonGroundRelationship] = [:]
+    @Published var busy: String?
     /// One line shown as a toast over every screen.
     @Published var notice: String?
+    /// Set in CommonGroundModel+Profiles.swift.
+    @Published var profiles: [CommonGroundProfileSummary] = []
+    @Published var currentProfileID: String?
+    /// The viewer's profile to see each person through, from Recent or a room.
+    var viewerProfiles: [String: String] = [:]
 
-    init(me: CommonGroundPerson, context: @escaping Context) {
+    init(me: CommonGroundPerson, profilesEnabled: Bool = false, defaults: UserDefaults = .standard, context: @escaping Context) {
         self.me = me
         self.context = context
+        self.profilesEnabled = profilesEnabled
+        self.defaults = defaults
     }
+
+    /// The profile card calls act on; nil before profiles.
+    var activeProfileID: String? { profilesEnabled ? currentProfileID : nil }
 
     var card: CommonGroundOwnCard? { owner?.card }
     var hasCard: Bool { owner?.card != nil }
@@ -61,6 +75,9 @@ final class CommonGroundModel: ObservableObject {
         "common_ground_code_not_found": "Code not found.",
         "common_ground_sharing_off": "Turn on sharing first.",
         "common_ground_no_card": "Build your profile first.",
+        "common_ground_profile_exists": "You already have this profile.",
+        "common_ground_too_many_profiles": "You can have up to 5 profiles.",
+        "common_ground_room_closed": "This room is closed.",
     ]
 
     /// One line for a failed call; nil for a cancelled one.
@@ -78,13 +95,13 @@ final class CommonGroundModel: ObservableObject {
         if let message = Self.message(for: error) { notice = message }
     }
 
-    private func call<T>(_ work: (CloudAPIClient, String) async throws -> T) async throws -> T {
+    func call<T>(_ work: (CloudAPIClient, String) async throws -> T) async throws -> T {
         let (api, token) = try context()
         return try await work(api, token)
     }
 
     /// Runs one user action: marks it busy, clears the notice, reports failures.
-    private func run<T>(_ key: String, _ work: (CloudAPIClient, String) async throws -> T) async -> T? {
+    func run<T>(_ key: String, _ work: (CloudAPIClient, String) async throws -> T) async -> T? {
         busy = key
         notice = nil
         defer { if busy == key { busy = nil } }
@@ -99,21 +116,26 @@ final class CommonGroundModel: ObservableObject {
     // MARK: Home
 
     func loadHome() async {
+        if profilesEnabled { await loadProfiles() }
         do {
-            apply(try await call { try await $0.commonGroundCard(token: $1) })
+            let profileId = activeProfileID
+            apply(try await call { try await $0.commonGroundCard(token: $1, profileId: profileId) })
         } catch {
             loaded = true
             report(error)
             return
         }
-        guard hasCard else { return }
+        guard hasCard || anyProfileHasCard else { return }
         if let response = try? await call({ try await $0.commonGroundRecent(token: $1) }) {
             recent = response.people
         }
         await loadRooms()
     }
 
-    private func apply(_ view: CommonGroundOwnerView) {
+    func apply(_ view: CommonGroundOwnerView) {
+        // A late answer for a profile that is no longer current is dropped.
+        if let id = view.profile?.profileId, let current = activeProfileID, id != current { return }
+        if profilesEnabled, currentProfileID == nil, let id = view.profile?.profileId { currentProfileID = id }
         let wasBuilding = isBuilding
         let revision = owner?.card?.revision
         owner = view
@@ -121,7 +143,14 @@ final class CommonGroundModel: ObservableObject {
         if (wasBuilding && !isBuilding) || revision != view.card?.revision {
             matches = [:]
             results = [:]
+            if profilesEnabled { Task { await loadProfiles() } }
         }
+    }
+
+    /// Forgets the shown card while another profile's card loads.
+    func resetOwner() {
+        owner = nil
+        loaded = false
     }
 
     /// One line for a failed build, from the last build state.
@@ -133,6 +162,8 @@ final class CommonGroundModel: ObservableObject {
     // MARK: Card
 
     func build(_ request: CommonGroundBuildRequest) async {
+        var request = request
+        request.profileId = activeProfileID
         if let view = await run("build", { try await $0.buildCommonGroundCard(token: $1, request: request) }) {
             apply(view)
         }
@@ -140,7 +171,8 @@ final class CommonGroundModel: ObservableObject {
 
     func refreshCard() async {
         do {
-            apply(try await call { try await $0.commonGroundCard(token: $1) })
+            let profileId = activeProfileID
+            apply(try await call { try await $0.commonGroundCard(token: $1, profileId: profileId) })
         } catch {
             report(error)
         }
@@ -159,7 +191,8 @@ final class CommonGroundModel: ObservableObject {
         guard let previous = owner, var next = previous.card else { return }
         next.topics = topics
         owner?.card = next
-        if let saved = await run("topics", { try await $0.saveCommonGroundTopics(token: $1, topics: topics) }) {
+        let profileId = activeProfileID
+        if let saved = await run("topics", { try await $0.saveCommonGroundTopics(token: $1, topics: topics, profileId: profileId) }) {
             apply(saved)
         } else {
             owner = previous
@@ -184,22 +217,32 @@ final class CommonGroundModel: ObservableObject {
     func toggleHidden(_ topic: String) async {
         guard let card else { return }
         let hidden = card.hidden.contains(topic) ? card.hidden.filter { $0 != topic } : card.hidden + [topic]
-        if let saved = await run("hidden", { try await $0.setCommonGroundHidden(token: $1, hidden: hidden) }) {
+        let profileId = activeProfileID
+        if let saved = await run("hidden", { try await $0.setCommonGroundHidden(token: $1, hidden: hidden, profileId: profileId) }) {
             apply(saved)
         }
     }
 
     func setSharing(_ sharing: Bool) async {
-        guard let saved = await run("sharing", { try await $0.setCommonGroundSharing(token: $1, sharing: sharing) }) else { return }
+        let profileId = activeProfileID
+        guard let saved = await run("sharing", {
+            try await $0.setCommonGroundSharing(token: $1, sharing: sharing, profileId: profileId)
+        }) else { return }
         apply(saved)
     }
 
     func deleteCard() async -> Bool {
-        guard let view = await run("delete", { try await $0.deleteCommonGroundCard(token: $1) }) else { return false }
+        let profileId = activeProfileID
+        guard let view = await run("delete", { try await $0.deleteCommonGroundCard(token: $1, profileId: profileId) }) else { return false }
         apply(view)
-        recent = []
         rooms = [:]
         people = [:]
+        if profilesEnabled {
+            await loadProfiles()
+            if let response = try? await call({ try await $0.commonGroundRecent(token: $1) }) { recent = response.people }
+        } else {
+            recent = []
+        }
         return true
     }
 
@@ -225,12 +268,17 @@ final class CommonGroundModel: ObservableObject {
         rooms[code]?.title ?? roomList?.first { $0.code == code }?.title ?? "Room \(code)"
     }
 
-    func joinRoom(_ code: String) async -> Bool {
-        guard let room = await run("join", { try await $0.joinCommonGroundRoom(token: $1, code: code) }) else { return false }
-        rooms[code] = room
-        results[code] = nil
+    func joinRoom(_ code: String, request: CommonGroundJoinRequest = .init()) async -> Bool {
+        guard let room = await run("join", { try await $0.joinCommonGroundRoom(token: $1, code: code, request: request) }) else { return false }
+        setRoom(room, code: code)
         Task { await loadRooms() }
         return true
+    }
+
+    /// A room as just joined or switched: its results are matched again.
+    func setRoom(_ room: CommonGroundRoom, code: String) {
+        rooms[code] = room
+        results[code] = nil
     }
 
     /// Reloads a room; false when it is gone.
@@ -303,98 +351,5 @@ final class CommonGroundModel: ObservableObject {
         results[code]?.groups.append(group)
         rooms[code]?.invitations.removeAll { $0.invitationRef == invitationRef }
         return joined
-    }
-
-    // MARK: People
-
-    func loadPerson(_ accountId: String) async {
-        do {
-            people[accountId] = try await call { try await $0.commonGroundPerson(token: $1, accountId: accountId) }
-        } catch {
-            report(error)
-        }
-    }
-
-    func loadMatch(_ accountId: String) async {
-        do {
-            matches[accountId] = try await call { try await $0.commonGroundMatch(token: $1, accountId: accountId) }
-        } catch {
-            report(error)
-        }
-    }
-
-    /// Polls a match while the server is still finding it.
-    func waitForMatch(_ accountId: String, every interval: Duration = matchPollInterval) async {
-        while matches[accountId]?.isMatching == true, !Task.isCancelled {
-            try? await Task.sleep(for: interval)
-            guard !Task.isCancelled else { return }
-            await loadMatch(accountId)
-        }
-    }
-
-    /// The person as last seen in any loaded view.
-    func person(_ accountId: String) -> CommonGroundPerson? {
-        matches[accountId]?.person
-            ?? people[accountId]?.person
-            ?? recent.first { $0.person.accountId == accountId }?.person
-            ?? results.values.lazy.flatMap(\.people).first { $0.person.accountId == accountId }?.person
-            ?? rooms.values.lazy.flatMap(\.members).first { $0.accountId == accountId }
-    }
-
-    /// The newest relationship known for a person, from any view that carries one.
-    func relationship(for accountId: String) -> CommonGroundRelationship? {
-        if let local = relationships[accountId] { return local }
-        if let match = matches[accountId], let relationship = match.relationship ?? match.person.relationship { return relationship }
-        if let card = people[accountId], let relationship = card.relationship ?? card.person.relationship { return relationship }
-        if let entry = recent.first(where: { $0.person.accountId == accountId }), let relationship = entry.relationship { return relationship }
-        for result in results.values {
-            if let entry = result.people.first(where: { $0.person.accountId == accountId }), let relationship = entry.relationship {
-                return relationship
-            }
-        }
-        return rooms.values.lazy.flatMap(\.members).first { $0.accountId == accountId }?.relationship
-    }
-
-    func setRelationship(_ accountId: String, _ relationship: CommonGroundRelationship) {
-        relationships[accountId] = relationship
-    }
-
-    func markContact(_ accountId: String) {
-        var next = relationship(for: accountId) ?? CommonGroundRelationship()
-        next.contact = true
-        next.request = nil
-        next.requestId = nil
-        relationships[accountId] = next
-    }
-
-    /// Add: sends a contact request, or accepts theirs when they asked first.
-    func addContact(_ accountId: String) async {
-        do {
-            busy = "contact"
-            defer { busy = nil }
-            let response = try await call { try await $0.addCommonGroundContact(token: $1, accountId: accountId) }
-            relationships[accountId] = response.relationship
-        } catch let error as CloudAPIError where error.code == "already_contact" {
-            markContact(accountId)
-        } catch {
-            report(error)
-        }
-    }
-
-    /// Finds or creates the direct conversation with a contact.
-    func openChat(_ accountId: String) async -> CommonGroundChatResponse? {
-        guard let response = await run("chat", { try await $0.openCommonGroundChat(token: $1, accountId: accountId) }) else {
-            return nil
-        }
-        if let relationship = response.relationship { relationships[accountId] = relationship }
-        return response
-    }
-
-    func meet(_ accountId: String, input: CommonGroundMeetInput) async -> CommonGroundMeetResponse? {
-        guard let response = await run("meet", { try await $0.proposeCommonGroundMeeting(token: $1, accountId: accountId, input: input) }) else {
-            return nil
-        }
-        if let relationship = response.relationship { relationships[accountId] = relationship }
-        return response
     }
 }

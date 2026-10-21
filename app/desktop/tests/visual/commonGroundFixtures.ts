@@ -1,6 +1,6 @@
 // Fictional people and server replies for the login-free Common ground preview.
 
-import type { CgAgentFile, CgPerson, CgRelationship } from '../../src/features/commonGround/types';
+import type { CgAgentFile, CgPerson, CgProfile, CgProfileTag, CgRelationship } from '../../src/features/commonGround/types';
 import type { ConnectorProviderId, ConnectorState } from '../../src/features/connectors/connectorsModel';
 
 export function initialsAvatar(name: string, theme: 'light' | 'dark') {
@@ -14,14 +14,20 @@ export function initialsAvatar(name: string, theme: 'light' | 'dark') {
 const stranger: CgRelationship = { contact: false, request: null, requestId: null, conversationId: null };
 
 export function commonGroundFixtures(theme: 'light' | 'dark') {
-  const person = (accountId: string, name: string, relationship: CgRelationship = stranger): CgPerson => (
-    { accountId, name, avatarUrl: initialsAvatar(name, theme), hasCard: true, relationship }
+  const workTag = (accountId: string): CgProfileTag => ({ profileId: `cgp_${accountId}_work`, kind: 'work', name: 'Work' });
+  const person = (accountId: string, name: string, relationship: CgRelationship = stranger, profile = workTag(accountId)): CgPerson => (
+    { accountId, name, avatarUrl: initialsAvatar(name, theme), hasCard: true, relationship, profile }
   );
+  // Two profiles: Work with a card, Health without one yet.
+  const profiles: CgProfile[] = [
+    { profileId: 'cgp_work', kind: 'work', name: 'Work', focus: null, position: 0, hasCard: true, sharing: true, builtAt: '2026-10-19T09:00:00Z', topicCount: 7 },
+    { profileId: 'cgp_health', kind: 'health', name: 'Health', focus: 'Running and sleep', position: 1, hasCard: false, sharing: true, builtAt: null, topicCount: 0 },
+  ];
   const self = { accountId: 'acct_you', name: 'Alex Rivera', avatarUrl: initialsAvatar('Alex Rivera', theme) };
   const maya = person('acct_maya', 'Maya Chen', { ...stranger, contact: true, conversationId: 'dm_maya' });
   const hana = person('acct_hana', 'Hana Sato');
   const ines = person('acct_ines', 'Ines Wolf', { ...stranger, request: 'incoming', requestId: 'req_ines' });
-  const rafa = person('acct_rafa', 'Rafa Mendes');
+  const rafa = person('acct_rafa', 'Rafa Mendes', stranger, { profileId: 'cgp_rafa_health', kind: 'health', name: 'Health' });
   const card = {
     workingOn: ['Agent memory', 'Eval design'],
     interests: ['Retrieval', 'On-device inference'],
@@ -31,10 +37,15 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
     revision: 4,
     builtAt: '2026-10-19T09:00:00Z',
   };
-  const owner = { card, sharing: true, build: { status: 'idle', errorCode: null } };
-  const room = { roomId: 'room_1', code: '4821', name: 'Poster session', openedByYou: true, expiresAt: '2026-10-21T10:00:00Z', open: true, members: [maya, hana, ines, rafa] };
+  const owner = { card, sharing: true, build: { status: 'idle', errorCode: null }, profile: { profileId: 'cgp_work', kind: 'work', name: 'Work', focus: null } };
+  const healthOwner = { card: null, sharing: true, build: { status: 'idle', errorCode: null }, profile: { profileId: 'cgp_health', kind: 'health', name: 'Health', focus: 'Running and sleep' } };
+  const room = {
+    roomId: 'room_1', code: '4821', name: 'Poster session', openedByYou: true, expiresAt: '2026-10-21T10:00:00Z', open: true,
+    kind: 'work', profileId: 'cgp_work', members: [maya, hana, ines, rafa],
+  };
   const results = {
     status: 'ready',
+    profileId: 'cgp_work',
     people: [
       { person: hana, score: 82, headline: 'Agent memory' },
       { person: maya, score: 67, headline: 'Can help with privacy review' },
@@ -47,7 +58,10 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
       { label: 'Eval design', people: [hana, ines] },
     ],
     suggestion: { label: 'Agent memory', people: [self, hana, maya] },
-    groups: [{ groupSpaceId: 'gs_eval', conversationId: 'group:gs_eval', name: 'Eval reading group', memberCount: 4, createdBy: maya, joined: true, topic: 'Eval design' }],
+    groups: [{ groupSpaceId: 'gs_eval', conversationId: 'group:gs_eval', name: 'Eval reading group', memberCount: 4, createdBy: maya, joined: true, topic: 'Eval design', members: [maya, hana, ines, rafa] },
+      { groupSpaceId: 'gs_memory', conversationId: 'group:gs_memory', name: 'Agent memory notes', memberCount: 2, createdBy: hana, joined: true, topic: null, members: [hana, rafa] },
+      { groupSpaceId: 'gs_solo', conversationId: 'group:gs_solo', name: 'Privacy review', memberCount: 1, createdBy: ines, joined: false, topic: 'Privacy review', members: [ines] },
+    ],
     invitations: [{ invitationRef: 'inv_1', groupSpaceId: 'gs_ret', name: 'Retrieval', from: rafa, createdAt: '2026-10-20T09:00:00Z' }],
   };
   // As the server sends it: the relationship beside the person, not inside it.
@@ -78,10 +92,10 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
   const connectors = [connector('gmail', false), connector('google_calendar', false), connector('github', true), connector('slack', false)];
   const agentFiles: CgAgentFile[] = ['AGENTS.md', '.claude/CLAUDE.md', '.codex/AGENTS.md', '.codex/instructions/style.md', '.claude/projects/notes/memory/evals.md']
     .map((label) => ({ label, text: 'Fictional preview text.' }));
-  const recent = { people: results.people.slice(0, 3).map((entry, index) => ({ ...entry, openedAt: `2026-10-${18 - index}T10:00:00Z` })) };
+  const recent = { people: results.people.slice(0, 3).map((entry, index) => ({ ...entry, profileId: 'cgp_work', openedAt: `2026-10-${18 - index}T10:00:00Z` })) };
   const rooms = { rooms: [
-    { code: '4821', name: 'Poster session', open: true, memberCount: 5, joinedAt: '2026-10-20T09:00:00Z', lastActivityAt: '2026-10-20T09:40:00Z', themeCount: 3 },
-    { code: '1907', name: 'Reading club', open: false, memberCount: 3, joinedAt: '2026-10-14T18:00:00Z', lastActivityAt: '2026-10-14T19:30:00Z', themeCount: 2 },
+    { code: '4821', name: 'Poster session', kind: 'work', profileId: 'cgp_work', open: true, memberCount: 5, joinedAt: '2026-10-20T09:00:00Z', lastActivityAt: '2026-10-20T09:40:00Z', themeCount: 3 },
+    { code: '1907', name: 'Reading club', kind: null, profileId: 'cgp_work', open: false, memberCount: 3, joinedAt: '2026-10-14T18:00:00Z', lastActivityAt: '2026-10-14T19:30:00Z', themeCount: 2 },
   ] };
-  return { self, owner, room, rooms, results, match, recent, connectors, agentFiles };
+  return { self, owner, healthOwner, profiles, room, rooms, results, match, recent, connectors, agentFiles };
 }

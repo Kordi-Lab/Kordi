@@ -5,6 +5,7 @@ import { createCommonGroundClient } from '../../src/features/commonGround/client
 import { CommonGroundContactsRow } from '../../src/features/commonGround/CommonGroundContactsRow';
 import { CommonGroundPage } from '../../src/features/commonGround/CommonGroundPage';
 import type { CgHost } from '../../src/features/commonGround/host';
+import { localProfileMemory, profileStorageKey } from '../../src/features/commonGround/profiles';
 import { CommonGroundStore, type CgScreen } from '../../src/features/commonGround/store';
 import { saveSession } from '../../src/features/cloud/session';
 import { ContactsPage } from '../../src/kordi-app/pages';
@@ -13,21 +14,23 @@ import { commonGroundFixtures, initialsAvatar } from './commonGroundFixtures';
 import '../../src/index.css';
 
 // Login-free preview of Common ground in the real Contacts page. A fetch stub answers the
-// `/v1/cloud/common-ground` routes from fixtures. Query: ?screen=home|build|card|lobby|results|match,
-// ?theme=light|dark.
+// `/v1/cloud/common-ground` routes from fixtures, with two profiles (`commonGroundVersion` 2).
+// Query: ?screen=home|build|card|lobby|results|match|meet, ?theme=light|dark.
 const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
 const screen = params.get('screen') ?? 'home';
 localStorage.setItem('kordi.themeMode.v1', theme);
 const fx = commonGroundFixtures(theme);
 
-const ROUTES: Record<string, () => unknown> = {
-  'GET card': () => (screen === 'build' ? { ...fx.owner, card: null } : fx.owner),
+const ROUTES: Record<string, (query: string) => unknown> = {
+  'GET profiles': () => ({ profiles: fx.profiles }),
+  'GET card': (query) => (screen === 'build' || query.includes('cgp_health') ? fx.healthOwner : fx.owner),
   'GET recent': () => fx.recent,
   'GET rooms': () => fx.rooms,
   'GET rooms/4821': () => fx.room,
   'POST rooms/4821/results': () => fx.results,
-  'GET people/acct_hana/match': () => fx.match,
+  // The Meet case shows Hana as a contact, so the Meet tile opens the dialog.
+  'GET people/acct_hana/match': () => (screen === 'meet' ? { ...fx.match, relationship: { ...fx.match.relationship, contact: true } } : fx.match),
 };
 
 const realFetch = window.fetch.bind(window);
@@ -36,21 +39,25 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const marker = '/v1/cloud/common-ground/';
   const at = url.indexOf(marker);
   if (at < 0) return realFetch(input, init);
-  const reply = ROUTES[`${init?.method ?? 'GET'} ${url.slice(at + marker.length)}`];
+  const [path, query = ''] = url.slice(at + marker.length).split('?');
+  const reply = ROUTES[`${init?.method ?? 'GET'} ${path}`];
   return reply
-    ? new Response(JSON.stringify(reply()), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    ? new Response(JSON.stringify(reply(query)), { status: 200, headers: { 'Content-Type': 'application/json' } })
     : new Response('', { status: 404 });
 };
 
 const STACKS: Record<string, CgScreen[]> = {
+  build: [{ name: 'build' }],
   card: [{ name: 'card' }],
   lobby: [{ name: 'lobby', code: '4821' }],
   results: [{ name: 'results', code: '4821' }],
   match: [{ name: 'match', accountId: 'acct_hana' }],
+  meet: [{ name: 'match', accountId: 'acct_hana' }],
 };
 
 const host: CgHost = {
   self: fx.self,
+  profiles: true,
   memoryAvailable: true,
   openChat: () => undefined,
   acceptRequest: async () => undefined,
@@ -114,7 +121,9 @@ function Preview({ store }: { store: CommonGroundStore }) {
 }
 
 void saveSession({ token: 'preview', accountId: fx.self.accountId, expiresAt: '2099-01-01T00:00:00Z' }).then(() => {
-  const store = new CommonGroundStore(createCommonGroundClient());
+  // The build screen previews the Health profile, which has no card yet.
+  if (screen === 'build') localStorage.setItem(profileStorageKey(fx.self.accountId), 'cgp_health');
+  const store = new CommonGroundStore(createCommonGroundClient(), { profiles: true, memory: localProfileMemory(fx.self.accountId) });
   for (const next of STACKS[screen] ?? []) store.open(next);
   createRoot(document.getElementById('root')!).render(<StrictMode><Preview store={store} /></StrictMode>);
 });

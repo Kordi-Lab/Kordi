@@ -1,6 +1,8 @@
 //! Groups started from a room and the viewer's pending invitations to them,
 //! shown with the room and its results.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use sqlx_core::query_as::query_as;
@@ -20,6 +22,41 @@ type GroupRow = (
     i64,
     bool,
 );
+
+/// People a group row shows.
+const MAX_SHOWN_MEMBERS: usize = 8;
+
+/// The active people in each conversation, creator first, then by join
+/// order, at most [`MAX_SHOWN_MEMBERS`] each. Service accounts are left out.
+async fn group_members(
+    pool: &PgPool,
+    conversations: &[Uuid],
+    service: &[String],
+) -> sqlx_core::Result<HashMap<Uuid, Vec<Value>>> {
+    let rows: Vec<(Uuid, String, Option<String>, Option<String>)> = query_as(
+        "SELECT member.conversation_id, member.account_id, account.display_name, account.avatar_url
+         FROM cloud_chat_conversation_members member
+         JOIN cloud_accounts account ON account.account_id = member.account_id
+         JOIN cloud_common_ground_room_groups room_group
+           ON room_group.conversation_id = member.conversation_id
+         WHERE member.conversation_id = ANY($1) AND member.membership_state = 'active'
+           AND NOT (member.account_id = ANY($2))
+         ORDER BY member.conversation_id, member.account_id = room_group.created_by DESC,
+                  member.joined_at, member.account_id",
+    )
+    .bind(conversations)
+    .bind(service)
+    .fetch_all(pool)
+    .await?;
+    let mut out: HashMap<Uuid, Vec<Value>> = HashMap::new();
+    for (conversation, account, name, avatar) in rows {
+        let shown = out.entry(conversation).or_default();
+        if shown.len() < MAX_SHOWN_MEMBERS {
+            shown.push(person(&account, name.as_deref(), avatar.as_deref()));
+        }
+    }
+    Ok(out)
+}
 
 type InvitationRow = (
     String,
@@ -60,6 +97,8 @@ pub(in crate::common_ground) async fn room_extras(
     .bind(&service)
     .fetch_all(pool)
     .await?;
+    let conversations: Vec<Uuid> = groups.iter().map(|row| row.1).collect();
+    let mut members = group_members(pool, &conversations, &service).await?;
     let groups: Vec<Value> = groups
         .into_iter()
         .map(
@@ -69,6 +108,7 @@ pub(in crate::common_ground) async fn room_extras(
                     "conversationId": conversation,
                     "name": name,
                     "topic": topic,
+                    "members": members.remove(&conversation).unwrap_or_default(),
                     "memberCount": count,
                     "createdBy": person(&creator, creator_name.as_deref(), avatar.as_deref()),
                     "joined": joined,

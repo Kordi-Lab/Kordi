@@ -10,7 +10,7 @@ function readSource(relativePath: string): string {
 
 test('settings pages render titled sections of divided rows without card shells', () => {
   const settingsPage = readSource('pages/SettingsPage.tsx');
-  const cloudSettings = readSource('pages/CloudAccountSettingsDialog.tsx');
+  const cloudSettings = readSource('pages/CloudAccountSettingsDialog.tsx') + readSource('pages/CloudProfilePanel.tsx');
   const layout = readSource('kordi-app/components/settingsLayout.tsx');
   const shellCss = readDesktopShellCss();
 

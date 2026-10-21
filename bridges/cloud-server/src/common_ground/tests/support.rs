@@ -13,12 +13,14 @@ pub(super) const RUNNER: &str = "cg-test-runner";
 
 /// Claims the account's queued build as the runner would.
 pub(super) async fn claim(pool: &PgPool, account: &str) -> String {
-    let (run_id,): (String,) =
-        query_as("SELECT active_run_id FROM cloud_common_ground_cards WHERE account_id = $1")
-            .bind(account)
-            .fetch_one(pool)
-            .await
-            .unwrap();
+    let (run_id,): (String,) = query_as(
+        "SELECT active_run_id FROM cloud_common_ground_cards
+         WHERE account_id = $1 AND active_run_id IS NOT NULL",
+    )
+    .bind(account)
+    .fetch_one(pool)
+    .await
+    .unwrap();
     let lease = (chrono::Utc::now() + chrono::Duration::minutes(5)).to_rfc3339();
     claim_run(pool, &run_id, &lease).await;
     run_id
