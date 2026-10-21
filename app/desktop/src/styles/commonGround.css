@@ -1,6 +1,7 @@
 /* Common ground in the Contacts detail pane: compact Kordi rows, 10px groups, 8px tags. */
 
-.cg-page {
+/* Dialogs render in a portal outside the page, so they carry the same tokens. */
+.cg-page, .cg-dialog {
   --cg-pink: oklch(66% 0.2 350);
   --cg-cyan: oklch(72% 0.12 210);
   --cg-amber: oklch(80% 0.15 80);
@@ -8,6 +9,10 @@
   --cg-line: var(--app-divider);
   --cg-fill: color-mix(in oklab, var(--utility-foreground) 6%, transparent);
   --cg-card: color-mix(in oklab, var(--utility-foreground) 4%, transparent);
+}
+.cg-dialog { font-size: 13px; line-height: 1.4; }
+
+.cg-page {
   display: flex;
   min-height: 0;
   min-width: 0;
@@ -169,3 +174,26 @@ button.cg-member:hover { background: var(--cg-fill); }
 .cg-pick:hover { background: var(--cg-fill); }
 .cg-check { display: grid; place-items: center; width: 18px; height: 18px; margin-left: auto; border: 1px solid var(--cg-line); border-radius: 999px; }
 .cg-pick.is-on .cg-check { border-color: var(--app-accent); background: var(--app-accent); color: var(--app-button-primary-text); }
+
+/* Profiles: the chip row on Home, the Card screen's "…", the Share sheet and "Sharing: Work". */
+.cg-profiles { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 16px; }
+.cg-chip {
+  display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border: 1px solid var(--cg-line); border-radius: 999px;
+  background: transparent; color: var(--utility-muted-text); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
+}
+.cg-chip:hover { background: var(--cg-fill); color: var(--utility-foreground); }
+.cg-chip.is-on { border-color: transparent; background: var(--app-button-primary-bg); color: var(--app-button-primary-text); }
+.cg-chip.is-add { width: 28px; justify-content: center; padding: 0; }
+.cg-section.is-tight { margin-top: 12px; }
+.cg-topbar { display: flex; align-items: center; justify-content: space-between; }
+.cg-more { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 7px; background: transparent; color: var(--utility-muted-text); cursor: pointer; }
+.cg-more:hover { background: var(--cg-fill); color: var(--utility-foreground); }
+.cg-menu { display: flex; flex-direction: column; }
+.cg-menu-item { padding: 6px 10px; border: 0; border-radius: 7px; background: none; color: var(--utility-foreground); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.cg-menu-item:hover { background: var(--cg-fill); }
+.cg-menu-item.is-danger { color: var(--app-transient-danger-text, oklch(58% 0.2 27)); }
+.cg-kinds { margin-top: 0; }
+.cg-kinds button:disabled { opacity: 0.4; cursor: default; }
+.cg-sharing { display: flex; justify-content: center; gap: 8px; margin-top: 6px; color: var(--utility-muted-text); font-size: 12.5px; }
+.cg-link { padding: 0; border: 0; background: none; color: var(--app-accent); font: inherit; font-weight: 500; cursor: pointer; }
+.cg-link:hover { text-decoration: underline; }

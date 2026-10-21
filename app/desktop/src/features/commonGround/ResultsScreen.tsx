@@ -5,6 +5,8 @@ import { DetailTile, DetailTiles } from '@/kordi-app/contacts/ContactDetailParts
 import type { CgHost } from './host';
 import { groupLine, peopleCount, roomTitle, topicGroupDraft, type CgGroupDraft } from './format';
 import { CgAvatar, CgAvatarGrid, CgAvatarStack, CgBack, CgButton, CgGroup, CgHero, CgNotice, CgProgress, CgRow, CgScore, CgSection, CgSegmented, CgTopicDot } from './parts';
+import { personTitle } from './profiles';
+import { RoomSharing } from './ShareProfileDialog';
 import { StartGroupDialog } from './StartGroupDialog';
 import { roomClosed, type CgState, type CommonGroundStore } from './store';
 import type { CgPerson, CgResults } from './types';
@@ -73,6 +75,7 @@ export function ResultsScreen({ code, state, store, host }: { code: string; stat
   const canGroup = state.support.group;
   const startGroup = (theme: { label: string; people: CgPerson[] }) => setStarting(topicGroupDraft(theme, selfId));
   const line = `${peopleCount(everyone.length)} · ${results.topics.length} shared topics`;
+  const profileId = results.profileId ?? room?.profileId ?? undefined;
 
   return (
     <>
@@ -82,6 +85,7 @@ export function ResultsScreen({ code, state, store, host }: { code: string; stat
         title={roomTitle(code, room?.name)}
         line={closed ? `${line} · Closed` : line}
       />
+      <RoomSharing code={code} state={state} store={store} />
       {closed ? null : (
         <DetailTiles>
           <DetailTile
@@ -114,10 +118,10 @@ export function ResultsScreen({ code, state, store, host }: { code: string; stat
               <CgRow
                 key={entry.person.accountId}
                 lead={<CgAvatar person={entry.person} size={36} />}
-                title={entry.person.name}
+                title={personTitle(entry.person)}
                 sub={entry.headline}
                 trailing={<CgScore score={entry.score} />}
-                onClick={() => store.open({ name: 'match', accountId: entry.person.accountId })}
+                onClick={() => store.open({ name: 'match', accountId: entry.person.accountId, profileId })}
               />
             ))
             : results.topics.map((theme) => (

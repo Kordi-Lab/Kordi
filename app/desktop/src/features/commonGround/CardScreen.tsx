@@ -1,12 +1,13 @@
 import { useId, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { MoreHorizontal, Plus } from 'lucide-react';
 
 import { AppDialog, AppDialogActions, AppDialogDescription, AppDialogTitle } from '@/components/ui/dialog';
 import { SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import { cn } from '@/lib/utils';
 import { CgBack, CgButton, CgGroup, CgNotice, CgRow, CgSection } from './parts';
 import { topicTone } from './format';
-import type { CgState, CommonGroundStore } from './store';
+import { useProfileMenu } from './useProfileMenu';
+import { currentProfile, type CgState, type CommonGroundStore } from './store';
 import { CG_TOPIC_SECTIONS, type CgOwnCard, type CgTopicKey, type CgTopicLists } from './types';
 
 export const TOPIC_MAX_CHARS = 40;
@@ -74,12 +75,22 @@ function DeleteDialog({ busy, onCancel, onDelete }: { busy: boolean; onCancel: (
 
 export function CardScreen({ state, store }: { state: CgState; store: CommonGroundStore }) {
   const [confirming, setConfirming] = useState(false);
+  const menu = useProfileMenu(state, store);
   const card = state.owner?.card;
   if (!card || !state.owner) return null;
   const update = (key: CgTopicKey, next: string[]) => void store.saveTopics({ ...lists(card), [key]: next });
+  const profile = currentProfile(state);
   return (
     <>
-      <CgBack onBack={() => store.back()} />
+      <div className="cg-topbar">
+        <CgBack onBack={() => store.back()} />
+        {profile ? (
+          <button type="button" className="cg-more" aria-label={`${profile.name} profile`} onClick={(event) => menu.openMenu(profile, event.currentTarget)}>
+            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
+      {menu.element}
       {CG_TOPIC_SECTIONS.map(([key, title]) => (
         <CgSection key={key} title={title}>
           <CgGroup className="cg-tags">
