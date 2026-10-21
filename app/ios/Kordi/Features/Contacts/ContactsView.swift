@@ -160,7 +160,7 @@ struct ContactsView<PinnedRows: View>: View {
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
-        .accessibilityLabel("Common ground")
+        .accessibilityLabel("Grounding")
         .accessibilityValue(commonGroundInvitationWaiting ? "Invitation waiting" : "")
     }
 

@@ -69,7 +69,7 @@ export type CgResponse<T> = { status: number; body: T };
 
 async function sessionToken(): Promise<string> {
   const session = await loadSession();
-  if (!session?.token) throw new CommonGroundError('Sign in again to use Common ground.', 401, null);
+  if (!session?.token) throw new CommonGroundError('Sign in again to use Grounding.', 401, null);
   return session.token;
 }
 

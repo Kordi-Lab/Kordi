@@ -23,7 +23,7 @@ use crate::document_shares::access::clean_display_name;
 use crate::plan_cards::models::{PlanCardParticipantInput, PlanCardProposeArgs, PlanCardState};
 use crate::server::ServerState;
 
-const DEFAULT_REQUEST_MESSAGE: &str = "Found you on Common ground";
+const DEFAULT_REQUEST_MESSAGE: &str = "Found you on Grounding";
 const MAX_TITLE_CHARS: usize = 120;
 const MAX_LOCATION_CHARS: usize = 200;
 

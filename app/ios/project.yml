@@ -72,8 +72,8 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
-        NSCalendarsFullAccessUsageDescription: Kordi reads calendar events for your private Digest and, if you choose, to build your Common ground card. It does not send invitations or change events.
-        NSRemindersFullAccessUsageDescription: If you choose, Kordi reads reminder titles to build your Common ground card. It does not change reminders.
+        NSCalendarsFullAccessUsageDescription: Kordi reads calendar events for your private Digest and, if you choose, to build your Grounding card. It does not send invitations or change events.
+        NSRemindersFullAccessUsageDescription: If you choose, Kordi reads reminder titles to build your Grounding card. It does not change reminders.
         NSCameraUsageDescription: Kordi uses the camera when you record a video message, attach a photo, or join a video call.
         NSLocalNetworkUsageDescription: Kordi uses the local network to establish audio and video calls when required.
         NSMicrophoneUsageDescription: Kordi uses the microphone when you record a voice or video message or join a call.

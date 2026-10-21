@@ -24,7 +24,7 @@ use crate::server::ServerState;
 
 const MAX_NAME_CHARS: usize = 80;
 const MAX_MEMBERS: usize = 50;
-const DEFAULT_NAME: &str = "Common ground group";
+const DEFAULT_NAME: &str = "Grounding group";
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
