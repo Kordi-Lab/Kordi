@@ -68,10 +68,12 @@ test('contact info sheet preview', async ({ page }, testInfo) => {
   await expect(profile.getByRole('button', { name: 'Call', exact: true })).toBeVisible();
   await expect(profile.getByRole('button', { name: 'Video', exact: true })).toBeVisible();
   await expect(profile.getByRole('button', { name: 'Copy ID' })).toBeVisible();
-  await expect(profile.getByText('2 photos')).toBeVisible();
-  await expect(profile.getByText('1 video')).toBeVisible();
-  await expect(profile.getByText('1 file')).toBeVisible();
-  const commonGroups = profile.getByRole('button', { name: '1 group in common' });
+  await expect(profile.getByRole('button', { name: /^Photos\s*7$/ })).toBeVisible();
+  await expect(profile.getByRole('button', { name: /^Files\s*2$/ })).toBeVisible();
+  await profile.getByRole('button', { name: /^Links\s*3$/ }).click();
+  await expect(profile.getByRole('region', { name: 'Links' })).toBeVisible();
+  await profile.getByRole('button', { name: 'Back to profile' }).click();
+  const commonGroups = profile.getByRole('button', { name: /^Groups in common/ });
   await expect(commonGroups).toBeVisible();
   await commonGroups.click();
   const groupRow = profile.getByRole('button', { name: /Product Team/ });

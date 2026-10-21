@@ -84,6 +84,11 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
             return sessionId ? args.handleSetChatSessionMuted(sessionId, muted) : undefined;
           },
         },
+        sharedConversationFor: (contact) => {
+          const sessionId = directPersonSessionId(args, contact);
+          if (!sessionId) return null;
+          return args.chatConversations.find((item) => item.canonicalSessionId === sessionId || item.id === sessionId) ?? null;
+        },
         onOpenAgentSettings: () => args.setActiveNav('agents'),
         onMessageContact: (contact) => {
           if (isCollaborationSelfContactId(contact.id) || contact.classType === 'my-agents') {

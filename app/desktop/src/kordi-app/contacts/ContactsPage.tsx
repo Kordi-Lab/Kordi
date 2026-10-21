@@ -29,6 +29,7 @@ export function ContactsPage(props: ContactsPageProps) {
     contactProfileHost,
     contactMute,
     onOpenAgentSettings,
+    sharedConversationFor,
     leadingDetail,
   } = props;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -55,6 +56,7 @@ export function ContactsPage(props: ContactsPageProps) {
     contactProfileHost,
     contactMute,
     onOpenAgentSettings,
+    sharedConversationFor,
     requestActions,
   } : null;
 

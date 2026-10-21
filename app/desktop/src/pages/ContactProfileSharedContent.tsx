@@ -4,7 +4,6 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
-  Film,
   Images,
   Link,
   Users,
@@ -12,91 +11,89 @@ import {
 
 import { GroupAvatar } from '@/kordi-app/components/GroupAvatar';
 import type { ParticipantSpaceViewModel } from '@/kordi-app/types';
+import { cn } from '@/lib/utils';
+import type { ContactProfileSharedPage } from '@/pages/contactProfileSharedItems';
 import type { ContactProfileSharedSummary } from '@/pages/memberContactProfileModel';
 
 type SharedSummaryRow = {
   key: string;
   icon: ReactNode;
+  label: string;
   count: number;
-  singular: string;
-  plural: string;
   expanded?: boolean;
   onClick?: () => void;
 };
 
 function SharedProfileRow({
   icon,
+  label,
   count,
-  singular,
-  plural,
   expanded,
   onClick,
 }: Omit<SharedSummaryRow, 'key'>) {
-  const content = (
-    <>
-      <span className="app-contact-profile-summary-icon grid h-7 w-7 shrink-0 place-items-center">
+  const zero = count === 0;
+  const Chevron = expanded === undefined ? ChevronRight : ChevronDown;
+  return (
+    <button
+      type="button"
+      className={cn(
+        'app-contact-profile-summary-row app-contact-profile-summary-trigger flex min-h-[38px] w-full items-center gap-2.5 px-2.5 text-left',
+        zero && 'is-zero',
+      )}
+      onClick={onClick}
+      disabled={zero || !onClick}
+      aria-expanded={zero ? undefined : expanded}
+    >
+      <span className="app-contact-profile-summary-icon grid h-5 w-5 shrink-0 place-items-center">
         {icon}
       </span>
-      <span className="min-w-0 flex-1 text-[11.5px] font-medium">
-        {count} {count === 1 ? singular : plural}
-      </span>
-      {onClick ? (
-        <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
-          aria-hidden="true"
-        />
-      ) : null}
-    </>
-  );
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        className="app-contact-profile-summary-row app-contact-profile-summary-trigger flex min-h-10 w-full items-center gap-3 px-2.5 py-2 text-left"
-        onClick={onClick}
-        aria-expanded={expanded}
-      >
-        {content}
-      </button>
-    );
-  }
-  return (
-    <div className="app-contact-profile-summary-row flex min-h-10 items-center gap-3 px-2.5 py-2">
-      {content}
-    </div>
+      <span className="app-contact-profile-summary-label min-w-0 flex-1 truncate text-[13px]">{label}</span>
+      <span className="app-contact-profile-summary-count text-[12px] tabular-nums">{count}</span>
+      <Chevron
+        className={cn('app-contact-profile-summary-chevron h-3.5 w-3.5 shrink-0 transition-transform', expanded && 'rotate-180')}
+        aria-hidden="true"
+      />
+    </button>
   );
 }
 
 export function ContactProfileSharedContent({
   commonGroups,
   onOpenCommonGroup,
+  onOpenPage,
   summary,
 }: {
   commonGroups: ParticipantSpaceViewModel[];
   onOpenCommonGroup?: (space: ParticipantSpaceViewModel) => void;
+  onOpenPage?: (page: ContactProfileSharedPage) => void;
   summary: ContactProfileSharedSummary;
 }) {
   const [commonGroupsOpen, setCommonGroupsOpen] = useState(false);
+  const pageRow = (key: ContactProfileSharedPage, icon: ReactNode, label: string): SharedSummaryRow => ({
+    key,
+    icon,
+    label,
+    count: summary[key],
+    onClick: onOpenPage ? () => onOpenPage(key) : undefined,
+  });
   const rows: SharedSummaryRow[] = [
-    { key: 'photos', icon: <Images className="h-3.5 w-3.5" />, count: summary.photos, singular: 'photo', plural: 'photos' },
-    { key: 'videos', icon: <Film className="h-3.5 w-3.5" />, count: summary.videos, singular: 'video', plural: 'videos' },
-    { key: 'files', icon: <FileText className="h-3.5 w-3.5" />, count: summary.files, singular: 'file', plural: 'files' },
-    { key: 'links', icon: <Link className="h-3.5 w-3.5" />, count: summary.links, singular: 'shared link', plural: 'shared links' },
+    pageRow('photos', <Images className="h-4 w-4" />, 'Photos'),
+    pageRow('files', <FileText className="h-4 w-4" />, 'Files'),
+    pageRow('links', <Link className="h-4 w-4" />, 'Links'),
     {
       key: 'groups',
-      icon: <Users className="h-3.5 w-3.5" />,
+      icon: <Users className="h-4 w-4" />,
+      label: 'Groups in common',
       count: summary.commonGroups,
-      singular: 'group in common',
-      plural: 'groups in common',
       expanded: commonGroupsOpen,
       onClick: () => setCommonGroupsOpen((open) => !open),
     },
-  ].filter((row) => row.count > 0);
+  ];
 
-  if (rows.length === 0) {
+  if (rows.every((row) => row.count === 0)) {
     return (
-      <div className="app-contact-profile-empty rounded-[14px] px-4 py-4 text-center text-[11px] leading-4">
-        Shared photos, videos, files, and links will appear here.
+      <div className="app-contact-profile-empty rounded-[14px] px-3 py-2.5 text-[13px] leading-5">
+        Nothing shared yet
       </div>
     );
   }
@@ -108,8 +105,7 @@ export function ContactProfileSharedContent({
           key={row.key}
           icon={row.icon}
           count={row.count}
-          singular={row.singular}
-          plural={row.plural}
+          label={row.label}
           expanded={row.expanded}
           onClick={row.onClick}
         />

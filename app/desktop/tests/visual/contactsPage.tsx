@@ -5,12 +5,14 @@ import { CommonGroundContactsRow } from '../../src/features/commonGround/CommonG
 import { normalizeContactProfile, type CloudContactProfile } from '../../src/features/cloud/contactProfileClient';
 import type { ContactProfileHost } from '../../src/kordi-app/contacts/contactProfileHost';
 import { ContactsPage } from '../../src/kordi-app/pages';
-import type { Contact, ContactClass, ContactRequest } from '../../src/kordi-app/types';
+import type { Contact, ContactClass, ContactRequest, Conversation } from '../../src/kordi-app/types';
+import { contactSharedVisualMessages } from './contactSharedFixtures';
 import '../../src/index.css';
 
 // Login-free preview of the Contacts page with fictional people.
 // Query params: ?theme=light|dark, ?empty=1 (no requests or invites), ?groups=2 (adds a My agents group),
-// ?invite=1 (the Common ground row shows a waiting room invitation), ?profile=1 (the richer contact profile).
+// ?invite=1 (the Common ground row shows a waiting room invitation), ?profile=1 (the richer contact profile),
+// ?profile=1&page=photos|files|links (Maya's chat is on hand and that shared page opens in the pane).
 // The Common ground page itself has its own preview, commonGroundPage.html.
 const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
@@ -18,6 +20,9 @@ const withActivity = params.get('empty') !== '1';
 const showAgents = params.get('groups') === '2';
 const hasInvitation = params.get('invite') === '1';
 const withProfile = params.get('profile') === '1';
+const sharedPage = withProfile
+  ? ({ photos: 'Photos', files: 'Files', links: 'Links' } as Record<string, string>)[params.get('page') ?? '']
+  : undefined;
 localStorage.setItem('kordi.themeMode.v1', theme);
 
 const pause = (ms = 600) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -104,6 +109,12 @@ function previewProfileHost(contacts: Contact[], select: (contact: Contact) => v
   };
 }
 
+const MAYA_CHAT: Conversation = {
+  id: 'session:direct-person:acct_maya:acct_preview', canonicalSessionId: 'session:direct-person:acct_maya:acct_preview',
+  name: 'Maya Chen', type: 'person', subtitle: '', unread: 0, collaborationSources: ['Cloud'], trust: '', directness: '',
+  participants: ['Me', 'Maya Chen'], messages: contactSharedVisualMessages(),
+};
+
 const INITIAL_AGENTS: Contact[] = [
   person('agent_research', 'Research agent', 'On this Mac', { classType: 'my-agents', entityType: 'My agent' }),
 ];
@@ -126,10 +137,19 @@ function ContactsPreview() {
   const [search, setSearch] = useState('');
   const [isRequestsOpen, setIsRequestsOpen] = useState(true);
   const [expanded, setExpanded] = useState<Record<ContactClass, boolean>>({ 'other-users': true, 'my-agents': true, 'other-users-agents': true });
-  const [activeContactId, setActiveContactId] = useState('');
+  const [activeContactId, setActiveContactId] = useState(sharedPage ? 'cloud:acct_maya' : '');
   const [activeRequestId, setActiveRequestId] = useState('');
-  const [overlayMode, setOverlayMode] = useState<'contact' | 'request' | null>(null);
+  const [overlayMode, setOverlayMode] = useState<'contact' | 'request' | null>(sharedPage ? 'contact' : null);
   const [commonGroundSelected, setCommonGroundSelected] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!sharedPage) return undefined;
+    const timer = setTimeout(() => {
+      const rows = document.querySelectorAll<HTMLButtonElement>('.app-contacts-detail-content button');
+      [...rows].find((row) => row.textContent?.trim().startsWith(sharedPage))?.click();
+    }, 900);
+    return () => clearTimeout(timer);
+  }, []);
 
   useLayoutEffect(() => {
     document.body.classList.toggle('theme-light', theme === 'light');
@@ -243,6 +263,7 @@ function ContactsPreview() {
           setActiveContactId(contact.id);
           setOverlayMode('contact');
         }) : undefined}
+        sharedConversationFor={sharedPage ? (contact) => (contact.sourceParticipantId === 'acct_maya' ? MAYA_CHAT : null) : undefined}
         contactMute={withProfile ? {
           isMuted: (contact) => (contact.systemContact ? null : mutedIds.has(contact.id)),
           setMuted: (contact, muted) => setMutedIds((current) => {

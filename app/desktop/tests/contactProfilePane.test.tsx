@@ -15,7 +15,7 @@ import { cloudContactRemover } from '../src/features/cloud/useCloudContactProfil
 import type { ContactMuteControl, ContactProfileHost } from '../src/kordi-app/contacts/contactProfileHost';
 import type { ContactsPageProps } from '../src/kordi-app/contacts/contactsPageTypes';
 import { ContactsPage } from '../src/kordi-app/pages';
-import type { Contact } from '../src/kordi-app/types';
+import type { Contact, Conversation } from '../src/kordi-app/types';
 import { contact, contactsPageProps } from './helpers/contactsPageFixtures';
 import { installDom } from './helpers/transcriptAttachmentDom';
 
@@ -168,9 +168,7 @@ test('a person profile fills the info, shared, and common ground cards', async (
     assert.match(text, /Nadia’s agentTheir agent/);
     assert.match(text, /12 Aug 2026Contact since/);
     assert.match(text, /Shared with you/);
-    assert.match(text, /Photos and files24/);
-    assert.match(text, /Links9/);
-    assert.match(text, /Documents3/);
+    assert.match(text, /Photos24Files3Links9Groups in common/);
     assert.match(text, /Groups in common2/);
     assert.match(text, /Common ground/);
     assert.match(text, /Working ontabletop manipulationsim-to-real/);
@@ -229,7 +227,7 @@ test('one group in common opens it directly and empty counts read "Nothing share
   });
   try {
     assert.match(empty.text(), /Shared with youNothing shared yet/);
-    assert.doesNotMatch(empty.text(), /Photos and files|Common ground/);
+    assert.doesNotMatch(empty.text(), /Photos|Common ground/);
     assert.deepEqual(empty.tiles(), ['Message', 'Mute', 'Share', 'More']);
     assert.equal((empty.button('Mute') as HTMLButtonElement).disabled, true, 'mute waits for a mute control');
   } finally {
@@ -397,6 +395,38 @@ test('before the profile loads the status line uses the list presence', async ()
     const line = page.host.querySelector('.app-contacts-detail-presence');
     assert.equal(line?.textContent, 'online');
     assert.ok(line?.classList.contains('app-contacts-presence-online'));
+  } finally {
+    await page.cleanup();
+  }
+});
+
+test('with the whole direct chat on hand the shared rows count it and open pages in the pane', async () => {
+  const conversation = {
+    id: 'session:direct-person:acct_me:acct_nadia', name: 'Nadia', type: 'person', subtitle: '', unread: 0,
+    collaborationSources: [], trust: '', directness: '', participants: [],
+    messages: [
+      { id: 'm1', role: 'person', text: 'Survey https://arxiv.org/abs/1', time: '', timestampMs: Date.now(), attachments: [{ kind: 'image', name: 'bench.jpg' }] },
+    ],
+  } satisfies Conversation;
+  const calls = newCalls();
+  const page = await mount({
+    activeContact: nadia,
+    contactProfileHost: hostFor({ acct_nadia: profile() }, calls),
+    onMessageContact: (picked) => { calls.messaged.push(picked.id); },
+    sharedConversationFor: () => conversation,
+  });
+  try {
+    assert.match(page.text(), /Photos1Files0Links1Groups in common/);
+    assert.equal((page.button('Files') as HTMLButtonElement).disabled, true, 'an empty row is inert');
+    await page.click(page.button('Links'));
+    assert.deepEqual(calls.messaged, [], 'the row opens a page, not the chat');
+    assert.ok(page.host.querySelector('[role="region"][aria-label="Links"]'));
+    assert.match(page.text(), /arxiv\.org/);
+    assert.doesNotMatch(page.text(), /Shared with you/);
+    await act(async () => {
+      window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    assert.match(page.text(), /Shared with you/, 'Escape returns to the profile');
   } finally {
     await page.cleanup();
   }
