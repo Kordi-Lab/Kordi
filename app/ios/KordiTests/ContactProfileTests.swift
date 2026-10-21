@@ -55,6 +55,55 @@ final class ContactProfileTests: XCTestCase {
         XCTAssertNil(profile.presence)
     }
 
+    func testToleratesTheServerShapeForAgentsAndGroups() throws {
+        let agent = try decode(#"""
+        {"accountId":"acct_agent","kordiId":null,"displayName":"Nadia's agent","avatarUrl":null,"about":null,
+         "kind":"agent","isSelf":false,"isContact":false,"presence":null,"defaultAgent":null,
+         "owner":{"accountId":"acct_o","kordiId":"482731906","displayName":"Nadia","avatarUrl":null},
+         "contactSince":null,"shared":{"mediaCount":0,"linkCount":0,"documentCount":0,"groups":[]},"commonGround":null}
+        """#)
+        XCTAssertNil(agent.kordiId)
+        XCTAssertNil(agent.presence)
+        XCTAssertEqual(agent.shared?.isEmpty, true)
+        let agentView = ContactProfilePresentation(
+            subject: ContactProfileSubject(accountId: "acct_agent", name: "Nadia's agent", kind: .agent),
+            profile: agent,
+            isFallback: false
+        )
+        XCTAssertFalse(agentView.showsKordiId)
+        XCTAssertNil(agentView.commonGround)
+        XCTAssertEqual(agentView.statusLine(), "Agent · owned by Nadia")
+
+        let person = try decode(#"""
+        {"accountId":"acct_n","kordiId":"482731906","displayName":"Nadia","kind":"person",
+         "defaultAgent":{"agentId":"agent_n","displayName":"Kordi","avatarUrl":null,"accountId":"acct_na",
+                         "avatar":{"style":"bottts","seed":"agent_n"}},
+         "shared":{"mediaCount":1,"linkCount":0,"documentCount":0,"groups":[
+           {"groupId":"g1","title":null,"avatarUrl":"kordi-avatar://uploaded/ava_0123456789abcdef0123456789abcdef"},
+           {"groupId":"g2","title":"Lab","avatarUrl":null},
+           {"title":"broken"}]}}
+        """#)
+        XCTAssertEqual(person.defaultAgent?.accountId, "acct_na")
+        XCTAssertEqual(CloudDefaultAgentProfile.displayName(person.defaultAgent?.displayName, ownerName: "Nadia"), "Nadia's Kordi")
+        XCTAssertEqual(person.shared?.groups.map(\.title), ["Group", "Lab"])
+        XCTAssertEqual(person.shared?.groups.first?.avatarUrl, "kordi-avatar://uploaded/ava_0123456789abcdef0123456789abcdef")
+    }
+
+    func testSupportContactWithNullIdAndPresence() throws {
+        let support = try decode(#"""
+        {"accountId":"acct_kordi_support","kordiId":null,"displayName":"Kordi Support","kind":"system","presence":null,
+         "shared":{"mediaCount":0,"linkCount":0,"documentCount":0,"groups":[]},"commonGround":null}
+        """#)
+        let view = ContactProfilePresentation(
+            subject: ContactProfileSubject(accountId: "acct_kordi_support", name: "Kordi Support", kind: .system),
+            profile: support,
+            isFallback: false
+        )
+        XCTAssertEqual(view.statusLine(), "Kordi")
+        XCTAssertFalse(view.showsKordiId)
+        XCTAssertNil(view.shared)
+    }
+
     func testCapabilityFlagGatesTheRequest() throws {
         let caps = try JSONDecoder().decode(
             CloudAuthCapabilities.self,

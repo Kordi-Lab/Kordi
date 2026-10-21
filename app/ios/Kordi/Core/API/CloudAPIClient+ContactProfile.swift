@@ -14,12 +14,30 @@ struct CloudContactProfile: Codable, Hashable {
         let lastSeenAt: String?
     }
 
-    /// The person's default agent; mirrors the public profile `defaultAgent`.
+    /// The person's default agent: the public profile `defaultAgent` shape
+    /// plus `accountId`. The canonical `avatar` descriptor is not needed here.
     struct Agent: Codable, Hashable {
         let agentId: String
         let displayName: String
         let avatarUrl: String?
         var accountId: String? = nil
+
+        private enum CodingKeys: String, CodingKey { case agentId, displayName, avatarUrl, accountId }
+
+        init(agentId: String, displayName: String, avatarUrl: String?, accountId: String? = nil) {
+            self.agentId = agentId
+            self.displayName = displayName
+            self.avatarUrl = avatarUrl
+            self.accountId = accountId
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            agentId = try c.decode(String.self, forKey: .agentId)
+            displayName = (try? c.decodeIfPresent(String.self, forKey: .displayName)) ?? ""
+            avatarUrl = try? c.decodeIfPresent(String.self, forKey: .avatarUrl)
+            accountId = try? c.decodeIfPresent(String.self, forKey: .accountId)
+        }
     }
 
     /// The person who owns an agent account.
@@ -30,12 +48,29 @@ struct CloudContactProfile: Codable, Hashable {
         let avatarUrl: String?
     }
 
+    /// `title` may be null on the wire and falls back to "Group"; `avatarUrl`
+    /// may be a `kordi-avatar://` marker, which `IdentityAvatar` renders.
     struct SharedGroup: Codable, Hashable, Identifiable {
         let groupId: String
         let title: String
         let avatarUrl: String?
 
         var id: String { groupId }
+
+        private enum CodingKeys: String, CodingKey { case groupId, title, avatarUrl }
+
+        init(groupId: String, title: String, avatarUrl: String?) {
+            self.groupId = groupId
+            self.title = title
+            self.avatarUrl = avatarUrl
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            groupId = try c.decode(String.self, forKey: .groupId)
+            title = (try? c.decodeIfPresent(String.self, forKey: .title))?.nonEmpty ?? "Group"
+            avatarUrl = try? c.decodeIfPresent(String.self, forKey: .avatarUrl)
+        }
     }
 
     struct Shared: Codable, Hashable {
@@ -137,7 +172,17 @@ extension CloudContactProfile.Shared {
         mediaCount = (try? c.decodeIfPresent(Int.self, forKey: .mediaCount)) ?? 0
         linkCount = (try? c.decodeIfPresent(Int.self, forKey: .linkCount)) ?? 0
         documentCount = (try? c.decodeIfPresent(Int.self, forKey: .documentCount)) ?? 0
-        groups = (try? c.decodeIfPresent([CloudContactProfile.SharedGroup].self, forKey: .groups)) ?? []
+        // One malformed group drops only itself.
+        let decoded = (try? c.decodeIfPresent([FailableGroup].self, forKey: .groups)) ?? []
+        groups = decoded.compactMap(\.group)
+    }
+}
+
+private struct FailableGroup: Decodable {
+    let group: CloudContactProfile.SharedGroup?
+
+    init(from decoder: Decoder) throws {
+        group = try? CloudContactProfile.SharedGroup(from: decoder)
     }
 }
 

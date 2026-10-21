@@ -274,7 +274,7 @@ struct ContactProfileView: View {
             if let agent = presentation.theirAgent {
                 let conversation = model.agentConversation(agentId: agent.agentId, accountId: agent.accountId)
                 ContactProfilePersonRow(
-                    name: agent.displayName,
+                    name: CloudDefaultAgentProfile.displayName(agent.displayName, ownerName: presentation.name),
                     caption: "Their agent",
                     avatarUrl: agent.avatarUrl,
                     kind: .agent,
