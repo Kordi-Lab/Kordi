@@ -46,15 +46,15 @@ enum ContactProfileTile: String, Identifiable, Hashable {
 }
 
 enum ContactProfileSharedRow: String, Identifiable, Hashable {
-    case media, links, documents, groups, todo, memory
+    case photos, files, links, groups, todo, memory
 
     var id: Self { self }
 
     var title: String {
         switch self {
-        case .media: "Photos and files"
+        case .photos: "Photos"
+        case .files: "Files"
         case .links: "Links"
-        case .documents: "Documents"
         case .groups: "Groups in common"
         case .todo: "Todo"
         case .memory: "Memory"
@@ -63,12 +63,22 @@ enum ContactProfileSharedRow: String, Identifiable, Hashable {
 
     var systemImage: String {
         switch self {
-        case .media: "photo"
+        case .photos: "photo"
+        case .files: "doc"
         case .links: "link"
-        case .documents: "doc.text"
         case .groups: "person.2"
         case .todo: "checkmark.circle"
         case .memory: "brain"
+        }
+    }
+
+    /// The page the row pushes inside the profile.
+    var page: ContactProfileSharedPage? {
+        switch self {
+        case .photos: .photos
+        case .files: .files
+        case .links: .links
+        case .groups, .todo, .memory: nil
         }
     }
 }
@@ -89,6 +99,8 @@ struct ContactProfilePresentation: Equatable {
     var isPage: Bool = false
     /// Memory is offered (the Memory row on the page).
     var memoryAvailable: Bool = false
+    /// Counts from the chat's whole history on this device; nil until it is loaded.
+    var localShared: ContactProfileSharedItems.Counts? = nil
 
     var kind: CloudContactProfile.Kind { profile?.kind ?? subject.kind }
     var name: String { profile?.displayName?.nonEmpty ?? subject.name }
@@ -138,32 +150,35 @@ struct ContactProfilePresentation: Equatable {
     var showsSharedSection: Bool { isPage ? kind == .person : shared != nil }
 
     var sharedRows: [ContactProfileSharedRow] {
-        guard isPage else { return [.media, .links, .documents, .groups] }
-        return [.media, .links, .documents, .groups, .todo] + (memoryAvailable ? [.memory] : [])
+        guard isPage else { return [.photos, .files, .links, .groups] }
+        return [.photos, .files, .links, .groups, .todo] + (memoryAvailable ? [.memory] : [])
     }
 
-    /// Nil for rows without a server count.
+    /// Photos, files and links count the chat's items once its history is
+    /// loaded, so a row matches its page; the server count stands in before.
+    /// Nil for rows without any count.
     func sharedCount(_ row: ContactProfileSharedRow) -> Int? {
-        guard let shared else { return nil }
         switch row {
-        case .media: return shared.mediaCount
-        case .links: return shared.linkCount
-        case .documents: return shared.documentCount
-        case .groups: return shared.groups.count
+        case .photos: return localShared?.photos ?? shared?.mediaCount
+        case .files: return localShared?.files ?? shared?.documentCount
+        case .links: return localShared?.links ?? shared?.linkCount
+        case .groups: return shared?.groups.count
         case .todo, .memory: return nil
         }
     }
 
-    /// Zero-count rows that only lead back to the chat are disabled; on the page
-    /// media, documents (the Files tab), todo and memory open views with their
-    /// own empty states.
+    /// Rows with a count of 0 do nothing; Todo and Memory on the page open
+    /// views with their own empty states.
     func isSharedRowEnabled(_ row: ContactProfileSharedRow) -> Bool {
-        if isPage, [.media, .documents, .todo, .memory].contains(row) { return true }
+        if isPage, [.todo, .memory].contains(row) { return true }
         return sharedCount(row).map { $0 > 0 } ?? true
     }
 
     /// The sheet collapses to one muted line when nothing is shared.
-    var showsNothingShared: Bool { !isPage && shared?.isEmpty == true }
+    var showsNothingShared: Bool {
+        !isPage && shared != nil
+            && [ContactProfileSharedRow.photos, .files, .links, .groups].allSatisfy { sharedCount($0) == 0 }
+    }
 
     var showsKordiId: Bool { kind != .system && kordiId != nil }
     var about: String? { isFallback ? nil : profile?.about?.nonEmpty }
@@ -311,6 +326,35 @@ extension AppModel {
         return matches.first { !$0.isAgentLaunchTemplate } ?? matches.first
     }
 
+    /// The chat whose photos, files and links the profile lists.
+    func contactProfileSharedConversation(for subject: ContactProfileSubject) -> ConversationSummary? {
+        switch subject.kind {
+        case .person: directConversation(withAccountId: subject.accountId)
+        case .agent: agentConversation(accountId: subject.accountId)
+        case .system: nil
+        }
+    }
+
+    /// Items of the chat, or nil until its whole history is on this device.
+    func contactProfileSharedItems(for conversation: ConversationSummary) -> ContactProfileSharedItems? {
+        guard messagesByConversation[conversation.id] != nil, !hasEarlierMessages(for: conversation) else { return nil }
+        return ContactProfileSharedItemsMemo.items(for: conversation.id, messages: messages(for: conversation))
+    }
+
+    /// Loads the chat, then its earlier pages, at most `pageLimit` of them.
+    func loadContactProfileHistory(for conversation: ConversationSummary, pageLimit: Int = 20) async {
+        if messagesByConversation[conversation.id] == nil {
+            guard await loadConversation(conversation) else { return }
+        }
+        var pages = 0
+        while hasEarlierMessages(for: conversation), pages < pageLimit, !Task.isCancelled {
+            let before = messagesByConversation[conversation.id]?.count ?? 0
+            await loadEarlierMessages(for: conversation)
+            pages += 1
+            if (messagesByConversation[conversation.id]?.count ?? 0) == before { break }
+        }
+    }
+
     func groupConversation(groupSpaceId: String) -> ConversationSummary? {
         conversations.first { $0.kind == .group && $0.groupSpaceId == groupSpaceId }
     }
@@ -325,5 +369,19 @@ extension AppModel {
             avatarUrl: conversation.avatarSource?.nonEmpty,
             kind: conversation.representsKordiSupport ? .system : .person
         )
+    }
+}
+
+/// Collecting links runs a data detector over every message, so the last
+/// result is kept while the chat's messages stay the same.
+@MainActor
+enum ContactProfileSharedItemsMemo {
+    private static var last: (id: String, messages: [ChatMessage], items: ContactProfileSharedItems)?
+
+    static func items(for conversationID: String, messages: [ChatMessage]) -> ContactProfileSharedItems {
+        if let last, last.id == conversationID, last.messages == messages { return last.items }
+        let items = ContactProfileSharedItems(messages: messages)
+        last = (conversationID, messages, items)
+        return items
     }
 }

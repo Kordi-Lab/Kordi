@@ -124,6 +124,7 @@ enum ContactProfileRoute: Hashable {
     case groups
     case details(ConversationSummary)
     case focused(ConversationSummary, SessionDetailTab)
+    case shared(ContactProfileSharedPage, ConversationSummary)
     case chat(ConversationSummary)
 }
 
