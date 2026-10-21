@@ -66,6 +66,7 @@ tests=(
   common_ground_tests::upgrade_from_136_adds_matching_runs_and_room_themes
   common_ground_tests::upgrade_from_137_adds_room_invitations
   common_ground_tests::upgrade_from_138_adds_group_topics
+  account_about_tests::upgrade_from_139_adds_account_about
 )
 index=0
 for test_name in "${tests[@]}"; do
@@ -90,3 +91,8 @@ DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
 # Common ground tests follow the same rule.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib common_ground:: -- --test-threads=1
+# Contact profile and removal tests (#1945) use the Common ground fixture.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib auth::routes::contact_profile:: -- --test-threads=1
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib auth::routes::contact_removal:: -- --test-threads=1

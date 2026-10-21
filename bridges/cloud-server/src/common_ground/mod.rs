@@ -20,7 +20,7 @@ mod rooms;
 mod runs;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -39,6 +39,7 @@ use sqlx_postgres::Postgres;
 use crate::auth::rate_limit::{AccountActionLimit, CloudRateLimiter};
 use crate::{auth::routes::cloud_session_middleware, server::ServerState};
 
+pub(crate) use people::{profile_common_ground, ProfileCommonGround};
 pub use runs::{complete, fail, RUN_PREFIX};
 
 /// Advertised as `commonGroundVersion` in the auth capabilities.

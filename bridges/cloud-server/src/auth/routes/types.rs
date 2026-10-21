@@ -87,6 +87,9 @@ pub struct AuthCapabilitiesResponse {
         skip_serializing_if = "Option::is_none"
     )]
     pub common_ground_version: Option<u32>,
+    /// Present when `/v1/cloud/contacts/:account_id/profile` exists (#1945).
+    #[serde(rename = "contactProfileVersion")]
+    pub contact_profile_version: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -99,6 +102,9 @@ pub struct UpdateProfileRequest {
     pub agent_display_name: Option<String>,
     #[serde(rename = "agentAvatarMutation")]
     pub agent_avatar_mutation: Option<AvatarMutationRequest>,
+    /// Absent leaves `about` unchanged; a string or null replaces it.
+    #[serde(default, deserialize_with = "super::profile_handlers::present")]
+    pub about: Option<Option<String>>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -137,6 +143,9 @@ pub struct AccountResponse {
         skip_serializing_if = "Option::is_none"
     )]
     pub primary_email_verified: Option<bool>,
+    /// The owner's `about` line (null when unset), on owner payloads only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub about: Option<Option<String>>,
 }
 
 #[derive(Debug, Serialize)]

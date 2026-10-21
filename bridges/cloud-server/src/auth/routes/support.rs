@@ -93,7 +93,7 @@ pub(super) async fn owner_account_response_row(
     let row: Option<OwnerAccountRecordRow> = query_as(
         "SELECT account_id, public_account_number, display_name, primary_email, avatar_url, password_hash, \
             avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at, \
-            primary_email_verified_at IS NOT NULL \
+            primary_email_verified_at IS NOT NULL, about \
              FROM cloud_accounts WHERE account_id = $1",
     )
     .bind(account_id)
@@ -108,9 +108,10 @@ pub(super) fn owner_account_response_from_rows(
     row: OwnerAccountRecordRow,
     default_agent_row: Option<DefaultAgentProfileRow>,
 ) -> AccountResponse {
-    let (a, b, c, d, e, f, g, h, i, j, k, l, primary_email_verified) = row;
+    let (a, b, c, d, e, f, g, h, i, j, k, l, primary_email_verified, about) = row;
     AccountResponse {
         primary_email_verified: Some(primary_email_verified),
+        about: Some(about),
         ..account_response_from_rows((a, b, c, d, e, f, g, h, i, j, k, l), default_agent_row)
     }
 }
@@ -203,6 +204,7 @@ pub(super) fn account_response_from_rows(
         node_id: None,
         password_set: row.5.is_some(),
         primary_email_verified: None,
+        about: None,
     }
 }
 

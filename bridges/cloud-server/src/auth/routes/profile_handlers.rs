@@ -1,6 +1,8 @@
 use super::*;
 
+mod about;
 mod default_agent;
+pub(super) use about::present;
 use default_agent::*;
 
 pub(super) async fn update_me(
@@ -8,6 +10,24 @@ pub(super) async fn update_me(
     Extension(session): Extension<CloudSession>,
     Json(req): Json<UpdateProfileRequest>,
 ) -> Response {
+    let about = match req
+        .about
+        .as_ref()
+        .map(|value| about::clean_about(value.as_deref()))
+    {
+        Some(Ok(value)) => Some(value),
+        Some(Err(())) => {
+            return err(
+                "invalid_about",
+                format!(
+                    "About must be {} characters or fewer.",
+                    about::MAX_ABOUT_CHARS
+                ),
+                StatusCode::BAD_REQUEST,
+            )
+        }
+        None => None,
+    };
     let display_name = clean_profile_display_name(req.display_name.as_deref());
     let mut avatar_mutation = req.avatar_mutation;
     let agent_display_name = clean_default_agent_display_name(req.agent_display_name.as_deref());
@@ -150,11 +170,12 @@ pub(super) async fn update_me(
         "UPDATE cloud_accounts SET \
             display_name = COALESCE($1, display_name), avatar_url = $2, avatar_source = $3, \
             avatar_style = $4, avatar_seed = $5, avatar_renderer_version = $6, avatar_version = $7, \
-            avatar_updated_at = $8, updated_at = $9 \
+            avatar_updated_at = $8, updated_at = $9, \
+            about = CASE WHEN $11 THEN $12 ELSE about END \
          WHERE account_id = $10 \
          RETURNING account_id, public_account_number, display_name, primary_email, avatar_url, password_hash, \
             avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at, \
-            primary_email_verified_at IS NOT NULL",
+            primary_email_verified_at IS NOT NULL, about",
     )
     .bind(display_name.as_deref())
     .bind(&avatar_url)
@@ -166,6 +187,8 @@ pub(super) async fn update_me(
     .bind(&next_avatar.updated_at)
     .bind(&now)
     .bind(&session.account_id)
+    .bind(about.is_some())
+    .bind(about.flatten())
     .fetch_optional(&mut *tx)
     .await
     {

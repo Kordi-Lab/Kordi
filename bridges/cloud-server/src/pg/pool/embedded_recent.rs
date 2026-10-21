@@ -318,4 +318,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "common ground group topics",
         "0139_common_ground_group_topics.sql"
     ),
+    migration!(140, "account about", "0140_account_about.sql"),
 ];

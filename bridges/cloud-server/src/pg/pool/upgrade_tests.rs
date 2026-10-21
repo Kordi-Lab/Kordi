@@ -4,6 +4,7 @@ use crate::cloud_agent_runtime::runs::{claim_run, ClaimRunRequest};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+mod account_about_tests;
 mod account_email_tests;
 mod common_ground_tests;
 mod connectors_tests;

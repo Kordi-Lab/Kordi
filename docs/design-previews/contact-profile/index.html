@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contact profile · Kordi proposal</title>
+<style>
+/* Standalone design preview for issue #1945. Synthetic people, no network, system fonts only. */
+:root{
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --ground:#e9e8e4;--chrome:#dddcd7;--chrome-on:#fff;--chrome-text:#3c3c43;
+  --tint:#2563eb;--green:#1f9d47;--dot:#34c759;--red:#d70015;
+  --text:#1d1d1f;--muted:rgba(60,60,67,.62);--faint:rgba(60,60,67,.32);
+  --shadow:0 30px 70px rgba(30,30,25,.22),0 2px 6px rgba(30,30,25,.08);
+  --pop:0 10px 30px rgba(0,0,0,.14),0 1px 3px rgba(0,0,0,.08);
+  /* Mac */
+  --m-win:#fff;--m-list:#f6f6f8;--m-pane:#fbfbfc;--m-line:rgba(0,0,0,.085);--m-edge:rgba(0,0,0,.18);
+  --m-fg:#1d1d1f;--m-fg2:rgba(0,0,0,.58);--m-fg3:rgba(0,0,0,.38);--m-sel:rgba(37,99,235,.11);--m-field:rgba(0,0,0,.05);
+  --m-card:rgba(0,0,0,.045);--m-tile:rgba(0,0,0,.05);--m-tile-h:rgba(0,0,0,.085);--m-menu:#fff;--m-menu-line:rgba(0,0,0,.12);
+  /* iPhone */
+  --i-page:#f2f2f7;--i-sheet:#fff;--i-line:rgba(60,60,67,.18);--i-tile:rgba(120,120,128,.12);--i-glass:rgba(120,120,128,.14);
+  --chip:rgba(120,120,128,.13);--chip-text:#1d1d1f;
+  --seed-mix:20%;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#121214;--chrome:#2c2c2e;--chrome-on:#48484a;--chrome-text:#ebebf5;
+    --tint:#60a5fa;--green:#30d158;--dot:#30d158;--red:#ff6961;
+    --text:#fff;--muted:rgba(235,235,245,.6);--faint:rgba(235,235,245,.3);
+    --shadow:0 30px 70px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.4);--pop:0 10px 30px rgba(0,0,0,.5),0 1px 3px rgba(0,0,0,.4);
+    --m-win:#1f2023;--m-list:#1c1d20;--m-pane:#202124;--m-line:rgba(255,255,255,.08);--m-edge:rgba(255,255,255,.1);
+    --m-fg:rgba(255,255,255,.92);--m-fg2:rgba(255,255,255,.6);--m-fg3:rgba(255,255,255,.38);--m-sel:rgba(96,165,250,.17);--m-field:rgba(255,255,255,.07);
+    --m-card:rgba(255,255,255,.055);--m-tile:rgba(255,255,255,.06);--m-tile-h:rgba(255,255,255,.1);--m-menu:#2a2b2e;--m-menu-line:rgba(255,255,255,.12);
+    --i-page:#000;--i-sheet:#1c1c1e;--i-line:rgba(84,84,88,.65);--i-tile:rgba(118,118,128,.24);--i-glass:rgba(118,118,128,.3);
+    --chip:rgba(118,118,128,.28);--chip-text:#fff;--seed-mix:26%;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#121214;--chrome:#2c2c2e;--chrome-on:#48484a;--chrome-text:#ebebf5;
+  --tint:#60a5fa;--green:#30d158;--dot:#30d158;--red:#ff6961;
+  --text:#fff;--muted:rgba(235,235,245,.6);--faint:rgba(235,235,245,.3);
+  --shadow:0 30px 70px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.4);--pop:0 10px 30px rgba(0,0,0,.5),0 1px 3px rgba(0,0,0,.4);
+  --m-win:#1f2023;--m-list:#1c1d20;--m-pane:#202124;--m-line:rgba(255,255,255,.08);--m-edge:rgba(255,255,255,.1);
+  --m-fg:rgba(255,255,255,.92);--m-fg2:rgba(255,255,255,.6);--m-fg3:rgba(255,255,255,.38);--m-sel:rgba(96,165,250,.17);--m-field:rgba(255,255,255,.07);
+  --m-card:rgba(255,255,255,.055);--m-tile:rgba(255,255,255,.06);--m-tile-h:rgba(255,255,255,.1);--m-menu:#2a2b2e;--m-menu-line:rgba(255,255,255,.12);
+  --i-page:#000;--i-sheet:#1c1c1e;--i-line:rgba(84,84,88,.65);--i-tile:rgba(118,118,128,.24);--i-glass:rgba(118,118,128,.3);
+  --chip:rgba(118,118,128,.28);--chip-text:#fff;--seed-mix:26%;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--ground);color:var(--text);font:14px/1.4 var(--sans);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:inherit}
+button:disabled{cursor:default}
+:focus-visible{outline:2px solid var(--tint);outline-offset:2px}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;display:block}
+.ell{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Review controls */
+.bar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:center;padding:14px 16px 4px;font-size:13px;color:var(--muted)}
+.bar strong{color:var(--text);font-weight:600}
+.seg{display:inline-flex;flex-wrap:wrap;gap:2px;background:var(--chrome);border-radius:9px;padding:2px;margin-left:6px;vertical-align:middle}
+.seg button{font-size:12.5px;font-weight:500;color:var(--chrome-text);padding:4px 10px;border-radius:7px}
+.seg button[aria-pressed="true"]{background:var(--chrome-on);color:var(--text);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.stage{display:flex;flex-wrap:wrap;gap:28px;justify-content:center;align-items:flex-start;padding:18px 16px 28px}
+footer{text-align:center;padding:0 16px 28px;font-size:12px;color:var(--muted)}
+footer a{color:var(--tint)}
+
+/* Avatars: initials on a seed-coloured circle */
+.av{border-radius:50%;background:var(--seed);color:#fff;display:grid;place-items:center;font-weight:600;flex:none;position:relative;letter-spacing:.01em}
+.av .pd{position:absolute;right:3%;bottom:3%;width:14px;height:14px;border-radius:50%;background:var(--dot);box-shadow:0 0 0 2.5px var(--ring)}
+.av.today .pd{width:16px;height:16px;right:5%;bottom:5%}
+.av.sm .pd{width:10px;height:10px;box-shadow:0 0 0 2px var(--ring);right:0;bottom:0}
+
+/* Mac window */
+.mac{width:980px;height:640px;border-radius:12px;overflow:hidden;background:var(--m-win);color:var(--m-fg);box-shadow:0 0 0 .5px var(--m-edge),var(--shadow);display:grid;grid-template-columns:280px minmax(0,1fr);flex:none;position:relative}
+.full .mac{height:auto;min-height:640px}
+.m-list{background:var(--m-list);border-right:1px solid var(--m-line);display:flex;flex-direction:column;padding:14px 10px;gap:2px;--ring:var(--m-list)}
+.m-lights{display:flex;gap:8px;height:12px;margin:0 6px 16px}
+.m-lights i{width:12px;height:12px;border-radius:50%;background:#ff5f57}
+.m-lights i:nth-child(2){background:#febc2e}.m-lights i:nth-child(3){background:#28c840}
+.m-title{font-size:15px;font-weight:600;margin:0 8px 10px}
+.m-search{height:30px;border-radius:8px;background:var(--m-field);display:flex;align-items:center;gap:6px;padding:0 9px;color:var(--m-fg3);font-size:13px;margin:0 2px 10px}
+.m-search svg.i{width:14px;height:14px}
+.m-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:9px;min-height:50px}
+.m-row.dim{opacity:.5}
+.m-row.on{background:var(--m-sel)}
+.m-row .nm{font-size:13px;font-weight:600}
+.m-row .sub{font-size:12px;color:var(--m-fg2)}
+.m-row .sub.online{color:var(--green)}
+.m-pane{position:relative;min-height:0;overflow-y:auto;background:var(--m-pane);--ring:var(--m-pane);scrollbar-width:thin}
+.full .m-pane{overflow:visible}
+
+/* iPhone frame and sheet */
+.phone{position:relative;width:393px;height:852px;border-radius:56px;border:10px solid #0b0b0c;background:var(--i-page);box-shadow:var(--shadow);overflow:hidden;flex:none}
+.full .phone{height:auto;min-height:852px}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:120px;height:34px;border-radius:20px;background:#000;z-index:5}
+.sbar{position:absolute;top:0;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:space-between;padding:4px 30px 0 40px;font-weight:600;font-size:16px;color:var(--text);z-index:4}
+.batt{width:25px;height:12px;border:1.5px solid currentColor;border-radius:4px;position:relative;opacity:.9}
+.batt::after{content:"";position:absolute;inset:1.5px;right:4px;background:currentColor;border-radius:1.5px}
+.behind{position:absolute;inset:0;padding:60px 20px 0;opacity:.55}
+.behind h3{margin:30px 0 14px;font-size:30px;font-weight:700}
+.behind .br{display:flex;gap:12px;align-items:center;height:58px;border-bottom:.5px solid var(--i-line);--ring:var(--i-page)}
+.behind .br .nm{font-size:16px;font-weight:600}
+.dimmer{position:absolute;inset:0;background:rgba(0,0,0,.28);z-index:2}
+.sheet{position:absolute;top:58px;left:0;right:0;bottom:0;background:var(--i-sheet);border-radius:38px 38px 0 0;overflow:hidden;z-index:3;--ring:var(--i-sheet);box-shadow:0 -1px 0 rgba(0,0,0,.04)}
+.full .sheet{position:relative;top:0;margin-top:58px;min-height:794px}
+.full .behind,.full .dimmer{bottom:auto;height:852px}
+.grab{position:absolute;top:6px;left:50%;transform:translateX(-50%);width:36px;height:5px;border-radius:3px;background:var(--faint);z-index:3}
+.xbtn{position:absolute;top:14px;right:16px;width:32px;height:32px;border-radius:50%;background:var(--i-glass);display:grid;place-items:center;color:var(--muted);z-index:3}
+.xbtn svg.i{width:15px;height:15px;stroke-width:2.4}
+.sheet-scroll{position:absolute;inset:0;overflow-y:auto;scrollbar-width:none}
+.sheet-scroll::-webkit-scrollbar{display:none}
+.full .sheet-scroll{position:relative}
+
+/* Profile (shared) */
+.pv{position:relative;margin:0 auto;width:100%;max-width:420px;padding:40px 24px 40px}
+.wash{position:absolute;left:0;right:0;top:0;height:380px;pointer-events:none;
+  background:radial-gradient(90% 100% at 50% 0%,color-mix(in oklab,var(--seed) var(--seed-mix),transparent) 0%,color-mix(in oklab,var(--seed) calc(var(--seed-mix) * .45),transparent) 38%,transparent 78%)}
+.hd{display:flex;flex-direction:column;align-items:center;text-align:center;position:relative}
+.hd h2{margin:12px 0 0;max-width:100%;font-size:19px;font-weight:600;line-height:28px;letter-spacing:-.01em}
+.hd .st{font-size:13px;line-height:20px;color:var(--mfg2,var(--muted));max-width:100%}
+.hd .st.online{color:var(--green)}
+.hd .st.accent{color:var(--tint)}
+.tiles{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px;margin-top:24px;position:relative}
+.slot{position:relative}
+.tile{width:100%;height:62px;border-radius:12px;background:var(--tilebg);color:var(--tint);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:12.5px;font-weight:500;line-height:16px;text-align:center}
+.tile:hover{background:var(--tilebg-h,var(--tilebg))}
+.tile svg.i{width:20px;height:20px}
+.menu{position:absolute;right:0;top:68px;z-index:10;min-width:176px;border-radius:10px;padding:4px;background:var(--m-menu);border:1px solid var(--m-menu-line);box-shadow:var(--pop);color:var(--m-fg)}
+.menu button{display:flex;width:100%;height:32px;align-items:center;gap:8px;padding:0 10px;border-radius:7px;font-size:13px}
+.menu button:not(:disabled):hover{background:var(--m-tile-h)}
+.menu button:disabled{color:var(--m-fg3)}
+.menu button.danger{color:var(--red)}
+.menu svg.i{width:16px;height:16px}
+.menu hr{border:0;border-top:1px solid var(--m-menu-line);margin:4px 6px}
+.sec{font-size:12px;line-height:16px;color:var(--muted);margin:20px 4px 6px;display:flex;align-items:center;gap:3px}
+.sec button{display:inline-flex;align-items:center;gap:2px;color:inherit}
+.sec svg.i{width:13px;height:13px;stroke-width:2.2}
+.card{background:var(--cardbg);border-radius:12px;margin-top:20px;position:relative}
+.sec + .card{margin-top:0}
+.card.after{margin-top:12px}
+.row{display:flex;align-items:center;gap:12px;padding:10px 16px;min-height:52px;position:relative;width:100%;text-align:left}
+.row + .row::before{content:"";position:absolute;top:0;right:0;left:var(--inset,16px);height:1px;background:var(--rowline)}
+button.row:hover,.row.click:hover{background:var(--rowhover)}
+.card > .row:first-child{border-radius:12px 12px 0 0}.card > .row:last-child{border-bottom-left-radius:12px;border-bottom-right-radius:12px}
+.row .grow{flex:1;min-width:0}
+.row .v{font-size:14px;line-height:20px;overflow-wrap:anywhere}
+.row .v.accent{color:var(--tint)}
+.row .c{font-size:12px;line-height:16px;color:var(--muted)}
+.row .chev{color:var(--faint)}
+.row .chev svg.i{width:15px;height:15px;stroke-width:2.2}
+.iconbtn{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--muted);flex:none}
+.iconbtn:hover{background:var(--rowhover);color:var(--text)}
+.iconbtn svg.i{width:16px;height:16px}
+.srow{min-height:44px;padding:0 14px 0 16px;--inset:46px}
+.srow .ic{color:var(--muted)}
+.srow .ic svg.i{width:18px;height:18px}
+.srow .lb{flex:1;min-width:0;font-size:14px}
+.srow .n{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.srow.zero .lb{color:var(--muted)}
+.srow.zero .n{color:var(--faint)}
+.srow.empty{justify-content:flex-start;color:var(--muted);font-size:14px}
+.gav{display:flex;align-items:center;margin-right:2px}
+.gav .av{width:20px;height:20px;font-size:9px;box-shadow:0 0 0 1.5px var(--ring-card,var(--ring))}
+.gav .av + .av{margin-left:-6px}
+.cg{padding:12px 16px 14px;display:flex;flex-direction:column;gap:10px}
+.cgr{display:flex;align-items:flex-start;gap:10px}
+.cgr .lb{width:86px;flex:none;font-size:12px;line-height:24px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.chip{font-size:12px;line-height:16px;padding:4px 10px;border-radius:999px;background:var(--chip);color:var(--chip-text);white-space:nowrap}
+.danger-row{color:var(--red);height:44px;min-height:44px;padding:0 16px;font-size:14px}
+.danger-row svg.i{width:18px;height:18px}
+.danger-row:hover{background:var(--dangerhover)}
+
+/* Mac skin */
+.m-pane .pv{--tilebg:var(--m-tile);--tilebg-h:var(--m-tile-h);--cardbg:var(--m-card);--rowline:var(--m-line);--rowhover:var(--m-tile);--mfg2:var(--m-fg2);--dangerhover:color-mix(in oklab,var(--red) 10%,transparent)}
+.m-pane .wash{height:340px}
+
+/* iPhone skin: flat Settings-sheet rows on the sheet background, not inset cards */
+.sheet .pv{max-width:none;padding:52px 0 44px;--tilebg:var(--i-tile);--cardbg:transparent;--rowline:var(--i-line);--rowhover:var(--i-tile);--dangerhover:var(--i-tile)}
+.sheet .wash{height:380px}
+.sheet .hd,.sheet .tiles{margin-left:20px;margin-right:20px}
+.sheet .hd h2{font-size:22px;line-height:28px;margin-top:14px}
+.sheet .hd .st{font-size:15px;line-height:21px}
+.sheet .tile{font-size:12.5px}
+.sheet .card{border-radius:0;margin-top:24px}
+.sheet .sec + .card{margin-top:0}
+.sheet .card.after{margin-top:24px}
+.sheet .card > .row{border-radius:0}
+.sheet .row{padding-left:20px;padding-right:16px;--inset:20px}
+.sheet .row .v{font-size:16px;line-height:21px}
+.sheet .row .c{font-size:13px;line-height:17px}
+.sheet .srow{min-height:48px;--inset:52px}
+.sheet .srow .lb{font-size:16px}
+.sheet .srow .n{font-size:15px}
+.sheet .sec{margin:28px 20px 6px;font-size:13px}
+.sheet .danger-row{height:48px;font-size:16px;padding-left:20px}
+.sheet .cg{padding:10px 20px 6px}
+.sheet .cgr .lb{width:80px;font-size:13px}
+.sheet .menu{right:0}
+</style>
+</head>
+<body>
+<div class="bar" id="bar">
+  <strong>Contact profile</strong>
+  <label>Platform<span class="seg" data-key="platform"><button data-v="both">Both</button><button data-v="mac">Mac</button><button data-v="ios">iPhone</button></span></label>
+  <label>Theme<span class="seg" data-key="theme"><button data-v="light">Light</button><button data-v="dark">Dark</button></span></label>
+  <label>State<span class="seg" data-key="state"><button data-v="current">Current</button><button data-v="person-online">Online</button><button data-v="person-offline">Offline</button><button data-v="person-new">New contact</button><button data-v="common-ground">Common ground</button><button data-v="agent">Agent</button><button data-v="own-agent">Own agent</button><button data-v="system">System</button></span></label>
+  <label>Height<span class="seg" data-key="fit"><button data-v="window">Window</button><button data-v="full">Full length</button></span></label>
+</div>
+<div class="stage" id="stage"></div>
+<footer>Design proposal · Synthetic data · <a href="https://github.com/Kordi-Lab/Kordi/issues/1945">Issue #1945</a></footer>
+<script>
+const I={
+  msg:'<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+  bell:'<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
+  belloff:'<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M17 17H4a1 1 0 0 1-.74-1.673C4.59 13.956 6 12.499 6 8a6 6 0 0 1 .258-1.742"/><path d="m2 2 20 20"/><path d="M8.668 3.01A6 6 0 0 1 18 8c0 2.687.77 4.653 1.707 6.05"/>',
+  share:'<path d="M12 2v13"/><path d="m16 6-4-4-4 4"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>',
+  more:'<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  gear:'<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  copy:'<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  trash:'<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/>',
+  chev:'<path d="m9 18 6-6-6-6"/>',
+  image:'<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+  link:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  doc:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>',
+  users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  x:'<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  ban:'<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+  flag:'<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
+  search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'
+};
+const ic=k=>`<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${I[k]}</svg>`;
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+/* Synthetic people */
+const PEOPLE={
+  nadia:{name:"Nadia",ini:"N",seed:"#d9627f"},
+  priya:{name:"Priya",ini:"P",seed:"#2a9d8f"},
+  nagent:{name:"Nadia’s agent",ini:"NA",seed:"#847ac4"},
+  mine:{name:"My Kordi",ini:"MK",seed:"#2563eb"},
+  support:{name:"Kordi Support",ini:"K",seed:"#5b6270"},
+  g1:{ini:"R",seed:"#e08a3c"},g2:{ini:"L",seed:"#3c8de0"}
+};
+const SHARED_NADIA=[["image","Photos and files",24],["link","Links",9],["doc","Documents",3],["users","Groups in common",2]];
+const STATES={
+  current:{who:"nadia",online:true,baseline:true,id:"@482 731 906"},
+  "person-online":{who:"nadia",online:true,status:"online",id:"@482 731 906",about:"Robotics PhD at KAUST. Building a tabletop manipulation lab.",agent:"nagent",since:"12 Aug 2026",tiles:["msg","mute","share","more"],shared:SHARED_NADIA,del:true},
+  "person-offline":{who:"priya",status:"last seen today at 13:09",id:"@315 208 774",since:"3 Oct 2026",tiles:["msg","mute","share","more"],shared:[["image","Photos and files",4],["link","Links",0],["doc","Documents",0],["users","Groups in common",1]],del:true},
+  "person-new":{who:"priya",status:"last seen 3 days ago",id:"@315 208 774",since:"20 Oct 2026",tiles:["msg","mute","share","more"],shared:[["image","Photos and files",0],["link","Links",0],["doc","Documents",0],["users","Groups in common",0]],del:true},
+  "common-ground":{who:"nadia",online:true,status:"online",id:"@482 731 906",about:"Robotics PhD at KAUST. Building a tabletop manipulation lab.",agent:"nagent",since:"12 Aug 2026",tiles:["msg","mute","share","more"],shared:SHARED_NADIA,cg:true,del:true},
+  agent:{who:"nagent",status:"Agent · owned by Nadia",id:"@482 731 907",type:"Agent",owner:"nadia",tiles:["msg","share","more"],shared:[["image","Photos and files",6],["link","Links",2],["doc","Documents",5],["users","Groups in common",1]],del:true},
+  "own-agent":{who:"mine",status:"Your agent",statusAccent:false,id:"@700 112 450",type:"Agent",tiles:["msg","settings","more"],ownMenu:true},
+  system:{who:"support",status:"Kordi",about:"Help with your account and the app.",tiles:["msg"]}
+};
+const CG=[["Working on",["tabletop manipulation","sim-to-real"]],["Can help",["grant writing","lab setup"]],["Looking for",["robot datasets","co-authors"]]];
+
+const DEFAULTS={platform:"both",theme:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light",state:"person-online",fit:"window"};
+const ALLOWED={platform:["both","mac","ios"],theme:["light","dark"],state:Object.keys(STATES),fit:["window","full"]};
+const q=new URLSearchParams(location.search);const S={};
+for(const k in DEFAULTS){const v=q.get(k);S[k]=ALLOWED[k].includes(v)?v:DEFAULTS[k];}
+const UI={muted:false,menu:null,copied:null};
+
+function av(p,size,opts={}){
+  const fs=Math.round(size*(p.ini.length>1?.36:.42));
+  return `<span class="av ${opts.cls||""}" style="--seed:${p.seed};width:${size}px;height:${size}px;font-size:${fs}px" aria-hidden="true">${esc(p.ini)}${opts.dot?'<i class="pd"></i>':""}</span>`;
+}
+function tile(key,where,st){
+  const T={msg:["msg","Message"],mute:UI.muted?["belloff","Unmute"]:["bell","Mute"],share:["share","Share"],settings:["gear","Settings"],more:["more","More"]}[key];
+  const btn=`<button class="tile" data-act="${key}" data-where="${where}"${key==="more"?` aria-haspopup="menu" aria-expanded="${UI.menu===where}"`:""}>${ic(T[0])}<span>${T[1]}</span></button>`;
+  if(key!=="more")return btn;
+  let menu="";
+  if(UI.menu===where){
+    if(st.baseline)menu=`<button class="danger" data-act="delete">${ic("trash")}Delete contact</button>`;
+    else if(st.ownMenu)menu=`<button disabled>${ic("share")}Share</button>`;
+    else menu=`<button disabled>${ic("ban")}Block</button><button disabled>${ic("flag")}Report</button><hr><button class="danger" data-act="delete">${ic("trash")}Delete contact</button>`;
+    menu=`<div class="menu" role="menu">${menu}</div>`;
+  }
+  return `<div class="slot">${btn}${menu}</div>`;
+}
+function infoRow(value,caption,{accent,trailing,lead,click}={}){
+  return `<div class="row${click?" click":""}">${lead||""}<div class="grow"><div class="v${accent?" accent":""}">${value}</div><div class="c">${caption}</div></div>${trailing||""}</div>`;
+}
+const chev=`<span class="chev">${ic("chev")}</span>`;
+function copyBtn(where){const done=UI.copied===where;return `<button class="iconbtn" data-act="copy" data-where="${where}" aria-label="${done?"Copied":"Copy Kordi ID"}" title="${done?"Copied":"Copy Kordi ID"}">${ic(done?"check":"copy")}</button>`;}
+
+function profile(where){
+  const st=STATES[S.state],p=PEOPLE[st.who];
+  const parts=[];
+  const wash=`<div class="wash" style="--seed:${p.seed}"></div>`;
+  if(st.baseline){
+    parts.push(`<div class="hd">${av(p,96,{dot:st.online,cls:"today"})}<h2 class="ell">${esc(p.name)}</h2><div class="st accent">online</div></div>`);
+    parts.push(`<div class="tiles">${tile("msg",where,st)}${tile("more",where,st)}</div>`);
+    parts.push(`<div class="card">${infoRow(st.id,"Kordi ID",{accent:true,trailing:copyBtn(where)})}</div>`);
+    parts.push(`<div class="card after"><button class="row danger-row" data-act="delete">${ic("trash")}Delete contact</button></div>`);
+    return `<div class="pv">${parts.join("")}</div>`; /* today's pane has no header wash */
+  }
+  parts.push(`<div class="hd">${av(p,96,{dot:st.online})}<h2 class="ell">${esc(p.name)}</h2><div class="st ell${st.online?" online":""}">${esc(st.status)}</div></div>`);
+  parts.push(`<div class="tiles">${st.tiles.map(t=>tile(t,where,st)).join("")}</div>`);
+  const rows=[];
+  if(st.id)rows.push(infoRow(st.id,"Kordi ID",{accent:true,trailing:copyBtn(where)}));
+  if(st.about)rows.push(infoRow(esc(st.about),"About"));
+  if(st.type)rows.push(infoRow(st.type,"Type"));
+  if(st.agent){const a=PEOPLE[st.agent];rows.push(infoRow(esc(a.name),"Their agent",{lead:av(a,28),trailing:chev,click:true}));}
+  if(st.owner){const o=PEOPLE[st.owner];rows.push(infoRow(esc(o.name),"Owner",{lead:av(o,28),trailing:chev,click:true}));}
+  if(st.since)rows.push(infoRow(st.since,"Contact since"));
+  if(rows.length)parts.push(`<div class="card">${rows.join("")}</div>`);
+  if(st.shared){
+    const all0=st.shared.every(r=>r[2]===0);
+    const body=all0?`<div class="row srow empty">Nothing shared yet</div>`:st.shared.map(([k,l,n])=>{
+      const g=k==="users"&&n>0?`<span class="gav">${av(PEOPLE.g1,20)}${n>1?av(PEOPLE.g2,20):""}</span>`:"";
+      return `<button class="row srow${n===0?" zero":""}"><span class="ic">${ic(k)}</span><span class="lb ell">${l}</span>${g}<span class="n">${n}</span>${chev}</button>`;
+    }).join("");
+    parts.push(`<div class="sec">Shared with you</div><div class="card">${body}</div>`);
+  }
+  if(st.cg){
+    parts.push(`<div class="sec"><button>Common ground${ic("chev")}</button></div><div class="card"><div class="cg">${CG.map(([l,cs])=>`<div class="cgr"><span class="lb">${l}</span><span class="chips">${cs.slice(0,2).map(c=>`<span class="chip">${esc(c)}</span>`).join("")}</span></div>`).join("")}</div></div>`);
+  }
+  if(st.del)parts.push(`<div class="card after"><button class="row danger-row" data-act="delete">${ic("trash")}Delete contact</button></div>`);
+  return wash+`<div class="pv">${parts.join("")}</div>`;
+}
+
+const LIST=[["mine","Your agent"],["support","Kordi"],["nadia","online"],["nagent","Agent"],["priya","last seen today at 13:09"]];
+function mac(){
+  const who=STATES[S.state].who;
+  const st=STATES[S.state];
+  const rows=LIST.map(([k,sub])=>{const p=PEOPLE[k];const on=k===who;if(on&&st.status)sub=st.status;
+    return `<div class="m-row ${on?"on":"dim"}">${av(p,32,{dot:k==="nadia",cls:"sm"})}<div class="grow" style="min-width:0"><div class="nm ell">${esc(p.name)}</div><div class="sub ell${k==="nadia"?" online":""}">${esc(sub)}</div></div></div>`;}).join("");
+  return `<section aria-label="Mac contact pane"><div class="mac">
+    <aside class="m-list"><div class="m-lights"><i></i><i></i><i></i></div><div class="m-title">Contacts</div><div class="m-search">${ic("search")}Search</div>${rows}</aside>
+    <section class="m-pane">${profile("mac")}</section></div></section>`;
+}
+function ios(){
+  const rows=["mine","support","nadia","nagent","priya"].map(k=>{const p=PEOPLE[k];return `<div class="br">${av(p,40)}<span class="nm">${esc(p.name)}</span></div>`;}).join("");
+  return `<section aria-label="iPhone contact sheet"><div class="phone"><div class="island"></div>
+    <div class="sbar"><span>9:41</span><span class="batt"></span></div>
+    <div class="behind"><h3>Contacts</h3>${rows}</div><div class="dimmer"></div>
+    <div class="sheet"><div class="grab"></div><button class="xbtn" aria-label="Close">${ic("x")}</button><div class="sheet-scroll">${profile("ios")}</div></div>
+  </div></section>`;
+}
+function render(){
+  document.documentElement.dataset.theme=S.theme;
+  const stage=document.getElementById("stage");
+  stage.classList.toggle("full",S.fit==="full");
+  stage.innerHTML=(S.platform!=="ios"?mac():"")+(S.platform!=="mac"?ios():"");
+  document.querySelectorAll(".seg").forEach(seg=>seg.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===S[seg.dataset.key]))));
+  history.replaceState(null,"","?"+new URLSearchParams(S).toString());
+}
+document.getElementById("bar").addEventListener("click",e=>{
+  const b=e.target.closest("button");if(!b)return;
+  S[b.closest(".seg").dataset.key]=b.dataset.v;UI.menu=null;render();
+});
+document.getElementById("stage").addEventListener("click",e=>{
+  const b=e.target.closest("[data-act]");
+  if(!b){if(UI.menu&&!e.target.closest(".menu")){UI.menu=null;render();}return;}
+  const a=b.dataset.act,w=b.dataset.where;
+  if(a==="more"){UI.menu=UI.menu===w?null:w;}
+  else{UI.menu=null;
+    if(a==="mute")UI.muted=!UI.muted;
+    if(a==="copy"){UI.copied=w;setTimeout(()=>{UI.copied=null;render();},1500);}
+  }
+  render();
+});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&UI.menu){UI.menu=null;render();}});
+render();
+</script>
+</body>
+</html>
