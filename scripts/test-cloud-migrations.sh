@@ -65,6 +65,7 @@ tests=(
   common_ground_tests::upgrade_from_133_adds_common_ground
   common_ground_tests::upgrade_from_136_adds_matching_runs_and_room_themes
   common_ground_tests::upgrade_from_137_adds_room_invitations
+  common_ground_tests::upgrade_from_138_adds_group_topics
 )
 index=0
 for test_name in "${tests[@]}"; do

@@ -154,8 +154,8 @@ export function readmeTitleHtml() {
   return `<!doctype html>
 <html><head><meta charset="utf-8"><style>
   @font-face { font-family: 'Kordi Rounded'; src: url('file:///System/Library/Fonts/SFNSRounded.ttf'); font-weight: 1 1000; }
-  html, body { margin: 0; width: 1774px; height: 887px; background: #ffffff; }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 44px; padding-bottom: 36px; box-sizing: border-box;
+  html, body { margin: 0; width: 1774px; height: 470px; background: #ffffff; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 44px; padding-bottom: 50px; box-sizing: border-box;
     font-family: 'Kordi Rounded', ui-rounded, system-ui, sans-serif; color: ${INK}; }
   .lockup { display: flex; align-items: center; gap: 40px; transform: translateX(-16px); }
   .bird { width: 400px; height: 400px; margin: -40px 0 -40px -24px; transform: translateY(2px); }
