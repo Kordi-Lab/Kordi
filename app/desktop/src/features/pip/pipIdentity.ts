@@ -22,3 +22,13 @@ export function isPipIdentity(identity: { humanId?: string | null; agentId?: str
 export function isPipAccountId(accountId: string | null | undefined): boolean {
   return accountId?.trim() === KORDI_PIP_ACCOUNT_ID;
 }
+
+/** Server notices in group chats (introductions, joins) show as System with a gray Kordi bird,
+ * whichever built-in account posted them. */
+export const KORDI_SYSTEM_NOTICE_KIND = 'system-notice';
+export const KORDI_SYSTEM_NAME = 'System';
+export const KORDI_SYSTEM_AVATAR_URL = '/kordi-system-avatar.svg';
+
+export function isSystemAvatarUrl(url: string | null | undefined): boolean {
+  return url?.trim() === KORDI_SYSTEM_AVATAR_URL;
+}

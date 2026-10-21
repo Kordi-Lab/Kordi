@@ -5,6 +5,7 @@
 @import './styles/chat-theme-tokens.css';
 @import './styles/shell.css';
 @import './styles/shell-contacts.css';
+@import './styles/shell-contact-profile.css';
 @import './styles/shell-navigation.css';
 @import './styles/shell-composer.css';
 @import './styles/shell-expressive-picker.css';
@@ -13,6 +14,7 @@
 @import './styles/shell-popovers.css';
 @import './styles/model-effort-picker.css';
 @import './styles/shell-profile-popovers.css';
+@import './styles/shell-contact-shared-pages.css';
 @import './styles/shell-group-invitations.css';
 @import './styles/document-reader.css';
 @import './styles/document-blocks.css';

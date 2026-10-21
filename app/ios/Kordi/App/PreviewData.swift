@@ -168,7 +168,7 @@ enum PreviewData {
             "person:acct_kordi_support": [
                 ChatMessage(id: "support1", conversationId: "person:acct_kordi_support", author: .person, authorName: KordiSupportIdentity.displayName, text: "Welcome to Kordi.", createdAt: now.addingTimeInterval(-25), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
             ],
-            "person:acct_maya": mayaConversation(now: now, resurrected: showsDeleteResurrection),
+            "person:acct_maya": contactProfileSharedMessages(now: now) + mayaConversation(now: now, resurrected: showsDeleteResurrection),
             "person:acct_ethan": [
                 ChatMessage(
                     id: "ethan1",

@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Check, LoaderCircle, MessageCircle, Trash2, X } from 'lucide-react';
+import { Ban, Check, Flag, LoaderCircle, MessageCircle, Share, Trash2, X } from 'lucide-react';
 
 import { formatKordiHandle } from '@/features/cloud/kordiId';
+import { defaultAgentDisplayName } from '@/lib/identityLabels';
 import { formatDesktopContactRequestTimeLabel } from '@/lib/time';
-import { cn } from '@/lib/utils';
 import { IdentityAvatar } from '../components/IdentityAvatar';
 import {
   contactCanBeRemoved,
@@ -16,12 +16,20 @@ import {
   isOutgoingContactRequest,
 } from '../contactPresentation';
 import type { Contact, ContactRequest } from '../types';
-import { CopyButton, DetailHeader, DetailTile, DetailTiles, InfoCard, MoreTile, type InfoCardRow } from './ContactDetailParts';
+import { CopyButton, DetailHeader, DetailTile, DetailTiles, InfoCard, type InfoCardRow } from './ContactDetailParts';
+import { CommonGroundCard, DeleteContactCard, SharedWithYouCard, SharedWithYouLoading } from './ContactProfileCards';
+import { contactProfileKind, formatContactSince, type ContactProfileKind } from './contactProfileHost';
+import { MenuTile, MuteTile, SettingsTile, ShareTile, type TileMenuItem } from './ContactProfileTiles';
 import type { ContactsPageProps } from './contactsPageTypes';
+import { useContactProfile, type ContactProfileState } from './useContactProfile';
 import type { ContactRequestActions } from './useContactsPageState';
 import { usePresenceNow } from './usePresenceNow';
+import { useContactSharedPages } from './useContactSharedPages';
 
-type ContactDetailPaneProps = Pick<ContactsPageProps, 'activeContact' | 'activeContactRequest' | 'onCloseOverlay' | 'onMessageContact' | 'onRemoveContact'> & {
+type ContactDetailPaneProps = Pick<ContactsPageProps,
+  | 'activeContact' | 'activeContactRequest' | 'onCloseOverlay' | 'onMessageContact' | 'onRemoveContact'
+  | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings' | 'sharedConversationFor'
+> & {
   mode: 'contact' | 'request';
   requestActions: ContactRequestActions;
 };
@@ -38,76 +46,102 @@ function kordiIdRow(handle: string): InfoCardRow {
   };
 }
 
-function DeleteConfirm({
-  removeState,
-  removeError,
-  onCancel,
-  onDelete,
-}: {
-  removeState: 'idle' | 'saving' | 'error';
-  removeError: string;
-  onCancel: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="app-contacts-confirm mt-2 rounded-[12px] px-3.5 py-3" role="group" aria-label="Delete contact">
-      <div
-        className={cn('text-[12.5px] leading-[18px]', removeState === 'error' ? 'app-error-text app-contacts-error' : 'app-contacts-muted')}
-        aria-live="polite"
-      >
-        {removeState === 'error'
-          ? removeError || 'Unable to delete contact.'
-          : 'Deleting removes both contact directions. They will need approval before messages can reach you again.'}
-      </div>
-      <div className="mt-2.5 flex justify-end gap-1.5">
-        <button
-          type="button"
-          className="app-contacts-quiet-action inline-flex h-7 items-center rounded-[7px] px-3 text-[12.5px] font-medium"
-          onClick={onCancel}
-          disabled={removeState === 'saving'}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          className="app-contacts-danger-fill inline-flex h-7 items-center gap-1.5 rounded-[7px] px-3 text-[12.5px] font-semibold disabled:pointer-events-none disabled:opacity-50"
-          onClick={onDelete}
-          disabled={removeState === 'saving'}
-        >
-          {removeState === 'saving' ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />Deleting…</> : 'Delete'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ContactDetailBody({
-  contact,
-  onCloseOverlay,
-  onMessageContact,
-  onRemoveContact,
-}: {
+export type ContactDetailBodyProps = Pick<ContactsPageProps,
+  'onMessageContact' | 'onRemoveContact' | 'contactProfileHost' | 'contactMute' | 'onOpenAgentSettings' | 'sharedConversationFor'
+> & {
   contact: Contact;
   onCloseOverlay: () => void;
-  onMessageContact?: (contact: Contact) => void;
-  onRemoveContact?: (contact: Contact) => Promise<void> | void;
-}) {
+  /** False inside the contact's own chat, where a Message tile would lead back to the same place. */
+  showMessageTile?: boolean;
+};
+
+function avatarLead(kind: 'agent' | 'human', seed: string, name: string, imageUrl: string | null) {
+  return <IdentityAvatar kind={kind} seed={seed} name={name} imageUrl={imageUrl} cornerRadius="50%" className="h-7 w-7 shrink-0" />;
+}
+
+function headerLineFor(contact: Contact, kind: ContactProfileKind, state: ContactProfileState, presenceLine: string, handle: string | null) {
+  const profile = state.profile;
+  if (kind === 'own-agent' && state.status !== 'unavailable') return 'Your agent';
+  if (kind === 'agent' && profile?.owner) return `Agent · owned by ${profile.owner.displayName}`;
+  return presenceLine && presenceLine !== handle && presenceLine !== contact.name ? presenceLine : '';
+}
+
+/** The row's presence, replaced by the profile's once it loads. */
+function withProfilePresence(contact: Contact, state: ContactProfileState): Contact {
+  const presence = state.profile?.presence;
+  return presence ? { ...contact, presenceStatus: presence.status, presenceLastSeenAt: presence.lastSeenAt } : contact;
+}
+
+/** The contact profile: header, tiles, info card, shared and common ground cards, and Delete. */
+export function ContactDetailBody({
+  contact: row, onCloseOverlay, onMessageContact, onRemoveContact, contactProfileHost, contactMute, onOpenAgentSettings, sharedConversationFor,
+  showMessageTile = true,
+}: ContactDetailBodyProps) {
   const now = usePresenceNow();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [removeState, setRemoveState] = useState<'idle' | 'saving' | 'error'>('idle');
   const [removeError, setRemoveError] = useState('');
+  const state = useContactProfile(row, contactProfileHost);
+  const shared = useContactSharedPages(row, sharedConversationFor);
+  const profile = state.profile;
+  const contact = withProfilePresence(row, state);
+  // The richer layout shows whenever the server can serve a profile; the request only fills cards.
+  const rich = state.status !== 'unavailable';
+  const kind = contactProfileKind(contact, profile);
+  const isAgent = isAgentContact(contact) || kind === 'agent';
   const presenceStatus = contactPresenceStatus(contact);
   const detailBody = contactDetailBodyText(contact);
-  const handle = contactKordiHandle(contact);
-  const isAgent = isAgentContact(contact);
+  const handle = formatKordiHandle(profile?.kordiId ?? '') || contactKordiHandle(contact);
   const secondaryLine = contactSecondaryLine(contact, now);
-  const headerLine = secondaryLine.text && secondaryLine.text !== handle && secondaryLine.text !== contact.name ? secondaryLine.text : '';
+  const headerLine = headerLineFor(contact, kind, state, secondaryLine.text, handle);
   const canRemove = Boolean(onRemoveContact && contactCanBeRemoved(contact));
   const canMessage = Boolean(onMessageContact && contact.sourceHostId && contact.sourceParticipantId);
+  const openChat = canMessage ? () => onMessageContact?.(contact) : undefined;
+  const about = profile?.about ?? (detailBody && detailBody !== headerLine ? detailBody : '');
   const rows: InfoCardRow[] = [];
   if (handle) rows.push(kordiIdRow(handle));
-  if (detailBody && detailBody !== headerLine) rows.push({ key: 'about', value: detailBody, caption: 'About' });
+  if (about) rows.push({ key: 'about', value: about, caption: 'About' });
   if (isAgent) rows.push({ key: 'type', value: 'Agent', caption: 'Type' });
+  const agent = profile?.defaultAgent;
+  if (agent) {
+    const openAgent = contactProfileHost?.openAgentChat;
+    rows.push({
+      key: 'agent',
+      // A stock "Kordi" agent reads as "<owner>'s Kordi", as in chats.
+      value: defaultAgentDisplayName(profile?.displayName ?? contact.name, agent.displayName),
+      caption: 'Their agent',
+      lead: avatarLead('agent', agent.avatarSeed ?? agent.agentId, agent.displayName || 'Kordi', agent.avatarUrl),
+      onClick: openAgent ? () => openAgent(agent, contact) : undefined,
+    });
+  }
+  const owner = profile?.owner;
+  if (owner) {
+    const ownerContact = contactProfileHost?.contactForAccount?.(owner.accountId) ?? null;
+    const select = contactProfileHost?.selectContact;
+    rows.push({
+      key: 'owner',
+      value: owner.displayName,
+      caption: 'Owner',
+      lead: avatarLead('human', owner.accountId, owner.displayName, owner.avatarUrl),
+      onClick: ownerContact && select ? () => select(ownerContact) : undefined,
+    });
+  }
+  const since = formatContactSince(profile?.contactSince);
+  if (since) rows.push({ key: 'since', value: since, caption: 'Contact since' });
+
+  const muted = contactMute?.isMuted(contact) ?? null;
+  const deleteItem: TileMenuItem[] = canRemove
+    ? [{ kind: 'item', key: 'delete', label: 'Delete contact', icon: <Trash2 className="h-4 w-4" aria-hidden="true" />, danger: true, onSelect: () => setIsConfirmOpen(true) }]
+    : [];
+  const menuItems: TileMenuItem[] = !rich ? deleteItem : kind === 'own-agent'
+    ? [{ kind: 'item', key: 'share', label: 'Share', icon: <Share className="h-4 w-4" aria-hidden="true" />, disabled: true }]
+    : [
+        { kind: 'item', key: 'block', label: 'Block', icon: <Ban className="h-4 w-4" aria-hidden="true" />, disabled: true },
+        { kind: 'item', key: 'report', label: 'Report', icon: <Flag className="h-4 w-4" aria-hidden="true" />, disabled: true },
+        ...(deleteItem.length ? [{ kind: 'separator' as const, key: 'sep' }, ...deleteItem] : []),
+      ];
+  const showMenu = menuItems.length > 0 && (rich ? kind !== 'system' : canRemove);
+  const showShared = rich && (kind === 'person' || kind === 'agent');
 
   const submitRemoveContact = async () => {
     if (!canRemove || removeState === 'saving') return;
@@ -122,8 +156,11 @@ function ContactDetailBody({
     }
   };
 
+  if (shared.page) return shared.page;
+
   return (
     <>
+      {rich ? <div className="app-contacts-detail-wash pointer-events-none absolute top-0" aria-hidden="true" /> : null}
       <DetailHeader
         avatar={(
           <IdentityAvatar
@@ -139,43 +176,48 @@ function ContactDetailBody({
         )}
         name={contact.name}
         line={headerLine}
-        lineAccent={secondaryLine.online}
+        lineAccent={secondaryLine.online && headerLine === secondaryLine.text}
       />
       <DetailTiles>
-        <DetailTile
-          icon={<MessageCircle className="h-5 w-5" aria-hidden="true" />}
-          label="Message"
-          onClick={() => onMessageContact?.(contact)}
-          disabled={!canMessage}
-        />
-        {canRemove ? <MoreTile onDelete={() => setIsConfirmOpen(true)} /> : null}
+        {showMessageTile ? (
+          <DetailTile
+            icon={<MessageCircle className="h-5 w-5" aria-hidden="true" />}
+            label="Message"
+            onClick={() => onMessageContact?.(contact)}
+            disabled={!canMessage}
+          />
+        ) : null}
+        {rich && kind === 'person' ? (
+          <MuteTile muted={muted} onToggle={contactMute && muted !== null ? () => { void contactMute.setMuted(contact, !muted); } : undefined} />
+        ) : null}
+        {rich && kind === 'own-agent' ? <SettingsTile onOpen={onOpenAgentSettings} /> : null}
+        {rich && (kind === 'person' || kind === 'agent') ? <ShareTile handle={handle} /> : null}
+        {showMenu ? <MenuTile items={menuItems} /> : null}
       </DetailTiles>
       <InfoCard rows={rows} />
+      {showShared && state.status === 'loading' ? <SharedWithYouLoading /> : null}
+      {showShared && profile ? (
+        <SharedWithYouCard
+          shared={profile.shared}
+          local={shared.counts}
+          onOpenPage={shared.open}
+          onOpenChat={openChat}
+          onOpenGroup={contactProfileHost?.openGroup}
+        />
+      ) : null}
+      {profile?.commonGround ? <CommonGroundCard card={profile.commonGround} /> : null}
       {canRemove ? (
-        <>
-          <div className="app-contacts-card mt-3 rounded-[12px]">
-            <button
-              type="button"
-              className="app-contacts-card-action flex h-11 w-full items-center gap-3 rounded-[12px] px-4 text-left text-[14px]"
-              aria-expanded={isConfirmOpen || removeState === 'error'}
-              onClick={() => setIsConfirmOpen(true)}
-            >
-              <Trash2 className="h-[18px] w-[18px]" aria-hidden="true" />
-              Delete contact
-            </button>
-          </div>
-          {isConfirmOpen || removeState === 'error' ? (
-            <DeleteConfirm
-              removeState={removeState}
-              removeError={removeError}
-              onCancel={() => {
-                setIsConfirmOpen(false);
-                setRemoveState('idle');
-              }}
-              onDelete={() => { void submitRemoveContact(); }}
-            />
-          ) : null}
-        </>
+        <DeleteContactCard
+          confirmOpen={isConfirmOpen}
+          removeState={removeState}
+          removeError={removeError}
+          onOpenConfirm={() => setIsConfirmOpen(true)}
+          onCancel={() => {
+            setIsConfirmOpen(false);
+            setRemoveState('idle');
+          }}
+          onDelete={() => { void submitRemoveContact(); }}
+        />
       ) : null}
     </>
   );
@@ -269,6 +311,10 @@ export function ContactDetailContent({
   onCloseOverlay,
   onMessageContact,
   onRemoveContact,
+  contactProfileHost,
+  contactMute,
+  onOpenAgentSettings,
+  sharedConversationFor,
   requestActions,
 }: ContactDetailPaneProps) {
   if (mode === 'request' && !activeContactRequest) return null;
@@ -291,6 +337,10 @@ export function ContactDetailContent({
           onCloseOverlay={onCloseOverlay}
           onMessageContact={onMessageContact}
           onRemoveContact={onRemoveContact}
+          contactProfileHost={contactProfileHost}
+          contactMute={contactMute}
+          onOpenAgentSettings={onOpenAgentSettings}
+          sharedConversationFor={sharedConversationFor}
         />
       ) : activeContactRequest ? (
         <ContactRequestDetailBody request={activeContactRequest} requestActions={requestActions} />

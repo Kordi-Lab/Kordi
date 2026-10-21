@@ -38,7 +38,7 @@ pub(super) async fn fresh_results(
 
 /// The last stored result for `viewer` with each of `others`, whatever card
 /// revisions it was computed from. A closed room shows these as they were.
-pub(super) async fn stored_results(
+pub(in crate::common_ground) async fn stored_results(
     pool: &PgPool,
     viewer: &SharedCard,
     others: &[SharedCard],
