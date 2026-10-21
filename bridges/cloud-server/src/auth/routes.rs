@@ -43,7 +43,7 @@ use crate::auth::password::{
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, CONTACT_ADD_LIMIT};
 use crate::auth::rows::{
     AccountRecordRow, ContactListRow, ContactRequestRow, DefaultAgentProfileRow,
-    OwnerAccountRecordRow,
+    OwnerAccountRecordRow, ACCOUNT_RECORD_COLUMNS, OWNER_ACCOUNT_RECORD_COLUMNS,
 };
 use crate::auth::session::{
     bump_expiry, issue_session, lookup_session, revoke_session, touch_device_activity,

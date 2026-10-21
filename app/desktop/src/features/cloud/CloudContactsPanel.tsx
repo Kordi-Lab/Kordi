@@ -12,7 +12,7 @@ import { loadSession } from './session';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
-import { formatKordiHandle, normalizeKordiId } from './kordiId';
+import { formatKordiHandle, normalizeKordiId, sameKordiId } from './kordiId';
 
 function avatarSeedFor(profile: { accountId: string; avatarUrl: string | null }): string {
   return cloudAvatarSeedForAccount(profile.accountId, profile.avatarUrl);
@@ -64,10 +64,10 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
       event.preventDefault();
       const kordiId = normalizeKordiId(lookupQuery);
       if (!kordiId) {
-        setLookup({ kind: 'error', message: 'Enter a nine-digit Kordi ID.' });
+        setLookup({ kind: 'error', message: 'Enter a Kordi ID.' });
         return;
       }
-      if (kordiId === account.kordiId) {
+      if (sameKordiId(kordiId, account.kordiId)) {
         setLookup({ kind: 'error', message: 'That is your own Kordi ID.' });
         return;
       }
