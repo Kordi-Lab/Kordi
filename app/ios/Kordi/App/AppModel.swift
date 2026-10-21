@@ -6393,10 +6393,9 @@ final class AppModel: ObservableObject {
                     author: author,
                     authorName: author == .me
                         ? "You"
-                        : participantNames[wire.fromAccountId]
-                            ?? (KordiPipIdentity.isPip(accountId: wire.fromAccountId)
-                                ? KordiPipIdentity.displayName
-                                : conversation.displayName),
+                        : KordiSystemIdentity.groupAuthorName(
+                            messageKind: wire.messageKind, fromAccountId: wire.fromAccountId,
+                            participantNames: participantNames, fallback: conversation.displayName),
                     text: CloudMessageCodec.displayText(wire.body),
                     createdAt: parseCloudDate(wire.createdAt),
                     editedAt: wire.editedAt.map(parseCloudDate),

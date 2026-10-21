@@ -65,25 +65,32 @@ struct KordiMark: View {
     var flying = false
     /// Draws exactly this pose instead of animating; for marks driven by their own timeline.
     var pose: KordiBirdPose?
+    /// Fixed colors instead of the adaptive ink and the yellow beak.
+    var tint: KordiBirdTint?
     @State private var animationEpoch = Date()
 
     var body: some View {
         Group {
             if let pose {
-                KordiBirdCanvas(size: size, pose: pose)
+                KordiBirdCanvas(size: size, pose: pose, tint: tint)
             } else if flying && !reduceMotion {
                 TimelineView(.animation(minimumInterval: 1 / 60)) { timeline in
                     KordiBirdCanvas(size: size, pose: .flight(KordiBirdFlightMotion.sample(
                         elapsed: timeline.date.timeIntervalSince(animationEpoch)
-                    )))
+                    )), tint: tint)
                 }
             } else {
-                KordiBirdCanvas(size: size, pose: .still)
+                KordiBirdCanvas(size: size, pose: .still, tint: tint)
             }
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
     }
+}
+
+struct KordiBirdTint: Equatable {
+    let body: Color
+    let beak: Color
 }
 
 enum KordiBirdPose: Equatable {
@@ -98,12 +105,13 @@ private struct KordiBirdCanvas: View {
 
     let size: CGFloat
     let pose: KordiBirdPose
+    var tint: KordiBirdTint?
 
     var body: some View {
         let canvasSide = size * (1 + (Self.overflow * 2))
         Canvas { context, _ in
             context.translateBy(x: size * Self.overflow, y: size * Self.overflow)
-            KordiBirdDrawing.draw(pose: pose, in: &context, side: size)
+            KordiBirdDrawing.draw(pose: pose, in: &context, side: size, tint: tint)
         }
         .frame(width: canvasSide, height: canvasSide)
         .frame(width: size, height: size)
@@ -126,7 +134,9 @@ private enum KordiBirdDrawing {
     private static let bodyCenter = CGPoint(x: 256, y: 250)
     private static let wingRoot = CGPoint(x: 296, y: 262)
 
-    static func draw(pose: KordiBirdPose, in context: inout GraphicsContext, side: CGFloat) {
+    static func draw(pose: KordiBirdPose, in context: inout GraphicsContext, side: CGFloat, tint: KordiBirdTint? = nil) {
+        let ink = tint?.body ?? Self.ink
+        let beakColor = tint?.beak ?? Self.beakColor
         context.scaleBy(x: side / 512, y: side / 512)
 
         if case let .flight(sample) = pose {
