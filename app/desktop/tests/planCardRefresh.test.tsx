@@ -139,7 +139,8 @@ test('confirmed plans explain missing calendar prerequisites without claiming to
   const unscheduled = renderToStaticMarkup(<PlanCardContent card={{ ...card, startAt: null, state: 'confirmed' }} ownAccountId="acct_b" />);
   assert.match(unscheduled, /Add a date and time in chat/);
   assert.doesNotMatch(unscheduled, /On your calendar/);
-  const pending = renderToStaticMarkup(<PlanCardContent card={{ ...card, state: 'confirmed' }} ownAccountId="acct_b" />);
+  const guest = { ...card, state: 'confirmed' as const, participants: [{ ...card.participants[0], organizer: false }] };
+  const pending = renderToStaticMarkup(<PlanCardContent card={guest} ownAccountId="acct_b" />);
   assert.match(pending, /Choose “I’m in” to add this plan to your calendar/);
   assert.doesNotMatch(pending, /On your calendar/);
 });

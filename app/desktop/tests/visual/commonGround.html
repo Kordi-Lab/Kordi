@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Common ground</title>
+<title>Grounding</title>
 <script>
   // ?embedded=1 drops the page chrome so it can fill the Contacts detail pane; ?theme=light|dark follows the host.
   // ?app=1 is the real desktop app: no simulated people (no Recent, no pairing or rooms); ?name= is the signed-in name.
@@ -431,7 +431,7 @@ async function paintHome() {
     const card = state.me?.card;
     const topics = card ? shownTopics(card) : [];
     app.innerHTML = `
-      <div class="hero">${avatar("You", 92, "hero-avatar")}<h1>Common ground</h1><div class="status">Find what you share</div>
+      <div class="hero">${avatar("You", 92, "hero-avatar")}<h1>Grounding</h1><div class="status">Find what you share</div>
         <div class="actions" style="grid-template-columns:1fr 1fr">
           <button class="tile" onclick="start('tap')">${svg("device")}Tap phones</button>
           <button class="tile" onclick="start('code')"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="6" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/></svg>Join with code</button>
@@ -453,7 +453,7 @@ function drawEmbedded() {
   const digits = ["", "", "", ""];
   app.innerHTML = `
     <div class="section"><div class="group" style="--inset:48px">
-      <div class="row">${iconTileNamed("device")}<div class="grow"><div>Someone nearby</div><div class="sub">${APP ? "Available after launch" : "Both of you open Common ground"}</div></div>
+      <div class="row">${iconTileNamed("device")}<div class="grow"><div>Someone nearby</div><div class="sub">${APP ? "Available after launch" : "Both of you open Grounding"}</div></div>
         <button class="small-btn" onclick="start('tap')" ${APP ? "disabled" : ""}>Pair</button></div>
       <div class="row code-row">${iconTileNamed("hash")}<div class="grow"><div>Pair code</div><div class="digits">
       ${digits.map((_, i) => `<input data-i="${i}" inputmode="numeric" maxlength="1" aria-label="Digit ${i + 1}" autocomplete="off" ${APP ? "disabled" : ""}>`).join("")}
@@ -800,7 +800,7 @@ function paintCard(_arg, host = app) {
 function paintTap() {
   app.innerHTML = `${backButton()}<div class="center"><div class="pulse"><b style="border-color:var(--pink)"></b><b style="border-color:var(--cyan)"></b><b style="border-color:var(--amber)"></b>
     <div class="pair" id="pair">${avatar("You", 92, "ring hero-avatar")}</div></div>
-    <div><div style="font-size:${EMBED ? 17 : 20}px;font-weight:700" id="who">${EMBED ? "Looking for someone nearby" : "Hold near another iPhone"}</div><div style="color:var(--muted)" id="lab">${EMBED ? "Both of you open Common ground" : "Both phones unlocked"}</div></div></div>`;
+    <div><div style="font-size:${EMBED ? 17 : 20}px;font-weight:700" id="who">${EMBED ? "Looking for someone nearby" : "Hold near another iPhone"}</div><div style="color:var(--muted)" id="lab">${EMBED ? "Both of you open Grounding" : "Both phones unlocked"}</div></div></div>`;
   later(async () => {
     try {
       const { person } = await api("POST", "/v1/tap");

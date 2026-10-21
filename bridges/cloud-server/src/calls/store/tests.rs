@@ -8,16 +8,20 @@ use uuid::Uuid;
 #[test]
 fn call_display_name_prefers_a_non_empty_profile_name() {
     assert_eq!(
-        preferred_account_display_name(Some("Alex".to_string()), 123_456_789),
+        preferred_account_display_name(Some("Alex".to_string()), "123456789".to_string()),
         "Alex"
     );
 }
 
 #[test]
-fn call_display_name_formats_the_numeric_public_account_number() {
+fn call_display_name_falls_back_to_the_kordi_id() {
     assert_eq!(
-        preferred_account_display_name(Some("  ".to_string()), 123_456_789),
+        preferred_account_display_name(Some("  ".to_string()), "123456789".to_string()),
         "123456789"
+    );
+    assert_eq!(
+        preferred_account_display_name(None, "shuyhere".to_string()),
+        "shuyhere"
     );
 }
 

@@ -8,7 +8,7 @@ struct CommonGroundHome: View {
 
     var body: some View {
         CommonGroundPage(showsBack: onClose != nil, onBack: onClose) {
-            CommonGroundHero(title: "Common ground", status: model.me.displayName) {
+            CommonGroundHero(title: "Grounding", status: model.me.displayName) {
                 CommonGroundAvatar(person: model.me, size: 92)
             } actions: {
                 CommonGroundActions(columns: 2) {

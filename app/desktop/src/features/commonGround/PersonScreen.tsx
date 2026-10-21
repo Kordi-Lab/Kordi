@@ -1,17 +1,19 @@
 import type { CgHost } from './host';
 import { PersonActions } from './PersonActions';
 import { CgAvatar, CgBack, CgGroup, CgHero, CgNotice, CgProgress, CgSection, CgTag } from './parts';
-import type { CgState, CommonGroundStore } from './store';
+import { personTitle } from './profiles';
+import { personKey, type CgState, type CommonGroundStore } from './store';
 import { CG_TOPIC_SECTIONS } from './types';
 
 /** Someone's card as you may see it, opened from a room member. */
-export function PersonScreen({ accountId, state, store, host }: {
+export function PersonScreen({ accountId, profileId, state, store, host }: {
   accountId: string;
+  profileId?: string;
   state: CgState;
   store: CommonGroundStore;
   host: CgHost;
 }) {
-  const view = state.people[accountId];
+  const view = state.people[personKey(accountId, profileId)];
   if (!view) {
     return (
       <>
@@ -24,13 +26,13 @@ export function PersonScreen({ accountId, state, store, host }: {
   return (
     <>
       <CgBack onBack={() => store.back()} />
-      <CgHero avatar={<CgAvatar person={person} size={72} />} title={person.name} />
+      <CgHero avatar={<CgAvatar person={person} size={72} />} title={personTitle(person)} />
       <PersonActions
         person={person}
         state={state}
         store={store}
         host={host}
-        onFind={() => store.open({ name: 'match', accountId })}
+        onFind={() => store.open({ name: 'match', accountId, profileId })}
       />
       <CgNotice text={state.notice} />
       {CG_TOPIC_SECTIONS.filter(([key]) => card[key].length).map(([key, title]) => (

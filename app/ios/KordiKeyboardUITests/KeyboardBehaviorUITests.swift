@@ -6,7 +6,7 @@ final class KeyboardBehaviorUITests: XCTestCase {
     func testWallpaperAndInteractiveKeyboardDismissalInTheActualApp() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["--preview-data", "-kordi.chatTheme.v1", "sand"]
+        app.launchArguments = ["--preview-data", "-kordi.chatTheme.v2", "sand"]
         app.launch()
         let chat = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Maya Chen")).firstMatch
         XCTAssertTrue(chat.waitForExistence(timeout: 15))

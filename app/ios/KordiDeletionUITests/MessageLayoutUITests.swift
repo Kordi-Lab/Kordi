@@ -248,7 +248,7 @@ final class NativeChromeUITests: ProviderUITestCase {
         openAppearance(in: app)
         assertSelected(["dark", "threads", "sand"], in: app)
         closeAppearance(in: app)
-        choose(["system", "chat", "quiet"], in: app)
+        choose(["system", "chat", "classic"], in: app)
         closeAppearance(in: app)
 
         tap(element("settings-notifications", in: app), in: app)

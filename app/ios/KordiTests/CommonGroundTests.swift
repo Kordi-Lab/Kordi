@@ -139,6 +139,23 @@ final class CommonGroundTests: XCTestCase {
         XCTAssertNil(try decode(CommonGroundGroup.self, #"{"groupSpaceId":"gs_1"}"#).topic)
     }
 
+    func testGroupMembersDecodeAndFallBack() throws {
+        let with = try decode(CommonGroundGroup.self, #"{"groupSpaceId":"gs_1","memberCount":3,"members":[{"accountId":"a","name":"Ana","avatarUrl":"https://x/a.png"},{"accountId":"b","name":"Bo"}]}"#)
+        XCTAssertEqual(with.members.map(\.accountId), ["a", "b"])
+        XCTAssertEqual(with.members.first?.avatarUrl, "https://x/a.png")
+        XCTAssertNil(with.members.last?.avatarUrl)
+        XCTAssertTrue(try decode(CommonGroundGroup.self, #"{"groupSpaceId":"gs_1"}"#).members.isEmpty)
+    }
+
+    func testGroupDetailLine() throws {
+        func line(_ json: String) throws -> String? { try decode(CommonGroundGroup.self, json).detailLine }
+        XCTAssertEqual(try line(#"{"groupSpaceId":"g","topic":"Agent memory","memberCount":3}"#), "From Agent memory · 3 members")
+        XCTAssertEqual(try line(#"{"groupSpaceId":"g","memberCount":1}"#), "1 member")
+        XCTAssertEqual(try line(#"{"groupSpaceId":"g","memberCount":2}"#), "2 members")
+        XCTAssertEqual(try line(#"{"groupSpaceId":"g","topic":"Agent memory"}"#), "From Agent memory")
+        XCTAssertNil(try line(#"{"groupSpaceId":"g"}"#))
+    }
+
     /// A room group has only its root channel's shared title; Chats names the group by it.
     func testServerStartedGroupIsNamedByItsSharedTitle() {
         let account = PreviewData.make(now: Date(timeIntervalSince1970: 1_800_000_000)).account

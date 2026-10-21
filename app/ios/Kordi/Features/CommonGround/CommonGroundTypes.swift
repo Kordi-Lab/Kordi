@@ -279,9 +279,19 @@ struct CommonGroundGroup: Decodable, Hashable, Identifiable {
     var joined: Bool
     /// The shared topic the group was started from.
     var topic: String?
+    /// A few of the people in the group, creator first; empty when the server sends none.
+    let members: [CommonGroundPerson]
     var id: String { groupSpaceId }
 
-    init(groupSpaceId: String, conversationId: String?, name: String, memberCount: Int, createdBy: CommonGroundPerson? = nil, joined: Bool, topic: String? = nil) {
+    /// "From <topic> · 3 members", or just the count; nil when neither is known.
+    var detailLine: String? {
+        let count = memberCount > 0 ? (memberCount == 1 ? "1 member" : "\(memberCount) members") : nil
+        let from = topic?.trimmingCharacters(in: .whitespaces).nonEmpty.map { "From \($0)" }
+        let parts = [from, count].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    init(groupSpaceId: String, conversationId: String?, name: String, memberCount: Int, createdBy: CommonGroundPerson? = nil, joined: Bool, topic: String? = nil, members: [CommonGroundPerson] = []) {
         self.groupSpaceId = groupSpaceId
         self.conversationId = conversationId
         self.name = name
@@ -289,9 +299,10 @@ struct CommonGroundGroup: Decodable, Hashable, Identifiable {
         self.createdBy = createdBy
         self.joined = joined
         self.topic = topic
+        self.members = members
     }
 
-    private enum CodingKeys: String, CodingKey { case groupSpaceId, conversationId, name, memberCount, createdBy, joined, topic }
+    private enum CodingKeys: String, CodingKey { case groupSpaceId, conversationId, name, memberCount, createdBy, joined, topic, members }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -302,6 +313,7 @@ struct CommonGroundGroup: Decodable, Hashable, Identifiable {
         createdBy = c.cgValue(.createdBy, nil as CommonGroundPerson?)
         joined = c.cgValue(.joined, false)
         topic = c.cgValue(.topic, nil as String?)
+        members = c.cgValue(.members, [CommonGroundPerson]())
     }
 }
 

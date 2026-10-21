@@ -67,8 +67,12 @@ fn date_label(value: &str) -> String {
         .unwrap_or_default()
 }
 
-/// "Kordi 123 456 789".
+/// "Kordi 123 456 789" for a public account number, "@handle" for a handle.
 fn kordi_id_label(kordi_id: &str) -> String {
+    let is_account_number = kordi_id.len() == 9 && kordi_id.chars().all(|ch| ch.is_ascii_digit());
+    if !is_account_number {
+        return format!("@{kordi_id}");
+    }
     let digits: Vec<char> = kordi_id.chars().collect();
     let groups: Vec<String> = digits
         .chunks(3)

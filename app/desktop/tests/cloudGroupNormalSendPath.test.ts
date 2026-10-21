@@ -24,7 +24,7 @@ test('plain cloud group messages send through cloud group transport instead of f
   const between = source.slice(mentionBranch, unavailableBranch);
   assert.match(
     between,
-    /activeGroupSessionIsGroup[\s\S]*cloudGroupTargetIds\.length > 0[\s\S]*kind:\s*'group-message'/,
+    /activeGroupSessionIsGroup[\s\S]*cloudGroupSendable[\s\S]*kind:\s*'group-message'/,
     'plain cloud group messages with resolved cloud recipients must be sent as group-message controls before unavailable fallback',
   );
 });

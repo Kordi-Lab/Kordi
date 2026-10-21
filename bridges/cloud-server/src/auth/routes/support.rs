@@ -71,11 +71,9 @@ pub(super) async fn account_response_row(
     pool: &PgPool,
     account_id: &str,
 ) -> Result<Option<AccountResponse>, sqlx_core::Error> {
-    let row: Option<AccountRecordRow> = query_as(
-        "SELECT account_id, public_account_number, display_name, primary_email, avatar_url, password_hash, \
-            avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at \
-             FROM cloud_accounts WHERE account_id = $1",
-    )
+    let row: Option<AccountRecordRow> = query_as(&format!(
+        "SELECT {ACCOUNT_RECORD_COLUMNS} FROM cloud_accounts WHERE account_id = $1"
+    ))
     .bind(account_id)
     .fetch_optional(pool)
     .await?;
@@ -90,12 +88,9 @@ pub(super) async fn owner_account_response_row(
     pool: &PgPool,
     account_id: &str,
 ) -> Result<Option<AccountResponse>, sqlx_core::Error> {
-    let row: Option<OwnerAccountRecordRow> = query_as(
-        "SELECT account_id, public_account_number, display_name, primary_email, avatar_url, password_hash, \
-            avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at, \
-            primary_email_verified_at IS NOT NULL \
-             FROM cloud_accounts WHERE account_id = $1",
-    )
+    let row: Option<OwnerAccountRecordRow> = query_as(&format!(
+        "SELECT {OWNER_ACCOUNT_RECORD_COLUMNS} FROM cloud_accounts WHERE account_id = $1"
+    ))
     .bind(account_id)
     .fetch_optional(pool)
     .await?;
@@ -108,11 +103,38 @@ pub(super) fn owner_account_response_from_rows(
     row: OwnerAccountRecordRow,
     default_agent_row: Option<DefaultAgentProfileRow>,
 ) -> AccountResponse {
-    let (a, b, c, d, e, f, g, h, i, j, k, l, primary_email_verified) = row;
+    let change_available_at = row
+        .public_handle_changed_at
+        .and_then(|changed_at| public_handle_locked_until(changed_at, Utc::now()))
+        .map(|until| until.to_rfc3339());
     AccountResponse {
-        primary_email_verified: Some(primary_email_verified),
-        ..account_response_from_rows((a, b, c, d, e, f, g, h, i, j, k, l), default_agent_row)
+        primary_email_verified: Some(row.primary_email_verified),
+        birthday: Some(row.birthday.map(|date| date.format("%Y-%m-%d").to_string())),
+        account_number: Some(row.account_number),
+        kordi_id_change_available_at: Some(change_available_at),
+        ..account_response_from_rows(row.account, default_agent_row)
     }
+}
+
+/// How long a changed public handle stays fixed.
+pub(super) const PUBLIC_HANDLE_CHANGE_INTERVAL_DAYS: i64 = 365;
+
+/// When a handle changed at `changed_at` may change again, if that is still
+/// after `now`; `None` means it may change now.
+pub(super) fn public_handle_locked_until(
+    changed_at: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> Option<DateTime<Utc>> {
+    let available_at = changed_at + ChronoDuration::days(PUBLIC_HANDLE_CHANGE_INTERVAL_DAYS);
+    (now < available_at).then_some(available_at)
+}
+
+/// The user-facing message for a handle that changed too recently.
+pub(super) fn public_handle_locked_message(available_at: DateTime<Utc>) -> String {
+    format!(
+        "You can change your Kordi ID once a year. Next change on {}.",
+        available_at.format("%B %-d, %Y")
+    )
 }
 
 pub(super) fn default_agent_id(account_id: &str) -> String {
@@ -180,29 +202,37 @@ pub(super) fn account_response_from_rows(
 ) -> AccountResponse {
     let avatar = descriptor_from_parts(
         "human".to_string(),
-        row.0.clone(),
+        row.account_id.clone(),
         StoredAvatar {
-            source: row.6,
-            style: row.7,
-            seed: row.8,
-            renderer_version: row.9,
-            avatar_url: row.4.clone(),
-            version: row.10,
-            updated_at: row.11.clone(),
+            source: row.avatar_source,
+            style: row.avatar_style,
+            seed: row.avatar_seed,
+            renderer_version: row.avatar_renderer_version,
+            avatar_url: row.avatar_url.clone(),
+            version: row.avatar_version,
+            updated_at: row.avatar_updated_at.clone(),
         },
     );
-    let default_agent = default_agent_profile_from_row(&row.0, default_agent_row, &row.11);
+    let default_agent =
+        default_agent_profile_from_row(&row.account_id, default_agent_row, &row.avatar_updated_at);
     AccountResponse {
-        account_id: row.0,
-        kordi_id: row.1.to_string(),
-        display_name: row.2,
-        primary_email: row.3,
+        account_id: row.account_id,
+        kordi_id: row.kordi_id,
+        display_name: row.display_name,
+        primary_email: row.primary_email,
         avatar_url: Some(avatar.image_url()),
         avatar,
         default_agent,
         node_id: None,
-        password_set: row.5.is_some(),
+        password_set: row.password_hash.is_some(),
         primary_email_verified: None,
+        about: row.about,
+        location: row.location,
+        time_zone: row.time_zone,
+        website: row.website,
+        birthday: None,
+        account_number: None,
+        kordi_id_change_available_at: None,
     }
 }
 
@@ -224,6 +254,36 @@ pub(super) fn normalize_public_kordi_id(value: &str) -> Option<i64> {
         return None;
     }
     digits.parse::<i64>().ok()
+}
+
+/// A user-chosen Kordi ID was not 3-30 ASCII letters and digits with at
+/// least one letter.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct InvalidPublicHandle;
+
+pub(super) const INVALID_PUBLIC_HANDLE_MESSAGE: &str =
+    "Use 3-30 letters and numbers, with at least one letter.";
+
+/// Normalizes a user-chosen Kordi ID (handle) such as `@shuyhere`.
+///
+/// Blank input means "no handle" (`Ok(None)`). Otherwise one leading `@` is
+/// stripped and the rest must be 3-30 ASCII letters and digits with at least
+/// one letter, so a handle can never look like a nine-digit account number.
+/// The user's case is kept for display; uniqueness is case-insensitive.
+pub(super) fn normalize_public_handle(value: &str) -> Result<Option<String>, InvalidPublicHandle> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let handle = trimmed.strip_prefix('@').unwrap_or(trimmed);
+    let valid = (3..=30).contains(&handle.len())
+        && handle.chars().all(|ch| ch.is_ascii_alphanumeric())
+        && handle.chars().any(|ch| ch.is_ascii_alphabetic());
+    if valid {
+        Ok(Some(handle.to_string()))
+    } else {
+        Err(InvalidPublicHandle)
+    }
 }
 
 pub(super) async fn write_audit(
@@ -298,7 +358,85 @@ pub(super) async fn active_conversation_member_ids_in_transaction(
 
 #[cfg(test)]
 mod public_identity_tests {
-    use super::normalize_public_kordi_id;
+    use super::{
+        normalize_public_handle, normalize_public_kordi_id, public_handle_locked_message,
+        public_handle_locked_until, InvalidPublicHandle,
+    };
+    use chrono::{TimeZone, Utc};
+
+    #[test]
+    fn a_changed_handle_stays_locked_for_365_days() {
+        let changed_at = Utc.with_ymd_and_hms(2026, 10, 20, 15, 30, 0).unwrap();
+        let available_at = Utc.with_ymd_and_hms(2027, 10, 20, 15, 30, 0).unwrap();
+        assert_eq!(
+            public_handle_locked_until(changed_at, changed_at),
+            Some(available_at)
+        );
+        assert_eq!(
+            public_handle_locked_until(changed_at, available_at - chrono::Duration::seconds(1)),
+            Some(available_at)
+        );
+        assert_eq!(public_handle_locked_until(changed_at, available_at), None);
+        // 365 days, not one calendar year, across a leap day.
+        let before_leap = Utc.with_ymd_and_hms(2027, 6, 1, 0, 0, 0).unwrap();
+        assert_eq!(
+            public_handle_locked_until(before_leap, before_leap),
+            Some(Utc.with_ymd_and_hms(2028, 5, 31, 0, 0, 0).unwrap())
+        );
+        assert_eq!(
+            public_handle_locked_message(available_at),
+            "You can change your Kordi ID once a year. Next change on October 20, 2027."
+        );
+        assert_eq!(
+            public_handle_locked_message(Utc.with_ymd_and_hms(2028, 5, 1, 0, 0, 0).unwrap()),
+            "You can change your Kordi ID once a year. Next change on May 1, 2028."
+        );
+    }
+
+    #[test]
+    fn public_handle_normalization_accepts_letters_and_digits() {
+        assert_eq!(
+            normalize_public_handle("@shuyhere"),
+            Ok(Some("shuyhere".to_string()))
+        );
+        assert_eq!(
+            normalize_public_handle("  ShuYhere "),
+            Ok(Some("ShuYhere".to_string()))
+        );
+        assert_eq!(normalize_public_handle("ab1"), Ok(Some("ab1".to_string())));
+        assert_eq!(
+            normalize_public_handle(&"a".repeat(30)),
+            Ok(Some("a".repeat(30)))
+        );
+        assert_eq!(normalize_public_handle("   "), Ok(None));
+        assert_eq!(normalize_public_handle(""), Ok(None));
+    }
+
+    #[test]
+    fn public_handle_normalization_rejects_invalid_values() {
+        for value in [
+            "shu_yhere",
+            "ab",
+            "@ab",
+            "123456789",
+            "1234",
+            "shu yhere",
+            "@",
+            "@@shuyhere",
+            "shu-yhere",
+            "shuyhére",
+        ] {
+            assert_eq!(
+                normalize_public_handle(value),
+                Err(InvalidPublicHandle),
+                "{value}"
+            );
+        }
+        assert_eq!(
+            normalize_public_handle(&"a".repeat(31)),
+            Err(InvalidPublicHandle)
+        );
+    }
 
     #[test]
     fn kordi_id_normalization_accepts_supported_human_formats() {

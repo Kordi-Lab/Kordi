@@ -3,12 +3,28 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { shouldRefreshCloudContactsForWsSubject } from '../src/features/cloud/useCloudContacts';
+import { CloudAuthError } from '../src/features/cloud/cloudAuthError';
 import { cloudProfileSaveInput } from '../src/pages/CloudAccountSettingsDialog';
+import {
+  cloudProfileErrorTarget,
+  cloudProfileFieldDraft,
+  cloudProfileHandleDraft,
+  cloudProfileNumberPlaceholder,
+  kordiIdLockedUntilLabel,
+  sanitizeKordiHandleInput,
+} from '../src/pages/cloudProfileDraft';
 import { accountPopoverLeft } from '../src/pages/workspaceSidebar.profileModel';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 function readSource(relativePath: string): string {
   return readFileSync(new URL(`../src/${relativePath}`, import.meta.url), 'utf8');
+}
+
+/** The dialog plus the profile panel and editor state it renders. */
+function readProfileDialogSource(): string {
+  return ['pages/CloudAccountSettingsDialog.tsx', 'pages/CloudProfilePanel.tsx', 'pages/useCloudProfileEditor.ts']
+    .map(readSource)
+    .join('\n');
 }
 
 test('cloud avatar opens a small account menu before the centered settings modal', () => {
@@ -30,7 +46,7 @@ test('cloud avatar opens a small account menu before the centered settings modal
 });
 
 test('cloud settings modal contains profile authentication and theme sections', () => {
-  const modal = readSource('pages/CloudAccountSettingsDialog.tsx') + readSource('pages/cloudAccountSettingsNav.ts');
+  const modal = readProfileDialogSource() + readSource('pages/cloudAccountSettingsNav.ts');
   const avatarEditor = readSource('kordi-app/components/EditableIdentityAvatar.tsx');
 
   assert.match(modal, /Profile/);
@@ -40,7 +56,7 @@ test('cloud settings modal contains profile authentication and theme sections', 
   assert.match(modal, /AuthPage/);
   assert.match(modal, /AppearanceSettingsRow/);
   assert.match(avatarEditor, /fileToAvatarDataUrl/);
-  assert.match(modal, /onUpdateProfile\(input\)/);
+  assert.match(modal, /onUpdateProfile\(cloudProfileSaveInput\(/);
   assert.match(modal, /initialTab/);
 });
 
@@ -107,7 +123,7 @@ test('cloud authentication tab suppresses nested auth chrome and stays readable'
 });
 
 test('profile modal is distilled to one avatar and no cloud explanation copy', () => {
-  const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
+  const modal = readProfileDialogSource();
   const profileControl = readSource('pages/workspaceSidebar.profile.tsx');
 
   assert.equal((modal.match(/<EditableIdentityAvatar/g) ?? []).length, 1);
@@ -118,10 +134,11 @@ test('profile modal is distilled to one avatar and no cloud explanation copy', (
 });
 
 test('profile editor groups identity controls without resizing the settings dialog', () => {
-  const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
+  const modal = readProfileDialogSource();
   const avatarEditor = readSource('kordi-app/components/EditableIdentityAvatar.tsx');
+  const profileCss = readSource('styles/cloud-profile-editor.css');
 
-  assert.match(modal, /grid-cols-\[96px_minmax\(0,1fr\)\]/);
+  assert.match(profileCss, /\.app-cloud-profile-row\s*\{[^}]*grid-template-columns:\s*112px minmax\(0, 1fr\);/s);
   assert.match(modal, /<EditableIdentityAvatar/);
   assert.match(modal, /generatedAvatarPreviewUrl/);
   assert.doesNotMatch(modal, /generatedAvatarMarker/);
@@ -131,17 +148,28 @@ test('profile editor groups identity controls without resizing the settings dial
   assert.doesNotMatch(modal, /h-\[min\(440px,|>\s*(?:Upload avatar|Change|Generate another|Use generated)\s*</);
 });
 
-test('profile display name uses the scoped flat form treatment in both themes', () => {
-  const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
-  const shellCss = readDesktopShellCss();
+test('profile rows use borderless accent values with per-row errors', () => {
+  const panel = readSource('pages/CloudProfilePanel.tsx');
+  const row = readSource('kordi-app/cloud/CloudProfileFieldRow.tsx');
+  const profileCss = readSource('styles/cloud-profile-editor.css');
 
-  assert.match(modal, /app-input-shell app-flat-input app-cloud-account-profile-name-input/);
-  assert.match(modal, /aria-invalid=\{isDisplayNameInvalid \|\| undefined\}/);
-  assert.match(modal, /aria-describedby=\{profileError \? profileErrorId : undefined\}/);
-  assert.match(shellCss, /\.app-input-shell\.app-flat-input\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*transition:\s*none;/s);
-  assert.match(shellCss, /\.kordi-app\.theme-light \.app-input-shell\.app-flat-input\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*transition:\s*none;/s);
-  assert.match(shellCss, /\.kordi-app \.app-transient-surface \.app-input-shell\.app-flat-input\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*transition:\s*none;/s);
-  assert.match(shellCss, /\.app-input-shell\.app-flat-input:focus-within\s*\{[^}]*outline:\s*2px solid/s);
+  for (const label of ['Name', 'Kordi ID', 'About', 'Location', 'Time zone', 'Website', 'Birthday']) {
+    assert.match(panel, new RegExp(`["']${label}["']`), label);
+  }
+  assert.match(panel, /layout="profile"/);
+  assert.doesNotMatch(panel, /app-input-shell/);
+  assert.match(panel, /<option value="">Automatic<\/option>/);
+  assert.match(panel, /type="date"[\s\S]*min=\{BIRTHDAY_MIN\}[\s\S]*max=\{today\}/);
+  assert.match(panel, /aria-label="Clear birthday"/);
+  assert.match(panel, /disabled=\{editor\.isSaving \|\| !editor\.isDirty\}/);
+  assert.doesNotMatch(panel, /Your name and avatar are shown to your contacts/);
+  // Email ends the table: the Save row sits outside the divided section, after a 24px gap.
+  assert.match(panel, /<\/SettingsSection>\s*\{\/\*[^*]*\*\/\}\s*<div className="app-cloud-profile-save pt-6">\s*<SettingsRow/);
+  assert.match(row, /app-error-text app-cloud-profile-row-error/);
+  assert.match(profileCss, /\.app-cloud-profile-input\s*\{[^}]*border:\s*0;[^}]*color:\s*var\(--app-palette-accent\);/s);
+  assert.match(profileCss, /\.app-cloud-profile-input\[aria-invalid='true'\]\s*\{[^}]*var\(--app-transient-danger-text\)/s);
+  assert.match(profileCss, /\.app-cloud-profile-input:disabled\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;[^}]*cursor:\s*default;/s);
+  assert.match(profileCss, /\.app-cloud-profile-row-value:focus-within\s*\{[^}]*outline:\s*2px solid/s);
 });
 
 test('account popover shows the public handle directly and copies invites without another card', () => {
@@ -195,7 +223,7 @@ test('account popover stays within the compact window safe area', () => {
 });
 
 test('profile sign out action is styled as destructive red', () => {
-  const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
+  const modal = readProfileDialogSource();
 
   assert.match(modal, /text-rose-200/);
   assert.match(modal, /border-rose-400\/20/);
@@ -225,6 +253,48 @@ test('profile save sends only an explicit canonical avatar mutation', () => {
       expectedVersion: 3,
     },
   });
+});
+
+test('profile save sends only the optional fields that changed', () => {
+  const saved = cloudProfileFieldDraft({
+    accountId: 'acct_1', kordiId: '175791355', displayName: 'Maya', primaryEmail: null, avatarUrl: null,
+    avatar: { entityType: 'human', entityId: 'acct_1', source: 'generated', style: 'lorelei', seed: 's', rendererVersion: 'v', uploadedAsset: null, version: 1, updatedAt: '' },
+    about: 'Climber', location: 'Lisbon', timeZone: null, website: null, birthday: '1996-03-04', nodeId: null, passwordSet: false,
+  });
+  assert.deepEqual(saved, { kordiId: '', about: 'Climber', location: 'Lisbon', timeZone: '', website: '', birthday: '1996-03-04' });
+
+  assert.deepEqual(cloudProfileSaveInput({
+    displayNameDraft: ' Maya ',
+    avatarMutationDraft: null,
+    fieldDraft: { ...saved, kordiId: 'shuyhere', location: '', timeZone: 'Europe/Lisbon', about: 'Climber ' },
+    savedFields: saved,
+  }), { displayName: 'Maya', kordiId: 'shuyhere', location: '', timeZone: 'Europe/Lisbon' });
+});
+
+test('profile Kordi ID field keeps handles and routes server errors to their rows', () => {
+  assert.equal(cloudProfileHandleDraft('175791355'), '');
+  assert.equal(cloudProfileHandleDraft('ShuyHere'), 'ShuyHere');
+  assert.equal(cloudProfileNumberPlaceholder({ kordiId: 'shuyhere', accountNumber: '175791355' }), '175791355');
+  assert.equal(cloudProfileNumberPlaceholder({ kordiId: '175791355' }), '175791355');
+  assert.equal(cloudProfileNumberPlaceholder({ kordiId: 'shuyhere' }), 'Account number');
+  assert.equal(sanitizeKordiHandleInput('@shu_y-here!'), 'shuyhere');
+  assert.equal(sanitizeKordiHandleInput('a'.repeat(40)).length, 30);
+
+  assert.equal(cloudProfileErrorTarget(new CloudAuthError('kordi_id_taken', 'That Kordi ID is already taken.', 409)), 'kordiId');
+  assert.equal(cloudProfileErrorTarget(new CloudAuthError('invalid_kordi_id', 'Use letters and numbers.', 400)), 'kordiId');
+  assert.equal(cloudProfileErrorTarget(new CloudAuthError('kordi_id_change_locked', 'You can change your Kordi ID once a year.', 409)), 'kordiId');
+  const now = Date.parse('2026-10-20T12:00:00Z');
+  assert.equal(kordiIdLockedUntilLabel({ kordiIdChangeAvailableAt: '2027-03-04T12:00:00Z' }, now), 'March 4, 2027');
+  assert.equal(kordiIdLockedUntilLabel({ kordiIdChangeAvailableAt: '2026-01-01T00:00:00Z' }, now), null);
+  assert.equal(kordiIdLockedUntilLabel({ kordiIdChangeAvailableAt: null }, now), null);
+  assert.equal(kordiIdLockedUntilLabel({}, now), null);
+  assert.equal(cloudProfileErrorTarget(new CloudAuthError('invalid_about', 'Too long.', 400)), 'about');
+  assert.equal(cloudProfileErrorTarget(new CloudAuthError('invalid_location', 'Too long.', 400)), 'location');
+  assert.equal(cloudProfileErrorTarget(new CloudAuthError('invalid_time_zone', 'Unknown.', 400)), 'timeZone');
+  assert.equal(cloudProfileErrorTarget(new CloudAuthError('invalid_website', 'Bad URL.', 400)), 'website');
+  assert.equal(cloudProfileErrorTarget(new CloudAuthError('invalid_birthday', 'Bad date.', 400)), 'birthday');
+  assert.equal(cloudProfileErrorTarget(new CloudAuthError('server_error', 'Down.', 500)), 'form');
+  assert.equal(cloudProfileErrorTarget(new Error('offline')), 'form');
 });
 
 test('profile editor does not reset avatar drafts while open for same account sync updates', () => {
