@@ -86,15 +86,28 @@ pub(crate) async fn create_conversation_in_transaction(
 
 /// Creates a group started from a Common ground room. It may begin with its
 /// creator alone: people who are not contacts yet join through an invitation.
+/// Like a group made in the app, the name is the group's title and the first
+/// channel keeps no shared title of its own.
 pub(crate) async fn create_room_group_in_transaction(
     transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
     request: CreateConversationRequest,
+    group_title: &str,
 ) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
     if request.kind != ConversationKind::Group {
         return Err(StoreError::InvalidInput("a room group must be a group"));
     }
-    create_conversation_with_options(transaction, account_id, request, None, 1).await
+    let group_title = normalize_title(Some(group_title))?
+        .ok_or(StoreError::InvalidInput("a room group needs a name"))?;
+    create_conversation_with_options(
+        transaction,
+        account_id,
+        request,
+        None,
+        1,
+        Some(&group_title),
+    )
+    .await
 }
 
 async fn create_conversation_in_transaction_with_trusted_peer(
@@ -103,8 +116,15 @@ async fn create_conversation_in_transaction_with_trusted_peer(
     request: CreateConversationRequest,
     trusted_peer_account_id: Option<&str>,
 ) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
-    create_conversation_with_options(transaction, account_id, request, trusted_peer_account_id, 2)
-        .await
+    create_conversation_with_options(
+        transaction,
+        account_id,
+        request,
+        trusted_peer_account_id,
+        2,
+        None,
+    )
+    .await
 }
 
 async fn create_conversation_with_options(
@@ -113,6 +133,7 @@ async fn create_conversation_with_options(
     request: CreateConversationRequest,
     trusted_peer_account_id: Option<&str>,
     min_group_members: usize,
+    group_title: Option<&str>,
 ) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
     let shared_title = normalize_title(request.shared_title.as_deref())?;
     let members = normalized_members(account_id, &request.member_account_ids);
@@ -250,8 +271,8 @@ async fn create_conversation_with_options(
     query(
         "INSERT INTO cloud_chat_conversations \
          (conversation_id, kind, shared_title, created_by_account_id, client_operation_id, \
-          creation_fingerprint, legacy_session_id) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+          creation_fingerprint, legacy_session_id, group_space_id, group_title) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
     .bind(conversation_id)
     .bind(request.kind.as_str())
@@ -260,6 +281,8 @@ async fn create_conversation_with_options(
     .bind(request.client_operation_id)
     .bind(&request_fingerprint)
     .bind(&client_session_id)
+    .bind(group_title.map(|_| client_session_id.as_str()))
+    .bind(group_title)
     .execute(&mut **transaction)
     .await?;
     for member in &members {
