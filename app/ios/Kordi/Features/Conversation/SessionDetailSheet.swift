@@ -3,17 +3,6 @@ import QuickLook
 import SwiftUI
 import UIKit
 
-enum SessionDetailTab: String, Identifiable {
-    case members = "Members"
-    case memory = "Memory"
-    case media = "Media"
-    case files = "Files"
-    case todo = "Todo"
-    case groups = "Groups"
-
-    var id: Self { self }
-}
-
 private struct SessionFeatureNotice {
     let title: String
     let message: String
@@ -24,24 +13,6 @@ private struct SessionFeatureNotice {
     )
 }
 
-enum SessionDetailPresentationContext: Equatable {
-    case conversation
-    case groupParticipantProfile
-
-    static func authorProfile(
-        sourceConversation: ConversationSummary,
-        destination: ConversationSummary
-    ) -> Self {
-        sourceConversation.kind == .group && destination.kind == .person
-            ? .groupParticipantProfile
-            : .conversation
-    }
-
-    var opensConversationOnChat: Bool {
-        self == .groupParticipantProfile
-    }
-}
-
 struct SessionDetailView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
@@ -49,6 +20,8 @@ struct SessionDetailView: View {
     let conversation: ConversationSummary
     private let onBack: (() -> Void)?
     private let presentationContext: SessionDetailPresentationContext
+    /// Shows one tab as its own page, opened from a contact profile row.
+    private let focusedTab: SessionDetailTab?
     @State private var tab: SessionDetailTab
     @State private var previewURL: URL?
     @State private var mediaPreview: MediaPreviewPresentation?
@@ -70,12 +43,14 @@ struct SessionDetailView: View {
         conversation: ConversationSummary,
         presentationContext: SessionDetailPresentationContext = .conversation,
         opensMemory: Bool = false,
+        focusedTab: SessionDetailTab? = nil,
         onBack: (() -> Void)? = nil
     ) {
         self.conversation = conversation
         self.presentationContext = presentationContext
+        self.focusedTab = focusedTab
         self.onBack = onBack
-        _tab = State(initialValue: opensMemory ? .memory : conversation.kind == .group ? .members : .media)
+        _tab = State(initialValue: focusedTab ?? (opensMemory ? .memory : conversation.kind == .group ? .members : .media))
     }
 
     private var currentConversation: ConversationSummary {
@@ -217,38 +192,14 @@ struct SessionDetailView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 16) {
-                SessionProfileHero(
-                    conversation: currentConversation,
-                    displayName: profileDisplayName,
-                    participants: profileParticipants,
-                    statusText: statusText,
-                    tint: heroTint
-                ) {
-                    SessionHeroActions(
-                        kind: currentConversation.kind,
-                        tint: heroTint,
-                        notificationsMuted: notificationsMuted,
-                        isCallStarting: callCoordinator.isStartingCall,
-                        onChat: openChat,
-                        onCall: { startOrJoinCall(kind: .voice) },
-                        onVideo: { startOrJoinCall(kind: .video) },
-                        onMute: toggleNotificationsMuted,
-                        onSearch: { showFeatureNotice(.search) },
-                        moreActions: moreActionItems,
-                        onMoreAction: handleMoreAction
-                    )
-                }
-
-                profileSummary
-
+                if focusedTab == nil { profileHeader }
                 VStack(spacing: 16) {
-                    Picker("Session content", selection: $tab) {
-                        ForEach(availableTabs) { item in
-                            Text(item.rawValue).tag(item)
+                    if focusedTab == nil {
+                        Picker("Session content", selection: $tab) {
+                            ForEach(availableTabs) { item in Text(item.rawValue).tag(item) }
                         }
+                        .pickerStyle(.segmented)
                     }
-                    .pickerStyle(.segmented)
-
                     tabContent
                 }
                 .padding(.horizontal, 16)
@@ -260,11 +211,11 @@ struct SessionDetailView: View {
             SessionDetailBackground(tint: heroTint)
                 .ignoresSafeArea()
         }
-        .navigationTitle("")
+        .navigationTitle(focusedTab?.rawValue ?? "")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(focusedTab == nil ? .hidden : .visible, for: .navigationBar)
         .overlay(alignment: .topLeading) {
-            SessionDetailBackButton(action: closeDetails)
+            if focusedTab == nil { SessionDetailBackButton(action: closeDetails) }
         }
         .tint(heroTint)
         .sensoryFeedback(.selection, trigger: notificationsMuted)
@@ -339,6 +290,32 @@ struct SessionDetailView: View {
         } message: {
             Text(featureNotice?.message ?? "This feature is not available in this Kordi build.")
         }
+    }
+
+    @ViewBuilder
+    private var profileHeader: some View {
+        SessionProfileHero(
+            conversation: currentConversation,
+            displayName: profileDisplayName,
+            participants: profileParticipants,
+            statusText: statusText,
+            tint: heroTint
+        ) {
+            SessionHeroActions(
+                kind: currentConversation.kind,
+                tint: heroTint,
+                notificationsMuted: notificationsMuted,
+                isCallStarting: callCoordinator.isStartingCall,
+                onChat: openChat,
+                onCall: { startOrJoinCall(kind: .voice) },
+                onVideo: { startOrJoinCall(kind: .video) },
+                onMute: toggleNotificationsMuted,
+                onSearch: { showFeatureNotice(.search) },
+                moreActions: moreActionItems,
+                onMoreAction: handleMoreAction
+            )
+        }
+        profileSummary
     }
 
     @ViewBuilder

@@ -417,7 +417,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'contactOverlayMode'
   | 'activeContact'
   | 'activeContactRequest'
-  | 'getStatusBadgeClass'
+  | 'getStatusBadgeClass' | 'mutedChatSessionIds' | 'handleSetChatSessionMuted'
   | 'handleOpenCollaborationConversation'
   | 'handleStartCollaborationPersonSession'
   | 'displayedAgents'
