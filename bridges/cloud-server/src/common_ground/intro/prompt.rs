@@ -2,6 +2,7 @@
 //! an invited person joins.
 
 use crate::common_ground::card::Topics;
+use crate::common_ground::matching::MatchResult;
 
 pub(super) const INTRO_SYSTEM: &str = "You introduce the people in a new group chat that was started at an event. You get the group name, its topic if it has one, and each person with the topics they share on their public interest card.
 
@@ -71,28 +72,133 @@ pub(super) fn intro_prompt(name: &str, topic: Option<&str>, people: &[Introduced
     out
 }
 
-fn first_two(topics: &[String]) -> Option<String> {
-    match topics {
-        [] => None,
-        [one] => Some(one.clone()),
-        [one, two, ..] => Some(format!("{one} and {two}")),
+/// The longest joined line, related people included.
+const MAX_JOINED_CHARS: usize = 400;
+
+/// Related people the joined line names.
+const MAX_RELATED: usize = 3;
+
+/// A card topic as it reads mid-sentence: a leading capital is lowered
+/// unless the topic looks like a name or an acronym ("RAG", "GPT-5").
+fn mid_sentence(topic: &str) -> String {
+    let mut chars = topic.chars();
+    let (Some(first), second) = (chars.next(), chars.next()) else {
+        return topic.to_string();
+    };
+    let keep = !first.is_uppercase()
+        || second.is_some_and(char::is_uppercase)
+        || topic.chars().any(|c| c.is_ascii_digit());
+    if keep {
+        topic.to_string()
+    } else {
+        first.to_lowercase().chain(topic.chars().skip(1)).collect()
     }
 }
 
-/// "<Name> joined. Working on …; can help with …." from the card they share,
-/// or "<Name> joined." without one.
-pub(super) fn joined_line(name: &str, topics: Option<&Topics>) -> String {
-    let mut line = format!("{name} joined.");
-    let Some(topics) = topics else {
-        return line;
-    };
-    match (first_two(&topics.working_on), first_two(&topics.can_help)) {
-        (Some(work), Some(help)) => {
-            line.push_str(&format!(" Working on {work}; can help with {help}."))
+fn first_two(topics: &[String]) -> Option<String> {
+    match topics {
+        [] => None,
+        [one] => Some(mid_sentence(one)),
+        [one, two, ..] => Some(format!("{} and {}", mid_sentence(one), mid_sentence(two))),
+    }
+}
+
+/// "a", "a and b", "a, b and c".
+fn and_list(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
+/// How the joiner relates to one person already in the group, from the
+/// stored match with the joiner as viewer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Relation {
+    /// A topic both share, as the joiner's card names it.
+    Shares(String),
+    /// Something the other person can help the joiner with.
+    TheyHelp(String),
+    /// Something of the other person's the joiner can help with.
+    YouHelp(String),
+}
+
+impl Relation {
+    /// The pair's first shared topic; without one, what the match headline
+    /// is built from: the first trade either way. `None` for a match with
+    /// nothing in common.
+    pub(super) fn from_match(result: &MatchResult) -> Option<Self> {
+        let nonempty = |s: &str| (!s.trim().is_empty()).then(|| s.trim().to_string());
+        if let Some(reason) = result.shared.first() {
+            return nonempty(&reason.topic)
+                .or_else(|| nonempty(&reason.their_topic))
+                .map(Relation::Shares);
         }
-        (Some(work), None) => line.push_str(&format!(" Working on {work}.")),
-        (None, Some(help)) => line.push_str(&format!(" Can help with {help}.")),
-        (None, None) => {}
+        if let Some(trade) = result.they_bring.first() {
+            return nonempty(&trade.topic).map(Relation::TheyHelp);
+        }
+        result
+            .you_bring
+            .first()
+            .and_then(|trade| nonempty(&trade.target))
+            .map(Relation::YouHelp)
+    }
+}
+
+/// "Shares a with Maya and b with Priya. Lee can help with c. Can help Sam
+/// with d." for at most three people, in the order given.
+fn related_sentences(related: &[(String, Relation)]) -> Vec<String> {
+    let mut shares = Vec::new();
+    let mut others = Vec::new();
+    for (name, relation) in related {
+        match relation {
+            Relation::Shares(topic) => shares.push(format!("{} with {name}", mid_sentence(topic))),
+            Relation::TheyHelp(topic) => {
+                others.push(format!("{name} can help with {}.", mid_sentence(topic)))
+            }
+            Relation::YouHelp(topic) => {
+                others.push(format!("Can help {name} with {}.", mid_sentence(topic)))
+            }
+        }
+    }
+    let mut out = Vec::new();
+    if !shares.is_empty() {
+        out.push(format!("Shares {}.", and_list(&shares)));
+    }
+    out.extend(others);
+    out
+}
+
+/// "<Name> joined. Working on …; can help with …." from the card they share,
+/// or "<Name> joined." without one, then how they relate to up to three
+/// people already in the group. The related part is cut back person by
+/// person to keep the line short.
+pub(super) fn joined_line(
+    name: &str,
+    topics: Option<&Topics>,
+    related: &[(String, Relation)],
+) -> String {
+    let mut line = format!("{name} joined.");
+    if let Some(topics) = topics {
+        match (first_two(&topics.working_on), first_two(&topics.can_help)) {
+            (Some(work), Some(help)) => {
+                line.push_str(&format!(" Working on {work}; can help with {help}."))
+            }
+            (Some(work), None) => line.push_str(&format!(" Working on {work}.")),
+            (None, Some(help)) => line.push_str(&format!(" Can help with {help}.")),
+            (None, None) => {}
+        }
+    }
+    let mut shown = related.len().min(MAX_RELATED);
+    while shown > 0 {
+        let suffix = related_sentences(&related[..shown]).join(" ");
+        if line.chars().count() + 1 + suffix.chars().count() <= MAX_JOINED_CHARS {
+            line.push(' ');
+            line.push_str(&suffix);
+            break;
+        }
+        shown -= 1;
     }
     line
 }
@@ -100,6 +206,7 @@ pub(super) fn joined_line(name: &str, topics: Option<&Topics>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common_ground::matching::{Reason, Trade};
 
     fn topics(working_on: &[&str], can_help: &[&str]) -> Topics {
         Topics {
@@ -113,13 +220,88 @@ mod tests {
     fn joined_line_uses_the_first_two_topics() {
         let card = topics(&["Agent memory", "Tool use", "Evals"], &["Rust"]);
         assert_eq!(
-            joined_line("Sam", Some(&card)),
-            "Sam joined. Working on Agent memory and Tool use; can help with Rust."
+            joined_line("Sam", Some(&card), &[]),
+            "Sam joined. Working on agent memory and tool use; can help with rust."
         );
-        assert_eq!(joined_line("Sam", None), "Sam joined.");
+        assert_eq!(joined_line("Sam", None, &[]), "Sam joined.");
         assert_eq!(
-            joined_line("Sam", Some(&topics(&[], &["Rust"]))),
-            "Sam joined. Can help with Rust."
+            joined_line(
+                "Sam",
+                Some(&topics(&[], &["RAG evals", "GPT-5 tuning"])),
+                &[]
+            ),
+            "Sam joined. Can help with RAG evals and GPT-5 tuning."
+        );
+    }
+
+    #[test]
+    fn joined_line_names_related_people() {
+        let card = topics(
+            &["Persistent user models", "Dialogue memory index tuning"],
+            &["Vector index design"],
+        );
+        let related = [
+            (
+                "Maya".to_string(),
+                Relation::Shares("Retrieval index tuning".into()),
+            ),
+            (
+                "Priya".to_string(),
+                Relation::Shares("memory timelines".into()),
+            ),
+            ("Lee".to_string(), Relation::TheyHelp("Eval design".into())),
+            ("Kim".to_string(), Relation::YouHelp("Rust".into())),
+        ];
+        assert_eq!(
+            joined_line("Tomas", Some(&card), &related),
+            "Tomas joined. Working on persistent user models and dialogue memory index tuning; \
+             can help with vector index design. Shares retrieval index tuning with Maya and \
+             memory timelines with Priya. Lee can help with eval design."
+        );
+        assert_eq!(
+            joined_line("Tomas", None, &related[3..]),
+            "Tomas joined. Can help Kim with rust."
+        );
+        // People are dropped from the end to keep the line short.
+        let long = "x".repeat(400);
+        let related = [
+            ("Maya".to_string(), Relation::Shares("retrieval".into())),
+            ("Priya".to_string(), Relation::Shares(long)),
+        ];
+        assert_eq!(
+            joined_line("Tomas", None, &related),
+            "Tomas joined. Shares retrieval with Maya."
+        );
+    }
+
+    #[test]
+    fn relation_prefers_the_first_shared_topic() {
+        let mut result = MatchResult {
+            score: 50,
+            headline: "Different area".into(),
+            shared: Vec::new(),
+            you_bring: Vec::new(),
+            they_bring: Vec::new(),
+            next_step: String::new(),
+        };
+        assert_eq!(Relation::from_match(&result), None);
+        result.you_bring.push(Trade {
+            topic: "Rust".into(),
+            target: "Services".into(),
+            why: String::new(),
+        });
+        assert_eq!(
+            Relation::from_match(&result),
+            Some(Relation::YouHelp("Services".into()))
+        );
+        result.shared.push(Reason {
+            topic: "Agent memory".into(),
+            their_topic: "Memory".into(),
+            why: String::new(),
+        });
+        assert_eq!(
+            Relation::from_match(&result),
+            Some(Relation::Shares("Agent memory".into()))
         );
     }
 

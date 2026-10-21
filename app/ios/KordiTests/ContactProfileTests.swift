@@ -149,22 +149,22 @@ final class ContactProfileTests: XCTestCase {
         XCTAssertEqual(page.tiles, [.call, .video, .mute, .more])
         XCTAssertFalse(page.tiles.contains(.message))
         XCTAssertFalse(page.tiles.contains(.share))
-        XCTAssertEqual(page.sharedRows, [.media, .links, .documents, .groups, .todo, .memory])
-        XCTAssertEqual(page.sharedCount(.media), 24)
+        XCTAssertEqual(page.sharedRows, [.photos, .files, .links, .groups, .todo, .memory])
+        XCTAssertEqual(page.sharedCount(.photos), 24)
         XCTAssertNil(page.sharedCount(.todo))
         XCTAssertTrue(page.showsSharedSection)
 
         page.memoryAvailable = false
         XCTAssertEqual(page.sharedRows.last, .todo)
 
-        // Without the profile the page still reaches the chat's media, files, todo and memory.
+        // Without the profile the page still reaches the chat's photos, files, todo and memory.
         let fallback = ContactProfilePresentation(subject: subject, profile: nil, isFallback: true, isPage: true)
         XCTAssertTrue(fallback.showsSharedSection)
         XCTAssertFalse(fallback.showsNothingShared)
-        XCTAssertTrue(fallback.isSharedRowEnabled(.media))
+        XCTAssertTrue(fallback.isSharedRowEnabled(.photos))
         XCTAssertTrue(fallback.isSharedRowEnabled(.todo))
 
-        // An empty profile keeps the rows on the page; zero counts that lead to the chat are disabled.
+        // An empty profile keeps the rows on the page; rows with a count of 0 are disabled.
         let empty = ContactProfilePresentation(
             subject: subject,
             profile: CloudContactProfile(accountId: "acct_nadia", shared: .init()),
@@ -172,15 +172,16 @@ final class ContactProfileTests: XCTestCase {
             isPage: true
         )
         XCTAssertFalse(empty.showsNothingShared)
-        XCTAssertTrue(empty.isSharedRowEnabled(.media))
-        XCTAssertTrue(empty.isSharedRowEnabled(.documents))
-        XCTAssertEqual(empty.sharedCount(.documents), 0)
+        XCTAssertFalse(empty.isSharedRowEnabled(.photos))
+        XCTAssertFalse(empty.isSharedRowEnabled(.files))
+        XCTAssertEqual(empty.sharedCount(.files), 0)
         XCTAssertFalse(empty.isSharedRowEnabled(.links))
+        XCTAssertTrue(empty.isSharedRowEnabled(.todo))
 
         let sheet = ContactProfilePresentation(subject: subject, profile: CloudContactProfile(accountId: "acct_nadia", shared: .init()), isFallback: false)
-        XCTAssertEqual(sheet.sharedRows, [.media, .links, .documents, .groups])
+        XCTAssertEqual(sheet.sharedRows, [.photos, .files, .links, .groups])
         XCTAssertTrue(sheet.showsNothingShared)
-        XCTAssertFalse(sheet.isSharedRowEnabled(.media))
+        XCTAssertFalse(sheet.isSharedRowEnabled(.photos))
     }
 
     func testChatHeaderOpensTheProfileOnlyForPeople() {
