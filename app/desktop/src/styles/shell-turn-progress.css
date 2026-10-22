@@ -53,3 +53,9 @@
 .app-tool-activity-toggle > svg:last-child:not(:first-child) { position: absolute; right: 0; }
 
 .app-turn-progress-details .app-transcript-thinking-markdown :where(p, li) { font-size: 12px; line-height: 1.5; }
+
+/* Keep reasoning secondary even when Markdown or light-theme emphasis sets a color. */
+.kordi-app .app-turn-progress .app-transcript-thinking-markdown,
+.kordi-app .app-turn-progress .app-transcript-thinking-markdown :is(p, li, blockquote, td, th, h1, h2, h3, h4, h5, h6, strong, em, code, a) {
+  color: var(--utility-muted-text) !important;
+}

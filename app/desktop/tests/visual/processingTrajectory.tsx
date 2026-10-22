@@ -53,7 +53,7 @@ function Fixture() {
   ] : undefined;
   const turn: DesktopChatTurnSnapshot = { id: 'local-turn', sessionId: `${cloudGroupAgentRuntimeSessionId('acct_owner', 'group')}:request:request`, replyToMessageId: 'request',
     prompt: '', status: phase === 4 ? 'starting' : phase === 5 || phase === 7 ? 'streaming' : phase === 6 ? 'tooling' : phase === 8 ? 'writing' : 'complete',
-    message: '', thinkingText: reasoning ? 'Checking the request.' : '', segments, completedAtMs: phase >= 9 ? now + 12000 : null, assistantText: phase >= 8 ? 'Synthetic final answer that fits on one line.' : '', tools, completed: phase >= 9, succeeded: phase >= 9, startedAtMs: now };
+    message: '', thinkingText: reasoning ? '**Checking the request.**' : '', segments, completedAtMs: phase >= 9 ? now + 12000 : null, assistantText: phase >= 8 ? 'Synthetic final answer that fits on one line.' : '', tools, completed: phase >= 9, succeeded: phase >= 9, startedAtMs: now };
   const canonical = { profile: { id: 'profile', humanIdentityId: 'human:owner' },
     identities: [{ id: 'agent:owner', kind: 'agent', ownerIdentityId: 'human:owner', displayName: 'Synthetic Agent' }],
     sessions: [{ id: 'group', kind: 'group', title: 'Synthetic group', status: 'active', createdAtMs: now - 100000, updatedAtMs: now, metadata: {} }],

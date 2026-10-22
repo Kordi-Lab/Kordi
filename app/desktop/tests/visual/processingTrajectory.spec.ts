@@ -231,6 +231,10 @@ test('plain replies stay compact and reasoning opens with one disclosure', async
   await expect(page.getByText('Checking the request.', { exact: true })).toHaveCount(0);
   await reasoning.click();
   await expect(page.getByText('Checking the request.', { exact: true })).toBeVisible();
+  const mutedColor = await reasoning.evaluate(element => getComputedStyle(element).color);
+  await expect(page.locator('.app-transcript-thinking-markdown p')).toHaveCSS('color', mutedColor);
+  await expect(page.locator('.app-transcript-thinking-markdown strong')).toHaveCSS('color', mutedColor);
+  expect(await prose.evaluate(element => getComputedStyle(element).color)).not.toBe(mutedColor);
   await expect(page.locator('.app-turn-progress-details details')).toHaveCount(0);
   await expect(page.getByText('Activity', { exact: true })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('compact-reasoning.png'), fullPage: true });
