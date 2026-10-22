@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 
 use super::db_fixture::{account, app, pool, send, signed_in};
 use super::profile_support::{build_profile, PROFILES};
-use super::support::free_code;
+use super::support::closed_code;
 
 async fn designs(app: &axum::Router, token: &str) -> Vec<Value> {
     let (status, body) = send(app, "GET", PROFILES, token, None).await;
@@ -129,12 +129,7 @@ async fn profiles_keep_a_card_design() {
     assert_eq!(body["profile"]["design"], "workshop", "{body}");
 
     // Others see it next to the kind in the room they share.
-    let code = free_code();
-    sqlx_core::query::query("UPDATE cloud_common_ground_rooms SET closed_at = now() WHERE code = $1 AND closed_at IS NULL")
-        .bind(&code)
-        .execute(&pool)
-        .await
-        .unwrap();
+    let code = closed_code(&pool).await;
     let join = format!("/v1/cloud/common-ground/rooms/{code}/join");
     let (status, body) = send(
         &app,
@@ -171,4 +166,57 @@ async fn profiles_keep_a_card_design() {
             "icon": null
         })
     );
+}
+
+/// Two devices that edit different fields of the same profile at once keep
+/// both edits: an update writes only the fields in its body.
+#[tokio::test]
+async fn concurrent_edits_to_different_fields_both_persist() {
+    let Some(pool) = pool().await else {
+        return;
+    };
+    let service = account(&pool, "service").await;
+    let app = app(&pool, Some(&service));
+    let (_, alex) = signed_in(&pool, "Alex").await;
+    let (status, kaust) = send(
+        &app,
+        "POST",
+        PROFILES,
+        &alex,
+        Some(json!({"kind": "custom", "name": "KAUST", "icon": "globe"})),
+    )
+    .await;
+    assert_eq!(status, 201, "{kaust}");
+    let path = format!("{PROFILES}/{}", kaust["profileId"].as_str().unwrap());
+
+    for (design, focus) in [
+        ("research", "Agents"),
+        ("ocean", "Retrieval"),
+        ("workshop", "Evals"),
+    ] {
+        // Both start from the same state; neither carries the other's field.
+        let ((design_status, _), (focus_status, _)) = tokio::join!(
+            send(&app, "PUT", &path, &alex, Some(json!({"design": design}))),
+            send(&app, "PUT", &path, &alex, Some(json!({"focus": focus}))),
+        );
+        assert_eq!((design_status, focus_status), (200, 200));
+        let (_, body) = send(&app, "GET", PROFILES, &alex, None).await;
+        let profile = body["profiles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|profile| profile["profileId"] == kaust["profileId"])
+            .unwrap()
+            .clone();
+        assert_eq!(
+            json!([
+                profile["name"],
+                profile["design"],
+                profile["focus"],
+                profile["icon"]
+            ]),
+            json!(["KAUST", design, focus, "globe"]),
+            "{profile}"
+        );
+    }
 }
