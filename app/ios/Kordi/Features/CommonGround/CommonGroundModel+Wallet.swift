@@ -63,6 +63,8 @@ struct CommonGroundWalletCard: Identifiable, Hashable {
     let id: String
     let design: CommonGroundCardDesign
     var icon: CommonGroundCardIcon?
+    /// The kind's design, whose glyph a colour design draws.
+    var kindDesign: CommonGroundCardDesign = .work
     let name: String
     var focus: String?
     var topics: [String] = []
@@ -110,6 +112,7 @@ extension CommonGroundModel {
                 id: profile.profileId,
                 design: design(of: profile),
                 icon: profile.cardIcon,
+                kindDesign: profile.kindDesign,
                 name: profile.title,
                 focus: profile.focusLine,
                 topics: current ? myTopics : walletTopics[profile.profileId] ?? [],

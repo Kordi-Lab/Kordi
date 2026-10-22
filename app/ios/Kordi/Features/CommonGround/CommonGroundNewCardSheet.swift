@@ -33,7 +33,7 @@ struct CommonGroundNewCardSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             CommonGroundSheetHeader(title: "New card") { dismiss() }
             CommonGroundCardCarousel(
-                ids: CommonGroundCardDesign.allCases.map(\.rawValue),
+                ids: CommonGroundCardDesign.kinds.map(\.rawValue),
                 selection: $selection,
                 cardWidth: cardWidth,
                 zoom: 0.86,
@@ -51,13 +51,14 @@ struct CommonGroundNewCardSheet: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
         .onAppear {
-            for option in CommonGroundCardDesign.allCases { names[option] = option.defaultName }
+            for option in CommonGroundCardDesign.kinds { names[option] = option.defaultName }
             selection = CommonGroundCardDesign.firstAvailable(in: model.profiles).rawValue
         }
         .sheet(item: $lookFor) { option in
             CommonGroundCardLookSheet(
                 design: looks[option] ?? option,
                 icon: icons[option],
+                kindDesign: option,
                 onDesign: { looks[option] = $0 },
                 onIcon: { icons[option] = $0 }
             )
@@ -72,6 +73,7 @@ struct CommonGroundNewCardSheet: View {
         return ProfileCardView(
             design: looks[option] ?? option,
             icon: icons[option],
+            kindDesign: option,
             name: option.title,
             bottom: .skeleton,
             trailing: open ? .none : .badge("In your wallet"),

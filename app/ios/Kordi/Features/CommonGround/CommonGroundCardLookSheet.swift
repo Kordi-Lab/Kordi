@@ -54,6 +54,8 @@ enum CommonGroundCardIcon: String, CaseIterable, Identifiable {
 struct CommonGroundCardLookSheet: View {
     let design: CommonGroundCardDesign
     let icon: CommonGroundCardIcon?
+    /// The kind's design, whose glyph is the default under a colour.
+    var kindDesign: CommonGroundCardDesign? = nil
     let onDesign: (CommonGroundCardDesign) -> Void
     /// nil goes back to the design's glyph.
     let onIcon: (CommonGroundCardIcon?) -> Void
@@ -66,7 +68,7 @@ struct CommonGroundCardLookSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 label("Background")
                 HStack(spacing: 0) {
-                    ForEach(CommonGroundCardDesign.allCases) { option in
+                    ForEach(CommonGroundCardDesign.kinds) { option in
                         Button { onDesign(option) } label: {
                             CommonGroundCardSwatch(design: option, width: 40, height: 27, cornerRadius: 7)
                                 .padding(4)
@@ -79,9 +81,26 @@ struct CommonGroundCardLookSheet: View {
                         .accessibilityAddTraits(option == design ? .isSelected : [])
                     }
                 }
+                HStack(spacing: 0) {
+                    ForEach(CommonGroundCardDesign.colours) { option in
+                        Button { onDesign(option) } label: {
+                            colourDot(option)
+                                .padding(3)
+                                .overlay {
+                                    if option == design { Circle().strokeBorder(Color.accentColor, lineWidth: 2) }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(option.title)
+                        .accessibilityAddTraits(option == design ? .isSelected : [])
+                    }
+                }
+                .padding(.top, 10)
                 label("Icon")
                 LazyVGrid(columns: columns, spacing: 8) {
-                    iconCell(symbol: design.symbol, selected: icon == nil, name: "Default") { onIcon(nil) }
+                    iconCell(symbol: design.glyph(kind: kindDesign), selected: icon == nil, name: "Default") { onIcon(nil) }
                     ForEach(CommonGroundCardIcon.allCases) { option in
                         iconCell(symbol: option.symbol, selected: option == icon, name: option.title) { onIcon(option) }
                     }
@@ -121,6 +140,14 @@ struct CommonGroundCardLookSheet: View {
         .buttonStyle(.plain)
         .accessibilityLabel(name)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func colourDot(_ option: CommonGroundCardDesign) -> some View {
+        let palette = option.palette(scheme)
+        return Circle()
+            .fill(LinearGradient(colors: [palette.top, palette.bottom], startPoint: .top, endPoint: .bottom))
+            .overlay(Circle().strokeBorder(palette.edge, lineWidth: 0.5))
+            .frame(width: 24, height: 24)
     }
 
     @ViewBuilder

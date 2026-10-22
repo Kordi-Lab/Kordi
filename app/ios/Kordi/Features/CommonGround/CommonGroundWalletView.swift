@@ -74,6 +74,7 @@ struct CommonGroundWallet: View {
         return ProfileCardView(
             design: card.design,
             icon: card.icon,
+            kindDesign: card.kindDesign,
             name: card.name,
             focus: card.focus,
             bottom: bottom(for: card, selected: selected),

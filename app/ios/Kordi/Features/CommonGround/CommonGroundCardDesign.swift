@@ -3,11 +3,37 @@ import SwiftUI
 /// A card's look in the wallet. Work, Health and Daily tasks follow their
 /// kind; a custom profile is drawn as a Workshop, Research group or Custom
 /// card. The server stores each profile's design; a custom card without
-/// one is guessed from its name.
+/// one is guessed from its name. The ten colours are plain backgrounds any
+/// card can take from its look sheet; they keep the kind's glyph.
 enum CommonGroundCardDesign: String, CaseIterable, Identifiable {
     case work, health, daily, workshop, research, custom
+    case ocean, sky, rose, coral, amber, forest, lavender, graphite, mint, olive
 
     var id: String { rawValue }
+
+    /// The six designs a new card is made as.
+    static let kinds: [CommonGroundCardDesign] = [.work, .health, .daily, .workshop, .research, .custom]
+    /// The plain colours, chosen only from the look sheet.
+    static let colours: [CommonGroundCardDesign] = [.ocean, .sky, .rose, .coral, .amber, .forest, .lavender, .graphite, .mint, .olive]
+
+    var isColour: Bool { colourHex != nil }
+
+    /// A colour's base, tuned for white text.
+    var colourHex: UInt32? {
+        switch self {
+        case .ocean: 0x0f6e73
+        case .sky: 0x2a6fb8
+        case .rose: 0xb33a63
+        case .coral: 0xd8613f
+        case .amber: 0xb97a12
+        case .forest: 0x2f5e3a
+        case .lavender: 0x6b5bb5
+        case .graphite: 0x3b3f46
+        case .mint: 0x2f8f7a
+        case .olive: 0x6b6a2e
+        default: nil
+        }
+    }
 
     /// Cards a wallet holds at most, as the server allows profiles.
     static let walletLimit = 5
@@ -20,9 +46,11 @@ enum CommonGroundCardDesign: String, CaseIterable, Identifiable {
         case .workshop: "Workshop"
         case .research: "Research group"
         case .custom: "Custom"
+        default: rawValue.capitalized
         }
     }
 
+    /// The design's glyph; a colour has none of its own and shows sparkles.
     var symbol: String {
         switch self {
         case .work: "briefcase"
@@ -30,8 +58,13 @@ enum CommonGroundCardDesign: String, CaseIterable, Identifiable {
         case .daily: "checklist"
         case .workshop: "lanyardcard"
         case .research: "building.columns"
-        case .custom: "sparkles"
+        default: "sparkles"
         }
+    }
+
+    /// The glyph a card draws without an icon: a colour takes its kind's.
+    func glyph(kind: CommonGroundCardDesign?) -> String {
+        isColour ? (kind ?? .custom).symbol : symbol
     }
 
     /// The server kind a card of this design is created with.
@@ -40,7 +73,7 @@ enum CommonGroundCardDesign: String, CaseIterable, Identifiable {
         case .work: .work
         case .health: .health
         case .daily: .daily
-        case .workshop, .research, .custom: .custom
+        default: .custom
         }
     }
 
@@ -53,7 +86,7 @@ enum CommonGroundCardDesign: String, CaseIterable, Identifiable {
         }
     }
 
-    var namePlaceholder: String { self == .custom ? "Name" : title }
+    var namePlaceholder: String { self == .custom || isColour ? "Name" : title }
 
     /// The design for a profile: the server's design, else the kind's
     /// default, else for a custom card one guessed from the name.
@@ -79,7 +112,7 @@ enum CommonGroundCardDesign: String, CaseIterable, Identifiable {
 
     /// The first design the New card sheet opens on.
     static func firstAvailable(in profiles: [CommonGroundProfileSummary]) -> CommonGroundCardDesign {
-        allCases.first { isAvailable($0, in: profiles) } ?? .workshop
+        kinds.first { isAvailable($0, in: profiles) } ?? .workshop
     }
 }
 
@@ -110,6 +143,16 @@ struct CommonGroundCardPalette {
     let danger: Color
 }
 
+/// Mixes a colour toward white (positive) or black (negative).
+private func cgShade(_ hex: UInt32, _ amount: Double) -> UInt32 {
+    func channel(_ shift: UInt32) -> UInt32 {
+        let value = Double((hex >> shift) & 0xff)
+        let mixed = amount >= 0 ? value + (255 - value) * amount : value * (1 + amount)
+        return UInt32(max(0, min(255, mixed.rounded()))) << shift
+    }
+    return channel(16) | channel(8) | channel(0)
+}
+
 private func cgHex(_ hex: UInt32, _ alpha: Double = 1) -> Color {
     Color(
         .sRGB,
@@ -130,6 +173,10 @@ extension CommonGroundCardDesign {
                 top: cgHex(top), bottom: cgHex(bottom), text: cgHex(text), secondary: cgHex(text, secondary),
                 pill: pill, accent: cgHex(accent), glyphFill: glyph, edge: edge, danger: danger
             )
+        }
+        if let base = colourHex {
+            return p(cgShade(base, dark ? 0.2 : 0.1), cgShade(base, dark ? -0.2 : -0.3), 0xffffff, 0.74, pill: white.opacity(0.15),
+                     accent: cgShade(base, 0.72), glyph: white.opacity(0.17), edge: white.opacity(dark ? 0.1 : 0.07))
         }
         switch self {
         case .work:
@@ -156,6 +203,9 @@ extension CommonGroundCardDesign {
         case .custom:
             return p(dark ? 0x5a3762 : 0x6c4377, dark ? 0x2f1b35 : 0x3c2444, 0xf8eefb, 0.7, pill: white.opacity(0.12),
                      accent: 0xecc0f8, glyph: cgHex(0xecc0f8, 0.16), edge: white.opacity(dark ? 0.09 : 0.07))
+        default:
+            return p(0x3b3f46, 0x20242a, 0xffffff, 0.74, pill: white.opacity(0.15), accent: 0xd0d4da,
+                     glyph: white.opacity(0.17), edge: white.opacity(0.08))
         }
     }
 }
@@ -197,13 +247,7 @@ struct CommonGroundCardPattern: View {
             let size = geo.size
             switch design {
             case .work:
-                Canvas { context, size in
-                    var path = Path()
-                    stride(from: -1, through: size.width, by: 18).forEach { path.addRect(CGRect(x: $0, y: 0, width: 1, height: size.height)) }
-                    stride(from: -1, through: size.height, by: 18).forEach { path.addRect(CGRect(x: 0, y: $0, width: size.width, height: 1)) }
-                    context.fill(path, with: .color(.white.opacity(0.055)))
-                }
-                .mask(RadialGradient(colors: [.black, .black, .clear], center: .topTrailing, startRadius: 0, endRadius: size.width * 1.1))
+                grid(size)
             case .research:
                 let center = CGPoint(x: size.width * 0.88, y: size.height * 0.08)
                 ZStack {
@@ -252,12 +296,25 @@ struct CommonGroundCardPattern: View {
                     context.fill(path, with: .color(.white.opacity(0.16)))
                 }
                 .mask(LinearGradient(colors: [.black, .clear], startPoint: UnitPoint(x: 0.7, y: 0), endPoint: UnitPoint(x: 0.2, y: 0.9)))
+            default:
+                // A colour: the subtle grid only.
+                grid(size)
             }
         }
         .allowsHitTesting(false)
     }
 
     private var cgHexGlow: Color { cgHex(0xffd6b0, 0.42) }
+
+    private func grid(_ size: CGSize) -> some View {
+        Canvas { context, size in
+            var path = Path()
+            stride(from: -1, through: size.width, by: 18).forEach { path.addRect(CGRect(x: $0, y: 0, width: 1, height: size.height)) }
+            stride(from: -1, through: size.height, by: 18).forEach { path.addRect(CGRect(x: 0, y: $0, width: size.width, height: 1)) }
+            context.fill(path, with: .color(.white.opacity(0.055)))
+        }
+        .mask(RadialGradient(colors: [.black, .black, .clear], center: .topTrailing, startRadius: 0, endRadius: size.width * 1.1))
+    }
 
     private func rings(center: CGPoint, step: CGFloat, width: CGFloat, color: Color, size: CGSize) -> some View {
         Canvas { context, size in

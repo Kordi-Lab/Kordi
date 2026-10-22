@@ -16,6 +16,8 @@ struct ProfileCardView: View {
     let design: CommonGroundCardDesign
     /// The chosen icon; nil draws the design's glyph.
     var icon: CommonGroundCardIcon? = nil
+    /// The kind's design, whose glyph a colour design draws.
+    var kindDesign: CommonGroundCardDesign? = nil
     var name: String
     var focus: String? = nil
     var bottom: Bottom = .topics([])
@@ -60,7 +62,7 @@ struct ProfileCardView: View {
 
     private func head(_ palette: CommonGroundCardPalette) -> some View {
         HStack(spacing: 10) {
-            CommonGroundCardGlyph(design: design, palette: palette, icon: icon, onTap: onGlyph)
+            CommonGroundCardGlyph(design: design, palette: palette, icon: icon, kindDesign: kindDesign, onTap: onGlyph)
             if let nameField {
                 TextField("", text: nameField, prompt: Text(design.namePlaceholder).foregroundStyle(palette.text.opacity(0.45)))
                     .font(.system(size: 18, weight: .semibold))
@@ -184,6 +186,7 @@ struct CommonGroundCardGlyph: View {
     let design: CommonGroundCardDesign
     let palette: CommonGroundCardPalette
     var icon: CommonGroundCardIcon? = nil
+    var kindDesign: CommonGroundCardDesign? = nil
     var size: CGFloat = 32
     var onTap: (() -> Void)? = nil
 
@@ -198,7 +201,7 @@ struct CommonGroundCardGlyph: View {
     }
 
     private var tile: some View {
-        Image(systemName: icon?.symbol ?? design.symbol)
+        Image(systemName: icon?.symbol ?? design.glyph(kind: kindDesign))
             .font(.system(size: size * 0.53, weight: .medium))
             .foregroundStyle(palette.accent)
             .frame(width: size, height: size)

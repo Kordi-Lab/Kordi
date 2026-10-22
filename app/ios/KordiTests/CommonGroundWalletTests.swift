@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 import XCTest
 @testable import Kordi
@@ -331,6 +332,33 @@ final class CommonGroundWalletTests: XCTestCase {
         for icon in CommonGroundCardIcon.allCases {
             XCTAssertNotNil(UIImage(systemName: icon.symbol), "\(icon) draws")
         }
+    }
+
+    func testAllSixteenDesignsDecodeAndDraw() throws {
+        let names = ["work", "health", "daily", "workshop", "research", "custom",
+                     "ocean", "sky", "rose", "coral", "amber", "forest", "lavender", "graphite", "mint", "olive"]
+        XCTAssertEqual(CommonGroundCardDesign.allCases.map(\.rawValue), names)
+        XCTAssertEqual(CommonGroundCardDesign.kinds.count, 6)
+        XCTAssertEqual(CommonGroundCardDesign.colours.count, 10)
+        XCTAssertEqual(Set(CommonGroundCardDesign.kinds).union(CommonGroundCardDesign.colours).count, 16)
+        for name in names {
+            let profile = try JSONDecoder().decode(CommonGroundProfileSummary.self, from: Data(#"{"profileId":"cgp_h","kind":"health","name":"","design":"\#(name)"}"#.utf8))
+            let design = profile.cardDesign
+            XCTAssertEqual(design.rawValue, name, "\(name) decodes")
+            if design.isColour {
+                XCTAssertEqual(profile.glyphSymbol, "leaf", "\(name) keeps the kind's glyph")
+                XCTAssertEqual(design.kind, .custom)
+            }
+            XCTAssertNotNil(UIImage(systemName: profile.glyphSymbol), "\(name) glyph draws")
+            for scheme in [ColorScheme.light, .dark] {
+                let card = ProfileCardView(design: design, kindDesign: profile.kindDesign, name: "Card", bottom: .topics(["Agents"]), width: 338)
+                    .environment(\.colorScheme, scheme)
+                let renderer = ImageRenderer(content: card)
+                let image = try XCTUnwrap(renderer.uiImage, "\(name) draws in \(scheme)")
+                XCTAssertEqual(image.size.width, 338, accuracy: 1)
+            }
+        }
+        XCTAssertEqual(CommonGroundCardDesign.firstAvailable(in: []), .work, "New card opens on a kind")
     }
 
     // MARK: Room preview

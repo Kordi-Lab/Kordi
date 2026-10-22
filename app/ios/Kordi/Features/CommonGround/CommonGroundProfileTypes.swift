@@ -62,6 +62,7 @@ struct CommonGroundProfileTag: Codable, Hashable {
     var title: String { CommonGroundProfileSummary.title(kind: kind, name: name) }
     var cardDesign: CommonGroundCardDesign { .of(kind: kind, name: name, design: design) }
     var cardIcon: CommonGroundCardIcon? { icon.flatMap(CommonGroundCardIcon.init(rawValue:)) }
+    var kindDesign: CommonGroundCardDesign { .of(kind: kind, name: name) }
 
     /// The label beside a person's name; nil for Work, which needs none.
     var badge: String? { kind == CommonGroundProfileKind.work.rawValue ? nil : title }
@@ -119,6 +120,10 @@ struct CommonGroundProfileSummary: Decodable, Hashable, Identifiable {
 
     var cardDesign: CommonGroundCardDesign { .of(kind: kind, name: name, design: design) }
     var cardIcon: CommonGroundCardIcon? { icon.flatMap(CommonGroundCardIcon.init(rawValue:)) }
+    /// The design the kind (or a custom card's name) gives, whose glyph a colour keeps.
+    var kindDesign: CommonGroundCardDesign { .of(kind: kind, name: name) }
+    /// The glyph the card draws: its icon, else its design's or kind's.
+    var glyphSymbol: String { cardIcon?.symbol ?? cardDesign.glyph(kind: kindDesign) }
     var profileKind: CommonGroundProfileKind? { CommonGroundProfileKind(rawValue: kind) }
     var title: String { Self.title(kind: kind, name: name) }
     var isWork: Bool { kind == CommonGroundProfileKind.work.rawValue }

@@ -99,6 +99,7 @@ struct CommonGroundHome: View {
                 CommonGroundCardLookSheet(
                     design: profile.cardDesign,
                     icon: profile.cardIcon,
+                    kindDesign: profile.kindDesign,
                     onDesign: { design in Task { await model.setCardLook(id, design: design) } },
                     onIcon: { icon in Task { await model.setCardLook(id, icon: .some(icon)) } }
                 )
