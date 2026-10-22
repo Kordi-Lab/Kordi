@@ -48,6 +48,8 @@ export default defineConfig(({ command, mode }) => {
               { name: 'emoji-thumbnails', minSize: 0, test: /[\\/]src[\\/](?:features[\\/]emoji[\\/]notoEmojiThumbnails\.ts|assets[\\/]noto-thumbnails[\\/]manifest\.json)$/ },
               { name: 'agent-studio', test: /[\\/]src[\\/]kordi-app[\\/]agents[\\/](?:AgentStudio(?!Conversation)|factoryAgentUtils|shapeAgent|useAgentBuilderSession|useFactoryBuildRouting)/ },
               { name: 'agent-factory', test: /[\\/]src[\\/]kordi-app[\\/]agents[\\/]/, maxSize: 650_000 },
+              // The contact profile's Common ground section and match model, kept out of the cloud chunk.
+              { name: 'contact-common-ground', minSize: 0, test: /[\\/]src[\\/]kordi-app[\\/]contacts[\\/](?:ContactCommonGround\.tsx|contactMatch\.ts)$/ },
               { name: 'cloud-features', test: /[\\/]src[\\/]features[\\/]cloud[\\/]/ },
               { name: 'desktop-features', test: (id) => /[\\/]src[\\/]features[\\/]/.test(id) && !DOCUMENT_EDITOR_SOURCE.test(id) },
               // After the app groups, so modules the app shares with the editor stay in app chunks.

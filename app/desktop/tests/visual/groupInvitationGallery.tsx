@@ -8,6 +8,8 @@ import { GroupDetailsDialog } from '../../src/pages/GroupDetailsDialog';
 import { GroupInvitationDialog } from '../../src/pages/GroupInvitationDialog';
 import { ContactInfoPopover } from '../../src/pages/ContactInfoPopover';
 import { contact, conversation } from '../helpers/workspaceSidebarParticipantSpacesFixtures';
+import { normalizeContactProfile } from '../../src/features/cloud/contactProfileClient';
+import { CONTACT_MATCH_VISUAL } from './contactMatchFixture';
 import { contactSharedVisualMessages } from './contactSharedFixtures';
 
 const theme = new URLSearchParams(window.location.search).get('theme') === 'dark'
@@ -20,6 +22,13 @@ const mode = requestedMode === 'recipient'
   || requestedMode === 'contact'
   ? requestedMode
   : 'admin';
+// ?mode=contact&match=1: the popover's Common ground section with a Grounding match.
+const withMatch = new URLSearchParams(window.location.search).get('match') === '1';
+const matchProfile = normalizeContactProfile({
+  accountId: 'acct_maya',
+  kind: 'person',
+  commonGround: { workingOn: ['agent memory', 'retrieval'], canHelp: ['grant writing'], lookingFor: [], match: CONTACT_MATCH_VISUAL },
+})!;
 const visualAccount = {
   accountId: 'acct_visual_self',
   displayName: 'Me',
@@ -140,6 +149,7 @@ createRoot(document.querySelector('#root')!).render(
         anchorRect={{ left: 220, right: 256, top: 120, bottom: 156, width: 36, height: 36 }}
         onClose={() => undefined}
         onMessageContact={() => undefined}
+        loadProfile={withMatch ? async () => matchProfile : undefined}
         onOpenCommonGroup={(commonGroup) => {
           document.body.dataset.openedCommonGroup = commonGroup.id;
         }}

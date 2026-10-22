@@ -1,5 +1,8 @@
-import { createContext, useCallback, useState } from 'react';
+import { createContext, useCallback, useMemo, useState } from 'react';
 
+import { cloudApiBaseUrl, defaultCloudAuthClient } from '@/features/cloud/authClient';
+import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
+import { contactProfileVersionFromCapabilities, fetchContactProfile } from '@/features/cloud/contactProfileClient';
 import { useCloudContacts } from '@/features/cloud/useCloudContacts';
 import type { CloudPresenceStore } from '@/features/cloud/presence';
 import type { CloudSupportTicketInput } from '@/features/cloud/supportClient';
@@ -82,6 +85,18 @@ export function useChatSenderProfiles({
   const cloudContacts = useCloudContacts(normalizedCloudAccount);
   const submitCloudSupportRequest = cloudContacts.submitSupportRequest;
   const getCloudSupportRequest = cloudContacts.getSupportRequest;
+  const signedIn = Boolean(normalizedCloudAccount);
+  const authClient = useMemo(() => (signedIn ? defaultCloudAuthClient() : null), [signedIn]);
+  const { capabilities } = useCloudAuthCapabilitiesState(authClient, cloudApiBaseUrl());
+  // The popover's Common ground section, when the server serves contact profiles.
+  const loadProfile = useMemo(() => (
+    authClient && contactProfileVersionFromCapabilities(capabilities) !== null
+      ? (accountId: string, signal: AbortSignal) => fetchContactProfile(accountId, {
+          signal,
+          request: (path, init, fallback) => authClient.request(path, init, fallback),
+        })
+      : undefined
+  ), [authClient, capabilities]);
   const [storedState, setStoredState] = useState<SenderProfileState>({
     pageConversationId: activeConversation.id,
     target: null,
@@ -194,6 +209,7 @@ export function useChatSenderProfiles({
     openActive,
     openCompanion,
     openCommonGroup: onSelectSession ? openCommonGroup : undefined,
+    loadProfile,
     close,
   };
 }
