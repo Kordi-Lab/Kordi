@@ -54,10 +54,10 @@ export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
   const [trajectoryExpanded, setTrajectoryExpanded] = useState(true);
   const legacyHasActivity = turn.tools.length > 0 || Boolean(turn.thinkingText);
   if (!ordered) return <>
-    {legacyHasActivity || (live && !legacyAnswer) ? <ActivityGroup tools={turn.tools} thinkingText={turn.tools.length ? undefined : turn.thinkingText}
+    {legacyHasActivity || (live && !legacyAnswer) ? <ActivityGroup tools={turn.tools} thinkingText={live && turn.tools.length ? undefined : turn.thinkingText}
       label={!turn.tools.length && turn.thinkingText ? reasoningLabel : turnProgressLabel(turn)}
-      active={live} hideIcon={!live && standaloneReasoning} elapsed={elapsed} trailing={live ? trailing : undefined} renderTool={renderTool} /> : null}
-    {turn.tools.length > 0 && turn.thinkingText ? <ActivityGroup tools={[]} label="Reasoning" thinkingText={turn.thinkingText} renderTool={renderTool} /> : null}
+      active={live} hideIcon={!live} elapsed={elapsed} trailing={live ? trailing : undefined} renderTool={renderTool} /> : null}
+    {live && turn.tools.length > 0 && turn.thinkingText ? <ActivityGroup tools={[]} label="Reasoning" thinkingText={turn.thinkingText} renderTool={renderTool} /> : null}
     {legacyAnswer}
   </>;
   const statusLabel = turnProgressLabel(turn);

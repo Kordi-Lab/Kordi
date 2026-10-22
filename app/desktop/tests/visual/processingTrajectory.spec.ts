@@ -297,3 +297,20 @@ test('finished work without timestamps is explicit and compact', async ({ page }
   await expect(page.getByText('The example is ready. The check passed.')).toBeVisible();
   await page.screenshot({ path: info.outputPath('finished-without-timing.png'), fullPage: true });
 });
+
+test('legacy completed tool turns fold reasoning into the finished disclosure', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?reasoning=1&missingTiming=1&count=0&phase=7');
+  await expect(page.getByRole('button', { name: 'Reasoning', exact: true })).toBeVisible();
+  await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(9));
+  const finished = page.getByRole('button', { name: 'Finished', exact: true });
+  await expect(finished).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reasoning', exact: true })).toHaveCount(0);
+  await expect(page.locator('.app-turn-progress-summary')).toHaveCount(1);
+  await expect(page.locator('.app-transcript-thinking-markdown')).toHaveCount(0);
+  await finished.click();
+  await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'example.ts', exact: true })).toBeVisible();
+  await finished.click();
+  await expect(page.locator('.app-transcript-thinking-markdown')).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath('single-finished-disclosure.png'), fullPage: true });
+});
