@@ -46,6 +46,7 @@ struct ContactsView<PinnedRows: View>: View {
     }
 
     var body: some View {
+        let groupSpaces = ContactsGroupsSection.spaces(in: model, matching: searchText)
         VStack(spacing: 0) {
             KordiPullDownSearchField(
                 text: $searchText,
@@ -80,6 +81,10 @@ struct ContactsView<PinnedRows: View>: View {
                     .listSectionSeparator(.hidden)
                 }
 
+                if !groupSpaces.isEmpty {
+                    ContactsGroupsSection(spaces: groupSpaces, isSearching: !searchText.isEmpty, onOpenConversation: onOpenConversation)
+                }
+
                 Section {
                     if contacts.isEmpty {
                         ContentUnavailableView(
@@ -99,7 +104,7 @@ struct ContactsView<PinnedRows: View>: View {
                         }
                     }
                 } header: {
-                    if showsRequests {
+                    if showsRequests || !groupSpaces.isEmpty {
                         ContactsSectionHeader(title: "Contacts")
                     }
                 }
@@ -228,21 +233,6 @@ struct ContactsBadgeDot: View {
             .frame(width: diameter, height: diameter)
             .overlay { Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 1.5) }
             .accessibilityHidden(true)
-    }
-}
-
-private struct ContactsSectionHeader: View {
-    let title: String
-
-    var body: some View {
-        Text(title)
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .textCase(nil)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 10)
-            .padding(.bottom, 2)
-            .accessibilityAddTraits(.isHeader)
     }
 }
 
