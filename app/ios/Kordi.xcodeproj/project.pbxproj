@@ -189,6 +189,7 @@
 		7F30F10656CEEF82FA6AA960 /* CommonGroundBuildChoices.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40A2AB1FF5FE1CD5DC388C7 /* CommonGroundBuildChoices.swift */; };
 		7FC028D51428D718A78FDFBC /* SessionDetailStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 260B81738036B5419DF04E25 /* SessionDetailStyle.swift */; };
 		801B1286BE27D9D500B36DE9 /* MessageLinkPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D362AF4BAC14A082A9A6A849 /* MessageLinkPreview.swift */; };
+		8068F40907738D6BF2CA3C73 /* ContactsGroupsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B2CDE9007D23506C3544B63 /* ContactsGroupsSection.swift */; };
 		80A95422E8CFC11EC99E011D /* CommonGroundTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99CD429A25D6DE32F1B1AD49 /* CommonGroundTimelineView.swift */; };
 		80E51AE75851A2075A09CA1F /* MessageLayoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA5F52BFCAE2FA90368EFC77 /* MessageLayoutUITests.swift */; };
 		811AB691C8BD53A05B7CD315 /* MessageLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12292B95430FB4CC8DF46E8F /* MessageLayout.swift */; };
@@ -482,6 +483,7 @@
 		276E693EF06321E619FD4D1B /* KeychainSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSessionStore.swift; sourceTree = "<group>"; };
 		27A7AA9C5E9ACB4C67614BC8 /* CommonGroundTapController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundTapController.swift; sourceTree = "<group>"; };
 		2A107F959237ECCDB88A46B7 /* CommonGroundCardLookSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundCardLookSheet.swift; sourceTree = "<group>"; };
+		2B2CDE9007D23506C3544B63 /* ContactsGroupsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactsGroupsSection.swift; sourceTree = "<group>"; };
 		2BD932A38840C17EA0B8EF01 /* AppModel+Digest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Digest.swift"; sourceTree = "<group>"; };
 		2D532A8DAAC5AE9484BF6B4E /* ContactProfileSharedItemsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactProfileSharedItemsTests.swift; sourceTree = "<group>"; };
 		30170A4D2C1A1AF7B87BF136 /* noto-emoji */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "noto-emoji"; path = "Kordi/Resources/noto-emoji"; sourceTree = SOURCE_ROOT; };
@@ -824,6 +826,7 @@
 		12AF06413F9CC5B214E67C82 /* Contacts */ = {
 			isa = PBXGroup;
 			children = (
+				2B2CDE9007D23506C3544B63 /* ContactsGroupsSection.swift */,
 				7057F708821F2D5D4A0AE795 /* ContactsView.swift */,
 			);
 			path = Contacts;
@@ -1938,6 +1941,7 @@
 				58942DE04702B5E0F3EE7871 /* ContactProfileSharedPages.swift in Sources */,
 				BE74886AE325ED746A092256 /* ContactProfileTiles.swift in Sources */,
 				06F971BF13F3B530E1DEE284 /* ContactProfileView.swift in Sources */,
+				8068F40907738D6BF2CA3C73 /* ContactsGroupsSection.swift in Sources */,
 				EB453D88857B3296BE127B94 /* ContactsView.swift in Sources */,
 				E209B4E4DD968CF6AD4028E2 /* Conversation.swift in Sources */,
 				F7D2FBC93887F75BCDF18D61 /* ConversationInitialLoadingView.swift in Sources */,

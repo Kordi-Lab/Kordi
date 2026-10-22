@@ -14,6 +14,8 @@ struct CommonGroundHome: View {
     @State private var codeError: String?
     @State private var joinCode: CommonGroundCodeTarget?
     @State private var createFor: CommonGroundCodeTarget?
+    @State private var enterAfterCreate: String?
+    @State private var createdRoom: CommonGroundRoom?
     @State private var addsCard = false
     @State private var lookFor: CommonGroundCodeTarget?
     @State private var afterSharing: SharingStep?
@@ -98,11 +100,17 @@ struct CommonGroundHome: View {
             .presentationDetents([.height(model.roomDetail(target.code ?? "") == nil ? 470 : 492)])
             .presentationDragIndicator(.visible)
         }
-        .sheet(item: $createFor) { target in
-            CommonGroundCreateCodeSheet(initialProfileID: target.profileId)
-                .environmentObject(model)
-                .presentationDetents([.height(390)])
-                .presentationDragIndicator(.visible)
+        .sheet(item: $createFor, onDismiss: {
+            createdRoom = nil
+            if let code = enterAfterCreate { enterAfterCreate = nil; path.append(.results(code)) }
+        }) { target in
+            CommonGroundCreateCodeSheet(initialProfileID: target.profileId, created: $createdRoom) { room in
+                enterAfterCreate = room.code
+                createFor = nil
+            }
+            .environmentObject(model)
+            .presentationDetents([.height(452)])
+            .presentationDragIndicator(.visible)
         }
         .sheet(item: $lookFor) { target in
             if let id = target.profileId, let profile = model.profile(id) {

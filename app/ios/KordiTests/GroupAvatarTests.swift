@@ -37,6 +37,19 @@ final class GroupAvatarTests: XCTestCase {
         XCTAssertNil(GroupAvatarCatalog.imageSource(groupSpaceId: "another", canonical: [root], controls: []))
     }
 
+    func testGroundingOriginDecodesAndMarksTheWholeGroupSpace() throws {
+        var root = conversation("shared", space: "shared")
+        let json = String(decoding: try JSONEncoder().encode(root), as: UTF8.self)
+        XCTAssertFalse(json.contains("origin"))
+        let marked = Data(json.replacingOccurrences(of: "\"kind\":\"group\"", with: "\"kind\":\"group\",\"origin\":\"grounding\"").utf8)
+        root = try JSONDecoder().decode(CloudChatConversation.self, from: marked)
+        XCTAssertEqual(root.origin, "grounding")
+        let child = conversation("session:group:child", space: "shared")
+        XCTAssertTrue(GroupOriginCatalog.isGrounding(groupSpaceId: "group:shared", canonical: [child, root]))
+        XCTAssertFalse(GroupOriginCatalog.isGrounding(groupSpaceId: "shared", canonical: [child]))
+        XCTAssertFalse(GroupOriginCatalog.isGrounding(groupSpaceId: "another", canonical: [root]))
+    }
+
     private func conversation(_ id: String, space: String) -> CloudChatConversation {
         CloudChatConversation(id: id, kind: "group", sharedTitle: "Channel", version: 1,
             createdByAccountId: "acct_owner", legacySessionId: id, groupSpaceId: space,

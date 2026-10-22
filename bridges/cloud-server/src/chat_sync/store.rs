@@ -225,6 +225,7 @@ mod attachment_actions;
 pub use attachment_actions::{delete_attachment, message_for_viewer, set_attachment_reaction};
 mod conversation;
 mod cursors;
+mod grounding_origin;
 mod legacy_client_events;
 mod live_photo_validation;
 mod members;
