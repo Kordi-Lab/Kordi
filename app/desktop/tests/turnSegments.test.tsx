@@ -45,7 +45,7 @@ test('ordered rendering has one active signal and no duplicated aggregate or raw
   const texts = ['I will inspect the example.', 'Read context', 'The example needs one change.', 'Read context', 'The example is ready.'];
   let position = -1;
   for (const text of texts) { const next = markup.indexOf(text, position + 1); assert.ok(next > position, text); position = next; }
-  assert.equal((markup.match(/app-turn-progress-dots/g) ?? []).length, 1);
+  assert.equal((markup.match(/class="app-turn-progress-bird"/g) ?? []).length, 1);
   assert.doesNotMatch(markup, /Legacy aggregate|Private reasoning|Observation|Execution ×|done|complete/);
 });
 
@@ -53,7 +53,7 @@ test('terminal duration comes from stored timestamps and tool errors do not fail
   const completed = { ...turn, status: 'succeeded', completed: true, succeeded: true, completedAtMs: 9000 };
   const markup = renderToStaticMarkup(createElement(TurnProgress, { turn: completed, renderTool: () => null }));
   assert.match(markup, /Worked for 8s/);
-  assert.doesNotMatch(markup, /app-turn-progress-dots/);
+  assert.doesNotMatch(markup, /app-turn-progress-bird/);
   assert.equal(turnProgressLabel({ ...completed, tools: [{ ...turn.tools[0], status: 'error', isError: true }] }), 'Worked for');
   assert.equal(turnProgressLabel({ ...turn, status: 'cancelled', completed: true }), 'Stopped');
 });
@@ -97,6 +97,15 @@ test('a plain completed response has no duration section or empty activity wrapp
   assert.doesNotMatch(markup, /Worked for|app-turn-worked-header|app-turn-progress-summary|app-turn-final/);
 });
 
+test('finished reasoning-only turns use recorded duration in ordered and legacy history', () => {
+  const completed = { ...turn, tools: [], completed: true, succeeded: true, status: 'succeeded', completedAtMs: 196000 };
+  for (const segments of [undefined, [{ id: 'text:0', kind: 'text' as const, text: 'Hello.' }]]) {
+    const markup = renderToStaticMarkup(createElement(TurnProgress, { turn: { ...completed, segments }, renderTool: () => null }));
+    assert.match(markup, /aria-label="Worked for 3m 15s"/);
+    assert.doesNotMatch(markup, /app-turn-progress-bird|lucide-brain|>Reasoning</);
+  }
+});
+
 
 test('ordered commentary replaces the initial processing placeholder even before aggregate text arrives', () => {
   const streaming = { ...turn, status: 'starting', assistantText: '', thinkingText: '', tools: [],
@@ -104,5 +113,5 @@ test('ordered commentary replaces the initial processing placeholder even before
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: streaming, showReasoning: true, onStopActiveTurn: () => {} }));
   assert.match(markup, /I will check the example/);
   assert.match(markup, /Stop agent request/);
-  assert.doesNotMatch(markup, /app-agent-waiting-wave|app-transcript-live-status|app-turn-progress-dots/);
+  assert.doesNotMatch(markup, /app-agent-waiting-wave|app-transcript-live-status|app-turn-progress-bird/);
 });

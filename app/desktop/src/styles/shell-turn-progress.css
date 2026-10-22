@@ -7,13 +7,16 @@
 .app-turn-progress-time { color: var(--utility-muted-text); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .app-turn-progress-details { margin-top: 3px; min-width: 0; }
 .app-turn-commentary { padding: 2px 0; }
-.app-turn-progress-dots { display: flex; align-items: center; gap: 2px; width: 17px; flex-shrink: 0; }
-.app-turn-progress-dots i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; animation: app-transcript-quiet-text-pulse 1.2s ease-in-out infinite; }
-.app-turn-progress-dots i:nth-child(2) { animation-delay: .15s; }
-.app-turn-progress-dots i:nth-child(3) { animation-delay: .3s; }
+/* The bird stays anchored; only its wing moves while work is active. */
+.app-turn-progress-bird { flex-shrink: 0; overflow: visible; }
+.app-turn-progress-bird-wing { transform-origin: 13px 13px; animation: app-turn-bird-flap 800ms linear infinite; }
+@keyframes app-turn-bird-flap {
+  0%, 100% { transform: rotate(-12deg) scaleY(.65); }
+  50% { transform: rotate(12deg) scaleY(1); }
+}
 .app-turn-progress-details .app-transcript-timeline-row-running .app-transcript-timeline-node,
 .app-turn-progress-details .app-transcript-timeline-row-running .app-transcript-timeline-row-title { animation: none; }
-@media (prefers-reduced-motion: reduce) { .app-turn-progress-dots i { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .app-turn-progress-bird-wing { animation: none; } }
 @media (pointer: coarse) { .app-turn-progress-summary { min-height: 44px; } }
 
 /* Ordered work reads as a transcript, with output surfaces only on demand. */

@@ -173,13 +173,13 @@ test('ordered commentary keeps disclosures open through streaming and completion
   const step = (phase: number) => page.evaluate(phase => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(phase), phase);
   await step(7);
   await expect(first).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.locator('.app-turn-progress-dots')).toHaveCount(1);
+  await expect(page.locator('.app-turn-progress-bird')).toHaveCount(1);
   await expect(page.getByText('The example needs one change. I will apply it now.')).toBeVisible();
   await step(9);
   expect(await header!.evaluate(element => element === document.querySelector('.app-turn-worked-header'))).toBe(true);
   await expect(page.locator('.app-turn-worked-header')).toHaveAttribute('aria-label', 'Worked for 12s');
   await expect(first).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.locator('.app-turn-progress-dots')).toHaveCount(0);
+  await expect(page.locator('.app-turn-progress-bird')).toHaveCount(0);
   await expect(page.getByText('The example is ready. The check passed.')).toHaveCount(1);
   await expect(page.getByText('Synthetic final answer that fits on one line.')).toHaveCount(0);
   await first.click();
@@ -226,7 +226,7 @@ test('plain replies stay compact and reasoning opens with one disclosure', async
   expect(await page.locator('.app-ordered-progress').evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(40);
   await page.screenshot({ path: info.outputPath('compact-greeting.png'), fullPage: true });
   await page.goto('/tests/visual/processingTrajectory.html?ordered=1&simple=1&reasoning=1&count=0&phase=9');
-  const reasoning = page.getByRole('button', { name: 'Reasoning', exact: true });
+  const reasoning = page.getByRole('button', { name: 'Worked for 12s', exact: true });
   await expect(reasoning).toHaveCSS('font-size', '12px');
   await expect(page.getByText('Checking the request.', { exact: true })).toHaveCount(0);
   await reasoning.click();
@@ -260,4 +260,25 @@ test('live actions change in place and reasoning stays separate from tool detail
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(label).toHaveCSS('transition-duration', '0s');
   await page.screenshot({ path: info.outputPath('live-action-reasoning.png'), fullPage: true });
+});
+
+test('reasoning settles into recorded work duration and the bird stops', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&simple=1&reasoning=1&count=0&phase=5');
+  const summary = page.locator('.app-turn-reasoning .app-turn-progress-summary');
+  await expect(summary).toHaveAccessibleName(/^Reasoning/);
+  await expect(page.locator('.app-turn-progress-bird')).toHaveCount(1);
+  const wing = page.locator('.app-turn-progress-bird-wing');
+  await expect(wing).toHaveCSS('animation-name', 'app-turn-bird-flap');
+  await page.screenshot({ path: info.outputPath('reasoning-bird-live.png'), fullPage: true });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(wing).toHaveCSS('animation-name', 'none');
+  await summary.click();
+  const original = await summary.elementHandle();
+  await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(9));
+  await expect(summary).toHaveAccessibleName('Worked for 12s');
+  expect(await original!.evaluate(element => element === document.querySelector('.app-turn-reasoning .app-turn-progress-summary'))).toBe(true);
+  await expect(summary).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.app-turn-progress-bird')).toHaveCount(0);
+  await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
+  await page.screenshot({ path: info.outputPath('reasoning-finished-duration.png'), fullPage: true });
 });
