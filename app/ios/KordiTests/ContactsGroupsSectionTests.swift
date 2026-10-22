@@ -18,12 +18,4 @@ final class ContactsGroupsSectionTests: XCTestCase {
         let subtitle = ContactsGroupsSection.subtitle(peopleCount: 3, lastActivityAt: now, now: now)
         XCTAssertEqual(subtitle, "3 people · \(chatListTimestamp(now, now: now))")
     }
-
-    func testInitialTileIsStablePerGroup() {
-        let index = GroupInitialTile.paletteIndex(for: "space-1")
-        XCTAssertEqual(GroupInitialTile.paletteIndex(for: "space-1"), index)
-        XCTAssertTrue(GroupInitialTile.palette.indices.contains(index))
-        XCTAssertEqual(GroupInitialTile.initial(of: "agents workshop"), "A")
-        XCTAssertEqual(GroupInitialTile.initial(of: "  "), "#")
-    }
 }

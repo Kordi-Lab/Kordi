@@ -105,58 +105,10 @@ private struct ContactsGroupRow: View {
             subtitleIcon: space.isGroundingGroup ? Image("CommonGroundHug") : nil,
             subtitleIconLabel: "Grounding"
         ) {
-            if AvatarImageLoader.normalizedSource(space.avatarSource) != nil {
-                GroupAvatarStack(participants: space.participants, size: 44, imageSource: space.avatarSource)
-            } else {
-                GroupInitialTile(name: space.displayName, seed: space.preferenceId, size: 44)
-            }
+            GroupAvatarStack(participants: space.participants, size: 44, imageSource: space.avatarSource)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(space.isGroundingGroup ? "\(space.displayName), Grounding, \(subtitle)" : "\(space.displayName), \(subtitle)")
-    }
-}
-
-/// A group without its own picture: the name's initial on a muted colour
-/// that stays the same for the group on every device.
-struct GroupInitialTile: View {
-    let name: String
-    let seed: String
-    var size: CGFloat = 44
-
-    static let palette: [Color] = [
-        Color(red: 0.24, green: 0.36, blue: 0.85),
-        Color(red: 0.18, green: 0.43, blue: 0.36),
-        Color(red: 0.54, green: 0.35, blue: 0.17),
-        Color(red: 0.42, green: 0.36, blue: 0.66),
-        Color(red: 0.63, green: 0.29, blue: 0.25),
-        Color(red: 0.18, green: 0.44, blue: 0.53),
-    ]
-
-    /// FNV-1a over the seed, so the colour does not change between launches.
-    static func paletteIndex(for seed: String) -> Int {
-        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
-        for byte in seed.utf8 {
-            hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01b3
-        }
-        // FNV-1a's low bits cluster on similar ids; mix before picking a colour.
-        hash ^= hash >> 33
-        hash = hash &* 0xff51_afd7_ed55_8ccd
-        hash ^= hash >> 33
-        return Int(hash % UInt64(palette.count))
-    }
-
-    static func initial(of name: String) -> String {
-        name.first(where: { $0.isLetter || $0.isNumber }).map { String($0).uppercased() } ?? "#"
-    }
-
-    var body: some View {
-        Text(Self.initial(of: name))
-            .font(.system(size: size * 0.4, weight: .semibold, design: .rounded))
-            .foregroundStyle(.white)
-            .frame(width: size, height: size)
-            .background(Self.palette[Self.paletteIndex(for: seed)],
-                        in: RoundedRectangle(cornerRadius: size * 0.17, style: .continuous))
-            .accessibilityHidden(true)
     }
 }
 
