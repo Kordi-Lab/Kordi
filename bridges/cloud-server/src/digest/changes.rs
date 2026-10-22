@@ -72,11 +72,10 @@ pub(super) fn relevant(saved: Option<&Input>, changes: Option<&Changes>, viewer:
     let (Some(saved), Some(changes)) = (saved, changes) else {
         return true;
     };
-    let pip = crate::pip::service_account_id();
     let digested: HashSet<_> = saved.sources.iter().map(|source| &source.id).collect();
     changes.sources.iter().any(|source| {
         source.sender_account_id != viewer
-            && pip != Some(source.sender_account_id.as_str())
+            && !crate::system_account::is_service_account(&source.sender_account_id)
             && !digested.contains(&source.id)
             && !is_trivial_text(&source.text)
     }) || !changes.calendar_events.is_empty()
@@ -99,7 +98,7 @@ pub async fn note_message<'e>(
     event_type: &str,
     message: &MessageSnapshot,
 ) -> Result<(), sqlx_core::Error> {
-    if crate::pip::service_account_id() == Some(message.sender_account_id.as_str()) {
+    if crate::system_account::is_service_account(&message.sender_account_id) {
         return Ok(());
     }
     let deleted = event_type == "message.deleted" || message.deleted_at.is_some();

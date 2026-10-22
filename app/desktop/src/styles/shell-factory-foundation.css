@@ -70,8 +70,10 @@
   border-bottom: 0;
 }
 
+/* Rows span the same edges as the search field and the switch: no gutter reserved on both sides of the list. */
 .app-agent-studio-rail.is-in-sidebar .app-agent-studio-agent-list {
   padding: 0;
+  scrollbar-gutter: auto;
 }
 
 .app-agent-studio-rail-head {

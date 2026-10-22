@@ -32,3 +32,21 @@ export const KORDI_SYSTEM_AVATAR_URL = '/kordi-system-avatar.svg';
 export function isSystemAvatarUrl(url: string | null | undefined): boolean {
   return url?.trim() === KORDI_SYSTEM_AVATAR_URL;
 }
+
+/** The hidden service account that posts Grounding notices. Like PiP, it is server-managed:
+ * never a counted member, participant, peer, or contact. */
+export const KORDI_SYSTEM_ACCOUNT_ID = 'acct_kordi_system';
+
+export function isSystemAccountId(accountId: string | null | undefined): boolean {
+  return accountId?.trim() === KORDI_SYSTEM_ACCOUNT_ID;
+}
+
+/** PiP or the system account: server-managed members a client never lists or removes. */
+export function isBuiltInAccountId(accountId: string | null | undefined): boolean {
+  return isPipAccountId(accountId) || isSystemAccountId(accountId);
+}
+
+/** A canonical identity created from PiP or the system account. */
+export function isBuiltInIdentity(identity: { humanId?: string | null; agentId?: string | null; sourceIdentityId?: string | null } | null | undefined): boolean {
+  return isPipIdentity(identity) || isSystemAccountId(identity?.humanId) || isSystemAccountId(identity?.sourceIdentityId);
+}

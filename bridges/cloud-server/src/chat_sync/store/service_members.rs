@@ -1,5 +1,5 @@
-//! Server-managed members, such as PiP, belong to a conversation without being
-//! one of its people. Clients never list them, so member lists that clients
+//! Server-managed members, PiP and System, belong to a conversation without
+//! being one of its people. Clients never list them, so member lists that clients
 //! send are compared, replaced, and counted as if they were not there, and a
 //! client can never remove one.
 
@@ -7,14 +7,11 @@ use super::support::*;
 use super::*;
 
 pub(super) fn is_service_member(account_id: &str) -> bool {
-    crate::pip::service_account_id() == Some(account_id)
+    crate::system_account::is_service_account(account_id)
 }
 
 pub(super) fn service_member_ids() -> Vec<String> {
-    crate::pip::service_account_id()
-        .into_iter()
-        .map(str::to_string)
-        .collect()
+    crate::system_account::service_account_ids()
 }
 
 pub(super) fn without_service_members(mut account_ids: Vec<String>) -> Vec<String> {
@@ -73,6 +70,58 @@ pub async fn join_service_member(
         if recipient == service_account_id {
             continue;
         }
+        let projection = load_conversation(&mut transaction, conversation_id, &recipient).await?;
+        insert_sync_event(
+            &mut transaction,
+            &recipient,
+            "membership.updated",
+            Some(conversation_id),
+            Some(conversation_id),
+            Some(projection.version),
+            &json!({ "conversation": projection }),
+        )
+        .await?;
+    }
+    transaction.commit().await?;
+    Ok(true)
+}
+
+/// Takes a server-managed member out of a conversation and tells the
+/// remaining members' devices, as a removal does. Returns whether an active
+/// membership ended.
+pub async fn remove_service_member(
+    pool: &PgPool,
+    conversation_id: Uuid,
+    service_account_id: &str,
+) -> Result<bool, StoreError> {
+    let mut transaction = pool.begin().await?;
+    query("SELECT 1 FROM cloud_chat_conversations WHERE conversation_id = $1 FOR UPDATE")
+        .bind(conversation_id)
+        .execute(&mut *transaction)
+        .await?;
+    let removed = query(
+        "UPDATE cloud_chat_conversation_members
+         SET membership_state = 'removed', left_at = now(), version = version + 1
+         WHERE conversation_id = $1 AND account_id = $2 AND membership_state = 'active'",
+    )
+    .bind(conversation_id)
+    .bind(service_account_id)
+    .execute(&mut *transaction)
+    .await?
+    .rows_affected()
+        > 0;
+    if !removed {
+        transaction.commit().await?;
+        return Ok(false);
+    }
+    query(
+        "UPDATE cloud_chat_conversations SET version = version + 1, updated_at = now()
+         WHERE conversation_id = $1",
+    )
+    .bind(conversation_id)
+    .execute(&mut *transaction)
+    .await?;
+    for recipient in active_member_ids(&mut transaction, conversation_id).await? {
         let projection = load_conversation(&mut transaction, conversation_id, &recipient).await?;
         insert_sync_event(
             &mut transaction,

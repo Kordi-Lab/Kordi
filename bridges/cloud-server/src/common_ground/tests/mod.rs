@@ -11,6 +11,8 @@ mod matching_unit_tests;
 mod profile_rooms_tests;
 mod profile_support;
 mod profiles_tests;
+mod rooms_create_tests;
 mod rooms_list_tests;
 mod support;
+mod system_notice_tests;
 mod unit_tests;
