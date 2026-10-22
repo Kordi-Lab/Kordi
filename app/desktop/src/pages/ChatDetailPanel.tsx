@@ -9,7 +9,7 @@ import { ChatMemoryTab } from '@/pages/ChatMemoryTab';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
 import { useScheduledTasks } from '@/features/cloud/useScheduledTasks';
 import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfObjectLabel } from '@/lib/identityLabels';
-import { ChatSenderProfileContext } from '@/pages/useChatSenderProfiles';
+import { ChatSenderProfileContext, type ChatSenderProfileOpener } from '@/pages/useChatSenderProfiles';
 import { conversationIsGroupChat } from '@/pages/chatsPage.model';
 import { displayCanonicalParticipants } from '@/features/canonical/readModel/participantPresentation';
 import { ChatDocumentEntries } from '@/features/documents/ChatDocumentEntries';
@@ -132,8 +132,8 @@ type ChatDetailPanelProps = {
   onOpenArtifact?: (artifactId: string) => void;
   onNavigateToResponse?: (messageId: string) => void;
   onOpenOutreachThread?: (conversationId: string) => void;
-  /** Replaces the Info tab of a direct person chat with the contact profile; receives today's Info. */
-  renderPersonInfo?: (legacy: ReactNode) => ReactNode;
+  /** Replaces the Info tab of a direct person chat; receives today's Info and the profile popover opener. */
+  renderPersonInfo?: (legacy: ReactNode, openProfile: ChatSenderProfileOpener | null) => ReactNode;
 };
 
 function countLabel(count: number, noun: string): string {
@@ -316,7 +316,7 @@ function ChatDetailPanelView({
         ) : null}
       </div>
     );
-    return renderPersonInfo ? renderPersonInfo(legacyInfo) : legacyInfo;
+    return renderPersonInfo ? renderPersonInfo(legacyInfo, openSenderProfile) : legacyInfo;
   }
 
   if (activeDetailTab === 'context') {

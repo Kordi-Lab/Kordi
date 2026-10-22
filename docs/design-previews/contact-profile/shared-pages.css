@@ -3,13 +3,32 @@
 /* Sub-page shell: reuses the profile skin variables through .pv */
 .pv.sp{padding:0;max-width:none;margin:0}
 .sheet .pv.sp{padding:0 0 32px}
-.sp-hd{position:sticky;top:0;z-index:2;height:44px;display:flex;align-items:center;padding:0 12px;background:var(--sp-bg);border-bottom:1px solid var(--rowline)}
-.sp-back{display:inline-flex;align-items:center;gap:4px;height:30px;padding:0 8px 0 4px;border-radius:7px;font-size:14px;font-weight:600;color:var(--m-fg)}
-.sp-back:hover{background:var(--rowhover)}
-.sp-back svg.i{width:18px;height:18px;stroke-width:2.2;color:var(--tint)}
-.sp-body{max-width:420px;margin:0 auto;padding-bottom:28px}
-.sp-mon{font-size:12px;line-height:16px;color:var(--muted);padding:14px 16px 6px}
+.sp-body{padding-bottom:28px}
+.sp-mon{font-size:12px;line-height:16px;color:var(--m-fg2);padding:20px 0 8px}
+.sp-mon:first-child{padding-top:18px}
 .sp-empty{padding:40px 16px;text-align:center;color:var(--muted);font-size:14px}
+
+/* Mac toolbar header: same background as the page, back control + title + count */
+.sp-hd{position:sticky;top:0;z-index:2;background:var(--sp-bg)}
+.sp-hd-in{display:flex;align-items:center;gap:10px;height:100%;margin:0 auto}
+.sp-hd-in .sp-back{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border-radius:8px;color:var(--m-fg2)}
+.sp-hd-in .sp-back:hover{background:var(--m-tile-h);color:var(--m-fg)}
+.sp-hd-in .sp-back svg.i{width:16px;height:16px;stroke-width:2}
+.sp-hd-in .sp-back:has(.sp-back-l){width:auto;gap:2px;padding:0 10px 0 6px}
+.sp-back-l{font-size:13px;line-height:16px}
+/* Optical alignment: the chevron icon box, not the invisible pill edge, lines up with the column edge */
+.sp-hd-in .sp-back{margin-left:-6px}
+.sp-hd-in .sp-title{flex:1;font-size:15px;font-weight:600;line-height:20px;color:var(--m-fg)}
+.sp-count{flex:none;font-size:12px;line-height:16px;color:var(--m-fg3);font-variant-numeric:tabular-nums}
+
+/* Mac pane and chat Info tab: header spans the pane, inner row and body share one centred column */
+.m-pane .sp{--sp-bg:var(--m-pane);--col:420px}
+.m-pane .sp-hd{height:52px;padding:0 24px}
+.m-pane .sp-hd-in,.m-pane .sp-body{max-width:var(--col)}
+.m-pane .sp-body{margin:0 auto;box-sizing:content-box;padding:0 24px 28px}
+.m-pane .sp .card{margin:0 -10px}
+.m-pane .sp .row{padding:8px 10px;border-radius:8px;--inset:62px}
+.m-pane .sp .row + .row::before{right:10px}
 
 /* Photos: tight edge-to-edge square grid */
 .sp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px}
@@ -30,18 +49,15 @@
 .sp .row .v{font-weight:500}
 .sp .row .c.accent{color:var(--tint)}
 
-/* Mac pane skin */
-.m-pane .sp{--sp-bg:var(--m-pane)}
-.m-pane .sp-hd{padding-left:14px}
-
-/* iPhone skin: chevron only, centred title */
+/* iPhone skin: native nav bar, chevron only, centred title */
 .sheet .sp{--sp-bg:var(--i-sheet)}
-.sheet .sp-hd{height:52px;padding:6px 8px 0;justify-content:center;border-bottom-color:transparent}
-.sheet .sp-back{position:absolute;left:8px;top:10px;width:40px;height:40px;padding:0;justify-content:center;border-radius:50%}
-.sheet .sp-back svg.i{width:24px;height:24px}
+.sheet .sp-hd{height:52px;padding:6px 8px 0;display:flex;align-items:center;justify-content:center}
+.sheet .sp-back{position:absolute;left:8px;top:10px;width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%}
+.sheet .sp-back:hover{background:var(--rowhover)}
+.sheet .sp-back svg.i{width:24px;height:24px;stroke-width:2.2;color:var(--tint)}
 .sheet .sp-title{font-size:17px;font-weight:600}
 .sheet .sp-body{max-width:none}
-.sheet .sp-mon{font-size:13px;padding:16px 20px 6px}
+.sheet .sp-mon{font-size:13px;color:var(--muted);padding:16px 20px 6px}
 .sheet .sp .row{padding-left:20px;--inset:72px}
 .sheet .sp .row .v{font-size:16px}
 .sheet .sp .row .c{font-size:13px}
@@ -88,9 +104,9 @@
 .pop-scroll .cg{padding:10px 12px 12px;gap:8px}
 .pop-scroll .cgr .lb{width:74px;font-size:11.5px}
 .pop-scroll .chip{font-size:11.5px;padding:3px 8px}
-.pop-scroll .sp-hd{padding:0 44px 0 8px}
-.pop-scroll .sp-back{font-size:13px}
-.pop-scroll .sp-mon{font-size:11.5px;padding:12px 12px 5px}
+.pop-scroll .sp-hd{height:44px;padding:0 46px 0 12px;border-bottom:1px solid var(--m-line)}
+.pop-scroll .sp-mon{padding:18px 12px 8px}
+.pop-scroll .sp-mon:not(:first-child){padding-top:20px}
 .pop-scroll .sp .row{--inset:58px}
 .pop-scroll .sp-lead{width:34px;height:34px;border-radius:8px}
 .pop-scroll .sp-lead.fav{font-size:14px}

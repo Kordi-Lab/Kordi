@@ -107,7 +107,9 @@ enum CloudDirectMessageProjector {
     ) -> ChatMessage {
         let isAgentResponse = CloudMessageCodec.isAgentResponse(message.body)
         let responseRequestId = isAgentResponse ? CloudMessageCodec.agentResponseRequestId(message.body) : nil
-        let author: MessageAuthor = isAgentResponse ? .agent : (message.fromAccountId == ownAccountId ? .me : .person)
+        let messageKind = CloudMessageCodec.canonicalMessageKind(message)
+        let author: MessageAuthor = isAgentResponse ? .agent : KordiSystemIdentity.author(
+            messageKind: messageKind, fromAccountId: message.fromAccountId, ownAccountId: ownAccountId)
         let state = CloudMessageStateProjector.deliveryState(for: message, ownAccountId: ownAccountId)
         let readerIds = message.readByAccountIds.flatMap { $0.isEmpty ? nil : $0 }
             ?? [message.toAccountId]
@@ -128,7 +130,9 @@ enum CloudDirectMessageProjector {
             ) == "cloud-agent:\(message.fromAccountId)"
                 ? CloudDefaultAgentProfile.displayName(name, ownerName: agentOwnerName) : name
         case .person:
-            authorName = conversation.ownerDisplayName?.nonEmpty ?? conversation.displayName
+            authorName = KordiSystemIdentity.directAuthorName(
+                messageKind: messageKind, fromAccountId: message.fromAccountId,
+                fallback: conversation.ownerDisplayName?.nonEmpty ?? conversation.displayName)
         }
         let messageAction = CloudMessageCodec.agentResponseMessageAction(message.body)
             ?? CloudMessageCodec.directEnvelope(message.body)?.messageAction
@@ -156,7 +160,7 @@ enum CloudDirectMessageProjector {
             readByAccountIds: readByAccountIds,
             attachments: message.voiceMessage == nil
                 ? message.attachments.map {
-                    $0.chatAttachment(messageKind: CloudMessageCodec.canonicalMessageKind(message))
+                    $0.chatAttachment(messageKind: messageKind)
                 }
                 : [],
             replyToMessageId: responseRequestId ?? messageAction?.replyToMessageId,
@@ -166,7 +170,7 @@ enum CloudDirectMessageProjector {
                 CloudMessageCodec.directEnvelope(message.body)?.mentions ?? [],
                 in: CloudMessageCodec.displayText(message.body)
             ),
-            messageKind: CloudMessageCodec.canonicalMessageKind(message),
+            messageKind: messageKind,
             voiceMessage: message.voiceMessage,
             planCard: message.planCard,
             agentExecution: visibleOwnerExecution ?? CloudMessageCodec.agentWaitingExecution(

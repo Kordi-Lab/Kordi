@@ -24,6 +24,7 @@ export default defineConfig({
     reducedMotion: 'reduce',
   },
   projects: [
+    { name: 'webkit-text-selection', testMatch: '**/textSelection.spec.ts', use: { ...devices['Desktop Safari'] } },
     { name: 'webkit-cloud-transport', testMatch: '**/cloudTransport.spec.ts', use: { ...devices['Desktop Safari'] } },
     { name: 'webkit-live-photo', testMatch: '**/livePhoto.spec.ts', use: { ...devices['Desktop Safari'] } },
     { name: 'webkit-pinned-list', testMatch: '**/pinnedMessageList.spec.ts', use: { ...devices['Desktop Safari'] } },

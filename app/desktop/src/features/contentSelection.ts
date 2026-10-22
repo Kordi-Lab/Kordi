@@ -1,8 +1,6 @@
 export type KordiCopySurface = 'message' | 'document';
 
 const COPY_SURFACE_SELECTOR = '[data-kordi-copy-surface]';
-const COPY_BLOCK_SELECTOR = '[data-kordi-copy-block="true"]';
-const UNIFIED_SELECTION_ATTRIBUTE = 'data-kordi-copy-selection';
 
 type SelectionKeyboardEvent = {
   key: string;
@@ -52,80 +50,7 @@ export function copySurfaceProps(copySurface?: KordiCopySurface) {
   } as const;
 }
 
-function rangeIntersectsNode(range: Range, node: Node) {
-  try {
-    return range.intersectsNode(node);
-  } catch {
-    return false;
-  }
-}
-
-function visibleRangeRects(range: Range) {
-  if (typeof range.getClientRects !== 'function') return [];
-  return Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
-}
-
-function distinctSelectionLineCount(rects: readonly DOMRect[]) {
-  const lineTops: number[] = [];
-  for (const rect of rects) {
-    if (lineTops.some((top) => Math.abs(top - rect.top) < 2)) continue;
-    lineTops.push(rect.top);
-  }
-  return lineTops.length;
-}
-
-function clearUnifiedCopySelection(root: Document) {
-  root.querySelectorAll<HTMLElement>(`[${UNIFIED_SELECTION_ATTRIBUTE}="unified"]`).forEach((surface) => {
-    surface.removeAttribute(UNIFIED_SELECTION_ATTRIBUTE);
-    surface.style.removeProperty('--app-copy-selection-top');
-    surface.style.removeProperty('--app-copy-selection-height');
-  });
-}
-
-export function syncCopySurfaceSelection(
-  root: Document,
-  selection: Selection | null = root.getSelection(),
-) {
-  clearUnifiedCopySelection(root);
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !selection.toString()) return;
-
-  const range = selection.getRangeAt(0);
-  const selectionRects = visibleRangeRects(range);
-  if (distinctSelectionLineCount(selectionRects) < 2) return;
-
-  root.querySelectorAll<HTMLElement>(COPY_SURFACE_SELECTOR).forEach((surface) => {
-    if (!rangeIntersectsNode(range, surface)) return;
-    if (root.defaultView?.getComputedStyle(surface).display === 'inline') return;
-
-    const surfaceRect = surface.getBoundingClientRect();
-    const selectedBlocks = Array.from(surface.querySelectorAll<HTMLElement>(COPY_BLOCK_SELECTOR))
-      .filter((block) => block.closest(COPY_SURFACE_SELECTOR) === surface)
-      .filter((block) => rangeIntersectsNode(range, block));
-    const selectedRects = selectedBlocks.length > 0
-      ? selectedBlocks.map((block) => block.getBoundingClientRect())
-      : selectionRects.filter((rect) => (
-          rect.bottom >= surfaceRect.top
-          && rect.top <= surfaceRect.bottom
-          && rect.right >= surfaceRect.left
-          && rect.left <= surfaceRect.right
-        ));
-    if (selectedRects.length === 0) return;
-
-    const top = Math.max(0, Math.min(...selectedRects.map((rect) => rect.top)) - surfaceRect.top);
-    const bottom = Math.min(
-      surfaceRect.height,
-      Math.max(...selectedRects.map((rect) => rect.bottom)) - surfaceRect.top,
-    );
-    if (bottom <= top) return;
-
-    surface.style.setProperty('--app-copy-selection-top', `${top}px`);
-    surface.style.setProperty('--app-copy-selection-height', `${bottom - top}px`);
-    surface.setAttribute(UNIFIED_SELECTION_ATTRIBUTE, 'unified');
-  });
-}
-
 export function installCopySurfaceSelectionTracking(root: Document) {
-  const syncSelection = () => syncCopySurfaceSelection(root);
   const clearSelectionFromOutsidePointer = (event: PointerEvent) => {
     if (event.button !== 0 || isEditableSelectionTarget(event.target)) return;
     const target = event.target instanceof Element ? event.target : null;
@@ -133,14 +58,8 @@ export function installCopySurfaceSelectionTracking(root: Document) {
     if (target?.closest(`${COPY_SURFACE_SELECTOR}, [data-kordi-keeps-selection]`)) return;
     clearNativeTextSelection();
   };
-  root.addEventListener('selectionchange', syncSelection);
   root.addEventListener('pointerdown', clearSelectionFromOutsidePointer, true);
-  root.defaultView?.addEventListener('resize', syncSelection);
-  syncSelection();
   return () => {
-    root.removeEventListener('selectionchange', syncSelection);
     root.removeEventListener('pointerdown', clearSelectionFromOutsidePointer, true);
-    root.defaultView?.removeEventListener('resize', syncSelection);
-    clearUnifiedCopySelection(root);
   };
 }

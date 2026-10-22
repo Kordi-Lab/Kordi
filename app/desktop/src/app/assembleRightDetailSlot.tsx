@@ -8,6 +8,7 @@ import { cloudDirectChatPeerAccountId } from '@/features/cloud/cloudDirectChatPe
 import { DocumentReaderHostContext, documentReaderHostForConversation } from '@/features/documents/documentReaderHost';
 import { ProjectDetailPanel } from '@/pages/ProjectDetailPanel';
 import { RightDetailRail } from '@/pages/RightDetailRail';
+import type { ChatSenderProfileOpener } from '@/pages/useChatSenderProfiles';
 import { navigateToTranscriptMessageOrScrollBottom } from '@/features/chat/transcriptNavigation';
 
 import type { RightDetailShellArgs } from '@/app/kordiShellSlots.types';
@@ -49,15 +50,14 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
     ? cloudDirectChatPeerAccountId(args.activeConv, account.accountId)
     : null;
   const renderPersonInfo = account && personPeerAccountId
-    ? (legacy: React.ReactNode) => (
+    ? (legacy: React.ReactNode, openProfile: ChatSenderProfileOpener | null) => (
         <CloudChatPersonInfo
           account={account}
           conversation={args.activeConv}
           peerAccountId={personPeerAccountId}
-          muted={activeChatSessionId ? args.mutedChatSessionIds.has(activeChatSessionId) : null}
-          onSetMuted={(muted) => args.handleSetChatSessionMuted(activeChatSessionId, muted)}
           onReturnToChat={() => args.setIsDetailPanelCollapsed(true)}
           legacy={legacy}
+          openProfile={openProfile}
         />
       )
     : undefined;
