@@ -1,0 +1,73 @@
+/* Sharing chip */
+.sharechip { display: flex; align-items: center; justify-content: center; gap: 8px; height: 30px; padding: 0 12px 0 8px; border-radius: 999px; background: var(--fill); font-size: 13.5px; font-weight: 500; color: var(--text); width: max-content; margin: 0 auto 16px; max-width: 100%; }
+.sharechip .sw8 { width: 20px; height: 13px; border-radius: 4px; background: linear-gradient(150deg, var(--c1), var(--c2)); box-shadow: inset 0 0 0 .5px var(--edge); flex: none; }
+.sharechip b { font-weight: 600; }
+.sharechip.swap span { animation: chipin .24s var(--ease); }
+.sharechip.is-empty { visibility: hidden; }
+@keyframes chipin { from { opacity: 0; transform: translateY(4px); } }
+
+/* The card */
+.gcard { position: absolute; left: 0; top: 0; width: var(--cw); height: var(--ch); border-radius: 18px; color: var(--fg); background: linear-gradient(150deg, var(--c1), var(--c2)); box-shadow: var(--card-shadow), inset 0 0 0 .5px var(--edge); overflow: hidden; text-align: left; transform-origin: 50% 0; isolation: isolate;
+  transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease), box-shadow var(--dur) var(--ease); -webkit-user-select: none; user-select: none; }
+.gcard::before { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: -1; }
+.gcard::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: -1; border-radius: inherit; background: linear-gradient(180deg, rgba(255,255,255,.1), transparent 34%); }
+[data-kind="work"].gcard::before, [data-kind="work"].gback::before, [data-kind="work"].scard::before, [data-kind="work"].mc-emptycard::before { background-image: linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px); background-size: 18px 18px; background-position: -1px -1px;
+  -webkit-mask-image: radial-gradient(130% 100% at 100% 0%, #000 25%, transparent 75%); mask-image: radial-gradient(130% 100% at 100% 0%, #000 25%, transparent 75%); }
+[data-kind="research"].gcard::before, [data-kind="research"].gback::before, [data-kind="research"].scard::before, [data-kind="research"].mc-emptycard::before { background: radial-gradient(circle at 88% 8%, rgba(255,214,176,.42), transparent 42%), repeating-radial-gradient(circle at 88% 8%, transparent 0 22px, rgba(255,255,255,.07) 22px 23px); }
+[data-kind="health"].gcard::before, [data-kind="health"].gback::before, [data-kind="health"].scard::before, [data-kind="health"].mc-emptycard::before { background: repeating-radial-gradient(circle at 104% 108%, transparent 0 15px, color-mix(in srgb, var(--acc) 12%, transparent) 15px 16.5px);
+  -webkit-mask-image: radial-gradient(90% 90% at 100% 100%, #000 30%, transparent 80%); mask-image: radial-gradient(90% 90% at 100% 100%, #000 30%, transparent 80%); }
+[data-kind="daily"].gcard::before, [data-kind="daily"].gback::before, [data-kind="daily"].scard::before, [data-kind="daily"].mc-emptycard::before { background: repeating-linear-gradient(0deg, transparent 0 21px, color-mix(in srgb, var(--fg) 7%, transparent) 21px 22px); background-position: 0 8px; }
+[data-kind="workshop"].gcard::before, [data-kind="workshop"].gback::before, [data-kind="workshop"].scard::before, [data-kind="workshop"].mc-emptycard::before { background: linear-gradient(112deg, transparent 71%, var(--acc) 71%, var(--acc) 76%, transparent 76%, transparent 79%, color-mix(in srgb, var(--acc) 45%, transparent) 79%, color-mix(in srgb, var(--acc) 45%, transparent) 80.5%, transparent 80.5%); opacity: .95;
+  -webkit-mask-image: linear-gradient(to bottom, #000 35%, transparent 72%); mask-image: linear-gradient(to bottom, #000 35%, transparent 72%); }
+[data-kind="custom"].gcard::before, [data-kind="custom"].gback::before, [data-kind="custom"].scard::before, [data-kind="custom"].mc-emptycard::before { background: radial-gradient(rgba(255,255,255,.16) 1px, transparent 1.6px) 0 0 / 14px 14px;
+  -webkit-mask-image: linear-gradient(200deg, #000, transparent 70%); mask-image: linear-gradient(200deg, #000, transparent 70%); }
+
+.gc-head { position: relative; display: flex; align-items: center; gap: 10px; height: 60px; padding: 0 14px 0 16px; }
+.gc-glyph { width: 32px; height: 32px; border-radius: 10px; background: var(--gbg); color: var(--acc); display: grid; place-items: center; flex: none; }
+.gc-glyph svg.i { width: 19px; height: 19px; stroke-width: 1.8; }
+.gc-name { flex: 1; min-width: 0; font-size: 18px; font-weight: 650; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gc-focus { padding: 0 16px; margin-top: -4px; font-size: 14px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gc-topics { position: absolute; left: 16px; right: 46px; bottom: 16px; height: 90px; display: flex; flex-wrap: wrap; align-content: flex-end; gap: 6px; overflow: hidden; }
+.gc-topic { height: 26px; line-height: 26px; padding: 0 10px; border-radius: 8px; background: var(--pill); font-size: 12.5px; font-weight: 500; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.gc-topic.pop { animation: topicin .32s var(--ease) both; }
+@keyframes topicin { from { opacity: 0; transform: translateY(6px) scale(.96); } }
+.gc-topic.skel { width: var(--w, 72px); color: transparent; opacity: .75; }
+.gc-mark { position: absolute; right: 14px; bottom: 15px; width: 24px; height: 24px; color: var(--fg); opacity: .82; }
+.gc-flip, .gc-check { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--pill); color: var(--fg); opacity: 0; pointer-events: none; transition: opacity .2s var(--ease), transform .2s var(--ease); transform: scale(.85); }
+.gc-flip svg.i, .gc-check svg.i { width: 16px; height: 16px; stroke-width: 2.1; }
+.gc-check { background: var(--acc); color: var(--c2); position: absolute; right: 14px; top: 15px; }
+.gc-check svg.i { stroke-width: 2.8; }
+.gc-build { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 16px; border-radius: 999px; background: var(--fg); color: var(--c2); font-size: 14px; font-weight: 600; }
+.gc-build.busy { background: var(--pill); color: var(--fg); cursor: default; }
+.gc-badge { font-size: 12px; font-weight: 600; height: 24px; line-height: 24px; padding: 0 9px; border-radius: 7px; background: var(--pill); color: var(--fg); flex: none; }
+.spin { width: 15px; height: 15px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.gcard.building::after { background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.18) 50%, transparent 70%); background-size: 250% 100%; animation: sheen 1.3s linear infinite; }
+@keyframes sheen { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+
+/* Editable card (New card) */
+.gcard.edit .gc-name, .gcard.edit .gc-focus-in { border: 0; outline: none; background: transparent; padding: 0; color: var(--fg); width: 100%; min-width: 0; }
+.gcard.edit .gc-name::placeholder, .gcard.edit .gc-focus-in::placeholder { color: var(--fg); opacity: .45; }
+.gcard.edit .gc-focus { overflow: visible; }
+.gcard.edit .gc-focus-in { font-size: 14px; color: var(--fg2); }
+.gcard.edit .gc-name:focus, .gcard.edit .gc-focus-in:focus { caret-color: var(--acc); }
+.gcard.edit input:disabled { cursor: default; }
+.gcard.edit .gc-field { position: relative; display: block; flex: 1; min-width: 0; }
+.gcard.edit .gc-field::after { content: ""; position: absolute; left: 0; right: 0; bottom: -3px; height: 1.5px; border-radius: 1px; background: var(--fg); opacity: 0; transition: opacity .2s; }
+.gcard.edit .gc-field:focus-within::after { opacity: .35; }
+
+/* Wallet */
+.wallet { position: relative; width: var(--cw); margin: 0 auto; transition: height var(--dur) var(--ease); }
+.wallet .gcard { cursor: pointer; will-change: transform; }
+.wallet.instant, .wallet.instant .gcard, .wallet.instant .gplus { transition: none !important; }
+.wallet .gcard:focus-visible { outline-offset: 3px; }
+.wallet:not(.fanned) .gcard.is-front .gc-flip { opacity: 1; pointer-events: auto; transform: none; }
+.wallet:not(.fanned) .gcard.is-front .gc-flip:hover { background: color-mix(in srgb, var(--fg) 22%, transparent); }
+.wallet.fanned .gcard.is-active .gc-check { opacity: 1; transform: none; }
+.wallet.fanned .gcard.is-active .gc-mark { opacity: 0; }
+.wallet .gcard.is-front { box-shadow: var(--card-shadow-lift), inset 0 0 0 .5px var(--edge); }
+.wallet.fanned .gcard:not(.is-active):hover { box-shadow: var(--card-shadow-lift), inset 0 0 0 .5px var(--edge); }
+.gplus { position: absolute; left: 0; top: 0; width: var(--cw); height: 56px; border-radius: 18px; border: 1.5px dashed var(--line2); color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 15px; font-weight: 500;
+  transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease), background .2s; }
+.gplus:hover { background: var(--fill); color: var(--text); }
+.gplus svg.i { width: 18px; height: 18px; stroke-width: 2.2; }
