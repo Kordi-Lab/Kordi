@@ -245,8 +245,8 @@ struct ComposerView: View {
             .overlay(alignment: .bottom) {
                 floatingPanelLayer
             }
-            .padding(.top, 9)
-            .padding(.bottom, 9)
+            .padding(.vertical, 9)
+            .background { ComposerBackdropBand() }
             .animation(.snappy(duration: 0.2), value: attachments.count)
             .animation(.snappy(duration: 0.2), value: replySource?.sourceMessageId)
             .animation(.snappy(duration: 0.2), value: editingMessage?.id)
