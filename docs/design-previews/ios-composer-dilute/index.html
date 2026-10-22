@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Composer backdrop · Kordi proposal</title>
+<style>
+:root{
+  --font:-apple-system,"SF Pro Text",system-ui,sans-serif;
+  --accent:rgb(37,99,235);
+  --page:#f2f2f7;--chip:rgba(120,120,128,.12);--primary:#000;--secondary:rgba(60,60,67,.6);--frame:#d1d1d6;--segon:#fff;
+  /* Classic wallpaper: canvas #FFFFFF; a faint gradient is added so the blur reads. */
+  --wall-top:#ffffff;--wall-bottom:#f3f5f9;--tint:243,245,249;
+  --incoming:#fff;--incoming-line:rgba(60,60,67,.12);--agent:#EEEBFA;--ink:#111;--muted:rgba(60,60,67,.6);
+  --av-mira:#f1e3d3;--av-mira-ink:#8a5a2b;--av-sam:#dbeadf;--av-sam-ink:#2f6b44;--av-agent:#e4e0f7;--av-agent-ink:#5b4fb0;
+  --paper:#fff;--glass-line:rgba(0,0,0,.14);
+  --bar:rgba(242,242,247,.75);--bar-line:rgba(60,60,67,.29);--soft-line:rgba(60,60,67,.14);
+  --kb:#d1d3d9;--key:#fff;--key2:#acb0bb;--key-ink:#000;
+}
+:root[data-theme="dark"]{
+  --page:#000;--chip:rgba(120,120,128,.24);--primary:#fff;--secondary:rgba(235,235,245,.6);--frame:#3a3a3c;--segon:#3a3a3c;
+  --wall-top:#171717;--wall-bottom:#1e2026;--tint:30,32,38;
+  --incoming:#2c2c2e;--incoming-line:transparent;--agent:#2A2740;--ink:#f2f2f2;--muted:rgba(235,235,245,.6);
+  --av-mira:#4a3a2a;--av-mira-ink:#f0c9a0;--av-sam:#2a4033;--av-sam-ink:#a8dcb8;--av-agent:#3a3459;--av-agent-ink:#c9c0f5;
+  --paper:#2c2c2e;--glass-line:rgba(255,255,255,.14);
+  --bar:rgba(28,28,30,.75);--bar-line:rgba(84,84,88,.6);--soft-line:rgba(84,84,88,.4);
+  --kb:#2b2b2d;--key:#6b6b6e;--key2:#46464a;--key-ink:#fff;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--primary);font-family:var(--font);-webkit-font-smoothing:antialiased}
+.bar{display:flex;flex-wrap:wrap;gap:16px;align-items:center;padding:14px 24px;font-size:13px;color:var(--secondary)}
+.bar strong{color:var(--primary);font-weight:600;margin-right:8px}
+.seg{display:inline-flex;gap:2px;background:var(--chip);border-radius:8px;padding:2px;margin-left:6px}
+.seg button{font:inherit;font-size:12px;border:0;background:transparent;color:var(--primary);padding:4px 10px;border-radius:6px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--segon);box-shadow:0 1px 2px rgba(0,0,0,.15);font-weight:600}
+.stage{display:flex;gap:28px;overflow-x:auto;padding:8px 24px 32px}
+.option{flex:0 0 auto;width:393px}
+.label{font-size:13px;font-weight:600;margin:0 0 10px 6px;display:flex;align-items:center;gap:8px}
+.tag{font-size:11px;font-weight:600;color:var(--accent);background:rgba(37,99,235,.12);padding:2px 8px;border-radius:10px}
+.caption{font-size:12px;line-height:1.45;color:var(--secondary);margin:10px 6px 0}
+
+/* Phone */
+.phone{--kb-h:0px;--field-h:50px;--home:34px;--strip:calc(var(--field-h) + 18px);
+  width:393px;height:560px;border-radius:44px;border:1px solid var(--frame);overflow:hidden;position:relative;isolation:isolate;
+  background:linear-gradient(180deg,var(--wall-top) 0%,var(--wall-bottom) 100%);color:var(--ink)}
+.phone.kb{--kb-h:291px;--field-h:100px;--home:0px}
+.status{position:absolute;top:0;left:0;right:0;height:47px;display:flex;align-items:center;justify-content:space-between;padding:4px 30px 0 34px;font-size:15px;font-weight:600;z-index:5}
+.status .icons{display:flex;gap:5px;align-items:center}
+.status .icons i{display:block;background:currentColor;border-radius:2px}
+.nav{position:absolute;top:0;left:0;right:0;height:100px;z-index:4;
+  background:linear-gradient(180deg,rgba(var(--tint),.97) 0%,rgba(var(--tint),.94) 75%,rgba(var(--tint),0) 100%);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  -webkit-mask-image:linear-gradient(180deg,#000 70%,transparent);mask-image:linear-gradient(180deg,#000 80%,transparent)}
+.nav-title{position:absolute;top:50px;left:0;right:0;text-align:center;font-size:17px;font-weight:600;z-index:5}
+.nav-title small{display:block;font-size:12px;font-weight:400;color:var(--muted)}
+.nav-back{position:absolute;top:52px;left:14px;z-index:5;color:var(--accent)}
+
+/* Transcript */
+.transcript{position:absolute;inset:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;
+  padding:106px 12px calc(var(--kb-h) + var(--home) + var(--strip) + 12px);z-index:1}
+.transcript::-webkit-scrollbar{display:none}
+.day{text-align:center;font-size:12px;color:var(--muted);margin:4px 0 12px}
+.sys{text-align:center;font-size:13px;color:var(--muted);margin:10px 0}
+.msg{display:flex;gap:8px;align-items:flex-end;margin:0 0 6px}
+.msg.gap{margin-top:12px}
+.av{width:28px;height:28px;flex:0 0 28px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:600}
+.av.blank{visibility:hidden}
+.col{max-width:78%;min-width:0}
+.who{font-size:13px;font-weight:600;margin:0 0 3px 12px}
+.bubble{border-radius:18px;padding:8px 12px;font-size:17px;line-height:22px;background:var(--incoming);box-shadow:0 0 0 .5px var(--incoming-line)}
+.msg.agent .bubble{background:var(--agent);box-shadow:none;font-size:16px;line-height:21px}
+.msg.agent .bubble p{margin:0 0 8px}.msg.agent .bubble p:last-child{margin:0}
+.msg.agent .bubble ul{margin:0 0 8px;padding-left:20px}
+.msg.out{justify-content:flex-end}
+.msg.out .col{max-width:75%}
+.msg.out .bubble{background:var(--accent);color:#fff;box-shadow:none}
+
+/* Bands */
+.band{position:absolute;left:0;right:0;bottom:var(--kb-h);pointer-events:none;z-index:2}
+/* Frosted band: one real blur from 12px above the field to the bottom; bubbles stay visible as soft shapes. */
+.frost{height:calc(12px + var(--strip) + var(--home));
+  -webkit-backdrop-filter:blur(20px) saturate(1.4);backdrop-filter:blur(20px) saturate(1.4);
+  background:rgba(var(--tint),var(--frost-tint,.42))}
+.frost.soft{-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 22px);mask-image:linear-gradient(180deg,transparent 0,#000 22px)}
+.frost.line{border-top:.5px solid var(--bar-line);-webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6);--frost-tint:.55}
+.frost.clear{--frost-tint:.16}
+:root[data-theme="dark"] .frost{--frost-tint:.46}
+:root[data-theme="dark"] .frost.line{--frost-tint:.6}
+:root[data-theme="dark"] .frost.clear{--frost-tint:.2}
+
+/* Composer */
+.composer{position:absolute;left:0;right:0;bottom:calc(var(--kb-h) + var(--home));padding:9px 10px;display:flex;gap:8px;align-items:flex-end;z-index:3}
+.glass{background:color-mix(in oklab,var(--paper) 58%,transparent);-webkit-backdrop-filter:blur(18px) saturate(1.4);backdrop-filter:blur(18px) saturate(1.4);border:.5px solid var(--glass-line)}
+.attach{width:50px;height:50px;flex:0 0 50px;border-radius:50%;display:grid;place-items:center;color:var(--ink)}
+.field{position:relative;flex:1;height:var(--field-h);border-radius:25px}
+.field .text{position:absolute;left:16px;top:14px;right:100px;font-size:17px;line-height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.phone.kb .field .text{right:16px;color:var(--ink)}
+.field .smile{position:absolute;right:55px;bottom:13px;color:var(--muted)}
+.phone.kb .field .smile{right:auto;left:12px;bottom:13px}
+.field .model{display:none;position:absolute;right:56px;bottom:14px;font-size:15px;line-height:20px;white-space:nowrap}
+.field .model span{color:var(--muted);margin-left:4px}
+.phone.kb .field .model{display:block}
+.send{position:absolute;right:3px;bottom:3px;width:44px;height:44px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center}
+svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+svg .fill{fill:currentColor}
+.send svg{width:20px;height:20px;stroke-width:2.2}
+.home{position:absolute;bottom:8px;left:50%;width:134px;height:5px;margin-left:-67px;border-radius:3px;background:var(--ink);opacity:.85;z-index:6}
+
+/* Keyboard mock */
+.keyboard{display:none;position:absolute;left:0;right:0;bottom:0;height:291px;background:var(--kb);padding:8px 3px 0;z-index:4}
+.phone.kb .keyboard{display:block}
+.krow{display:flex;justify-content:center;gap:6px;margin-bottom:12px}
+.krow i{flex:0 1 33px;height:42px;border-radius:5px;background:var(--key);box-shadow:0 1px 0 rgba(0,0,0,.3);font-style:normal;font-size:22px;display:grid;place-items:center;color:var(--key-ink)}
+.krow i.w{flex-basis:44px;background:var(--key2);font-size:15px}
+.krow i.sp{flex:1 1 auto;font-size:15px;background:var(--key)}
+.krow i.rt{flex-basis:88px;background:var(--key2);font-size:15px}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+@media (max-width:520px){.bar{padding:12px 16px}.stage{padding:8px 16px 24px}}
+</style>
+</head>
+<body>
+<div class="bar" id="bar">
+  <strong>Composer backdrop · Kordi proposal</strong>
+  <label>Theme<span class="seg" data-key="theme"><button data-v="light">Light</button><button data-v="dark">Dark</button></span></label>
+  <label>Keyboard<span class="seg" data-key="keyboard"><button data-v="0">Off</button><button data-v="1">On</button></span></label>
+  <label>Scroll position<span class="seg" data-key="scroll"><button data-v="long">Long bubble under</button><button data-v="mid">Short messages under</button><button data-v="end">End</button></span></label>
+</div>
+<div class="stage" id="stage"></div>
+<script>
+const OPTIONS=[
+  {id:"current",label:"Current",cap:"Today’s transparent strip: only the field is glass, so text beside and below it stays sharp."},
+  {id:"a",label:"Option A · Frosted, soft edge",rec:true,cap:"One frosted band from 12px above the field to the bottom: 20px blur, light tint, so bubbles show through as soft shapes. The top edge fades in instead of a line."},
+  {id:"b",label:"Option B · Frosted, hairline",cap:"Telegram’s bar: the same band with a 0.5px top line and a slightly stronger tint."},
+  {id:"c",label:"Option C · Blur only",cap:"The same blur with almost no tint, so the wallpaper colour stays true and the field floats on blurred content."}
+];
+const DEFAULTS={theme:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light",keyboard:"0",scroll:"long"};
+const ALLOWED={theme:["light","dark"],keyboard:["0","1"],scroll:["long","mid","end"]};
+const params=new URLSearchParams(location.search);
+const state={};
+for(const k in DEFAULTS){const v=params.get(k);state[k]=ALLOWED[k].includes(v)?v:DEFAULTS[k];}
+
+const AV={M:["Mi","--av-mira"],S:["Sa","--av-sam"],K:["K","--av-agent"]};
+const NAMES={M:"Mira",S:"Sam",K:"Kordi agent"};
+// Synthetic sample conversation.
+const THREAD=[
+  ["day","Today 10:12"],
+  ["M","Morning! Can we look at the onboarding screens before the review?"],
+  ["S","Sure. I pushed the new illustrations last night."],
+  ["out","I’ll ask the agent to compare both versions."],
+  ["out","@Kordi agent what changed between draft 2 and draft 3?"],
+  ["K","<p>Here is what changed between draft 2 and draft 3:</p><ul><li>The welcome screen now leads with one sentence instead of three.</li><li>Illustrations moved above the fold on every step.</li><li>The permissions step was split in two, so notifications and contacts are asked separately.</li><li>The final step drops the progress dots and uses a single Continue button.</li></ul><p>Draft 3 is shorter overall. The only open question is whether the contacts step should be skippable.</p>"],
+  ["S","Skippable, I think. People bounce there."],
+  ["M","Agreed. Let’s keep it optional."],
+  ["out","Great, I’ll update the spec."],
+  ["K","<p>I added a note to the spec: the contacts step is optional and can be revisited from Settings.</p>"],
+  ["S","Thanks. Review is at 3?"],
+  ["out","Yes, 3 pm in the design room."],
+  ["sys","Mira joined"],
+  ["M","Running five minutes late, start without me."]
+];
+const ICON={
+  plus:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  smile:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c1.8 2 5.2 2 7 0"/><circle cx="9" cy="10" r=".6" class="fill"/><circle cx="15" cy="10" r=".6" class="fill"/></svg>',
+  mic:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>',
+  arrow:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
+  back:'<svg viewBox="0 0 24 24" aria-hidden="true" style="width:24px;height:24px;stroke-width:2.2"><path d="M15 5l-7 7 7 7"/></svg>'
+};
+function transcript(){
+  let prev=null,out="";
+  THREAD.forEach(([who,text],i)=>{
+    if(who==="day"){out+=`<div class="day">${text}</div>`;prev=null;return;}
+    if(who==="sys"){out+=`<div class="sys">${text}</div>`;prev=null;return;}
+    const next=THREAD[i+1]&&THREAD[i+1][0];
+    const first=who!==prev,last=next!==who;
+    const gap=first&&prev!==null?" gap":"";
+    if(who==="out"){out+=`<div class="msg out${gap}"><div class="col"><div class="bubble">${text}</div></div></div>`;}
+    else{
+      const [ini,v]=AV[who];
+      const av=last?`<div class="av" style="background:var(${v});color:var(${v}-ink)">${ini}</div>`:`<div class="av blank"></div>`;
+      const name=first?`<div class="who" style="color:var(${v}-ink)">${NAMES[who]}</div>`:"";
+      out+=`<div class="msg${who==="K"?" agent":""}${gap}">${av}<div class="col">${name}<div class="bubble">${text}</div></div></div>`;
+    }
+    prev=who;
+  });
+  return out;
+}
+function band(id){
+  if(id==="a")return `<div class="band frost soft" aria-hidden="true"></div>`;
+  if(id==="b")return `<div class="band frost line" aria-hidden="true"></div>`;
+  if(id==="c")return `<div class="band frost soft clear" aria-hidden="true"></div>`;
+  return "";
+}
+const KEYS=["qwertyuiop","asdfghjkl"];
+function keyboard(){
+  const r=s=>`<div class="krow">${[...s].map(c=>`<i>${c}</i>`).join("")}</div>`;
+  return `<div class="keyboard" aria-hidden="true">${r(KEYS[0])}${r(KEYS[1])}<div class="krow"><i class="w">⇧</i>${[..."zxcvbnm"].map(c=>`<i>${c}</i>`).join("")}<i class="w">⌫</i></div><div class="krow"><i class="w">123</i><i class="w">☺</i><i class="sp">space</i><i class="rt">return</i></div></div>`;
+}
+function phone(o){
+  const kb=state.keyboard==="1";
+  const field=kb
+    ?`<div class="text">Let’s also check the empty state</div><span class="smile">${ICON.smile}</span><span class="model">6.1 Sol<span>Light</span></span><span class="send" role="img" aria-label="Send">${ICON.arrow}</span>`
+    :`<div class="text">Message Design team…</div><span class="smile">${ICON.smile}</span><span class="send" role="img" aria-label="Voice">${ICON.mic}</span>`;
+  return `<div class="phone${kb?" kb":""}">
+    <div class="status"><span>9:41</span><span class="icons"><i style="width:17px;height:11px"></i><i style="width:15px;height:11px;border-radius:5px"></i><i style="width:25px;height:12px;border-radius:4px"></i></span></div>
+    <div class="nav" aria-hidden="true"></div>
+    <span class="nav-back" aria-hidden="true">${ICON.back}</span>
+    <div class="nav-title">Design team<small>3 members</small></div>
+    <div class="transcript" tabindex="0" aria-label="Sample transcript">${transcript()}</div>
+    ${band(o.id)}
+    <div class="composer"><span class="attach glass" role="img" aria-label="Attach">${ICON.plus}</span><div class="field glass">${field}</div></div>
+    ${keyboard()}
+    <div class="home" aria-hidden="true"></div>
+  </div>`;
+}
+function render(){
+  document.documentElement.dataset.theme=state.theme;
+  document.getElementById("stage").innerHTML=OPTIONS.map(o=>`
+  <section class="option" aria-label="${o.label}">
+    <div class="label">${o.label}${o.rec?'<span class="tag">Recommended</span>':""}</div>
+    ${phone(o)}
+    <p class="caption">${o.cap}</p>
+  </section>`).join("");
+  document.querySelectorAll(".transcript").forEach(t=>{
+    const max=t.scrollHeight-t.clientHeight;
+    if(state.scroll==="long"){const b=t.querySelector(".msg.agent");t.scrollTop=b.offsetTop+b.offsetHeight-(t.clientHeight-60);}
+    else t.scrollTop=state.scroll==="end"?max:Math.max(0,max-110);
+  });
+  document.querySelectorAll(".seg").forEach(seg=>seg.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===state[seg.dataset.key]))));
+  history.replaceState(null,"","?"+new URLSearchParams(state).toString());
+}
+document.getElementById("bar").addEventListener("click",e=>{
+  const b=e.target.closest("button");if(!b)return;
+  state[b.closest(".seg").dataset.key]=b.dataset.v;render();
+});
+render();
+</script>
+</body>
+</html>

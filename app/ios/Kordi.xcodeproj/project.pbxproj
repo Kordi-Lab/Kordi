@@ -68,6 +68,7 @@
 		28FF1EBEC8F73B3403895F8D /* EmojiAnimationDiskCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 947D36AE16CB8FC9349B6169 /* EmojiAnimationDiskCache.swift */; };
 		29FCDC50AB216E5B75E180D2 /* CloudModelDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B37C62BFC4F16FEF6200E1C5 /* CloudModelDecodingTests.swift */; };
 		2CE57FDD21E960A9636D7824 /* PhotoImageEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC9BC36305D732953A99687 /* PhotoImageEditing.swift */; };
+		2D9ADE36274B45DA225EEF6D /* ComposerBackdropBand.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A633852D5BE5F827D45874 /* ComposerBackdropBand.swift */; };
 		2E40BE62449CFD76A234F097 /* PreviewData+ContactProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 482CC7C6F89AFDDA5C218D0E /* PreviewData+ContactProfile.swift */; };
 		2E4333FCFA2A1DA835345DE6 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8468E1A2764A8C92164AD82E /* AppModel.swift */; };
 		2F0D50358CAA5018BE57AB6B /* ComposerTextInputIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F81413AD9566BB9C65BFA1 /* ComposerTextInputIntegrationTests.swift */; };
@@ -725,6 +726,7 @@
 		E2EB23221667A825E421722D /* AttachmentReactionMutationQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentReactionMutationQueueTests.swift; sourceTree = "<group>"; };
 		E3B99AF14FDFD546D14AB8A5 /* ProviderLoginTranscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderLoginTranscript.swift; sourceTree = "<group>"; };
 		E4604AEEC2E306DB85EA5E6C /* omp-provider-catalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "omp-provider-catalog.json"; sourceTree = "<group>"; };
+		E4A633852D5BE5F827D45874 /* ComposerBackdropBand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerBackdropBand.swift; sourceTree = "<group>"; };
 		E4C548DEDF958CD421B1FC9B /* DocumentTitles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTitles.swift; sourceTree = "<group>"; };
 		E5E0E98754E4D3E74B787C6A /* VoiceMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageView.swift; sourceTree = "<group>"; };
 		E73D9AC825DC3BC458F81028 /* ConversationTrajectoryViewport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTrajectoryViewport.swift; sourceTree = "<group>"; };
@@ -938,6 +940,7 @@
 				6400B908DF86EAAA6883C9B4 /* CallView.swift */,
 				F7F1BB7067E03988558968A0 /* CameraImagePicker.swift */,
 				57000316D6B453E1690DA350 /* CompanionChatPanel.swift */,
+				E4A633852D5BE5F827D45874 /* ComposerBackdropBand.swift */,
 				46FD8ADA8B828FDECB16AB83 /* ComposerMentionMenu.swift */,
 				442174FAD2A3DF14419AC2C0 /* ComposerTextView.swift */,
 				F12ADFCB554A69C285C7F753 /* ComposerView.swift */,
@@ -1856,6 +1859,7 @@
 				D054ED524D6E174EFA0FD7B8 /* CommonGroundView.swift in Sources */,
 				303D78FC14FA761AAC2831B0 /* CommonGroundWalletView.swift in Sources */,
 				7DFA4853671269DDB4276A23 /* CompanionChatPanel.swift in Sources */,
+				2D9ADE36274B45DA225EEF6D /* ComposerBackdropBand.swift in Sources */,
 				6370770F0FFF928CBAB4050A /* ComposerMentionMenu.swift in Sources */,
 				22FD5537E5971AE522153A54 /* ComposerMentionTargetCatalog.swift in Sources */,
 				9FF04BEAF8E8D57C8CDD9D41 /* ComposerTextView.swift in Sources */,
