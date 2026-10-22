@@ -176,10 +176,16 @@ enum CommonGroundProfileChoice {
         return (profiles.first(where: \.isWork) ?? profiles.first)?.profileId
     }
 
+    /// The card a room suggests: the first one with a card of the room's kind.
+    static func suggested(roomKind: String?, in choices: [CommonGroundProfileSummary]) -> String? {
+        guard let roomKind else { return nil }
+        return choices.first { $0.kind == roomKind }?.profileId
+    }
+
     /// The profile a join preselects: one of the room's kind with a card,
     /// else the current profile, else the first one with a card.
     static func preselected(roomKind: String?, current: String?, in choices: [CommonGroundProfileSummary]) -> String? {
-        if let roomKind, let match = choices.first(where: { $0.kind == roomKind }) { return match.profileId }
+        if let match = suggested(roomKind: roomKind, in: choices) { return match }
         if let current, choices.contains(where: { $0.profileId == current }) { return current }
         return choices.first?.profileId
     }
