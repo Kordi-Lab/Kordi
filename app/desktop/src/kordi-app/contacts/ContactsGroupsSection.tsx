@@ -3,7 +3,8 @@ import { useMemo, useState } from 'react';
 import { CommonGroundHugIcon } from '@/features/commonGround/CommonGroundHugIcon';
 import type { ParticipantSpaceViewModel } from '../types';
 import { ContactsListSection } from './ContactsListSection';
-import { GROUP_ROWS_PREVIEW, contactsGroupRows, groupInitial, groupTileTone, visibleGroupRows } from './contactsGroupRows';
+import { GroupAvatar } from '../components/GroupAvatar';
+import { GROUP_ROWS_PREVIEW, contactsGroupRows, visibleGroupRows } from './contactsGroupRows';
 import { isGroundingGroupSpace } from './groundingGroup';
 
 function peopleLabel(space: ParticipantSpaceViewModel) {
@@ -11,14 +12,10 @@ function peopleLabel(space: ParticipantSpaceViewModel) {
   return `${count} ${count === 1 ? 'person' : 'people'}`;
 }
 
+/** The group's own picture, else its human members' avatars (agents left out). */
 function GroupTile({ space }: { space: ParticipantSpaceViewModel }) {
-  const imageUrl = space.groupAvatar?.imageUrl;
-  if (imageUrl) return <img src={imageUrl} alt="" className="app-group-tile shrink-0 object-cover" />;
-  return (
-    <span className="app-group-tile inline-flex shrink-0 items-center justify-center" data-tone={groupTileTone(space.id)} aria-hidden="true">
-      {groupInitial(space.title)}
-    </span>
-  );
+  const humans = space.avatarStack.filter((avatar) => avatar.kind === 'human');
+  return <GroupAvatar avatars={humans.length ? humans : space.avatarStack} imageUrl={space.groupAvatar?.imageUrl} name={space.title} className="h-[30px] w-[30px] rounded-[8px]" />;
 }
 
 function ContactsGroupRow({ space, onOpen }: { space: ParticipantSpaceViewModel; onOpen: () => void }) {

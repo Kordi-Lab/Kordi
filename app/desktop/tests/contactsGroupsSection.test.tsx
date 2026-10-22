@@ -3,8 +3,6 @@ import { test } from 'node:test';
 
 import {
   contactsGroupRows,
-  groupInitial,
-  groupTileTone,
   visibleGroupRows,
 } from '../src/kordi-app/contacts/contactsGroupRows';
 import { isGroundingGroupSpace } from '../src/kordi-app/contacts/groundingGroup';
@@ -51,25 +49,20 @@ test('contacts page shows a Groups section with people count and activity time',
   assert.match(markup, />Poster session</);
   assert.match(markup, />2 people · 09:41</);
   assert.doesNotMatch(markup, /title="Poster session"/);
-  assert.match(markup, /class="app-group-tile[^"]*" data-tone="[1-6]" aria-hidden="true">P</);
   const solo = space({ participants: [{ id: 'me', name: 'Me', kind: 'human', role: 'self' }] as ParticipantSpaceViewModel['participants'] });
   assert.match(renderContactsPage([], { groupSpaces: [solo], onOpenGroup: () => undefined }), />1 person · 09:41</);
 });
 
-test('a group with a custom avatar shows the image instead of the initial tile', () => {
-  const markup = renderContactsPage([], {
-    groupSpaces: [space({ groupAvatar: { imageUrl: 'https://example.test/a.png' } as ParticipantSpaceViewModel['groupAvatar'] })],
-    onOpenGroup: () => undefined,
+test('group rows show the human members\' avatars, not agents', () => {
+  const members = space({
+    avatarStack: [
+      { kind: 'human', seed: 'maya' },
+      { kind: 'agent', seed: 'helper' },
+    ] as ParticipantSpaceViewModel['avatarStack'],
   });
-  assert.match(markup, /<img src="https:\/\/example.test\/a.png"/);
+  const markup = renderContactsPage([], { groupSpaces: [members], onOpenGroup: () => undefined });
+  assert.match(markup, /aria-label="[^"]* avatar"/);
   assert.doesNotMatch(markup, /data-tone=/);
-});
-
-test('group tiles pick a stable tone and initial', () => {
-  assert.equal(groupTileTone('group:one'), groupTileTone('group:one'));
-  for (const id of ['a', 'group:two', 'group:three']) assert.ok(groupTileTone(id) >= 1 && groupTileTone(id) <= 6);
-  assert.equal(groupInitial('  poster'), 'P');
-  assert.equal(groupInitial(''), '#');
 });
 
 test('groups show five rows and a Show all button unless searching', () => {
