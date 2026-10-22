@@ -137,6 +137,7 @@ Routes under `/v1/cloud/common-ground/`. Every person returned in Common ground 
 - `POST people/:id/meet`: Meet; proposes a plan card in the direct conversation with a contact.
 - `GET rooms/:code/preview`: before joining, an open room's `code`, `name`, suggested `kind`, `memberCount` and whether you are a `member`; 404 for a free or closed code. Needs a built card and shares the join rate limit.
 - `GET rooms`: your rooms, open or closed, newest activity first; leaving a room removes it from the list.
+- `POST rooms`: Create a code; opens a room on a free four-digit code with `name` (required), `kind` and `profileId`, and returns `201` with the lobby and its `code`.
 - A closed room stays readable for members who have not left: `GET rooms/:code` returns `open: false`, results and `people/:id/match` return what was stored without running matching again, members still see each other's cards, and Start group and Join still work. Leaving the room withdraws that visibility.
 - `POST rooms/:code/group`: Start group; adds your contacts and invites the other room members. An optional `topic` records the room topic the group is for.
 - `POST rooms/:code/invitations/:ref/join`: Join; accepts a room group invitation addressed to you.

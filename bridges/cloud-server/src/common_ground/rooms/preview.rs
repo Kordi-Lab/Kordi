@@ -16,7 +16,7 @@ use serde_json::json;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
-use super::{guess_limited, room_not_found, valid_code};
+use super::{check_limits, room_not_found, valid_code};
 use crate::auth::rate_limit::CloudRateLimiter;
 use crate::common_ground::{card, db_error, ROOM_OPEN_SQL};
 use crate::{auth::routes::CloudSession, server::ServerState};
@@ -75,7 +75,7 @@ pub(in crate::common_ground) async fn preview(
     }
     let account = session.account_id.as_str();
     // Previews share the join budget, so codes cannot be swept by looking.
-    if let Some(response) = guess_limited(&rate_limiter, account, connect_info, &headers).await {
+    if let Some(response) = check_limits(&rate_limiter, account, connect_info, &headers).await {
         return response;
     }
     let pool = state.db_pool();

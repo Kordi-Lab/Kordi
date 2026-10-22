@@ -140,7 +140,10 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
             "/v1/cloud/common-ground/settings",
             put(card::update_settings),
         )
-        .route("/v1/cloud/common-ground/rooms", get(rooms::list))
+        .route(
+            "/v1/cloud/common-ground/rooms",
+            get(rooms::list).post(rooms::create),
+        )
         .route("/v1/cloud/common-ground/rooms/:code", get(rooms::read))
         .route(
             "/v1/cloud/common-ground/rooms/:code/preview",
