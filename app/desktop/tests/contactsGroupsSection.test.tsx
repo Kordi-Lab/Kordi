@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { contactsGroupRows } from '../src/kordi-app/contacts/contactsGroupRows';
+import { isGroundingGroupSpace } from '../src/kordi-app/contacts/groundingGroup';
 import type { ParticipantSpaceViewModel } from '../src/kordi-app/types';
 import { renderContactsPage } from './helpers/contactsPageFixtures';
 
@@ -53,4 +54,21 @@ test('contacts page hides Groups without groups or search matches', () => {
     renderContactsPage([], { groupSpaces: [space()], onOpenGroup: () => undefined, contactSearch: 'zzz' }),
     /aria-label="Groups"/,
   );
+});
+
+function groundingSessions(origin: unknown): ParticipantSpaceViewModel['sessions'] {
+  return [
+    { id: 'session-0', conversation: { metadata: {} } },
+    { id: 'session-1', conversation: { metadata: { groupOrigin: origin } } },
+  ] as unknown as ParticipantSpaceViewModel['sessions'];
+}
+
+test('only groups the server marked as Grounding get the hug badge', () => {
+  const grounding = space({ id: 'group:grounding', title: 'Meetup', sessions: groundingSessions('grounding') });
+  assert.equal(isGroundingGroupSpace(grounding), true);
+  assert.equal(isGroundingGroupSpace(space({ sessions: groundingSessions('other') })), false);
+  assert.equal(isGroundingGroupSpace(space()), false);
+  const markup = renderContactsPage([], { groupSpaces: [grounding, space()], onOpenGroup: () => undefined });
+  assert.equal(markup.match(/aria-label="Grounding"/g)?.length, 1);
+  assert.doesNotMatch(renderContactsPage([], { groupSpaces: [space()], onOpenGroup: () => undefined }), /aria-label="Grounding"/);
 });

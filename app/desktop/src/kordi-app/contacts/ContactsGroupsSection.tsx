@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 
+import { CommonGroundHugIcon } from '@/features/commonGround/CommonGroundHugIcon';
 import { GroupAvatar } from '../components/GroupAvatar';
 import type { ParticipantSpaceViewModel } from '../types';
 import { ContactsListSection } from './ContactsListSection';
 import { contactsGroupRows } from './contactsGroupRows';
+import { isGroundingGroupSpace } from './groundingGroup';
 
 function peopleLabel(space: ParticipantSpaceViewModel) {
   const count = space.participants.filter((participant) => participant.kind === 'human').length;
@@ -17,7 +19,14 @@ function ContactsGroupRow({ space, onOpen }: { space: ParticipantSpaceViewModel;
       onClick={onOpen}
       className="app-contact-row app-list-item flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1 text-left transition-none"
     >
-      <GroupAvatar avatars={space.avatarStack} imageUrl={space.groupAvatar?.imageUrl} name={space.title} />
+      <span className="relative inline-flex shrink-0">
+        <GroupAvatar avatars={space.avatarStack} imageUrl={space.groupAvatar?.imageUrl} name={space.title} />
+        {isGroundingGroupSpace(space) ? (
+          <span className="app-grounding-group-badge absolute" role="img" aria-label="Grounding">
+            <CommonGroundHugIcon className="h-2.5 w-2.5" />
+          </span>
+        ) : null}
+      </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[12px] font-semibold leading-4" title={space.title}>{space.title}</div>
         <div className="app-contact-row-meta mt-0.5 truncate text-[10.5px] leading-4">{peopleLabel(space)}</div>
