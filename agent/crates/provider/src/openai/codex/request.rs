@@ -2,7 +2,11 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 
 pub(super) fn resolve_codex_url(base_url: &str) -> String {
-    let raw = if base_url.trim().is_empty() || base_url.contains("api.openai.com") {
+    let raw = if base_url.trim().is_empty()
+        || matches!(
+            base_url.trim_end_matches('/'),
+            "https://api.openai.com" | "https://api.openai.com/v1"
+        ) {
         "https://chatgpt.com/backend-api".to_string()
     } else {
         base_url.trim_end_matches('/').to_string()

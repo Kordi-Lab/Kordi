@@ -45,14 +45,14 @@ impl TuiController {
         self.session_setup.base_url = runtime.base_url.clone();
         self.session_setup.headers = runtime.headers.clone();
         self.normalize_current_thinking();
-        self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
-            provider: self.session_setup.provider.clone(),
-            model: self.session_setup.model.clone(),
-            api_key: self.session_setup.api_key.clone(),
-            base_url: self.session_setup.base_url.clone(),
-            headers: runtime.headers,
-            enabled: true,
-        });
+        self.session_setup.tool_ctx.web_search = Some(crate::runtime_model::web_search_runtime(
+            &self.session_setup.provider,
+            &self.session_setup.model,
+            &self.session_setup.api_key,
+            &self.session_setup.base_url,
+            &runtime.headers,
+            self.session_setup.auth.as_ref(),
+        ));
         if let Ok(mut tracker) = self.session_setup.request_metrics_tracker.try_lock() {
             tracker.reset_history();
         }
@@ -82,14 +82,14 @@ impl TuiController {
         self.session_setup.base_url = runtime.base_url.clone();
         self.session_setup.headers = runtime.headers.clone();
         self.normalize_current_thinking();
-        self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
-            provider: self.session_setup.provider.clone(),
-            model: self.session_setup.model.clone(),
-            api_key: String::new(),
-            base_url: self.session_setup.base_url.clone(),
-            headers: runtime.headers,
-            enabled: false,
-        });
+        self.session_setup.tool_ctx.web_search = Some(crate::runtime_model::web_search_runtime(
+            &self.session_setup.provider,
+            &self.session_setup.model,
+            &self.session_setup.api_key,
+            &self.session_setup.base_url,
+            &runtime.headers,
+            self.session_setup.auth.as_ref(),
+        ));
         if let Ok(mut tracker) = self.session_setup.request_metrics_tracker.try_lock() {
             tracker.reset_history();
         }

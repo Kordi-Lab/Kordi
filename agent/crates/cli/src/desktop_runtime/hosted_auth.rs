@@ -96,12 +96,12 @@ pub(super) fn refresh_provider_runtime_fields(setup: &mut SessionRuntimeSetup) {
         .clone()
         .unwrap_or_else(|| runtime.base_url.clone());
     setup.headers = runtime.headers.clone();
-    setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
-        provider: setup.provider.clone(),
-        model: setup.model.clone(),
-        api_key: setup.api_key.clone(),
-        base_url: setup.base_url.clone(),
-        headers: runtime.headers,
-        enabled: true,
-    });
+    setup.tool_ctx.web_search = Some(crate::runtime_model::web_search_runtime(
+        &setup.provider,
+        &setup.model,
+        &setup.api_key,
+        &setup.base_url,
+        &runtime.headers,
+        setup.auth.as_ref(),
+    ));
 }

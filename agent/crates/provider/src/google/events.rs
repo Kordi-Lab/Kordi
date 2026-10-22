@@ -40,6 +40,21 @@ pub(super) fn process_google_event(event: &Value, tx: &mpsc::UnboundedSender<Str
     };
 
     for candidate in candidates {
+        if let Some(chunks) = candidate["groundingMetadata"]["groundingChunks"].as_array() {
+            let sources: Vec<_> = chunks
+                .iter()
+                .filter_map(|chunk| {
+                    let web = &chunk["web"];
+                    Some(json!({"url":web["uri"].as_str()?, "title":web["title"]}))
+                })
+                .collect();
+            let _ = tx.send(StreamEvent::ServerToolResult {
+                tool_use_id: "native-web-search".into(),
+                name: "web_search".into(),
+                result: json!({"sources":sources}),
+                is_error: false,
+            });
+        }
         let parts = match candidate
             .get("content")
             .and_then(|content| content.get("parts"))

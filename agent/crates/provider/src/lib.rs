@@ -3,6 +3,7 @@
 pub mod anthropic;
 mod error;
 pub mod google;
+mod hosted_search;
 mod images;
 mod model_context;
 pub mod openai;
