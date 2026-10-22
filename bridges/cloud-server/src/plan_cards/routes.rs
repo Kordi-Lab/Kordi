@@ -67,16 +67,21 @@ async fn handle(
         Ok(row) => {
             // A member's response belongs on the card, not in the chat: PiP's
             // message that carries this card is refreshed in place for
-            // everyone, with no new line and no model run.
+            // everyone, with no new line and no model run. PiP is not in
+            // direct chats or Grounding groups, so it has nothing there.
             if let Some(pip) = state.pip() {
-                if let Err(error) = crate::pip::cards::sync_card_messages(
-                    state.db_pool(),
-                    &pip.config().account_id,
-                    &row,
-                )
-                .await
-                {
-                    eprintln!("[pip] Could not update the plan card messages: {error}");
+                let pip_account = pip.config().account_id.as_str();
+                let in_chat = match Uuid::parse_str(&row.conversation_id) {
+                    Ok(id) => is_active_member(state.db_pool(), id, pip_account).await,
+                    Err(_) => false,
+                };
+                if in_chat {
+                    let synced =
+                        crate::pip::cards::sync_card_messages(state.db_pool(), pip_account, &row)
+                            .await;
+                    if let Err(error) = synced {
+                        eprintln!("[pip] Could not update the plan card messages: {error}");
+                    }
                 }
             }
             // An organizer who carries the card in their own message (a Meet
