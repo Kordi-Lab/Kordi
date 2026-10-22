@@ -44,6 +44,10 @@ async fn profiles_keep_a_card_design() {
         );
         if bad.is_string() {
             assert_eq!(body["errorCode"], "common_ground_invalid_profile");
+            assert_eq!(
+                body["message"], "Pick a card design from the list.",
+                "{body}"
+            );
         }
     }
     let (status, work) = send(&app, "POST", PROFILES, &alex, Some(json!({"kind": "work"}))).await;
@@ -97,6 +101,8 @@ async fn profiles_keep_a_card_design() {
         designs(&app, &alex).await,
         vec![json!(["Work", null]), json!(["KAUST", "workshop"])]
     );
+    let (status, body) = send(&app, "PUT", &path, &alex, Some(json!({"design": "ocean"}))).await;
+    assert_eq!((status, &body["design"]), (200, &json!("ocean")), "{body}");
     let (status, body) = send(&app, "PUT", &path, &alex, Some(json!({"design": null}))).await;
     assert_eq!((status, &body["design"]), (200, &Value::Null), "{body}");
     let (_, body) = send(

@@ -20,8 +20,12 @@ pub(super) const MAX_PROFILES: i64 = 5;
 pub(super) const MAX_NAME_CHARS: usize = 40;
 pub(super) const MAX_FOCUS_CHARS: usize = 200;
 pub(super) const KINDS: [&str; 4] = ["work", "health", "daily", "custom"];
-/// Card designs the apps draw; a profile without one uses its kind's.
-pub(super) const DESIGNS: [&str; 6] = ["work", "health", "daily", "workshop", "research", "custom"];
+/// Card designs the apps draw: the kind designs, then plain colours. A
+/// profile without one uses its kind's.
+pub(super) const DESIGNS: [&str; 16] = [
+    "work", "health", "daily", "workshop", "research", "custom", "ocean", "sky", "rose", "coral",
+    "amber", "forest", "lavender", "graphite", "mint", "olive",
+];
 /// Icons the apps draw on a card; a profile without one shows none.
 pub(super) const ICONS: [&str; 18] = [
     "briefcase",

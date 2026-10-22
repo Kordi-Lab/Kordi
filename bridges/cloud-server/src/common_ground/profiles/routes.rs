@@ -158,11 +158,7 @@ fn clean_choice(
 
 /// A checked design; `null` or empty means the kind's default.
 fn clean_design(design: Option<&str>) -> Result<Option<String>, &'static str> {
-    clean_choice(
-        design,
-        valid_design,
-        "Pick work, health, daily, workshop, research or custom.",
-    )
+    clean_choice(design, valid_design, "Pick a card design from the list.")
 }
 
 /// A checked icon; `null` or empty means no icon.
