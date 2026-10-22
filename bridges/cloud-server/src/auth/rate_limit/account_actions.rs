@@ -88,6 +88,68 @@ impl CloudRateLimiter {
             .await
     }
 
+    /// Whether `limit` is already spent for `account_id`, without recording
+    /// anything. Lets a caller charge only some outcomes yet still refuse
+    /// every call once the budget is gone.
+    pub async fn peek_account_limit(
+        &self,
+        limit: AccountActionLimit,
+        account_id: &str,
+    ) -> RateLimitDecision {
+        let AccountActionLimit {
+            action,
+            limit,
+            window,
+        } = limit;
+        match &self.backend {
+            Backend::Memory(store) => {
+                let mut buckets = store
+                    .per_account_action
+                    .lock()
+                    .expect("rate limiter poisoned");
+                let Some(entry) = buckets.get_mut(&format!("{action}:{account_id}")) else {
+                    return RateLimitDecision::Allowed;
+                };
+                let now = Instant::now();
+                let window_start = now.checked_sub(window).unwrap_or(now);
+                while entry.front().is_some_and(|front| *front < window_start) {
+                    entry.pop_front();
+                }
+                if (entry.len() as u32) < limit {
+                    return RateLimitDecision::Allowed;
+                }
+                let oldest = entry.front().copied().unwrap_or(now);
+                RateLimitDecision::Limited {
+                    retry_after: window
+                        .checked_sub(now.duration_since(oldest))
+                        .unwrap_or(window),
+                }
+            }
+            Backend::Redis(store) => {
+                let mut conn = store.conn.clone();
+                let redis_key = format!("{}:acct:{action}:{account_id}", store.key_prefix);
+                let count: Option<i64> = match conn.get(&redis_key).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        eprintln!("[rate_limit] redis GET {redis_key}: {err}");
+                        return RateLimitDecision::Allowed;
+                    }
+                };
+                if count.unwrap_or(0) < limit as i64 {
+                    return RateLimitDecision::Allowed;
+                }
+                let pttl_ms: i64 = conn.pttl(&redis_key).await.unwrap_or(0);
+                RateLimitDecision::Limited {
+                    retry_after: if pttl_ms > 0 {
+                        Duration::from_millis(pttl_ms as u64)
+                    } else {
+                        window
+                    },
+                }
+            }
+        }
+    }
+
     /// Records one `action` for `account_id`, allowing at most `limit` actions
     /// per `window`. Returns `Limited` without recording when the budget is
     /// already spent.
@@ -212,6 +274,29 @@ mod tests {
                 .await,
             RateLimitDecision::Allowed
         );
+    }
+
+    #[tokio::test]
+    async fn peeking_reports_a_spent_budget_without_charging() {
+        let limiter = CloudRateLimiter::memory(CloudRateLimitConfig::default());
+        let limit = AccountActionLimit {
+            action: "peek",
+            limit: 2,
+            window: Duration::from_secs(60),
+        };
+        for _ in 0..3 {
+            assert_eq!(
+                limiter.peek_account_limit(limit, "acct_peek").await,
+                RateLimitDecision::Allowed
+            );
+        }
+        for _ in 0..2 {
+            limiter.observe_account_limit(limit, "acct_peek").await;
+        }
+        assert!(matches!(
+            limiter.peek_account_limit(limit, "acct_peek").await,
+            RateLimitDecision::Limited { .. }
+        ));
     }
 
     #[test]

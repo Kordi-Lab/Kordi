@@ -102,13 +102,11 @@ struct CommonGroundJoinSheet: View {
     @State private var error: String?
 
     private var choices: [CommonGroundProfileSummary] { model.shareChoices }
-    private var suggested: String? {
-        CommonGroundProfileChoice.suggested(roomKind: model.suggestedKind(ofRoom: code), in: choices)
-    }
+    private var suggested: String? { model.suggestedProfile(forRoom: code) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            CommonGroundSheetHeader(title: model.roomTitle(code)) { dismiss() }
+            CommonGroundSheetHeader(title: model.roomTitle(code), subtitle: model.roomDetail(code)) { dismiss() }
             CommonGroundCardCarousel(
                 ids: choices.map(\.profileId),
                 selection: $selected,
@@ -119,6 +117,8 @@ struct CommonGroundJoinSheet: View {
                 let profile = choices.first { $0.profileId == id }
                 ProfileCardView(
                     design: model.design(ofProfile: id),
+                    icon: profile?.cardIcon,
+                    kindDesign: profile?.kindDesign,
                     name: profile?.title ?? "",
                     focus: profile?.focusLine,
                     bottom: .topics(id == model.currentProfileID ? model.myTopics : model.walletTopics[id] ?? []),
@@ -134,11 +134,7 @@ struct CommonGroundJoinSheet: View {
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
-        .onAppear {
-            selected = CommonGroundProfileChoice.preselected(
-                roomKind: model.suggestedKind(ofRoom: code), current: model.currentProfileID, in: choices
-            )
-        }
+        .onAppear { selected = model.preselectedProfile(forRoom: code) }
     }
 
     private func share() async {
@@ -154,16 +150,25 @@ struct CommonGroundJoinSheet: View {
     }
 }
 
-/// A sheet's title with a round close button.
+/// A sheet's title, an optional line under it and a round close button.
 struct CommonGroundSheetHeader: View {
     let title: String
+    var subtitle: String? = nil
     let onClose: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(title)
-                .font(.system(size: 22, weight: .bold))
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 22, weight: .bold))
+                    .lineLimit(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
             Spacer(minLength: 8)
             Button(action: onClose) {
                 Image(systemName: "xmark")

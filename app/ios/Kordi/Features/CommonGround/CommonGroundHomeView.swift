@@ -1,9 +1,10 @@
 import SwiftUI
 
 /// Grounding's Home: the shared card's chip, the wallet, the Pair code row,
-/// Your card, Rooms and Recent.
+/// Rooms, Recent and Your card.
 struct CommonGroundHome: View {
     @EnvironmentObject private var model: CommonGroundModel
+    @Environment(\.scenePhase) private var scenePhase
     @Binding var path: [CommonGroundRoute]
     var onClose: (() -> Void)? = nil
     @State private var containerWidth: CGFloat = 390
@@ -14,6 +15,7 @@ struct CommonGroundHome: View {
     @State private var joinCode: CommonGroundCodeTarget?
     @State private var createFor: CommonGroundCodeTarget?
     @State private var addsCard = false
+    @State private var lookFor: CommonGroundCodeTarget?
     @State private var afterSharing: SharingStep?
 
     private enum SharingStep { case join(String), create(String?) }
@@ -37,7 +39,8 @@ struct CommonGroundHome: View {
                     hiddenID: detail?.id,
                     onDetail: openDetail,
                     onBuild: { path.append(.build) },
-                    onNewCard: { addsCard = true }
+                    onNewCard: { addsCard = true },
+                    onLook: { lookFor = CommonGroundCodeTarget(profileId: $0) }
                 )
                 .padding(.bottom, 8)
                 VStack(spacing: 24) {
@@ -48,9 +51,9 @@ struct CommonGroundHome: View {
                         onComplete: entered,
                         onCreate: { create(for: model.currentProfileID) }
                     )
-                    if let card = selectedCard, !card.isSuggested { yourCard(card) }
                     CommonGroundRoomsSection(path: $path)
                     if !model.recent.isEmpty { recentSection }
+                    if let card = selectedCard, !card.isSuggested { yourCard(card) }
                 }
             }
             .padding(.horizontal, 16)
@@ -67,22 +70,26 @@ struct CommonGroundHome: View {
         .overlay {
             if let detail {
                 CommonGroundCardDetail(
-                    card: detail,
+                    card: model.walletCards.first { $0.id == detail.id } ?? detail,
                     cardWidth: cardWidth,
                     onClose: { self.detail = nil },
-                    onShare: { create(for: detail.id) }
+                    onShare: { create(for: detail.id) },
+                    onLook: { lookFor = CommonGroundCodeTarget(profileId: detail.id) }
                 )
             }
         }
         .onChange(of: code) { _, typed in if !typed.isEmpty { codeError = nil } }
-        .task { await model.loadHome(); await model.loadWalletTopics() }
+        .task { await model.refreshHome() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await model.refreshHome() } }
+        }
         .task(id: model.isBuilding) { await model.waitForBuild() }
         .sheet(item: $joinCode, onDismiss: { code = "" }) { target in
             CommonGroundJoinSheet(code: target.code ?? "", cardWidth: cardWidth) { room, profile in
                 model.notice = profile.map { "Sharing \($0.title) in \(room.title)" } ?? "Joined \(room.title)"
             }
             .environmentObject(model)
-            .presentationDetents([.height(470)])
+            .presentationDetents([.height(model.roomDetail(target.code ?? "") == nil ? 470 : 492)])
             .presentationDragIndicator(.visible)
         }
         .sheet(item: $createFor) { target in
@@ -90,6 +97,19 @@ struct CommonGroundHome: View {
                 .environmentObject(model)
                 .presentationDetents([.height(390)])
                 .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $lookFor) { target in
+            if let id = target.profileId, let profile = model.profile(id) {
+                CommonGroundCardLookSheet(
+                    design: profile.cardDesign,
+                    icon: profile.cardIcon,
+                    kindDesign: profile.kindDesign,
+                    onDesign: { design in Task { await model.setCardLook(id, design: design) } },
+                    onIcon: { icon in Task { await model.setCardLook(id, icon: .some(icon)) } }
+                )
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+            }
         }
         .sheet(isPresented: $addsCard) {
             CommonGroundNewCardSheet(cardWidth: cardWidth)
@@ -128,23 +148,42 @@ struct CommonGroundHome: View {
         if model.sharing { createFor = CommonGroundCodeTarget(profileId: profileId) } else { afterSharing = .create(profileId) }
     }
 
+    /// Looks the code up once, then joins, asking to turn on sharing first.
+    /// A room you are already in opens as it is: joining again with another
+    /// card would switch the shared card and clear its matches.
     private func entered(_ entered: String) {
         codeError = nil
-        if model.sharing { join(entered) } else { afterSharing = .join(entered) }
+        guard !model.isInOpenRoom(entered) else { return open(entered) }
+        Task {
+            switch await model.previewRoom(entered) {
+            case .stale:
+                return
+            case .failed(let message):
+                codeError = message
+                code = ""
+                return
+            case .found(let room) where room.member:
+                return open(entered)
+            case .found, .unavailable:
+                break
+            }
+            if model.sharing { join(entered) } else { afterSharing = .join(entered) }
+        }
+    }
+
+    private func open(_ entered: String) {
+        code = ""
+        path.append(.results(entered))
     }
 
     private func join(_ entered: String) {
-        if model.isInOpenRoom(entered) {
-            code = ""
-            model.notice = "Already in \(model.roomTitle(entered))"
-            return
-        }
+        if model.isInOpenRoom(entered) { return open(entered) }
         if model.asksWhichProfile {
             joinCode = CommonGroundCodeTarget(code: entered)
             return
         }
         Task {
-            let profileId = model.shareChoices.first?.profileId
+            let profileId = model.preselectedProfile(forRoom: entered)
             if let room = await model.joinFromHome(entered, profileId: profileId) {
                 model.notice = model.profile(profileId).map { "Sharing \($0.title) in \(room.title)" } ?? "Joined \(room.title)"
             } else {

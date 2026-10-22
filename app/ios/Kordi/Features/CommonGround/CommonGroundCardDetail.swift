@@ -11,9 +11,11 @@ struct CommonGroundCardDetail: View {
     let cardWidth: CGFloat
     let onClose: () -> Void
     let onShare: () -> Void
+    var onLook: (() -> Void)? = nil
     @State private var flipped = false
     @State private var renaming = false
     @State private var nameDraft = ""
+    @State private var nameError: String?
     @State private var confirmsDelete = false
     @State private var backHeight: CGFloat = 0
     @FocusState private var nameFocused: Bool
@@ -32,7 +34,7 @@ struct CommonGroundCardDetail: View {
                     .ignoresSafeArea()
                     .onTapGesture(perform: close)
                 ZStack {
-                    ProfileCardView(design: card.design, name: card.name, focus: card.focus, bottom: .topics(card.topics), width: cardWidth)
+                    ProfileCardView(design: card.design, icon: card.icon, kindDesign: card.kindDesign, name: card.name, focus: card.focus, bottom: .topics(card.topics), width: cardWidth)
                         .opacity(flipped ? 0 : 1)
                     back(maxHeight: maxHeight)
                         .rotation3DEffect(.degrees(reduceMotion ? 0 : 180), axis: (x: 0, y: 1, z: 0))
@@ -57,7 +59,10 @@ struct CommonGroundCardDetail: View {
     }
 
     private func close() {
-        if renaming { saveName() }
+        if renaming {
+            saveName()
+            renaming = false
+        }
         withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .easeOut(duration: 0.3)) { flipped = false }
         Task {
             try? await Task.sleep(for: .milliseconds(reduceMotion ? 200 : 300))
@@ -83,7 +88,8 @@ struct CommonGroundCardDetail: View {
     private func backContent(_ palette: CommonGroundCardPalette) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                CommonGroundCardGlyph(design: card.design, palette: palette)
+                CommonGroundCardGlyph(design: card.design, palette: palette, icon: card.icon, kindDesign: card.kindDesign,
+                                      onTap: model.profilesEnabled && profile != nil ? onLook : nil)
                 if renaming {
                     TextField("Name", text: $nameDraft)
                         .font(.system(size: 18, weight: .semibold))
@@ -113,6 +119,13 @@ struct CommonGroundCardDetail: View {
             .padding(.leading, 16)
             .padding(.trailing, 12)
             .frame(height: 60)
+            if renaming, let nameError {
+                Text(nameError)
+                    .font(.footnote)
+                    .foregroundStyle(palette.danger)
+                    .padding(.horizontal, 16)
+                    .padding(.top, -8)
+            }
             if let focus = card.focus, !focus.isEmpty {
                 Text(focus)
                     .font(.system(size: 14))
@@ -192,6 +205,7 @@ struct CommonGroundCardDetail: View {
             if model.profilesEnabled, profile != nil {
                 actionButton("Rename", "pencil", palette) {
                     nameDraft = title
+                    nameError = nil
                     renaming = true
                     nameFocused = true
                 }
@@ -218,11 +232,19 @@ struct CommonGroundCardDetail: View {
         .buttonStyle(.plain)
     }
 
+    /// An emptied name goes back to the kind's name; a custom card keeps
+    /// the field open with a short line instead.
     private func saveName() {
         let name = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        renaming = false
-        guard !name.isEmpty, name != title else { return }
         let id = card.id
+        if let refusal = model.nameRefusal(name, for: id) {
+            nameError = refusal
+            nameFocused = true
+            return
+        }
+        nameError = nil
+        renaming = false
+        guard name.isEmpty ? profile?.name.isEmpty == false : name != title else { return }
         Task { await model.updateProfile(id, name: name) }
     }
 
