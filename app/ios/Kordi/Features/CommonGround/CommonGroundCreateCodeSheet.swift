@@ -7,11 +7,12 @@ struct CommonGroundCreateCodeSheet: View {
     @Environment(\.dismiss) private var dismiss
     /// The card picked first: the shared one, or the card being turned over.
     let initialProfileID: String?
+    /// Held by the presenter, so the new code stays up if the sheet is rebuilt.
+    @Binding var created: CommonGroundRoom?
     /// Opens the new room's page; the presenter closes the sheet first.
     let onEnter: (CommonGroundRoom) -> Void
     @State private var name = ""
     @State private var selected: String?
-    @State private var created: CommonGroundRoom?
     @State private var error: String?
     @FocusState private var nameFocused: Bool
 
