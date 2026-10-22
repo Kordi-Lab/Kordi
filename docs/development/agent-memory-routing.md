@@ -139,7 +139,7 @@ Rules:
 | Category and confidence | Agent | New required `category` and optional `confidence` tool parameters; the tool description and the `## Memories` section carry the table above in short form with one example per row |
 | Scope | Agent, checked by the host | As today, with a sharper rule: group scope only for what the group shares and may all see; never one member's preference, health, daily life or anything said privately; conversation for the owner's own corrections in this chat; global only for "always" |
 | Profile | Server | `profile_kind_for(category)` (`work`, `health`, `daily`, `all` for `coordination_context`, or none), overridden by an explicit `profile_id` the person set |
-| Declaration | Server from the actor | Runner route: always `model-inferred`. Account route: `declaredBy: "agent"` from the Mac agent runtime, `"user"` (default) from the Memory pages |
+| Declaration | Server from the actor | Runner route: always `model-inferred`. Account route: derived from `source` (`manual` is user-declared, the rest model-inferred), so the Mac agent runtime needs no change before step 2; an explicit `declaredBy: "user"` or `"agent"` overrides it, which a later "Confirm" action uses |
 | Group membership, scope ids, dedup, guard | Server | Unchanged |
 
 ### Data (migration 0147)
@@ -189,8 +189,10 @@ upgrade test asserts the backfill.
   that are not pinned elsewhere, each flagged `everyProfile: true`.
 - The card view gains `memoriesSinceBuild`: routed memories updated after
   `built_at`.
-- `memoryVersion` becomes 2 ("categories and profile routing"). The later
-  #1977 search work takes 3.
+- `memoryVersion` becomes 2 ("categories and profile routing") in step 3,
+  when the profile routes exist; step 1 leaves it at 1 because the new
+  fields are additive and old clients ignore them. The later #1977 search
+  work takes 3.
 
 ### Prompt and tool wording (step 2)
 
@@ -224,9 +226,9 @@ come from fresh `origin/main` in their own worktree.
 | Step | PR | Scope | Depends on | Verification |
 |---|---|---|---|---|
 | 0 | this doc | Commit this document next to `hcp-memory-plan.md`, fix the migration numbers there, comment on #1977 that this slice goes first | nothing | review |
-| 1 | server schema and routes | Migration 0147, `memory_store/routing.rs` (category list, `profile_kind_for`, group-scope category check), save/update/list carry the new fields, runner save forces `model-inferred`, `memoryVersion` 2, audit detail gains category | nothing | `scripts/test-cloud-migrations.sh`, memory route tests, upgrade test for the backfill; old clients unaffected |
+| 1 | server schema and routes | Migration 0147, `memory_store/routing.rs` (category list, `profile_kind_for`, group-scope category check), save/update/list carry the new fields, runner save forces `model-inferred`, audit detail gains category; `memoryVersion` stays 1 | nothing | `scripts/test-cloud-migrations.sh`, memory route tests, upgrade test for the backfill; old clients unaffected |
 | 2 | agent tool and prompts | `reflection` gains `category` and `confidence`; description and `## Memories` routing rules on Mac and in cloud runs; Mac runtime and runner transport send the fields; cache line format and parser | 1 | Rust tests for the new rules and the parser; a Mac session and a cloud run each save a work, a health and a group memory with the right fields |
-| 3 | server profile routing | Fixed-kind card builds read only routed memories plus cross-profile ones; group-scope memories never feed a card; `profiles/{id}/memories` route; `memoriesSinceBuild`; move via `PATCH` | 1 | Tests: a daily memory never reaches a work build (the #1971 bullet); a coordination memory reaches both the work and the health build until it is pinned; a group memory never reaches any build; move to a custom profile |
+| 3 | server profile routing | Fixed-kind card builds read only routed memories plus cross-profile ones; group-scope memories never feed a card; `profiles/{id}/memories` route; `memoriesSinceBuild`; move via `PATCH`; `memoryVersion` 2 | 1 | Tests: a daily memory never reaches a work build (the #1971 bullet); a coordination memory reaches both the work and the health build until it is pinned; a group memory never reaches any build; move to a custom profile |
 | 4 | Mac and iPhone | Loopback design preview first under `docs/design-previews/memory-routing/`; then: category chip on memory rows everywhere; account Memory tab filter by profile; Grounding card page gains a **Memories** section (routed list, Move to…, Remove) and "N new memories · Rebuild"; group info Memory section gets the chip only; flat settings style, sentence case, a title and at most one line | 1, 3 | Node and Swift unit tests; `tests/visual` pages; signed-in check on a loopback stack with a synthetic account |
 | 5 (optional) | review and conflicts | Migration 0148 `status` (`active`, `conflicted`); an inferred memory in the same category and normalized dimension as a declared one is quarantined, hidden from agents and card builds, shown under "Needs your review" with Keep and Discard | 1, 4 | Route tests; UI tests |
 | 6 | docs | `docs/memory.md` (categories, declaration, routing table), `docs/common-ground.md` (Memory source per profile), align `hcp-memory-plan.md`, deletion register note for `profile_id` | 1 to 5 | `pnpm check:english` |
