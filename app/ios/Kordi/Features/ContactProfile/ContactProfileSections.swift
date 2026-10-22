@@ -202,47 +202,6 @@ struct ContactProfileSharedSection: View {
     }
 }
 
-/// "Common ground": label and chips for each list that has topics.
-struct ContactProfileCommonGroundSection: View {
-    let ground: CloudContactProfile.CommonGround
-
-    var body: some View {
-        ContactProfileSectionLabel("Common ground")
-        VStack(alignment: .leading, spacing: 10) {
-            line("Working on", ground.workingOn)
-            line("Can help", ground.canHelp)
-            line("Looking for", ground.lookingFor)
-        }
-        .padding(.horizontal, ContactProfileMetrics.gutter)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
-    }
-
-    @ViewBuilder
-    private func line(_ label: String, _ topics: [String]) -> some View {
-        if !topics.isEmpty {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(label)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 84, alignment: .leading)
-                FlowLayout(spacing: 6) {
-                    ForEach(Array(topics.prefix(4).enumerated()), id: \.offset) { _, topic in
-                        Text(topic)
-                            .font(.caption)
-                            .lineLimit(1)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .accessibilityElement(children: .combine)
-        }
-    }
-}
-
 /// Red "Delete contact" row, shown only when the server can remove contacts.
 struct ContactProfileDeleteRow: View {
     let action: () -> Void
