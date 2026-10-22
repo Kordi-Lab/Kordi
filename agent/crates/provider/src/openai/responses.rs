@@ -1,3 +1,6 @@
+mod errors;
+use errors::{responses_error_code, responses_error_message};
+
 use super::{OpenAiProvider, default_prompt_cache_key};
 use futures::StreamExt;
 use kordi_core::error::{KordiError, KordiResult};
@@ -183,6 +186,7 @@ fn build_responses_request_body(request: &CompletionRequest, messages: Vec<Value
         body["parallel_tool_calls"] = json!(false);
     }
 
+    crate::hosted_search::configure_responses(&mut body, &request.tools);
     body
 }
 
@@ -366,6 +370,7 @@ fn process_responses_sse(
     started_tool_calls: &mut HashSet<String>,
     completed_tool_calls: &mut HashSet<String>,
 ) -> bool {
+    crate::hosted_search::responses_sources(event, tx);
     match event.get("type").and_then(|v| v.as_str()).unwrap_or("") {
         "response.output_text.delta" => {
             if let Some(delta) = event.get("delta").and_then(|v| v.as_str())
@@ -487,48 +492,6 @@ fn maybe_send_tool_call_done(
     if completed_tool_calls.insert(id.clone()) {
         let _ = tx.send(StreamEvent::ToolCallEnd { id });
     }
-}
-
-fn responses_error_message(event: &Value) -> String {
-    event
-        .get("message")
-        .and_then(|value| value.as_str())
-        .or_else(|| {
-            event
-                .get("error")
-                .and_then(|error| error.get("message"))
-                .and_then(|value| value.as_str())
-        })
-        .or_else(|| {
-            event
-                .get("response")
-                .and_then(|response| response.get("error"))
-                .and_then(|error| error.get("message"))
-                .and_then(|value| value.as_str())
-        })
-        .or_else(|| {
-            event
-                .get("response")
-                .and_then(|response| response.get("incomplete_details"))
-                .and_then(|details| details.get("reason"))
-                .and_then(|value| value.as_str())
-        })
-        .map(ToString::to_string)
-        .unwrap_or_else(|| "OpenAI response failed".to_string())
-}
-
-fn responses_error_code(event: &Value) -> Option<&str> {
-    event
-        .get("error")
-        .and_then(|error| error.get("code").or_else(|| error.get("type")))
-        .and_then(|value| value.as_str())
-        .or_else(|| {
-            event
-                .get("response")
-                .and_then(|response| response.get("error"))
-                .and_then(|error| error.get("code").or_else(|| error.get("type")))
-                .and_then(|value| value.as_str())
-        })
 }
 
 fn send_responses_usage(event: &Value, tx: &mpsc::UnboundedSender<StreamEvent>) {

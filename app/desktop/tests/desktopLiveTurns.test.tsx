@@ -260,3 +260,13 @@ test('persisted entry correlation cannot bind a completed turn to an older ident
   assert.equal(reconciled[0]?.transcriptRenderId, undefined);
   assert.equal(reconciled[1]?.transcriptRenderId, completedTurn.id);
 });
+
+test('late running snapshots cannot reopen a completed turn or restart its progress', () => {
+  const completed = turn({ completed: true, succeeded: true, status: 'succeeded', completedAtMs: 9000, assistantText: 'Hello.' });
+  const stale = turn({ status: 'processing', message: 'Working…' });
+  assert.equal(mergeDesktopTurnSnapshot(completed, stale), completed);
+  const otherSession = { ...stale, sessionId: 'session-b' };
+  assert.equal(mergeDesktopTurnSnapshot(completed, otherSession), otherSession);
+  const nextRun = { ...stale, id: 'turn-2' };
+  assert.equal(mergeDesktopTurnSnapshot(completed, nextRun), nextRun);
+});

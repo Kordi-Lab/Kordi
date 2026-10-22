@@ -38,6 +38,47 @@ pub struct OpenAiProviderConfig {
 }
 
 impl OpenAiProviderConfig {
+    pub(crate) fn web_search_runtime(&self) -> kordi_tools::WebSearchRuntime {
+        use kordi_provider::registry::{ApiType, CostConfig, Model};
+        let (provider, api): (std::sync::Arc<dyn Provider>, ApiType) = match self.provider.as_str()
+        {
+            "anthropic" => (
+                std::sync::Arc::new(AnthropicProvider::new()),
+                ApiType::AnthropicMessages,
+            ),
+            "google" => (
+                std::sync::Arc::new(GoogleProvider::new()),
+                ApiType::GoogleGenerative,
+            ),
+            _ => (
+                std::sync::Arc::new(kordi_provider::openai::OpenAiProvider::new()),
+                ApiType::OpenaiResponses,
+            ),
+        };
+        let options = self.request_options();
+        kordi_tools::WebSearchRuntime {
+            provider,
+            model: Model {
+                id: self.model.clone(),
+                name: self.model.clone(),
+                provider: self.provider.clone(),
+                api,
+                context_window: 0,
+                max_tokens: 4096,
+                reasoning: false,
+                input: vec![],
+                base_url: Some(self.base_url.clone()),
+                cost: CostConfig::default(),
+            },
+            api_key: options.api_key,
+            base_url: options.base_url,
+            headers: options.headers,
+            auth_mode: options.auth_mode,
+            auth_account_id: options.auth_account_id,
+            enabled: true,
+        }
+    }
+
     pub fn from_material(material: &ProviderAuthMaterial) -> Result<Self, ModelLoopError> {
         let payload = &material.payload;
         let api_key = payload

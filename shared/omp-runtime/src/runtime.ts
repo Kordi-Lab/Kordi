@@ -142,6 +142,9 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
           host.event({ kind: 'status', status: 'running', step: steps });
           break;
         case 'turn_end': host.event({ kind: 'turn_end', step: steps - 1 }); break;
+        case 'message_start':
+          if (event.message.role === 'assistant') host.event({ kind: 'message_start' });
+          break;
         case 'message_update': {
           const update = event.assistantMessageEvent;
           if (update.type === 'text_delta' || update.type === 'thinking_delta') host.event({ kind: update.type, delta: update.delta });

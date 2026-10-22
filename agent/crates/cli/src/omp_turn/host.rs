@@ -192,6 +192,7 @@ pub(super) fn map_event(event: RuntimeEvent) -> Option<TurnEvent> {
             .map(str::to_owned)
     };
     match event.kind.as_str() {
+        "message_start" => Some(TurnEvent::TextStart),
         "text_delta" => string("delta").map(TurnEvent::TextDelta),
         "thinking_delta" => string("delta").map(TurnEvent::ThinkingDelta),
         "tool_start" => Some(TurnEvent::ToolCallStart {

@@ -23,7 +23,7 @@ import {
 import {
   useVirtualTranscriptNavigation,
 } from '@/features/chat/useVirtualTranscriptNavigation';
-import { preserveMeasuredDisclosurePosition, preserveMeasuredTranscriptRow, STABLE_DISCLOSURE_SETTLE_MS, TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT, TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP, transcriptLayoutMaxScrollTop } from '@/features/chat/virtualTranscriptLayout';
+import { syncTranscriptTailPosition, preserveMeasuredDisclosurePosition, preserveMeasuredTranscriptRow, STABLE_DISCLOSURE_SETTLE_MS, TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT, TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP, transcriptLayoutMaxScrollTop } from '@/features/chat/virtualTranscriptLayout';
 import { hasActiveTranscriptRowLift, useStableTranscriptSessionReveal } from '@/features/chat/virtualTranscriptMotion';
 import {
   beginChatPerformanceSpan,
@@ -169,11 +169,14 @@ export function VirtualTranscript<Item>({
       } else if (stableDisclosureAnchorRef.current === anchor) {
         disconnectStableDisclosureResizeObserver();
         stableDisclosureAnchorRef.current = null;
+        // Opening details leaves the tail behind without a scroll event. Do not
+        // resume tail-following with the pre-disclosure position after motion.
+        syncTranscriptTailPosition(internalScrollRef.current, viewportWasAtTailRef, setIsAtTail, gap);
         setStableDisclosureActive(false);
       }
     };
     stableDisclosureReleaseFrameRef.current = window.requestAnimationFrame(release);
-  }, [cancelStableDisclosureRelease, disconnectStableDisclosureResizeObserver]);
+  }, [cancelStableDisclosureRelease, disconnectStableDisclosureResizeObserver, gap]);
 
   useEffect(() => {
     // React Strict Mode intentionally runs an extra setup/cleanup cycle in
@@ -411,21 +414,13 @@ export function VirtualTranscript<Item>({
     if (passiveViewport.preserving) {
       cancelTailAlignment();
       passiveViewport.restore();
-      const element = internalScrollRef.current;
-      if (element) {
-        const reachedTail = transcriptLayoutMaxScrollTop(element) - element.scrollTop <= Math.max(4, gap);
-        viewportWasAtTailRef.current = reachedTail;
-        setIsAtTail(reachedTail);
-      }
+      syncTranscriptTailPosition(internalScrollRef.current, viewportWasAtTailRef, setIsAtTail, gap);
     } else if (stableDisclosureSizeChanged && stableDisclosureAnchor) {
       cancelTailAlignment();
       const element = internalScrollRef.current;
       if (element) {
         element.scrollTop = stableDisclosureAnchor.targetScrollTop;
-        const distanceFromTail = element.scrollHeight - (element.scrollTop + element.clientHeight);
-        const reachedTail = distanceFromTail <= Math.max(4, gap);
-        viewportWasAtTailRef.current = reachedTail;
-        setIsAtTail(reachedTail);
+        syncTranscriptTailPosition(element, viewportWasAtTailRef, setIsAtTail, gap);
       }
       scheduleStableDisclosureRelease(stableDisclosureAnchor);
     } else if (shouldAlign) {

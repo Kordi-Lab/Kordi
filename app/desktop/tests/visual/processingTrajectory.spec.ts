@@ -139,7 +139,7 @@ test('first request after opening a group does not reset its transcript when the
     const step = (phase: number) => page.evaluate(phase => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(phase), phase);
     await step(1);
     await step(3);
-    await expect(page.locator('.app-agent-waiting-wave')).toBeVisible();
+    await expect(page.locator('.app-turn-progress-bird')).toBeVisible();
     await page.waitForTimeout(300);
     const history = await page.locator('[data-index="49"]').elementHandle();
     const viewport = await page.locator('[data-virtual-transcript-scroll]').elementHandle();
@@ -160,4 +160,268 @@ test('first request after opening a group does not reset its transcript when the
     await step(10);
     await expect(page.getByText('Synthetic final answer that fits on one line.', { exact: true })).toBeVisible();
   }
+});
+
+test('ordered commentary keeps disclosures open through streaming and completion', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&count=2&phase=6');
+  await page.locator('.app-turn-worked-header').click();
+  const header = await page.locator('.app-turn-worked-header').elementHandle();
+  const first = page.locator('.app-turn-progress-summary').first();
+  await expect(page.getByText('I will inspect the example before making a change.')).toBeVisible();
+  await first.focus();
+  await page.keyboard.press('Enter');
+  await expect(first).toHaveAttribute('aria-expanded', 'true');
+  const step = (phase: number) => page.evaluate(phase => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(phase), phase);
+  await step(7);
+  await expect(first).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.app-turn-progress-bird')).toHaveCount(1);
+  await expect(page.getByText('The example needs one change. I will apply it now.')).toBeVisible();
+  await step(9);
+  expect(await header!.evaluate(element => element === document.querySelector('.app-turn-worked-header'))).toBe(true);
+  await expect(page.locator('.app-turn-worked-header')).toHaveAttribute('aria-label', 'Worked for 12s');
+  await expect(first).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.app-turn-progress-bird')).toHaveCount(0);
+  await expect(page.getByText('The example is ready. The check passed.')).toHaveCount(1);
+  await expect(page.getByText('Synthetic final answer that fits on one line.')).toHaveCount(0);
+  await first.click();
+  await expect(first).toHaveAttribute('aria-expanded', 'false');
+  await page.screenshot({ path: info.outputPath('ordered-progress.png'), fullPage: true });
+  const card = page.locator('.app-live-turn-card');
+  await card.evaluate(element => { (element as HTMLElement).style.width = '280px'; });
+  await expect(page.getByText('The example is ready. The check passed.')).toBeVisible();
+  expect(await card.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+});
+
+
+test('ordered activity opens output directly and local files in reusable side-panel tabs', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&count=0&phase=7');
+  await page.locator('.app-turn-worked-header').click();
+  await page.getByRole('button', { name: 'Read files', exact: true }).click();
+  await page.getByRole('button', { name: 'Read example.ts', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Details', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Synthetic result', { exact: true })).toBeVisible();
+  await expect(page.locator('.app-ordered-turn-surface')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await page.getByRole('button', { name: 'example.ts', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'example.ts', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tabpanel').getByText('export const example = true;', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '1 tool', exact: true }).click();
+  await page.getByRole('button', { name: 'updated.ts', exact: true }).click();
+  await expect(page.getByRole('tab')).toHaveCount(2);
+  await page.getByRole('button', { name: 'example.ts', exact: true }).click();
+  await expect(page.getByRole('tab')).toHaveCount(2);
+  await expect(page.getByRole('tab', { name: 'example.ts', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.screenshot({ path: info.outputPath('progress-source-tabs.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Hide panel' }).click();
+  await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(9));
+  await page.getByRole('button', { name: 'Worked for 12s', exact: true }).click();
+  await expect(page.getByText('I will inspect the example before making a change.')).toBeHidden();
+  await expect(page.getByText('The example is ready. The check passed.')).toBeVisible();
+});
+
+test('plain replies stay compact and reasoning opens with one disclosure', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&simple=1&count=0&phase=9');
+  await expect(page.getByText('Hello. How can I help?', { exact: true })).toBeVisible();
+  await expect(page.locator('.app-turn-worked-header')).toHaveCount(0);
+  await expect(page.locator('.app-turn-progress-summary')).toHaveCount(0);
+  const prose = page.locator('.app-turn-commentary p');
+  await expect(prose).toHaveCSS('font-size', '13px');
+  expect(await page.locator('.app-ordered-progress').evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(40);
+  await page.screenshot({ path: info.outputPath('compact-greeting.png'), fullPage: true });
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&simple=1&reasoning=1&count=0&phase=9');
+  const reasoning = page.getByRole('button', { name: 'Worked for 12s', exact: true });
+  await expect(reasoning).toHaveCSS('font-size', '12px');
+  await expect(page.getByText('Checking the request.', { exact: true })).toHaveCount(0);
+  await reasoning.click();
+  await expect(page.getByText('Checking the request.', { exact: true })).toBeVisible();
+  const mutedColor = await reasoning.evaluate(element => getComputedStyle(element).color);
+  await expect(page.locator('.app-transcript-thinking-markdown p')).toHaveCSS('color', mutedColor);
+  await expect(page.locator('.app-transcript-thinking-markdown strong')).toHaveCSS('color', mutedColor);
+  await expect(page.locator('.app-transcript-thinking-markdown strong')).toHaveCSS('font-weight', '400');
+  expect(await prose.evaluate(element => getComputedStyle(element).color)).not.toBe(mutedColor);
+  await expect(page.locator('.app-turn-progress-details details')).toHaveCount(0);
+  await expect(page.getByText('Activity', { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath('compact-reasoning.png'), fullPage: true });
+});
+
+test('live actions change in place and reasoning stays separate from tool details', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&reasoning=1&count=0&phase=6');
+  const label = page.locator('.app-turn-worked-header .app-turn-status-text');
+  const timer = page.locator('.app-turn-worked-header .app-turn-progress-time');
+  await expect(label).toHaveText('Reading files');
+  const initialTimer = await timer.boundingBox();
+  await page.locator('.app-turn-worked-header').click();
+  await page.getByRole('button', { name: '1 tool', exact: true }).click();
+  await expect(page.locator('.app-transcript-thinking-markdown')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Reasoning', exact: true }).click();
+  await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
+  await expect(page.locator('.app-turn-progress-details details')).toHaveCount(0);
+  await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(7));
+  await expect(label).toHaveText('Editing files');
+  await expect(page.getByRole('button', { name: 'Reasoning', exact: true })).toHaveAttribute('aria-expanded', 'true');
+  expect(Math.abs((await timer.boundingBox())!.x - initialTimer!.x)).toBeLessThan(1);
+  await expect(label).toHaveCSS('transition-property', 'opacity');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(label).toHaveCSS('transition-duration', '0s');
+  await page.screenshot({ path: info.outputPath('live-action-reasoning.png'), fullPage: true });
+});
+
+test('reasoning settles into recorded work duration and the bird stops', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&simple=1&reasoning=1&count=0&phase=5');
+  const summary = page.locator('.app-turn-worked-header');
+  await expect(summary).toHaveAccessibleName(/^Reasoning/);
+  await expect(page.locator('.app-turn-progress-bird')).toHaveCount(1);
+  const wing = page.locator('.app-turn-progress-bird-wing');
+  await expect(wing).toHaveCSS('animation-name', 'app-turn-bird-flap');
+  await page.screenshot({ path: info.outputPath('reasoning-bird-live.png'), fullPage: true });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(wing).toHaveCSS('animation-name', 'none');
+  await summary.click();
+  const original = await summary.elementHandle();
+  await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(9));
+  await expect(summary).toHaveAccessibleName('Worked for 12s');
+  expect(await original!.evaluate(element => element === document.querySelector('.app-turn-worked-header'))).toBe(true);
+  await expect(summary).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.app-turn-progress-bird')).toHaveCount(0);
+  await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
+  await page.screenshot({ path: info.outputPath('reasoning-finished-duration.png'), fullPage: true });
+});
+
+test('finished work without timestamps is explicit and compact', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&missingTiming=1&count=0&phase=7');
+  const header = page.locator('.app-turn-worked-header');
+  await expect(header).toHaveAccessibleName('Editing files');
+  await expect(header.locator('.app-turn-progress-bird')).toBeVisible();
+  await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(9));
+  await expect(header).toHaveAccessibleName('Finished');
+  await expect(page.getByText('Worked for', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.app-turn-progress-bird')).toHaveCount(0);
+  expect((await header.boundingBox())!.width).toBeLessThan(100);
+  await header.click();
+  await expect(page.getByText('The example is ready. The check passed.')).toBeVisible();
+  await page.screenshot({ path: info.outputPath('finished-without-timing.png'), fullPage: true });
+});
+
+test('legacy live and completed turns share one collapsed disclosure', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?reasoning=1&missingTiming=1&count=0&phase=7');
+  await expect(page.getByRole('button', { name: 'Reasoning', exact: true })).toHaveCount(0);
+  await expect(page.locator('.app-turn-worked-header')).toHaveCount(1);
+  await expect(page.locator('.app-turn-worked-header')).toHaveAttribute('aria-expanded', 'false');
+  await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(9));
+  const finished = page.getByRole('button', { name: 'Finished', exact: true });
+  await expect(finished).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reasoning', exact: true })).toHaveCount(0);
+  await expect(page.locator('.app-turn-worked-header')).toHaveCount(1);
+  await expect(page.locator('.app-transcript-thinking-markdown')).toHaveCount(0);
+  await finished.click();
+  await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'example.ts', exact: true })).toBeVisible();
+  await finished.click();
+  await expect(page.locator('.app-transcript-thinking-markdown')).toBeHidden();
+  await page.screenshot({ path: info.outputPath('single-finished-disclosure.png'), fullPage: true });
+});
+
+
+test('live progress starts as one line and unfolds recorded activity in order', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&reasoning=1&count=0&phase=6');
+  const header = page.locator('.app-turn-worked-header');
+  const summaries = page.locator('.app-turn-progress-summary:visible');
+  const step = (phase: number) => page.evaluate(phase => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(phase), phase);
+  await expect(header).toHaveAttribute('aria-expanded', 'false');
+  await expect(summaries).toHaveCount(0);
+  await expect(page.locator('.app-turn-commentary:visible')).toHaveCount(0);
+  await step(7);
+  await expect(header).toHaveAttribute('aria-expanded', 'false');
+  await expect(header).toHaveAccessibleName(/^Editing files/);
+  await expect(summaries).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath('single-live-progress-line.png'), fullPage: true });
+  await header.focus();
+  await page.keyboard.press('Enter');
+  await expect(header).toHaveAttribute('aria-expanded', 'true');
+  const sequence = await page.locator('.app-turn-trajectory > div').allTextContents();
+  expect(sequence).toEqual([
+    'I will inspect the example before making a change.',
+    'Read files',
+    'The example needs one change. I will apply it now.',
+    '1 tool',
+  ]);
+  await page.getByRole('button', { name: 'Reasoning', exact: true }).click();
+  await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
+  await header.click();
+  await expect(summaries).toHaveCount(0);
+  await expect(page.locator('.app-transcript-thinking-markdown')).toBeHidden();
+  await step(9);
+  await expect(header).toHaveAttribute('aria-expanded', 'false');
+  await expect(header).toHaveAccessibleName('Worked for 12s');
+  await expect(page.getByText('The example is ready. The check passed.')).toBeVisible();
+  await expect(summaries).toHaveCount(0);
+  await header.click();
+  await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
+});
+
+
+test('progress unfolds smoothly downward without moving the viewport', async ({ page }) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&reasoning=1&count=50&phase=7');
+  await expect(page.locator('[data-virtual-transcript-session-ready="true"]')).toBeVisible();
+  const header = page.locator('.app-turn-worked-header');
+  await expect(header).toBeVisible();
+  await page.waitForTimeout(350);
+  const frames = await page.evaluate(async () => {
+    const control = document.querySelector<HTMLButtonElement>('.app-turn-worked-header')!;
+    const viewport = document.querySelector<HTMLElement>('[data-virtual-transcript-scroll]')!;
+    const body = document.querySelector<HTMLElement>('.app-ordered-progress > .app-progress-disclosure')!;
+    const samples: { scroll: number; top: number; height: number }[] = [];
+    const sample = () => samples.push({scroll: viewport.scrollTop, top: control.getBoundingClientRect().top, height: body.getBoundingClientRect().height});
+    sample();
+    control.click();
+    for (let index = 0; index < 24; index++) { await new Promise(requestAnimationFrame); sample(); }
+    control.click();
+    for (let index = 0; index < 24; index++) { await new Promise(requestAnimationFrame); sample(); }
+    return samples;
+  });
+  expect(Math.max(...frames.map(frame => Math.abs(frame.scroll - frames[0].scroll))), JSON.stringify(frames)).toBeLessThan(2);
+  expect(Math.max(...frames.map(frame => Math.abs(frame.top - frames[0].top)))).toBeLessThan(2);
+  const maxHeight = Math.max(...frames.map(frame => frame.height));
+  expect(maxHeight).toBeGreaterThan(30);
+  expect(frames.some(frame => frame.height > 1 && frame.height < maxHeight - 1)).toBe(true);
+  expect(frames.at(-1)!.height).toBeLessThan(1);
+  await header.click();
+  await page.waitForTimeout(40);
+  await header.click();
+  await page.waitForTimeout(40);
+  await header.click();
+  await expect(header).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByText('I will inspect the example before making a change.')).toBeVisible();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(page.locator('.app-ordered-progress > .app-progress-disclosure')).toHaveCSS('transition-duration', '0s');
+  await header.click();
+  await expect(page.getByText('I will inspect the example before making a change.')).toBeHidden();
+});
+
+
+test('startup keeps one status row through admission and the first stream event', async ({ page }) => {
+  await page.goto('/tests/visual/processingTrajectory.html?startup=1&ordered=1&count=2&phase=3');
+  await expect(page.locator('.app-live-turn-card')).toBeVisible();
+  await page.waitForTimeout(220);
+  const frames = await page.evaluate(async () => {
+    const driver = (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory;
+    const samples: { phase: number; statusCount: number; height: number; sameHeader: boolean }[] = [];
+    const original = document.querySelector('.app-turn-worked-header');
+    for (const phase of [3, 4, 5, 6, 7]) {
+      driver.step(phase);
+      for (let frame = 0; frame < 18; frame++) {
+        await new Promise(requestAnimationFrame);
+        const card = document.querySelector<HTMLElement>('.app-live-turn-card');
+        const statuses = [...(card?.querySelectorAll<HTMLElement>('[role="status"]') ?? [])]
+          .filter(element => element.getBoundingClientRect().height > 0 && getComputedStyle(element).visibility !== 'hidden');
+        samples.push({ phase, statusCount: statuses.length, height: card?.offsetHeight ?? 0,
+          sameHeader: Boolean(original && original === document.querySelector('.app-turn-worked-header')) });
+      }
+    }
+    return samples;
+  });
+  expect(frames.filter(frame => frame.statusCount !== 1)).toEqual([]);
+  expect(frames.every(frame => frame.sameHeader)).toBe(true);
+  expect(Math.max(...frames.map(frame => frame.height)) - Math.min(...frames.map(frame => frame.height))).toBeLessThan(2);
+  await expect(page.locator('.app-turn-worked-header')).toHaveAccessibleName(/^Editing files/);
+  await expect(page.locator('.app-turn-commentary:visible')).toHaveCount(0);
 });

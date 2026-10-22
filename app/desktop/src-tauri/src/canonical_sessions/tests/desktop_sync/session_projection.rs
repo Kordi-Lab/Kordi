@@ -61,6 +61,7 @@ fn active_desktop_chat_without_explicit_project_membership_stays_self_agent() {
                 time_label: "Now".to_string(),
                 timestamp_ms: 1,
                 thinking_text: None,
+                segments: Vec::new(),
                 tools: Vec::new(),
                 attachments: Vec::new(),
                 failed: false,

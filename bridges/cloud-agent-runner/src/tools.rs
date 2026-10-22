@@ -34,6 +34,7 @@ pub enum CloudToolOutput {
 pub struct CloudToolExecutor {
     sandbox: SandboxBackendHandle,
     memory_enabled: bool,
+    web_search: Option<kordi_tools::WebSearchRuntime>,
 }
 
 type LessonReply =
@@ -44,7 +45,13 @@ impl CloudToolExecutor {
         Self {
             sandbox,
             memory_enabled: false,
+            web_search: None,
         }
+    }
+
+    pub(crate) fn with_web_search(mut self, runtime: kordi_tools::WebSearchRuntime) -> Self {
+        self.web_search = Some(runtime);
+        self
     }
 
     /// Enables the `reflection` tool when the account has memory on.
@@ -151,7 +158,8 @@ impl CloudToolExecutor {
                 self.sandbox.run_bash(primary_arg.unwrap_or_default()).await?,
             )),
             "web_search" => {
-                let ctx = cloud_tool_context(&self.sandbox);
+                let mut ctx = cloud_tool_context(&self.sandbox);
+                ctx.web_search = self.web_search.clone();
                 let result = WebSearchTool
                     .execute(arguments.clone(), &ctx, CancellationToken::new())
                     .await

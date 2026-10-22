@@ -273,42 +273,48 @@ pub(in crate::common_ground) async fn update(
         (Ok(name), Ok(focus)) => (name, focus),
         (Err(message), _) | (_, Err(message)) => return invalid(message),
     };
+    // Only the fields in the body change, so devices editing different
+    // fields at the same time keep each other's edits.
     let design = match body.design.as_ref() {
-        None => profile.design.clone(),
+        None => None,
         Some(design) => match clean_design(design.as_deref()) {
-            Ok(design) => design,
+            Ok(design) => Some(design),
             Err(message) => return invalid(message),
         },
     };
     let icon = match body.icon.as_ref() {
-        None => profile.icon.clone(),
+        None => None,
         Some(icon) => match clean_icon(icon.as_deref()) {
-            Ok(icon) => icon,
+            Ok(icon) => Some(icon),
             Err(message) => return invalid(message),
         },
     };
     let name = match name {
-        None => profile.name.clone(),
-        Some(name) if !name.is_empty() => name,
+        None => None,
+        Some(name) if !name.is_empty() => Some(name),
         Some(_) => match default_name(&profile.kind) {
-            Some(name) => name.to_string(),
+            Some(name) => Some(name.to_string()),
             None => return invalid("Name your profile."),
         },
     };
-    let focus = match focus {
-        None => profile.focus.clone(),
-        Some(focus) => (!focus.is_empty()).then_some(focus),
-    };
+    let focus = focus.map(|focus| (!focus.is_empty()).then_some(focus));
     // The card keeps its topics until the next build reads the new lens.
     let result = query(
-        "UPDATE cloud_common_ground_profiles SET name = $2, focus = $3, design = $4, icon = $5
+        "UPDATE cloud_common_ground_profiles
+         SET name = COALESCE($2, name),
+             focus = CASE WHEN $6 THEN $3 ELSE focus END,
+             design = CASE WHEN $7 THEN $4 ELSE design END,
+             icon = CASE WHEN $8 THEN $5 ELSE icon END
          WHERE profile_id = $1",
     )
     .bind(&profile_id)
     .bind(&name)
-    .bind(&focus)
-    .bind(&design)
-    .bind(&icon)
+    .bind(focus.clone().flatten())
+    .bind(design.clone().flatten())
+    .bind(icon.clone().flatten())
+    .bind(focus.is_some())
+    .bind(design.is_some())
+    .bind(icon.is_some())
     .execute(pool)
     .await;
     match result {

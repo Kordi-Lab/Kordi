@@ -1,3 +1,5 @@
+import type { DesktopChatMessage } from './types/desktopChatMessage';
+export type { DesktopChatMessage } from './types/desktopChatMessage';
 import type { Conversation } from './types/conversation';
 export type { Conversation } from './types/conversation';
 import type { DesktopChatSessionSummary } from '@/features/chat/desktopChatSessionSummary';
@@ -5,7 +7,6 @@ import type { CollaborationMessageDirection } from '@/features/collaboration/mes
 import { type SessionTaskActivity } from "./sessionTaskTypes";
 
 import type {
-  DesktopChatAttachment,
   DesktopChatToolSnapshot,
   DesktopChatTurnSnapshot,
   Message,
@@ -619,29 +620,6 @@ export type DesktopChatSlashCommand = {
   label: string;
   detail?: string | null;
   value: string;
-};
-
-export type DesktopChatMessage = {
-  role: string;
-  sender?: string | null;
-  text: string;
-  detail?: string | null;
-  timeLabel: string;
-  timestampMs: number;
-  failed?: boolean; error?: string | null; // A failed turn's failure, when `text` is its partial reply.
-  cancelled?: boolean;
-  attachments?: DesktopChatAttachment[];
-  mentions?: MessageMention[];
-  replyToMessageId?: string | null;
-  messageAction?: MessageActionMetadata | null;
-  thinkingText?: string | null;
-  tools?: DesktopChatToolSnapshot[];
-  turnStartedAtMs?: number | null;
-  turnCompletedAtMs?: number | null;
-  transcriptRenderId?: string | null; // Ephemeral renderer identity; never persisted.
-  /** Stable id of the underlying session entry; only set for messages
-   * that map 1:1 to a SessionEntry (e.g., user messages). */
-  entryId?: string | null;
 };
 
 export type DesktopChatProjectGroup = {

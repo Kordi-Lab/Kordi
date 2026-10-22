@@ -568,14 +568,14 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         execution_policy,
         invocation_id: None,
         on_output: None,
-        web_search: Some(kordi_tools::WebSearchRuntime {
-            provider: provider.clone(),
-            model: model.clone(),
-            api_key: api_key.clone(),
-            base_url: base_url.clone(),
-            headers: headers.clone(),
-            enabled: true,
-        }),
+        web_search: Some(crate::runtime_model::web_search_runtime(
+            &provider,
+            &model,
+            &api_key,
+            &base_url,
+            &headers,
+            auth.as_ref(),
+        )),
         reach_out: None,
         reflection: reflection_runtime_for_settings(
             &settings.memory,

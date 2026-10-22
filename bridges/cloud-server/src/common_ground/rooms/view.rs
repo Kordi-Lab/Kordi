@@ -15,7 +15,7 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
-use super::{my_room, room_not_found};
+use super::{member_count_sql, my_room, room_not_found};
 use crate::common_ground::{actions, db_error, people, profiles, ROOM_OPEN_SQL};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
@@ -43,8 +43,7 @@ pub(in crate::common_ground) async fn list(
                 theme_count FROM (
              SELECT DISTINCT ON (room.code) room.code, room.name, room.kind, member.profile_id,
                     {ROOM_OPEN_SQL} AS open,
-                    (SELECT COUNT(*) FROM cloud_common_ground_room_members active
-                     WHERE active.room_id = room.room_id AND active.left_at IS NULL) AS member_count,
+                    {member_count} AS member_count,
                     member.joined_at,
                     GREATEST(room.last_join_at, themes.computed_at) AS last_activity_at,
                     COALESCE(jsonb_array_length(themes.themes_json), 0) AS theme_count
@@ -54,10 +53,12 @@ pub(in crate::common_ground) async fn list(
              LEFT JOIN cloud_common_ground_room_themes themes ON themes.room_id = room.room_id
              ORDER BY room.code, open DESC, room.created_at DESC, room.room_id
          ) mine
-         ORDER BY last_activity_at DESC, code LIMIT 50"
+         ORDER BY last_activity_at DESC, code LIMIT 50",
+        member_count = member_count_sql(2)
     );
     let rows: Result<Vec<ListRow>, _> = query_as(&sql)
         .bind(&session.account_id)
+        .bind(crate::system_account::service_account_ids())
         .fetch_all(state.db_pool())
         .await;
     match rows {

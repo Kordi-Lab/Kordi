@@ -1,3 +1,6 @@
+mod route;
+pub(crate) use route::{resolve_provider_auth_with_settings, web_search_runtime};
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -58,26 +61,6 @@ pub(crate) fn provider_override_base_url(
 ) -> Option<String> {
     provider_override_for_settings(settings, provider_name)
         .and_then(|provider| provider.base_url.clone())
-}
-
-pub(crate) fn resolve_provider_auth_with_settings(
-    settings: &Settings,
-    provider_name: &str,
-) -> Option<ResolvedProviderAuth> {
-    login::resolve_provider_auth(provider_name).or_else(|| {
-        let provider = provider_override_for_settings(settings, provider_name)?;
-        let env_key = provider.api_key_env.as_deref()?;
-        let credential = std::env::var(env_key).ok()?;
-        (!credential.trim().is_empty()).then(|| ResolvedProviderAuth {
-            source: login::AuthSource::EnvVar,
-            credential_provider: env_key.to_string(),
-            method: login::ProviderAuthMethod::ApiKey,
-            credential,
-            account_id: None,
-            account_label: None,
-            authority: None,
-        })
-    })
 }
 
 pub(crate) fn fallback_api_type_for_provider(provider: &str) -> ApiType {

@@ -84,6 +84,7 @@ fn desktop_runtime_content_persists_the_entry_id_alias() {
         cancelled: false,
         attachments: Vec::new(),
         thinking_text: None,
+        segments: Vec::new(),
         tools: Vec::new(),
         entry_id: Some("entry:runtime-agent".to_string()),
     };
@@ -118,6 +119,7 @@ fn cloud_request_identity_reconciles_without_matching_message_text() {
         cancelled: false,
         attachments: Vec::new(),
         thinking_text: None,
+        segments: Vec::new(),
         tools: Vec::new(),
         entry_id: Some("request-two".to_string()),
     };

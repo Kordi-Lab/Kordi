@@ -395,6 +395,7 @@ export type DesktopChatTurnSnapshot = {
   message: string;
   assistantText: string;
   thinkingText: string;
+  segments?: import('@/features/chat/turnSegments').TurnSegment[];
   tools: DesktopChatToolSnapshot[];
   completed: boolean;
   succeeded: boolean;

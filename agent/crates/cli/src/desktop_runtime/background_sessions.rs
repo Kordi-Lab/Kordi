@@ -30,6 +30,7 @@ pub(super) fn background_follow_up_notice(
             cancelled: false,
             attachments: Vec::new(),
             thinking_text: None,
+            segments: Vec::new(),
             tools: Vec::new(),
             entry_id: Some(entry_id.to_string()),
         })

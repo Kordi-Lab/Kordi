@@ -54,6 +54,10 @@ pub(crate) fn content_with_desktop_runtime(
             content["thinkingText"] = serde_json::Value::String(thinking_text.to_string());
         }
     }
+    if !message.segments.is_empty() {
+        content["segments"] =
+            serde_json::to_value(&message.segments).map_err(|err| err.to_string())?;
+    }
     if !message.tools.is_empty() {
         content["tools"] = serde_json::to_value(&message.tools).map_err(|err| err.to_string())?;
     }

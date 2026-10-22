@@ -3,6 +3,7 @@ import { isProcessingPlaceholderText } from '@/features/collaboration/agentPlace
 
 export function agentTurnHasStarted(turn: DesktopChatTurnSnapshot) {
   if (turn.completed) return true;
+  if (turn.segments?.some(segment => segment.kind === 'tool' || segment.text.trim())) return true;
   const text = turn.assistantText.trim();
   if (turn.thinkingText.trim() || turn.tools.length > 0 || (text && !isProcessingPlaceholderText(text))) return true;
   // A request/stop handle is not evidence that the remote agent started work.

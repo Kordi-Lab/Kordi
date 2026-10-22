@@ -45,6 +45,7 @@ fn runtime(status: &str) -> kordi_cli::desktop_runtime::DesktopChatMessage {
         time_label: "12:00".into(),
         timestamp_ms: 2_000,
         thinking_text: None,
+        segments: Vec::new(),
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: status == "failed",

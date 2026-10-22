@@ -44,6 +44,7 @@ test('real OMP loop uses the exact route and emits progress before final text', 
   expect(events[0]).toEqual({ kind: 'status', status: 'starting' });
   expect(events.some(e => e.status === 'running')).toBe(true);
   expect(events.some(e => e.kind === 'text_delta')).toBe(true);
+  expect(events.findIndex(e => e.kind === 'message_start')).toBeLessThan(events.findIndex(e => e.kind === 'text_delta'));
   expect(requests[0].model).toBe('fixture-model');
   expect(requests[0].tools ?? []).toHaveLength(0);
   expect(events.filter(event => event.kind === 'message_end').map(event => event.message.role)).toEqual(['user', 'assistant']);

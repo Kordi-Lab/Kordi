@@ -135,14 +135,15 @@ impl TuiController {
                     self.session_setup.api_key = runtime.api_key.clone();
                     self.session_setup.base_url = runtime.base_url.clone();
                     self.session_setup.headers = runtime.headers.clone();
-                    self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
-                        provider: self.session_setup.provider.clone(),
-                        model: self.session_setup.model.clone(),
-                        api_key: self.session_setup.api_key.clone(),
-                        base_url: self.session_setup.base_url.clone(),
-                        headers: runtime.headers,
-                        enabled: true,
-                    });
+                    self.session_setup.tool_ctx.web_search =
+                        Some(crate::runtime_model::web_search_runtime(
+                            &self.session_setup.provider,
+                            &self.session_setup.model,
+                            &self.session_setup.api_key,
+                            &self.session_setup.base_url,
+                            &runtime.headers,
+                            self.session_setup.auth.as_ref(),
+                        ));
                     self.options.model_display = Some(format!(
                         "{}/{}",
                         self.session_setup.model.provider, self.session_setup.model.id

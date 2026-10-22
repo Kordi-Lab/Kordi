@@ -434,3 +434,5 @@
     transition: opacity 100ms var(--app-motion-ease);
   }
 }
+
+/* One current activity signal; commentary and settled groups remain still. */
