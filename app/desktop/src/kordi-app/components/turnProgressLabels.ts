@@ -23,7 +23,7 @@ export function progressToolIsActive(tool: DesktopChatToolSnapshot) {
 export function elapsedLabel(turn: DesktopChatTurnSnapshot, now: number) {
   if (turn.startedAtMs == null || !Number.isFinite(turn.startedAtMs)) return null;
   const end = turn.completed ? turn.completedAtMs : now;
-  if (end == null || !Number.isFinite(end)) return null;
+  if (end == null || !Number.isFinite(end) || end < turn.startedAtMs) return null;
   return formatRunningElapsed(Math.max(0, end - turn.startedAtMs));
 }
 
@@ -33,7 +33,7 @@ export function turnProgressLabel(turn: DesktopChatTurnSnapshot) {
   if (turn.status === 'retrying') return 'Retrying…';
   if (turn.status === 'compacting') return 'Compressing conversation…';
   if (turn.status === 'failed' || (turn.completed && !turn.succeeded)) return 'Needs attention';
-  if (turn.completed) return 'Worked for';
+  if (turn.completed) return elapsedLabel(turn, 0) ? 'Worked for' : 'Finished';
   if (['waiting', 'waiting-approval', 'waiting_approval'].includes(turn.status)) return 'Waiting for approval';
   if (turn.status === 'queued') return 'Queued';
   const active = turn.tools.filter(progressToolIsActive);

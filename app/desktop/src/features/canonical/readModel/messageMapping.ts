@@ -285,6 +285,7 @@ export function mapCanonicalMessage(
   const normalized = storedContent.schemaVersion === 1 && storedContent.kind === 'message';
   const directEnvelope = normalized ? null : parseCloudDirectMessageEnvelope(contentText);
   const content: Record<string, unknown> = { ...(directEnvelope ?? {}), ...storedContent };
+  const execution = contentRecord(content.execution);
   const sourceTransport = message.sourceTransport?.trim() ?? '';
   if (stringValue(content.kind) === 'delegation-join-event') return null;
   const identity = identityById.get(message.senderIdentityId);
@@ -462,7 +463,8 @@ export function mapCanonicalMessage(
           thinkingText,
           segments: role === 'owned-agent' ? parseTurnSegments(content.segments) : undefined,
           tools: visibleTools,
-          startedAtMs: numberValue(content.startedAtMs), completedAtMs: numberValue(content.completedAtMs),
+          startedAtMs: numberValue(content.startedAtMs) ?? numberValue(execution.startedAtMs),
+          completedAtMs: numberValue(content.completedAtMs) ?? (execution.completed === true ? numberValue(execution.updatedAtMs) : undefined),
           completed,
           succeeded: completed && !failed && !cancelled,
           error: cancelled || ending ? null : failed ? (legacyCollaborationAgentFailure ? 'Message failed' : agentTurnErrorText) : null,

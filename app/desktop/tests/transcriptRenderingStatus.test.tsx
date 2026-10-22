@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ContactRequestRow, LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/transcript';
+import { TurnProgress } from '../src/kordi-app/components/TurnProgress';
 import type { ContactRequest, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
 test('transcript human avatars are large enough to read beside message bubbles', () => {
@@ -19,9 +20,11 @@ test('transcript human avatars are large enough to read beside message bubbles',
 });
 
 test('reasoning remains a secondary disclosure', () => {
-  const source = readFileSync(new URL('../src/kordi-app/components/TurnProgress.tsx', import.meta.url), 'utf8');
-  assert.match(source, /<details><summary>Reasoning<\/summary>/);
-  assert.match(source, /app-transcript-thinking-markdown/);
+  const turn: DesktopChatTurnSnapshot = { id: 'reasoning', sessionId: 'session', prompt: '', message: '', status: 'thinking',
+    assistantText: '', thinkingText: 'Synthetic reasoning stays collapsed.', tools: [], completed: false, succeeded: false };
+  const markup = renderToStaticMarkup(createElement(TurnProgress, { turn, renderTool: () => null }));
+  assert.match(markup, /aria-label="Reasoning" aria-expanded="false"/);
+  assert.doesNotMatch(markup, /Synthetic reasoning stays collapsed/);
 });
 
 test('code blocks remove the header bar and reveal copy controls on hover', () => {

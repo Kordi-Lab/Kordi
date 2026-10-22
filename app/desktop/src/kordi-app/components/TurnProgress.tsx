@@ -50,12 +50,12 @@ export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
   const hasActivity = groups.some(group => group.kind === 'tools') || groups.length > 1;
   const elapsed = elapsedLabel(turn, now);
   const standaloneReasoning = !hasActivity && turn.tools.length === 0;
-  const reasoningLabel = !live && standaloneReasoning ? turn.succeeded && !elapsed ? 'Finished' : turnProgressLabel(turn) : 'Reasoning';
+  const reasoningLabel = !live && standaloneReasoning ? turnProgressLabel(turn) : 'Reasoning';
   const [trajectoryExpanded, setTrajectoryExpanded] = useState(true);
   const legacyHasActivity = turn.tools.length > 0 || Boolean(turn.thinkingText);
   if (!ordered) return <>
     {legacyHasActivity || (live && !legacyAnswer) ? <ActivityGroup tools={turn.tools} thinkingText={turn.tools.length ? undefined : turn.thinkingText}
-      label={!turn.tools.length && turn.thinkingText ? reasoningLabel : live ? turnProgressLabel(turn) : elapsed ? turnProgressLabel(turn) : settledProgressLabel(turn.tools)}
+      label={!turn.tools.length && turn.thinkingText ? reasoningLabel : turnProgressLabel(turn)}
       active={live} hideIcon={!live && standaloneReasoning} elapsed={elapsed} trailing={live ? trailing : undefined} renderTool={renderTool} /> : null}
     {turn.tools.length > 0 && turn.thinkingText ? <ActivityGroup tools={[]} label="Reasoning" thinkingText={turn.thinkingText} renderTool={renderTool} /> : null}
     {legacyAnswer}
@@ -67,7 +67,7 @@ export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
         aria-label={`${statusLabel}${elapsed ? ` ${elapsed}` : ''}`}
         data-transcript-stable-disclosure="true" onClick={() => setTrajectoryExpanded(value => !value)}>
         {live ? <ProgressBird /> : null}
-        <span role={live ? 'status' : undefined} className="app-turn-status-label" title={statusLabel}><span key={statusLabel} className="app-turn-status-text">{statusLabel}</span></span>{elapsed ? <span className="app-turn-progress-time" aria-hidden="true">{elapsed}</span> : null}
+        <span role={live ? 'status' : undefined} className={live ? 'app-turn-status-label' : undefined} title={statusLabel}><span key={statusLabel} className="app-turn-status-text">{statusLabel}</span></span>{elapsed ? <span className="app-turn-progress-time" aria-hidden="true">{elapsed}</span> : null}
         <ChevronRight size={13} aria-hidden="true" className={trajectoryExpanded ? 'rotate-90' : undefined} />
       </button>
       {live ? trailing : null}

@@ -365,6 +365,8 @@ export async function respondToCloudGroupAgentMention(
       ...(finalTurn.tools.length > 0 ? { tools: finalTurn.tools } : {}),
       ...(finalTurn.thinkingText.trim() ? { thinkingText: finalTurn.thinkingText } : {}),
       ...(finalTurn.segments?.length ? { segments: finalTurn.segments } : {}),
+      startedAtMs: finalTurn.startedAtMs,
+      completedAtMs: finalTurn.completedAtMs,
       ...(failureMessage ? { error: failureMessage } : {}),
     },
     createdAtMs: responseCreatedAtMs,

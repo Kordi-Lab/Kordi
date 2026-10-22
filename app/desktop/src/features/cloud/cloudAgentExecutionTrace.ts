@@ -304,6 +304,8 @@ export function cloudAgentExecutionCanonicalContent(
     execution,
     executionSummary: execution.summary,
     executionUpdatedAtMs: execution.updatedAtMs,
+    startedAtMs: execution.startedAtMs,
+    completedAtMs: execution.completed ? execution.updatedAtMs : undefined,
     thinkingText: execution.thinkingText ?? '',
     segments: execution.segments,
     tools: execution.tools ?? [],

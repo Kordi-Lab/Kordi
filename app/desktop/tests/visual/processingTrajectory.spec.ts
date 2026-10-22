@@ -282,3 +282,18 @@ test('reasoning settles into recorded work duration and the bird stops', async (
   await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
   await page.screenshot({ path: info.outputPath('reasoning-finished-duration.png'), fullPage: true });
 });
+
+test('finished work without timestamps is explicit and compact', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&missingTiming=1&count=0&phase=7');
+  const header = page.locator('.app-turn-worked-header');
+  await expect(header).toHaveAccessibleName('Editing files');
+  await expect(header.locator('.app-turn-progress-bird')).toBeVisible();
+  await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(9));
+  await expect(header).toHaveAccessibleName('Finished');
+  await expect(page.getByText('Worked for', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.app-turn-progress-bird')).toHaveCount(0);
+  expect((await header.boundingBox())!.width).toBeLessThan(100);
+  await header.click();
+  await expect(page.getByText('The example is ready. The check passed.')).toBeVisible();
+  await page.screenshot({ path: info.outputPath('finished-without-timing.png'), fullPage: true });
+});
