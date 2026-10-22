@@ -39,6 +39,14 @@ its own words; field and tool names follow the public HCP material.
 | 6 | Export in the HCP envelope, local MCP server for other agents on the Mac, discovery document | 1, 3 |
 | 7 | Documentation, deletion register entries (#1685), privacy page (#1682) | 1 to 6 |
 
+## First slice
+
+The owner's first use case is routing agent-logged memories to a
+Grounding profile, the conversation or the group. That slice is specified in
+[agent-memory-routing.md](agent-memory-routing.md) and goes before the PRs
+below; it covers the category and declaration columns of PR 1 and the tool
+parameters of PR 2, and takes the next two migration numbers.
+
 ## Current state, verified on `main` (90dcdad27)
 
 - `cloud_account_memories` (migrations 0119 to 0121) has `scope`
@@ -80,7 +88,9 @@ its own words; field and tool names follow the public HCP material.
 - The maintainability ratchet refuses new files of 500 lines or more and
   growth of existing ones at that size. Upgrade tests snapshot
   `to_jsonb(cloud_accounts)`; any new accounts column must be subtracted in
-  the after-query. Migrations continue from 0144.
+  the after-query. Migration numbers below are placeholders: `main` has
+  moved past 0146 and the first slice takes 0147 and 0148, so each PR uses
+  the next free number when it lands.
 
 ## How Kordi maps onto HCP
 
@@ -246,7 +256,7 @@ Three things in Kordi are not HCP concepts and stay as they are:
 
 ### PR 1: server schema
 
-- Migration `0144_memory_context.sql`: add `category`, `dimension`,
+- Migration `<next>_memory_context.sql`: add `category`, `dimension`,
   `declaration_type`, `confidence`, `status`, `version`,
   `previous_version`, `captured_by`, `user_verified` with the checks above
   and the backfill; create `cloud_account_memory_versions` and
@@ -272,7 +282,7 @@ Three things in Kordi are not HCP concepts and stay as they are:
 
 ### PR 3: grants
 
-- Migration `0145_context_grants.sql` and the default grant rows.
+- Migration `<next>_context_grants.sql` and the default grant rows.
 - `context_grants.rs` in the cloud server: resolve a reader to effective
   categories; used by list, search, the runner routes, common ground card
   reads and the digest input. `connectors/audience.rs` stays for connector
