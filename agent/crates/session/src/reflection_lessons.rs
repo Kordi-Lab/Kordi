@@ -86,6 +86,12 @@ pub struct NewReflectionLesson {
     /// The signed-in account the memory was saved for. A pending row uploads
     /// only to this account; `None` uploads to whichever account syncs.
     pub owner_account_id: Option<String>,
+    /// The memory category (#1977); `None` means the default category.
+    pub category: Option<String>,
+    /// `user-declared` or `model-inferred`; `None` derives it from the source.
+    pub declaration_type: Option<String>,
+    /// `low`, `medium` or `high` for an inferred memory.
+    pub confidence: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -104,6 +110,9 @@ pub struct ReflectionLesson {
     pub remote_memory_id: Option<String>,
     pub pending_upload: bool,
     pub owner_account_id: Option<String>,
+    pub category: Option<String>,
+    pub declaration_type: Option<String>,
+    pub confidence: Option<String>,
 }
 
 /// Generate a local memory id. It fits the account `clientMemoryId` format
@@ -142,8 +151,9 @@ fn insert_reflection_lesson(conn: &Connection, lesson: NewReflectionLesson) -> R
     conn.execute(
         "INSERT OR REPLACE INTO reflection_lessons (
              lesson_id, scope, scope_id, artifact_path, source, created_at, updated_at, archived_at,
-             lesson_text, remote_memory_id, pending_upload, scope_label, owner_account_id
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9, ?10, ?11, ?12)",
+             lesson_text, remote_memory_id, pending_upload, scope_label, owner_account_id,
+             category, declaration_type, confidence
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
             lesson_id,
             lesson.scope.as_str(),
@@ -157,6 +167,9 @@ fn insert_reflection_lesson(conn: &Connection, lesson: NewReflectionLesson) -> R
             lesson.pending_upload,
             lesson.scope_label,
             lesson.owner_account_id,
+            lesson.category,
+            lesson.declaration_type,
+            lesson.confidence,
         ],
     )?;
     Ok(lesson_id)
@@ -164,7 +177,7 @@ fn insert_reflection_lesson(conn: &Connection, lesson: NewReflectionLesson) -> R
 
 const LESSON_COLUMNS: &str = "lesson_id, scope, scope_id, artifact_path, source, created_at, \
      updated_at, archived_at, lesson_text, scope_label, remote_memory_id, pending_upload, \
-     owner_account_id";
+     owner_account_id, category, declaration_type, confidence";
 
 fn query_lessons(
     conn: &Connection,
@@ -187,6 +200,9 @@ fn query_lessons(
             row.get::<_, Option<String>>(10)?,
             row.get::<_, i64>(11)?,
             row.get::<_, Option<String>>(12)?,
+            row.get::<_, Option<String>>(13)?,
+            row.get::<_, Option<String>>(14)?,
+            row.get::<_, Option<String>>(15)?,
         ))
     })?;
 
@@ -206,6 +222,9 @@ fn query_lessons(
             remote_memory_id,
             pending_upload,
             owner_account_id,
+            category,
+            declaration_type,
+            confidence,
         ) = row?;
         lessons.push(ReflectionLesson {
             lesson_id,
@@ -221,6 +240,9 @@ fn query_lessons(
             remote_memory_id,
             pending_upload: pending_upload != 0,
             owner_account_id,
+            category,
+            declaration_type,
+            confidence,
         });
     }
     Ok(lessons)

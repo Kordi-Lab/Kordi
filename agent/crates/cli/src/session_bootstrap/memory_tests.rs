@@ -88,7 +88,7 @@ fn memory_prompt_inlines_lessons_newest_first_with_artifact_paths() {
     assert!(section.contains(conversation_path.to_str().expect("conversation path")));
     assert!(!section.contains("(more memories omitted)"));
     assert!(section.contains("must not record health"));
-    assert!(section.len() < 1_600);
+    assert!(section.len() < 2_200, "{}", section.len());
 
     let relaxed = super::memory::build_reflection_lesson_artifacts_system_prompt_section(
         &tools,
@@ -390,6 +390,39 @@ fn scoped_lesson_artifact_prompt_lists_the_global_artifact_first() {
     assert!(global_at < conversation_at);
     assert!(section.contains("skip anything already there or restated"));
     assert!(section.contains("Use `global` only for preferences the user wants everywhere"));
+}
+
+#[test]
+fn memory_section_names_categories_and_the_group_rule() {
+    let artifacts_dir = tempdir().expect("artifacts dir");
+    let cwd = tempdir().expect("cwd");
+    let tools = reflection_tools();
+    let path = crate::reflection_runtime::reflection_lesson_artifact_path(
+        artifacts_dir.path(),
+        "conversation",
+        "session-123",
+    );
+    std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+    std::fs::write(
+        &path,
+        "## Lessons\n- 2026-10-01T09:00:00Z [user_correction|work_context|model-inferred] Works on billing.\n",
+    )
+    .expect("lesson file");
+
+    let section = super::memory::build_reflection_lesson_artifacts_system_prompt_section(
+        &tools,
+        artifacts_dir.path(),
+        "session-123",
+        cwd.path(),
+        true,
+    );
+    for name in ["work_context", "health_context", "coordination_context"] {
+        assert!(section.contains(name), "{name}: {section}");
+    }
+    assert!(section.contains("`group` only for what the group shares and every member may see"));
+    assert!(section.contains("filed to their Work, Health or Daily tasks profile by category"));
+    assert!(section.contains("\n- Works on billing."), "{section}");
+    assert!(!section.contains("[user_correction|"), "{section}");
 }
 
 fn memory_inputs(
