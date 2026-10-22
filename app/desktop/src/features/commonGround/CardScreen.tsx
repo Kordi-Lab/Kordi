@@ -5,7 +5,8 @@ import { AppDialog, AppDialogActions, AppDialogDescription, AppDialogTitle } fro
 import { SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import { profileDesign } from './cardDesign';
 import { AddTopic, CardLine } from './CardLines';
-import { cardSources, sourceLook } from './cardReferences';
+import { cardSources, cardTimeline, cardTopics, firstCiters, sourceLook } from './cardReferences';
+import { CardNow, CardTimeline } from './CardTimeline';
 import { CardLookButton, CardLookPopover } from './CardLookPopover';
 import { useLookPopover } from './cardLook';
 import { CgButton, CgNotice, CgProgress } from './parts';
@@ -66,7 +67,7 @@ export function RenameFields({ name, focus, kind, onSave, onCancel }: {
   );
 }
 
-/** The card page: a slim header, the topics with their references, the sources, and Share my card. */
+/** The card page: a slim header, Now, the topics with their references, the timeline, the sources, and Share my card. */
 export function CardScreen({ state, store }: { state: CgState; store: CommonGroundStore }) {
   const [confirming, setConfirming] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -82,6 +83,9 @@ export function CardScreen({ state, store }: { state: CgState; store: CommonGrou
   const lineCount = CG_TOPIC_SECTIONS.reduce((sum, [key]) => sum + card[key].length, 0);
   const meta = [`${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`, card.builtAt ? `built ${shortDay(card.builtAt)}` : ''].filter(Boolean).join(' · ');
   const sources = cardSources(card);
+  const owners = firstCiters(card);
+  const onCard = new Set(cardTopics(card));
+  const timeline = cardTimeline(card);
   return (
     <div className="cg-cardpage">
       <div className="cg-cardpage-head">
@@ -132,6 +136,7 @@ export function CardScreen({ state, store }: { state: CgState; store: CommonGrou
           <Brain className="h-[13px] w-[13px]" aria-hidden="true" />Rebuild from memory
         </button>
       </div>
+      <CardNow topics={timeline.now} onCard={onCard} />
       {CG_TOPIC_SECTIONS.map(([key, title]) => (
         <section key={key}>
           <h3 className="cg-msec">{title}</h3>
@@ -141,6 +146,7 @@ export function CardScreen({ state, store }: { state: CgState; store: CommonGrou
                 key={topic}
                 card={card}
                 topic={topic}
+                owners={owners}
                 onHide={() => void store.toggleHidden(topic)}
                 onRemove={() => update(key, card[key].filter((item) => item !== topic))}
               />
@@ -156,6 +162,7 @@ export function CardScreen({ state, store }: { state: CgState; store: CommonGrou
           </div>
         </section>
       ))}
+      <CardTimeline rows={timeline.rows} earlier={timeline.earlier} onCard={onCard} />
       {sources.length ? (
         <>
           <h3 className="cg-msec">Sources</h3>

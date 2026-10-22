@@ -82,18 +82,11 @@ pub(super) struct Link {
     pub live: bool,
 }
 
-/// The most recent pairing or room that makes `other` visible to `viewer`,
-/// limited to the viewer sharing `viewer_profile` when given.
-pub(super) async fn link(
-    pool: &PgPool,
-    viewer: &str,
-    other: &str,
-    viewer_profile: Option<&str>,
-) -> sqlx_core::Result<Option<Link>> {
-    if viewer == other {
-        return Ok(None);
-    }
-    let sql = format!(
+/// Every (viewer profile, other profile) pair through which `viewer` sees
+/// `other`, most recent first: a pairing, or a room both still share, open
+/// or closed. Limited to the viewer sharing `$3` when that is not null.
+fn links_sql(limit: &str) -> String {
+    format!(
         "SELECT vp, op, bool_or(live) FROM (
              SELECT CASE WHEN p.account_a = $1 THEN p.profile_a ELSE p.profile_b END AS vp,
                     CASE WHEN p.account_a = $1 THEN p.profile_b ELSE p.profile_a END AS op,
@@ -110,19 +103,55 @@ pub(super) async fn link(
              WHERE mine.account_id = $1 AND mine.left_at IS NULL
          ) links
          WHERE $3::text IS NULL OR vp = $3
-         GROUP BY vp, op ORDER BY max(at) DESC, vp, op LIMIT 1"
-    );
-    let row: Option<(String, String, Option<bool>)> = query_as(&sql)
+         GROUP BY vp, op ORDER BY max(at) DESC, vp, op {limit}"
+    )
+}
+
+/// All the pairs of profiles through which `viewer` sees `other`, most
+/// recent first.
+pub(super) async fn links(
+    pool: &PgPool,
+    viewer: &str,
+    other: &str,
+) -> sqlx_core::Result<Vec<Link>> {
+    if viewer == other {
+        return Ok(Vec::new());
+    }
+    let rows: Vec<(String, String, Option<bool>)> = query_as(&links_sql(""))
+        .bind(viewer)
+        .bind(other)
+        .bind(None::<&str>)
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.into_iter().map(to_link).collect())
+}
+
+fn to_link((viewer_profile, other_profile, live): (String, String, Option<bool>)) -> Link {
+    Link {
+        viewer_profile,
+        other_profile,
+        live: live.unwrap_or(false),
+    }
+}
+
+/// The most recent pairing or room that makes `other` visible to `viewer`,
+/// limited to the viewer sharing `viewer_profile` when given.
+pub(super) async fn link(
+    pool: &PgPool,
+    viewer: &str,
+    other: &str,
+    viewer_profile: Option<&str>,
+) -> sqlx_core::Result<Option<Link>> {
+    if viewer == other {
+        return Ok(None);
+    }
+    let row: Option<(String, String, Option<bool>)> = query_as(&links_sql("LIMIT 1"))
         .bind(viewer)
         .bind(other)
         .bind(viewer_profile)
         .fetch_optional(pool)
         .await?;
-    Ok(row.map(|(viewer_profile, other_profile, live)| Link {
-        viewer_profile,
-        other_profile,
-        live: live.unwrap_or(false),
-    }))
+    Ok(row.map(to_link))
 }
 
 /// Whether `viewer` may see `other`'s shared card.
@@ -251,6 +280,9 @@ pub(crate) struct ProfileCommonGround {
     pub working_on: Vec<String>,
     pub can_help: Vec<String>,
     pub looking_for: Vec<String>,
+    /// The best stored match between the two, from
+    /// [`super::contact_match::contact_match`]; null when none is visible.
+    pub r#match: Option<Value>,
 }
 
 /// The card lists of the profile `other` shares with `viewer`, at most
@@ -288,5 +320,6 @@ pub(crate) async fn profile_common_ground(
         working_on: take(topics.working_on),
         can_help: take(topics.can_help),
         looking_for: take(topics.looking_for),
+        r#match: None,
     }))
 }
