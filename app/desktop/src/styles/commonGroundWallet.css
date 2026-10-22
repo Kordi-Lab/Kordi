@@ -95,6 +95,31 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 }
 .cg-sugchip:hover:not(:disabled) { background: color-mix(in srgb, var(--app-accent) 14%, transparent); }
 
+/* Pair: the row above Pair code; its popover shows your code and takes theirs. */
+.cg-pair-open { width: 100%; border: 0; border-radius: 9px 9px 0 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.cg-pair-open:hover { background: var(--cg-fill); }
+.cg-pair-row.is-code { position: relative; }
+.cg-pair-row.is-code::before { content: ""; position: absolute; top: 0; right: 0; left: 48px; border-top: 0.5px solid var(--cg-line); }
+.cg-paircode > .cg-pop:not(.cg-pair-pop) { top: 108px; }
+.cg-pair-show { display: flex; flex-direction: column; align-items: center; padding-top: 4px; }
+.cg-qr { display: block; width: 168px; height: 168px; border-radius: 10px; background: #fff; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08); }
+.cg-qr svg { display: block; width: 100%; height: 100%; }
+.cg-pair-code {
+  display: flex; align-items: center; gap: 4px; margin-top: 12px; padding-left: 30px;
+  font: 600 20px ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; letter-spacing: 0.06em;
+}
+.cg-pair-copy { display: grid; width: 26px; height: 26px; place-items: center; border: 0; border-radius: 7px; background: none; color: var(--utility-muted-text); cursor: pointer; }
+.cg-pair-copy svg { width: 14px; height: 14px; }
+.cg-pair-copy:hover:not(:disabled) { background: var(--cg-fill); color: var(--utility-foreground); }
+.cg-pair-sub { margin-top: 2px; color: var(--utility-muted-text); font-size: 11px; font-variant-numeric: tabular-nums; }
+.cg-pair-sub.is-error { color: var(--app-transient-danger-text, oklch(58% 0.2 27)); text-align: center; }
+.cg-pair-retry { margin-left: 6px; padding: 0; border: 0; background: none; color: var(--app-accent); font: inherit; font-weight: 600; cursor: pointer; }
+.cg-pair-their { margin-top: 16px; border-top: 0.5px solid var(--cg-line); }
+.cg-pair-their .cg-pop-label { display: block; }
+.cg-pair-field { display: flex; align-items: center; gap: 8px; }
+.cg-pair-field .cg-pop-input { min-width: 0; flex: 1; margin-top: 0; font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.04em; }
+.cg-pair-off { margin: 6px 0 0; color: var(--utility-muted-text); font-size: 12px; }
+
 /* Create a code: the 320px popover under the row. */
 .cg-pop {
   position: absolute; z-index: 20; top: 52px; right: 12px; width: 320px; padding: 16px; border: 0.5px solid var(--cg-line); border-radius: 12px;

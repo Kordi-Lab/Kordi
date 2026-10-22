@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Check, Share } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { CardGlyph, CardSwatch } from './ProfileCard';
 import type { CgCardDesign, CgCardIcon } from './cardDesign';
 import type { CgProfileKind, CgRoom } from './types';
+import { usePopoverDismiss } from './usePopoverDismiss';
 
 export const MEETUP_NAME_MAX = 80;
 
@@ -31,19 +32,7 @@ export function CreateCodePopover({ cards, current, busy, notice, onCreate, onCl
   const card = cards.find((item) => item.id === cardId);
   const ready = Boolean(name.trim() && card && !busy);
 
-  useEffect(() => {
-    const onDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (target && !ref.current?.contains(target) && !(target instanceof Element && target.closest('[data-cg-create]'))) onClose();
-    };
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } };
-    window.addEventListener('mousedown', onDown, true);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onDown, true);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [onClose]);
+  usePopoverDismiss(ref, '[data-cg-create]', onClose);
 
   const submit = async () => {
     if (!ready || !card) return;

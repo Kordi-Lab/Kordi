@@ -5,6 +5,7 @@
 
 import { CommonGroundError, commonGroundErrorCode, commonGroundErrorMessage, isRouteMissing, type CommonGroundClient } from './client';
 import type { CgProfileMemory } from './profiles';
+import * as pairOps from './storePairing';
 import * as profileOps from './storeProfiles';
 import * as roomOps from './storeRooms';
 import type {
@@ -392,6 +393,9 @@ export class CommonGroundStore {
   lookUpCode = (code: string) => roomOps.lookUpCode(this, code);
   /** Opens a meetup on a new code, sharing the given profile. */
   createRoom = (input: CgCreateRoomInput) => roomOps.createRoom(this, input);
+  /** Pairing: a code to show for the selected card, and someone's code, which opens the match. */
+  newPairCode = () => pairOps.newPairCode(this);
+  redeemPairCode = (code: string) => pairOps.redeemPairCode(this, code);
 
   /** Opens Results for a room from the Rooms list. */
   openRoom(code: string) {

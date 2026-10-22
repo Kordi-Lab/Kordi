@@ -127,5 +127,8 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
   ] };
   // Code 5160 previews a meetup that suggests the custom Workshops card.
   const preview = { code: '5160', name: 'Poster session 2026', kind: 'custom', memberCount: 14 };
-  return { self, owner, healthOwner, profiles, room, rooms, results, match, recent, connectors, agentFiles, preview };
+  // Pair: your code for two minutes from now, and Hana's card once her code is redeemed.
+  const pairCode = () => ({ code: 'K4M7-2QXA', expiresAt: new Date(Date.now() + 120_000).toISOString(), profileId: 'cgp_work' });
+  const paired = { person: hanaPerson, card, relationship: stranger };
+  return { self, owner, healthOwner, profiles, room, rooms, results, match, recent, connectors, agentFiles, preview, pairCode, paired };
 }

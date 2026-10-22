@@ -37,6 +37,8 @@ export default defineConfig(({ command, mode }) => {
               { name: 'calling-media', test: /(?:^|[\\/])node_modules[\\/](?:livekit-client|@livekit|webrtc-adapter|sdp-transform|jose)(?:[\\/]|$)/ },
               // The document editor (its source, Tiptap, ProseMirror, the Markdown parser) is one lazy chunk that loads
               // with the first opened document. Packages the app shares (floating UI, uuid) stay in vendor.
+              // The QR encoder loads with the first Grounding Pair popover.
+              { name: 'qr-encoder', minSize: 0, test: /(?:^|[\\/])node_modules[\\/]qrcode-generator[\\/]/ },
               { name: 'vendor', test: (id) => /(?:^|[\\/])node_modules[\\/]/.test(id) && !DOCUMENT_EDITOR_PACKAGES.test(id) },
               { name: 'emoji-catalog', test: /[\\/]shared[\\/]noto-emoji[\\/]catalog\.json$/ },
               // The add-account login page loads when a sign-in method is opened.

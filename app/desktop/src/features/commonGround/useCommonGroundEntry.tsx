@@ -15,6 +15,7 @@ import type { Contact, ContactClass, ContactRequest } from '@/kordi-app/types';
 import { CommonGroundContactsRow } from './CommonGroundContactsRow';
 import { CommonGroundLazyPanel } from './CommonGroundLazyPanel';
 import { desktopAgentFiles, desktopDeviceAccess } from './deviceAccess';
+import { COMMON_GROUND_PAIR_LINK_EVENT, hasPendingPairLink } from './pairLink';
 import type { CgConnectorsAccess, CgHost } from './host';
 import type { CgPerson } from './types';
 
@@ -52,7 +53,13 @@ function openConnectorsSettings(providerId: ConnectorsSettingsTarget['providerId
  * server reports `commonGroundVersion`.
  */
 export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, options: CommonGroundEntryOptions): CommonGroundEntry {
-  const [selected, setSelected] = useState(false);
+  // A pairing link opens Grounding, which redeems the code.
+  const [selected, setSelected] = useState(hasPendingPairLink);
+  useEffect(() => {
+    const onPairLink = () => setSelected(true);
+    window.addEventListener(COMMON_GROUND_PAIR_LINK_EVENT, onPairLink);
+    return () => window.removeEventListener(COMMON_GROUND_PAIR_LINK_EVENT, onPairLink);
+  }, []);
   const authClient = useMemo(() => defaultCloudAuthClient(), []);
   const { capabilities, status: capabilitiesStatus } = useCloudAuthCapabilitiesState(options.account ? authClient : null, cloudApiBaseUrl());
   const version = commonGroundVersionFromCapabilities(capabilities);

@@ -250,7 +250,10 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
     },
     pairings: () => data<{ people: CgPerson[] }>('GET', cg('pairings')),
     newPairCode: (profileId?: string | null) => data<CgPairCode>('POST', cg('pairings/code'), profileId ? { profileId } : undefined),
-    redeem: async (code: string) => withRelationship(await data<CgPersonCard>('POST', cg('pairings/redeem'), { code })),
+    /** Pairs with the person who showed `code`, sharing `profileId` (or the server's pick) back. */
+    redeem: async (code: string, profileId?: string | null) => withRelationship(
+      await data<CgPersonCard>('POST', cg('pairings/redeem'), profileId ? { code, profileId } : { code }),
+    ),
   };
 }
 
