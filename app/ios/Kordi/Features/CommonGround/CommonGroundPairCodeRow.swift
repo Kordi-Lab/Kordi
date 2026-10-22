@@ -119,6 +119,7 @@ struct CommonGroundJoinSheet: View {
                 let profile = choices.first { $0.profileId == id }
                 ProfileCardView(
                     design: model.design(ofProfile: id),
+                    icon: profile?.cardIcon,
                     name: profile?.title ?? "",
                     focus: profile?.focusLine,
                     bottom: .topics(id == model.currentProfileID ? model.myTopics : model.walletTopics[id] ?? []),

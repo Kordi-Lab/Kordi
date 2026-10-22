@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import Kordi
 
@@ -220,6 +221,116 @@ final class CommonGroundWalletTests: XCTestCase {
         await model.loadProfiles()
         XCTAssertEqual(CommonGroundURLProtocol.requests.filter { $0.request.httpMethod == "PUT" }.count, 3, "the earlier sends are not repeated")
         XCTAssertNil(defaults.string(forKey: CommonGroundCardDesignStore.key("cgp_t")))
+    }
+
+    // MARK: Icon
+
+    func testIconRoundTripsInProfilesAndTags() throws {
+        let list = try JSONDecoder().decode(CommonGroundProfileList.self, from: Data(#"""
+        {"profiles":[{"profileId":"cgp_k","kind":"custom","name":"KAUST","position":2,"design":"research","icon":"flask"},
+                     {"profileId":"cgp_w","kind":"work","name":"","position":0,"icon":null},
+                     {"profileId":"cgp_x","kind":"work","name":"","position":1,"icon":"unknown"}]}
+        """#.utf8))
+        XCTAssertEqual(list.profiles[0].icon, "flask")
+        XCTAssertEqual(list.profiles[0].cardIcon, .flask)
+        XCTAssertNil(list.profiles[1].icon)
+        XCTAssertNil(list.profiles[1].cardIcon, "null draws the design's glyph")
+        XCTAssertNil(list.profiles[2].cardIcon, "an unknown icon draws the design's glyph")
+
+        let tag = try JSONDecoder().decode(CommonGroundProfileTag.self, from: Data(#"{"profileId":"cgp_p","kind":"custom","name":"Lab","design":"workshop","icon":"rocket"}"#.utf8))
+        XCTAssertEqual(tag.cardIcon, .rocket)
+        XCTAssertEqual(try JSONDecoder().decode(CommonGroundProfileTag.self, from: JSONEncoder().encode(tag)), tag)
+        let person = try JSONDecoder().decode(CommonGroundPerson.self, from: Data(#"""
+        {"accountId":"acct_b","name":"Priya","profile":{"profileId":"cgp_p","kind":"work","name":"","design":"health","icon":"coffee"}}
+        """#.utf8))
+        XCTAssertEqual(person.profile?.cardIcon, .coffee)
+    }
+
+    func testIconRequestBodies() throws {
+        func json<T: Encodable>(_ value: T) throws -> [String: Any] {
+            try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as? [String: Any])
+        }
+        let draft = try json(CommonGroundNewProfile(kind: .work, design: .health, icon: .star))
+        XCTAssertEqual(draft["icon"] as? String, "star")
+        XCTAssertEqual(draft["design"] as? String, "health")
+        XCTAssertNil(try json(CommonGroundNewProfile(kind: .work))["icon"])
+
+        XCTAssertEqual(try json(CommonGroundProfileEdit(icon: "globe"))["icon"] as? String, "globe")
+        let reset = try json(CommonGroundProfileEdit(icon: .some(nil)))
+        XCTAssertTrue(reset.keys.contains("icon"), "a reset sends the key")
+        XCTAssertTrue(reset["icon"] is NSNull, "a reset sends null")
+        XCTAssertFalse(try json(CommonGroundProfileEdit(name: "Lab")).keys.contains("icon"), "left out keeps the icon")
+    }
+
+    func testNewCardSendsItsLook() async throws {
+        let model = stubbedModel(profiles: true, defaults: freshDefaults())
+        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/profiles", [(201, #"{"profileId":"cgp_m","kind":"work","name":"","position":0,"design":"research","icon":"book"}"#)])
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/card", [(200, CommonGroundTests.buildingJSON)])
+
+        await model.createCard(.work, name: "", focus: "", look: .research, icon: .book)
+        let sent = try body(XCTUnwrap(CommonGroundURLProtocol.requests.last { $0.request.httpMethod == "POST" }))
+        XCTAssertEqual(sent["kind"] as? String, "work", "the kind follows the card, not its background")
+        XCTAssertEqual(sent["design"] as? String, "research")
+        XCTAssertEqual(sent["icon"] as? String, "book")
+        XCTAssertEqual(model.walletCards.first { $0.id == "cgp_m" }?.icon, .book)
+    }
+
+    func testCardLookAppliesAtOnceAndRollsBack() async throws {
+        let model = stubbedModel(profiles: true, defaults: freshDefaults())
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/profiles", [(200, #"""
+        {"profiles":[{"profileId":"cgp_w","kind":"work","name":"","position":0}]}
+        """#)])
+        await model.loadProfiles()
+        let path = "/v1/cloud/common-ground/profiles/cgp_w"
+
+        CommonGroundURLProtocol.stub("PUT", path, [(200, #"{"profileId":"cgp_w","kind":"work","name":"","position":0,"icon":"heart"}"#)])
+        let pending = Task { await model.setCardLook("cgp_w", icon: .some(.heart)) }
+        for _ in 0..<20 where model.profile("cgp_w")?.icon == nil { await Task.yield() }
+        XCTAssertEqual(model.profile("cgp_w")?.cardIcon, .heart, "applied before the server answers")
+        let iconSaved = await pending.value
+        XCTAssertTrue(iconSaved)
+        XCTAssertEqual(try body(XCTUnwrap(CommonGroundURLProtocol.requests.last)) as NSDictionary, ["icon": "heart"] as NSDictionary)
+
+        CommonGroundURLProtocol.stub("PUT", path, [(500, #"{"errorCode":"internal","message":"x"}"#)])
+        let refused = await model.setCardLook("cgp_w", design: .daily, icon: .some(.camera))
+        XCTAssertFalse(refused)
+        XCTAssertEqual(model.design(ofProfile: "cgp_w"), .work, "the old background comes back")
+        XCTAssertEqual(model.profile("cgp_w")?.cardIcon, .heart, "the old icon comes back")
+        XCTAssertNotNil(model.notice)
+
+        CommonGroundURLProtocol.stub("PUT", path, [(200, #"{"profileId":"cgp_w","kind":"work","name":"","position":0,"design":"daily","icon":null}"#)])
+        let resetOK = await model.setCardLook("cgp_w", design: .daily, icon: .some(nil))
+        XCTAssertTrue(resetOK)
+        let reset = try body(XCTUnwrap(CommonGroundURLProtocol.requests.last))
+        XCTAssertEqual(reset["design"] as? String, "daily")
+        XCTAssertTrue(reset["icon"] is NSNull)
+        XCTAssertEqual(model.design(ofProfile: "cgp_w"), .daily)
+        XCTAssertNil(model.profile("cgp_w")?.cardIcon)
+
+        let before = CommonGroundURLProtocol.requests.count
+        let unchanged = await model.setCardLook("cgp_w", design: .daily)
+        XCTAssertTrue(unchanged)
+        XCTAssertEqual(CommonGroundURLProtocol.requests.count, before, "the same look sends nothing")
+    }
+
+    func testIconSymbols() {
+        XCTAssertEqual(CommonGroundCardIcon.allCases.map(\.rawValue), [
+            "briefcase", "leaf", "sun", "flask", "book", "microscope", "graduation", "pin", "star",
+            "heart", "chat", "globe", "music", "camera", "code", "calendar", "rocket", "coffee",
+        ])
+        XCTAssertEqual(CommonGroundCardIcon.briefcase.symbol, "briefcase.fill")
+        XCTAssertEqual(CommonGroundCardIcon.sun.symbol, "sun.max.fill")
+        XCTAssertEqual(CommonGroundCardIcon.graduation.symbol, "graduationcap.fill")
+        XCTAssertEqual(CommonGroundCardIcon.pin.symbol, "mappin")
+        XCTAssertEqual(CommonGroundCardIcon.chat.symbol, "bubble.left.fill")
+        XCTAssertEqual(CommonGroundCardIcon.code.symbol, "chevron.left.forwardslash.chevron.right")
+        XCTAssertEqual(CommonGroundCardIcon.coffee.symbol, "cup.and.saucer.fill")
+        XCTAssertEqual(CommonGroundCardIcon.flask.symbols, ["flask.fill", "testtube.2"])
+        XCTAssertEqual(CommonGroundCardIcon.microscope.symbols, ["microscope", "magnifyingglass"])
+        XCTAssertEqual(CommonGroundCardIcon.rocket.symbols, ["rocket.fill", "paperplane.fill"])
+        for icon in CommonGroundCardIcon.allCases {
+            XCTAssertNotNil(UIImage(systemName: icon.symbol), "\(icon) draws")
+        }
     }
 
     // MARK: Room preview

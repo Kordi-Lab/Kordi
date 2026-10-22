@@ -13,6 +13,8 @@ struct CommonGroundWallet: View {
     let onDetail: (String) -> Void
     let onBuild: () -> Void
     let onNewCard: () -> Void
+    /// The top card's glyph opens its look.
+    var onLook: ((String) -> Void)? = nil
 
     private let peek: CGFloat = 12
     private let strip: CGFloat = 54
@@ -71,6 +73,7 @@ struct CommonGroundWallet: View {
             : (selected && card.hasCard && !card.isSuggested ? .more : .none)
         return ProfileCardView(
             design: card.design,
+            icon: card.icon,
             name: card.name,
             focus: card.focus,
             bottom: bottom(for: card, selected: selected),
@@ -78,7 +81,8 @@ struct CommonGroundWallet: View {
             showsMark: !(fanned && selected),
             width: cardWidth,
             onMore: { onDetail(card.id) },
-            onBuild: onBuild
+            onBuild: onBuild,
+            onGlyph: selected && card.hasLook && model.profilesEnabled ? onLook.map { look in { look(card.id) } } : nil
         )
     }
 

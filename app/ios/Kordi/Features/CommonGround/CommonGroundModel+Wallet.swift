@@ -62,6 +62,7 @@ struct CommonGroundWalletCard: Identifiable, Hashable {
     /// The profile id; `default` before profiles, `suggested` for the first-run card.
     let id: String
     let design: CommonGroundCardDesign
+    var icon: CommonGroundCardIcon?
     let name: String
     var focus: String?
     var topics: [String] = []
@@ -73,7 +74,10 @@ struct CommonGroundWalletCard: Identifiable, Hashable {
     var isSuggested: Bool { id == Self.suggestedID }
 
     /// The empty wallet's single card: Work, ready to build.
-    static let suggestedWork = CommonGroundWalletCard(id: suggestedID, design: .work, name: "Work", focus: "Suggested")
+    static let suggestedWork = CommonGroundWalletCard(id: suggestedID, design: .work, icon: nil, name: "Work", focus: "Suggested")
+
+    /// Only a profile's card has a look to change.
+    var hasLook: Bool { !isSuggested && id != Self.defaultID }
 }
 
 /// The wallet on Home: cards per profile with their topics, the card that
@@ -97,7 +101,7 @@ extension CommonGroundModel {
         guard loaded || !profiles.isEmpty else { return [] }
         guard profilesEnabled else {
             guard hasCard || isBuilding else { return [.suggestedWork] }
-            return [CommonGroundWalletCard(id: CommonGroundWalletCard.defaultID, design: .work, name: "Work", topics: myTopics, hasCard: hasCard)]
+            return [CommonGroundWalletCard(id: CommonGroundWalletCard.defaultID, design: .work, icon: nil, name: "Work", topics: myTopics, hasCard: hasCard)]
         }
         if profiles.isEmpty { return [.suggestedWork] }
         return profiles.map { profile in
@@ -105,6 +109,7 @@ extension CommonGroundModel {
             return CommonGroundWalletCard(
                 id: profile.profileId,
                 design: design(of: profile),
+                icon: profile.cardIcon,
                 name: profile.title,
                 focus: profile.focusLine,
                 topics: current ? myTopics : walletTopics[profile.profileId] ?? [],
@@ -147,10 +152,38 @@ extension CommonGroundModel {
         return counts.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map(\.key)
     }
 
-    /// Creates a card of a design; the server keeps the design.
+    /// Creates a card of a design, drawn with `look` and `icon` when chosen;
+    /// the server keeps both.
     @discardableResult
-    func createCard(_ design: CommonGroundCardDesign, name: String, focus: String) async -> CommonGroundProfileSummary? {
-        await createProfile(CommonGroundNewProfile(kind: design.kind, name: name, focus: focus, design: design))
+    func createCard(_ design: CommonGroundCardDesign, name: String, focus: String,
+                    look: CommonGroundCardDesign? = nil, icon: CommonGroundCardIcon? = nil) async -> CommonGroundProfileSummary? {
+        await createProfile(CommonGroundNewProfile(kind: design.kind, name: name, focus: focus, design: look ?? design, icon: icon))
+    }
+
+    /// Changes a card's background or icon at once and saves it; the old
+    /// look comes back when the server refuses. `icon: .some(nil)` goes back
+    /// to the design's glyph.
+    @discardableResult
+    func setCardLook(_ profileId: String, design: CommonGroundCardDesign? = nil, icon: CommonGroundCardIcon?? = nil) async -> Bool {
+        guard let index = profiles.firstIndex(where: { $0.profileId == profileId }) else { return false }
+        let before = profiles[index]
+        var after = before
+        if let design { after.design = design.rawValue }
+        if let icon { after.icon = icon?.rawValue }
+        guard after != before else { return true }
+        profiles[index] = after
+        let edit = CommonGroundProfileEdit(design: design?.rawValue, icon: icon.map { $0?.rawValue })
+        let saved = await run("look") { try await $0.updateCommonGroundProfile(token: $1, profileId: profileId, edit: edit) }
+        // A later tap may have changed the look meanwhile; leave that one alone.
+        guard let now = profiles.firstIndex(where: { $0.profileId == profileId }),
+              profiles[now].design == after.design, profiles[now].icon == after.icon else { return saved != nil }
+        if let saved {
+            profiles[now] = saved
+            return true
+        }
+        profiles[now].design = before.design
+        profiles[now].icon = before.icon
+        return false
     }
 
     // MARK: Rooms

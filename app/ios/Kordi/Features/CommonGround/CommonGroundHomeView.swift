@@ -14,6 +14,7 @@ struct CommonGroundHome: View {
     @State private var joinCode: CommonGroundCodeTarget?
     @State private var createFor: CommonGroundCodeTarget?
     @State private var addsCard = false
+    @State private var lookFor: CommonGroundCodeTarget?
     @State private var afterSharing: SharingStep?
 
     private enum SharingStep { case join(String), create(String?) }
@@ -37,7 +38,8 @@ struct CommonGroundHome: View {
                     hiddenID: detail?.id,
                     onDetail: openDetail,
                     onBuild: { path.append(.build) },
-                    onNewCard: { addsCard = true }
+                    onNewCard: { addsCard = true },
+                    onLook: { lookFor = CommonGroundCodeTarget(profileId: $0) }
                 )
                 .padding(.bottom, 8)
                 VStack(spacing: 24) {
@@ -67,10 +69,11 @@ struct CommonGroundHome: View {
         .overlay {
             if let detail {
                 CommonGroundCardDetail(
-                    card: detail,
+                    card: model.walletCards.first { $0.id == detail.id } ?? detail,
                     cardWidth: cardWidth,
                     onClose: { self.detail = nil },
-                    onShare: { create(for: detail.id) }
+                    onShare: { create(for: detail.id) },
+                    onLook: { lookFor = CommonGroundCodeTarget(profileId: detail.id) }
                 )
             }
         }
@@ -90,6 +93,18 @@ struct CommonGroundHome: View {
                 .environmentObject(model)
                 .presentationDetents([.height(390)])
                 .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $lookFor) { target in
+            if let id = target.profileId, let profile = model.profile(id) {
+                CommonGroundCardLookSheet(
+                    design: profile.cardDesign,
+                    icon: profile.cardIcon,
+                    onDesign: { design in Task { await model.setCardLook(id, design: design) } },
+                    onIcon: { icon in Task { await model.setCardLook(id, icon: .some(icon)) } }
+                )
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+            }
         }
         .sheet(isPresented: $addsCard) {
             CommonGroundNewCardSheet(cardWidth: cardWidth)

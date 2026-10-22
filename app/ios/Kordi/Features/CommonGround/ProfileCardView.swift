@@ -14,6 +14,8 @@ struct ProfileCardView: View {
     static func width(in container: CGFloat) -> CGFloat { min(max(container - 52, 240), 380) }
 
     let design: CommonGroundCardDesign
+    /// The chosen icon; nil draws the design's glyph.
+    var icon: CommonGroundCardIcon? = nil
     var name: String
     var focus: String? = nil
     var bottom: Bottom = .topics([])
@@ -22,6 +24,8 @@ struct ProfileCardView: View {
     var width: CGFloat = 338
     var onMore: (() -> Void)? = nil
     var onBuild: (() -> Void)? = nil
+    /// Tapping the glyph opens the card's look.
+    var onGlyph: (() -> Void)? = nil
     var nameField: Binding<String>? = nil
     var focusField: Binding<String>? = nil
     var fieldsDisabled = false
@@ -56,7 +60,7 @@ struct ProfileCardView: View {
 
     private func head(_ palette: CommonGroundCardPalette) -> some View {
         HStack(spacing: 10) {
-            CommonGroundCardGlyph(design: design, palette: palette)
+            CommonGroundCardGlyph(design: design, palette: palette, icon: icon, onTap: onGlyph)
             if let nameField {
                 TextField("", text: nameField, prompt: Text(design.namePlaceholder).foregroundStyle(palette.text.opacity(0.45)))
                     .font(.system(size: 18, weight: .semibold))
@@ -174,19 +178,31 @@ struct ProfileCardView: View {
     }
 }
 
-/// The kind's glyph on a tinted rounded tile.
+/// The card's icon, else the design's glyph, on a tinted rounded tile; a
+/// button that opens the card's look when `onTap` is set.
 struct CommonGroundCardGlyph: View {
     let design: CommonGroundCardDesign
     let palette: CommonGroundCardPalette
+    var icon: CommonGroundCardIcon? = nil
     var size: CGFloat = 32
+    var onTap: (() -> Void)? = nil
 
     var body: some View {
-        Image(systemName: design.symbol)
+        if let onTap {
+            Button(action: onTap) { tile.contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Card look")
+        } else {
+            tile.accessibilityHidden(true)
+        }
+    }
+
+    private var tile: some View {
+        Image(systemName: icon?.symbol ?? design.symbol)
             .font(.system(size: size * 0.53, weight: .medium))
             .foregroundStyle(palette.accent)
             .frame(width: size, height: size)
             .background(palette.glyphFill, in: RoundedRectangle(cornerRadius: size * 0.31, style: .continuous))
-            .accessibilityHidden(true)
     }
 }
 
