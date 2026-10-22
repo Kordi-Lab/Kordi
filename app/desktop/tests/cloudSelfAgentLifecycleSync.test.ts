@@ -141,7 +141,7 @@ test('empty native queue and preparing progress reach visible status before the 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
     turn: mapped!.turn!, onStopActiveTurn: () => undefined,
   }));
-  assert.match(markup, /Waiting for agent response/);
+  assert.match(markup, /app-turn-progress-bird/);
 
   const terminalPlan = planCloudSelfAgentCanonicalSync({
     account, messages: [request, queued, progress, terminal], state: emptyState(),
@@ -151,7 +151,7 @@ test('empty native queue and preparing progress reach visible status before the 
     new Map());
   assert.equal(mappedTerminal?.turn?.status, 'complete');
   const terminalMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: mappedTerminal!.turn! }));
-  assert.doesNotMatch(terminalMarkup, /Queued…|Waiting for agent response/);
+  assert.doesNotMatch(terminalMarkup, /Queued…|app-turn-progress-bird/);
   assert.match(terminalMarkup, /Hello/);
 });
 
