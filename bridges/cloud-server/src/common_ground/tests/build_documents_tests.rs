@@ -207,7 +207,14 @@ async fn the_build_reads_only_the_accounts_own_documents() {
     assert_eq!(stored[0]["source"], "Documents");
 }
 
-async fn connector_event(pool: &PgPool, owner: &str, provider: &str, title: &str) {
+/// A connected `provider` with `count` events, the newest `age_minutes` old.
+async fn connector_events(
+    pool: &PgPool,
+    owner: &str,
+    (provider, title): (&str, &str),
+    count: i32,
+    age_minutes: i32,
+) {
     let connector_id = format!("cn_{}", Uuid::new_v4().simple());
     query("INSERT INTO cloud_connectors (connector_id, account_id, provider, status) VALUES ($1, $2, $3, 'connected')")
         .bind(&connector_id)
@@ -225,12 +232,16 @@ async fn connector_event(pool: &PgPool, owner: &str, provider: &str, title: &str
     query(
         "INSERT INTO cloud_connector_events (event_id, connector_id, provider, kind, occurred_at,
              payload, expires_at)
-         VALUES ($1, $2, $3, 'message', now(), $4, now() + interval '1 day')",
+         SELECT $1 || '_' || n, $2, $3, 'message',
+                now() - make_interval(mins => $5, secs => n), $4, now() + interval '1 day'
+         FROM generate_series(1, $6) n",
     )
     .bind(format!("cnevt_{}", Uuid::new_v4().simple()))
     .bind(&connector_id)
     .bind(provider)
     .bind(json!({"title": title}))
+    .bind(age_minutes)
+    .bind(count)
     .execute(pool)
     .await
     .unwrap();
@@ -244,8 +255,11 @@ async fn connector_picks_narrow_the_providers() {
     let service = account(&pool, "service").await;
     let app = app(&pool, Some(&service));
     let (alex_id, alex) = signed_in(&pool, "Alex").await;
-    connector_event(&pool, &alex_id, "gmail", "Mail about retrieval").await;
-    connector_event(&pool, &alex_id, "github", "PR on agent memory").await;
+    // More recent Gmail events than one build reads, then two older GitHub
+    // ones: picking GitHub still reads them.
+    let gmail = ("gmail", "Mail about retrieval");
+    connector_events(&pool, &alex_id, gmail, 120, 0).await;
+    connector_events(&pool, &alex_id, ("github", "PR on agent memory"), 2, 60).await;
 
     let (status, body) = send(
         &app,
@@ -270,8 +284,13 @@ async fn connector_picks_narrow_the_providers() {
         prompt.contains("PR on agent memory") && !prompt.contains("Mail about"),
         "{prompt}"
     );
+    assert!(
+        prompt.contains("[1]") && !prompt.contains("[2]"),
+        "both GitHub events: {prompt}"
+    );
 
-    // Old clients that send no providers read every provider.
+    // Old clients that send no providers read the newest events of every
+    // provider, here all Gmail.
     let (_, sam) = signed_in(&pool, "Sam").await;
     let (status, body) = send(&app, "POST", BUILD, &sam, Some(json!({"connectors": true}))).await;
     assert_eq!(
@@ -292,9 +311,7 @@ async fn connector_picks_narrow_the_providers() {
     )
     .await;
     assert_eq!(status, 202, "{body}");
-    let mut used: Vec<String> = serde_json::from_value(body["used"].clone()).unwrap();
-    used.sort();
-    assert_eq!(used, vec!["GitHub", "Gmail"]);
+    assert_eq!(body["used"], json!(["Gmail"]), "{body}");
 
     // The capabilities advertise documents and per-profile sources.
     let (status, body) = send(&app, "GET", "/v1/cloud/auth/capabilities", &alex, None).await;
