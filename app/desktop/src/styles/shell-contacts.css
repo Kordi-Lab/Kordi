@@ -297,7 +297,7 @@
   width: 14px;
   height: 14px;
   border-radius: 4px;
-  background: #fff;
+  background: var(--app-main-bg);
   color: var(--app-accent);
   box-shadow: 0 0 0 1.5px var(--app-main-bg);
 }
