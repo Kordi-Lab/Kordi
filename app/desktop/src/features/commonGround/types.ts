@@ -116,7 +116,8 @@ export type CgBuildRequest = {
 /** The server sends `relationship` beside `person`; the client folds it into `person`. */
 export type CgPersonCard = { person: CgPerson; card: CgTopicLists; relationship?: CgRelationship };
 
-export type CgPairCode = { code: string; expiresAt: string };
+/** A pairing code to show, valid until `expiresAt` and once; `profileId` is the profile it shares. */
+export type CgPairCode = { code: string; expiresAt: string; profileId?: string };
 
 /** `profileId` is the viewer's profile the match was found through. */
 export type CgRecentEntry = {

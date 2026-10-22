@@ -8,12 +8,13 @@ import { CgNotice, CgProgress } from './parts';
 import { PersonScreen } from './PersonScreen';
 import { ResultsScreen } from './ResultsScreen';
 import { currentProfile, hasAnyCard, type CommonGroundStore } from './store';
-import { useCommonGround } from './useCommonGround';
+import { useCommonGround, usePairLinkRedeem } from './useCommonGround';
 import { WalletShell } from './WalletShell';
 
 /** Common ground in the Contacts detail pane. Navigation lives in the store. */
 export function CommonGroundPage({ store, host }: { store: CommonGroundStore; host: CgHost }) {
   const state = useCommonGround(store);
+  usePairLinkRedeem(store, state.loaded);
   const screen = state.stack[state.stack.length - 1];
   const props = { state, store, host };
   let body;

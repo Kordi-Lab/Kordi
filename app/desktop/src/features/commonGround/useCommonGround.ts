@@ -1,10 +1,12 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { cloudApiBaseUrl } from '@/features/cloud/cloudApiEnvironment';
 import { CLOUD_SESSION_CHANGED_EVENT, CLOUD_SESSION_SIGNED_OUT_EVENT } from '@/features/cloud/session';
 import { createCommonGroundClient } from './client';
+import { COMMON_GROUND_PAIR_LINK_EVENT, takePendingPairLink } from './pairLink';
 import { localProfileMemory } from './profiles';
 import { CommonGroundStore } from './store';
+import { redeemPairLink } from './storePairing';
 import { syncOnVisible } from './syncOnVisible';
 
 const IDLE_CHECK_MS = 1_000;
@@ -54,4 +56,19 @@ export function useCommonGround(store: CommonGroundStore) {
     };
   }, [store]);
   return state;
+}
+
+/** Redeems the code from a pairing link once the page has loaded, then opens the match. */
+export function usePairLinkRedeem(store: CommonGroundStore, loaded: boolean) {
+  const [arrivals, setArrivals] = useState(0);
+  useEffect(() => {
+    const onPairLink = () => setArrivals((count) => count + 1);
+    window.addEventListener(COMMON_GROUND_PAIR_LINK_EVENT, onPairLink);
+    return () => window.removeEventListener(COMMON_GROUND_PAIR_LINK_EVENT, onPairLink);
+  }, []);
+  useEffect(() => {
+    if (!loaded) return;
+    const code = takePendingPairLink();
+    if (code) void redeemPairLink(store, code);
+  }, [store, loaded, arrivals]);
 }

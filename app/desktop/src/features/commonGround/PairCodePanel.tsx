@@ -1,8 +1,9 @@
 import { useCallback, useRef, useState } from 'react';
-import { Hash } from 'lucide-react';
+import { ChevronRight, Hash } from 'lucide-react';
 
 import { profileDesign } from './cardDesign';
 import { CreateCodePopover, type CgShareChoice } from './CreateCodePopover';
+import { PairPopover } from './PairPopover';
 import { roomTitle } from './format';
 import { CardSwatch } from './ProfileCard';
 import { kindLabel, shareableProfiles } from './profiles';
@@ -47,6 +48,43 @@ function Digits({ disabled, onCode }: { disabled: boolean; onCode: (code: string
         />
       ))}
     </span>
+  );
+}
+
+/** Two phones side by side, for Pair. */
+function TwoPhones() {
+  return (
+    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+      <rect x="1.8" y="2" width="5" height="11" rx="1.3" />
+      <rect x="9.2" y="3" width="5" height="11" rx="1.3" />
+      <path d="M3.8 11h1M11.2 12h1" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/**
+ * Pair, one to one: opens your code and a field for theirs, sharing the selected card. A card
+ * without topics yet opens Build first.
+ */
+function PairRow({ state, store }: { state: CgState; store: CommonGroundStore }) {
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  const canShare = state.profilesOn ? Boolean(currentProfile(state)?.hasCard) : Boolean(state.owner?.card);
+  return (
+    <>
+      <button
+        type="button"
+        className="cg-pair-row cg-pair-open"
+        data-cg-pair="true"
+        aria-expanded={open}
+        onClick={() => (canShare ? setOpen((value) => !value) : store.open({ name: 'build' }))}
+      >
+        <span className="cg-pair-icon" aria-hidden="true"><TwoPhones /></span>
+        <span className="cg-pair-title">Pair</span>
+        <ChevronRight className="cg-mrow-chev" aria-hidden="true" />
+      </button>
+      {open ? <PairPopover store={store} onClose={close} /> : null}
+    </>
   );
 }
 
@@ -97,7 +135,8 @@ export function PairCodePanel({ state, store }: { state: CgState; store: CommonG
   const error = lookup?.status === 'missing' ? 'Room not found' : lookup?.status === 'error' ? lookup.message : null;
   return (
     <div className="cg-panel cg-paircode">
-      <div className="cg-pair-row">
+      <PairRow state={state} store={store} />
+      <div className="cg-pair-row is-code">
         <span className="cg-pair-icon" aria-hidden="true"><Hash className="h-[15px] w-[15px]" /></span>
         <span className="cg-pair-title">Pair code</span>
         <Digits key={digitsKey} disabled={!canCreate || busy} onCode={onCode} />

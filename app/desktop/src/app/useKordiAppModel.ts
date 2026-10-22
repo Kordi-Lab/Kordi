@@ -7,6 +7,7 @@ import { useCloudCalls } from '@/features/cloud/useCloudCalls';
 import { useCallback, useEffect, useMemo } from 'react';
 import { useAcceptedCloudGroupNavigation } from '@/app/useAcceptedCloudGroupNavigation';
 import { chatNavigationIndex } from '@/features/chat/chatNavigation';
+import { useCommonGroundPairLinks } from '@/features/commonGround/useCommonGroundPairLinks';
 
 export function useKordiAppModel({
   cloudSessionOverride,
@@ -42,6 +43,8 @@ export function useKordiAppModel({
     setActiveNavigation: foundation.navigation.setActiveNav,
     setDesktopChatError: foundation.chat.setDesktopChatError,
   });
+  // A `kordi://common-ground/pair/<code>` link opens Contacts, where Grounding redeems it.
+  useCommonGroundPairLinks(() => foundation.navigation.setActiveNav('contacts'));
   const actions = useKordiAppActions({ foundation, workspace });
   const cloudCalls = useCloudCalls({
     account: foundation.environment.cloudSession.account,
