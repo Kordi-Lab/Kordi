@@ -37,6 +37,7 @@ export function UnbuiltCardRow({ state, store }: { state: CgState; store: Common
               name={profile.name}
               focus={profile.focus ?? ''}
               kind={profile.kind}
+              withFocus={false}
               onCancel={() => setRenaming(false)}
               onSave={(nextName, nextFocus) => {
                 setRenaming(false);
@@ -44,6 +45,7 @@ export function UnbuiltCardRow({ state, store }: { state: CgState; store: Common
                 if (Object.keys(patch).length) void store.updateProfile(profile.profileId, patch);
               }}
             />
+            <span className="cg-mrow-sub">{building ? 'Building' : 'Not built'}</span>
           </span>
         ) : (
           <>
