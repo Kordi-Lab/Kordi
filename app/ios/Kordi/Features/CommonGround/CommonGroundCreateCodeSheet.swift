@@ -1,12 +1,14 @@
 import SwiftUI
 
 /// Create a code: a meetup name and the card to share, then the new
-/// four-digit code, large, with Share this code.
+/// four-digit code, large, with Enter room and Share this code.
 struct CommonGroundCreateCodeSheet: View {
     @EnvironmentObject private var model: CommonGroundModel
     @Environment(\.dismiss) private var dismiss
     /// The card picked first: the shared one, or the card being turned over.
     let initialProfileID: String?
+    /// Opens the new room's page; the presenter closes the sheet first.
+    let onEnter: (CommonGroundRoom) -> Void
     @State private var name = ""
     @State private var selected: String?
     @State private var created: CommonGroundRoom?
@@ -115,11 +117,17 @@ struct CommonGroundCreateCodeSheet: View {
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)
             }
+            Button("Enter room") { onEnter(room) }
+                .buttonStyle(CommonGroundPrimaryButtonStyle())
+                .padding(.top, 22)
             ShareLink(item: room.code, subject: Text(room.title), message: Text(room.title)) {
                 Text("Share this code")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
             }
-            .buttonStyle(CommonGroundPrimaryButtonStyle())
-            .padding(.top, 22)
+            .buttonStyle(.plain)
+            .padding(.top, 10)
         }
         .frame(maxWidth: .infinity)
     }
