@@ -46,6 +46,11 @@ use crate::{auth::routes::cloud_session_middleware, server::ServerState};
 pub(crate) use people::{profile_common_ground, ProfileCommonGround};
 pub use runs::{complete, fail, RUN_PREFIX};
 
+/// Server-only message kind that clients show as a notice from "System":
+/// group intros, joined lines and Meet cards. Clients cannot post it; see
+/// `validate_message_request`.
+pub(crate) const SYSTEM_NOTICE_KIND: &str = "system-notice";
+
 /// Advertised as `commonGroundVersion` in the auth capabilities.
 /// Version 2 adds profiles.
 pub const COMMON_GROUND_VERSION: u32 = 2;

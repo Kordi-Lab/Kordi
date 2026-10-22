@@ -138,18 +138,12 @@ pub(in crate::common_ground) async fn start_group(
         Ok(created) => created,
         Err(response) => return *response,
     };
-    // A group started here gets PiP like any other new group, and PiP
-    // opens it by introducing everyone.
+    // System, not PiP, sits in a group started here and posts its notices:
+    // the intro, written on PiP's key, and a line for each person who joins.
+    if let Err(error) = crate::system_account::join(pool, created.conversation_id).await {
+        eprintln!("[common-ground] Could not add System to a new group: {error}");
+    }
     if let Some(pip) = state.pip() {
-        if let Err(error) = crate::pip::membership::join_conversation(
-            pool,
-            &pip.config().account_id,
-            created.conversation_id,
-        )
-        .await
-        {
-            eprintln!("[pip] Could not join a new conversation: {error}");
-        }
         let intro = intro::NewIntro {
             room_id,
             group_space_id: &created.group_space_id,
