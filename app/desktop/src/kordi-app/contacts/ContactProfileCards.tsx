@@ -157,9 +157,9 @@ export function CommonGroundCard({ card }: { card: NonNullable<CloudContactProfi
         {COMMON_GROUND_ROWS.filter((row) => card[row.key].length > 0).map((row) => (
           <div key={row.key} className="flex items-start gap-2.5">
             <span className="app-contacts-muted w-[86px] shrink-0 text-[12px] leading-6">{row.label}</span>
-            <span className="flex min-w-0 flex-wrap gap-1.5">
+            <span className="flex min-w-0 flex-1 flex-wrap gap-1.5">
               {card[row.key].map((topic) => (
-                <span key={topic} className="app-contacts-chip rounded-full px-2.5 py-1 text-[12px] leading-4">{topic}</span>
+                <span key={topic} className="app-contacts-chip rounded-full px-2.5 py-1 text-[12px] leading-4" title={topic}>{topic}</span>
               ))}
             </span>
           </div>
