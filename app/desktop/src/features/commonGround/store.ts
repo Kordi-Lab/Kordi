@@ -6,14 +6,15 @@
 import { CommonGroundError, commonGroundErrorCode, commonGroundErrorMessage, isRouteMissing, type CommonGroundClient } from './client';
 import type { CgProfileMemory } from './profiles';
 import * as profileOps from './storeProfiles';
+import * as roomOps from './storeRooms';
 import type {
-  CgBuildRequest, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPersonCard, CgProfile, CgProfileInput, CgRecentEntry,
+  CgBuildRequest, CgCreateRoomInput, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPersonCard, CgProfile, CgProfileInput, CgRecentEntry,
   CgRelationship, CgResults, CgRoom, CgRoomSummary, CgTopicLists,
 } from './types';
 
 export type CgScreen =
   | { name: 'home' }
-  | { name: 'build' }
+  | { name: 'build'; memory?: boolean }
   | { name: 'card' }
   | { name: 'lobby'; code: string }
   | { name: 'results'; code: string }
@@ -357,6 +358,11 @@ export class CommonGroundStore {
     this.set({ results: { ...this.state.results, [code]: results } });
     this.set({ stack: [...this.state.stack.slice(0, -1), { name: 'results', code }] });
   }
+
+  /** The room behind four typed digits, before joining it. */
+  lookUpCode = (code: string) => roomOps.lookUpCode(this, code);
+  /** Opens a meetup on a new code, sharing the given profile. */
+  createRoom = (input: CgCreateRoomInput) => roomOps.createRoom(this, input);
 
   /** Opens Results for a room from the Rooms list. */
   openRoom(code: string) {

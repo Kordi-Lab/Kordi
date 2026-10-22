@@ -6,8 +6,8 @@ import { cloudApiBaseUrl } from '@/features/cloud/cloudApiEnvironment';
 import { cloudFetchImpl } from '@/features/cloud/cloudTransport';
 import { loadSession } from '@/features/cloud/session';
 import type {
-  CgBuildRequest, CgCreatedGroup, CgGroup, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPairCode, CgPerson,
-  CgPersonCard, CgProfile, CgProfileInput, CgRecentEntry, CgRelationship, CgResults, CgRoom, CgRoomSummary, CgTopicLists,
+  CgBuildRequest, CgCreatedGroup, CgCreateRoomInput, CgGroup, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPairCode, CgPerson,
+  CgPersonCard, CgProfile, CgProfileInput, CgRecentEntry, CgRelationship, CgResults, CgRoom, CgRoomPreview, CgRoomSummary, CgTopicLists,
 } from './types';
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -181,6 +181,17 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
     },
     room: (code: string) => data<CgRoom>('GET', cg(`rooms/${enc(code)}`)),
     joinRoom: (code: string, input: CgJoinInput = {}) => data<CgRoom>('POST', cg(`rooms/${enc(code)}/join`), joinBody(input)),
+    /** Opens a meetup on a free code and joins it, sharing `profileId`. */
+    createRoom: (input: CgCreateRoomInput) => data<CgRoom>('POST', cg('rooms'), {
+      name: input.name.replace(/\s+/g, ' ').trim(),
+      kind: input.kind,
+      ...(input.profileId ? { profileId: input.profileId } : {}),
+    }),
+    /** The room behind a typed code, before joining it. */
+    previewRoom: async (code: string): Promise<CgRoomPreview> => {
+      const room = await data<Partial<CgRoomPreview>>('GET', cg(`rooms/${enc(code)}/preview`));
+      return { code, name: room?.name ?? '', kind: room?.kind ?? null, memberCount: typeof room?.memberCount === 'number' ? room.memberCount : null };
+    },
     /** Shares another of your profiles in an open room. */
     switchRoomProfile: (code: string, profileId: string) => data<CgRoom>('POST', cg(`rooms/${enc(code)}/profile`), { profileId }),
     leaveRoom: (code: string) => data<null>('POST', cg(`rooms/${enc(code)}/leave`)),

@@ -53,11 +53,17 @@ export const CG_TOPIC_SECTIONS: Array<[CgTopicKey, string]> = [
   ['lookingFor', 'Looking for'],
 ];
 
+/** One item behind a topic, as the owner's view sends it; `date` is `YYYY-MM-DD` when known. */
+export type CgEvidence = { source: string; title: string; date: string | null; url: string | null; snippet: string };
+
+/** The references behind one topic, newest first, and when it was first and last seen. */
+export type CgTopicInfo = { refs: string[]; firstSeen: string | null; lastSeen: string | null };
+
 export type CgOwnCard = CgTopicLists & {
   hidden: string[];
   revision: number;
   builtAt: string | null;
-  profile?: { latest?: string[] } | null;
+  profile?: { latest?: string[]; topics?: Record<string, CgTopicInfo>; evidence?: Record<string, CgEvidence> } | null;
 };
 
 export type CgBuildStatus = 'idle' | 'building' | 'failed';
@@ -105,6 +111,12 @@ export type CgRecentEntry = {
 
 /** What a join sends: the room name and kind apply only when this join opens the room. */
 export type CgJoinInput = { name?: string; kind?: CgProfileKind; profileId?: string };
+
+/** `POST rooms`: opens a meetup on a free code; the reply is the room with its new `code`. */
+export type CgCreateRoomInput = { name: string; kind: CgProfileKind; profileId?: string };
+
+/** `GET rooms/:code/preview`: an open room before joining it. Null fields are unknown (older servers). */
+export type CgRoomPreview = { code: string; name: string; kind: CgProfileKind | null; memberCount: number | null };
 
 export type CgGroup = {
   groupSpaceId: string;

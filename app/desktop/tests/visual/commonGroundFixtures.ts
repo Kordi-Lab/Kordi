@@ -18,10 +18,11 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
   const person = (accountId: string, name: string, relationship: CgRelationship = stranger, profile = workTag(accountId)): CgPerson => (
     { accountId, name, avatarUrl: initialsAvatar(name, theme), hasCard: true, relationship, profile }
   );
-  // Two profiles: Work with a card, Health without one yet.
+  // Three profiles: Work with a card, a custom Workshops card, Health without one yet.
   const profiles: CgProfile[] = [
-    { profileId: 'cgp_work', kind: 'work', name: 'Work', focus: null, position: 0, hasCard: true, sharing: true, builtAt: '2026-10-19T09:00:00Z', topicCount: 7 },
-    { profileId: 'cgp_health', kind: 'health', name: 'Health', focus: 'Running and sleep', position: 1, hasCard: false, sharing: true, builtAt: null, topicCount: 0 },
+    { profileId: 'cgp_work', kind: 'work', name: 'Work', focus: 'Memory for long-horizon agents', position: 0, hasCard: true, sharing: true, builtAt: '2026-10-19T09:00:00Z', topicCount: 7 },
+    { profileId: 'cgp_ws', kind: 'custom', name: 'Workshops', focus: 'Poster on memory benchmarks', position: 1, hasCard: true, sharing: true, builtAt: '2026-10-18T09:00:00Z', topicCount: 3 },
+    { profileId: 'cgp_health', kind: 'health', name: 'Health', focus: 'Running and sleep', position: 2, hasCard: false, sharing: true, builtAt: null, topicCount: 0 },
   ];
   const self = { accountId: 'acct_you', name: 'Alex Rivera', avatarUrl: initialsAvatar('Alex Rivera', theme) };
   const maya = person('acct_maya', 'Maya Chen', { ...stranger, contact: true, conversationId: 'dm_maya' });
@@ -36,6 +37,19 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
     hidden: ['User studies'],
     revision: 4,
     builtAt: '2026-10-19T09:00:00Z',
+    profile: {
+      topics: {
+        'Agent memory': { refs: ['e1', 'e2'], firstSeen: '2026-10-03', lastSeen: '2026-10-12' },
+        'Eval design': { refs: ['e3'], firstSeen: '2026-10-09', lastSeen: '2026-10-09' },
+        Retrieval: { refs: ['e4'], firstSeen: '2026-10-15', lastSeen: '2026-10-15' },
+      },
+      evidence: {
+        e1: { source: 'Memory', title: 'Saved memory', date: '2026-10-12', url: null, snippet: 'Started the long-horizon memory draft with Hana.' },
+        e2: { source: 'Papers', title: 'Agent memory survey.pdf', date: '2026-10-03', url: null, snippet: 'Section 4 compares episodic and semantic stores.' },
+        e3: { source: 'Calendar', title: 'Eval reading group', date: '2026-10-09', url: null, snippet: 'Weekly, with the evaluation group.' },
+        e4: { source: 'Calendar', title: 'Retrieval sync with Rafa', date: '2026-10-15', url: null, snippet: 'Agenda: chunking and reranking.' },
+      },
+    },
   };
   const owner = { card, sharing: true, build: { status: 'idle', errorCode: null }, profile: { profileId: 'cgp_work', kind: 'work', name: 'Work', focus: null } };
   const healthOwner = { card: null, sharing: true, build: { status: 'idle', errorCode: null }, profile: { profileId: 'cgp_health', kind: 'health', name: 'Health', focus: 'Running and sleep' } };
@@ -97,5 +111,7 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
     { code: '4821', name: 'Poster session', kind: 'work', profileId: 'cgp_work', open: true, memberCount: 5, joinedAt: '2026-10-20T09:00:00Z', lastActivityAt: '2026-10-20T09:40:00Z', themeCount: 3 },
     { code: '1907', name: 'Reading club', kind: null, profileId: 'cgp_work', open: false, memberCount: 3, joinedAt: '2026-10-14T18:00:00Z', lastActivityAt: '2026-10-14T19:30:00Z', themeCount: 2 },
   ] };
-  return { self, owner, healthOwner, profiles, room, rooms, results, match, recent, connectors, agentFiles };
+  // Code 5160 previews a meetup that suggests the custom Workshops card.
+  const preview = { code: '5160', name: 'Poster session 2026', kind: 'custom', memberCount: 14 };
+  return { self, owner, healthOwner, profiles, room, rooms, results, match, recent, connectors, agentFiles, preview };
 }

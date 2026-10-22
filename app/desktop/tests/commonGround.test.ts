@@ -167,7 +167,8 @@ test('home shows pair digits and no text pair code', async () => {
   const host = { self: { accountId: 'me', name: 'Me', avatarUrl: null } } as unknown as CgHost;
   const html = renderToStaticMarkup(createElement(HomeScreen, { state: store.getSnapshot(), store, host }));
   assert.match(html, /Pair code/);
-  assert.match(html, />Join</);
+  assert.match(html, /aria-label="Digit 4"/);
+  assert.match(html, />Create</);
   assert.doesNotMatch(html, /Their code|New code|Room code/);
   assert.equal('pairCode' in store.getSnapshot(), false);
 });

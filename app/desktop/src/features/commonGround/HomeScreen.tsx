@@ -1,152 +1,122 @@
-import { useRef, useState } from 'react';
-import { ChevronRight, Hash, Sparkles, Users } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 
+import { profileDesign, type CgCardDesign } from './cardDesign';
 import { peopleCount, roomTitle, topicCount } from './format';
 import type { CgHost } from './host';
-import { CgAvatar, CgButton, CgGroup, CgHero, CgIcon, CgNotice, CgRow, CgScore, CgSection, CgTag } from './parts';
-import { buildTitle, personTitle, sharePreselect } from './profiles';
-import { ProfileSwitcher } from './ProfileSwitcher';
-import { ShareProfileDialog } from './ShareProfileDialog';
+import { PairCodePanel } from './PairCodePanel';
+import { CgAvatar, CgNotice, CgScore, CgTag } from './parts';
+import { CardGlyph, CardSwatch } from './ProfileCard';
+import { personTitle } from './profiles';
 import { currentProfile, hasAnyCard, type CgState, type CommonGroundStore } from './store';
-import { CG_TOPIC_SECTIONS, type CgOwnCard } from './types';
+import { CG_TOPIC_SECTIONS, type CgRoomSummary } from './types';
 
-export function RoomDigits({ busy, onJoin }: { busy: boolean; onJoin: (code: string) => Promise<boolean> }) {
-  const [digits, setDigits] = useState(['', '', '', '']);
-  const refs = useRef<Array<HTMLInputElement | null>>([]);
-  const code = digits.join('');
-  const submit = async () => {
-    if (code.length !== 4 || busy) return;
-    if (!(await onJoin(code))) {
-      setDigits(['', '', '', '']);
-      refs.current[0]?.focus();
-    }
-  };
+/** The first run: one suggested card, or the current profile, with Build. */
+export function EmptyWallet({ state, store }: { state: CgState; store: CommonGroundStore }) {
+  const profile = currentProfile(state);
+  const design: CgCardDesign = profile ? profileDesign(profile) : 'work';
   return (
-    <form className="cg-digits-row" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-      <span className="cg-icon" aria-hidden="true"><Hash className="h-4 w-4" /></span>
-      <span className="cg-row-text">
-        <span className="cg-row-title">Pair code</span>
-        <span className="cg-digits">
-          {digits.map((digit, index) => (
-            <input
-              key={index}
-              ref={(element) => { refs.current[index] = element; }}
-              value={digit}
-              inputMode="numeric"
-              autoComplete="off"
-              maxLength={1}
-              aria-label={`Digit ${index + 1}`}
-              onChange={(event) => {
-                const value = event.target.value.replace(/\D/g, '').slice(-1);
-                setDigits((current) => current.map((item, i) => (i === index ? value : item)));
-                if (value) refs.current[index + 1]?.focus();
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Backspace' && !digit) refs.current[index - 1]?.focus();
-              }}
-            />
-          ))}
-        </span>
+    <div className="cg-empty">
+      <span className="cg-empty-card" data-design={design}>
+        <span className="cg-card-glyph"><CardGlyph design={design} /></span>
       </span>
-      <CgButton type="submit" disabled={code.length !== 4 || busy}>Join</CgButton>
-    </form>
+      <h2>{profile?.name ?? 'Work'}</h2>
+      <p>{profile?.focus || 'Your agent writes it'}</p>
+      <button type="button" className="cg-mbtn is-primary" onClick={() => store.open({ name: 'build' })}>Build</button>
+      <CgNotice text={state.notice} />
+    </div>
   );
 }
 
-function CardSummary({ card, store }: { card: CgOwnCard; store: CommonGroundStore }) {
-  const topics = CG_TOPIC_SECTIONS.flatMap(([key]) => card[key]).filter((topic) => !card.hidden.includes(topic));
+function RoomRow({ room, state, store }: { room: CgRoomSummary; state: CgState; store: CommonGroundStore }) {
+  const shared = state.profiles.find((profile) => profile.profileId === room.profileId);
+  const sub = [shared ? `Sharing ${shared.name}` : '', peopleCount(room.memberCount), room.themeCount ? topicCount(room.themeCount) : '', room.open ? '' : 'Closed'];
   return (
-    <button type="button" className="cg-card-summary" onClick={() => store.open({ name: 'card' })}>
-      <span className="cg-card-summary-head">
-        <span>Your card</span>
-        <ChevronRight className="h-4 w-4" aria-hidden="true" />
+    <button type="button" className={room.open ? 'cg-mrow' : 'cg-mrow is-closed'} onClick={() => store.openRoom(room.code)}>
+      {shared ? <CardSwatch design={profileDesign(shared)} /> : <CardSwatch design={room.kind === 'custom' || !room.kind ? 'custom' : room.kind} empty />}
+      <span className="cg-mrow-text">
+        <span className="cg-mrow-title">{roomTitle(room.code, room.name)}</span>
+        <span className="cg-mrow-sub">{sub.filter(Boolean).join(' · ')}</span>
       </span>
-      <span className="cg-tags is-flat">
-        {topics.slice(0, 6).map((topic) => <CgTag key={topic} topic={topic} small />)}
-      </span>
+      {room.open ? <ChevronRight className="cg-mrow-chev" aria-hidden="true" /> : null}
     </button>
   );
 }
 
-export function HomeScreen({ state, store, host }: { state: CgState; store: CommonGroundStore; host: CgHost }) {
-  const [joinCode, setJoinCode] = useState<string | null>(null);
+/** Your card: the swatch, the name and its topics; the chevron opens the card page, or Build when it has none. */
+function YourCard({ state, store }: { state: CgState; store: CommonGroundStore }) {
   const card = state.owner?.card;
-  if (!card && !hasAnyCard(state)) return null;
   const profile = currentProfile(state);
-  const asksProfile = state.profilesOn && state.profiles.length > 1;
-  const profileName = (profileId: string | null | undefined) => state.profiles.find((item) => item.profileId === profileId)?.name ?? '';
+  const design: CgCardDesign = profile ? profileDesign(profile) : 'work';
+  const name = profile?.name ?? 'Your card';
+  if (!card) {
+    return (
+      <div className="cg-panel">
+        <div className="cg-mrow">
+          <CardSwatch design={design} />
+          <span className="cg-mrow-text">
+            <span className="cg-mrow-title">{name}</span>
+            <span className="cg-mrow-sub">{state.owner?.build.status === 'building' ? 'Building' : 'Not built'}</span>
+          </span>
+          {state.owner?.build.status === 'building' ? null
+            : <button type="button" className="cg-mbtn is-tint" onClick={() => store.open({ name: 'build' })}>Build</button>}
+        </div>
+      </div>
+    );
+  }
+  const topics = CG_TOPIC_SECTIONS.flatMap(([key]) => card[key]);
   return (
-    <>
-      <CgHero avatar={<CgAvatar person={host.self} size={72} isSelf />} title="Grounding" line="Find what you share" />
-      {state.profilesOn && state.profiles.length ? <ProfileSwitcher state={state} store={store} /> : null}
-      <CgSection className={state.profilesOn ? 'is-tight' : undefined}>
-        <CgGroup>
-          {card ? <CardSummary card={card} store={store} /> : (
-            <CgRow
-              lead={<CgIcon><Sparkles className="h-4 w-4" /></CgIcon>}
-              title={buildTitle(profile)}
-              sub={profile?.focus || 'Your agent writes it'}
-              trailing={<CgButton onClick={() => store.open({ name: 'build' })}>Build</CgButton>}
-            />
-          )}
-        </CgGroup>
-      </CgSection>
-      <CgSection title="Pair">
-        <CgGroup>
-          <RoomDigits
-            busy={state.busy === 'join'}
-            onJoin={async (code) => {
-              if (!asksProfile) return store.joinRoom(code);
-              setJoinCode(code);
-              return true;
-            }}
-          />
-        </CgGroup>
-      </CgSection>
-      {joinCode ? (
-        <ShareProfileDialog
-          profiles={state.profiles}
-          selected={sharePreselect(state.profiles, { current: state.profileId })}
-          joining
-          busy={state.busy === 'join'}
-          notice={state.notice}
-          onCancel={() => setJoinCode(null)}
-          onShare={(input) => void store.joinRoom(joinCode, input).then((ok) => { if (ok) setJoinCode(null); })}
-        />
-      ) : null}
+    <div className="cg-panel cg-yours">
+      <button type="button" className="cg-mrow" aria-label={`Open ${name}`} onClick={() => store.open({ name: 'card' })}>
+        <CardSwatch design={design} />
+        <span className="cg-mrow-text"><span className="cg-mrow-title">{name}</span></span>
+        <ChevronRight className="cg-mrow-chev" aria-hidden="true" />
+      </button>
+      <div className="cg-yours-tags">
+        {topics.map((topic) => <CgTag key={topic} topic={topic} muted={card.hidden.includes(topic)} small />)}
+      </div>
+    </div>
+  );
+}
+
+export function HomeScreen({ state, store }: { state: CgState; store: CommonGroundStore; host?: CgHost }) {
+  if (!hasAnyCard(state)) return <EmptyWallet state={state} store={store} />;
+  return (
+    <div className="cg-home">
+      <PairCodePanel state={state} store={store} />
       <CgNotice text={state.notice} />
       {state.support.rooms && state.roomList.length ? (
-        <CgSection title="Rooms">
-          <CgGroup>
-            {state.roomList.map((room) => (
-              <CgRow
-                key={room.code}
-                lead={<span className="cg-icon" aria-hidden="true"><Users className="h-4 w-4" /></span>}
-                title={roomTitle(room.code, room.name)}
-                sub={[asksProfile ? profileName(room.profileId) : '', peopleCount(room.memberCount), topicCount(room.themeCount), room.open ? '' : 'Closed']
-                  .filter(Boolean).join(' · ')}
-                onClick={() => store.openRoom(room.code)}
-              />
-            ))}
-          </CgGroup>
-        </CgSection>
+        <>
+          <h2 className="cg-msec">Rooms</h2>
+          <div className="cg-panel">
+            {state.roomList.map((room) => <RoomRow key={room.code} room={room} state={state} store={store} />)}
+          </div>
+        </>
       ) : null}
       {state.recent.length ? (
-        <CgSection title="Recent">
-          <CgGroup>
+        <>
+          <h2 className="cg-msec">Recent</h2>
+          <div className="cg-panel">
             {state.recent.map((entry) => (
-              <CgRow
+              <button
                 key={`${entry.person.accountId}:${entry.person.profile?.profileId ?? ''}`}
-                lead={<CgAvatar person={entry.person} size={36} />}
-                title={personTitle(entry.person)}
-                sub={entry.headline ?? undefined}
-                trailing={<CgScore score={entry.score} />}
+                type="button"
+                className="cg-mrow"
                 onClick={() => store.open({ name: 'match', accountId: entry.person.accountId, profileId: entry.profileId })}
-              />
+              >
+                <CgAvatar person={entry.person} size={30} />
+                <span className="cg-mrow-text">
+                  <span className="cg-mrow-title">{personTitle(entry.person)}</span>
+                  {entry.headline ? <span className="cg-mrow-sub">{entry.headline}</span> : null}
+                </span>
+                <CgScore score={entry.score} />
+                <ChevronRight className="cg-mrow-chev" aria-hidden="true" />
+              </button>
             ))}
-          </CgGroup>
-        </CgSection>
+          </div>
+        </>
       ) : null}
-    </>
+      <h2 className="cg-msec">Your card</h2>
+      <YourCard state={state} store={store} />
+    </div>
   );
 }

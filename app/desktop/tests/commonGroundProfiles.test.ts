@@ -121,7 +121,7 @@ test('profiles: the Share sheet preselects the room kind, and people show a prof
   assert.equal(personTitle({ name: 'Nadia' }), 'Nadia');
 });
 
-test('profiles: Home shows the switcher and the Build row; version 1 shows neither', async () => {
+test('profiles: Home shows Your card with a Build row for an unbuilt profile; version 1 shows no profiles', async () => {
   const { client } = mockServer({
     'GET profiles': { status: 200, body: { profiles: [work, health] } },
     'GET card?profile=cgp_health': { status: 200, body: owner({ card: null }) },
@@ -131,17 +131,18 @@ test('profiles: Home shows the switcher and the Build row; version 1 shows neith
   const store = new CommonGroundStore(client, { profiles: true, memory: memory('cgp_health').store });
   await store.loadHome();
   const html = renderToStaticMarkup(createElement(HomeScreen, { state: store.getSnapshot(), store, host: selfHost }));
-  assert.match(html, /aria-label="Profiles"/);
-  assert.match(html, />Work</);
-  assert.match(html, /Build your Health profile/);
-  assert.match(html, /aria-label="New profile"/);
+  assert.match(html, /Your card/);
+  assert.match(html, />Health</);
+  assert.match(html, /Not built/);
+  assert.match(html, />Build</);
+  assert.doesNotMatch(html, /aria-label="Profiles"|New profile/);
   const { calls, client: oldClient } = mockServer({ 'GET card': { status: 200, body: owner() }, 'GET recent': { status: 200, body: { people: [] } } });
   const old = new CommonGroundStore(oldClient);
   await old.loadHome();
   await tick();
   assert.equal(calls.some((call) => call.url.includes('profiles') || call.url.includes('?profile=')), false);
   const oldHtml = renderToStaticMarkup(createElement(HomeScreen, { state: old.getSnapshot(), store: old, host: selfHost }));
-  assert.doesNotMatch(oldHtml, /Profiles|New profile|Sharing:/);
+  assert.doesNotMatch(oldHtml, /Profiles|New card|Sharing:/);
   const missing = new CommonGroundStore(mockServer({ 'GET card': { status: 200, body: owner() } }).client, { profiles: true });
   await missing.loadHome();
   assert.equal(missing.getSnapshot().profilesOn, false);
