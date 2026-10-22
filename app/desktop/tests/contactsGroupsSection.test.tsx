@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { contactsGroupRows } from '../src/kordi-app/contacts/contactsGroupRows';
+import {
+  contactsGroupRows,
+  groupInitial,
+  groupTileTone,
+  visibleGroupRows,
+} from '../src/kordi-app/contacts/contactsGroupRows';
 import { isGroundingGroupSpace } from '../src/kordi-app/contacts/groundingGroup';
 import type { ParticipantSpaceViewModel } from '../src/kordi-app/types';
 import { renderContactsPage } from './helpers/contactsPageFixtures';
@@ -44,8 +49,42 @@ test('contacts page shows a Groups section with people count and activity time',
   const markup = renderContactsPage([], { groupSpaces: [space()], onOpenGroup: () => undefined });
   assert.match(markup, /aria-label="Groups"/);
   assert.match(markup, />Poster session</);
-  assert.match(markup, />2 people</);
-  assert.match(markup, />09:41</);
+  assert.match(markup, />2 people · 09:41</);
+  assert.doesNotMatch(markup, /title="Poster session"/);
+  assert.match(markup, /class="app-group-tile[^"]*" data-tone="[1-6]" aria-hidden="true">P</);
+  const solo = space({ participants: [{ id: 'me', name: 'Me', kind: 'human', role: 'self' }] as ParticipantSpaceViewModel['participants'] });
+  assert.match(renderContactsPage([], { groupSpaces: [solo], onOpenGroup: () => undefined }), />1 person · 09:41</);
+});
+
+test('a group with a custom avatar shows the image instead of the initial tile', () => {
+  const markup = renderContactsPage([], {
+    groupSpaces: [space({ groupAvatar: { imageUrl: 'https://example.test/a.png' } as ParticipantSpaceViewModel['groupAvatar'] })],
+    onOpenGroup: () => undefined,
+  });
+  assert.match(markup, /<img src="https:\/\/example.test\/a.png"/);
+  assert.doesNotMatch(markup, /data-tone=/);
+});
+
+test('group tiles pick a stable tone and initial', () => {
+  assert.equal(groupTileTone('group:one'), groupTileTone('group:one'));
+  for (const id of ['a', 'group:two', 'group:three']) assert.ok(groupTileTone(id) >= 1 && groupTileTone(id) <= 6);
+  assert.equal(groupInitial('  poster'), 'P');
+  assert.equal(groupInitial(''), '#');
+});
+
+test('groups show five rows and a Show all button unless searching', () => {
+  const rows = Array.from({ length: 7 }, (_, index) => index);
+  assert.equal(visibleGroupRows(rows, '', false).length, 5);
+  assert.equal(visibleGroupRows(rows, '', true).length, 7);
+  assert.equal(visibleGroupRows(rows, 'p', false).length, 7);
+  const spaces = rows.map((index) => space({ id: `group:${index}`, title: `Poster ${index}`, updatedAtMs: index }));
+  const markup = renderContactsPage([], { groupSpaces: spaces, onOpenGroup: () => undefined });
+  assert.equal(markup.match(/app-group-row/g)?.length, 5);
+  assert.match(markup, />Show all 7</);
+  const searched = renderContactsPage([], { groupSpaces: spaces, onOpenGroup: () => undefined, contactSearch: 'poster' });
+  assert.equal(searched.match(/app-group-row/g)?.length, 7);
+  assert.doesNotMatch(searched, /Show all/);
+  assert.doesNotMatch(renderContactsPage([], { groupSpaces: spaces.slice(0, 5), onOpenGroup: () => undefined }), /Show all/);
 });
 
 test('contacts page hides Groups without groups or search matches', () => {
@@ -63,7 +102,7 @@ function groundingSessions(origin: unknown): ParticipantSpaceViewModel['sessions
   ] as unknown as ParticipantSpaceViewModel['sessions'];
 }
 
-test('only groups the server marked as Grounding get the hug badge', () => {
+test('only groups the server marked as Grounding get the hug icon', () => {
   const grounding = space({ id: 'group:grounding', title: 'Meetup', sessions: groundingSessions('grounding') });
   assert.equal(isGroundingGroupSpace(grounding), true);
   assert.equal(isGroundingGroupSpace(space({ sessions: groundingSessions('other') })), false);

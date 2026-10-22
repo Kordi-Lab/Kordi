@@ -287,19 +287,51 @@
   box-shadow: 0 0 0 2px var(--app-main-bg);
 }
 
-/* Hug badge on the corner of a group started from a Grounding room. */
-.app-grounding-group-badge {
-  right: -3px;
-  bottom: -3px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  background: var(--app-main-bg);
-  color: var(--app-accent);
-  box-shadow: 0 0 0 1.5px var(--app-main-bg);
+/* Group rows: one initial tile per group, coloured from a fixed muted palette by group id. */
+:is(.app-contacts-page, .app-contacts-list-column) {
+  --app-group-tile-1: oklch(55% 0.13 262);
+  --app-group-tile-2: oklch(50% 0.08 165);
+  --app-group-tile-3: oklch(52% 0.1 60);
+  --app-group-tile-4: oklch(52% 0.1 295);
+  --app-group-tile-5: oklch(52% 0.11 20);
+  --app-group-tile-6: oklch(52% 0.08 220);
+}
+
+:is(.app-contacts-page, .app-contacts-list-column) .app-contact-row.app-group-row {
+  min-height: 46px;
+}
+
+.app-group-tile {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--app-group-tile-1);
+  color: oklch(100% 0 0);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.app-group-tile[data-tone='2'] { background: var(--app-group-tile-2); }
+.app-group-tile[data-tone='3'] { background: var(--app-group-tile-3); }
+.app-group-tile[data-tone='4'] { background: var(--app-group-tile-4); }
+.app-group-tile[data-tone='5'] { background: var(--app-group-tile-5); }
+.app-group-tile[data-tone='6'] { background: var(--app-group-tile-6); }
+
+.app-group-show-all {
+  padding: 4px 10px 4px 50px;
+  border: 0;
+  background: transparent;
+  color: var(--utility-muted-text);
+}
+
+.app-group-show-all:hover {
+  color: var(--utility-foreground);
+}
+
+.app-group-show-all:focus-visible {
+  outline: 2px solid var(--app-quiet-control-focus-ring);
+  outline-offset: -2px;
+  border-radius: 8px;
 }
 
 .app-contacts-leading-detail {
