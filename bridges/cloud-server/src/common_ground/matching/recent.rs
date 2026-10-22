@@ -21,6 +21,7 @@ type RecentRow = (
     String,
     Option<String>,
     Option<String>,
+    Option<String>,
     Value,
     DateTime<Utc>,
     bool,
@@ -45,7 +46,8 @@ pub(in crate::common_ground) async fn recent(
     let sql = format!(
         "SELECT * FROM (
              SELECT DISTINCT ON (m.other_profile_id)
-                    account.account_id, account.display_name, account.avatar_url, m.result_json,
+                    account.account_id, account.display_name, account.public_handle, account.avatar_url,
+                    m.result_json,
                     m.opened_at,
                     COALESCE(viewer_card.built_at IS NOT NULL
                         AND viewer_card.revision = m.viewer_revision
@@ -88,6 +90,7 @@ pub(in crate::common_ground) async fn recent(
             |(
                 id,
                 name,
+                handle,
                 avatar_url,
                 value,
                 opened_at,
@@ -102,7 +105,12 @@ pub(in crate::common_ground) async fn recent(
                 let result = current
                     .then(|| serde_json::from_value::<MatchResult>(value).ok())
                     .flatten();
-                let mut person = people::person(&id, name.as_deref(), avatar_url.as_deref());
+                let mut person = people::person(
+                    &id,
+                    name.as_deref(),
+                    handle.as_deref(),
+                    avatar_url.as_deref(),
+                );
                 person["profile"] =
                     profiles::tag(&theirs, &kind, &label, design.as_deref(), icon.as_deref());
                 let mut entry = json!({
