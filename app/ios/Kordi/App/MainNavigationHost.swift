@@ -26,6 +26,7 @@ struct MainNavigationHost<Root: View, Destination: View>: View {
 
     var body: some View {
         MainNavigationControllerHost(path: $path, root: root, destination: destination)
+            .modifier(CommonGroundPairLinkRouting(path: $path))
             // The hosted screen owns keyboard avoidance. Resizing this outer
             // container as well exposes its background ahead of the keyboard.
             .ignoresSafeArea(.all, edges: .bottom)

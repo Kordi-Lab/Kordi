@@ -1,19 +1,52 @@
 import { useState } from 'react';
-import { Eye, EyeOff, Plus, X } from 'lucide-react';
+import { ArrowUpRight, Eye, EyeOff, Plus, X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { openExternalMessageLink, safeExternalHttpHref } from '@/kordi-app/components/messageLinks';
 import { topicTone } from './format';
-import { seenLine, sourceLook, topicRefs } from './cardReferences';
+import { cardAnchor, isNotesSource, jumpTo, QUOTE_FOLD_CHARS, refMeta, seenLine, sourceLook, topicRefs, type CardRef } from './cardReferences';
 import { CgTag } from './parts';
 import type { CgOwnCard } from './types';
-import { shortDay } from './wallet';
 
 export const TOPIC_MAX_CHARS = 40;
 
+/** One reference: its own words first, then where and when it came from. */
+function RefRow({ id, item }: CardRef) {
+  const [open, setOpen] = useState(false);
+  const words = item.snippet.trim() || item.title.trim();
+  const { title, rest } = refMeta(item);
+  const href = item.url ? safeExternalHttpHref(item.url) : null;
+  const { Icon } = sourceLook(item.source);
+  const folds = words.length > QUOTE_FOLD_CHARS;
+  return (
+    <div className="cg-ref" id={cardAnchor('ref', id)}>
+      <q className={cn('cg-ref-quote', folds && !open && 'is-folded')}>{words}</q>
+      {folds ? (
+        <button type="button" className="cg-ref-more" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? 'Show less' : 'Show more'}
+        </button>
+      ) : null}
+      <span className="cg-ref-meta">
+        {isNotesSource(item.source) ? null : <Icon className="cg-ref-glyph" aria-hidden="true" />}
+        {href ? (
+          <a className="cg-ref-link" href={href} title={href} target="_blank" rel="noreferrer noopener" onClick={(event) => openExternalMessageLink(event, href)}>
+            {title || item.title || item.source}
+            <ArrowUpRight className="cg-ref-arrow" aria-hidden="true" />
+          </a>
+        ) : title ? <span className="cg-ref-title">{title}</span> : null}
+        {(href || title) && rest ? <span aria-hidden="true">·</span> : null}
+        <span>{rest}</span>
+      </span>
+    </div>
+  );
+}
+
 /** One topic: its tag, when it was seen, Hide and Remove on hover, then its references. */
-export function CardLine({ card, topic, onHide, onRemove }: {
+export function CardLine({ card, topic, owners, onHide, onRemove }: {
   card: CgOwnCard;
   topic: string;
+  /** For each cited item, the first topic on the page that shows it in full. */
+  owners: Map<string, string>;
   onHide: () => void;
   onRemove: () => void;
 }) {
@@ -21,7 +54,7 @@ export function CardLine({ card, topic, onHide, onRemove }: {
   const refs = topicRefs(card, topic);
   const seen = seenLine(card, topic);
   return (
-    <div className={cn('cg-line', hidden && 'is-off')}>
+    <div className={cn('cg-line', hidden && 'is-off')} id={cardAnchor('topic', topic)}>
       <div className="cg-line-head">
         <CgTag topic={topic} muted={hidden} small />
         {seen ? <span className="cg-line-seen">{seen}</span> : <span className="cg-line-seen" />}
@@ -35,17 +68,13 @@ export function CardLine({ card, topic, onHide, onRemove }: {
       </div>
       {refs.length ? (
         <div className="cg-line-refs">
-          {refs.map((ref, index) => {
-            const { Icon, tint } = sourceLook(ref.source);
+          {refs.map((ref) => {
+            const first = owners.get(ref.id) ?? topic;
+            if (first === topic) return <RefRow key={ref.id} {...ref} />;
             return (
-              <div key={`${ref.title}:${index}`} className="cg-ref">
-                <span className="cg-ref-icon" style={{ '--cg-src': tint } as React.CSSProperties}><Icon className="h-[14px] w-[14px]" aria-hidden="true" /></span>
-                <span className="cg-ref-body">
-                  <span className="cg-ref-title">{ref.title}</span>
-                  <span className="cg-ref-snip">{[ref.source, ref.snippet].filter(Boolean).join(' · ')}</span>
-                </span>
-                <span className="cg-ref-date">{shortDay(ref.date)}</span>
-              </div>
+              <button key={ref.id} type="button" className="cg-ref-same" onClick={() => jumpTo(cardAnchor('ref', ref.id))}>
+                Same {isNotesSource(ref.item.source) ? 'note' : 'reference'} as {first}
+              </button>
             );
           })}
         </div>

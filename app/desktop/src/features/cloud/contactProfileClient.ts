@@ -1,6 +1,7 @@
 // Typed call for `GET /v1/cloud/contacts/{accountId}/profile` (issue #1945). The response is
 // normalized defensively so a partial or older payload never breaks the contact pane.
 
+import { normalizeContactMatch, type ContactMatch } from '@/kordi-app/contacts/contactMatch';
 import { defaultCloudAuthClient } from './authClient';
 import { loadSession } from './session';
 
@@ -33,6 +34,8 @@ export type CloudContactProfileCommonGround = {
   workingOn: string[];
   canHelp: string[];
   lookingFor: string[];
+  /** The Grounding match between the two people; null when there is none or the server predates it. */
+  match: ContactMatch | null;
 };
 
 export type CloudContactProfile = {
@@ -151,8 +154,8 @@ function normalizeGroups(value: unknown): CloudContactProfileGroup[] {
 function normalizeCommonGround(value: unknown): CloudContactProfileCommonGround | null {
   const row = record(value);
   if (!row) return null;
-  const card = { workingOn: textList(row.workingOn), canHelp: textList(row.canHelp), lookingFor: textList(row.lookingFor) };
-  return card.workingOn.length || card.canHelp.length || card.lookingFor.length ? card : null;
+  const card = { workingOn: textList(row.workingOn), canHelp: textList(row.canHelp), lookingFor: textList(row.lookingFor), match: normalizeContactMatch(row.match) };
+  return card.match || card.workingOn.length || card.canHelp.length || card.lookingFor.length ? card : null;
 }
 
 export function normalizeContactProfile(value: unknown): CloudContactProfile | null {

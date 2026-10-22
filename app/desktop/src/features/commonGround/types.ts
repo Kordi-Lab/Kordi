@@ -78,11 +78,26 @@ export type CgEvidence = { source: string; title: string; date: string | null; u
 /** The references behind one topic, newest first, and when it was first and last seen. */
 export type CgTopicInfo = { refs: string[]; firstSeen: string | null; lastSeen: string | null };
 
+/** One period of the owner's timeline, such as "2026 Q3"; each topic sits in the period it first appeared. */
+export type CgTimelinePeriod = { period: string; topics: string[] };
+
+/**
+ * The owner's view of a card: `latest` is the topics active now, `timeline` the periods newest first,
+ * `earlier` the past topics. Older servers leave any of them out.
+ */
+export type CgCardProfile = {
+  latest?: string[];
+  earlier?: string[];
+  timeline?: CgTimelinePeriod[];
+  topics?: Record<string, CgTopicInfo>;
+  evidence?: Record<string, CgEvidence>;
+};
+
 export type CgOwnCard = CgTopicLists & {
   hidden: string[];
   revision: number;
   builtAt: string | null;
-  profile?: { latest?: string[]; topics?: Record<string, CgTopicInfo>; evidence?: Record<string, CgEvidence> } | null;
+  profile?: CgCardProfile | null;
 };
 
 export type CgBuildStatus = 'idle' | 'building' | 'failed';

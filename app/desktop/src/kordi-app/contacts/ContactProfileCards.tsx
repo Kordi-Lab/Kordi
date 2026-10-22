@@ -143,32 +143,6 @@ export function SharedWithYouLoading() {
   );
 }
 
-const COMMON_GROUND_ROWS: { key: keyof NonNullable<CloudContactProfile['commonGround']>; label: string }[] = [
-  { key: 'workingOn', label: 'Working on' },
-  { key: 'canHelp', label: 'Can help' },
-  { key: 'lookingFor', label: 'Looking for' },
-];
-
-export function CommonGroundCard({ card }: { card: NonNullable<CloudContactProfile['commonGround']> }) {
-  return (
-    <>
-      <SectionLabel>Common ground</SectionLabel>
-      <div className="app-contacts-card flex flex-col gap-2.5 rounded-[12px] px-4 pb-3.5 pt-3">
-        {COMMON_GROUND_ROWS.filter((row) => card[row.key].length > 0).map((row) => (
-          <div key={row.key} className="flex items-start gap-2.5">
-            <span className="app-contacts-muted w-[86px] shrink-0 text-[12px] leading-6">{row.label}</span>
-            <span className="flex min-w-0 flex-1 flex-wrap gap-1.5">
-              {card[row.key].map((topic) => (
-                <span key={topic} className="app-contacts-chip rounded-full px-2.5 py-1 text-[12px] leading-4" title={topic}>{topic}</span>
-              ))}
-            </span>
-          </div>
-        ))}
-      </div>
-    </>
-  );
-}
-
 function DeleteConfirm({
   removeState,
   removeError,
