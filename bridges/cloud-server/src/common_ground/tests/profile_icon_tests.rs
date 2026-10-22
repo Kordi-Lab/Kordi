@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 
 use super::db_fixture::{account, app, pool, send, signed_in};
 use super::profile_support::{build_profile, PROFILES};
-use super::support::free_code;
+use super::support::closed_code;
 
 async fn icons(app: &axum::Router, token: &str) -> Vec<Value> {
     let (status, body) = send(app, "GET", PROFILES, token, None).await;
@@ -102,12 +102,7 @@ async fn profiles_keep_an_icon() {
     assert_eq!(body["profile"]["icon"], "globe", "{body}");
 
     // Others see it next to the design in the room they share.
-    let code = free_code();
-    sqlx_core::query::query("UPDATE cloud_common_ground_rooms SET closed_at = now() WHERE code = $1 AND closed_at IS NULL")
-        .bind(&code)
-        .execute(&pool)
-        .await
-        .unwrap();
+    let code = closed_code(&pool).await;
     let join = format!("/v1/cloud/common-ground/rooms/{code}/join");
     let (status, body) = send(
         &app,

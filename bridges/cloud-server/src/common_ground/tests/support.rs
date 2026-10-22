@@ -169,14 +169,20 @@ pub(super) async fn two_in_a_room(
     join_fresh_room(app, pool, &tokens).await
 }
 
-/// Opens a fresh room and joins everyone, in order. Each needs a shared card.
-pub(super) async fn join_fresh_room(app: &axum::Router, pool: &PgPool, tokens: &[&str]) -> String {
+/// A random code with no open room: any room open under it is closed.
+pub(super) async fn closed_code(pool: &PgPool) -> String {
     let code = free_code();
     query("UPDATE cloud_common_ground_rooms SET closed_at = now() WHERE code = $1 AND closed_at IS NULL")
         .bind(&code)
         .execute(pool)
         .await
         .unwrap();
+    code
+}
+
+/// Opens a fresh room and joins everyone, in order. Each needs a shared card.
+pub(super) async fn join_fresh_room(app: &axum::Router, pool: &PgPool, tokens: &[&str]) -> String {
+    let code = closed_code(pool).await;
     for token in tokens {
         let (status, _) = send(
             app,
