@@ -14,21 +14,25 @@ import { commonGroundFixtures, initialsAvatar } from './commonGroundFixtures';
 import '../../src/index.css';
 
 // Login-free preview of Common ground in the real Contacts page. A fetch stub answers the
-// `/v1/cloud/common-ground` routes from fixtures, with two profiles (`commonGroundVersion` 2).
-// Query: ?screen=home|build|card|lobby|results|match|meet, ?theme=light|dark.
+// `/v1/cloud/common-ground` routes from fixtures, with three profiles (`commonGroundVersion` 2).
+// Query: ?screen=home|build|card|look|lobby|results|match|meet, ?theme=light|dark. "look" is the
+// card page with the background and icon popover open.
 const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
 const screen = params.get('screen') ?? 'home';
 localStorage.setItem('kordi.themeMode.v1', theme);
 const fx = commonGroundFixtures(theme);
 
-const ROUTES: Record<string, (query: string) => unknown> = {
+const ROUTES: Record<string, (query: string, body: Record<string, unknown>) => unknown> = {
   'GET profiles': () => ({ profiles: fx.profiles }),
   'GET card': (query) => (screen === 'build' || query.includes('cgp_health') ? fx.healthOwner : fx.owner),
   'GET recent': () => fx.recent,
   'GET rooms': () => fx.rooms,
   'GET rooms/4821': () => fx.room,
+  'GET rooms/5160/preview': () => fx.preview,
+  'POST rooms': () => ({ ...fx.room, roomId: 'room_7319', code: '7319', name: 'Agents meetup', members: [] }),
   'POST rooms/4821/results': () => fx.results,
+  'PUT profiles/cgp_work': (_query, body) => (fx.profiles[0] = { ...fx.profiles[0], ...body }),
   // The Meet case shows Hana as a contact, so the Meet tile opens the dialog.
   'GET people/acct_hana/match': () => (screen === 'meet' ? { ...fx.match, relationship: { ...fx.match.relationship, contact: true } } : fx.match),
 };
@@ -41,14 +45,19 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (at < 0) return realFetch(input, init);
   const [path, query = ''] = url.slice(at + marker.length).split('?');
   const reply = ROUTES[`${init?.method ?? 'GET'} ${path}`];
+  // Any other code is a room that does not exist.
+  if (!reply && /^rooms\/\d{4}\/preview$/.test(path)) {
+    return new Response(JSON.stringify({ errorCode: 'common_ground_room_not_found', message: 'Room not found.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+  }
   return reply
-    ? new Response(JSON.stringify(reply(query)), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    ? new Response(JSON.stringify(reply(query, typeof init?.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : {})), { status: 200, headers: { 'Content-Type': 'application/json' } })
     : new Response('', { status: 404 });
 };
 
 const STACKS: Record<string, CgScreen[]> = {
   build: [{ name: 'build' }],
   card: [{ name: 'card' }],
+  look: [{ name: 'card' }],
   lobby: [{ name: 'lobby', code: '4821' }],
   results: [{ name: 'results', code: '4821' }],
   match: [{ name: 'match', accountId: 'acct_hana' }],
@@ -126,4 +135,12 @@ void saveSession({ token: 'preview', accountId: fx.self.accountId, expiresAt: '2
   const store = new CommonGroundStore(createCommonGroundClient(), { profiles: true, memory: localProfileMemory(fx.self.accountId) });
   for (const next of STACKS[screen] ?? []) store.open(next);
   createRoot(document.getElementById('root')!).render(<StrictMode><Preview store={store} /></StrictMode>);
+  if (screen === 'look') {
+    const openLook = () => {
+      const square = document.querySelector<HTMLButtonElement>('.cg-cardpage-glyph.is-look');
+      if (square) square.click();
+      else requestAnimationFrame(openLook);
+    };
+    openLook();
+  }
 });

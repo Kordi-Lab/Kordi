@@ -1,64 +1,26 @@
 import { useId, useState } from 'react';
-import { MoreHorizontal, Plus } from 'lucide-react';
+import { Brain, Pencil, Trash2 } from 'lucide-react';
 
 import { AppDialog, AppDialogActions, AppDialogDescription, AppDialogTitle } from '@/components/ui/dialog';
 import { SettingsSwitch } from '@/kordi-app/components/settingsLayout';
-import { cn } from '@/lib/utils';
-import { CgBack, CgButton, CgGroup, CgNotice, CgRow, CgSection } from './parts';
-import { topicTone } from './format';
-import { useProfileMenu } from './useProfileMenu';
+import { profileDesign } from './cardDesign';
+import { AddTopic, CardLine } from './CardLines';
+import { cardSources, sourceLook } from './cardReferences';
+import { CardLookButton, CardLookPopover } from './CardLookPopover';
+import { useLookPopover } from './cardLook';
+import { CgButton, CgNotice, CgProgress } from './parts';
+import { CardGlyph } from './ProfileCard';
+import { DeleteProfileDialog } from './ProfileDialogs';
+import { PROFILE_FOCUS_MAX, PROFILE_NAME_MAX, renameError, renamePatch } from './profiles';
 import { currentProfile, type CgState, type CommonGroundStore } from './store';
-import { CG_TOPIC_SECTIONS, type CgOwnCard, type CgTopicKey, type CgTopicLists } from './types';
-
-export const TOPIC_MAX_CHARS = 40;
+import { CG_TOPIC_SECTIONS, type CgOwnCard, type CgProfileKind, type CgTopicKey, type CgTopicLists } from './types';
+import { ownerIsCurrent, shortDay } from './wallet';
 
 function lists(card: CgOwnCard): CgTopicLists {
   return { workingOn: [...card.workingOn], interests: [...card.interests], canHelp: [...card.canHelp], lookingFor: [...card.lookingFor] };
 }
 
-function AddTopic({ onAdd }: { onAdd: (topic: string) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [text, setText] = useState('');
-  if (!editing) {
-    return (
-      <button type="button" className="cg-tag is-add" onClick={() => setEditing(true)}>
-        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-        Add
-      </button>
-    );
-  }
-  const commit = () => {
-    const topic = text.replace(/\s+/g, ' ').trim();
-    setEditing(false);
-    setText('');
-    if (topic) onAdd(topic);
-  };
-  return (
-    <span className="cg-tag is-add is-editing">
-      <input
-        autoFocus
-        value={text}
-        maxLength={TOPIC_MAX_CHARS}
-        size={Math.max(9, text.length + 1)}
-        placeholder="New topic"
-        aria-label="New topic"
-        onChange={(event) => setText(event.target.value)}
-        onBlur={commit}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') commit();
-          if (event.key === 'Escape') {
-            event.stopPropagation();
-            setEditing(false);
-            setText('');
-          }
-        }}
-      />
-      {text.length >= TOPIC_MAX_CHARS - 10 ? <span className="cg-count">{text.length}/{TOPIC_MAX_CHARS}</span> : null}
-    </span>
-  );
-}
-
-function DeleteDialog({ busy, onCancel, onDelete }: { busy: boolean; onCancel: () => void; onDelete: () => void }) {
+function DeleteCardDialog({ busy, onCancel, onDelete }: { busy: boolean; onCancel: () => void; onDelete: () => void }) {
   const titleId = useId();
   const lineId = useId();
   return (
@@ -73,74 +35,168 @@ function DeleteDialog({ busy, onCancel, onDelete }: { busy: boolean; onCancel: (
   );
 }
 
+/** Rename in place: the name and focus lines become fields; Enter or leaving saves, Escape cancels. */
+export function RenameFields({ name, focus, kind, onSave, onCancel }: {
+  name: string;
+  focus: string;
+  kind: CgProfileKind;
+  onSave: (name: string, focus: string) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState({ name, focus });
+  const [error, setError] = useState<string | null>(null);
+  const save = () => {
+    const refused = renameError(kind, draft.name);
+    setError(refused);
+    if (!refused) onSave(draft.name.trim(), draft.focus.trim());
+  };
+  const keys = (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter') save();
+    if (event.key === 'Escape') { event.stopPropagation(); onCancel(); }
+  };
+  return (
+    <div
+      className="cg-cardpage-fields"
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) save(); }}
+    >
+      <input autoFocus className="cg-cardpage-name-in" value={draft.name} maxLength={PROFILE_NAME_MAX} aria-label="Name" aria-invalid={error ? true : undefined} onKeyDown={keys} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+      <input className="cg-cardpage-focus-in" value={draft.focus} maxLength={PROFILE_FOCUS_MAX} placeholder="Focus, optional" aria-label="Focus" onKeyDown={keys} onChange={(event) => setDraft({ ...draft, focus: event.target.value })} />
+      {error ? <div className="cg-cardpage-error" role="alert">{error}</div> : null}
+    </div>
+  );
+}
+
+/** The card page: a slim header, the topics with their references, the sources, and Share my card. */
 export function CardScreen({ state, store }: { state: CgState; store: CommonGroundStore }) {
   const [confirming, setConfirming] = useState(false);
-  const menu = useProfileMenu(state, store);
+  const [renaming, setRenaming] = useState(false);
+  const look = useLookPopover();
   const card = state.owner?.card;
   if (!card || !state.owner) return null;
-  const update = (key: CgTopicKey, next: string[]) => void store.saveTopics({ ...lists(card), [key]: next });
+  // Switching cards keeps the new name off the old topics until the new card arrives.
+  if (!ownerIsCurrent(state)) return <><CgProgress line="Opening card" /><CgNotice text={state.notice} /></>;
   const profile = currentProfile(state);
+  const design = profile ? profileDesign(profile) : 'work';
+  const name = profile?.name ?? 'Your card';
+  const update = (key: CgTopicKey, next: string[]) => void store.saveTopics({ ...lists(card), [key]: next });
+  const lineCount = CG_TOPIC_SECTIONS.reduce((sum, [key]) => sum + card[key].length, 0);
+  const meta = [`${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`, card.builtAt ? `built ${shortDay(card.builtAt)}` : ''].filter(Boolean).join(' · ');
+  const sources = cardSources(card);
   return (
-    <>
-      <div className="cg-topbar">
-        <CgBack onBack={() => store.back()} />
+    <div className="cg-cardpage">
+      <div className="cg-cardpage-head">
         {profile ? (
-          <button type="button" className="cg-more" aria-label={`${profile.name} profile`} onClick={(event) => menu.openMenu(profile, event.currentTarget)}>
-            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-          </button>
-        ) : null}
-      </div>
-      {menu.element}
-      {CG_TOPIC_SECTIONS.map(([key, title]) => (
-        <CgSection key={key} title={title}>
-          <CgGroup className="cg-tags">
-            {card[key].map((topic) => {
-              const hidden = card.hidden.includes(topic);
-              return (
-                <span key={topic} className={cn('cg-tag', `tone-${topicTone(topic)}`, hidden && 'is-muted')}>
-                  <i aria-hidden="true" />
-                  <button
-                    type="button"
-                    className="cg-tag-text"
-                    title={hidden ? 'Hidden' : topic}
-                    aria-label={hidden ? `Show ${topic}` : `Hide ${topic}`}
-                    onClick={() => void store.toggleHidden(topic)}
-                  >
-                    {topic}
-                  </button>
-                  <button type="button" className="cg-tag-x" aria-label={`Remove ${topic}`} onClick={() => update(key, card[key].filter((item) => item !== topic))}>×</button>
-                </span>
-              );
-            })}
-            <AddTopic
-              onAdd={(topic) => {
-                if (card[key].some((item) => item.toLowerCase() === topic.toLowerCase())) return;
-                update(key, [...card[key], topic]);
+          <span className="cg-look-anchor">
+            <CardLookButton design={design} icon={profile.icon} kind={profile.kind} className="cg-cardpage-glyph" open={look.open} onToggle={look.toggle} />
+            {look.open ? (
+              <CardLookPopover
+                design={design}
+                icon={profile.icon}
+                onClose={look.close}
+                onDesign={(next) => void store.setLook(profile.profileId, { design: next })}
+                onIcon={(next) => void store.setLook(profile.profileId, { icon: next })}
+              />
+            ) : null}
+          </span>
+        ) : <span className="cg-cardpage-glyph" data-design={design}><CardGlyph design={design} /></span>}
+        <div className="cg-cardpage-title">
+          {renaming && profile ? (
+            <RenameFields
+              name={profile.name}
+              focus={profile.focus ?? ''}
+              kind={profile.kind}
+              onCancel={() => setRenaming(false)}
+              onSave={(nextName, nextFocus) => {
+                setRenaming(false);
+                const patch = renamePatch(profile, nextName, nextFocus);
+                if (Object.keys(patch).length) void store.updateProfile(profile.profileId, patch);
               }}
             />
-          </CgGroup>
-        </CgSection>
-      ))}
-      <CgSection>
-        <CgGroup>
-          <CgRow
-            title="Share my card"
-            trailing={<SettingsSwitch label="Share my card" enabled={state.owner.sharing} disabled={state.busy === 'sharing'} onChange={(on) => void store.setSharing(on)} />}
-          />
-        </CgGroup>
-      </CgSection>
-      <CgNotice text={state.notice} />
-      <div className="cg-footer-actions">
-        <CgButton quiet onClick={() => store.open({ name: 'build' })}>Rebuild</CgButton>
-        <button type="button" className="cg-button is-danger-quiet" onClick={() => setConfirming(true)}>Delete card</button>
+          ) : (
+            <>
+              <h2>{name}</h2>
+              {profile?.focus ? <div className="cg-cardpage-focus">{profile.focus}</div> : null}
+              <div className="cg-cardpage-meta">{meta}</div>
+            </>
+          )}
+        </div>
+        {profile ? (
+          <button type="button" className="cg-mbtn is-ghost" onClick={() => setRenaming(true)} disabled={renaming}>
+            <Pencil className="h-[13px] w-[13px]" aria-hidden="true" />Rename
+          </button>
+        ) : null}
+        <button type="button" className="cg-mbtn is-ghost is-danger" onClick={() => setConfirming(true)}>
+          <Trash2 className="h-[13px] w-[13px]" aria-hidden="true" />Delete
+        </button>
+        <button type="button" className="cg-mbtn is-primary" onClick={() => store.open({ name: 'build', memory: true })}>
+          <Brain className="h-[13px] w-[13px]" aria-hidden="true" />Rebuild from memory
+        </button>
       </div>
-      {confirming ? (
-        <DeleteDialog
+      {CG_TOPIC_SECTIONS.map(([key, title]) => (
+        <section key={key}>
+          <h3 className="cg-msec">{title}</h3>
+          <div className="cg-panel cg-lines">
+            {card[key].map((topic) => (
+              <CardLine
+                key={topic}
+                card={card}
+                topic={topic}
+                onHide={() => void store.toggleHidden(topic)}
+                onRemove={() => update(key, card[key].filter((item) => item !== topic))}
+              />
+            ))}
+            <div className="cg-line-foot">
+              <AddTopic
+                onAdd={(topic) => {
+                  if (card[key].some((item) => item.toLowerCase() === topic.toLowerCase())) return;
+                  update(key, [...card[key], topic]);
+                }}
+              />
+            </div>
+          </div>
+        </section>
+      ))}
+      {sources.length ? (
+        <>
+          <h3 className="cg-msec">Sources</h3>
+          <div className="cg-panel">
+            {sources.map(({ source }) => {
+              const { Icon, tint } = sourceLook(source);
+              return (
+                <div key={source} className="cg-mrow">
+                  <span className="cg-src-icon" style={{ background: tint }}><Icon className="h-[15px] w-[15px]" aria-hidden="true" /></span>
+                  <span className="cg-mrow-text">
+                    <span className="cg-mrow-title">{source}</span>
+                    {card.builtAt ? <span className="cg-mrow-sub">Read {shortDay(card.builtAt)}</span> : null}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
+      <div className="cg-panel cg-cardpage-share">
+        <div className="cg-mrow">
+          <span className="cg-mrow-text"><span className="cg-mrow-title">Share my card</span></span>
+          <SettingsSwitch label="Share my card" enabled={state.owner.sharing} disabled={state.busy === 'sharing'} onChange={(on) => void store.setSharing(on)} />
+        </div>
+      </div>
+      <CgNotice text={state.notice} />
+      {confirming && profile ? (
+        <DeleteProfileDialog
+          profile={profile}
+          busy={state.busy === 'profile'}
+          onCancel={() => setConfirming(false)}
+          onDelete={() => void store.deleteProfile(profile.profileId).then(() => setConfirming(false))}
+        />
+      ) : null}
+      {confirming && !profile ? (
+        <DeleteCardDialog
           busy={state.busy === 'delete'}
           onCancel={() => setConfirming(false)}
           onDelete={() => void store.deleteCard().then(() => setConfirming(false))}
         />
       ) : null}
-    </>
+    </div>
   );
 }

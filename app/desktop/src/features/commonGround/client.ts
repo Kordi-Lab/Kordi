@@ -5,9 +5,10 @@
 import { cloudApiBaseUrl } from '@/features/cloud/cloudApiEnvironment';
 import { cloudFetchImpl } from '@/features/cloud/cloudTransport';
 import { loadSession } from '@/features/cloud/session';
+import { isCardDesign, isCardIcon } from './cardDesign';
 import type {
-  CgBuildRequest, CgCreatedGroup, CgGroup, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPairCode, CgPerson,
-  CgPersonCard, CgProfile, CgProfileInput, CgRecentEntry, CgRelationship, CgResults, CgRoom, CgRoomSummary, CgTopicLists,
+  CgBuildRequest, CgCreatedGroup, CgCreateRoomInput, CgGroup, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPairCode, CgPerson,
+  CgPersonCard, CgProfile, CgProfileInput, CgProfilePatch, CgRecentEntry, CgRelationship, CgResults, CgRoom, CgRoomPreview, CgRoomSummary, CgTopicLists,
 } from './types';
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -118,6 +119,11 @@ function roomSummary(entry: Partial<CgRoomSummary> & { code: string }): CgRoomSu
   };
 }
 
+/** A profile with its look; older servers and unknown values read as null. */
+export function profileOf(entry: CgProfile): CgProfile {
+  return { ...entry, design: isCardDesign(entry.design) ? entry.design : null, icon: isCardIcon(entry.icon) ? entry.icon : null };
+}
+
 export function createCommonGroundClient(options: CommonGroundClientOptions = {}) {
   const baseUrl = options.baseUrl ?? (() => cloudApiBaseUrl());
   const fetchImpl = options.fetchImpl ?? (() => cloudFetchImpl());
@@ -158,14 +164,16 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
   const cg = (path: string) => `common-ground/${path}`;
 
   return {
-    profiles: async () => (await data<{ profiles?: CgProfile[] }>('GET', cg('profiles')))?.profiles ?? [],
-    createProfile: (input: CgProfileInput) => data<CgProfile>('POST', cg('profiles'), {
+    profiles: async () => ((await data<{ profiles?: CgProfile[] }>('GET', cg('profiles')))?.profiles ?? []).map(profileOf),
+    createProfile: async (input: CgProfileInput) => profileOf(await data<CgProfile>('POST', cg('profiles'), {
       kind: input.kind,
       ...(input.name?.trim() ? { name: input.name.trim() } : {}),
       ...(input.focus?.trim() ? { focus: input.focus.trim() } : {}),
-    }),
-    /** An empty focus clears it; an empty name gives a fixed kind its default name back. */
-    updateProfile: (profileId: string, patch: { name?: string; focus?: string }) => data<CgProfile>('PUT', cg(`profiles/${enc(profileId)}`), patch),
+      ...(input.design ? { design: input.design } : {}),
+      ...(input.icon ? { icon: input.icon } : {}),
+    })),
+    /** An empty focus clears it; an empty name gives a fixed kind its default name back; a null look field resets it. */
+    updateProfile: async (profileId: string, patch: CgProfilePatch) => profileOf(await data<CgProfile>('PUT', cg(`profiles/${enc(profileId)}`), patch)),
     deleteProfile: (profileId: string) => data<null>('DELETE', cg(`profiles/${enc(profileId)}`)),
     card: (profileId?: string | null) => data<CgOwnerView>('GET', cg(`card${profileQuery(profileId)}`)),
     saveTopics: (topics: CgTopicLists, profileId?: string | null) => data<CgOwnerView>('PUT', cg(`card${profileQuery(profileId)}`), {
@@ -181,6 +189,25 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
     },
     room: (code: string) => data<CgRoom>('GET', cg(`rooms/${enc(code)}`)),
     joinRoom: (code: string, input: CgJoinInput = {}) => data<CgRoom>('POST', cg(`rooms/${enc(code)}/join`), joinBody(input)),
+    /** Opens a meetup on a free code and joins it, sharing `profileId`. */
+    createRoom: (input: CgCreateRoomInput) => data<CgRoom>('POST', cg('rooms'), {
+      name: input.name.replace(/\s+/g, ' ').trim(),
+      kind: input.kind,
+      ...(input.profileId ? { profileId: input.profileId } : {}),
+    }),
+    /** The room behind a typed code, before joining it. */
+    previewRoom: async (code: string): Promise<CgRoomPreview> => {
+      const room = await data<Partial<CgRoomPreview>>('GET', cg(`rooms/${enc(code)}/preview`));
+      return {
+        code,
+        name: room?.name ?? '',
+        kind: room?.kind ?? null,
+        memberCount: typeof room?.memberCount === 'number' ? room.memberCount : null,
+        ...(room?.member === true ? { member: true } : {}),
+        ...(typeof room?.profileId === 'string' && room.profileId ? { profileId: room.profileId } : {}),
+        ...(typeof room?.suggestedProfileId === 'string' && room.suggestedProfileId ? { suggestedProfileId: room.suggestedProfileId } : {}),
+      };
+    },
     /** Shares another of your profiles in an open room. */
     switchRoomProfile: (code: string, profileId: string) => data<CgRoom>('POST', cg(`rooms/${enc(code)}/profile`), { profileId }),
     leaveRoom: (code: string) => data<null>('POST', cg(`rooms/${enc(code)}/leave`)),

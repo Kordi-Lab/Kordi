@@ -6,14 +6,15 @@
 import { CommonGroundError, commonGroundErrorCode, commonGroundErrorMessage, isRouteMissing, type CommonGroundClient } from './client';
 import type { CgProfileMemory } from './profiles';
 import * as profileOps from './storeProfiles';
+import * as roomOps from './storeRooms';
 import type {
-  CgBuildRequest, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPersonCard, CgProfile, CgProfileInput, CgRecentEntry,
+  CgBuildRequest, CgCardLook, CgCreateRoomInput, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPersonCard, CgProfile, CgProfileInput, CgProfilePatch, CgRecentEntry,
   CgRelationship, CgResults, CgRoom, CgRoomSummary, CgTopicLists,
 } from './types';
 
 export type CgScreen =
   | { name: 'home' }
-  | { name: 'build' }
+  | { name: 'build'; memory?: boolean }
   | { name: 'card' }
   | { name: 'lobby'; code: string }
   | { name: 'results'; code: string }
@@ -57,6 +58,8 @@ export type CommonGroundStoreOptions = { profiles?: boolean; memory?: CgProfileM
 export const LOBBY_POLL_MS = 2_000;
 export const MATCH_POLL_MS = 3_000;
 export const BUILD_POLL_MS = 3_000;
+/** The shortest gap between two refreshes from other devices. */
+export const SYNC_INTERVAL_MS = 30_000;
 
 const initialState = (profilesOn = false): CgState => ({
   stack: [{ name: 'home' }],
@@ -103,6 +106,7 @@ export class CommonGroundStore {
   private state: CgState;
   private listeners = new Set<() => void>();
   private disposed = false;
+  private lastSync = 0;
   readonly memory: CgProfileMemory;
 
   constructor(readonly client: CommonGroundClient, options: CommonGroundStoreOptions = {}) {
@@ -202,15 +206,39 @@ export class CommonGroundStore {
   }
 
   async loadHome(): Promise<void> {
+    this.lastSync = Date.now();
     try {
+      // The card for the profile we expect loads alongside the profile list; only a different pick waits for it.
+      const expected = this.state.profilesOn ? this.state.profileId ?? this.memory.read() : null;
+      const early = this.client.card(expected);
+      early.catch(() => undefined);
       await profileOps.loadProfiles(this);
-      const owner = await this.client.card(this.state.profileId);
+      const owner = this.state.profileId === expected ? await early : await this.client.card(this.state.profileId);
       this.set({ owner, loaded: true });
       if (!hasAnyCard(this.state)) return;
       const [recent] = await Promise.all([this.client.recent().catch(() => ({ people: this.state.recent })), this.loadRooms()]);
       this.set({ recent: recent.people });
     } catch (error) {
       this.set({ loaded: true, notice: commonGroundErrorMessage(error) });
+    }
+  }
+
+  /**
+   * Picks up what another device changed: the cards (name, colour, icon) and the current card.
+   * Runs when Grounding becomes visible again, at most once per `SYNC_INTERVAL_MS`, and never
+   * over a save in flight.
+   */
+  async syncFromServer(now = Date.now()): Promise<boolean> {
+    if (!this.state.loaded || this.state.busy || now - this.lastSync < SYNC_INTERVAL_MS) return false;
+    this.lastSync = now;
+    try {
+      await profileOps.loadProfiles(this);
+      const profileId = this.state.profileId;
+      const owner = await this.client.card(profileId);
+      if (this.state.profileId === profileId && !this.state.busy) this.applyOwner(owner);
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -320,7 +348,9 @@ export class CommonGroundStore {
 
   selectProfile = (profileId: string) => profileOps.selectProfile(this, profileId);
   createProfile = (input: CgProfileInput) => profileOps.createProfile(this, input);
-  updateProfile = (profileId: string, patch: { name?: string; focus?: string }) => profileOps.updateProfile(this, profileId, patch);
+  updateProfile = (profileId: string, patch: CgProfilePatch) => profileOps.updateProfile(this, profileId, patch);
+  /** Sets a card's background or icon at once and saves it; a failed save puts it back. */
+  setLook = (profileId: string, look: Partial<CgCardLook>) => profileOps.setLook(this, profileId, look);
   deleteProfile = (profileId: string) => profileOps.deleteProfile(this, profileId);
   switchRoomProfile = (code: string, profileId: string) => profileOps.switchRoomProfile(this, code, profileId);
 
@@ -357,6 +387,11 @@ export class CommonGroundStore {
     this.set({ results: { ...this.state.results, [code]: results } });
     this.set({ stack: [...this.state.stack.slice(0, -1), { name: 'results', code }] });
   }
+
+  /** The room behind four typed digits, before joining it. */
+  lookUpCode = (code: string) => roomOps.lookUpCode(this, code);
+  /** Opens a meetup on a new code, sharing the given profile. */
+  createRoom = (input: CgCreateRoomInput) => roomOps.createRoom(this, input);
 
   /** Opens Results for a room from the Rooms list. */
   openRoom(code: string) {

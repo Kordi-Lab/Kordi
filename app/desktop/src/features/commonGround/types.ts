@@ -12,11 +12,27 @@ export type CgRelationship = {
 
 export type CgProfileKind = 'work' | 'health' | 'daily' | 'custom';
 
-/** The profile someone shares with you in a room or pairing. */
-export type CgProfileTag = { profileId: string; kind: CgProfileKind; name: string };
+/** A card's background: six kind designs (Workshop and Research group are looks, not server kinds), then ten plain colours. */
+export const CG_KIND_DESIGNS = ['work', 'health', 'daily', 'workshop', 'research', 'custom'] as const;
+export const CG_COLOUR_DESIGNS = ['ocean', 'sky', 'rose', 'coral', 'amber', 'forest', 'lavender', 'graphite', 'mint', 'olive'] as const;
+export const CG_CARD_DESIGNS = [...CG_KIND_DESIGNS, ...CG_COLOUR_DESIGNS] as const;
+export type CgCardDesign = (typeof CG_CARD_DESIGNS)[number];
+
+/** A card's icon; null draws the design's own glyph. */
+export const CG_CARD_ICONS = [
+  'briefcase', 'leaf', 'sun', 'flask', 'book', 'microscope', 'graduation', 'pin', 'star',
+  'heart', 'chat', 'globe', 'music', 'camera', 'code', 'calendar', 'rocket', 'coffee',
+] as const;
+export type CgCardIcon = (typeof CG_CARD_ICONS)[number];
+
+/** A card's look as the server keeps it; null design means the kind's default. */
+export type CgCardLook = { design: CgCardDesign | null; icon: CgCardIcon | null };
+
+/** The profile someone shares with you in a room or pairing; older servers leave out the look. */
+export type CgProfileTag = { profileId: string; kind: CgProfileKind; name: string; design?: CgCardDesign | null; icon?: CgCardIcon | null };
 
 /** One of the owner's profiles, as `GET profiles` lists it (`commonGroundVersion` 2). */
-export type CgProfile = CgProfileTag & {
+export type CgProfile = CgProfileTag & CgCardLook & {
   focus: string | null;
   position: number;
   hasCard: boolean;
@@ -25,7 +41,10 @@ export type CgProfile = CgProfileTag & {
   topicCount: number;
 };
 
-export type CgProfileInput = { kind: CgProfileKind; name?: string; focus?: string };
+export type CgProfileInput = { kind: CgProfileKind; name?: string; focus?: string; design?: CgCardDesign; icon?: CgCardIcon };
+
+/** `PUT profiles/:id`: a left-out field is kept; a null look field resets it. */
+export type CgProfilePatch = { name?: string; focus?: string; design?: CgCardDesign | null; icon?: CgCardIcon | null };
 
 export type CgPerson = {
   accountId: string;
@@ -53,11 +72,17 @@ export const CG_TOPIC_SECTIONS: Array<[CgTopicKey, string]> = [
   ['lookingFor', 'Looking for'],
 ];
 
+/** One item behind a topic, as the owner's view sends it; `date` is `YYYY-MM-DD` when known. */
+export type CgEvidence = { source: string; title: string; date: string | null; url: string | null; snippet: string };
+
+/** The references behind one topic, newest first, and when it was first and last seen. */
+export type CgTopicInfo = { refs: string[]; firstSeen: string | null; lastSeen: string | null };
+
 export type CgOwnCard = CgTopicLists & {
   hidden: string[];
   revision: number;
   builtAt: string | null;
-  profile?: { latest?: string[] } | null;
+  profile?: { latest?: string[]; topics?: Record<string, CgTopicInfo>; evidence?: Record<string, CgEvidence> } | null;
 };
 
 export type CgBuildStatus = 'idle' | 'building' | 'failed';
@@ -105,6 +130,24 @@ export type CgRecentEntry = {
 
 /** What a join sends: the room name and kind apply only when this join opens the room. */
 export type CgJoinInput = { name?: string; kind?: CgProfileKind; profileId?: string };
+
+/** `POST rooms`: opens a meetup on a free code; the reply is the room with its new `code`. */
+export type CgCreateRoomInput = { name: string; kind: CgProfileKind; profileId?: string };
+
+/** `GET rooms/:code/preview`: a room before joining it; `member` is true when you are already in it. Null fields are unknown (older servers). */
+/**
+ * `GET rooms/:code/preview`. A member gets `profileId`, the card already shared there; anyone else
+ * gets `suggestedProfileId`, the card a join would use. Older servers send neither.
+ */
+export type CgRoomPreview = {
+  code: string;
+  name: string;
+  kind: CgProfileKind | null;
+  memberCount: number | null;
+  member?: boolean;
+  profileId?: string;
+  suggestedProfileId?: string;
+};
 
 export type CgGroup = {
   groupSpaceId: string;

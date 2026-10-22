@@ -9,7 +9,7 @@ import { DEVICE_SOURCES } from './deviceAccess';
 import type { CgHost } from './host';
 import { CgAvatar, CgBack, CgGroup, CgHero, CgIcon, CgNotice, CgProgress, CgRow, CgSection } from './parts';
 import { buildTitle } from './profiles';
-import { currentProfile, hasAnyCard, type CgState, type CommonGroundStore } from './store';
+import { currentProfile, type CgState, type CommonGroundStore } from './store';
 import type { CgAgentFile, CgDeviceSource } from './types';
 import { useConnectorStates } from './useConnectorStates';
 
@@ -28,7 +28,10 @@ export function BuildScreen({ state, store, host }: { state: CgState; store: Com
   const connectors = useConnectorStates(host.connectors);
   const agentFiles = useAgentFiles(host.agentFiles);
   const [useAgents, setUseAgents] = useState(false);
-  const [useMemory, setUseMemory] = useState(false);
+  const [useMemory, setUseMemory] = useState(() => {
+    const top = state.stack[state.stack.length - 1];
+    return top.name === 'build' && Boolean(top.memory);
+  });
   const [links, setLinks] = useState('');
   const [notes, setNotes] = useState('');
   const [titles, setTitles] = useState<CgDeviceTitles>({});
@@ -70,7 +73,7 @@ export function BuildScreen({ state, store, host }: { state: CgState; store: Com
 
   return (
     <>
-      {hasAnyCard(state) && state.stack.length > 1 ? <CgBack onBack={() => store.back()} /> : null}
+      {state.stack.length > 1 ? <CgBack onBack={() => store.back()} /> : null}
       <CgHero avatar={<CgAvatar person={host.self} size={72} isSelf />} title={buildTitle(profile)} line={profile?.focus || 'Your agent writes it'} />
       {host.connectors || agentsRow || memoryRow ? (
         <ConnectorsSection access={host.connectors} connectors={connectors}>
