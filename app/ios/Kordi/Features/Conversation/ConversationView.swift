@@ -766,8 +766,8 @@ struct ConversationView: View {
                                 .padding(.horizontal, 12)
                                 .padding(.top, timelineVerticalInset)
                             }
-                            // The composer strip is transparent: messages scrolled past the
-                            // viewport keep drawing under the glass field instead of being clipped.
+                            // Messages scrolled past the viewport keep drawing under the composer's
+                            // frosted band (ComposerBackdropBand) as soft shapes instead of being clipped.
                             .scrollClipDisabled()
                             .modifier(ConversationOutgoingAvatarOverlay())
                             .modifier(ConversationScrollAnchorPolicy(preservesTrajectoryPosition: trajectoryViewport.isPinned))
