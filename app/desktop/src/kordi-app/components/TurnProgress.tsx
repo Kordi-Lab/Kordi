@@ -6,6 +6,7 @@ import { elapsedLabel, turnProgressLabel, settledProgressLabel, progressToolIsAc
 import { toolActivityMetadata } from './toolActivityMetadata';
 import { MarkdownContent } from './markdown';
 import { ProgressBird } from './ProgressBird';
+import { ProgressDisclosure } from './ProgressDisclosure';
 
 function ActivityGroup({ tools, unavailable = 0, label, active, elapsed, trailing, renderTool, thinkingText, hideIcon }: {
   tools: DesktopChatToolSnapshot[]; unavailable?: number; label: string; active?: boolean;
@@ -14,7 +15,7 @@ function ActivityGroup({ tools, unavailable = 0, label, active, elapsed, trailin
   const [expanded, setExpanded] = useState(false);
   const Icon = tools[0] ? toolActivityMetadata(tools[0]).Icon : thinkingText ? Brain : Wrench;
   const expandable = tools.length > 0 || unavailable > 0 || Boolean(thinkingText);
-  return <section className={`app-turn-progress${thinkingText ? ' app-turn-reasoning' : ''}`} data-transcript-stable-disclosure-root="true">
+  return <section className={`app-turn-progress${thinkingText ? ' app-turn-reasoning' : ''}`} data-transcript-stable-disclosure-root="true" data-transcript-stable-disclosure-direction="down">
     <div className="app-turn-progress-line">
       <button type="button" className="app-turn-progress-summary" aria-label={`${label}${elapsed ? ` ${elapsed}` : ''}`} aria-expanded={expandable ? expanded : undefined}
         disabled={!expandable} data-transcript-stable-disclosure="true" onClick={() => setExpanded(value => !value)}>
@@ -25,11 +26,11 @@ function ActivityGroup({ tools, unavailable = 0, label, active, elapsed, trailin
       </button>
       {trailing}
     </div>
-    {expanded ? <div className="app-turn-progress-details" data-transcript-stable-disclosure-body="true">
+    <ProgressDisclosure expanded={expanded}><div className="app-turn-progress-details">
       {thinkingText ? <MarkdownContent text={thinkingText} tone="muted" className="app-transcript-thinking-markdown" /> : null}
       {tools.map(renderTool)}
       {unavailable > 0 ? <p className="text-xs">Details unavailable for {unavailable} earlier {unavailable === 1 ? 'tool' : 'tools'}.</p> : null}
-    </div> : null}
+    </div></ProgressDisclosure>
   </section>;
 }
 
@@ -60,7 +61,7 @@ export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
     {legacyAnswer}
   </>;
   const statusLabel = turnProgressLabel(turn);
-  return <div className="app-ordered-progress" data-transcript-stable-disclosure-root="true">
+  return <div className="app-ordered-progress" data-transcript-stable-disclosure-root="true" data-transcript-stable-disclosure-direction="down">
     {hasActivity ? <div className="app-turn-progress-line app-turn-header-line">
       <button type="button" className="app-turn-worked-header" aria-expanded={trajectoryExpanded}
         aria-label={`${statusLabel}${elapsed ? ` ${elapsed}` : ''}`}
@@ -71,16 +72,19 @@ export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
       </button>
       {live ? trailing : null}
     </div> : null}
-    {turn.thinkingText ? <div hidden={hasActivity && !trajectoryExpanded}><ActivityGroup tools={[]} label={reasoningLabel} thinkingText={turn.thinkingText}
-      active={standaloneReasoning && live} hideIcon={standaloneReasoning && !live} elapsed={standaloneReasoning ? elapsed : null}
-      renderTool={renderTool} trailing={!hasActivity && live ? trailing : null} /></div> : !hasActivity && live ? trailing : null}
-    <div className="app-turn-trajectory" data-transcript-stable-disclosure-body="true">
-      {groups.map(group => <div key={group.id} hidden={hasActivity && !trajectoryExpanded && (live || group !== last || group.kind !== 'text')}>
-        {group.kind === 'text' ? <div className="app-turn-commentary"><MarkdownContent text={group.text} /></div>
-          : <ActivityGroup tools={group.tools} unavailable={group.unavailable}
-              label={live && group.tools.some(progressToolIsActive) ? `${group.tools.length + group.unavailable} ${group.tools.length + group.unavailable === 1 ? 'tool' : 'tools'}` : settledProgressLabel(group.tools, group.unavailable)}
-              renderTool={renderTool} />}
-      </div>)}
-    </div>
+    <ProgressDisclosure expanded={!hasActivity || trajectoryExpanded}>
+      {turn.thinkingText ? <ActivityGroup tools={[]} label={reasoningLabel} thinkingText={turn.thinkingText}
+        active={standaloneReasoning && live} hideIcon={standaloneReasoning && !live} elapsed={standaloneReasoning ? elapsed : null}
+        renderTool={renderTool} trailing={!hasActivity && live ? trailing : null} /> : !hasActivity && live ? trailing : null}
+      <div className="app-turn-trajectory">
+        {groups.filter(group => live || group !== last || group.kind !== 'text').map(group => <div key={group.id}>
+          {group.kind === 'text' ? <div className="app-turn-commentary"><MarkdownContent text={group.text} /></div>
+            : <ActivityGroup tools={group.tools} unavailable={group.unavailable}
+                label={live && group.tools.some(progressToolIsActive) ? `${group.tools.length + group.unavailable} ${group.tools.length + group.unavailable === 1 ? 'tool' : 'tools'}` : settledProgressLabel(group.tools, group.unavailable)}
+                renderTool={renderTool} />}
+        </div>)}
+      </div>
+    </ProgressDisclosure>
+    {!live && last?.kind === 'text' ? <div className="app-turn-commentary"><MarkdownContent text={last.text} /></div> : null}
   </div>;
 }

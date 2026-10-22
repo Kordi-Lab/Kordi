@@ -316,7 +316,7 @@ test('legacy live and completed turns share one collapsed disclosure', async ({ 
   await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
   await expect(page.getByRole('button', { name: 'example.ts', exact: true })).toBeVisible();
   await finished.click();
-  await expect(page.locator('.app-transcript-thinking-markdown')).toHaveCount(0);
+  await expect(page.locator('.app-transcript-thinking-markdown')).toBeHidden();
   await page.screenshot({ path: info.outputPath('single-finished-disclosure.png'), fullPage: true });
 });
 
@@ -356,4 +356,43 @@ test('live progress starts as one line and unfolds recorded activity in order', 
   await expect(summaries).toHaveCount(0);
   await header.click();
   await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
+});
+
+
+test('progress unfolds smoothly downward without moving the viewport', async ({ page }) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&reasoning=1&count=50&phase=7');
+  await expect(page.locator('[data-virtual-transcript-session-ready="true"]')).toBeVisible();
+  const header = page.locator('.app-turn-worked-header');
+  await expect(header).toBeVisible();
+  await page.waitForTimeout(350);
+  const frames = await page.evaluate(async () => {
+    const control = document.querySelector<HTMLButtonElement>('.app-turn-worked-header')!;
+    const viewport = document.querySelector<HTMLElement>('[data-virtual-transcript-scroll]')!;
+    const body = document.querySelector<HTMLElement>('.app-ordered-progress > .app-progress-disclosure')!;
+    const samples: { scroll: number; top: number; height: number }[] = [];
+    const sample = () => samples.push({scroll: viewport.scrollTop, top: control.getBoundingClientRect().top, height: body.getBoundingClientRect().height});
+    sample();
+    control.click();
+    for (let index = 0; index < 24; index++) { await new Promise(requestAnimationFrame); sample(); }
+    control.click();
+    for (let index = 0; index < 24; index++) { await new Promise(requestAnimationFrame); sample(); }
+    return samples;
+  });
+  expect(Math.max(...frames.map(frame => Math.abs(frame.scroll - frames[0].scroll))), JSON.stringify(frames)).toBeLessThan(2);
+  expect(Math.max(...frames.map(frame => Math.abs(frame.top - frames[0].top)))).toBeLessThan(2);
+  const maxHeight = Math.max(...frames.map(frame => frame.height));
+  expect(maxHeight).toBeGreaterThan(30);
+  expect(frames.some(frame => frame.height > 1 && frame.height < maxHeight - 1)).toBe(true);
+  expect(frames.at(-1)!.height).toBeLessThan(1);
+  await header.click();
+  await page.waitForTimeout(40);
+  await header.click();
+  await page.waitForTimeout(40);
+  await header.click();
+  await expect(header).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByText('I will inspect the example before making a change.')).toBeVisible();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(page.locator('.app-ordered-progress > .app-progress-disclosure')).toHaveCSS('transition-duration', '0s');
+  await header.click();
+  await expect(page.getByText('I will inspect the example before making a change.')).toBeHidden();
 });

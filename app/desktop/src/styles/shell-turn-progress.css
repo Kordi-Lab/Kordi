@@ -72,3 +72,23 @@
 .app-turn-worked-header { min-width: 0; max-width: 100%; }
 .app-turn-worked-header > svg, .app-turn-worked-header > .app-turn-progress-time { flex-shrink: 0; }
 @media (prefers-reduced-motion: reduce) { .app-turn-status-text { transition-duration: 0ms; } }
+
+
+/* The measured height bridges layout changes and can reverse mid-transition. */
+.app-progress-disclosure {
+  height: 0; opacity: 0; visibility: hidden; overflow: hidden;
+  transition: height var(--app-motion-fast) var(--app-motion-ease), opacity var(--app-motion-fast) var(--app-motion-ease), visibility 0s var(--app-motion-fast);
+}
+.app-progress-disclosure[data-expanded="true"] { opacity: 1; visibility: visible; transition-delay: 0s; }
+.app-progress-disclosure-content { display: flow-root; min-width: 0; }
+.app-turn-progress-summary > svg:last-child,
+.app-turn-worked-header > svg:last-child,
+.app-tool-activity-toggle > svg:last-child { transition: transform var(--app-motion-fast) var(--app-motion-ease); }
+/* Keyboard toggles and reduced-motion preferences change layout immediately. */
+[data-transcript-stable-disclosure-root]:has(> div > button:focus-visible) > .app-progress-disclosure { transition-duration: 0ms; transition-delay: 0ms; }
+@media (prefers-reduced-motion: reduce) {
+  .app-progress-disclosure { transition-duration: 0ms; transition-delay: 0ms; }
+  .app-turn-progress-summary > svg:last-child, .app-turn-worked-header > svg:last-child, .app-tool-activity-toggle > svg:last-child { transition-duration: 0ms; }
+}
+/* An open nested disclosure must not override its closed ancestor's visibility. */
+.app-progress-disclosure[data-expanded="false"] .app-progress-disclosure { visibility: inherit; }

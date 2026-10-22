@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import type { DesktopChatToolSnapshot } from '../types';
 import { toolActivityMetadata } from './toolActivityMetadata';
 import { toolTimelineDisplayArguments } from './toolTimeline';
+import { ProgressDisclosure } from './ProgressDisclosure';
 
 /** The action row itself is the disclosure; file buttons open a companion tab. */
 export function ToolActivityRow({ tool, onOpenFile }: { tool: DesktopChatToolSnapshot; onOpenFile?: (path: string) => void }) {
@@ -12,7 +13,7 @@ export function ToolActivityRow({ tool, onOpenFile }: { tool: DesktopChatToolSna
     ? `${tool.liveOutput}\n\n${tool.resultText}` : tool.resultText || tool.liveOutput;
   const expandable = Boolean(tool.arguments || output);
   const failed = tool.isError || /error|failed/.test(tool.status);
-  return <div className="app-tool-activity" data-transcript-stable-disclosure-root="true">
+  return <div className="app-tool-activity" data-transcript-stable-disclosure-root="true" data-transcript-stable-disclosure-direction="down">
     <div className="app-tool-activity-line" data-failed={failed || undefined}>
       <button type="button" className="app-tool-activity-toggle" disabled={!expandable}
         aria-expanded={expandable ? expanded : undefined} aria-label={`${label}${path ? ` ${path.split('/').pop()}` : command ? ` ${command}` : ''}${failed ? ', failed' : ''}`}
@@ -24,13 +25,13 @@ export function ToolActivityRow({ tool, onOpenFile }: { tool: DesktopChatToolSna
       {path ? onOpenFile ? <button type="button" className="app-tool-file-link" title={path} onClick={() => onOpenFile(path)}>{path.split('/').pop()}</button> : <span className="app-tool-file-name">{path.split('/').pop()}</span> : null}
       {failed ? <span className="app-tool-activity-error">Failed</span> : null}
     </div>
-    {expanded ? <div className="app-tool-output" data-transcript-stable-disclosure-body="true">
+    <ProgressDisclosure expanded={expanded}><div className="app-tool-output">
       <div className="app-tool-output-heading">{command ? 'Shell' : 'Tool output'}</div>
       <pre tabIndex={0} aria-label={command ? 'Shell output' : 'Tool output'}>
         {command ? <><span className="app-tool-input">$ {command}</span>{'\n\n'}</> : null}
         {output || toolTimelineDisplayArguments(tool)}
       </pre>
       {tool.arguments && output && !command ? <details className="app-tool-input-details"><summary>Input</summary><pre tabIndex={0}>{toolTimelineDisplayArguments(tool)}</pre></details> : null}
-    </div> : null}
+    </div></ProgressDisclosure>
   </div>;
 }

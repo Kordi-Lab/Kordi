@@ -42,9 +42,8 @@ test('snapshot replay does not duplicate or reorder segments and keeps partial t
 
 test('ordered rendering has one active signal and no duplicated aggregate or raw reasoning', () => {
   const markup = renderToStaticMarkup(createElement(TurnProgress, { turn, renderTool: tool => createElement('div', { key: tool.id }, tool.id), legacyAnswer: 'Legacy aggregate must not repeat' }));
-  const texts = ['I will inspect the example.', 'Read context', 'The example needs one change.', 'Read context', 'The example is ready.'];
-  let position = -1;
-  for (const text of texts) { const next = markup.indexOf(text, position + 1); assert.ok(next > position, text); position = next; }
+  assert.match(markup, /aria-expanded="false"/);
+  assert.doesNotMatch(markup, /I will inspect the example|The example needs one change/);
   assert.equal((markup.match(/class="app-turn-progress-bird"/g) ?? []).length, 1);
   assert.doesNotMatch(markup, /Legacy aggregate|Private reasoning|Observation|Execution ×|done|complete/);
 });
