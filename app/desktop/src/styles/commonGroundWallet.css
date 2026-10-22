@@ -183,21 +183,17 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 .is-look:is(.cg-cardpage-glyph, .cg-card-glyph)[aria-expanded="true"], .is-look:is(.cg-cardpage-glyph, .cg-card-glyph):focus-visible {
   outline: none; box-shadow: 0 0 0 2px var(--app-main-bg), 0 0 0 4px var(--app-accent);
 }
-.cg-pop.cg-look { top: 36px; right: auto; left: 0; width: 322px; padding: 12px; transform-origin: top left; }
+.cg-pop.cg-look { top: 36px; right: auto; left: 0; width: 300px; padding: 14px; transform-origin: top left; }
 .cg-pop.cg-look.is-newcard { top: 66px; left: calc(50% - 170px); }
 .cg-pop-label.is-first { margin-top: 0; }
-.cg-look-kinds, .cg-look-icons { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-.cg-look-icons { gap: 6px; }
-.cg-look-colours { display: flex; justify-content: space-between; margin-top: 10px; }
+.cg-look-icons { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.cg-look-colours { display: grid; grid-template-columns: repeat(8, 28px); justify-content: space-between; row-gap: 8px; }
 .cg-look-colour {
   width: 28px; height: 28px; flex: none; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
   background: linear-gradient(150deg, var(--c1), var(--c2)); box-shadow: inset 0 0 0 0.5px var(--edge); transition: box-shadow 150ms ease-out, transform 150ms ease-out;
 }
 .cg-look-colour:hover { transform: scale(1.08); }
-/* The ring sits inside the swatch, so neighbours 2px apart never overlap it. */
-.cg-look-colour.is-on { box-shadow: inset 0 0 0 2px var(--app-accent), inset 0 0 0 4px var(--app-transient-surface-fallback, var(--app-main-bg)); }
-.cg-design.is-small { width: auto; height: 30px; border-radius: 7px; }
-.cg-design.is-small svg { width: 14px; height: 14px; }
+.cg-look-colour.is-on { box-shadow: 0 0 0 2px var(--app-transient-surface-fallback, var(--app-main-bg)), 0 0 0 4px var(--app-accent); }
 .cg-look-icon {
   display: grid; height: 34px; place-items: center; padding: 0; border: 0; border-radius: 8px; background: var(--cg-fill); color: var(--utility-foreground);
   cursor: pointer; transition: background 150ms ease-out, box-shadow 150ms ease-out;

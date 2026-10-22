@@ -238,6 +238,12 @@ test('wallet: the look popover applies at once, saves, and puts the old look bac
   assert.match(html, />Icon</);
   assert.equal(html.match(/role="radio"/g)?.length, 34);
   assert.match(html, /aria-label="Ocean" title="Ocean" data-design="ocean" class="cg-look-colour"/);
+  // Background is one grid of sixteen plain swatches, kind designs first; only the icon grid draws glyphs.
+  const background = html.slice(html.indexOf('aria-label="Background"'), html.indexOf('>Icon<'));
+  assert.equal(background.match(/class="cg-look-colour/g)?.length, 16);
+  assert.doesNotMatch(background, /<svg/);
+  assert.deepEqual([...background.matchAll(/data-design="(\w+)"/g)].map((match) => match[1]).slice(0, 7), ['work', 'health', 'daily', 'workshop', 'research', 'custom', 'ocean']);
+  assert.match(background, /aria-checked="true" aria-label="Research group" title="Research group" data-design="research" class="cg-look-colour is-on"/);
   assert.match(html, /aria-checked="true" aria-label="Research group"/);
   assert.match(html, /aria-checked="true" aria-label="Coffee"/);
   assert.equal(html.match(/aria-checked="true"/g)?.length, 2);

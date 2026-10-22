@@ -8,10 +8,13 @@ import { CG_CARD_ICONS, type CgProfileKind } from './types';
 
 const iconLabel = (icon: CgCardIcon) => `${icon[0].toUpperCase()}${icon.slice(1)}`;
 
+/** Every background as a plain colour: the six kind designs (which keep their patterns on the card), then ten colours. */
+const BACKGROUNDS: Array<{ design: CgCardDesign; label: string }> = [...CARD_DESIGNS, ...COLOUR_DESIGNS];
+
 /**
- * The card's look, about 300px wide under its icon square: the six kind backgrounds, ten plain
- * colours and eighteen icons, the current ones ringed. A click applies at once; the current icon again goes back to
- * the background's own glyph.
+ * The card's look, about 300px wide under its icon square: sixteen round colour swatches and
+ * eighteen icons, the current ones ringed. A click applies at once; the current icon again goes
+ * back to the background's own glyph.
  */
 export function CardLookPopover({ design, icon, onDesign, onIcon, onClose, className }: {
   design: CgCardDesign;
@@ -39,39 +42,20 @@ export function CardLookPopover({ design, icon, onDesign, onIcon, onClose, class
   return (
     <div ref={ref} className={cn('cg-pop cg-look', className)} role="dialog" aria-label="Card look">
       <div className="cg-pop-label is-first">Background</div>
-      <div className="cg-look-designs" role="radiogroup" aria-label="Background">
-        <div className="cg-look-kinds">
-          {CARD_DESIGNS.map((entry) => (
-            <button
-              key={entry.design}
-              type="button"
-              role="radio"
-              aria-checked={entry.design === design}
-              aria-label={entry.label}
-              title={entry.label}
-              data-design={entry.design}
-              className={cn('cg-design is-small', entry.design === design && 'is-on')}
-              onClick={() => onDesign(entry.design)}
-            >
-              <CardGlyph design={entry.design} />
-            </button>
-          ))}
-        </div>
-        <div className="cg-look-colours">
-          {COLOUR_DESIGNS.map((entry) => (
-            <button
-              key={entry.design}
-              type="button"
-              role="radio"
-              aria-checked={entry.design === design}
-              aria-label={entry.label}
-              title={entry.label}
-              data-design={entry.design}
-              className={cn('cg-look-colour', entry.design === design && 'is-on')}
-              onClick={() => onDesign(entry.design)}
-            />
-          ))}
-        </div>
+      <div className="cg-look-colours" role="radiogroup" aria-label="Background">
+        {BACKGROUNDS.map((entry) => (
+          <button
+            key={entry.design}
+            type="button"
+            role="radio"
+            aria-checked={entry.design === design}
+            aria-label={entry.label}
+            title={entry.label}
+            data-design={entry.design}
+            className={cn('cg-look-colour', entry.design === design && 'is-on')}
+            onClick={() => onDesign(entry.design)}
+          />
+        ))}
       </div>
       <div className="cg-pop-label">Icon</div>
       <div className="cg-look-icons" role="radiogroup" aria-label="Icon">
