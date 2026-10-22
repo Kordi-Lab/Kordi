@@ -384,6 +384,7 @@ pub async fn run(
     } else {
         println!("Kordi support contact is disabled");
     }
+    crate::system_account::bootstrap(state.db_pool()).await;
     if let Some(pending) = PendingPipConfig::from_env().map_err(RunError::Pip)? {
         let pip_config = crate::pip::bootstrap_pip_agent(state.db_pool(), pending)
             .await
