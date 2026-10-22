@@ -18,6 +18,7 @@ import type { CloudPresenceAccount } from '@/features/cloud/presence';
 import { useCloudCallContext } from '@/features/cloud/useCloudCallContext';
 import { useContactPresenceLabel } from '@/features/cloud/useCloudPresence';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { ContactCommonGroundLoader, type ContactProfileLoader } from '@/kordi-app/contacts/ContactCommonGround';
 import { ContactProfileSharedContent } from '@/pages/ContactProfileSharedContent';
 import { ContactProfileSharedPageView } from '@/pages/ContactProfileSharedPages';
 import {
@@ -50,6 +51,8 @@ type ContactInfoPopoverProps = {
   conversation?: Conversation | null;
   commonGroups?: ParticipantSpaceViewModel[];
   onOpenCommonGroup?: (space: ParticipantSpaceViewModel) => void;
+  /** Loads the person's contact profile for the Common ground section; absent, the section stays hidden. */
+  loadProfile?: ContactProfileLoader;
   onClose: () => void;
 };
 
@@ -108,6 +111,7 @@ export function ContactInfoPopover({
   onAddContact,
   onMessageContact,
   onOpenCommonGroup,
+  loadProfile,
 }: ContactInfoPopoverProps) {
   const calls = useCloudCallContext();
   const dialogRef = useRef<HTMLElement>(null);
@@ -389,6 +393,7 @@ export function ContactInfoPopover({
             </div>
 
             <div className="app-transient-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+              {loadProfile && accountId ? <ContactCommonGroundLoader accountId={accountId} load={loadProfile} /> : null}
               <ContactProfileSharedContent
                 summary={summary}
                 commonGroups={commonGroups}

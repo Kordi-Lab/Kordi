@@ -17,7 +17,8 @@ import {
 } from '../contactPresentation';
 import type { Contact, ContactRequest } from '../types';
 import { CopyButton, DetailHeader, DetailTile, DetailTiles, InfoCard, type InfoCardRow } from './ContactDetailParts';
-import { CommonGroundCard, DeleteContactCard, SharedWithYouCard, SharedWithYouLoading } from './ContactProfileCards';
+import { CommonGroundCard } from './ContactCommonGround';
+import { DeleteContactCard, SharedWithYouCard, SharedWithYouLoading } from './ContactProfileCards';
 import { contactProfileKind, formatContactSince, type ContactProfileKind } from './contactProfileHost';
 import { MenuTile, MuteTile, SettingsTile, ShareTile, type TileMenuItem } from './ContactProfileTiles';
 import type { ContactsPageProps } from './contactsPageTypes';
