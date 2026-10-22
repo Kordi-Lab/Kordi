@@ -94,6 +94,8 @@ struct ConversationSummary: Identifiable, Hashable {
     var unreadMentionCount: Int
     var lastReadSequence: Int64
     var avatarSource: String?
+    /// A group started from a Grounding room.
+    var isGroundingGroup = false
     var agentActivity: AgentActivity?
     let sessionId: String
     let agentDisplayName: String?
@@ -117,6 +119,7 @@ struct ConversationSummary: Identifiable, Hashable {
         lastActivityAt: Date,
         unreadCount: Int,
         avatarSource: String?,
+        isGroundingGroup: Bool = false,
         agentActivity: AgentActivity?,
         sessionId: String,
         agentDisplayName: String? = nil,
@@ -144,6 +147,7 @@ struct ConversationSummary: Identifiable, Hashable {
         self.unreadMentionCount = unreadMentionCount
         self.lastReadSequence = lastReadSequence
         self.avatarSource = avatarSource
+        self.isGroundingGroup = isGroundingGroup
         self.agentActivity = agentActivity
         self.sessionId = sessionId
         self.agentDisplayName = agentDisplayName

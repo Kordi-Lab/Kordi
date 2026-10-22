@@ -23,6 +23,7 @@ struct GroupSpaceSummary: Identifiable, Hashable {
     var lastAttachment: ChatAttachment? = nil
 
     var avatarSource: String? { membershipSessions.first?.avatarSource }
+    var isGroundingGroup: Bool { membershipSessions.contains(where: \.isGroundingGroup) }
 
     var preferenceId: String {
         normalizedGroupSpaceId(id) ?? id
