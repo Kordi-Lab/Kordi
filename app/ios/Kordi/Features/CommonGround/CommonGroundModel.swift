@@ -40,6 +40,8 @@ final class CommonGroundModel: ObservableObject {
     @Published var currentProfileID: String?
     /// Each profile's shared topics for the wallet, set in CommonGroundModel+Wallet.swift.
     @Published var walletTopics: [String: [String]] = [:]
+    /// Rooms looked up by code before joining.
+    @Published var roomPreviews: [String: CommonGroundRoomPreview] = [:]
     /// The viewer's profile to see each person through, from Recent or a room.
     var viewerProfiles: [String: String] = [:]
 
@@ -268,7 +270,7 @@ final class CommonGroundModel: ObservableObject {
     }
 
     func roomTitle(_ code: String) -> String {
-        rooms[code]?.title ?? roomList?.first { $0.code == code }?.title ?? "Room \(code)"
+        rooms[code]?.title ?? roomList?.first { $0.code == code }?.title ?? roomPreviews[code]?.title ?? "Room \(code)"
     }
 
     func joinRoom(_ code: String, request: CommonGroundJoinRequest = .init()) async -> Bool {

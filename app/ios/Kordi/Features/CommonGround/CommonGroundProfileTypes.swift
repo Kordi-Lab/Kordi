@@ -27,21 +27,24 @@ enum CommonGroundProfileKind: String, CaseIterable, Identifiable {
     var isFixed: Bool { self != .custom }
 }
 
-/// `{profileId, kind, name, focus}`: a profile as a card, room or person carries it.
+/// `{profileId, kind, name, focus, design}`: a profile as a card, room or person carries it.
 struct CommonGroundProfileTag: Codable, Hashable {
     let profileId: String
     let kind: String
     let name: String
     var focus: String?
+    /// The card's design; nil means the kind's default.
+    var design: String?
 
-    init(profileId: String, kind: String, name: String, focus: String? = nil) {
+    init(profileId: String, kind: String, name: String, focus: String? = nil, design: String? = nil) {
         self.profileId = profileId
         self.kind = kind
         self.name = name
         self.focus = focus
+        self.design = design
     }
 
-    private enum CodingKeys: String, CodingKey { case profileId, kind, name, focus }
+    private enum CodingKeys: String, CodingKey { case profileId, kind, name, focus, design }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -49,9 +52,11 @@ struct CommonGroundProfileTag: Codable, Hashable {
         kind = c.cgProfileValue(.kind, "work")
         name = c.cgProfileValue(.name, "")
         focus = c.cgProfileValue(.focus, nil as String?)
+        design = c.cgProfileValue(.design, nil as String?)
     }
 
     var title: String { CommonGroundProfileSummary.title(kind: kind, name: name) }
+    var cardDesign: CommonGroundCardDesign { .of(kind: kind, name: name, design: design) }
 
     /// The label beside a person's name; nil for Work, which needs none.
     var badge: String? { kind == CommonGroundProfileKind.work.rawValue ? nil : title }
@@ -68,11 +73,13 @@ struct CommonGroundProfileSummary: Decodable, Hashable, Identifiable {
     var sharing: Bool
     var builtAt: String?
     var topicCount: Int
+    /// The card's design; nil means the kind's default.
+    var design: String?
 
     var id: String { profileId }
 
     init(profileId: String, kind: String, name: String, focus: String? = nil, position: Int = 0,
-         hasCard: Bool = false, sharing: Bool = true, builtAt: String? = nil, topicCount: Int = 0) {
+         hasCard: Bool = false, sharing: Bool = true, builtAt: String? = nil, topicCount: Int = 0, design: String? = nil) {
         self.profileId = profileId
         self.kind = kind
         self.name = name
@@ -82,9 +89,10 @@ struct CommonGroundProfileSummary: Decodable, Hashable, Identifiable {
         self.sharing = sharing
         self.builtAt = builtAt
         self.topicCount = topicCount
+        self.design = design
     }
 
-    private enum CodingKeys: String, CodingKey { case profileId, kind, name, focus, position, hasCard, sharing, builtAt, topicCount }
+    private enum CodingKeys: String, CodingKey { case profileId, kind, name, focus, position, hasCard, sharing, builtAt, topicCount, design }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -97,8 +105,10 @@ struct CommonGroundProfileSummary: Decodable, Hashable, Identifiable {
         sharing = c.cgProfileValue(.sharing, true)
         builtAt = c.cgProfileValue(.builtAt, nil as String?)
         topicCount = c.cgProfileValue(.topicCount, 0)
+        design = c.cgProfileValue(.design, nil as String?)
     }
 
+    var cardDesign: CommonGroundCardDesign { .of(kind: kind, name: name, design: design) }
     var profileKind: CommonGroundProfileKind? { CommonGroundProfileKind(rawValue: kind) }
     var title: String { Self.title(kind: kind, name: name) }
     var isWork: Bool { kind == CommonGroundProfileKind.work.rawValue }
@@ -132,10 +142,12 @@ struct CommonGroundNewProfile: Encodable, Hashable {
     var kind: String
     var name: String?
     var focus: String?
+    var design: String?
 
     /// Trims the fields and drops empty ones; a fixed kind sends no name.
-    init(kind: CommonGroundProfileKind, name: String = "", focus: String = "") {
+    init(kind: CommonGroundProfileKind, name: String = "", focus: String = "", design: CommonGroundCardDesign? = nil) {
         self.kind = kind.rawValue
+        self.design = design?.rawValue
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let focus = focus.trimmingCharacters(in: .whitespacesAndNewlines)
         self.name = kind.isFixed || name.isEmpty ? nil : name
@@ -149,6 +161,7 @@ struct CommonGroundNewProfile: Encodable, Hashable {
 struct CommonGroundProfileEdit: Encodable, Hashable {
     var name: String?
     var focus: String?
+    var design: String?
 }
 
 /// `POST rooms/:code/join`. `name` and `kind` apply only when this join opens the room.

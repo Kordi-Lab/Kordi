@@ -111,10 +111,10 @@ final class CommonGroundWalletTests: XCTestCase {
         XCTAssertEqual(CommonGroundCardDesign.daily.defaultName, "")
     }
 
-    func testNewCardKeepsItsDesign() async throws {
+    func testNewCardSendsItsDesign() async throws {
         let defaults = freshDefaults()
         let model = stubbedModel(profiles: true, defaults: defaults)
-        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/profiles", [(201, #"{"profileId":"cgp_m","kind":"custom","name":"MIT","position":3}"#)])
+        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/profiles", [(201, #"{"profileId":"cgp_m","kind":"custom","name":"MIT","position":3,"design":"workshop"}"#)])
         CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/card", [(200, CommonGroundTests.buildingJSON)])
 
         let created = await model.createCard(.workshop, name: " MIT ", focus: "")
@@ -122,16 +122,160 @@ final class CommonGroundWalletTests: XCTestCase {
         let sent = try body(XCTUnwrap(CommonGroundURLProtocol.requests.last { $0.request.httpMethod == "POST" }))
         XCTAssertEqual(sent["kind"] as? String, "custom")
         XCTAssertEqual(sent["name"] as? String, "MIT")
-        XCTAssertEqual(model.design(ofProfile: "cgp_m"), .workshop, "the design made on this device wins over the name")
+        XCTAssertEqual(sent["design"] as? String, "workshop")
+        XCTAssertEqual(model.design(ofProfile: "cgp_m"), .workshop, "the server's design wins over the name")
+        XCTAssertNil(defaults.string(forKey: CommonGroundCardDesignStore.key("cgp_m")), "nothing is kept on the device")
     }
 
-    func testDesignFollowsKindThenSavedThenName() {
-        XCTAssertEqual(CommonGroundCardDesign.of(kind: "work", name: "Lab", saved: .custom), .work)
-        XCTAssertEqual(CommonGroundCardDesign.of(kind: "health", name: ""), .health)
+    func testDesignFollowsServerThenKindThenName() {
+        XCTAssertEqual(CommonGroundCardDesign.of(kind: "work", name: "Lab"), .work)
+        XCTAssertEqual(CommonGroundCardDesign.of(kind: "health", name: "", design: nil), .health)
         XCTAssertEqual(CommonGroundCardDesign.of(kind: "daily", name: ""), .daily)
-        XCTAssertEqual(CommonGroundCardDesign.of(kind: "custom", name: "KAUST", saved: .research), .research)
+        XCTAssertEqual(CommonGroundCardDesign.of(kind: "custom", name: "KAUST", design: "research"), .research)
+        XCTAssertEqual(CommonGroundCardDesign.of(kind: "custom", name: "Poster workshop", design: "custom"), .custom, "the design beats the name")
         XCTAssertEqual(CommonGroundCardDesign.of(kind: "custom", name: "Poster workshop"), .workshop)
         XCTAssertEqual(CommonGroundCardDesign.of(kind: "custom", name: "Vision research group"), .research)
-        XCTAssertEqual(CommonGroundCardDesign.of(kind: "custom", name: "Board games"), .custom)
+        XCTAssertEqual(CommonGroundCardDesign.of(kind: "custom", name: "Board games", design: "unknown"), .custom)
+    }
+
+    // MARK: Design on the server
+
+    func testDesignRoundTripsInProfiles() throws {
+        let list = try JSONDecoder().decode(CommonGroundProfileList.self, from: Data(#"""
+        {"profiles":[{"profileId":"cgp_k","kind":"custom","name":"KAUST","position":2,"design":"research"},
+                     {"profileId":"cgp_w","kind":"work","name":"","position":0,"design":null}]}
+        """#.utf8))
+        XCTAssertEqual(list.profiles[0].design, "research")
+        XCTAssertEqual(list.profiles[0].cardDesign, .research)
+        XCTAssertNil(list.profiles[1].design)
+        XCTAssertEqual(list.profiles[1].cardDesign, .work)
+
+        let tag = try JSONDecoder().decode(CommonGroundProfileTag.self, from: Data(#"{"profileId":"cgp_x","kind":"custom","name":"Lab","design":"workshop"}"#.utf8))
+        XCTAssertEqual(tag.design, "workshop")
+        XCTAssertEqual(tag.cardDesign, .workshop, "another person's design wins over the name")
+        let again = try JSONDecoder().decode(CommonGroundProfileTag.self, from: JSONEncoder().encode(tag))
+        XCTAssertEqual(again, tag)
+        let person = try JSONDecoder().decode(CommonGroundPerson.self, from: Data(#"""
+        {"accountId":"acct_b","name":"Priya","profile":{"profileId":"cgp_p","kind":"custom","name":"Poster day","design":"research"}}
+        """#.utf8))
+        XCTAssertEqual(person.profile?.cardDesign, .research)
+
+        let draft = CommonGroundNewProfile(kind: .custom, name: " KAUST ", design: .research)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any])
+        XCTAssertEqual(json["design"] as? String, "research")
+        let edit = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(CommonGroundProfileEdit(name: "Lab"))) as? [String: Any])
+        XCTAssertNil(edit["design"], "an edit without a design leaves it")
+    }
+
+    func testRenameKeepsTheCardsLook() async throws {
+        let model = stubbedModel(profiles: true, defaults: freshDefaults())
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/profiles", [(200, #"""
+        {"profiles":[{"profileId":"cgp_k","kind":"custom","name":"Poster workshop","position":2},
+                     {"profileId":"cgp_r","kind":"custom","name":"Lab","position":3,"design":"research"}]}
+        """#)])
+        await model.loadProfiles()
+        CommonGroundURLProtocol.stub("PUT", "/v1/cloud/common-ground/profiles/cgp_k", [(200, #"{"profileId":"cgp_k","kind":"custom","name":"KAUST","position":2,"design":"workshop"}"#)])
+        CommonGroundURLProtocol.stub("PUT", "/v1/cloud/common-ground/profiles/cgp_r", [(200, #"{"profileId":"cgp_r","kind":"custom","name":"Lab","position":3,"design":"research","focus":"Vision"}"#)])
+
+        let renamedOK = await model.updateProfile("cgp_k", name: "KAUST")
+        XCTAssertTrue(renamedOK)
+        let renamed = try body(XCTUnwrap(CommonGroundURLProtocol.requests.last { $0.request.url?.path.hasSuffix("cgp_k") == true }))
+        XCTAssertEqual(renamed["design"] as? String, "workshop", "the guessed look is kept after the name changes")
+        XCTAssertEqual(model.design(ofProfile: "cgp_k"), .workshop)
+
+        let focusedOK = await model.updateProfile("cgp_r", focus: "Vision")
+        XCTAssertTrue(focusedOK)
+        let focused = try body(XCTUnwrap(CommonGroundURLProtocol.requests.last { $0.request.url?.path.hasSuffix("cgp_r") == true }))
+        XCTAssertNil(focused["design"], "a stored design is left alone")
+    }
+
+    func testLocalDesignsMoveToTheServerOnce() async throws {
+        let defaults = freshDefaults()
+        defaults.set("research", forKey: CommonGroundCardDesignStore.key("cgp_k"))
+        defaults.set("workshop", forKey: CommonGroundCardDesignStore.key("cgp_s"))
+        defaults.set("custom", forKey: CommonGroundCardDesignStore.key("cgp_t"))
+        let model = stubbedModel(profiles: true, defaults: defaults)
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/profiles", [(200, #"""
+        {"profiles":[{"profileId":"cgp_w","kind":"work","name":"","position":0},
+                     {"profileId":"cgp_k","kind":"custom","name":"KAUST","position":1,"design":null},
+                     {"profileId":"cgp_s","kind":"custom","name":"Summit","position":2,"design":"custom"},
+                     {"profileId":"cgp_t","kind":"custom","name":"Trail","position":3}]}
+        """#)])
+        CommonGroundURLProtocol.stub("PUT", "/v1/cloud/common-ground/profiles/cgp_k", [(200, #"{"profileId":"cgp_k","kind":"custom","name":"KAUST","position":1,"design":"research"}"#)])
+        CommonGroundURLProtocol.stub("PUT", "/v1/cloud/common-ground/profiles/cgp_t", [(503, #"{"errorCode":"unavailable","message":"x"}"#)])
+
+        await model.loadProfiles()
+        let puts = CommonGroundURLProtocol.requests.filter { $0.request.httpMethod == "PUT" }
+        XCTAssertEqual(puts.map { $0.request.url?.path ?? "" }, [
+            "/v1/cloud/common-ground/profiles/cgp_k", "/v1/cloud/common-ground/profiles/cgp_t",
+        ], "only profiles without a server design are sent")
+        XCTAssertEqual(try body(puts[0]) as NSDictionary, ["design": "research"] as NSDictionary)
+        XCTAssertEqual(model.design(ofProfile: "cgp_k"), .research)
+        XCTAssertNil(defaults.string(forKey: CommonGroundCardDesignStore.key("cgp_k")), "sent, then dropped")
+        XCTAssertNil(defaults.string(forKey: CommonGroundCardDesignStore.key("cgp_s")), "the server's design wins")
+        XCTAssertEqual(defaults.string(forKey: CommonGroundCardDesignStore.key("cgp_t")), "custom", "kept after a server error")
+        XCTAssertEqual(model.design(ofProfile: "cgp_s"), .custom)
+
+        CommonGroundURLProtocol.stub("PUT", "/v1/cloud/common-ground/profiles/cgp_t", [(200, #"{"profileId":"cgp_t","kind":"custom","name":"Trail","position":3,"design":"custom"}"#)])
+        await model.loadProfiles()
+        XCTAssertEqual(CommonGroundURLProtocol.requests.filter { $0.request.httpMethod == "PUT" }.count, 3, "the earlier sends are not repeated")
+        XCTAssertNil(defaults.string(forKey: CommonGroundCardDesignStore.key("cgp_t")))
+    }
+
+    // MARK: Room preview
+
+    func testRoomPreviewDecodes() throws {
+        let preview = try JSONDecoder().decode(CommonGroundRoomPreview.self, from: Data(#"{"code":"0427","name":"Agents meetup","kind":"work","memberCount":1,"member":false}"#.utf8))
+        XCTAssertEqual(preview.title, "Agents meetup")
+        XCTAssertEqual(preview.detail, "Work · 1 person")
+        XCTAssertFalse(preview.member)
+        let bare = try JSONDecoder().decode(CommonGroundRoomPreview.self, from: Data(#"{"code":"0427","name":" ","kind":null,"memberCount":6}"#.utf8))
+        XCTAssertEqual(bare.title, "Room 0427")
+        XCTAssertEqual(bare.detail, "6 people")
+        XCTAssertNil(bare.kind)
+    }
+
+    func testRoomPreviewSuggestsACard() async throws {
+        let model = stubbedModel(profiles: true, defaults: freshDefaults())
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/profiles", [(200, CommonGroundProfileTests.profilesJSON)])
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/rooms/0427/preview", [(200, #"""
+        {"code":"0427","name":"Running club","kind":"health","memberCount":8,"member":false}
+        """#)])
+        await model.loadProfiles()
+        XCTAssertEqual(model.roomTitle("0427"), "Room 0427")
+        XCTAssertNil(model.suggestedKind(ofRoom: "0427"))
+
+        let lookup = await model.previewRoom("0427")
+        guard case .found(let room) = lookup else { return XCTFail("expected a room, got \(lookup)") }
+        XCTAssertEqual(room.name, "Running club")
+        XCTAssertEqual(model.roomTitle("0427"), "Running club")
+        XCTAssertEqual(model.roomDetail("0427"), "Health · 8 people")
+        let kind = model.suggestedKind(ofRoom: "0427")
+        XCTAssertEqual(CommonGroundProfileChoice.suggested(roomKind: kind, in: model.shareChoices), "cgp_h")
+        XCTAssertEqual(CommonGroundProfileChoice.preselected(roomKind: kind, current: "cgp_w", in: model.shareChoices), "cgp_h")
+        XCTAssertEqual(CommonGroundURLProtocol.paths.filter { $0.hasSuffix("/preview") }.count, 1)
+    }
+
+    func testRoomPreviewFailures() async {
+        let model = stubbedModel(profiles: true, defaults: freshDefaults())
+        let path = "/v1/cloud/common-ground/rooms/9999/preview"
+        CommonGroundURLProtocol.stub("GET", path, [(404, #"{"errorCode":"common_ground_room_not_found","message":"Room not found."}"#)])
+        let missing = await model.previewRoom("9999")
+        XCTAssertEqual(missing, .failed("Room not found."))
+        XCTAssertNil(model.roomDetail("9999"))
+
+        CommonGroundURLProtocol.stub("GET", path, [(409, #"{"errorCode":"common_ground_no_card","message":"x"}"#)])
+        let noCard = await model.previewRoom("9999")
+        XCTAssertEqual(noCard, .failed("Build your profile first."))
+
+        CommonGroundURLProtocol.stub("GET", path, [(429, #"{"errorCode":"rate_limited","message":"x"}"#), (200, #"{"code":"9999","name":"Later"}"#)])
+        let before = CommonGroundURLProtocol.requests.count
+        let limited = await model.previewRoom("9999")
+        XCTAssertEqual(limited, .failed("Try again in a minute."))
+        XCTAssertEqual(CommonGroundURLProtocol.requests.count, before + 1, "never retried")
+
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/rooms/1111/preview", [(404, #"{"errorCode":"not_found","message":"Not found."}"#)])
+        let older = await model.previewRoom("1111")
+        XCTAssertEqual(older, .unavailable, "a server without the route joins as before")
     }
 }

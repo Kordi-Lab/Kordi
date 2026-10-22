@@ -82,7 +82,7 @@ struct CommonGroundHome: View {
                 model.notice = profile.map { "Sharing \($0.title) in \(room.title)" } ?? "Joined \(room.title)"
             }
             .environmentObject(model)
-            .presentationDetents([.height(470)])
+            .presentationDetents([.height(model.roomDetail(target.code ?? "") == nil ? 470 : 492)])
             .presentationDragIndicator(.visible)
         }
         .sheet(item: $createFor) { target in
@@ -128,9 +128,25 @@ struct CommonGroundHome: View {
         if model.sharing { createFor = CommonGroundCodeTarget(profileId: profileId) } else { afterSharing = .create(profileId) }
     }
 
+    /// Looks the code up once, then joins, asking to turn on sharing first.
     private func entered(_ entered: String) {
         codeError = nil
-        if model.sharing { join(entered) } else { afterSharing = .join(entered) }
+        guard !model.isInOpenRoom(entered) else { return join(entered) }
+        Task {
+            switch await model.previewRoom(entered) {
+            case .failed(let message):
+                codeError = message
+                code = ""
+                return
+            case .found(let room) where room.member:
+                code = ""
+                model.notice = "Already in \(room.title)"
+                return
+            case .found, .unavailable:
+                break
+            }
+            if model.sharing { join(entered) } else { afterSharing = .join(entered) }
+        }
     }
 
     private func join(_ entered: String) {

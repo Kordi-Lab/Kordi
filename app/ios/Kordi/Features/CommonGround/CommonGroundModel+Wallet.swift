@@ -8,6 +8,55 @@ struct CommonGroundCreateRoomRequest: Encodable, Hashable {
     var profileId: String?
 }
 
+/// `GET rooms/:code/preview`: a room as anyone with its code sees it before joining.
+struct CommonGroundRoomPreview: Decodable, Hashable {
+    let code: String
+    let name: String
+    var kind: String?
+    var memberCount: Int
+    var member: Bool
+
+    init(code: String, name: String, kind: String? = nil, memberCount: Int = 0, member: Bool = false) {
+        self.code = code
+        self.name = name
+        self.kind = kind
+        self.memberCount = memberCount
+        self.member = member
+    }
+
+    private enum CodingKeys: String, CodingKey { case code, name, kind, memberCount, member }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        code = try c.decode(String.self, forKey: .code)
+        name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? ""
+        kind = (try? c.decodeIfPresent(String.self, forKey: .kind)) ?? nil
+        memberCount = (try? c.decodeIfPresent(Int.self, forKey: .memberCount)) ?? 0
+        member = (try? c.decodeIfPresent(Bool.self, forKey: .member)) ?? false
+    }
+
+    var title: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Room \(code)" : trimmed
+    }
+
+    /// "Work · 5 people"; only the count for a room without a kind.
+    var detail: String {
+        let people = memberCount == 1 ? "1 person" : "\(memberCount) people"
+        guard let kind = kind.flatMap(CommonGroundProfileKind.init(rawValue:)) else { return people }
+        return "\(kind.title) · \(people)"
+    }
+}
+
+/// What a typed code finds before joining.
+enum CommonGroundRoomLookup: Equatable {
+    case found(CommonGroundRoomPreview)
+    /// A line for under the code boxes; nil when there is nothing to say.
+    case failed(String?)
+    /// The server has no preview; the join goes ahead as before.
+    case unavailable
+}
+
 /// One card in Home's wallet.
 struct CommonGroundWalletCard: Identifiable, Hashable {
     /// The profile id; `default` before profiles, `suggested` for the first-run card.
@@ -36,12 +85,7 @@ extension CommonGroundModel {
         return card.topics.all.filter { !hidden.contains($0) }
     }
 
-    func design(of profile: CommonGroundProfileSummary) -> CommonGroundCardDesign {
-        CommonGroundCardDesign.of(
-            kind: profile.kind, name: profile.name,
-            saved: CommonGroundCardDesignStore.saved(profile.profileId, defaults: defaults)
-        )
-    }
+    func design(of profile: CommonGroundProfileSummary) -> CommonGroundCardDesign { profile.cardDesign }
 
     func design(ofProfile profileId: String?) -> CommonGroundCardDesign {
         profile(profileId).map(design(of:)) ?? .work
@@ -103,10 +147,10 @@ extension CommonGroundModel {
         return counts.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map(\.key)
     }
 
-    /// Creates a card of a design; a custom design keeps its look on this device.
+    /// Creates a card of a design; the server keeps the design.
     @discardableResult
     func createCard(_ design: CommonGroundCardDesign, name: String, focus: String) async -> CommonGroundProfileSummary? {
-        await createProfile(CommonGroundNewProfile(kind: design.kind, name: name, focus: focus), design: design)
+        await createProfile(CommonGroundNewProfile(kind: design.kind, name: name, focus: focus, design: design))
     }
 
     // MARK: Rooms
@@ -128,6 +172,25 @@ extension CommonGroundModel {
         raiseRoom(room.code)
         return room
     }
+
+    /// Looks a typed code up once. Preview shares the join budget, so it is
+    /// never retried; a 429 asks to wait.
+    func previewRoom(_ code: String) async -> CommonGroundRoomLookup {
+        do {
+            let preview = try await call { try await $0.commonGroundRoomPreview(token: $1, code: code) }
+            roomPreviews[code] = preview
+            return .found(preview)
+        } catch let error as CloudAPIError where error.statusCode == 404 && !error.code.hasPrefix("common_ground") {
+            return .unavailable
+        } catch let error as CloudAPIError where error.statusCode == 429 || error.code == "rate_limited" {
+            return .failed("Try again in a minute.")
+        } catch {
+            return .failed(Self.message(for: error))
+        }
+    }
+
+    /// "Work · 5 people" for a code looked up before joining.
+    func roomDetail(_ code: String) -> String? { roomPreviews[code]?.detail }
 
     /// Joins a room from Home's code row; the room goes to the top of Rooms.
     func joinFromHome(_ code: String, profileId: String?) async -> CommonGroundRoom? {

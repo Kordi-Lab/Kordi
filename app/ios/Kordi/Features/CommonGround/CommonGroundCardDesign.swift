@@ -2,9 +2,8 @@ import SwiftUI
 
 /// A card's look in the wallet. Work, Health and Daily tasks follow their
 /// kind; a custom profile is drawn as a Workshop, Research group or Custom
-/// card. The server stores only the kind, so the design a custom card was
-/// made with is kept on this device, and a custom card without one is
-/// guessed from its name.
+/// card. The server stores each profile's design; a custom card without
+/// one is guessed from its name.
 enum CommonGroundCardDesign: String, CaseIterable, Identifiable {
     case work, health, daily, workshop, research, custom
 
@@ -56,16 +55,16 @@ enum CommonGroundCardDesign: String, CaseIterable, Identifiable {
 
     var namePlaceholder: String { self == .custom ? "Name" : title }
 
-    /// The design for a profile: its kind, else the design saved on this
-    /// device, else one guessed from the name, else Custom.
-    static func of(kind: String, name: String, saved: CommonGroundCardDesign? = nil) -> CommonGroundCardDesign {
+    /// The design for a profile: the server's design, else the kind's
+    /// default, else for a custom card one guessed from the name.
+    static func of(kind: String, name: String, design: String? = nil) -> CommonGroundCardDesign {
+        if let design = design.flatMap(CommonGroundCardDesign.init(rawValue:)) { return design }
         switch CommonGroundProfileKind(rawValue: kind) {
         case .work?: return .work
         case .health?: return .health
         case .daily?: return .daily
         default: break
         }
-        if let saved, saved.kind == .custom { return saved }
         let text = name.lowercased()
         if ["workshop", "conference", "poster", "meetup", "summit"].contains(where: text.contains) { return .workshop }
         if ["research", "lab", "group", "university", "institute"].contains(where: text.contains) { return .research }
@@ -84,7 +83,8 @@ enum CommonGroundCardDesign: String, CaseIterable, Identifiable {
     }
 }
 
-/// The design each custom profile was made with, per profile, on this device.
+/// Designs earlier builds kept per profile on this device, before the
+/// server stored them; read once to move them to the server, then dropped.
 enum CommonGroundCardDesignStore {
     static func key(_ profileId: String) -> String { "commonGround.cardDesign.\(profileId)" }
 
@@ -92,8 +92,8 @@ enum CommonGroundCardDesignStore {
         defaults.string(forKey: key(profileId)).flatMap(CommonGroundCardDesign.init(rawValue:))
     }
 
-    static func save(_ design: CommonGroundCardDesign?, profileId: String, defaults: UserDefaults) {
-        if let design { defaults.set(design.rawValue, forKey: key(profileId)) } else { defaults.removeObject(forKey: key(profileId)) }
+    static func drop(_ profileId: String, defaults: UserDefaults) {
+        defaults.removeObject(forKey: key(profileId))
     }
 }
 

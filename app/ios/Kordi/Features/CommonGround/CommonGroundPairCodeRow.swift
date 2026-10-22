@@ -108,7 +108,7 @@ struct CommonGroundJoinSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            CommonGroundSheetHeader(title: model.roomTitle(code)) { dismiss() }
+            CommonGroundSheetHeader(title: model.roomTitle(code), subtitle: model.roomDetail(code)) { dismiss() }
             CommonGroundCardCarousel(
                 ids: choices.map(\.profileId),
                 selection: $selected,
@@ -154,16 +154,25 @@ struct CommonGroundJoinSheet: View {
     }
 }
 
-/// A sheet's title with a round close button.
+/// A sheet's title, an optional line under it and a round close button.
 struct CommonGroundSheetHeader: View {
     let title: String
+    var subtitle: String? = nil
     let onClose: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(title)
-                .font(.system(size: 22, weight: .bold))
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 22, weight: .bold))
+                    .lineLimit(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
             Spacer(minLength: 8)
             Button(action: onClose) {
                 Image(systemName: "xmark")
