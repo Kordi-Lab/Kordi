@@ -4,9 +4,9 @@ import { useMessageLayout } from '@/app/messageLayoutPreference';
 import { LiveTurnMessageFrame } from './LiveTurnMessageFrame';
 import { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
 export { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
-import { agentTurnHasStarted, canDisplayAgentTurn, shouldShowAgentWaitingAnimation } from '@/features/chat/agentProcessingVisibility';
+import { canDisplayAgentTurn } from '@/features/chat/agentProcessingVisibility';
 import { cancelledTurnContent } from '@/features/chat/cancellation';
-import { memo, useEffect, useState } from 'react';
+import { memo } from 'react';
 import {
   CheckCircle2,
   CircleAlert,
@@ -16,88 +16,12 @@ import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
 import { useVisibleLiveTurn } from '@/features/chat/useVisibleLiveTurn';
 import { cloudAgentProviderFailureNeedsAuthentication, cloudAgentProviderFailureNotice } from '@/features/cloud/cloudAgentMessages';
 import { cn } from '@/lib/utils';
-import { AgentWaitingWave } from './AgentWaitingWave';
 import { SourceMessageQuoteRow } from './transcriptReplyAttribution';
 import { MarkdownContent } from './markdown';
 import { FoldableAssistantAnswer } from './transcriptAssistantAnswer';
 import { InlineChangedFiles } from './transcriptChangedFiles';
-import {
-  toolTimelineTypeLabel,
-} from './toolTimeline';
 import type { DesktopChatTurnSnapshot, MessageSourceReference } from '../types';
 import { AgentRequestHeaderStop, CollaborationAgentStopButton, TurnStopButton, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptTurnStopControls';
-
-function useDelayedLiveStatus(shouldShow: boolean, turnId: string, delayMs = 180) {
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    if (!shouldShow) {
-      setVisible(false);
-      return undefined;
-    }
-
-    setVisible(false);
-    const timeout = window.setTimeout(() => {
-      setVisible(true);
-    }, delayMs);
-    return () => window.clearTimeout(timeout);
-  }, [delayMs, shouldShow, turnId]);
-
-  return shouldShow && visible;
-}
-
-const GENERIC_LIVE_STATUS_MESSAGES = new Set(['working…', 'running tool…']);
-
-function normalizedLiveStatusMessage(value: string) {
-  return value.trim().toLowerCase().replace(/\.\.\.$/, '…');
-}
-
-function liveStatusMessageIsGeneric(value: string) {
-  return GENERIC_LIVE_STATUS_MESSAGES.has(normalizedLiveStatusMessage(value));
-}
-
-function toolStatusIsComplete(status: string) {
-  const normalized = status.trim().toLowerCase();
-  return normalized === 'done' || normalized === 'complete' || normalized === 'completed';
-}
-
-function toolStatusIsFailed(status: string, isError: boolean) {
-  const normalized = status.trim().toLowerCase();
-  return isError || normalized === 'error' || normalized.includes('failed');
-}
-
-function livePhaseLabelFromTool(tool: DesktopChatTurnSnapshot['tools'][number]) {
-  switch (toolTimelineTypeLabel(tool)) {
-    case 'Observation':
-      return 'Observation…';
-    case 'Planning':
-      return 'Planning…';
-    case 'Operator':
-      return 'Coordination…';
-    case 'Execution':
-      return 'Execution…';
-    case 'Reflection':
-      return 'Reflection…';
-    default:
-      return null;
-  }
-}
-
-function liveTurnPhaseStatusText(turn: DesktopChatTurnSnapshot) {
-  const explicitMessage = turn.message?.trim() ?? '';
-  if (explicitMessage && !liveStatusMessageIsGeneric(explicitMessage)) return explicitMessage;
-
-  const activeTool = [...turn.tools].reverse().find((tool) => !toolStatusIsComplete(tool.status) && !toolStatusIsFailed(tool.status, tool.isError));
-  const activePhase = activeTool ? livePhaseLabelFromTool(activeTool) : null;
-  if (activePhase) return activePhase;
-
-  const latestTool = [...turn.tools].reverse().find((tool) => !toolStatusIsFailed(tool.status, tool.isError));
-  const latestPhase = latestTool ? livePhaseLabelFromTool(latestTool) : null;
-  if (latestPhase) return latestPhase;
-
-  if (turn.status === 'starting') return 'Starting…';
-  return 'Thinking…';
-}
 
 function LiveChatTurnCardView({
   turn,
@@ -150,32 +74,13 @@ function LiveChatTurnCardView({
   const hasAssistant = assistantText.trim().length > 0 && !assistantTextDuplicatesError;
   const hasOrderedContent = visibleTurn.segments?.some(segment => segment.kind === 'tool' || segment.text.trim()) ?? false;
   const hasThinking = visibleTurn.thinkingText.trim().length > 0;
-  const hasVisibleContent = hasOrderedContent || hasAssistant || hasThinking || visibleTurn.tools.length > 0 || Boolean(visibleTurn.error);
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
-  const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus
-    && (visibleTurn.status === 'queued' || agentTurnHasStarted(visibleTurn) || Boolean(visibleTurn.pendingCollaborationAgentRequest) || Boolean(visibleTurn.hostedRunStatus));
   const pendingCollaborationAgentRequest = visibleTurn.pendingCollaborationAgentRequest ?? null;
   const turnIsRunning = !historical && !visibleTurn.completed;
   const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingCollaborationAgentRequest && !visibleTurn.id.startsWith('collaboration-live-turn:');
   const cardStopAvailable = activeStopAvailable && !stopInHeader;
   const cardCollaborationStop = stopInHeader ? null : pendingCollaborationAgentRequest;
-  const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id)
-    || Boolean(shouldShowLiveStatusHeader && (visibleTurn.status === 'queued' || pendingCollaborationAgentRequest || activeStopAvailable || visibleTurn.sourceMessage || visibleTurn.hostedRunStatus));
-  const liveStatusText = visibleTurn.status === 'cancelling'
-    ? 'Stopping…'
-    : visibleTurn.status === 'retrying'
-      ? 'Retrying…'
-      : visibleTurn.status === 'compacting'
-        ? 'Compressing conversation…'
-        : visibleTurn.status === 'compacted'
-          ? 'Conversation compressed. Continuing…'
-          : visibleTurn.status === 'compaction_failed'
-            ? 'Compression needs attention'
-            : visibleTurn.status === 'typing'
-              ? 'Typing…'
-              : visibleTurn.status === 'writing'
-                ? 'Replying…'
-                : liveTurnPhaseStatusText(visibleTurn);
+  const showLiveProgress = turnIsRunning && !isCompressionStatus;
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
   const changedFileRows = changedFileRowsFromTurn(visibleTurn);
   const providerFailureNotice = visibleTurn.error ? cloudAgentProviderFailureNotice(visibleTurn.error) : null;
@@ -184,7 +89,7 @@ function LiveChatTurnCardView({
   const shouldShowSourceQuote = !plainAgentResponse && Boolean(visibleTurn.sourceMessage);
   const hasResponseSurface = Boolean( // A failed quoted turn keeps its answer surface; the quote sits below it.
     (shouldShowSourceQuote && visibleTurn.error)
-      || showLiveStatusHeader
+      || showLiveProgress
       || isCompressionStatus
       || hasOrderedContent
       || hasTimelineActivity
@@ -192,36 +97,13 @@ function LiveChatTurnCardView({
       || cancellationNotice
       || changedFileRows.length > 0,
   );
-  const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error); const statusOnly = showLiveStatusHeader && !isCompressionStatus && !hasTimelineActivity && !hasAssistant && !cancellationNotice && !displayedError && changedFileRows.length === 0;
+  const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
   const showOpenAuthAction = Boolean(onOpenAuthSettings && visibleTurn.error && cloudAgentProviderFailureNeedsAuthentication(visibleTurn.error));
   if (!canDisplayAgentTurn(visibleTurn)) return null;
   return (
     <div data-live-turn-status={visibleTurn.status} className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
-        <div data-live-turn-pending={statusOnly ? 'true' : undefined} className={cn('app-live-turn-response-panel', visibleTurn.segments?.length ? 'app-ordered-turn-surface' : hasResponseSurface && !plainAgentResponse && 'app-live-assistant-answer-surface', !visibleTurn.segments?.length && !hasAssistant && !isCompressionStatus && changedFileRows.length === 0 ? 'w-fit' : 'w-full', 'max-w-[min(100%,58rem)] space-y-2.5')}>
-          {showLiveStatusHeader ? (
-            <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
-              {visibleTurn.status === 'cancelling' || visibleTurn.status === 'retrying' ? (
-                <>
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                  <span className="text-slate-300">{liveStatusText}</span>
-                </>
-              ) : visibleTurn.status === 'queued' || visibleTurn.hostedRunStatus === 'queued' || visibleTurn.hostedRunStatus === 'leased' ? (
-                <span role="status">{visibleTurn.hostedRunStatus === 'leased' ? 'Starting…' : 'Queued…'}</span>
-              ) : shouldShowAgentWaitingAnimation(visibleTurn) ? (
-                <AgentWaitingWave label="Waiting for agent response" />
-              ) : null}
-              {cardCollaborationStop ? (
-                <CollaborationAgentStopButton
-                  request={cardCollaborationStop}
-                  onStop={onStopCollaborationAgentRequest}
-                />
-              ) : cardStopAvailable ? (
-                <TurnStopButton onStop={onStopActiveTurn} />
-              ) : null}
-            </div>
-          ) : null}
-
+        <div className={cn('app-live-turn-response-panel app-ordered-turn-surface', 'w-full max-w-[min(100%,58rem)] space-y-2.5')}>
           {isCompressionStatus ? (
             <div className={cn(
           'app-compression-card rounded-2xl px-4 py-3 text-sm',
@@ -245,7 +127,7 @@ function LiveChatTurnCardView({
         </div>
       ) : null}
 
-          {hasOrderedContent || hasTimelineActivity || hasAssistant ? (
+          {showLiveProgress || hasOrderedContent || hasTimelineActivity || hasAssistant ? (
             <TurnProgress turn={visibleTurn}
               renderTool={tool => <ToolActivityRow key={tool.id} tool={tool} onOpenFile={onOpenArtifact} />}
               trailing={cardCollaborationStop && onStopCollaborationAgentRequest ? (

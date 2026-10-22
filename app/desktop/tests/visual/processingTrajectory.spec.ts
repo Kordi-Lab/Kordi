@@ -139,7 +139,7 @@ test('first request after opening a group does not reset its transcript when the
     const step = (phase: number) => page.evaluate(phase => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(phase), phase);
     await step(1);
     await step(3);
-    await expect(page.locator('.app-agent-waiting-wave')).toBeVisible();
+    await expect(page.locator('.app-turn-progress-bird')).toBeVisible();
     await page.waitForTimeout(300);
     const history = await page.locator('[data-index="49"]').elementHandle();
     const viewport = await page.locator('[data-virtual-transcript-scroll]').elementHandle();
@@ -267,7 +267,7 @@ test('live actions change in place and reasoning stays separate from tool detail
 
 test('reasoning settles into recorded work duration and the bird stops', async ({ page }, info) => {
   await page.goto('/tests/visual/processingTrajectory.html?ordered=1&simple=1&reasoning=1&count=0&phase=5');
-  const summary = page.locator('.app-turn-reasoning .app-turn-progress-summary');
+  const summary = page.locator('.app-turn-worked-header');
   await expect(summary).toHaveAccessibleName(/^Reasoning/);
   await expect(page.locator('.app-turn-progress-bird')).toHaveCount(1);
   const wing = page.locator('.app-turn-progress-bird-wing');
@@ -279,7 +279,7 @@ test('reasoning settles into recorded work duration and the bird stops', async (
   const original = await summary.elementHandle();
   await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(9));
   await expect(summary).toHaveAccessibleName('Worked for 12s');
-  expect(await original!.evaluate(element => element === document.querySelector('.app-turn-reasoning .app-turn-progress-summary'))).toBe(true);
+  expect(await original!.evaluate(element => element === document.querySelector('.app-turn-worked-header'))).toBe(true);
   await expect(summary).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator('.app-turn-progress-bird')).toHaveCount(0);
   await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
@@ -304,13 +304,13 @@ test('finished work without timestamps is explicit and compact', async ({ page }
 test('legacy live and completed turns share one collapsed disclosure', async ({ page }, info) => {
   await page.goto('/tests/visual/processingTrajectory.html?reasoning=1&missingTiming=1&count=0&phase=7');
   await expect(page.getByRole('button', { name: 'Reasoning', exact: true })).toHaveCount(0);
-  await expect(page.locator('.app-turn-progress-summary')).toHaveCount(1);
-  await expect(page.locator('.app-turn-progress-summary')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('.app-turn-worked-header')).toHaveCount(1);
+  await expect(page.locator('.app-turn-worked-header')).toHaveAttribute('aria-expanded', 'false');
   await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(9));
   const finished = page.getByRole('button', { name: 'Finished', exact: true });
   await expect(finished).toBeVisible();
   await expect(page.getByRole('button', { name: 'Reasoning', exact: true })).toHaveCount(0);
-  await expect(page.locator('.app-turn-progress-summary')).toHaveCount(1);
+  await expect(page.locator('.app-turn-worked-header')).toHaveCount(1);
   await expect(page.locator('.app-transcript-thinking-markdown')).toHaveCount(0);
   await finished.click();
   await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
@@ -395,4 +395,33 @@ test('progress unfolds smoothly downward without moving the viewport', async ({ 
   await expect(page.locator('.app-ordered-progress > .app-progress-disclosure')).toHaveCSS('transition-duration', '0s');
   await header.click();
   await expect(page.getByText('I will inspect the example before making a change.')).toBeHidden();
+});
+
+
+test('startup keeps one status row through admission and the first stream event', async ({ page }) => {
+  await page.goto('/tests/visual/processingTrajectory.html?startup=1&ordered=1&count=2&phase=3');
+  await expect(page.locator('.app-live-turn-card')).toBeVisible();
+  await page.waitForTimeout(220);
+  const frames = await page.evaluate(async () => {
+    const driver = (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory;
+    const samples: { phase: number; statusCount: number; height: number; sameHeader: boolean }[] = [];
+    const original = document.querySelector('.app-turn-worked-header');
+    for (const phase of [3, 4, 5, 6, 7]) {
+      driver.step(phase);
+      for (let frame = 0; frame < 18; frame++) {
+        await new Promise(requestAnimationFrame);
+        const card = document.querySelector<HTMLElement>('.app-live-turn-card');
+        const statuses = [...(card?.querySelectorAll<HTMLElement>('[role="status"]') ?? [])]
+          .filter(element => element.getBoundingClientRect().height > 0 && getComputedStyle(element).visibility !== 'hidden');
+        samples.push({ phase, statusCount: statuses.length, height: card?.offsetHeight ?? 0,
+          sameHeader: Boolean(original && original === document.querySelector('.app-turn-worked-header')) });
+      }
+    }
+    return samples;
+  });
+  expect(frames.filter(frame => frame.statusCount !== 1)).toEqual([]);
+  expect(frames.every(frame => frame.sameHeader)).toBe(true);
+  expect(Math.max(...frames.map(frame => frame.height)) - Math.min(...frames.map(frame => frame.height))).toBeLessThan(2);
+  await expect(page.locator('.app-turn-worked-header')).toHaveAccessibleName(/^Editing files/);
+  await expect(page.locator('.app-turn-commentary:visible')).toHaveCount(0);
 });

@@ -19,6 +19,7 @@ import { cloudGroupAgentRuntimeSessionId } from '../../src/features/cloud/cloudA
 import type { CanonicalSessionState, DesktopChatTurnSnapshot, Message } from '../../src/kordi-app/types';
 import '../../src/index.css';
 
+const startup = new URLSearchParams(location.search).has('startup');
 const simple = new URLSearchParams(location.search).has('simple');
 const reasoning = new URLSearchParams(location.search).has('reasoning');
 const ordered = new URLSearchParams(location.search).has('ordered');
@@ -77,7 +78,14 @@ function Fixture() {
   const cloud = buildCloudDesktopCollaborationState({ account, contacts: [], messagesByPeer: coldProjection && phase >= 4 ? { acct_owner: [wire] } : {} });
   const sources = cloud.conversations.map(conversation => mapCollaborationConversationToViewModel(conversation, cloud.hosts[0], 'Synthetic Agent'));
   const conversation = readModel.buildChatConversations(sources, () => '')[0];
-  const response = readModel.messages('group');
+  const response = readModel.messages('group').map(message => startup && phase >= 3 ? {
+    ...message, turn: { ...turn, status: phase === 3 ? 'processing' : turn.status,
+      localExecutionStarted: true,
+      // Admission and the first empty stream event precede visible output.
+      segments: phase === 5 ? [{ id: 'text:0', kind: 'text' as const, text: '' }] : phase < 7 ? undefined : segments,
+      thinkingText: phase === 6 ? 'Checking the request.' : '', tools: phase < 7 ? [] : tools,
+    },
+  } : message);
   const messages: Message[] = [...history, ...(phase >= 1 ? [{ id: 'request', clientMessageId: 'request', role: 'user' as const, sender: 'Me', text: 'Synthetic request', time: '12:01', timestampMs: now, statusChips: [phase === 1 ? 'sending' : 'delivered'] }] : []), ...(phase >= 2 ? response : [])];
   return <>
     <div data-testid="phase" style={{ position: 'fixed', top: 0, right: 30, zIndex: 1000 }}>{phases[phase]}</div>

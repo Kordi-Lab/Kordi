@@ -106,11 +106,12 @@ test('finished reasoning-only turns use recorded duration in ordered and legacy 
 });
 
 
-test('ordered commentary replaces the initial processing placeholder even before aggregate text arrives', () => {
+test('ordered commentary joins the collapsed progress before aggregate text arrives', () => {
   const streaming = { ...turn, status: 'starting', assistantText: '', thinkingText: '', tools: [],
     segments: [{ id: 'text:0', kind: 'text' as const, text: 'I will check the example.' }] };
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: streaming, showReasoning: true, onStopActiveTurn: () => {} }));
-  assert.match(markup, /I will check the example/);
+  assert.doesNotMatch(markup, /I will check the example/);
+  assert.match(markup, /app-turn-progress-bird/);
   assert.match(markup, /Stop agent request/);
-  assert.doesNotMatch(markup, /app-agent-waiting-wave|app-transcript-live-status|app-turn-progress-bird/);
+  assert.doesNotMatch(markup, /app-agent-waiting-wave|app-transcript-live-status/);
 });

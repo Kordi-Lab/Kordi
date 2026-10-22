@@ -8,23 +8,21 @@ import { MarkdownContent } from './markdown';
 import { ProgressBird } from './ProgressBird';
 import { ProgressDisclosure } from './ProgressDisclosure';
 
-function ActivityGroup({ tools, unavailable = 0, label, active, elapsed, trailing, renderTool, thinkingText, hideIcon }: {
-  tools: DesktopChatToolSnapshot[]; unavailable?: number; label: string; active?: boolean;
-  elapsed?: string | null; trailing?: ReactNode; renderTool: (tool: DesktopChatToolSnapshot) => ReactNode; thinkingText?: string; hideIcon?: boolean;
+function ActivityGroup({ tools, unavailable = 0, label, renderTool, thinkingText }: {
+  tools: DesktopChatToolSnapshot[]; unavailable?: number; label: string;
+  renderTool: (tool: DesktopChatToolSnapshot) => ReactNode; thinkingText?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const Icon = tools[0] ? toolActivityMetadata(tools[0]).Icon : thinkingText ? Brain : Wrench;
   const expandable = tools.length > 0 || unavailable > 0 || Boolean(thinkingText);
   return <section className={`app-turn-progress${thinkingText ? ' app-turn-reasoning' : ''}`} data-transcript-stable-disclosure-root="true" data-transcript-stable-disclosure-direction="down">
     <div className="app-turn-progress-line">
-      <button type="button" className="app-turn-progress-summary" aria-label={`${label}${elapsed ? ` ${elapsed}` : ''}`} aria-expanded={expandable ? expanded : undefined}
+      <button type="button" className="app-turn-progress-summary" aria-label={label} aria-expanded={expandable ? expanded : undefined}
         disabled={!expandable} data-transcript-stable-disclosure="true" onClick={() => setExpanded(value => !value)}>
-        {active ? <ProgressBird /> : !hideIcon ? <Icon size={14} aria-hidden="true" /> : null}
-        <span role={active ? 'status' : undefined} className={active ? 'app-turn-status-label' : undefined}><span key={label} className={active ? 'app-turn-status-text' : undefined}>{label}</span></span>
-        {elapsed ? <span className="app-turn-progress-time" aria-hidden="true">{elapsed}</span> : null}
+        <Icon size={14} aria-hidden="true" />
+        <span>{label}</span>
         {expandable ? <ChevronRight aria-hidden="true" className={expanded ? 'rotate-90' : undefined} size={13} /> : null}
       </button>
-      {trailing}
     </div>
     <ProgressDisclosure expanded={expanded}><div className="app-turn-progress-details">
       {thinkingText ? <MarkdownContent text={thinkingText} tone="muted" className="app-transcript-thinking-markdown" /> : null}
@@ -51,40 +49,41 @@ export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
   const hasActivity = groups.some(group => group.kind === 'tools') || groups.length > 1;
   const elapsed = elapsedLabel(turn, now);
   const standaloneReasoning = !hasActivity && turn.tools.length === 0;
-  const reasoningLabel = !live && standaloneReasoning ? turnProgressLabel(turn) : 'Reasoning';
   const [trajectoryExpanded, setTrajectoryExpanded] = useState(false);
-  const legacyHasActivity = turn.tools.length > 0 || Boolean(turn.thinkingText);
-  if (!ordered) return <>
-    {legacyHasActivity || (live && !legacyAnswer) ? <ActivityGroup tools={turn.tools} thinkingText={turn.thinkingText}
-      label={!turn.tools.length && turn.thinkingText ? reasoningLabel : turnProgressLabel(turn)}
-      active={live} hideIcon={!live} elapsed={elapsed} trailing={live ? trailing : undefined} renderTool={renderTool} /> : null}
-    {legacyAnswer}
-  </>;
-  const statusLabel = turnProgressLabel(turn);
+  const hasTrace = hasActivity || turn.tools.length > 0 || Boolean(turn.thinkingText);
+  const showHeader = live || hasTrace;
+  const expandable = hasTrace || (live && ordered);
+  const progressLabel = turnProgressLabel(turn);
+  const statusLabel = live && standaloneReasoning && turn.thinkingText && ['Working', 'Thinking'].includes(progressLabel) ? 'Reasoning' : progressLabel;
   return <div className="app-ordered-progress" data-transcript-stable-disclosure-root="true" data-transcript-stable-disclosure-direction="down">
-    {hasActivity ? <div className="app-turn-progress-line app-turn-header-line">
-      <button type="button" className="app-turn-worked-header" aria-expanded={trajectoryExpanded}
-        aria-label={`${statusLabel}${elapsed ? ` ${elapsed}` : ''}`}
+    {showHeader ? <div className="app-turn-progress-line app-turn-header-line">
+      <button type="button" className="app-turn-worked-header" aria-expanded={expandable ? trajectoryExpanded : undefined}
+        aria-label={`${statusLabel}${elapsed ? ` ${elapsed}` : ''}`} disabled={!expandable}
         data-transcript-stable-disclosure="true" onClick={() => setTrajectoryExpanded(value => !value)}>
         {live ? <ProgressBird /> : null}
         <span role={live ? 'status' : undefined} className={live ? 'app-turn-status-label' : undefined} title={statusLabel}><span key={statusLabel} className="app-turn-status-text">{statusLabel}</span></span>{elapsed ? <span className="app-turn-progress-time" aria-hidden="true">{elapsed}</span> : null}
-        <ChevronRight size={13} aria-hidden="true" className={trajectoryExpanded ? 'rotate-90' : undefined} />
+        {expandable ? <ChevronRight size={13} aria-hidden="true" className={trajectoryExpanded ? 'rotate-90' : undefined} /> : null}
       </button>
       {live ? trailing : null}
     </div> : null}
-    <ProgressDisclosure expanded={!hasActivity || trajectoryExpanded}>
-      {turn.thinkingText ? <ActivityGroup tools={[]} label={reasoningLabel} thinkingText={turn.thinkingText}
-        active={standaloneReasoning && live} hideIcon={standaloneReasoning && !live} elapsed={standaloneReasoning ? elapsed : null}
-        renderTool={renderTool} trailing={!hasActivity && live ? trailing : null} /> : !hasActivity && live ? trailing : null}
-      <div className="app-turn-trajectory">
-        {groups.filter(group => live || group !== last || group.kind !== 'text').map(group => <div key={group.id}>
-          {group.kind === 'text' ? <div className="app-turn-commentary"><MarkdownContent text={group.text} /></div>
-            : <ActivityGroup tools={group.tools} unavailable={group.unavailable}
-                label={live && group.tools.some(progressToolIsActive) ? `${group.tools.length + group.unavailable} ${group.tools.length + group.unavailable === 1 ? 'tool' : 'tools'}` : settledProgressLabel(group.tools, group.unavailable)}
-                renderTool={renderTool} />}
-        </div>)}
-      </div>
+    <ProgressDisclosure expanded={showHeader && trajectoryExpanded}>
+      {ordered && hasActivity ? <>
+        {turn.thinkingText ? <ActivityGroup tools={[]} label="Reasoning" thinkingText={turn.thinkingText} renderTool={renderTool} /> : null}
+        <div className="app-turn-trajectory">
+          {groups.filter(group => live || group !== last || group.kind !== 'text').map(group => <div key={group.id}>
+            {group.kind === 'text' ? <div className="app-turn-commentary"><MarkdownContent text={group.text} /></div>
+              : <ActivityGroup tools={group.tools} unavailable={group.unavailable}
+                  label={live && group.tools.some(progressToolIsActive) ? `${group.tools.length + group.unavailable} ${group.tools.length + group.unavailable === 1 ? 'tool' : 'tools'}` : settledProgressLabel(group.tools, group.unavailable)}
+                  renderTool={renderTool} />}
+          </div>)}
+        </div>
+      </> : <div className="app-turn-progress">
+        {turn.thinkingText ? <div className="app-turn-reasoning"><div className="app-turn-progress-details"><MarkdownContent text={turn.thinkingText} tone="muted" className="app-transcript-thinking-markdown" /></div></div> : null}
+        {turn.tools.map(renderTool)}
+        {live && ordered ? groups.map(group => group.kind === 'text' ? <div key={group.id} className="app-turn-commentary"><MarkdownContent text={group.text} /></div> : null) : null}
+      </div>}
     </ProgressDisclosure>
     {!live && last?.kind === 'text' ? <div className="app-turn-commentary"><MarkdownContent text={last.text} /></div> : null}
+    {!ordered ? legacyAnswer : null}
   </div>;
 }

@@ -23,7 +23,7 @@ test('reasoning remains a secondary disclosure', () => {
   const turn: DesktopChatTurnSnapshot = { id: 'reasoning', sessionId: 'session', prompt: '', message: '', status: 'thinking',
     assistantText: '', thinkingText: 'Synthetic reasoning stays collapsed.', tools: [], completed: false, succeeded: false };
   const markup = renderToStaticMarkup(createElement(TurnProgress, { turn, renderTool: () => null }));
-  assert.match(markup, /aria-label="Reasoning" aria-expanded="false"/);
+  assert.match(markup, /aria-expanded="false" aria-label="Reasoning"/);
   assert.doesNotMatch(markup, /Synthetic reasoning stays collapsed/);
 });
 
@@ -57,7 +57,7 @@ test('code blocks remove the header bar and reveal copy controls on hover', () =
   assert.doesNotMatch(transcriptBlock, />\{isWrapped \? 'No wrap' : 'Wrap'\}</);
 });
 
-test('agent waiting state uses a waveform only until the first response content arrives', () => {
+test('agent waiting and first response content share the same progress header', () => {
   const waitingTurn: DesktopChatTurnSnapshot = {
     id: 'turn-waiting-first-token',
     sessionId: 'session-1',
@@ -76,8 +76,8 @@ test('agent waiting state uses a waveform only until the first response content 
     onStopActiveTurn: () => undefined,
   }));
 
-  assert.match(waitingMarkup, /app-agent-waiting-wave/);
-  assert.match(waitingMarkup, /aria-label="Waiting for agent response"/);
+  assert.match(waitingMarkup, /app-turn-progress-bird/);
+  assert.match(waitingMarkup, /aria-label="Working"/);
   assert.doesNotMatch(waitingMarkup, />Thinking…</);
 
   const streamingMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true,
@@ -308,7 +308,7 @@ test('no-provider live turn keeps the source quote so reply context stays stable
 
   assert.match(markup, /No provider configured yet/);
   assert.match(markup, />Open authentication</);
-  assert.match(markup, /app-live-assistant-answer-surface[\s\S]*No provider configured yet[\s\S]*app-source-message-quote/);
+  assert.match(markup, /app-ordered-turn-surface[\s\S]*No provider configured yet[\s\S]*app-source-message-quote/);
   assert.match(markup, /app-message-mention-agent[^>]*>@MyKordi<\/span>/);
   assert.match(markup, /what are you doing/);
 });
@@ -355,7 +355,7 @@ test('contact request row stays one compact row with the name and no timestamp',
   assert.doesNotMatch(markup, />Reject</);
 });
 
-test('renders bridge agent stop control beside the first-response waveform', () => {
+test('renders bridge agent stop control beside the first-response progress', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-pending-bridge-agent',
     sessionId: 'session-1',
@@ -385,7 +385,7 @@ test('renders bridge agent stop control beside the first-response waveform', () 
   assert.match(markup, /h-\[18px\] w-\[18px\]/);
   assert.match(markup, /text-slate-400/);
   assert.doesNotMatch(markup, /h-5\.5 w-5\.5/);
-  assert.match(markup, /app-agent-waiting-wave/);
+  assert.match(markup, /app-turn-progress-bird/);
   assert.doesNotMatch(markup, />Processing…</);
 });
 

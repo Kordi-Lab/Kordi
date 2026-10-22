@@ -24,7 +24,8 @@
 .app-turn-trajectory { display: flex; flex-direction: column; gap: 10px; }
 .app-turn-trajectory[hidden] { display: none; }
 .app-turn-worked-header { display: flex; align-items: center; gap: 8px; padding: 2px 0; margin: 0; border: 0; background: transparent; color: var(--utility-muted-text); font-size: 12px; text-align: left; }
-.app-turn-header-line { margin-bottom: 6px; }
+.app-turn-header-line { min-height: 28px; }
+.app-turn-worked-header:disabled { opacity: 1; cursor: default; }
 .app-turn-trajectory > [hidden] { display: none; }
 .app-ordered-progress .app-turn-commentary :where(p, li) { font-size: 13px; line-height: 1.58; }
 .app-tool-activity { min-width: 0; }

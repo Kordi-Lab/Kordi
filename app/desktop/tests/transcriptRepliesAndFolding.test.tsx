@@ -8,7 +8,7 @@ import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import { shouldSuppressAgentReplyAttribution } from '../src/features/chat/replyAttribution';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
-test('renders agent source quote and waiting waveform without an output block before text exists', () => {
+test('renders agent source quote and waiting progress without an output block before text exists', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-processing-with-source',
     sessionId: 'session-1',
@@ -33,7 +33,7 @@ test('renders agent source quote and waiting waveform without an output block be
   assert.equal(shouldSuppressAgentReplyAttribution({ id: 'private-fork', type: 'external-agent', forkedFromSessionId: 'session:group:1' }), false);
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn }));
 
-  assert.match(markup, /app-live-turn-response-panel app-live-assistant-answer-surface[\s\S]*app-agent-waiting-wave[\s\S]*app-source-message-quote/);
+  assert.match(markup, /app-live-turn-response-panel app-ordered-turn-surface[\s\S]*app-turn-progress-bird[\s\S]*app-source-message-quote/);
   assert.match(markup, /data-quote-side="agent"/);
   assert.doesNotMatch(markup, /app-source-message-quote-rail/);
   assert.doesNotMatch(markup, /app-source-message-quote-icon/);
@@ -42,7 +42,7 @@ test('renders agent source quote and waiting waveform without an output block be
   assert.doesNotMatch(markup, /app-source-message-quote-label block truncate/);
   assert.doesNotMatch(markup, /Replying to/);
   assert.match(markup, /review the copy/);
-  assert.match(markup, /app-agent-waiting-wave/);
+  assert.match(markup, /app-turn-progress-bird/);
   assert.doesNotMatch(markup, /Processing/);
   assert.doesNotMatch(markup, /app-live-assistant-answer-markdown/);
   assert.doesNotMatch(markup, /checking auth screenshots/);
@@ -240,7 +240,7 @@ test('light theme keeps folded assistant markdown readable against the answer su
   assert.match(lightAnswerListBlock, /color:\s*var\(--utility-foreground\)\s*!important;/);
 });
 
-const quoteToolAnswerSurfacePattern = /app-live-turn-response-panel app-live-assistant-answer-surface[\s\S]*app-turn-progress[\s\S]*app-live-assistant-answer[\s\S]*<\/div><div class="flex min-w-0 max-w-full mt-1"><button type="button" class="app-source-message-quote" data-quote-side="agent"/;
+const quoteToolAnswerSurfacePattern = /app-live-turn-response-panel app-ordered-turn-surface[\s\S]*app-turn-progress[\s\S]*app-live-assistant-answer[\s\S]*<\/div><div class="flex min-w-0 max-w-full mt-1"><button type="button" class="app-source-message-quote" data-quote-side="agent"/;
 
 test('keeps the tool summary inside the assistant response and the source quote under it', () => {
   const turn: DesktopChatTurnSnapshot = {
