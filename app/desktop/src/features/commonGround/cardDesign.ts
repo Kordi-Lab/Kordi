@@ -46,26 +46,6 @@ export function designForName(name: string): CgCardDesign {
   return 'custom';
 }
 
-const LEGACY_DESIGN_KEY = 'kordi.commonGround.cardDesigns.v1';
-
-/** Designs older builds kept per profile on this Mac, read once to move them to the server. */
-export type CgLegacyDesigns = { read: () => Record<string, CgCardDesign>; clear: () => void };
-
-export const localLegacyDesigns: CgLegacyDesigns = {
-  read: () => {
-    try {
-      const parsed: unknown = JSON.parse(globalThis.localStorage?.getItem(LEGACY_DESIGN_KEY) ?? '{}');
-      if (!parsed || typeof parsed !== 'object') return {};
-      return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, CgCardDesign] => isCardDesign(entry[1])));
-    } catch {
-      return {};
-    }
-  },
-  clear: () => {
-    try { globalThis.localStorage?.removeItem(LEGACY_DESIGN_KEY); } catch { /* storage off */ }
-  },
-};
-
 export function isCardDesign(value: unknown): value is CgCardDesign {
   return typeof value === 'string' && (CG_CARD_DESIGNS as readonly string[]).includes(value);
 }

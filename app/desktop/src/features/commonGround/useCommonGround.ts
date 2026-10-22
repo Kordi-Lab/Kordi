@@ -5,6 +5,7 @@ import { CLOUD_SESSION_CHANGED_EVENT, CLOUD_SESSION_SIGNED_OUT_EVENT } from '@/f
 import { createCommonGroundClient } from './client';
 import { localProfileMemory } from './profiles';
 import { CommonGroundStore } from './store';
+import { syncOnVisible } from './syncOnVisible';
 
 const IDLE_CHECK_MS = 1_000;
 const stores = new Map<string, CommonGroundStore>();
@@ -30,7 +31,7 @@ export function commonGroundStoreFor(accountId: string, profiles = false): Commo
   return store;
 }
 
-/** Store state, with polling while mounted and the window is visible. */
+/** Store state, with polling while mounted and the window is visible, and a refetch when it becomes visible again. */
 export function useCommonGround(store: CommonGroundStore) {
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   useEffect(() => {
@@ -45,9 +46,11 @@ export function useCommonGround(store: CommonGroundStore) {
     else if (store.top().name === 'home') void store.loadRooms();
     if (store.top().name !== 'home') void store.loadScreen();
     timer = setTimeout(loop, IDLE_CHECK_MS);
+    const stopSync = syncOnVisible(() => store.syncFromServer(), window, document);
     return () => {
       stopped = true;
       clearTimeout(timer);
+      stopSync();
     };
   }, [store]);
   return state;

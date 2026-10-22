@@ -8,13 +8,13 @@ import { AddTopic, CardLine } from './CardLines';
 import { cardSources, sourceLook } from './cardReferences';
 import { CardLookButton, CardLookPopover } from './CardLookPopover';
 import { useLookPopover } from './cardLook';
-import { CgButton, CgNotice } from './parts';
+import { CgButton, CgNotice, CgProgress } from './parts';
 import { CardGlyph } from './ProfileCard';
 import { DeleteProfileDialog } from './ProfileDialogs';
-import { PROFILE_FOCUS_MAX, PROFILE_NAME_MAX } from './profiles';
+import { PROFILE_FOCUS_MAX, PROFILE_NAME_MAX, renameError, renamePatch } from './profiles';
 import { currentProfile, type CgState, type CommonGroundStore } from './store';
-import { CG_TOPIC_SECTIONS, type CgOwnCard, type CgTopicKey, type CgTopicLists } from './types';
-import { shortDay } from './wallet';
+import { CG_TOPIC_SECTIONS, type CgOwnCard, type CgProfileKind, type CgTopicKey, type CgTopicLists } from './types';
+import { ownerIsCurrent, shortDay } from './wallet';
 
 function lists(card: CgOwnCard): CgTopicLists {
   return { workingOn: [...card.workingOn], interests: [...card.interests], canHelp: [...card.canHelp], lookingFor: [...card.lookingFor] };
@@ -36,19 +36,32 @@ function DeleteCardDialog({ busy, onCancel, onDelete }: { busy: boolean; onCance
 }
 
 /** Rename in place: the name and focus lines become fields; Enter or leaving saves, Escape cancels. */
-export function RenameFields({ name, focus, onSave, onCancel }: { name: string; focus: string; onSave: (name: string, focus: string) => void; onCancel: () => void }) {
+export function RenameFields({ name, focus, kind, onSave, onCancel }: {
+  name: string;
+  focus: string;
+  kind: CgProfileKind;
+  onSave: (name: string, focus: string) => void;
+  onCancel: () => void;
+}) {
   const [draft, setDraft] = useState({ name, focus });
+  const [error, setError] = useState<string | null>(null);
+  const save = () => {
+    const refused = renameError(kind, draft.name);
+    setError(refused);
+    if (!refused) onSave(draft.name.trim(), draft.focus.trim());
+  };
   const keys = (event: React.KeyboardEvent) => {
-    if (event.key === 'Enter') onSave(draft.name.trim(), draft.focus.trim());
+    if (event.key === 'Enter') save();
     if (event.key === 'Escape') { event.stopPropagation(); onCancel(); }
   };
   return (
     <div
       className="cg-cardpage-fields"
-      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) onSave(draft.name.trim(), draft.focus.trim()); }}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) save(); }}
     >
-      <input autoFocus className="cg-cardpage-name-in" value={draft.name} maxLength={PROFILE_NAME_MAX} aria-label="Name" onKeyDown={keys} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+      <input autoFocus className="cg-cardpage-name-in" value={draft.name} maxLength={PROFILE_NAME_MAX} aria-label="Name" aria-invalid={error ? true : undefined} onKeyDown={keys} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
       <input className="cg-cardpage-focus-in" value={draft.focus} maxLength={PROFILE_FOCUS_MAX} placeholder="Focus, optional" aria-label="Focus" onKeyDown={keys} onChange={(event) => setDraft({ ...draft, focus: event.target.value })} />
+      {error ? <div className="cg-cardpage-error" role="alert">{error}</div> : null}
     </div>
   );
 }
@@ -57,10 +70,11 @@ export function RenameFields({ name, focus, onSave, onCancel }: { name: string; 
 export function CardScreen({ state, store }: { state: CgState; store: CommonGroundStore }) {
   const [confirming, setConfirming] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const [offSources, setOffSources] = useState<string[]>([]);
   const look = useLookPopover();
   const card = state.owner?.card;
   if (!card || !state.owner) return null;
+  // Switching cards keeps the new name off the old topics until the new card arrives.
+  if (!ownerIsCurrent(state)) return <><CgProgress line="Opening card" /><CgNotice text={state.notice} /></>;
   const profile = currentProfile(state);
   const design = profile ? profileDesign(profile) : 'work';
   const name = profile?.name ?? 'Your card';
@@ -90,12 +104,11 @@ export function CardScreen({ state, store }: { state: CgState; store: CommonGrou
             <RenameFields
               name={profile.name}
               focus={profile.focus ?? ''}
+              kind={profile.kind}
               onCancel={() => setRenaming(false)}
               onSave={(nextName, nextFocus) => {
                 setRenaming(false);
-                const patch: { name?: string; focus?: string } = {};
-                if (nextName && nextName !== profile.name) patch.name = nextName;
-                if (nextFocus !== (profile.focus ?? '')) patch.focus = nextFocus;
+                const patch = renamePatch(profile, nextName, nextFocus);
                 if (Object.keys(patch).length) void store.updateProfile(profile.profileId, patch);
               }}
             />
@@ -128,7 +141,6 @@ export function CardScreen({ state, store }: { state: CgState; store: CommonGrou
                 key={topic}
                 card={card}
                 topic={topic}
-                offSources={offSources}
                 onHide={() => void store.toggleHidden(topic)}
                 onRemove={() => update(key, card[key].filter((item) => item !== topic))}
               />
@@ -150,7 +162,6 @@ export function CardScreen({ state, store }: { state: CgState; store: CommonGrou
           <div className="cg-panel">
             {sources.map(({ source }) => {
               const { Icon, tint } = sourceLook(source);
-              const on = !offSources.includes(source);
               return (
                 <div key={source} className="cg-mrow">
                   <span className="cg-src-icon" style={{ background: tint }}><Icon className="h-[15px] w-[15px]" aria-hidden="true" /></span>
@@ -158,11 +169,6 @@ export function CardScreen({ state, store }: { state: CgState; store: CommonGrou
                     <span className="cg-mrow-title">{source}</span>
                     {card.builtAt ? <span className="cg-mrow-sub">Read {shortDay(card.builtAt)}</span> : null}
                   </span>
-                  <SettingsSwitch
-                    label={source}
-                    enabled={on}
-                    onChange={(next) => setOffSources((current) => (next ? current.filter((item) => item !== source) : [...current, source]))}
-                  />
                 </div>
               );
             })}

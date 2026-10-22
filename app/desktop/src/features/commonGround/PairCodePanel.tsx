@@ -9,13 +9,7 @@ import { kindLabel, shareableProfiles } from './profiles';
 import { currentProfile, type CgState, type CommonGroundStore } from './store';
 import type { CgCodeLookup } from './storeRooms';
 import type { CgRoomPreview } from './types';
-import { roomPreviewLine, suggestedProfile } from './wallet';
-
-/** How long the "Sharing" chip takes to crossfade before a suggested join. */
-export const SWITCH_CROSSFADE_MS = 260;
-
-const prefersReducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+import { latestOnly, roomPreviewLine, suggestedProfile } from './wallet';
 
 /** Four digit boxes; the fourth digit hands the code on. */
 function Digits({ disabled, onCode }: { disabled: boolean; onCode: (code: string | null) => void }) {
@@ -58,23 +52,29 @@ function Digits({ disabled, onCode }: { disabled: boolean; onCode: (code: string
 
 /**
  * The Pair code row: four digits look up a room and show it under the boxes with Join, which
- * shares the selected card; a "Suggested" chip switches to the room's kind first. Create opens
- * a meetup on a new code.
+ * shares the selected card; a "Suggested" chip joins with the card the room suggests, without
+ * changing the selected one. A room you are in opens. Create opens a meetup on a new code.
  */
 export function PairCodePanel({ state, store }: { state: CgState; store: CommonGroundStore }) {
   const [lookup, setLookup] = useState<CgCodeLookup | null>(null);
   const [digitsKey, setDigitsKey] = useState(0);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [requests] = useState(latestOnly);
   const closeCreate = useCallback(() => setCreating(false), []);
   const profile = currentProfile(state);
   const canShare = state.profilesOn ? Boolean(profile?.hasCard) : Boolean(state.owner?.card);
+  const shareable = shareableProfiles(state.profiles);
+  const canCreate = state.profilesOn ? shareable.length > 0 : Boolean(state.owner?.card);
   const busy = joining || state.busy === 'join';
-  const clear = () => { setLookup(null); setDigitsKey((key) => key + 1); };
+  const clear = () => { requests.cancel(); setLookup(null); setDigitsKey((key) => key + 1); };
 
   const onCode = (code: string | null) => {
+    // Only the newest code may show a preview or open a room.
+    const isLatest = requests.next();
     if (!code) { setLookup(null); return; }
     void store.lookUpCode(code).then((found) => {
+      if (!isLatest()) return;
       if (found.status === 'joined') { clear(); store.openRoom(found.code); return; }
       if (found.status === 'missing') setDigitsKey((key) => key + 1);
       setLookup(found);
@@ -82,35 +82,30 @@ export function PairCodePanel({ state, store }: { state: CgState; store: CommonG
   };
 
   const join = async (room: CgRoomPreview, profileId: string | null) => {
+    const sharing = state.profiles.find((item) => item.profileId === profileId);
     setJoining(true);
     try {
-      const sharing = state.profiles.find((item) => item.profileId === profileId);
-      if (profileId && profileId !== state.profileId) {
-        await store.selectProfile(profileId);
-        if (!prefersReducedMotion()) await wait(SWITCH_CROSSFADE_MS);
-      }
       const ok = await store.joinRoom(room.code, sharing ? { profileId: sharing.profileId, kind: sharing.kind } : {});
-      if (ok) setLookup(null);
+      if (ok) clear();
     } finally {
       setJoining(false);
     }
   };
 
   const preview = lookup?.status === 'preview' ? lookup.room : null;
-  const suggestion = preview ? suggestedProfile(state.profiles, preview.kind, state.profileId) : null;
+  const suggestion = preview ? suggestedProfile(state.profiles, preview.kind, state.profileId, preview.suggestedProfileId) : null;
   const error = lookup?.status === 'missing' ? 'Room not found' : lookup?.status === 'error' ? lookup.message : null;
-  const shareable = shareableProfiles(state.profiles);
   return (
     <div className="cg-panel cg-paircode">
       <div className="cg-pair-row">
         <span className="cg-pair-icon" aria-hidden="true"><Hash className="h-[15px] w-[15px]" /></span>
         <span className="cg-pair-title">Pair code</span>
-        <Digits key={digitsKey} disabled={!canShare || busy} onCode={onCode} />
+        <Digits key={digitsKey} disabled={!canCreate || busy} onCode={onCode} />
         <button
           type="button"
           className="cg-mbtn"
           data-cg-create="true"
-          disabled={!canShare || (state.profilesOn && !shareable.length)}
+          disabled={!canCreate}
           aria-expanded={creating}
           onClick={() => setCreating((open) => !open)}
         >
@@ -136,7 +131,7 @@ export function PairCodePanel({ state, store }: { state: CgState; store: CommonG
               Suggested: {suggestion.name}
             </button>
           ) : null}
-          <button type="button" className="cg-mbtn is-tint" disabled={busy} onClick={() => void join(preview, state.profileId)}>
+          <button type="button" className="cg-mbtn is-tint" disabled={busy || !canShare} onClick={() => void join(preview, state.profileId)}>
             {profile ? <CardSwatch design={profileDesign(profile)} className="is-join" /> : null}
             Join
           </button>

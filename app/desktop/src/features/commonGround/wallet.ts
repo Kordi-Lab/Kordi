@@ -20,6 +20,12 @@ export function profileFace(profile: CgProfile, state: Pick<CgState, 'profileId'
   };
 }
 
+/** False while the card page waits for the newly selected card, so it never shows the old card under the new name. */
+export function ownerIsCurrent(state: CgState): boolean {
+  const ownerProfile = state.owner?.profile?.profileId;
+  return !state.profilesOn || !state.profileId || !ownerProfile || ownerProfile === state.profileId;
+}
+
 /** The Work card an empty wallet suggests. */
 export const SUGGESTED_FACE: CgCardFace = { design: 'work', name: 'Work', focus: null, topicCount: 0, status: 'suggested' };
 
@@ -49,12 +55,37 @@ export function deckLayout(ids: string[], selected: string | null) {
   return { tiles, plusY, height: plusY + DECK.plus };
 }
 
-/** The built profile a room of this kind suggests, when it is not the one you would share. */
-export function suggestedProfile(profiles: CgProfile[], kind: CgProfileKind | null | undefined, currentId: string | null): CgProfile | null {
+/**
+ * The built profile a room suggests, when it is not the one you would share: the server's
+ * `suggestedProfileId` when it sends one, else the first built card of the room's kind.
+ */
+export function suggestedProfile(
+  profiles: CgProfile[], kind: CgProfileKind | null | undefined, currentId: string | null, serverPick?: string,
+): CgProfile | null {
+  if (serverPick) {
+    const picked = profiles.find((profile) => profile.profileId === serverPick && profile.hasCard);
+    return picked && picked.profileId !== currentId ? picked : null;
+  }
   if (!kind) return null;
   const current = profiles.find((profile) => profile.profileId === currentId);
   if (current?.kind === kind) return null;
   return profiles.find((profile) => profile.kind === kind && profile.hasCard) ?? null;
+}
+
+/**
+ * Keeps only the newest of overlapping requests: `next()` starts one and returns a check that
+ * stays true until a later `next()` or `cancel()`.
+ */
+export function latestOnly() {
+  let latest = 0;
+  return {
+    next: () => {
+      latest += 1;
+      const mine = latest;
+      return () => mine === latest;
+    },
+    cancel: () => { latest += 1; },
+  };
 }
 
 /** "Workshop · 14 people": the room's kind and size, leaving out what is unknown. */

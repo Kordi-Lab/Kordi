@@ -135,7 +135,19 @@ export type CgJoinInput = { name?: string; kind?: CgProfileKind; profileId?: str
 export type CgCreateRoomInput = { name: string; kind: CgProfileKind; profileId?: string };
 
 /** `GET rooms/:code/preview`: a room before joining it; `member` is true when you are already in it. Null fields are unknown (older servers). */
-export type CgRoomPreview = { code: string; name: string; kind: CgProfileKind | null; memberCount: number | null; member?: boolean };
+/**
+ * `GET rooms/:code/preview`. A member gets `profileId`, the card already shared there; anyone else
+ * gets `suggestedProfileId`, the card a join would use. Older servers send neither.
+ */
+export type CgRoomPreview = {
+  code: string;
+  name: string;
+  kind: CgProfileKind | null;
+  memberCount: number | null;
+  member?: boolean;
+  profileId?: string;
+  suggestedProfileId?: string;
+};
 
 export type CgGroup = {
   groupSpaceId: string;

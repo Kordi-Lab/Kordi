@@ -81,3 +81,16 @@ export function localProfileMemory(accountId: string): CgProfileMemory {
     },
   };
 }
+
+/** The line a rename refuses, or null: a custom card needs a name; a fixed kind's empty name restores its default. */
+export function renameError(kind: CgProfileKind, name: string): string | null {
+  return kind === 'custom' && !name.trim() ? 'A custom card needs a name.' : null;
+}
+
+/** The fields a rename sends: an emptied name goes as '' so the server restores the kind's default. */
+export function renamePatch(profile: { name: string; focus: string | null }, name: string, focus: string): { name?: string; focus?: string } {
+  const patch: { name?: string; focus?: string } = {};
+  if (name !== profile.name) patch.name = name;
+  if (focus !== (profile.focus ?? '')) patch.focus = focus;
+  return patch;
+}

@@ -3,7 +3,6 @@
 // which refreshes whatever the top screen is waiting on and returns the delay
 // before the next refresh, or null when nothing is pending.
 
-import { localLegacyDesigns, type CgLegacyDesigns } from './cardDesign';
 import { CommonGroundError, commonGroundErrorCode, commonGroundErrorMessage, isRouteMissing, type CommonGroundClient } from './client';
 import type { CgProfileMemory } from './profiles';
 import * as profileOps from './storeProfiles';
@@ -54,11 +53,13 @@ export type CgState = {
   profileId: string | null;
 };
 
-export type CommonGroundStoreOptions = { profiles?: boolean; memory?: CgProfileMemory; legacyDesigns?: CgLegacyDesigns };
+export type CommonGroundStoreOptions = { profiles?: boolean; memory?: CgProfileMemory };
 
 export const LOBBY_POLL_MS = 2_000;
 export const MATCH_POLL_MS = 3_000;
 export const BUILD_POLL_MS = 3_000;
+/** The shortest gap between two refreshes from other devices. */
+export const SYNC_INTERVAL_MS = 30_000;
 
 const initialState = (profilesOn = false): CgState => ({
   stack: [{ name: 'home' }],
@@ -105,13 +106,12 @@ export class CommonGroundStore {
   private state: CgState;
   private listeners = new Set<() => void>();
   private disposed = false;
+  private lastSync = 0;
   readonly memory: CgProfileMemory;
-  readonly legacyDesigns: CgLegacyDesigns;
 
   constructor(readonly client: CommonGroundClient, options: CommonGroundStoreOptions = {}) {
     this.state = initialState(Boolean(options.profiles));
     this.memory = options.memory ?? NO_MEMORY;
-    this.legacyDesigns = options.legacyDesigns ?? localLegacyDesigns;
   }
 
   getSnapshot = () => this.state;
@@ -206,15 +206,39 @@ export class CommonGroundStore {
   }
 
   async loadHome(): Promise<void> {
+    this.lastSync = Date.now();
     try {
+      // The card for the profile we expect loads alongside the profile list; only a different pick waits for it.
+      const expected = this.state.profilesOn ? this.state.profileId ?? this.memory.read() : null;
+      const early = this.client.card(expected);
+      early.catch(() => undefined);
       await profileOps.loadProfiles(this);
-      const owner = await this.client.card(this.state.profileId);
+      const owner = this.state.profileId === expected ? await early : await this.client.card(this.state.profileId);
       this.set({ owner, loaded: true });
       if (!hasAnyCard(this.state)) return;
       const [recent] = await Promise.all([this.client.recent().catch(() => ({ people: this.state.recent })), this.loadRooms()]);
       this.set({ recent: recent.people });
     } catch (error) {
       this.set({ loaded: true, notice: commonGroundErrorMessage(error) });
+    }
+  }
+
+  /**
+   * Picks up what another device changed: the cards (name, colour, icon) and the current card.
+   * Runs when Grounding becomes visible again, at most once per `SYNC_INTERVAL_MS`, and never
+   * over a save in flight.
+   */
+  async syncFromServer(now = Date.now()): Promise<boolean> {
+    if (!this.state.loaded || this.state.busy || now - this.lastSync < SYNC_INTERVAL_MS) return false;
+    this.lastSync = now;
+    try {
+      await profileOps.loadProfiles(this);
+      const profileId = this.state.profileId;
+      const owner = await this.client.card(profileId);
+      if (this.state.profileId === profileId && !this.state.busy) this.applyOwner(owner);
+      return true;
+    } catch {
+      return false;
     }
   }
 

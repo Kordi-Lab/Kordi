@@ -173,6 +173,7 @@ button.cg-mrow:hover { background: var(--cg-fill); }
   background: var(--app-main-bg); color: var(--utility-foreground); font: inherit; font-size: 12px; outline: none;
 }
 .cg-cardpage-fields .cg-cardpage-name-in { font-size: 15px; font-weight: 650; }
+.cg-cardpage-error { color: var(--app-transient-danger-text, oklch(58% 0.2 27)); font-size: 11px; }
 .cg-cardpage-fields input:focus { border-color: var(--app-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 22%, transparent); }
 .cg-cardpage .cg-msec { margin-top: 18px; }
 
@@ -215,7 +216,6 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 .cg-line.is-off .cg-line-refs { opacity: 0.45; }
 .cg-line-head:last-child { padding-bottom: 8px; }
 .cg-ref { display: flex; align-items: center; gap: 10px; padding: 6px 0; transition: opacity 200ms; }
-.cg-ref.is-off { opacity: 0.4; }
 .cg-ref-icon { display: grid; width: 26px; height: 26px; flex: none; place-items: center; border-radius: 7px; background: color-mix(in srgb, var(--cg-src) 13%, transparent); color: var(--cg-src); }
 .cg-ref-body { display: flex; min-width: 0; flex: 1; flex-direction: column; }
 .cg-ref-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 500; }

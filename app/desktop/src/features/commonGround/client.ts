@@ -204,6 +204,8 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
         kind: room?.kind ?? null,
         memberCount: typeof room?.memberCount === 'number' ? room.memberCount : null,
         ...(room?.member === true ? { member: true } : {}),
+        ...(typeof room?.profileId === 'string' && room.profileId ? { profileId: room.profileId } : {}),
+        ...(typeof room?.suggestedProfileId === 'string' && room.suggestedProfileId ? { suggestedProfileId: room.suggestedProfileId } : {}),
       };
     },
     /** Shares another of your profiles in an open room. */

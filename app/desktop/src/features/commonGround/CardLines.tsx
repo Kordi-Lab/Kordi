@@ -11,10 +11,9 @@ import { shortDay } from './wallet';
 export const TOPIC_MAX_CHARS = 40;
 
 /** One topic: its tag, when it was seen, Hide and Remove on hover, then its references. */
-export function CardLine({ card, topic, offSources, onHide, onRemove }: {
+export function CardLine({ card, topic, onHide, onRemove }: {
   card: CgOwnCard;
   topic: string;
-  offSources: string[];
   onHide: () => void;
   onRemove: () => void;
 }) {
@@ -39,7 +38,7 @@ export function CardLine({ card, topic, offSources, onHide, onRemove }: {
           {refs.map((ref, index) => {
             const { Icon, tint } = sourceLook(ref.source);
             return (
-              <div key={`${ref.title}:${index}`} className={cn('cg-ref', offSources.includes(ref.source) && 'is-off')}>
+              <div key={`${ref.title}:${index}`} className="cg-ref">
                 <span className="cg-ref-icon" style={{ '--cg-src': tint } as React.CSSProperties}><Icon className="h-[14px] w-[14px]" aria-hidden="true" /></span>
                 <span className="cg-ref-body">
                   <span className="cg-ref-title">{ref.title}</span>
