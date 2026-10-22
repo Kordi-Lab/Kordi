@@ -70,6 +70,17 @@ test('activity summaries combine observed actions without repeating every tool',
   assert.equal(settledProgressLabel([], 2), 'Earlier activity');
 });
 
+test('live status describes concurrent tools and excludes failed or finished work', () => {
+  const tool = { ...turn.tools[0], status: 'running' };
+  const disk = { ...tool, name: 'bash', arguments: '{"command":"df -h"}' };
+  const web = { ...tool, id: 'web', name: 'web_search' };
+  assert.equal(turnProgressLabel({ ...turn, tools: [disk, web] }), 'Checking disk usage, searching the web');
+  assert.equal(turnProgressLabel({ ...turn, tools: [disk, { ...web, isError: true }] }), 'Checking disk usage');
+  assert.equal(turnProgressLabel({ ...turn, tools: [{ ...disk, status: 'done' }, web] }), 'Searching the web');
+  assert.equal(turnProgressLabel({ ...turn, status: 'thinking', tools: [] }), 'Thinking');
+  assert.equal(turnProgressLabel({ ...turn, status: 'waiting-approval', tools: [disk] }), 'Waiting for approval');
+});
+
 test('file links use explicit file arguments and tolerate incomplete tool streams', async () => {
   const { toolActivityMetadata } = await import('../src/kordi-app/components/toolActivityMetadata');
   assert.equal(toolActivityMetadata({ ...turn.tools[0], arguments: '{"file_path":"src/example.ts"}' }).path, 'src/example.ts');

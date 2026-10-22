@@ -202,7 +202,7 @@ test('ordered activity opens output directly and local files in reusable side-pa
   await page.getByRole('button', { name: 'example.ts', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'example.ts', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('tabpanel').getByText('export const example = true;', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /Editing files/ }).click();
+  await page.getByRole('button', { name: '1 tool', exact: true }).click();
   await page.getByRole('button', { name: 'updated.ts', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveCount(2);
   await page.getByRole('button', { name: 'example.ts', exact: true }).click();
@@ -234,8 +234,30 @@ test('plain replies stay compact and reasoning opens with one disclosure', async
   const mutedColor = await reasoning.evaluate(element => getComputedStyle(element).color);
   await expect(page.locator('.app-transcript-thinking-markdown p')).toHaveCSS('color', mutedColor);
   await expect(page.locator('.app-transcript-thinking-markdown strong')).toHaveCSS('color', mutedColor);
+  await expect(page.locator('.app-transcript-thinking-markdown strong')).toHaveCSS('font-weight', '400');
   expect(await prose.evaluate(element => getComputedStyle(element).color)).not.toBe(mutedColor);
   await expect(page.locator('.app-turn-progress-details details')).toHaveCount(0);
   await expect(page.getByText('Activity', { exact: true })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('compact-reasoning.png'), fullPage: true });
+});
+
+test('live actions change in place and reasoning stays separate from tool details', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&reasoning=1&count=0&phase=6');
+  const label = page.locator('.app-turn-worked-header .app-turn-status-text');
+  const timer = page.locator('.app-turn-worked-header .app-turn-progress-time');
+  await expect(label).toHaveText('Reading files');
+  const initialTimer = await timer.boundingBox();
+  await page.getByRole('button', { name: '1 tool', exact: true }).click();
+  await expect(page.locator('.app-transcript-thinking-markdown')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Reasoning', exact: true }).click();
+  await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
+  await expect(page.locator('.app-turn-progress-details details')).toHaveCount(0);
+  await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(7));
+  await expect(label).toHaveText('Editing files');
+  await expect(page.getByRole('button', { name: 'Reasoning', exact: true })).toHaveAttribute('aria-expanded', 'true');
+  expect(Math.abs((await timer.boundingBox())!.x - initialTimer!.x)).toBeLessThan(1);
+  await expect(label).toHaveCSS('transition-property', 'opacity');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(label).toHaveCSS('transition-duration', '0s');
+  await page.screenshot({ path: info.outputPath('live-action-reasoning.png'), fullPage: true });
 });

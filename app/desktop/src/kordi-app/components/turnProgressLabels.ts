@@ -4,6 +4,8 @@ import { toolTimelineToolLabel, formatRunningElapsed } from './toolTimeline';
 export function progressAction(tool: DesktopChatToolSnapshot) {
   const label = toolTimelineToolLabel(tool);
   const actions: Record<string, string> = {
+    'Check disk usage': 'Checking disk usage', 'Check working directory': 'Checking the working directory',
+    'Search web': 'Searching the web', 'Update repository': 'Updating the repository',
     'Read file': 'Reading files', 'Read context': 'Reading context', 'Inspect file': 'Reading files',
     'Search code': 'Searching the codebase', 'Find files': 'Finding files', 'List files': 'Finding files',
     'Run tests': 'Running tests', 'Run lint': 'Running lint', 'Run typecheck': 'Checking types',
@@ -35,13 +37,19 @@ export function turnProgressLabel(turn: DesktopChatTurnSnapshot) {
   if (['waiting', 'waiting-approval', 'waiting_approval'].includes(turn.status)) return 'Waiting for approval';
   if (turn.status === 'queued') return 'Queued';
   const active = turn.tools.filter(progressToolIsActive);
-  if (active.length) return `${progressAction(active[0])}${active.length > 1 ? ` · ${active.length} active` : ''}`;
+  if (active.length) {
+    const actions = [...new Set(active.map(progressAction))];
+    return actions.slice(0, 2).map((action, index) => index ? action.charAt(0).toLowerCase() + action.slice(1) : action).join(', ') + (actions.length > 2 ? ` +${actions.length - 2}` : '');
+  }
+  if (turn.status === 'thinking') return 'Thinking';
   return turn.status === 'writing' ? 'Writing the response' : 'Working';
 }
 
 /** Action summaries describe observed tools, never infer a model's private reasoning. */
 export function settledProgressLabel(tools: DesktopChatToolSnapshot[], unavailable = 0) {
   const labels: Record<string, string> = {
+    'Check disk usage': 'Checked disk usage', 'Check working directory': 'Checked the working directory',
+    'Search web': 'Searched the web', 'Update repository': 'Updated the repository',
     'Read file': 'Read files', 'Read context': 'Read context', 'Inspect file': 'Read files',
     'Search code': 'Searched the codebase', 'Find files': 'Found files', 'List files': 'Listed files',
     'Run tests': 'Ran tests', 'Run lint': 'Ran lint', 'Run typecheck': 'Checked types',

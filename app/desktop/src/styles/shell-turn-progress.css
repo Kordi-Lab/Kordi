@@ -59,3 +59,13 @@
 .kordi-app .app-turn-progress .app-transcript-thinking-markdown :is(p, li, blockquote, td, th, h1, h2, h3, h4, h5, h6, strong, em, code, a) {
   color: var(--utility-muted-text) !important;
 }
+
+.app-turn-reasoning .app-turn-progress-details { margin: 0 0 6px 22px; max-height: 180px; overflow: auto; }
+.app-turn-reasoning .app-transcript-thinking-markdown { display: grid; gap: 4px; }
+.app-turn-reasoning .app-transcript-thinking-markdown :is(p, li, h1, h2, h3, h4, h5, h6, strong) { font-size: 12px; line-height: 1.5; font-weight: 400; margin-block: 0; }
+.app-turn-status-label { display: inline-grid; width: 26ch; max-width: 100%; min-width: 0; }
+.app-turn-status-text { grid-area: 1 / 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 1; transition: opacity var(--app-motion-fast) var(--app-motion-ease); }
+@starting-style { .app-turn-status-text { opacity: .35; } }
+.app-turn-worked-header { min-width: 0; max-width: 100%; }
+.app-turn-worked-header > svg, .app-turn-worked-header > .app-turn-progress-time { flex-shrink: 0; }
+@media (prefers-reduced-motion: reduce) { .app-turn-status-text { transition-duration: 0ms; } }
