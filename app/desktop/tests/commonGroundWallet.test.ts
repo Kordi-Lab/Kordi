@@ -177,7 +177,8 @@ test('wallet: the card page shows the header, references and sources', () => {
   assert.match(html, /class="cg-cardpage-meta">1 line · built/);
   assert.match(html, /aria-label="Background and icon"/);
   assert.match(html, /Memory draft/);
-  assert.match(html, /Gmail · Started the draft\./);
+  assert.match(html, /<q class="cg-ref-quote">Started the draft\.<\/q>/);
+  assert.match(html, /Memory draft<\/span><span aria-hidden="true">·<\/span><span>Gmail · 12 Oct<\/span>/);
   assert.match(html, /First seen 3 Oct · Last seen 12 Oct/);
   assert.match(html, /aria-label="Hide Agent memory"/);
   assert.match(html, /Share my card/);

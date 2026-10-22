@@ -115,9 +115,12 @@ async fn person_profile(
     } else {
         queries::shared(pool, viewer, target).await?
     };
-    let common_ground =
+    let mut common_ground =
         crate::common_ground::profile_common_ground(pool, viewer, target, COMMON_GROUND_TOPICS)
             .await?;
+    if let Some(common_ground) = common_ground.as_mut() {
+        common_ground.r#match = crate::common_ground::contact_match(pool, viewer, target).await?;
+    }
     Ok(Some(ContactProfileResponse {
         account_id: account.account_id,
         kordi_id: Some(account.kordi_id),

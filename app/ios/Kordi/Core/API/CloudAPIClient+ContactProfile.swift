@@ -2,7 +2,7 @@ import Foundation
 
 /// `GET /v1/cloud/contacts/{account_id}/profile` (issue #1945). Every field
 /// past the identity is optional so a partial response still renders.
-struct CloudContactProfile: Codable, Hashable {
+struct CloudContactProfile: Decodable, Hashable {
     enum Kind: String, Codable, Hashable {
         case person
         case agent
@@ -84,12 +84,15 @@ struct CloudContactProfile: Codable, Hashable {
         }
     }
 
-    struct CommonGround: Codable, Hashable {
+    struct CommonGround: Decodable, Hashable {
         var workingOn: [String] = []
         var canHelp: [String] = []
         var lookingFor: [String] = []
+        /// The Grounding match with this person; nil when there is none or the server predates it.
+        var match: Match? = nil
 
-        var isEmpty: Bool { workingOn.isEmpty && canHelp.isEmpty && lookingFor.isEmpty }
+        var hasTopics: Bool { !(workingOn.isEmpty && canHelp.isEmpty && lookingFor.isEmpty) }
+        var isEmpty: Bool { !hasTopics && match == nil }
     }
 
     let accountId: String
@@ -187,13 +190,15 @@ private struct FailableGroup: Decodable {
 }
 
 extension CloudContactProfile.CommonGround {
-    private enum CodingKeys: String, CodingKey { case workingOn, canHelp, lookingFor }
+    private enum CodingKeys: String, CodingKey { case workingOn, canHelp, lookingFor, match }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         workingOn = (try? c.decodeIfPresent([String].self, forKey: .workingOn)) ?? []
         canHelp = (try? c.decodeIfPresent([String].self, forKey: .canHelp)) ?? []
         lookingFor = (try? c.decodeIfPresent([String].self, forKey: .lookingFor)) ?? []
+        // A malformed match drops only itself.
+        match = (try? c.decodeIfPresent(Match.self, forKey: .match)) ?? nil
     }
 }
 

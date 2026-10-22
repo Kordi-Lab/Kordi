@@ -60,7 +60,19 @@ enum ContactProfilePreviewData {
                 commonGround: .init(
                     workingOn: ["tabletop manipulation", "sim-to-real"],
                     canHelp: ["grant writing", "lab setup"],
-                    lookingFor: ["robot datasets", "co-authors"]
+                    lookingFor: ["robot datasets", "co-authors"],
+                    match: .init(
+                        score: 82,
+                        headline: "You both work on robot learning from small datasets.",
+                        shared: [
+                            .init(topic: "Sim-to-real", theirTopic: "sim-to-real", why: "Both of you train in simulation first."),
+                            .init(topic: "Robot datasets", theirTopic: "robot datasets", why: "You collect what Maya is looking for.")
+                        ],
+                        youBring: [.init(topic: "Data pipelines", target: "robot datasets", why: "You run a labelling pipeline.")],
+                        theyBring: [.init(topic: "Grant writing", target: "Lab funding", why: "Maya has written three grants.")],
+                        nextStep: "Ask Maya how she sets up her tabletop scenes.",
+                        theirProfile: .init(profileId: "cgp_preview_maya", kind: "work", name: "Robotics lab", design: "research")
+                    )
                 )
             )
         }

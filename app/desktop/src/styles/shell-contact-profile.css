@@ -127,3 +127,58 @@
   color: var(--utility-foreground);
   font-family: inherit;
 }
+
+/* Common ground match: the theirs-card swatch draws with the Grounding card colours. */
+.app-contacts-match.is-compact .app-contacts-match-muted,
+.app-contacts-match.is-compact .app-contacts-match-disclosure {
+  color: var(--app-transient-muted-text);
+}
+
+.app-contacts-match.is-compact {
+  color: var(--app-transient-text);
+}
+
+.app-contacts-match-swatch {
+  background: linear-gradient(150deg, var(--c1), var(--c2));
+  box-shadow: inset 0 0 0 0.5px var(--edge);
+  color: var(--fg);
+}
+
+.app-contacts-match-disclosure {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+}
+
+.app-contacts-match-disclosure:hover,
+.app-contacts-match-disclosure:focus-visible {
+  color: var(--utility-foreground);
+}
+
+.app-contacts-match-disclosure:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 1px;
+}
+
+.app-contacts-match-divider {
+  border-top: 1px solid var(--app-divider);
+}
+
+.app-contacts-match.is-compact .app-contacts-match-divider {
+  border-top-color: color-mix(in srgb, var(--app-transient-divider) 70%, transparent);
+}
+
+.app-contacts-match.is-compact .app-contacts-match-disclosure:hover,
+.app-contacts-match.is-compact .app-contacts-match-disclosure:focus-visible {
+  color: var(--app-transient-text);
+}
+
+.app-contacts-match.is-compact .app-contacts-match-score {
+  font-size: 22px;
+  line-height: 28px;
+}
+
+.app-contacts-match.is-compact .app-contacts-chip {
+  padding: 2px 8px;
+  font-size: 11.5px;
+}

@@ -6,13 +6,15 @@ import { normalizeContactProfile, type CloudContactProfile } from '../../src/fea
 import type { ContactProfileHost } from '../../src/kordi-app/contacts/contactProfileHost';
 import { ContactsPage } from '../../src/kordi-app/pages';
 import type { Contact, ContactClass, ContactRequest, Conversation } from '../../src/kordi-app/types';
+import { CONTACT_MATCH_VISUAL } from './contactMatchFixture';
 import { contactSharedVisualMessages } from './contactSharedFixtures';
 import '../../src/index.css';
 
 // Login-free preview of the Contacts page with fictional people.
 // Query params: ?theme=light|dark, ?empty=1 (no requests or invites), ?groups=2 (adds a My agents group),
 // ?invite=1 (the Common ground row shows a waiting room invitation), ?profile=1 (the richer contact profile),
-// ?profile=1&page=photos|files|links (Maya's chat is on hand and that shared page opens in the pane).
+// ?profile=1&page=photos|files|links (Maya's chat is on hand and that shared page opens in the pane),
+// ?profile=1&match=1 (Maya's common ground carries a Grounding match).
 // The Common ground page itself has its own preview, commonGroundPage.html.
 const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'light' ? 'light' : 'dark';
@@ -20,6 +22,7 @@ const withActivity = params.get('empty') !== '1';
 const showAgents = params.get('groups') === '2';
 const hasInvitation = params.get('invite') === '1';
 const withProfile = params.get('profile') === '1';
+const withMatch = params.get('match') === '1';
 const sharedPage = withProfile
   ? ({ photos: 'Photos', files: 'Files', links: 'Links' } as Record<string, string>)[params.get('page') ?? '']
   : undefined;
@@ -81,7 +84,7 @@ const PROFILES: Record<string, CloudContactProfile> = Object.fromEntries([
     defaultAgent: { agentId: 'agent_maya', accountId: 'acct_maya_agent', displayName: 'Maya’s agent', avatarUrl: null },
     contactSince: '2026-08-12T09:30:00Z',
     shared: { mediaCount: 24, linkCount: 9, documentCount: 3, groups: [{ groupId: 'gs_reading', title: 'Reading group', avatarUrl: null }, { groupId: 'gs_lab', title: 'Lab', avatarUrl: null }] },
-    commonGround: { workingOn: ['agent memory', 'retrieval'], canHelp: ['grant writing'], lookingFor: ['eval datasets'] },
+    commonGround: { workingOn: ['agent memory', 'retrieval'], canHelp: ['grant writing'], lookingFor: ['eval datasets'], match: withMatch ? CONTACT_MATCH_VISUAL : null },
   },
   { accountId: 'acct_hana', kordiId: '193847562', kind: 'person', contactSince: '2026-10-20T08:00:00Z', shared: { mediaCount: 0, linkCount: 0, documentCount: 0, groups: [] } },
   { accountId: 'acct_ines', kordiId: '650218437', kind: 'person', contactSince: '2026-10-03T08:00:00Z', shared: { mediaCount: 4, linkCount: 0, documentCount: 0, groups: [{ groupId: 'gs_lab', title: 'Lab', avatarUrl: null }] } },
@@ -137,9 +140,9 @@ function ContactsPreview() {
   const [search, setSearch] = useState('');
   const [isRequestsOpen, setIsRequestsOpen] = useState(true);
   const [expanded, setExpanded] = useState<Record<ContactClass, boolean>>({ 'other-users': true, 'my-agents': true, 'other-users-agents': true });
-  const [activeContactId, setActiveContactId] = useState(sharedPage ? 'cloud:acct_maya' : '');
+  const [activeContactId, setActiveContactId] = useState(sharedPage || withMatch ? 'cloud:acct_maya' : '');
   const [activeRequestId, setActiveRequestId] = useState('');
-  const [overlayMode, setOverlayMode] = useState<'contact' | 'request' | null>(sharedPage ? 'contact' : null);
+  const [overlayMode, setOverlayMode] = useState<'contact' | 'request' | null>(sharedPage || withMatch ? 'contact' : null);
   const [commonGroundSelected, setCommonGroundSelected] = useState(false);
 
   useLayoutEffect(() => {
