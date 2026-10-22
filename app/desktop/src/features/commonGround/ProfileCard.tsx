@@ -2,14 +2,19 @@ import { useId, type ReactNode } from 'react';
 import { Briefcase, Landmark, Leaf, ListChecks, Medal, Sparkles } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import type { CgCardDesign } from './cardDesign';
+import { isColourDesign, type CgCardDesign, type CgCardIcon } from './cardDesign';
+import { CARD_ICONS } from './cardLook';
 import { topicCount } from './format';
+import type { CgProfileKind } from './types';
 
 const GLYPHS = { work: Briefcase, health: Leaf, daily: ListChecks, workshop: Medal, research: Landmark, custom: Sparkles } as const;
 
-/** The design's glyph, drawn in the card's accent. */
-export function CardGlyph({ design, className }: { design: CgCardDesign; className?: string }) {
-  const Icon = GLYPHS[design];
+/**
+ * The card's icon, or without one the design's own glyph; a colour background draws its kind's
+ * glyph. Drawn in the card's accent.
+ */
+export function CardGlyph({ design, icon, kind, className }: { design: CgCardDesign; icon?: CgCardIcon | null; kind?: CgProfileKind; className?: string }) {
+  const Icon = icon ? CARD_ICONS[icon] : GLYPHS[isColourDesign(design) ? kind ?? 'custom' : design];
   return <Icon className={className} aria-hidden="true" />;
 }
 
@@ -43,6 +48,9 @@ export type CgCardStatus = 'built' | 'empty' | 'building' | 'suggested';
 
 export type CgCardFace = {
   design: CgCardDesign;
+  icon?: CgCardIcon | null;
+  /** The profile's kind, for a colour background's default glyph. */
+  kind?: CgProfileKind;
   name: string;
   focus: string | null;
   topicCount: number;
@@ -61,7 +69,7 @@ export function ProfileCardTile({ face, trailing }: { face: CgCardFace; trailing
   return (
     <>
       <span className="cg-tile-head">
-        <span className="cg-card-glyph"><CardGlyph design={face.design} /></span>
+        <span className="cg-card-glyph"><CardGlyph design={face.design} icon={face.icon} kind={face.kind} /></span>
         <span className="cg-tile-name">{face.name}</span>
         {trailing}
       </span>
@@ -83,12 +91,15 @@ export type CgCardEdit = {
   focusMax: number;
 };
 
-/** The large card (372×235) for dialogs; with `edit`, the name and focus are typed into it. */
-export function ProfileCardLarge({ face, topics = [], edit, badge }: { face: CgCardFace; topics?: string[]; edit?: CgCardEdit; badge?: string }) {
+/**
+ * The large card (372×235) for dialogs; with `edit`, the name and focus are typed into it, and
+ * `glyph` replaces the icon square (New card makes it a button that picks the look).
+ */
+export function ProfileCardLarge({ face, topics = [], edit, badge, glyph }: { face: CgCardFace; topics?: string[]; edit?: CgCardEdit; badge?: string; glyph?: ReactNode }) {
   return (
     <div className="cg-card is-large" data-design={face.design}>
       <div className="cg-large-head">
-        <span className="cg-card-glyph"><CardGlyph design={face.design} /></span>
+        {glyph ?? <span className="cg-card-glyph"><CardGlyph design={face.design} icon={face.icon} kind={face.kind} /></span>}
         {edit ? (
           <label className="cg-large-field">
             <input
@@ -111,7 +122,7 @@ export function ProfileCardLarge({ face, topics = [], edit, badge }: { face: CgC
           <label className="cg-large-field">
             <input
               value={face.focus ?? ''}
-              placeholder="Focus"
+              placeholder="Focus, optional"
               maxLength={edit.focusMax}
               disabled={edit.disabled}
               aria-label="Focus"

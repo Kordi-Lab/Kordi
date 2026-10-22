@@ -2,15 +2,17 @@
 // the list, the current profile, create, rename, delete, and switching the
 // profile shared in a room. Servers without profiles never reach these.
 
-import { isRouteMissing, type CommonGroundClient } from './client';
+import type { CgLegacyDesigns } from './cardDesign';
+import { CommonGroundError, isRouteMissing, type CommonGroundClient } from './client';
 import { pickProfile, type CgProfileMemory } from './profiles';
 import type { CgScreen, CgState } from './store';
-import type { CgProfile, CgProfileInput } from './types';
+import type { CgCardLook, CgProfile, CgProfileInput, CgProfilePatch } from './types';
 
 /** The parts of the store these operations use. */
 export type CgProfileStoreHost = {
   readonly client: CommonGroundClient;
   readonly memory: CgProfileMemory;
+  readonly legacyDesigns: CgLegacyDesigns;
   getSnapshot: () => CgState;
   set: (patch: Partial<CgState>) => void;
   run: <T>(key: string, work: () => Promise<T>) => Promise<T | null>;
@@ -28,10 +30,56 @@ export async function loadProfiles(host: CgProfileStoreHost): Promise<void> {
     const profiles = await host.client.profiles();
     const profileId = pickProfile(profiles, host.getSnapshot().profileId ?? host.memory.read());
     host.set({ profiles, profileId });
+    await migrateLegacyDesigns(host, profiles);
   } catch (error) {
     if (!isRouteMissing(error)) throw error;
     host.set({ profilesOn: false, profiles: [], profileId: null });
   }
+}
+
+/** True for errors worth trying again later: no network, a timeout, or a 5xx. */
+function retryable(error: unknown): boolean {
+  return !(error instanceof CommonGroundError) || error.status === 0 || error.status >= 500;
+}
+
+const migrating = new WeakSet<CgProfileStoreHost>();
+
+/**
+ * Moves designs older builds kept on this Mac to the server, once: each profile the server has
+ * no design for gets its stored one, then the store is dropped. A network or 5xx error keeps it
+ * for the next load.
+ */
+export async function migrateLegacyDesigns(host: CgProfileStoreHost, profiles: CgProfile[]): Promise<void> {
+  const stored = host.legacyDesigns.read();
+  if (!Object.keys(stored).length || migrating.has(host)) return;
+  migrating.add(host);
+  let keep = false;
+  for (const profile of profiles) {
+    const design = stored[profile.profileId];
+    if (!design || profile.design) continue;
+    try {
+      const updated = await host.client.updateProfile(profile.profileId, { design });
+      host.set({ profiles: host.getSnapshot().profiles.map((item) => (item.profileId === profile.profileId ? { ...item, ...updated } : item)) });
+    } catch (error) {
+      if (retryable(error)) keep = true;
+    }
+  }
+  migrating.delete(host);
+  if (!keep) host.legacyDesigns.clear();
+}
+
+/** Sets a card's background or icon at once and saves it; a failed save puts the old look back. */
+export async function setLook(host: CgProfileStoreHost, profileId: string, look: Partial<CgCardLook>): Promise<boolean> {
+  const before = host.getSnapshot().profiles.find((profile) => profile.profileId === profileId);
+  if (!before) return false;
+  const patchLook = (next: Partial<CgCardLook>) => host.set({
+    profiles: host.getSnapshot().profiles.map((profile) => (profile.profileId === profileId ? { ...profile, ...next } : profile)),
+  });
+  patchLook(look);
+  const updated = await host.run('look', () => host.client.updateProfile(profileId, look));
+  if (updated) patchLook({ design: updated.design, icon: updated.icon });
+  else patchLook(Object.fromEntries(Object.keys(look).map((key) => [key, before[key as keyof CgCardLook]])));
+  return Boolean(updated);
 }
 
 export async function selectProfile(host: CgProfileStoreHost, profileId: string): Promise<void> {
@@ -51,13 +99,14 @@ export async function createProfile(host: CgProfileStoreHost, input: CgProfileIn
   return true;
 }
 
-export async function updateProfile(host: CgProfileStoreHost, profileId: string, patch: { name?: string; focus?: string }): Promise<boolean> {
+export async function updateProfile(host: CgProfileStoreHost, profileId: string, patch: CgProfilePatch): Promise<boolean> {
   const updated = await host.run('profile', () => host.client.updateProfile(profileId, patch));
   if (!updated) return false;
   const { profiles, owner } = host.getSnapshot();
   host.set({ profiles: profiles.map((profile) => (profile.profileId === profileId ? { ...profile, ...updated } : profile)) });
   if (owner?.profile?.profileId === profileId) {
-    host.set({ owner: { ...owner, profile: { profileId, kind: updated.kind, name: updated.name, focus: updated.focus } } });
+    const { kind, name, focus, design, icon } = updated;
+    host.set({ owner: { ...owner, profile: { profileId, kind, name, focus, design, icon } } });
   }
   return true;
 }

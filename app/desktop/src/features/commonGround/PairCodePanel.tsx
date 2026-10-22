@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Hash } from 'lucide-react';
 
 import { profileDesign } from './cardDesign';
-import { CreateCodePopover } from './CreateCodePopover';
+import { CreateCodePopover, type CgShareChoice } from './CreateCodePopover';
 import { roomTitle } from './format';
 import { CardSwatch } from './ProfileCard';
 import { kindLabel, shareableProfiles } from './profiles';
@@ -144,7 +144,7 @@ export function PairCodePanel({ state, store }: { state: CgState; store: CommonG
       ) : null}
       {creating ? (
         <CreateCodePopover
-          cards={(state.profilesOn ? shareable : []).map((item) => ({ id: item.profileId, name: item.name, design: profileDesign(item) }))
+          cards={(state.profilesOn ? shareable : []).map((item): CgShareChoice => ({ id: item.profileId, name: item.name, design: profileDesign(item), icon: item.icon, kind: item.kind }))
             .concat(state.profilesOn ? [] : [{ id: 'card', name: 'Your card', design: 'work' }])}
           current={state.profileId ?? 'card'}
           busy={state.busy === 'create'}

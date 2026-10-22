@@ -1,11 +1,24 @@
-// Card designs for profiles: one look per fixed kind, and three for custom profiles.
+// Card looks for profiles: six backgrounds and an optional icon, kept by the server.
 // Workshop and Research group are designs on top of the Custom kind, not server kinds.
-// A custom profile keeps the design picked for it on this Mac; otherwise its name decides.
+// A profile without a design draws its kind's; a custom one without a design goes by its name.
 
 import { kindLabel } from './profiles';
-import type { CgProfile, CgProfileInput, CgProfileKind } from './types';
+import {
+  CG_CARD_DESIGNS, CG_CARD_ICONS, CG_COLOUR_DESIGNS, type CgCardDesign, type CgCardIcon, type CgProfileInput, type CgProfileKind, type CgProfileTag,
+} from './types';
 
-export type CgCardDesign = 'work' | 'health' | 'daily' | 'workshop' | 'research' | 'custom';
+export type { CgCardDesign, CgCardIcon } from './types';
+
+export type CgColourDesign = (typeof CG_COLOUR_DESIGNS)[number];
+
+/** The ten plain colour backgrounds, in the popover's order; each keeps its kind's glyph. */
+export const COLOUR_DESIGNS: Array<{ design: CgColourDesign; label: string }> = CG_COLOUR_DESIGNS.map((design) => (
+  { design, label: `${design[0].toUpperCase()}${design.slice(1)}` }
+));
+
+export function isColourDesign(design: CgCardDesign): design is CgColourDesign {
+  return (CG_COLOUR_DESIGNS as readonly string[]).includes(design);
+}
 
 /** New card's swatches, in order: the design, its kind, its label and the name it starts with. */
 export const CARD_DESIGNS: Array<{ design: CgCardDesign; kind: CgProfileKind; label: string; name: string }> = [
@@ -33,48 +46,58 @@ export function designForName(name: string): CgCardDesign {
   return 'custom';
 }
 
-export type CgDesignMemory = { read: (profileId: string) => CgCardDesign | null; write: (profileId: string, design: CgCardDesign) => void };
+const LEGACY_DESIGN_KEY = 'kordi.commonGround.cardDesigns.v1';
 
-const DESIGN_KEY = 'kordi.commonGround.cardDesigns.v1';
-const CUSTOM_DESIGNS: CgCardDesign[] = ['workshop', 'research', 'custom'];
+/** Designs older builds kept per profile on this Mac, read once to move them to the server. */
+export type CgLegacyDesigns = { read: () => Record<string, CgCardDesign>; clear: () => void };
 
-function readDesigns(): Record<string, CgCardDesign> {
-  try {
-    const parsed: unknown = JSON.parse(globalThis.localStorage?.getItem(DESIGN_KEY) ?? '{}');
-    return parsed && typeof parsed === 'object' ? parsed as Record<string, CgCardDesign> : {};
-  } catch {
-    return {};
-  }
-}
-
-/** Designs picked in New card, by profile id, in localStorage; storage that is off forgets them. */
-export const localDesignMemory: CgDesignMemory = {
-  read: (profileId) => {
-    const design = readDesigns()[profileId];
-    return design && CUSTOM_DESIGNS.includes(design) ? design : null;
-  },
-  write: (profileId, design) => {
+export const localLegacyDesigns: CgLegacyDesigns = {
+  read: () => {
     try {
-      globalThis.localStorage?.setItem(DESIGN_KEY, JSON.stringify({ ...readDesigns(), [profileId]: design }));
-    } catch { /* storage off */ }
+      const parsed: unknown = JSON.parse(globalThis.localStorage?.getItem(LEGACY_DESIGN_KEY) ?? '{}');
+      if (!parsed || typeof parsed !== 'object') return {};
+      return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, CgCardDesign] => isCardDesign(entry[1])));
+    } catch {
+      return {};
+    }
+  },
+  clear: () => {
+    try { globalThis.localStorage?.removeItem(LEGACY_DESIGN_KEY); } catch { /* storage off */ }
   },
 };
 
-/** The design a profile draws with: its kind, or for Custom the saved pick, else its name's. */
-export function profileDesign(profile: Pick<CgProfile, 'profileId' | 'kind' | 'name'>, memory: CgDesignMemory = localDesignMemory): CgCardDesign {
-  if (profile.kind !== 'custom') return profile.kind;
-  return memory.read(profile.profileId) ?? designForName(profile.name);
+export function isCardDesign(value: unknown): value is CgCardDesign {
+  return typeof value === 'string' && (CG_CARD_DESIGNS as readonly string[]).includes(value);
 }
 
-/** The New card dialog: the picked design, the name and focus typed into the card, and the fixed kinds already in the wallet. */
-export type CgNewCardDraft = { design: CgCardDesign; name: string; focus: string };
+export function isCardIcon(value: unknown): value is CgCardIcon {
+  return typeof value === 'string' && (CG_CARD_ICONS as readonly string[]).includes(value);
+}
+
+/** The design a profile draws with: the server's, else its kind's, and for Custom its name's. */
+export function profileDesign(profile: Pick<CgProfileTag, 'kind' | 'name' | 'design'>): CgCardDesign {
+  if (profile.design) return profile.design;
+  if (profile.kind !== 'custom') return profile.kind;
+  return designForName(profile.name);
+}
+
+/**
+ * The New card dialog: the picked design (which sets the kind), the name and focus typed into
+ * the card, and the background and icon picked on the card's icon square.
+ */
+export type CgNewCardDraft = { design: CgCardDesign; name: string; focus: string; background?: CgCardDesign | null; icon?: CgCardIcon | null };
+
+/** The background a draft draws with. */
+export function draftDesign(draft: CgNewCardDraft): CgCardDesign {
+  return draft.background ?? draft.design;
+}
 
 /** The first design not in the wallet, so New card opens on something it can create. */
 export function firstFreeDesign(taken: CgProfileKind[]): CgCardDesign {
   return CARD_DESIGNS.find((entry) => !taken.includes(entry.kind))?.design ?? 'custom';
 }
 
-/** A fresh draft for a design: Workshop and Research group start with their names. */
+/** A fresh draft for a design: Workshop and Research group start with their names; the look starts over. */
 export function newCardDraft(design: CgCardDesign, previous?: CgNewCardDraft): CgNewCardDraft {
   const entry = designEntry(design);
   const keepName = previous && previous.name.trim() && !CARD_DESIGNS.some((item) => item.name && item.name === previous.name);
@@ -88,14 +111,20 @@ export function canCreateCard(draft: CgNewCardDraft, taken: CgProfileKind[]): bo
   return kind !== 'custom' || Boolean(draft.name.trim());
 }
 
-/** The create request for a draft; a fixed kind sends a name only when it differs from the kind's. */
+/**
+ * The create request for a draft; a fixed kind sends a name only when it differs from the kind's,
+ * and a design only when it is not the kind's own. Custom always sends its design.
+ */
 export function newCardInput(draft: CgNewCardDraft): CgProfileInput {
   const { kind } = designEntry(draft.design);
   const name = draft.name.replace(/\s+/g, ' ').trim();
   const focus = draft.focus.trim();
+  const design = draftDesign(draft);
   return {
     kind,
     ...(name && (kind === 'custom' || name !== kindLabel(kind)) ? { name } : {}),
     ...(focus ? { focus } : {}),
+    ...(kind === 'custom' || design !== kind ? { design } : {}),
+    ...(draft.icon ? { icon: draft.icon } : {}),
   };
 }

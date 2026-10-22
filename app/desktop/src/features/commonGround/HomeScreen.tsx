@@ -17,7 +17,7 @@ export function EmptyWallet({ state, store }: { state: CgState; store: CommonGro
   return (
     <div className="cg-empty">
       <span className="cg-empty-card" data-design={design}>
-        <span className="cg-card-glyph"><CardGlyph design={design} /></span>
+        <span className="cg-card-glyph"><CardGlyph design={design} icon={profile?.icon} kind={profile?.kind} /></span>
       </span>
       <h2>{profile?.name ?? 'Work'}</h2>
       <p>{profile?.focus || 'Your agent writes it'}</p>

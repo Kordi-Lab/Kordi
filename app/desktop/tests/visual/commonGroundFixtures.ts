@@ -20,9 +20,9 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
   );
   // Three profiles: Work with a card, a custom Workshops card, Health without one yet.
   const profiles: CgProfile[] = [
-    { profileId: 'cgp_work', kind: 'work', name: 'Work', focus: 'Memory for long-horizon agents', position: 0, hasCard: true, sharing: true, builtAt: '2026-10-19T09:00:00Z', topicCount: 7 },
-    { profileId: 'cgp_ws', kind: 'custom', name: 'Workshops', focus: 'Poster on memory benchmarks', position: 1, hasCard: true, sharing: true, builtAt: '2026-10-18T09:00:00Z', topicCount: 3 },
-    { profileId: 'cgp_health', kind: 'health', name: 'Health', focus: 'Running and sleep', position: 2, hasCard: false, sharing: true, builtAt: null, topicCount: 0 },
+    { profileId: 'cgp_work', kind: 'work', name: 'Work', design: null, icon: null, focus: 'Memory for long-horizon agents', position: 0, hasCard: true, sharing: true, builtAt: '2026-10-19T09:00:00Z', topicCount: 7 },
+    { profileId: 'cgp_ws', kind: 'custom', name: 'Workshops', design: 'workshop', icon: null, focus: 'Poster on memory benchmarks', position: 1, hasCard: true, sharing: true, builtAt: '2026-10-18T09:00:00Z', topicCount: 3 },
+    { profileId: 'cgp_health', kind: 'health', name: 'Health', design: null, icon: null, focus: 'Running and sleep', position: 2, hasCard: false, sharing: true, builtAt: null, topicCount: 0 },
   ];
   const self = { accountId: 'acct_you', name: 'Alex Rivera', avatarUrl: initialsAvatar('Alex Rivera', theme) };
   const maya = person('acct_maya', 'Maya Chen', { ...stranger, contact: true, conversationId: 'dm_maya' });
@@ -51,8 +51,8 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
       },
     },
   };
-  const owner = { card, sharing: true, build: { status: 'idle', errorCode: null }, profile: { profileId: 'cgp_work', kind: 'work', name: 'Work', focus: null } };
-  const healthOwner = { card: null, sharing: true, build: { status: 'idle', errorCode: null }, profile: { profileId: 'cgp_health', kind: 'health', name: 'Health', focus: 'Running and sleep' } };
+  const owner = { card, sharing: true, build: { status: 'idle', errorCode: null }, profile: { profileId: 'cgp_work', kind: 'work', name: 'Work', design: null, icon: null, focus: null } };
+  const healthOwner = { card: null, sharing: true, build: { status: 'idle', errorCode: null }, profile: { profileId: 'cgp_health', kind: 'health', name: 'Health', design: null, icon: null, focus: 'Running and sleep' } };
   const room = {
     roomId: 'room_1', code: '4821', name: 'Poster session', openedByYou: true, expiresAt: '2026-10-21T10:00:00Z', open: true,
     kind: 'work', profileId: 'cgp_work', members: [maya, hana, ines, rafa],

@@ -8,6 +8,7 @@ const SCREENS: Array<[string, (page: import('@playwright/test').Page) => import(
   ['join', (page) => page.getByText('Recent', { exact: true })],
   ['build', (page) => page.getByText('24 titles')],
   ['card', (page) => page.getByText('Agent memory survey.pdf')],
+  ['look', (page) => page.getByRole('radiogroup', { name: 'Icon' })],
   ['lobby', (page) => page.locator('.cg-member', { hasText: 'Hana Sato' })],
   ['results', (page) => page.getByText('Eval reading group')],
   ['match', (page) => page.getByRole('button', { name: 'Chat' })],

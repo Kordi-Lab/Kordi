@@ -1,16 +1,18 @@
 // The Grounding wallet on the Mac: profiles as cards, the deck rail's layout, and
 // which card a room suggests.
 
-import { profileDesign, type CgDesignMemory } from './cardDesign';
+import { profileDesign } from './cardDesign';
 import type { CgCardFace } from './ProfileCard';
 import type { CgState } from './store';
 import type { CgProfile, CgProfileKind } from './types';
 
 /** A profile as a card: built, not built yet, or building while it is the current one. */
-export function profileFace(profile: CgProfile, state: Pick<CgState, 'profileId' | 'owner'>, memory?: CgDesignMemory): CgCardFace {
+export function profileFace(profile: CgProfile, state: Pick<CgState, 'profileId' | 'owner'>): CgCardFace {
   const building = profile.profileId === state.profileId && state.owner?.build.status === 'building';
   return {
-    design: profileDesign(profile, memory),
+    design: profileDesign(profile),
+    icon: profile.icon,
+    kind: profile.kind,
     name: profile.name,
     focus: profile.focus,
     topicCount: profile.topicCount,

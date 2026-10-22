@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ChevronLeft } from 'lucide-react';
 
-import { localDesignMemory, designEntry, newCardInput } from './cardDesign';
+import { newCardInput } from './cardDesign';
 import { DeckRail } from './DeckRail';
 import { NewCardDialog } from './NewCardDialog';
 import { CardSwatch, type CgCardFace } from './ProfileCard';
@@ -18,7 +18,7 @@ export function SharingChip({ chipKey, face }: { chipKey: string; face: CgCardFa
   if (shown.key !== chipKey) {
     setLeaving(shown);
     setShown({ key: chipKey, face });
-  } else if (shown.face.name !== face.name || shown.face.design !== face.design) {
+  } else if (shown.face.name !== face.name || shown.face.design !== face.design || shown.face.icon !== face.icon) {
     setShown({ key: chipKey, face });
   }
   useEffect(() => {
@@ -100,10 +100,7 @@ export function WalletShell({ state, store, title, onBack, children }: {
           notice={state.notice}
           onCancel={() => setCreating(false)}
           onCreate={(draft) => void store.createProfile(newCardInput(draft)).then((ok) => {
-            if (!ok) return;
-            const id = store.getSnapshot().profileId;
-            if (id && designEntry(draft.design).kind === 'custom') localDesignMemory.write(id, draft.design);
-            setCreating(false);
+            if (ok) setCreating(false);
           })}
         />
       ) : null}

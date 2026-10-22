@@ -16,7 +16,8 @@ export type CgRoomStoreHost = {
 };
 
 /**
- * What four digits lead to: a room already in your list opens, an open room shows its name,
+ * What four digits lead to: a room you are in opens (from your list, or when the preview says
+ * you are a member), an open room shows its name,
  * kind and people before you join, and an unknown code is not found. Servers without the
  * preview route show the code alone and join as before.
  */
@@ -29,7 +30,10 @@ export type CgCodeLookup =
 export async function lookUpCode(host: CgRoomStoreHost, code: string): Promise<CgCodeLookup> {
   if (host.getSnapshot().roomList.some((room) => room.code === code && room.open)) return { status: 'joined', code };
   try {
-    return { status: 'preview', room: await host.client.previewRoom(code) };
+    const room = await host.client.previewRoom(code);
+    if (!room.member) return { status: 'preview', room };
+    void host.loadRooms();
+    return { status: 'joined', code };
   } catch (error) {
     if (isRouteMissing(error)) return { status: 'preview', room: { code, name: '', kind: null, memberCount: null } };
     if (commonGroundErrorCode(error) === 'common_ground_room_not_found') return { status: 'missing', code };

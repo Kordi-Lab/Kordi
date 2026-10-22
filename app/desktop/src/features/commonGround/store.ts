@@ -3,12 +3,13 @@
 // which refreshes whatever the top screen is waiting on and returns the delay
 // before the next refresh, or null when nothing is pending.
 
+import { localLegacyDesigns, type CgLegacyDesigns } from './cardDesign';
 import { CommonGroundError, commonGroundErrorCode, commonGroundErrorMessage, isRouteMissing, type CommonGroundClient } from './client';
 import type { CgProfileMemory } from './profiles';
 import * as profileOps from './storeProfiles';
 import * as roomOps from './storeRooms';
 import type {
-  CgBuildRequest, CgCreateRoomInput, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPersonCard, CgProfile, CgProfileInput, CgRecentEntry,
+  CgBuildRequest, CgCardLook, CgCreateRoomInput, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPersonCard, CgProfile, CgProfileInput, CgProfilePatch, CgRecentEntry,
   CgRelationship, CgResults, CgRoom, CgRoomSummary, CgTopicLists,
 } from './types';
 
@@ -53,7 +54,7 @@ export type CgState = {
   profileId: string | null;
 };
 
-export type CommonGroundStoreOptions = { profiles?: boolean; memory?: CgProfileMemory };
+export type CommonGroundStoreOptions = { profiles?: boolean; memory?: CgProfileMemory; legacyDesigns?: CgLegacyDesigns };
 
 export const LOBBY_POLL_MS = 2_000;
 export const MATCH_POLL_MS = 3_000;
@@ -105,10 +106,12 @@ export class CommonGroundStore {
   private listeners = new Set<() => void>();
   private disposed = false;
   readonly memory: CgProfileMemory;
+  readonly legacyDesigns: CgLegacyDesigns;
 
   constructor(readonly client: CommonGroundClient, options: CommonGroundStoreOptions = {}) {
     this.state = initialState(Boolean(options.profiles));
     this.memory = options.memory ?? NO_MEMORY;
+    this.legacyDesigns = options.legacyDesigns ?? localLegacyDesigns;
   }
 
   getSnapshot = () => this.state;
@@ -321,7 +324,9 @@ export class CommonGroundStore {
 
   selectProfile = (profileId: string) => profileOps.selectProfile(this, profileId);
   createProfile = (input: CgProfileInput) => profileOps.createProfile(this, input);
-  updateProfile = (profileId: string, patch: { name?: string; focus?: string }) => profileOps.updateProfile(this, profileId, patch);
+  updateProfile = (profileId: string, patch: CgProfilePatch) => profileOps.updateProfile(this, profileId, patch);
+  /** Sets a card's background or icon at once and saves it; a failed save puts it back. */
+  setLook = (profileId: string, look: Partial<CgCardLook>) => profileOps.setLook(this, profileId, look);
   deleteProfile = (profileId: string) => profileOps.deleteProfile(this, profileId);
   switchRoomProfile = (code: string, profileId: string) => profileOps.switchRoomProfile(this, code, profileId);
 

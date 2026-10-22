@@ -3,12 +3,12 @@ import { Check, Share } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { CardGlyph, CardSwatch } from './ProfileCard';
-import type { CgCardDesign } from './cardDesign';
-import type { CgRoom } from './types';
+import type { CgCardDesign, CgCardIcon } from './cardDesign';
+import type { CgProfileKind, CgRoom } from './types';
 
 export const MEETUP_NAME_MAX = 80;
 
-export type CgShareChoice = { id: string; name: string; design: CgCardDesign };
+export type CgShareChoice = { id: string; name: string; design: CgCardDesign; icon?: CgCardIcon | null; kind?: CgProfileKind };
 
 /**
  * Create a code: a 320px popover under the Pair code row. Name the meetup, pick the card to
@@ -99,7 +99,7 @@ export function CreateCodePopover({ cards, current, busy, notice, onCreate, onCl
                 data-design={item.design}
                 onClick={() => setCardId(item.id)}
               >
-                <CardGlyph design={item.design} />
+                <CardGlyph design={item.design} icon={item.icon} kind={item.kind} />
               </button>
             ))}
             {card ? <span className="cg-pop-pick">{card.name}</span> : null}

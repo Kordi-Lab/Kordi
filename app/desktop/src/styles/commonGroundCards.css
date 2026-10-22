@@ -13,6 +13,33 @@
 .theme-dark [data-design="workshop"] { --c1: #3f4855; --c2: #20262d; --edge: rgb(255 255 255 / 0.09); }
 .theme-dark [data-design="custom"]   { --c1: #5a3762; --c2: #2f1b35; --edge: rgb(255 255 255 / 0.09); }
 
+/* Ten plain colours: white text, a soft two-stop gradient and the grid pattern; a little lighter in dark mode. */
+[data-design="ocean"]    { --c1: #0f6e73; --c2: #08484c; }
+[data-design="sky"]      { --c1: #2a6fb8; --c2: #1a4a80; }
+[data-design="rose"]     { --c1: #b33a63; --c2: #7d2443; }
+[data-design="coral"]    { --c1: #c95536; --c2: #93381f; }
+[data-design="amber"]    { --c1: #a86c0c; --c2: #714808; }
+[data-design="forest"]   { --c1: #2f5e3a; --c2: #1b3a23; }
+[data-design="lavender"] { --c1: #6b5bb5; --c2: #463a88; }
+[data-design="graphite"] { --c1: #3b3f46; --c2: #23262b; }
+[data-design="mint"]     { --c1: #2a8270; --c2: #1a5a4c; }
+[data-design="olive"]    { --c1: #6b6a2e; --c2: #47461c; }
+.theme-dark [data-design="ocean"]    { --c1: #14797e; --c2: #0a5054; }
+.theme-dark [data-design="sky"]      { --c1: #3479c2; --c2: #1f5290; }
+.theme-dark [data-design="rose"]     { --c1: #bd4570; --c2: #872a4b; }
+.theme-dark [data-design="coral"]    { --c1: #d05f3f; --c2: #9c3f24; }
+.theme-dark [data-design="amber"]    { --c1: #b27613; --c2: #7a500b; }
+.theme-dark [data-design="forest"]   { --c1: #386b44; --c2: #20432a; }
+.theme-dark [data-design="lavender"] { --c1: #7666c0; --c2: #4f4294; }
+.theme-dark [data-design="graphite"] { --c1: #464b53; --c2: #2a2d33; }
+.theme-dark [data-design="mint"]     { --c1: #318e7b; --c2: #1e6454; }
+.theme-dark [data-design="olive"]    { --c1: #767538; --c2: #4f4e20; }
+:is([data-design="ocean"], [data-design="sky"], [data-design="rose"], [data-design="coral"], [data-design="amber"],
+  [data-design="forest"], [data-design="lavender"], [data-design="graphite"], [data-design="mint"], [data-design="olive"]) {
+  --fg: #fff; --fg2: rgb(255 255 255 / 0.74); --pill: rgb(255 255 255 / 0.15); --acc: color-mix(in srgb, var(--c1) 18%, #fff);
+  --gbg: rgb(255 255 255 / 0.17); --edge: rgb(255 255 255 / 0.08);
+}
+
 /* The card surface and each design's pattern. */
 .cg-card, .cg-empty-card {
   position: relative; isolation: isolate; overflow: hidden; color: var(--fg); text-align: left;
@@ -21,7 +48,8 @@
 }
 :is(.cg-card, .cg-empty-card)::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; }
 .cg-card::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit; background: linear-gradient(180deg, rgb(255 255 255 / 0.1), transparent 38%); }
-[data-design="work"]:is(.cg-card, .cg-empty-card)::before {
+:is([data-design="work"], [data-design="ocean"], [data-design="sky"], [data-design="rose"], [data-design="coral"], [data-design="amber"],
+  [data-design="forest"], [data-design="lavender"], [data-design="graphite"], [data-design="mint"], [data-design="olive"]):is(.cg-card, .cg-empty-card)::before {
   background-image: linear-gradient(rgb(255 255 255 / 0.055) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.055) 1px, transparent 1px);
   background-size: 18px 18px; background-position: -1px -1px;
   mask-image: radial-gradient(130% 100% at 100% 0%, #000 25%, transparent 75%);

@@ -3,15 +3,18 @@ import { X } from 'lucide-react';
 
 import { AppDialog, AppDialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { CARD_DESIGNS, canCreateCard, designEntry, firstFreeDesign, newCardDraft, type CgNewCardDraft } from './cardDesign';
+import { CARD_DESIGNS, canCreateCard, designEntry, draftDesign, firstFreeDesign, newCardDraft, type CgNewCardDraft } from './cardDesign';
+import { CardLookButton, CardLookPopover } from './CardLookPopover';
+import { useLookPopover } from './cardLook';
 import { CgNotice } from './parts';
 import { CardGlyph, ProfileCardLarge } from './ProfileCard';
 import { PROFILE_FOCUS_MAX, PROFILE_NAME_MAX } from './profiles';
 import type { CgProfileKind } from './types';
 
 /**
- * New card: six design swatches above a live card that the name and focus are typed into.
- * Fixed kinds already in the wallet show "In your wallet" and cannot be created again.
+ * New card: six design swatches above a live card that the name and focus are typed into; the
+ * card's icon square picks another background and icon. Fixed kinds already in the wallet show
+ * "In your wallet" and cannot be created again.
  */
 export function NewCardDialog({ taken, busy, notice, onCancel, onCreate }: {
   taken: CgProfileKind[];
@@ -22,12 +25,15 @@ export function NewCardDialog({ taken, busy, notice, onCancel, onCreate }: {
 }) {
   const titleId = useId();
   const [draft, setDraft] = useState<CgNewCardDraft>(() => newCardDraft(firstFreeDesign(taken)));
+  const look = useLookPopover();
   const entry = designEntry(draft.design);
+  const design = draftDesign(draft);
   const inWallet = taken.includes(entry.kind);
   const ready = !busy && canCreateCard(draft, taken);
   const pick = (index: number) => {
     const next = CARD_DESIGNS[Math.max(0, Math.min(CARD_DESIGNS.length - 1, index))];
     setDraft((current) => newCardDraft(next.design, current));
+    look.close();
     return next.design;
   };
   return (
@@ -72,8 +78,9 @@ export function NewCardDialog({ taken, busy, notice, onCancel, onCreate }: {
           <div className="cg-newcard-preview">
             <ProfileCardLarge
               key={draft.design}
-              face={{ design: draft.design, name: draft.name, focus: draft.focus, topicCount: 0, status: 'empty' }}
+              face={{ design, icon: draft.icon, kind: entry.kind, name: draft.name, focus: draft.focus, topicCount: 0, status: 'empty' }}
               badge={inWallet ? 'In your wallet' : undefined}
+              glyph={inWallet ? undefined : <CardLookButton design={design} icon={draft.icon ?? null} kind={entry.kind} className="cg-card-glyph" open={look.open} onToggle={look.toggle} />}
               edit={{
                 namePlaceholder: entry.kind === 'custom' ? 'Name' : entry.label,
                 disabled: inWallet || busy,
@@ -83,6 +90,16 @@ export function NewCardDialog({ taken, busy, notice, onCancel, onCreate }: {
                 onFocus: (focus) => setDraft((current) => ({ ...current, focus })),
               }}
             />
+            {look.open && !inWallet ? (
+              <CardLookPopover
+                className="is-newcard"
+                design={design}
+                icon={draft.icon ?? null}
+                onClose={look.close}
+                onDesign={(background) => setDraft((current) => ({ ...current, background }))}
+                onIcon={(icon) => setDraft((current) => ({ ...current, icon }))}
+              />
+            ) : null}
           </div>
           <CgNotice text={notice} />
         </div>

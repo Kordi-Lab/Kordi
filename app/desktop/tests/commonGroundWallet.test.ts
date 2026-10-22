@@ -5,22 +5,29 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
-  CARD_DESIGNS, canCreateCard, designForName, firstFreeDesign, newCardDraft, newCardInput, profileDesign, type CgDesignMemory,
+  CARD_DESIGNS, canCreateCard, designForName, firstFreeDesign, newCardDraft, newCardInput, profileDesign, type CgCardDesign, type CgLegacyDesigns,
 } from '../src/features/commonGround/cardDesign';
-import { CardScreen } from '../src/features/commonGround/CardScreen';
+import { CardLookPopover } from '../src/features/commonGround/CardLookPopover';
+import { CardGlyph } from '../src/features/commonGround/ProfileCard';
+import { CG_CARD_DESIGNS } from '../src/features/commonGround/types';
+import { CardScreen, RenameFields } from '../src/features/commonGround/CardScreen';
 import { NewCardDialog } from '../src/features/commonGround/NewCardDialog';
 import { ProfileCard } from '../src/features/commonGround/ProfileCard';
 import { kindLabel, takenKinds } from '../src/features/commonGround/profiles';
 import { CommonGroundStore } from '../src/features/commonGround/store';
 import { deckCards, deckLayout, profileFace, roomPreviewLine, suggestedProfile } from '../src/features/commonGround/wallet';
 
-import { card, mockServer, owner, profile, room } from './helpers/commonGroundServer';
+import { card, mockServer, owner, profile, room, SERVER_DESIGNS } from './helpers/commonGroundServer';
 
 const work = profile('cgp_work', 'work', 'Work', true);
 const health = profile('cgp_health', 'health', 'Health', true);
 const kaust = profile('cgp_kaust', 'custom', 'KAUST', true);
 const book = profile('cgp_book', 'custom', 'Book club', false);
-const noMemory: CgDesignMemory = { read: () => null, write: () => undefined };
+const legacy = (stored: Record<string, CgCardDesign>) => {
+  const store = { stored, cleared: 0 };
+  const designs: CgLegacyDesigns = { read: () => store.stored, clear: () => { store.cleared += 1; store.stored = {}; } };
+  return { store, designs };
+};
 
 test('wallet: Create a code posts name, kind and profile, and the room goes to the top of Rooms', async () => {
   const created = room('7319', { name: 'Agents meetup', openedByYou: true, kind: 'work', profileId: 'cgp_work' });
@@ -70,6 +77,18 @@ test('wallet: four digits open a joined room, preview an open one, or are not fo
   assert.deepEqual(await store.lookUpCode('5555'), { status: 'preview', room: { code: '5555', name: '', kind: null, memberCount: null } });
 });
 
+test('wallet: a code for a room you are already in opens it from the preview', async () => {
+  const { calls, client } = mockServer({
+    'GET rooms/2468/preview': { status: 200, body: { code: '2468', name: 'Lab lunch', kind: 'work', memberCount: 4, member: true } },
+    'GET rooms': { status: 200, body: { rooms: [{ code: '2468', name: 'Lab lunch', open: true }] } },
+  });
+  const store = new CommonGroundStore(client, { profiles: true });
+  assert.deepEqual(await store.lookUpCode('2468'), { status: 'joined', code: '2468' });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.ok(calls.some((call) => call.url.endsWith('/common-ground/rooms')));
+  assert.equal(store.getSnapshot().roomList[0]?.code, '2468');
+});
+
 test('wallet: the join row suggests a built card of the room kind and names kind and people', () => {
   const workshops = profile('cgp_ws', 'custom', 'Workshops', true);
   assert.equal(suggestedProfile([work, workshops], 'custom', 'cgp_work')?.profileId, 'cgp_ws');
@@ -94,25 +113,34 @@ test('wallet: New card starts on a free design, pre-fills Workshop and Research 
   assert.equal(canCreateCard(newCardDraft('daily'), taken), true);
   assert.equal(canCreateCard(newCardDraft('custom'), taken), false);
   assert.equal(canCreateCard({ design: 'custom', name: ' Book club ', focus: '' }, taken), true);
-  assert.deepEqual(newCardInput({ design: 'research', name: ' KAUST ', focus: ' Vision group ' }), { kind: 'custom', name: 'KAUST', focus: 'Vision group' });
+  assert.deepEqual(newCardInput({ design: 'research', name: ' KAUST ', focus: ' Vision group ' }), { kind: 'custom', name: 'KAUST', focus: 'Vision group', design: 'research' });
   assert.deepEqual(newCardInput({ design: 'daily', name: 'Daily tasks', focus: '' }), { kind: 'daily' });
+  // The look picked on the card's icon square goes with the create request.
+  assert.deepEqual(newCardInput({ design: 'work', name: '', focus: '', background: 'research', icon: 'rocket' }), { kind: 'work', design: 'research', icon: 'rocket' });
+  assert.deepEqual(newCardInput({ design: 'work', name: '', focus: '', background: 'work', icon: null }), { kind: 'work' });
+  assert.equal(newCardDraft('health', { design: 'work', name: '', focus: '', background: 'daily', icon: 'sun' }).icon, undefined);
   const html = renderToStaticMarkup(createElement(NewCardDialog, { taken: ['work', 'daily'], busy: false, notice: null, onCancel: () => undefined, onCreate: () => undefined }));
   assert.match(html, /New card/);
   assert.match(html, /aria-label="Research group"/);
   assert.match(html, /aria-checked="true" aria-label="Health"/);
+  assert.match(html, /placeholder="Focus, optional"/);
+  assert.match(html, /aria-label="Background and icon"/);
 });
 
-test('wallet: card designs follow the kind; custom cards keep their pick, else their name decides', () => {
-  assert.equal(profileDesign(work, noMemory), 'work');
-  assert.equal(profileDesign(kaust, noMemory), 'research');
-  assert.equal(profileDesign(book, noMemory), 'custom');
+test('wallet: the server design wins, then the kind, and a custom card without one goes by its name', () => {
+  assert.equal(profileDesign(work), 'work');
+  assert.equal(profileDesign(kaust), 'research');
+  assert.equal(profileDesign(book), 'custom');
   assert.equal(designForName('ML Workshop 2026'), 'workshop');
   assert.equal(designForName('Vision lab'), 'research');
-  const picked: CgDesignMemory = { read: (id) => (id === 'cgp_book' ? 'workshop' : null), write: () => undefined };
-  assert.equal(profileDesign(book, picked), 'workshop');
-  const face = profileFace(work, { profileId: 'cgp_work', owner: owner({ build: { status: 'building', errorCode: null } }) }, noMemory);
+  assert.equal(profileDesign({ ...book, design: 'workshop' }), 'workshop');
+  assert.equal(profileDesign({ ...kaust, design: 'custom' }), 'custom');
+  assert.equal(profileDesign({ ...work, design: 'health' }), 'health');
+  assert.equal(profileDesign({ kind: 'custom', name: 'MIT' }), 'research');
+  const face = profileFace(work, { profileId: 'cgp_work', owner: owner({ build: { status: 'building', errorCode: null } }) });
   assert.equal(face.status, 'building');
-  assert.equal(profileFace(book, { profileId: 'cgp_work', owner: owner() }, noMemory).status, 'empty');
+  assert.equal(profileFace(book, { profileId: 'cgp_work', owner: owner() }).status, 'empty');
+  assert.equal(profileFace({ ...book, icon: 'coffee' }, { profileId: 'cgp_work', owner: owner() }).icon, 'coffee');
   const tile = renderToStaticMarkup(createElement(ProfileCard, { face: { design: 'health', name: 'Health', focus: 'Running', topicCount: 3, status: 'built' } }));
   assert.match(tile, /data-design="health"/);
   assert.match(tile, /3 topics/);
@@ -147,10 +175,136 @@ test('wallet: the card page shows the header, references and sources', () => {
   assert.match(html, /Rebuild from memory/);
   assert.match(html, />Rename</);
   assert.match(html, />Delete</);
-  assert.match(html, /Agent memory research · 1 line · built/);
+  assert.match(html, /class="cg-cardpage-focus">Agent memory research</);
+  assert.match(html, /class="cg-cardpage-meta">1 line · built/);
+  assert.match(html, /aria-label="Background and icon"/);
   assert.match(html, /Memory draft/);
   assert.match(html, /Gmail · Started the draft\./);
   assert.match(html, /First seen 3 Oct · Last seen 12 Oct/);
   assert.match(html, /aria-label="Hide Agent memory"/);
   assert.match(html, /Share my card/);
+});
+
+test('wallet: profiles read design and icon from the server and send them on create', async () => {
+  const { calls, client } = mockServer({
+    'GET profiles': { status: 200, body: { profiles: [
+      { ...book, design: 'workshop', icon: 'rocket' },
+      { ...work, design: undefined, icon: undefined },
+      { ...health, design: 'neon', icon: 'unicorn' },
+    ] } },
+    'POST profiles': { status: 201, body: { ...kaust, design: 'research', icon: 'flask' } },
+  });
+  const profiles = await client.profiles();
+  assert.deepEqual(profiles.map((item) => [item.design, item.icon]), [['workshop', 'rocket'], [null, null], [null, null]]);
+  const created = await client.createProfile({ kind: 'custom', name: 'KAUST', design: 'research', icon: 'flask' });
+  assert.deepEqual([created.design, created.icon], ['research', 'flask']);
+  assert.deepEqual(calls[1].body, { kind: 'custom', name: 'KAUST', design: 'research', icon: 'flask' });
+  assert.deepEqual((await client.createProfile({ kind: 'work' })).profileId, 'cgp_kaust');
+  assert.deepEqual(calls[2].body, { kind: 'work' });
+});
+
+test('wallet: the look popover applies at once, saves, and puts the old look back when saving fails', async () => {
+  const { calls, client } = mockServer({
+    'PUT profiles/cgp_book': [
+      { status: 200, body: { ...book, design: 'research', icon: null } },
+      { status: 200, body: { ...book, design: 'research', icon: 'coffee' } },
+      { status: 500, body: { message: 'Could not save.' } },
+      { status: 200, body: { ...book, design: 'research', icon: null } },
+    ],
+  });
+  const store = new CommonGroundStore(client, { profiles: true });
+  store.set({ profiles: [work, book], profileId: 'cgp_book' });
+  const saving = store.setLook('cgp_book', { design: 'research' });
+  assert.equal(store.getSnapshot().profiles[1].design, 'research');
+  assert.equal(await saving, true);
+  assert.deepEqual(calls[0].body, { design: 'research' });
+  assert.equal(await store.setLook('cgp_book', { icon: 'coffee' }), true);
+  assert.deepEqual(calls[1].body, { icon: 'coffee' });
+  assert.equal(store.getSnapshot().profiles[1].icon, 'coffee');
+  const failing = store.setLook('cgp_book', { design: 'daily' });
+  assert.equal(store.getSnapshot().profiles[1].design, 'daily');
+  assert.equal(await failing, false);
+  assert.deepEqual([store.getSnapshot().profiles[1].design, store.getSnapshot().profiles[1].icon], ['research', 'coffee']);
+  assert.equal(store.getSnapshot().notice, 'Could not save.');
+  // The current icon again resets it to the design's own glyph.
+  assert.equal(await store.setLook('cgp_book', { icon: null }), true);
+  assert.deepEqual(calls[3].body, { icon: null });
+  assert.equal(store.getSnapshot().profiles[1].icon, null);
+  const picks: unknown[] = [];
+  const html = renderToStaticMarkup(createElement(CardLookPopover, {
+    design: 'research', icon: 'coffee', onClose: () => undefined, onDesign: (design) => picks.push(design), onIcon: (icon) => picks.push(icon),
+  }));
+  assert.match(html, />Background</);
+  assert.match(html, />Icon</);
+  assert.equal(html.match(/role="radio"/g)?.length, 34);
+  assert.match(html, /aria-label="Ocean" title="Ocean" data-design="ocean" class="cg-look-colour"/);
+  assert.match(html, /aria-checked="true" aria-label="Research group"/);
+  assert.match(html, /aria-checked="true" aria-label="Coffee"/);
+  assert.equal(html.match(/aria-checked="true"/g)?.length, 2);
+});
+
+test('wallet: designs kept on this Mac move to the server once, unless the network fails', async () => {
+  const { calls, client } = mockServer({
+    'GET profiles': { status: 200, body: { profiles: [book, { ...kaust, design: 'custom' }, work] } },
+    'GET card?profile=cgp_work': { status: 200, body: owner() },
+    'PUT profiles/cgp_book': { status: 200, body: { ...book, design: 'workshop' } },
+  });
+  const { store: kept, designs } = legacy({ cgp_book: 'workshop', cgp_kaust: 'research', cgp_gone: 'research' });
+  const store = new CommonGroundStore(client, { profiles: true, legacyDesigns: designs });
+  await store.loadHome();
+  const puts = calls.filter((call) => call.method === 'PUT');
+  // KAUST already has a server design, and a deleted profile is skipped.
+  assert.deepEqual(puts.map((call) => [call.url.split('/').pop(), call.body]), [['cgp_book', { design: 'workshop' }]]);
+  assert.equal(store.getSnapshot().profiles.find((item) => item.profileId === 'cgp_book')?.design, 'workshop');
+  assert.equal(kept.cleared, 1);
+  await store.loadHome();
+  assert.equal(calls.filter((call) => call.method === 'PUT').length, 1);
+
+  const offline = mockServer({
+    'GET profiles': { status: 200, body: { profiles: [book, work] } },
+    'GET card?profile=cgp_work': { status: 200, body: owner() },
+    'PUT profiles/cgp_book': [{ status: 503, body: { message: 'Down.' } }, { status: 200, body: { ...book, design: 'workshop' } }],
+  });
+  const second = legacy({ cgp_book: 'workshop' });
+  const retrying = new CommonGroundStore(offline.client, { profiles: true, legacyDesigns: second.designs });
+  await retrying.loadHome();
+  assert.equal(second.store.cleared, 0);
+  await retrying.loadHome();
+  assert.equal(second.store.cleared, 1);
+  assert.equal(retrying.getSnapshot().profiles.find((item) => item.profileId === 'cgp_book')?.design, 'workshop');
+
+  const refused = mockServer({
+    'GET profiles': { status: 200, body: { profiles: [book] } },
+    'PUT profiles/cgp_book': { status: 400, body: { errorCode: 'invalid_design', message: 'Bad design.' } },
+  });
+  const third = legacy({ cgp_book: 'workshop' });
+  await new CommonGroundStore(refused.client, { profiles: true, legacyDesigns: third.designs }).loadHome();
+  assert.equal(third.store.cleared, 1);
+});
+
+test('wallet: the rename fields say the focus is optional', () => {
+  const store = new CommonGroundStore(mockServer({}).client, { profiles: true });
+  store.set({ profiles: [work], profileId: 'cgp_work', owner: owner() });
+  const html = renderToStaticMarkup(createElement(CardScreen, { state: store.getSnapshot(), store }));
+  assert.doesNotMatch(html, /cg-cardpage-focus/);
+  const fields = renderToStaticMarkup(createElement(RenameFields, { name: 'Work', focus: '', onSave: () => undefined, onCancel: () => undefined }));
+  assert.match(fields, /placeholder="Focus, optional" aria-label="Focus"/);
+});
+
+test('wallet: all sixteen backgrounds round-trip, and a colour keeps its kind glyph', async () => {
+  assert.deepEqual([...CG_CARD_DESIGNS], [...SERVER_DESIGNS]);
+  const { calls, client } = mockServer({
+    'GET profiles': { status: 200, body: { profiles: SERVER_DESIGNS.map((design, index) => ({ ...book, profileId: `cgp_${index}`, design })) } },
+    ...Object.fromEntries(SERVER_DESIGNS.map((design) => [`PUT profiles/cgp_${design}`, { status: 200, body: { ...book, profileId: `cgp_${design}`, design } }])),
+  });
+  assert.deepEqual((await client.profiles()).map((item) => item.design), [...SERVER_DESIGNS]);
+  for (const design of SERVER_DESIGNS) {
+    const updated = await client.updateProfile(`cgp_${design}`, { design });
+    assert.equal(updated.design, design);
+    assert.equal(profileDesign(updated), design);
+    assert.deepEqual(calls[calls.length - 1].body, { design });
+  }
+  const glyph = (kind: 'health' | 'custom') => renderToStaticMarkup(createElement(CardGlyph, { design: 'ocean', kind }));
+  assert.equal(glyph('health'), renderToStaticMarkup(createElement(CardGlyph, { design: 'health' })));
+  assert.equal(glyph('custom'), renderToStaticMarkup(createElement(CardGlyph, { design: 'custom' })));
 });

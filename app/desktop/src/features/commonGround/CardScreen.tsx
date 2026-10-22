@@ -6,6 +6,8 @@ import { SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import { profileDesign } from './cardDesign';
 import { AddTopic, CardLine } from './CardLines';
 import { cardSources, sourceLook } from './cardReferences';
+import { CardLookButton, CardLookPopover } from './CardLookPopover';
+import { useLookPopover } from './cardLook';
 import { CgButton, CgNotice } from './parts';
 import { CardGlyph } from './ProfileCard';
 import { DeleteProfileDialog } from './ProfileDialogs';
@@ -34,7 +36,7 @@ function DeleteCardDialog({ busy, onCancel, onDelete }: { busy: boolean; onCance
 }
 
 /** Rename in place: the name and focus lines become fields; Enter or leaving saves, Escape cancels. */
-function RenameFields({ name, focus, onSave, onCancel }: { name: string; focus: string; onSave: (name: string, focus: string) => void; onCancel: () => void }) {
+export function RenameFields({ name, focus, onSave, onCancel }: { name: string; focus: string; onSave: (name: string, focus: string) => void; onCancel: () => void }) {
   const [draft, setDraft] = useState({ name, focus });
   const keys = (event: React.KeyboardEvent) => {
     if (event.key === 'Enter') onSave(draft.name.trim(), draft.focus.trim());
@@ -46,7 +48,7 @@ function RenameFields({ name, focus, onSave, onCancel }: { name: string; focus: 
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) onSave(draft.name.trim(), draft.focus.trim()); }}
     >
       <input autoFocus className="cg-cardpage-name-in" value={draft.name} maxLength={PROFILE_NAME_MAX} aria-label="Name" onKeyDown={keys} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-      <input className="cg-cardpage-focus-in" value={draft.focus} maxLength={PROFILE_FOCUS_MAX} placeholder="Focus" aria-label="Focus" onKeyDown={keys} onChange={(event) => setDraft({ ...draft, focus: event.target.value })} />
+      <input className="cg-cardpage-focus-in" value={draft.focus} maxLength={PROFILE_FOCUS_MAX} placeholder="Focus, optional" aria-label="Focus" onKeyDown={keys} onChange={(event) => setDraft({ ...draft, focus: event.target.value })} />
     </div>
   );
 }
@@ -56,6 +58,7 @@ export function CardScreen({ state, store }: { state: CgState; store: CommonGrou
   const [confirming, setConfirming] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [offSources, setOffSources] = useState<string[]>([]);
+  const look = useLookPopover();
   const card = state.owner?.card;
   if (!card || !state.owner) return null;
   const profile = currentProfile(state);
@@ -63,12 +66,25 @@ export function CardScreen({ state, store }: { state: CgState; store: CommonGrou
   const name = profile?.name ?? 'Your card';
   const update = (key: CgTopicKey, next: string[]) => void store.saveTopics({ ...lists(card), [key]: next });
   const lineCount = CG_TOPIC_SECTIONS.reduce((sum, [key]) => sum + card[key].length, 0);
-  const meta = [profile?.focus, `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`, card.builtAt ? `built ${shortDay(card.builtAt)}` : ''].filter(Boolean).join(' · ');
+  const meta = [`${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`, card.builtAt ? `built ${shortDay(card.builtAt)}` : ''].filter(Boolean).join(' · ');
   const sources = cardSources(card);
   return (
     <div className="cg-cardpage">
       <div className="cg-cardpage-head">
-        <span className="cg-cardpage-glyph" data-design={design}><CardGlyph design={design} /></span>
+        {profile ? (
+          <span className="cg-look-anchor">
+            <CardLookButton design={design} icon={profile.icon} kind={profile.kind} className="cg-cardpage-glyph" open={look.open} onToggle={look.toggle} />
+            {look.open ? (
+              <CardLookPopover
+                design={design}
+                icon={profile.icon}
+                onClose={look.close}
+                onDesign={(next) => void store.setLook(profile.profileId, { design: next })}
+                onIcon={(next) => void store.setLook(profile.profileId, { icon: next })}
+              />
+            ) : null}
+          </span>
+        ) : <span className="cg-cardpage-glyph" data-design={design}><CardGlyph design={design} /></span>}
         <div className="cg-cardpage-title">
           {renaming && profile ? (
             <RenameFields
@@ -86,6 +102,7 @@ export function CardScreen({ state, store }: { state: CgState; store: CommonGrou
           ) : (
             <>
               <h2>{name}</h2>
+              {profile?.focus ? <div className="cg-cardpage-focus">{profile.focus}</div> : null}
               <div className="cg-cardpage-meta">{meta}</div>
             </>
           )}
