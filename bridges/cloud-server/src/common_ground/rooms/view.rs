@@ -109,6 +109,8 @@ type MemberRow = (
     String,
     String,
     String,
+    Option<String>,
+    Option<String>,
 );
 type RoomRow = (
     String,
@@ -140,7 +142,8 @@ pub(in crate::common_ground) async fn view(
     let members: Vec<MemberRow> = query_as(
         "SELECT member.account_id, account.display_name, account.avatar_url,
                 COALESCE(card.built_at IS NOT NULL AND card.sharing_enabled, false),
-                profile.profile_id, profile.kind, profile.name
+                profile.profile_id, profile.kind, profile.name, profile.design,
+                profile.icon
          FROM cloud_common_ground_room_members member
          JOIN cloud_accounts account ON account.account_id = member.account_id
          JOIN cloud_common_ground_profiles profile ON profile.profile_id = member.profile_id
@@ -157,11 +160,27 @@ pub(in crate::common_ground) async fn view(
     let members: Vec<Value> = members
         .into_iter()
         .map(
-            |(account_id, display_name, avatar_url, has_card, profile, kind, profile_name)| {
+            |(
+                account_id,
+                display_name,
+                avatar_url,
+                has_card,
+                profile,
+                kind,
+                profile_name,
+                design,
+                icon,
+            )| {
                 let mut person =
                     people::person(&account_id, display_name.as_deref(), avatar_url.as_deref());
                 person["hasCard"] = json!(has_card);
-                person["profile"] = profiles::tag(&profile, &kind, &profile_name);
+                person["profile"] = profiles::tag(
+                    &profile,
+                    &kind,
+                    &profile_name,
+                    design.as_deref(),
+                    icon.as_deref(),
+                );
                 actions::attach(&mut person, &account_id, &relationships);
                 person
             },

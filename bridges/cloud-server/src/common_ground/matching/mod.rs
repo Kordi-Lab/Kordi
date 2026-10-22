@@ -33,6 +33,10 @@ pub(super) struct SharedCard {
     pub profile_kind: String,
     #[serde(default)]
     pub profile_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_design: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_icon: Option<String>,
     pub name: String,
     pub avatar_url: Option<String>,
     pub revision: i64,
@@ -40,12 +44,15 @@ pub(super) struct SharedCard {
 }
 
 impl SharedCard {
-    /// `{profileId, kind, name}`: the profile shared with the viewer.
+    /// `{profileId, kind, name, design, icon}`: the profile shared with the
+    /// viewer.
     pub fn profile_tag(&self) -> serde_json::Value {
         crate::common_ground::profiles::tag(
             &self.profile_id,
             &self.profile_kind,
             &self.profile_name,
+            self.profile_design.as_deref(),
+            self.profile_icon.as_deref(),
         )
     }
 }
@@ -64,8 +71,17 @@ pub(super) async fn shared_cards(
         if !row.has_card() || !row.sharing {
             continue;
         }
-        let found: Option<(Option<String>, Option<String>, String, String)> = query_as(
-            "SELECT account.display_name, account.avatar_url, profile.kind, profile.name
+        type Found = (
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+        );
+        let found: Option<Found> = query_as(
+            "SELECT account.display_name, account.avatar_url, profile.kind, profile.name,
+                    profile.design, profile.icon
              FROM cloud_accounts account
              JOIN cloud_common_ground_profiles profile ON profile.account_id = account.account_id
              WHERE account.account_id = $1 AND profile.profile_id = $2",
@@ -74,7 +90,9 @@ pub(super) async fn shared_cards(
         .bind(profile_id)
         .fetch_optional(pool)
         .await?;
-        let Some((name, avatar_url, profile_kind, profile_name)) = found else {
+        let Some((name, avatar_url, profile_kind, profile_name, profile_design, profile_icon)) =
+            found
+        else {
             continue;
         };
         out.push(SharedCard {
@@ -82,6 +100,8 @@ pub(super) async fn shared_cards(
             profile_id: profile_id.clone(),
             profile_kind,
             profile_name,
+            profile_design,
+            profile_icon,
             name: crate::document_shares::access::clean_display_name(name.as_deref()),
             avatar_url,
             revision: row.revision,

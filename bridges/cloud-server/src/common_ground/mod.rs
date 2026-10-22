@@ -146,6 +146,10 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
         )
         .route("/v1/cloud/common-ground/rooms/:code", get(rooms::read))
         .route(
+            "/v1/cloud/common-ground/rooms/:code/preview",
+            get(rooms::preview),
+        )
+        .route(
             "/v1/cloud/common-ground/rooms/:code/join",
             post(rooms::join),
         )
