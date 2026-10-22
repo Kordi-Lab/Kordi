@@ -361,3 +361,118 @@ async fn upgrade_from_142_adds_group_intros() {
         .unwrap();
     assert_eq!(intros, 0, "a deleted group takes its intro");
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_143_adds_profile_design() {
+    let pool = fixture(143).await;
+    execute(&pool, "INSERT INTO cloud_common_ground_profiles(profile_id,account_id,kind,name,position) VALUES('cgp_a','fixture-owner','custom','KAUST',0)").await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let (name, design): (String, Option<String>) =
+        query_as("SELECT name, design FROM cloud_common_ground_profiles")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        (name.as_str(), design),
+        ("KAUST", None),
+        "existing profiles keep the kind's default design"
+    );
+    execute(
+        &pool,
+        "UPDATE cloud_common_ground_profiles SET design = 'research'",
+    )
+    .await;
+    assert!(
+        sqlx_core::raw_sql::raw_sql("UPDATE cloud_common_ground_profiles SET design = 'neon'")
+            .execute(&pool)
+            .await
+            .is_err(),
+        "unknown designs are rejected"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_144_adds_profile_icon() {
+    let pool = fixture(144).await;
+    execute(&pool, "INSERT INTO cloud_common_ground_profiles(profile_id,account_id,kind,name,position,design) VALUES('cgp_a','fixture-owner','custom','KAUST',0,'research')").await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let (name, design, icon): (String, Option<String>, Option<String>) =
+        query_as("SELECT name, design, icon FROM cloud_common_ground_profiles")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        (name.as_str(), design.as_deref(), icon),
+        ("KAUST", Some("research"), None),
+        "existing profiles keep their design and have no icon"
+    );
+    execute(
+        &pool,
+        "UPDATE cloud_common_ground_profiles SET icon = 'flask'",
+    )
+    .await;
+    assert!(
+        sqlx_core::raw_sql::raw_sql("UPDATE cloud_common_ground_profiles SET icon = 'unicorn'")
+            .execute(&pool)
+            .await
+            .is_err(),
+        "unknown icons are rejected"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_145_widens_profile_designs() {
+    let pool = fixture(145).await;
+    execute(&pool, "INSERT INTO cloud_common_ground_profiles(profile_id,account_id,kind,name,position,design,icon) VALUES('cgp_a','fixture-owner','work','Work',0,'work','briefcase')").await;
+    assert!(
+        sqlx_core::raw_sql::raw_sql("UPDATE cloud_common_ground_profiles SET design = 'ocean'")
+            .execute(&pool)
+            .await
+            .is_err(),
+        "colour designs need the upgrade"
+    );
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let (design, icon): (Option<String>, Option<String>) =
+        query_as("SELECT design, icon FROM cloud_common_ground_profiles")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        (design.as_deref(), icon.as_deref()),
+        (Some("work"), Some("briefcase")),
+        "existing profiles keep their design"
+    );
+    execute(
+        &pool,
+        "UPDATE cloud_common_ground_profiles SET design = 'ocean'",
+    )
+    .await;
+    assert!(
+        sqlx_core::raw_sql::raw_sql("UPDATE cloud_common_ground_profiles SET design = 'unicorn'")
+            .execute(&pool)
+            .await
+            .is_err(),
+        "unknown designs are still rejected"
+    );
+    let (checks,): (i64,) = query_as(
+        "SELECT COUNT(*) FROM pg_constraint
+         WHERE conrelid = 'cloud_common_ground_profiles'::regclass
+           AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%design%'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(checks, 1, "the old design check is replaced, not kept");
+}
