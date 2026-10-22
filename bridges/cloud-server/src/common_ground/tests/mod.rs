@@ -5,6 +5,7 @@ mod build_agents_tests;
 pub(crate) mod db_fixture;
 mod flow_tests;
 mod group_intro_tests;
+mod group_origin_tests;
 mod matching_guard_tests;
 mod matching_tests;
 mod matching_unit_tests;

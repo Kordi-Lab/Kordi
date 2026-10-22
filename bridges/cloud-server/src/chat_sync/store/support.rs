@@ -164,6 +164,7 @@ pub(super) async fn load_conversation(
         group_space_id: row.6,
         group_title: row.7,
         group_avatar: row.13,
+        origin: super::grounding_origin::conversation_origin(transaction, conversation_id).await?,
         forked_from_session_id: row.8,
         forked_from_message_id: row.9,
         latest_message_sequence: row.10,
@@ -210,6 +211,7 @@ pub(super) async fn load_active_conversation_projections(
     .fetch_all(&mut **transaction)
     .await?;
     let members = member_rows(transaction, conversation_id).await?;
+    let origin = super::grounding_origin::conversation_origin(transaction, conversation_id).await?;
     let kind = parse_kind(&row.1)?;
     Ok(preferences
         .into_iter()
@@ -226,6 +228,7 @@ pub(super) async fn load_active_conversation_projections(
                     group_space_id: row.6.clone(),
                     group_title: row.7.clone(),
                     group_avatar: row.13.clone(),
+                    origin: origin.clone(),
                     forked_from_session_id: row.8.clone(),
                     forked_from_message_id: row.9.clone(),
                     latest_message_sequence: row.10,

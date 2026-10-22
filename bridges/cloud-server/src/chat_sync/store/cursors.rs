@@ -359,6 +359,9 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
         .iter()
         .map(|row| row.0)
         .collect::<Vec<_>>();
+    let grounding =
+        super::grounding_origin::grounding_conversation_ids(&mut transaction, &conversation_ids)
+            .await?;
     let session_ids = conversation_rows
         .iter()
         .map(|row| row.5.clone().unwrap_or_else(|| row.0.to_string()))
@@ -404,6 +407,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
                 group_space_id: row.6,
                 group_title: row.7,
                 group_avatar: row.15,
+                origin: super::grounding_origin::origin_for(&grounding, row.0),
                 forked_from_session_id: row.8,
                 forked_from_message_id: row.9,
                 latest_message_sequence: row.10,

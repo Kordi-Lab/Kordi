@@ -56,6 +56,8 @@ struct CloudChatConversation: Codable, Hashable {
     var groupSpaceId: String? = nil
     var groupTitle: String? = nil
     var groupAvatar: CloudGroupAvatar? = nil
+    /// "grounding" for a group started from a Grounding room.
+    var origin: String? = nil
     let forkedFromSessionId: String?
     let forkedFromMessageId: String?
     let latestMessageSequence: Int64
@@ -72,6 +74,7 @@ struct CloudChatConversation: Codable, Hashable {
         case groupSpaceId = "group_space_id"
         case groupTitle = "group_title"
         case groupAvatar = "group_avatar"
+        case origin
         case forkedFromSessionId = "forked_from_session_id"
         case forkedFromMessageId = "forked_from_message_id"
         case latestMessageSequence = "latest_message_sequence"
@@ -125,5 +128,16 @@ enum GroupAvatarCatalog {
         return controls.filter {
             normalizedGroupSpaceId($0.1.groupSpaceId ?? $0.1.groupId) == spaceId
         }.compactMap { $0.1.groupAvatar }.max(by: { $0.updatedAtMs < $1.updatedAtMs })?.imageUrl
+    }
+}
+
+enum GroupOriginCatalog {
+    /// Whether the server marked any channel of the group space as started from Grounding.
+    static func isGrounding(groupSpaceId: String, canonical: [CloudChatConversation]) -> Bool {
+        let spaceId = normalizedGroupSpaceId(groupSpaceId)
+        return canonical.contains {
+            $0.kind == "group" && $0.origin == "grounding"
+                && normalizedGroupSpaceId($0.groupSpaceId ?? $0.legacySessionId ?? $0.id) == spaceId
+        }
     }
 }
