@@ -1,6 +1,7 @@
 mod cache;
 mod ddg;
 mod input;
+mod native;
 
 #[cfg(test)]
 mod tests;
@@ -135,6 +136,16 @@ impl Tool for WebSearchTool {
         validate_input(&input)?;
 
         let started = Instant::now();
+        if cancel.is_cancelled() {
+            return Err(KordiError::Tool("Web search cancelled".into()));
+        }
+        if let Some(runtime) = ctx.web_search.as_ref()
+            && native::supports(runtime, &input)
+        {
+            emit_progress_line(ctx, "Searching the web with the selected provider");
+            return native::search(runtime, &input, cancel, started).await;
+        }
+
         let cache_key = build_cache_key(&input);
         let cache_hit = if let Some(cached) = read_cached_search(&cache_key) {
             emit_progress_line(

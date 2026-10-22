@@ -312,14 +312,14 @@ impl TuiController {
         self.runtime_host
             .session_mut()
             .set_thinking_level(effective);
-        self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
-            provider: self.session_setup.provider.clone(),
-            model: self.session_setup.model.clone(),
-            api_key: self.session_setup.api_key.clone(),
-            base_url: self.session_setup.base_url.clone(),
-            headers: runtime.headers,
-            enabled: true,
-        });
+        self.session_setup.tool_ctx.web_search = Some(crate::runtime_model::web_search_runtime(
+            &self.session_setup.provider,
+            &self.session_setup.model,
+            &self.session_setup.api_key,
+            &self.session_setup.base_url,
+            &runtime.headers,
+            self.session_setup.auth.as_ref(),
+        ));
         let status = if thinking_override.is_some() || effective != requested {
             format!("Model: {display} • thinking: {}", effective.as_str())
         } else {

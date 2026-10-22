@@ -1,3 +1,4 @@
+import { openTranscriptFile } from '@/features/documents/companionDocument';
 import type { ComponentProps } from 'react';
 
 import { ChatsPage } from '@/pages/ChatsPage';
@@ -65,6 +66,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     },
     onClearSourcePreview: () => args.setActiveSourcePreview(null),
     onOpenArtifact: (artifactId) => {
+      if (openTranscriptFile(artifactId, args.activeConv.localSessionCwd)) return;
       args.setActiveSourcePreview(null);
       args.setActiveArtifactId(artifactId);
       args.setActiveDetailTab('artifacts');

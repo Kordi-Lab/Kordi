@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { CompanionSourceView } from '@/features/documents/CompanionSourceView';
 import { LoaderCircle } from 'lucide-react';
 
 import type { CompanionDocument } from '@/features/documents/companionDocument';
@@ -25,7 +26,7 @@ function CompanionDocumentReader({ document, api, onTitle, onRenameAvailable }: 
   const { artifact } = document;
   const [reloads, setReloads] = useState(0);
   const key = `${document.previewBaseRoot ?? ''}:${artifact.id}:${artifact.path}`;
-  const canReadLocally = !document.preview && isNativeDesktopShell();
+  const canReadLocally = !document.preview && document.readLocally !== false && isNativeDesktopShell();
   const [loaded, setLoaded] = useState<LoadedPreview | null>(null);
   useEffect(() => {
     if (!canReadLocally) return undefined;
@@ -44,6 +45,7 @@ function CompanionDocumentReader({ document, api, onTitle, onRenameAvailable }: 
   const localSource = preview ? preview.lines.map((line) => line.text).join('\n') : null;
 
   if (waitingForFile) return <p className="app-companion-status" role="status"><LoaderCircle className="inline h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Loading</p>;
+  if (document.sourceView) return <CompanionSourceView preview={preview} onReload={reload} />;
   return (
     <DocumentReader
       api={api}

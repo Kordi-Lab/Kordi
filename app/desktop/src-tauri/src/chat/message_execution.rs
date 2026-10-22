@@ -108,6 +108,7 @@ pub(super) async fn start_message(
         message: "Working…".to_string(),
         assistant_text: String::new(),
         thinking_text: String::new(),
+        segments: Vec::new(),
         tools: Vec::new(),
         completed: false,
         succeeded: false,
@@ -396,6 +397,13 @@ async fn finish_turn(
         }
         Ok(detail) => {
             let transcript_entry_id = latest_turn_assistant_entry_id(&detail.messages);
+            let segments = detail
+                .messages
+                .iter()
+                .rev()
+                .find(|message| message.role == "assistant")
+                .map(|message| message.segments.clone())
+                .unwrap_or_default();
             sync_completed_session(cwd, session_id, session_handle, is_agent_builder_session).await;
             let task_tools = {
                 let session = session_handle.lock().await;
@@ -407,6 +415,9 @@ async fn finish_turn(
             update_turn(snapshot, |state| {
                 if !task_tools.is_empty() && !turn_snapshot_has_model_task_tools(&state.tools) {
                     state.tools = task_tools;
+                }
+                if !segments.is_empty() {
+                    state.segments = segments;
                 }
                 state.status = "succeeded".to_string();
                 state.message = "Response complete".to_string();

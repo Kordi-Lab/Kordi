@@ -17,6 +17,7 @@ async fn new_admission_preserves_recent_terminal_snapshots_for_publishers() {
                 message: String::new(),
                 assistant_text: "Result".into(),
                 thinking_text: String::new(),
+                segments: Vec::new(),
                 tools: vec![],
                 completed: completed_at_ms.is_some(),
                 succeeded: completed_at_ms.is_some(),
@@ -76,6 +77,7 @@ fn persisted_message(
         cancelled,
         attachments: Vec::new(),
         thinking_text: None,
+        segments: Vec::new(),
         tools: Vec::new(),
         entry_id: cancelled.then(|| "entry:aborted".to_string()),
     }
@@ -91,6 +93,7 @@ fn persisted_abort_completes_only_its_mounted_live_turn() {
         message: "Tool failed".to_string(),
         assistant_text: String::new(),
         thinking_text: String::new(),
+        segments: Vec::new(),
         tools: vec![DesktopChatToolSnapshot {
             id: "tool-failed".to_string(),
             name: "read".to_string(),
@@ -142,6 +145,7 @@ fn tool_result_before_start_keeps_the_background_session_result() {
         message: String::new(),
         assistant_text: String::new(),
         thinking_text: String::new(),
+        segments: Vec::new(),
         tools: vec![],
         completed: false,
         succeeded: false,

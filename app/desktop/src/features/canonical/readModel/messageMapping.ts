@@ -1,3 +1,6 @@
+import { canonicalTools } from './toolMapping';
+export { canonicalTools } from './toolMapping';
+import { parseTurnSegments } from '@/features/chat/turnSegments';
 import { cancelledTurnContent } from '@/features/chat/cancellation';
 import { canonicalMessageRole } from './messageRole';
 export { canonicalMessageRole } from './messageRole';
@@ -55,29 +58,6 @@ function canonicalMessageActionWithRealSourceLabel(
       senderLabel,
     },
   };
-}
-
-export function canonicalTools(value: unknown): DesktopChatToolSnapshot[] {
-  if (!Array.isArray(value)) return [];
-
-  return value.flatMap((item, index) => {
-    const record = contentRecord(item);
-    const name = stringValue(record.name);
-    if (!name) return [];
-
-    return [{
-      id: stringValue(record.id) ?? `canonical-tool-${index}`,
-      name,
-      status: stringValue(record.status) ?? 'done',
-      arguments: stringValue(record.arguments) ?? '',
-      liveOutput: stringValue(record.liveOutput) ?? '',
-      resultText: stringValue(record.resultText) ?? null,
-      detail: stringValue(record.detail) ?? null,
-      artifactPath: stringValue(record.artifactPath) ?? null,
-      toolLayer: stringValue(record.toolLayer) ?? null,
-      isError: Boolean(record.isError),
-    }];
-  });
 }
 
 function safeToolArguments(rawArguments: string) {
@@ -305,6 +285,7 @@ export function mapCanonicalMessage(
   const normalized = storedContent.schemaVersion === 1 && storedContent.kind === 'message';
   const directEnvelope = normalized ? null : parseCloudDirectMessageEnvelope(contentText);
   const content: Record<string, unknown> = { ...(directEnvelope ?? {}), ...storedContent };
+  const execution = contentRecord(content.execution);
   const sourceTransport = message.sourceTransport?.trim() ?? '';
   if (stringValue(content.kind) === 'delegation-join-event') return null;
   const identity = identityById.get(message.senderIdentityId);
@@ -480,10 +461,12 @@ export function mapCanonicalMessage(
           message: completed ? (ending ? (ending === 'stopped' ? 'Stopped' : 'Interrupted') : cancelledContent ? cancelledContent.notice : failed ? 'Failed' : 'Complete') : stringValue(content.localExecutionMessage) ?? (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'Queued…' : '' : displayText.trim() ? 'Replying…' : 'Typing…'),
           assistantText: cancelledContent ? cancelledContent.assistantText : displayText,
           thinkingText,
+          segments: role === 'owned-agent' ? parseTurnSegments(content.segments) : undefined,
           tools: visibleTools,
-          startedAtMs: numberValue(content.startedAtMs), completedAtMs: numberValue(content.completedAtMs),
+          startedAtMs: numberValue(content.startedAtMs) ?? numberValue(execution.startedAtMs),
+          completedAtMs: numberValue(content.completedAtMs) ?? (execution.completed === true ? numberValue(execution.updatedAtMs) : undefined),
           completed,
-          succeeded: completed && !failed && visibleTools.every((tool) => !tool.isError),
+          succeeded: completed && !failed && !cancelled,
           error: cancelled || ending ? null : failed ? (legacyCollaborationAgentFailure ? 'Message failed' : agentTurnErrorText) : null,
           ...(ending ? { ending } : {}),
           replyToMessageId,

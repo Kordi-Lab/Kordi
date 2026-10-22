@@ -87,7 +87,9 @@ where
     auth.apply_runtime_route(&run.runtime_route, &auth_material.provider)?;
     let memory = load_run_memory(client, run).await;
     let tools = run_tool_catalog(run, &memory);
-    let executor = CloudToolExecutor::new(sandbox.clone()).with_memory(memory.enabled);
+    let executor = CloudToolExecutor::new(sandbox.clone())
+        .with_memory(memory.enabled)
+        .with_web_search(auth.web_search_runtime());
     let documents = prompt::group_document_guidance(&run.connectors.tools).unwrap_or_default();
     let system_prompt = [
         run.system_prompt.trim(),

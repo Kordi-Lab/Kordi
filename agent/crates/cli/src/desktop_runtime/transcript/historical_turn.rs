@@ -5,6 +5,7 @@ use super::super::{DesktopChatMessage, DesktopChatStoredTool, format_message_tim
 #[derive(Default)]
 pub(super) struct HistoricalTurnBuilder {
     pub(super) assistant_text_parts: Vec<String>,
+    pub(super) segments: Vec<kordi_core::types::TurnSegment>,
     pub(super) thinking_parts: Vec<String>,
     pub(super) tools: Vec<DesktopChatStoredTool>,
     pub(super) tool_index_by_id: HashMap<String, usize>,
@@ -67,6 +68,7 @@ pub(super) fn flush_historical_turn(
         cancelled: turn.cancelled,
         attachments: Vec::new(),
         thinking_text: (!thinking_text.trim().is_empty()).then_some(thinking_text),
+        segments: turn.segments,
         tools: turn.tools,
         entry_id: turn.last_entry_id,
     });

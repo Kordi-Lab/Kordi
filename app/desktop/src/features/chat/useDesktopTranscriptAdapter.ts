@@ -221,6 +221,7 @@ export function mapDesktopMessagesForTranscript(
                   : 'Response complete',
               assistantText: failedAssistant && !failureError ? '' : message.text,
               thinkingText: message.thinkingText ?? '',
+              segments: message.segments,
               tools: message.tools ?? [],
               completed: true,
               succeeded: !failedAssistant && !cancelledAssistant,

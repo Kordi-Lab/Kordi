@@ -1,3 +1,4 @@
+import { parseTurnSegments, type TurnSegment } from '../chat/turnSegments';
 export type CloudAgentExecutionStep = {
   id: string;
   label: string;
@@ -22,6 +23,7 @@ export type CloudAgentExecutionSnapshot = {
   summary: string;
   steps: CloudAgentExecutionStep[];
   thinkingText?: string;
+  segments?: TurnSegment[];
   tools?: CloudAgentExecutionTool[];
   startedAtMs?: number;
   updatedAtMs: number;
@@ -109,11 +111,13 @@ export function parseCloudAgentExecutionSnapshot(
       }];
     }).slice(-10)
     : undefined;
+  const segments = parseTurnSegments(record.segments);
   return {
     phase,
     summary,
     steps,
     ...(thinkingText ? { thinkingText } : {}),
+    ...(segments ? { segments } : {}),
     ...(tools?.length ? { tools } : {}),
     ...(startedAtMs !== undefined ? { startedAtMs } : {}),
     updatedAtMs,

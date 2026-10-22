@@ -556,9 +556,9 @@ function MessageBubbleView({
           <span id={transcriptMessageDomId(msg.turn.id)} data-transcript-message-anchor="true" className="sr-only" aria-hidden="true" />
         ) : null}
         {threadLayout && !plainAgentResponse && (msg.sourceMessage ?? msg.turn.sourceMessage) ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage ?? msg.turn.sourceMessage} onNavigateToMessage={onNavigateToMessage} className="app-thread-quote-row" /> : null}
-        <div className={cn("flex w-fit max-w-full items-end gap-2", threadLayout && "app-thread-message-main")}>
+        <div className={cn("flex max-w-full items-end gap-2", msg.turn.segments?.length ? "w-full" : "w-fit", threadLayout && "app-thread-message-main")}>
           {threadLayout ? <IdentityAvatar kind="agent" seed={agentMessageAvatarSeed(msg, currentLocalAgentAvatarSeed)} name={msg.sender} imageUrl={msg.senderProfileImageUrl} className="h-7 w-7 shrink-0" /> : null}
-          <div className="app-message-hover-time-trigger min-w-0 w-fit max-w-[58rem]">
+          <div className={cn("app-message-hover-time-trigger min-w-0 max-w-[58rem]", msg.turn.segments?.length ? "w-full" : "w-fit")}>
             <div className="flex min-h-[18px] w-full items-center gap-1.5">
               {threadLayout ? <ThreadMessageHeader msg={msg} name={msg.sender || "Agent"} ownerName={agentOwnerName} /> : null}
               {!threadLayout ? <><div className="app-message-meta">{msg.sender}</div><AgentOwnerTag name={agentOwnerName} /></> : null}

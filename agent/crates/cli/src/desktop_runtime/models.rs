@@ -137,6 +137,8 @@ pub struct DesktopChatMessage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_text: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub segments: Vec<kordi_core::types::TurnSegment>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<DesktopChatStoredTool>,
     /// Stable id of the underlying session entry. Present for messages
     /// that map to a canonical entry, including aggregated assistant turns;

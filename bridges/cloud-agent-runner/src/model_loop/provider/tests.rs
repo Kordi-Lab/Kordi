@@ -426,3 +426,23 @@ fn another_providers_model_is_rejected() {
     assert!(model_fits_provider("gpt-5.6-sol", "openai-codex"));
     assert!(model_fits_provider("llama-3.3-70b-versatile", "groq"));
 }
+
+#[test]
+fn native_search_retains_the_run_scoped_route() {
+    let config = OpenAiProviderConfig {
+        provider: "openai".into(),
+        model: "gpt-5.5".into(),
+        api_key: "synthetic-token".into(),
+        base_url: "https://example.com/backend-api".into(),
+        thinking: "medium".into(),
+        api_mode: OpenAiApiMode::CodexOAuth,
+        account_id: Some("synthetic-account".into()),
+    };
+    let search = config.web_search_runtime();
+    assert_eq!(search.model.id, config.model);
+    assert_eq!(search.model.provider, config.provider);
+    assert_eq!(search.api_key, config.api_key);
+    assert_eq!(search.base_url, config.base_url);
+    assert_eq!(search.auth_account_id, config.account_id);
+    assert_eq!(search.auth_mode, ProviderAuthMode::OAuth);
+}

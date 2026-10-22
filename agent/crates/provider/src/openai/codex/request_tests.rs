@@ -200,3 +200,11 @@ fn runtime_identity_remains_at_the_tail_for_every_provider() {
         serde_json::to_vec(&after).unwrap()
     );
 }
+
+#[test]
+fn codex_search_does_not_replace_custom_hosts_with_similar_names() {
+    assert_eq!(
+        super::request::resolve_codex_url("https://api.openai.com.example.com/backend-api"),
+        "https://api.openai.com.example.com/backend-api/codex/responses"
+    );
+}

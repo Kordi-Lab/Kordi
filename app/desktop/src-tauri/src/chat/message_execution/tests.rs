@@ -16,6 +16,7 @@ fn message(role: &str, entry_id: Option<&str>) -> DesktopChatMessage {
         cancelled: false,
         attachments: Vec::new(),
         thinking_text: None,
+        segments: Vec::new(),
         tools: Vec::new(),
         entry_id: entry_id.map(str::to_string),
     }

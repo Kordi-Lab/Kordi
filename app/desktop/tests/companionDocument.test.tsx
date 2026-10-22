@@ -226,3 +226,26 @@ test('a thirteenth document replaces the least recently active tab', async () =>
     assert.equal(root.querySelectorAll('.app-document-reader').length, 12);
   });
 });
+
+test('tool file links open read-only source tabs and retain the workspace boundary', async () => {
+  const { openTranscriptFile, COMPANION_DOCUMENT_OPEN_EVENT } = await import('../src/features/documents/companionDocument');
+  await withJsdomRoot(async (mount) => {
+    const container = await mount(createElement(Harness));
+    let request: unknown;
+    const capture = (event: Event) => { request = (event as CustomEvent).detail; };
+    window.addEventListener(COMPANION_DOCUMENT_OPEN_EVENT, capture);
+    try {
+      await act(async () => { assert.equal(openTranscriptFile('src/example.ts', '/workspace/example'), true); });
+      assert.equal((request as { previewBaseRoot: string }).previewBaseRoot, '/workspace/example');
+      assert.equal((request as { readLocally: boolean }).readLocally, true);
+      assert.ok(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.includes('example.ts'));
+      assert.match(container.textContent ?? '', /This file is unavailable on this device/);
+      await act(async () => { openTranscriptFile('src/remote.ts'); });
+      assert.equal((request as { readLocally: boolean }).readLocally, false);
+      assert.equal(container.querySelectorAll('[role="tab"]').length, 2);
+      await act(async () => { openTranscriptFile('src/example.ts', '/workspace/example'); });
+      assert.equal(container.querySelectorAll('[role="tab"]').length, 2);
+      assert.ok(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.includes('example.ts'));
+    } finally { window.removeEventListener(COMPANION_DOCUMENT_OPEN_EVENT, capture); }
+  });
+});

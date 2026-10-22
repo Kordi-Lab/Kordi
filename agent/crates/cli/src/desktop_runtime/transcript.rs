@@ -1,7 +1,30 @@
 mod historical_turn;
 mod history;
 
-pub(super) use history::load_session_messages;
+use super::DesktopChatMessage;
+use anyhow::Result;
+use kordi_core::types::SessionEntry;
+
+pub(in crate::desktop_runtime) fn load_session_messages(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+) -> Result<Vec<DesktopChatMessage>> {
+    let path = kordi_session::tree::active_path(conn, session_id)?;
+    let mut out = Vec::new();
+    let mut current_turn = None;
+
+    for row in path {
+        match kordi_session::store::parse_entry(&row)? {
+            SessionEntry::Message { message, .. } => {
+                history::append_agent_message(&mut out, &mut current_turn, &row.entry_id, message)
+            }
+            entry => history::append_session_metadata(&mut out, &mut current_turn, entry),
+        }
+    }
+
+    historical_turn::flush_historical_turn(&mut out, &mut current_turn);
+    Ok(out)
+}
 
 #[cfg(test)]
 mod tests {
@@ -167,11 +190,16 @@ mod tests {
                 timestamp: Utc::now(),
             },
             message: AgentMessage::Assistant(AssistantMessage {
-                content: vec![AssistantContent::ToolCall {
-                    id: "tool-1".to_string(),
-                    name: "read".to_string(),
-                    arguments: serde_json::json!({ "path": "src/main.rs" }),
-                }],
+                content: vec![
+                    AssistantContent::Text {
+                        text: "Inspecting the example.".to_string(),
+                    },
+                    AssistantContent::ToolCall {
+                        id: "tool-1".to_string(),
+                        name: "read".to_string(),
+                        arguments: serde_json::json!({ "path": "src/main.rs" }),
+                    },
+                ],
                 provider: "anthropic".to_string(),
                 model: "claude-opus-4-6".to_string(),
                 usage: Usage::default(),
@@ -244,6 +272,10 @@ mod tests {
         let messages = load_session_messages(&conn, session_id)?;
         let assistant = messages.last().expect("assistant message");
         assert!(!assistant.failed);
+        let segments = serde_json::to_value(&assistant.segments)?;
+        assert_eq!(segments[0]["text"], "Inspecting the example.");
+        assert_eq!(segments[1]["toolId"], "tool-1");
+        assert_eq!(segments[2]["text"], "Final report");
         let tool = assistant.tools.first().expect("tool snapshot");
         assert_eq!(tool.tool_layer.as_deref(), Some("observation"));
         assert_eq!(

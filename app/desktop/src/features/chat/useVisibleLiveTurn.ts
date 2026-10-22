@@ -4,7 +4,7 @@ import { cloudAgentPublicBackgroundToolsFromTurn } from '../cloud/cloudAgentBack
 import { mergeDesktopTurnSnapshot } from './desktopLiveTurns';
 
 function visibleExecution(turn: DesktopChatTurnSnapshot, showReasoning: boolean) {
-  return showReasoning ? turn : { ...turn, thinkingText: '', tools: cloudAgentPublicBackgroundToolsFromTurn(turn) };
+  return showReasoning ? turn : { ...turn, thinkingText: '', segments: undefined, tools: cloudAgentPublicBackgroundToolsFromTurn(turn) };
 }
 
 /** Keep one owner's visible trace through the live-to-history handoff. */
@@ -27,6 +27,7 @@ export function useVisibleLiveTurn(turn: DesktopChatTurnSnapshot, historical: bo
     visible = {
       ...visible,
       thinkingText: merged.thinkingText,
+      segments: visible.segments?.length ? visible.segments : merged.segments,
       startedAtMs: merged.startedAtMs, completedAtMs: merged.completedAtMs,
       tools: hasPrivateTools ? (publicOrEmpty ? previous.tools : merged.tools) : turn.tools,
     };

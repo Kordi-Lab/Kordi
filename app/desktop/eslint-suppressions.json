@@ -528,15 +528,6 @@
     }
   },
   "src/kordi-app/components/transcriptLiveTurns.tsx": {
-    "react-hooks/purity": {
-      "count": 1
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 2
-    },
-    "react-hooks/static-components": {
-      "count": 1
-    },
     "react-refresh/only-export-components": {
       "count": 1
     }

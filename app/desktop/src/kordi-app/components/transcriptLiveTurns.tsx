@@ -1,499 +1,27 @@
+import { ToolActivityRow } from './ToolActivityRow';
+import { TurnProgress } from './TurnProgress';
 import { useMessageLayout } from '@/app/messageLayoutPreference';
 import { LiveTurnMessageFrame } from './LiveTurnMessageFrame';
 import { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
 export { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
-import { agentTurnHasStarted, canDisplayAgentTurn, shouldShowAgentWaitingAnimation } from '@/features/chat/agentProcessingVisibility';
+import { canDisplayAgentTurn } from '@/features/chat/agentProcessingVisibility';
 import { cancelledTurnContent } from '@/features/chat/cancellation';
-import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
+import { memo } from 'react';
 import {
-  ArrowRightLeft,
-  Braces,
   CheckCircle2,
-  ChevronRight,
   CircleAlert,
-  Clock3,
-  FileText,
-  FolderOpen,
-  Globe,
-  Image,
-  Link2,
   LoaderCircle,
-  Pencil,
-  Search,
-  TerminalSquare,
-  Wrench,
 } from 'lucide-react';
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
-import { desktopTurnWorkDurationLabel } from '@/features/chat/desktopLiveTurns';
 import { useVisibleLiveTurn } from '@/features/chat/useVisibleLiveTurn';
 import { cloudAgentProviderFailureNeedsAuthentication, cloudAgentProviderFailureNotice } from '@/features/cloud/cloudAgentMessages';
 import { cn } from '@/lib/utils';
-import { AgentWaitingWave } from './AgentWaitingWave';
 import { SourceMessageQuoteRow } from './transcriptReplyAttribution';
 import { MarkdownContent } from './markdown';
-import { ToolTranscriptBlock } from './transcriptToolOutput';
 import { FoldableAssistantAnswer } from './transcriptAssistantAnswer';
 import { InlineChangedFiles } from './transcriptChangedFiles';
-import {
-  firstMeaningfulThinkingLine,
-  formatRunningElapsed,
-  LEGACY_PARTICIPANT_REQUEST_TOOL_NAME,
-  toolTimelineDisplayArguments,
-  toolTimelineFoldedLabel,
-  toolTimelineLayerGroups,
-  toolTimelineRunningToolLabel,
-  toolTimelineToolLabel,
-  toolTimelineTypeLabel,
-  type ToolTimelineLayerGroup,
-} from './toolTimeline';
 import type { DesktopChatTurnSnapshot, MessageSourceReference } from '../types';
 import { AgentRequestHeaderStop, CollaborationAgentStopButton, TurnStopButton, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptTurnStopControls';
-
-function toolDisplayConfig(toolName: string) {
-  const normalized = toolName.toLowerCase();
-
-  if (normalized === LEGACY_PARTICIPANT_REQUEST_TOOL_NAME) {
-    return { icon: ArrowRightLeft, label: '@ participant', argumentsLabel: 'Request', resultLabel: 'Participant response' };
-  }
-  if (normalized.includes('web_fetch')) {
-    return { icon: Globe };
-  }
-  if (normalized.includes('browser_fetch')) {
-    return { icon: Link2 };
-  }
-  if (normalized.includes('search') || normalized.includes('grep')) {
-    return { icon: Search };
-  }
-  if (normalized.includes('read') || normalized.includes('view') || normalized.includes('cat')) {
-    return { icon: FileText };
-  }
-  if (normalized.includes('list') || normalized.includes('glob') || normalized.includes('find') || normalized.includes('dir')) {
-    return { icon: FolderOpen };
-  }
-  if (normalized.includes('bash') || normalized.includes('shell') || normalized.includes('command') || normalized.includes('terminal')) {
-    return { icon: TerminalSquare };
-  }
-  if (normalized.includes('edit') || normalized.includes('write') || normalized.includes('patch')) {
-    return { icon: Pencil };
-  }
-  if (normalized.includes('image')) {
-    return { icon: Image };
-  }
-
-  return { icon: Wrench };
-}
-
-type ToolSnapshot = DesktopChatTurnSnapshot['tools'][number];
-type ToolDisplay = ReturnType<typeof toolDisplayConfig>;
-
-
-function normalizedToolStatus(tool: ToolSnapshot) {
-  return (tool.isError ? 'error' : tool.status || 'pending').trim().toLowerCase();
-}
-
-function isFailedTool(tool: ToolSnapshot) {
-  const status = normalizedToolStatus(tool);
-  return tool.isError || status === 'error' || status.includes('failed');
-}
-
-function isDoneTool(tool: ToolSnapshot) {
-  const status = normalizedToolStatus(tool);
-  return !isFailedTool(tool) && (status === 'done' || status === 'complete' || status === 'completed');
-}
-
-function isRunningTool(tool: ToolSnapshot) {
-  return !isDoneTool(tool) && !isFailedTool(tool);
-}
-
-function statusLabelForTool(tool: ToolSnapshot) {
-  if (isFailedTool(tool)) return 'error';
-  if (isDoneTool(tool)) return 'done';
-  const status = normalizedToolStatus(tool);
-  return status || 'running';
-}
-
-function toolMetaText(tool: ToolSnapshot) {
-  return tool.detail || tool.status;
-}
-
-function toolDetailsAvailable(tool: ToolSnapshot) {
-  return Boolean(tool.arguments || tool.liveOutput || tool.resultText);
-}
-
-function ToolDetailBlocks({ tool, display }: { tool: ToolSnapshot; display: ToolDisplay }) {
-  return (
-    <div>
-      {tool.arguments ? <ToolTranscriptBlock label={display.argumentsLabel ?? 'Arguments'} icon={Braces} text={toolTimelineDisplayArguments(tool)} language="json" maxHeightClass="max-h-56" wrapLines /> : null}
-      {tool.liveOutput ? <ToolTranscriptBlock label="Live output" icon={TerminalSquare} text={tool.liveOutput} language="text" maxHeightClass="max-h-64" /> : null}
-      {tool.resultText ? <ToolTranscriptBlock label={display.resultLabel ?? 'Result'} icon={CheckCircle2} text={tool.resultText} language="text" maxHeightClass="max-h-72" /> : null}
-    </div>
-  );
-}
-
-function ToolTimelineDetails({ tool, display }: { tool: ToolSnapshot; display: ToolDisplay }) {
-  const [expandedDetails, setExpandedDetails] = useState(false);
-
-  if (!toolDetailsAvailable(tool)) return null;
-
-  return (
-    <div className="app-transcript-timeline-details" data-transcript-stable-disclosure-root="true">
-      <button
-        type="button"
-        className="app-button-quiet app-transcript-timeline-details-toggle"
-        data-transcript-stable-disclosure="true"
-        onClick={() => setExpandedDetails((current) => !current)}
-        aria-expanded={expandedDetails}
-      >
-        <ChevronRight className={cn('h-3 w-3 transition-transform', expandedDetails && 'rotate-90')} />
-        <span>Details</span>
-      </button>
-      {expandedDetails ? (
-        <div className="app-transcript-timeline-details-body" data-transcript-stable-disclosure-body="true">
-          <ToolDetailBlocks tool={tool} display={display} />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function ToolTimelineThinkingRow({ thinkingText }: { thinkingText: string }) {
-  const [expandedThinking, setExpandedThinking] = useState(false);
-  const summary = firstMeaningfulThinkingLine(thinkingText);
-  const hasMoreThinking = thinkingText.trim() !== summary;
-
-  return (
-    <div className="app-transcript-timeline-row app-transcript-timeline-row-thinking">
-      <span className="app-transcript-timeline-rail" aria-hidden="true">
-        <span className="app-transcript-timeline-node"><Clock3 className="h-3.5 w-3.5" /></span>
-      </span>
-      <div className="app-transcript-timeline-row-body">
-        <div className="app-transcript-timeline-row-line">
-          <span className="app-transcript-timeline-row-title">{summary}</span>
-          <span className="app-transcript-timeline-pill">Thinking</span>
-        </div>
-        {hasMoreThinking ? (
-          <div className="app-transcript-timeline-details" data-transcript-stable-disclosure-root="true">
-            <button
-              type="button"
-              className="app-button-quiet app-transcript-timeline-details-toggle"
-              data-transcript-stable-disclosure="true"
-              onClick={() => setExpandedThinking((current) => !current)}
-              aria-expanded={expandedThinking}
-            >
-              <ChevronRight className={cn('h-3 w-3 transition-transform', expandedThinking && 'rotate-90')} />
-              <span>Reasoning</span>
-            </button>
-            {expandedThinking ? (
-              <div className="app-transcript-timeline-details-body pr-1" data-transcript-stable-disclosure-body="true">
-                <MarkdownContent text={thinkingText} tone="muted" className="app-transcript-thinking-markdown" showLinkIcons copySurface="message" />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function useRunningElapsedLabel(running: boolean, resetKey?: string | null) {
-  const key = resetKey ?? '';
-  const startedAtRef = useRef<number | null>(running ? Date.now() : null);
-  const runningKeyRef = useRef(key);
-  const [elapsedMs, setElapsedMs] = useState(0);
-
-  useEffect(() => {
-    if (!running) {
-      startedAtRef.current = null;
-      runningKeyRef.current = key;
-      setElapsedMs(0);
-      return undefined;
-    }
-
-    if (startedAtRef.current === null || runningKeyRef.current !== key) {
-      startedAtRef.current = Date.now();
-      runningKeyRef.current = key;
-      setElapsedMs(0);
-    }
-
-    const updateElapsed = () => setElapsedMs(Date.now() - (startedAtRef.current ?? Date.now()));
-    updateElapsed();
-    const interval = window.setInterval(updateElapsed, 1_000);
-    return () => window.clearInterval(interval);
-  }, [key, running]);
-
-  return running ? formatRunningElapsed(elapsedMs) : null;
-}
-
-function toolGroupIcon(label: string) {
-  switch (label) {
-    case 'Observation':
-      return FileText;
-    case 'Planning':
-    case 'Operator':
-      return Wrench;
-    case 'Execution':
-      return TerminalSquare;
-    case 'Reflection':
-      return CheckCircle2;
-    default:
-      return Wrench;
-  }
-}
-
-function toolGroupSummary(tools: ToolSnapshot[]) {
-  const labels: string[] = [];
-  for (const tool of tools) {
-    const label = toolTimelineToolLabel(tool);
-    if (!labels.includes(label)) labels.push(label);
-  }
-  const visibleLabels = labels.slice(0, 3).join(' · ');
-  const remaining = labels.length - 3;
-  return remaining > 0 ? `${visibleLabels} · ${remaining} more` : visibleLabels;
-}
-
-function ToolTimelineToolGroupRow({ group }: { group: ToolTimelineLayerGroup<ToolSnapshot> }) {
-  const [expandedGroup, setExpandedGroup] = useState(false);
-  const Icon = toolGroupIcon(group.label);
-  const title = `${group.label} × ${group.tools.length}`;
-  const summary = toolGroupSummary(group.tools);
-
-  return (
-    <div
-      className={cn('app-transcript-timeline-row app-transcript-timeline-group-row', group.running && 'app-transcript-timeline-row-running', group.failed && 'app-transcript-timeline-row-error')}
-      data-transcript-stable-disclosure-root="true"
-    >
-      <span className="app-transcript-timeline-rail" aria-hidden="true">
-        <span className="app-transcript-timeline-node">
-          <Icon className="h-3.5 w-3.5" />
-        </span>
-      </span>
-      <div className="app-transcript-timeline-row-body">
-        <button
-          type="button"
-          className="app-transcript-timeline-group-summary"
-          data-transcript-stable-disclosure="true"
-          onClick={() => setExpandedGroup((current) => !current)}
-          aria-expanded={expandedGroup}
-        >
-          <span className="app-transcript-timeline-row-title">{title}</span>
-          <ChevronRight className={cn('h-3 w-3 shrink-0 transition-transform', expandedGroup && 'rotate-90')} aria-hidden="true" />
-        </button>
-        {summary ? <div className="app-transcript-timeline-row-meta truncate">{summary}</div> : null}
-        {expandedGroup ? (
-          <div className="app-transcript-timeline-group-tools" data-transcript-stable-disclosure-body="true">
-            {group.tools.map((tool) => <ToolTimelineToolRow key={tool.id} tool={tool} />)}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function ToolTimelineToolRow({ tool }: { tool: ToolSnapshot }) {
-  const display = toolDisplayConfig(tool.name);
-  const Icon = display.icon;
-  const status = statusLabelForTool(tool);
-  const metaText = toolMetaText(tool);
-  const running = isRunningTool(tool);
-  const typeLabel = toolTimelineTypeLabel(tool);
-  const label = running ? toolTimelineRunningToolLabel(tool) : toolTimelineToolLabel(tool);
-  const runningElapsed = useRunningElapsedLabel(running, tool.id);
-
-  return (
-    <div className={cn('app-transcript-timeline-row', running && 'app-transcript-timeline-row-running')}>
-      <span className="app-transcript-timeline-rail" aria-hidden="true">
-        <span className="app-transcript-timeline-node">
-          <Icon className="h-3.5 w-3.5" />
-        </span>
-      </span>
-      <div
-        className="app-transcript-timeline-row-body"
-        aria-label={`${label}, ${status}${runningElapsed ? `, ${runningElapsed}` : ''}${metaText ? `, ${metaText}` : ''}`}
-      >
-        <div className="app-transcript-timeline-row-line">
-          <span className="app-transcript-timeline-row-title">{label}</span>
-        </div>
-        <div className="app-transcript-timeline-row-subline">
-          <span className="app-transcript-timeline-pill">{typeLabel}</span>
-          {runningElapsed ? <span className="app-transcript-timeline-running-time">{runningElapsed}</span> : null}
-        </div>
-        {isFailedTool(tool) && metaText && metaText !== status ? <div className="app-transcript-timeline-row-meta truncate">{metaText}</div> : null}
-        <ToolTimelineDetails tool={tool} display={display} />
-      </div>
-    </div>
-  );
-}
-
-function ToolTimelineCompletionRow() {
-  return (
-    <div className="app-transcript-timeline-row app-transcript-timeline-row-complete">
-      <span className="app-transcript-timeline-rail" aria-hidden="true">
-        <span className="app-transcript-timeline-node">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-        </span>
-      </span>
-      <div className="app-transcript-timeline-row-body">
-        <div className="app-transcript-timeline-row-line">
-          <span className="app-transcript-timeline-row-title">Done</span>
-          <span className="app-transcript-timeline-pill">Complete</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FoldableToolTimeline({
-  tools,
-  thinkingText,
-  active,
-  completed,
-  summaryOverride,
-  separatesAnswer,
-  trailing,
-}: {
-  tools: ToolSnapshot[];
-  thinkingText: string;
-  active: boolean;
-  completed: boolean;
-  summaryOverride?: string | null;
-  separatesAnswer?: boolean;
-  trailing?: ReactNode;
-}) {
-  const [expandedTimeline, setExpandedTimeline] = useState(false);
-  const [timelineMounted, setTimelineMounted] = useState(false);
-  const hasThinking = thinkingText.trim().length > 0;
-  const runningTool = tools.find(isRunningTool);
-  const runningElapsed = useRunningElapsedLabel(Boolean(runningTool), runningTool?.id ?? null);
-  const summary = summaryOverride?.trim()
-    || toolTimelineFoldedLabel({ tools, active, completed, thinkingText, runningElapsed });
-  if (!hasThinking && tools.length === 0) return null;
-  return (
-    <section
-      className={cn(
-        'app-transcript-tool-timeline',
-        active && 'app-transcript-tool-timeline-active',
-        separatesAnswer && 'app-transcript-tool-timeline-before-answer',
-      )}
-      data-transcript-stable-disclosure-root="true"
-    >
-      <div className="app-transcript-tool-timeline-row flex w-full items-center gap-2">
-        <button
-          type="button"
-          className={cn(
-            'app-transcript-tool-timeline-summary min-w-0 flex-1',
-            active && 'app-transcript-tool-timeline-summary-active',
-          )}
-          data-transcript-stable-disclosure="true"
-          onClick={() => {
-            setTimelineMounted(true);
-            setExpandedTimeline((current) => !current);
-          }}
-          aria-expanded={expandedTimeline}
-        >
-          <span className="app-transcript-tool-timeline-summary-copy min-w-0">
-            <span className="app-transcript-tool-timeline-summary-line min-w-0">
-              <span className="app-transcript-tool-timeline-summary-text truncate">{summary}</span>
-              <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 transition-transform', expandedTimeline && 'rotate-90')} aria-hidden="true" />
-            </span>
-          </span>
-        </button>
-        {trailing ? <div className="shrink-0">{trailing}</div> : null}
-      </div>
-      <div
-        className={cn(
-          'app-transcript-timeline-reveal',
-          expandedTimeline && 'app-transcript-timeline-reveal-open',
-        )}
-        aria-hidden={!expandedTimeline}
-        inert={!expandedTimeline}
-      >
-        <div className="app-transcript-timeline-reveal-inner" data-transcript-stable-disclosure-body="true">
-          {timelineMounted ? (
-            <div className="app-transcript-timeline-list">
-              {hasThinking ? <ToolTimelineThinkingRow thinkingText={thinkingText} /> : null}
-              {toolTimelineLayerGroups(tools).map((group) => (
-                <ToolTimelineToolGroupRow key={group.id} group={group} />
-              ))}
-              {completed ? <ToolTimelineCompletionRow /> : null}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function useDelayedLiveStatus(shouldShow: boolean, turnId: string, delayMs = 180) {
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    if (!shouldShow) {
-      setVisible(false);
-      return undefined;
-    }
-
-    setVisible(false);
-    const timeout = window.setTimeout(() => {
-      setVisible(true);
-    }, delayMs);
-    return () => window.clearTimeout(timeout);
-  }, [delayMs, shouldShow, turnId]);
-
-  return shouldShow && visible;
-}
-
-const GENERIC_LIVE_STATUS_MESSAGES = new Set(['working…', 'running tool…']);
-
-function normalizedLiveStatusMessage(value: string) {
-  return value.trim().toLowerCase().replace(/\.\.\.$/, '…');
-}
-
-function liveStatusMessageIsGeneric(value: string) {
-  return GENERIC_LIVE_STATUS_MESSAGES.has(normalizedLiveStatusMessage(value));
-}
-
-function toolStatusIsComplete(status: string) {
-  const normalized = status.trim().toLowerCase();
-  return normalized === 'done' || normalized === 'complete' || normalized === 'completed';
-}
-
-function toolStatusIsFailed(status: string, isError: boolean) {
-  const normalized = status.trim().toLowerCase();
-  return isError || normalized === 'error' || normalized.includes('failed');
-}
-
-function livePhaseLabelFromTool(tool: DesktopChatTurnSnapshot['tools'][number]) {
-  switch (toolTimelineTypeLabel(tool)) {
-    case 'Observation':
-      return 'Observation…';
-    case 'Planning':
-      return 'Planning…';
-    case 'Operator':
-      return 'Coordination…';
-    case 'Execution':
-      return 'Execution…';
-    case 'Reflection':
-      return 'Reflection…';
-    default:
-      return null;
-  }
-}
-
-function liveTurnPhaseStatusText(turn: DesktopChatTurnSnapshot) {
-  const explicitMessage = turn.message?.trim() ?? '';
-  if (explicitMessage && !liveStatusMessageIsGeneric(explicitMessage)) return explicitMessage;
-
-  const activeTool = [...turn.tools].reverse().find((tool) => !toolStatusIsComplete(tool.status) && !toolStatusIsFailed(tool.status, tool.isError));
-  const activePhase = activeTool ? livePhaseLabelFromTool(activeTool) : null;
-  if (activePhase) return activePhase;
-
-  const latestTool = [...turn.tools].reverse().find((tool) => !toolStatusIsFailed(tool.status, tool.isError));
-  const latestPhase = latestTool ? livePhaseLabelFromTool(latestTool) : null;
-  if (latestPhase) return latestPhase;
-
-  if (turn.status === 'starting') return 'Starting…';
-  return 'Thinking…';
-}
 
 function LiveChatTurnCardView({
   turn,
@@ -544,34 +72,15 @@ function LiveChatTurnCardView({
     return false;
   })();
   const hasAssistant = assistantText.trim().length > 0 && !assistantTextDuplicatesError;
+  const hasOrderedContent = visibleTurn.segments?.some(segment => segment.kind === 'tool' || segment.text.trim()) ?? false;
   const hasThinking = visibleTurn.thinkingText.trim().length > 0;
-  const hasVisibleContent = hasAssistant || hasThinking || visibleTurn.tools.length > 0 || Boolean(visibleTurn.error);
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
-  const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus
-    && (visibleTurn.status === 'queued' || agentTurnHasStarted(visibleTurn) || Boolean(visibleTurn.pendingCollaborationAgentRequest) || Boolean(visibleTurn.hostedRunStatus));
   const pendingCollaborationAgentRequest = visibleTurn.pendingCollaborationAgentRequest ?? null;
   const turnIsRunning = !historical && !visibleTurn.completed;
   const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingCollaborationAgentRequest && !visibleTurn.id.startsWith('collaboration-live-turn:');
   const cardStopAvailable = activeStopAvailable && !stopInHeader;
   const cardCollaborationStop = stopInHeader ? null : pendingCollaborationAgentRequest;
-  const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id)
-    || Boolean(shouldShowLiveStatusHeader && (visibleTurn.status === 'queued' || pendingCollaborationAgentRequest || activeStopAvailable || visibleTurn.sourceMessage || visibleTurn.hostedRunStatus));
-  const liveStatusText = visibleTurn.status === 'cancelling'
-    ? 'Stopping…'
-    : visibleTurn.status === 'retrying'
-      ? 'Retrying…'
-      : visibleTurn.status === 'compacting'
-        ? 'Compressing conversation…'
-        : visibleTurn.status === 'compacted'
-          ? 'Conversation compressed. Continuing…'
-          : visibleTurn.status === 'compaction_failed'
-            ? 'Compression needs attention'
-            : visibleTurn.status === 'typing'
-              ? 'Typing…'
-              : visibleTurn.status === 'writing'
-                ? 'Replying…'
-                : liveTurnPhaseStatusText(visibleTurn);
-  const liveTurnActive = !historical && !visibleTurn.completed;
+  const showLiveProgress = turnIsRunning && !isCompressionStatus;
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
   const changedFileRows = changedFileRowsFromTurn(visibleTurn);
   const providerFailureNotice = visibleTurn.error ? cloudAgentProviderFailureNotice(visibleTurn.error) : null;
@@ -580,43 +89,21 @@ function LiveChatTurnCardView({
   const shouldShowSourceQuote = !plainAgentResponse && Boolean(visibleTurn.sourceMessage);
   const hasResponseSurface = Boolean( // A failed quoted turn keeps its answer surface; the quote sits below it.
     (shouldShowSourceQuote && visibleTurn.error)
-      || showLiveStatusHeader
+      || showLiveProgress
       || isCompressionStatus
+      || hasOrderedContent
       || hasTimelineActivity
       || hasAssistant
       || cancellationNotice
       || changedFileRows.length > 0,
   );
-  const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error); const statusOnly = showLiveStatusHeader && !isCompressionStatus && !hasTimelineActivity && !hasAssistant && !cancellationNotice && !displayedError && changedFileRows.length === 0;
+  const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
   const showOpenAuthAction = Boolean(onOpenAuthSettings && visibleTurn.error && cloudAgentProviderFailureNeedsAuthentication(visibleTurn.error));
   if (!canDisplayAgentTurn(visibleTurn)) return null;
   return (
     <div data-live-turn-status={visibleTurn.status} className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
-        <div data-live-turn-pending={statusOnly ? 'true' : undefined} className={cn('app-live-turn-response-panel', hasResponseSurface && !plainAgentResponse && 'app-live-assistant-answer-surface', !hasAssistant && !isCompressionStatus && changedFileRows.length === 0 ? 'w-fit' : 'w-full', 'max-w-[min(100%,58rem)] space-y-2.5')}>
-          {showLiveStatusHeader ? (
-            <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
-              {visibleTurn.status === 'cancelling' || visibleTurn.status === 'retrying' ? (
-                <>
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                  <span className="text-slate-300">{liveStatusText}</span>
-                </>
-              ) : visibleTurn.status === 'queued' || visibleTurn.hostedRunStatus === 'queued' || visibleTurn.hostedRunStatus === 'leased' ? (
-                <span role="status">{visibleTurn.hostedRunStatus === 'leased' ? 'Starting…' : 'Queued…'}</span>
-              ) : shouldShowAgentWaitingAnimation(visibleTurn) ? (
-                <AgentWaitingWave label="Waiting for agent response" />
-              ) : null}
-              {cardCollaborationStop ? (
-                <CollaborationAgentStopButton
-                  request={cardCollaborationStop}
-                  onStop={onStopCollaborationAgentRequest}
-                />
-              ) : cardStopAvailable ? (
-                <TurnStopButton onStop={onStopActiveTurn} />
-              ) : null}
-            </div>
-          ) : null}
-
+        <div className={cn('app-live-turn-response-panel app-ordered-turn-surface', 'w-full max-w-[min(100%,58rem)] space-y-2.5')}>
           {isCompressionStatus ? (
             <div className={cn(
           'app-compression-card rounded-2xl px-4 py-3 text-sm',
@@ -640,31 +127,14 @@ function LiveChatTurnCardView({
         </div>
       ) : null}
 
-          {hasTimelineActivity ? (
-            <FoldableToolTimeline
-              key="activity"
-              tools={visibleTurn.tools}
-              thinkingText={visibleTurn.thinkingText}
-              active={liveTurnActive}
-              completed={visibleTurn.completed}
-              summaryOverride={desktopTurnWorkDurationLabel(visibleTurn)}
-              separatesAnswer={hasAssistant}
+          {showLiveProgress || hasOrderedContent || hasTimelineActivity || hasAssistant ? (
+            <TurnProgress turn={visibleTurn}
+              renderTool={tool => <ToolActivityRow key={tool.id} tool={tool} onOpenFile={onOpenArtifact} />}
               trailing={cardCollaborationStop && onStopCollaborationAgentRequest ? (
-                <CollaborationAgentStopButton
-                  request={cardCollaborationStop}
-                  onStop={onStopCollaborationAgentRequest}
-                />
-              ) : cardStopAvailable ? (
-                <TurnStopButton onStop={onStopActiveTurn} />
-              ) : null}
-            />
-          ) : null}
-          {hasAssistant ? (
-            <FoldableAssistantAnswer
-              key="answer"
-              text={assistantText}
-              foldable={!plainAgentResponse}
-              tone={visibleTurn.status === 'cancelled' && !ending ? 'cancelled' : 'default'}
+                <CollaborationAgentStopButton request={cardCollaborationStop} onStop={onStopCollaborationAgentRequest} />
+              ) : cardStopAvailable ? <TurnStopButton onStop={onStopActiveTurn} /> : null}
+              legacyAnswer={hasAssistant ? <FoldableAssistantAnswer text={assistantText} foldable={!plainAgentResponse}
+                tone={visibleTurn.status === 'cancelled' && !ending ? 'cancelled' : 'default'} /> : null}
             />
           ) : null}
           {ending && hasAssistant ? (

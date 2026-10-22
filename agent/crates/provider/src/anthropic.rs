@@ -277,6 +277,14 @@ fn build_anthropic_tools(tools: &[Value], extra_tool_schemas: &[Value]) -> (Vec<
             }),
         );
     }
+    if let Some(options) = crate::hosted_search::options(tools) {
+        for key in ["allowed_domains", "blocked_domains"] {
+            if let Some(value) = options.get(key) {
+                converted[0][key] = value.clone();
+            }
+        }
+        converted[0]["max_uses"] = json!(1);
+    }
     converted.extend(extra_tool_schemas.iter().cloned());
 
     (converted, hosted_web_search)

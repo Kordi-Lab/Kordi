@@ -91,6 +91,7 @@ async fn run_omp_with_config<C: CloudAgentRunClient + Sync>(
     if let Some(account_id) = &auth.account_id {
         headers.insert("ChatGPT-Account-ID".to_string(), account_id.clone());
     }
+    let search_runtime = auth.web_search_runtime();
     let request = RunRequest {
         run_id: run.run_id.clone(),
         request_id: run.run_id.clone(),
@@ -138,7 +139,9 @@ async fn run_omp_with_config<C: CloudAgentRunClient + Sync>(
         // Cloud never gains owner-device computer/browser capabilities.
         capabilities: Capabilities::default(),
     };
-    let executor = CloudToolExecutor::new(sandbox.clone()).with_memory(memory.enabled);
+    let executor = CloudToolExecutor::new(sandbox.clone())
+        .with_memory(memory.enabled)
+        .with_web_search(search_runtime);
     let host = CloudOmpTools {
         client,
         executor,

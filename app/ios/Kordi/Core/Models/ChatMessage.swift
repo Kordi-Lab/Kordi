@@ -224,6 +224,7 @@ struct AgentExecutionSnapshot: Codable, Hashable {
     let steps: [AgentExecutionStep]
     let thinkingText: String?
     let tools: [AgentExecutionTool]?
+    let segments: [AgentTurnSegment]?
     let startedAtMs: Double?
     let updatedAtMs: Double
     let completed: Bool
@@ -234,6 +235,7 @@ struct AgentExecutionSnapshot: Codable, Hashable {
         steps: [AgentExecutionStep],
         thinkingText: String? = nil,
         tools: [AgentExecutionTool]? = nil,
+        segments: [AgentTurnSegment]? = nil,
         startedAtMs: Double?,
         updatedAtMs: Double,
         completed: Bool
@@ -243,6 +245,7 @@ struct AgentExecutionSnapshot: Codable, Hashable {
         self.steps = steps
         self.thinkingText = thinkingText
         self.tools = tools
+        self.segments = segments
         self.startedAtMs = startedAtMs
         self.updatedAtMs = updatedAtMs
         self.completed = completed

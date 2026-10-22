@@ -150,6 +150,7 @@ mod tests {
             message: String::new(),
             assistant_text: "There are 1,204 lines.".into(),
             thinking_text: String::new(),
+            segments: Vec::new(),
             tools: Vec::new(),
             completed,
             succeeded,
