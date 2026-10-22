@@ -170,6 +170,8 @@ final class CommonGroundModel: ObservableObject {
         }
     }
 
+    func applyRecent(_ entries: [CommonGroundRecentEntry]) { recent = entries }
+
     /// Forgets the shown card while another profile's card loads.
     func resetOwner() {
         owner = nil

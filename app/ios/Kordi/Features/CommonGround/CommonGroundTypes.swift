@@ -251,6 +251,8 @@ struct CommonGroundPersonCard: Decodable, Hashable {
     let person: CommonGroundPerson
     let card: CommonGroundTopics
     let relationship: CommonGroundRelationship?
+    /// Your profile the person sees, from a pairing; nil before profiles.
+    var profileId: String? = nil
 }
 
 struct CommonGroundPairCode: Decodable, Hashable {

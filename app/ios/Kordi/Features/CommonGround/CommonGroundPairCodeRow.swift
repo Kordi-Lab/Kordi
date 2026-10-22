@@ -1,11 +1,13 @@
 import SwiftUI
 
-/// Home's Pair code row: the "#" tile, four digit boxes typed through one
-/// number field, an inline error and the Create a code link.
+/// Home's Tap row (one to one) above the Pair code row: the "#" tile, four
+/// digit boxes typed through one number field, an inline error and the
+/// Create a code link. Tap stays enabled without a card: it opens the build.
 struct CommonGroundPairCodeRow: View {
     @Binding var code: String
     var error: String?
     var enabled = true
+    var onTap: (() -> Void)? = nil
     let onComplete: (String) -> Void
     let onCreate: () -> Void
     @FocusState private var focused: Bool
@@ -14,13 +16,42 @@ struct CommonGroundPairCodeRow: View {
 
     var body: some View {
         CommonGroundSection {
+            if let onTap {
+                Button(action: onTap) {
+                    HStack(spacing: 12) {
+                        tile("iphone.radiowaves.left.and.right")
+                        Text("Tap").font(.body).foregroundStyle(.primary)
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
+                    .frame(minHeight: 56)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(SessionRowButtonStyle())
+                SessionDetailSeparator(leading: titleInset - 16)
+            }
+            pairCode
+                .disabled(!enabled)
+                .opacity(enabled ? 1 : 0.5)
+        }
+    }
+
+    private func tile(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 30, height: 30)
+            .background(commonGroundTint, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder private var pairCode: some View {
+        VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: "number")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 30, height: 30)
-                    .background(commonGroundTint, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .accessibilityHidden(true)
+                tile("number")
                 Text("Pair code").font(.body)
                 Spacer(minLength: 8)
                 digits
@@ -46,8 +77,6 @@ struct CommonGroundPairCodeRow: View {
             }
             .buttonStyle(.plain)
         }
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.5)
     }
 
     private var digits: some View {

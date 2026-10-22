@@ -54,14 +54,21 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_kordi-cg._tcp</string>
+		<string>_kordi-cg._udp</string>
+	</array>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Kordi reads calendar events for your private Digest and, if you choose, to build your Grounding card. It does not send invitations or change events.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Kordi uses the camera when you record a video message, attach a photo, or join a video call.</string>
+	<string>Kordi uses the camera when you record a video message, attach a photo, join a video call, or scan a Grounding pairing code.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Kordi uses the local network to establish audio and video calls when required.</string>
+	<string>Kordi uses the local network to establish audio and video calls when required, and to pair Grounding cards with phones nearby.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Kordi uses the microphone when you record a voice or video message or join a call.</string>
+	<key>NSNearbyInteractionUsageDescription</key>
+	<string>Kordi uses nearby devices to pair Grounding cards when two phones are held together.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Kordi saves Live Photos you choose to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
