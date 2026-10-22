@@ -76,7 +76,7 @@ struct CommonGroundCreateCodeSheet: View {
         let design = model.design(of: profile)
         let isSelected = profile.profileId == selected
         return Button { selected = profile.profileId } label: {
-            CardSwatchGlyph(design: design)
+            CardSwatchGlyph(design: design, symbol: profile.glyphSymbol)
                 .padding(3)
                 .overlay {
                     if isSelected {
@@ -140,13 +140,14 @@ struct CommonGroundCreateCodeSheet: View {
 /// A small card with its glyph, for picking a card in a row.
 private struct CardSwatchGlyph: View {
     let design: CommonGroundCardDesign
+    let symbol: String
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let palette = design.palette(scheme)
         ZStack {
             CommonGroundCardSwatch(design: design, width: 42, height: 28, cornerRadius: 6)
-            Image(systemName: design.symbol)
+            Image(systemName: symbol)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(palette.accent)
         }

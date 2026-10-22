@@ -33,6 +33,7 @@ extension CommonGroundModel {
     func loadProfiles() async {
         guard profilesEnabled, let list = try? await call({ try await $0.commonGroundProfiles(token: $1) }) else { return }
         profiles = list.profiles
+        startDesignMove()
         let saved = currentProfileID ?? CommonGroundProfileChoice.saved(account: me.accountId, defaults: defaults)
         let current = CommonGroundProfileChoice.current(saved: saved, in: profiles)
         if current != currentProfileID {
@@ -52,12 +53,9 @@ extension CommonGroundModel {
 
     /// Creates a profile and makes it current; nil when the server refused.
     @discardableResult
-    func createProfile(_ draft: CommonGroundNewProfile, design: CommonGroundCardDesign? = nil) async -> CommonGroundProfileSummary? {
+    func createProfile(_ draft: CommonGroundNewProfile) async -> CommonGroundProfileSummary? {
         guard draft.isValid,
               let created = await run("profile", { try await $0.createCommonGroundProfile(token: $1, profile: draft) }) else { return nil }
-        if let design, design.kind == .custom {
-            CommonGroundCardDesignStore.save(design, profileId: created.profileId, defaults: defaults)
-        }
         profiles.removeAll { $0.profileId == created.profileId }
         profiles.append(created)
         profiles.sort { $0.position < $1.position }
@@ -65,12 +63,28 @@ extension CommonGroundModel {
         return created
     }
 
+    /// Why a name cannot be saved: a custom card needs one. An empty name on
+    /// any other card restores the kind's name.
+    func nameRefusal(_ name: String, for profileId: String) -> String? {
+        let empty = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return empty && profile(profileId)?.profileKind == .custom ? "A custom card needs a name." : nil
+    }
+
     /// Renames a profile or changes its focus; an empty focus clears it.
+    /// A rename keeps a custom card's look by sending the design it shows.
     @discardableResult
-    func updateProfile(_ profileId: String, name: String? = nil, focus: String? = nil) async -> Bool {
+    func updateProfile(_ profileId: String, name: String? = nil, focus: String? = nil,
+                       design: CommonGroundCardDesign? = nil) async -> Bool {
+        if let name, let refusal = nameRefusal(name, for: profileId) {
+            notice = refusal
+            return false
+        }
+        let current = profile(profileId)
+        let kept = name != nil && current?.design == nil && current?.profileKind == .custom ? current?.cardDesign : nil
         let edit = CommonGroundProfileEdit(
             name: name?.trimmingCharacters(in: .whitespacesAndNewlines),
-            focus: focus?.trimmingCharacters(in: .whitespacesAndNewlines)
+            focus: focus?.trimmingCharacters(in: .whitespacesAndNewlines),
+            design: (design ?? kept)?.rawValue
         )
         guard let saved = await run("profile", {
             try await $0.updateCommonGroundProfile(token: $1, profileId: profileId, edit: edit)
@@ -85,7 +99,7 @@ extension CommonGroundModel {
         guard (await run("profile", { try await $0.deleteCommonGroundProfile(token: $1, profileId: profileId) })) != nil else { return false }
         profiles.removeAll { $0.profileId == profileId }
         walletTopics[profileId] = nil
-        CommonGroundCardDesignStore.save(nil, profileId: profileId, defaults: defaults)
+        CommonGroundCardDesignStore.drop(profileId, defaults: defaults)
         if currentProfileID == profileId {
             currentProfileID = nil
             CommonGroundProfileChoice.save(nil, account: me.accountId, defaults: defaults)
@@ -95,16 +109,52 @@ extension CommonGroundModel {
         return true
     }
 
+    /// Starts the design move in the background, so Home never waits on it;
+    /// one runs at a time and only while this device still keeps a design.
+    func startDesignMove() {
+        guard designMove == nil,
+              profiles.contains(where: { CommonGroundCardDesignStore.saved($0.profileId, defaults: defaults) != nil }) else { return }
+        designMove = Task { [weak self] in
+            await self?.moveLocalDesigns()
+            self?.designMove = nil
+        }
+    }
+
+    /// Sends each design an earlier build kept on this device to the server
+    /// once, for profiles the server has no design for, then drops it.
+    /// A failed send is dropped too, except a network error or a busy server.
+    func moveLocalDesigns() async {
+        for profile in profiles {
+            guard let local = CommonGroundCardDesignStore.saved(profile.profileId, defaults: defaults) else { continue }
+            guard profile.design == nil else {
+                CommonGroundCardDesignStore.drop(profile.profileId, defaults: defaults)
+                continue
+            }
+            let id = profile.profileId
+            do {
+                let saved = try await call {
+                    try await $0.updateCommonGroundProfile(token: $1, profileId: id, edit: CommonGroundProfileEdit(design: local.rawValue))
+                }
+                if let index = profiles.firstIndex(where: { $0.profileId == id }) { profiles[index] = saved }
+            } catch {
+                let status = (error as? CloudAPIError)?.statusCode ?? 0
+                if status == 0 || status == 429 || status >= 500 { continue }
+            }
+            CommonGroundCardDesignStore.drop(id, defaults: defaults)
+        }
+    }
+
     // MARK: Rooms
 
     /// The profile you share in a room, from the room or the rooms list.
     func sharedProfileID(inRoom code: String) -> String? {
         rooms[code]?.profileId ?? roomList?.first { $0.code == code }?.profileId
+            ?? roomPreviews[code].flatMap { $0.member ? $0.profileId : nil }
     }
 
     /// The kind a room suggests, when it is known before joining.
     func suggestedKind(ofRoom code: String) -> String? {
-        rooms[code]?.kind ?? roomList?.first { $0.code == code }?.kind
+        rooms[code]?.kind ?? roomList?.first { $0.code == code }?.kind ?? roomPreviews[code]?.kind
     }
 
     /// "Sharing: Work" for a room; nil before profiles or while unknown.

@@ -108,20 +108,47 @@ async fn joining_profile(
         .profile_id
         .as_deref()
         .filter(|id| !id.trim().is_empty());
-    let chosen = profiles::choose(
+    sharing_profile(
         pool,
         account,
         explicit.or(current.as_deref()),
         room_kind.as_deref(),
     )
-    .await?;
-    let Some(profile) = chosen else {
+    .await
+}
+
+/// The profile shared in a room: `requested`, else the account's built
+/// profile of `room_kind`, else its default one. It needs a card with
+/// sharing on; otherwise the response to send instead.
+async fn sharing_profile(
+    pool: &PgPool,
+    account: &str,
+    requested: Option<&str>,
+    room_kind: Option<&str>,
+) -> Result<Profile, Box<Response>> {
+    let Some(profile) = profiles::choose(pool, account, requested, room_kind).await? else {
         return Err(Box::new(card::no_card()));
     };
     if let Some(response) = profiles::require_shared_card(pool, &profile).await {
         return Err(Box::new(response));
     }
     Ok(profile)
+}
+
+/// Members of `room` who have not left, as a count. Service accounts (bound
+/// at `$param` as a text array) are not people and do not count.
+fn member_count_sql(param: u8) -> String {
+    format!(
+        "(SELECT COUNT(*) FROM cloud_common_ground_room_members counted
+          WHERE counted.room_id = room.room_id AND counted.left_at IS NULL
+            AND NOT (counted.account_id = ANY(${param})))"
+    )
+}
+
+/// The per-address key rooms are limited under.
+fn address_key(connect_info: Option<ConnectInfo<SocketAddr>>, headers: &HeaderMap) -> String {
+    let client = crate::client_ip::resolve_client_ip(headers, connect_info.map(|info| info.0.ip()));
+    format!("ip:{}", rate_limit_client_key(client))
 }
 
 /// Codes are short, so guessing is limited per account and per address.
@@ -132,8 +159,7 @@ async fn check_limits(
     connect_info: Option<ConnectInfo<SocketAddr>>,
     headers: &HeaderMap,
 ) -> Option<Response> {
-    let client = crate::client_ip::resolve_client_ip(headers, connect_info.map(|info| info.0.ip()));
-    let ip_key = format!("ip:{}", rate_limit_client_key(client));
+    let ip_key = address_key(connect_info, headers);
     for (limit, key) in [(ROOM_JOIN_LIMIT, account), (ROOM_IP_LIMIT, ip_key.as_str())] {
         if let RateLimitDecision::Limited { retry_after } =
             rate_limiter.observe_account_limit(limit, key).await
