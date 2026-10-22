@@ -4,6 +4,7 @@ import { profileDesign, type CgCardDesign } from './cardDesign';
 import { peopleCount, roomTitle, topicCount } from './format';
 import type { CgHost } from './host';
 import { PairCodePanel } from './PairCodePanel';
+import { UnbuiltCardRow } from './UnbuiltCardRow';
 import { CgAvatar, CgNotice, CgScore, CgTag } from './parts';
 import { CardGlyph, CardSwatch } from './ProfileCard';
 import { personTitle } from './profiles';
@@ -48,21 +49,7 @@ function YourCard({ state, store }: { state: CgState; store: CommonGroundStore }
   const profile = currentProfile(state);
   const design: CgCardDesign = profile ? profileDesign(profile) : 'work';
   const name = profile?.name ?? 'Your card';
-  if (!card) {
-    return (
-      <div className="cg-panel">
-        <div className="cg-mrow">
-          <CardSwatch design={design} />
-          <span className="cg-mrow-text">
-            <span className="cg-mrow-title">{name}</span>
-            <span className="cg-mrow-sub">{state.owner?.build.status === 'building' ? 'Building' : 'Not built'}</span>
-          </span>
-          {state.owner?.build.status === 'building' ? null
-            : <button type="button" className="cg-mbtn is-tint" onClick={() => store.open({ name: 'build' })}>Build</button>}
-        </div>
-      </div>
-    );
-  }
+  if (!card) return <UnbuiltCardRow state={state} store={store} />;
   const topics = CG_TOPIC_SECTIONS.flatMap(([key]) => card[key]);
   return (
     <div className="cg-panel cg-yours">
