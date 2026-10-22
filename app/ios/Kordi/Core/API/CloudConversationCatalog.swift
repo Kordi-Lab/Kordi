@@ -371,7 +371,7 @@ enum CloudConversationCatalog {
                     ?? .distantPast,
                 unreadCount: unreadMessageIds.union(canonicalUnreadMessageIds).count,
                 avatarSource: GroupAvatarCatalog.imageSource(groupSpaceId: groupSpaceId, canonical: canonicalConversations, controls: controls),
-                agentActivity: nil,
+                isGroundingGroup: GroupOriginCatalog.isGrounding(groupSpaceId: groupSpaceId, canonical: canonicalConversations), agentActivity: nil,
                 sessionId: groupId,
                 groupSpaceId: groupSpaceId,
                 groupParticipants: participants,

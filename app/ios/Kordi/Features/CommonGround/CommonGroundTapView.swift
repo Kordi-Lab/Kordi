@@ -29,23 +29,25 @@ struct CommonGroundTapSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
+            ZStack {
                 Picker("Mode", selection: $mode) {
                     ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 200)
-                Spacer(minLength: 0)
-                closeButton
+                .frame(width: 190)
+                closeButton.frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .padding(.top, 20)
-            ScrollView {
-                VStack(spacing: 16) {
-                    if mode == .tap { tap } else { qr }
+            .padding(.top, 18)
+            GeometryReader { space in
+                ScrollView {
+                    VStack(spacing: 16) {
+                        if mode == .tap { tap } else { qr }
+                    }
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, minHeight: space.size.height)
                 }
-                .padding(.top, 12)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .scrollDismissesKeyboard(.interactively)
             if mode == .qr {
                 Button("Scan") { scanError = nil; scanning = true }
                     .buttonStyle(CommonGroundPrimaryButtonStyle())
@@ -94,10 +96,10 @@ struct CommonGroundTapSheet: View {
     private var tap: some View {
         VStack(spacing: 18) {
             ZStack {
-                CommonGroundTapPulse()
+                CommonGroundTapPulse(base: 186)
                 if let card { smallCard(card) }
             }
-            .frame(height: 290)
+            .frame(height: 340)
             VStack(spacing: 4) {
                 switch controller.phase {
                 case .searching:
@@ -113,11 +115,12 @@ struct CommonGroundTapSheet: View {
             }
             .multilineTextAlignment(.center)
             .accessibilityElement(children: .combine)
+            CommonGroundCardChip()
         }
     }
 
     private func smallCard(_ card: CommonGroundWalletCard) -> some View {
-        let zoom: CGFloat = 0.5
+        let zoom: CGFloat = 0.62
         return ProfileCardView(
             design: card.design,
             icon: card.icon,
@@ -172,6 +175,7 @@ struct CommonGroundTapSheet: View {
 struct CommonGroundTapPulse: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var moving = false
+    var base: CGFloat = 150
     private let colors: [Color] = [.pink, .cyan, KordiTheme.brandAmber]
 
     var body: some View {
@@ -179,7 +183,7 @@ struct CommonGroundTapPulse: View {
             ForEach(colors.indices, id: \.self) { index in
                 Circle()
                     .stroke(colors[index].opacity(0.7), lineWidth: 1.5)
-                    .frame(width: 150, height: 150)
+                    .frame(width: base, height: base)
                     .scaleEffect(reduceMotion ? 1 + CGFloat(index) * 0.3 : (moving ? 1.9 : 0.8))
                     .opacity(reduceMotion ? 0.5 - Double(index) * 0.12 : (moving ? 0 : 0.9))
                     .animation(
@@ -190,5 +194,50 @@ struct CommonGroundTapPulse: View {
         }
         .accessibilityHidden(true)
         .onAppear { if !reduceMotion { moving = true } }
+    }
+}
+
+/// "Sharing Work" under the Tap card: a menu of the wallet's cards that
+/// makes the chosen one current, the same as picking it on Home. Hidden
+/// with a single card.
+struct CommonGroundCardChip: View {
+    @EnvironmentObject private var model: CommonGroundModel
+
+    var body: some View {
+        let cards = model.walletCards.filter { !$0.isSuggested }
+        let selected = cards.first { $0.id == model.walletSelectedID } ?? cards.first
+        if cards.count > 1, let selected {
+            Menu {
+                ForEach(cards) { card in
+                    Button {
+                        Task { await model.selectProfile(card.id) }
+                    } label: {
+                        if card.id == selected.id {
+                            Label(card.name, systemImage: "checkmark")
+                        } else {
+                            Text(card.name)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(selected.design.baseColour)
+                        .frame(width: 14, height: 10)
+                    Text("Sharing \(selected.name)")
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+                .contentShape(Capsule())
+            }
+            .padding(.top, 4)
+        }
     }
 }
