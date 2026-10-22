@@ -199,8 +199,17 @@ pub(super) async fn shared_view(
     if !card.has_card() || !card.sharing {
         return Ok(None);
     }
-    let account: Option<(Option<String>, Option<String>, String, String)> = query_as(
-        "SELECT account.display_name, account.avatar_url, profile.kind, profile.name
+    type Found = (
+        Option<String>,
+        Option<String>,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+    );
+    let account: Option<Found> = query_as(
+        "SELECT account.display_name, account.avatar_url, profile.kind, profile.name,
+                profile.design, profile.icon
          FROM cloud_accounts account
          JOIN cloud_common_ground_profiles profile ON profile.account_id = account.account_id
          WHERE account.account_id = $1 AND profile.profile_id = $2",
@@ -209,13 +218,19 @@ pub(super) async fn shared_view(
     .bind(&link.other_profile)
     .fetch_optional(pool)
     .await?;
-    let Some((name, avatar_url, kind, profile_name)) = account else {
+    let Some((name, avatar_url, kind, profile_name, design, icon)) = account else {
         return Ok(None);
     };
     let topics = card.shared_topics();
     let relationship = super::actions::relationship(pool, viewer, other).await?;
     let mut person = person(other, name.as_deref(), avatar_url.as_deref());
-    person["profile"] = profiles::tag(&link.other_profile, &kind, &profile_name);
+    person["profile"] = profiles::tag(
+        &link.other_profile,
+        &kind,
+        &profile_name,
+        design.as_deref(),
+        icon.as_deref(),
+    );
     Ok(Some(json!({
         "person": person,
         "profileId": link.viewer_profile,
