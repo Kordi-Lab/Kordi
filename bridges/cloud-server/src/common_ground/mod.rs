@@ -12,6 +12,7 @@
 mod actions;
 mod build;
 mod card;
+mod contact_match;
 mod intro;
 mod matching;
 mod pairing;
@@ -43,6 +44,7 @@ use sqlx_postgres::Postgres;
 use crate::auth::rate_limit::{AccountActionLimit, CloudRateLimiter};
 use crate::{auth::routes::cloud_session_middleware, server::ServerState};
 
+pub(crate) use contact_match::contact_match;
 pub(crate) use people::{profile_common_ground, ProfileCommonGround};
 pub use runs::{complete, fail, RUN_PREFIX};
 
