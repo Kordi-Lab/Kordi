@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Grounding's Home: the shared card's chip, the wallet, the Pair code row,
-/// Your card, Rooms and Recent.
+/// Rooms, Recent and Your card.
 struct CommonGroundHome: View {
     @EnvironmentObject private var model: CommonGroundModel
     @Binding var path: [CommonGroundRoute]
@@ -50,9 +50,9 @@ struct CommonGroundHome: View {
                         onComplete: entered,
                         onCreate: { create(for: model.currentProfileID) }
                     )
-                    if let card = selectedCard, !card.isSuggested { yourCard(card) }
                     CommonGroundRoomsSection(path: $path)
                     if !model.recent.isEmpty { recentSection }
+                    if let card = selectedCard, !card.isSuggested { yourCard(card) }
                 }
             }
             .padding(.horizontal, 16)
