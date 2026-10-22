@@ -1,3 +1,4 @@
+import { mergeTurnSegments } from './turnSegments';
 import type { DesktopChatMessage, DesktopChatState, DesktopChatTurnSnapshot, Message } from '@/kordi-app/types';
 import { formatDesktopClockTime } from '@/lib/time';
 
@@ -103,6 +104,7 @@ export function buildCompletedDesktopAssistantMessage(
     failed,
     cancelled: turn.status === 'cancelled',
     thinkingText: turn.thinkingText,
+    segments: turn.segments,
     tools: turn.tools,
     turnStartedAtMs: turn.startedAtMs ?? null,
     turnCompletedAtMs: turn.completedAtMs ?? null,
@@ -152,7 +154,9 @@ export function mergeDesktopTurnSnapshot(
   current: DesktopChatTurnSnapshot | undefined,
   next: DesktopChatTurnSnapshot,
 ): DesktopChatTurnSnapshot {
-  if (!current || current.id !== next.id) return next;
+  if (!current || current.id !== next.id || current.sessionId !== next.sessionId) return next;
+  // A delayed poll or sync echo cannot reopen this completed run.
+  if (current.completed && !next.completed) return current;
 
   const currentToolsById = new Map(current.tools.map((tool) => [tool.id, tool]));
   const nextToolIds = new Set(next.tools.map((tool) => tool.id));
@@ -169,6 +173,7 @@ export function mergeDesktopTurnSnapshot(
     ...next,
     assistantText: longerLiveText(current.assistantText, next.assistantText),
     thinkingText: longerLiveText(current.thinkingText, next.thinkingText),
+    ...((current.segments || next.segments) ? { segments: next.completed && next.segments?.length ? next.segments : mergeTurnSegments(current.segments, next.segments) } : {}),
     ...(startedAtMs != null ? { startedAtMs } : {}),
     ...(completedAtMs != null ? { completedAtMs } : {}),
     tools: [
@@ -391,6 +396,7 @@ export function liveTurnSnapshotChanged(left: DesktopChatTurnSnapshot | undefine
     || left.message !== right.message
     || left.assistantText !== right.assistantText
     || left.thinkingText !== right.thinkingText
+    || JSON.stringify(left.segments) !== JSON.stringify(right.segments)
     || left.completed !== right.completed
     || left.succeeded !== right.succeeded
     || left.startedAtMs !== right.startedAtMs

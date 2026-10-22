@@ -4,41 +4,7 @@ use crate::canonical_sessions::desktop_sync::sync_desktop_chat_message;
 mod response_reconciliation;
 mod session_projection;
 
-#[test]
-fn shared_bridge_local_agent_runtime_prompt_is_not_synced_as_extra_user_message() {
-    let message = kordi_cli::desktop_runtime::DesktopChatMessage {
-        role: "user".to_string(),
-        sender: Some("You".to_string()),
-        text: "@Kordi hi do a review".to_string(),
-        detail: None,
-        time_label: "Now".to_string(),
-        timestamp_ms: 1,
-        thinking_text: None,
-        tools: Vec::new(),
-        attachments: Vec::new(),
-        failed: false,
-        cancelled: false,
-        entry_id: None,
-    };
-
-    assert!(should_skip_shared_local_agent_runtime_prompt(
-        "session:bridge:humans:test",
-        &message,
-    ));
-    assert!(!should_skip_shared_local_agent_runtime_prompt(
-        "session:local:test",
-        &message,
-    ));
-
-    let normal_message = kordi_cli::desktop_runtime::DesktopChatMessage {
-        text: "hello".to_string(),
-        ..message
-    };
-    assert!(!should_skip_shared_local_agent_runtime_prompt(
-        "session:bridge:humans:test",
-        &normal_message,
-    ));
-}
+mod shared_prompt;
 
 #[test]
 fn desktop_sync_preserves_cancelled_agent_turn_status() {
@@ -51,6 +17,7 @@ fn desktop_sync_preserves_cancelled_agent_turn_status() {
         time_label: "17:10".to_string(),
         timestamp_ms: 2_100,
         thinking_text: None,
+        segments: Vec::new(),
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
@@ -190,6 +157,7 @@ fn desktop_sync_reuses_fork_snapshot_messages_for_inherited_history() {
         time_label: "17:09".to_string(),
         timestamp_ms: 1_000,
         thinking_text: None,
+        segments: Vec::new(),
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
@@ -204,6 +172,7 @@ fn desktop_sync_reuses_fork_snapshot_messages_for_inherited_history() {
         time_label: "17:09".to_string(),
         timestamp_ms: 2_000,
         thinking_text: None,
+        segments: Vec::new(),
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
@@ -294,6 +263,7 @@ fn desktop_sync_enriches_similar_bridge_agent_message_with_local_runtime_details
         time_label: "10:57".to_string(),
         timestamp_ms: 1_100,
         thinking_text: Some("local reasoning trace".to_string()),
+        segments: Vec::new(),
         tools: vec![kordi_cli::desktop_runtime::DesktopChatStoredTool {
             id: "tool-1".to_string(),
             name: "read".to_string(),
@@ -373,6 +343,7 @@ fn desktop_sync_enriches_bridge_agent_message_when_relay_collapses_whitespace() 
         time_label: "13:37".to_string(),
         timestamp_ms: 1_100,
         thinking_text: Some("local reasoning trace".to_string()),
+        segments: Vec::new(),
         tools: vec![kordi_cli::desktop_runtime::DesktopChatStoredTool {
             id: "tool-1".to_string(),
             name: "web_fetch".to_string(),
@@ -454,6 +425,7 @@ fn desktop_sync_replaces_processing_bridge_agent_placeholder_with_local_runtime_
         time_label: "11:24".to_string(),
         timestamp_ms: 10_000,
         thinking_text: Some("private reasoning".to_string()),
+        segments: Vec::new(),
         tools: vec![kordi_cli::desktop_runtime::DesktopChatStoredTool {
             id: "tool-1".to_string(),
             name: "web_fetch".to_string(),

@@ -8,16 +8,19 @@ import type { DesktopChatTurnSnapshot } from '../src/kordi-app/types';
 const reasoning = 'Synthetic private reasoning';
 for (const completed of [false, true]) {
   for (const owner of [true, false]) {
-    test(`group reasoning is ${owner ? 'visible to its owner' : 'hidden from a peer'} while ${completed ? 'completed' : 'running'}`, () => {
+    test(`group reasoning is ${owner ? 'collapsed for its owner' : 'hidden from a peer'} while ${completed ? 'completed' : 'running'}`, () => {
       const turn: DesktopChatTurnSnapshot = {
         id: 'group-turn', sessionId: 'group-session', prompt: '', status: completed ? 'complete' : 'analyzing',
         message: '', assistantText: 'Public reply', thinkingText: reasoning, tools: [], completed, succeeded: completed,
+        segments: [{ id: 'commentary', kind: 'text', text: 'Owner commentary' }, { id: 'answer', kind: 'text', text: 'Public reply' }],
       };
       const html = renderToStaticMarkup(createElement(MessageBubble, {
         msg: { id: 'group-reply', role: owner ? 'owned-agent' : 'external-agent', sender: 'Synthetic Agent', text: '', time: '12:00', turn },
       }));
-      assert.equal(/synthetic private reasoning/i.test(html), owner);
-      assert.match(html, /Public reply/);
+      assert.equal(/synthetic private reasoning/i.test(html), false);
+      assert.equal(html.includes('aria-expanded="false"'), owner);
+      assert.equal(html.includes('Public reply'), !owner || completed);
+      assert.equal(html.includes('Owner commentary'), false);
     });
   }
 }

@@ -1,0 +1,95 @@
+.app-turn-progress { padding: 2px 0; }
+.app-turn-progress-line { display: flex; align-items: center; gap: 8px; }
+.app-turn-progress-summary { display: flex; align-items: center; gap: 8px; min-width: 0; border: 0; background: transparent; color: var(--utility-muted-text); font-size: 12px; line-height: 1.5; text-align: left; padding: 4px 0; }
+.app-turn-progress-summary:disabled { opacity: 1; cursor: default; }
+.app-turn-progress-summary > span:first-of-type { overflow-wrap: anywhere; }
+.app-turn-progress-summary svg { flex-shrink: 0; }
+.app-turn-progress-time { color: var(--utility-muted-text); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-turn-progress-details { margin-top: 3px; min-width: 0; }
+.app-turn-commentary { padding: 2px 0; }
+/* The bird stays anchored; only its wing moves while work is active. */
+.app-turn-progress-bird { flex-shrink: 0; overflow: visible; }
+.app-turn-progress-bird-wing { transform-origin: 13px 13px; animation: app-turn-bird-flap 800ms linear infinite; }
+@keyframes app-turn-bird-flap {
+  0%, 100% { transform: rotate(-12deg) scaleY(.65); }
+  50% { transform: rotate(12deg) scaleY(1); }
+}
+.app-turn-progress-details .app-transcript-timeline-row-running .app-transcript-timeline-node,
+.app-turn-progress-details .app-transcript-timeline-row-running .app-transcript-timeline-row-title { animation: none; }
+@media (prefers-reduced-motion: reduce) { .app-turn-progress-bird-wing { animation: none; } }
+@media (pointer: coarse) { .app-turn-progress-summary { min-height: 44px; } }
+
+/* Ordered work reads as a transcript, with output surfaces only on demand. */
+.app-ordered-turn-surface { padding: 6px 0; background: transparent; border: 0; border-radius: 0; }
+.app-turn-trajectory { display: flex; flex-direction: column; gap: 10px; }
+.app-turn-trajectory[hidden] { display: none; }
+.app-turn-worked-header { display: flex; align-items: center; gap: 8px; padding: 2px 0; margin: 0; border: 0; background: transparent; color: var(--utility-muted-text); font-size: 12px; text-align: left; }
+.app-turn-header-line { min-height: 28px; }
+.app-turn-worked-header:disabled { opacity: 1; cursor: default; }
+.app-turn-trajectory > [hidden] { display: none; }
+.app-ordered-progress .app-turn-commentary :where(p, li) { font-size: 13px; line-height: 1.58; }
+.app-tool-activity { min-width: 0; }
+.app-tool-activity-line { position: relative; padding-right: 18px; display: flex; align-items: center; gap: 5px; min-width: 0; min-height: 28px; color: var(--utility-muted-text); }
+.app-tool-activity-toggle { display: flex; align-items: center; gap: 7px; min-width: 0; max-width: 100%; background: transparent; border: 0; padding: 4px 0; color: inherit; font-size: 12px; text-align: left; }
+.app-tool-activity-toggle span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-tool-activity-toggle svg { flex-shrink: 0; }
+.app-tool-activity-toggle:disabled { opacity: 1; cursor: default; }
+.app-tool-file-link, .app-tool-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 12px; color: var(--utility-foreground); }
+.app-tool-file-link { padding: 4px 0; border: 0; background: transparent; text-decoration: underline; text-decoration-color: var(--app-control-border); text-underline-offset: 3px; }
+.app-tool-file-link:hover { text-decoration-color: currentColor; }
+.app-tool-activity-line[data-failed] { color: var(--app-danger-text, #b45309); }
+.app-tool-activity-error { font-size: 12px; }
+.app-tool-output { border: 1px solid var(--app-control-border); border-radius: 10px; overflow: hidden; background: color-mix(in oklab, var(--utility-foreground) 3%, transparent); margin: 5px 0 9px; }
+.app-tool-output-heading { color: var(--utility-muted-text); font-size: 12px; padding: 8px 10px 0; }
+.app-tool-output pre { margin: 0; padding: 10px; max-height: 260px; overflow: auto; font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--utility-foreground); }
+.app-tool-input { color: var(--utility-muted-text); }
+.app-tool-input-details { border-top: 1px solid var(--app-control-border); font-size: 12px; color: var(--utility-muted-text); }
+.app-tool-input-details summary { padding: 7px 10px; cursor: pointer; }
+.app-turn-progress-summary:focus-visible, .app-turn-worked-header:focus-visible, .app-tool-activity-toggle:focus-visible, .app-tool-file-link:focus-visible { outline: 2px solid var(--utility-muted-text); outline-offset: 3px; border-radius: 3px; }
+@media (pointer: coarse) { .app-tool-activity-toggle, .app-tool-file-link, .app-turn-worked-header { min-height: 44px; } }
+
+.app-companion-source { overflow: auto; height: 100%; padding: 16px 0; background: var(--app-transcript-bg); color: var(--utility-foreground); }
+.app-companion-source pre { margin: 0; font-size: 12px; line-height: 1.75; }
+.app-companion-source-line { display: flex; gap: 20px; padding: 0 16px; }
+.app-companion-source-line > span { color: var(--utility-muted-text); min-width: 3ch; text-align: right; user-select: none; }
+.app-companion-source-line code { white-space: pre; }
+
+.app-tool-activity-toggle > svg:last-child:not(:first-child) { position: absolute; right: 0; }
+
+.app-turn-progress-details .app-transcript-thinking-markdown :where(p, li) { font-size: 12px; line-height: 1.5; }
+
+/* Keep reasoning secondary even when Markdown or light-theme emphasis sets a color. */
+.kordi-app .app-turn-progress .app-transcript-thinking-markdown,
+.kordi-app .app-turn-progress .app-transcript-thinking-markdown :is(p, li, blockquote, td, th, h1, h2, h3, h4, h5, h6, strong, em, code, a) {
+  color: var(--utility-muted-text) !important;
+}
+
+.app-turn-reasoning .app-turn-progress-details { margin: 0 0 6px 22px; max-height: 180px; overflow: auto; }
+.app-turn-reasoning .app-transcript-thinking-markdown { display: grid; gap: 4px; }
+.app-turn-reasoning .app-transcript-thinking-markdown :is(p, li, h1, h2, h3, h4, h5, h6, strong) { font-size: 12px; line-height: 1.5; font-weight: 400; margin-block: 0; }
+.app-turn-status-label { display: inline-grid; width: 26ch; max-width: 100%; min-width: 0; }
+.app-turn-status-text { grid-area: 1 / 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 1; transition: opacity var(--app-motion-fast) var(--app-motion-ease); }
+@starting-style { .app-turn-status-text { opacity: .35; } }
+.app-turn-worked-header { min-width: 0; max-width: 100%; }
+.app-turn-worked-header > svg, .app-turn-worked-header > .app-turn-progress-time { flex-shrink: 0; }
+@media (prefers-reduced-motion: reduce) { .app-turn-status-text { transition-duration: 0ms; } }
+
+
+/* The measured height bridges layout changes and can reverse mid-transition. */
+.app-progress-disclosure {
+  height: 0; opacity: 0; visibility: hidden; overflow: hidden;
+  transition: height var(--app-motion-fast) var(--app-motion-ease), opacity var(--app-motion-fast) var(--app-motion-ease), visibility 0s var(--app-motion-fast);
+}
+.app-progress-disclosure[data-expanded="true"] { opacity: 1; visibility: visible; transition-delay: 0s; }
+.app-progress-disclosure-content { display: flow-root; min-width: 0; }
+.app-turn-progress-summary > svg:last-child,
+.app-turn-worked-header > svg:last-child,
+.app-tool-activity-toggle > svg:last-child { transition: transform var(--app-motion-fast) var(--app-motion-ease); }
+/* Keyboard toggles and reduced-motion preferences change layout immediately. */
+[data-transcript-stable-disclosure-root]:has(> div > button:focus-visible) > .app-progress-disclosure { transition-duration: 0ms; transition-delay: 0ms; }
+@media (prefers-reduced-motion: reduce) {
+  .app-progress-disclosure { transition-duration: 0ms; transition-delay: 0ms; }
+  .app-turn-progress-summary > svg:last-child, .app-turn-worked-header > svg:last-child, .app-tool-activity-toggle > svg:last-child { transition-duration: 0ms; }
+}
+/* An open nested disclosure must not override its closed ancestor's visibility. */
+.app-progress-disclosure[data-expanded="false"] .app-progress-disclosure { visibility: inherit; }

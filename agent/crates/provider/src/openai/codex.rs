@@ -104,6 +104,7 @@ fn build_codex_request_body(request: &CompletionRequest) -> Value {
         });
     }
     body["prompt_cache_key"] = json!(super::default_prompt_cache_key(&request.model));
+    crate::hosted_search::configure_responses(&mut body, &request.tools);
     body
 }
 
@@ -222,6 +223,7 @@ impl OpenAiProvider {
                     continue;
                 };
 
+                crate::hosted_search::responses_sources(&event, &tx);
                 match event.get("type").and_then(|v| v.as_str()).unwrap_or("") {
                     "response.output_item.added" => {
                         if let Some(item) = event.get("item")

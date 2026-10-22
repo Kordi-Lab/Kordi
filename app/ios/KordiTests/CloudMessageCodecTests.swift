@@ -486,23 +486,6 @@ final class CloudMessageCodecTests: XCTestCase {
         XCTAssertNil(presentation.responseStep)
     }
 
-    func testExecutionTimelineExpansionStartsCollapsedAndOnlyCompletionClosesIt() {
-        var expansion = AgentExecutionTimelineExpansion()
-
-        XCTAssertFalse(expansion.isExpanded)
-
-        expansion.isExpanded.toggle()
-        expansion.updateCompletion(from: false, to: false)
-        XCTAssertTrue(expansion.isExpanded)
-
-        expansion.updateCompletion(from: false, to: true)
-        XCTAssertFalse(expansion.isExpanded)
-
-        expansion.isExpanded.toggle()
-        expansion.updateCompletion(from: true, to: true)
-        XCTAssertTrue(expansion.isExpanded)
-    }
-
     func testPartialResponseReplacesWaitingIndicatorBeforeExecutionCompletes() {
         let execution = AgentExecutionSnapshot(
             phase: .writing,

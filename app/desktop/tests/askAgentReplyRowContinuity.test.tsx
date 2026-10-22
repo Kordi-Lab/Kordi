@@ -177,7 +177,7 @@ async function renderScene(root: Root, host: HTMLElement, scene: Scene): Promise
   return {
     agentRows,
     stop: host.querySelector('[data-agent-request-stop]') !== null,
-    wave: host.querySelector('.app-agent-waiting-wave') !== null,
+    wave: host.querySelector('.app-turn-progress-bird') !== null,
     text: agentRows.map((row) => row.textContent ?? '').join('\n'),
     userBubbles: messages.filter((message) => message.role === 'user' && message.text === localRequest.contentText).length,
     status: cards[0]?.getAttribute('data-live-turn-status') ?? null,

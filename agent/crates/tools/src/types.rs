@@ -120,6 +120,8 @@ pub struct WebSearchRuntime {
     pub provider: Arc<dyn Provider>,
     pub model: Model,
     pub api_key: String,
+    pub auth_mode: kordi_provider::ProviderAuthMode,
+    pub auth_account_id: Option<String>,
     pub base_url: String,
     pub headers: HashMap<String, String>,
     pub enabled: bool,

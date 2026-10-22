@@ -143,14 +143,14 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         execution_policy,
         invocation_id: None,
         on_output: None,
-        web_search: Some(kordi_tools::WebSearchRuntime {
-            provider: provider.clone(),
-            model: model.clone(),
-            api_key: api_key.clone(),
-            base_url: base_url.clone(),
-            headers: headers.clone(),
-            enabled: true,
-        }),
+        web_search: Some(crate::runtime_model::web_search_runtime(
+            &provider,
+            &model,
+            &api_key,
+            &base_url,
+            &headers,
+            auth.as_ref(),
+        )),
         reach_out: None,
         reflection: crate::session_bootstrap::reflection_runtime_for_settings(
             &settings.memory,

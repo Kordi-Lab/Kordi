@@ -55,6 +55,8 @@ pub struct DesktopChatTurnSnapshot {
     pub message: String,
     pub assistant_text: String,
     pub thinking_text: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub segments: Vec<kordi_core::types::TurnSegment>,
     pub tools: Vec<DesktopChatToolSnapshot>,
     pub completed: bool,
     pub succeeded: bool,

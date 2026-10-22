@@ -39,3 +39,16 @@ export function transcriptLayoutMaxScrollTop(container: HTMLElement) {
   const layoutHeight = end?.offsetTop ? end.offsetTop + paddingBottom : container.scrollHeight;
   return Math.max(0, layoutHeight - container.clientHeight);
 }
+
+
+export function syncTranscriptTailPosition(
+  container: HTMLElement | null,
+  wasAtTail: MutableRefObject<boolean>,
+  setAtTail: (atTail: boolean) => void,
+  gap: number,
+) {
+  if (!container) return;
+  const reachedTail = transcriptLayoutMaxScrollTop(container) - container.scrollTop <= Math.max(4, gap);
+  wasAtTail.current = reachedTail;
+  setAtTail(reachedTail);
+}

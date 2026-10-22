@@ -68,7 +68,7 @@ test('cloud cancellation and empty local cancellation become one runtime card wi
   const turn = result.messages[1].turn!;
   assert.deepEqual(turn.tools, tools);
   const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
-  assert.match(html, /Worked for 8s/);
+  assert.match(html, /aria-label="Stopped 8s"/);
   assert.equal(html.split('Response stopped').length - 1, 1);
 });
 
