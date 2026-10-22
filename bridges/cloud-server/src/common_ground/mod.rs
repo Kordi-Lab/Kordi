@@ -1,7 +1,7 @@
 //! Common ground (#1847): interest cards, event rooms joined with a 4-digit
 //! code, and one-to-one pairings.
 //!
-//! A person keeps up to five profiles (work, health, daily tasks, custom),
+//! A person keeps up to five profiles (work, health, daily, custom),
 //! each with its own card. A card is built by a background run on the
 //! Kordi-operated key (PiP's service credential) from the sources the owner
 //! turns on, through the profile's lens. Every topic
