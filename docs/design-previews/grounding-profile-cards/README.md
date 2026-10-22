@@ -9,6 +9,18 @@ cd docs/design-previews/grounding-profile-cards
 python3 -m http.server 8710 --bind 127.0.0.1
 ```
 
+The scripts are ES modules, so open the page through the server, not as a file. Files:
+
+- `index.html`: the review chrome, the iPhone frame and the Mac window.
+- `app.js`: the entry module; the Screen menu, URL state, theme and boot.
+- `core.js`: shared helpers, icons and the one state object.
+- `data.js`: synthetic people, cards, rooms and references.
+- `cards.js`: card markup, the iPhone wallet, layers and the carousel.
+- `ios.js`: iPhone rows, the room sheet, New card and the card flip.
+- `rooms.js`: the Pair code row, joining by code and Create a code (both modes).
+- `mac.js`: the Mac deck rail, action column, popovers and card page.
+- `tokens.css`, `cards.css`, `ios.css`, `mac.css`: colour tokens and card palettes, card styles, iPhone styles, Mac styles (loaded in that order).
+
 On the Mac the cards sit in an aligned drawer on the left, the selected one open at full height. Beside it is one action column: the Pair code row (typing four digits shows the room under the boxes with Join, which shares the selected card, and a "Suggested" chip that switches to the room's kind first; Create opens a small popover to name a meetup and pick the card, then shows its four-digit code), Rooms, Recent, and Your card with its topic chips. Open on the selected card, a double-click, or Your card pushes the card page: a slim header with Rebuild from memory, Rename and Delete, then the topics under Working on, Interests, Can help with and Looking for with their references (source, title, snippet, date) and a Hide toggle, the sources that feed the card with a toggle each, and Share my card. New card is one compact dialog with design swatches above a live card, and the first run is a single centred Build block.
 
 Room codes in the preview: 4821 opens Poster session 2026, 3907 and 5160 are rooms you are already in, any other code shows "Room not found".
