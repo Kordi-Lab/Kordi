@@ -57,11 +57,11 @@
 .cg-section-title { margin: 0 2px 8px; color: var(--utility-muted-text); font-size: 12.5px; font-weight: 600; }
 .cg-group { overflow: hidden; border: 1px solid var(--cg-line); border-radius: 10px; background: var(--cg-card); }
 
-.cg-row, .cg-digits-row {
+.cg-row {
   position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 7px 12px;
   border: 0; background: transparent; color: inherit; font: inherit; text-align: left;
 }
-:is(.cg-row, .cg-digits-row, .cg-card-summary) + :is(.cg-row, .cg-digits-row)::before {
+.cg-row + .cg-row::before {
   content: ""; position: absolute; top: 0; right: 0; left: 12px; border-top: 1px solid var(--cg-line);
 }
 .cg-row.is-button { cursor: pointer; }
@@ -102,19 +102,6 @@
 .cg-textarea { display: block; width: 100%; min-height: 72px; padding: 10px 12px; border: 0; background: transparent; resize: vertical; }
 :is(.cg-input, .cg-textarea)::placeholder { color: var(--utility-muted-text); }
 .cg-input:focus { border-color: var(--app-quiet-control-focus-ring); }
-
-.cg-digits { display: flex; gap: 5px; padding-top: 6px; }
-.cg-digits input {
-  width: 30px; height: 34px; border: 1px solid var(--cg-line); border-radius: 8px; background: var(--cg-fill);
-  color: var(--utility-foreground); text-align: center; font: 600 16px ui-monospace, "SF Mono", Menlo, monospace; outline: none;
-}
-.cg-digits input:focus { border-color: var(--app-quiet-control-focus-ring); }
-.cg-digits-row { align-items: flex-start; }
-.cg-digits-row > .cg-icon, .cg-digits-row > .cg-button { margin-top: 2px; }
-
-.cg-card-summary { display: flex; width: 100%; flex-direction: column; gap: 10px; padding: 12px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.cg-card-summary:hover { background: var(--cg-fill); }
-.cg-card-summary-head { display: flex; justify-content: space-between; color: var(--utility-muted-text); }
 
 .cg-tags { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px; }
 .cg-tags.is-flat { padding: 0; }
@@ -223,25 +210,7 @@ button.cg-member:hover { background: var(--cg-fill); }
 .cg-meet-people { display: flex; flex-wrap: wrap; gap: 6px; }
 .cg-meet-person { display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px 3px 3px; border-radius: 999px; background: var(--cg-fill); font-size: 13px; }
 
-/* Profiles: the chip row on Home, the Card screen's "…", the Share sheet and "Sharing: Work". */
-.cg-profiles { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 16px; }
-.cg-chip {
-  display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border: 1px solid var(--cg-line); border-radius: 999px;
-  background: transparent; color: var(--utility-muted-text); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
-}
-.cg-chip:hover { background: var(--cg-fill); color: var(--utility-foreground); }
-.cg-chip.is-on { border-color: transparent; background: var(--app-button-primary-bg); color: var(--app-button-primary-text); }
-.cg-chip.is-add { width: 28px; justify-content: center; padding: 0; }
-.cg-section.is-tight { margin-top: 12px; }
-.cg-topbar { display: flex; align-items: center; justify-content: space-between; }
-.cg-more { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 7px; background: transparent; color: var(--utility-muted-text); cursor: pointer; }
-.cg-more:hover { background: var(--cg-fill); color: var(--utility-foreground); }
-.cg-menu { display: flex; flex-direction: column; }
-.cg-menu-item { padding: 6px 10px; border: 0; border-radius: 7px; background: none; color: var(--utility-foreground); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
-.cg-menu-item:hover { background: var(--cg-fill); }
-.cg-menu-item.is-danger { color: var(--app-transient-danger-text, oklch(58% 0.2 27)); }
-.cg-kinds { margin-top: 0; }
-.cg-kinds button:disabled { opacity: 0.4; cursor: default; }
+/* Profiles: "Sharing: Work" under a room, and the Share sheet. */
 .cg-sharing { display: flex; justify-content: center; gap: 8px; margin-top: 6px; color: var(--utility-muted-text); font-size: 12.5px; }
 .cg-link { padding: 0; border: 0; background: none; color: var(--app-accent); font: inherit; font-weight: 500; cursor: pointer; }
 .cg-link:hover { text-decoration: underline; }

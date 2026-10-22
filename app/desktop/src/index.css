@@ -67,6 +67,8 @@
 @import './styles/whats-new.css';
 @import './features/digest/digest.css';
 @import './styles/commonGround.css';
+@import './styles/commonGroundCards.css';
+@import './styles/commonGroundWallet.css';
 @import "./features/projects/chatProjects.css";
 @import "./features/projects/agentProjectSidebar.css";
 @import "./features/projects/projectImport.css";

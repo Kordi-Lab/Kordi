@@ -5,7 +5,7 @@
 import { isRouteMissing, type CommonGroundClient } from './client';
 import { pickProfile, type CgProfileMemory } from './profiles';
 import type { CgScreen, CgState } from './store';
-import type { CgProfile, CgProfileInput } from './types';
+import type { CgCardLook, CgProfile, CgProfileInput, CgProfilePatch } from './types';
 
 /** The parts of the store these operations use. */
 export type CgProfileStoreHost = {
@@ -34,6 +34,31 @@ export async function loadProfiles(host: CgProfileStoreHost): Promise<void> {
   }
 }
 
+/**
+ * Sets a card's background or icon at once and saves it; a failed save puts the old look back, and a
+ * reply without the new value shows the server's look with a notice.
+ */
+export async function setLook(host: CgProfileStoreHost, profileId: string, look: Partial<CgCardLook>): Promise<boolean> {
+  const before = host.getSnapshot().profiles.find((profile) => profile.profileId === profileId);
+  if (!before) return false;
+  const patchLook = (next: Partial<CgCardLook>) => host.set({
+    profiles: host.getSnapshot().profiles.map((profile) => (profile.profileId === profileId ? { ...profile, ...next } : profile)),
+  });
+  patchLook(look);
+  const updated = await host.run('look', () => host.client.updateProfile(profileId, look));
+  if (!updated) {
+    patchLook(Object.fromEntries(Object.keys(look).map((key) => [key, before[key as keyof CgCardLook]])));
+    return false;
+  }
+  // The server's look is what every device shows; a reply without the new value did not save it.
+  patchLook({ design: updated.design, icon: updated.icon });
+  const saved = (Object.keys(look) as Array<keyof CgCardLook>).every((key) => updated[key] === look[key]);
+  if (!saved) host.set({ notice: LOOK_NOT_SAVED });
+  return saved;
+}
+
+export const LOOK_NOT_SAVED = 'Could not save the card look. Try again.';
+
 export async function selectProfile(host: CgProfileStoreHost, profileId: string): Promise<void> {
   host.memory.write(profileId);
   host.set({ profileId, notice: null });
@@ -51,13 +76,14 @@ export async function createProfile(host: CgProfileStoreHost, input: CgProfileIn
   return true;
 }
 
-export async function updateProfile(host: CgProfileStoreHost, profileId: string, patch: { name?: string; focus?: string }): Promise<boolean> {
+export async function updateProfile(host: CgProfileStoreHost, profileId: string, patch: CgProfilePatch): Promise<boolean> {
   const updated = await host.run('profile', () => host.client.updateProfile(profileId, patch));
   if (!updated) return false;
   const { profiles, owner } = host.getSnapshot();
   host.set({ profiles: profiles.map((profile) => (profile.profileId === profileId ? { ...profile, ...updated } : profile)) });
   if (owner?.profile?.profileId === profileId) {
-    host.set({ owner: { ...owner, profile: { profileId, kind: updated.kind, name: updated.name, focus: updated.focus } } });
+    const { kind, name, focus, design, icon } = updated;
+    host.set({ owner: { ...owner, profile: { profileId, kind, name, focus, design, icon } } });
   }
   return true;
 }

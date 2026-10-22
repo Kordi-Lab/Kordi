@@ -7,8 +7,9 @@ import { MatchScreen } from './MatchScreen';
 import { CgNotice, CgProgress } from './parts';
 import { PersonScreen } from './PersonScreen';
 import { ResultsScreen } from './ResultsScreen';
-import { hasAnyCard, type CommonGroundStore } from './store';
+import { currentProfile, hasAnyCard, type CommonGroundStore } from './store';
 import { useCommonGround } from './useCommonGround';
+import { WalletShell } from './WalletShell';
 
 /** Common ground in the Contacts detail pane. Navigation lives in the store. */
 export function CommonGroundPage({ store, host }: { store: CommonGroundStore; host: CgHost }) {
@@ -20,10 +21,19 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
     body = <CgProgress line="Opening your card" />;
   } else if (!state.owner) {
     body = <CgNotice text={state.notice ?? 'Could not open Grounding.'} />;
-  } else if (screen.name === 'build' || (screen.name === 'home' && !hasAnyCard(state))) {
+  } else if (screen.name === 'home' || (screen.name === 'card' && state.owner.card)) {
+    // Home and the card page share the wallet: header, deck rail and one centre column.
+    const onCard = screen.name === 'card';
+    const title = onCard ? currentProfile(state)?.name ?? 'Your card' : 'Grounding';
+    return (
+      <section aria-label="Grounding" className={hasAnyCard(state) ? 'cg-page is-wallet' : 'cg-page is-wallet is-first-run'}>
+        <WalletShell state={state} store={store} title={title} onBack={onCard ? () => store.back() : undefined}>
+          {onCard ? <CardScreen state={state} store={store} /> : <HomeScreen {...props} />}
+        </WalletShell>
+      </section>
+    );
+  } else if (screen.name === 'build') {
     body = <BuildScreen {...props} />;
-  } else if (screen.name === 'home') {
-    body = <HomeScreen {...props} />;
   } else if (screen.name === 'card') {
     body = <CardScreen state={state} store={store} />;
   } else if (screen.name === 'lobby') {
