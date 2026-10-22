@@ -138,6 +138,10 @@ struct GroupInitialTile: View {
         for byte in seed.utf8 {
             hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01b3
         }
+        // FNV-1a's low bits cluster on similar ids; mix before picking a colour.
+        hash ^= hash >> 33
+        hash = hash &* 0xff51_afd7_ed55_8ccd
+        hash ^= hash >> 33
         return Int(hash % UInt64(palette.count))
     }
 
