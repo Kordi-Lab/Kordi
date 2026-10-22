@@ -359,6 +359,12 @@ final class CommonGroundWalletTests: XCTestCase {
             }
         }
         XCTAssertEqual(CommonGroundCardDesign.firstAvailable(in: []), .work, "New card opens on a kind")
+
+        XCTAssertEqual(CommonGroundCardDesign.backgrounds.map(\.rawValue), names, "the sheet shows the kinds, then the colours")
+        XCTAssertEqual(Set(CommonGroundCardDesign.backgrounds.map(\.baseHex)).count, 16, "each swatch has its own colour")
+        XCTAssertEqual(CommonGroundCardDesign.work.baseHex, 0x24335f)
+        XCTAssertEqual(CommonGroundCardDesign.research.baseHex, 0xc4643f)
+        XCTAssertEqual(CommonGroundCardDesign.ocean.baseHex, 0x0f6e73)
     }
 
     // MARK: Room preview

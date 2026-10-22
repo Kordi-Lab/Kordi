@@ -16,7 +16,23 @@ enum CommonGroundCardDesign: String, CaseIterable, Identifiable {
     /// The plain colours, chosen only from the look sheet.
     static let colours: [CommonGroundCardDesign] = [.ocean, .sky, .rose, .coral, .amber, .forest, .lavender, .graphite, .mint, .olive]
 
+    /// The look sheet's sixteen swatches: the kinds, then the colours.
+    static var backgrounds: [CommonGroundCardDesign] { kinds + colours }
+
     var isColour: Bool { colourHex != nil }
+
+    /// The plain colour a design's swatch shows.
+    var baseHex: UInt32 {
+        switch self {
+        case .work: 0x24335f
+        case .health: 0x3f7d53
+        case .daily: 0xd9c39a
+        case .workshop: 0x4d5868
+        case .research: 0xc4643f
+        case .custom: 0x6c4377
+        default: colourHex ?? 0x3b3f46
+        }
+    }
 
     /// A colour's base, tuned for white text.
     var colourHex: UInt32? {
@@ -164,6 +180,8 @@ private func cgHex(_ hex: UInt32, _ alpha: Double = 1) -> Color {
 }
 
 extension CommonGroundCardDesign {
+    var baseColour: Color { cgHex(baseHex) }
+
     func palette(_ scheme: ColorScheme) -> CommonGroundCardPalette {
         let dark = scheme == .dark
         let white = Color.white

@@ -62,27 +62,14 @@ struct CommonGroundCardLookSheet: View {
     @Environment(\.colorScheme) private var scheme
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 6)
+    private let swatchColumns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 8)
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 label("Background")
-                HStack(spacing: 0) {
-                    ForEach(CommonGroundCardDesign.kinds) { option in
-                        Button { onDesign(option) } label: {
-                            CommonGroundCardSwatch(design: option, width: 40, height: 27, cornerRadius: 7)
-                                .padding(4)
-                                .overlay(ring(option == design, cornerRadius: 10))
-                                .frame(maxWidth: .infinity)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(option.title)
-                        .accessibilityAddTraits(option == design ? .isSelected : [])
-                    }
-                }
-                HStack(spacing: 0) {
-                    ForEach(CommonGroundCardDesign.colours) { option in
+                LazyVGrid(columns: swatchColumns, spacing: 10) {
+                    ForEach(CommonGroundCardDesign.backgrounds) { option in
                         Button { onDesign(option) } label: {
                             colourDot(option)
                                 .padding(3)
@@ -97,7 +84,6 @@ struct CommonGroundCardLookSheet: View {
                         .accessibilityAddTraits(option == design ? .isSelected : [])
                     }
                 }
-                .padding(.top, 10)
                 label("Icon")
                 LazyVGrid(columns: columns, spacing: 8) {
                     iconCell(symbol: design.glyph(kind: kindDesign), selected: icon == nil, name: "Default") { onIcon(nil) }
@@ -142,12 +128,12 @@ struct CommonGroundCardLookSheet: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
+    /// A plain round swatch in the design's base colour.
     private func colourDot(_ option: CommonGroundCardDesign) -> some View {
-        let palette = option.palette(scheme)
-        return Circle()
-            .fill(LinearGradient(colors: [palette.top, palette.bottom], startPoint: .top, endPoint: .bottom))
-            .overlay(Circle().strokeBorder(palette.edge, lineWidth: 0.5))
-            .frame(width: 24, height: 24)
+        Circle()
+            .fill(option.baseColour)
+            .overlay(Circle().strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5))
+            .frame(width: 30, height: 30)
     }
 
     @ViewBuilder
