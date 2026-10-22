@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::common_ground::tests::db_fixture::{app, pool, send, signed_in};
 
 mod fixtures;
+mod match_tests;
 use fixtures::*;
 
 fn profile_path(account_id: &str) -> String {
@@ -311,6 +312,7 @@ async fn common_ground_shows_only_when_the_card_is_visible_and_shared() {
             "workingOn": ["Tabletop manipulation", "Sim-to-real", "Grasping", "Tactile"],
             "canHelp": ["Grant writing"],
             "lookingFor": ["Robot datasets"],
+            "match": null,
         }),
         "hidden topics are removed and each list holds four"
     );
