@@ -1,6 +1,8 @@
 import SwiftUI
 
 /// Sources for the card. Every source is off until the person turns it on.
+/// From version 3 the screen opens with the card's saved picks and saves
+/// each change, so other devices see it without a build.
 /// While a build runs the screen shows the wait state and polls the card.
 struct CommonGroundBuildView: View {
     @EnvironmentObject private var model: CommonGroundModel
@@ -14,6 +16,14 @@ struct CommonGroundBuildView: View {
     @StateObject private var device = CommonGroundDeviceAccess()
     @StateObject private var kordiSources = CommonGroundBuildSources()
     @State private var deviceIncluded: Set<CommonGroundDeviceSource> = []
+    @State private var connectorPicks: Set<ConnectorProviderId> = []
+    @State private var documentPicks: [String] = []
+    /// Nil while loading.
+    @State private var documentList: [CommonGroundDocument]?
+    @State private var documentsFailed = false
+    @State private var showsDocuments = false
+    /// The profile whose saved picks the screen opened with.
+    @State private var seededProfile: String?
     @State private var setupProvider: ConnectorProviderId?
 
     private var deviceItems: [CommonGroundDeviceItems] {
@@ -23,19 +33,38 @@ struct CommonGroundBuildView: View {
         }
     }
 
+    private var picks: CommonGroundSourcePicks {
+        CommonGroundSourcePicks(
+            memory: memory, connectors: connectorPicks, device: deviceIncluded,
+            documents: documentPicks, links: links, notes: notes, keeping: model.currentSources
+        )
+    }
+
+    /// Picked documents still in the list; every pick while it loads.
+    private var usableDocuments: [String] {
+        guard let documentList else { return documentPicks }
+        let ids = Set(documentList.map(\.attachmentId))
+        return documentPicks.filter(ids.contains)
+    }
+
     private var choices: CommonGroundBuildChoices {
         CommonGroundBuildChoices(
             memoryOn: memory && showsMemory,
             memoryCount: showsMemory ? kordiSources.memoryCount : nil,
-            connectedCount: showsConnectors ? kordiSources.connectedCount : 0,
+            connectors: showsConnectors
+                ? CommonGroundBuildCopy.connectorIds.filter { connectorPicks.contains($0) && kordiSources.isConnected($0) } : [],
             device: deviceItems,
+            documents: showsDocumentsRow ? usableDocuments : [],
             links: links,
-            notes: notes
+            notes: notes,
+            sendsSources: showsDocumentsRow,
+            picks: showsDocumentsRow ? picks : nil
         )
     }
 
     private var showsConnectors: Bool { kordiSources.connectors != nil }
     private var showsMemory: Bool { appModel.isMemoryCapabilityPresent }
+    private var showsDocumentsRow: Bool { model.sourcesEnabled }
 
     var body: some View {
         Group {
@@ -62,14 +91,18 @@ struct CommonGroundBuildView: View {
                 CommonGroundAvatar(person: model.me, size: 92)
             }
             VStack(spacing: 16) {
-                if showsConnectors || showsMemory {
-                    CommonGroundKordiSources(
+                if showsMemory || showsDocumentsRow {
+                    CommonGroundKordiSection(
                         sources: kordiSources,
-                        showsConnectors: showsConnectors,
                         showsMemory: showsMemory,
+                        showsDocuments: showsDocumentsRow,
                         memoryOn: $memory,
-                        onSetUp: { setupProvider = $0 }
+                        documentsLine: CommonGroundBuildCopy.documentsLine(usableDocuments.count),
+                        onDocuments: { showsDocuments = true }
                     )
+                }
+                if showsConnectors {
+                    CommonGroundConnectorSection(sources: kordiSources, included: $connectorPicks, onSetUp: { setupProvider = $0 })
                 }
                 CommonGroundSection(title: "On this iPhone") {
                     ForEach(Array(CommonGroundDeviceSource.allCases.enumerated()), id: \.element) { index, source in
@@ -90,16 +123,24 @@ struct CommonGroundBuildView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
                 }
-                Button(model.buildFailed ? "Try again" : "Build profile") {
-                    Task { await model.build(choices.request) }
-                }
-                .buttonStyle(CommonGroundPrimaryButtonStyle())
-                .disabled(!choices.canBuild || model.busy == "build")
-                .padding(.horizontal, 4)
-                .padding(.top, 4)
+                buildButton
             }
             .padding(.horizontal, 16)
+            .sheet(isPresented: $showsDocuments) {
+                CommonGroundDocumentsSheet(documents: documentList, failed: documentsFailed, selection: $documentPicks)
+                    .task { if documentsFailed { await loadDocuments() } }
+            }
         }
+        .task(id: model.currentProfile?.profileId) { seed() }
+        .task(id: showsDocumentsRow) { if showsDocumentsRow { await loadDocuments() } }
+        .task(id: picks) {
+            let next = picks
+            guard showsDocumentsRow, let profileId = seededProfile, profileId == model.activeProfileID else { return }
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled else { return }
+            await model.saveSources(next, for: profileId)
+        }
+        .onDisappear(perform: flush)
         .task {
             for source in CommonGroundDeviceSource.allCases where device.status[source] == .authorized {
                 await device.read(source)
@@ -119,6 +160,56 @@ struct CommonGroundBuildView: View {
                 CommonGroundConnectorSetup(providerId: setupProvider, client: client)
                     .environmentObject(appModel)
             }
+        }
+    }
+
+    private var buildButton: some View {
+        let disabled = !choices.canBuild || model.busy == "build"
+        return Button {
+            Task { await model.build(choices.request) }
+        } label: {
+            Text(model.buildFailed ? "Try again" : "Build")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color(uiColor: .systemBackground))
+                .padding(.horizontal, 22)
+                .frame(height: 38)
+                .background(Color.primary, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .opacity(disabled ? 0.35 : 1)
+        .disabled(disabled)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 8)
+    }
+
+    /// Opens with the current profile's saved picks, once per profile.
+    private func seed() {
+        guard showsDocumentsRow, let profile = model.currentProfile, seededProfile != profile.profileId else { return }
+        let saved = profile.sources ?? CommonGroundSourcePicks()
+        memory = saved.memory
+        connectorPicks = saved.connectorIds
+        deviceIncluded = saved.deviceSources
+        documentPicks = Array(saved.documents.prefix(CommonGroundSourcePicks.maxDocuments))
+        links = saved.links
+        notes = saved.notes
+        seededProfile = profile.profileId
+    }
+
+    /// Saves a change the debounce has not sent yet; a build saves its own.
+    private func flush() {
+        guard showsDocumentsRow, let profileId = seededProfile, profileId == model.activeProfileID,
+              model.busy != "build", !model.isBuilding else { return }
+        let next = picks
+        Task { await model.saveSources(next, for: profileId) }
+    }
+
+    private func loadDocuments() async {
+        if let documents = await model.loadDocuments() {
+            documentList = documents
+            documentsFailed = false
+        } else {
+            documentsFailed = documentList == nil
         }
     }
 

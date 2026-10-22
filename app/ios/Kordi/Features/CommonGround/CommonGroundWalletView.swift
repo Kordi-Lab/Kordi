@@ -77,6 +77,7 @@ struct CommonGroundWallet: View {
             kindDesign: card.kindDesign,
             name: card.name,
             focus: card.focus,
+            owner: model.me.cardOwner,
             bottom: bottom(for: card, selected: selected),
             trailing: trailing,
             showsMark: !(fanned && selected),

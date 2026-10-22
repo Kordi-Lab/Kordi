@@ -66,6 +66,11 @@ extension CloudAPIClient {
         try await send(path: cg("profiles/\(cgSegment(profileId))"), method: "PUT", token: token, body: edit, fallback: "Could not save the profile.")
     }
 
+    /// The account's own documents a card can read, newest first.
+    func commonGroundDocuments(token: String) async throws -> CommonGroundDocumentList {
+        try await send(path: cg("documents"), method: "GET", token: token, fallback: "Could not load your documents.")
+    }
+
     func deleteCommonGroundProfile(token: String, profileId: String) async throws {
         try await sendWithoutResponse(path: cg("profiles/\(cgSegment(profileId))"), method: "DELETE", token: token, fallback: "Could not delete the profile.")
     }

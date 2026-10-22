@@ -124,6 +124,7 @@ struct CommonGroundTapSheet: View {
             kindDesign: card.kindDesign,
             name: card.name,
             focus: card.focus,
+            owner: model.me.cardOwner,
             bottom: .topics(card.topics),
             width: cardWidth
         )

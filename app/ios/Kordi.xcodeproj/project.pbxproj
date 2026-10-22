@@ -52,6 +52,7 @@
 		1B01D5196E4A8A7D4D26742B /* AgentSubsessionStopButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22AC313E53BCA366D3B33384 /* AgentSubsessionStopButton.swift */; };
 		1C253D2F974D61285F03E88B /* ConversationTimelinePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1842E2B788ED63E756E81116 /* ConversationTimelinePresentation.swift */; };
 		1D66CC9EE8FEA4BCD2B5B2EB /* CommonGroundRoomList.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCAF2EDCCD5927A31300D1C3 /* CommonGroundRoomList.swift */; };
+		1D79F4697409CB479CC23A40 /* CommonGroundDocumentsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C9E76EEE16F09E7592B0E7 /* CommonGroundDocumentsSheet.swift */; };
 		1E32950D425FE7487A3B4875 /* MemorySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5101422FFF620FF837A563E8 /* MemorySettingsView.swift */; };
 		1FCDD235F91F0863905604AB /* DocumentReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C57FE38A8F4FA092BB2316DC /* DocumentReaderView.swift */; };
 		22A8E54BEF31249E570DABA2 /* GroupAgentTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B58CB494BE1FE3E64175CFF /* GroupAgentTarget.swift */; };
@@ -159,6 +160,7 @@
 		688B8035C36DDCB0F8505288 /* AttachmentTransferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21B553E883C637AF55134AE /* AttachmentTransferTests.swift */; };
 		69B60317B1A3F374C6950257 /* ConnectorDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48C933E64AB182D0C9D4561A /* ConnectorDetailView.swift */; };
 		6A5F299DCC6DA4EFD6082072 /* MessageDeletionParticles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A13A4DE8F94466641E566F8 /* MessageDeletionParticles.swift */; };
+		6A7924F6C8D3FD3F37BAD6BC /* CommonGroundSourcePicks.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC1B2ECDD2B832357C7BC365 /* CommonGroundSourcePicks.swift */; };
 		6B7BA7D3E49BFAA45E9EE481 /* ConversationScrollNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3368F51FCBD1DFA89B80CE93 /* ConversationScrollNavigationTests.swift */; };
 		6F0DCEB981CA2CA74766593B /* NetworkProxyPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 065C96F4684935A21E2C862E /* NetworkProxyPolicyTests.swift */; };
 		6F2D0803E1F21DA091A51FF8 /* ComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12ADFCB554A69C285C7F753 /* ComposerView.swift */; };
@@ -199,6 +201,7 @@
 		82F8E9F873B0DC7C0CF81168 /* AttachmentReactionMutationQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2EB23221667A825E421722D /* AttachmentReactionMutationQueueTests.swift */; };
 		833DEDC6FBF0D6348067D5B6 /* PinnedMessageBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6973B0CB3175E03F69AAA6A /* PinnedMessageBar.swift */; };
 		844D3F38D751C53D7484B36D /* DocumentSelectionMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35E4741FA31FACB0202B6A98 /* DocumentSelectionMenu.swift */; };
+		84635DBB94300C2B4EC4B67B /* CommonGroundSourcesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4932724C5ADD625BEFD59700 /* CommonGroundSourcesTests.swift */; };
 		84711041A716D4466F21D9D0 /* CommonGroundPairingExchange.swift in Sources */ = {isa = PBXBuildFile; fileRef = A721A7C18CFB4B2D4F497A8A /* CommonGroundPairingExchange.swift */; };
 		8558909EFBA4EAE361665EB9 /* DocumentEditorBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 517D72003B7A9E73111996E5 /* DocumentEditorBridgeTests.swift */; };
 		85F8CFC2AC23D0C91408C596 /* AttachmentFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B308FF37FF8E42CB0F5166D6 /* AttachmentFileStore.swift */; };
@@ -355,6 +358,7 @@
 		ED22FF9AFFB08C5A52F41716 /* ComposerMentionTargetCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFB88FF6B392D071AA24EB46 /* ComposerMentionTargetCatalogTests.swift */; };
 		EDC6CA35D3943E566521609A /* CommonGroundQRViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B347EC88568935A02AB5FA /* CommonGroundQRViews.swift */; };
 		F01AE74E96BE2C02909E7D28 /* KordiAppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC40CA44539DE969C3129E9B /* KordiAppEnvironment.swift */; };
+		F03BA53E688A9913DCB14B9F /* CommonGroundModel+Sources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91A79F84791CB6A548D65EAA /* CommonGroundModel+Sources.swift */; };
 		F0C8AE002742597539F4A674 /* ConversationSendQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A65E789E3576D0F0275E8B65 /* ConversationSendQueue.swift */; };
 		F1BC965058EC6A7F3B720F19 /* MessageAuthorIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EFD1E81FF57694F8CF0DCFC /* MessageAuthorIdentity.swift */; };
 		F254B5BCFB594F32E819678A /* SettingsRowStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 784A32DA3FCDE2B4F52C5571 /* SettingsRowStyle.swift */; };
@@ -528,6 +532,7 @@
 		482CC7C6F89AFDDA5C218D0E /* PreviewData+ContactProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreviewData+ContactProfile.swift"; sourceTree = "<group>"; };
 		48C933E64AB182D0C9D4561A /* ConnectorDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorDetailView.swift; sourceTree = "<group>"; };
 		48DDE089740349743BBE866D /* AgentResponseDeduplicationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentResponseDeduplicationTests.swift; sourceTree = "<group>"; };
+		4932724C5ADD625BEFD59700 /* CommonGroundSourcesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundSourcesTests.swift; sourceTree = "<group>"; };
 		497A7EB3740B07B363C49D37 /* ProviderUITestCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderUITestCase.swift; sourceTree = "<group>"; };
 		49AF5B6EA34A07100AE9668D /* CommonGroundWalletView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundWalletView.swift; sourceTree = "<group>"; };
 		4C816AA362A716BCFFA87593 /* ConversationTailScrollMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTailScrollMotion.swift; sourceTree = "<group>"; };
@@ -629,6 +634,7 @@
 		8E3BB5862C5807A1AD1244A0 /* ConversationInitialLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationInitialLoadingView.swift; sourceTree = "<group>"; };
 		8F01AB264A8FBD300AF8A544 /* ShareExtensionAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareExtensionAPI.swift; sourceTree = "<group>"; };
 		9191C934D4CD680DDA85704F /* AgentSessionPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSessionPresentation.swift; sourceTree = "<group>"; };
+		91A79F84791CB6A548D65EAA /* CommonGroundModel+Sources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CommonGroundModel+Sources.swift"; sourceTree = "<group>"; };
 		91BD8430D07B85FB968BF18E /* CommonGroundComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundComponents.swift; sourceTree = "<group>"; };
 		91F583054F514DF4B9CE1523 /* ProviderAuthenticationDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAuthenticationDetailView.swift; sourceTree = "<group>"; };
 		9342AD4F8DA861194BABA573 /* ConversationReadVisibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationReadVisibility.swift; sourceTree = "<group>"; };
@@ -749,6 +755,7 @@
 		DF5E40C4B38433BB725BE9EB /* MessageActionSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageActionSheets.swift; sourceTree = "<group>"; };
 		E094A05643A2F44276E4EF06 /* NotoEmojiTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotoEmojiTests.swift; sourceTree = "<group>"; };
 		E156AB8850E4AB9DE3401275 /* DocumentEditorSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentEditorSession.swift; sourceTree = "<group>"; };
+		E1C9E76EEE16F09E7592B0E7 /* CommonGroundDocumentsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundDocumentsSheet.swift; sourceTree = "<group>"; };
 		E1CFC1783928497E548188B7 /* VoiceTranscriptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTranscriptionTests.swift; sourceTree = "<group>"; };
 		E218169E718634BB75B216F1 /* AgentModelSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentModelSheet.swift; sourceTree = "<group>"; };
 		E2EB23221667A825E421722D /* AttachmentReactionMutationQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentReactionMutationQueueTests.swift; sourceTree = "<group>"; };
@@ -793,6 +800,7 @@
 		F84338335ED5C3245CFA8E68 /* CloudAPIClient+ContactProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CloudAPIClient+ContactProfile.swift"; sourceTree = "<group>"; };
 		F93CA48DD086B4999869484F /* SubsessionConversationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubsessionConversationUITests.swift; sourceTree = "<group>"; };
 		FB201FE56A48A0CC09D85718 /* DigestMonthGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestMonthGrid.swift; sourceTree = "<group>"; };
+		FC1B2ECDD2B832357C7BC365 /* CommonGroundSourcePicks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundSourcePicks.swift; sourceTree = "<group>"; };
 		FC40CA44539DE969C3129E9B /* KordiAppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiAppEnvironment.swift; sourceTree = "<group>"; };
 		FD490ECA738742A1C27BD23C /* ProviderAuthentication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAuthentication.swift; sourceTree = "<group>"; };
 		FD8A12B1B430F22A2E8EFCA4 /* SystemNoticeIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemNoticeIdentity.swift; sourceTree = "<group>"; };
@@ -1178,12 +1186,14 @@
 				91BD8430D07B85FB968BF18E /* CommonGroundComponents.swift */,
 				E98FAE041AD33C06C181B19C /* CommonGroundCreateCodeSheet.swift */,
 				200F6B7F78667004B33236FA /* CommonGroundDeviceAccess.swift */,
+				E1C9E76EEE16F09E7592B0E7 /* CommonGroundDocumentsSheet.swift */,
 				380517C49EBFE2D3A6B1F638 /* CommonGroundHomeView.swift */,
 				6F4F983C0DA68380146BEFF9 /* CommonGroundMatchView.swift */,
 				EC1B3DD7AACC2899FDBB384C /* CommonGroundModel.swift */,
 				F68BEC35209068FC6B2EC543 /* CommonGroundModel+Pairing.swift */,
 				BBB395962AF148CEF676D32E /* CommonGroundModel+People.swift */,
 				BD741CBD80FB019DCAC39114 /* CommonGroundModel+Profiles.swift */,
+				91A79F84791CB6A548D65EAA /* CommonGroundModel+Sources.swift */,
 				D4CDD3CFDC6090549B244F71 /* CommonGroundModel+Wallet.swift */,
 				F3B3080843F3105278E80767 /* CommonGroundNearbyTransport.swift */,
 				7FC10294FCF342F09390129D /* CommonGroundNewCardSheet.swift */,
@@ -1198,6 +1208,7 @@
 				AB004F6B7BACCE373E946958 /* CommonGroundResultsView.swift */,
 				CCAF2EDCCD5927A31300D1C3 /* CommonGroundRoomList.swift */,
 				F357ED39C59FAD90F5BF85AB /* CommonGroundRoomViews.swift */,
+				FC1B2ECDD2B832357C7BC365 /* CommonGroundSourcePicks.swift */,
 				27A7AA9C5E9ACB4C67614BC8 /* CommonGroundTapController.swift */,
 				F44D9CA51F047600C8139DC5 /* CommonGroundTapView.swift */,
 				99CD429A25D6DE32F1B1AD49 /* CommonGroundTimelineView.swift */,
@@ -1258,6 +1269,7 @@
 				45283A731378FF0892492602 /* CloudWireCacheTests.swift */,
 				D39F2C49D23ED800BDB4BC85 /* CommonGroundPairingTests.swift */,
 				C32CCFD675AE9F8FA81E8C4F /* CommonGroundProfileTests.swift */,
+				4932724C5ADD625BEFD59700 /* CommonGroundSourcesTests.swift */,
 				CC9D282C0E391AFB2885E0C1 /* CommonGroundTests.swift */,
 				8CF543DAFCB4887780A9921F /* CommonGroundWalletTests.swift */,
 				8D777A5F9528D93CB115E881 /* CompanionChatPanelTests.swift */,
@@ -1748,6 +1760,7 @@
 				E9903E8C12FFD9B876610EAC /* CloudWireCacheTests.swift in Sources */,
 				DDA1D85B5894C466DF636DA6 /* CommonGroundPairingTests.swift in Sources */,
 				31C2168086204016839FC8AB /* CommonGroundProfileTests.swift in Sources */,
+				84635DBB94300C2B4EC4B67B /* CommonGroundSourcesTests.swift in Sources */,
 				E4AC073444D24CC4B6775118 /* CommonGroundTests.swift in Sources */,
 				CB0EA5039747CC5AC755EE5F /* CommonGroundWalletTests.swift in Sources */,
 				0AE339A604A15C66AF7F3BFA /* CompanionChatPanelTests.swift in Sources */,
@@ -1892,11 +1905,13 @@
 				A5399ACC0B15D32A035D48CF /* CommonGroundComponents.swift in Sources */,
 				2F0E351E06A0CA68940262C6 /* CommonGroundCreateCodeSheet.swift in Sources */,
 				E208840EC7A9D6819C5BC429 /* CommonGroundDeviceAccess.swift in Sources */,
+				1D79F4697409CB479CC23A40 /* CommonGroundDocumentsSheet.swift in Sources */,
 				A722D03E8FFA4E9DE683F2C0 /* CommonGroundHomeView.swift in Sources */,
 				C2AE4822D136ECD19F78860E /* CommonGroundMatchView.swift in Sources */,
 				E8A6DF9C3E2ADC1D7F9CB660 /* CommonGroundModel+Pairing.swift in Sources */,
 				FC3045E30BD491DD37EA6D29 /* CommonGroundModel+People.swift in Sources */,
 				64754D16CF425E1925BD2CA1 /* CommonGroundModel+Profiles.swift in Sources */,
+				F03BA53E688A9913DCB14B9F /* CommonGroundModel+Sources.swift in Sources */,
 				0674B2C1AC0DFAC9D1D0E124 /* CommonGroundModel+Wallet.swift in Sources */,
 				40DC85F96BE77990B330A8C1 /* CommonGroundModel.swift in Sources */,
 				57B6384A6CF3A33677D02166 /* CommonGroundNearbyTransport.swift in Sources */,
@@ -1912,6 +1927,7 @@
 				A082484169F35E02D7235624 /* CommonGroundResultsView.swift in Sources */,
 				1D66CC9EE8FEA4BCD2B5B2EB /* CommonGroundRoomList.swift in Sources */,
 				54E213B51A1D5B127679B739 /* CommonGroundRoomViews.swift in Sources */,
+				6A7924F6C8D3FD3F37BAD6BC /* CommonGroundSourcePicks.swift in Sources */,
 				1AFA07991060C43CB11A7921 /* CommonGroundTapController.swift in Sources */,
 				58733A399C24E18ED0DD1F59 /* CommonGroundTapView.swift in Sources */,
 				80A95422E8CFC11EC99E011D /* CommonGroundTimelineView.swift in Sources */,

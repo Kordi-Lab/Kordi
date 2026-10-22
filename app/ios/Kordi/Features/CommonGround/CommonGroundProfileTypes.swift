@@ -83,11 +83,14 @@ struct CommonGroundProfileSummary: Decodable, Hashable, Identifiable {
     var design: String?
     /// The card's icon; nil means the design's glyph.
     var icon: String?
+    /// The card's saved source picks; nil until first saved or before version 3.
+    var sources: CommonGroundSourcePicks?
 
     var id: String { profileId }
 
     init(profileId: String, kind: String, name: String, focus: String? = nil, position: Int = 0,
-         hasCard: Bool = false, sharing: Bool = true, builtAt: String? = nil, topicCount: Int = 0, design: String? = nil, icon: String? = nil) {
+         hasCard: Bool = false, sharing: Bool = true, builtAt: String? = nil, topicCount: Int = 0, design: String? = nil, icon: String? = nil,
+         sources: CommonGroundSourcePicks? = nil) {
         self.profileId = profileId
         self.kind = kind
         self.name = name
@@ -99,9 +102,12 @@ struct CommonGroundProfileSummary: Decodable, Hashable, Identifiable {
         self.topicCount = topicCount
         self.design = design
         self.icon = icon
+        self.sources = sources
     }
 
-    private enum CodingKeys: String, CodingKey { case profileId, kind, name, focus, position, hasCard, sharing, builtAt, topicCount, design, icon }
+    private enum CodingKeys: String, CodingKey {
+        case profileId, kind, name, focus, position, hasCard, sharing, builtAt, topicCount, design, icon, sources
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -116,6 +122,7 @@ struct CommonGroundProfileSummary: Decodable, Hashable, Identifiable {
         topicCount = c.cgProfileValue(.topicCount, 0)
         design = c.cgProfileValue(.design, nil as String?)
         icon = c.cgProfileValue(.icon, nil as String?)
+        sources = c.cgProfileValue(.sources, nil as CommonGroundSourcePicks?)
     }
 
     var cardDesign: CommonGroundCardDesign { .of(kind: kind, name: name, design: design) }
@@ -177,13 +184,15 @@ struct CommonGroundNewProfile: Encodable, Hashable {
 
 /// `PUT profiles/:id`; nil leaves a field, an empty focus clears it.
 /// `icon` is left out when nil, sent as null when `.some(nil)` (back to the design's glyph).
+/// `sources` likewise; null forgets the picks.
 struct CommonGroundProfileEdit: Encodable, Hashable {
     var name: String?
     var focus: String?
     var design: String?
     var icon: String?? = nil
+    var sources: CommonGroundSourcePicks?? = nil
 
-    private enum CodingKeys: String, CodingKey { case name, focus, design, icon }
+    private enum CodingKeys: String, CodingKey { case name, focus, design, icon, sources }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -191,6 +200,7 @@ struct CommonGroundProfileEdit: Encodable, Hashable {
         try c.encodeIfPresent(focus, forKey: .focus)
         try c.encodeIfPresent(design, forKey: .design)
         if let icon { try c.encode(icon, forKey: .icon) }
+        if let sources { try c.encode(sources, forKey: .sources) }
     }
 }
 

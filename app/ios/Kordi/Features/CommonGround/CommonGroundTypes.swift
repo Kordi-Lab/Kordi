@@ -80,20 +80,23 @@ struct CommonGroundPerson: Decodable, Hashable, Identifiable {
     var relationship: CommonGroundRelationship?
     /// The profile this person shares with you; nil before profiles.
     var profile: CommonGroundProfileTag?
+    /// Their Kordi handle without "@"; nil when the server sends none.
+    var handle: String?
 
     var id: String { accountId }
 
     init(accountId: String, name: String, avatarUrl: String? = nil, hasCard: Bool? = nil,
-         relationship: CommonGroundRelationship? = nil, profile: CommonGroundProfileTag? = nil) {
+         relationship: CommonGroundRelationship? = nil, profile: CommonGroundProfileTag? = nil, handle: String? = nil) {
         self.accountId = accountId
         self.name = name
         self.avatarUrl = avatarUrl
         self.hasCard = hasCard
         self.relationship = relationship
         self.profile = profile
+        self.handle = handle
     }
 
-    private enum CodingKeys: String, CodingKey { case accountId, name, avatarUrl, hasCard, relationship, profile }
+    private enum CodingKeys: String, CodingKey { case accountId, name, avatarUrl, hasCard, relationship, profile, handle }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -103,6 +106,7 @@ struct CommonGroundPerson: Decodable, Hashable, Identifiable {
         hasCard = c.cgValue(.hasCard, nil as Bool?)
         relationship = c.cgValue(.relationship, nil as CommonGroundRelationship?)
         profile = c.cgValue(.profile, nil as CommonGroundProfileTag?)
+        handle = c.cgValue(.handle, nil as String?)
     }
 
     /// The name to show; the server may send an empty one.
@@ -235,16 +239,6 @@ struct CommonGroundOwnerView: Decodable, Hashable {
 
 struct CommonGroundDeviceItem: Codable, Hashable { let title: String; let date: String? }
 struct CommonGroundDeviceItems: Encodable, Hashable { let source: String; let items: [CommonGroundDeviceItem] }
-
-struct CommonGroundBuildRequest: Encodable, Hashable {
-    var memory: Bool
-    var connectors: Bool
-    var device: [CommonGroundDeviceItems]
-    var links: String
-    var notes: String
-    /// The profile to build; omitted before profiles.
-    var profileId: String? = nil
-}
 
 /// Someone's shared card: topics only.
 struct CommonGroundPersonCard: Decodable, Hashable {

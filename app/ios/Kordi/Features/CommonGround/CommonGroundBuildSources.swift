@@ -8,7 +8,6 @@ final class CommonGroundBuildSources: ObservableObject {
     @Published private(set) var states: [ConnectorProviderId: ConnectorState]?
     @Published private(set) var memoryCount: Int?
     @Published private(set) var memoryFailed = false
-    @Published private(set) var removing: ConnectorProviderId?
     @Published var error: String?
 
     @Published private(set) var connectors: (any ConnectorsClient)?
@@ -20,8 +19,8 @@ final class CommonGroundBuildSources: ObservableObject {
         if self.memory == nil { self.memory = memory }
     }
 
-    var connectedCount: Int {
-        states?.values.filter { $0.status == .connected && CommonGroundBuildCopy.connectorIds.contains($0.providerId) }.count ?? 0
+    func isConnected(_ providerId: ConnectorProviderId) -> Bool {
+        states?[providerId]?.status == .connected
     }
 
     var memoryLine: String {
@@ -54,47 +53,68 @@ final class CommonGroundBuildSources: ObservableObject {
             memoryFailed = memoryCount == nil
         }
     }
+}
 
-    func remove(_ providerId: ConnectorProviderId) async -> Bool {
-        guard let connectors else { return false }
-        removing = providerId
-        error = nil
-        defer { removing = nil }
-        do {
-            try await connectors.disconnect(providerId)
-            states?[providerId] = .empty(providerId)
-            await loadConnectors()
-            return true
-        } catch {
-            self.error = ConnectorsStore.message(error, fallback: "Could not remove \(ConnectorsModel.definition(providerId).name).")
-            return false
+private let sourceSeparatorInset = SessionDetailMetrics.rowHorizontalInset + 42
+
+/// Kordi: the Memory switch and the Documents row.
+struct CommonGroundKordiSection: View {
+    @ObservedObject var sources: CommonGroundBuildSources
+    let showsMemory: Bool
+    let showsDocuments: Bool
+    @Binding var memoryOn: Bool
+    let documentsLine: String
+    let onDocuments: () -> Void
+
+    var body: some View {
+        CommonGroundSection(title: "Kordi") {
+            if showsMemory { memoryRow }
+            if showsMemory && showsDocuments { SessionDetailSeparator(leading: sourceSeparatorInset) }
+            if showsDocuments { documentsRow }
         }
+    }
+
+    private var memoryRow: some View {
+        let usable = (sources.memoryCount ?? 0) > 0
+        return CommonGroundSourceRow(title: "Memory", subtitle: usable ? nil : sources.memoryLine) {
+            SessionSettingsIconTile(systemImage: "brain", color: KordiTheme.brandPink)
+        } trailing: {
+            Toggle("Memory", isOn: Binding(get: { memoryOn && usable }, set: { memoryOn = $0 }))
+                .labelsHidden()
+                .disabled(!usable)
+        }
+    }
+
+    private var documentsRow: some View {
+        Button(action: onDocuments) {
+            CommonGroundSourceRow(title: "Documents", subtitle: nil) {
+                SessionSettingsIconTile(systemImage: "doc.text", color: .blue)
+            } trailing: {
+                HStack(spacing: 6) {
+                    Text(documentsLine).foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
-/// One row per connector with Set up or Remove, then the Memory row.
-struct CommonGroundKordiSources: View {
+/// Connected accounts: an include switch per connected account, Set up for the rest.
+struct CommonGroundConnectorSection: View {
     @ObservedObject var sources: CommonGroundBuildSources
-    let showsConnectors: Bool
-    let showsMemory: Bool
-    @Binding var memoryOn: Bool
+    @Binding var included: Set<ConnectorProviderId>
     let onSetUp: (ConnectorProviderId) -> Void
-    @State private var confirming: ConnectorProviderId?
-
-    private static let separatorInset = SessionDetailMetrics.rowHorizontalInset + 42
 
     var body: some View {
-        CommonGroundSection(title: "Connectors") {
-            if showsConnectors {
-                ForEach(Array(CommonGroundBuildCopy.connectorIds.enumerated()), id: \.element) { index, id in
-                    if index > 0 { SessionDetailSeparator(leading: Self.separatorInset) }
-                    connectorRow(id)
-                }
+        CommonGroundSection(title: "Connected accounts") {
+            ForEach(Array(CommonGroundBuildCopy.connectorIds.enumerated()), id: \.element) { index, id in
+                if index > 0 { SessionDetailSeparator(leading: sourceSeparatorInset) }
+                row(id)
             }
-            if showsConnectors && showsMemory {
-                SessionDetailSeparator(leading: Self.separatorInset)
-            }
-            if showsMemory { memoryRow }
         }
         if let error = sources.error {
             Text(error)
@@ -105,59 +125,35 @@ struct CommonGroundKordiSources: View {
         }
     }
 
-    private func connectorRow(_ id: ConnectorProviderId) -> some View {
+    private func row(_ id: ConnectorProviderId) -> some View {
         let name = ConnectorsModel.definition(id).name
         let status = sources.states?[id]?.status
-        let asking = confirming == id && status == .connected
-        let line = sources.states == nil ? "Loading…"
-            : asking ? "Remove \(name)?"
-            : CommonGroundBuildCopy.connectorLine(id, status: status)
-        return CommonGroundSourceRow(title: name, subtitle: line) {
+        return CommonGroundSourceRow(title: name, subtitle: status == .needsReauth ? "Sign in again" : nil) {
             ConnectorLogo(providerId: id, size: 22)
                 .frame(width: 30, height: 30)
                 .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         } trailing: {
             if sources.states == nil {
                 EmptyView()
-            } else if asking {
-                HStack(spacing: 8) {
-                    Button("Cancel") { confirming = nil }
-                        .buttonStyle(.bordered).tint(.secondary)
-                    Button("Remove", role: .destructive) {
-                        Task { if await sources.remove(id) { confirming = nil } }
-                    }
-                    .buttonStyle(.borderedProminent).tint(.red)
-                }
-                .controlSize(.small)
-                .disabled(sources.removing != nil)
             } else if status == .connected {
-                Button("Remove") { confirming = id }
-                    .buttonStyle(.bordered).tint(.secondary).controlSize(.small)
-                    .accessibilityLabel("Remove \(name)")
+                Toggle(name, isOn: Binding(
+                    get: { included.contains(id) },
+                    set: { on in if on { included.insert(id) } else { included.remove(id) } }
+                ))
+                .labelsHidden()
             } else {
                 Button("Set up") { onSetUp(id) }
-                    .buttonStyle(.bordered).controlSize(.small)
+                    .buttonStyle(.borderless)
                     .accessibilityLabel("Set up \(name)")
             }
         }
     }
-
-    private var memoryRow: some View {
-        let usable = (sources.memoryCount ?? 0) > 0
-        return CommonGroundSourceRow(title: "Memory", subtitle: sources.memoryLine) {
-            SessionSettingsIconTile(systemImage: "brain", color: KordiTheme.brandPink)
-        } trailing: {
-            Toggle("Memory", isOn: Binding(get: { memoryOn && usable }, set: { memoryOn = $0 }))
-                .labelsHidden()
-                .disabled(!usable)
-        }
-    }
 }
 
-/// Icon, title, one secondary line and a trailing control.
+/// Icon, title, an optional secondary line and a trailing control.
 struct CommonGroundSourceRow<Icon: View, Trailing: View>: View {
     let title: String
-    let subtitle: String
+    let subtitle: String?
     @ViewBuilder let icon: Icon
     @ViewBuilder let trailing: Trailing
 
@@ -166,10 +162,12 @@ struct CommonGroundSourceRow<Icon: View, Trailing: View>: View {
             icon
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.body)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 8)
             trailing

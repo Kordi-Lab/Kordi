@@ -20,6 +20,8 @@ final class CommonGroundModel: ObservableObject {
     private let context: Context
     /// `commonGroundVersion` 2: profiles. Off, every call acts as before.
     let profilesEnabled: Bool
+    /// `commonGroundVersion` 3: saved card sources and Kordi documents.
+    let sourcesEnabled: Bool
     let defaults: UserDefaults
 
     @Published private(set) var owner: CommonGroundOwnerView?
@@ -53,10 +55,12 @@ final class CommonGroundModel: ObservableObject {
     /// The one-time move of designs kept on this device, run in the background.
     var designMove: Task<Void, Never>?
 
-    init(me: CommonGroundPerson, profilesEnabled: Bool = false, defaults: UserDefaults = .standard, context: @escaping Context) {
+    init(me: CommonGroundPerson, profilesEnabled: Bool = false, sourcesEnabled: Bool = false,
+         defaults: UserDefaults = .standard, context: @escaping Context) {
         self.me = me
         self.context = context
         self.profilesEnabled = profilesEnabled
+        self.sourcesEnabled = sourcesEnabled
         self.defaults = defaults
     }
 
@@ -191,6 +195,7 @@ final class CommonGroundModel: ObservableObject {
         request.profileId = activeProfileID
         if let view = await run("build", { try await $0.buildCommonGroundCard(token: $1, request: request) }) {
             apply(view)
+            if let picks = request.picks { rememberSources(picks, for: request.profileId) }
         }
     }
 

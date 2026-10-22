@@ -150,6 +150,7 @@ struct CommonGroundJoinSheet: View {
                     kindDesign: profile?.kindDesign,
                     name: profile?.title ?? "",
                     focus: profile?.focusLine,
+                    owner: model.me.cardOwner,
                     bottom: .topics(id == model.currentProfileID ? model.myTopics : model.walletTopics[id] ?? []),
                     width: cardWidth
                 )

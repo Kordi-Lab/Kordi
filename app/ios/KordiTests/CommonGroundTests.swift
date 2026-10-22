@@ -313,31 +313,32 @@ final class CommonGroundTests: XCTestCase {
         XCTAssertFalse(CommonGroundBuildChoices(links: "  ", notes: "\n").canBuild)
         XCTAssertTrue(CommonGroundBuildChoices(notes: "Agent memory").canBuild)
         XCTAssertTrue(CommonGroundBuildChoices(links: "https://example.com").canBuild)
-        XCTAssertTrue(CommonGroundBuildChoices(connectedCount: 1).canBuild)
+        XCTAssertTrue(CommonGroundBuildChoices(connectors: [.gmail]).canBuild)
         XCTAssertFalse(CommonGroundBuildChoices().canBuild)
     }
 
-    func testBuildRequestSendsConnectorsOnlyWhenConnected() throws {
-        let none = CommonGroundBuildChoices(memoryOn: true, memoryCount: 0, connectedCount: 0, notes: " Agents ").request
+    func testBuildRequestSendsConnectorsOnlyWhenIncluded() throws {
+        let none = CommonGroundBuildChoices(memoryOn: true, memoryCount: 0, connectors: [], notes: " Agents ").request
         XCTAssertFalse(none.connectors)
         XCTAssertFalse(none.memory)
         XCTAssertEqual(none.notes, "Agents")
 
-        let connected = CommonGroundBuildChoices(memoryOn: false, memoryCount: 3, connectedCount: 2).request
+        let connected = CommonGroundBuildChoices(memoryOn: false, memoryCount: 3, connectors: [.gmail, .github]).request
         XCTAssertTrue(connected.connectors)
         XCTAssertFalse(connected.memory)
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(connected)) as? [String: Any])
         XCTAssertEqual(body["connectors"] as? Bool, true)
         XCTAssertEqual(body["memory"] as? Bool, false)
+        XCTAssertNil(body["connectorProviders"], "version 2 sends no new fields")
+        XCTAssertNil(body["picks"])
     }
 
     func testBuildCopy() {
         XCTAssertEqual(CommonGroundBuildCopy.memoryLine(12), "12 memories")
         XCTAssertEqual(CommonGroundBuildCopy.memoryLine(1), "1 memory")
         XCTAssertEqual(CommonGroundBuildCopy.memoryLine(0), "No memories yet")
-        XCTAssertEqual(CommonGroundBuildCopy.connectorLine(.gmail, status: nil), "Paper, review and conference threads")
-        XCTAssertEqual(CommonGroundBuildCopy.connectorLine(.github, status: .connected), "Connected")
-        XCTAssertEqual(CommonGroundBuildCopy.connectorLine(.slack, status: .needsReauth), "Sign in again")
+        XCTAssertEqual(CommonGroundBuildCopy.documentsLine(0), "None chosen")
+        XCTAssertEqual(CommonGroundBuildCopy.documentsLine(2), "2 chosen")
         XCTAssertEqual(CommonGroundModel.messages["common_ground_no_card"], "Build your profile first.")
     }
 }

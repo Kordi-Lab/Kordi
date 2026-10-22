@@ -34,7 +34,8 @@ struct CommonGroundCardDetail: View {
                     .ignoresSafeArea()
                     .onTapGesture(perform: close)
                 ZStack {
-                    ProfileCardView(design: card.design, icon: card.icon, kindDesign: card.kindDesign, name: card.name, focus: card.focus, bottom: .topics(card.topics), width: cardWidth)
+                    ProfileCardView(design: card.design, icon: card.icon, kindDesign: card.kindDesign, name: card.name, focus: card.focus,
+                                    owner: model.me.cardOwner, bottom: .topics(card.topics), width: cardWidth)
                         .opacity(flipped ? 0 : 1)
                     back(maxHeight: maxHeight)
                         .rotation3DEffect(.degrees(reduceMotion ? 0 : 180), axis: (x: 0, y: 1, z: 0))

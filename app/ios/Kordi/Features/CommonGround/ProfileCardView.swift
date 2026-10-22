@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// A profile drawn as a card in its design: the kind's glyph, the name, the
-/// focus line, up to five topic chips and the Kordi bird. The New card
+/// focus line, the owner's name, up to five topic chips, and the owner's
+/// handle beside the Kordi bird. The New card
 /// sheet passes bindings so the name and focus are typed on the card.
 struct ProfileCardView: View {
     enum Trailing { case none, more, check, badge(String) }
@@ -20,6 +21,8 @@ struct ProfileCardView: View {
     var kindDesign: CommonGroundCardDesign? = nil
     var name: String
     var focus: String? = nil
+    /// The person whose card it is; nil draws neither name nor handle.
+    var owner: CommonGroundCardOwner? = nil
     var bottom: Bottom = .topics([])
     var trailing: Trailing = .none
     var showsMark = true
@@ -35,18 +38,31 @@ struct ProfileCardView: View {
 
     var body: some View {
         let palette = design.palette(scheme)
+        let handle = owner?.handleLine
         ZStack(alignment: .topLeading) {
             CommonGroundCardSurface(design: design)
             VStack(alignment: .leading, spacing: 0) {
                 head(palette)
                 focusLine(palette)
+                ownerName
                 Spacer(minLength: 0)
             }
             bottomArea(palette)
                 .padding(.leading, 16)
-                .padding(.trailing, 46)
+                .padding(.trailing, 46 + handleReserve(handle))
                 .padding(.bottom, 16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            if let handle {
+                Text(handle)
+                    .font(.system(size: 11 * scale, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .opacity(0.8)
+                    .frame(maxWidth: handleMaxWidth, alignment: .trailing)
+                    .padding(.trailing, 44)
+                    .padding(.bottom, 20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
             if showsMark {
                 KordiMark(size: 24, tint: KordiBirdTint(body: palette.text, beak: KordiTheme.brandAmber))
                     .opacity(0.82)
@@ -58,6 +74,27 @@ struct ProfileCardView: View {
         .foregroundStyle(palette.text)
         .frame(width: width, height: width * Self.aspect)
         .accessibilityElement(children: .contain)
+    }
+
+    /// Name and handle sizes follow the card; 1 at the wallet's 338 pt.
+    private var scale: CGFloat { width / 338 }
+    private var handleMaxWidth: CGFloat { width * 0.36 }
+
+    /// Room kept clear of the handle, from a monospaced width estimate.
+    private func handleReserve(_ handle: String?) -> CGFloat {
+        guard let handle else { return 0 }
+        return min(CGFloat(handle.count) * 11 * scale * 0.61, handleMaxWidth) + 6
+    }
+
+    @ViewBuilder private var ownerName: some View {
+        if let name = owner?.name, !name.isEmpty {
+            Text(name)
+                .font(.system(size: 20 * scale, weight: .semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+        }
     }
 
     private func head(_ palette: CommonGroundCardPalette) -> some View {
@@ -178,6 +215,29 @@ struct ProfileCardView: View {
             .accessibilityHidden(true)
         }
     }
+}
+
+/// The name and handle a card carries: its owner's.
+struct CommonGroundCardOwner: Hashable {
+    let name: String
+    /// Without "@"; nil or empty hides the handle.
+    var handle: String?
+
+    init(name: String, handle: String? = nil) {
+        self.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.handle = handle
+    }
+
+    /// "@shuyang"; nil without a handle.
+    var handleLine: String? {
+        var text = Substring((handle ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
+        while text.first == "@" { text = text.dropFirst() }
+        return text.isEmpty ? nil : "@\(text)"
+    }
+}
+
+extension CommonGroundPerson {
+    var cardOwner: CommonGroundCardOwner { CommonGroundCardOwner(name: name, handle: handle) }
 }
 
 /// The card's icon, else the design's glyph, on a tinted rounded tile; a

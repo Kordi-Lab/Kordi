@@ -23,6 +23,11 @@ enum CommonGroundAvailability {
         (capabilities?.commonGroundVersion ?? 0) >= 2
     }
 
+    /// Version 3 keeps each card's sources and reads Kordi documents.
+    static func hasSources(capabilities: CloudAuthCapabilities?) -> Bool {
+        (capabilities?.commonGroundVersion ?? 0) >= 3
+    }
+
     /// Whether a room invitation is waiting. There is no invitation feed
     /// outside a room yet, so the dot stays off.
     static func hasWaitingInvitation() -> Bool { false }
@@ -40,10 +45,12 @@ extension AppModel {
         let me = CommonGroundPerson(
             accountId: account?.accountId ?? "",
             name: account?.preferredName ?? "",
-            avatarUrl: account?.avatarUrl
+            avatarUrl: account?.avatarUrl,
+            handle: ProfileDraft.customHandle(account?.kordiId)
         )
         let profiles = CommonGroundAvailability.hasProfiles(capabilities: memoryCapabilities)
-        return CommonGroundModel(me: me, profilesEnabled: profiles) { [weak self] in
+        let sources = profiles && CommonGroundAvailability.hasSources(capabilities: memoryCapabilities)
+        return CommonGroundModel(me: me, profilesEnabled: profiles, sourcesEnabled: sources) { [weak self] in
             guard let self else { throw CancellationError() }
             let (api, token, _) = try self.digestContext()
             return (api, token)
