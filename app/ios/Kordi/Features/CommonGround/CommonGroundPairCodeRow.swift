@@ -102,9 +102,7 @@ struct CommonGroundJoinSheet: View {
     @State private var error: String?
 
     private var choices: [CommonGroundProfileSummary] { model.shareChoices }
-    private var suggested: String? {
-        CommonGroundProfileChoice.suggested(roomKind: model.suggestedKind(ofRoom: code), in: choices)
-    }
+    private var suggested: String? { model.suggestedProfile(forRoom: code) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -136,11 +134,7 @@ struct CommonGroundJoinSheet: View {
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
-        .onAppear {
-            selected = CommonGroundProfileChoice.preselected(
-                roomKind: model.suggestedKind(ofRoom: code), current: model.currentProfileID, in: choices
-            )
-        }
+        .onAppear { selected = model.preselectedProfile(forRoom: code) }
     }
 
     private func share() async {

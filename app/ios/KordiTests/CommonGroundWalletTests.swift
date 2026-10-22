@@ -207,6 +207,7 @@ final class CommonGroundWalletTests: XCTestCase {
         CommonGroundURLProtocol.stub("PUT", "/v1/cloud/common-ground/profiles/cgp_t", [(503, #"{"errorCode":"unavailable","message":"x"}"#)])
 
         await model.loadProfiles()
+        await model.designMove?.value
         let puts = CommonGroundURLProtocol.requests.filter { $0.request.httpMethod == "PUT" }
         XCTAssertEqual(puts.map { $0.request.url?.path ?? "" }, [
             "/v1/cloud/common-ground/profiles/cgp_k", "/v1/cloud/common-ground/profiles/cgp_t",
@@ -220,6 +221,7 @@ final class CommonGroundWalletTests: XCTestCase {
 
         CommonGroundURLProtocol.stub("PUT", "/v1/cloud/common-ground/profiles/cgp_t", [(200, #"{"profileId":"cgp_t","kind":"custom","name":"Trail","position":3,"design":"custom"}"#)])
         await model.loadProfiles()
+        await model.designMove?.value
         XCTAssertEqual(CommonGroundURLProtocol.requests.filter { $0.request.httpMethod == "PUT" }.count, 3, "the earlier sends are not repeated")
         XCTAssertNil(defaults.string(forKey: CommonGroundCardDesignStore.key("cgp_t")))
     }
@@ -422,5 +424,73 @@ final class CommonGroundWalletTests: XCTestCase {
         CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/rooms/1111/preview", [(404, #"{"errorCode":"not_found","message":"Not found."}"#)])
         let older = await model.previewRoom("1111")
         XCTAssertEqual(older, .unavailable, "a server without the route joins as before")
+    }
+
+    func testMemberPreviewAndSuggestedCard() async throws {
+        let model = stubbedModel(profiles: true, defaults: freshDefaults())
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/profiles", [(200, CommonGroundProfileTests.profilesJSON)])
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/rooms/0427/preview", [(200, #"{"code":"0427","name":"Lab","kind":"work","memberCount":3,"member":true,"profileId":"cgp_h"}"#)])
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/rooms/0533/preview", [(200, #"{"code":"0533","name":"Run","kind":"work","memberCount":2,"member":false,"suggestedProfileId":"cgp_h"}"#)])
+        await model.loadProfiles()
+        guard case .found(let member) = await model.previewRoom("0427") else { return XCTFail("expected a room") }
+        XCTAssertTrue(member.member)
+        XCTAssertEqual(model.sharingLine(inRoom: "0427"), "Sharing: Health", "a member keeps the card shared there")
+        _ = await model.previewRoom("0533")
+        XCTAssertEqual(model.preselectedProfile(forRoom: "0533"), "cgp_h", "the server's pick wins over the kind")
+        model.roomPreviews["0533"]?.suggestedProfileId = "cgp_k"
+        XCTAssertEqual(model.preselectedProfile(forRoom: "0533"), "cgp_w", "a card without topics falls back to the kind")
+        XCTAssertEqual(model.joinRequest(profileId: "cgp_h").profileId, "cgp_h")
+        XCTAssertEqual(model.currentProfileID, "cgp_w", "joining leaves the selected card alone")
+    }
+
+    func testStaleCodeLookupIsDropped() async throws {
+        let model = stubbedModel(profiles: true, defaults: freshDefaults())
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/rooms/1111/preview", [(200, #"{"code":"1111","name":"Old"}"#)])
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/rooms/2222/preview", [(200, #"{"code":"2222","name":"New"}"#)])
+        let first = Task { await model.previewRoom("1111") }
+        while model.latestLookup != "1111" { await Task.yield() }
+        let second = await model.previewRoom("2222")
+        let stale = await first.value
+        XCTAssertEqual(stale, .stale)
+        XCTAssertNil(model.roomPreviews["1111"], "a stale answer is not kept")
+        guard case .found(let room) = second else { return XCTFail("expected the latest room") }
+        XCTAssertEqual(room.title, "New")
+    }
+
+    func testEmptyNameRestoresTheKindsName() async throws {
+        let model = stubbedModel(profiles: true, defaults: freshDefaults())
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/profiles", [(200, CommonGroundProfileTests.profilesJSON)])
+        CommonGroundURLProtocol.stub("PUT", "/v1/cloud/common-ground/profiles/cgp_h", [(200, #"{"profileId":"cgp_h","kind":"health","name":"","position":1}"#)])
+        await model.loadProfiles()
+        let restored = await model.updateProfile("cgp_h", name: "  ")
+        XCTAssertTrue(restored)
+        let sent = try body(XCTUnwrap(CommonGroundURLProtocol.requests.last { $0.request.httpMethod == "PUT" }))
+        XCTAssertEqual(sent["name"] as? String, "", "the server restores the kind's name")
+        let before = CommonGroundURLProtocol.requests.count
+        let refused = await model.updateProfile("cgp_k", name: "")
+        XCTAssertFalse(refused)
+        XCTAssertEqual(model.nameRefusal(" ", for: "cgp_k"), "A custom card needs a name.")
+        XCTAssertEqual(CommonGroundURLProtocol.requests.count, before, "a custom card is never sent without a name")
+    }
+
+    // MARK: Sync
+
+    func testHomeReloadsCardsAtMostEvery30Seconds() async throws {
+        let model = stubbedModel(profiles: true, defaults: freshDefaults())
+        let path = "/v1/cloud/common-ground/profiles"
+        let card = "GET /v1/cloud/common-ground/card"
+        CommonGroundURLProtocol.stub("GET", path, [(200, #"{"profiles":[{"profileId":"cgp_w","kind":"work","name":"","position":0,"hasCard":true,"design":"ocean","icon":"flask"}]}"#)])
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/card", [(200, #"{"card":null,"sharing":true,"build":{"status":"idle"}}"#)])
+        let start = Date()
+        await model.refreshHome(now: start)
+        XCTAssertEqual(model.walletCards.first?.design, .ocean)
+        CommonGroundURLProtocol.stub("GET", path, [(200, #"{"profiles":[{"profileId":"cgp_w","kind":"work","name":"","position":0,"hasCard":true,"design":"research","icon":"rocket"}]}"#)])
+        let cardCalls = CommonGroundURLProtocol.paths.filter { $0 == card }.count
+        await model.refreshHome(now: start.addingTimeInterval(10))
+        XCTAssertEqual(model.walletCards.first?.design, .ocean, "nothing reloads within 30 seconds")
+        await model.refreshHome(now: start.addingTimeInterval(31))
+        XCTAssertEqual(model.walletCards.first?.design, .research, "a colour changed on another device shows here")
+        XCTAssertEqual(model.walletCards.first?.icon, .rocket)
+        XCTAssertEqual(CommonGroundURLProtocol.paths.filter { $0 == card }.count, cardCalls + 1, "the current card reloads too")
     }
 }

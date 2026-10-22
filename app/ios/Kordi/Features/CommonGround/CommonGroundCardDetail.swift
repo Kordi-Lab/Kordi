@@ -15,6 +15,7 @@ struct CommonGroundCardDetail: View {
     @State private var flipped = false
     @State private var renaming = false
     @State private var nameDraft = ""
+    @State private var nameError: String?
     @State private var confirmsDelete = false
     @State private var backHeight: CGFloat = 0
     @FocusState private var nameFocused: Bool
@@ -58,7 +59,10 @@ struct CommonGroundCardDetail: View {
     }
 
     private func close() {
-        if renaming { saveName() }
+        if renaming {
+            saveName()
+            renaming = false
+        }
         withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .easeOut(duration: 0.3)) { flipped = false }
         Task {
             try? await Task.sleep(for: .milliseconds(reduceMotion ? 200 : 300))
@@ -115,6 +119,13 @@ struct CommonGroundCardDetail: View {
             .padding(.leading, 16)
             .padding(.trailing, 12)
             .frame(height: 60)
+            if renaming, let nameError {
+                Text(nameError)
+                    .font(.footnote)
+                    .foregroundStyle(palette.danger)
+                    .padding(.horizontal, 16)
+                    .padding(.top, -8)
+            }
             if let focus = card.focus, !focus.isEmpty {
                 Text(focus)
                     .font(.system(size: 14))
@@ -194,6 +205,7 @@ struct CommonGroundCardDetail: View {
             if model.profilesEnabled, profile != nil {
                 actionButton("Rename", "pencil", palette) {
                     nameDraft = title
+                    nameError = nil
                     renaming = true
                     nameFocused = true
                 }
@@ -220,11 +232,19 @@ struct CommonGroundCardDetail: View {
         .buttonStyle(.plain)
     }
 
+    /// An emptied name goes back to the kind's name; a custom card keeps
+    /// the field open with a short line instead.
     private func saveName() {
         let name = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        renaming = false
-        guard !name.isEmpty, name != title else { return }
         let id = card.id
+        if let refusal = model.nameRefusal(name, for: id) {
+            nameError = refusal
+            nameFocused = true
+            return
+        }
+        nameError = nil
+        renaming = false
+        guard name.isEmpty ? profile?.name.isEmpty == false : name != title else { return }
         Task { await model.updateProfile(id, name: name) }
     }
 

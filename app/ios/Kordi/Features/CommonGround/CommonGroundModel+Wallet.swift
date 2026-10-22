@@ -15,16 +15,23 @@ struct CommonGroundRoomPreview: Decodable, Hashable {
     var kind: String?
     var memberCount: Int
     var member: Bool
+    /// For a member, the card already shared there.
+    var profileId: String?
+    /// For anyone else, the card a join would share.
+    var suggestedProfileId: String?
 
-    init(code: String, name: String, kind: String? = nil, memberCount: Int = 0, member: Bool = false) {
+    init(code: String, name: String, kind: String? = nil, memberCount: Int = 0, member: Bool = false,
+         profileId: String? = nil, suggestedProfileId: String? = nil) {
         self.code = code
         self.name = name
         self.kind = kind
         self.memberCount = memberCount
         self.member = member
+        self.profileId = profileId
+        self.suggestedProfileId = suggestedProfileId
     }
 
-    private enum CodingKeys: String, CodingKey { case code, name, kind, memberCount, member }
+    private enum CodingKeys: String, CodingKey { case code, name, kind, memberCount, member, profileId, suggestedProfileId }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -33,6 +40,8 @@ struct CommonGroundRoomPreview: Decodable, Hashable {
         kind = (try? c.decodeIfPresent(String.self, forKey: .kind)) ?? nil
         memberCount = (try? c.decodeIfPresent(Int.self, forKey: .memberCount)) ?? 0
         member = (try? c.decodeIfPresent(Bool.self, forKey: .member)) ?? false
+        profileId = (try? c.decodeIfPresent(String.self, forKey: .profileId)) ?? nil
+        suggestedProfileId = (try? c.decodeIfPresent(String.self, forKey: .suggestedProfileId)) ?? nil
     }
 
     var title: String {
@@ -55,6 +64,8 @@ enum CommonGroundRoomLookup: Equatable {
     case failed(String?)
     /// The server has no preview; the join goes ahead as before.
     case unavailable
+    /// A newer code was typed meanwhile; this answer is dropped.
+    case stale
 }
 
 /// One card in Home's wallet.
@@ -209,20 +220,38 @@ extension CommonGroundModel {
         return room
     }
 
-    /// Looks a typed code up once. Preview shares the join budget, so it is
-    /// never retried; a 429 asks to wait.
+    /// Looks a typed code up once, never retried; a 429 asks to wait. Only
+    /// the latest code's answer counts, so an older one comes back `.stale`.
     func previewRoom(_ code: String) async -> CommonGroundRoomLookup {
+        latestLookup = code
+        let lookup: CommonGroundRoomLookup
         do {
             let preview = try await call { try await $0.commonGroundRoomPreview(token: $1, code: code) }
+            guard latestLookup == code else { return .stale }
             roomPreviews[code] = preview
-            return .found(preview)
+            lookup = .found(preview)
         } catch let error as CloudAPIError where error.statusCode == 404 && !error.code.hasPrefix("common_ground") {
-            return .unavailable
+            lookup = .unavailable
         } catch let error as CloudAPIError where error.statusCode == 429 || error.code == "rate_limited" {
-            return .failed("Try again in a minute.")
+            lookup = .failed("Try again in a minute.")
         } catch {
-            return .failed(Self.message(for: error))
+            lookup = .failed(Self.message(for: error))
         }
+        return latestLookup == code ? lookup : .stale
+    }
+
+    /// The card a room suggests: the server's pick when it is one you can
+    /// share, else the first card of the room's kind.
+    func suggestedProfile(forRoom code: String) -> String? {
+        if let id = roomPreviews[code]?.suggestedProfileId, shareChoices.contains(where: { $0.profileId == id }) { return id }
+        return CommonGroundProfileChoice.suggested(roomKind: suggestedKind(ofRoom: code), in: shareChoices)
+    }
+
+    /// The card a join preselects: the suggested one, else the current card,
+    /// else the first card you can share.
+    func preselectedProfile(forRoom code: String) -> String? {
+        suggestedProfile(forRoom: code)
+            ?? CommonGroundProfileChoice.preselected(roomKind: nil, current: currentProfileID, in: shareChoices)
     }
 
     /// "Work · 5 people" for a code looked up before joining.

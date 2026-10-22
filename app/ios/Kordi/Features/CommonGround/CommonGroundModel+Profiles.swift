@@ -33,7 +33,7 @@ extension CommonGroundModel {
     func loadProfiles() async {
         guard profilesEnabled, let list = try? await call({ try await $0.commonGroundProfiles(token: $1) }) else { return }
         profiles = list.profiles
-        await moveLocalDesigns()
+        startDesignMove()
         let saved = currentProfileID ?? CommonGroundProfileChoice.saved(account: me.accountId, defaults: defaults)
         let current = CommonGroundProfileChoice.current(saved: saved, in: profiles)
         if current != currentProfileID {
@@ -63,11 +63,22 @@ extension CommonGroundModel {
         return created
     }
 
+    /// Why a name cannot be saved: a custom card needs one. An empty name on
+    /// any other card restores the kind's name.
+    func nameRefusal(_ name: String, for profileId: String) -> String? {
+        let empty = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return empty && profile(profileId)?.profileKind == .custom ? "A custom card needs a name." : nil
+    }
+
     /// Renames a profile or changes its focus; an empty focus clears it.
     /// A rename keeps a custom card's look by sending the design it shows.
     @discardableResult
     func updateProfile(_ profileId: String, name: String? = nil, focus: String? = nil,
                        design: CommonGroundCardDesign? = nil) async -> Bool {
+        if let name, let refusal = nameRefusal(name, for: profileId) {
+            notice = refusal
+            return false
+        }
         let current = profile(profileId)
         let kept = name != nil && current?.design == nil && current?.profileKind == .custom ? current?.cardDesign : nil
         let edit = CommonGroundProfileEdit(
@@ -98,11 +109,22 @@ extension CommonGroundModel {
         return true
     }
 
+    /// Starts the design move in the background, so Home never waits on it;
+    /// one runs at a time and only while this device still keeps a design.
+    func startDesignMove() {
+        guard designMove == nil,
+              profiles.contains(where: { CommonGroundCardDesignStore.saved($0.profileId, defaults: defaults) != nil }) else { return }
+        designMove = Task { [weak self] in
+            await self?.moveLocalDesigns()
+            self?.designMove = nil
+        }
+    }
+
     /// Sends each design an earlier build kept on this device to the server
     /// once, for profiles the server has no design for, then drops it.
     /// A failed send is dropped too, except a network error or a busy server.
     func moveLocalDesigns() async {
-        for (index, profile) in profiles.enumerated() {
+        for profile in profiles {
             guard let local = CommonGroundCardDesignStore.saved(profile.profileId, defaults: defaults) else { continue }
             guard profile.design == nil else {
                 CommonGroundCardDesignStore.drop(profile.profileId, defaults: defaults)
@@ -113,7 +135,7 @@ extension CommonGroundModel {
                 let saved = try await call {
                     try await $0.updateCommonGroundProfile(token: $1, profileId: id, edit: CommonGroundProfileEdit(design: local.rawValue))
                 }
-                if profiles.indices.contains(index), profiles[index].profileId == id { profiles[index] = saved }
+                if let index = profiles.firstIndex(where: { $0.profileId == id }) { profiles[index] = saved }
             } catch {
                 let status = (error as? CloudAPIError)?.statusCode ?? 0
                 if status == 0 || status == 429 || status >= 500 { continue }
@@ -127,6 +149,7 @@ extension CommonGroundModel {
     /// The profile you share in a room, from the room or the rooms list.
     func sharedProfileID(inRoom code: String) -> String? {
         rooms[code]?.profileId ?? roomList?.first { $0.code == code }?.profileId
+            ?? roomPreviews[code].flatMap { $0.member ? $0.profileId : nil }
     }
 
     /// The kind a room suggests, when it is known before joining.

@@ -11,6 +11,8 @@ final class CommonGroundModel: ObservableObject {
     nonisolated static let buildPollInterval: Duration = .seconds(3)
     nonisolated static let lobbyPollInterval: Duration = .seconds(2)
     nonisolated static let matchPollInterval: Duration = .seconds(3)
+    /// Home reloads cards on appear and on foreground at most this often.
+    nonisolated static let syncInterval: TimeInterval = 30
     /// Typed tags stay short enough to read at a glance.
     static let tagMax = 40
 
@@ -44,6 +46,12 @@ final class CommonGroundModel: ObservableObject {
     @Published var roomPreviews: [String: CommonGroundRoomPreview] = [:]
     /// The viewer's profile to see each person through, from Recent or a room.
     var viewerProfiles: [String: String] = [:]
+    /// The last code looked up; an answer for any other code is stale.
+    var latestLookup: String?
+    /// When Home last reloaded, for the 30-second throttle.
+    var lastSync: Date?
+    /// The one-time move of designs kept on this device, run in the background.
+    var designMove: Task<Void, Never>?
 
     init(me: CommonGroundPerson, profilesEnabled: Bool = false, defaults: UserDefaults = .standard, context: @escaping Context) {
         self.me = me
@@ -118,6 +126,16 @@ final class CommonGroundModel: ObservableObject {
     }
 
     // MARK: Home
+
+    /// Loads Home when it appears or the app comes back, at most once per
+    /// `syncInterval`, so a card's look or name changed on another device
+    /// shows here too.
+    func refreshHome(now: Date = Date()) async {
+        if let lastSync, now.timeIntervalSince(lastSync) < Self.syncInterval { return }
+        lastSync = now
+        await loadHome()
+        await loadWalletTopics()
+    }
 
     func loadHome() async {
         if profilesEnabled { await loadProfiles() }

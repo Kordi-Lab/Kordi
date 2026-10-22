@@ -4,6 +4,7 @@ import SwiftUI
 /// Rooms, Recent and Your card.
 struct CommonGroundHome: View {
     @EnvironmentObject private var model: CommonGroundModel
+    @Environment(\.scenePhase) private var scenePhase
     @Binding var path: [CommonGroundRoute]
     var onClose: (() -> Void)? = nil
     @State private var containerWidth: CGFloat = 390
@@ -78,7 +79,10 @@ struct CommonGroundHome: View {
             }
         }
         .onChange(of: code) { _, typed in if !typed.isEmpty { codeError = nil } }
-        .task { await model.loadHome(); await model.loadWalletTopics() }
+        .task { await model.refreshHome() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await model.refreshHome() } }
+        }
         .task(id: model.isBuilding) { await model.waitForBuild() }
         .sheet(item: $joinCode, onDismiss: { code = "" }) { target in
             CommonGroundJoinSheet(code: target.code ?? "", cardWidth: cardWidth) { room, profile in
@@ -145,19 +149,21 @@ struct CommonGroundHome: View {
     }
 
     /// Looks the code up once, then joins, asking to turn on sharing first.
+    /// A room you are already in opens as it is: joining again with another
+    /// card would switch the shared card and clear its matches.
     private func entered(_ entered: String) {
         codeError = nil
-        guard !model.isInOpenRoom(entered) else { return join(entered) }
+        guard !model.isInOpenRoom(entered) else { return open(entered) }
         Task {
             switch await model.previewRoom(entered) {
+            case .stale:
+                return
             case .failed(let message):
                 codeError = message
                 code = ""
                 return
             case .found(let room) where room.member:
-                code = ""
-                model.notice = "Already in \(room.title)"
-                return
+                return open(entered)
             case .found, .unavailable:
                 break
             }
@@ -165,18 +171,19 @@ struct CommonGroundHome: View {
         }
     }
 
+    private func open(_ entered: String) {
+        code = ""
+        path.append(.results(entered))
+    }
+
     private func join(_ entered: String) {
-        if model.isInOpenRoom(entered) {
-            code = ""
-            model.notice = "Already in \(model.roomTitle(entered))"
-            return
-        }
+        if model.isInOpenRoom(entered) { return open(entered) }
         if model.asksWhichProfile {
             joinCode = CommonGroundCodeTarget(code: entered)
             return
         }
         Task {
-            let profileId = model.shareChoices.first?.profileId
+            let profileId = model.preselectedProfile(forRoom: entered)
             if let room = await model.joinFromHome(entered, profileId: profileId) {
                 model.notice = model.profile(profileId).map { "Sharing \($0.title) in \(room.title)" } ?? "Joined \(room.title)"
             } else {

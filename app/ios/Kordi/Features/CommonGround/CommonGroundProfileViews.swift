@@ -46,7 +46,10 @@ private struct CommonGroundProfileEditor: ViewModifier {
             .alert(target?.action == .rename ? "Rename profile" : "Edit focus", isPresented: shows(.rename, .focus), presenting: target) { target in
                 TextField(target.action == .rename ? "Name" : "Focus", text: $text)
                 Button("Save") { save(target) }
+                    .disabled(refusal(target) != nil)
                 Button("Cancel", role: .cancel) {}
+            } message: { target in
+                if let refusal = refusal(target) { Text(refusal) }
             }
             .confirmationDialog(
                 "Delete \(target?.profile.title ?? "profile")?",
@@ -64,6 +67,11 @@ private struct CommonGroundProfileEditor: ViewModifier {
                 guard let target else { return }
                 text = target.action == .rename ? target.profile.title : (target.profile.focus ?? "")
             }
+    }
+
+    /// A custom card's name cannot be emptied; any other goes back to its kind's name.
+    private func refusal(_ target: CommonGroundProfileEditTarget) -> String? {
+        target.action == .rename ? model.nameRefusal(text, for: target.profile.profileId) : nil
     }
 
     private func save(_ target: CommonGroundProfileEditTarget) {
