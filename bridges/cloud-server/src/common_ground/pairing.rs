@@ -289,6 +289,8 @@ type PairedRow = (
     String,
     String,
     String,
+    Option<String>,
+    Option<String>,
 );
 
 /// `GET /v1/cloud/common-ground/pairings`: people you paired with, newest
@@ -300,7 +302,7 @@ pub(super) async fn list(
     let rows: sqlx_core::Result<Vec<PairedRow>> = query_as(
         "SELECT account.account_id, account.display_name, account.avatar_url, pairing.created_at,
                 CASE WHEN pairing.account_a = $1 THEN pairing.profile_a ELSE pairing.profile_b END,
-                theirs.profile_id, theirs.kind, theirs.name
+                theirs.profile_id, theirs.kind, theirs.name, theirs.design, theirs.icon
          FROM cloud_common_ground_pairings pairing
          JOIN cloud_accounts account ON account.account_id =
              CASE WHEN pairing.account_a = $1 THEN pairing.account_b ELSE pairing.account_a END
@@ -317,11 +319,28 @@ pub(super) async fn list(
             let people: Vec<_> = rows
                 .into_iter()
                 .map(
-                    |(account_id, name, avatar_url, paired_at, mine, theirs, kind, label)| {
+                    |(
+                        account_id,
+                        name,
+                        avatar_url,
+                        paired_at,
+                        mine,
+                        theirs,
+                        kind,
+                        label,
+                        design,
+                        icon,
+                    )| {
                         let mut person =
                             people::person(&account_id, name.as_deref(), avatar_url.as_deref());
                         person["pairedAt"] = json!(paired_at);
-                        person["profile"] = profiles::tag(&theirs, &kind, &label);
+                        person["profile"] = profiles::tag(
+                            &theirs,
+                            &kind,
+                            &label,
+                            design.as_deref(),
+                            icon.as_deref(),
+                        );
                         person["profileId"] = json!(mine);
                         person
                     },

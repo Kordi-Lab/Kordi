@@ -28,6 +28,8 @@ type RecentRow = (
     String,
     String,
     String,
+    Option<String>,
+    Option<String>,
 );
 
 /// `GET /v1/cloud/common-ground/recent`: people whose match you opened,
@@ -51,7 +53,8 @@ pub(in crate::common_ground) async fn recent(
                         AND other_card.sharing_enabled
                         AND other_card.revision = m.other_revision
                         AND {}, false) AS current,
-                    m.viewer_profile_id, theirs.profile_id, theirs.kind, theirs.name
+                    m.viewer_profile_id, theirs.profile_id, theirs.kind, theirs.name, theirs.design,
+                    theirs.icon
              FROM cloud_common_ground_matches m
              JOIN cloud_accounts account ON account.account_id = m.other_account_id
              JOIN cloud_common_ground_profiles theirs ON theirs.profile_id = m.other_profile_id
@@ -82,12 +85,26 @@ pub(in crate::common_ground) async fn recent(
     let people: Vec<Value> = rows
         .into_iter()
         .map(
-            |(id, name, avatar_url, value, opened_at, current, mine, theirs, kind, label)| {
+            |(
+                id,
+                name,
+                avatar_url,
+                value,
+                opened_at,
+                current,
+                mine,
+                theirs,
+                kind,
+                label,
+                design,
+                icon,
+            )| {
                 let result = current
                     .then(|| serde_json::from_value::<MatchResult>(value).ok())
                     .flatten();
                 let mut person = people::person(&id, name.as_deref(), avatar_url.as_deref());
-                person["profile"] = profiles::tag(&theirs, &kind, &label);
+                person["profile"] =
+                    profiles::tag(&theirs, &kind, &label, design.as_deref(), icon.as_deref());
                 let mut entry = json!({
                     "person": person,
                     "profileId": mine,

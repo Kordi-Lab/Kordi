@@ -21,10 +21,12 @@ use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
 mod create;
+mod preview;
 mod switch;
 mod view;
 
 pub(super) use create::create;
+pub(super) use preview::preview;
 
 pub(super) use switch::switch_profile;
 use view::view_response;
