@@ -71,6 +71,7 @@ tests=(
   common_ground_tests::upgrade_from_141_adds_profiles
   common_ground_tests::upgrade_from_142_adds_group_intros
   common_ground_tests::upgrade_from_143_adds_profile_design
+  common_ground_tests::upgrade_from_144_adds_profile_icon
 )
 index=0
 for test_name in "${tests[@]}"; do

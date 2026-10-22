@@ -160,6 +160,9 @@ async fn profiles_keep_a_card_design() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(
         body["members"][0]["profile"],
-        json!({"profileId": kaust_id, "kind": "custom", "name": "KAUST", "design": "workshop"})
+        json!({
+            "profileId": kaust_id, "kind": "custom", "name": "KAUST", "design": "workshop",
+            "icon": null
+        })
     );
 }

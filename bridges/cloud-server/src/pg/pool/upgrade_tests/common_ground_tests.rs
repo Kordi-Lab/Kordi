@@ -394,3 +394,36 @@ async fn upgrade_from_143_adds_profile_design() {
         "unknown designs are rejected"
     );
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_144_adds_profile_icon() {
+    let pool = fixture(144).await;
+    execute(&pool, "INSERT INTO cloud_common_ground_profiles(profile_id,account_id,kind,name,position,design) VALUES('cgp_a','fixture-owner','custom','KAUST',0,'research')").await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let (name, design, icon): (String, Option<String>, Option<String>) =
+        query_as("SELECT name, design, icon FROM cloud_common_ground_profiles")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        (name.as_str(), design.as_deref(), icon),
+        ("KAUST", Some("research"), None),
+        "existing profiles keep their design and have no icon"
+    );
+    execute(
+        &pool,
+        "UPDATE cloud_common_ground_profiles SET icon = 'flask'",
+    )
+    .await;
+    assert!(
+        sqlx_core::raw_sql::raw_sql("UPDATE cloud_common_ground_profiles SET icon = 'unicorn'")
+            .execute(&pool)
+            .await
+            .is_err(),
+        "unknown icons are rejected"
+    );
+}

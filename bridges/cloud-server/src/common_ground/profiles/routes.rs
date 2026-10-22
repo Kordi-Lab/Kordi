@@ -16,7 +16,9 @@ use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
-use super::{collapse, default_name, get, insert, not_found, valid_design, valid_kind, Profile};
+use super::{
+    collapse, default_name, get, insert, not_found, valid_design, valid_icon, valid_kind, Profile,
+};
 use super::{MAX_FOCUS_CHARS, MAX_NAME_CHARS};
 use crate::common_ground::card::Topics;
 use crate::common_ground::{db_error, err};
@@ -33,6 +35,7 @@ type ListRow = (
     Option<DateTime<Utc>>,
     Option<Value>,
     Option<String>,
+    Option<String>,
 );
 
 /// Every profile of the account as the owner sees it in the list.
@@ -40,7 +43,7 @@ async fn views(pool: &PgPool, account: &str) -> sqlx_core::Result<Vec<Value>> {
     let rows: Vec<ListRow> = query_as(
         "SELECT profile.profile_id, profile.kind, profile.name, profile.focus, profile.position,
                 COALESCE(card.built_at IS NOT NULL, false), card.sharing_enabled, card.built_at,
-                card.topics_json, profile.design
+                card.topics_json, profile.design, profile.icon
          FROM cloud_common_ground_profiles profile
          LEFT JOIN cloud_common_ground_cards card ON card.profile_id = profile.profile_id
          WHERE profile.account_id = $1 ORDER BY profile.position",
@@ -51,7 +54,19 @@ async fn views(pool: &PgPool, account: &str) -> sqlx_core::Result<Vec<Value>> {
     Ok(rows
         .into_iter()
         .map(
-            |(id, kind, name, focus, position, has_card, sharing, built_at, topics, design)| {
+            |(
+                id,
+                kind,
+                name,
+                focus,
+                position,
+                has_card,
+                sharing,
+                built_at,
+                topics,
+                design,
+                icon,
+            )| {
                 let topics: Topics = topics
                     .and_then(|value| serde_json::from_value(value).ok())
                     .unwrap_or_default();
@@ -62,6 +77,7 @@ async fn views(pool: &PgPool, account: &str) -> sqlx_core::Result<Vec<Value>> {
                     "focus": focus,
                     "position": position,
                     "design": design,
+                    "icon": icon,
                     "hasCard": has_card,
                     "sharing": sharing.unwrap_or(true),
                     "builtAt": built_at,
@@ -122,18 +138,36 @@ fn clean_focus(focus: Option<&str>) -> Result<Option<String>, &'static str> {
     Ok(Some(focus))
 }
 
-/// A design that is present in the body, even as `null`.
+/// A design or icon that is present in the body, even as `null`.
 fn present<'de, D: Deserializer<'de>>(value: D) -> Result<Option<Option<String>>, D::Error> {
     Option::<String>::deserialize(value).map(Some)
 }
 
+/// A checked choice from a fixed list; `null` or empty means none.
+fn clean_choice(
+    value: Option<&str>,
+    valid: fn(&str) -> bool,
+    message: &'static str,
+) -> Result<Option<String>, &'static str> {
+    match value.map(str::trim).filter(|value| !value.is_empty()) {
+        None => Ok(None),
+        Some(value) if valid(value) => Ok(Some(value.to_string())),
+        Some(_) => Err(message),
+    }
+}
+
 /// A checked design; `null` or empty means the kind's default.
 fn clean_design(design: Option<&str>) -> Result<Option<String>, &'static str> {
-    match design.map(str::trim).filter(|design| !design.is_empty()) {
-        None => Ok(None),
-        Some(design) if valid_design(design) => Ok(Some(design.to_string())),
-        Some(_) => Err("Pick work, health, daily, workshop, research or custom."),
-    }
+    clean_choice(
+        design,
+        valid_design,
+        "Pick work, health, daily, workshop, research or custom.",
+    )
+}
+
+/// A checked icon; `null` or empty means no icon.
+fn clean_icon(icon: Option<&str>) -> Result<Option<String>, &'static str> {
+    clean_choice(icon, valid_icon, "Pick an icon from the list.")
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -143,6 +177,7 @@ pub(in crate::common_ground) struct CreateRequest {
     name: Option<String>,
     focus: Option<String>,
     design: Option<String>,
+    icon: Option<String>,
 }
 
 /// `POST /v1/cloud/common-ground/profiles`.
@@ -166,9 +201,12 @@ pub(in crate::common_ground) async fn create(
     if body.kind == "custom" && name.as_deref().unwrap_or_default().is_empty() {
         return invalid("Name your profile.");
     }
-    let design = match clean_design(body.design.as_deref()) {
-        Ok(design) => design,
-        Err(message) => return invalid(message),
+    let (design, icon) = match (
+        clean_design(body.design.as_deref()),
+        clean_icon(body.icon.as_deref()),
+    ) {
+        (Ok(design), Ok(icon)) => (design, icon),
+        (Err(message), _) | (_, Err(message)) => return invalid(message),
     };
     let created = async {
         let mut tx = pool.begin().await?;
@@ -179,6 +217,7 @@ pub(in crate::common_ground) async fn create(
             name.as_deref(),
             focus.as_deref(),
             design.as_deref(),
+            icon.as_deref(),
         )
         .await?;
         tx.commit().await?;
@@ -210,10 +249,13 @@ pub(in crate::common_ground) struct UpdateRequest {
     /// `null` gives the profile its kind's design back.
     #[serde(deserialize_with = "present")]
     design: Option<Option<String>>,
+    /// `null` removes the icon.
+    #[serde(deserialize_with = "present")]
+    icon: Option<Option<String>>,
 }
 
 /// `PUT /v1/cloud/common-ground/profiles/:id`: renames a profile or changes
-/// its focus or card design. An empty name gives a fixed kind its default
+/// its focus, card design or icon. An empty name gives a fixed kind its default
 /// name back.
 pub(in crate::common_ground) async fn update(
     State(state): State<Arc<ServerState>>,
@@ -242,6 +284,13 @@ pub(in crate::common_ground) async fn update(
             Err(message) => return invalid(message),
         },
     };
+    let icon = match body.icon.as_ref() {
+        None => profile.icon.clone(),
+        Some(icon) => match clean_icon(icon.as_deref()) {
+            Ok(icon) => icon,
+            Err(message) => return invalid(message),
+        },
+    };
     let name = match name {
         None => profile.name.clone(),
         Some(name) if !name.is_empty() => name,
@@ -256,13 +305,14 @@ pub(in crate::common_ground) async fn update(
     };
     // The card keeps its topics until the next build reads the new lens.
     let result = query(
-        "UPDATE cloud_common_ground_profiles SET name = $2, focus = $3, design = $4
+        "UPDATE cloud_common_ground_profiles SET name = $2, focus = $3, design = $4, icon = $5
          WHERE profile_id = $1",
     )
     .bind(&profile_id)
     .bind(&name)
     .bind(&focus)
     .bind(&design)
+    .bind(&icon)
     .execute(pool)
     .await;
     match result {

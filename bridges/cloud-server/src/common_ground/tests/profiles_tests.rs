@@ -214,7 +214,10 @@ async fn each_profile_builds_its_own_card_through_its_lens() {
     assert_eq!(body["card"]["workingOn"], json!(["Agent memory"]));
     assert_eq!(
         body["profile"],
-        json!({"profileId": work, "kind": "work", "name": "Work", "focus": null, "design": null})
+        json!({
+            "profileId": work, "kind": "work", "name": "Work", "focus": null, "design": null,
+            "icon": null
+        })
     );
     let (_, body) = card(&health).await;
     assert_eq!(body["card"]["workingOn"], json!(["Marathon training"]));
