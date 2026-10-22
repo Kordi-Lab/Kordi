@@ -67,13 +67,32 @@ private struct ContactsGroupRow: View {
     var body: some View {
         ContactsRowLayout(title: space.displayName, subtitle: subtitle) {
             GroupAvatarStack(participants: space.participants, size: 44, imageSource: space.avatarSource)
+                .overlay(alignment: .bottomTrailing) {
+                    if space.isGroundingGroup { GroundingGroupBadge().offset(x: 3, y: 3) }
+                }
         } trailing: {
             Text(chatListTimestamp(space.lastActivityAt))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(space.displayName), \(subtitle)")
+        .accessibilityLabel(space.isGroundingGroup ? "\(space.displayName), Grounding, \(subtitle)" : "\(space.displayName), \(subtitle)")
+    }
+}
+
+/// The Grounding hug on the corner of a group avatar.
+private struct GroundingGroupBadge: View {
+    var body: some View {
+        Image("CommonGroundHug")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 11, height: 11)
+            .foregroundStyle(Color.accentColor)
+            .frame(width: 16, height: 16)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(Color(.systemBackground), lineWidth: 1.5))
+            .accessibilityLabel("Grounding")
     }
 }
 
