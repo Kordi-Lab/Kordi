@@ -8,6 +8,10 @@ struct ContactsGroupsSection: View {
     let isSearching: Bool
     var onOpenConversation: ((ConversationSummary) -> Void)? = nil
     @State private var isCollapsed = false
+    @State private var isExpanded = false
+
+    /// Groups shown before the "Show all" row.
+    static let previewLimit = 5
 
     /// Joined groups from the loaded chat list, filtered by name while searching.
     static func spaces(in model: AppModel, matching searchText: String) -> [GroupSpaceSummary] {
@@ -19,16 +23,23 @@ struct ContactsGroupsSection: View {
         return spaces.filter { $0.displayName.localizedCaseInsensitiveContains(searchText) }
     }
 
+    /// The first few groups, or every group while expanded or searching.
+    static func visible<Item>(_ items: [Item], isExpanded: Bool, isSearching: Bool) -> [Item] {
+        isExpanded || isSearching ? items : Array(items.prefix(previewLimit))
+    }
+
     private var showsRows: Bool { isSearching || !isCollapsed }
+    private var showsMoreToggle: Bool { !isSearching && spaces.count > Self.previewLimit }
 
     var body: some View {
         Section {
             if showsRows {
-                ForEach(spaces) { space in
+                ForEach(Self.visible(spaces, isExpanded: isExpanded, isSearching: isSearching)) { space in
                     if let conversation = Self.conversation(for: space) {
                         entry(space: space, conversation: conversation)
                     }
                 }
+                if showsMoreToggle { moreToggle }
             }
         } header: {
             ContactsSectionHeader(title: "Groups", count: spaces.count, isCollapsed: isSearching ? nil : isCollapsed) {
@@ -36,6 +47,22 @@ struct ContactsGroupsSection: View {
             }
         }
         .listSectionSeparator(.hidden)
+    }
+
+    private var moreToggle: some View {
+        Button {
+            withAnimation(reduceMotion ? nil : GroupChannelDisclosureMotion.animation) { isExpanded.toggle() }
+        } label: {
+            Text(isExpanded ? "Show less" : "Show all \(spaces.count)")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 56)
+                .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contactsListRow()
+        .listRowSeparator(.hidden)
     }
 
     @ViewBuilder
@@ -55,44 +82,77 @@ struct ContactsGroupsSection: View {
     static func conversation(for space: GroupSpaceSummary) -> ConversationSummary? {
         space.membershipSessions.first { $0.sessionId == $0.groupSpaceId } ?? space.membershipSessions.first
     }
+
+    /// "3 people · 09:41"; the time is left out when the group has no activity yet.
+    static func subtitle(peopleCount: Int, lastActivityAt: Date, now: Date = Date()) -> String {
+        let people = peopleCount == 1 ? "1 person" : "\(peopleCount) people"
+        let time = chatListTimestamp(lastActivityAt, now: now)
+        return time.isEmpty ? people : "\(people) · \(time)"
+    }
 }
 
 private struct ContactsGroupRow: View {
     let space: GroupSpaceSummary
 
     private var subtitle: String {
-        space.participants.count == 1 ? "1 person" : "\(space.participants.count) people"
+        ContactsGroupsSection.subtitle(peopleCount: space.participants.count, lastActivityAt: space.lastActivityAt)
     }
 
     var body: some View {
-        ContactsRowLayout(title: space.displayName, subtitle: subtitle) {
-            GroupAvatarStack(participants: space.participants, size: 44, imageSource: space.avatarSource)
-                .overlay(alignment: .bottomTrailing) {
-                    if space.isGroundingGroup { GroundingGroupBadge().offset(x: 3, y: 3) }
-                }
-        } trailing: {
-            Text(chatListTimestamp(space.lastActivityAt))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        ContactsRowLayout(
+            title: space.displayName,
+            subtitle: subtitle,
+            subtitleIcon: space.isGroundingGroup ? Image("CommonGroundHug") : nil,
+            subtitleIconLabel: "Grounding"
+        ) {
+            if AvatarImageLoader.normalizedSource(space.avatarSource) != nil {
+                GroupAvatarStack(participants: space.participants, size: 44, imageSource: space.avatarSource)
+            } else {
+                GroupInitialTile(name: space.displayName, seed: space.preferenceId, size: 44)
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(space.isGroundingGroup ? "\(space.displayName), Grounding, \(subtitle)" : "\(space.displayName), \(subtitle)")
     }
 }
 
-/// The Grounding hug on the corner of a group avatar.
-private struct GroundingGroupBadge: View {
+/// A group without its own picture: the name's initial on a muted colour
+/// that stays the same for the group on every device.
+struct GroupInitialTile: View {
+    let name: String
+    let seed: String
+    var size: CGFloat = 44
+
+    static let palette: [Color] = [
+        Color(red: 0.24, green: 0.36, blue: 0.85),
+        Color(red: 0.18, green: 0.43, blue: 0.36),
+        Color(red: 0.54, green: 0.35, blue: 0.17),
+        Color(red: 0.42, green: 0.36, blue: 0.66),
+        Color(red: 0.63, green: 0.29, blue: 0.25),
+        Color(red: 0.18, green: 0.44, blue: 0.53),
+    ]
+
+    /// FNV-1a over the seed, so the colour does not change between launches.
+    static func paletteIndex(for seed: String) -> Int {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in seed.utf8 {
+            hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01b3
+        }
+        return Int(hash % UInt64(palette.count))
+    }
+
+    static func initial(of name: String) -> String {
+        name.first(where: { $0.isLetter || $0.isNumber }).map { String($0).uppercased() } ?? "#"
+    }
+
     var body: some View {
-        Image("CommonGroundHug")
-            .renderingMode(.template)
-            .resizable()
-            .scaledToFit()
-            .frame(width: 11, height: 11)
-            .foregroundStyle(Color.accentColor)
-            .frame(width: 16, height: 16)
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(Color(.systemBackground), lineWidth: 1.5))
-            .accessibilityLabel("Grounding")
+        Text(Self.initial(of: name))
+            .font(.system(size: size * 0.4, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(Self.palette[Self.paletteIndex(for: seed)],
+                        in: RoundedRectangle(cornerRadius: size * 0.17, style: .continuous))
+            .accessibilityHidden(true)
     }
 }
 
