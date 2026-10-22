@@ -6,6 +6,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use sqlx_postgres::PgPool;
 
+use crate::common_ground::profiles::SourcePicks;
 use crate::common_ground::prompt::Gathered;
 use crate::common_ground::redact::{redact, squeeze};
 
@@ -33,6 +34,9 @@ pub(in crate::common_ground) struct BuildRequest {
     memory: bool,
     /// Recent events from connected accounts.
     connectors: bool,
+    /// The providers to read when `connectors` is on; every provider when
+    /// omitted.
+    connector_providers: Option<Vec<String>>,
     /// Titles and dates the app read on the device after the person allowed
     /// access (calendar events, reminders).
     device: Vec<DeviceGroup>,
@@ -42,6 +46,10 @@ pub(in crate::common_ground) struct BuildRequest {
     notes: String,
     /// Agent instruction and memory files the app read on the Mac.
     agents: Vec<AgentFile>,
+    /// Attachment ids of the account's own Kordi documents.
+    pub documents: Vec<String>,
+    /// The picks to remember on the profile, saved with the build.
+    pub picks: Option<SourcePicks>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -181,7 +189,11 @@ pub(in crate::common_ground) async fn gather(
         let since = Utc::now() - Duration::days(CONNECTOR_DAYS);
         let events = crate::connectors::digest_input::recent_events(pool, account, since).await?;
         let mut providers = Vec::new();
+        let wanted = request.connector_providers.as_deref();
         for event in events {
+            if wanted.is_some_and(|wanted| !wanted.contains(&event.provider)) {
+                continue;
+            }
             let mut strings = Vec::new();
             summary_strings(&event.summary, &mut strings);
             let title = summary_title(&event.summary).unwrap_or_else(|| event.kind.clone());
