@@ -1,0 +1,90 @@
+import SwiftUI
+
+/// New card: swipe through the six designs, type the name and focus on the
+/// card, Create. Work, Health and Daily tasks already in the wallet show
+/// "In your wallet" and cannot be made again.
+struct CommonGroundNewCardSheet: View {
+    @EnvironmentObject private var model: CommonGroundModel
+    @Environment(\.dismiss) private var dismiss
+    let cardWidth: CGFloat
+    @State private var selection: String?
+    @State private var names: [CommonGroundCardDesign: String] = [:]
+    @State private var focuses: [CommonGroundCardDesign: String] = [:]
+    @State private var error: String?
+
+    private var design: CommonGroundCardDesign {
+        selection.flatMap(CommonGroundCardDesign.init(rawValue:)) ?? .work
+    }
+
+    private func available(_ design: CommonGroundCardDesign) -> Bool {
+        CommonGroundCardDesign.isAvailable(design, in: model.profiles)
+    }
+
+    private var canCreate: Bool {
+        guard available(design), model.busy != "profile" else { return false }
+        return design.kind.isFixed || !(names[design] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            CommonGroundSheetHeader(title: "New card") { dismiss() }
+            CommonGroundCardCarousel(
+                ids: CommonGroundCardDesign.allCases.map(\.rawValue),
+                selection: $selection,
+                cardWidth: cardWidth,
+                zoom: 0.86,
+                caption: design.title
+            ) { id in
+                editableCard(CommonGroundCardDesign(rawValue: id) ?? .work)
+            }
+            if let error {
+                Text(error).font(.footnote).foregroundStyle(.red).frame(maxWidth: .infinity).padding(.bottom, 8)
+            }
+            Button("Create") { Task { await create() } }
+                .buttonStyle(CommonGroundPrimaryButtonStyle())
+                .disabled(!canCreate)
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .onAppear {
+            for option in CommonGroundCardDesign.allCases { names[option] = option.defaultName }
+            selection = CommonGroundCardDesign.firstAvailable(in: model.profiles).rawValue
+        }
+    }
+
+    private func editableCard(_ option: CommonGroundCardDesign) -> some View {
+        let open = available(option)
+        let editing = option.rawValue == selection && open
+        return ProfileCardView(
+            design: option,
+            name: option.title,
+            bottom: .skeleton,
+            trailing: open ? .none : .badge("In your wallet"),
+            width: cardWidth,
+            nameField: option.kind.isFixed ? nil : nameBinding(option),
+            focusField: focusBinding(option),
+            fieldsDisabled: !editing
+        )
+    }
+
+    private func nameBinding(_ option: CommonGroundCardDesign) -> Binding<String> {
+        Binding(get: { names[option] ?? "" }, set: { names[option] = String($0.prefix(40)) })
+    }
+
+    private func focusBinding(_ option: CommonGroundCardDesign) -> Binding<String> {
+        Binding(get: { focuses[option] ?? "" }, set: { focuses[option] = String($0.prefix(200)) })
+    }
+
+    private func create() async {
+        guard canCreate else { return }
+        error = nil
+        let chosen = design
+        if await model.createCard(chosen, name: names[chosen] ?? "", focus: focuses[chosen] ?? "") != nil {
+            dismiss()
+        } else {
+            // The sheet covers the toast, so the error shows here.
+            error = model.notice
+            model.notice = nil
+        }
+    }
+}

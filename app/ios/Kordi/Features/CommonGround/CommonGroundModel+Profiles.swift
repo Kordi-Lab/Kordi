@@ -52,9 +52,12 @@ extension CommonGroundModel {
 
     /// Creates a profile and makes it current; nil when the server refused.
     @discardableResult
-    func createProfile(_ draft: CommonGroundNewProfile) async -> CommonGroundProfileSummary? {
+    func createProfile(_ draft: CommonGroundNewProfile, design: CommonGroundCardDesign? = nil) async -> CommonGroundProfileSummary? {
         guard draft.isValid,
               let created = await run("profile", { try await $0.createCommonGroundProfile(token: $1, profile: draft) }) else { return nil }
+        if let design, design.kind == .custom {
+            CommonGroundCardDesignStore.save(design, profileId: created.profileId, defaults: defaults)
+        }
         profiles.removeAll { $0.profileId == created.profileId }
         profiles.append(created)
         profiles.sort { $0.position < $1.position }
@@ -81,6 +84,8 @@ extension CommonGroundModel {
     func deleteProfile(_ profileId: String) async -> Bool {
         guard (await run("profile", { try await $0.deleteCommonGroundProfile(token: $1, profileId: profileId) })) != nil else { return false }
         profiles.removeAll { $0.profileId == profileId }
+        walletTopics[profileId] = nil
+        CommonGroundCardDesignStore.save(nil, profileId: profileId, defaults: defaults)
         if currentProfileID == profileId {
             currentProfileID = nil
             CommonGroundProfileChoice.save(nil, account: me.accountId, defaults: defaults)

@@ -9,7 +9,6 @@ import SwiftUI
 enum CommonGroundRoute: Hashable {
     case build
     case card
-    case code
     case lobby(String)
     case results(String)
     case match(String)
@@ -56,7 +55,6 @@ struct CommonGroundView: View {
                     switch route {
                     case .build: CommonGroundBuildView()
                     case .card: CommonGroundCardView(path: $path)
-                    case .code: CommonGroundCodeView(path: $path)
                     case .lobby(let code): CommonGroundLobbyView(code: code, path: $path)
                     case .results(let code): CommonGroundResultsView(code: code, path: $path)
                     case .match(let id): CommonGroundMatchView(personID: id)
@@ -70,13 +68,9 @@ struct CommonGroundView: View {
         .tint(commonGroundTint)
     }
 
-    /// First run shows the sources until a card exists.
-    @ViewBuilder private var root: some View {
-        if model.owner != nil && !model.hasCard && !model.anyProfileHasCard {
-            CommonGroundBuildView(onClose: onClose)
-        } else {
-            CommonGroundHome(path: $path, onClose: onClose)
-        }
+    /// First run is Home's empty wallet: one suggested Work card to build.
+    private var root: some View {
+        CommonGroundHome(path: $path, onClose: onClose)
     }
 }
 
