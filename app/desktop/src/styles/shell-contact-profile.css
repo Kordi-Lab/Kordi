@@ -97,6 +97,9 @@
 .app-contacts-chip {
   background: color-mix(in oklab, var(--utility-foreground) 9%, transparent);
   color: var(--utility-foreground);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
