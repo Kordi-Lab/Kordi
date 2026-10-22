@@ -82,6 +82,8 @@ export function HomeScreen({ state, store }: { state: CgState; store: CommonGrou
   if (!hasAnyCard(state)) return <EmptyWallet state={state} store={store} />;
   return (
     <div className="cg-home">
+      <h2 className="cg-msec">Your card</h2>
+      <YourCard state={state} store={store} />
       <PairCodePanel state={state} store={store} />
       <CgNotice text={state.notice} />
       {state.support.rooms && state.roomList.length ? (
@@ -115,8 +117,6 @@ export function HomeScreen({ state, store }: { state: CgState; store: CommonGrou
           </div>
         </>
       ) : null}
-      <h2 className="cg-msec">Your card</h2>
-      <YourCard state={state} store={store} />
     </div>
   );
 }

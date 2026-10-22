@@ -37,6 +37,8 @@
 /* Panels and rows. */
 .cg-panel { position: relative; border: 1px solid var(--cg-line); border-radius: 10px; background: var(--cg-card); }
 .cg-msec { margin: 24px 2px 8px; color: var(--utility-muted-text); font-size: 11px; font-weight: 600; }
+.cg-home > .cg-msec:first-child { margin-top: 2px; }
+.cg-home > .cg-panel + .cg-paircode { margin-top: 16px; }
 .cg-mrow {
   position: relative; display: flex; width: 100%; min-height: 46px; align-items: center; gap: 10px; padding: 7px 12px;
   border: 0; background: none; color: inherit; font: inherit; text-align: left;
