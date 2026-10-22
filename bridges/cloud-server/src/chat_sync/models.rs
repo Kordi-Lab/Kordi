@@ -58,6 +58,9 @@ pub struct ConversationSnapshot {
     pub group_title: Option<String>,
     #[serde(default)]
     pub group_avatar: Option<Value>,
+    /// `"grounding"` for a group Grounding started; absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
     pub forked_from_session_id: Option<String>,
     pub forked_from_message_id: Option<String>,
     pub latest_message_sequence: i64,
