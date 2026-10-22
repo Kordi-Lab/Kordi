@@ -20,6 +20,8 @@ pub(super) const MAX_PROFILES: i64 = 5;
 pub(super) const MAX_NAME_CHARS: usize = 40;
 pub(super) const MAX_FOCUS_CHARS: usize = 200;
 pub(super) const KINDS: [&str; 4] = ["work", "health", "daily", "custom"];
+/// Card designs the apps draw; a profile without one uses its kind's.
+pub(super) const DESIGNS: [&str; 6] = ["work", "health", "daily", "workshop", "research", "custom"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct Profile {
@@ -29,13 +31,22 @@ pub(super) struct Profile {
     pub name: String,
     pub focus: Option<String>,
     pub position: i32,
+    pub design: Option<String>,
 }
 
-type ProfileRow = (String, String, String, String, Option<String>, i32);
+type ProfileRow = (
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    i32,
+    Option<String>,
+);
 
-const COLUMNS: &str = "profile_id, account_id, kind, name, focus, position";
+const COLUMNS: &str = "profile_id, account_id, kind, name, focus, position, design";
 
-fn from_row((profile_id, account_id, kind, name, focus, position): ProfileRow) -> Profile {
+fn from_row((profile_id, account_id, kind, name, focus, position, design): ProfileRow) -> Profile {
     Profile {
         profile_id,
         account_id,
@@ -43,24 +54,26 @@ fn from_row((profile_id, account_id, kind, name, focus, position): ProfileRow) -
         name,
         focus,
         position,
+        design,
     }
 }
 
 impl Profile {
-    /// `{profileId, kind, name, focus}` for the owner.
+    /// `{profileId, kind, name, focus, design}` for the owner.
     pub fn summary(&self) -> Value {
         json!({
             "profileId": self.profile_id,
             "kind": self.kind,
             "name": self.name,
             "focus": self.focus,
+            "design": self.design,
         })
     }
 }
 
-/// `{profileId, kind, name}`: the profile someone shared with you.
-pub(super) fn tag(profile_id: &str, kind: &str, name: &str) -> Value {
-    json!({ "profileId": profile_id, "kind": kind, "name": name })
+/// `{profileId, kind, name, design}`: the profile someone shared with you.
+pub(super) fn tag(profile_id: &str, kind: &str, name: &str, design: Option<&str>) -> Value {
+    json!({ "profileId": profile_id, "kind": kind, "name": name, "design": design })
 }
 
 /// The default name of a fixed kind.
@@ -75,6 +88,10 @@ pub(super) fn default_name(kind: &str) -> Option<&'static str> {
 
 pub(super) fn valid_kind(kind: &str) -> bool {
     KINDS.contains(&kind)
+}
+
+pub(super) fn valid_design(design: &str) -> bool {
+    DESIGNS.contains(&design)
 }
 
 /// The account's profile with this id.
@@ -149,7 +166,7 @@ pub(super) async fn resolve_or_create(
     }
     let created = async {
         let mut tx = pool.begin().await?;
-        let profile = insert(&mut tx, account, "work", None, None).await?;
+        let profile = insert(&mut tx, account, "work", None, None, None).await?;
         tx.commit().await?;
         Ok::<_, sqlx_core::Error>(profile)
     }
@@ -197,6 +214,7 @@ pub(super) async fn insert(
     kind: &str,
     name: Option<&str>,
     focus: Option<&str>,
+    design: Option<&str>,
 ) -> sqlx_core::Result<Result<Profile, Refused>> {
     query("SELECT pg_advisory_xact_lock(hashtext('common-ground-profiles:' || $1))")
         .bind(account)
@@ -228,10 +246,12 @@ pub(super) async fn insert(
         name,
         focus: focus.filter(|focus| !focus.is_empty()).map(str::to_string),
         position: next,
+        design: design.map(str::to_string),
     };
     query(
-        "INSERT INTO cloud_common_ground_profiles (profile_id, account_id, kind, name, focus, position)
-         VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO cloud_common_ground_profiles
+             (profile_id, account_id, kind, name, focus, position, design)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(&profile.profile_id)
     .bind(account)
@@ -239,6 +259,7 @@ pub(super) async fn insert(
     .bind(&profile.name)
     .bind(&profile.focus)
     .bind(profile.position)
+    .bind(&profile.design)
     .execute(&mut **tx)
     .await?;
     Ok(Ok(profile))
@@ -323,5 +344,6 @@ pub(super) fn for_tests(kind: &str, name: &str, focus: Option<&str>) -> Profile 
         name: name.into(),
         focus: focus.map(str::to_string),
         position: 0,
+        design: None,
     }
 }

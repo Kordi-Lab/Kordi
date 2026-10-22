@@ -361,3 +361,36 @@ async fn upgrade_from_142_adds_group_intros() {
         .unwrap();
     assert_eq!(intros, 0, "a deleted group takes its intro");
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_143_adds_profile_design() {
+    let pool = fixture(143).await;
+    execute(&pool, "INSERT INTO cloud_common_ground_profiles(profile_id,account_id,kind,name,position) VALUES('cgp_a','fixture-owner','custom','KAUST',0)").await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let (name, design): (String, Option<String>) =
+        query_as("SELECT name, design FROM cloud_common_ground_profiles")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        (name.as_str(), design),
+        ("KAUST", None),
+        "existing profiles keep the kind's default design"
+    );
+    execute(
+        &pool,
+        "UPDATE cloud_common_ground_profiles SET design = 'research'",
+    )
+    .await;
+    assert!(
+        sqlx_core::raw_sql::raw_sql("UPDATE cloud_common_ground_profiles SET design = 'neon'")
+            .execute(&pool)
+            .await
+            .is_err(),
+        "unknown designs are rejected"
+    );
+}

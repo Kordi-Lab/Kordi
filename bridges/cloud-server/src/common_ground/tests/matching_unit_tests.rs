@@ -18,6 +18,7 @@ fn card(
         account_id: id.into(),
         profile_id: format!("cgp_{id}"),
         profile_kind: "work".into(),
+        profile_design: None,
         profile_name: "Work".into(),
         name: id.into(),
         avatar_url: None,

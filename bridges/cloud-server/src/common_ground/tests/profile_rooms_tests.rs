@@ -124,7 +124,7 @@ async fn rooms_share_one_profile_per_person() {
     );
     assert_eq!(
         body["members"][0]["profile"],
-        json!({"profileId": alex.health, "kind": "health", "name": "Health"})
+        json!({"profileId": alex.health, "kind": "health", "name": "Health", "design": null})
     );
     let (_, body) = join(&app, &code, &sam.token, json!({})).await;
     assert_eq!(body["profileId"], sam.work.as_str());

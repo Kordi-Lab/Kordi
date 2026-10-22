@@ -20,9 +20,11 @@ use sqlx_core::{query::query, query_as::query_as, transaction::Transaction};
 use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
+mod preview;
 mod switch;
 mod view;
 
+pub(super) use preview::preview;
 pub(super) use switch::switch_profile;
 use view::view_response;
 pub(super) use view::{list, read};
@@ -59,6 +61,26 @@ pub(super) struct JoinRequest {
     /// in the room, else your built profile of the room's kind, else your
     /// default profile.
     profile_id: Option<String>,
+}
+
+/// Codes are short, so guessing one (joining or previewing) is limited per
+/// account and per address. The response to send when over the limit.
+async fn guess_limited(
+    rate_limiter: &CloudRateLimiter,
+    account: &str,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
+    headers: &HeaderMap,
+) -> Option<Response> {
+    let client = crate::client_ip::resolve_client_ip(headers, connect_info.map(|info| info.0.ip()));
+    let ip_key = format!("ip:{}", rate_limit_client_key(client));
+    for (limit, key) in [(ROOM_JOIN_LIMIT, account), (ROOM_IP_LIMIT, ip_key.as_str())] {
+        if let RateLimitDecision::Limited { retry_after } =
+            rate_limiter.observe_account_limit(limit, key).await
+        {
+            return Some(limited(retry_after));
+        }
+    }
+    None
 }
 
 /// The open room for this code: its suggested kind and the profile
@@ -128,16 +150,8 @@ pub(super) async fn join(
         return room_not_found();
     }
     let account = session.account_id.as_str();
-    // Codes are short, so guessing is limited per account and per address.
-    let client =
-        crate::client_ip::resolve_client_ip(&headers, connect_info.map(|info| info.0.ip()));
-    let ip_key = format!("ip:{}", rate_limit_client_key(client));
-    for (limit, key) in [(ROOM_JOIN_LIMIT, account), (ROOM_IP_LIMIT, ip_key.as_str())] {
-        if let RateLimitDecision::Limited { retry_after } =
-            rate_limiter.observe_account_limit(limit, key).await
-        {
-            return limited(retry_after);
-        }
+    if let Some(response) = guess_limited(&rate_limiter, account, connect_info, &headers).await {
+        return response;
     }
     let pool = state.db_pool();
     let body = body.map(|Json(body)| body).unwrap_or_default();
