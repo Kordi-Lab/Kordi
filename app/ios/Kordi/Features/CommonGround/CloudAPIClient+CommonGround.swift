@@ -175,8 +175,9 @@ extension CloudAPIClient {
         return try await send(path: cg("pairings/code"), method: "POST", token: token, body: Body(profileId: profileId), fallback: "Could not make a code.")
     }
 
-    func redeemCommonGroundPairCode(token: String, code: String) async throws -> CommonGroundPersonCard {
-        struct Body: Encodable { let code: String }
-        return try await send(path: cg("pairings/redeem"), method: "POST", token: token, body: Body(code: code), fallback: "Could not pair.")
+    /// Pairs with the person who showed `code`, sharing `profileId` back.
+    func redeemCommonGroundPairCode(token: String, code: String, profileId: String? = nil) async throws -> CommonGroundPersonCard {
+        struct Body: Encodable { let code: String; let profileId: String? }
+        return try await send(path: cg("pairings/redeem"), method: "POST", token: token, body: Body(code: code, profileId: profileId), fallback: "Could not pair.")
     }
 }

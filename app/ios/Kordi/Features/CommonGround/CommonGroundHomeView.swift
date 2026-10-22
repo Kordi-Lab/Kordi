@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Grounding's Home: the shared card's chip, the wallet, the Pair code row,
-/// Rooms, Recent and Your card.
+/// Grounding's Home: the shared card's chip, the wallet, Tap and the Pair
+/// code row, Rooms, Recent and Your card. A pairing link opens here.
 struct CommonGroundHome: View {
     @EnvironmentObject private var model: CommonGroundModel
     @Environment(\.scenePhase) private var scenePhase
@@ -17,8 +17,13 @@ struct CommonGroundHome: View {
     @State private var addsCard = false
     @State private var lookFor: CommonGroundCodeTarget?
     @State private var afterSharing: SharingStep?
+    @State private var tapping = false
+    /// What to do once the Tap sheet has closed.
+    @State private var afterTap: AfterTap?
+    @ObservedObject private var pairLinks = CommonGroundPairLinkInbox.shared
 
-    private enum SharingStep { case join(String), create(String?) }
+    private enum SharingStep { case join(String), create(String?), tap, pair(String) }
+    private enum AfterTap { case open(CommonGroundRoute), askSharing }
 
     private var cardWidth: CGFloat { ProfileCardView.width(in: containerWidth) }
     private var selectedCard: CommonGroundWalletCard? {
@@ -48,6 +53,7 @@ struct CommonGroundHome: View {
                         code: $code,
                         error: codeError,
                         enabled: canPair,
+                        onTap: startTap,
                         onComplete: entered,
                         onCreate: { create(for: model.currentProfileID) }
                     )
@@ -111,6 +117,28 @@ struct CommonGroundHome: View {
                 .presentationDragIndicator(.visible)
             }
         }
+        .sheet(isPresented: $tapping, onDismiss: {
+            guard let next = afterTap else { return }
+            afterTap = nil
+            switch next {
+            case .open(let route): path.append(route)
+            case .askSharing: afterSharing = .tap
+            }
+        }) {
+            CommonGroundTapSheet(cardWidth: cardWidth) { card in
+                afterTap = .open(.match(card.person.accountId))
+                tapping = false
+            } onProblem: { problem in
+                tapping = false
+                afterTap = problem == .noCard ? .open(.build) : problem == .sharingOff ? .askSharing : nil
+            }
+            .environmentObject(model)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .task(id: model.loaded ? pairLinks.code : nil) {
+            if model.loaded, let code = pairLinks.take() { pair(link: code) }
+        }
         .sheet(isPresented: $addsCard) {
             CommonGroundNewCardSheet(cardWidth: cardWidth)
                 .environmentObject(model)
@@ -126,16 +154,40 @@ struct CommonGroundHome: View {
                     switch step {
                     case .join(let entered): join(entered)
                     case .create(let profileId): createFor = CommonGroundCodeTarget(profileId: profileId)
+                    case .tap: tapping = true
+                    case .pair(let code): pair(link: code)
                     }
                 }
             }
             Button("Cancel", role: .cancel) { code = "" }
         } message: {
-            Text("Others in a room see your topics.")
+            switch afterSharing {
+            case .tap, .pair: Text("The person you pair with sees your topics.")
+            default: Text("Others in a room see your topics.")
+            }
         }
     }
 
     // MARK: Actions
+
+    /// Tap without a card opens the build; with sharing off it asks first.
+    private func startTap() {
+        guard canPair else { return path.append(.build) }
+        if model.sharing { tapping = true } else { afterSharing = .tap }
+    }
+
+    /// A `kordi://common-ground/pair/<code>` link: pairs with the selected card.
+    private func pair(link code: String) {
+        guard canPair else { return path.append(.build) }
+        guard model.sharing else { afterSharing = .pair(code); return }
+        Task {
+            switch await model.redeemPairCode(code) {
+            case .paired(let card): path.append(.match(card.person.accountId))
+            case .codeGone: model.notice = CommonGroundPairCopy.expired
+            case .failed(let message): model.notice = message
+            }
+        }
+    }
 
     private func openDetail(_ id: String) {
         guard let card = model.walletCards.first(where: { $0.id == id }), card.hasCard else { return }
