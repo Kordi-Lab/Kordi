@@ -85,30 +85,33 @@ struct ContactsView<PinnedRows: View>: View {
                     ContactsGroupsSection(spaces: groupSpaces, isSearching: !searchText.isEmpty, onOpenConversation: onOpenConversation)
                 }
 
-                Section {
-                    if contacts.isEmpty {
-                        ContentUnavailableView(
-                            searchText.isEmpty ? "No contacts yet" : "No contacts found",
-                            systemImage: searchText.isEmpty ? "person.crop.circle.badge.plus" : "magnifyingglass",
-                            description: Text(searchText.isEmpty ? "Add someone with their Kordi ID." : "Try another name or Kordi ID.")
-                        )
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                    } else {
-                        ForEach(contacts) { contact in
-                            if let conversation = model.conversationForContact(contact) {
-                                ContactsContactEntry(contact: contact, conversation: conversation, onOpenConversation: onOpenConversation) {
-                                    profileSubject = ContactProfileSubject(contact: contact)
+                // With groups listed, the empty-contacts state is noise; it shows only on an empty page.
+                if !(contacts.isEmpty && !groupSpaces.isEmpty) {
+                    Section {
+                        if contacts.isEmpty {
+                            ContentUnavailableView(
+                                searchText.isEmpty ? "No contacts yet" : "No contacts found",
+                                systemImage: searchText.isEmpty ? "person.crop.circle.badge.plus" : "magnifyingglass",
+                                description: Text(searchText.isEmpty ? "Add someone with their Kordi ID." : "Try another name or Kordi ID.")
+                            )
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                        } else {
+                            ForEach(contacts) { contact in
+                                if let conversation = model.conversationForContact(contact) {
+                                    ContactsContactEntry(contact: contact, conversation: conversation, onOpenConversation: onOpenConversation) {
+                                        profileSubject = ContactProfileSubject(contact: contact)
+                                    }
                                 }
                             }
                         }
+                    } header: {
+                        if showsRequests || !groupSpaces.isEmpty {
+                            ContactsSectionHeader(title: "Contacts")
+                        }
                     }
-                } header: {
-                    if showsRequests || !groupSpaces.isEmpty {
-                        ContactsSectionHeader(title: "Contacts")
-                    }
+                    .listSectionSeparator(.hidden)
                 }
-                .listSectionSeparator(.hidden)
             }
             .listStyle(.plain)
             .environment(\.defaultMinListHeaderHeight, 0)
