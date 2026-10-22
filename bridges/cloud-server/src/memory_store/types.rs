@@ -3,7 +3,7 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +21,18 @@ pub(crate) struct MemoryResponse {
     pub owner_account_id: String,
     /// The owner's display name, when the owner has one.
     pub owner_name: Option<String>,
+    /// The HCP category: what kind of information the memory is.
+    pub category: String,
+    /// `user-declared` or `model-inferred`.
+    pub declaration_type: String,
+    /// How sure the agent was, for inferred memories.
+    pub confidence: Option<String>,
+    /// The profile the person filed the memory to, when they chose one.
+    pub profile_id: Option<String>,
+    /// The profile kind the memory is filed to: the chosen profile's kind,
+    /// else the category's default (`all` means every fixed-kind profile).
+    /// Always null for group memories.
+    pub profile_kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -62,12 +74,32 @@ pub(crate) struct SaveMemoryRequest {
     pub text: String,
     #[serde(default)]
     pub client_memory_id: Option<String>,
+    /// Missing or empty uses `general_preferences`.
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub confidence: Option<String>,
+    /// `user` or `agent`; overrides the declaration derived from `source`.
+    #[serde(default)]
+    pub declared_by: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+/// A memory edit. At least one field must be present; `profileId: null`
+/// clears the chosen profile.
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct UpdateMemoryRequest {
-    pub text: String,
+    #[serde(default)]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default, deserialize_with = "present")]
+    pub profile_id: Option<Option<String>>,
+}
+
+/// Tells a field sent as `null` apart from a missing one.
+fn present<'de, D: Deserializer<'de>>(value: D) -> Result<Option<Option<String>>, D::Error> {
+    Option::<String>::deserialize(value).map(Some)
 }
 
 #[derive(Debug, Default, Deserialize)]

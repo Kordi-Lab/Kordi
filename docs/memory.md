@@ -86,6 +86,8 @@ Account routes, all scoped to the signed-in account:
 
 Runner routes, authorized by the run lease: `GET /v1/cloud/agent-runs/{runId}/memory` and `POST /v1/cloud/agent-runs/{runId}/memory`.
 
+Each memory has a category, a declaration type and an optional profile (#1977). Saves accept `category`, `confidence` (`low`, `medium`, `high`) and `declaredBy` (`user` or `agent`); a missing category is `general_preferences`, and without `declaredBy` a `manual` source is user-declared and every other source model-inferred. Runner saves are always model-inferred. `PATCH` accepts `text`, `category` and `profileId` (`null` clears it); a text edit makes the memory user-declared. Responses add `category`, `declarationType`, `confidence`, `profileId` (the profile the person chose) and `profileKind` (`work`, `health`, `daily`, `all`, a chosen custom profile's kind, or null; always null for group memories). The categories are `general_preferences`, `goals_and_constraints`, `health_context`, `education_learner_profile`, `work_context`, `purchase_history_preferences`, `values_and_ethics`, `location_context`, `coordination_context` and `hcp-custom:task_lessons`. A group memory may not use the health, location, purchase or values categories (`memory_category_not_shared`) or be filed to a profile (`memory_profile_not_allowed`).
+
 `GET /v1/cloud/auth/capabilities` returns `memoryVersion: 1`. Clients hide the Memory section without it.
 
 The design and decisions are in [development/issue-1710-memory-controls.md](development/issue-1710-memory-controls.md). Guard rules live in `agent/crates/tools/src/memory_guard.rs`; the server store is `bridges/cloud-server/src/memory_store/`.

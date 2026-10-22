@@ -73,6 +73,7 @@ tests=(
   common_ground_tests::upgrade_from_143_adds_profile_design
   common_ground_tests::upgrade_from_144_adds_profile_icon
   common_ground_tests::upgrade_from_145_widens_profile_designs
+  memory_tests::upgrade_from_146_adds_memory_categories
 )
 index=0
 for test_name in "${tests[@]}"; do

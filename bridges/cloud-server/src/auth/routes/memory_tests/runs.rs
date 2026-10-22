@@ -123,6 +123,8 @@ async fn runner_reads_and_saves_memories_for_a_leased_run() {
             "memoryId": memory_id,
             "scope": "conversation",
             "source": "repeated_failure",
+            "category": "general_preferences",
+            "declarationType": "model-inferred",
             "runId": run_id,
             "via": "runner",
         })
