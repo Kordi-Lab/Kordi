@@ -38,6 +38,8 @@ final class CommonGroundModel: ObservableObject {
     /// Set in CommonGroundModel+Profiles.swift.
     @Published var profiles: [CommonGroundProfileSummary] = []
     @Published var currentProfileID: String?
+    /// Each profile's shared topics for the wallet, set in CommonGroundModel+Wallet.swift.
+    @Published var walletTopics: [String: [String]] = [:]
     /// The viewer's profile to see each person through, from Recent or a room.
     var viewerProfiles: [String: String] = [:]
 
@@ -140,6 +142,7 @@ final class CommonGroundModel: ObservableObject {
         let revision = owner?.card?.revision
         owner = view
         loaded = true
+        if let id = view.profile?.profileId { walletTopics[id] = Self.visibleTopics(view.card) }
         if (wasBuilding && !isBuilding) || revision != view.card?.revision {
             matches = [:]
             results = [:]
@@ -273,6 +276,14 @@ final class CommonGroundModel: ObservableObject {
         setRoom(room, code: code)
         Task { await loadRooms() }
         return true
+    }
+
+    /// Moves a room to the top of Rooms, after a join or a new code.
+    func raiseRoom(_ code: String) {
+        guard let index = roomList?.firstIndex(where: { $0.code == code }), index > 0 else { return }
+        withAnimation(.snappy) {
+            if let room = roomList?.remove(at: index) { roomList?.insert(room, at: 0) }
+        }
     }
 
     /// A room as just joined or switched: its results are matched again.

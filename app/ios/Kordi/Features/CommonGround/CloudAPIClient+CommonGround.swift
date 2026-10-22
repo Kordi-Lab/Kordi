@@ -81,6 +81,11 @@ extension CloudAPIClient {
         try await send(path: cg("rooms/\(cgSegment(code))"), method: "GET", token: token, fallback: "Could not load the room.")
     }
 
+    /// Opens a room under a new four-digit code and joins it with a profile.
+    func createCommonGroundRoom(token: String, request: CommonGroundCreateRoomRequest) async throws -> CommonGroundRoom {
+        try await send(path: cg("rooms"), method: "POST", token: token, body: request, fallback: "Could not create a code.")
+    }
+
     func joinCommonGroundRoom(token: String, code: String, request: CommonGroundJoinRequest = .init()) async throws -> CommonGroundRoom {
         try await send(path: cg("rooms/\(cgSegment(code))/join"), method: "POST", token: token, body: request, fallback: "Could not join the room.")
     }
