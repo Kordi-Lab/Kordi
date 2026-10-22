@@ -46,7 +46,7 @@ extension AppModel {
             accountId: account?.accountId ?? "",
             name: account?.preferredName ?? "",
             avatarUrl: account?.avatarUrl,
-            handle: ProfileDraft.customHandle(account?.kordiId)
+            handle: account?.kordiId.flatMap { $0.isEmpty ? nil : $0 }
         )
         let profiles = CommonGroundAvailability.hasProfiles(capabilities: memoryCapabilities)
         let sources = profiles && CommonGroundAvailability.hasSources(capabilities: memoryCapabilities)
