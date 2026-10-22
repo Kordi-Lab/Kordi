@@ -1,7 +1,7 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { withLocalExecutionProgress } from '@/features/chat/localExecutionProgress';
 import { collaborationMessageActionSourceReference,collaborationMessageActionWithRealSourceLabel } from "./messageActionPresentation";
-import { getLocalAgentAvatar } from '@/features/canonical/localAgentAvatar';
+import { getLocalAgentAvatar } from '@/features/canonical/localAgentAvatar'; import { withSystemNoticeIdentity } from '@/features/canonical/readModel/systemNotice';
 import { isProcessingPlaceholderText,stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import {
 collaborationPendingAgentReplyState,
@@ -352,7 +352,7 @@ export function mapCollaborationConversationToViewModel(
         }),
       }];
     }
-    const mappedMessage: Message = {
+    const mappedMessage: Message = withSystemNoticeIdentity({
       id: messageId, clientMessageId: message.clientMessageId ?? null,
       role: isAgent
         ? (isOutboundHuman
@@ -393,7 +393,7 @@ export function mapCollaborationConversationToViewModel(
         ? message.messageAction.source.sourceMessageId
         : undefined,
       detail: message.detail ?? undefined,
-    };
+    });
     if (isAgent && isOutboundHuman && isCancelledCollaborationState(message.deliveryState)) {
       return [mappedMessage, {
         id: `collaboration-live-turn:${conversation.id}:${message.id}:cancelled`,

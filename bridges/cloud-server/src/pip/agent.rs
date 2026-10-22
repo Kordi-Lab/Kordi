@@ -13,7 +13,8 @@ use super::config::{PendingPipConfig, PipConfig, PipConfigError};
 use super::prompt::PIP_SYSTEM_PROMPT;
 
 /// Creates or refreshes PiP's account, default agent profile and agent
-/// definition, then makes sure PiP sits in every existing group conversation.
+/// definition, then makes sure PiP sits in every existing group conversation
+/// except Grounding groups.
 pub async fn bootstrap_pip_agent(
     pool: &PgPool,
     pending: PendingPipConfig,
@@ -138,6 +139,10 @@ pub async fn bootstrap_pip_agent(
     let joined = super::membership::join_all_groups(pool, &config.account_id).await?;
     if joined > 0 {
         println!("PiP joined {joined} existing group conversation(s)");
+    }
+    let left = super::membership::leave_room_groups(pool, &config.account_id).await?;
+    if left > 0 {
+        println!("PiP left {left} Grounding group(s)");
     }
     Ok(config)
 }
