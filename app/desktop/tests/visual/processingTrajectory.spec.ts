@@ -164,6 +164,7 @@ test('first request after opening a group does not reset its transcript when the
 
 test('ordered commentary keeps disclosures open through streaming and completion', async ({ page }, info) => {
   await page.goto('/tests/visual/processingTrajectory.html?ordered=1&count=2&phase=6');
+  await page.locator('.app-turn-worked-header').click();
   const header = await page.locator('.app-turn-worked-header').elementHandle();
   const first = page.locator('.app-turn-progress-summary').first();
   await expect(page.getByText('I will inspect the example before making a change.')).toBeVisible();
@@ -194,6 +195,7 @@ test('ordered commentary keeps disclosures open through streaming and completion
 
 test('ordered activity opens output directly and local files in reusable side-panel tabs', async ({ page }, info) => {
   await page.goto('/tests/visual/processingTrajectory.html?ordered=1&count=0&phase=7');
+  await page.locator('.app-turn-worked-header').click();
   await page.getByRole('button', { name: 'Read files', exact: true }).click();
   await page.getByRole('button', { name: 'Read example.ts', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Details', exact: true })).toHaveCount(0);
@@ -247,6 +249,7 @@ test('live actions change in place and reasoning stays separate from tool detail
   const timer = page.locator('.app-turn-worked-header .app-turn-progress-time');
   await expect(label).toHaveText('Reading files');
   const initialTimer = await timer.boundingBox();
+  await page.locator('.app-turn-worked-header').click();
   await page.getByRole('button', { name: '1 tool', exact: true }).click();
   await expect(page.locator('.app-transcript-thinking-markdown')).toHaveCount(0);
   await page.getByRole('button', { name: 'Reasoning', exact: true }).click();
@@ -298,9 +301,11 @@ test('finished work without timestamps is explicit and compact', async ({ page }
   await page.screenshot({ path: info.outputPath('finished-without-timing.png'), fullPage: true });
 });
 
-test('legacy completed tool turns fold reasoning into the finished disclosure', async ({ page }, info) => {
+test('legacy live and completed turns share one collapsed disclosure', async ({ page }, info) => {
   await page.goto('/tests/visual/processingTrajectory.html?reasoning=1&missingTiming=1&count=0&phase=7');
-  await expect(page.getByRole('button', { name: 'Reasoning', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reasoning', exact: true })).toHaveCount(0);
+  await expect(page.locator('.app-turn-progress-summary')).toHaveCount(1);
+  await expect(page.locator('.app-turn-progress-summary')).toHaveAttribute('aria-expanded', 'false');
   await page.evaluate(() => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(9));
   const finished = page.getByRole('button', { name: 'Finished', exact: true });
   await expect(finished).toBeVisible();
@@ -313,4 +318,42 @@ test('legacy completed tool turns fold reasoning into the finished disclosure', 
   await finished.click();
   await expect(page.locator('.app-transcript-thinking-markdown')).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('single-finished-disclosure.png'), fullPage: true });
+});
+
+
+test('live progress starts as one line and unfolds recorded activity in order', async ({ page }, info) => {
+  await page.goto('/tests/visual/processingTrajectory.html?ordered=1&reasoning=1&count=0&phase=6');
+  const header = page.locator('.app-turn-worked-header');
+  const summaries = page.locator('.app-turn-progress-summary:visible');
+  const step = (phase: number) => page.evaluate(phase => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(phase), phase);
+  await expect(header).toHaveAttribute('aria-expanded', 'false');
+  await expect(summaries).toHaveCount(0);
+  await expect(page.locator('.app-turn-commentary:visible')).toHaveCount(0);
+  await step(7);
+  await expect(header).toHaveAttribute('aria-expanded', 'false');
+  await expect(header).toHaveAccessibleName(/^Editing files/);
+  await expect(summaries).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath('single-live-progress-line.png'), fullPage: true });
+  await header.focus();
+  await page.keyboard.press('Enter');
+  await expect(header).toHaveAttribute('aria-expanded', 'true');
+  const sequence = await page.locator('.app-turn-trajectory > div').allTextContents();
+  expect(sequence).toEqual([
+    'I will inspect the example before making a change.',
+    'Read files',
+    'The example needs one change. I will apply it now.',
+    '1 tool',
+  ]);
+  await page.getByRole('button', { name: 'Reasoning', exact: true }).click();
+  await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
+  await header.click();
+  await expect(summaries).toHaveCount(0);
+  await expect(page.locator('.app-transcript-thinking-markdown')).toBeHidden();
+  await step(9);
+  await expect(header).toHaveAttribute('aria-expanded', 'false');
+  await expect(header).toHaveAccessibleName('Worked for 12s');
+  await expect(page.getByText('The example is ready. The check passed.')).toBeVisible();
+  await expect(summaries).toHaveCount(0);
+  await header.click();
+  await expect(page.locator('.app-transcript-thinking-markdown')).toBeVisible();
 });

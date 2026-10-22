@@ -51,13 +51,12 @@ export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
   const elapsed = elapsedLabel(turn, now);
   const standaloneReasoning = !hasActivity && turn.tools.length === 0;
   const reasoningLabel = !live && standaloneReasoning ? turnProgressLabel(turn) : 'Reasoning';
-  const [trajectoryExpanded, setTrajectoryExpanded] = useState(true);
+  const [trajectoryExpanded, setTrajectoryExpanded] = useState(false);
   const legacyHasActivity = turn.tools.length > 0 || Boolean(turn.thinkingText);
   if (!ordered) return <>
-    {legacyHasActivity || (live && !legacyAnswer) ? <ActivityGroup tools={turn.tools} thinkingText={live && turn.tools.length ? undefined : turn.thinkingText}
+    {legacyHasActivity || (live && !legacyAnswer) ? <ActivityGroup tools={turn.tools} thinkingText={turn.thinkingText}
       label={!turn.tools.length && turn.thinkingText ? reasoningLabel : turnProgressLabel(turn)}
       active={live} hideIcon={!live} elapsed={elapsed} trailing={live ? trailing : undefined} renderTool={renderTool} /> : null}
-    {live && turn.tools.length > 0 && turn.thinkingText ? <ActivityGroup tools={[]} label="Reasoning" thinkingText={turn.thinkingText} renderTool={renderTool} /> : null}
     {legacyAnswer}
   </>;
   const statusLabel = turnProgressLabel(turn);
@@ -76,7 +75,7 @@ export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
       active={standaloneReasoning && live} hideIcon={standaloneReasoning && !live} elapsed={standaloneReasoning ? elapsed : null}
       renderTool={renderTool} trailing={!hasActivity && live ? trailing : null} /></div> : !hasActivity && live ? trailing : null}
     <div className="app-turn-trajectory" data-transcript-stable-disclosure-body="true">
-      {groups.map(group => <div key={group.id} hidden={hasActivity && !trajectoryExpanded && (group !== last || group.kind !== 'text')}>
+      {groups.map(group => <div key={group.id} hidden={hasActivity && !trajectoryExpanded && (live || group !== last || group.kind !== 'text')}>
         {group.kind === 'text' ? <div className="app-turn-commentary"><MarkdownContent text={group.text} /></div>
           : <ActivityGroup tools={group.tools} unavailable={group.unavailable}
               label={live && group.tools.some(progressToolIsActive) ? `${group.tools.length + group.unavailable} ${group.tools.length + group.unavailable === 1 ? 'tool' : 'tools'}` : settledProgressLabel(group.tools, group.unavailable)}
