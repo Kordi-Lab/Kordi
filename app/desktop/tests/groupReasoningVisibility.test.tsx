@@ -19,8 +19,8 @@ for (const completed of [false, true]) {
       }));
       assert.equal(/synthetic private reasoning/i.test(html), false);
       assert.equal(html.includes('aria-expanded="false"'), owner);
-      assert.match(html, /Public reply/);
-      assert.equal(html.includes('Owner commentary'), owner);
+      assert.equal(html.includes('Public reply'), !owner || completed);
+      assert.equal(html.includes('Owner commentary'), false);
     });
   }
 }

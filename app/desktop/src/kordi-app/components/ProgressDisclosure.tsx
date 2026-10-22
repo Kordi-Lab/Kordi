@@ -16,7 +16,7 @@ export function ProgressDisclosure({ expanded, children }: { expanded: boolean; 
     // Resolve the current height before retargeting, including a reversed transition.
     element.getBoundingClientRect();
     const resize = () => {
-      const maxHeight = Number.parseFloat(getComputedStyle(element).maxHeight);
+      const maxHeight = Number.parseFloat(window.getComputedStyle(element).maxHeight);
       const height = expanded ? Math.min(inner.getBoundingClientRect().height, Number.isFinite(maxHeight) ? maxHeight : Infinity) : 0;
       if (element.style.height !== `${height}px`) element.style.height = `${height}px`;
     };

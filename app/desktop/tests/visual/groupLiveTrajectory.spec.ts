@@ -2,26 +2,26 @@ import { expect, test } from '@playwright/test';
 
 test('owner sees tools during a group request, including preparation between tool results', async ({ page }) => {
   await page.goto('/tests/visual/groupLiveTrajectory.html');
-  await expect(page.locator('.app-agent-waiting-wave')).toBeVisible();
+  await expect(page.locator('.app-turn-progress-bird')).toBeVisible();
   await page.getByRole('button', { name: 'Tool progress' }).click();
-  const timeline = page.locator('.app-transcript-tool-timeline');
+  const timeline = page.locator('.app-ordered-progress');
   await expect(timeline).toBeVisible();
-  await timeline.locator('.app-transcript-tool-timeline-summary').click();
-  await expect(timeline.locator('.app-transcript-timeline-list')).toBeVisible();
+  await timeline.locator('.app-turn-worked-header').click();
+  await expect(timeline.locator('.app-tool-activity').first()).toBeVisible();
   const node = await timeline.elementHandle();
   await page.getByRole('button', { name: 'Preparing next call' }).click();
-  await expect(timeline.locator('.app-transcript-timeline-list')).toBeVisible();
+  await expect(timeline.locator('.app-tool-activity').first()).toBeVisible();
   expect(await node!.evaluate(element => element.isConnected)).toBe(true);
   await page.getByRole('button', { name: 'Local completion' }).click();
   await expect(page.getByText('Synthetic answer that remains visible through synchronization.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Public sync' }).click();
   expect(await node!.evaluate(element => element.isConnected)).toBe(true);
-  await expect(timeline.locator('.app-transcript-timeline-list')).toBeVisible();
+  await expect(timeline.locator('.app-tool-activity').first()).toBeVisible();
 });
 
 test('a text-only reply keeps its shell and answer mounted across final public synchronization', async ({ page }) => {
   await page.goto('/tests/visual/groupLiveTrajectory.html?random=1');
-  await expect(page.locator('.app-agent-waiting-wave')).toBeVisible();
+  await expect(page.locator('.app-turn-progress-bird')).toBeVisible();
   const card = await page.locator('.app-live-turn-card').elementHandle();
   await page.getByRole('button', { name: 'Answer text' }).click();
   await expect(page.locator('.app-live-assistant-answer')).toBeVisible();
@@ -50,16 +50,16 @@ test('peer group view never receives owner-local progress', async ({ page }) => 
   await page.goto('/tests/visual/groupLiveTrajectory.html?peer=1');
   for (const name of ['Tool progress', 'Preparing next call', 'Local completion', 'Public sync']) {
     await page.getByRole('button', { name }).click();
-    await expect(page.locator('.app-transcript-tool-timeline')).toHaveCount(0);
+    await expect(page.locator('.app-tool-activity')).toHaveCount(0);
   }
 });
 
 test('a pending reply shows a compact indicator and a quiet quote, and keeps its header in place', async ({ page }) => {
   await page.goto('/tests/visual/groupLiveTrajectory.html?random=1');
   const row = page.locator('[data-transcript-message-root]').filter({ has: page.locator('.app-live-turn-card') });
-  const pending = row.locator('.app-live-turn-response-panel[data-live-turn-pending="true"]');
-  await expect(pending.locator('.app-agent-waiting-wave')).toBeVisible();
-  expect((await pending.boundingBox())!.width).toBeLessThan(80);
+  const pending = row.locator('.app-live-turn-response-panel');
+  await expect(pending.locator('.app-turn-progress-bird')).toBeVisible();
+  expect((await pending.boundingBox())!.height).toBeLessThan(60);
   await expect(row.locator('[data-agent-request-stop="header"]')).toBeVisible();
   await expect(row.locator('.app-source-message-quote')).toContainText('Synthetic Owner: @SyntheticAgent From now on');
   // The transcript stays pinned to its tail, so compare offsets inside the row.
@@ -67,6 +67,6 @@ test('a pending reply shows a compact indicator and a quiet quote, and keeps its
     .map((selector) => root.querySelector(selector)!.getBoundingClientRect().top - root.getBoundingClientRect().top));
   const pendingOffsets = await offsets();
   await page.getByRole('button', { name: 'Answer text' }).click();
-  await expect(row.locator('.app-live-turn-response-panel')).not.toHaveAttribute('data-live-turn-pending', 'true');
+  await expect(row.locator('.app-live-assistant-answer')).toBeVisible();
   expect(await offsets()).toEqual(pendingOffsets);
 });

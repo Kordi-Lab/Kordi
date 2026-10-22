@@ -418,7 +418,7 @@ test('assistant response surfaces are square and tighter with less blank space',
   assert.doesNotMatch(surfaceBlock, /padding:\s*0\.78rem 0\.9rem 0\.68rem;/);
 });
 
-test('renders completed assistant responses as a compact contrast surface', () => {
+test('renders completed assistant responses as a compact transcript surface', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-contrast-answer',
     sessionId: 'session-1',
@@ -435,7 +435,7 @@ test('renders completed assistant responses as a compact contrast surface', () =
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
 
-  assert.match(markup, /app-live-turn-response-panel app-live-assistant-answer-surface/);
+  assert.match(markup, /app-live-turn-response-panel app-ordered-turn-surface/);
   assert.match(markup, /max-w-\[min\(100%,58rem\)\]/);
   assert.match(markup, /app-live-assistant-answer-markdown/);
   assert.doesNotMatch(markup, /max-w-\[min\(100%,42rem\)\]/);
