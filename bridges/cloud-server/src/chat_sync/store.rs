@@ -253,7 +253,7 @@ pub use message::{
 pub(crate) use message::{replace_server_message_in_transaction, send_message_in_transaction};
 use reaction::reactions_by_message;
 pub use reaction::set_reaction;
-pub use service_members::join_service_member;
+pub use service_members::{join_service_member, remove_service_member};
 pub use support::{
     append_user_sync_events_in_transaction, identity_sync_recipient_ids, publish_user_sync_events,
 };

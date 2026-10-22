@@ -1,11 +1,15 @@
 import { createRoot } from 'react-dom/client';
 import { mapCanonicalMessage } from '../../src/features/canonical/readModel/messageMapping';
+import { mapCollaborationConversationToViewModel } from '../../src/features/collaboration/transcript';
+import { conversation, host } from '../helpers/collaborationTranscriptFixtures';
 import { KORDI_PIP_AVATAR_URL } from '../../src/features/pip/pipIdentity';
 import { MessageBubble } from '../../src/kordi-app/components/transcript';
 import type { CanonicalIdentity, CanonicalSessionMessage, Message } from '../../src/kordi-app/types';
+import type { MessagePlanCard } from '../../src/kordi-app/types/message';
 import '../../src/index.css';
 
-// Server "Grounding" notices mapped through the real read model, next to an ordinary PiP reply.
+// Server "Grounding" notices mapped through the real read model, next to an ordinary PiP reply,
+// then a direct-chat plan card the viewer organized, mapped through the direct-chat path.
 const theme = new URLSearchParams(location.search).get('theme') === 'dark' ? 'dark' : 'light';
 document.body.className = `kordi-app theme-${theme}`;
 document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -25,6 +29,21 @@ const messages = [
   row('maya', maya, 'text', 'Great, welcome Jordan!', 3),
   row('pip', pip, 'text', 'Here is a first draft of the plan.', 4),
 ].map((message) => mapCanonicalMessage(message, identities, 'human:me')).filter((message): message is Message => Boolean(message));
+const planCard: MessagePlanCard = {
+  eventId: 'preview-coffee', revision: 2, view: 'event', state: 'polling', title: 'Coffee with Maya', unresolvedFields: [], options: [],
+  participants: [
+    { participantId: 'acct_preview_me', displayName: 'Me', organizer: true, rsvp: 'yes' },
+    { participantId: 'acct_preview_maya', displayName: 'Maya Chen', organizer: false, rsvp: 'pending' },
+  ],
+};
+const direct = mapCollaborationConversationToViewModel(conversation({
+  peerDisplayName: 'Maya Chen', title: 'Maya Chen',
+  messages: [
+    { id: 'direct-hi', direction: 'outbound', sender: 'Me', text: 'Coffee this week?', timeLabel: '09:05', timestampMs: Date.UTC(2026, 9, 21, 9, 5), messageKind: 'text' },
+    { id: 'direct-plan', direction: 'outbound', sender: 'Me', text: '', timeLabel: '09:06', timestampMs: Date.UTC(2026, 9, 21, 9, 6), deliveryState: 'read', messageKind: 'system-notice', planCard },
+  ],
+}), host(), 'My Kordi').messages;
+messages.push(...direct);
 
 createRoot(document.getElementById('root')!).render(
   <main style={{ maxWidth: 720, margin: '0 auto', padding: 24, minHeight: '100dvh', background: 'var(--app-chat-background, var(--background))' }}>

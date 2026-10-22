@@ -163,13 +163,12 @@ pub async fn start(pool: &PgPool, account: &str) -> Result<()> {
         .map(|input| input.sources.into_iter().map(|source| source.id).collect())
         .unwrap_or_default();
     let since = checked_at.unwrap_or(updated_at);
-    let pip = crate::pip::service_account_id();
     let mut candidates: Vec<Source> = super::store::sources(pool, account, None)
         .await?
         .into_iter()
         .filter(|source| {
             source.sender_account_id != account
-                && pip != Some(source.sender_account_id.as_str())
+                && !crate::system_account::is_service_account(&source.sender_account_id)
                 && !saved.contains(&source.id)
                 && DateTime::parse_from_rfc3339(&source.created_at).is_ok_and(|at| at > since)
                 && !is_trivial_text(&source.text)

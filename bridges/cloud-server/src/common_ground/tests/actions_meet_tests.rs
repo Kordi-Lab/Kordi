@@ -97,6 +97,16 @@ async fn meet_proposes_a_plan_card_in_the_direct_chat() {
     };
     let block = carrier().await;
     assert_eq!(block["eventId"], event_id.as_str());
+    let (kind,): (String,) = query_as(
+        "SELECT message_kind FROM cloud_chat_messages
+         WHERE conversation_id = $1 AND sender_account_id = $2",
+    )
+    .bind(conversation_id.parse::<Uuid>().unwrap())
+    .bind(&alex)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(kind, "system-notice", "the card shows as a System notice");
     assert_eq!(block["revision"], 1);
     let (status, body) = send(
         &app,
