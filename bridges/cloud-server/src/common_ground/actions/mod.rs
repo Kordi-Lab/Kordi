@@ -70,7 +70,7 @@ async fn is_contact(pool: &PgPool, viewer: &str, other: &str) -> sqlx_core::Resu
 async fn people_by_id(pool: &PgPool, ids: &[String]) -> sqlx_core::Result<HashMap<String, Value>> {
     type PersonRow = (String, Option<String>, Option<String>, Option<String>);
     let rows: Vec<PersonRow> = query_as(
-        "SELECT account_id, display_name, public_handle, avatar_url
+        "SELECT account_id, display_name, COALESCE(public_handle, public_account_number::TEXT), avatar_url
          FROM cloud_accounts WHERE account_id = ANY($1)",
     )
     .bind(ids)

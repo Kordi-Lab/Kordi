@@ -46,7 +46,7 @@ pub(in crate::common_ground) async fn recent(
     let sql = format!(
         "SELECT * FROM (
              SELECT DISTINCT ON (m.other_profile_id)
-                    account.account_id, account.display_name, account.public_handle, account.avatar_url,
+                    account.account_id, account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url,
                     m.result_json,
                     m.opened_at,
                     COALESCE(viewer_card.built_at IS NOT NULL

@@ -84,7 +84,7 @@ pub(super) async fn shared_cards(
             Option<String>,
         );
         let found: Option<Found> = query_as(
-            "SELECT account.display_name, account.public_handle, account.avatar_url,
+            "SELECT account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url,
                     profile.kind, profile.name, profile.design, profile.icon
              FROM cloud_accounts account
              JOIN cloud_common_ground_profiles profile ON profile.account_id = account.account_id

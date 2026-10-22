@@ -301,7 +301,7 @@ pub(super) async fn list(
     Extension(session): Extension<CloudSession>,
 ) -> Response {
     let rows: sqlx_core::Result<Vec<PairedRow>> = query_as(
-        "SELECT account.account_id, account.display_name, account.public_handle, account.avatar_url,
+        "SELECT account.account_id, account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url,
                 pairing.created_at,
                 CASE WHEN pairing.account_a = $1 THEN pairing.profile_a ELSE pairing.profile_b END,
                 theirs.profile_id, theirs.kind, theirs.name, theirs.design, theirs.icon

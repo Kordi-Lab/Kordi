@@ -37,7 +37,7 @@ async fn group_members(
     type MemberRow = (Uuid, String, Option<String>, Option<String>, Option<String>);
     let rows: Vec<MemberRow> = query_as(
         "SELECT member.conversation_id, member.account_id, account.display_name,
-                account.public_handle, account.avatar_url
+                COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url
          FROM cloud_chat_conversation_members member
          JOIN cloud_accounts account ON account.account_id = member.account_id
          JOIN cloud_common_ground_room_groups room_group
@@ -86,7 +86,7 @@ pub(in crate::common_ground) async fn room_extras(
     let service = crate::system_account::service_account_ids();
     let groups: Vec<GroupRow> = query_as(
         "SELECT room_group.group_space_id, room_group.conversation_id, room_group.name,
-                room_group.topic, room_group.created_by, account.display_name, account.public_handle,
+                room_group.topic, room_group.created_by, account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT),
                 account.avatar_url,
                 (SELECT COUNT(*) FROM cloud_chat_conversation_members member
                  WHERE member.conversation_id = room_group.conversation_id
@@ -142,7 +142,7 @@ pub(in crate::common_ground) async fn room_extras(
     // Group invitations keep their expiry as RFC 3339 text in UTC.
     let invitations: Vec<InvitationRow> = query_as(
         "SELECT invite.invitation_ref, invite.group_space_id, room_group.name,
-                invite.inviter_account_id, account.display_name, account.public_handle, account.avatar_url,
+                invite.inviter_account_id, account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url,
                 invite.created_at
          FROM cloud_common_ground_room_invitations invite
          JOIN cloud_common_ground_room_groups room_group

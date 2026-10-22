@@ -21,8 +21,8 @@ use super::{card, db_error, err, ROOM_OPEN_SQL};
 use crate::document_shares::access::{clean_display_name, syncable_avatar_url};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
-/// A person as Grounding shows them: name, public @handle (without the `@`,
-/// null when the account has none) and avatar. Never anything private.
+/// A person as Grounding shows them: name, Kordi ID as @handle (the chosen
+/// handle, else the account number; no `@`) and avatar. Never anything private.
 pub(super) fn person(
     account_id: &str,
     name: Option<&str>,
@@ -37,10 +37,10 @@ pub(super) fn person(
     })
 }
 
-/// The public @handle of this account, if it chose one.
+/// This account's Kordi ID: its chosen handle, else its account number.
 pub(super) async fn handle(pool: &PgPool, account_id: &str) -> sqlx_core::Result<Option<String>> {
     let row: Option<(Option<String>,)> =
-        query_as("SELECT public_handle FROM cloud_accounts WHERE account_id = $1")
+        query_as("SELECT COALESCE(public_handle, public_account_number::TEXT) FROM cloud_accounts WHERE account_id = $1")
             .bind(account_id)
             .fetch_optional(pool)
             .await?;
@@ -256,7 +256,7 @@ pub(super) async fn shared_view(
         Option<String>,
     );
     let account: Option<Found> = query_as(
-        "SELECT account.display_name, account.public_handle, account.avatar_url, profile.kind,
+        "SELECT account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url, profile.kind,
                 profile.name, profile.design, profile.icon
          FROM cloud_accounts account
          JOIN cloud_common_ground_profiles profile ON profile.account_id = account.account_id

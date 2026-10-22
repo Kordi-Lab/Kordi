@@ -142,7 +142,7 @@ pub(in crate::common_ground) async fn view(
         .await?;
     // Members arrive in join order; you are never in the list.
     let members: Vec<MemberRow> = query_as(
-        "SELECT member.account_id, account.display_name, account.public_handle, account.avatar_url,
+        "SELECT member.account_id, account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url,
                 COALESCE(card.built_at IS NOT NULL AND card.sharing_enabled, false),
                 profile.profile_id, profile.kind, profile.name, profile.design,
                 profile.icon

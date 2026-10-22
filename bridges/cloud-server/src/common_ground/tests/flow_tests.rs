@@ -19,7 +19,7 @@ async fn cards_rooms_and_pairings() {
     let (priya, priya_token) = signed_in(&pool, "Priya").await;
     let (sam, sam_token) = signed_in(&pool, "Sam").await;
     let card = "/v1/cloud/common-ground/card";
-    // Alex picked a public @handle; Priya has none.
+    // Alex picked a public @handle; Priya keeps her Kordi account number.
     let handle = format!("alex{}", &alex[alex.len() - 20..]);
     query("UPDATE cloud_accounts SET public_handle = $2 WHERE account_id = $1")
         .bind(&alex)
@@ -27,12 +27,18 @@ async fn cards_rooms_and_pairings() {
         .execute(&pool)
         .await
         .unwrap();
+    let (priya_number,): (Option<String>,) =
+        query_as("SELECT public_account_number::TEXT FROM cloud_accounts WHERE account_id = $1")
+            .bind(&priya)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
 
     let (status, body) = send(&app, "GET", card, &alex_token, None).await;
     assert_eq!((status, body["card"].clone()), (200, Value::Null));
     assert_eq!(body["handle"], handle.as_str(), "owner card");
     let (_, body) = send(&app, "GET", card, &priya_token, None).await;
-    assert_eq!(body["handle"], Value::Null);
+    assert_eq!(body["handle"], json!(priya_number));
     let (status, body) = send(
         &app,
         "POST",
@@ -169,7 +175,7 @@ async fn cards_rooms_and_pairings() {
     let room = format!("/v1/cloud/common-ground/rooms/{code}");
     let (_, body) = send(&app, "GET", &room, &alex_token, None).await;
     assert_eq!(body["members"][0]["name"], "Priya");
-    assert_eq!(body["members"][0]["handle"], Value::Null);
+    assert_eq!(body["members"][0]["handle"], json!(priya_number));
     let (hints,): (i64,) = query_as("SELECT COUNT(*) FROM cloud_chat_user_sync_events WHERE account_id = $1 AND event_type = 'common_ground.room.updated'")
         .bind(&alex)
         .fetch_one(&pool)
