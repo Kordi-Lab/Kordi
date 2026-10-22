@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CloudAuthClient } from '../src/features/cloud/authClient';
-import { KORDI_PIP_ACCOUNT_ID } from '../src/features/pip/pipIdentity';
+import { KORDI_PIP_ACCOUNT_ID, KORDI_SYSTEM_ACCOUNT_ID } from '../src/features/pip/pipIdentity';
 import { conversation, message } from './helpers/chatSyncCanonicalFixtures';
 
 const pipMember = {
@@ -18,7 +18,7 @@ const group = {
   members: [...conversation.members, pipMember],
 };
 
-function clientRecording(calls: string[]) {
+function clientRecording(calls: string[], conversations: unknown[] = [group]) {
   return new CloudAuthClient({
     baseUrl: 'http://srv',
     fetchImpl: async (input) => {
@@ -27,7 +27,7 @@ function clientRecording(calls: string[]) {
       if (url.endsWith('/sync/bootstrap')) {
         return new Response(JSON.stringify({
           protocol_version: 2,
-          conversations: [group],
+          conversations,
           session_visibility: {hiddenSessionIds:[],deletedSessionIds:[],pinnedSessionIds:[],mutedSessionIds:[],unreadSessionIds:[],pinnedGroupSpaceIds:[]},
           latest_messages: [],
           next_cursor: 'opaque',
@@ -69,4 +69,18 @@ test('a client that still lists PiP does not ask to add it either', async () => 
     memberAccountIds: ['acct_a', KORDI_PIP_ACCOUNT_ID],
   });
   assert.equal(calls.some((url) => url.endsWith('/members')), false);
+});
+
+test('a group send never tries to remove the system account either', async () => {
+  const calls: string[] = [];
+  const withSystem = { ...group, members: [...group.members, { ...pipMember, account_id: KORDI_SYSTEM_ACCOUNT_ID }] };
+  const client = clientRecording(calls, [withSystem]);
+  await client.syncCloudEvents('token', '0');
+  await client.sendMessage('token', 'acct_a', groupEnvelope(['acct_a', 'acct_b']), {
+    sessionId: group.legacy_session_id,
+    conversationKind: 'group',
+    memberAccountIds: ['acct_a'],
+  });
+  assert.equal(calls.some((url) => url.endsWith('/members')), false);
+  assert.equal(calls.some((url) => url.endsWith('/messages')), true);
 });

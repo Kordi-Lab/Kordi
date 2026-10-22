@@ -74,10 +74,7 @@ pub(in crate::common_ground) async fn room_extras(
     room_id: Uuid,
     viewer: &str,
 ) -> sqlx_core::Result<(Value, Value)> {
-    let service: Vec<String> = crate::pip::service_account_id()
-        .into_iter()
-        .map(str::to_string)
-        .collect();
+    let service = crate::system_account::service_account_ids();
     let groups: Vec<GroupRow> = query_as(
         "SELECT room_group.group_space_id, room_group.conversation_id, room_group.name,
                 room_group.topic, room_group.created_by, account.display_name, account.avatar_url,

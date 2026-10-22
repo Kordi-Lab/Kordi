@@ -29,6 +29,7 @@ pub mod projects;
 pub mod scheduled_tasks;
 pub mod server;
 pub mod support;
+pub mod system_account;
 pub mod updates;
 pub mod ws;
 

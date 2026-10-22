@@ -20,8 +20,11 @@ use sqlx_core::{query::query, query_as::query_as, transaction::Transaction};
 use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
+mod create;
 mod switch;
 mod view;
+
+pub(super) use create::create;
 
 pub(super) use switch::switch_profile;
 use view::view_response;
@@ -81,16 +84,20 @@ async fn open_room(
         .await
 }
 
-/// The profile a join shares, or the response to send instead.
+/// The profile a join shares, or the response to send instead. `code` is
+/// `None` when the room is new.
 async fn joining_profile(
     pool: &PgPool,
-    code: &str,
+    code: Option<&str>,
     account: &str,
     body: &JoinRequest,
 ) -> Result<Profile, Box<Response>> {
-    let room = open_room(pool, code, account)
-        .await
-        .map_err(|error| Box::new(db_error(error)))?;
+    let room = match code {
+        Some(code) => open_room(pool, code, account)
+            .await
+            .map_err(|error| Box::new(db_error(error)))?,
+        None => None,
+    };
     let (room_kind, current) = match room {
         Some((kind, current)) => (kind, current),
         None => (body.kind.clone(), None),
@@ -115,6 +122,133 @@ async fn joining_profile(
     Ok(profile)
 }
 
+/// Codes are short, so guessing is limited per account and per address.
+/// Opening a room counts the same as joining one.
+async fn check_limits(
+    rate_limiter: &CloudRateLimiter,
+    account: &str,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
+    headers: &HeaderMap,
+) -> Option<Response> {
+    let client = crate::client_ip::resolve_client_ip(headers, connect_info.map(|info| info.0.ip()));
+    let ip_key = format!("ip:{}", rate_limit_client_key(client));
+    for (limit, key) in [(ROOM_JOIN_LIMIT, account), (ROOM_IP_LIMIT, ip_key.as_str())] {
+        if let RateLimitDecision::Limited { retry_after } =
+            rate_limiter.observe_account_limit(limit, key).await
+        {
+            return Some(limited(retry_after));
+        }
+    }
+    None
+}
+
+/// The request body, or the response for an unknown room kind.
+fn room_request(body: Option<Json<JoinRequest>>) -> Result<JoinRequest, Box<Response>> {
+    let body = body.map(|Json(body)| body).unwrap_or_default();
+    if body
+        .kind
+        .as_deref()
+        .is_some_and(|kind| !profiles::valid_kind(kind))
+    {
+        return Err(Box::new(err(
+            "common_ground_invalid_room",
+            "Pick work, health, daily or custom.",
+            StatusCode::BAD_REQUEST,
+        )));
+    }
+    Ok(body)
+}
+
+/// A room name with runs of whitespace collapsed, cut to the length limit.
+fn room_name(name: &str) -> String {
+    name.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(MAX_NAME_CHARS)
+        .collect()
+}
+
+/// How entering a code went.
+enum Entered {
+    Room(Uuid),
+    Full,
+    /// The code has an open room and only a new room was wanted.
+    Taken,
+}
+
+/// Opens the room for a free code, or joins its open room unless
+/// `new_only`, sharing `profile`. `name` and the body's kind apply only to
+/// a new room.
+async fn enter(
+    pool: &PgPool,
+    code: &str,
+    account: &str,
+    body: &JoinRequest,
+    profile: &Profile,
+    name: &str,
+    new_only: bool,
+) -> sqlx_core::Result<Entered> {
+    let mut tx = pool.begin().await?;
+    query("SELECT pg_advisory_xact_lock(hashtext('common-ground-room:' || $1))")
+        .bind(code)
+        .execute(&mut *tx)
+        .await?;
+    // An open row whose last join is over a day old has expired.
+    query(
+        "UPDATE cloud_common_ground_rooms SET closed_at = now()
+         WHERE code = $1 AND closed_at IS NULL AND last_join_at <= now() - interval '24 hours'",
+    )
+    .bind(code)
+    .execute(&mut *tx)
+    .await?;
+    let open: Option<(Uuid,)> = query_as(
+        "SELECT room_id FROM cloud_common_ground_rooms WHERE code = $1 AND closed_at IS NULL",
+    )
+    .bind(code)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let room_id = match open {
+        Some(_) if new_only => return Ok(Entered::Taken),
+        Some((room_id,)) => room_id,
+        None => {
+            let room_id = Uuid::new_v4();
+            query(
+                "INSERT INTO cloud_common_ground_rooms (room_id, code, name, created_by, kind)
+                 VALUES ($1, $2, $3, $4, $5)",
+            )
+            .bind(room_id)
+            .bind(code)
+            .bind(name)
+            .bind(account)
+            .bind(&body.kind)
+            .execute(&mut *tx)
+            .await?;
+            room_id
+        }
+    };
+    let (members,): (i64,) = query_as(
+        "SELECT COUNT(*) FROM cloud_common_ground_room_members
+         WHERE room_id = $1 AND left_at IS NULL AND account_id <> $2",
+    )
+    .bind(room_id)
+    .bind(account)
+    .fetch_one(&mut *tx)
+    .await?;
+    if members >= MAX_MEMBERS {
+        return Ok(Entered::Full);
+    }
+    // Joining again with another profile switches the shared profile.
+    switch::share(&mut tx, room_id, account, &profile.profile_id).await?;
+    query("UPDATE cloud_common_ground_rooms SET last_join_at = now() WHERE room_id = $1")
+        .bind(room_id)
+        .execute(&mut *tx)
+        .await?;
+    notify_members(&mut tx, room_id, code).await?;
+    tx.commit().await?;
+    Ok(Entered::Room(room_id))
+}
+
 pub(super) async fn join(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
@@ -128,111 +262,32 @@ pub(super) async fn join(
         return room_not_found();
     }
     let account = session.account_id.as_str();
-    // Codes are short, so guessing is limited per account and per address.
-    let client =
-        crate::client_ip::resolve_client_ip(&headers, connect_info.map(|info| info.0.ip()));
-    let ip_key = format!("ip:{}", rate_limit_client_key(client));
-    for (limit, key) in [(ROOM_JOIN_LIMIT, account), (ROOM_IP_LIMIT, ip_key.as_str())] {
-        if let RateLimitDecision::Limited { retry_after } =
-            rate_limiter.observe_account_limit(limit, key).await
-        {
-            return limited(retry_after);
-        }
+    if let Some(response) = check_limits(&rate_limiter, account, connect_info, &headers).await {
+        return response;
     }
     let pool = state.db_pool();
-    let body = body.map(|Json(body)| body).unwrap_or_default();
-    if body
-        .kind
-        .as_deref()
-        .is_some_and(|kind| !profiles::valid_kind(kind))
-    {
-        return err(
-            "common_ground_invalid_room",
-            "Pick work, health, daily or custom.",
-            StatusCode::BAD_REQUEST,
-        );
-    }
-    let profile = match joining_profile(pool, &code, account, &body).await {
+    let body = match room_request(body) {
+        Ok(body) => body,
+        Err(response) => return *response,
+    };
+    let profile = match joining_profile(pool, Some(&code), account, &body).await {
         Ok(profile) => profile,
         Err(response) => return *response,
     };
-    let name: String = body
-        .name
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .chars()
-        .take(MAX_NAME_CHARS)
-        .collect();
-    let result = async {
-        let mut tx = pool.begin().await?;
-        query("SELECT pg_advisory_xact_lock(hashtext('common-ground-room:' || $1))")
-            .bind(&code)
-            .execute(&mut *tx)
-            .await?;
-        // An open row whose last join is over a day old has expired.
-        query(
-            "UPDATE cloud_common_ground_rooms SET closed_at = now()
-             WHERE code = $1 AND closed_at IS NULL AND last_join_at <= now() - interval '24 hours'",
-        )
-        .bind(&code)
-        .execute(&mut *tx)
-        .await?;
-        let open: Option<(Uuid,)> = query_as(
-            "SELECT room_id FROM cloud_common_ground_rooms WHERE code = $1 AND closed_at IS NULL",
-        )
-        .bind(&code)
-        .fetch_optional(&mut *tx)
-        .await?;
-        let room_id = match open {
-            Some((room_id,)) => room_id,
-            None => {
-                let room_id = Uuid::new_v4();
-                query(
-                    "INSERT INTO cloud_common_ground_rooms (room_id, code, name, created_by, kind)
-                     VALUES ($1, $2, $3, $4, $5)",
-                )
-                .bind(room_id)
-                .bind(&code)
-                .bind(&name)
-                .bind(account)
-                .bind(&body.kind)
-                .execute(&mut *tx)
-                .await?;
-                room_id
-            }
-        };
-        let (members,): (i64,) = query_as(
-            "SELECT COUNT(*) FROM cloud_common_ground_room_members
-             WHERE room_id = $1 AND left_at IS NULL AND account_id <> $2",
-        )
-        .bind(room_id)
-        .bind(account)
-        .fetch_one(&mut *tx)
-        .await?;
-        if members >= MAX_MEMBERS {
-            return Ok(None);
-        }
-        // Joining again with another profile switches the shared profile.
-        switch::share(&mut tx, room_id, account, &profile.profile_id).await?;
-        query("UPDATE cloud_common_ground_rooms SET last_join_at = now() WHERE room_id = $1")
-            .bind(room_id)
-            .execute(&mut *tx)
-            .await?;
-        notify_members(&mut tx, room_id, &code).await?;
-        tx.commit().await?;
-        Ok::<_, sqlx_core::Error>(Some(room_id))
-    }
-    .await;
-    match result {
-        Ok(Some(room_id)) => view_response(pool, room_id, account).await,
-        Ok(None) => err(
-            "common_ground_room_full",
-            "This room is full.",
-            StatusCode::CONFLICT,
-        ),
+    let name = room_name(&body.name);
+    match enter(pool, &code, account, &body, &profile, &name, false).await {
+        Ok(Entered::Room(room_id)) => view_response(pool, room_id, account).await,
+        Ok(Entered::Full | Entered::Taken) => room_full(),
         Err(error) => db_error(error),
     }
+}
+
+fn room_full() -> Response {
+    err(
+        "common_ground_room_full",
+        "This room is full.",
+        StatusCode::CONFLICT,
+    )
 }
 
 /// A room with this code that `account` is in and has not left, with
