@@ -141,8 +141,9 @@ test('card memories: move and remove reload the card for the new-memories line',
   assert.equal(store.getSnapshot().owner?.memoriesSinceBuild, 0);
 });
 
-test('card memories: move targets are the other profiles and No profile; an every-profile memory narrows to any one', () => {
+test('card memories: other profiles pin a memory; No profile only unpins a pinned one; an every-profile memory pins to any', () => {
   assert.deepEqual(moveTargets(memories[0], profiles, 'cgp_work'), [{ profileId: 'cgp_health', label: 'Health' }, { profileId: null, label: 'No profile' }]);
+  assert.deepEqual(moveTargets({ ...memories[0], profileId: null }, profiles, 'cgp_work'), [{ profileId: 'cgp_health', label: 'Health' }]);
   assert.deepEqual(moveTargets(memories[1], profiles, 'cgp_work'), [{ profileId: 'cgp_work', label: 'Work' }, { profileId: 'cgp_health', label: 'Health' }]);
 });
 

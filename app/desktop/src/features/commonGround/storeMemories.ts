@@ -10,14 +10,15 @@ import type { CgProfile, CgRoutedMemory } from './types';
 export type CgMoveTarget = { profileId: string | null; label: string };
 
 /**
- * Where a memory can go: the owner's other profiles and No profile. A memory every profile lists
- * can be narrowed to any one profile, this one included; clearing it would change nothing.
+ * Where a memory can go: the owner's other profiles, which pin it there. A pinned memory also gets
+ * No profile, which clears the pin so its category files it again. A memory every profile lists can
+ * be pinned to any one profile, this one included.
  */
 export function moveTargets(memory: CgRoutedMemory, profiles: CgProfile[], profileId: string): CgMoveTarget[] {
   const named = profiles
     .filter((profile) => memory.everyProfile || profile.profileId !== profileId)
     .map((profile) => ({ profileId: profile.profileId, label: profile.name }));
-  return memory.everyProfile ? named : [...named, { profileId: null, label: 'No profile' }];
+  return !memory.everyProfile && memory.profileId ? [...named, { profileId: null, label: 'No profile' }] : named;
 }
 
 export type CgMemoryHost = Pick<CommonGroundStore, 'client' | 'getSnapshot' | 'set' | 'run'>;
