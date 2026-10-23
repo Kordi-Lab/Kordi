@@ -49,6 +49,8 @@ test('chat header subtitle removes internal group/direct session labels but keep
   assert.equal(chatHeaderSubtitle({ subtitle: 'session:group:437f306a-6278-4b64-a635-79a71d2cb3e0' }), null);
   assert.equal(chatHeaderSubtitle({ subtitle: 'session:direct-person:acct_a:acct_b' }), null);
   assert.equal(chatHeaderSubtitle({ subtitle: 'session:direct-agent:next-id' }), null);
+  assert.equal(chatHeaderSubtitle({ subtitle: 'memtest-group-5df0c05448fe' }), null);
+  assert.equal(chatHeaderSubtitle({ subtitle: 'acct_0123456789abcdef0123456789abcdef' }), null);
   assert.equal(chatHeaderSubtitle({ subtitle: 'Cloud direct chat is opening…' }), 'Cloud direct chat is opening…');
   assert.equal(
     chatHeaderSubtitle({ subtitle: 'Previous message preview' }, 'last seen today at 12:55'),
