@@ -72,8 +72,8 @@ export function useProfileMemories(host: CgMemoryHost, profileId: string | null,
   };
 }
 
-/** "3 new memories since this card was built"; null when there are none. */
+/** "3 new memories" filed since the card was built; null when there are none. */
 export function newMemoriesLine(count: number | null | undefined): string | null {
   if (!count || count < 1) return null;
-  return `${count} new ${count === 1 ? 'memory' : 'memories'} since this card was built`;
+  return `${count} new ${count === 1 ? 'memory' : 'memories'}`;
 }

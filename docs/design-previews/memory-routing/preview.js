@@ -77,7 +77,7 @@ function macCard() {
   return `
     <div class="cp-head">
       <span class="cp-glyph">${ICONS.work}</span>
-      <div class="cp-title"><h2>Work</h2><div class="cp-meta">7 lines · built 19 Oct · 3 new memories since this card was built</div></div>
+      <div class="cp-title"><h2>Work</h2><div class="cp-meta">7 lines · built 19 Oct · 3 new memories</div></div>
       <button class="mbtn">Rename</button>
       <button class="mbtn is-danger">Delete</button>
       <button class="mbtn is-primary">${ICONS.brain}Rebuild from memory</button>
@@ -103,7 +103,7 @@ function iosCard() {
     </div>`).join('');
   return `
     <div class="i-title">Work</div>
-    <div class="i-meta">3 new memories since this card was built</div>
+    <div class="i-meta">Built 19 Oct · 3 new memories</div>
     <button class="i-btn">Rebuild from memory</button>
     <p class="i-sec">Memories</p>
     <div class="i-list">${rows}</div>

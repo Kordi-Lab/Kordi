@@ -182,14 +182,14 @@ test('card memories: rows show the chip, the date and Every profile; Move to… 
 test('card page: the new-memories line shows with routing and a count, never at zero', () => {
   assert.equal(newMemoriesLine(0), null);
   assert.equal(newMemoriesLine(undefined), null);
-  assert.equal(newMemoriesLine(1), '1 new memory since this card was built');
-  assert.equal(newMemoriesLine(3), '3 new memories since this card was built');
+  assert.equal(newMemoriesLine(1), '1 new memory');
+  assert.equal(newMemoriesLine(3), '3 new memories');
   const render = (memoryRouting: boolean, memoriesSinceBuild: number) => {
     const store = new CommonGroundStore(mockServer({}).client, { profiles: true });
     store.set({ profiles, profileId: 'cgp_work', owner: owner({ card, memoriesSinceBuild }) });
     return renderToStaticMarkup(createElement(CardScreen, { state: store.getSnapshot(), store, memoryRouting }));
   };
-  assert.match(render(true, 1), /<span data-cg-new-memories=""> · 1 new memory since this card was built<\/span>/);
+  assert.match(render(true, 1), /<span data-cg-new-memories=""> · 1 new memory<\/span>/);
   assert.doesNotMatch(render(true, 0), /data-cg-new-memories/);
   assert.doesNotMatch(render(false, 4), /data-cg-new-memories/);
 });
