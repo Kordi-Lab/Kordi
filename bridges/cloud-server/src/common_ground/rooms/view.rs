@@ -106,6 +106,7 @@ type MemberRow = (
     String,
     Option<String>,
     Option<String>,
+    Option<String>,
     bool,
     String,
     String,
@@ -141,7 +142,7 @@ pub(in crate::common_ground) async fn view(
         .await?;
     // Members arrive in join order; you are never in the list.
     let members: Vec<MemberRow> = query_as(
-        "SELECT member.account_id, account.display_name, account.avatar_url,
+        "SELECT member.account_id, account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url,
                 COALESCE(card.built_at IS NOT NULL AND card.sharing_enabled, false),
                 profile.profile_id, profile.kind, profile.name, profile.design,
                 profile.icon
@@ -164,6 +165,7 @@ pub(in crate::common_ground) async fn view(
             |(
                 account_id,
                 display_name,
+                handle,
                 avatar_url,
                 has_card,
                 profile,
@@ -172,8 +174,12 @@ pub(in crate::common_ground) async fn view(
                 design,
                 icon,
             )| {
-                let mut person =
-                    people::person(&account_id, display_name.as_deref(), avatar_url.as_deref());
+                let mut person = people::person(
+                    &account_id,
+                    display_name.as_deref(),
+                    handle.as_deref(),
+                    avatar_url.as_deref(),
+                );
                 person["hasCard"] = json!(has_card);
                 person["profile"] = profiles::tag(
                     &profile,
