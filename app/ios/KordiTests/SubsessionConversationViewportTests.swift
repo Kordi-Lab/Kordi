@@ -215,3 +215,52 @@ final class SubsessionConversationViewportTests: XCTestCase {
         }
     }
 }
+
+final class SubsessionToolProgressTests: XCTestCase {
+    private func tool(_ id: String, _ name: String, _ status: String) -> AgentExecutionTool {
+        AgentExecutionTool(id: id, name: name, status: status, arguments: "", liveOutput: "",
+            resultText: nil, detail: nil, toolLayer: nil, isError: false)
+    }
+
+    func testRunActivityRendersAsOneRowWithTheRunningToolAndCount() {
+        var snapshot = AgentSubsessionStopPreview.snapshot(accountId: "owner")
+        snapshot.messages = [snapshot.messages[0]]
+        snapshot.activity = .init(tools: [tool("a", "search_sessions", "completed"), tool("b", "read_session", "running")])
+        let running = snapshot.chatMessages(accountId: "owner")
+        XCTAssertEqual(running.count, 2)
+        XCTAssertEqual(running[1].agentExecution?.tools?.count, 2)
+        XCTAssertEqual(running[1].agentExecution?.tools?.last?.state, .running)
+        XCTAssertEqual(running[1].agentExecution?.completed, false)
+
+        snapshot.status = "done"
+        snapshot.live = false
+        snapshot.messages.append(.init(id: "result:run", role: "assistant", text: "Final answer", timestampMs: 9))
+        let done = snapshot.chatMessages(accountId: "owner")
+        XCTAssertEqual(done.map(\.id), [snapshot.messages[0].id, "result:run"])
+        XCTAssertEqual(done[1].agentExecution?.completed, true)
+        XCTAssertEqual(done[1].agentExecution?.tools?.allSatisfy { $0.state == .complete }, true)
+    }
+
+    func testStoredPerToolMessagesCollapseIntoOneRow() {
+        var snapshot = AgentSubsessionStopPreview.snapshot(accountId: "owner")
+        let legacy = (0..<30).map { index in
+            CloudAgentSubsession.Message(id: "tool:call-\(index)", role: "assistant",
+                text: index.isMultiple(of: 3) ? "Using read_session…" : "Using search_sessions…", timestampMs: Int64(index + 2))
+        }
+        snapshot.messages = [snapshot.messages[0]] + legacy
+        let running = snapshot.chatMessages(accountId: "owner")
+        XCTAssertEqual(running.count, 2)
+        XCTAssertFalse(running.contains { $0.text.hasPrefix("Using ") })
+        XCTAssertEqual(running[1].agentExecution?.tools?.count, 30)
+        XCTAssertEqual(running[1].agentExecution?.tools?.last?.state, .running)
+
+        snapshot.status = "done"
+        snapshot.live = false
+        snapshot.messages.append(.init(id: "result:run", role: "assistant", text: "Final answer", timestampMs: 99))
+        let done = snapshot.chatMessages(accountId: "owner")
+        XCTAssertEqual(done.map(\.id), [snapshot.messages[0].id, "result:run"])
+        XCTAssertEqual(done[1].agentExecution?.tools?.count, 30)
+        XCTAssertEqual(done[1].agentExecution?.tools?[1].name, "search_sessions")
+        XCTAssertEqual(done[1].agentExecution?.completed, true)
+    }
+}

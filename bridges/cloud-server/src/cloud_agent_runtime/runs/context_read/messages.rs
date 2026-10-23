@@ -87,7 +87,14 @@ pub(super) async fn read(
             .0
             .saturating_add((limit / 2) as i64 + 1);
     }
-    let scan_limit = if search { 256 } else { limit as i64 + 1 };
+    // A search page scans a large window so one query rarely needs many
+    // follow-up pages. Terms match independently of order and punctuation.
+    let scan_limit = if search {
+        SEARCH_SCAN_ROWS
+    } else {
+        limit as i64 + 1
+    };
+    let terms = search_terms(&query);
     let rows:Vec<(String,String,Value,i64,String)>=query_as(
         "SELECT message_id::text,sender_account_id,content,conversation_sequence,created_at::text
          FROM cloud_chat_messages m WHERE conversation_id=$1 AND deleted_at IS NULL AND conversation_sequence<$2
@@ -117,7 +124,7 @@ pub(super) async fn read(
         let Some((sender, kind, text)) = visible_message(&sender, &body) else {
             continue;
         };
-        if search && !text.to_lowercase().contains(&query) {
+        if search && !matches_terms(&text, &terms) {
             continue;
         }
         let include = selected || (search && args["includeMessages"].as_bool().unwrap_or(false));
@@ -149,9 +156,39 @@ pub(super) async fn read(
         } else {
             json!([{"sessionId":scope.session_id,"title":scope.title,"kind":scope.kind,"participants":[],"updatedAtLabel":null,"reason":"Matching authorized conversation messages","snippets":snippets}])
         };
+        if let Some(note) = search_note(value["messages"].as_array().unwrap().is_empty(), has_more)
+        {
+            value["note"] = json!(note);
+        }
     }
     Ok(value)
 }
+const SEARCH_SCAN_ROWS: i64 = 1024;
+
+fn search_terms(query: &str) -> Vec<String> {
+    query
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|term| !term.is_empty())
+        .map(str::to_lowercase)
+        .collect()
+}
+
+fn matches_terms(text: &str, terms: &[String]) -> bool {
+    let text = text.to_lowercase();
+    !terms.is_empty() && terms.iter().all(|term| text.contains(term.as_str()))
+}
+
+/// An explicit outcome for empty searches, so the model stops instead of
+/// retrying the same query or paging without a reason.
+fn search_note(empty: bool, has_more: bool) -> Option<&'static str> {
+    match (empty, has_more) {
+        (true, false) => Some("No messages in this conversation match every query term. The full history was searched. Do not repeat this search; try different terms once, or continue without this history."),
+        (true, true) => Some("No matches in this page. Continue with nextBeforeSequence only if older history is still needed."),
+        (false, false) => Some("End of matching history. No more results."),
+        (false, true) => None,
+    }
+}
+
 fn visible_message(sender: &str, body: &str) -> Option<(String, String, String)> {
     if let Some(envelope) = parse_cloud_group_envelope(body) {
         let message = envelope.message?;
@@ -216,5 +253,21 @@ mod tests {
             URL_SAFE_NO_PAD.encode(envelope.to_string())
         );
         assert!(visible_message("sender", &body).is_none());
+    }
+
+    #[test]
+    fn search_matches_terms_and_ends_with_an_explicit_outcome() {
+        let terms = search_terms("xu's life tips");
+        assert!(matches_terms("Tips from Xu about daily life", &terms));
+        assert!(!matches_terms("Tips about daily life", &terms));
+        assert!(!matches_terms("anything", &search_terms("...")));
+        assert!(search_note(true, false)
+            .unwrap()
+            .contains("Do not repeat this search"));
+        assert!(search_note(false, false)
+            .unwrap()
+            .contains("No more results"));
+        assert!(search_note(true, true).is_some());
+        assert!(search_note(false, true).is_none());
     }
 }
