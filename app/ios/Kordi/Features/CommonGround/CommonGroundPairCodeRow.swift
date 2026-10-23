@@ -13,6 +13,8 @@ struct CommonGroundPairCodeRow: View {
     @FocusState private var focused: Bool
 
     private let titleInset: CGFloat = 58
+    /// A code with no room only turns the boxes red; other errors keep their line.
+    private var missing: Bool { error == CommonGroundModel.roomNotFound }
 
     var body: some View {
         CommonGroundSection {
@@ -58,7 +60,7 @@ struct CommonGroundPairCodeRow: View {
             }
             .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
             .frame(minHeight: 56)
-            if let error {
+            if let error, !missing {
                 Text(error)
                     .font(.footnote)
                     .foregroundStyle(.red)
@@ -90,15 +92,18 @@ struct CommonGroundPairCodeRow: View {
                 .frame(width: 1, height: 1)
                 .opacity(0.02)
                 .accessibilityLabel("Pair code")
+                .accessibilityValue(missing ? "Room not found" : "")
             HStack(spacing: 6) {
                 ForEach(0..<4, id: \.self) { index in
                     let digit = index < code.count ? String(Array(code)[index]) : ""
                     Text(digit)
                         .font(.system(size: 20, weight: .semibold).monospacedDigit())
                         .frame(width: 34, height: 40)
-                        .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .background(missing ? Color.red.opacity(0.12) : Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .overlay {
-                            if focused && index == min(code.count, 3) {
+                            if missing {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.red, lineWidth: 1.5)
+                            } else if focused && index == min(code.count, 3) {
                                 RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(commonGroundTint, lineWidth: 1.5)
                             }
                         }

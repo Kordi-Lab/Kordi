@@ -6,6 +6,7 @@ import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabil
 import { CloudConnectorsHttpClient } from '@/features/cloud/cloudConnectorsClient';
 import { commonGroundVersionFromCapabilities } from '@/features/cloud/commonGroundCapability';
 import { dispatchCloudGroupInvitationAccepted } from '@/features/cloud/groupInvitationDeepLink';
+import { normalizeKordiId } from '@/features/cloud/kordiId';
 import { memoryRoutingAvailable, memoryVersionFromCapabilities } from '@/features/cloud/memoryCapability';
 import { cloudContactToContact, type UseCloudContactsResult } from '@/features/cloud/useCloudContacts';
 import { connectorsClientForAccount } from '@/features/connectors/connectorsClientSelection';
@@ -65,12 +66,14 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
   const version = commonGroundVersionFromCapabilities(capabilities);
   const available = Boolean(options.account) && version !== null;
   const profiles = (version ?? 0) >= 2;
+  const sources = (version ?? 0) >= 3;
   const accountId = options.account?.accountId ?? '';
   // The host stays stable across renders; its callbacks read the latest options.
   const latest = useRef(options);
   useEffect(() => { latest.current = options; });
   const displayName = options.account?.displayName;
   const avatarUrl = options.account?.avatarUrl ?? null;
+  const handle = normalizeKordiId(options.account?.kordiId);
   const memoryAvailable = memoryVersionFromCapabilities(capabilities) !== null;
   const memoryRouting = memoryRoutingAvailable(capabilities);
   const defaultAgentName = options.account?.defaultAgent?.displayName ?? undefined;
@@ -89,8 +92,9 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
   }, [accountId, capabilities, capabilitiesStatus, defaultAgentName]);
 
   const host = useMemo<CgHost>(() => ({
-    self: { accountId, name: displayName || 'You', avatarUrl },
+    self: { accountId, name: displayName || 'You', avatarUrl, handle },
     profiles,
+    sources,
     memoryAvailable,
     memoryRouting,
     openChat: (person) => {
@@ -107,7 +111,7 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
     agentFiles: desktopAgentFiles(),
     device: desktopDeviceAccess(),
     openUrl: (url) => { void openDesktopExternalUrl(url); },
-  }), [accountId, displayName, avatarUrl, profiles, memoryAvailable, memoryRouting, connectors]);
+  }), [accountId, displayName, avatarUrl, handle, profiles, sources, memoryAvailable, memoryRouting, connectors]);
 
   if (!available) return handlers;
   const { onSelectRequest } = handlers;

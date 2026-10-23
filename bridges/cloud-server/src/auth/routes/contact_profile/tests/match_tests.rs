@@ -16,7 +16,7 @@ async fn profile(pool: &PgPool, account: &str, kind: &str, position: i32, revisi
     let name = match kind {
         "work" => "Work",
         "health" => "Health",
-        _ => "Daily tasks",
+        _ => "Daily",
     };
     query(
         "INSERT INTO cloud_common_ground_profiles (profile_id, account_id, kind, name, position) \

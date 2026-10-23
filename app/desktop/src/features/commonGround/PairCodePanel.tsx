@@ -13,7 +13,7 @@ import type { CgRoomPreview } from './types';
 import { latestOnly, roomPreviewLine, suggestedProfile } from './wallet';
 
 /** Four digit boxes; the fourth digit hands the code on. */
-function Digits({ disabled, onCode }: { disabled: boolean; onCode: (code: string | null) => void }) {
+function Digits({ disabled, missing, onCode }: { disabled: boolean; missing: boolean; onCode: (code: string | null) => void }) {
   const [digits, setDigits] = useState(['', '', '', '']);
   const refs = useRef<Array<HTMLInputElement | null>>([]);
   const reset = useCallback(() => {
@@ -21,7 +21,7 @@ function Digits({ disabled, onCode }: { disabled: boolean; onCode: (code: string
     refs.current[0]?.focus();
   }, []);
   return (
-    <span className="cg-digits" role="group" aria-label="Pair code">
+    <span className={missing ? 'cg-digits is-missing' : 'cg-digits'} role="group" aria-label={missing ? 'Pair code, room not found' : 'Pair code'}>
       {digits.map((digit, index) => (
         <input
           key={index}
@@ -132,14 +132,16 @@ export function PairCodePanel({ state, store }: { state: CgState; store: CommonG
 
   const preview = lookup?.status === 'preview' ? lookup.room : null;
   const suggestion = preview ? suggestedProfile(state.profiles, preview.kind, state.profileId, preview.suggestedProfileId) : null;
-  const error = lookup?.status === 'missing' ? 'Room not found' : lookup?.status === 'error' ? lookup.message : null;
+  // A code with no room turns the boxes red instead of adding a line.
+  const missing = lookup?.status === 'missing';
+  const error = lookup?.status === 'error' ? lookup.message : null;
   return (
     <div className="cg-panel cg-paircode">
       <PairRow state={state} store={store} />
       <div className="cg-pair-row is-code">
         <span className="cg-pair-icon" aria-hidden="true"><Hash className="h-[15px] w-[15px]" /></span>
         <span className="cg-pair-title">Pair code</span>
-        <Digits key={digitsKey} disabled={!canCreate || busy} onCode={onCode} />
+        <Digits key={digitsKey} disabled={!canCreate || busy} missing={missing} onCode={onCode} />
         <button
           type="button"
           className="cg-mbtn"

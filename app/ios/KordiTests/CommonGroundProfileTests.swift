@@ -111,7 +111,7 @@ final class CommonGroundProfileTests: XCTestCase {
         CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/card/build", [(202, CommonGroundTests.buildingJSON)])
         CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/rooms/4821/join", [(200, #"{"code":"4821","kind":"health","profileId":"cgp_h"}"#)])
         CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/rooms/4821/profile", [(200, #"{"code":"4821","kind":"health","profileId":"cgp_w"}"#)])
-        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/profiles", [(201, #"{"profileId":"cgp_d","kind":"daily","name":"Daily tasks","position":3}"#)])
+        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/profiles", [(201, #"{"profileId":"cgp_d","kind":"daily","name":"Daily","position":3}"#)])
         CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/card", [(200, CommonGroundTests.buildingJSON)])
         await model.loadProfiles()
         await model.selectProfile("cgp_h")

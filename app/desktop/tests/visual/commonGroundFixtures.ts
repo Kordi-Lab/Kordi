@@ -24,7 +24,11 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
     { profileId: 'cgp_ws', kind: 'custom', name: 'Workshops', design: 'workshop', icon: null, focus: 'Poster on memory benchmarks', position: 1, hasCard: true, sharing: true, builtAt: '2026-10-18T09:00:00Z', topicCount: 3 },
     { profileId: 'cgp_health', kind: 'health', name: 'Health', design: null, icon: null, focus: 'Running and sleep', position: 2, hasCard: false, sharing: true, builtAt: null, topicCount: 0 },
   ];
-  const self = { accountId: 'acct_you', name: 'Alex Rivera', avatarUrl: initialsAvatar('Alex Rivera', theme) };
+  const self = { accountId: 'acct_you', name: 'Alex Rivera', avatarUrl: initialsAvatar('Alex Rivera', theme), handle: 'alexrivera' };
+  const documents = [
+    { attachmentId: 'att_plan', title: 'Eval plan', updatedAt: '2026-10-18T09:00:00Z', sizeBytes: 2400 },
+    { attachmentId: 'att_notes', title: 'Reading notes', updatedAt: '2026-10-12T09:00:00Z', sizeBytes: 5100 },
+  ];
   const maya = person('acct_maya', 'Maya Chen', { ...stranger, contact: true, conversationId: 'dm_maya' });
   const hana = person('acct_hana', 'Hana Sato');
   const ines = person('acct_ines', 'Ines Wolf', { ...stranger, request: 'incoming', requestId: 'req_ines' });
@@ -137,5 +141,5 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
   // Pair: your code for two minutes from now, and Hana's card once her code is redeemed.
   const pairCode = () => ({ code: 'K4M7-2QXA', expiresAt: new Date(Date.now() + 120_000).toISOString(), profileId: 'cgp_work' });
   const paired = { person: hanaPerson, card, relationship: stranger };
-  return { self, owner, memories, healthOwner, profiles, room, rooms, results, match, recent, connectors, agentFiles, preview, pairCode, paired };
+  return { self, documents, owner, memories, healthOwner, profiles, room, rooms, results, match, recent, connectors, agentFiles, preview, pairCode, paired };
 }

@@ -14,7 +14,7 @@ import { commonGroundFixtures, initialsAvatar } from './commonGroundFixtures';
 import '../../src/index.css';
 
 // Login-free preview of Common ground in the real Contacts page. A fetch stub answers the
-// `/v1/cloud/common-ground` routes from fixtures, with three profiles (`commonGroundVersion` 2).
+// `/v1/cloud/common-ground` routes from fixtures, with three profiles (`commonGroundVersion` 3).
 // Query: ?screen=home|build|card|look|lobby|results|match|meet|pair|pair-off, ?theme=light|dark.
 // "look" is the card page with the background and icon popover open; "pair" is Home with the
 // Pair popover open, and "pair-off" the same with sharing off.
@@ -29,6 +29,7 @@ const ROUTES: Record<string, (query: string, body: Record<string, unknown>) => u
   'GET card': (query) => (screen === 'build' || query.includes('cgp_health') ? fx.healthOwner : fx.owner),
   'GET recent': () => fx.recent,
   'GET profiles/cgp_work/memories': () => ({ memories: fx.memories }),
+  'GET documents': () => ({ documents: fx.documents }),
   'GET rooms': () => fx.rooms,
   'GET rooms/4821': () => fx.room,
   'GET rooms/5160/preview': () => fx.preview,
@@ -76,6 +77,7 @@ const STACKS: Record<string, CgScreen[]> = {
 const host: CgHost = {
   self: fx.self,
   profiles: true,
+  sources: true,
   memoryAvailable: true,
   memoryRouting: true,
   openChat: () => undefined,

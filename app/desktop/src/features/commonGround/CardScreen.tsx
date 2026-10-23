@@ -38,11 +38,12 @@ function DeleteCardDialog({ busy, onCancel, onDelete }: { busy: boolean; onCance
   );
 }
 
-/** Rename in place: the name and focus lines become fields; Enter or leaving saves, Escape cancels. */
-export function RenameFields({ name, focus, kind, onSave, onCancel }: {
+/** Rename in place: the name (and focus) lines become fields; Enter or leaving saves, Escape cancels. */
+export function RenameFields({ name, focus, kind, withFocus = true, onSave, onCancel }: {
   name: string;
   focus: string;
   kind: CgProfileKind;
+  withFocus?: boolean;
   onSave: (name: string, focus: string) => void;
   onCancel: () => void;
 }) {
@@ -63,7 +64,7 @@ export function RenameFields({ name, focus, kind, onSave, onCancel }: {
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) save(); }}
     >
       <input autoFocus className="cg-cardpage-name-in" value={draft.name} maxLength={PROFILE_NAME_MAX} aria-label="Name" aria-invalid={error ? true : undefined} onKeyDown={keys} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-      <input className="cg-cardpage-focus-in" value={draft.focus} maxLength={PROFILE_FOCUS_MAX} placeholder="Focus, optional" aria-label="Focus" onKeyDown={keys} onChange={(event) => setDraft({ ...draft, focus: event.target.value })} />
+      {withFocus ? <input className="cg-cardpage-focus-in" value={draft.focus} maxLength={PROFILE_FOCUS_MAX} placeholder="Focus, optional" aria-label="Focus" onKeyDown={keys} onChange={(event) => setDraft({ ...draft, focus: event.target.value })} /> : null}
       {error ? <div className="cg-cardpage-error" role="alert">{error}</div> : null}
     </div>
   );
