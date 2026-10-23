@@ -6,7 +6,7 @@ import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabil
 import { CloudConnectorsHttpClient } from '@/features/cloud/cloudConnectorsClient';
 import { commonGroundVersionFromCapabilities } from '@/features/cloud/commonGroundCapability';
 import { dispatchCloudGroupInvitationAccepted } from '@/features/cloud/groupInvitationDeepLink';
-import { memoryVersionFromCapabilities } from '@/features/cloud/memoryCapability';
+import { memoryRoutingAvailable, memoryVersionFromCapabilities } from '@/features/cloud/memoryCapability';
 import { cloudContactToContact, type UseCloudContactsResult } from '@/features/cloud/useCloudContacts';
 import { connectorsClientForAccount } from '@/features/connectors/connectorsClientSelection';
 import { CONNECTORS_SETTINGS_LINK_EVENT, type ConnectorsSettingsTarget } from '@/features/connectors/connectorsSettingsLink';
@@ -72,6 +72,7 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
   const displayName = options.account?.displayName;
   const avatarUrl = options.account?.avatarUrl ?? null;
   const memoryAvailable = memoryVersionFromCapabilities(capabilities) !== null;
+  const memoryRouting = memoryRoutingAvailable(capabilities);
   const defaultAgentName = options.account?.defaultAgent?.displayName ?? undefined;
   // The same client the Connectors settings use; rows show only when the server serves them.
   const connectors = useMemo<CgConnectorsAccess | null>(() => {
@@ -91,6 +92,7 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
     self: { accountId, name: displayName || 'You', avatarUrl },
     profiles,
     memoryAvailable,
+    memoryRouting,
     openChat: (person) => {
       setSelected(false);
       latest.current.onMessageContact?.(contactForPerson(latest.current.cloud.contacts, person));
@@ -105,7 +107,7 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
     agentFiles: desktopAgentFiles(),
     device: desktopDeviceAccess(),
     openUrl: (url) => { void openDesktopExternalUrl(url); },
-  }), [accountId, displayName, avatarUrl, profiles, memoryAvailable, connectors]);
+  }), [accountId, displayName, avatarUrl, profiles, memoryAvailable, memoryRouting, connectors]);
 
   if (!available) return handlers;
   const { onSelectRequest } = handlers;

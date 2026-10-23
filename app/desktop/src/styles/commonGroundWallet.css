@@ -286,6 +286,20 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 .cg-line-add:hover { background: var(--cg-fill); color: var(--utility-foreground); }
 .cg-line-add.is-editing { cursor: text; box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--app-accent) 55%, transparent); }
 .cg-line-add.is-editing input { min-width: 0; width: 160px; padding: 0; border: 0; background: transparent; color: var(--utility-foreground); font: inherit; outline: none; }
+/* Memories filed to the card: text, then the category chip and date; Move to… and Remove on hover. */
+.cg-mem { position: relative; display: flex; align-items: flex-start; gap: 4px; padding: 10px 8px 10px 14px; }
+.cg-mem + .cg-mem { border-top: 0.5px solid var(--cg-line); }
+.cg-mem-text { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.cg-mem-title { font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.cg-mem-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; color: var(--utility-muted-text); font-size: 11px; font-variant-numeric: tabular-nums; }
+.cg-mem:hover .cg-line-act, .cg-mem .cg-line-act[aria-expanded="true"] { opacity: 1; }
+.cg-mem-menu {
+  position: absolute; z-index: 20; top: 36px; right: 8px; min-width: 180px; padding: 4px; border: 0.5px solid var(--cg-line); border-radius: 10px;
+  background: var(--app-transient-surface-fallback, var(--app-main-bg)); box-shadow: 0 10px 30px rgb(0 0 0 / 0.18), 0 1px 3px rgb(0 0 0 / 0.08);
+}
+.cg-mem-menu button { display: block; width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--utility-foreground); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.cg-mem-menu button:hover { background: var(--cg-fill); }
+.cg-mem-menu button.is-none { margin-top: 4px; border-top: 0.5px solid var(--cg-line); border-radius: 0 0 6px 6px; }
 .cg-src-icon { display: grid; width: 26px; height: 26px; flex: none; place-items: center; border-radius: 7px; color: #fff; }
 .cg-cardpage-share { margin-top: 12px; }
 

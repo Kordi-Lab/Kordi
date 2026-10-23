@@ -29,14 +29,14 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
     return (
       <section aria-label="Grounding" className={hasAnyCard(state) ? 'cg-page is-wallet' : 'cg-page is-wallet is-first-run'}>
         <WalletShell state={state} store={store} title={title} onBack={onCard ? () => store.back() : undefined}>
-          {onCard ? <CardScreen state={state} store={store} /> : <HomeScreen {...props} />}
+          {onCard ? <CardScreen state={state} store={store} memoryRouting={host.memoryRouting} /> : <HomeScreen {...props} />}
         </WalletShell>
       </section>
     );
   } else if (screen.name === 'build') {
     body = <BuildScreen {...props} />;
   } else if (screen.name === 'card') {
-    body = <CardScreen state={state} store={store} />;
+    body = <CardScreen state={state} store={store} memoryRouting={host.memoryRouting} />;
   } else if (screen.name === 'lobby') {
     body = <LobbyScreen code={screen.code} {...props} />;
   } else if (screen.name === 'results') {

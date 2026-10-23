@@ -25,6 +25,8 @@ export type CgHost = {
   /** True when the server has profiles (`commonGroundVersion` 2 or later). */
   profiles?: boolean;
   memoryAvailable: boolean;
+  /** True when memories are filed to profiles (`memoryVersion` 2); the card page lists them. */
+  memoryRouting?: boolean;
   openChat: (person: CgPerson) => void;
   acceptRequest: (requestId: string) => Promise<void>;
   contactsChanged: () => void;

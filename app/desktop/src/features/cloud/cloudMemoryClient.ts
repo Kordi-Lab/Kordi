@@ -1,3 +1,5 @@
+import type { MemoryConfidence, MemoryDeclarationType, MemoryProfileKind } from '@/features/memory/memoryCategory';
+
 export type CloudMemoryScope = 'global' | 'conversation' | 'group' | 'project';
 export type CloudMemorySource = 'user_correction' | 'repeated_failure' | 'outcome' | 'manual';
 
@@ -13,6 +15,14 @@ export type CloudMemory = {
   /** The account that saved the memory. Group memories are shared, so it can be another member. */
   ownerAccountId?: string;
   ownerName?: string | null;
+  /** Routing fields (`memoryVersion` 2); older servers leave them out. */
+  /** One of `MEMORY_CATEGORIES`; newer servers may send others, which show no chip. */
+  category?: string;
+  declarationType?: MemoryDeclarationType;
+  confidence?: MemoryConfidence | null;
+  /** The profile the memory is filed to: set by the person, or resolved from the category. */
+  profileId?: string | null;
+  profileKind?: MemoryProfileKind | null;
 };
 
 export type CloudMemorySettings = { memoryEnabled: boolean; excludeSensitive: boolean };
@@ -66,6 +76,16 @@ export class CloudMemoryClient {
       `/v1/cloud/memory/${encodeURIComponent(memoryId)}`,
       authorized(token, 'PATCH', { text }),
       'Could not save this memory.',
+    );
+    return response.memory;
+  }
+
+  /** Files a memory to one of the person's profiles; null returns it to its category's profile. */
+  async moveToProfile(token: string, memoryId: string, profileId: string | null): Promise<CloudMemory> {
+    const response = await this.request<{ memory: CloudMemory }>(
+      `/v1/cloud/memory/${encodeURIComponent(memoryId)}`,
+      authorized(token, 'PATCH', { profileId }),
+      'Could not move this memory.',
     );
     return response.memory;
   }

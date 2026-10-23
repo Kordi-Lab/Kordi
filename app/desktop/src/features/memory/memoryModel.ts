@@ -1,3 +1,5 @@
+import type { MemoryCategory, MemoryConfidence, MemoryDeclarationType, MemoryProfileKind } from './memoryCategory';
+
 export type MemoryLessonScope = 'global' | 'conversation' | 'project' | 'group';
 export type MemoryLessonSource = 'user_correction' | 'repeated_failure' | 'outcome' | 'manual';
 
@@ -13,6 +15,12 @@ export type MemoryLesson = {
   /** The account that saved the memory; absent for memories read from this Mac. */
   ownerAccountId?: string;
   ownerName?: string | null;
+  /** Routing fields from servers with categories; absent for memories read from this Mac. */
+  category?: MemoryCategory;
+  declarationType?: MemoryDeclarationType;
+  confidence?: MemoryConfidence | null;
+  profileId?: string | null;
+  profileKind?: MemoryProfileKind | null;
 };
 
 export type MemorySettings = { lessonsEnabled: boolean; excludeSensitive: boolean };
