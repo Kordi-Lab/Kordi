@@ -15,6 +15,8 @@ final class CommonGroundTapController: ObservableObject {
     private var exchange: CommonGroundPairingExchange?
     private var transport: CommonGroundNearbyTransport?
     private var refresher: Task<Void, Never>?
+    /// The card the current code shares; a different card asks for a new code.
+    private var codeProfileID: String?
     private var onMatch: (CommonGroundPersonCard) -> Void = { _ in }
     private var onProblem: (CommonGroundPairError) -> Void = { _ in }
 
@@ -82,13 +84,15 @@ final class CommonGroundTapController: ObservableObject {
         onMatch(card)
     }
 
-    /// Replaces the code shortly before it expires; waits a little after a
-    /// failure instead of retrying every second.
+    /// Replaces the code shortly before it expires, or when another card is
+    /// picked; waits a little after a failure instead of retrying every second.
     private func keepCodeFresh() async {
         while !Task.isCancelled {
-            if let exchange, let model, exchange.needsRefresh() {
+            if let exchange, let model, exchange.needsRefresh() || codeProfileID != model.pairingProfileID {
+                let asked = model.pairingProfileID
                 switch await model.newPairCode() {
                 case .success(let next):
+                    codeProfileID = asked
                     code = next
                     exchange.setCode(next.code, expiry: next.expiry ?? Date().addingTimeInterval(120))
                     if case .failed = phase { phase = .searching }

@@ -19,6 +19,7 @@ type GroupRow = (
     String,
     Option<String>,
     Option<String>,
+    Option<String>,
     i64,
     bool,
 );
@@ -33,8 +34,10 @@ async fn group_members(
     conversations: &[Uuid],
     service: &[String],
 ) -> sqlx_core::Result<HashMap<Uuid, Vec<Value>>> {
-    let rows: Vec<(Uuid, String, Option<String>, Option<String>)> = query_as(
-        "SELECT member.conversation_id, member.account_id, account.display_name, account.avatar_url
+    type MemberRow = (Uuid, String, Option<String>, Option<String>, Option<String>);
+    let rows: Vec<MemberRow> = query_as(
+        "SELECT member.conversation_id, member.account_id, account.display_name,
+                COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url
          FROM cloud_chat_conversation_members member
          JOIN cloud_accounts account ON account.account_id = member.account_id
          JOIN cloud_common_ground_room_groups room_group
@@ -49,10 +52,15 @@ async fn group_members(
     .fetch_all(pool)
     .await?;
     let mut out: HashMap<Uuid, Vec<Value>> = HashMap::new();
-    for (conversation, account, name, avatar) in rows {
+    for (conversation, account, name, handle, avatar) in rows {
         let shown = out.entry(conversation).or_default();
         if shown.len() < MAX_SHOWN_MEMBERS {
-            shown.push(person(&account, name.as_deref(), avatar.as_deref()));
+            shown.push(person(
+                &account,
+                name.as_deref(),
+                handle.as_deref(),
+                avatar.as_deref(),
+            ));
         }
     }
     Ok(out)
@@ -63,6 +71,7 @@ type InvitationRow = (
     String,
     String,
     String,
+    Option<String>,
     Option<String>,
     Option<String>,
     DateTime<Utc>,
@@ -77,7 +86,8 @@ pub(in crate::common_ground) async fn room_extras(
     let service = crate::system_account::service_account_ids();
     let groups: Vec<GroupRow> = query_as(
         "SELECT room_group.group_space_id, room_group.conversation_id, room_group.name,
-                room_group.topic, room_group.created_by, account.display_name, account.avatar_url,
+                room_group.topic, room_group.created_by, account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT),
+                account.avatar_url,
                 (SELECT COUNT(*) FROM cloud_chat_conversation_members member
                  WHERE member.conversation_id = room_group.conversation_id
                    AND member.membership_state = 'active' AND NOT (member.account_id = ANY($3))),
@@ -99,7 +109,18 @@ pub(in crate::common_ground) async fn room_extras(
     let groups: Vec<Value> = groups
         .into_iter()
         .map(
-            |(space, conversation, name, topic, creator, creator_name, avatar, count, joined)| {
+            |(
+                space,
+                conversation,
+                name,
+                topic,
+                creator,
+                creator_name,
+                creator_handle,
+                avatar,
+                count,
+                joined,
+            )| {
                 json!({
                     "groupSpaceId": space,
                     "conversationId": conversation,
@@ -107,7 +128,12 @@ pub(in crate::common_ground) async fn room_extras(
                     "topic": topic,
                     "members": members.remove(&conversation).unwrap_or_default(),
                     "memberCount": count,
-                    "createdBy": person(&creator, creator_name.as_deref(), avatar.as_deref()),
+                    "createdBy": person(
+                        &creator,
+                        creator_name.as_deref(),
+                        creator_handle.as_deref(),
+                        avatar.as_deref(),
+                    ),
                     "joined": joined,
                 })
             },
@@ -116,7 +142,7 @@ pub(in crate::common_ground) async fn room_extras(
     // Group invitations keep their expiry as RFC 3339 text in UTC.
     let invitations: Vec<InvitationRow> = query_as(
         "SELECT invite.invitation_ref, invite.group_space_id, room_group.name,
-                invite.inviter_account_id, account.display_name, account.avatar_url,
+                invite.inviter_account_id, account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url,
                 invite.created_at
          FROM cloud_common_ground_room_invitations invite
          JOIN cloud_common_ground_room_groups room_group
@@ -137,12 +163,17 @@ pub(in crate::common_ground) async fn room_extras(
     let invitations: Vec<Value> = invitations
         .into_iter()
         .map(
-            |(reference, space, name, from, from_name, avatar, created_at)| {
+            |(reference, space, name, from, from_name, from_handle, avatar, created_at)| {
                 json!({
                     "invitationRef": reference,
                     "groupSpaceId": space,
                     "name": name,
-                    "from": person(&from, from_name.as_deref(), avatar.as_deref()),
+                    "from": person(
+                        &from,
+                        from_name.as_deref(),
+                        from_handle.as_deref(),
+                        avatar.as_deref(),
+                    ),
                     "createdAt": created_at,
                 })
             },
