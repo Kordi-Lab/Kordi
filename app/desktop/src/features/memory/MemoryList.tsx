@@ -11,6 +11,7 @@ import {
 import { SettingsRow } from '@/kordi-app/components/settingsLayout';
 import { cn } from '@/lib/utils';
 
+import { MemoryCategoryChip } from './MemoryCategoryChip';
 import type { MemoryClient } from './memoryClient';
 import {
   LESSON_MAX_CHARS,
@@ -185,7 +186,7 @@ export function MemoryList({
       <div key={lesson.lessonId} data-memory-lesson={lesson.lessonId}>
         <SettingsRow
           title={<span className="block whitespace-normal break-words text-[13px] font-normal leading-5">{lesson.text}</span>}
-          description={owner ? <>{meta}<span data-memory-owner="" className="block">{owner}</span></> : meta}
+          description={<>{meta}<MemoryCategoryChip category={lesson.category} />{owner ? <span data-memory-owner="" className="block">{owner}</span> : null}</>}
           control={(
             <>
               <Button type="button" variant="quiet" className={quietButtonClass} aria-label={`Edit memory: ${prefix}`} onClick={startEdit}>

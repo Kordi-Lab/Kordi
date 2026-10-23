@@ -29,7 +29,7 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
     return (
       <section aria-label="Grounding" className={hasAnyCard(state) ? 'cg-page is-wallet' : 'cg-page is-wallet is-first-run'}>
         <WalletShell state={state} store={store} owner={host.self} title={title} onBack={onCard ? () => store.back() : undefined}>
-          {onCard ? <CardScreen state={state} store={store} /> : <HomeScreen {...props} />}
+          {onCard ? <CardScreen state={state} store={store} memoryRouting={host.memoryRouting} /> : <HomeScreen {...props} />}
         </WalletShell>
       </section>
     );
@@ -37,7 +37,7 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
     // Keyed by card, so switching cards (or the list arriving) opens Build with that card's picks.
     body = <BuildScreen key={`${state.profileId ?? ''}:${currentProfile(state) ? 'loaded' : ''}`} {...props} />;
   } else if (screen.name === 'card') {
-    body = <CardScreen state={state} store={store} />;
+    body = <CardScreen state={state} store={store} memoryRouting={host.memoryRouting} />;
   } else if (screen.name === 'lobby') {
     body = <LobbyScreen code={screen.code} {...props} />;
   } else if (screen.name === 'results') {

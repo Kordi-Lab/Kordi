@@ -1,4 +1,5 @@
 import { createAccountMemoryClient } from './accountMemoryClient';
+import type { MemoryCategory } from './memoryCategory';
 import {
   validateLessonText,
   type MemoryAddTarget,
@@ -15,6 +16,8 @@ export type MemoryClient = {
   createLesson(target: MemoryAddTarget, text: string): Promise<MemoryLesson>;
   updateLesson(lessonId: string, text: string): Promise<MemoryLesson>;
   archiveLesson(lessonId: string): Promise<void>;
+  /** Files a memory to a Grounding profile (`memoryVersion` 2); null returns it to its category's profile. */
+  moveMemoryToProfile?(lessonId: string, profileId: string | null): Promise<MemoryLesson>;
   forgetAll(): Promise<{ archived: number }>;
   /** Which account the memories sync with and when they were last synced. */
   syncState(): Promise<MemorySyncState>;
@@ -38,6 +41,20 @@ export const PREVIEW_GROUP_MEMORY_SCOPE_ID = '4f1c2a9e-7d3b-4e8a-9c61-2b5d8e0f3a
 
 /** The account the preview signs in as. */
 export const PREVIEW_VIEWER_ACCOUNT_ID = 'acct-preview-taylor';
+
+/** Categories of the sample memories, so their rows show chips as on a server with routing. */
+const PREVIEW_CATEGORIES: Record<string, MemoryCategory> = {
+  'lesson-1': 'general_preferences',
+  'lesson-2': 'work_context',
+  'lesson-3': 'coordination_context',
+  'lesson-4': 'goals_and_constraints',
+  'lesson-5': 'hcp-custom:task_lessons',
+  'lesson-6': 'hcp-custom:task_lessons',
+  'lesson-7': 'work_context',
+  'lesson-8': 'general_preferences',
+  'lesson-9': 'coordination_context',
+  'lesson-10': 'coordination_context',
+};
 
 export type PreviewMemoryClientOptions = {
   /** Simulated network latency in milliseconds. */
@@ -69,7 +86,8 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
     ageMs: number,
   ): MemoryLesson => {
     const at = ago(seededAt, ageMs);
-    return { lessonId, scope, scopeId, scopeLabel, source, text, createdAt: at, updatedAt: at };
+    const category = PREVIEW_CATEGORIES[lessonId];
+    return { lessonId, scope, scopeId, scopeLabel, source, text, createdAt: at, updatedAt: at, ...(category ? { category } : {}) };
   };
 
   let settings: MemorySettings = { lessonsEnabled: true, excludeSensitive: true };

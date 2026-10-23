@@ -28,6 +28,7 @@ const ROUTES: Record<string, (query: string, body: Record<string, unknown>) => u
   'GET profiles': () => ({ profiles: fx.profiles }),
   'GET card': (query) => (screen === 'build' || query.includes('cgp_health') ? fx.healthOwner : fx.owner),
   'GET recent': () => fx.recent,
+  'GET profiles/cgp_work/memories': () => ({ memories: fx.memories }),
   'GET documents': () => ({ documents: fx.documents }),
   'GET rooms': () => fx.rooms,
   'GET rooms/4821': () => fx.room,
@@ -45,6 +46,8 @@ const realFetch = window.fetch.bind(window);
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input instanceof Request ? input.url : input);
   const marker = '/v1/cloud/common-ground/';
+  // Move to… and Remove call the account memory routes; the preview accepts them.
+  if (url.includes('/v1/cloud/memory/')) return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
   const at = url.indexOf(marker);
   if (at < 0) return realFetch(input, init);
   const [path, query = ''] = url.slice(at + marker.length).split('?');
@@ -76,6 +79,7 @@ const host: CgHost = {
   profiles: true,
   sources: true,
   memoryAvailable: true,
+  memoryRouting: true,
   openChat: () => undefined,
   acceptRequest: async () => undefined,
   contactsChanged: () => undefined,
