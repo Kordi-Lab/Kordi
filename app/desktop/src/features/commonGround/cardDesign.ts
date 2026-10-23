@@ -24,7 +24,7 @@ export function isColourDesign(design: CgCardDesign): design is CgColourDesign {
 export const CARD_DESIGNS: Array<{ design: CgCardDesign; kind: CgProfileKind; label: string; name: string }> = [
   { design: 'work', kind: 'work', label: 'Work', name: '' },
   { design: 'health', kind: 'health', label: 'Health', name: '' },
-  { design: 'daily', kind: 'daily', label: 'Daily tasks', name: '' },
+  { design: 'daily', kind: 'daily', label: 'Daily', name: '' },
   { design: 'workshop', kind: 'custom', label: 'Workshop', name: 'Workshop' },
   { design: 'research', kind: 'custom', label: 'Research group', name: 'Research group' },
   { design: 'custom', kind: 'custom', label: 'Custom', name: '' },

@@ -7,7 +7,7 @@ import { CARD_DESIGNS, canCreateCard, designEntry, draftDesign, firstFreeDesign,
 import { CardLookButton, CardLookPopover } from './CardLookPopover';
 import { useLookPopover } from './cardLook';
 import { CgNotice } from './parts';
-import { CardGlyph, ProfileCardLarge } from './ProfileCard';
+import { CardGlyph, ProfileCardLarge, type CgCardOwner } from './ProfileCard';
 import { PROFILE_FOCUS_MAX, PROFILE_NAME_MAX } from './profiles';
 import type { CgProfileKind } from './types';
 
@@ -16,8 +16,9 @@ import type { CgProfileKind } from './types';
  * card's icon square picks another background and icon. Fixed kinds already in the wallet show
  * "In your wallet" and cannot be created again.
  */
-export function NewCardDialog({ taken, busy, notice, onCancel, onCreate }: {
+export function NewCardDialog({ taken, owner, busy, notice, onCancel, onCreate }: {
   taken: CgProfileKind[];
+  owner?: CgCardOwner;
   busy: boolean;
   notice: string | null;
   onCancel: () => void;
@@ -78,7 +79,7 @@ export function NewCardDialog({ taken, busy, notice, onCancel, onCreate }: {
           <div className="cg-newcard-preview">
             <ProfileCardLarge
               key={draft.design}
-              face={{ design, icon: draft.icon, kind: entry.kind, name: draft.name, focus: draft.focus, topicCount: 0, status: 'empty' }}
+              face={{ design, icon: draft.icon, kind: entry.kind, name: draft.name, focus: draft.focus, topicCount: 0, status: 'empty', owner }}
               badge={inWallet ? 'In your wallet' : undefined}
               glyph={inWallet ? undefined : <CardLookButton design={design} icon={draft.icon ?? null} kind={entry.kind} className="cg-card-glyph" open={look.open} onToggle={look.toggle} />}
               edit={{
