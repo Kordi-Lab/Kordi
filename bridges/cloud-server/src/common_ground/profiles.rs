@@ -1,5 +1,5 @@
 //! Profiles: a person keeps up to five cards, one per profile. Fixed kinds
-//! (work, health, daily tasks) appear at most once; custom profiles carry
+//! (work, health, daily) appear at most once; custom profiles carry
 //! their own name ("KAUST", "MIT"). Each profile's card is built through its
 //! lens, and every room membership and pairing shares exactly one profile.
 
@@ -137,7 +137,7 @@ pub(super) fn default_name(kind: &str) -> Option<&'static str> {
     match kind {
         "work" => Some("Work"),
         "health" => Some("Health"),
-        "daily" => Some("Daily tasks"),
+        "daily" => Some("Daily"),
         _ => None,
     }
 }

@@ -10,7 +10,7 @@ export const PROFILE_FOCUS_MAX = 200;
 export const PROFILE_KINDS: Array<[CgProfileKind, string]> = [
   ['work', 'Work'],
   ['health', 'Health'],
-  ['daily', 'Daily tasks'],
+  ['daily', 'Daily'],
   ['custom', 'Custom'],
 ];
 

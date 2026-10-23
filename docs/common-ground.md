@@ -76,9 +76,9 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
 
 ## Profiles
 
-A person keeps up to five profiles instead of one card: **Work**, **Health** and **Daily tasks** (each at most once) plus custom profiles with their own name, such as "KAUST" and "MIT" for two research groups. Each profile has a full card of its own, built from the same sources through the profile's lens.
+A person keeps up to five profiles instead of one card: **Work**, **Health** and **Daily** (each at most once) plus custom profiles with their own name, such as "KAUST" and "MIT" for two research groups. Each profile has a full card of its own, built from the same sources through the profile's lens.
 
-- **Lens.** The build prompt names the profile's kind, name and focus line, keeps only topics that belong to that profile and drops the rest: a health profile ignores papers, a daily tasks profile ignores research, a "KAUST" profile ignores work done at MIT. Device items, links and notes sent with a build apply to that build only.
+- **Lens.** The build prompt names the profile's kind, name and focus line, keeps only topics that belong to that profile and drops the rest: a health profile ignores papers, a daily profile keeps hobbies, food, places and things to do together and ignores research and errands, a "KAUST" profile ignores work done at MIT. Device items, links and notes sent with a build apply to that build only.
 - **Sharing one profile.** Every room membership and pairing shares exactly one profile of each person, and people only see the profile shared with them there. Matches, match detail, the person page and Recent are computed per pair of profiles; Recent lists one entry per person and profile.
 - **Rooms suggest a kind.** The person who opens a room may set its kind; joiners get their profile of that kind preselected when it has a card, else their default profile. A member can switch the profile they share in an open room, which clears their matches there and matches again.
 - **Default profile.** The work profile, else the first one. Clients that send no profile id act on it, and a build or sharing change from an account without profiles creates the work profile.

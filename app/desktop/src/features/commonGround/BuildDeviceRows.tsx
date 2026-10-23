@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 
 import { SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import { DEVICE_SOURCES, privacySettingsUrl } from './deviceAccess';
@@ -8,13 +8,14 @@ import type { CgDeviceItem, CgDeviceSource } from './types';
 
 export type CgDeviceTitles = Partial<Record<CgDeviceSource, CgDeviceItem[]>>;
 
-/** Calendar and Reminders on this Mac: Allow, Settings, or a switch with the count. */
-export function DeviceRows({ host, titles, setTitles, included, setIncluded }: {
+/** Calendar and Reminders on this Mac: Allow, Settings, or a switch with the count; then the rows passed in. */
+export function DeviceRows({ host, titles, setTitles, included, setIncluded, children }: {
   host: CgHost;
   titles: CgDeviceTitles;
   setTitles: (update: (current: CgDeviceTitles) => CgDeviceTitles) => void;
   included: CgDeviceSource[];
   setIncluded: (update: (current: CgDeviceSource[]) => CgDeviceSource[]) => void;
+  children?: ReactNode;
 }) {
   const device = host.device;
   const [status, setStatus] = useState<CgDeviceStatuses | null>(null);
@@ -34,14 +35,13 @@ export function DeviceRows({ host, titles, setTitles, included, setIncluded }: {
     }, () => undefined);
     return () => { cancelled = true; };
   }, [device, read]);
-  if (!device || !status) return null;
-  const rows = DEVICE_SOURCES.filter(({ id }) => status[id] !== 'unavailable');
-  if (!rows.length) return null;
+  const rows = device && status ? DEVICE_SOURCES.filter(({ id }) => status[id] !== 'unavailable') : [];
+  if (!device || !rows.length) return children ? <CgSection title="On this Mac"><CgGroup>{children}</CgGroup></CgSection> : null;
   return (
     <CgSection title="On this Mac">
       <CgGroup>
         {rows.map(({ id, name, tone, Icon }) => {
-          const value = status[id];
+          const value = status?.[id];
           const count = titles[id]?.length;
           let sub = 'Titles and dates only';
           let trailing = (
@@ -66,7 +66,7 @@ export function DeviceRows({ host, titles, setTitles, included, setIncluded }: {
                 label={name}
                 enabled={included.includes(id) && Boolean(count)}
                 disabled={!count}
-                onChange={(on) => setIncluded((current) => (on ? [...current, id] : current.filter((item) => item !== id)))}
+                onChange={(on) => setIncluded((current) => (on ? [...new Set([...current, id])] : current.filter((item) => item !== id)))}
               />
             );
           } else if (value !== 'not_determined') {
@@ -75,6 +75,7 @@ export function DeviceRows({ host, titles, setTitles, included, setIncluded }: {
           }
           return <CgRow key={id} lead={<CgIcon tone={tone}><Icon className="h-4 w-4" /></CgIcon>} title={name} sub={sub} trailing={trailing} />;
         })}
+        {children}
       </CgGroup>
       <CgNotice text={error} />
     </CgSection>
