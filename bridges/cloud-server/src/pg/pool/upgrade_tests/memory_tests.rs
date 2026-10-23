@@ -5,8 +5,8 @@ type Backfill = (String, String, String, Option<String>, Option<String>);
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_147_adds_memory_categories() {
-    let pool = fixture(147).await;
+async fn upgrade_from_148_adds_memory_categories() {
+    let pool = fixture(148).await;
     execute(
         &pool,
         "INSERT INTO cloud_account_memories \

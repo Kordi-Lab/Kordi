@@ -15,6 +15,7 @@ final class CommonGroundModel: ObservableObject {
     nonisolated static let syncInterval: TimeInterval = 30
     /// Typed tags stay short enough to read at a glance.
     static let tagMax = 40
+    static let roomNotFound = "Room not found."
 
     let me: CommonGroundPerson
     private let context: Context
@@ -89,7 +90,7 @@ final class CommonGroundModel: ObservableObject {
     static let messages: [String: String] = [
         "common_ground_no_sources": "Turn on a source first.",
         "common_ground_build_in_progress": "Your card is already being built.",
-        "common_ground_room_not_found": "Room not found.",
+        "common_ground_room_not_found": roomNotFound,
         "common_ground_code_not_found": "Code not found.",
         "common_ground_sharing_off": "Turn on sharing first.",
         "common_ground_no_card": "Build your profile first.",

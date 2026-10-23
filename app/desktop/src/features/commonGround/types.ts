@@ -39,17 +39,37 @@ export type CgProfile = CgProfileTag & CgCardLook & {
   sharing: boolean;
   builtAt: string | null;
   topicCount: number;
+  /** The owner's saved source picks (`commonGroundVersion` 3); null until first saved. */
+  sources?: CgSourcePicks | null;
 };
+
+/** What a card is built from, as the owner last picked it. Clients keep fields they cannot act on. */
+export type CgSourcePicks = {
+  memory: boolean;
+  /** Connector providers, such as `gmail`. */
+  connectors: string[];
+  device: CgDeviceSource[];
+  agents: boolean;
+  /** Attachment ids of the owner's own Kordi documents, up to eight. */
+  documents: string[];
+  links: string;
+  notes: string;
+};
+
+/** One of the owner's Markdown documents a card may read. */
+export type CgDocument = { attachmentId: string; title: string; updatedAt: string; sizeBytes: number | null };
 
 export type CgProfileInput = { kind: CgProfileKind; name?: string; focus?: string; design?: CgCardDesign; icon?: CgCardIcon };
 
 /** `PUT profiles/:id`: a left-out field is kept; a null look field resets it. */
-export type CgProfilePatch = { name?: string; focus?: string; design?: CgCardDesign | null; icon?: CgCardIcon | null };
+export type CgProfilePatch = { name?: string; focus?: string; design?: CgCardDesign | null; icon?: CgCardIcon | null; sources?: CgSourcePicks | null };
 
 export type CgPerson = {
   accountId: string;
   name: string;
   avatarUrl: string | null;
+  /** Their Kordi handle without the @; absent on older servers. */
+  handle?: string | null;
   hasCard?: boolean;
   relationship?: CgRelationship;
   /** The profile they share with you; absent on servers before profiles. */
@@ -119,13 +139,17 @@ export type CgAgentFile = { label: string; text: string };
 
 export type CgBuildRequest = {
   memory: boolean;
-  /** True when any connector is connected; the server reads events for all of them. */
+  /** True when any connector is on; before version 3 the server reads all of them. */
   connectors: boolean;
   device: Array<{ source: string; items: CgDeviceItem[] }>;
   links: string;
   notes: string;
   /** Sent only when the Agents on this Mac switch is on. */
   agents?: CgAgentFile[];
+  /** `commonGroundVersion` 3: the providers to read, the documents, and the picks to save. */
+  connectorProviders?: string[];
+  documents?: string[];
+  picks?: CgSourcePicks;
 };
 
 /** The server sends `relationship` beside `person`; the client folds it into `person`. */
