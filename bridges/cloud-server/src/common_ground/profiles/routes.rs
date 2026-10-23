@@ -23,6 +23,7 @@ use super::{
 use super::{MAX_FOCUS_CHARS, MAX_NAME_CHARS};
 use crate::common_ground::card::Topics;
 use crate::common_ground::{db_error, err};
+use crate::memory_store::ProfileTarget;
 use crate::{auth::routes::CloudSession, server::ServerState};
 
 type ListRow = (
@@ -54,43 +55,47 @@ async fn views(pool: &PgPool, account: &str) -> sqlx_core::Result<Vec<Value>> {
     .bind(account)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .into_iter()
-        .map(
-            |(
-                id,
-                kind,
-                name,
-                focus,
-                position,
-                has_card,
-                sharing,
-                built_at,
-                topics,
-                design,
-                icon,
-                sources,
-            )| {
-                let topics: Topics = topics
-                    .and_then(|value| serde_json::from_value(value).ok())
-                    .unwrap_or_default();
-                json!({
-                    "profileId": id,
-                    "kind": kind,
-                    "name": name,
-                    "focus": focus,
-                    "position": position,
-                    "design": design,
-                    "icon": icon,
-                    "sources": sources,
-                    "hasCard": has_card,
-                    "sharing": sharing.unwrap_or(true),
-                    "builtAt": built_at,
-                    "topicCount": if has_card { topics.current().count() } else { 0 },
-                })
-            },
-        )
-        .collect())
+    let mut views = Vec::with_capacity(rows.len());
+    for (
+        id,
+        kind,
+        name,
+        focus,
+        position,
+        has_card,
+        sharing,
+        built_at,
+        topics,
+        design,
+        icon,
+        sources,
+    ) in rows
+    {
+        let topics: Topics = topics
+            .and_then(|value| serde_json::from_value(value).ok())
+            .unwrap_or_default();
+        let target = ProfileTarget {
+            profile_id: Some(&id),
+            kind: &kind,
+        };
+        let since = crate::memory_store::count_since(pool, account, target, built_at).await?;
+        views.push(json!({
+            "profileId": id,
+            "kind": kind,
+            "name": name,
+            "focus": focus,
+            "position": position,
+            "design": design,
+            "icon": icon,
+            "sources": sources,
+            "hasCard": has_card,
+            "sharing": sharing.unwrap_or(true),
+            "builtAt": built_at,
+            "topicCount": if has_card { topics.current().count() } else { 0 },
+            "memoriesSinceBuild": since,
+        }));
+    }
+    Ok(views)
 }
 
 async fn one_view(pool: &PgPool, account: &str, profile_id: &str) -> Response {
@@ -99,6 +104,27 @@ async fn one_view(pool: &PgPool, account: &str, profile_id: &str) -> Response {
             Some(view) => (StatusCode::OK, Json(view)).into_response(),
             None => not_found(),
         },
+        Err(error) => db_error(error),
+    }
+}
+
+/// `GET /v1/cloud/common-ground/profiles/:id/memories`: the owner's
+/// memories routed to the profile, newest first. Cross-profile ones carry
+/// `everyProfile: true`.
+pub(in crate::common_ground) async fn memories(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(profile_id): Path<String>,
+) -> Response {
+    let pool = state.db_pool();
+    let account = session.account_id.as_str();
+    let profile = match get(pool, account, &profile_id).await {
+        Ok(Some(profile)) => profile,
+        Ok(None) => return not_found(),
+        Err(error) => return db_error(error),
+    };
+    match crate::memory_store::profile_memories(pool, account, profile.memory_target()).await {
+        Ok(memories) => (StatusCode::OK, Json(json!({ "memories": memories }))).into_response(),
         Err(error) => db_error(error),
     }
 }
