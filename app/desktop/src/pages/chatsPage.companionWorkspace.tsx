@@ -391,7 +391,7 @@ export function ChatCompanionWorkspace({
           isNativeShell={shell.isNativeShell}
           attachmentInputRef={session.refs.attachmentInput}
           composer={companionComposer}
-          runtime={{ ...runtime, composerProviderOptions: localRuntime.providerOptions }}
+          runtime={conversation.agentSubsessionId ? runtime : { ...runtime, composerProviderOptions: localRuntime.providerOptions }}
           localRouting={{
             enabled: presentation.showsLocalAgentControls,
             selection: localRuntime.selection,

@@ -7,6 +7,10 @@ import type { ComposerConfigTargetOverride } from '@/features/chat/composerContr
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { BlobEmojiComposerInput, type BlobEmojiComposerInputHandle } from '@/features/emoji/BlobEmojiComposerInput';
 import { subsessionMentions } from '@/features/cloud/subsessionConversation';
+import { subsessionRouteInput, subsessionRouteSelection, type SubsessionRouteChange } from '@/features/cloud/subsessionRoute';
+import type { CompactComposerModelMenuSaveInput } from '@/kordi-app/components/composer';
+import { isRouteAccountUnavailable } from '@/kordi-app/components/composerModelSelection';
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import { ComposerMentionMenu } from '@/kordi-app/components/composerMentionMenu';
 import { ComposerStopButton, type ComposerStopControl } from '@/pages/chatsPage.voiceControls';
 import { currentMentionQuery, orderedComposerMentionOptions } from '@/kordi-app/components/composerMentionOptions';
@@ -80,7 +84,15 @@ type CompanionComposerUi = {
 export type CompanionComposerProps = {
   isPreparing?: boolean;
   conversation: Conversation;
-  subsession?: { mentionOptions: ComposerMentionOption[]; sending: boolean; sendError: string | null; disabled: boolean };
+  subsession?: {
+    mentionOptions: ComposerMentionOption[]; sending: boolean; sendError: string | null; disabled: boolean;
+    agentName?: string | null;
+    /** The owner's route for the thread's next run; null for other members. */
+    route?: {
+      value: DesktopChatMessageRoute | null;
+      choose: (input: CompactComposerModelMenuSaveInput, current: DesktopChatMessageRoute | null) => void;
+    } | null;
+  };
   paneKind: 'human' | 'agent';
   draftText: string;
   attachmentError: string | null;
@@ -141,6 +153,17 @@ export function CompanionComposer({
     toggleSelector,
   } = ui;
   const selectedAgent = collaborationRouting.selectedAgent;
+  const threadRoute = subsession?.route
+    ? subsession.route.value ?? runtime.resolveChatRuntimeRoute?.(null) ?? null
+    : null;
+  const threadRouteSelection = subsession?.route ? subsessionRouteSelection(threadRoute, runtime.composerSelection) : null;
+  // A route bound to a removed account cannot run until the owner picks another account.
+  const routeAccountUnavailable = Boolean(threadRouteSelection
+    && isRouteAccountUnavailable(threadRouteSelection, composerProviderOptions));
+  const changeThreadRoute = (change: SubsessionRouteChange) => {
+    setOpenSelector(null);
+    if (threadRouteSelection) subsession?.route?.choose(subsessionRouteInput(threadRouteSelection, change, chatModelOptions ?? []), threadRoute);
+  };
   const editor = useRef<BlobEmojiComposerInputHandle>(null);
   const mentionCaret = useRef<number | null>(null);
   const selectedMentions = useRef<ComposerMentionOption[]>([]);
@@ -164,7 +187,7 @@ export function CompanionComposer({
     setQuery(null);
   };
   const send = () => {
-    if (isPreparing || subsession?.disabled || subsession?.sending) return;
+    if (isPreparing || subsession?.disabled || subsession?.sending || routeAccountUnavailable) return;
     const selectedHandles = new Set(selectedMentions.current.map(option => option.value));
     const boundOptions = [...(subsession?.mentionOptions ?? []).filter(option => !selectedHandles.has(option.value)), ...selectedMentions.current];
     setQuery(null);
@@ -249,7 +272,9 @@ export function CompanionComposer({
                 }
               }}
               className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-              placeholder={subsession ? 'Send a message; @mention the agent for a reply' : paneKind === 'agent' ? 'Ask the agent…' : `Message ${conversation.name}`}
+              placeholder={subsession
+                ? subsession.route ? `Message ${subsession.agentName || 'the agent'}` : 'Send a message; @mention the agent for a reply'
+                : paneKind === 'agent' ? 'Ask the agent…' : `Message ${conversation.name}`}
             />
           </div>
         </div>
@@ -264,7 +289,28 @@ export function CompanionComposer({
             /> : null}
           </div>
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-visible">
-            {localRouting.enabled && localRouting.selection && localRouting.configTarget ? (
+            {subsession?.route && threadRouteSelection ? (
+              <div className="flex min-w-0 items-center justify-end overflow-visible" data-companion-model-controls="true" data-companion-thread-route="true">
+                <ComposerModelControls
+                  scope="chat"
+                  selection={threadRouteSelection}
+                  openSelector={openSelector}
+                  onToggleSelector={toggleSelector}
+                  onSelectValue={(_scope, type, value) => {
+                    if (type === 'model' || type === 'thinking') changeThreadRoute({ type, value });
+                  }}
+                  authLabel={composerAuthLabel}
+                  authOptions={composerAuthOptions}
+                  onSelectAuthChoice={(_scope, providerId, choice) => changeThreadRoute({
+                    type: 'provider', option: { value: `${providerId}::${choice}`, providerId, label: choice },
+                  })}
+                  onSelectProviderChoice={(_scope, option) => changeThreadRoute({ type: 'provider', option })}
+                  providerOptions={composerProviderOptions}
+                  modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
+                  compact={true}
+                />
+              </div>
+            ) : localRouting.enabled && localRouting.selection && localRouting.configTarget ? (
               <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-visible" data-companion-model-controls="true">
                 {isNativeShell || localRouting.runtimeContextStatus ? (
                   <ComposerRuntimeStatus
@@ -363,7 +409,8 @@ export function CompanionComposer({
               className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
               title={`Send to ${conversation.name}`}
               aria-label={`Send to ${conversation.name}`}
-              disabled={isPreparing || subsession?.sending || subsession?.disabled || (!draftText.trim() && chatComposerAttachments.length === 0)}
+              disabled={isPreparing || subsession?.sending || subsession?.disabled || routeAccountUnavailable
+                || (!draftText.trim() && chatComposerAttachments.length === 0)}
               data-companion-send-control="true"
             >
               <Send className="h-4 w-4" />
