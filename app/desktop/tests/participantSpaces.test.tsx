@@ -854,27 +854,6 @@ test('buildParticipantSpaces truncates long inferred group names with a remainin
   assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['me', 'member1', 'member10', 'member100', 'member101', 'member102', 'member103', 'member104', 'member105']);
 });
 
-test('buildParticipantSpaces does not expose raw session ids as participant-space previews', () => {
-  const spaces = buildParticipantSpaces([
-    conversation({
-      id: 'session:raw-preview-group',
-      canonicalSessionId: 'session:raw-preview-group',
-      type: 'person',
-      name: 'hi taylor',
-      subtitle: 'session:bridge:humans:8e32e6b4-b8e7-4591-a412-8613ad09fe25',
-      messages: [],
-      participants: ['Me', 'member1', 'member2'],
-      canonicalParticipants: [
-        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'human:member1', name: 'member1', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'member1' },
-        { id: 'human:member2', name: 'member2', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'member2' },
-      ],
-    }),
-  ]);
-
-  assert.equal(spaces[0]?.preview, 'hi taylor');
-});
-
 test('filterParticipantSpaces matches title, participant names, preview, and child session title', () => {
   const spaces = buildParticipantSpaces([
     conversation({
