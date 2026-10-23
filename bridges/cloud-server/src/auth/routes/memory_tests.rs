@@ -8,6 +8,7 @@ use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::util::ServiceExt;
 
+mod categories;
 mod dedup;
 mod global;
 mod group_shared;
@@ -292,7 +293,13 @@ async fn memory_save_edit_delete_and_forget_all() {
     );
     assert_eq!(
         fx.audit_metadata("memory_saved").await[0],
-        json!({ "memoryId": memory_id, "scope": "conversation", "source": "user_correction" })
+        json!({
+            "memoryId": memory_id,
+            "scope": "conversation",
+            "source": "user_correction",
+            "category": "general_preferences",
+            "declarationType": "model-inferred",
+        })
     );
 }
 

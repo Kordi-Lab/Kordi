@@ -17,10 +17,11 @@ use sqlx_postgres::PgPool;
 
 mod edit;
 mod groups;
+mod routing;
 mod runs;
 mod types;
 
-pub(crate) use edit::{archive, update_text};
+pub(crate) use edit::{archive, update_memory};
 
 pub(crate) use groups::is_active_group_member;
 pub(crate) use runs::{
@@ -53,14 +54,21 @@ type MemoryRow = (
     DateTime<Utc>,
     String,
     Option<String>,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
 );
 
 /// Selects memory rows from a CTE named `m` (a query or a `RETURNING *`
-/// write) with the owner's display name.
+/// write) with the owner's display name and the chosen profile's kind.
 const MEMORY_SELECT: &str = "SELECT m.memory_id, m.scope, m.scope_id, m.scope_label, m.source, \
      m.text, m.created_at, m.updated_at, m.owner_account_id, \
-     NULLIF(btrim(owner.display_name), '') \
-     FROM m LEFT JOIN cloud_accounts owner ON owner.account_id = m.owner_account_id";
+     NULLIF(btrim(owner.display_name), ''), \
+     m.category, m.declaration_type, m.confidence, m.profile_id, profile.kind \
+     FROM m LEFT JOIN cloud_accounts owner ON owner.account_id = m.owner_account_id \
+     LEFT JOIN cloud_common_ground_profiles profile ON profile.profile_id = m.profile_id";
 
 fn memory_from_row(row: MemoryRow) -> MemoryResponse {
     let (
@@ -74,7 +82,13 @@ fn memory_from_row(row: MemoryRow) -> MemoryResponse {
         updated_at,
         owner_account_id,
         owner_name,
+        category,
+        declaration_type,
+        confidence,
+        profile_id,
+        explicit_kind,
     ) = row;
+    let profile_kind = routing::effective_profile_kind(&scope, &category, explicit_kind);
     MemoryResponse {
         memory_id,
         scope,
@@ -86,6 +100,11 @@ fn memory_from_row(row: MemoryRow) -> MemoryResponse {
         updated_at: updated_at.to_rfc3339(),
         owner_account_id,
         owner_name,
+        category,
+        declaration_type,
+        confidence,
+        profile_id,
+        profile_kind,
     }
 }
 
@@ -265,6 +284,7 @@ pub(crate) async fn save(
             "scopeLabel must be 256 characters or fewer.",
         ));
     }
+    let fields = routing::save_fields(input, scope)?;
     let client_memory_id = input.client_memory_id.as_deref().map(str::trim);
     if client_memory_id.is_some_and(|id| !valid_client_memory_id(id)) {
         return Err(MemoryError::bad_request(
@@ -359,8 +379,9 @@ pub(crate) async fn save(
         .unwrap_or_else(|| format!("mem_{}", uuid::Uuid::new_v4().simple()));
     let inserted: Option<MemoryRow> = query_as(&format!(
         "WITH m AS (INSERT INTO cloud_account_memories \
-         (memory_id, owner_account_id, scope, scope_id, scope_label, source, text) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         (memory_id, owner_account_id, scope, scope_id, scope_label, source, text, \
+          category, declaration_type, confidence) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
          ON CONFLICT (memory_id) DO NOTHING \
          RETURNING *) {MEMORY_SELECT}"
     ))
@@ -371,6 +392,9 @@ pub(crate) async fn save(
     .bind(scope_label)
     .bind(source)
     .bind(&text)
+    .bind(fields.category)
+    .bind(fields.declaration_type)
+    .bind(fields.confidence)
     .fetch_optional(&mut *transaction)
     .await?;
     transaction.commit().await?;
