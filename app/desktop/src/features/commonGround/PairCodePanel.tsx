@@ -184,6 +184,7 @@ export function PairCodePanel({ state, store }: { state: CgState; store: CommonG
           busy={state.busy === 'create'}
           notice={state.notice}
           onClose={closeCreate}
+          onEnter={(code) => { closeCreate(); store.openRoom(code); }}
           onCreate={(name, cardId) => {
             const chosen = state.profiles.find((item) => item.profileId === cardId);
             return store.createRoom({ name, kind: chosen?.kind ?? 'work', profileId: chosen?.profileId });

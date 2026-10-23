@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
-import type { Contact, ContactClass, ContactRequest, Conversation } from '../types';
+import type { Contact, ContactClass, ContactRequest, Conversation, ParticipantSpaceViewModel } from '../types';
 import type { ContactMuteControl, ContactProfileHost } from './contactProfileHost';
 
 export type ContactGroup = { id: ContactClass; label: string; items: Contact[] };
@@ -41,6 +41,10 @@ export type ContactsPageProps = {
   sharedConversationFor?: (contact: Contact) => Conversation | null;
   /** The Settings tile on the user's own agent. */
   onOpenAgentSettings?: () => void;
+  /** Chat spaces; the joined groups among them list under Groups. */
+  groupSpaces?: ParticipantSpaceViewModel[];
+  /** Opens a group's chat, as selecting it in the chat list does. */
+  onOpenGroup?: (space: ParticipantSpaceViewModel) => void;
   /** Optional rows pinned above the request inbox at the top of the list column. */
   leadingListItems?: ReactNode;
   /**

@@ -31,6 +31,8 @@ export type ChatSyncConversation = {
   group_space_id?: string | null;
   group_title?: string | null;
   group_avatar?: import('@/features/chat/groupAvatar').GroupAvatarSnapshot | null;
+  /** `grounding` for a group started from a Grounding room. */
+  origin?: 'grounding' | null;
   forked_from_session_id?: string | null;
   forked_from_message_id?: string | null;
   latest_message_sequence: number;
