@@ -34,6 +34,17 @@ pub async fn recent_events(
     account_id: &str,
     since: DateTime<Utc>,
 ) -> Result<Vec<ConnectorEventSummary>, sqlx_core::Error> {
+    recent_events_from(pool, account_id, since, None).await
+}
+
+/// [`recent_events`] from only these providers when `providers` is given,
+/// filtered before the limit so a busy provider cannot crowd out the rest.
+pub async fn recent_events_from(
+    pool: &PgPool,
+    account_id: &str,
+    since: DateTime<Utc>,
+    providers: Option<&[String]>,
+) -> Result<Vec<ConnectorEventSummary>, sqlx_core::Error> {
     let rows: Vec<(String, String, String, DateTime<Utc>, Value)> = query_as(
         "SELECT e.event_id, e.provider, e.kind, e.occurred_at, e.payload \
          FROM cloud_connector_events e \
@@ -42,12 +53,14 @@ pub async fn recent_events(
            ON g.connector_id = c.connector_id AND g.agent_id = $4 \
          WHERE c.account_id = $1 AND c.status <> 'revoked' \
            AND e.occurred_at >= $2 AND e.expires_at > now() \
+           AND ($5::text[] IS NULL OR e.provider = ANY($5)) \
          ORDER BY e.occurred_at DESC, e.event_id DESC LIMIT $3",
     )
     .bind(account_id)
     .bind(since)
     .bind(MAX_DIGEST_EVENTS)
     .bind(default_agent_id(account_id))
+    .bind(providers)
     .fetch_all(pool)
     .await?;
     Ok(rows

@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { ContactRow } from '../components';
 import type { ContactClass } from '../types';
 import { ContactsAddForm } from './ContactsAddForm';
+import { ContactsGroupsSection } from './ContactsGroupsSection';
 import { ContactsListSection } from './ContactsListSection';
 import { ContactsRequestActivity } from './ContactsRequestActivity';
 import { usePresenceNow } from './usePresenceNow';
@@ -29,6 +30,8 @@ type ContactsListColumnProps = Pick<ContactsPageProps,
   | 'onSelectContact'
   | 'contactOverlayMode'
   | 'leadingListItems'
+  | 'groupSpaces'
+  | 'onOpenGroup'
 > & {
   requests: PartitionedContactRequests;
   requestActions: ContactRequestActions;
@@ -105,6 +108,8 @@ export function ContactsListColumn({
   onSelectContact,
   contactOverlayMode,
   leadingListItems,
+  groupSpaces,
+  onOpenGroup,
   requests,
   requestActions,
   fullWidth,
@@ -160,6 +165,9 @@ export function ContactsListColumn({
             onSelectRequest={onSelectRequest}
             requestActions={requestActions}
           />
+          {groupSpaces && onOpenGroup ? (
+            <ContactsGroupsSection spaces={groupSpaces} search={contactSearch} onOpenGroup={onOpenGroup} />
+          ) : null}
           <ContactGroupList
             groups={filteredGroupedContacts}
             expandedContactGroups={expandedContactGroups}

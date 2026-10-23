@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from 'react';
-import { Briefcase, Landmark, Leaf, ListChecks, Medal, Sparkles } from 'lucide-react';
+import { Briefcase, Coffee, Landmark, Leaf, Medal, Sparkles } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { isColourDesign, type CgCardDesign, type CgCardIcon } from './cardDesign';
@@ -7,7 +7,7 @@ import { CARD_ICONS } from './cardLook';
 import { topicCount } from './format';
 import type { CgProfileKind } from './types';
 
-const GLYPHS = { work: Briefcase, health: Leaf, daily: ListChecks, workshop: Medal, research: Landmark, custom: Sparkles } as const;
+const GLYPHS = { work: Briefcase, health: Leaf, daily: Coffee, workshop: Medal, research: Landmark, custom: Sparkles } as const;
 
 /**
  * The card's icon, or without one the design's own glyph; a colour background draws its kind's

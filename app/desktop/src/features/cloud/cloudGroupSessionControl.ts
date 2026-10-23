@@ -76,6 +76,8 @@ export type ApplyCloudGroupSessionControlInput = {
   historyReplay?: boolean;
   catalogGroupTitle?: string | null;
   catalogGroupAvatar?: CloudGroupControlEnvelope['groupAvatar'];
+  /** `grounding` marks a group started from a Grounding room. */
+  catalogGroupOrigin?: string | null;
   runtime: CloudGroupSessionRuntime;
   canonical: CloudGroupCanonicalRuntime;
   stateOps: CloudGroupSessionStateOps;
@@ -101,6 +103,7 @@ export async function applyCloudGroupSessionControl({
   historyReplay,
   catalogGroupTitle,
   catalogGroupAvatar,
+  catalogGroupOrigin,
   runtime,
   canonical,
   stateOps,
@@ -193,7 +196,7 @@ export async function applyCloudGroupSessionControl({
   if (cloudGroupHistoryReplayPreservesSessionShell(
     historyReplay,
     Boolean(envelopeSession),
-    Boolean(normalizedCatalogGroupTitle) || Boolean(catalogGroupAvatar),
+    Boolean(normalizedCatalogGroupTitle) || Boolean(catalogGroupAvatar) || Boolean(catalogGroupOrigin),
     envelope.kind,
   )) {
     const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId)
@@ -317,6 +320,7 @@ export async function applyCloudGroupSessionControl({
     ...inheritedGroupRootMetadata,
     ...envelopeSessionMetadata,
     groupAvatar: catalogGroupAvatar ?? sharedGroupAvatar([groupRootMetadata.groupAvatar, envelopeSessionMetadata.groupAvatar, envelope.groupAvatar]),
+    ...(catalogGroupOrigin === 'grounding' ? { groupOrigin: 'grounding' } : {}),
     schemaVersion: 1,
     kind: 'chat-group',
     customName: groupTitleResolution.title || null,

@@ -1,7 +1,7 @@
 //! Common ground (#1847): interest cards, event rooms joined with a 4-digit
 //! code, and one-to-one pairings.
 //!
-//! A person keeps up to five profiles (work, health, daily tasks, custom),
+//! A person keeps up to five profiles (work, health, daily, custom),
 //! each with its own card. A card is built by a background run on the
 //! Kordi-operated key (PiP's service credential) from the sources the owner
 //! turns on, through the profile's lens. Every topic
@@ -13,6 +13,7 @@ mod actions;
 mod build;
 mod card;
 mod contact_match;
+mod documents;
 mod intro;
 mod matching;
 mod pairing;
@@ -54,8 +55,9 @@ pub use runs::{complete, fail, RUN_PREFIX};
 pub(crate) const SYSTEM_NOTICE_KIND: &str = "system-notice";
 
 /// Advertised as `commonGroundVersion` in the auth capabilities.
-/// Version 2 adds profiles.
-pub const COMMON_GROUND_VERSION: u32 = 2;
+/// Version 2 adds profiles; version 3 adds per-profile sources and Kordi
+/// documents as a source.
+pub const COMMON_GROUND_VERSION: u32 = 3;
 
 /// A room is open until 24 hours after its last join.
 pub(super) const ROOM_OPEN_SQL: &str =
@@ -126,6 +128,7 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
                 .delete(card::delete),
         )
         .route("/v1/cloud/common-ground/card/build", post(build::start))
+        .route("/v1/cloud/common-ground/documents", get(documents::list))
         .route(
             "/v1/cloud/common-ground/profiles",
             get(profiles::list).post(profiles::create),
