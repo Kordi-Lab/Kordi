@@ -22,6 +22,36 @@ enum MemoryPresentation {
         (capabilities?.memoryVersion ?? 0) >= 1
     }
 
+    /// Card pages list each profile's memories from `memoryVersion` 2.
+    static func hasProfileRouting(_ capabilities: CloudAuthCapabilities?) -> Bool {
+        (capabilities?.memoryVersion ?? 0) >= 2
+    }
+
+    /// Chip labels per category, shared with the Mac.
+    static let categoryLabels: [String: String] = [
+        "work_context": "Work",
+        "education_learner_profile": "Learning",
+        "health_context": "Health",
+        "coordination_context": "Schedule",
+        "location_context": "Location",
+        "purchase_history_preferences": "Shopping",
+        "general_preferences": "Preference",
+        "goals_and_constraints": "Goal",
+        "values_and_ethics": "Values",
+        "hcp-custom:task_lessons": "Task note",
+    ]
+
+    /// The chip for a memory's category; nil (no chip) when it is missing or unknown.
+    static func categoryLabel(for category: String?) -> String? {
+        category.flatMap { categoryLabels[$0] }
+    }
+
+    /// "3 new memories since this card was built"; nil when there are none.
+    static func memoriesSinceBuildCaption(_ count: Int?) -> String? {
+        guard let count, count > 0 else { return nil }
+        return count == 1 ? "1 new memory since this card was built" : "\(count) new memories since this card was built"
+    }
+
     /// A memory someone typed names who added it; the others name where they came from.
     static func sourceLabel(_ source: CloudMemorySource, addedBy: String? = nil) -> String {
         switch source {

@@ -88,8 +88,10 @@
 		3369E116205FF6BDB09AC162 /* LocalMessageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1381CF79C72E0D7F70A6AF27 /* LocalMessageStore.swift */; };
 		33A95833DE67008E0C7D3ED8 /* KordiID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D6D4254D09283B27D15B674 /* KordiID.swift */; };
 		34D1737CBEFA979EC9353A72 /* digest in Resources */ = {isa = PBXBuildFile; fileRef = EC7028A6ADF145A7DE23EB58 /* digest */; };
+		354F791494399C7EA20CBA9D /* CommonGroundCardMemoriesSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 949D9778803DE7915795407E /* CommonGroundCardMemoriesSection.swift */; };
 		355C449A0A563748B9371015 /* DocumentTitleViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D6E60F374E48C3B3B5A869A /* DocumentTitleViews.swift */; };
 		35B9B24F661F5992EE4281EA /* MediaPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D3FAACD21D63BFA6A9455D5 /* MediaPreviewTests.swift */; };
+		36C6057F301E3510BB90F96A /* MemoryRowLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50D38033B37984E5C10FC21C /* MemoryRowLabel.swift */; };
 		3721A0A2CC0167373FC6AD17 /* ShareExtensionSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE75382D6C8FA0FC7A711C7 /* ShareExtensionSupport.swift */; };
 		372AD920A3BC05A74C36A0FA /* DocumentEditorTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FC6BE42FDE7E4B2FA1C8A35 /* DocumentEditorTransport.swift */; };
 		384CEA6FD6D3803D7750D658 /* DigestCalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6B70D03EA8C02F0F10917A6 /* DigestCalendarService.swift */; };
@@ -124,6 +126,7 @@
 		4B2AACF2322CB489C28DB2C0 /* KeychainSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 276E693EF06321E619FD4D1B /* KeychainSessionStore.swift */; };
 		4C4FB202DD4C0FA3462A86DF /* ConversationReadVisibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9342AD4F8DA861194BABA573 /* ConversationReadVisibility.swift */; };
 		4D7F1C35F1AC6A06D50ABD1A /* AgentModelMenuRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC4AC9E3E87E96CB6883BC4 /* AgentModelMenuRow.swift */; };
+		4DA8E11D5AB9D944EEE8C41A /* MemoryRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FA7760B4343FCCA8E4459F1 /* MemoryRoutingTests.swift */; };
 		5014F304C8CCEA114D4379EE /* DocumentReaderModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 776E1480D4A2BEE9853F6E6E /* DocumentReaderModel.swift */; };
 		50987C956B98A62D3A9B1A20 /* ConnectorActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2428C7194E60C10BB2220EAA /* ConnectorActivityView.swift */; };
 		50C62CF159AE39125365DD5E /* ConversationTimelineVirtualization.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBCAAF8E76831DD9D605A11A /* ConversationTimelineVirtualization.swift */; };
@@ -359,6 +362,7 @@
 		F01AE74E96BE2C02909E7D28 /* KordiAppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC40CA44539DE969C3129E9B /* KordiAppEnvironment.swift */; };
 		F0C8AE002742597539F4A674 /* ConversationSendQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A65E789E3576D0F0275E8B65 /* ConversationSendQueue.swift */; };
 		F1BC965058EC6A7F3B720F19 /* MessageAuthorIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EFD1E81FF57694F8CF0DCFC /* MessageAuthorIdentity.swift */; };
+		F1E4F1F8FE668169CE021087 /* CommonGroundModel+Memories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06AEAA1B70194CB973B18D68 /* CommonGroundModel+Memories.swift */; };
 		F254B5BCFB594F32E819678A /* SettingsRowStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 784A32DA3FCDE2B4F52C5571 /* SettingsRowStyle.swift */; };
 		F2B6C2FE32D5485D620A2CF8 /* AgentSubsessionOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3755289EEB38F2B35BA76F4 /* AgentSubsessionOperations.swift */; };
 		F340D50F671C69FD5A0FFD12 /* ConversationTailScrollMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C816AA362A716BCFFA87593 /* ConversationTailScrollMotion.swift */; };
@@ -432,6 +436,7 @@
 		032F0E9CF2067EBA48D5195A /* BlobEmojiComposerText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlobEmojiComposerText.swift; sourceTree = "<group>"; };
 		04DB13168D004CFB223E9828 /* ProfileEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileEditorView.swift; sourceTree = "<group>"; };
 		065C96F4684935A21E2C862E /* NetworkProxyPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkProxyPolicyTests.swift; sourceTree = "<group>"; };
+		06AEAA1B70194CB973B18D68 /* CommonGroundModel+Memories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CommonGroundModel+Memories.swift"; sourceTree = "<group>"; };
 		06CEFDD02CD36C6D279FBFF3 /* MemoryPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryPresentation.swift; sourceTree = "<group>"; };
 		092A3B6DDEAE95871DABB253 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		09BA4667BF4AE8544BDA7C41 /* ConversationSendMotionIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationSendMotionIntegrationTests.swift; sourceTree = "<group>"; };
@@ -444,6 +449,7 @@
 		0DE75382D6C8FA0FC7A711C7 /* ShareExtensionSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareExtensionSupport.swift; sourceTree = "<group>"; };
 		0E8F0D99DA167CC451890A13 /* ConnectorsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorsSettingsView.swift; sourceTree = "<group>"; };
 		0F86440397C4BCD851D59AE4 /* CloudAPIClient+Digest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CloudAPIClient+Digest.swift"; sourceTree = "<group>"; };
+		0FA7760B4343FCCA8E4459F1 /* MemoryRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryRoutingTests.swift; sourceTree = "<group>"; };
 		0FC6BE42FDE7E4B2FA1C8A35 /* DocumentEditorTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentEditorTransport.swift; sourceTree = "<group>"; };
 		108123CCF91230E14EE21237 /* RollingDigestModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RollingDigestModels.swift; sourceTree = "<group>"; };
 		110E18D5A48F47B4FE4F8E23 /* DocumentCommentViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentCommentViews.swift; sourceTree = "<group>"; };
@@ -540,6 +546,7 @@
 		4E67BBDF8DF185EA694C3205 /* SharedDocumentLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDocumentLink.swift; sourceTree = "<group>"; };
 		4EA7D44D8A1C2EFED3C150F4 /* PlanCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanCard.swift; sourceTree = "<group>"; };
 		509B7E9F27B599320FB93D6B /* CommonGroundCardDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundCardDesign.swift; sourceTree = "<group>"; };
+		50D38033B37984E5C10FC21C /* MemoryRowLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryRowLabel.swift; sourceTree = "<group>"; };
 		50F81413AD9566BB9C65BFA1 /* ComposerTextInputIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerTextInputIntegrationTests.swift; sourceTree = "<group>"; };
 		5101422FFF620FF837A563E8 /* MemorySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemorySettingsView.swift; sourceTree = "<group>"; };
 		517D72003B7A9E73111996E5 /* DocumentEditorBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentEditorBridgeTests.swift; sourceTree = "<group>"; };
@@ -639,6 +646,7 @@
 		935EFE99E0807E1CF8BE8FA7 /* ComposerMentionMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerMentionMenuTests.swift; sourceTree = "<group>"; };
 		942DF88B34C4810542A55879 /* AppIconSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconSettingsTests.swift; sourceTree = "<group>"; };
 		947D36AE16CB8FC9349B6169 /* EmojiAnimationDiskCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiAnimationDiskCache.swift; sourceTree = "<group>"; };
+		949D9778803DE7915795407E /* CommonGroundCardMemoriesSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundCardMemoriesSection.swift; sourceTree = "<group>"; };
 		958064210641FA020E27EF19 /* ChatHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHomeView.swift; sourceTree = "<group>"; };
 		95C1CA4FAB75E8423430A5D4 /* MessageDeletionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageDeletionUITests.swift; sourceTree = "<group>"; };
 		95CE270CEA87A8CE6D97F559 /* GroupSessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupSessionListView.swift; sourceTree = "<group>"; };
@@ -895,6 +903,7 @@
 				1B88DF41D19006D8E991CD1A /* AppearanceSettingsView.swift */,
 				434C5BEAA53589C21BDC6197 /* AppIconSettings.swift */,
 				AE6836951918DDB7B33A33B6 /* CloudDeviceGroups.swift */,
+				50D38033B37984E5C10FC21C /* MemoryRowLabel.swift */,
 				8232EDB843A4459373D95A16 /* MemoryRows.swift */,
 				3E2DC6199D18F50DD5C5DBC4 /* MemorySettingsModel.swift */,
 				5101422FFF620FF837A563E8 /* MemorySettingsView.swift */,
@@ -1179,6 +1188,7 @@
 				509B7E9F27B599320FB93D6B /* CommonGroundCardDesign.swift */,
 				96A7E0BDA87B6A971DA67BD7 /* CommonGroundCardDetail.swift */,
 				2A107F959237ECCDB88A46B7 /* CommonGroundCardLookSheet.swift */,
+				949D9778803DE7915795407E /* CommonGroundCardMemoriesSection.swift */,
 				E7805CAF02455FD762B57398 /* CommonGroundCardView.swift */,
 				91BD8430D07B85FB968BF18E /* CommonGroundComponents.swift */,
 				E98FAE041AD33C06C181B19C /* CommonGroundCreateCodeSheet.swift */,
@@ -1186,6 +1196,7 @@
 				380517C49EBFE2D3A6B1F638 /* CommonGroundHomeView.swift */,
 				6F4F983C0DA68380146BEFF9 /* CommonGroundMatchView.swift */,
 				EC1B3DD7AACC2899FDBB384C /* CommonGroundModel.swift */,
+				06AEAA1B70194CB973B18D68 /* CommonGroundModel+Memories.swift */,
 				F68BEC35209068FC6B2EC543 /* CommonGroundModel+Pairing.swift */,
 				BBB395962AF148CEF676D32E /* CommonGroundModel+People.swift */,
 				BD741CBD80FB019DCAC39114 /* CommonGroundModel+Profiles.swift */,
@@ -1301,6 +1312,7 @@
 				A8BE8ED2C03AEBF0EAA5F045 /* MediaCacheTests.swift */,
 				4D3FAACD21D63BFA6A9455D5 /* MediaPreviewTests.swift */,
 				180966D4C85820B8A46B31F9 /* MemoryPresentationTests.swift */,
+				0FA7760B4343FCCA8E4459F1 /* MemoryRoutingTests.swift */,
 				1AC62340EAC0499F399211E9 /* MessageAuthorIdentityTests.swift */,
 				1B8323A1DC4175F5728F6656 /* MessageDeletionRecoveryTests.swift */,
 				803232177FB5022C76390016 /* MessageForwardingTests.swift */,
@@ -1792,6 +1804,7 @@
 				B41CEC7F2405B39CDF400491 /* MediaCacheTests.swift in Sources */,
 				35B9B24F661F5992EE4281EA /* MediaPreviewTests.swift in Sources */,
 				55BA423EBC0559D8BCB5CABA /* MemoryPresentationTests.swift in Sources */,
+				4DA8E11D5AB9D944EEE8C41A /* MemoryRoutingTests.swift in Sources */,
 				D25A4CCFEA8C0D8E288B44BA /* MessageAuthorIdentityTests.swift in Sources */,
 				CFC44788A96F3E6E99FA48C2 /* MessageDeletionRecoveryTests.swift in Sources */,
 				EAFAA474EBF965C1C866F40C /* MessageForwardingTests.swift in Sources */,
@@ -1895,12 +1908,14 @@
 				3944D8D3F65FF85635C5F966 /* CommonGroundCardDesign.swift in Sources */,
 				047561D79E976205DA1D5528 /* CommonGroundCardDetail.swift in Sources */,
 				C087D501D040428519CBFAC1 /* CommonGroundCardLookSheet.swift in Sources */,
+				354F791494399C7EA20CBA9D /* CommonGroundCardMemoriesSection.swift in Sources */,
 				68545B137503BCCB74EC902C /* CommonGroundCardView.swift in Sources */,
 				A5399ACC0B15D32A035D48CF /* CommonGroundComponents.swift in Sources */,
 				2F0E351E06A0CA68940262C6 /* CommonGroundCreateCodeSheet.swift in Sources */,
 				E208840EC7A9D6819C5BC429 /* CommonGroundDeviceAccess.swift in Sources */,
 				A722D03E8FFA4E9DE683F2C0 /* CommonGroundHomeView.swift in Sources */,
 				C2AE4822D136ECD19F78860E /* CommonGroundMatchView.swift in Sources */,
+				F1E4F1F8FE668169CE021087 /* CommonGroundModel+Memories.swift in Sources */,
 				E8A6DF9C3E2ADC1D7F9CB660 /* CommonGroundModel+Pairing.swift in Sources */,
 				FC3045E30BD491DD37EA6D29 /* CommonGroundModel+People.swift in Sources */,
 				64754D16CF425E1925BD2CA1 /* CommonGroundModel+Profiles.swift in Sources */,
@@ -2030,6 +2045,7 @@
 				8AF4705D22CA6731B2670C42 /* MarkdownMessageContent.swift in Sources */,
 				288EF6D4D32F00F41E0754A5 /* MediaPreviewView.swift in Sources */,
 				74897AC2659CC91EBEDBF7C6 /* MemoryPresentation.swift in Sources */,
+				36C6057F301E3510BB90F96A /* MemoryRowLabel.swift in Sources */,
 				28A88A7EDE56CAA86E13C4D6 /* MemoryRows.swift in Sources */,
 				8B995B5963F4ED40C41E5E67 /* MemorySettingsModel.swift in Sources */,
 				1E32950D425FE7487A3B4875 /* MemorySettingsView.swift in Sources */,

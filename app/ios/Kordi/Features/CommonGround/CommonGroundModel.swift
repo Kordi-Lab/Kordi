@@ -21,6 +21,8 @@ final class CommonGroundModel: ObservableObject {
     private let context: Context
     /// `commonGroundVersion` 2: profiles. Off, every call acts as before.
     let profilesEnabled: Bool
+    /// `memoryVersion` 2: memories routed to profiles, listed on the card page.
+    let memoriesEnabled: Bool
     let defaults: UserDefaults
 
     @Published private(set) var owner: CommonGroundOwnerView?
@@ -45,6 +47,8 @@ final class CommonGroundModel: ObservableObject {
     @Published var walletTopics: [String: [String]] = [:]
     /// Rooms looked up by code before joining.
     @Published var roomPreviews: [String: CommonGroundRoomPreview] = [:]
+    /// The current profile's routed memories, set in CommonGroundModel+Memories.swift.
+    @Published var profileMemories: [CloudProfileMemory] = []
     /// The viewer's profile to see each person through, from Recent or a room.
     var viewerProfiles: [String: String] = [:]
     /// The last code looked up; an answer for any other code is stale.
@@ -54,10 +58,12 @@ final class CommonGroundModel: ObservableObject {
     /// The one-time move of designs kept on this device, run in the background.
     var designMove: Task<Void, Never>?
 
-    init(me: CommonGroundPerson, profilesEnabled: Bool = false, defaults: UserDefaults = .standard, context: @escaping Context) {
+    init(me: CommonGroundPerson, profilesEnabled: Bool = false, memoriesEnabled: Bool = false,
+         defaults: UserDefaults = .standard, context: @escaping Context) {
         self.me = me
         self.context = context
         self.profilesEnabled = profilesEnabled
+        self.memoriesEnabled = memoriesEnabled
         self.defaults = defaults
     }
 
@@ -177,6 +183,7 @@ final class CommonGroundModel: ObservableObject {
     func resetOwner() {
         owner = nil
         loaded = false
+        profileMemories = []
     }
 
     /// One line for a failed build, from the last build state.
