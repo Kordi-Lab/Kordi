@@ -137,7 +137,7 @@ pub(super) async fn start(
         profile.sources = picks;
     }
     match result {
-        Ok(true) => match card::owner_view(pool, Some(&profile)).await {
+        Ok(true) => match card::owner_view(pool, account, Some(&profile)).await {
             Ok(mut view) => {
                 use axum::response::IntoResponse;
                 view["used"] = json!(used);

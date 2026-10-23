@@ -21,12 +21,30 @@ use super::{card, db_error, err, ROOM_OPEN_SQL};
 use crate::document_shares::access::{clean_display_name, syncable_avatar_url};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
-pub(super) fn person(account_id: &str, name: Option<&str>, avatar_url: Option<&str>) -> Value {
+/// A person as Grounding shows them: name, Kordi ID as @handle (the chosen
+/// handle, else the account number; no `@`) and avatar. Never anything private.
+pub(super) fn person(
+    account_id: &str,
+    name: Option<&str>,
+    handle: Option<&str>,
+    avatar_url: Option<&str>,
+) -> Value {
     json!({
         "accountId": account_id,
         "name": clean_display_name(name),
+        "handle": handle,
         "avatarUrl": avatar_url.and_then(syncable_avatar_url),
     })
+}
+
+/// This account's Kordi ID: its chosen handle, else its account number.
+pub(super) async fn handle(pool: &PgPool, account_id: &str) -> sqlx_core::Result<Option<String>> {
+    let row: Option<(Option<String>,)> =
+        query_as("SELECT COALESCE(public_handle, public_account_number::TEXT) FROM cloud_accounts WHERE account_id = $1")
+            .bind(account_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.and_then(|(handle,)| handle))
 }
 
 /// SQL that is true when the account in `viewer` may see the shared card of
@@ -231,14 +249,15 @@ pub(super) async fn shared_view(
     type Found = (
         Option<String>,
         Option<String>,
+        Option<String>,
         String,
         String,
         Option<String>,
         Option<String>,
     );
     let account: Option<Found> = query_as(
-        "SELECT account.display_name, account.avatar_url, profile.kind, profile.name,
-                profile.design, profile.icon
+        "SELECT account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url, profile.kind,
+                profile.name, profile.design, profile.icon
          FROM cloud_accounts account
          JOIN cloud_common_ground_profiles profile ON profile.account_id = account.account_id
          WHERE account.account_id = $1 AND profile.profile_id = $2",
@@ -247,12 +266,17 @@ pub(super) async fn shared_view(
     .bind(&link.other_profile)
     .fetch_optional(pool)
     .await?;
-    let Some((name, avatar_url, kind, profile_name, design, icon)) = account else {
+    let Some((name, handle, avatar_url, kind, profile_name, design, icon)) = account else {
         return Ok(None);
     };
     let topics = card.shared_topics();
     let relationship = super::actions::relationship(pool, viewer, other).await?;
-    let mut person = person(other, name.as_deref(), avatar_url.as_deref());
+    let mut person = person(
+        other,
+        name.as_deref(),
+        handle.as_deref(),
+        avatar_url.as_deref(),
+    );
     person["profile"] = profiles::tag(
         &link.other_profile,
         &kind,

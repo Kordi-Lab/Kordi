@@ -68,16 +68,19 @@ async fn is_contact(pool: &PgPool, viewer: &str, other: &str) -> sqlx_core::Resu
 
 /// Person objects for these accounts, keyed by account id.
 async fn people_by_id(pool: &PgPool, ids: &[String]) -> sqlx_core::Result<HashMap<String, Value>> {
-    let rows: Vec<(String, Option<String>, Option<String>)> = query_as(
-        "SELECT account_id, display_name, avatar_url FROM cloud_accounts WHERE account_id = ANY($1)",
+    type PersonRow = (String, Option<String>, Option<String>, Option<String>);
+    let rows: Vec<PersonRow> = query_as(
+        "SELECT account_id, display_name, COALESCE(public_handle, public_account_number::TEXT), avatar_url
+         FROM cloud_accounts WHERE account_id = ANY($1)",
     )
     .bind(ids)
     .fetch_all(pool)
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, name, avatar)| {
-            let person = cg_people::person(&id, name.as_deref(), avatar.as_deref());
+        .map(|(id, name, handle, avatar)| {
+            let person =
+                cg_people::person(&id, name.as_deref(), handle.as_deref(), avatar.as_deref());
             (id, person)
         })
         .collect())
