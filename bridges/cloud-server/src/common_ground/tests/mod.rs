@@ -11,6 +11,7 @@ mod matching_tests;
 mod matching_unit_tests;
 mod profile_design_tests;
 mod profile_icon_tests;
+mod profile_memories_tests;
 mod profile_rooms_tests;
 mod profile_support;
 mod profiles_tests;

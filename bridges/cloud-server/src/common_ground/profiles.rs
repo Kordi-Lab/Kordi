@@ -5,7 +5,7 @@
 
 mod routes;
 
-pub(super) use routes::{create, delete, list, update};
+pub(super) use routes::{create, delete, list, memories, update};
 
 use axum::{http::StatusCode, response::Response};
 use serde::Deserialize;
@@ -15,6 +15,7 @@ use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
 use super::{card, db_error, err};
+use crate::memory_store::ProfileTarget;
 
 pub(super) const MAX_PROFILES: i64 = 5;
 pub(super) const MAX_NAME_CHARS: usize = 40;
@@ -89,6 +90,14 @@ fn from_row(
 }
 
 impl Profile {
+    /// The profile memories are routed to.
+    pub fn memory_target(&self) -> ProfileTarget<'_> {
+        ProfileTarget {
+            profile_id: Some(&self.profile_id),
+            kind: &self.kind,
+        }
+    }
+
     /// `{profileId, kind, name, focus, design, icon}` for the owner.
     pub fn summary(&self) -> Value {
         json!({

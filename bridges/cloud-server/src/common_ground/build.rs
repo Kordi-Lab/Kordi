@@ -19,6 +19,7 @@ use super::prompt::{self, Gathered};
 use super::runs::{self, NewRun, CARD_PREFIX};
 use super::{card, db_error, err, limited, profiles, BUILD_LIMIT};
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
+use crate::memory_store::ProfileTarget;
 use crate::{auth::routes::CloudSession, server::ServerState};
 use gather::{gather, BuildRequest};
 
@@ -45,7 +46,15 @@ pub(super) async fn start(
             StatusCode::BAD_REQUEST,
         );
     }
-    let (evidence, used) = match gather(pool, account, &request).await {
+    // An account without a profile builds the work profile it gets below.
+    let target = match &existing {
+        Some(profile) => profile.memory_target(),
+        None => ProfileTarget {
+            profile_id: None,
+            kind: "work",
+        },
+    };
+    let (evidence, used) = match gather(pool, account, target, &request).await {
         Ok(gathered) => gathered,
         Err(error) => return db_error(error),
     };

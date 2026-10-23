@@ -8,6 +8,7 @@ use sqlx_postgres::PgPool;
 
 use crate::common_ground::prompt::Gathered;
 use crate::common_ground::redact::{redact, squeeze};
+use crate::memory_store::ProfileTarget;
 
 const MAX_DEVICE_GROUPS: usize = 4;
 const MAX_DEVICE_ITEMS: usize = 300;
@@ -29,7 +30,7 @@ const CONNECTOR_DAYS: i64 = 183;
 pub(in crate::common_ground) struct BuildRequest {
     /// The profile to build; the default profile when omitted.
     pub profile_id: Option<String>,
-    /// The account's own saved memories.
+    /// The account's own memories routed to the profile.
     memory: bool,
     /// Recent events from connected accounts.
     connectors: bool,
@@ -140,26 +141,24 @@ fn provider_label(provider: &str) -> &str {
     }
 }
 
-/// What the build reads, in the order the model sees it.
+/// What the build of `target` reads, in the order the model sees it.
 pub(in crate::common_ground) async fn gather(
     pool: &PgPool,
     account: &str,
+    target: ProfileTarget<'_>,
     request: &BuildRequest,
 ) -> sqlx_core::Result<(Vec<Gathered>, Vec<String>)> {
     let mut evidence = Vec::new();
     let mut used = Vec::new();
     if request.memory {
-        let list = crate::memory_store::list(pool, account)
+        // Only the account's own memories routed to this profile: group
+        // memories can be about other people.
+        let own = if crate::memory_store::settings(pool, account)
             .await
-            .map_err(|_| sqlx_core::Error::Protocol("Could not read memories.".into()))?;
-        // Only memories the account saved itself: group memories can be
-        // about other people.
-        let own: Vec<_> = if list.settings.memory_enabled {
-            list.memories
-                .iter()
-                .filter(|m| m.owner_account_id == account)
-                .take(MAX_MEMORIES)
-                .collect()
+            .map_err(|_| sqlx_core::Error::Protocol("Could not read memories.".into()))?
+            .memory_enabled
+        {
+            crate::memory_store::build_memories(pool, account, target, MAX_MEMORIES).await?
         } else {
             Vec::new()
         };
