@@ -284,6 +284,7 @@ type PairedRow = (
     String,
     Option<String>,
     Option<String>,
+    Option<String>,
     DateTime<Utc>,
     String,
     String,
@@ -300,7 +301,8 @@ pub(super) async fn list(
     Extension(session): Extension<CloudSession>,
 ) -> Response {
     let rows: sqlx_core::Result<Vec<PairedRow>> = query_as(
-        "SELECT account.account_id, account.display_name, account.avatar_url, pairing.created_at,
+        "SELECT account.account_id, account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url,
+                pairing.created_at,
                 CASE WHEN pairing.account_a = $1 THEN pairing.profile_a ELSE pairing.profile_b END,
                 theirs.profile_id, theirs.kind, theirs.name, theirs.design, theirs.icon
          FROM cloud_common_ground_pairings pairing
@@ -322,6 +324,7 @@ pub(super) async fn list(
                     |(
                         account_id,
                         name,
+                        handle,
                         avatar_url,
                         paired_at,
                         mine,
@@ -331,8 +334,12 @@ pub(super) async fn list(
                         design,
                         icon,
                     )| {
-                        let mut person =
-                            people::person(&account_id, name.as_deref(), avatar_url.as_deref());
+                        let mut person = people::person(
+                            &account_id,
+                            name.as_deref(),
+                            handle.as_deref(),
+                            avatar_url.as_deref(),
+                        );
                         person["pairedAt"] = json!(paired_at);
                         person["profile"] = profiles::tag(
                             &theirs,
