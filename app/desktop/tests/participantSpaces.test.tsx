@@ -872,7 +872,31 @@ test('buildParticipantSpaces does not expose raw session ids as participant-spac
     }),
   ]);
 
-  assert.equal(spaces[0]?.preview, 'hi taylor');
+  assert.equal(spaces[0]?.preview, '');
+  assert.equal(spaces[0]?.sessions[0]?.preview, '');
+});
+
+test('buildParticipantSpaces keeps the preview empty for a group with no messages even when the subtitle is an unusual id', () => {
+  const spaces = buildParticipantSpaces([
+    conversation({
+      id: 'session:group:empty-preview',
+      canonicalSessionId: 'session:group:empty-preview',
+      type: 'group',
+      name: 'Memory routing test',
+      subtitle: 'memtest-group-5df0c05448fe',
+      messages: [],
+      participants: ['Me', 'member1', 'member2'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:member1', name: 'member1', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'member1' },
+        { id: 'human:member2', name: 'member2', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'member2' },
+      ],
+    }),
+  ]);
+
+  assert.equal(spaces.length, 1);
+  assert.equal(spaces[0]?.preview, '');
+  assert.equal(spaces[0]?.sessions[0]?.preview, '');
 });
 
 test('filterParticipantSpaces matches title, participant names, preview, and child session title', () => {
