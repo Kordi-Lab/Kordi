@@ -13,14 +13,15 @@ export type CgShareChoice = { id: string; name: string; design: CgCardDesign; ic
 
 /**
  * Create a code: a 320px popover under the Pair code row. Name the meetup, pick the card to
- * share (the current one first), Create; then the new code, large, with Share this code.
+ * share (the current one first), Create; then the new code, large, with Enter room and Share this code.
  */
-export function CreateCodePopover({ cards, current, busy, notice, onCreate, onClose }: {
+export function CreateCodePopover({ cards, current, busy, notice, onCreate, onEnter, onClose }: {
   cards: CgShareChoice[];
   current: string | null;
   busy: boolean;
   notice: string | null;
   onCreate: (name: string, cardId: string) => Promise<CgRoom | null>;
+  onEnter: (code: string) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -50,6 +51,7 @@ export function CreateCodePopover({ cards, current, busy, notice, onCreate, onCl
           </div>
           <div className="cg-code-name">{created.name}</div>
           <div className="cg-code-sub"><CardSwatch design={card.design} className="is-chip" />Sharing {card.name}</div>
+          <button type="button" className="cg-mbtn is-primary is-wide" onClick={() => onEnter(created.code)}>Enter room</button>
           <button
             type="button"
             className="cg-mbtn is-wide"

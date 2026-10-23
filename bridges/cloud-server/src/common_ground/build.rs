@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+mod documents;
 mod gather;
 
 #[cfg(test)]
@@ -20,6 +21,7 @@ use super::runs::{self, NewRun, CARD_PREFIX};
 use super::{card, db_error, err, limited, profiles, BUILD_LIMIT};
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::{auth::routes::CloudSession, server::ServerState};
+use documents::{gather_documents, DOCUMENTS_SOURCE};
 use gather::{gather, BuildRequest};
 
 pub(super) async fn start(
@@ -45,10 +47,18 @@ pub(super) async fn start(
             StatusCode::BAD_REQUEST,
         );
     }
-    let (evidence, used) = match gather(pool, account, &request).await {
+    let (mut evidence, mut used) = match gather(pool, account, &request).await {
         Ok(gathered) => gathered,
         Err(error) => return db_error(error),
     };
+    match gather_documents(&state, account, &request.documents).await {
+        Ok(documents) if !documents.is_empty() => {
+            evidence.extend(documents);
+            used.push(DOCUMENTS_SOURCE.to_string());
+        }
+        Ok(_) => {}
+        Err(error) => return db_error(error),
+    }
     if evidence.is_empty() {
         return err(
             "common_ground_no_sources",
@@ -63,7 +73,7 @@ pub(super) async fn start(
         return limited(retry_after);
     }
     // Clients that never send a profile build the work profile.
-    let profile = match existing {
+    let mut profile = match existing {
         Some(profile) => profile,
         None => match profiles::resolve_or_create(pool, account, requested).await {
             Ok(profile) => profile,
@@ -75,6 +85,7 @@ pub(super) async fn start(
     let config = pip.config();
     let run_id = runs::new_run_id(CARD_PREFIX);
     let today = Utc::now().date_naive().to_string();
+    let picks = request.picks.map(|picks| picks.cleaned());
     let result = async {
         let mut tx = pool.begin().await?;
         query(
@@ -100,6 +111,16 @@ pub(super) async fn start(
         if reserved.rows_affected() == 0 {
             return Ok(false);
         }
+        // The picks are remembered only with a build that starts.
+        if let Some(picks) = &picks {
+            query(
+                "UPDATE cloud_common_ground_profiles SET sources_json = $2 WHERE profile_id = $1",
+            )
+            .bind(profile_id)
+            .bind(picks.to_json())
+            .execute(&mut *tx)
+            .await?;
+        }
         // The member's redacted evidence is the whole prompt.
         let new_run = NewRun {
             run_id: &run_id,
@@ -112,8 +133,11 @@ pub(super) async fn start(
         Ok::<_, sqlx_core::Error>(true)
     }
     .await;
+    if matches!(result, Ok(true)) && picks.is_some() {
+        profile.sources = picks;
+    }
     match result {
-        Ok(true) => match card::owner_view(pool, Some(&profile)).await {
+        Ok(true) => match card::owner_view(pool, account, Some(&profile)).await {
             Ok(mut view) => {
                 use axum::response::IntoResponse;
                 view["used"] = json!(used);
