@@ -20,6 +20,7 @@ fn foreign_group_memory(memory_id: &str, text: &str) -> RemoteMemory {
         updated_at: "2026-10-07T09:00:00+00:00".to_string(),
         owner_account_id: Some("acct_priya".to_string()),
         owner_name: Some("Priya".to_string()),
+        ..RemoteMemory::default()
     }
 }
 
@@ -29,6 +30,8 @@ fn group_request(lesson: &str) -> ReflectionLessonRequest {
         scope_id: GROUP_ID.to_string(),
         source: "user_correction".to_string(),
         lesson: lesson.to_string(),
+        category: None,
+        confidence: None,
     }
 }
 

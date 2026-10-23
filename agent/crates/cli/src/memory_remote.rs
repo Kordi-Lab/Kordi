@@ -16,7 +16,7 @@ use kordi_session::reflection_lessons::{
     mark_reflection_lesson_uploaded, move_reflection_lesson_scope,
     replace_reflection_lessons_from_remote, save_reflection_lesson,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tokio::sync::Mutex;
 
 #[path = "memory_remote/labels.rs"]
@@ -46,83 +46,20 @@ mod allowed_scopes;
 pub use allowed_scopes::{AllowedMemoryScopes, set_allowed_memory_scopes};
 pub(crate) use allowed_scopes::{check_memory_scope, project_scope_id_for_cwd};
 
-use crate::reflection_runtime::{
-    parse_lesson_artifact, parse_lesson_artifact_scope_id, reflection_lesson_artifact_path,
-    rewrite_all_lesson_artifacts, rewrite_lesson_artifact,
+use kordi_tools::memory_categories::{
+    DEFAULT_MEMORY_CATEGORY, USER_DECLARED, declaration_for_source, is_memory_category,
 };
 
-/// One account memory as the server returns it.
-///
-/// Group memories are shared by the group, so the list also holds memories
-/// other members saved. The cache stores them like any other row: they arrive
-/// with `pending_upload = 0`, so the Mac never uploads or archives them on its
-/// own. The owner fields stay out of the cache; the agent only reads the text,
-/// and the desktop Memory tab reads owners from the account list.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct RemoteMemory {
-    pub memory_id: String,
-    pub scope: String,
-    pub scope_id: String,
-    #[serde(default)]
-    pub scope_label: Option<String>,
-    pub source: String,
-    pub text: String,
-    pub created_at: String,
-    pub updated_at: String,
-    /// The account that saved the memory.
-    #[serde(default)]
-    pub owner_account_id: Option<String>,
-    /// That account's display name, when it has one.
-    #[serde(default)]
-    pub owner_name: Option<String>,
-}
+use crate::reflection_runtime::{
+    lesson_declaration, parse_lesson_artifact, parse_lesson_artifact_scope_id,
+    reflection_lesson_artifact_path, rewrite_all_lesson_artifacts, rewrite_lesson_artifact,
+};
 
-/// Body of `POST /v1/cloud/memory`.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct NewRemoteMemory {
-    pub scope: String,
-    pub scope_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub scope_label: Option<String>,
-    pub source: String,
-    pub text: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub client_memory_id: Option<String>,
-}
-
-/// Account memory switches as the server returns them.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct RemoteMemorySettings {
-    pub memory_enabled: bool,
-    pub exclude_sensitive: bool,
-}
-
-/// Body of `GET /v1/cloud/memory`.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct RemoteMemoryList {
-    pub memories: Vec<RemoteMemory>,
-    pub settings: RemoteMemorySettings,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-pub enum MemoryRemoteError {
-    /// The server cannot be reached, the person is signed out, or the server
-    /// predates the memory routes. The Mac keeps working locally.
-    #[error("account memory is unavailable: {0}")]
-    Unavailable(String),
-    /// The server guards rejected the text (422 `memory_rejected`).
-    #[error("{0}")]
-    Rejected(String),
-    /// Memory is off for the account (409 `memory_disabled`).
-    #[error("Memory is turned off for this account, so nothing was saved.")]
-    Disabled,
-    #[error("account memory request failed: {0}")]
-    Other(String),
-}
+#[path = "memory_remote/types.rs"]
+mod types;
+pub use types::{
+    MemoryRemoteError, NewRemoteMemory, RemoteMemory, RemoteMemoryList, RemoteMemorySettings,
+};
 
 #[async_trait::async_trait]
 pub trait MemoryRemote: Send + Sync {
@@ -205,6 +142,9 @@ pub(crate) fn import_unlisted_artifact_lines(
                 created_at: Some(line.created_at),
                 updated_at: None,
                 owner_account_id: None,
+                category: line.category,
+                declaration_type: Some(line.declaration_type),
+                confidence: None,
             },
         )?;
         added += 1;
@@ -305,6 +245,19 @@ fn remote_rows(artifacts_dir: &Path, memories: Vec<RemoteMemory>) -> Vec<NewRefl
                 created_at: Some(memory.created_at),
                 updated_at: Some(memory.updated_at),
                 owner_account_id: None,
+                declaration_type: Some(
+                    memory
+                        .declaration_type
+                        .filter(|value| !value.trim().is_empty())
+                        .unwrap_or_else(|| declaration_for_source(&memory.source).to_string()),
+                ),
+                category: Some(
+                    memory
+                        .category
+                        .filter(|category| is_memory_category(category))
+                        .unwrap_or_else(|| DEFAULT_MEMORY_CATEGORY.to_string()),
+                ),
+                confidence: memory.confidence,
             })
         })
         .collect()
@@ -401,6 +354,9 @@ pub async fn sync_memories_with_remote(
             source: row.source.as_str().to_string(),
             text,
             client_memory_id: Some(row.lesson_id.clone()),
+            category: row.category.clone(),
+            confidence: row.confidence.clone(),
+            declared_by: Some(declared_by_for(lesson_declaration(&row)).to_string()),
         };
         match remote.save(request).await {
             Ok(memory) => {
@@ -453,6 +409,15 @@ pub fn forget_local_memories(
     let archived = archive_all_reflection_lessons(conn)?;
     rewrite_all_lesson_artifacts(conn, artifacts_dir)?;
     Ok(archived)
+}
+
+/// The `declaredBy` value that keeps a row's declaration on upload.
+fn declared_by_for(declaration_type: &str) -> &'static str {
+    if declaration_type == USER_DECLARED {
+        "user"
+    } else {
+        "agent"
+    }
 }
 
 /// Group cache rows that carry text by (scope, scope id).

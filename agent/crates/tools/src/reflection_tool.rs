@@ -3,6 +3,10 @@ use kordi_core::error::{KordiError, KordiResult};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
+use crate::memory_categories::{
+    MEMORY_CATEGORIES, MEMORY_CATEGORY_GUIDE, MEMORY_CONFIDENCES, is_memory_category,
+    is_memory_confidence,
+};
 use crate::memory_guard::{MEMORY_MAX_CHARS, normalize_memory_text};
 use crate::support::text_result_with;
 use crate::{ReflectionLessonRequest, Tool, ToolContext, ToolMetadata, ToolResult};
@@ -26,7 +30,7 @@ impl Tool for ReflectionTool {
     }
 
     fn description(&self) -> &str {
-        "Saves a concise memory after user corrections, repeated failures, or outcomes. Scopes: conversation, group, project, or global (scopeId `account`) only for preferences the user wants everywhere (\"from now on\", \"always\"). For group, pass the group scopeId exactly as the memory prompt shows it. First read the scope's memories; never save one that repeats or restates them. When a preference changes, save the corrected version. Memories sync with the account and must not record health, finances, relationships, identity attributes, credentials, or other people's private details. Side effect: stores the memory and updates the scoped memory artifact. Max 500 characters."
+        "Saves a concise memory after corrections, repeated failures, or outcomes. `category` says what kind of information it is; memories about the person are filed to their Work, Health or Daily tasks profile by category. Scope: group (scopeId as the memory prompt shows it) only for what the group shares and every member may see, never one person's preference, health or private remark; conversation for the owner's corrections in this chat; project; global (scopeId `account`) only for \"from now on\" or \"always\". First read the scope's memories; never save one that repeats them. When a preference changes, save the corrected version. Memories sync with the account and must not record health conditions, finances, relationships, identity attributes, credentials, or other people's private details. Side effect: stores the memory and updates the scoped memory artifact. Max 500 characters."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -36,9 +40,19 @@ impl Tool for ReflectionTool {
                 "scope": { "type": "string", "enum": ["global", "conversation", "group", "project"] },
                 "scopeId": { "type": "string" },
                 "source": { "type": "string", "enum": ["user_correction", "repeated_failure", "outcome", "manual"] },
-                "lesson": { "type": "string", "description": "Concise memory to save to the scoped memory artifact, max 500 characters." }
+                "lesson": { "type": "string", "description": "Concise memory to save to the scoped memory artifact, max 500 characters." },
+                "category": {
+                    "type": "string",
+                    "enum": MEMORY_CATEGORIES,
+                    "description": format!("What kind of information the memory is: {MEMORY_CATEGORY_GUIDE}.")
+                },
+                "confidence": {
+                    "type": "string",
+                    "enum": MEMORY_CONFIDENCES,
+                    "description": "How sure you are of the memory."
+                }
             },
-            "required": ["scope", "scopeId", "source", "lesson"],
+            "required": ["scope", "scopeId", "source", "lesson", "category"],
             "additionalProperties": false
         })
     }
@@ -113,6 +127,24 @@ fn validate_request(request: &ReflectionLessonRequest) -> KordiResult<()> {
     ) {
         return Err(KordiError::Tool("reflection source is invalid".to_string()));
     }
+    // A missing category comes from an old cached prompt; the server files
+    // it as `general_preferences`.
+    if let Some(category) = request.category.as_deref()
+        && !is_memory_category(category)
+    {
+        return Err(KordiError::Tool(format!(
+            "reflection category must be one of: {}",
+            MEMORY_CATEGORIES.join(", ")
+        )));
+    }
+    if let Some(confidence) = request.confidence.as_deref()
+        && !is_memory_confidence(confidence)
+    {
+        return Err(KordiError::Tool(format!(
+            "reflection confidence must be one of: {}",
+            MEMORY_CONFIDENCES.join(", ")
+        )));
+    }
     // Length and emptiness only. The sensitive keyword and quote guards run
     // in the runtime, which knows the memory settings.
     let lesson = normalize_memory_text(&request.lesson);
@@ -141,7 +173,15 @@ mod tests {
         assert!(tool.description().contains("must not record health"));
         assert!(tool.description().contains("global (scopeId `account`)"));
         assert!(tool.description().contains("never save one that repeats"));
-        assert!(tool.description().len() < 700);
+        assert!(tool.description().len() < 900);
+        assert!(tool.description().contains("Work, Health or Daily tasks"));
+        let schema = tool.parameters_schema();
+        assert_eq!(schema["required"][4], "category");
+        assert_eq!(
+            schema["properties"]["category"]["enum"][9],
+            "hcp-custom:task_lessons"
+        );
+        assert_eq!(schema["additionalProperties"], false);
         let metadata = tool.metadata();
         assert_eq!(metadata.layer, ToolLayer::Reflection);
         assert_eq!(metadata.risk, ToolRiskLevel::Low);
@@ -202,7 +242,26 @@ mod tests {
             "scopeId": scope_id,
             "source": "user_correction",
             "lesson": "  Always answer   in British English. ",
+            "category": "general_preferences",
         })
+    }
+
+    #[tokio::test]
+    async fn category_and_confidence_are_checked() {
+        let mut missing = params("conversation", "session-1");
+        missing.as_object_mut().unwrap().remove("category");
+        assert!(run(missing, false).await.is_ok());
+        let mut bad = params("conversation", "session-1");
+        bad["category"] = serde_json::json!("health");
+        let error = run(bad, false).await.unwrap_err();
+        assert!(error.contains("work_context"), "{error}");
+        let mut bad = params("conversation", "session-1");
+        bad["confidence"] = serde_json::json!("certain");
+        let error = run(bad, false).await.unwrap_err();
+        assert!(error.contains("low, medium, high"), "{error}");
+        let mut good = params("conversation", "session-1");
+        good["confidence"] = serde_json::json!("high");
+        assert!(run(good, false).await.is_ok());
     }
 
     #[tokio::test]

@@ -76,6 +76,11 @@ fn prompt_lists_global_memories_first_then_conversation_and_group() {
     assert!(!section.contains("Not an account-wide memory."));
     assert!(section.contains("skip anything already there or restated"));
     assert!(section.contains("Use `global` only for preferences the user wants everywhere"));
+    for name in ["work_context", "health_context", "coordination_context"] {
+        assert!(section.contains(name), "{name}");
+    }
+    assert!(section.contains("`group` only for what the group shares and every member may see"));
+    assert!(section.contains("filed to their Work, Health or Daily tasks profile by category"));
     assert!(section.contains("global `account`"));
 }
 
