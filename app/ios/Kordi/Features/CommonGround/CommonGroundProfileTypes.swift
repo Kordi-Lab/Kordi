@@ -18,12 +18,12 @@ enum CommonGroundProfileKind: String, CaseIterable, Identifiable {
         switch self {
         case .work: "Work"
         case .health: "Health"
-        case .daily: "Daily tasks"
+        case .daily: "Daily"
         case .custom: "Custom"
         }
     }
 
-    /// Work, Health and Daily tasks exist at most once per person.
+    /// Work, Health and Daily exist at most once per person.
     var isFixed: Bool { self != .custom }
 }
 

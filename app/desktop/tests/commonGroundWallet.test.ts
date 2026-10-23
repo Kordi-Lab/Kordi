@@ -112,7 +112,7 @@ test('wallet: New card starts on a free design, pre-fills Workshop and Research 
   assert.equal(canCreateCard(newCardDraft('custom'), taken), false);
   assert.equal(canCreateCard({ design: 'custom', name: ' Book club ', focus: '' }, taken), true);
   assert.deepEqual(newCardInput({ design: 'research', name: ' KAUST ', focus: ' Vision group ' }), { kind: 'custom', name: 'KAUST', focus: 'Vision group', design: 'research' });
-  assert.deepEqual(newCardInput({ design: 'daily', name: 'Daily tasks', focus: '' }), { kind: 'daily' });
+  assert.deepEqual(newCardInput({ design: 'daily', name: 'Daily', focus: '' }), { kind: 'daily' });
   // The look picked on the card's icon square goes with the create request.
   assert.deepEqual(newCardInput({ design: 'work', name: '', focus: '', background: 'research', icon: 'rocket' }), { kind: 'work', design: 'research', icon: 'rocket' });
   assert.deepEqual(newCardInput({ design: 'work', name: '', focus: '', background: 'work', icon: null }), { kind: 'work' });

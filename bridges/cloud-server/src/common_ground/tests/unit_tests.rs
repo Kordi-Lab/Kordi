@@ -231,7 +231,7 @@ fn pairing_codes_read_cleanly() {
 fn each_profile_kind_has_its_own_lens() {
     let work = system_prompt(&profiles::for_tests("work", "Work", None));
     let health = system_prompt(&profiles::for_tests("health", "Health", None));
-    let daily = system_prompt(&profiles::for_tests("daily", "Daily tasks", None));
+    let daily = system_prompt(&profiles::for_tests("daily", "Daily", None));
     let kaust = system_prompt(&profiles::for_tests(
         "custom",
         "KAUST",
@@ -241,7 +241,8 @@ fn each_profile_kind_has_its_own_lens() {
     assert!(work.contains("Keep only research and professional topics"));
     assert!(health.contains("(health profile)") && health.contains("ignores papers"));
     assert!(!health.contains("Keep only research"), "{health}");
-    assert!(daily.contains("Profile: Daily tasks (daily tasks profile)."));
+    assert!(daily.contains("Profile: Daily (daily profile)."));
+    assert!(daily.contains("things to do together") && daily.contains("grocery lists"));
     assert!(kaust.contains("Profile: KAUST (custom profile). Focus: My research group at KAUST."));
     assert!(kaust.contains("ignores work done at MIT"), "{kaust}");
     for prompt in [&work, &health, &daily, &kaust] {

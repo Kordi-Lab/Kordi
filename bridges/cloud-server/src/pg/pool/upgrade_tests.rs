@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 mod account_email_tests;
 mod account_handle_tests;
+mod common_ground_daily_tests;
 mod common_ground_sources_tests;
 mod common_ground_tests;
 mod connectors_tests;

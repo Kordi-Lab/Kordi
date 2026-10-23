@@ -7,7 +7,7 @@ import { cloudFetchImpl } from '@/features/cloud/cloudTransport';
 import { loadSession } from '@/features/cloud/session';
 import { isCardDesign, isCardIcon } from './cardDesign';
 import type {
-  CgBuildRequest, CgCreatedGroup, CgCreateRoomInput, CgGroup, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPairCode, CgPerson,
+  CgBuildRequest, CgCreatedGroup, CgDocument, CgCreateRoomInput, CgGroup, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPairCode, CgPerson,
   CgPersonCard, CgProfile, CgProfileInput, CgProfilePatch, CgRecentEntry, CgRelationship, CgResults, CgRoom, CgRoomPreview, CgRoomSummary, CgTopicLists,
 } from './types';
 
@@ -174,6 +174,8 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
     })),
     /** An empty focus clears it; an empty name gives a fixed kind its default name back; a null look field resets it. */
     updateProfile: async (profileId: string, patch: CgProfilePatch) => profileOf(await data<CgProfile>('PUT', cg(`profiles/${enc(profileId)}`), patch)),
+    /** The owner's own Markdown documents a card may read, newest first. */
+    documents: async () => (await data<{ documents?: CgDocument[] }>('GET', cg('documents')))?.documents ?? [],
     deleteProfile: (profileId: string) => data<null>('DELETE', cg(`profiles/${enc(profileId)}`)),
     card: (profileId?: string | null) => data<CgOwnerView>('GET', cg(`card${profileQuery(profileId)}`)),
     saveTopics: (topics: CgTopicLists, profileId?: string | null) => data<CgOwnerView>('PUT', cg(`card${profileQuery(profileId)}`), {

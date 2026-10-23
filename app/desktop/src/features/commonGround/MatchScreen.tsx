@@ -53,6 +53,7 @@ export function MatchScreen({ accountId, profileId, state, store, host }: {
         </span>
         {ready ? <span className="cg-badge">{match.score ?? 0}%</span> : null}
         <h1>{personTitle(person)}</h1>
+        {person.handle ? <div className="cg-hero-line cg-hero-handle">@{person.handle}</div> : null}
         {ready && match.headline ? <div className="cg-hero-line">{match.headline}</div> : null}
       </div>
       <PersonActions person={person} state={state} store={store} host={host} />
