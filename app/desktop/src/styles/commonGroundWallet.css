@@ -84,6 +84,7 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 }
 .cg-paircode .cg-digits input:focus { border-color: var(--app-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 22%, transparent); }
 .cg-paircode .cg-digits input:disabled { opacity: 0.5; }
+.cg-paircode .cg-digits.is-missing input { border-color: var(--app-transient-danger-text, oklch(58% 0.2 27)); background: color-mix(in srgb, var(--app-transient-danger-text, oklch(58% 0.2 27)) 10%, transparent); }
 .cg-pair-error { margin-top: -4px; padding: 0 14px 10px 48px; color: var(--app-transient-danger-text, oklch(58% 0.2 27)); font-size: 11px; }
 .cg-pair-confirm {
   display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 48px; border-top: 0.5px solid var(--cg-line);
