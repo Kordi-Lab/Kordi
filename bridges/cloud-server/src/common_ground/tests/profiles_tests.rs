@@ -216,7 +216,7 @@ async fn each_profile_builds_its_own_card_through_its_lens() {
         body["profile"],
         json!({
             "profileId": work, "kind": "work", "name": "Work", "focus": null, "design": null,
-            "icon": null
+            "icon": null, "sources": null
         })
     );
     let (_, body) = card(&health).await;

@@ -66,6 +66,7 @@ export function useRecoveredCloudGroupReplay({
       historyReplay?: boolean;
       catalogGroupTitle?: string | null;
       catalogGroupAvatar?: CloudGroupControlEnvelope['groupAvatar'];
+      catalogGroupOrigin?: string | null;
     },
   ) => Promise<void>;
   flushCanonicalState: () => void;
@@ -139,6 +140,7 @@ export function useRecoveredCloudGroupReplay({
           historyReplay: true,
           catalogGroupTitle: row.conversation.group_title,
           catalogGroupAvatar: row.conversation.group_avatar,
+          catalogGroupOrigin: row.conversation.origin,
         });
         replayCallbacksRef.current.flushCanonicalState();
       },
@@ -200,6 +202,7 @@ export function useRecoveredCloudGroupReplay({
             historyReplay: true,
             catalogGroupTitle: row.conversation.group_title,
             catalogGroupAvatar: row.conversation.group_avatar,
+            catalogGroupOrigin: row.conversation.origin,
           });
           replayCallbacksRef.current.flushCanonicalState();
         }

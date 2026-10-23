@@ -74,6 +74,7 @@ tests=(
   common_ground_tests::upgrade_from_144_adds_profile_icon
   common_ground_tests::upgrade_from_145_widens_profile_designs
   common_ground_daily_tests::upgrade_from_146_renames_daily_profiles
+  common_ground_sources_tests::upgrade_from_146_adds_profile_sources
 )
 index=0
 for test_name in "${tests[@]}"; do

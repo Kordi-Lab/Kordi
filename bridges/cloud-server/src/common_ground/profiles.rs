@@ -4,8 +4,10 @@
 //! lens, and every room membership and pairing shares exactly one profile.
 
 mod routes;
+mod sources;
 
 pub(super) use routes::{create, delete, list, update};
+pub(super) use sources::{SourcePicks, MAX_DOCUMENTS};
 
 use axum::{http::StatusCode, response::Response};
 use serde::Deserialize;
@@ -58,6 +60,8 @@ pub(super) struct Profile {
     pub position: i32,
     pub design: Option<String>,
     pub icon: Option<String>,
+    /// The owner's saved source picks; `None` until first saved.
+    pub sources: Option<SourcePicks>,
 }
 
 type ProfileRow = (
@@ -69,12 +73,14 @@ type ProfileRow = (
     i32,
     Option<String>,
     Option<String>,
+    Option<Value>,
 );
 
-const COLUMNS: &str = "profile_id, account_id, kind, name, focus, position, design, icon";
+const COLUMNS: &str =
+    "profile_id, account_id, kind, name, focus, position, design, icon, sources_json";
 
 fn from_row(
-    (profile_id, account_id, kind, name, focus, position, design, icon): ProfileRow,
+    (profile_id, account_id, kind, name, focus, position, design, icon, sources): ProfileRow,
 ) -> Profile {
     Profile {
         profile_id,
@@ -85,11 +91,13 @@ fn from_row(
         position,
         design,
         icon,
+        sources: sources.and_then(|value| serde_json::from_value(value).ok()),
     }
 }
 
 impl Profile {
-    /// `{profileId, kind, name, focus, design, icon}` for the owner.
+    /// `{profileId, kind, name, focus, design, icon, sources}` for the owner
+    /// only: never put it in a view others see (use [`tag`]).
     pub fn summary(&self) -> Value {
         json!({
             "profileId": self.profile_id,
@@ -98,6 +106,7 @@ impl Profile {
             "focus": self.focus,
             "design": self.design,
             "icon": self.icon,
+            "sources": self.sources,
         })
     }
 }
@@ -291,6 +300,7 @@ pub(super) async fn insert(
         position: next,
         design: design.map(str::to_string),
         icon: icon.map(str::to_string),
+        sources: None,
     };
     query(
         "INSERT INTO cloud_common_ground_profiles
@@ -391,5 +401,6 @@ pub(super) fn for_tests(kind: &str, name: &str, focus: Option<&str>) -> Profile 
         position: 0,
         design: None,
         icon: None,
+        sources: None,
     }
 }
