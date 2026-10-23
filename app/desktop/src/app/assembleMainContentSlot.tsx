@@ -90,6 +90,13 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           return args.chatConversations.find((item) => item.canonicalSessionId === sessionId || item.id === sessionId) ?? null;
         },
         onOpenAgentSettings: () => args.setActiveNav('agents'),
+        groupSpaces: args.participantSpaces,
+        onOpenGroup: (space) => {
+          const sessionId = space.sessions[0]?.id;
+          if (!sessionId) return;
+          args.setActiveNav('chats');
+          void args.handleSelectChatSession(sessionId);
+        },
         onMessageContact: (contact) => {
           if (isCollaborationSelfContactId(contact.id) || contact.classType === 'my-agents') {
             void openLocalAgentChat();

@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 use super::{
     collapse, default_name, get, insert, not_found, valid_design, valid_icon, valid_kind, Profile,
+    SourcePicks,
 };
 use super::{MAX_FOCUS_CHARS, MAX_NAME_CHARS};
 use crate::common_ground::card::Topics;
@@ -36,14 +37,16 @@ type ListRow = (
     Option<Value>,
     Option<String>,
     Option<String>,
+    Option<Value>,
 );
 
-/// Every profile of the account as the owner sees it in the list.
+/// Every profile of the account as the owner sees it in the list, with its
+/// saved sources: owner only.
 async fn views(pool: &PgPool, account: &str) -> sqlx_core::Result<Vec<Value>> {
     let rows: Vec<ListRow> = query_as(
         "SELECT profile.profile_id, profile.kind, profile.name, profile.focus, profile.position,
                 COALESCE(card.built_at IS NOT NULL, false), card.sharing_enabled, card.built_at,
-                card.topics_json, profile.design, profile.icon
+                card.topics_json, profile.design, profile.icon, profile.sources_json
          FROM cloud_common_ground_profiles profile
          LEFT JOIN cloud_common_ground_cards card ON card.profile_id = profile.profile_id
          WHERE profile.account_id = $1 ORDER BY profile.position",
@@ -66,6 +69,7 @@ async fn views(pool: &PgPool, account: &str) -> sqlx_core::Result<Vec<Value>> {
                 topics,
                 design,
                 icon,
+                sources,
             )| {
                 let topics: Topics = topics
                     .and_then(|value| serde_json::from_value(value).ok())
@@ -78,6 +82,7 @@ async fn views(pool: &PgPool, account: &str) -> sqlx_core::Result<Vec<Value>> {
                     "position": position,
                     "design": design,
                     "icon": icon,
+                    "sources": sources,
                     "hasCard": has_card,
                     "sharing": sharing.unwrap_or(true),
                     "builtAt": built_at,
@@ -138,9 +143,11 @@ fn clean_focus(focus: Option<&str>) -> Result<Option<String>, &'static str> {
     Ok(Some(focus))
 }
 
-/// A design or icon that is present in the body, even as `null`.
-fn present<'de, D: Deserializer<'de>>(value: D) -> Result<Option<Option<String>>, D::Error> {
-    Option::<String>::deserialize(value).map(Some)
+/// A field that is present in the body, even as `null`.
+fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+    value: D,
+) -> Result<Option<Option<T>>, D::Error> {
+    Option::<T>::deserialize(value).map(Some)
 }
 
 /// A checked choice from a fixed list; `null` or empty means none.
@@ -248,10 +255,13 @@ pub(in crate::common_ground) struct UpdateRequest {
     /// `null` removes the icon.
     #[serde(deserialize_with = "present")]
     icon: Option<Option<String>>,
+    /// The card's source picks; `null` forgets them.
+    #[serde(deserialize_with = "present")]
+    sources: Option<Option<SourcePicks>>,
 }
 
 /// `PUT /v1/cloud/common-ground/profiles/:id`: renames a profile or changes
-/// its focus, card design or icon. An empty name gives a fixed kind its default
+/// its focus, card design, icon or source picks. An empty name gives a fixed kind its default
 /// name back.
 pub(in crate::common_ground) async fn update(
     State(state): State<Arc<ServerState>>,
@@ -289,6 +299,9 @@ pub(in crate::common_ground) async fn update(
             Err(message) => return invalid(message),
         },
     };
+    let sources = body
+        .sources
+        .map(|sources| sources.map(|picks| picks.cleaned().to_json()));
     let name = match name {
         None => None,
         Some(name) if !name.is_empty() => Some(name),
@@ -304,7 +317,8 @@ pub(in crate::common_ground) async fn update(
          SET name = COALESCE($2, name),
              focus = CASE WHEN $6 THEN $3 ELSE focus END,
              design = CASE WHEN $7 THEN $4 ELSE design END,
-             icon = CASE WHEN $8 THEN $5 ELSE icon END
+             icon = CASE WHEN $8 THEN $5 ELSE icon END,
+             sources_json = CASE WHEN $10 THEN $9 ELSE sources_json END
          WHERE profile_id = $1",
     )
     .bind(&profile_id)
@@ -315,6 +329,8 @@ pub(in crate::common_ground) async fn update(
     .bind(focus.is_some())
     .bind(design.is_some())
     .bind(icon.is_some())
+    .bind(sources.clone().flatten())
+    .bind(sources.is_some())
     .execute(pool)
     .await;
     match result {
