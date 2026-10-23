@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// New card: swipe through the six designs, type the name and focus on the
-/// card, Create. Work, Health and Daily tasks already in the wallet show
+/// card, Create. Work, Health and Daily already in the wallet show
 /// "In your wallet" and cannot be made again.
 struct CommonGroundNewCardSheet: View {
     @EnvironmentObject private var model: CommonGroundModel

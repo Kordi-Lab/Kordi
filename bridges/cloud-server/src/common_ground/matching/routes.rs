@@ -24,6 +24,7 @@ pub(super) fn person(card: &SharedCard) -> Value {
     let mut person = people::person(
         &card.account_id,
         Some(&card.name),
+        card.handle.as_deref(),
         card.avatar_url.as_deref(),
     );
     person["profile"] = card.profile_tag();

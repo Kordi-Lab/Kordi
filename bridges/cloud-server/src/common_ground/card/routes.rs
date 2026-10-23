@@ -22,12 +22,14 @@ use super::{
     ADDED_BY_YOU, MAX_TOPIC_CHARS, MAX_TYPED_TOPIC_CHARS,
 };
 use crate::common_ground::profiles::{self, Profile, ProfileQuery};
-use crate::common_ground::{db_error, rooms};
+use crate::common_ground::{db_error, people, rooms};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
-/// The owner's view of `profile`'s card, with the profile.
+/// The owner's view of `profile`'s card, with the profile and the owner's
+/// public @handle (null when none).
 pub(in crate::common_ground) async fn owner_view(
     pool: &PgPool,
+    account_id: &str,
     profile: Option<&Profile>,
 ) -> sqlx_core::Result<Value> {
     let card = match profile {
@@ -39,15 +41,17 @@ pub(in crate::common_ground) async fn owner_view(
         None => empty_view(),
     };
     view["profile"] = profile.map(Profile::summary).unwrap_or(Value::Null);
+    view["handle"] = json!(people::handle(pool, account_id).await?);
     Ok(view)
 }
 
 pub(in crate::common_ground) async fn owner_response(
     pool: &PgPool,
+    account_id: &str,
     profile: Option<&Profile>,
     status: StatusCode,
 ) -> Response {
-    match owner_view(pool, profile).await {
+    match owner_view(pool, account_id, profile).await {
         Ok(view) => (status, Json(view)).into_response(),
         Err(error) => db_error(error),
     }
@@ -61,7 +65,9 @@ pub(in crate::common_ground) async fn read(
 ) -> Response {
     let pool = state.db_pool();
     match profiles::resolve(pool, &session.account_id, params.profile.as_deref()).await {
-        Ok(profile) => owner_response(pool, profile.as_ref(), StatusCode::OK).await,
+        Ok(profile) => {
+            owner_response(pool, &session.account_id, profile.as_ref(), StatusCode::OK).await
+        }
         Err(response) => *response,
     }
 }
@@ -244,7 +250,9 @@ async fn after_edit(
     result: sqlx_core::Result<Option<()>>,
 ) -> Response {
     match result {
-        Ok(Some(())) => owner_response(pool, Some(profile), StatusCode::OK).await,
+        Ok(Some(())) => {
+            owner_response(pool, &profile.account_id, Some(profile), StatusCode::OK).await
+        }
         Ok(None) => no_card(),
         Err(error) => db_error(error),
     }
@@ -285,7 +293,7 @@ pub(in crate::common_ground) async fn update_settings(
     .execute(pool)
     .await;
     match result {
-        Ok(_) => owner_response(pool, Some(&profile), StatusCode::OK).await,
+        Ok(_) => owner_response(pool, account, Some(&profile), StatusCode::OK).await,
         Err(error) => db_error(error),
     }
 }
@@ -300,12 +308,13 @@ pub(in crate::common_ground) async fn delete(
     Query(params): Query<ProfileQuery>,
 ) -> Response {
     let pool = state.db_pool();
-    let profile =
-        match profiles::resolve(pool, &session.account_id, params.profile.as_deref()).await {
-            Ok(Some(profile)) => profile,
-            Ok(None) => return owner_response(pool, None, StatusCode::OK).await,
-            Err(response) => return *response,
-        };
+    let profile = match profiles::resolve(pool, &session.account_id, params.profile.as_deref())
+        .await
+    {
+        Ok(Some(profile)) => profile,
+        Ok(None) => return owner_response(pool, &session.account_id, None, StatusCode::OK).await,
+        Err(response) => return *response,
+    };
     let id = profile.profile_id.as_str();
     let result = async {
         let mut tx = pool.begin().await?;
@@ -330,7 +339,7 @@ pub(in crate::common_ground) async fn delete(
             for room in rooms {
                 rooms::announce(pool, room).await;
             }
-            owner_response(pool, Some(&profile), StatusCode::OK).await
+            owner_response(pool, &session.account_id, Some(&profile), StatusCode::OK).await
         }
         Err(error) => db_error(error),
     }

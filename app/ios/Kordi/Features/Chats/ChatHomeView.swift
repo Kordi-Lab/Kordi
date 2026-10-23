@@ -517,10 +517,10 @@ struct ChatHomeView: View {
             if let onOpenNewChat { onOpenNewChat(.agent) }
             else { newChatMode = .agent }
         } label: {
-            Label("New session", systemImage: "plus")
+            HStack(spacing: 7) { Image(systemName: "plus").font(.footnote.weight(.semibold)).foregroundStyle(.tint); Text("New session") }
                 .font(.footnote)
-                .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 44 : 32, alignment: .leading)
-                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 44 : 36, alignment: .leading)
+                .padding(.horizontal, 16).padding(.top, 4)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
