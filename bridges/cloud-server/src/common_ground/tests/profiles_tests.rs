@@ -83,7 +83,7 @@ async fn profiles_are_created_renamed_and_limited() {
     );
     let all = list(&app, &token).await;
     let names: Vec<&str> = all.iter().map(|p| p["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["Work", "Health", "Daily tasks", "KAUST", "MIT"]);
+    assert_eq!(names, ["Work", "Health", "Daily", "KAUST", "MIT"]);
     let positions: Vec<i64> = all
         .iter()
         .map(|p| p["position"].as_i64().unwrap())
