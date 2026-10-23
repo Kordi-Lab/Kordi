@@ -26,7 +26,7 @@ export function PersonScreen({ accountId, profileId, state, store, host }: {
   return (
     <>
       <CgBack onBack={() => store.back()} />
-      <CgHero avatar={<CgAvatar person={person} size={72} />} title={personTitle(person)} />
+      <CgHero avatar={<CgAvatar person={person} size={72} />} title={personTitle(person)} line={person.handle ? <span className="cg-hero-handle">@{person.handle}</span> : undefined} />
       <PersonActions
         person={person}
         state={state}

@@ -41,3 +41,8 @@ export function useConnectorStates(access: CgConnectorsAccess | null) {
   const connectedCount = CONNECTORS_LINK_PROVIDER_IDS.filter((id) => states?.[id] === 'connected').length;
   return { states, connectedCount, refresh, watch: () => setWatching(true) };
 }
+
+/** Connected connectors whose switch is on. */
+export function includedConnectors(picked: string[], states: CgConnectorStates | null): string[] {
+  return CONNECTORS_LINK_PROVIDER_IDS.filter((id) => picked.includes(id) && states?.[id] === 'connected');
+}

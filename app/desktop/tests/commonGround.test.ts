@@ -236,19 +236,20 @@ test('rate limits without Retry-After ask for a minute', () => {
   assert.equal(MATCH_POLL_MS, 3_000);
 });
 
-test('build request sends agents only with the switch on and connectors when one is connected', () => {
+test('build request sends agents only with the switch on and connectors when one is on', () => {
   const files = [{ label: '.claude/CLAUDE.md', text: 'a' }, { label: 'AGENTS.md', text: 'b' }];
-  const base: CgBuildChoices = { memory: false, connectedCount: 0, useAgents: false, agentFiles: files, device: [], links: '', notes: '' };
+  const base: CgBuildChoices = { memory: false, connectors: [], useAgents: false, agentFiles: files, device: [], links: '', notes: '' };
   assert.deepEqual(commonGroundBuildRequest(base), { memory: false, connectors: false, device: [], links: '', notes: '' });
   assert.equal(canBuildProfile(base), false);
   const withAgents = commonGroundBuildRequest({ ...base, useAgents: true });
   assert.deepEqual(withAgents.agents, files);
   assert.equal(withAgents.connectors, false);
   assert.equal('agents' in commonGroundBuildRequest({ ...base, useAgents: true, agentFiles: [] }), false);
-  const withConnector = commonGroundBuildRequest({ ...base, connectedCount: 1 });
+  const withConnector = commonGroundBuildRequest({ ...base, connectors: ['github'] });
   assert.equal(withConnector.connectors, true);
   assert.equal('agents' in withConnector, false);
-  assert.equal(canBuildProfile({ ...base, connectedCount: 1 }), true);
+  assert.equal('connectorProviders' in withConnector, false, 'before version 3 only the switch is sent');
+  assert.equal(canBuildProfile({ ...base, connectors: ['gmail'] }), true);
   assert.equal(canBuildProfile({ ...base, useAgents: true }), true);
   assert.equal(canBuildProfile({ ...base, notes: ' x ' }), true);
 });
@@ -256,7 +257,7 @@ test('build request sends agents only with the switch on and connectors when one
 test('client sends the agent files in the build body', async () => {
   const { calls, client } = mockServer({ 'POST card/build': { status: 202, body: owner({ card: null, build: { status: 'building', errorCode: null } }) } });
   const agents = [{ label: 'AGENTS.md', text: 'Be brief.' }];
-  await client.build(commonGroundBuildRequest({ memory: false, connectedCount: 2, useAgents: true, agentFiles: agents, device: [], links: '', notes: '' }));
+  await client.build(commonGroundBuildRequest({ memory: false, connectors: ['gmail', 'github'], useAgents: true, agentFiles: agents, device: [], links: '', notes: '' }));
   assert.deepEqual(calls[0].body, { memory: false, connectors: true, device: [], links: '', notes: '', agents });
 });
 

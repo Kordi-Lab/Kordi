@@ -4,7 +4,7 @@ import { ChevronLeft } from 'lucide-react';
 import { newCardInput } from './cardDesign';
 import { DeckRail } from './DeckRail';
 import { NewCardDialog } from './NewCardDialog';
-import { CardSwatch, type CgCardFace } from './ProfileCard';
+import { CardSwatch, type CgCardFace, type CgCardOwner } from './ProfileCard';
 import { MAX_PROFILES, takenKinds } from './profiles';
 import { currentProfile, type CgState, type CommonGroundStore } from './store';
 import { deckCards, profileFace } from './wallet';
@@ -44,16 +44,18 @@ export function SharingChip({ chipKey, face }: { chipKey: string; face: CgCardFa
  * Grounding Home and the card page on the Mac: a header (back, title, the shared card) above
  * the deck rail and one centre column.
  */
-export function WalletShell({ state, store, title, onBack, children }: {
+export function WalletShell({ state, store, owner, title, onBack, children }: {
   state: CgState;
   store: CommonGroundStore;
+  /** The signed-in account, drawn on its cards. */
+  owner?: CgCardOwner;
   title: string;
   onBack?: () => void;
   children: ReactNode;
 }) {
   const [creating, setCreating] = useState(false);
   const profile = currentProfile(state);
-  const cards = state.profilesOn ? deckCards(state) : [];
+  const cards = state.profilesOn ? deckCards(state, owner) : [];
   const onCard = state.stack[state.stack.length - 1]?.name === 'card';
   const select = (id: string) => {
     if (id === 'suggested') return;
@@ -96,6 +98,7 @@ export function WalletShell({ state, store, title, onBack, children }: {
       {creating ? (
         <NewCardDialog
           taken={takenKinds(state.profiles)}
+          owner={owner}
           busy={state.busy === 'profile'}
           notice={state.notice}
           onCancel={() => setCreating(false)}
