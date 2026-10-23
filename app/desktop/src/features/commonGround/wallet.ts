@@ -2,12 +2,12 @@
 // which card a room suggests.
 
 import { profileDesign } from './cardDesign';
-import type { CgCardFace } from './ProfileCard';
+import type { CgCardFace, CgCardOwner } from './ProfileCard';
 import type { CgState } from './store';
 import type { CgProfile, CgProfileKind } from './types';
 
 /** A profile as a card: built, not built yet, or building while it is the current one. */
-export function profileFace(profile: CgProfile, state: Pick<CgState, 'profileId' | 'owner'>): CgCardFace {
+export function profileFace(profile: CgProfile, state: Pick<CgState, 'profileId' | 'owner'>, owner?: CgCardOwner): CgCardFace {
   const building = profile.profileId === state.profileId && state.owner?.build.status === 'building';
   return {
     design: profileDesign(profile),
@@ -17,6 +17,7 @@ export function profileFace(profile: CgProfile, state: Pick<CgState, 'profileId'
     focus: profile.focus,
     topicCount: profile.topicCount,
     status: building ? 'building' : profile.hasCard ? 'built' : 'empty',
+    ...(owner ? { owner } : {}),
   };
 }
 
@@ -30,9 +31,9 @@ export function ownerIsCurrent(state: CgState): boolean {
 export const SUGGESTED_FACE: CgCardFace = { design: 'work', name: 'Work', focus: null, topicCount: 0, status: 'suggested' };
 
 /** The cards in the rail: the profiles, or one suggested Work card for an empty wallet. */
-export function deckCards(state: CgState): Array<{ id: string; face: CgCardFace }> {
-  if (!state.profiles.length) return [{ id: 'suggested', face: SUGGESTED_FACE }];
-  return state.profiles.map((profile) => ({ id: profile.profileId, face: profileFace(profile, state) }));
+export function deckCards(state: CgState, owner?: CgCardOwner): Array<{ id: string; face: CgCardFace }> {
+  if (!state.profiles.length) return [{ id: 'suggested', face: owner ? { ...SUGGESTED_FACE, owner } : SUGGESTED_FACE }];
+  return state.profiles.map((profile) => ({ id: profile.profileId, face: profileFace(profile, state, owner) }));
 }
 
 export const DECK = { full: 110, strip: 48, step: 40, ring: 12, plus: 40 } as const;

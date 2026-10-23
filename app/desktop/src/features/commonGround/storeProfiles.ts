@@ -5,7 +5,7 @@
 import { isRouteMissing, type CommonGroundClient } from './client';
 import { pickProfile, type CgProfileMemory } from './profiles';
 import type { CgScreen, CgState } from './store';
-import type { CgCardLook, CgProfile, CgProfileInput, CgProfilePatch } from './types';
+import type { CgCardLook, CgProfile, CgProfileInput, CgProfilePatch, CgSourcePicks } from './types';
 
 /** The parts of the store these operations use. */
 export type CgProfileStoreHost = {
@@ -86,6 +86,18 @@ export async function updateProfile(host: CgProfileStoreHost, profileId: string,
     host.set({ owner: { ...owner, profile: { profileId, kind, name, focus, design, icon } } });
   }
   return true;
+}
+
+/** Saves a card's source picks quietly, so other devices open Build with them; false when it failed. */
+export async function saveSources(host: Pick<CgProfileStoreHost, 'client' | 'getSnapshot' | 'set'>, profileId: string, sources: CgSourcePicks): Promise<boolean> {
+  try {
+    const updated = await host.client.updateProfile(profileId, { sources });
+    const saved = updated.sources ?? sources;
+    host.set({ profiles: host.getSnapshot().profiles.map((profile) => (profile.profileId === profileId ? { ...profile, sources: saved } : profile)) });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Deletes a profile; the server leaves the rooms it was shared in. */

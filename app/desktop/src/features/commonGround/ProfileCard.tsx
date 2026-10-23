@@ -46,6 +46,9 @@ export function CardSwatch({ design, className, empty = false }: { design: CgCar
 
 export type CgCardStatus = 'built' | 'empty' | 'building' | 'suggested';
 
+/** Whose card it is: the display name, and the handle without the @ when known. */
+export type CgCardOwner = { name: string; handle?: string | null };
+
 export type CgCardFace = {
   design: CgCardDesign;
   icon?: CgCardIcon | null;
@@ -55,7 +58,18 @@ export type CgCardFace = {
   focus: string | null;
   topicCount: number;
   status: CgCardStatus;
+  owner?: CgCardOwner;
 };
+
+/** "@handle" by the bird, then the bird. */
+function CardMark({ owner }: { owner?: CgCardOwner }) {
+  return (
+    <span className="cg-card-mark">
+      {owner?.handle ? <span className="cg-card-handle">@{owner.handle}</span> : null}
+      <CardBird />
+    </span>
+  );
+}
 
 function footLine(face: CgCardFace): ReactNode {
   if (face.status === 'building') return <><i className="cg-spin" aria-hidden="true" />Building</>;
@@ -64,7 +78,7 @@ function footLine(face: CgCardFace): ReactNode {
   return topicCount(face.topicCount);
 }
 
-/** The rail tile (176×110): glyph, name, focus, topic count and the bird. */
+/** The rail tile (176×110): glyph, name, owner, focus, topic count, the handle and the bird. */
 export function ProfileCardTile({ face, trailing }: { face: CgCardFace; trailing?: ReactNode }) {
   return (
     <>
@@ -73,10 +87,11 @@ export function ProfileCardTile({ face, trailing }: { face: CgCardFace; trailing
         <span className="cg-tile-name">{face.name}</span>
         {trailing}
       </span>
+      {face.owner?.name ? <span className="cg-tile-owner">{face.owner.name}</span> : null}
       <span className="cg-tile-focus">{face.focus ?? ''}</span>
       <span className="cg-tile-foot">
         <span>{footLine(face)}</span>
-        <CardBird />
+        <CardMark owner={face.owner} />
       </span>
     </>
   );
@@ -97,7 +112,7 @@ export type CgCardEdit = {
  */
 export function ProfileCardLarge({ face, topics = [], edit, badge, glyph }: { face: CgCardFace; topics?: string[]; edit?: CgCardEdit; badge?: string; glyph?: ReactNode }) {
   return (
-    <div className="cg-card is-large" data-design={face.design}>
+    <div className={cn('cg-card is-large', face.owner?.handle && 'has-handle')} data-design={face.design}>
       <div className="cg-large-head">
         {glyph ?? <span className="cg-card-glyph"><CardGlyph design={face.design} icon={face.icon} kind={face.kind} /></span>}
         {edit ? (
@@ -117,6 +132,7 @@ export function ProfileCardLarge({ face, topics = [], edit, badge, glyph }: { fa
         ) : <span className="cg-large-name">{face.name}</span>}
         {badge ? <span className="cg-large-badge">{badge}</span> : null}
       </div>
+      {face.owner?.name ? <div className="cg-large-owner">{face.owner.name}</div> : null}
       <div className="cg-large-focus">
         {edit ? (
           <label className="cg-large-field">
@@ -137,7 +153,7 @@ export function ProfileCardLarge({ face, topics = [], edit, badge, glyph }: { fa
           ? topics.slice(0, 5).map((topic) => <span key={topic} className="cg-large-topic">{topic}</span>)
           : [70, 96, 58].map((width) => <span key={width} className="cg-large-topic is-skeleton" style={{ width }} />)}
       </div>
-      <CardBird />
+      <CardMark owner={face.owner} />
     </div>
   );
 }
