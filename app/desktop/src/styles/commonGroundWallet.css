@@ -69,6 +69,7 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 .cg-mbtn.is-ghost:hover:not(:disabled) { color: var(--utility-foreground); }
 .cg-mbtn.is-danger { color: var(--app-transient-danger-text, oklch(58% 0.2 27)); }
 .cg-mbtn.is-wide { width: 100%; height: 30px; margin-top: 14px; }
+.cg-mbtn.is-wide + .cg-mbtn.is-wide { margin-top: 8px; }
 
 /* Pair code: four digits, Create, the room under the boxes. */
 .cg-pair-row { display: flex; min-height: 56px; align-items: center; gap: 10px; padding: 7px 12px; }

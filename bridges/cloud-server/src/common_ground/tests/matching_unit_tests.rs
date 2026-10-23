@@ -22,6 +22,7 @@ fn card(
         profile_icon: None,
         profile_name: "Work".into(),
         name: id.into(),
+        handle: None,
         avatar_url: None,
         revision: 1,
         topics: Topics {

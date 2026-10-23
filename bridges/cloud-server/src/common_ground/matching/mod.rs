@@ -38,6 +38,9 @@ pub(super) struct SharedCard {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_icon: Option<String>,
     pub name: String,
+    /// The public @handle, without the `@`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handle: Option<String>,
     pub avatar_url: Option<String>,
     pub revision: i64,
     pub topics: Topics,
@@ -74,14 +77,15 @@ pub(super) async fn shared_cards(
         type Found = (
             Option<String>,
             Option<String>,
+            Option<String>,
             String,
             String,
             Option<String>,
             Option<String>,
         );
         let found: Option<Found> = query_as(
-            "SELECT account.display_name, account.avatar_url, profile.kind, profile.name,
-                    profile.design, profile.icon
+            "SELECT account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url,
+                    profile.kind, profile.name, profile.design, profile.icon
              FROM cloud_accounts account
              JOIN cloud_common_ground_profiles profile ON profile.account_id = account.account_id
              WHERE account.account_id = $1 AND profile.profile_id = $2",
@@ -90,8 +94,15 @@ pub(super) async fn shared_cards(
         .bind(profile_id)
         .fetch_optional(pool)
         .await?;
-        let Some((name, avatar_url, profile_kind, profile_name, profile_design, profile_icon)) =
-            found
+        let Some((
+            name,
+            handle,
+            avatar_url,
+            profile_kind,
+            profile_name,
+            profile_design,
+            profile_icon,
+        )) = found
         else {
             continue;
         };
@@ -103,6 +114,7 @@ pub(super) async fn shared_cards(
             profile_design,
             profile_icon,
             name: crate::document_shares::access::clean_display_name(name.as_deref()),
+            handle,
             avatar_url,
             revision: row.revision,
             topics: row.shared_topics(),
