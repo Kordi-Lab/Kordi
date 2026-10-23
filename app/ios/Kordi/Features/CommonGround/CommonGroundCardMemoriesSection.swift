@@ -55,8 +55,10 @@ struct CommonGroundCardMemoriesSection: View {
                     Task { await model.moveMemory(memory.id, toProfile: profile.profileId) }
                 }
             }
-            Button("No profile") {
-                Task { await model.moveMemory(memory.id, toProfile: nil) }
+            if model.offersNoProfile(for: memory) {
+                Button("No profile") {
+                    Task { await model.moveMemory(memory.id, toProfile: nil) }
+                }
             }
         }
         Button("Remove", systemImage: "trash", role: .destructive) { removeTarget = memory }

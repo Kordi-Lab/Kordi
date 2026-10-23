@@ -118,5 +118,15 @@ final class MemoryRoutingTests: XCTestCase {
         let memory = try JSONDecoder().decode(CloudMemory.self, from: Data(Self.routedJSON.utf8))
         XCTAssertEqual(model.moveTargets(for: CloudProfileMemory(memory: memory)).map(\.profileId), ["prof_health"])
         XCTAssertEqual(model.moveTargets(for: CloudProfileMemory(memory: memory, everyProfile: true)).map(\.profileId), ["prof_work", "prof_health"])
+
+        // "No profile" only clears a pin; a memory on the card by category or in every profile has none.
+        XCTAssertTrue(model.offersNoProfile(for: CloudProfileMemory(memory: memory)))
+        var byCategory = memory
+        byCategory.profileId = nil
+        XCTAssertFalse(model.offersNoProfile(for: CloudProfileMemory(memory: byCategory)))
+        XCTAssertEqual(model.moveTargets(for: CloudProfileMemory(memory: byCategory)).map(\.profileId), ["prof_health"])
+        var shared = byCategory
+        shared.category = "coordination_context"
+        XCTAssertFalse(model.offersNoProfile(for: CloudProfileMemory(memory: shared, everyProfile: true)))
     }
 }

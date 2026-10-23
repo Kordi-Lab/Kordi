@@ -18,6 +18,12 @@ extension CommonGroundModel {
         profiles.filter { $0.profileId != currentProfileID || memory.everyProfile }
     }
 
+    /// "No profile" clears a pin, so the memory goes back to its category's
+    /// default profiles; it is offered only for a pinned memory.
+    func offersNoProfile(for memory: CloudProfileMemory) -> Bool {
+        !memory.everyProfile && memory.memory.profileId != nil
+    }
+
     /// Loads the current profile's memories. Quiet on failure; an answer for
     /// a profile that is no longer current is dropped.
     func loadProfileMemories() async {
