@@ -33,7 +33,10 @@ pub const MEMORY_CATEGORY_GUIDE: &str = "work_context (projects, skills, collabo
 
 /// Where memories about the person end up.
 pub const MEMORY_PROFILE_RULE: &str =
-    "Memories about the person are filed to their Work, Health or Daily tasks profile by category.";
+    "Memories about the person are filed to their Work, Health or Daily profile by category.";
+
+/// Conventions and lessons are task notes, not facts about the person.
+pub const MEMORY_TASK_NOTE_RULE: &str = "Repository, tool or workflow conventions (\"always run X before Y\") and lessons from a task are `hcp-custom:task_lessons`; `work_context` is only for durable facts about the person (role, projects, skills, working style).";
 
 /// Which scope a memory belongs in.
 pub const MEMORY_SCOPE_RULE: &str = "Use `global` only for preferences the user wants everywhere (\"from now on\", \"always\"); `conversation` for the owner's corrections in this chat; `group` only for what the group shares and every member may see, never one person's preference, health or private remark.";
@@ -42,7 +45,7 @@ pub const MEMORY_SCOPE_RULE: &str = "Use `global` only for preferences the user 
 /// `## Memories` sections, so both say the same thing.
 pub fn memory_routing_rules() -> String {
     format!(
-        "Pick the `category` that says what kind of information the memory is: {MEMORY_CATEGORY_GUIDE}. {MEMORY_PROFILE_RULE} {MEMORY_SCOPE_RULE}"
+        "Pick the `category` that says what kind of information the memory is: {MEMORY_CATEGORY_GUIDE}. {MEMORY_PROFILE_RULE} {MEMORY_TASK_NOTE_RULE} {MEMORY_SCOPE_RULE}"
     )
 }
 
@@ -79,5 +82,11 @@ mod tests {
         for category in super::MEMORY_CATEGORIES {
             assert!(rules.contains(category), "{category}");
         }
+        assert!(rules.contains("always run X before Y"));
+        assert!(
+            rules.contains(
+                "are `hcp-custom:task_lessons`; `work_context` is only for durable facts"
+            )
+        );
     }
 }

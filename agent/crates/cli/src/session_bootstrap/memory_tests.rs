@@ -88,7 +88,7 @@ fn memory_prompt_inlines_lessons_newest_first_with_artifact_paths() {
     assert!(section.contains(conversation_path.to_str().expect("conversation path")));
     assert!(!section.contains("(more memories omitted)"));
     assert!(section.contains("must not record health"));
-    assert!(section.len() < 2_200, "{}", section.len());
+    assert!(section.len() < 2_350, "{}", section.len());
 
     let relaxed = super::memory::build_reflection_lesson_artifacts_system_prompt_section(
         &tools,
@@ -420,7 +420,7 @@ fn memory_section_names_categories_and_the_group_rule() {
         assert!(section.contains(name), "{name}: {section}");
     }
     assert!(section.contains("`group` only for what the group shares and every member may see"));
-    assert!(section.contains("filed to their Work, Health or Daily tasks profile by category"));
+    assert!(section.contains("filed to their Work, Health or Daily profile by category"));
     assert!(section.contains("\n- Works on billing."), "{section}");
     assert!(!section.contains("[user_correction|"), "{section}");
 }

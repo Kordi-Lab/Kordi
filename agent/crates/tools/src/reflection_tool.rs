@@ -30,7 +30,7 @@ impl Tool for ReflectionTool {
     }
 
     fn description(&self) -> &str {
-        "Saves a concise memory after corrections, repeated failures, or outcomes. `category` says what kind of information it is; memories about the person are filed to their Work, Health or Daily tasks profile by category. Scope: group (scopeId as the memory prompt shows it) only for what the group shares and every member may see, never one person's preference, health or private remark; conversation for the owner's corrections in this chat; project; global (scopeId `account`) only for \"from now on\" or \"always\". First read the scope's memories; never save one that repeats them. When a preference changes, save the corrected version. Memories sync with the account and must not record health conditions, finances, relationships, identity attributes, credentials, or other people's private details. Side effect: stores the memory and updates the scoped memory artifact. Max 500 characters."
+        "Saves a concise memory after corrections, repeated failures, or outcomes. `category` says what kind of information it is; memories about the person are filed to their Work, Health or Daily profile by category. Scope: group (scopeId as the memory prompt shows it) only for what the group shares and every member may see, never one person's preference, health or private remark; conversation for the owner's corrections in this chat; project; global (scopeId `account`) only for \"from now on\" or \"always\". First read the scope's memories; never save one that repeats them. When a preference changes, save the corrected version. Memories sync with the account and must not record health conditions, finances, relationships, identity attributes, credentials, or other people's private details. Side effect: stores the memory and updates the scoped memory artifact. Max 500 characters."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -174,7 +174,7 @@ mod tests {
         assert!(tool.description().contains("global (scopeId `account`)"));
         assert!(tool.description().contains("never save one that repeats"));
         assert!(tool.description().len() < 900);
-        assert!(tool.description().contains("Work, Health or Daily tasks"));
+        assert!(tool.description().contains("Work, Health or Daily profile"));
         let schema = tool.parameters_schema();
         assert_eq!(schema["required"][4], "category");
         assert_eq!(
