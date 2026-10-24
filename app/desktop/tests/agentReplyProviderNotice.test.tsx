@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
-import { cloudAgentTurnReplyText, isCloudAgentProviderFailureNoticeText } from '../src/features/cloud/cloudAgentReplyText';
+import { cloudAgentTurnReplyText, isCloudAgentProviderFailureNoticeText, isFailedReplyTextOnlyItsError } from '../src/features/cloud/cloudAgentReplyText';
 import { LiveChatTurnCard } from '../src/kordi-app/components/transcript';
 import type { CanonicalIdentity, CanonicalSessionMessage, DesktopChatToolSnapshot } from '../src/kordi-app/types';
 
@@ -115,6 +115,20 @@ test('an older reply whose whole text is the notice still reads as a failure', (
   const { mapped } = renderTurn(agentReply({ contentText: 'No provider configured yet.' }));
   assert.equal(mapped.turn?.status, 'failed');
   assert.equal(mapped.turn?.assistantText, '');
+});
+
+test('a failed reply whose text is its error shows the error once', () => {
+  const sentence = 'The selected model is unavailable for this account. Choose another model.';
+  const failed = { deliveryState: 'failed', error: sentence };
+  const { mapped, markup } = renderTurn(agentReply({ contentText: sentence, status: 'failed', content: failed }));
+  assert.equal(mapped.turn?.assistantText, '');
+  assert.equal(mapped.turn?.error, sentence);
+  assert.equal(markup.split(sentence).length - 1, 1);
+  const partial = renderTurn(agentReply({ contentText: 'Here is part of it.', status: 'failed', content: failed }));
+  assert.equal(partial.mapped.turn?.assistantText, 'Here is part of it.');
+  assert.equal(partial.mapped.turn?.error, sentence);
+  assert.equal(isFailedReplyTextOnlyItsError(' The  SELECTED model\nis unavailable ', 'the selected model is unavailable'), true);
+  assert.equal(isFailedReplyTextOnlyItsError('', ''), false);
 });
 
 test('only a one-line notice counts as notice text', () => {
