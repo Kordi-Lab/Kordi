@@ -132,6 +132,9 @@ pub(super) async fn read(
             .iter()
             .filter(|r| r.message_id == id)
             .collect::<Vec<_>>();
+        if !is_conversation_evidence(&text, !attachments.is_empty()) {
+            continue;
+        }
         messages.push(json!({"messageId":id,"sender":sender,"kind":kind,"role":kind,"sequenceNum":sequence,"timeLabel":created_at,"text":include.then(||text.chars().skip(offset).take(1200).collect::<String>()),"nextOffset":next_offset,"attachments":attachments}));
     }
     messages.reverse();
@@ -170,6 +173,11 @@ fn visible_message(sender: &str, body: &str) -> Option<(String, String, String)>
         return Some((sender.to_string(), "agent".to_string(), text));
     }
     if let Some(envelope) = direct_message_envelope(body) {
+        // Synchronization-only records (model or route changes) carry no
+        // conversation content.
+        if envelope["synchronizationOnly"].as_bool() == Some(true) {
+            return None;
+        }
         return Some((
             sender.to_string(),
             "human".to_string(),
@@ -181,6 +189,12 @@ fn visible_message(sender: &str, body: &str) -> Option<(String, String, String)>
         return None;
     }
     Some((sender.to_string(), "human".to_string(), body.to_string()))
+}
+
+/// A message is evidence for the Agent only when it has readable text or
+/// attachments; empty identity markers and similar records are skipped.
+fn is_conversation_evidence(text: &str, has_attachments: bool) -> bool {
+    has_attachments || !text.trim().is_empty()
 }
 
 #[cfg(test)]
@@ -216,5 +230,41 @@ mod tests {
             URL_SAFE_NO_PAD.encode(envelope.to_string())
         );
         assert!(visible_message("sender", &body).is_none());
+    }
+
+    fn direct_body(envelope: Value) -> String {
+        format!(
+            "kordi-cloud-message:{}",
+            URL_SAFE_NO_PAD.encode(envelope.to_string())
+        )
+    }
+
+    #[test]
+    fn retrieval_hides_synchronization_only_direct_messages() {
+        let body = direct_body(json!({
+            "schemaVersion": 1, "kind": "message", "text": "",
+            "synchronizationOnly": true,
+            "agentRuntimeRoute": {"provider": "example"}
+        }));
+        assert!(visible_message("owner", &body).is_none());
+        let body = direct_body(json!({
+            "schemaVersion": 1, "kind": "message", "text": "Hello there"
+        }));
+        assert_eq!(
+            visible_message("owner", &body),
+            Some((
+                "owner".to_string(),
+                "human".to_string(),
+                "Hello there".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn empty_messages_without_attachments_are_not_conversation_evidence() {
+        assert!(!is_conversation_evidence("", false));
+        assert!(!is_conversation_evidence("  \n", false));
+        assert!(is_conversation_evidence("", true));
+        assert!(is_conversation_evidence("hi", false));
     }
 }
