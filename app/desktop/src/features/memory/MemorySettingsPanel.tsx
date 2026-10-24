@@ -9,12 +9,12 @@ import {
 } from '@/components/ui/dialog';
 import { SettingsRow, SettingsSection, SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 
-import { MemoryList, destructiveConfirmClass } from './MemoryList';
+import { useServerMemoryVersion } from './memoryAvailability';
+import { destructiveConfirmClass } from './MemoryList';
 import type { MemoryClient } from './memoryClient';
 import {
   GLOBAL_MEMORY_TARGET,
   forgetConsequences,
-  isGlobalMemory,
   isOwnMemory,
   memoryErrorMessage as errorMessage,
   syncStatusLabel,
@@ -22,6 +22,9 @@ import {
   type MemorySettings,
   type MemorySyncState,
 } from './memoryModel';
+import { NO_ORIGIN_SOURCES, type MemoryOriginSources } from './memoryOrigin';
+import { MemoryOrganizer } from './MemoryOrganizer';
+import type { MemoryCard } from './memoryOrganizerModel';
 
 const destructiveButtonClass = 'app-transient-danger-button h-8 rounded-lg px-3.5 text-[12px]';
 
@@ -31,11 +34,18 @@ export function MemorySettingsPanel({
   accountId,
   client,
   isNativeShell: _isNativeShell,
+  memoryVersion,
 }: {
   accountId: string;
   client: MemoryClient;
   isNativeShell: boolean;
+  /** The server's `memoryVersion`; defaults to the one the signed-in server reported. */
+  memoryVersion?: number | null;
 }) {
+  const serverMemoryVersion = useServerMemoryVersion();
+  const version = memoryVersion === undefined ? serverMemoryVersion : memoryVersion;
+  const [cards, setCards] = useState<MemoryCard[]>([]);
+  const [originSources, setOriginSources] = useState<MemoryOriginSources>(NO_ORIGIN_SOURCES);
   const [settings, setSettings] = useState<MemorySettings | null>(null);
   const [lessons, setLessons] = useState<MemoryLesson[]>([]);
   const [sync, setSync] = useState<MemorySyncState>({ accountLabel: '', lastSyncedAt: null });
@@ -59,6 +69,9 @@ export function MemorySettingsPanel({
       ]);
       setSettings(nextSettings);
       setLessons(nextLessons);
+      // Card and chat names only label rows, so a failed lookup leaves them out.
+      client.listCards?.().then(setCards, () => setCards([]));
+      client.originSources?.().then(setOriginSources, () => undefined);
       setSync(nextSync);
       setHasLoaded(true);
       setError(null);
@@ -121,7 +134,6 @@ export function MemorySettingsPanel({
     return archived === 1 ? 'Deleted 1 memory.' : `Deleted ${archived} memories.`;
   }, 'Could not delete your memories. Try again.');
 
-  const globalLessons = lessons.filter(isGlobalMemory);
   const ownCount = lessons.filter((lesson) => isOwnMemory(lesson, accountId)).length;
 
   return (
@@ -184,37 +196,33 @@ export function MemorySettingsPanel({
             />
           </SettingsSection>
 
-          <SettingsSection title={`Global memories · ${globalLessons.length}`}>
-            <div>
-              {!settings.lessonsEnabled ? (
-                <SettingsRow title={<span className="font-normal text-slate-400">Memory is off. These are kept but not read.</span>} />
-              ) : null}
-              <MemoryList
-                client={client}
-                lessons={globalLessons}
-                onLessonsChange={setLessons}
-                emptyLabel="No global memories yet."
-                onChanged={refreshSync}
-                addTarget={settings.lessonsEnabled ? GLOBAL_MEMORY_TARGET : null}
-              />
-              {ownCount > 0 ? (
-                <SettingsSection size="compact">
-                  <SettingsRow
-                    title="Forget everything"
-                    description="Deletes every memory from your account and from every signed-in device."
-                    control={(
-                      <Button type="button" className={destructiveButtonClass} onClick={() => setDialog({ kind: 'forget', count: ownCount })}>
-                        Forget everything
-                      </Button>
-                    )}
-                  />
-                </SettingsSection>
-              ) : null}
+          <MemoryOrganizer
+            client={client}
+            lessons={lessons}
+            onLessonsChange={setLessons}
+            viewerAccountId={accountId}
+            memoryVersion={version}
+            cards={cards}
+            originSources={originSources}
+            addTarget={settings.lessonsEnabled ? GLOBAL_MEMORY_TARGET : null}
+            onChanged={refreshSync}
+            notice={!settings.lessonsEnabled ? (
+              <SettingsRow title={<span className="font-normal text-slate-400">Memory is off. These are kept but not read.</span>} />
+            ) : null}
+            footer={ownCount > 0 ? (
               <SettingsSection size="compact">
-                <SettingsRow title={<span className="font-normal text-slate-400">Other memories are on each conversation&apos;s Memory tab.</span>} />
+                <SettingsRow
+                  title="Forget everything"
+                  description="Deletes every memory from your account and from every signed-in device."
+                  control={(
+                    <Button type="button" className={destructiveButtonClass} onClick={() => setDialog({ kind: 'forget', count: ownCount })}>
+                      Forget everything
+                    </Button>
+                  )}
+                />
               </SettingsSection>
-            </div>
-          </SettingsSection>
+            ) : null}
+          />
 
           <SettingsSection title="On this Mac only">
             <SettingsRow

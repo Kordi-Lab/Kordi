@@ -21,6 +21,9 @@ export type MemoryLesson = {
   confidence?: MemoryConfidence | null;
   profileId?: string | null;
   profileKind?: MemoryProfileKind | null;
+  /** The Grounding cards the memory feeds, in profile order (`memoryVersion` 3). */
+  profileIds?: string[];
+  excludedProfileIds?: string[];
 };
 
 export type MemorySettings = { lessonsEnabled: boolean; excludeSensitive: boolean };
@@ -62,7 +65,7 @@ export function lessonOriginLabel(
   return lesson.confidence ? `Saved by ${who} \u00b7 ${lesson.confidence} confidence` : `Saved by ${who}`;
 }
 
-/** Account settings list only global memories; the rest show on each conversation's Memory tab. */
+/** Memories saved for the whole account, not for one chat, project or group. */
 export function isGlobalMemory(lesson: Pick<MemoryLesson, 'scope'>): boolean {
   return lesson.scope === 'global';
 }

@@ -128,6 +128,7 @@ export function routedMemoryOf(entry: Partial<CgRoutedMemory>): CgRoutedMemory {
     category: typeof entry.category === 'string' ? entry.category : null,
     updatedAt: entry.updatedAt ?? '',
     profileId: typeof entry.profileId === 'string' && entry.profileId ? entry.profileId : null,
+    profileIds: Array.isArray(entry.profileIds) ? entry.profileIds.filter((id): id is string => typeof id === 'string' && id.length > 0) : [],
     everyProfile: entry.everyProfile === true,
   };
 }
@@ -194,8 +195,10 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
     profileMemories: async (profileId: string) => (
       (await data<{ memories?: Array<Partial<CgRoutedMemory>> }>('GET', cg(`profiles/${enc(profileId)}/memories`)))?.memories ?? []
     ).map(routedMemoryOf).filter((memory) => memory.memoryId),
-    /** Files a memory to another profile; null leaves it to its category. */
-    moveMemory: (memoryId: string, profileId: string | null) => data<unknown>('PATCH', `memory/${enc(memoryId)}`, { profileId }),
+    /** Adds a memory to one more card (`memoryVersion` 3). */
+    addMemoryToCard: (memoryId: string, profileId: string) => data<unknown>('PATCH', `memory/${enc(memoryId)}`, { addProfileId: profileId }),
+    /** Removes a memory from one card (`memoryVersion` 3); it stays on its other cards. */
+    removeMemoryFromCard: (memoryId: string, profileId: string) => data<unknown>('PATCH', `memory/${enc(memoryId)}`, { removeProfileId: profileId }),
     removeMemory: (memoryId: string) => data<null>('DELETE', `memory/${enc(memoryId)}`),
     card: (profileId?: string | null) => data<CgOwnerView>('GET', cg(`card${profileQuery(profileId)}`)),
     saveTopics: (topics: CgTopicLists, profileId?: string | null) => data<CgOwnerView>('PUT', cg(`card${profileQuery(profileId)}`), {

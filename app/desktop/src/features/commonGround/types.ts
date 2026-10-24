@@ -140,6 +140,8 @@ export type CgRoutedMemory = {
   category: string | null;
   updatedAt: string;
   profileId: string | null;
+  /** The cards the memory feeds, in profile order (`memoryVersion` 3); empty from older servers. */
+  profileIds: string[];
   everyProfile: boolean;
 };
 

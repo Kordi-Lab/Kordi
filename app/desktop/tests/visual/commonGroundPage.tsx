@@ -80,6 +80,7 @@ const host: CgHost = {
   sources: true,
   memoryAvailable: true,
   memoryRouting: true,
+  memoryCards: true,
   openChat: () => undefined,
   acceptRequest: async () => undefined,
   contactsChanged: () => undefined,
