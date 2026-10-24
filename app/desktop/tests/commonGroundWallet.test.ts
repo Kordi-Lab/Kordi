@@ -14,11 +14,11 @@ import { CardScreen, RenameFields } from '../src/features/commonGround/CardScree
 import { PairCodePanel } from '../src/features/commonGround/PairCodePanel';
 import { NewCardDialog } from '../src/features/commonGround/NewCardDialog';
 import { ProfileCard } from '../src/features/commonGround/ProfileCard';
-import { kindLabel, renameError, renamePatch, takenKinds } from '../src/features/commonGround/profiles';
+import { renameError, renamePatch, takenKinds } from '../src/features/commonGround/profiles';
 import { CommonGroundStore, SYNC_INTERVAL_MS } from '../src/features/commonGround/store';
 import { LOOK_NOT_SAVED } from '../src/features/commonGround/storeProfiles';
 import { syncOnVisible } from '../src/features/commonGround/syncOnVisible';
-import { deckCards, deckLayout, latestOnly, ownerIsCurrent, profileFace, roomPreviewLine, suggestedProfile } from '../src/features/commonGround/wallet';
+import { deckCards, deckLayout, latestOnly, ownerIsCurrent, profileFace, suggestedProfile } from '../src/features/commonGround/wallet';
 
 import { card, mockServer, owner, profile, room, SERVER_DESIGNS } from './helpers/commonGroundServer';
 
@@ -87,15 +87,12 @@ test('wallet: a code for a room you are already in opens it from the preview', a
   assert.equal(store.getSnapshot().roomList[0]?.code, '2468');
 });
 
-test('wallet: the join row suggests a built card of the room kind and names kind and people', () => {
+test('wallet: a code suggests a built card of the room kind', () => {
   const workshops = profile('cgp_ws', 'custom', 'Workshops', true);
   assert.equal(suggestedProfile([work, workshops], 'custom', 'cgp_work')?.profileId, 'cgp_ws');
   assert.equal(suggestedProfile([work, workshops], 'work', 'cgp_work'), null);
   assert.equal(suggestedProfile([work, { ...health, hasCard: false }], 'health', 'cgp_work'), null);
   assert.equal(suggestedProfile([work], null, 'cgp_work'), null);
-  assert.equal(roomPreviewLine({ kind: 'health', memberCount: 8 }, kindLabel), 'Health · 8 people');
-  assert.equal(roomPreviewLine({ kind: null, memberCount: 1 }, kindLabel), '1 person');
-  assert.equal(roomPreviewLine({ kind: null, memberCount: null }, kindLabel), '');
 });
 
 test('wallet: New card starts on a free design, pre-fills Workshop and Research group, and refuses kinds in the wallet', () => {

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 // One screenshot per Grounding screen in the real Contacts page, against fixture replies with
 // three profiles: Work and Workshops with cards, Health without. "join" is Home with code 5160
-// typed: the room shows under the boxes with Join and a Suggested chip.
+// typed: Create turns into Enter pair room, which opens the room page.
 const SCREENS: Array<[string, (page: import('@playwright/test').Page) => import('@playwright/test').Locator]> = [
   ['home', (page) => page.getByText('Recent', { exact: true })],
   ['join', (page) => page.getByText('Recent', { exact: true })],
@@ -33,10 +33,9 @@ for (const theme of ['light', 'dark'] as const) {
       }
       if (screen === 'join') {
         for (const [index, digit] of ['5', '1', '6', '0'].entries()) await page.getByLabel(`Digit ${index + 1}`).fill(digit);
-        await expect(page.getByText('Poster session 2026')).toBeVisible();
-        await expect(page.getByText('Custom · 14 people')).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Suggested: Workshops' })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Join', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Enter pair room' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Create', exact: true })).toBeHidden();
+        await expect(page.getByText('Poster session 2026')).toBeHidden();
       }
       if (screen === 'lobby' || screen === 'results') await expect(page.getByText('Sharing: Work')).toBeVisible();
       if (screen === 'results') {
@@ -64,6 +63,11 @@ for (const theme of ['light', 'dark'] as const) {
       }
       await page.evaluate(() => document.fonts.ready);
       await expect(page).toHaveScreenshot(`commonGroundPage-${screen}-${theme}.png`);
+      if (screen === 'join') {
+        await page.getByRole('button', { name: 'Enter pair room' }).click();
+        await expect(page.locator('.cg-member', { hasText: 'Hana Sato' })).toBeVisible();
+        await expect(page.getByText('Poster session 2026')).toBeVisible();
+      }
     });
   }
 }

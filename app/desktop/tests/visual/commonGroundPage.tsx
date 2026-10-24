@@ -32,6 +32,7 @@ const ROUTES: Record<string, (query: string, body: Record<string, unknown>) => u
   'GET rooms': () => fx.rooms,
   'GET rooms/4821': () => fx.room,
   'GET rooms/5160/preview': () => fx.preview,
+  'POST rooms/5160/join': () => ({ ...fx.room, roomId: 'room_5160', code: '5160', name: 'Poster session 2026' }),
   'POST rooms': () => ({ ...fx.room, roomId: 'room_7319', code: '7319', name: 'Agents meetup', members: [] }),
   'POST rooms/4821/results': () => fx.results,
   'POST pairings/code': () => fx.pairCode(),
