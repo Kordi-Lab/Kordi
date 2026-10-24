@@ -4,7 +4,7 @@ use super::group_shared::group;
 use super::*;
 
 /// Inserts a profile of `kind` for the fixture's account and returns its id.
-async fn insert_profile(fx: &Fixture, kind: &str, position: i32) -> String {
+pub(super) async fn insert_profile(fx: &Fixture, kind: &str, position: i32) -> String {
     let profile_id = format!("cgp_test_{}", uuid::Uuid::new_v4().simple());
     query(
         "INSERT INTO cloud_common_ground_profiles (profile_id, account_id, kind, name, position) \
@@ -20,11 +20,11 @@ async fn insert_profile(fx: &Fixture, kind: &str, position: i32) -> String {
     profile_id
 }
 
-async fn save(fx: &Fixture, body: Value) -> (StatusCode, Value) {
+pub(super) async fn save(fx: &Fixture, body: Value) -> (StatusCode, Value) {
     fx.send("POST", "/v1/cloud/memory", Some(body)).await
 }
 
-fn with(text: &str, fields: Value) -> Value {
+pub(super) fn with(text: &str, fields: Value) -> Value {
     let mut body = memory_body(text);
     for (key, value) in fields.as_object().unwrap() {
         body[key] = value.clone();
@@ -32,7 +32,7 @@ fn with(text: &str, fields: Value) -> Value {
     body
 }
 
-async fn patch(fx: &Fixture, memory_id: &str, body: Value) -> (StatusCode, Value) {
+pub(super) async fn patch(fx: &Fixture, memory_id: &str, body: Value) -> (StatusCode, Value) {
     fx.send(
         "PATCH",
         &format!("/v1/cloud/memory/{memory_id}"),

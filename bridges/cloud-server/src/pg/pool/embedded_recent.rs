@@ -360,4 +360,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "0148_common_ground_daily_profile_name.sql"
     ),
     migration!(149, "memory categories", "0149_memory_categories.sql"),
+    migration!(
+        150,
+        "memory card overrides",
+        "0150_memory_card_overrides.sql"
+    ),
 ];

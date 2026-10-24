@@ -19,13 +19,13 @@ const PREFERENCE: &str = "Prefers short replies";
 const GROUP: &str = "The crew ships the Atlas demo on Friday";
 const PINNED: &str = "Reviews papers for the KAUST lab";
 
-async fn save(app: &axum::Router, token: &str, body: Value) -> String {
+pub(super) async fn save(app: &axum::Router, token: &str, body: Value) -> String {
     let (status, saved) = send(app, "POST", "/v1/cloud/memory", token, Some(body)).await;
     assert_eq!(status, 201, "{saved}");
     saved["memory"]["memoryId"].as_str().unwrap().to_string()
 }
 
-fn own(text: &str, category: &str) -> Value {
+pub(super) fn own(text: &str, category: &str) -> Value {
     json!({ "scope": "global", "scopeId": "account", "source": "manual",
             "text": text, "category": category })
 }
@@ -57,7 +57,7 @@ async fn group_of(pool: &PgPool, account: &str) -> String {
 }
 
 /// `(text, everyProfile)` of the memories listed under the profile.
-async fn listed(app: &axum::Router, token: &str, profile: &str) -> Vec<(String, bool)> {
+pub(super) async fn listed(app: &axum::Router, token: &str, profile: &str) -> Vec<(String, bool)> {
     let path = format!("{PROFILES}/{profile}/memories");
     let (status, body) = send(app, "GET", &path, token, None).await;
     assert_eq!(status, 200, "{body}");
@@ -76,7 +76,7 @@ async fn listed(app: &axum::Router, token: &str, profile: &str) -> Vec<(String, 
     out
 }
 
-fn pairs(items: &[(&str, bool)]) -> Vec<(String, bool)> {
+pub(super) fn pairs(items: &[(&str, bool)]) -> Vec<(String, bool)> {
     let mut out: Vec<_> = items.iter().map(|(t, e)| (t.to_string(), *e)).collect();
     out.sort();
     out
@@ -84,7 +84,7 @@ fn pairs(items: &[(&str, bool)]) -> Vec<(String, bool)> {
 
 /// Starts a memory-only build of the profile and returns the evidence it
 /// stored, then finishes the run.
-async fn build(
+pub(super) async fn build(
     app: &axum::Router,
     pool: &PgPool,
     (account, token): (&str, &str),
@@ -112,7 +112,7 @@ async fn build(
     evidence.to_string()
 }
 
-fn assert_texts(evidence: &str, present: &[&str], absent: &[&str]) {
+pub(super) fn assert_texts(evidence: &str, present: &[&str], absent: &[&str]) {
     for text in present {
         assert!(evidence.contains(text), "{text} missing: {evidence}");
     }
@@ -121,7 +121,7 @@ fn assert_texts(evidence: &str, present: &[&str], absent: &[&str]) {
     }
 }
 
-async fn since_build(app: &axum::Router, token: &str, profile: &str) -> (i64, i64) {
+pub(super) async fn since_build(app: &axum::Router, token: &str, profile: &str) -> (i64, i64) {
     let path = format!("/v1/cloud/common-ground/card?profile={profile}");
     let (status, card) = send(app, "GET", &path, token, None).await;
     assert_eq!(status, 200, "{card}");
