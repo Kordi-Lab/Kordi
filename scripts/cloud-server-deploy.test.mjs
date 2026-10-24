@@ -237,6 +237,13 @@ test('product origin serves desktop routes without redirects', async () => {
   assert.match(caddyfile, /:8080 \{[\s\S]*import kordi_product_site/);
   assert.match(caddyfile, /root \* \/srv\/kordi-homepage\/current/);
   assert.match(caddyfile, /handle \/beta-api\/\*[\s\S]*reverse_proxy 127\.0\.0\.1:17181/);
+  for (const page of ['research', 'about', 'iphone', 'privacy', 'terms']) {
+    assert.match(
+      caddyfile,
+      new RegExp(`handle /${page} \\{\\s*rewrite \\* /${page}\\.html\\s*file_server`),
+    );
+    assert.match(caddyfile, new RegExp(`handle /${page}\\.html \\{\\s*redir \\* /${page} 308`));
+  }
   assert.match(caddyfile, /kordi\.ai, www\.kordi\.ai/);
   assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:30081/);
   assert.doesNotMatch(caddyfile, /reverse_proxy 127\.0\.0\.1:17081/);
