@@ -3,8 +3,9 @@ import UIKit
 
 /// Server notices, such as a group's introduction and "joined" lines or the
 /// plan card in a direct chat. They carry this message kind and come from the
-/// hidden System account, PiP, or a member (a plan card stays the organizer's);
-/// the app always shows them from "System" with a gray Kordi bird.
+/// hidden System account, the plan agent, or a member (a plan card stays the
+/// organizer's); the app always shows them from "System" with a gray Kordi
+/// bird. The plan agent's own messages show the same way.
 enum KordiSystemIdentity {
     static let messageKind = "system-notice"
     static let displayName = "System"
@@ -29,7 +30,7 @@ enum KordiSystemIdentity {
         accountId?.trimmingCharacters(in: .whitespacesAndNewlines) == Self.accountId
     }
 
-    /// PiP and the System account are server-managed: never listed, counted,
+    /// The plan agent and the System account are server-managed: never listed, counted,
     /// pictured, or synchronized as members.
     static func isServiceAccount(_ accountId: String?) -> Bool {
         KordiPipIdentity.isPip(accountId: accountId) || isSystem(accountId: accountId)
@@ -44,20 +45,20 @@ enum KordiSystemIdentity {
 
     /// The name on a direct-chat message from someone other than the viewer.
     static func directAuthorName(messageKind: String?, fromAccountId: String, fallback: String) -> String {
-        isSystemNotice(kind: messageKind) || isSystem(accountId: fromAccountId) ? displayName : fallback
+        isSystemNotice(kind: messageKind) || isServiceAccount(fromAccountId) ? displayName : fallback
     }
 
     /// The name on a group message that has no envelope: "System" for a
-    /// notice, then the member's name, PiP, or the conversation's name.
+    /// notice or a server-managed account, then the member's name or the
+    /// conversation's name.
     static func groupAuthorName(
         messageKind: String?,
         fromAccountId: String,
         participantNames: [String: String],
         fallback: String
     ) -> String {
-        if isSystemNotice(kind: messageKind) || isSystem(accountId: fromAccountId) { return displayName }
-        if let name = participantNames[fromAccountId] { return name }
-        return KordiPipIdentity.isPip(accountId: fromAccountId) ? KordiPipIdentity.displayName : fallback
+        if isSystemNotice(kind: messageKind) || isServiceAccount(fromAccountId) { return displayName }
+        return participantNames[fromAccountId] ?? fallback
     }
 }
 

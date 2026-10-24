@@ -52,10 +52,8 @@ struct IdentityAvatar: View {
 
     @ViewBuilder
     private var fallback: some View {
-        if isSystem {
+        if isSystem || isPip {
             KordiSystemAvatar()
-        } else if isPip {
-            PipMarkAvatar()
         } else if isKordiSupport {
             KordiSupportAvatar()
         } else {
@@ -136,21 +134,19 @@ struct AvatarActionPill: View {
     }
 }
 
-/// PiP, the built-in plan agent. Matched by its system account id or the
-/// exact display name, the same way Kordi Support is.
+/// The built-in plan agent. Its account still posts plans, but the app shows
+/// it as System with the gray Kordi bird, like every server notice.
 enum KordiPipIdentity {
     static let accountId = "acct_kordi_pip"
     static let agentId = "cloud_agent_kordi_pip"
-    static let displayName = "PiP"
-    static let tag = "Built-in agent"
+    /// The name the agent's account carried before it showed as System.
+    static let legacyName = "PiP"
 
-    /// PiP is a built-in agent, not a person: it posts in the chat but is never
-    /// counted, named, or pictured as a member.
-    /// PiP's name, in any capitalisation, so messages from before the rename
-    /// ("PiP") keep its mark.
+    /// The legacy name, in any capitalisation, so messages loaded before the
+    /// server rename still show as System.
     static func isPipName(_ name: String?) -> Bool {
         name?.trimmingCharacters(in: .whitespacesAndNewlines)
-            .caseInsensitiveCompare(displayName) == .orderedSame
+            .caseInsensitiveCompare(legacyName) == .orderedSame
     }
 
     static func isPip(accountId: String?) -> Bool {
@@ -161,44 +157,6 @@ enum KordiPipIdentity {
         let normalizedSeed = seed?.trimmingCharacters(in: .whitespacesAndNewlines)
         if normalizedSeed == accountId || normalizedSeed == agentId { return true }
         return isPipName(name) && (normalizedSeed?.isEmpty ?? true)
-    }
-}
-
-/// PiP's mark: a chick with the crack it just made in its shell.
-struct PipMarkAvatar: View {
-    var body: some View {
-        GeometryReader { proxy in
-            let s = proxy.size.width / 64
-            ZStack {
-                Rectangle().fill(Color(red: 1.0, green: 0.957, blue: 0.839))
-                Circle().fill(Color(red: 0.941, green: 0.706, blue: 0.161))
-                    .frame(width: 44 * s, height: 44 * s)
-                    .offset(y: 2 * s)
-                Circle().fill(Color(red: 0.88, green: 0.33, blue: 0.35).opacity(0.35))
-                    .frame(width: 7 * s, height: 7 * s).offset(x: -13 * s, y: 8 * s)
-                Circle().fill(Color(red: 0.88, green: 0.33, blue: 0.35).opacity(0.35))
-                    .frame(width: 7 * s, height: 7 * s).offset(x: 13 * s, y: 8 * s)
-                Circle().fill(Color(red: 0.09, green: 0.1, blue: 0.12))
-                    .frame(width: 5.6 * s, height: 5.6 * s).offset(x: -7.5 * s, y: -2 * s)
-                Circle().fill(Color(red: 0.09, green: 0.1, blue: 0.12))
-                    .frame(width: 5.6 * s, height: 5.6 * s).offset(x: 7.5 * s, y: -2 * s)
-                Path { path in
-                    path.move(to: CGPoint(x: 32 * s, y: 34 * s))
-                    path.addLine(to: CGPoint(x: 27.5 * s, y: 39.5 * s))
-                    path.addLine(to: CGPoint(x: 36.5 * s, y: 39.5 * s))
-                    path.closeSubpath()
-                }
-                .fill(Color(red: 0.886, green: 0.451, blue: 0.11))
-                Path { path in
-                    path.move(to: CGPoint(x: 23 * s, y: 14 * s))
-                    path.addLine(to: CGPoint(x: 26.6 * s, y: 18.6 * s))
-                    path.addLine(to: CGPoint(x: 23.9 * s, y: 22.2 * s))
-                    path.addLine(to: CGPoint(x: 28.4 * s, y: 24.9 * s))
-                }
-                .stroke(Color(red: 0.09, green: 0.1, blue: 0.12).opacity(0.55), style: StrokeStyle(lineWidth: 2 * s, lineCap: .round))
-            }
-        }
-        .aspectRatio(1, contentMode: .fit)
     }
 }
 

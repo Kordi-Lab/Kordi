@@ -8,7 +8,8 @@ use std::{env, fmt};
 
 pub const DEFAULT_PIP_ACCOUNT_ID: &str = "acct_kordi_pip";
 pub const DEFAULT_PIP_AGENT_ID: &str = "cloud_agent_kordi_pip";
-pub const DEFAULT_PIP_NAME: &str = "PiP";
+/// People see the plan agent as System, like every other server notice.
+pub const DEFAULT_PIP_NAME: &str = crate::system_account::SYSTEM_DISPLAY_NAME;
 pub const DEFAULT_PIP_SUBTITLE: &str = "Keeps plans in this chat honest";
 pub const DEFAULT_PIP_OWNER_EMAIL: &str = "pip@kordi.ai";
 pub const DEFAULT_PIP_OPENAI_MODEL: &str = "gpt-5.6-luna";
@@ -326,7 +327,7 @@ mod tests {
                 .unwrap();
         assert_eq!(config.account_id, DEFAULT_PIP_ACCOUNT_ID);
         assert_eq!(config.agent_id, DEFAULT_PIP_AGENT_ID);
-        assert_eq!(config.name, "PiP");
+        assert_eq!(config.name, "System");
         assert_eq!(config.provider_auth.api_key(), "sk-test");
         assert_eq!(config.provider_auth.model(), DEFAULT_PIP_OPENAI_MODEL);
         assert!(!format!("{:?}", config.provider_auth).contains("sk-test"));

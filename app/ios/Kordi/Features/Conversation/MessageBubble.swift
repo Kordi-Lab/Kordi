@@ -258,7 +258,7 @@ struct MessageBubble: View, Equatable {
                 if isThreadLayout {
                     if let source = visibleReplySource { quoteLine(source) }
                     if !groupedWithPrevious || visibleReplySource != nil {
-                        ThreadMessageHeader(message: message, authorName: authorAvatar.name, avatarSeed: authorAvatar.seed)
+                        ThreadMessageHeader(message: message, authorName: authorAvatar.name)
                     }
                 }
                 if let position = message.agentQueuePosition {
@@ -704,20 +704,10 @@ struct MessageBubble: View, Equatable {
     }
 
     private var authorHeader: some View {
-        HStack(spacing: 6) {
-            Text(message.authorName)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(chatTheme.accent)
-                .lineLimit(1)
-            if KordiPipIdentity.matches(name: message.authorName, seed: authorAvatar.seed) {
-                Text(KordiPipIdentity.tag)
-                    .font(.caption2.weight(.medium))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color(red: 0.941, green: 0.706, blue: 0.161).opacity(0.18), in: Capsule())
-                    .foregroundStyle(Color(red: 0.353, green: 0.239, blue: 0.0))
-            }
-        }
+        Text(message.authorName)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(chatTheme.accent)
+            .lineLimit(1)
     }
 
     /// A message that is only a plan card shows the card on its own, without
