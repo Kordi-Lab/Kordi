@@ -29,6 +29,7 @@ struct DocumentAgentWorkingLine: View {
 
 /// "Could not answer", with Retry when the viewer can post the mention again.
 struct DocumentAgentFailedLine: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let onRetry: (() -> Void)?
 
     var body: some View {
@@ -40,7 +41,7 @@ struct DocumentAgentFailedLine: View {
                 Button("Retry", action: onRetry)
                     .font(.caption.weight(.semibold))
                     .buttonStyle(.plain)
-                    .foregroundStyle(KordiTheme.signalBlue)
+                    .foregroundStyle(chatTheme.accent)
                     .frame(minHeight: 28)
                     .contentShape(Rectangle())
             }

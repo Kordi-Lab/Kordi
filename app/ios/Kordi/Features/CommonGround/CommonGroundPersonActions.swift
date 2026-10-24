@@ -3,6 +3,7 @@ import SwiftUI
 /// Add (or Requested, Accept, Message) and Meet for one person, as glass
 /// tiles. Message and Meet lead into the Kordi chat.
 struct CommonGroundPersonActions: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: CommonGroundModel
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.commonGroundOpenConversation) private var openConversation
@@ -18,12 +19,12 @@ struct CommonGroundPersonActions: View {
     var body: some View {
         if action != .hidden {
             CommonGroundActions(columns: canMeet ? 2 : 1) {
-                SessionProfileActionButton(title: action.title, symbol: action.symbol, tint: commonGroundTint) {
+                SessionProfileActionButton(title: action.title, symbol: action.symbol, tint: chatTheme.accent) {
                     Task { await perform(action) }
                 }
                 .disabled(action == .requested || model.busy != nil)
                 if canMeet {
-                    SessionProfileActionButton(title: "Meet", symbol: "calendar", tint: commonGroundTint) {
+                    SessionProfileActionButton(title: "Meet", symbol: "calendar", tint: chatTheme.accent) {
                         meets = true
                     }
                     .disabled(model.busy != nil)

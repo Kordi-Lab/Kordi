@@ -32,6 +32,7 @@ struct AgentSessionSectionHeader: View {
 }
 
 struct AgentSessionRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let conversation: ConversationSummary
     var compact = false
@@ -134,7 +135,7 @@ struct AgentSessionRow: View {
         Text(relativeTimestamp)
             .font(nested ? .footnote : compact ? .caption2 : .caption)
             .fixedSize(horizontal: true, vertical: false)
-            .foregroundStyle(conversation.hasUnreadAttention && !isMuted ? KordiTheme.signalBlue : .secondary)
+            .foregroundStyle(conversation.hasUnreadAttention && !isMuted ? chatTheme.accent : .secondary)
             .lineLimit(1)
     }
 

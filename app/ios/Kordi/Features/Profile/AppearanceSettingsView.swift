@@ -150,6 +150,7 @@ struct AppearanceSettingsView: View {
 
 /// Round swatch: the theme's chat background top left, its outgoing bubble bottom right.
 private struct ChatThemeDot: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let theme: KordiChatTheme
     let isSelected: Bool
     let action: () -> Void
@@ -174,7 +175,7 @@ private struct ChatThemeDot: View {
                 .padding(2)
                 .overlay {
                     if isSelected {
-                        Circle().strokeBorder(KordiTheme.signalBlue, lineWidth: 2).padding(-2)
+                        Circle().strokeBorder(chatTheme.accent, lineWidth: 2).padding(-2)
                     }
                 }
                 .frame(width: 44, height: 44)
@@ -189,6 +190,7 @@ private struct ChatThemeDot: View {
 
 /// Rounded-square home screen icon thumbnail.
 private struct AppIconThumbnail: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     static let size: CGFloat = 58
 
     let icon: KordiAppIcon
@@ -212,7 +214,7 @@ private struct AppIconThumbnail: View {
                 .overlay {
                     if isSelected {
                         RoundedRectangle(cornerRadius: Self.size * 0.2237 + 3, style: .continuous)
-                            .strokeBorder(KordiTheme.signalBlue, lineWidth: 2)
+                            .strokeBorder(chatTheme.accent, lineWidth: 2)
                     }
                 }
                 .overlay(alignment: .topTrailing) {
@@ -221,7 +223,7 @@ private struct AppIconThumbnail: View {
                             .font(.system(size: 8, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(width: 16, height: 16)
-                            .background(KordiTheme.signalBlue, in: Circle())
+                            .background(chatTheme.accent, in: Circle())
                             .offset(x: 2, y: -2)
                     }
                 }
@@ -237,6 +239,7 @@ private struct AppIconThumbnail: View {
 
 /// Example card with the option name under it.
 private struct AppearanceOptionCard<Preview: View>: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let title: String
     let identifier: String
     let isSelected: Bool
@@ -254,7 +257,7 @@ private struct AppearanceOptionCard<Preview: View>: View {
                     .clipShape(shape)
                     .overlay {
                         shape.strokeBorder(
-                            isSelected ? KordiTheme.signalBlue : AppearanceExampleColors.hairline,
+                            isSelected ? chatTheme.accent : AppearanceExampleColors.hairline,
                             lineWidth: isSelected ? 2 : 1
                         )
                     }
@@ -264,7 +267,7 @@ private struct AppearanceOptionCard<Preview: View>: View {
                                 .font(.system(size: 8, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(width: 16, height: 16)
-                                .background(KordiTheme.signalBlue, in: Circle())
+                                .background(chatTheme.accent, in: Circle())
                                 .padding(5)
                         }
                     }
