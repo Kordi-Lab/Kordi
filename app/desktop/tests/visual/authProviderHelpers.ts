@@ -36,7 +36,7 @@ export const defaultModel = (id: string) => {
 export const secretLikeText = /token|secret|bearer|sk-|profile:|preview-(work|personal)/i;
 export const callbackHint = "After you approve in the browser it will land on a localhost page that cannot load. Copy that page's full address and paste it here.";
 // ChatGPT sign-in (OMP openai-codex) and API keys (OMP openai) share one OpenAI row.
-export const expectedProviderRows = 72;
+export const expectedProviderRows = 77;
 
 export async function openPreview(page: Page, variant: 'settings' | 'start' | 'login', options: { theme?: 'light' | 'dark'; provider?: string; method?: string; flags?: string[] } = {}) {
   const offOrigin: string[] = [];
