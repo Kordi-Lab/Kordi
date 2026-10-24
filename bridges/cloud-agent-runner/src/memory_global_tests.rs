@@ -80,7 +80,7 @@ fn prompt_lists_global_memories_first_then_conversation_and_group() {
         assert!(section.contains(name), "{name}");
     }
     assert!(section.contains("`group` only for what the group shares and every member may see"));
-    assert!(section.contains("filed to their Work, Health or Daily tasks profile by category"));
+    assert!(section.contains("filed to their Work, Health or Daily profile by category"));
     assert!(section.contains("global `account`"));
 }
 
