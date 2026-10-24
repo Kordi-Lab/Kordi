@@ -167,6 +167,27 @@ async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_pa
         assert_eq!(context.status(), StatusCode::OK);
         let progress=router.clone().oneshot(runner_post(&format!("/v1/cloud/agent-runs/{child}/subsession-progress"),json!({"runnerId":"child-executor","toolCallId":"search-one","toolName":"web_search"}))).await.unwrap();
         assert_eq!(progress.status(), StatusCode::OK);
+        for call in ["read-one", "read-one", "read-two"] {
+            let progress=router.clone().oneshot(runner_post(&format!("/v1/cloud/agent-runs/{child}/subsession-progress"),json!({"runnerId":"child-executor","toolCallId":call,"toolName":"read_session"}))).await.unwrap();
+            assert_eq!(progress.status(), StatusCode::OK);
+        }
+        let uri = format!("/v1/cloud/agent-subsessions/{id}?includeMessages=true");
+        let running = read_json(
+            router
+                .clone()
+                .oneshot(get_with_token(&uri, &owner.token))
+                .await
+                .unwrap(),
+        )
+        .await;
+        // Tool calls are run activity, never one transcript message each.
+        assert_eq!(running["messages"].as_array().unwrap().len(), 1);
+        assert_eq!(running["activity"]["toolCount"], 3);
+        let tools = running["activity"]["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 3);
+        assert_eq!(tools[2]["name"], "read_session");
+        assert_eq!(tools[2]["status"], "running");
+        assert!(tools[..2].iter().all(|tool| tool["status"] == "completed"));
         let completed = router
             .clone()
             .oneshot(runner_post(
@@ -177,7 +198,6 @@ async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_pa
             .unwrap();
         assert_eq!(completed.status(), StatusCode::OK);
         assert!(read_json(completed).await["run"]["responseMessageId"].is_null());
-        let uri = format!("/v1/cloud/agent-subsessions/{id}?includeMessages=true");
         let result = router
             .clone()
             .oneshot(get_with_token(&uri, &peer.token))
@@ -186,6 +206,12 @@ async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_pa
         assert_eq!(result.status(), StatusCode::OK);
         let result = read_json(result).await;
         assert_eq!(result["status"], "done");
+        assert_eq!(result["messages"].as_array().unwrap().len(), 2);
+        assert!(result["activity"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|tool| tool["status"] == "completed"));
         assert_eq!(result["agentId"], agent);
         assert_eq!(
             result["messages"][0]["text"],
