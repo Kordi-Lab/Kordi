@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A card's look in the wallet. Work, Health and Daily tasks follow their
+/// A card's look in the wallet. Work, Health and Daily follow their
 /// kind; a custom profile is drawn as a Workshop, Research group or Custom
 /// card. The server stores each profile's design; a custom card without
 /// one is guessed from its name. The ten colours are plain backgrounds any
@@ -58,7 +58,7 @@ enum CommonGroundCardDesign: String, CaseIterable, Identifiable {
         switch self {
         case .work: "Work"
         case .health: "Health"
-        case .daily: "Daily tasks"
+        case .daily: "Daily"
         case .workshop: "Workshop"
         case .research: "Research group"
         case .custom: "Custom"
@@ -71,7 +71,7 @@ enum CommonGroundCardDesign: String, CaseIterable, Identifiable {
         switch self {
         case .work: "briefcase"
         case .health: "leaf"
-        case .daily: "checklist"
+        case .daily: "cup.and.saucer"
         case .workshop: "lanyardcard"
         case .research: "building.columns"
         default: "sparkles"
@@ -120,7 +120,7 @@ enum CommonGroundCardDesign: String, CaseIterable, Identifiable {
         return .custom
     }
 
-    /// Work, Health and Daily tasks are in a wallet at most once; the
+    /// Work, Health and Daily are in a wallet at most once; the
     /// other designs are custom profiles and can repeat.
     static func isAvailable(_ design: CommonGroundCardDesign, in profiles: [CommonGroundProfileSummary]) -> Bool {
         !design.kind.isFixed || !profiles.contains { $0.kind == design.kind.rawValue }
@@ -254,7 +254,7 @@ struct CommonGroundCardSurface: View {
 }
 
 /// Each design's texture, drawn with Canvas: a grid for Work, rings for
-/// Health and Research, ruled lines for Daily tasks, stripes for Workshop
+/// Health and Research, ruled lines for Daily, stripes for Workshop
 /// and dots for Custom.
 struct CommonGroundCardPattern: View {
     let design: CommonGroundCardDesign

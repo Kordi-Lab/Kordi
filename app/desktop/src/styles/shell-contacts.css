@@ -287,6 +287,30 @@
   box-shadow: 0 0 0 2px var(--app-main-bg);
 }
 
+/* Group rows: one initial tile per group, coloured from a fixed muted palette by group id. */
+
+:is(.app-contacts-page, .app-contacts-list-column) .app-contact-row.app-group-row {
+  min-height: 46px;
+}
+
+
+.app-group-show-all {
+  padding: 4px 10px 4px 50px;
+  border: 0;
+  background: transparent;
+  color: var(--utility-muted-text);
+}
+
+.app-group-show-all:hover {
+  color: var(--utility-foreground);
+}
+
+.app-group-show-all:focus-visible {
+  outline: 2px solid var(--app-quiet-control-focus-ring);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
 .app-contacts-leading-detail {
   overflow: hidden;
 }
