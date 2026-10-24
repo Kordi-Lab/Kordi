@@ -17,6 +17,7 @@ private struct ProjectPickerPresentation: Identifiable {
 }
 
 struct ChatHomeView: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var model: AppModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -768,7 +769,7 @@ struct ChatHomeView: View {
             ChatCircularSwipeAction(id: "pin", label: isPinned ? "Unpin" : "Pin", systemImage: isPinned ? "pin.slash" : "pin", color: .green) {
                 togglePinned(conversation)
             },
-            ChatCircularSwipeAction(id: "unread", label: isUnread ? "Mark as read" : "Mark as unread", systemImage: isUnread ? "checkmark.message" : "envelope.badge", color: KordiTheme.signalBlue) {
+            ChatCircularSwipeAction(id: "unread", label: isUnread ? "Mark as read" : "Mark as unread", systemImage: isUnread ? "checkmark.message" : "envelope.badge", color: chatTheme.accent) {
                 toggleUnread(conversation)
             }
         ]
@@ -798,7 +799,7 @@ struct ChatHomeView: View {
             ChatCircularSwipeAction(id: "pin", label: groupIsPinned(space) ? "Unpin group" : "Pin group", systemImage: groupIsPinned(space) ? "pin.slash" : "pin", color: .green) {
                 toggleGroupPinned(space)
             },
-            ChatCircularSwipeAction(id: "read", label: "Mark group as read", systemImage: "checkmark.message", color: KordiTheme.signalBlue) {
+            ChatCircularSwipeAction(id: "read", label: "Mark group as read", systemImage: "checkmark.message", color: chatTheme.accent) {
                 Task { await model.markGroupSpaceRead(space) }
             }
         ]
@@ -1704,5 +1705,5 @@ private struct ErrorBanner: View {
 #Preview("Chats · Contact page") {
     NavigationStack { ChatHomeView(channel: .contact) }
         .environmentObject(AppModel(previewMode: true))
-        .tint(KordiTheme.signalBlue)
+        .tint(KordiChatTheme.classic.accent)
 }

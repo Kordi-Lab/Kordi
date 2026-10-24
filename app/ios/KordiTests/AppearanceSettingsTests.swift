@@ -55,4 +55,24 @@ final class AppearanceSettingsTests: XCTestCase {
         XCTAssertEqual(try migrated(v1: nil).0, "classic")
         XCTAssertEqual(try migrated(v1: "ocean", v2: "quiet").0, "quiet")
     }
+
+    func testSelectedChatThemeAccentCoordinatesTheShell() throws {
+        let kordiDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi")
+        func source(_ path: String) throws -> String {
+            try String(contentsOf: kordiDirectory.appendingPathComponent(path), encoding: .utf8)
+        }
+        let appSource = try source("App/KordiApp.swift")
+
+        XCTAssertTrue(appSource.contains(".tint(selectedChatTheme.accent)"))
+        for path in [
+            "App/KordiApp.swift",
+            "Features/Chats/ConversationRow.swift",
+            "Features/Conversation/PinnedMessageBar.swift",
+        ] {
+            XCTAssertFalse(try source(path).contains("KordiTheme.signalBlue"), path)
+        }
+    }
 }

@@ -7,6 +7,7 @@ import UIKit
 struct LoginView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Namespace private var modeSelection
 
@@ -339,7 +340,7 @@ struct LoginView: View {
                 .submitLabel(.next)
                 .focused($focusedField, equals: .displayName)
                 .onSubmit { focusedField = .email }
-                .kordiLoginField(isFocused: focusedField == .displayName)
+                .kordiLoginField(isFocused: focusedField == .displayName, accent: chatTheme.accent)
         }
     }
 
@@ -369,7 +370,7 @@ struct LoginView: View {
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
             content()
-                .kordiLoginField(isFocused: fieldIsFocused(label))
+                .kordiLoginField(isFocused: fieldIsFocused(label), accent: chatTheme.accent)
             if let hint {
                 Text(hint)
                     .font(.caption)
@@ -476,13 +477,13 @@ struct LoginView: View {
 }
 
 private extension View {
-    func kordiLoginField(isFocused: Bool) -> some View {
+    func kordiLoginField(isFocused: Bool, accent: Color) -> some View {
         padding(.horizontal, 16)
             .frame(minHeight: 52)
             .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
             .overlay {
                 if isFocused {
-                    Capsule().stroke(KordiTheme.signalBlue.opacity(0.55), lineWidth: 1.5)
+                    Capsule().stroke(accent.opacity(0.55), lineWidth: 1.5)
                 }
             }
     }
@@ -519,5 +520,5 @@ private struct KordiLoginButtonStyle: ButtonStyle {
 #Preview("Login") {
     LoginView()
         .environmentObject(AppModel(previewMode: false))
-        .tint(KordiTheme.signalBlue)
+        .tint(KordiChatTheme.classic.accent)
 }

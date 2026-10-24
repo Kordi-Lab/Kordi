@@ -1432,7 +1432,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(bubbleSource.contains("quoteLine(source)"))
         XCTAssertTrue(bubbleSource.contains("inlineAccent: bubbleInlineAccentColor"))
         XCTAssertTrue(markdownSource.contains("@Entry var messageInlineAccent: Color? = nil"))
-        XCTAssertTrue(markdownSource.contains("inlineAccent ?? KordiTheme.signalBlue"))
+        XCTAssertTrue(markdownSource.contains("inlineAccent ?? chatTheme.accent"))
     }
 
     func testSyntheticConversationPreviewExposesThemeControls() throws {

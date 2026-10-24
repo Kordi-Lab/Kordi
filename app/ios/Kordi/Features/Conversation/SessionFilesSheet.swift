@@ -148,6 +148,7 @@ private struct SessionFileItem: Identifiable {
 }
 
 private struct SessionFileRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let item: SessionFileItem
     let isLoading: Bool
     let onReview: () -> Void
@@ -159,13 +160,13 @@ private struct SessionFileRow: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(item.attachment.kind == .image
-                              ? KordiTheme.signalBlue.opacity(0.12)
+                              ? chatTheme.accent.opacity(0.12)
                               : Color(uiColor: .secondarySystemGroupedBackground))
                     if isLoading {
                         ProgressView().controlSize(.small)
                     } else {
                         Image(systemName: item.attachment.kind == .image ? "photo.fill" : "doc.text.fill")
-                            .foregroundStyle(item.attachment.kind == .image ? KordiTheme.signalBlue : .secondary)
+                            .foregroundStyle(item.attachment.kind == .image ? chatTheme.accent : .secondary)
                     }
                 }
                 .frame(width: 48, height: 48)

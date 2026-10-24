@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ProviderAuthenticationDetailView: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: AppModel
     let provider: ProviderAuthenticationDefinition
 
@@ -100,7 +101,7 @@ struct ProviderAuthenticationDetailView: View {
                     .swipeActions(edge: .leading) {
                         if !isActive(profile) {
                             Button("Make active") { model.makeAccountActive(profile) }
-                                .tint(KordiTheme.signalBlue)
+                                .tint(chatTheme.accent)
                         }
                     }
                 }
