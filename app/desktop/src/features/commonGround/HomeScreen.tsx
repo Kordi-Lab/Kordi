@@ -21,7 +21,7 @@ export function EmptyWallet({ state, store }: { state: CgState; store: CommonGro
         <span className="cg-card-glyph"><CardGlyph design={design} icon={profile?.icon} kind={profile?.kind} /></span>
       </span>
       <h2>{profile?.name ?? 'Work'}</h2>
-      <p>{profile?.focus || 'Your agent writes it'}</p>
+      {profile?.focus ? <p>{profile.focus}</p> : null}
       <button type="button" className="cg-mbtn is-primary" onClick={() => store.open({ name: 'build' })}>Build</button>
       <CgNotice text={state.notice} />
     </div>

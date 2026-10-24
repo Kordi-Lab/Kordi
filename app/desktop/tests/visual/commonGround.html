@@ -616,7 +616,7 @@ async function paintBuild(next) {
     const files = state.sources.map((s) => s.label.split("/").pop());
     const summary = files.length ? files.slice(0, 2).join(", ") + (files.length > 2 ? ` +${files.length - 2}` : "") : "No agent files found";
     app.innerHTML = `${backButton()}
-      <div class="hero">${avatar("You", 92, "hero-avatar")}<h1>Build your profile</h1><div class="status">Your agent writes it</div></div>
+      <div class="hero">${avatar("You", 92, "hero-avatar")}<h1>Build your profile</h1></div>
       <div class="section"><div class="section-title">Connectors</div><div class="group" style="--inset:58px">
         ${CONNECTORS.map(connectorRow).join("")}
         <div class="row">${iconTile("device")}<div class="grow"><div>Agents on this Mac</div><div class="sub">${esc(summary)}</div></div>

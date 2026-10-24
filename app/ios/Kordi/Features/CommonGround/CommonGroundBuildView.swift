@@ -40,7 +40,7 @@ struct CommonGroundBuildView: View {
     var body: some View {
         Group {
             if model.isBuilding {
-                CommonGroundWaitPage(steps: ["Reading sources", "Writing your card"], onBack: back) {
+                CommonGroundWaitPage(steps: ["Reading sources", "Building your card"], onBack: back) {
                     await model.waitForBuild()
                 }
             } else {
@@ -58,7 +58,7 @@ struct CommonGroundBuildView: View {
 
     private var sources: some View {
         CommonGroundPage(onBack: back) {
-            CommonGroundHero(title: model.buildTitle, status: model.currentProfile?.focusLine ?? "Your agent writes it") {
+            CommonGroundHero(title: model.buildTitle, status: model.currentProfile?.focusLine ?? "") {
                 CommonGroundAvatar(person: model.me, size: 92)
             }
             VStack(spacing: 16) {
