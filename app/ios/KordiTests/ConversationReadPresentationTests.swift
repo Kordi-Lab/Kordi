@@ -996,7 +996,7 @@ final class ConversationReadPresentationTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(source.contains("BlobEmojiPreviewText(text: session.lastMessage.nonEmpty ?? \"No messages yet\")"))
+        XCTAssertTrue(source.contains("BlobEmojiPreviewText(text: DocumentTitles.shared.previewText(session.lastMessage, attachment: session.lastAttachment).nonEmpty ?? \"No messages yet\")"))
         XCTAssertFalse(source.contains("messageCountText"))
     }
 
@@ -1126,7 +1126,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(actionSource.contains("actionButton(\"Edit\""))
         XCTAssertTrue(actionSource.contains("mediaAttachment == nil ? \"Delete\" : \"Delete photo\""))
         XCTAssertTrue(actionSource.contains("deleteChoiceButton(deleteForEveryoneLabel)"))
-        XCTAssertTrue(actionSource.contains("deleteChoiceButton(mediaAttachment == nil ? \"Delete for me\" : \"Delete photo for me\")"))
+        XCTAssertTrue(actionSource.contains("deleteChoiceButton(message.isLocalFailedSend ? \"Remove failed message\" : mediaAttachment == nil ? \"Delete for me\" : \"Delete photo for me\")"))
         XCTAssertTrue(actionSource.contains("isConfirmingDelete = true"))
         XCTAssertTrue(conversationSource.contains("? \"Delete for everyone\""))
         XCTAssertTrue(conversationSource.contains(": \"Delete for me and \\(conversation.displayName)\""))
@@ -1473,7 +1473,7 @@ final class ConversationReadPresentationTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(source.contains("scrollAnchor: message.author == .me ? .trailing : .leading"))
+        XCTAssertTrue(source.contains("scrollAnchor: !isThreadLayout && message.author == .me ? .trailing : .leading"))
         XCTAssertTrue(source.contains(".defaultScrollAnchor(scrollAnchor)"))
         XCTAssertTrue(source.contains(".background(Color(uiColor: .tertiarySystemFill), in: Capsule())"))
         XCTAssertFalse(source.contains("KordiTheme.agentViolet.opacity(0.14)"))
@@ -1585,7 +1585,8 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(overlaySource.contains(".ignoresSafeArea()"))
         XCTAssertTrue(overlaySource.contains("MessageActionWindowOverlayView"))
         XCTAssertTrue(overlaySource.contains("passthroughFrame.contains(point)"))
-        XCTAssertTrue(overlaySource.contains("withDuration: 0.18"))
+        XCTAssertTrue(overlaySource.contains("removalDuration: TimeInterval = 0.18"))
+        XCTAssertTrue(overlaySource.contains("withDuration: removalDuration"))
         XCTAssertTrue(overlaySource.contains("UIAccessibility.isReduceMotionEnabled"))
         XCTAssertTrue(overlaySource.contains(".curveEaseOut"))
         XCTAssertFalse(overlaySource.contains("acceptsInput"))
