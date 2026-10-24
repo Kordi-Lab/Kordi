@@ -160,14 +160,7 @@ struct AccountSheet: View {
                     )
                 }
             case .memory:
-                MemorySettingsView(
-                    service: model.makeMemoryService(),
-                    accountLabel: MemoryPresentation.accountLabel(
-                        email: model.account?.primaryEmail,
-                        kordiId: model.account?.kordiId
-                    ),
-                    viewerAccountId: model.account?.accountId
-                )
+                MemorySettingsView(appModel: model)
             case .appearance:
                 AppearanceSettingsView()
             }

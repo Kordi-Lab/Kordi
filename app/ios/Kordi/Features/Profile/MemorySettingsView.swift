@@ -1,13 +1,32 @@
 import SwiftUI
 
-/// Account memory settings: the switches, global memories, and Forget everything.
-/// The sections and copy match the desktop Memory settings.
+/// Account memory settings: the switches, every memory of the account with its
+/// category, cards and origin, and Forget everything. The sections and copy
+/// match the desktop Memory settings.
 struct MemorySettingsView: View {
     @StateObject private var model: MemorySettingsModel
     @State private var confirmsForget = false
 
-    init(service: any MemoryService, accountLabel: String?, viewerAccountId: String? = nil) {
-        _model = StateObject(wrappedValue: MemorySettingsModel(service: service, accountLabel: accountLabel, viewerAccountId: viewerAccountId))
+    init(service: any MemoryService, accountLabel: String?, viewerAccountId: String? = nil,
+         cardsEnabled: Bool = false, conversations: [ConversationSummary] = []) {
+        _model = StateObject(wrappedValue: MemorySettingsModel(
+            service: service, accountLabel: accountLabel, viewerAccountId: viewerAccountId,
+            cardsEnabled: cardsEnabled, conversations: conversations
+        ))
+    }
+
+    /// Account › Memory for the signed-in account. Card labels need
+    /// `memoryVersion` 3 and profiles (`commonGroundVersion` 2).
+    init(appModel: AppModel) {
+        let capabilities = appModel.memoryCapabilities
+        self.init(
+            service: appModel.makeMemoryService(),
+            accountLabel: MemoryPresentation.accountLabel(email: appModel.account?.primaryEmail, kordiId: appModel.account?.kordiId),
+            viewerAccountId: appModel.account?.accountId,
+            cardsEnabled: MemoryPresentation.hasCardChoices(capabilities)
+                && (CommonGroundAvailability.hasProfiles(capabilities: capabilities) || appModel.isPreviewMode),
+            conversations: appModel.conversations
+        )
     }
 
     var body: some View {
@@ -20,7 +39,8 @@ struct MemorySettingsView: View {
                 if let settings = model.settings {
                     memorySection(settings)
                     SettingsDivider()
-                    globalMemoriesSection(settings)
+                    MemoryOrganizerSection(model: model, memoryEnabled: settings.memoryEnabled)
+                    forgetEverything
                 } else if model.isLoading || model.errorMessage == nil {
                     HStack(spacing: 10) {
                         ProgressView()
@@ -109,22 +129,9 @@ struct MemorySettingsView: View {
         .accessibilityIdentifier("memory-sensitive-toggle")
     }
 
+    /// Forget everything covers every scope, so it stays while any memory exists.
     @ViewBuilder
-    private func globalMemoriesSection(_ settings: CloudMemorySettings) -> some View {
-        let memories = model.globalMemories
-        SettingsSectionTitle(MemoryPresentation.globalMemoriesTitle(count: memories.count))
-        if !settings.memoryEnabled {
-            SettingsCaption("Memory is off. These are kept but not read.")
-        } else {
-            // The server refuses new memories while memory is off.
-            MemoryAddRow(model: model, target: .global)
-        }
-        if memories.isEmpty {
-            SettingsCaption("No global memories yet.")
-        } else {
-            MemoryRowsView(model: model, memories: memories)
-        }
-        // Forget everything covers every scope, so it stays while any memory exists.
+    private var forgetEverything: some View {
         if !model.ownMemories.isEmpty {
             Button {
                 confirmsForget = true
@@ -142,10 +149,9 @@ struct MemorySettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.top, 4)
+            .padding(.top, 12)
             .disabled(model.isMutating)
             .accessibilityIdentifier("memory-forget-everything")
         }
-        SettingsCaption("Other memories are on each conversation's Memory tab.")
     }
 }

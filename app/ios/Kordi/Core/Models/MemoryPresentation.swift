@@ -27,6 +27,11 @@ enum MemoryPresentation {
         (capabilities?.memoryVersion ?? 0) >= 2
     }
 
+    /// A memory may feed several cards from `memoryVersion` 3 (#2035).
+    static func hasCardChoices(_ capabilities: CloudAuthCapabilities?) -> Bool {
+        (capabilities?.memoryVersion ?? 0) >= 3
+    }
+
     /// Chip labels per category, shared with the Mac.
     static let categoryLabels: [String: String] = [
         "work_context": "Work",
@@ -129,7 +134,7 @@ enum MemoryPresentation {
         .sorted(by: isNewer)
     }
 
-    private static func isNewer(_ lhs: CloudMemory, _ rhs: CloudMemory) -> Bool {
+    static func isNewer(_ lhs: CloudMemory, _ rhs: CloudMemory) -> Bool {
         let left = date(lhs.updatedAt) ?? .distantPast
         let right = date(rhs.updatedAt) ?? .distantPast
         return left == right ? lhs.memoryId < rhs.memoryId : left > right

@@ -23,6 +23,8 @@ final class CommonGroundModel: ObservableObject {
     let profilesEnabled: Bool
     /// `memoryVersion` 2: memories routed to profiles, listed on the card page.
     let memoriesEnabled: Bool
+    /// `memoryVersion` 3: Add to card and Remove from card on the card page.
+    let cardChoicesEnabled: Bool
     let defaults: UserDefaults
 
     @Published private(set) var owner: CommonGroundOwnerView?
@@ -58,12 +60,13 @@ final class CommonGroundModel: ObservableObject {
     /// The one-time move of designs kept on this device, run in the background.
     var designMove: Task<Void, Never>?
 
-    init(me: CommonGroundPerson, profilesEnabled: Bool = false, memoriesEnabled: Bool = false,
+    init(me: CommonGroundPerson, profilesEnabled: Bool = false, memoriesEnabled: Bool = false, cardChoicesEnabled: Bool = false,
          defaults: UserDefaults = .standard, context: @escaping Context) {
         self.me = me
         self.context = context
         self.profilesEnabled = profilesEnabled
         self.memoriesEnabled = memoriesEnabled
+        self.cardChoicesEnabled = cardChoicesEnabled
         self.defaults = defaults
     }
 

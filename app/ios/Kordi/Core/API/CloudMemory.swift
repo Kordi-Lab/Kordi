@@ -99,6 +99,10 @@ struct CloudMemory: Codable, Hashable, Identifiable {
     var confidence: String? = nil
     var profileId: String? = nil
     var profileKind: String? = nil
+    /// The cards the memory feeds, in profile order, and the cards the person
+    /// removed it from (`memoryVersion` 3, #2035); nil from older servers.
+    var profileIds: [String]? = nil
+    var excludedProfileIds: [String]? = nil
 
     var id: String { memoryId }
 }
@@ -150,6 +154,7 @@ struct CloudMemoryForgetResponse: Decodable {
 
 /// `PATCH /v1/cloud/memory/{id}`. Omitted fields keep their value; a
 /// cleared profile is sent as an explicit `"profileId": null`.
+/// `addProfileId` and `removeProfileId` change one card (`memoryVersion` 3).
 struct CloudMemoryUpdateRequest: Encodable {
     enum Profile: Equatable {
         case keep
@@ -160,13 +165,17 @@ struct CloudMemoryUpdateRequest: Encodable {
     var text: String? = nil
     var category: String? = nil
     var profile: Profile = .keep
+    var addProfileId: String? = nil
+    var removeProfileId: String? = nil
 
-    private enum CodingKeys: String, CodingKey { case text, category, profileId }
+    private enum CodingKeys: String, CodingKey { case text, category, profileId, addProfileId, removeProfileId }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(text, forKey: .text)
         try container.encodeIfPresent(category, forKey: .category)
+        try container.encodeIfPresent(addProfileId, forKey: .addProfileId)
+        try container.encodeIfPresent(removeProfileId, forKey: .removeProfileId)
         switch profile {
         case .keep: break
         case .move(let profileId): try container.encode(profileId, forKey: .profileId)
@@ -215,15 +224,15 @@ extension CloudAPIClient {
         return response.memory
     }
 
-    /// Files a memory under one of the owner's profiles, or under none when `profileId` is nil.
-    func moveMemory(token: String, memoryId: String, toProfile profileId: String?) async throws -> CloudMemory {
+    /// Changes a memory's category or cards with one `PATCH`.
+    func changeMemory(token: String, memoryId: String, _ request: CloudMemoryUpdateRequest) async throws -> CloudMemory {
         let segment = memoryId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? memoryId
         let response: CloudMemoryResponse = try await send(
             path: "/v1/cloud/memory/\(segment)",
             method: "PATCH",
             token: token,
-            body: CloudMemoryUpdateRequest(profile: profileId.map { .move($0) } ?? .clear),
-            fallback: "Could not move this memory. Try again."
+            body: request,
+            fallback: "Could not change this memory. Try again."
         )
         return response.memory
     }
