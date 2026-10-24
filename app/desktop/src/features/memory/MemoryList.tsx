@@ -16,9 +16,8 @@ import type { MemoryClient } from './memoryClient';
 import {
   LESSON_MAX_CHARS,
   lessonDateLabel,
-  lessonSourceLabel,
+  lessonOriginLabel,
   memoryErrorMessage,
-  memoryAddedBy,
   memoryOwnerCaption,
   validateLessonText,
   type MemoryAddTarget,
@@ -177,7 +176,7 @@ export function MemoryList({
 
   const renderLesson = (lesson: MemoryLesson) => {
     // Settings list only global memories and each conversation lists its own, so rows leave out the scope label.
-    const meta = `${lessonSourceLabel(lesson.source, memoryAddedBy(lesson, viewerAccountId))} · ${lessonDateLabel(lesson.updatedAt)}`;
+    const meta = `${lessonOriginLabel(lesson, viewerAccountId)} · ${lessonDateLabel(lesson.updatedAt)}`;
     if (edit?.lessonId === lesson.lessonId) return renderEditor(lesson, edit, meta);
     const prefix = lessonPrefix(lesson.text);
     const owner = memoryOwnerCaption(lesson, viewerAccountId);

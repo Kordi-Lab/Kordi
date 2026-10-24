@@ -215,6 +215,7 @@ test('the owner caption names group members and falls back without a name', () =
   assert.equal(memoryOwnerCaption(shared, 'acct-2'), null);
   assert.equal(memoryOwnerCaption({ scope: 'group' }, 'acct-1'), null);
   assert.equal(memoryOwnerCaption(shared, null), null);
+  assert.equal(memoryOwnerCaption({ ...shared, declarationType: 'model-inferred' }, 'acct-1'), null);
   assert.equal(memoryOwnerCaption({ ...shared, scope: 'conversation' }, 'acct-1'), null);
 });
 
