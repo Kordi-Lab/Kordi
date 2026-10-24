@@ -31,6 +31,25 @@ final class MemoryRoutingTests: XCTestCase {
         XCTAssertNil(MemoryPresentation.categoryLabel(for: "hcp-custom:unknown"))
     }
 
+    func testOriginLabelFollowsTheDeclarationTypeBeforeTheSource() throws {
+        func decode(scope: String = "global", source: String = "manual", owner: String = "acct_me", name: String? = nil, extra: String = "") throws -> CloudMemory {
+            let nameField = name.map { #","ownerName":"\#($0)""# } ?? ""
+            let json = #"{"memoryId":"m","scope":"\#(scope)","scopeId":"s","scopeLabel":null,"source":"\#(source)","text":"Use metric units.","createdAt":"2026-10-20T09:00:00Z","updatedAt":"2026-10-20T09:00:00Z","ownerAccountId":"\#(owner)"\#(nameField)\#(extra)}"#
+            return try JSONDecoder().decode(CloudMemory.self, from: Data(json.utf8))
+        }
+        let inferred = #","declarationType":"model-inferred","confidence":"high""#
+        XCTAssertEqual(MemoryPresentation.originLabel(try decode(extra: inferred), viewerAccountId: "acct_me"), "Saved by your agent · high confidence")
+        XCTAssertEqual(MemoryPresentation.originLabel(try decode(source: "outcome", extra: #","declarationType":"model-inferred""#), viewerAccountId: "acct_me"), "Saved by your agent")
+        XCTAssertEqual(MemoryPresentation.originLabel(try decode(), viewerAccountId: "acct_me"), "Added by you")
+        XCTAssertEqual(MemoryPresentation.originLabel(try decode(extra: #","declarationType":"user-declared""#), viewerAccountId: "acct_me"), "Added by you")
+        XCTAssertEqual(MemoryPresentation.originLabel(try decode(scope: "group", owner: "acct_priya", name: "Priya"), viewerAccountId: "acct_me"), "Added by Priya")
+        let theirs = try decode(scope: "group", owner: "acct_priya", name: "Priya", extra: #","declarationType":"model-inferred","confidence":"medium""#)
+        XCTAssertEqual(MemoryPresentation.originLabel(theirs, viewerAccountId: "acct_me"), "Saved by Priya · medium confidence")
+        XCTAssertNil(MemoryPresentation.ownerCaption(theirs, viewerAccountId: "acct_me"))
+        let mine = try decode(scope: "group", name: "Shu", extra: inferred)
+        XCTAssertEqual(MemoryPresentation.originLabel(mine, viewerAccountId: "acct_me"), "Saved by your agent · high confidence")
+    }
+
     func testMemoryDecodesWithAndWithoutRoutingFields() throws {
         let legacy = try JSONDecoder().decode(CloudMemory.self, from: Data(Self.legacyJSON.utf8))
         XCTAssertNil(legacy.category)
