@@ -16,9 +16,9 @@ use uuid::Uuid;
 
 use crate::chat_sync::models::SendMessageRequest;
 
+use super::addressing;
 use super::cards::{mark_card_seen, sync_card_messages};
 use super::config::PipConfig;
-use super::context;
 use super::input::{build_input, Candidate};
 use super::mentions::{encode_pip_message_with_mentions, resolve_mentions};
 use super::prompt::PIP_SYSTEM_PROMPT;
@@ -184,19 +184,10 @@ async fn enqueue(
         .filter_map(|hook| hook["name"].as_str())
         .collect();
     // New chat alone is checked for free first: small talk with no day, time,
-    // place, or plan word (or no answer while a card is open) never reaches
-    // the model.
+    // place, or plan word (or no answer while a card is open), and messages
+    // for an agent or already answered by one, never reach the model.
     let only_new_messages = hook_names == ["new_messages"];
-    let worth_a_look = !only_new_messages || {
-        let new_texts: Vec<String> = input["messages"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|message| message["isNew"] == json!(true) && message["fromPip"] != json!(true))
-            .filter_map(|message| message["text"].as_str().map(str::to_string))
-            .collect();
-        context::worth_a_look(&new_texts, !input["openCard"].is_null())
-    };
+    let worth_a_look = !only_new_messages || addressing::new_chat_worth_a_look(&input);
     if hook_names.is_empty() || !worth_a_look {
         // Nothing to react to after all (for example a card whose reminder
         // already fired). Advance the cursor so the row stops looking dirty.

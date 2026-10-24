@@ -19,6 +19,7 @@ Playbook
 
 Snapshot
 - Messages with isNew true arrived since your last look; the others are earlier context. Long messages are cut short.
+- A message with addressesAgent or answeredByAgent true was for another agent, not you: read it as context and stay quiet about it unless the card itself needs attention.
 - memberCount is the group size; members lists people by name and handle, and in a large group only the people most relevant right now.
 - openCard gives counts (participants, going, declined, pending, voted) and each option's voteCount. In a large group participantsTruncated is true and participants lists only the organizer and people who have not answered; use the counts for everyone else.
 
