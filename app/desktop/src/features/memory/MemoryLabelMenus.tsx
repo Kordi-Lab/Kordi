@@ -1,7 +1,6 @@
 import { Check, ChevronDown, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 
-import { cn } from '@/lib/utils';
 
 import { memoryCategoryLabel, type MemoryCategory } from './memoryCategory';
 import type { MemoryLesson } from './memoryModel';
@@ -14,7 +13,6 @@ import {
   memoryRowCards,
   type MemoryCard,
   type MemoryFilterLayer,
-  type MemoryFilters,
 } from './memoryOrganizerModel';
 
 type OpenMenu = 'category' | 'card' | null;
@@ -56,7 +54,6 @@ export type MemoryLabelsProps = {
   lesson: MemoryLesson;
   cards: readonly MemoryCard[];
   origin: MemoryOrigin;
-  filters: MemoryFilters;
   onToggleFilter: (layer: MemoryFilterLayer, value: string) => void;
   /** The category menu; false shows the category as a plain label. */
   categoryEditable: boolean;
@@ -73,7 +70,6 @@ export function MemoryLabels({
   lesson,
   cards,
   origin,
-  filters,
   onToggleFilter,
   categoryEditable,
   cardsEnabled,
@@ -89,7 +85,7 @@ export function MemoryLabels({
   const row = cardsEnabled ? memoryRowCards(lesson, cards) : { every: false, cards: [] };
   const addable = cardsEnabled ? addableCards(lesson, cards) : [];
   const filterPart = (layer: MemoryFilterLayer, value: string, label: string) => (
-    <button type="button" className="mo-part" aria-pressed={filters[layer].has(value)} onClick={() => onToggleFilter(layer, value)}>
+    <button type="button" className="mo-part" onClick={() => onToggleFilter(layer, value)}>
       {label}
     </button>
   );
@@ -100,7 +96,7 @@ export function MemoryLabels({
         open={menu === 'category'}
         onClose={close}
         trigger={(
-          <span data-memory-label="category" className={cn('mo-chip', filters.category.has(category) && 'is-on')}>
+          <span data-memory-label="category" className="mo-chip">
             {filterPart('category', category, memoryCategoryLabel(category) ?? '')}
             <button
               type="button"
@@ -133,7 +129,7 @@ export function MemoryLabels({
         ))}
       </MenuWrap>
     ) : (
-      <span data-memory-label="category" className={cn('mo-chip', filters.category.has(category) && 'is-on')}>
+      <span data-memory-label="category" className="mo-chip">
         {filterPart('category', category, memoryCategoryLabel(category) ?? '')}
       </span>
     )
@@ -143,12 +139,12 @@ export function MemoryLabels({
     <span className="mo-labels" data-memory-labels="">
       {categoryLabel}
       {row.every ? (
-        <span data-memory-label="every" className={cn('mo-chip is-card', filters.card.has(EVERY_CARD) && 'is-on')}>
+        <span data-memory-label="every" className="mo-chip is-card">
           {filterPart('card', EVERY_CARD, 'Every card')}
         </span>
       ) : null}
       {row.cards.map((card) => (
-        <span key={card.profileId} data-memory-label="card" data-profile-id={card.profileId} className={cn('mo-chip is-card', filters.card.has(card.profileId) && 'is-on')}>
+        <span key={card.profileId} data-memory-label="card" data-profile-id={card.profileId} className="mo-chip is-card">
           {filterPart('card', card.profileId, cardLabel(card))}
           <button type="button" className="mo-icon" aria-label={`Remove from ${cardLabel(card)}`} disabled={busy} onClick={() => onRemoveCard(card.profileId)}>
             <X aria-hidden="true" strokeWidth={2.4} />
@@ -193,8 +189,7 @@ export function MemoryLabels({
       <button
         type="button"
         data-memory-label="from"
-        className={cn('mo-chip is-from', filters.from.has(origin.key) && 'is-on')}
-        aria-pressed={filters.from.has(origin.key)}
+        className="mo-chip is-from"
         onClick={() => onToggleFilter('from', origin.key)}
       >
         {origin.label}

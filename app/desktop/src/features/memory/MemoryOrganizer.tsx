@@ -143,7 +143,6 @@ export function MemoryOrganizer({
       lesson={lesson}
       cards={cards}
       origin={originOf.get(lesson.lessonId) ?? memoryOrigin(lesson, originSources)}
-      filters={filters}
       onToggleFilter={onToggle}
       categoryEditable={categoriesEditable && canChangeCategory(lesson, viewerAccountId)}
       cardsEnabled={cardsEnabled}

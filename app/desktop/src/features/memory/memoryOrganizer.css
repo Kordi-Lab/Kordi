@@ -34,7 +34,6 @@
 .mo-chip.is-card { border: 1px solid var(--app-divider); background: none; }
 .mo-chip.is-add { padding: 0 7px; border: 1px dashed var(--app-divider); background: none; cursor: pointer; }
 .mo-chip.is-from { padding: 0 4px; background: none; cursor: pointer; }
-.mo-chip.is-on { border-color: transparent; background: var(--utility-foreground); color: var(--utility-background); }
 .mo-part, .mo-icon {
   display: inline-flex; height: 100%; align-items: center; border: 0; background: none; color: inherit; font: inherit; cursor: pointer;
 }
@@ -42,7 +41,6 @@
 .mo-icon { margin-left: -4px; padding: 0 5px 0 3px; border-radius: 0 999px 999px 0; }
 .mo-icon svg { width: 9px; height: 9px; }
 .mo-part:hover, .mo-icon:hover, .mo-chip.is-add:hover, .mo-chip.is-add[aria-expanded="true"], .mo-chip.is-from:hover { color: var(--utility-foreground); }
-.mo-chip.is-on .mo-part:hover, .mo-chip.is-on .mo-icon:hover, .mo-chip.is-from.is-on:hover { color: var(--utility-background); }
 .mo-part:disabled, .mo-icon:disabled, .mo-chip.is-add:disabled { cursor: default; opacity: 0.6; }
 .mo-wrap { position: relative; display: inline-flex; }
 .mo-menu {
