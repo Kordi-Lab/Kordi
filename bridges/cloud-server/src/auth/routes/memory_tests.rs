@@ -16,6 +16,7 @@ mod group_shared;
 mod isolation;
 mod runs;
 mod scope_rules;
+mod sources;
 
 const RUNNER_TOKEN: &str = "memory-tests-runner-token";
 
