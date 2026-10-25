@@ -50,7 +50,7 @@ fn request_body(
 }
 
 #[test]
-fn adaptive_models_emit_summarized_thinking_and_model_correct_effort() {
+fn adaptive_models_emit_thinking_with_display_where_supported_and_model_correct_effort() {
     for (model, thinking, expected_effort) in [
         ("claude-opus-4-6", "xhigh", "high"),
         ("claude-opus-4-6", "max", "max"),
@@ -65,13 +65,19 @@ fn adaptive_models_emit_summarized_thinking_and_model_correct_effort() {
         ("claude-fable-5", "max", "max"),
         ("claude-fable-5-1", "xhigh", "xhigh"),
         ("claude-fable-5-1", "max", "max"),
+        ("claude-sonnet-5-5", "medium", "medium"),
+        ("claude-sonnet-5-5", "xhigh", "xhigh"),
+        ("claude-opus-5-5", "medium", "medium"),
+        ("claude-opus-5-5", "max", "max"),
     ] {
         let body = request_body(model, Some(thinking), ProviderAuthMode::ApiKey);
-        assert_eq!(
-            body["thinking"],
-            json!({"type": "adaptive", "display": "summarized"}),
-            "{model}/{thinking}"
-        );
+        // Opus 4.6 and Sonnet 4.6 reject `display`; they summarize by default.
+        let expected_thinking = if model.ends_with("-4-6") {
+            json!({"type": "adaptive"})
+        } else {
+            json!({"type": "adaptive", "display": "summarized"})
+        };
+        assert_eq!(body["thinking"], expected_thinking, "{model}/{thinking}");
         assert_eq!(
             body["output_config"],
             json!({"effort": expected_effort}),
@@ -86,7 +92,9 @@ fn current_models_with_sampling_restrictions_never_add_temperature() {
         "claude-fable-5",
         "claude-opus-4-7",
         "claude-opus-4-8",
+        "claude-opus-5-5",
         "claude-sonnet-5",
+        "claude-sonnet-5-5",
     ] {
         let body = request_body(model, Some("xhigh"), ProviderAuthMode::ApiKey);
         assert!(body.get("temperature").is_none(), "{model}");
@@ -94,14 +102,20 @@ fn current_models_with_sampling_restrictions_never_add_temperature() {
 }
 
 #[test]
-fn explicit_off_uses_each_models_disabled_or_omitted_contract() {
+fn explicit_off_uses_each_models_off_contract() {
     let opus = request_body("claude-opus-4-8", Some("off"), ProviderAuthMode::ApiKey);
     assert_eq!(opus["thinking"], json!({"type": "disabled"}));
     assert!(opus.get("output_config").is_none());
 
-    let fable = request_body("claude-fable-5", Some("off"), ProviderAuthMode::ApiKey);
-    assert!(fable.get("thinking").is_none());
-    assert!(fable.get("output_config").is_none());
+    // Thinking cannot be disabled on these models; Off runs at the lowest effort.
+    for model in ["claude-fable-5", "claude-opus-5-5"] {
+        let body = request_body(model, Some("off"), ProviderAuthMode::ApiKey);
+        assert!(body.get("thinking").is_none(), "{model}");
+        assert_eq!(body["output_config"], json!({"effort": "low"}), "{model}");
+    }
+    let sonnet = request_body("claude-sonnet-5-5", Some("off"), ProviderAuthMode::ApiKey);
+    assert_eq!(sonnet["thinking"], json!({"type": "between_tools"}));
+    assert!(sonnet.get("output_config").is_none());
 
     let unknown = request_body(
         "claude-unknown-live-id",
@@ -113,20 +127,26 @@ fn explicit_off_uses_each_models_disabled_or_omitted_contract() {
 }
 
 #[test]
-fn budget_and_unknown_models_keep_conservative_budget_thinking() {
-    for (model, thinking) in [
-        ("claude-opus-4-5", "max"),
-        ("claude-unknown-live-id", "xhigh"),
-    ] {
-        let body = request_body(model, Some(thinking), ProviderAuthMode::ApiKey);
-        assert_eq!(
-            body["thinking"],
-            json!({"type": "enabled", "budget_tokens": 16_384}),
-            "{model}"
-        );
-        assert_eq!(body["max_tokens"], 20_480, "{model}");
-        assert!(body.get("output_config").is_none(), "{model}");
-    }
+fn budget_models_use_omp_budgets_and_unknown_models_stay_conservative() {
+    let opus = request_body("claude-opus-4-5", Some("max"), ProviderAuthMode::ApiKey);
+    assert_eq!(
+        opus["thinking"],
+        json!({"type": "enabled", "budget_tokens": 32_768, "display": "summarized"})
+    );
+    assert_eq!(opus["max_tokens"], 36_864);
+    assert_eq!(opus["output_config"], json!({"effort": "high"}));
+
+    let unknown = request_body(
+        "claude-unknown-live-id",
+        Some("xhigh"),
+        ProviderAuthMode::ApiKey,
+    );
+    assert_eq!(
+        unknown["thinking"],
+        json!({"type": "enabled", "budget_tokens": 16_384})
+    );
+    assert_eq!(unknown["max_tokens"], 20_480);
+    assert!(unknown.get("output_config").is_none());
 }
 
 #[test]
@@ -155,8 +175,11 @@ fn fable_51_tool_continuation_uses_adaptive_thinking_on_both_auth_routes() {
             assert_eq!(body["messages"][2]["content"][0]["tool_use_id"], "call_1");
             assert!(body.get("tool_choice").is_none());
             assert!(body.get("temperature").is_none());
-            if matches!(thinking, "off" | "default") {
+            if thinking == "default" {
                 assert!(body.get("thinking").is_none());
+            } else if thinking == "off" {
+                assert!(body.get("thinking").is_none());
+                assert_eq!(body["output_config"]["effort"], "low");
             } else {
                 assert_eq!(body["thinking"]["type"], "adaptive");
                 assert!(body["thinking"].get("budget_tokens").is_none());

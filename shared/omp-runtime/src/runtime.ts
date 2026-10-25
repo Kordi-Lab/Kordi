@@ -6,6 +6,7 @@ import { buildModel } from '@oh-my-pi/pi-catalog/build';
 import { ompCapabilityOptions } from './capabilities';
 import { toKordiMessage, toOmpMessage } from './messages';
 import { RuntimeError, type JsonObject, type RunRequest, type ToolResult } from './protocol';
+import { ompThinkingLevel } from './thinkingLevel';
 
 export type RuntimeHost = {
   event(event: JsonObject): void;
@@ -123,7 +124,7 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
         return credential;
       },
       systemPrompt: request.systemPrompt, sessionManager, customTools,
-      thinkingLevel: (request.thinking === 'default' ? undefined : request.thinking) as any,
+      thinkingLevel: ompThinkingLevel(request.model.provider, request.model.id, request.thinking) as any,
       providerSessionId: request.sessionId,
       preloadedExtensionPaths: [], preloadedCustomToolPaths: [], extensions: [],
       preloadedPreparedExtensions: request.hooks?.length || request.prompt.trailingMessages?.length ? [{ path: '<kordi-hooks>', resolvedPath: '<kordi-hooks>', factory: hookBridge, error: null }] : [],

@@ -10,7 +10,6 @@ import { providerListDescription, providerShortName } from './providerCopy';
 
 type AuthProviderListProps = {
   providers: AuthDisplayProvider[];
-  catalogCaption?: string;
   notice?: string | null;
   onSelectProvider: (providerId: string) => void;
   onRefresh: () => void;
@@ -36,7 +35,6 @@ function providerDescription(provider: AuthDisplayProvider) {
 
 export function AuthProviderList({
   providers,
-  catalogCaption,
   notice,
   onSelectProvider,
   onRefresh,
@@ -89,7 +87,6 @@ export function AuthProviderList({
             </Button>
           ) : null}
         </div>
-        {catalogCaption ? <p className="m-0 px-1 text-[11px] text-slate-500">{catalogCaption}</p> : null}
         {notice ? <p role="note" data-auth-page-notice="" className="m-0 px-1 text-[12px] leading-5 text-slate-400">{notice}</p> : null}
       </div>
 

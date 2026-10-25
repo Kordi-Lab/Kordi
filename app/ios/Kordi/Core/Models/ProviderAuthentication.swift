@@ -45,6 +45,10 @@ struct ProviderAuthenticationDefinition: Identifiable, Hashable {
 
     var acceptsAPIKeyOnPhone: Bool { acceptsAPIKey }
 
+    /// The model a Claude account opens on when no model was chosen. OMP's
+    /// catalog names Opus 5.5 as Anthropic's default; Kordi uses Sonnet 5.5.
+    static let claudeDefaultModel = "claude-sonnet-5-5"
+
     /// OMP may report `acceptsApiKey: false` for a provider that still reads a key
     /// from an `*_API_KEY` environment variable. `*_TOKEN` variables hold
     /// vendor-issued tokens, not API keys, and do not enable key entry.
@@ -69,7 +73,7 @@ struct ProviderAuthenticationDefinition: Identifiable, Hashable {
             systemImage: "asterisk",
             runtime: .cloudAPI,
             baseURL: "https://api.anthropic.com",
-            defaultModel: "claude-sonnet-5"
+            defaultModel: claudeDefaultModel
         ),
         .init(
             id: "github-copilot",
@@ -166,7 +170,7 @@ struct ProviderAuthenticationDefinition: Identifiable, Hashable {
             systemImage: local?.systemImage ?? "sparkles",
             runtime: acceptsAPIKey || supportsChatGPT ? .cloudAPI : .mac,
             baseURL: local?.baseURL,
-            defaultModel: entry.defaultModel?.nonEmpty ?? entry.models.first,
+            defaultModel: entry.kordiDefaultModel ?? entry.models.first,
             authKind: entry.auth?.kind,
             acceptsAPIKey: acceptsAPIKey,
             models: entry.models
@@ -263,6 +267,16 @@ struct ProviderAuthenticationDefinition: Identifiable, Hashable {
     static func definition(for providerID: String) -> ProviderAuthenticationDefinition? {
         let canonicalProviderID = canonicalID(providerID)
         return all.first { $0.id == canonicalProviderID }
+    }
+}
+
+extension OMPProviderCatalogEntry {
+    /// The model Kordi opens this provider on: Claude Sonnet 5.5 for Claude
+    /// when OMP lists it, otherwise OMP's default.
+    var kordiDefaultModel: String? {
+        let claude = ProviderAuthenticationDefinition.claudeDefaultModel
+        if id == "anthropic" && models.contains(claude) { return claude }
+        return defaultModel?.nonEmpty
     }
 }
 

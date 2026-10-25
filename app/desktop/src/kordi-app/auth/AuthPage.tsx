@@ -250,7 +250,6 @@ export function AuthPage({
       return (
         <AuthProviderList
           providers={visibleProviders}
-          catalogCaption={ompCatalog.version ? `OMP catalog ${ompCatalog.version}` : 'OMP catalog'}
           notice={[
             ompUnavailable ? OMP_UNAVAILABLE_MESSAGE : null,
             catalogNotice,
