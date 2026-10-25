@@ -1,0 +1,62 @@
+{
+  "bird-osprey-color-sky": {
+    "species": "osprey",
+    "tone": "color",
+    "palette": "sky"
+  },
+  "bird-owl-ink-paper": {
+    "species": "owl",
+    "tone": "ink",
+    "palette": "paper"
+  },
+  "bird-jay-mint": {
+    "species": "jay",
+    "tone": "color",
+    "palette": "mint"
+  },
+  "cloud-local-agent": {
+    "species": "sparrow",
+    "tone": "color",
+    "palette": "mint"
+  },
+  "default-agent-acct_123": {
+    "species": "eagle",
+    "tone": "color",
+    "palette": "coral"
+  },
+  "agent_definition_avatar": {
+    "species": "cardinal",
+    "tone": "color",
+    "palette": "butter"
+  },
+  "3f9a1c2e4b5d6f70": {
+    "species": "cockatoo",
+    "tone": "color",
+    "palette": "butter"
+  },
+  "7bbaa257": {
+    "species": "penguin",
+    "tone": "color",
+    "palette": "mint"
+  },
+  "cloud_agent_kordi_pip": {
+    "species": "owl",
+    "tone": "color",
+    "palette": "sakura"
+  },
+  "a": {
+    "species": "toucan",
+    "tone": "color",
+    "palette": "rice"
+  },
+  "": {
+    "species": "hummingbird",
+    "tone": "color",
+    "palette": "mint"
+  },
+  "bird-dragon-color-sky": {
+    "species": "sparrow",
+    "tone": "color",
+    "palette": "sakura"
+  }
+}

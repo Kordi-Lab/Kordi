@@ -11,13 +11,20 @@ const MAX_RENDERED_AVATARS: usize = 512;
 const MAX_CONCURRENT_RENDERS: usize = 8;
 
 pub(super) fn render_png(style_name: &str, seed: &str) -> Result<Vec<u8>, String> {
+    if style_name == super::BIRD_AVATAR_STYLE {
+        return rasterize_svg(&super::birds::render_svg(seed));
+    }
     let definition = dicebear_styles::get(style_name)
         .ok_or_else(|| "Avatar style is unavailable.".to_string())?;
     let style = Style::from_str(definition).map_err(|error| error.to_string())?;
     let avatar = Avatar::new(&style, json!({ "seed": seed, "size": AVATAR_RENDER_SIZE }))
         .map_err(|error| error.to_string())?;
-    let tree = usvg::Tree::from_str(avatar.to_svg(), &usvg::Options::default())
-        .map_err(|error| error.to_string())?;
+    rasterize_svg(avatar.to_svg())
+}
+
+pub(super) fn rasterize_svg(svg: &str) -> Result<Vec<u8>, String> {
+    let tree =
+        usvg::Tree::from_str(svg, &usvg::Options::default()).map_err(|error| error.to_string())?;
     let mut pixmap = tiny_skia::Pixmap::new(AVATAR_RENDER_SIZE, AVATAR_RENDER_SIZE)
         .ok_or_else(|| "Avatar image buffer is unavailable.".to_string())?;
     let source_size = tree.size();
