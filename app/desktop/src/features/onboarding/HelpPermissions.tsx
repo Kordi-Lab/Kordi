@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowUpRight, Bell, CalendarDays, Camera, Check, ListTodo, Mic, Speech } from 'lucide-react';
 import { invokeDesktop, isNativeDesktopShell } from '@/lib/desktop';
 import { parsePendingToolApprovals, TOOL_APPROVAL_PENDING_COMMAND, TOOL_APPROVAL_REQUEST_EVENT, TOOL_APPROVAL_RESOLVED_EVENT, toolApprovalHeadline, type ToolApprovalPrompt } from '@/features/connectors/toolApprovalModel';
-import { nativeMacPermissions, openPermissionSettings, permissionAction, permissionDefinitions, permissionStatusLabels, readHelpPermission, requestHelpPermission, type PermissionDefinition, type PermissionStatus } from './permissionAccess';
+import { nativeMacPermissions, openPermissionSettings, permissionAction, permissionDefinitions, readHelpPermission, requestHelpPermission, type PermissionDefinition, type PermissionStatus } from './permissionAccess';
 import type { HelpAction } from './helpContent';
+
+const permissionIcons = { notifications: Bell, microphone: Mic, camera: Camera, speech: Speech, calendar: CalendarDays, reminders: ListTodo };
 
 function PermissionRow({ definition }: { definition: PermissionDefinition }) {
   const [status, setStatus] = useState<PermissionStatus | null>(null);
@@ -21,6 +24,9 @@ function PermissionRow({ definition }: { definition: PermissionDefinition }) {
     window.addEventListener('focus', onFocus);
     return () => { lifecycle.value++; window.removeEventListener('focus', onFocus); };
   }, [refresh]);
+  const Icon = permissionIcons[definition.id];
+  const statusLabel = status === 'allowed' ? 'Allowed' : status === 'denied' ? 'Off' : status === 'restricted' ? 'Restricted' : status === 'unavailable' ? 'Unavailable' : 'Checking…';
+  const actionLabel = status === 'not-requested' ? 'Allow' : status === 'unknown' ? 'Check again' : statusLabel;
   const action = status ? permissionAction(status, nativeMacPermissions()) : null;
   const run = async () => {
     setBusy(true);
@@ -37,13 +43,16 @@ function PermissionRow({ definition }: { definition: PermissionDefinition }) {
   return (
     <li className="help-permission-row help-device-permission">
       <div className="help-permission-heading">
-        <div>
-          <h3>{definition.name}</h3>
-          <span className="help-status" data-status={status} aria-live="polite">{busy ? 'Updating access…' : status ? permissionStatusLabels[status] : 'Checking access…'}</span>
-        </div>
-        {action ? <button className="help-secondary" disabled={busy} onClick={() => void run()} aria-label={`${action}: ${definition.name}`}>{action}</button> : null}
+        <h3><Icon size={16} strokeWidth={1.75} aria-hidden="true" />{definition.name}</h3>
+        <span className="help-permission-state" data-status={status} aria-live="polite">
+          {action ? <button className={`help-permission-action ${action === 'Allow' ? 'help-permission-allow' : ''}`} disabled={busy} onClick={() => void run()} aria-label={`${action}: ${definition.name}`} title={action === 'Open Settings' ? `Manage ${definition.name.toLowerCase()} in system settings` : undefined}>
+            {!busy && status === 'allowed' ? <Check size={12} aria-hidden="true" /> : null}
+            {busy ? 'Updating…' : actionLabel}
+            {!busy && action === 'Open Settings' ? <ArrowUpRight size={12} aria-hidden="true" /> : null}
+          </button> : <span>{status === 'allowed' ? <Check size={12} aria-hidden="true" /> : null}{statusLabel}</span>}
+        </span>
       </div>
-      <details className="help-permission-why"><summary>Why this is needed</summary><p>{definition.description}</p></details>
+      <p className="help-permission-description">{definition.description}</p>
       {!nativeMacPermissions() && (status === 'denied' || status === 'allowed') ? <p>Manage this permission in your browser or device settings.</p> : null}
       {status === 'restricted' ? <p>This device’s policy controls access. Contact the person who manages it.</p> : null}
       {error ? <p role="alert">{error}</p> : null}
@@ -98,7 +107,7 @@ export function HelpPermissions({ onAction, onOpenSession, connectorsAvailable, 
   return (
     <>
       {!compact ? <h2>Permissions & access</h2> : null}
-      <p>Allow a feature when you need it. Access is requested only when you choose Allow.</p>
+      <p className="help-permissions-intro">Choose what Kordi can access on this device.</p>
       <ul className="help-permission-list">{permissionDefinitions.map((definition) => <PermissionRow key={definition.id} definition={definition} />)}</ul>
       <details className="help-section"><summary>Services and agent access</summary>
         <p>Connect accounts, choose which agents can use them, and manage read or action access in Connectors. Mac Contacts uses Automation access. The optional Notification Center connector needs Full Disk Access; its setup opens the right settings and lets you check again.</p>

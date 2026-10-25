@@ -2,13 +2,11 @@
 .help-primary, .help-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; border-radius: 10px; padding: 8px 12px; font-size: 12px; font-weight: 600; }
 .help-primary { color: var(--app-sidebar-accent-text); background: var(--app-sidebar-accent); }
 .help-secondary { background: var(--app-transient-raised-bg); color: var(--app-transient-text); border: 1px solid var(--app-transient-border); }
-.help-permission-list { list-style: none; padding: 0; margin: 20px 0; }
+.help-permission-list { list-style: none; padding: 0; margin: 4px 0 8px; }
 .help-permission-row { display: flex; gap: 14px; align-items: flex-start; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--app-transient-border); }
 .help-permission-row > div { min-width: 0; flex: 1; }
 .help-permission-row > button { flex-shrink: 0; }
 .help-permission-row p { font-size: 12px; margin: 0 0 8px; }
-.help-status { display: block; font-size: 11px; color: var(--app-transient-muted-text); }
-.help-status[data-status="allowed"] { color: var(--app-transient-text); font-weight: 600; }
 .help-section { padding: 18px 0; border-bottom: 1px solid var(--app-transient-border); }
 .help-text-button { min-height: 34px; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
 
@@ -53,14 +51,24 @@
 .help-menu-content .help-secondary { padding: 5px 9px; font-size: 11px; min-height: 30px; }
 .help-menu-content .help-section { padding: 12px 0; }
 .help-menu-content summary { font-size: 12px; cursor: pointer; }
-.help-permission-why summary { color: var(--app-transient-muted-text); font-size: 11px; margin-bottom: 4px; }
 .help-menu :focus-visible { outline: 2px solid var(--app-transient-focus-ring); outline-offset: 2px; }
 .help-menu-error { font-size: 12px; padding: 8px; }
-.help-device-permission { display: block; }
-.help-permission-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-.help-permission-heading > div { min-width: 0; }
-.help-permission-heading > button { flex-shrink: 0; }
-.help-permission-why { width: 100%; }
+.help-menu-content .help-device-permission { display: block; padding: 9px 0; border-bottom-color: color-mix(in srgb, var(--app-transient-border) 55%, transparent); }
+.help-device-permission:last-child { border-bottom: 0; }
+.help-permission-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+.help-permission-heading h3 { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; }
+.help-permission-heading h3 svg { flex-shrink: 0; color: var(--app-transient-muted-text); }
+.help-permission-state { flex-shrink: 0; font-size: 11px; color: var(--app-transient-muted-text); }
+.help-permission-state > span, .help-permission-action { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.help-permission-action { min-height: 28px; padding: 4px 6px; border-radius: 6px; font-size: 11px; font-weight: 400; color: var(--app-transient-muted-text); }
+.help-permission-action:hover { background: var(--app-transient-hover-bg); color: var(--app-transient-text); }
+.help-permission-allow { padding-inline: 10px; background: var(--app-transient-raised-bg); color: var(--app-transient-text); font-weight: 500; }
+.help-permission-action:disabled { opacity: .6; cursor: wait; }
+.help-menu-content .help-permission-description { width: 100%; margin: 2px 0 0; font-size: 11px; line-height: 1.5; }
+.help-menu-content .help-permissions-intro { margin: 2px 0 8px; font-size: 11px; }
+@media (pointer: coarse) {
+  .help-permission-action { min-height: 44px; }
+}
 
 /* Frosted glass keeps the workspace visible through the small help surfaces. */
 .kordi-app .help-menu, .help-tour-card {

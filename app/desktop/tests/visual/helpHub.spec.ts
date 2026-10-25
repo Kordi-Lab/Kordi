@@ -143,10 +143,11 @@ test('native permissions request only on Allow and recover through Settings', as
   await expect(page.getByRole('button', { name: 'Open Settings: Microphone' })).toBeVisible();
   await page.getByRole('button', { name: 'Open Settings: Camera' }).click();
   await expect.poll(async () => (await calls()).some((call) => call.command === 'desktop_open_external_url' && String(call.args?.url).includes('Privacy_Camera'))).toBe(true);
-  await expect(page.getByText('Restricted by this device')).toBeVisible();
+  await expect(page.getByText('Restricted', { exact: true })).toBeVisible();
   expect((await calls()).filter((call) => call.args?.request === true)).toHaveLength(1);
   const calendar = page.locator('.help-device-permission').filter({ has: page.getByRole('heading', { name: 'Calendar', exact: true }) });
-  await calendar.locator('summary').click();
+  await expect(calendar.locator('summary')).toHaveCount(0);
+  await expect(calendar.getByText('Show calendar events.', { exact: false })).toBeVisible();
   await calendar.scrollIntoViewIfNeeded();
   await page.screenshot({ path: test.info().outputPath('permission-explanation.png'), animations: 'disabled' });
 });

@@ -7,12 +7,12 @@ export type PermissionId = 'notifications' | 'microphone' | 'camera' | 'speech' 
 export type PermissionStatus = 'allowed' | 'not-requested' | 'denied' | 'restricted' | 'unavailable' | 'unknown';
 export type PermissionDefinition = { id: PermissionId; name: string; description: string; settingsPane?: string };
 export const permissionDefinitions: readonly PermissionDefinition[] = [
-  { id: 'notifications', name: 'Notifications', description: 'Alerts for new messages. Sound and previews are configured separately in Notifications settings.' },
-  { id: 'microphone', name: 'Microphone', description: 'Voice messages and audio calls. Allowing access here does not start a recording.', settingsPane: 'Privacy_Microphone' },
-  { id: 'camera', name: 'Camera', description: 'Video messages and calls. Allowing access here does not start a call or send video.', settingsPane: 'Privacy_Camera' },
-  { id: 'speech', name: 'Speech recognition', description: 'Transcription of voice messages on this Mac.', settingsPane: 'Privacy_SpeechRecognition' },
-  { id: 'calendar', name: 'Calendar', description: 'Calendar features and an optional source for cards. Choose sources and calendar sync separately.' },
-  { id: 'reminders', name: 'Reminders', description: 'An optional source for cards. Granting access does not select it for a build.' },
+  { id: 'notifications', name: 'Notifications', description: 'Alerts for new messages and updates.' },
+  { id: 'microphone', name: 'Microphone', description: 'Record voice messages and join audio calls.', settingsPane: 'Privacy_Microphone' },
+  { id: 'camera', name: 'Camera', description: 'Record video messages and join video calls.', settingsPane: 'Privacy_Camera' },
+  { id: 'speech', name: 'Speech recognition', description: 'Turn your voice messages into text.', settingsPane: 'Privacy_SpeechRecognition' },
+  { id: 'calendar', name: 'Calendar', description: 'Show calendar events. You choose which calendars to sync or use for cards.' },
+  { id: 'reminders', name: 'Reminders', description: 'Use reminders as a source when you build a card.' },
 ];
 
 export function normalizePermission(value: string): PermissionStatus {
@@ -21,11 +21,6 @@ export function normalizePermission(value: string): PermissionStatus {
   if (value === 'denied' || value === 'restricted' || value === 'unavailable') return value;
   return 'unknown';
 }
-
-export const permissionStatusLabels: Record<PermissionStatus, string> = {
-  allowed: 'Allowed', 'not-requested': 'Not requested', denied: 'Access is off', restricted: 'Restricted by this device',
-  unavailable: 'Unavailable on this device', unknown: 'Could not check access',
-};
 
 export function permissionAction(status: PermissionStatus, settingsAvailable: boolean) {
   if (status === 'not-requested') return 'Allow';
