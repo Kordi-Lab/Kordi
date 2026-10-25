@@ -7,7 +7,8 @@ use sqlx_postgres::PgPool;
 
 use crate::auth::routes::ContactSummary;
 use crate::avatars::{
-    generated_avatar_marker, AGENT_AVATAR_STYLE, AVATAR_RENDERER_VERSION, HUMAN_AVATAR_STYLE,
+    generated_avatar_marker, random_bird_seed, AVATAR_RENDERER_VERSION, BIRD_AVATAR_STYLE,
+    HUMAN_AVATAR_STYLE,
 };
 
 use super::config::{PendingSupportConfig, SupportConfig, SupportConfigError};
@@ -82,7 +83,9 @@ pub async fn bootstrap_support_agent(
         contact_created_at,
         provider_auth: pending.provider_auth,
     };
-    let agent_avatar_url = generated_avatar_marker(AGENT_AVATAR_STYLE, &config.agent_id, 1);
+    // Only the first start stores this random bird; later starts keep it.
+    let agent_avatar_seed = random_bird_seed();
+    let agent_avatar_url = generated_avatar_marker(BIRD_AVATAR_STYLE, &agent_avatar_seed, 1);
 
     let result = query(
         "INSERT INTO cloud_agent_definitions (
@@ -94,7 +97,7 @@ pub async fn bootstrap_support_agent(
          ) VALUES (
              $1, $2, 'participant_conversations', 'active', $3, 'Official Kordi support agent',
              $4, $5, 'Official Kordi product guidance and feedback intake.', '[]', '[]', '[]',
-             $6, $7, $7, NULL, TRUE, $8, 'generated', $9, $1, $10, 1, $7
+             $6, $7, $7, NULL, TRUE, $8, 'generated', $9, $11, $10, 1, $7
          )
          ON CONFLICT (agent_id) DO UPDATE SET
              owner_account_id = EXCLUDED.owner_account_id,
@@ -120,8 +123,9 @@ pub async fn bootstrap_support_agent(
     .bind(config.model_routing())
     .bind(&now)
     .bind(&agent_avatar_url)
-    .bind(AGENT_AVATAR_STYLE)
+    .bind(BIRD_AVATAR_STYLE)
     .bind(AVATAR_RENDERER_VERSION)
+    .bind(&agent_avatar_seed)
     .execute(pool)
     .await?;
     if result.rows_affected() == 0 {

@@ -30,10 +30,14 @@ mod rendering;
 
 pub const AVATAR_RENDERER_VERSION: &str = "dicebear-rust-10.6.0-styles-10.5.0";
 pub const HUMAN_AVATAR_STYLE: &str = "lorelei";
-pub const AGENT_AVATAR_STYLE: &str = "thumbs";
-/// Original paper-cut bird portraits for agents; see `avatars/birds.rs`.
+/// The DiceBear style agents started with before the birds. It stays
+/// renderable so every stored `thumbs` avatar URL keeps resolving.
+pub const LEGACY_AGENT_AVATAR_STYLE: &str = "thumbs";
+/// Original paper-cut bird portraits for agents; see `avatars/birds.rs`. New
+/// agents start with a [`random_bird_seed`] in this style.
 pub const BIRD_AVATAR_STYLE: &str = "kordi-birds";
 pub use assets::clean_uploaded_avatar;
+pub use birds::random_bird_seed;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -422,7 +426,7 @@ async fn canonical_avatar_render_key_exists(
 }
 
 fn is_supported_style(style: &str) -> bool {
-    is_human_avatar_style(style) || style == AGENT_AVATAR_STYLE || style == BIRD_AVATAR_STYLE
+    is_human_avatar_style(style) || style == LEGACY_AGENT_AVATAR_STYLE || style == BIRD_AVATAR_STYLE
 }
 
 pub fn is_human_avatar_style(style: &str) -> bool {
@@ -468,6 +472,8 @@ fn avatar_rate_limited(retry_after: Duration) -> Response {
     response
 }
 
+#[cfg(test)]
+mod agent_avatar_db_tests;
 #[cfg(test)]
 #[path = "avatars_tests.rs"]
 mod tests;

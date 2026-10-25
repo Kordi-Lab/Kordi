@@ -7,6 +7,8 @@
 
 mod templates;
 
+use rand::Rng;
+
 use self::templates::TEMPLATES;
 
 pub(super) const BIRD_SEED_PREFIX: &str = "bird-";
@@ -61,35 +63,44 @@ impl BirdAvatar {
     }
 }
 
-/// Maps any seed to a bird. `bird-<species>-<tone>-<palette>` and
-/// `bird-<species>-<palette>` (tone `color`) name one explicitly; every other
-/// seed picks a species and palette from its FNV-1a hash, with tone `color`.
+/// Maps any seed to a bird. A structured seed names one (see
+/// [`parse_structured_bird_seed`]); every other seed picks a species and
+/// palette from its FNV-1a hash, with tone `color`.
 pub fn parse_bird_seed(seed: &str) -> BirdAvatar {
-    if let Some(rest) = seed.strip_prefix(BIRD_SEED_PREFIX) {
-        let parts: Vec<&str> = rest.split('-').collect();
-        let named = match parts.as_slice() {
-            [species, tone, palette] => known(&BIRD_SPECIES, species)
-                .zip(known(&BIRD_TONES, tone))
-                .zip(known_palette(palette)),
-            [species, palette] => known(&BIRD_SPECIES, species)
-                .zip(Some(BIRD_TONES[0]))
-                .zip(known_palette(palette)),
-            _ => None,
-        };
-        if let Some(((species, tone), palette)) = named {
-            return BirdAvatar {
-                species,
-                tone,
-                palette,
-            };
+    parse_structured_bird_seed(seed).unwrap_or_else(|| {
+        let hash = fnv1a(seed.as_bytes());
+        BirdAvatar {
+            species: BIRD_SPECIES[hash as usize % BIRD_SPECIES.len()],
+            tone: BIRD_TONES[0],
+            palette: BIRD_PALETTES[(hash >> 8) as usize % BIRD_PALETTES.len()].0,
         }
-    }
-    let hash = fnv1a(seed.as_bytes());
-    BirdAvatar {
-        species: BIRD_SPECIES[hash as usize % BIRD_SPECIES.len()],
-        tone: BIRD_TONES[0],
-        palette: BIRD_PALETTES[(hash >> 8) as usize % BIRD_PALETTES.len()].0,
-    }
+    })
+}
+
+/// The bird that `bird-<species>-<tone>-<palette>` or `bird-<species>-<palette>`
+/// (tone `color`) names, or `None` for any other seed.
+pub fn parse_structured_bird_seed(seed: &str) -> Option<BirdAvatar> {
+    let parts: Vec<&str> = seed.strip_prefix(BIRD_SEED_PREFIX)?.split('-').collect();
+    let (species, tone, palette) = match parts.as_slice() {
+        [species, tone, palette] => (*species, *tone, *palette),
+        [species, palette] => (*species, BIRD_TONES[0], *palette),
+        _ => return None,
+    };
+    Some(BirdAvatar {
+        species: known(&BIRD_SPECIES, species)?,
+        tone: known(&BIRD_TONES, tone)?,
+        palette: known_palette(palette)?,
+    })
+}
+
+/// A new agent's seed: a uniformly random species and palette in the default
+/// tone `color`, in the picker's `bird-<species>-<tone>-<palette>` format.
+/// Migration 155 draws the default agent profile's seed the same way in SQL.
+pub fn random_bird_seed() -> String {
+    let mut rng = rand::thread_rng();
+    let species = BIRD_SPECIES[rng.gen_range(0..BIRD_SPECIES.len())];
+    let palette = BIRD_PALETTES[rng.gen_range(0..BIRD_PALETTES.len())].0;
+    format!("{BIRD_SEED_PREFIX}{species}-{}-{palette}", BIRD_TONES[0])
 }
 
 /// The 128 x 128 SVG for a seed, with its palette background filled in.
@@ -157,6 +168,70 @@ mod tests {
                 assert_eq!(template.2.matches(BACKGROUND_PLACEHOLDER).count(), 1);
             }
         }
+    }
+
+    #[test]
+    fn random_seeds_name_every_species_and_palette_and_render() {
+        let mut species = std::collections::BTreeSet::new();
+        let mut palettes = std::collections::BTreeSet::new();
+        for index in 0..2_000 {
+            let seed = random_bird_seed();
+            let bird = parse_structured_bird_seed(&seed)
+                .unwrap_or_else(|| panic!("{seed:?} is not a structured bird seed"));
+            assert_eq!(
+                seed,
+                format!("bird-{}-{}-{}", bird.species, bird.tone, bird.palette)
+            );
+            assert_eq!(bird.tone, "color");
+            assert!(crate::avatars::is_valid_avatar_seed(&seed), "{seed:?}");
+            if index < 16 {
+                rasterize_svg(&render_svg(&seed)).expect("rasterize random bird");
+            }
+            species.insert(bird.species);
+            palettes.insert(bird.palette);
+        }
+        assert_eq!(species.len(), BIRD_SPECIES.len());
+        assert_eq!(palettes.len(), BIRD_PALETTES.len());
+    }
+
+    #[test]
+    fn structured_seeds_parse_strictly() {
+        assert_eq!(
+            parse_structured_bird_seed("bird-owl-ink-paper"),
+            Some(BirdAvatar {
+                species: "owl",
+                tone: "ink",
+                palette: "paper"
+            })
+        );
+        assert_eq!(
+            parse_structured_bird_seed("bird-jay-mint").map(|bird| bird.tone),
+            Some("color")
+        );
+        for seed in [
+            "bird-dodo-color-sky",
+            "bird-owl-neon-sky",
+            "default-agent-acct_1",
+        ] {
+            assert_eq!(parse_structured_bird_seed(seed), None, "{seed}");
+        }
+    }
+
+    #[test]
+    fn migration_155_draws_from_the_same_tables() {
+        let sql = include_str!("../../migrations/0155_agent_default_bird_avatars.sql");
+        let quoted = |keys: &[&str]| {
+            let list: Vec<String> = keys.iter().map(|key| format!("'{key}'")).collect();
+            format!("ARRAY[{}]", list.join(", "))
+        };
+        let palettes: Vec<&str> = BIRD_PALETTES.iter().map(|(key, _)| *key).collect();
+        assert!(sql.contains(&quoted(&BIRD_SPECIES)), "species table");
+        assert!(sql.contains(&quoted(&palettes)), "palette table");
+        assert!(
+            sql.contains(&format!("'-{}-'", BIRD_TONES[0])),
+            "default tone"
+        );
+        assert!(sql.contains(crate::avatars::AVATAR_RENDERER_VERSION));
     }
 
     #[test]

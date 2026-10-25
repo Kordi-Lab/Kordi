@@ -63,7 +63,11 @@ fn uploaded_avatar_normalization_is_bounded_and_generates_all_variants() {
 
 #[test]
 fn renderer_is_deterministic_for_every_pinned_style() {
-    for style in [HUMAN_AVATAR_STYLE, AGENT_AVATAR_STYLE, BIRD_AVATAR_STYLE] {
+    for style in [
+        HUMAN_AVATAR_STYLE,
+        LEGACY_AGENT_AVATAR_STYLE,
+        BIRD_AVATAR_STYLE,
+    ] {
         let first = render_png(style, "stable_seed").expect("render avatar");
         let second = render_png(style, "stable_seed").expect("render avatar again");
         assert_eq!(first, second);
@@ -73,7 +77,11 @@ fn renderer_is_deterministic_for_every_pinned_style() {
 
 #[tokio::test]
 async fn preview_route_renders_every_style_as_png() {
-    for style in [HUMAN_AVATAR_STYLE, AGENT_AVATAR_STYLE, BIRD_AVATAR_STYLE] {
+    for style in [
+        HUMAN_AVATAR_STYLE,
+        LEGACY_AGENT_AVATAR_STYLE,
+        BIRD_AVATAR_STYLE,
+    ] {
         let response = render_avatar_preview(
             Extension(Arc::new(CloudRateLimiter::memory(
                 CloudRateLimitConfig::production(),
@@ -128,7 +136,7 @@ fn removing_an_upload_restores_the_same_generated_identity() {
         entity_type: "agent".to_string(),
         entity_id: "agent_123".to_string(),
         source: "uploaded".to_string(),
-        style: AGENT_AVATAR_STYLE.to_string(),
+        style: LEGACY_AGENT_AVATAR_STYLE.to_string(),
         seed: "stable_agent_seed".to_string(),
         renderer_version: AVATAR_RENDERER_VERSION.to_string(),
         uploaded_asset: Some(ONE_PIXEL_PNG.to_string()),
@@ -151,7 +159,7 @@ fn removing_an_upload_restores_the_same_generated_identity() {
     assert_eq!(next.seed, "stable_agent_seed");
     assert_eq!(
         next.image_url(),
-        generated_avatar_marker(AGENT_AVATAR_STYLE, "stable_agent_seed", 5)
+        generated_avatar_marker(LEGACY_AGENT_AVATAR_STYLE, "stable_agent_seed", 5)
     );
 }
 
@@ -253,15 +261,15 @@ fn regenerate(current_style: &str, entity_type: &str, seed: &str) -> AvatarDescr
 
 #[test]
 fn bird_seeds_switch_agents_to_the_bird_style() {
-    let next = regenerate(AGENT_AVATAR_STYLE, "agent", "bird-osprey-color-sky");
+    let next = regenerate(LEGACY_AGENT_AVATAR_STYLE, "agent", "bird-osprey-color-sky");
     assert_eq!(next.style, BIRD_AVATAR_STYLE);
     assert_eq!(
         next.image_url(),
         generated_avatar_marker(BIRD_AVATAR_STYLE, "bird-osprey-color-sky", 3)
     );
     assert_eq!(
-        regenerate(AGENT_AVATAR_STYLE, "agent", "3f9a1c2e4b5d6f70").style,
-        AGENT_AVATAR_STYLE
+        regenerate(LEGACY_AGENT_AVATAR_STYLE, "agent", "3f9a1c2e4b5d6f70").style,
+        LEGACY_AGENT_AVATAR_STYLE
     );
     assert_eq!(
         regenerate(BIRD_AVATAR_STYLE, "agent", "3f9a1c2e4b5d6f70").style,

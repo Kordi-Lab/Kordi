@@ -381,4 +381,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "0153_common_ground_build_candidates.sql"
     ),
     migration!(154, "proactive agents", "0154_proactive_agents.sql"),
+    migration!(
+        155,
+        "agent default bird avatars",
+        "0155_agent_default_bird_avatars.sql"
+    ),
 ];
