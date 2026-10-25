@@ -90,6 +90,7 @@ test('memory settings organizer, project and group rows (light)', async ({ page 
 async function openImport(page: Page, theme: 'light' | 'dark') {
   await page.clock.setFixedTime(new Date('2026-10-20T10:00:00Z'));
   await page.goto(`/tests/visual/memorySettings.html?theme=${theme}`);
+  await hideScrollbars(page);
   await expect(page.getByRole('heading', { name: 'All memories · 10' })).toBeVisible();
   const importHeading = page.getByRole('heading', { name: 'Import', exact: true });
   return { importHeading, section: page.locator('section', { has: importHeading }) };
