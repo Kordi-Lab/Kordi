@@ -308,7 +308,6 @@ struct ConversationView: View {
     @State private var isExpressivePickerPresented = false
     @State private var shouldFollowLatestAfterInputSurfaceChange = false
     @State private var showFileImporter = false
-    @State private var showPhotoPicker = false
     @State private var showCamera = false
     @State private var cameraPhotoReview: CameraPhotoReview?
     @State private var videoReview: PendingAttachment?
@@ -317,7 +316,6 @@ struct ConversationView: View {
     @State private var voiceRecorder = VoiceMessageRecorder()
     @State private var voiceHoldPresentation = VoiceHoldToTalkPresentation()
     @State private var previewURL: URL?
-    @State private var mediaPreview: MediaPreviewPresentation?
     @State private var videoPreview: VideoPreviewPresentation?
     @State private var fullScreenVideoAttachmentID: String?
     @State private var liveShareURLs: [URL] = []
@@ -1262,17 +1260,13 @@ struct ConversationView: View {
                 beginMessageEdit(message)
             }
             if ProcessInfo.processInfo.arguments.contains("--preview-media"),
-               mediaPreview == nil,
                let message = messages.first(where: { message in
                    message.attachments.contains(where: { $0.kind == .image })
                }),
                let attachment = message.attachments.first(where: { $0.kind == .image }) {
                 openAttachment(attachment, from: message, in: messages, previewImage: nil)
             }
-            if ProcessInfo.processInfo.arguments.contains("--preview-photo-send"),
-               !showPhotoPicker {
-                showPhotoPicker = true
-            }
+            if ProcessInfo.processInfo.arguments.contains("--preview-photo-send") { presentPhotoPicker() }
             if ProcessInfo.processInfo.arguments.contains("--preview-emoji-picker") {
                 isExpressivePickerPresented = true
                 isComposerFocused = true
@@ -1339,13 +1333,6 @@ struct ConversationView: View {
             allowsMultipleSelection: true,
             onCompletion: importFiles
         )
-        .fullScreenCover(isPresented: $showPhotoPicker) {
-            PhotoLibrarySendPicker(
-                allowsSeparateMessages: conversation.kind != .agent,
-                onSend: sendPhotoSelection,
-                onError: { model.errorMessage = $0 }
-            )
-        }
         .fullScreenCover(isPresented: $showCamera) {
             CameraCapturePicker(
                 onImage: { image in
@@ -1374,9 +1361,6 @@ struct ConversationView: View {
             )
         }
         .quickLookPreview($previewURL)
-        .fullScreenCover(item: $mediaPreview) { presentation in
-            MediaPreviewView(presentation: presentation)
-        }
         .fullScreenCover(item: $videoPreview, onDismiss: {
             fullScreenVideoAttachmentID = nil
         }) { presentation in
@@ -2970,7 +2954,14 @@ struct ConversationView: View {
         Task { @MainActor in
             // ponytail: bridge the system Menu dismissal; remove the delay when SwiftUI exposes a completion callback.
             do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
-            showPhotoPicker = true
+            presentPhotoPicker()
+        }
+    }
+
+    private func presentPhotoPicker() {
+        ConversationModalPresenter.present { close in
+            PhotoLibrarySendPicker(allowsSeparateMessages: conversation.kind != .agent, onSend: sendPhotoSelection,
+                onError: { model.errorMessage = $0 }, onClose: close).environment(\.kordiChatTheme, chatTheme).tint(chatTheme.accent)
         }
     }
 
@@ -3192,12 +3183,12 @@ struct ConversationView: View {
             prepare(attachment, forSharing: false)
             return
         }
-        mediaPreview = MediaPreviewPresentation.make(
-            opening: attachment,
-            from: message,
-            in: timeline,
-            initialImage: previewImage
-        )
+        guard let presentation = MediaPreviewPresentation.make(
+            opening: attachment, from: message, in: timeline, initialImage: previewImage
+        ) else { return }
+        ConversationModalPresenter.present(transparent: true, transition: .crossDissolve, statusBarStyle: .lightContent) { close in
+            MediaPreviewView(presentation: presentation, onClose: close).environmentObject(model)
+        }
     }
 }
 

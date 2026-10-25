@@ -834,10 +834,13 @@ struct ComposerView: View {
 
     private var attachmentMenuContent: some View {
         Menu {
-            Button(action: showAgentModelPicker) {
-                Label("Model and reasoning", systemImage: "slider.horizontal.3")
+            // Chats that can change the model use the composer's model and effort pill instead.
+            if !model.canChangeRuntimeRouting(for: conversation) {
+                Button(action: showAgentModelPicker) {
+                    Label("Model and reasoning", systemImage: "slider.horizontal.3")
+                }
+                Divider()
             }
-            Divider()
             Button(action: onTakePhoto) {
                 Label("Camera", systemImage: "camera")
             }
