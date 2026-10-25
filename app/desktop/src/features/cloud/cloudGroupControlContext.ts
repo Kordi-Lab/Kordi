@@ -14,6 +14,7 @@ import type {
 import type { CloudAgentDefinition } from './cloudAgents';
 import type { CloudAgentTurnCoordinator } from './cloudAgentTurnCoordinator';
 import type { CloudGroupControlEnvelope, CloudGroupParticipant } from './cloudGroupMessages';
+import type { CloudGroupAgentAvatar } from './cloudGroupIdentity';
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import type { CloudSessionActivityStore } from './cloudSessionActivity';
 
@@ -32,6 +33,8 @@ export type CloudGroupControlContext = {
   groupSpaceId: string;
   participantByAccount: Map<string, CloudGroupParticipant>;
   identityIdByAccount: Map<string, string>;
+  /** Each member's default agent picture; contexts built without it fall back to the participant. */
+  agentAvatarByAccount?: ReadonlyMap<string, CloudGroupAgentAvatar>;
 };
 
 export type CloudGroupMessageControlContext = CloudGroupControlContext & {
@@ -45,6 +48,7 @@ export type CloudGroupSessionPreparation = {
   groupSpaceId: string;
   participantByAccount: Map<string, CloudGroupParticipant>;
   identityIdByAccount: Map<string, string>;
+  agentAvatarByAccount: ReadonlyMap<string, CloudGroupAgentAvatar>;
 };
 
 export type CloudGroupSessionPreparationCache = Map<
