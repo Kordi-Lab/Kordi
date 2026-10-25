@@ -13,18 +13,19 @@ import type { CloudProviderAuthSnapshot } from '../src/features/cloud/cloudAgent
 
 const catalog = (await loadPinnedOmpCatalog()).providers;
 
-function claudeSnapshot(modelHint: string | null): CloudProviderAuthSnapshot {
+function hostedSnapshot(provider: string, authChoice: string, modelHint: string | null): CloudProviderAuthSnapshot {
   return {
-    snapshotId: 'snap_claude', provider: 'anthropic', authChoice: 'cloud-api-key:claude', label: 'Claude',
+    snapshotId: `snap_${provider}`, provider, authChoice, label: provider,
     modelHint, createdAt: '2026-01-01T00:00:00Z', revokedAt: null,
   };
 }
 
-const claudeAccount = (modelHint: string | null) => {
-  const [account] = hostedRouteAccounts(hostedAccountsFromSnapshots([claudeSnapshot(modelHint)]), catalog);
+const hostedAccount = (provider: string, authChoice: string, modelHint: string | null) => {
+  const [account] = hostedRouteAccounts(hostedAccountsFromSnapshots([hostedSnapshot(provider, authChoice, modelHint)]), catalog);
   assert.ok(account);
   return account;
 };
+const claudeAccount = (modelHint: string | null) => hostedAccount('anthropic', 'cloud-api-key:claude', modelHint);
 
 /** This Mac's model options as the composer labels them, with display names. */
 const localOptions = (modelIds: string[]) => modelIds.map((modelId) => {
@@ -55,18 +56,34 @@ test('a catalog without Sonnet 5.5, and other providers, keep their own default'
   assert.equal(withClaudeModelCatalog(bedrock), bedrock);
 });
 
-test('a fresh hosted Claude account opens on Sonnet 5.5 at medium effort', () => {
+test('a fresh hosted Claude account opens on Sonnet 5.5 and leaves its effort to the runtime', () => {
   const fresh = claudeAccount(null);
   assert.equal(fresh.models[0], 'claude-sonnet-5-5');
   const options = hostedModelOptions([fresh], catalog);
   assert.equal(options[0]?.value, 'anthropic/claude-sonnet-5-5', 'the picker default row and first model');
-  for (const thinking of ['off', 'default', 'minimal', 'medium']) {
-    assert.deepEqual(hostedRouteForChoice(fresh, { thinking, catalog }), {
-      model: 'anthropic/claude-sonnet-5-5', authProvider: 'anthropic', authChoice: 'cloud-api-key:claude', thinking: 'medium',
-    }, thinking);
+  // No effort leaves the runner's default for Sonnet 5.5, which is Medium.
+  assert.deepEqual(hostedRouteForChoice(fresh, { catalog }), {
+    model: 'anthropic/claude-sonnet-5-5', authProvider: 'anthropic', authChoice: 'cloud-api-key:claude', thinking: null,
+  });
+  for (const thinking of ['off', 'default', 'minimal', 'medium', 'xhigh']) {
+    assert.equal(hostedRouteForChoice(fresh, { thinking, catalog })?.thinking, thinking, `${thinking} passes through`);
   }
-  assert.equal(hostedRouteForChoice(fresh, { thinking: 'xhigh', catalog })?.thinking, 'xhigh', 'an effort Sonnet 5.5 offers is kept');
-  assert.equal(hostedRouteForChoice(fresh, { catalog })?.thinking, null, 'no effort leaves the runtime default');
+});
+
+test('choosing a hosted account never rewrites the effort, for any provider', () => {
+  const cases = [
+    { account: hostedAccount('openai-codex', 'cloud-login:chatgpt', 'gpt-6.1-sol'), model: 'openai-codex/gpt-6.1-sol' },
+    { account: claudeAccount('claude-opus-4-8'), model: 'anthropic/claude-opus-4-8' },
+    { account: hostedAccount('google', 'cloud-api-key:gemini', 'gemini-3.1-pro-preview'), model: 'google/gemini-3.1-pro-preview' },
+  ];
+  for (const { account, model } of cases) {
+    for (const thinking of ['default', 'off', 'minimal', null]) {
+      const route = hostedRouteForChoice(account, { thinking, catalog });
+      assert.equal(route?.model, model, model);
+      assert.equal(route?.thinking, thinking, `${model} keeps ${String(thinking)}`);
+      assert.equal(hostedRouteForChoice(account, { model, thinking, catalog })?.thinking, thinking, `${model} chosen by model keeps ${String(thinking)}`);
+    }
+  }
 });
 
 test('a stored Claude model and effort are never replaced', () => {
@@ -96,6 +113,7 @@ test("this Mac's Claude account opens on Sonnet 5.5 at medium effort, matched by
     'anthropic/claude-fable-5-1',
     'only the exact Sonnet 5.5 id matches',
   );
+  // Switching this Mac's composer to Sonnet 5.5 moves a level it lacks to Medium.
   const levels = catalogModelThinkingLevels(catalog, 'anthropic', 'claude-sonnet-5-5') ?? [];
   for (const current of ['off', 'default']) assert.equal(fallbackComposerThinkingValue(levels, current), 'medium', current);
 });

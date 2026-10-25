@@ -8,7 +8,6 @@ import { ompProviderIdFor, ompProviderName, type OmpCatalogEntry } from '@/kordi
 import { providerShortName } from '@/kordi-app/auth/providerCopy';
 import type { ComposerAuthOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import { normalizeComposerProviderId } from '@/kordi-app/components/composerModelSelection';
-import { fallbackComposerThinkingValue } from '@/kordi-app/components/composerThinking';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
 // The composer lists every saved account the provider page lists, with its
@@ -130,9 +129,8 @@ function routeFor(account: HostedRouteAccount, model: string, thinking?: string 
 
 /**
  * The Kordi Cloud route for choosing a hosted account: the requested model
- * when it serves it, else its default. A thinking level that model lacks gives
- * way to one it offers, medium first (Claude Sonnet 5.5 has no Off); no level
- * leaves the model's own default.
+ * when it serves it, else its default. The thinking level passes through as
+ * given; no level leaves the model's own default (Medium on Claude Sonnet 5.5).
  */
 export function hostedRouteForChoice(
   account: HostedRouteAccount,
@@ -141,10 +139,7 @@ export function hostedRouteForChoice(
   if (account.needsReconnect) return null;
   const requested = options.model?.startsWith(`${account.providerId}/`) ? options.model.slice(account.providerId.length + 1) : null;
   const model = requested && account.models.includes(requested) ? requested : accountDefaultModel(account, options.catalog);
-  if (!model) return null;
-  const levels = catalogModelThinkingLevels(options.catalog, account.providerId, model);
-  const thinking = options.thinking && levels ? fallbackComposerThinkingValue(levels, options.thinking) : options.thinking;
-  return routeFor(account, model, thinking);
+  return model ? routeFor(account, model, options.thinking) : null;
 }
 
 function sameProvider(left: string, right: string) {
