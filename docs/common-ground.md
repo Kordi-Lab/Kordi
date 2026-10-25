@@ -27,6 +27,7 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
 1. **Intro.** Your avatar, the title "Find your common ground", one line: "Your agent writes a card from sources you choose. Only people you meet see it." Primary button **Build my card**.
 2. **Sources.** One screen, grouped. Every source is off until the person turns it on.
    - **Kordi**: Memory (the account's saved memories) and each connected connector (Gmail, Google Calendar, GitHub, Slack). A connector that is not connected shows **Connect**, which opens Settings › Connectors and returns here.
+     A Work, Health or Daily tasks profile reads only the memories routed to it (see [memory.md](memory.md)); a custom profile reads its pinned memories plus the owner's unpinned ones. Group memories never feed a card.
    - **On this iPhone** (iOS) / **On this Mac** (macOS): Calendar, Reminders. **Allow** shows the system prompt; the row then shows the count found and a switch.
    - **Agents on this Mac** (macOS only): instruction and memory files from local coding agents, redacted before use.
      The server reads up to 12 files, keeps at most 2,000 characters of each after redaction, and rejects a build whose agent text passes 60,000 characters.

@@ -36,13 +36,32 @@ pub(in crate::common_ground) async fn owner_view(
         Some(profile) => load(pool, &profile.profile_id).await?,
         None => None,
     };
+    let since = match profile {
+        Some(profile) => {
+            let built_at = card.as_ref().and_then(|card| card.built_at);
+            memories_since_build(pool, profile, built_at).await?
+        }
+        None => 0,
+    };
     let mut view = match card {
         Some(card) => card.owner_view(Utc::now().date_naive()),
         None => empty_view(),
     };
     view["profile"] = profile.map(Profile::summary).unwrap_or(Value::Null);
+    view["memoriesSinceBuild"] = json!(since);
     view["handle"] = json!(people::handle(pool, account_id).await?);
     Ok(view)
+}
+
+/// Memories routed to the profile that changed after its card was built,
+/// or all of them when it never was.
+pub(in crate::common_ground) async fn memories_since_build(
+    pool: &PgPool,
+    profile: &Profile,
+    built_at: Option<chrono::DateTime<Utc>>,
+) -> sqlx_core::Result<i64> {
+    crate::memory_store::count_since(pool, &profile.account_id, profile.memory_target(), built_at)
+        .await
 }
 
 pub(in crate::common_ground) async fn owner_response(

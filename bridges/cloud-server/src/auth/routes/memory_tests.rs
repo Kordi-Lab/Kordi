@@ -464,11 +464,11 @@ fn capabilities_report_memory_version() {
         password: true,
         oauth_providers: Vec::new(),
         connectors_version: None,
-        memory_version: 1,
+        memory_version: 2,
         common_ground_version: None,
         contact_profile_version: CONTACT_PROFILE_VERSION,
     })
     .unwrap();
-    assert_eq!(value["memoryVersion"], 1);
+    assert_eq!(value["memoryVersion"], 2);
     assert_eq!(value["contactProfileVersion"], 1);
 }

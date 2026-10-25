@@ -17,6 +17,7 @@ use sqlx_postgres::PgPool;
 
 mod edit;
 mod groups;
+mod profile_routing;
 mod routing;
 mod runs;
 mod types;
@@ -24,6 +25,7 @@ mod types;
 pub(crate) use edit::{archive, update_memory};
 
 pub(crate) use groups::is_active_group_member;
+pub(crate) use profile_routing::{build_memories, count_since, profile_memories, ProfileTarget};
 pub(crate) use runs::{
     clear_omp_state, leased_run, omp_state_count, write_memory_audit, LeasedRun,
 };
