@@ -10,6 +10,7 @@ mod group_origin_tests;
 mod matching_guard_tests;
 mod matching_tests;
 mod matching_unit_tests;
+mod profile_cards_tests;
 mod profile_design_tests;
 mod profile_icon_tests;
 mod profile_memories_tests;

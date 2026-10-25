@@ -9,20 +9,22 @@
 //! CASCADE`.
 
 use axum::http::StatusCode;
-use chrono::{DateTime, Utc};
 use kordi_tools::memory_guard::{check_memory_text, MemoryGuardOptions};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+mod cards;
 mod edit;
 mod groups;
 mod profile_routing;
 mod routing;
+mod row;
 mod runs;
 mod types;
 
 pub(crate) use edit::{archive, update_memory};
+use row::{memory_from_row, MemoryRow, MEMORY_SELECT};
 
 pub(crate) use groups::is_active_group_member;
 pub(crate) use profile_routing::{build_memories, count_since, profile_memories, ProfileTarget};
@@ -44,71 +46,6 @@ pub(crate) const MEMORY_SOURCES: [&str; 4] =
 const MAX_SCOPE_ID_CHARS: usize = 256;
 const MAX_SCOPE_LABEL_CHARS: usize = 256;
 const MAX_CLIENT_MEMORY_ID_CHARS: usize = 128;
-
-type MemoryRow = (
-    String,
-    String,
-    String,
-    Option<String>,
-    String,
-    String,
-    DateTime<Utc>,
-    DateTime<Utc>,
-    String,
-    Option<String>,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-);
-
-/// Selects memory rows from a CTE named `m` (a query or a `RETURNING *`
-/// write) with the owner's display name and the chosen profile's kind.
-const MEMORY_SELECT: &str = "SELECT m.memory_id, m.scope, m.scope_id, m.scope_label, m.source, \
-     m.text, m.created_at, m.updated_at, m.owner_account_id, \
-     NULLIF(btrim(owner.display_name), ''), \
-     m.category, m.declaration_type, m.confidence, m.profile_id, profile.kind \
-     FROM m LEFT JOIN cloud_accounts owner ON owner.account_id = m.owner_account_id \
-     LEFT JOIN cloud_common_ground_profiles profile ON profile.profile_id = m.profile_id";
-
-fn memory_from_row(row: MemoryRow) -> MemoryResponse {
-    let (
-        memory_id,
-        scope,
-        scope_id,
-        scope_label,
-        source,
-        text,
-        created_at,
-        updated_at,
-        owner_account_id,
-        owner_name,
-        category,
-        declaration_type,
-        confidence,
-        profile_id,
-        explicit_kind,
-    ) = row;
-    let profile_kind = routing::effective_profile_kind(&scope, &category, explicit_kind);
-    MemoryResponse {
-        memory_id,
-        scope,
-        scope_id,
-        scope_label,
-        source,
-        text,
-        created_at: created_at.to_rfc3339(),
-        updated_at: updated_at.to_rfc3339(),
-        owner_account_id,
-        owner_name,
-        category,
-        declaration_type,
-        confidence,
-        profile_id,
-        profile_kind,
-    }
-}
 
 /// Texts the opt-out quote guard protects for this account and scope.
 ///

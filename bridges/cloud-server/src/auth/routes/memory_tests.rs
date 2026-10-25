@@ -8,6 +8,7 @@ use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::util::ServiceExt;
 
+mod cards;
 mod categories;
 mod dedup;
 mod global;
@@ -464,11 +465,11 @@ fn capabilities_report_memory_version() {
         password: true,
         oauth_providers: Vec::new(),
         connectors_version: None,
-        memory_version: 2,
+        memory_version: 3,
         common_ground_version: None,
         contact_profile_version: CONTACT_PROFILE_VERSION,
     })
     .unwrap();
-    assert_eq!(value["memoryVersion"], 2);
+    assert_eq!(value["memoryVersion"], 3);
     assert_eq!(value["contactProfileVersion"], 1);
 }

@@ -42,6 +42,32 @@ pub(crate) fn profile_kind_for(category: &str) -> Option<&'static str> {
     }
 }
 
+/// Profile kinds that receive memories by category.
+pub(crate) const FIXED_PROFILE_KINDS: [&str; 3] = ["work", "health", "daily"];
+
+/// SQL that is true when a memory of category `category` reaches a profile
+/// of kind `kind` through its category: the profile is of a fixed kind and
+/// the category routes to that kind or to every fixed kind.
+pub(crate) fn routed_card_sql(category: &str, kind: &str) -> String {
+    let arms: String = MEMORY_CATEGORIES
+        .iter()
+        .filter_map(|c| profile_kind_for(c).map(|k| format!(" WHEN '{c}' THEN '{k}'")))
+        .collect();
+    let fixed = FIXED_PROFILE_KINDS
+        .iter()
+        .map(|k| format!("'{k}'"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("({kind} IN ({fixed}) AND (CASE {category}{arms} END) IN ({kind}, 'all'))")
+}
+
+/// Whether a memory of `category` reaches a profile of `kind` through its
+/// category (the Rust twin of [`routed_card_sql`]).
+pub(crate) fn routed_to_kind(category: &str, kind: &str) -> bool {
+    FIXED_PROFILE_KINDS.contains(&kind)
+        && matches!(profile_kind_for(category), Some(k) if k == kind || k == "all")
+}
+
 /// Whether a group memory may use the category. Health, location, purchases
 /// and values describe one person, not a group.
 pub(crate) fn category_allowed_in_group(category: &str) -> bool {
@@ -89,7 +115,15 @@ pub(crate) fn invalid_declared_by() -> MemoryError {
 pub(crate) fn invalid_update() -> MemoryError {
     MemoryError::bad_request(
         "invalid_update",
-        "Send at least one of text, category, or profileId.",
+        "Send at least one of text, category, profileId, addProfileId, or removeProfileId.",
+    )
+}
+
+pub(crate) fn memory_profile_not_found() -> MemoryError {
+    MemoryError::new(
+        StatusCode::NOT_FOUND,
+        "memory_profile_not_found",
+        "This memory is not on that profile.",
     )
 }
 
@@ -218,6 +252,24 @@ mod tests {
         assert_eq!(
             effective_profile_kind("global", "work_context", Some("custom".into())),
             Some("custom".into())
+        );
+    }
+
+    #[test]
+    fn routed_to_kind_matches_the_routing_table() {
+        assert!(routed_to_kind("work_context", "work"));
+        assert!(!routed_to_kind("work_context", "health"));
+        assert!(routed_to_kind("coordination_context", "daily"));
+        assert!(!routed_to_kind("coordination_context", "custom"));
+        assert!(!routed_to_kind("general_preferences", "work"));
+        let sql = routed_card_sql("m.category", "p.kind");
+        assert!(
+            sql.contains("WHEN 'coordination_context' THEN 'all'"),
+            "{sql}"
+        );
+        assert!(
+            sql.starts_with("(p.kind IN ('work', 'health', 'daily')"),
+            "{sql}"
         );
     }
 

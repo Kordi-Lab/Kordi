@@ -365,4 +365,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "0149_agent_bird_avatar_style.sql"
     ),
     migration!(150, "memory categories", "0150_memory_categories.sql"),
+    migration!(
+        151,
+        "memory card overrides",
+        "0151_memory_card_overrides.sql"
+    ),
 ];

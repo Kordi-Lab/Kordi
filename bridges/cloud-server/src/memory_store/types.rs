@@ -27,12 +27,19 @@ pub(crate) struct MemoryResponse {
     pub declaration_type: String,
     /// How sure the agent was, for inferred memories.
     pub confidence: Option<String>,
-    /// The profile the person filed the memory to, when they chose one.
+    /// The legacy single pin: the one card the person added the memory to,
+    /// when there is exactly one.
     pub profile_id: Option<String>,
     /// The profile kind the memory is filed to: the chosen profile's kind,
     /// else the category's default (`all` means every fixed-kind profile).
     /// Always null for group memories.
     pub profile_kind: Option<String>,
+    /// The cards the memory feeds, in profile order: the ones its category
+    /// routes to, minus `excluded_profile_ids`, plus the cards the person
+    /// added it to. Empty for group memories.
+    pub profile_ids: Vec<String>,
+    /// The cards the person removed the memory from.
+    pub excluded_profile_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -84,8 +91,9 @@ pub(crate) struct SaveMemoryRequest {
     pub declared_by: Option<String>,
 }
 
-/// A memory edit. At least one field must be present; `profileId: null`
-/// clears the chosen profile.
+/// A memory edit. At least one field must be present. `profileId` replaces
+/// every card choice with that one card (`null` clears every choice);
+/// `addProfileId` and `removeProfileId` change one card.
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct UpdateMemoryRequest {
@@ -95,6 +103,12 @@ pub(crate) struct UpdateMemoryRequest {
     pub category: Option<String>,
     #[serde(default, deserialize_with = "present")]
     pub profile_id: Option<Option<String>>,
+    /// Adds the memory to one of the owner's cards.
+    #[serde(default)]
+    pub add_profile_id: Option<String>,
+    /// Removes the memory from one of its cards.
+    #[serde(default)]
+    pub remove_profile_id: Option<String>,
 }
 
 /// Tells a field sent as `null` apart from a missing one.

@@ -5,6 +5,7 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+use super::cards::{self, CardEdit, LEGACY_PIN_SQL};
 use super::groups::{authorize_change, Change};
 use super::routing::{self, USER_DECLARED};
 use super::{
@@ -21,18 +22,25 @@ fn memory_exists() -> MemoryError {
     )
 }
 
-/// Changes a memory's text, category, or chosen profile. New text passes the
-/// same guard as a save and may not repeat another live memory in the same
-/// scope (any member's, for a group); a person's edit makes the memory
-/// user-declared. Group memories keep to the shared categories and cannot be
-/// filed to a profile; a chosen profile must be one of the owner's.
+/// Changes a memory's text, category, or cards. New text passes the same
+/// guard as a save and may not repeat another live memory in the same scope
+/// (any member's, for a group); a person's edit makes the memory
+/// user-declared. Group memories keep to the shared categories and have no
+/// cards; a named card must be one of the owner's profiles. Every edit
+/// touches `updated_at` and keeps the legacy `profile_id` column equal to
+/// the one added card, or null.
 pub(crate) async fn update_memory(
     pool: &PgPool,
     account_id: &str,
     memory_id: &str,
     input: &UpdateMemoryRequest,
 ) -> MemoryResult<MemoryResponse> {
-    if input.text.is_none() && input.category.is_none() && input.profile_id.is_none() {
+    if input.text.is_none()
+        && input.category.is_none()
+        && input.profile_id.is_none()
+        && input.add_profile_id.is_none()
+        && input.remove_profile_id.is_none()
+    {
         return Err(routing::invalid_update());
     }
     let (owner, scope, scope_id) =
@@ -45,15 +53,14 @@ pub(crate) async fn update_memory(
         if category.is_some_and(|category| !routing::category_allowed_in_group(category)) {
             return Err(routing::category_not_shared());
         }
-        if input.profile_id.is_some() {
+        if input.profile_id.is_some()
+            || input.add_profile_id.is_some()
+            || input.remove_profile_id.is_some()
+        {
             return Err(routing::profile_not_allowed());
         }
     }
-    let profile_id = match &input.profile_id {
-        Some(Some(id)) => Some(Some(owned_profile(pool, &owner, id).await?)),
-        Some(None) => Some(None),
-        None => None,
-    };
+    let card_edit = card_edit(pool, &owner, input).await?;
     let text = match input.text.as_deref() {
         Some(text) => {
             let settings = guard_settings(settings(pool, account_id).await?, &scope);
@@ -86,6 +93,12 @@ pub(crate) async fn update_memory(
             return Err(memory_exists());
         }
     }
+    // The row lock comes after the scope lock, in the order saves take them.
+    let current_category = cards::lock_category(&mut transaction, memory_id).await?;
+    if !card_edit.is_empty() {
+        let category = category.unwrap_or(current_category.as_str());
+        cards::apply(&mut transaction, &owner, memory_id, category, &card_edit).await?;
+    }
     // A text edit is the person's own words, so it carries no confidence.
     let row: Option<MemoryRow> = query_as(&format!(
         "WITH m AS (UPDATE cloud_account_memories SET \
@@ -93,7 +106,7 @@ pub(crate) async fn update_memory(
            declaration_type = CASE WHEN $2 IS NULL THEN declaration_type ELSE '{USER_DECLARED}' END, \
            confidence = CASE WHEN $2 IS NULL THEN confidence ELSE NULL END, \
            category = COALESCE($3, category), \
-           profile_id = CASE WHEN $4 THEN $5 ELSE profile_id END, \
+           profile_id = {LEGACY_PIN_SQL}, \
            updated_at = now() \
          WHERE memory_id = $1 AND archived_at IS NULL \
          RETURNING *) {MEMORY_SELECT}"
@@ -101,26 +114,37 @@ pub(crate) async fn update_memory(
     .bind(memory_id)
     .bind(text)
     .bind(category)
-    .bind(profile_id.is_some())
-    .bind(profile_id.flatten())
     .fetch_optional(&mut *transaction)
     .await?;
     transaction.commit().await?;
     row.map(memory_from_row).ok_or_else(MemoryError::not_found)
 }
 
-/// The id of the owner's profile `profile_id`; another account's profile is
-/// not found.
-async fn owned_profile(pool: &PgPool, owner: &str, profile_id: &str) -> MemoryResult<String> {
-    let row: Option<(String,)> = query_as(
-        "SELECT profile_id FROM cloud_common_ground_profiles \
-         WHERE profile_id = $1 AND account_id = $2",
-    )
-    .bind(profile_id.trim())
-    .bind(owner)
-    .fetch_optional(pool)
-    .await?;
-    row.map(|(id,)| id).ok_or_else(routing::profile_not_found)
+/// The card changes of an edit, each named profile checked to be the
+/// owner's.
+async fn card_edit(
+    pool: &PgPool,
+    owner: &str,
+    input: &UpdateMemoryRequest,
+) -> MemoryResult<CardEdit> {
+    let legacy = match &input.profile_id {
+        Some(Some(id)) => Some(Some(cards::owned_card(pool, owner, id).await?)),
+        Some(None) => Some(None),
+        None => None,
+    };
+    let add = match &input.add_profile_id {
+        Some(id) => Some(cards::owned_card(pool, owner, id).await?),
+        None => None,
+    };
+    let remove = match &input.remove_profile_id {
+        Some(id) => Some(cards::owned_card(pool, owner, id).await?),
+        None => None,
+    };
+    Ok(CardEdit {
+        legacy,
+        add,
+        remove,
+    })
 }
 
 /// Archives one memory.
