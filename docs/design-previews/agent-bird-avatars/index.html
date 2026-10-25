@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agent avatars · Kordi proposal</title>
+<link rel="stylesheet" href="preview.css">
+<script src="birds.js"></script>
+</head>
+<body>
+<header class="review-header"><span class="brand">Kordi <span>/</span> <span>Agent avatars</span></span><span class="proposal">Proposal</span></header>
+<main>
+  <div class="review-controls">
+    <div class="control">Tone <div class="segmented" data-param="tone"><button data-value="color">Color</button><button data-value="slate">Slate</button><button data-value="ink">Ink</button></div></div>
+    <div class="control">Background <div class="segmented" data-param="bg"><button data-value="paper">Paper</button><button data-value="tint">Tinted</button></div></div>
+    <div class="control">Device <div class="segmented" data-param="device"><button data-value="mac">Mac</button><button data-value="ios">iPhone</button></div></div>
+    <div class="spacer"></div>
+    <button class="theme-toggle" id="theme">◐ <span>Dark</span></button>
+  </div>
+
+  <section>
+    <h2>Roster</h2>
+    <div class="roster" id="roster"></div>
+    <h3>At 24, 28, 36, 48 px</h3>
+    <div class="sizes" id="sizes"></div>
+  </section>
+
+  <section>
+    <h2>In the app</h2>
+    <div class="app-window">
+      <aside class="sidebar"><div class="window-controls"><i></i><i></i><i></i></div><div id="chats"></div></aside>
+      <div class="conversation">
+        <div class="chat-header">Kordi</div>
+        <div class="messages" id="messages"></div>
+      </div>
+      <aside class="inspector"><div class="inspector-head" id="inspector"></div></aside>
+    </div>
+  </section>
+
+  <section>
+    <h2>Picker</h2>
+    <div class="picker-stage" id="picker-stage"></div>
+  </section>
+
+  <section>
+    <h2>Existing seeds</h2>
+    <div class="seeds" id="seeds"></div>
+  </section>
+</main>
+<footer>Design prototype · Synthetic agents · Choices affect this preview only</footer>
+<input type="file" id="upload" accept="image/*" hidden>
+
+<script>
+(function () {
+  'use strict';
+  const B = window.KordiBirds;
+  const $ = (s) => document.querySelector(s);
+  const params = new URLSearchParams(location.search);
+  const pick = (k, allowed, d) => (allowed.includes(params.get(k)) ? params.get(k) : d);
+  const state = {
+    tone: pick('tone', ['color', 'slate', 'ink'], 'color'),
+    bg: pick('bg', ['paper', 'tint'], 'paper'),
+    device: pick('device', ['mac', 'ios'], 'mac'),
+    theme: pick('theme', ['light', 'dark'], 'light'),
+  };
+
+  const AGENTS = [
+    { name: 'Kordi', note: 'Drafted the weekly plan' },
+    { name: 'Research', note: 'Three sources found' },
+    { name: 'Editor', note: 'Tightened the intro' },
+    { name: 'Scheduler', note: 'Moved standup to 10:30' },
+    { name: 'Reviewer', note: 'Two small notes' },
+  ].map((a) => ({ ...a, avatar: { ...B.seedToAvatar(`agent:${a.name}`), custom: false } }));
+  const kordi = AGENTS[0];
+  /* Kordi's tone follows the page Tone control until one is picked in the picker. */
+  delete kordi.avatar.tone;
+  const toneOf = (avatar) => avatar.tone || state.tone;
+  const seedOf = (avatar) => (avatar.photo ? 'photo' : `bird-${avatar.species}-${toneOf(avatar)}-${paletteFor(avatar)}`);
+
+  /* Paper mode shows white tiles unless a colour was picked for that agent. */
+  function paletteFor(avatar, tintKey) {
+    if (avatar.custom) return avatar.palette;
+    return state.bg === 'tint' ? tintKey || avatar.palette : 'paper';
+  }
+  function av(avatar, size, tintKey) {
+    const style = `width:${size}px;height:${size}px`;
+    if (avatar.photo) return `<span class="av" style="${style}"><img src="${avatar.photo}" alt=""></span>`;
+    return `<span class="av" style="${style}">${B.birdSvg(avatar.species, { tone: toneOf(avatar), palette: paletteFor(avatar, tintKey), size })}</span>`;
+  }
+
+  function renderRoster() {
+    $('#roster').innerHTML = B.SPECIES.map((s) =>
+      `<figure>${av({ species: s.key, palette: 'paper' }, 96, B.tintForSpecies(s.key))}<figcaption>${s.name}</figcaption></figure>`).join('');
+    $('#sizes').innerHTML = [24, 28, 36, 48].map((n) => av({ species: 'osprey', palette: 'paper' }, n, B.tintForSpecies('osprey'))).join('');
+  }
+
+  function renderApp() {
+    $('#chats').innerHTML = AGENTS.map((a, i) =>
+      `<button class="chat-row${i === 0 ? ' selected' : ''}">${av(a.avatar, 28)}<span>${a.name}<small>${a.note}</small></span></button>`).join('');
+    const research = AGENTS[1];
+    $('#messages').innerHTML = [
+      [kordi, '9:41', 'Here is the plan for this week. Three items moved from last week.'],
+      [research, '9:43', 'I found three sources on the pricing question. Summaries are in the shared page.'],
+    ].map(([a, t, text]) =>
+      `<div class="message">${av(a.avatar, 28)}<div><div class="sender">${a.name}<time>${t}</time></div><div>${text}</div></div></div>`).join('');
+    $('#inspector').innerHTML = `<button class="avatar-button" aria-label="Change avatar">${av(kordi.avatar, 48)}</button><div><strong>Kordi</strong><small>Agent</small></div>`;
+  }
+
+  function pickerHTML() {
+    const tileSize = state.device === 'ios' ? 64 : 56;
+    const a = kordi.avatar;
+    const tone = toneOf(a);
+    const toneNames = { color: 'Color', slate: 'Slate', ink: 'Ink' };
+    const tones = `<div class="segmented picker-tone">${B.TONES.map((t) =>
+      `<button data-tone="${t}" aria-pressed="${!a.photo && tone === t}">${toneNames[t]}</button>`).join('')}</div>`;
+    const tiles = B.SPECIES.map((s) =>
+      `<button class="tile" data-species="${s.key}" aria-pressed="${!a.photo && a.species === s.key}">${av({ species: s.key, tone, palette: a.palette, custom: a.custom }, tileSize)}<span>${s.name}</span></button>`).join('');
+    const dots = B.PALETTES.map((p) =>
+      `<button class="dot" data-palette="${p.key}" aria-label="${p.name}" aria-pressed="${a.custom && a.palette === p.key}" style="background:${p.bg}"></button>`).join('');
+    return `<div class="picker-title">Avatar</div>${tones}<div class="species-grid">${tiles}</div><div class="dots">${dots}</div>` +
+      `<button class="quiet-row" data-action="upload">Upload photo</button><button class="quiet-row" data-action="shuffle">Shuffle</button>`;
+  }
+
+  function renderPicker() {
+    const stage = $('#picker-stage');
+    const current = `<div class="current">${av(kordi.avatar, 48)}<code>${seedOf(kordi.avatar)}</code></div>`;
+    if (state.device === 'ios') {
+      stage.innerHTML = current + `<div class="phone"><div class="phone-chat"><div class="chat-header">${av(kordi.avatar, 36)}<span>Kordi</span></div></div><div class="scrim"></div><div class="sheet"><div class="grabber"></div>${pickerHTML()}</div></div>`;
+    } else {
+      stage.innerHTML = current + `<div class="popover">${pickerHTML()}</div>`;
+    }
+  }
+
+  function renderSeeds() {
+    const seeds = ['54c7ea56', '17092ad7', '4d5cd8a9', 'd34a735c', '11129751', 'f9de9a90', '512aaaf2', '7bbaa257'];
+    $('#seeds').innerHTML = seeds.map((s) =>
+      `<figure>${av({ ...B.seedToAvatar(s), custom: state.bg === 'tint' }, 48)}<code>${s}</code></figure>`).join('');
+  }
+
+  function render() {
+    document.documentElement.dataset.theme = state.theme;
+    document.querySelectorAll('.review-controls .segmented').forEach((seg) =>
+      seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(state[seg.dataset.param] === b.dataset.value))));
+    $('#theme').innerHTML = `◐ <span>${state.theme === 'dark' ? 'Light' : 'Dark'}</span>`;
+    renderRoster(); renderApp(); renderPicker(); renderSeeds();
+    const q = new URLSearchParams({ tone: state.tone, bg: state.bg, device: state.device, theme: state.theme });
+    try { history.replaceState(null, '', `${location.pathname}?${q}`); } catch (_) { /* file:// in some browsers */ }
+  }
+
+  document.querySelectorAll('.review-controls .segmented').forEach((seg) => seg.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    state[seg.dataset.param] = b.dataset.value; render();
+  }));
+  $('#theme').onclick = () => { state.theme = state.theme === 'dark' ? 'light' : 'dark'; render(); };
+
+  $('#picker-stage').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const a = kordi.avatar;
+    if (b.dataset.tone) { a.tone = b.dataset.tone; delete a.photo; }
+    else if (b.dataset.species) { a.species = b.dataset.species; delete a.photo; }
+    else if (b.dataset.palette) { a.palette = b.dataset.palette; a.custom = true; delete a.photo; }
+    else if (b.dataset.action === 'shuffle') {
+      a.species = B.SPECIES[Math.floor(Math.random() * B.SPECIES.length)].key;
+      a.palette = B.PALETTES[Math.floor(Math.random() * B.PALETTES.length)].key;
+      a.custom = true; delete a.photo;
+    } else if (b.dataset.action === 'upload') { $('#upload').click(); return; }
+    renderApp(); renderPicker();
+  });
+  $('#upload').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => { kordi.avatar.photo = reader.result; renderApp(); renderPicker(); };
+    reader.readAsDataURL(f);
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
