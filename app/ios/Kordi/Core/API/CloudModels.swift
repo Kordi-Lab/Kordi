@@ -40,7 +40,10 @@ struct CanonicalAvatarMutation: Codable, Hashable {
 enum CanonicalAvatarSystem {
     static let rendererVersion = "dicebear-rust-10.6.0-styles-10.5.0"
     static let humanStyle = "lorelei"
-    static let agentStyle = "thumbs"
+    static let birdStyle = "kordi-birds"
+    static let legacyAgentStyle = "thumbs"
+    static let agentStyle = birdStyle
+    static let supportedStyles: Set<String> = [humanStyle, birdStyle, legacyAgentStyle]
     static let defaultAgentId = "cloud-local-agent"
     static func agentID(_ raw: String?, ownerAccountID: String) -> String {
         let id = raw?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
@@ -68,7 +71,7 @@ enum CanonicalAvatarSystem {
               components.host == rendererVersion else { return nil }
         let path = components.path.split(separator: "/").map(String.init)
         guard path.count == 2,
-              [humanStyle, agentStyle].contains(path[0]),
+              supportedStyles.contains(path[0]),
               validSeed(path[1]),
               let versionText = components.queryItems?.first(where: { $0.name == "version" })?.value,
               let version = Int64(versionText), version > 0 else { return nil }
@@ -76,7 +79,7 @@ enum CanonicalAvatarSystem {
     }
 
     static func marker(style: String, seed: String, version: Int64) -> String? {
-        guard [humanStyle, agentStyle].contains(style), validSeed(seed), version > 0 else { return nil }
+        guard supportedStyles.contains(style), validSeed(seed), version > 0 else { return nil }
         return "\(markerPrefix)\(rendererVersion)/\(style)/\(seed)?version=\(version)"
     }
 
@@ -109,7 +112,7 @@ enum CanonicalAvatarSystem {
     }
 
     static func previewURL(style: String, seed: String, baseURL: URL = CloudAPIClient.configuredBaseURL) -> URL? {
-        guard [humanStyle, agentStyle].contains(style), validSeed(seed) else { return nil }
+        guard supportedStyles.contains(style), validSeed(seed) else { return nil }
         return baseURL
             .appendingPathComponent("v1/avatars/preview")
             .appendingPathComponent(style)
