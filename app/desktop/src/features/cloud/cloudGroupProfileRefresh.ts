@@ -113,6 +113,58 @@ function refreshPreparations(
   return refreshed;
 }
 
+/** One fetch of a member's profile, as the gate tracks it. */
+export type CloudGroupProfileFetch = {
+  /** False once a newer fetch for the account started, or the gate closed. */
+  isLatest(): boolean;
+  /** False once the gate closed: the user signed out or switched accounts. */
+  isOpen(): boolean;
+  /** Runs `apply` after every earlier apply for the account has finished. */
+  applyInTurn(apply: () => Promise<void>): Promise<void>;
+};
+
+/**
+ * Orders one listener's refreshes. Fetches run concurrently, but only the latest one started
+ * for an account may write, applies for one account run one after another, and nothing
+ * writes after the gate closes.
+ */
+export type CloudGroupProfileRefreshGate = {
+  begin(accountId: string): CloudGroupProfileFetch;
+  isOpen(): boolean;
+  close(): void;
+};
+
+export function createCloudGroupProfileRefreshGate(): CloudGroupProfileRefreshGate {
+  let open = true;
+  let sequence = 0;
+  const latest = new Map<string, number>();
+  const applying = new Map<string, Promise<void>>();
+  return {
+    begin(accountId) {
+      sequence += 1;
+      const ticket = sequence;
+      latest.set(accountId, ticket);
+      return {
+        isLatest: () => open && latest.get(accountId) === ticket,
+        isOpen: () => open,
+        applyInTurn(apply) {
+          const turn = (applying.get(accountId) ?? Promise.resolve()).then(apply);
+          const settled = turn.catch(() => undefined);
+          applying.set(accountId, settled);
+          void settled.then(() => {
+            if (applying.get(accountId) === settled) applying.delete(accountId);
+          });
+          return turn;
+        },
+      };
+    },
+    isOpen: () => open,
+    close() {
+      open = false;
+    },
+  };
+}
+
 export type CloudGroupProfileRefreshInput = {
   accountIds: readonly string[];
   token: string;
@@ -122,42 +174,54 @@ export type CloudGroupProfileRefreshInput = {
   preparationCache: CloudGroupSessionPreparationCache;
   getState(): CanonicalSessionState | null;
   setState: CanonicalSessionStateSetter;
+  /** Shared by one listener's refreshes, so an older response never overwrites a newer one. */
+  gate?: CloudGroupProfileRefreshGate;
 };
 
 /**
  * Refetches the changed members that group sessions loaded, then redraws their rows and
  * refreshes the prepared groups that hold them. Accounts no group loaded are skipped; a failed
- * fetch keeps the cached profile.
+ * fetch keeps the cached profile. A response is dropped once a newer fetch for its account has
+ * started or the gate has closed; one already applying finishes the write in flight, then stops.
  */
 export async function refreshCloudGroupProfiles(input: CloudGroupProfileRefreshInput): Promise<string[]> {
   const { account, client, profileCache, preparationCache } = input;
+  const gate = input.gate ?? createCloudGroupProfileRefreshGate();
   const accountIds = [...new Set(input.accountIds.map((id) => id.trim()))]
     .filter((id) => id && id !== account.accountId && profileCache.has(id));
   const refreshed: string[] = [];
   await Promise.all(accountIds.map(async (accountId) => {
+    const turn = gate.begin(accountId);
     let profile: CloudPublicProfile;
     try {
       profile = await client.getProfile(input.token, accountId);
     } catch {
       return;
     }
-    profileCache.set(accountId, profile);
-    const participant = refreshPreparations(preparationCache, profile);
-    const state = input.getState();
-    const localHumanIdentityId = state?.profile.humanIdentityId?.trim();
-    if (!state || !localHumanIdentityId) return;
-    const requests = cloudGroupProfileIdentityRefreshes({
-      identities: state.identities,
-      profile,
-      participant,
-      account,
-      localHumanIdentityId,
+    await turn.applyInTurn(async () => {
+      if (!turn.isLatest()) return;
+      profileCache.set(accountId, profile);
+      const participant = refreshPreparations(preparationCache, profile);
+      const state = input.getState();
+      const localHumanIdentityId = state?.profile.humanIdentityId?.trim();
+      if (!state || !localHumanIdentityId) return;
+      const requests = cloudGroupProfileIdentityRefreshes({
+        identities: state.identities,
+        profile,
+        participant,
+        account,
+        localHumanIdentityId,
+      });
+      for (const request of requests) {
+        if (!turn.isLatest()) return;
+        const identity = await upsertCanonicalIdentityFast(request);
+        // The store now holds this write, so local state mirrors it even if a newer fetch
+        // started meanwhile; that fetch applies next and compares against it.
+        if (!turn.isOpen()) return;
+        input.setState((current) => upsertCanonicalIdentityIntoLocalState(current, identity));
+      }
+      refreshed.push(accountId);
     });
-    for (const request of requests) {
-      const identity = await upsertCanonicalIdentityFast(request);
-      input.setState((current) => upsertCanonicalIdentityIntoLocalState(current, identity));
-    }
-    refreshed.push(accountId);
   }));
   return refreshed;
 }
@@ -180,14 +244,14 @@ export function useCloudGroupProfileRefresh(input: {
     if (!accountId || typeof window === 'undefined') return;
     const pending = new Set<string>();
     let timer: ReturnType<typeof setTimeout> | null = null;
-    let active = true;
+    const gate = createCloudGroupProfileRefreshGate();
     const flush = async () => {
       timer = null;
       const accountIds = [...pending];
       pending.clear();
       const session = await loadSession();
       const account = accountRef.current;
-      if (!active || !session?.token || !account || session.accountId !== accountId || account.accountId !== accountId) return;
+      if (!gate.isOpen() || !session?.token || !account || session.accountId !== accountId || account.accountId !== accountId) return;
       await refreshCloudGroupProfiles({
         accountIds,
         token: session.token,
@@ -197,6 +261,7 @@ export function useCloudGroupProfileRefresh(input: {
         preparationCache: preparationCacheRef.current.entries,
         getState: () => canonicalStateRef.current,
         setState,
+        gate,
       }).catch(() => undefined);
     };
     const onDirectoryChanged = (event: Event) => {
@@ -210,7 +275,7 @@ export function useCloudGroupProfileRefresh(input: {
     };
     window.addEventListener(CLOUD_DIRECTORY_SYNC_EVENT, onDirectoryChanged);
     return () => {
-      active = false;
+      gate.close();
       window.removeEventListener(CLOUD_DIRECTORY_SYNC_EVENT, onDirectoryChanged);
       if (timer !== null) clearTimeout(timer);
     };

@@ -76,7 +76,6 @@ tests=(
   common_ground_daily_tests::upgrade_from_146_renames_daily_profiles
   common_ground_sources_tests::upgrade_from_146_adds_profile_sources
   agent_avatar_tests::upgrade_from_148_accepts_bird_avatar_style
-  agent_avatar_tests::upgrade_from_154_moves_generated_thumbs_agents_to_birds
   memory_tests::upgrade_from_149_adds_memory_categories
   memory_tests::upgrade_from_150_adds_memory_card_overrides
   proactive_tests::upgrade_from_153_adds_proactive_agents
@@ -109,7 +108,7 @@ DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib auth::routes::contact_profile:: -- --test-threads=1
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib auth::routes::contact_removal:: -- --test-threads=1
-# New agents start with a random bird (docs/avatar-system.md).
+# Agent avatar tests (docs/avatar-system.md) use the Common ground fixture.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib avatars::agent_avatar_db_tests:: -- --test-threads=1
 # Proactive agent tests (docs/development/proactive-agent.md) follow the same rule.

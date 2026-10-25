@@ -161,8 +161,6 @@ pub(super) fn default_agent_profile_from_row(
     fallback_updated_at: &str,
 ) -> DefaultAgentProfileResponse {
     let agent_id = default_agent_id(account_id);
-    // A missing row reads as the bird its backfilled seed would draw: stable
-    // across reads, unlike the random bird a stored profile starts with.
     let row = row.unwrap_or_else(|| {
         let seed = format!("default-agent-{account_id}");
         (
@@ -170,7 +168,7 @@ pub(super) fn default_agent_profile_from_row(
             "Kordi".to_string(),
             None,
             "generated".to_string(),
-            crate::avatars::BIRD_AVATAR_STYLE.to_string(),
+            crate::avatars::AGENT_AVATAR_STYLE.to_string(),
             seed,
             crate::avatars::AVATAR_RENDERER_VERSION.to_string(),
             1,

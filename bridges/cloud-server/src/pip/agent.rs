@@ -6,8 +6,7 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use crate::avatars::{
-    generated_avatar_marker, random_bird_seed, AVATAR_RENDERER_VERSION, BIRD_AVATAR_STYLE,
-    HUMAN_AVATAR_STYLE,
+    generated_avatar_marker, AGENT_AVATAR_STYLE, AVATAR_RENDERER_VERSION, HUMAN_AVATAR_STYLE,
 };
 
 use super::config::{PendingPipConfig, PipConfig, PipConfigError};
@@ -24,10 +23,7 @@ pub async fn bootstrap_pip_agent(
     // Accounts only accept the human generated style (database check
     // constraint); clients substitute PiP's own mark for this account id.
     let account_avatar_url = generated_avatar_marker(HUMAN_AVATAR_STYLE, &pending.account_id, 1);
-    // One random bird for PiP's agent profile and definition; later starts
-    // keep whichever avatar is already stored.
-    let agent_avatar_seed = random_bird_seed();
-    let agent_avatar_url = generated_avatar_marker(BIRD_AVATAR_STYLE, &agent_avatar_seed, 1);
+    let agent_avatar_url = generated_avatar_marker(AGENT_AVATAR_STYLE, &pending.agent_id, 1);
 
     let existing_by_email: Option<(String,)> =
         query_as("SELECT account_id FROM cloud_accounts WHERE LOWER(primary_email) = LOWER($1)")
@@ -78,8 +74,8 @@ pub async fn bootstrap_pip_agent(
     .bind(&pending.account_id)
     .bind(&pending.name)
     .bind(&agent_avatar_url)
-    .bind(BIRD_AVATAR_STYLE)
-    .bind(&agent_avatar_seed)
+    .bind(AGENT_AVATAR_STYLE)
+    .bind(&pending.agent_id)
     .bind(AVATAR_RENDERER_VERSION)
     .bind(&now)
     .execute(pool)
@@ -104,7 +100,7 @@ pub async fn bootstrap_pip_agent(
          ) VALUES (
              $1, $2, 'participant_conversations', 'active', $3, 'Built-in plan agent',
              $4, $5, 'Turns group plans into shared cards and keeps them honest.', '[]', '[]', '[]',
-             $6, $7, $7, NULL, TRUE, $8, 'generated', $9, $11, $10, 1, $7
+             $6, $7, $7, NULL, TRUE, $8, 'generated', $9, $1, $10, 1, $7
          )
          ON CONFLICT (agent_id) DO UPDATE SET
              owner_account_id = EXCLUDED.owner_account_id,
@@ -130,9 +126,8 @@ pub async fn bootstrap_pip_agent(
     .bind(config.model_routing())
     .bind(&now)
     .bind(&agent_avatar_url)
-    .bind(BIRD_AVATAR_STYLE)
+    .bind(AGENT_AVATAR_STYLE)
     .bind(AVATAR_RENDERER_VERSION)
-    .bind(&agent_avatar_seed)
     .execute(pool)
     .await?;
     if result.rows_affected() == 0 {

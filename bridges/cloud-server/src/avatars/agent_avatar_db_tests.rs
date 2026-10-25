@@ -1,7 +1,7 @@
-//! Agent avatars in the database: new agents start with a random Kordi bird
-//! that the versioned route serves, and an owner's later change reaches every
-//! member who shares a group. They use the Common ground fixture and its skip
-//! rule: outside CI they return early without `$DATABASE_URL`.
+//! Agent avatars in the database: an agent nobody changed keeps its unique `thumbs` seed,
+//! which every route draws as that seed's bird, and an owner's later change reaches every
+//! member who shares a group. They use the Common ground fixture and its skip rule: outside
+//! CI they return early without `$DATABASE_URL`.
 
 use std::sync::Arc;
 
@@ -15,29 +15,18 @@ use sqlx_postgres::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use super::birds::parse_structured_bird_seed;
-use super::{generated_avatar_marker, AVATAR_RENDERER_VERSION, BIRD_AVATAR_STYLE};
+use super::birds::parse_bird_seed;
+use super::rendering::render_png;
+use super::{
+    generated_avatar_marker, AGENT_AVATAR_STYLE, AVATAR_RENDERER_VERSION, BIRD_AVATAR_STYLE,
+    HUMAN_AVATAR_STYLE,
+};
 use crate::auth::accounts::{upsert_account_identity, AccountIdentityUpsert, OAuthProviderId};
 use crate::common_ground::tests::db_fixture::{app, pool, send, signed_in};
 use crate::events::EventBus;
 use crate::server::ServerState;
 
 type AvatarColumns = (Option<String>, String, String, String, String, i64);
-
-fn assert_random_bird(columns: &AvatarColumns, version: i64) {
-    let (avatar_url, source, style, seed, renderer, stored_version) = columns;
-    assert_eq!(source, "generated");
-    assert_eq!(style, BIRD_AVATAR_STYLE);
-    assert_eq!(renderer, AVATAR_RENDERER_VERSION);
-    assert_eq!(*stored_version, version);
-    let bird = parse_structured_bird_seed(seed)
-        .unwrap_or_else(|| panic!("{seed:?} is not a structured bird seed"));
-    assert_eq!(bird.tone, "color");
-    assert_eq!(
-        avatar_url.as_deref(),
-        Some(generated_avatar_marker(BIRD_AVATAR_STYLE, seed, version).as_str())
-    );
-}
 
 async fn new_account(pool: &PgPool) -> String {
     upsert_account_identity(
@@ -57,97 +46,179 @@ async fn new_account(pool: &PgPool) -> String {
     .account_id
 }
 
-async fn get_status(pool: &PgPool, style: &str, seed: &str) -> StatusCode {
+/// The versioned route when `renderer` is set, otherwise the preview route.
+async fn get_png(pool: &PgPool, renderer: Option<&str>, style: &str, seed: &str) -> Vec<u8> {
     let app = super::routes(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let renderer = renderer.unwrap_or("preview");
     let response = app
         .oneshot(
-            Request::get(format!(
-                "/v1/avatars/{AVATAR_RENDERER_VERSION}/{style}/{seed}.png"
-            ))
-            .body(Body::empty())
-            .unwrap(),
+            Request::get(format!("/v1/avatars/{renderer}/{style}/{seed}.png"))
+                .body(Body::empty())
+                .unwrap(),
         )
         .await
         .unwrap();
-    if response.status() == StatusCode::OK {
-        assert_eq!(response.headers()[header::CONTENT_TYPE], "image/png");
-    }
-    response.status()
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "{renderer}/{style}/{seed}"
+    );
+    assert_eq!(response.headers()[header::CONTENT_TYPE], "image/png");
+    axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap()
+        .to_vec()
+}
+
+async fn versioned_status(pool: &PgPool, style: &str, seed: &str) -> StatusCode {
+    let app = super::routes(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    app.oneshot(
+        Request::get(format!(
+            "/v1/avatars/{AVATAR_RENDERER_VERSION}/{style}/{seed}.png"
+        ))
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await
+    .unwrap()
+    .status()
+}
+
+/// The structured seed a picker writes for the bird `seed` draws.
+fn picked_bird_seed(seed: &str) -> String {
+    let bird = parse_bird_seed(seed);
+    format!("bird-{}-{}-{}", bird.species, bird.tone, bird.palette)
 }
 
 #[tokio::test]
-async fn a_new_account_gets_a_random_bird_default_agent() {
+async fn an_untouched_default_agent_is_served_as_its_seeds_bird() {
     let Some(pool) = pool().await else {
         return;
     };
-    let mut seeds = std::collections::BTreeSet::new();
-    for _ in 0..12 {
-        let account_id = new_account(&pool).await;
-        let columns: AvatarColumns = query_as(
-            "SELECT avatar_url, avatar_source, avatar_style, avatar_seed, \
-                avatar_renderer_version, avatar_version \
-             FROM cloud_default_agent_profiles WHERE owner_account_id = $1",
-        )
-        .bind(&account_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert_random_bird(&columns, 1);
-        seeds.insert(columns.3);
-    }
-    // 12 draws from 128 birds all landing on one bird would mean no randomness.
-    assert!(seeds.len() > 1, "{seeds:?}");
-    let seed = seeds.first().unwrap();
+    let account_id = new_account(&pool).await;
+    let seed = format!("default-agent-{account_id}");
+    let columns: AvatarColumns = query_as(
+        "SELECT avatar_url, avatar_source, avatar_style, avatar_seed, \
+            avatar_renderer_version, avatar_version \
+         FROM cloud_default_agent_profiles WHERE owner_account_id = $1",
+    )
+    .bind(&account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(
-        get_status(&pool, BIRD_AVATAR_STYLE, seed).await,
-        StatusCode::OK
+        columns,
+        (
+            Some(generated_avatar_marker(AGENT_AVATAR_STYLE, &seed, 1)),
+            "generated".to_string(),
+            AGENT_AVATAR_STYLE.to_string(),
+            seed.clone(),
+            AVATAR_RENDERER_VERSION.to_string(),
+            1,
+        ),
+        "stored data keeps the legacy style and the unique seed"
+    );
+
+    // Another account that picked this exact bird stores it under the bird style.
+    let picked = picked_bird_seed(&seed);
+    query(
+        "INSERT INTO cloud_avatar_render_keys (renderer_version, style, seed) \
+         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+    )
+    .bind(AVATAR_RENDERER_VERSION)
+    .bind(BIRD_AVATAR_STYLE)
+    .bind(&picked)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let expected = render_png(BIRD_AVATAR_STYLE, &picked).unwrap();
+    let versioned = Some(AVATAR_RENDERER_VERSION);
+    for (renderer, style, seed) in [
+        (versioned, AGENT_AVATAR_STYLE, seed.as_str()),
+        (None, AGENT_AVATAR_STYLE, seed.as_str()),
+        (None, BIRD_AVATAR_STYLE, seed.as_str()),
+        (versioned, BIRD_AVATAR_STYLE, picked.as_str()),
+        (None, BIRD_AVATAR_STYLE, picked.as_str()),
+    ] {
+        assert_eq!(
+            get_png(&pool, renderer, style, seed).await,
+            expected,
+            "{renderer:?}/{style}/{seed}"
+        );
+    }
+
+    // People are unchanged, and an unstored seed still needs a stored render key.
+    let (human_seed,): (String,) =
+        query_as("SELECT avatar_seed FROM cloud_accounts WHERE account_id = $1")
+            .bind(&account_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        get_png(&pool, versioned, HUMAN_AVATAR_STYLE, &human_seed).await,
+        render_png(HUMAN_AVATAR_STYLE, &human_seed).unwrap()
+    );
+    assert_eq!(
+        versioned_status(
+            &pool,
+            HUMAN_AVATAR_STYLE,
+            &Uuid::new_v4().simple().to_string()
+        )
+        .await,
+        StatusCode::NOT_FOUND
     );
 }
 
 #[tokio::test]
-async fn a_new_factory_agent_without_a_pick_gets_a_random_bird() {
+async fn a_new_factory_agent_without_a_pick_gets_its_own_thumbs_seed() {
     let Some(pool) = pool().await else {
         return;
     };
     let owner = new_account(&pool).await;
-    let agent_id = format!("cloud_agent_{}", Uuid::new_v4().simple());
-    let request = serde_json::from_value(serde_json::json!({
-        "name": "Wren",
-        "role": "Helper",
-        "systemPrompt": "Be precise and kind.",
-    }))
-    .expect("agent request");
-    let agent = crate::cloud_agents::store::create_agent_definition(
-        &pool,
-        &owner,
-        agent_id.clone(),
-        request,
-        Utc::now(),
-    )
-    .await
-    .expect("create agent");
-    assert_eq!(agent.avatar.style, BIRD_AVATAR_STYLE);
-    assert!(parse_structured_bird_seed(&agent.avatar.seed).is_some());
-
-    let columns: AvatarColumns = query_as(
-        "SELECT avatar_url, avatar_source, avatar_style, avatar_seed, \
-            avatar_renderer_version, avatar_version \
-         FROM cloud_agent_definitions WHERE agent_id = $1",
-    )
-    .bind(&agent_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_random_bird(&columns, 1);
-    assert_eq!(columns.3, agent.avatar.seed);
-    assert_eq!(
-        get_status(&pool, BIRD_AVATAR_STYLE, &columns.3).await,
-        StatusCode::OK
-    );
-    assert_eq!(
-        get_status(&pool, BIRD_AVATAR_STYLE, "never_stored_bird_seed").await,
-        StatusCode::NOT_FOUND
-    );
+    let mut seeds = Vec::new();
+    for name in ["Wren", "Finch"] {
+        let agent_id = format!("cloud_agent_{}", Uuid::new_v4().simple());
+        let request = serde_json::from_value(json!({
+            "name": name,
+            "role": "Helper",
+            "systemPrompt": "Be precise and kind.",
+        }))
+        .expect("agent request");
+        let agent = crate::cloud_agents::store::create_agent_definition(
+            &pool,
+            &owner,
+            agent_id.clone(),
+            request,
+            Utc::now(),
+        )
+        .await
+        .expect("create agent");
+        assert_eq!(agent.avatar.style, AGENT_AVATAR_STYLE);
+        assert_eq!(agent.avatar.version, 1);
+        assert!(
+            agent.avatar.seed.len() == 32
+                && agent
+                    .avatar
+                    .seed
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit()),
+            "{:?}",
+            agent.avatar.seed
+        );
+        assert_eq!(
+            get_png(
+                &pool,
+                Some(AVATAR_RENDERER_VERSION),
+                AGENT_AVATAR_STYLE,
+                &agent.avatar.seed
+            )
+            .await,
+            render_png(BIRD_AVATAR_STYLE, &picked_bird_seed(&agent.avatar.seed)).unwrap()
+        );
+        seeds.push(agent.avatar.seed);
+    }
+    assert_ne!(seeds[0], seeds[1], "seeds stay unique per agent");
 }
 
 /// A group whose members are all active.

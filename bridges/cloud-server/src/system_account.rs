@@ -10,10 +10,7 @@ use sqlx_core::query::query;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
-use crate::avatars::{
-    generated_avatar_marker, random_bird_seed, AVATAR_RENDERER_VERSION, BIRD_AVATAR_STYLE,
-    HUMAN_AVATAR_STYLE,
-};
+use crate::avatars::{AGENT_AVATAR_STYLE, AVATAR_RENDERER_VERSION, HUMAN_AVATAR_STYLE};
 use crate::chat_sync::store::StoreError;
 
 pub const SYSTEM_ACCOUNT_ID: &str = "acct_kordi_system";
@@ -57,22 +54,19 @@ pub async fn ensure_account(pool: &PgPool) -> sqlx_core::Result<()> {
     .bind(AVATAR_RENDERER_VERSION)
     .execute(pool)
     .await?;
-    let agent_seed = random_bird_seed();
     query(
         "INSERT INTO cloud_default_agent_profiles (
              owner_account_id, display_name, avatar_url, avatar_source, avatar_style,
              avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at,
              created_at, updated_at
-         ) VALUES ($1, $2, $3, 'generated', $4, $5, $6, 1, $7, $7, $7)
+         ) VALUES ($1, $2, NULL, 'generated', $3, $1, $4, 1, $5, $5, $5)
          ON CONFLICT (owner_account_id) DO UPDATE
          SET display_name = EXCLUDED.display_name, updated_at = EXCLUDED.updated_at
          WHERE cloud_default_agent_profiles.display_name IS DISTINCT FROM EXCLUDED.display_name",
     )
     .bind(SYSTEM_ACCOUNT_ID)
     .bind(SYSTEM_DISPLAY_NAME)
-    .bind(generated_avatar_marker(BIRD_AVATAR_STYLE, &agent_seed, 1))
-    .bind(BIRD_AVATAR_STYLE)
-    .bind(&agent_seed)
+    .bind(AGENT_AVATAR_STYLE)
     .bind(AVATAR_RENDERER_VERSION)
     .bind(&now)
     .execute(pool)

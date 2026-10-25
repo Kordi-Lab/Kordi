@@ -4,8 +4,8 @@ use sqlx_core::transaction::Transaction;
 use sqlx_postgres::{PgPool, Postgres};
 
 use crate::avatars::{
-    apply_avatar_mutation, preserve_avatar_render_key, random_bird_seed, AvatarDescriptor,
-    AvatarMutationError, AVATAR_RENDERER_VERSION, BIRD_AVATAR_STYLE,
+    apply_avatar_mutation, new_avatar_seed, preserve_avatar_render_key, AvatarDescriptor,
+    AvatarMutationError, AGENT_AVATAR_STYLE, AVATAR_RENDERER_VERSION,
 };
 use crate::cloud_agents::models::{
     clean_access_scope, clean_optional_text, clean_required_text, clean_string_list,
@@ -133,8 +133,8 @@ pub async fn create_agent_definition(
         entity_type: "agent".to_string(),
         entity_id: agent_id.clone(),
         source: "generated".to_string(),
-        style: BIRD_AVATAR_STYLE.to_string(),
-        seed: random_bird_seed(),
+        style: AGENT_AVATAR_STYLE.to_string(),
+        seed: new_avatar_seed(),
         renderer_version: AVATAR_RENDERER_VERSION.to_string(),
         uploaded_asset: None,
         version: 1,

@@ -10,7 +10,12 @@ import { CANONICAL_AVATAR_RENDERER_VERSION } from '../src/features/cloud/canonic
 import type { ChatSyncEvent } from '../src/features/cloud/chatSyncTypes';
 import { publishCloudDeviceEvents } from '../src/features/cloud/cloudDeviceEvents';
 import type { CanonicalSessionStateSetter, CloudGroupSessionPreparationCache } from '../src/features/cloud/cloudGroupControlContext';
-import { CLOUD_GROUP_PROFILE_REFRESH_DELAY_MS, useCloudGroupProfileRefresh } from '../src/features/cloud/cloudGroupProfileRefresh';
+import {
+  CLOUD_GROUP_PROFILE_REFRESH_DELAY_MS,
+  createCloudGroupProfileRefreshGate,
+  refreshCloudGroupProfiles,
+  useCloudGroupProfileRefresh,
+} from '../src/features/cloud/cloudGroupProfileRefresh';
 import { __setSessionBackendForTests } from '../src/features/cloud/session';
 import { MessageBubble } from '../src/kordi-app/components/transcript';
 import type { CanonicalSessionState, UpsertCanonicalIdentityRequest } from '../src/kordi-app/types';
@@ -167,6 +172,188 @@ test("a collaborator's open group redraws the owner's agent on the next director
         assert.match(upserts[0].profileImageUrl ?? '', /\/lorelei\/priya-new-photo\.png\?v=2$/);
       } finally {
         setMessageLayout('chat');
+        if (nodeCustomEvent) Object.defineProperty(globalThis, 'CustomEvent', nodeCustomEvent);
+      }
+    });
+  } finally {
+    __setSessionBackendForTests(null);
+  }
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+const PRIYA_AGENT_IDENTITY = `agent:cloud-agent:cloud-agent:${PRIYA}`;
+
+/** Priya's public profile with her agent on `seed`, as the server would serve it. */
+function priyaProfile(seed: string, version: number) {
+  const style = seed.startsWith('bird-') ? 'kordi-birds' as const : 'thumbs' as const;
+  return profile(account(PRIYA, 'Priya Tester', agentAvatar(PRIYA, { style, seed, version })), false);
+}
+
+/** Alex's window after Priya's agent replied in their group: state, caches and the setter. */
+async function alexWindowState() {
+  const priya = account(PRIYA, 'Priya Tester', agentAvatar(PRIYA));
+  const alex = account(ALEX, 'Alex Tester', agentAvatar(ALEX));
+  const profileCache = groupProfileCache(alex, priya, alex);
+  const stateRef = { current: await applyAgentReply(alex, priya, alex, profileCache) as CanonicalSessionState | null };
+  const preparationCache: CloudGroupSessionPreparationCache = new Map([[GROUP, {
+    signature: 'fixture', localHumanIdentityId: `human:${ALEX}`, groupSpaceId: GROUP,
+    participantByAccount: new Map([priya, alex].map((owner) => [owner.accountId, member(owner, 'person')])),
+    identityIdByAccount: new Map<string, string>(), agentAvatarByAccount: new Map(),
+  }]]);
+  const setState: CanonicalSessionStateSetter = (update) => { stateRef.current = update(stateRef.current); };
+  const agentImage = () => stateRef.current?.identities.find((identity) => identity.id === PRIYA_AGENT_IDENTITY)?.profileImageUrl ?? '';
+  return { alex, profileCache, preparationCache, stateRef, setState, agentImage };
+}
+
+/**
+ * Runs with native identity writes recorded. A write whose picture matches `hold` waits for
+ * the returned release, so a test can act while it is in flight.
+ */
+async function withNativeWrites(run: (writes: UpsertCanonicalIdentityRequest[], release: () => void) => Promise<void>, hold?: RegExp) {
+  const writes: UpsertCanonicalIdentityRequest[] = [];
+  const held = deferred<void>();
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: {} });
+  mockIPC(async (command, payload) => {
+    assert.equal(command, 'desktop_canonical_upsert_identity_fast');
+    const request = payload?.request as UpsertCanonicalIdentityRequest;
+    writes.push(request);
+    if (hold?.test(request.profileImageUrl ?? '')) await held.promise;
+    return { ...request, createdAtMs: 1, updatedAtMs: 2 };
+  });
+  try {
+    await run(writes, () => held.resolve());
+  } finally {
+    clearMocks();
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
+    else Reflect.deleteProperty(globalThis, 'window');
+  }
+}
+
+test('an older profile response that arrives after a newer one is dropped', async () => {
+  const fixture = await alexWindowState();
+  const gate = createCloudGroupProfileRefreshGate();
+  const older = deferred<CloudPublicProfile>();
+  const newer = deferred<CloudPublicProfile>();
+  const responses = [older.promise, newer.promise];
+  const client = { getProfile: async () => responses.shift()! };
+  const refresh = () => refreshCloudGroupProfiles({
+    accountIds: [PRIYA], token: 'alex-token', account: fixture.alex, client,
+    profileCache: fixture.profileCache, preparationCache: fixture.preparationCache,
+    getState: () => fixture.stateRef.current, setState: fixture.setState, gate,
+  });
+  await withNativeWrites(async (writes) => {
+    const first = refresh();
+    const second = refresh();
+    newer.resolve(priyaProfile('bird-owl-ink-paper', 3));
+    assert.deepEqual(await second, [PRIYA]);
+    older.resolve(priyaProfile('bird-robin-color-coral', 2));
+    assert.deepEqual(await first, [], 'the older response writes nothing');
+
+    assert.deepEqual(writes.map((request) => request.id), [PRIYA_AGENT_IDENTITY]);
+    assert.match(fixture.agentImage(), /\/kordi-birds\/bird-owl-ink-paper\.png\?v=3$/);
+    assert.equal(fixture.profileCache.get(PRIYA)?.defaultAgent?.avatar.seed, 'bird-owl-ink-paper');
+    assert.match(fixture.preparationCache.get(GROUP)?.agentAvatarByAccount.get(PRIYA)?.agentAvatarUrl ?? '', /bird-owl-ink-paper/);
+  });
+});
+
+test('a newer profile response applies after an older write in flight, and against it', async () => {
+  const fixture = await alexWindowState();
+  const original = fixture.agentImage();
+  assert.match(original, new RegExp(`/kordi-birds/default-agent-${PRIYA}\\.png$`));
+  const gate = createCloudGroupProfileRefreshGate();
+  const newer = deferred<CloudPublicProfile>();
+  const responses = [Promise.resolve(priyaProfile('bird-robin-color-coral', 2)), newer.promise];
+  const client = { getProfile: async () => responses.shift()! };
+  const refresh = () => refreshCloudGroupProfiles({
+    accountIds: [PRIYA], token: 'alex-token', account: fixture.alex, client,
+    profileCache: fixture.profileCache, preparationCache: fixture.preparationCache,
+    getState: () => fixture.stateRef.current, setState: fixture.setState, gate,
+  });
+  await withNativeWrites(async (writes, release) => {
+    const first = refresh();
+    while (writes.length === 0) await new Promise((resolve) => setTimeout(resolve, 1));
+    // Priya changed back before the robin write finished; the newer fetch serves her default.
+    const second = refresh();
+    newer.resolve(priyaProfile(`default-agent-${PRIYA}`, 3));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(writes.length, 1, 'the newer response waits for the write in flight');
+    release();
+    await Promise.all([first, second]);
+
+    assert.deepEqual(writes.map((request) => request.profileImageUrl?.match(/bird-robin|default-agent/u)?.[0]), ['bird-robin', 'default-agent']);
+    assert.match(fixture.agentImage(), new RegExp(`/kordi-birds/default-agent-${PRIYA}\\.png$`));
+    assert.equal(fixture.profileCache.get(PRIYA)?.defaultAgent?.avatar.version, 3);
+  }, /bird-robin/u);
+});
+
+test('signing out mid-fetch or mid-write writes nothing more', async () => {
+  // Mid-write: the store keeps the write in flight, but local state and later writes stop.
+  const fixture = await alexWindowState();
+  const before = fixture.stateRef.current;
+  const gate = createCloudGroupProfileRefreshGate();
+  await withNativeWrites(async (writes, release) => {
+    const refresh = refreshCloudGroupProfiles({
+      accountIds: [PRIYA], token: 'alex-token', account: fixture.alex,
+      client: { getProfile: async () => priyaProfile('bird-robin-color-coral', 2) },
+      profileCache: fixture.profileCache, preparationCache: fixture.preparationCache,
+      getState: () => fixture.stateRef.current, setState: fixture.setState, gate,
+    });
+    while (writes.length === 0) await new Promise((resolve) => setTimeout(resolve, 1));
+    gate.close();
+    release();
+    assert.deepEqual(await refresh, []);
+    assert.equal(fixture.stateRef.current, before, 'no state write after sign-out');
+  }, /bird-robin/u);
+
+  // Mid-fetch, through the listener as the app mounts it: signing out closes it.
+  const window2 = await alexWindowState();
+  const cachedProfile = window2.profileCache.get(PRIYA);
+  const preparation = window2.preparationCache.get(GROUP);
+  const stateBefore = window2.stateRef.current;
+  const response = deferred<CloudPublicProfile>();
+  let fetches = 0;
+  const client = { getProfile: () => { fetches += 1; return response.promise; } } as unknown as CloudAuthClient;
+  const profileCacheRef = { current: window2.profileCache };
+  const preparationCacheRef = { current: { entries: window2.preparationCache } };
+  function Listener({ signedIn }: { signedIn: CloudAccount | null }) {
+    const setState = useCallback<CanonicalSessionStateSetter>((update) => { window2.stateRef.current = update(window2.stateRef.current); }, []);
+    useCloudGroupProfileRefresh({ account: signedIn, client, profileCacheRef, preparationCacheRef, canonicalStateRef: window2.stateRef, setState });
+    return null;
+  }
+  __setSessionBackendForTests({
+    load: async () => ({ token: 'alex-token', accountId: ALEX, expiresAt: '2099-01-01T00:00:00Z' }),
+    save: async () => undefined,
+    clear: async () => undefined,
+  });
+  try {
+    await withJsdomRoot(async (mount) => {
+      const nodeCustomEvent = Object.getOwnPropertyDescriptor(globalThis, 'CustomEvent');
+      Object.defineProperty(globalThis, 'CustomEvent', { configurable: true, writable: true, value: window.CustomEvent });
+      const upserts: unknown[] = [];
+      mockIPC((command) => { upserts.push(command); throw new Error(`unexpected ${command}`); });
+      try {
+        await mount(<Listener signedIn={window2.alex} />);
+        await act(async () => { publishCloudDeviceEvents([directoryChanged(PRIYA)], ALEX, undefined); });
+        await waitForRefresh();
+        assert.equal(fetches, 1, 'the fetch is in flight');
+        await mount(<Listener signedIn={null} />);
+        await act(async () => {
+          response.resolve(priyaProfile('bird-robin-color-coral', 2));
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        });
+        assert.equal(window2.profileCache.get(PRIYA), cachedProfile);
+        assert.equal(window2.preparationCache.get(GROUP), preparation);
+        assert.equal(window2.stateRef.current, stateBefore);
+        assert.deepEqual(upserts, []);
+      } finally {
+        clearMocks();
+        Reflect.deleteProperty(window, '__TAURI_INTERNALS__');
         if (nodeCustomEvent) Object.defineProperty(globalThis, 'CustomEvent', nodeCustomEvent);
       }
     });
