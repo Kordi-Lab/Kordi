@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, Bell, CalendarDays, Camera, Check, ListTodo, Mic, Speech } from 'lucide-react';
+import { ArrowUpRight, Bell, CalendarDays, Camera, Check, ChevronDown, ListTodo, Mic, Speech } from 'lucide-react';
 import { invokeDesktop, isNativeDesktopShell } from '@/lib/desktop';
 import { parsePendingToolApprovals, TOOL_APPROVAL_PENDING_COMMAND, TOOL_APPROVAL_REQUEST_EVENT, TOOL_APPROVAL_RESOLVED_EVENT, toolApprovalHeadline, type ToolApprovalPrompt } from '@/features/connectors/toolApprovalModel';
 import { nativeMacPermissions, openPermissionSettings, permissionAction, permissionDefinitions, readHelpPermission, requestHelpPermission, type PermissionDefinition, type PermissionStatus } from './permissionAccess';
@@ -109,12 +109,12 @@ export function HelpPermissions({ onAction, onOpenSession, connectorsAvailable, 
       {!compact ? <h2>Permissions & access</h2> : null}
       <p className="help-permissions-intro">Choose what Kordi can access on this device.</p>
       <ul className="help-permission-list">{permissionDefinitions.map((definition) => <PermissionRow key={definition.id} definition={definition} />)}</ul>
-      <details className="help-section"><summary>Services and agent access</summary>
+      <details className="help-section"><summary>Services and agent access<ChevronDown size={14} aria-hidden="true" /></summary>
         <p>Connect accounts, choose which agents can use them, and manage read or action access in Connectors. Mac Contacts uses Automation access. The optional Notification Center connector needs Full Disk Access; its setup opens the right settings and lets you check again.</p>
         <button className="help-secondary" disabled={!connectorsAvailable} onClick={() => onAction({ kind: 'settings', tab: 'connectors' })}>Manage connectors & access</button>
         {!connectorsAvailable ? <p>Connectors are unavailable or their availability could not be checked.</p> : null}
       </details>
-      <details className="help-section"><summary>Card sources and sharing</summary>
+      <details className="help-section"><summary>Card sources and sharing<ChevronDown size={14} aria-hidden="true" /></summary>
         <p>Device permission does not choose what goes into your card. In Grounding, select sources for each build, review topics, and choose which profile to share.</p>
         <button className="help-secondary" disabled={!groundingAvailable} onClick={() => onAction({ kind: 'grounding' })}>Review cards & sharing</button>
       </details>

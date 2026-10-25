@@ -228,3 +228,51 @@ test('installed release highlights work offline with one sentence-case heading',
   await expect(page.getByText('Read, edit, and share documents together', { exact: true })).toBeVisible();
   await expect(page.getByText('RELEASE HIGHLIGHTS', { exact: true })).toHaveCount(0);
 });
+
+test('first-open loading never paints a clipped placeholder in the navigation rail', async ({ page }) => {
+  let releaseMenu!: () => void;
+  let releaseTour!: () => void;
+  let menuRequested!: () => void;
+  let tourRequested!: () => void;
+  const menuGate = new Promise<void>((resolve) => { releaseMenu = resolve; });
+  const tourGate = new Promise<void>((resolve) => { releaseTour = resolve; });
+  const menuRequest = new Promise<void>((resolve) => { menuRequested = resolve; });
+  const tourRequest = new Promise<void>((resolve) => { tourRequested = resolve; });
+  await page.route('**/src/features/onboarding/HelpMenu.tsx*', async (route) => { menuRequested(); await menuGate; await route.continue(); });
+  await page.route('**/src/features/onboarding/HelpTour.tsx*', async (route) => { tourRequested(); await tourGate; await route.continue(); });
+  await page.goto('/tests/visual/helpColdStart.html');
+  const trigger = page.getByRole('button', { name: 'Help & setup', exact: true });
+  const initial = await trigger.boundingBox();
+  try {
+    await trigger.click();
+    await menuRequest;
+    const loadingHelp = page.getByRole('status').filter({ hasText: 'Loading help…' });
+    await expect(loadingHelp).toHaveCSS('position', 'absolute');
+    expect((await loadingHelp.boundingBox())!.width).toBeLessThanOrEqual(1);
+    expect((await trigger.boundingBox())!.y).toBe(initial!.y);
+    releaseMenu();
+    await page.getByRole('button', { name: 'Show me around' }).click();
+    await tourRequest;
+    const loadingTour = page.getByRole('status').filter({ hasText: 'Loading tour…' });
+    await expect(loadingTour).toHaveCSS('position', 'absolute');
+    expect((await loadingTour.boundingBox())!.width).toBeLessThanOrEqual(1);
+    releaseTour();
+    await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'settings-auth');
+    await expect(page.getByRole('dialog', { name: 'Connect an AI account' })).toBeVisible();
+  } finally { releaseMenu(); releaseTour(); }
+});
+
+test('startup welcome waits through a launch dialog without flashing first', async ({ page }) => {
+  await page.goto('/tests/visual/helpHub.html?welcome=1');
+  const invite = page.getByRole('complementary', { name: 'Welcome to Kordi' });
+  await page.evaluate(async () => {
+    document.querySelector('.app-cloud-workspace-surface')!.removeAttribute('inert');
+    await new Promise(requestAnimationFrame);
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    document.body.append(dialog);
+  });
+  await expect(invite).toHaveCount(0);
+  await page.evaluate(() => document.querySelector('[role="dialog"]')!.remove());
+  await expect(invite).toBeVisible();
+});

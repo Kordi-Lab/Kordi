@@ -13,7 +13,7 @@ function Fixture() {
   const [open, setOpen] = useState(false);
   const [action, setAction] = useState<HelpAction | null>(null);
   return <div className={`kordi-app theme-${theme}`} style={{ minHeight: '100dvh', padding: 24, background: 'var(--app-page-bg)' }}>
-    <button onClick={() => setOpen(true)} aria-label="Help & setup">?</button>
+    <button onClick={(event) => { event.currentTarget.focus(); setOpen(true); }} aria-label="Help & setup">?</button>
     <p data-testid="destination">{JSON.stringify(action)}</p>
     <textarea aria-label="Message draft" defaultValue="Keep this draft" />
     {open ? <HelpMenu anchor={{ left: 24, top: 24, width: 32, height: 32 }} progressKey="help-test-user" settingsAvailable supportAvailable onAction={setAction} onOpenSession={() => {}} onStartTour={() => {}} onDismiss={() => setOpen(false)} /> : null}

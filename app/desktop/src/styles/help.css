@@ -50,7 +50,11 @@
 .help-menu-content .help-permission-row { padding: 12px 0; }
 .help-menu-content .help-secondary { padding: 5px 9px; font-size: 11px; min-height: 30px; }
 .help-menu-content .help-section { padding: 12px 0; }
-.help-menu-content summary { font-size: 12px; cursor: pointer; }
+.help-menu-content summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; font-size: 12px; cursor: pointer; list-style: none; }
+.help-menu-content summary::-webkit-details-marker { display: none; }
+.help-menu-content summary::marker { content: ''; }
+.help-menu-content summary > svg { flex-shrink: 0; color: var(--app-transient-muted-text); transform: rotate(-90deg); }
+.help-menu-content details[open] > summary > svg { transform: none; }
 .help-menu :focus-visible { outline: 2px solid var(--app-transient-focus-ring); outline-offset: 2px; }
 .help-menu-error { font-size: 12px; padding: 8px; }
 .help-menu-content .help-device-permission { display: block; padding: 9px 0; border-bottom-color: color-mix(in srgb, var(--app-transient-border) 55%, transparent); }

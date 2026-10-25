@@ -74,8 +74,8 @@ function AccountHelpEntry({ setActiveNav, account, onOpenSupport, onOpenSession 
           setWelcome(false);
           saveHelpProgress(progressKey, { ...readHelpProgress(progressKey), welcome: false });
         }} /> : null}
-    {open ? <Suspense fallback={<span role="status" className="text-xs">Loading help…</span>}><HelpMenu anchor={anchor} progressKey={progressKey} initialView={initialView} onStartTour={startTour} settingsAvailable={settingsAvailable} supportAvailable={Boolean(onOpenSupport)} onAction={action} onOpenSession={onOpenSession} onDismiss={() => setOpen(false)} /></Suspense> : null}
-    {tour ? <Suspense fallback={<span role="status" className="text-xs">Loading tour…</span>}><HelpTour progressKey={progressKey} settingsAvailable={settingsAvailable} onExit={exitTour} onPrepare={(step) => {
+    {open ? <Suspense fallback={<span role="status" className="sr-only">Loading help…</span>}><HelpMenu anchor={anchor} progressKey={progressKey} initialView={initialView} onStartTour={startTour} settingsAvailable={settingsAvailable} supportAvailable={Boolean(onOpenSupport)} onAction={action} onOpenSession={onOpenSession} onDismiss={() => setOpen(false)} /></Suspense> : null}
+    {tour ? <Suspense fallback={<span role="status" className="sr-only">Loading tour…</span>}><HelpTour progressKey={progressKey} settingsAvailable={settingsAvailable} onExit={exitTour} onPrepare={(step) => {
       if (step.target === 'settings-auth' && settingsAvailable) {
         tourOpenedSettings.current = true;
         account.setCloudAccountDialogTab?.('auth');
