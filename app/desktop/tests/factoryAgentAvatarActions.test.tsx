@@ -4,13 +4,15 @@ import test from 'node:test';
 import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { CanonicalAvatarMutation } from '../src/features/cloud/canonicalAvatar';
 import type { UpdateCloudAgentInput } from '../src/features/cloud/cloudAgentsClient';
+import { AgentInspectionView } from '../src/kordi-app/agents/AgentInspectionView';
+import { inspectionAvatarControls } from '../src/kordi-app/agents/model';
 import { factoryAgentIdentityChanges } from '../src/kordi-app/agents/factoryAgentIdentity';
-import type { AgentSaveFeedback, FactoryBuildRoute, FactorySection } from '../src/kordi-app/agents/model';
+import type { AgentSaveFeedback } from '../src/kordi-app/agents/model';
 import { useFactoryAgentAvatarActions } from '../src/kordi-app/agents/useFactoryAgentAvatarActions';
-import { useFactoryBuildRouting } from '../src/kordi-app/agents/useFactoryBuildRouting';
 import type { useFactoryCreationAvatar } from '../src/kordi-app/agents/useFactoryCreationAvatar';
 import type { Agent } from '../src/kordi-app/types';
 
@@ -135,39 +137,31 @@ test('a new agent keeps staging its avatar until it is published', async () => {
   assert.deepEqual(result.cloudUpdates, []);
 });
 
-test('opening an agent routes into Build for that agent and returns to the Agent list', async () => {
-  const routes: Array<FactoryBuildRoute | null> = [];
-  const sections: FactorySection[] = [];
-  let editAgentInBuild: ((agent: Agent) => Promise<void>) | null = null;
-  const targetKey = 'account:acct_x:agent:cloud%3Aagent%2Falpha';
-  function Probe() {
-    ({ editAgentInBuild } = useFactoryBuildRouting({
-      agents: [cloudAgent],
-      builds: [{ targetKey, sessionId: 'session-1' } as never],
-      buildRoute: null,
-      canCreateAgent: true,
-      cloudAccountId: 'acct_x',
-      factorySection: 'agents',
-      inspectedAgent: cloudAgent,
-      libraryArtifacts: { tool: [], plugin: [] },
-      librarySection: 'skill',
-      selectedLibraryId: null,
-      skills: [],
-      setBuilds: () => undefined,
-      setBuildRoute: (value) => { routes.push(typeof value === 'function' ? value(null) : value); },
-      setBuildSeed: () => undefined,
-      setBuilderGeneration: () => undefined,
-      setFactorySection: (value) => { sections.push(typeof value === 'function' ? value('agents') : value); },
-      setPublishFeedback: () => undefined,
-    }));
-    return null;
-  }
-  await withDom(async (render) => {
-    await render(<Probe />);
-    await act(async () => { await editAgentInBuild?.(cloudAgent); });
-  });
-  assert.equal(routes.at(-1)?.artifactKind, 'agent');
-  assert.equal(routes.at(-1)?.artifactId, cloudAgent.id);
-  assert.deepEqual(routes.at(-1)?.returnContext, { section: 'agents', selectedId: cloudAgent.id });
-  assert.equal(sections.at(-1), 'build');
+test('the Agent inspection header shows the avatar picker and saves to the right place', async () => {
+  const html = renderToStaticMarkup(<AgentInspectionView agent={cloudAgent} onEditInBuild={() => undefined} onUpdateCloudAgent={async (agent) => agent} />);
+  assert.match(html, /aria-label="Choose avatar"/);
+  assert.match(html, /aria-label="Upload research agent avatar"/);
+  assert.match(html, /data-avatar-kind="agent"/);
+  assert.doesNotMatch(html, /app-agent-studio-factory-mark/);
+
+  const cloudUpdates: UpdateCloudAgentInput[] = [];
+  const localUpdates: CanonicalAvatarMutation[] = [];
+  const onUpdateCloudAgent = async (agent: Agent, input: UpdateCloudAgentInput) => { cloudUpdates.push(input); return agent; };
+  const onUpdateLocalAgentAvatar = async (mutation: CanonicalAvatarMutation) => { localUpdates.push(mutation); };
+
+  await inspectionAvatarControls(cloudAgent, onUpdateCloudAgent, onUpdateLocalAgentAvatar).onPick?.('bird-heron-slate-sky');
+  assert.deepEqual(cloudUpdates, [{ avatarMutation: { action: 'regenerate', seed: 'bird-heron-slate-sky', expectedVersion: 4 } }]);
+
+  const local = inspectionAvatarControls(defaultAgent, onUpdateCloudAgent, onUpdateLocalAgentAvatar);
+  await local.onPick?.('bird-owl-ink-paper');
+  await local.onUpload?.('data:image/png;base64,avatar');
+  assert.deepEqual(localUpdates, [
+    { action: 'regenerate', seed: 'bird-owl-ink-paper' },
+    { action: 'upload', uploadedAsset: 'data:image/png;base64,avatar' },
+  ]);
+  assert.equal(cloudUpdates.length, 1);
+
+  const localHtml = renderToStaticMarkup(<AgentInspectionView agent={defaultAgent} onEditInBuild={() => undefined} onUpdateLocalAgentAvatar={onUpdateLocalAgentAvatar} />);
+  assert.match(localHtml, /aria-label="Choose avatar"/);
+  assert.deepEqual(inspectionAvatarControls({ ...baseAgent, isOwned: false }, onUpdateCloudAgent, onUpdateLocalAgentAvatar), {});
 });

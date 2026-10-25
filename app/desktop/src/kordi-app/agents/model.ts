@@ -1,4 +1,5 @@
 import type { CloudAgentAccessScope, CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
+import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
 import type { CanonicalAvatarMutation } from '@/features/cloud/canonicalAvatar';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
@@ -66,6 +67,20 @@ export function cloudAgentAvatarControls(
       });
     },
     currentSeed: agent.avatarSeed,
+  };
+}
+
+/** Avatar picker and upload for the inspected agent: Cloud Agents and the user's own default agent. */
+export function inspectionAvatarControls(
+  agent: Agent,
+  onUpdateCloudAgent?: AgentsPageProps['onUpdateCloudAgent'],
+  onUpdateLocalAgentAvatar?: AgentsPageProps['onUpdateLocalAgentAvatar'],
+) {
+  if (agent.cloudAgentId) return cloudAgentAvatarControls(agent, onUpdateCloudAgent);
+  if (!usesDefaultLocalAgentSession(agent) || !onUpdateLocalAgentAvatar) return {};
+  return {
+    onPick: async (seed: string) => { await onUpdateLocalAgentAvatar({ action: 'regenerate', seed }); },
+    onUpload: async (uploadedAsset: string) => { await onUpdateLocalAgentAvatar({ action: 'upload', uploadedAsset }); },
   };
 }
 

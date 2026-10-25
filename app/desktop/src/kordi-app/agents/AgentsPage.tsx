@@ -13,6 +13,7 @@ import {
 import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
 import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
 import type { Agent } from '../types';
+import { AgentInspectionView } from './AgentInspectionView';
 import { AgentStudioCompactBody } from './AgentStudioCompactBody';
 import { AgentStudioConversation } from './AgentStudioConversation';
 import { AgentStudioRail } from './AgentStudioRail';
@@ -699,7 +700,7 @@ export function AgentsPage({
           onSectionChange={openFactorySection}
           onLibrarySectionChange={setLibrarySection}
           onOpenBuild={(summary) => { void openBuildSummary(summary); }}
-          onOpenAgent={(agentId) => { onOpenAgent(agentId); const agent = agents.find((entry) => entry.id === agentId); if (agent) void editAgentInBuild(agent); else setFactorySection('agents'); }}
+          onOpenAgent={(agentId) => { setFactorySection('agents'); onOpenAgent(agentId); }}
           onOpenLibraryArtifact={(kind, artifactId) => {
             setLibrarySection(kind);
             setSelectedLibraryIds((current) => ({ ...current, [kind]: artifactId }));
@@ -707,7 +708,7 @@ export function AgentsPage({
           }}
           onCreateArtifact={startFactoryBuild}
         />
-        {factorySection === 'agents' ? <main className="app-agent-studio-main" aria-label="Agent"><div className="app-skill-library-state"><strong>Choose an agent</strong></div></main> : null}
+        {factorySection === 'agents' ? <AgentInspectionView agent={inspectedAgent} onEditInBuild={(agent) => void editAgentInBuild(agent)} onUpdateCloudAgent={onUpdateCloudAgent} onUpdateLocalAgentAvatar={onUpdateLocalAgentAvatar} /> : null}
         {factorySection === 'library' ? (
           <CapabilityLibraryView
             key={`${librarySection}:${selectedLibraryId ?? 'none'}`}
