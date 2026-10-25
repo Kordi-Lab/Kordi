@@ -91,7 +91,7 @@ export function failureOf(status: ImportRowStatus | undefined): string | null {
 }
 
 /**
- * The import state of a group of files: "Importing 3/12…" on a project ("Importing…" on an app)
+ * The import state of a group of files: "Importing 3/12…" on a project (nothing on an app)
  * while any is reading, then the memories saved by all of them, or "Could not import" when every
  * file was refused. Empty before an import.
  */
@@ -99,7 +99,7 @@ export function rollUpLabel(files: ReadonlyArray<AgentInstructionFile>, statuses
   const states = files.map((file) => statuses[file.path]).filter((status) => status !== undefined);
   if (!states.length) return '';
   const reading = states.filter((status) => status === 'importing').length;
-  if (reading) return level === 'app' ? 'Importing…' : `Importing ${states.length - reading}/${states.length}…`;
+  if (reading) return level === 'app' ? '' : `Importing ${states.length - reading}/${states.length}…`;
   if (states.every((status) => typeof status === 'object')) return 'Could not import';
   return importedCountLabel(states.reduce<number>((total, status) => total + (typeof status === 'number' ? status : 0), 0));
 }

@@ -161,7 +161,7 @@ export function MemoryImportSection({
                 disabled={running || !providerReady || selected.size === 0}
                 onClick={() => { void run(); }}
               >
-                Import
+                {running ? 'Importing…' : 'Import'}
               </Button>
             </>
           )}

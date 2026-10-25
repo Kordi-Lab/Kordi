@@ -140,7 +140,7 @@ test('the import tree skips the project level for a one-project app and rolls re
   assert.deepEqual([project.name, appSummary(project), project.projects.length], ['Project files', '1 file', 0]);
   assert.equal(rollUpLabel(claude.files, {}, 'app'), '');
   assert.equal(rollUpLabel(claude.files, { '/a/one.md': 2, '/b/two.md': 'importing' }, 'project'), 'Importing 1/2…');
-  assert.equal(rollUpLabel(claude.files, { '/a/one.md': 2, '/b/two.md': 'importing' }, 'app'), 'Importing…');
+  assert.equal(rollUpLabel(claude.files, { '/a/one.md': 2, '/b/two.md': 'importing' }, 'app'), '');
   assert.equal(rollUpLabel(claude.files, { '/a/one.md': 2, '/b/two.md': { failed: 'x' } }, 'app'), 'Imported 2 memories');
   assert.equal(rollUpLabel(claude.files, { '/a/one.md': { failed: 'x' } }, 'app'), 'Could not import');
 });

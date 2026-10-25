@@ -196,12 +196,14 @@ test('importing rolls progress and results up to projects and apps', async () =>
     await expand(container, 'Claude Code');
     await act(async () => { importButton(container)?.click(); });
     await settle(0);
-    assert.match(line(container, 'Claude Code'), /Importing…$/);
+    assert.doesNotMatch(line(container, 'Claude Code'), /Importing/);
+    assert.equal(button(container, 'Importing…')?.disabled, true);
+    assert.equal(importButton(container), undefined);
     assert.match(line(container, 'Claude Code launch-site'), /Importing 0\/3…$/);
     await act(async () => { gates.shift()?.(); });
     await settle(0);
     assert.match(line(container, 'Claude Code launch-site'), /Importing 1\/3…$/);
-    while (gates.length || line(container, 'Project files').endsWith('Importing…')) {
+    while (gates.length || button(container, 'Importing…')) {
       await act(async () => { gates.shift()?.(); });
       await settle(0);
     }
