@@ -3,6 +3,8 @@ mod actions_group_tests;
 mod actions_meet_tests;
 mod build_agents_tests;
 mod build_documents_tests;
+mod card_relate_tests;
+mod card_relate_unit_tests;
 pub(crate) mod db_fixture;
 mod flow_tests;
 mod group_intro_tests;

@@ -14,6 +14,7 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+mod card_relations;
 mod cards;
 mod edit;
 mod groups;
@@ -23,6 +24,7 @@ mod row;
 mod runs;
 mod types;
 
+pub(crate) use card_relations::{card_candidates, relate_to_card, CandidateMemory};
 pub(crate) use edit::{archive, update_memory};
 use row::{memory_from_row, MemoryRow, MEMORY_SELECT};
 

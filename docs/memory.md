@@ -111,6 +111,10 @@ To preview without a server:
 - iPhone: launch with `--preview-memory` to open the account sheet on the Memory screen with sample data.
 - Desktop: open `app/desktop/tests/visual/memorySettings.html` (account settings) or `app/desktop/tests/visual/conversationMemory.html` (a conversation's Memory tab; add `?chat=group` for a group chat) through `KORDI_DEV_PREVIEW_PATH`. They need no sign-in.
 
+### Cards relate memories
+
+A card build that reads memories also offers the run up to 40 of the owner's other memories (#2069): live memories outside groups that are not on the card and were never removed from it, excluding `health_context`, newest first, with text redacted and cut to 200 characters. Their ids are kept with the build in `build_candidates_json` (migration 0152). The run may name some under `relatedMemoryIds`; when the card is stored, each named id that was offered and still has no choice for that card is added to it, as `addProfileId` does, at most 15 per build. A removal is never undone, and unknown ids are ignored. The additions are written in the same transaction as the card, so their `updated_at` equals `built_at` and `memoriesSinceBuild` does not count them. One `card_memories_related` audit row records the card and the count, without texts. A failure here never fails the build.
+
 ### Digest memories
 
 Digest runs save memories from recent conversations (#2053). The digest input carries `memories`, the owner's current memories (`text`, `scope`, `scopeId`, `category`; at most 40, 200 characters each, none when memory is off), so the model does not repeat one; incremental runs carry it too. The reply may add `memories`: at most 3 entries of `text` (500 characters at most), `category`, `confidence`, `scope` (`conversation`, `group` or `global`), `sessionId` (omitted for global) and `sourceMessageIds`. A malformed entry is dropped; the digest's own items are unaffected.
