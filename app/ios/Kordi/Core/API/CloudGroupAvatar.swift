@@ -58,6 +58,8 @@ struct CloudChatConversation: Codable, Hashable {
     var groupAvatar: CloudGroupAvatar? = nil
     /// "grounding" for a group started from a Grounding room.
     var origin: String? = nil
+    /// Set on an owned agent's personal session (#2091).
+    var personalAgent: CloudPersonalAgentBinding? = nil
     let forkedFromSessionId: String?
     let forkedFromMessageId: String?
     let latestMessageSequence: Int64
@@ -75,6 +77,7 @@ struct CloudChatConversation: Codable, Hashable {
         case groupTitle = "group_title"
         case groupAvatar = "group_avatar"
         case origin
+        case personalAgent = "personal_agent"
         case forkedFromSessionId = "forked_from_session_id"
         case forkedFromMessageId = "forked_from_message_id"
         case latestMessageSequence = "latest_message_sequence"

@@ -229,6 +229,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var conversations: [ConversationSummary] = []
     @Published var projectDevices: [ChatProjectDevice] = []
     @Published var projectError: String?
+    /// The owner's personal sessions in server order (#2091).
+    @Published var personalAgents: [CloudPersonalAgent] = []
 
     func projectContext() throws -> (CloudAPIClient, String, String) {
         guard let token, let account else { throw ChatProjectFailure(message: "Sign in to use your projects.") }
@@ -782,6 +784,7 @@ final class AppModel: ObservableObject {
         contactRequests = []
         conversations = []
         projectDevices = []
+        personalAgents = []
         projectError = nil
         messagesByConversation = [:]
         subsessions = [:]
@@ -893,6 +896,7 @@ final class AppModel: ObservableObject {
             async let fetchedDevices = try? api.listDevices(token: token)
             async let canonicalLatestMessages = api.bootstrapChatLatestMessages(token: token)
             async let fetchedActiveCalls = try? api.activeCalls(token: token)
+            async let fetchedPersonalAgents = try? api.listPersonalAgents(token: token)
             let (canonicalAccount, contactList) = try await (refreshedAccount, fetchedContacts)
             guard self.token == token, self.account?.accountId == canonicalAccount.accountId else { return }
             self.account = canonicalAccount.preservingEmailVerification(from: self.account)
@@ -918,6 +922,7 @@ final class AppModel: ObservableObject {
                 applyContactPresenceSnapshot(presence)
             }
             contactRequests = requests
+            if let agents = await fetchedPersonalAgents { personalAgents = agents }
             ownedCloudAgents = owned
             if shouldRecordRemoteModelChanges {
                 recordSyncedAgentModelChanges(
@@ -3329,6 +3334,7 @@ final class AppModel: ObservableObject {
                     agentExecution: message.agentExecution,
                     agentReplyEnding: message.agentReplyEnding,
                     backgroundAgentSessions: message.backgroundAgentSessions,
+                    sources: message.sources,
                     reactions: message.reactions,
                     attachmentReactions: message.attachmentReactions
                 )
@@ -4957,7 +4963,7 @@ final class AppModel: ObservableObject {
     func archiveConversation(_ conversation: ConversationSummary) async -> Bool {
         let sessionIds = Set([conversation.sessionId])
         let wasPinned = pinnedSessionIds.contains(conversation.sessionId)
-        if !previewMode, token == nil { return false }
+        if conversation.personalAgentId != nil || (!previewMode && token == nil) { return false }
         beginSessionVisibilityMutation()
         defer { endSessionVisibilityMutation() }
         hiddenCloudSessionIds.insert(conversation.sessionId)
@@ -5084,7 +5090,7 @@ final class AppModel: ObservableObject {
     }
 
     func deleteConversation(_ conversation: ConversationSummary) async -> Bool {
-        if !previewMode, token == nil { return false }
+        if conversation.personalAgentId != nil || (!previewMode && token == nil) { return false }
         let visibleRows = conversations.filter { $0.sessionId == conversation.sessionId }
         let archivedRows = archivedConversations.filter { $0.sessionId == conversation.sessionId }
         let wasHidden = hiddenCloudSessionIds.contains(conversation.sessionId)
@@ -5646,7 +5652,7 @@ final class AppModel: ObservableObject {
         if conversation.subsessionId != nil { return conversation.agentActivity?.label ?? "Ready" }
         let activity = conversations.first(where: { $0.id == conversation.id })?.agentActivity ?? .ready
         guard activity == .replying, let location = agentExecutionLocation[conversation.id] else {
-            return activity.label
+            return PersonalAgentPresentation.headerStatus(for: conversation, activity: activity, fallback: activity.label)
         }
         return location.activeLabel
     }
@@ -6364,6 +6370,7 @@ final class AppModel: ObservableObject {
             ),
             agentReplyEnding: CloudMessageCodec.agentReplyEnding(message.body),
             backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
+            sources: CloudMessageCodec.agentResponseSources(message.body),
             reactions: message.reactions,
             attachmentReactions: message.attachmentReactions
         )

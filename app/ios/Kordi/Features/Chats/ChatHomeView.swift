@@ -499,8 +499,9 @@ struct ChatHomeView: View {
                 Text(error).font(.footnote).foregroundStyle(KordiTheme.destructiveText).padding(.horizontal, 16)
             }
             newAgentSessionButton
+            PersonalAgentSection(searchQuery: searchQuery) { if !dismissActiveSwipeActions() { openConversation($0) } }
             projectSessionList
-            if agentSessions.isEmpty && model.projectDevices.flatMap(\.projects).isEmpty {
+            if agentSessions.isEmpty && model.projectDevices.flatMap(\.projects).isEmpty && model.personalAgentRows(searchText: searchQuery).isEmpty {
                 ContentUnavailableView(
                     searchQuery.isEmpty ? "No agent sessions yet" : "No chats found",
                     systemImage: searchQuery.isEmpty ? "sparkles" : "magnifyingglass",

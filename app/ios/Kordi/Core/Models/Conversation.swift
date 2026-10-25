@@ -106,6 +106,8 @@ struct ConversationSummary: Identifiable, Hashable {
     /// A locally created agent session has no remote history until its first send.
     let isLocalDraft: Bool
     let subsessionId: String?
+    /// The owned agent whose personal session this is (#2091).
+    var personalAgentId: String? = nil
 
     init(
         id: String,

@@ -74,6 +74,8 @@ struct ChatProjectSessionSection: Identifiable {
 
 enum ChatProjectSections {
     static func build(conversations: [ConversationSummary], devices: [ChatProjectDevice], search: String, collapsedForks: Set<String>, pinned: Set<String>) -> [ChatProjectSessionSection] {
+        // Personal sessions have their own section above these (#2091).
+        let conversations = conversations.filter { $0.personalAgentId == nil }
         let assigned = Set(devices.flatMap { $0.projects.flatMap(\.sessions) })
         var sections: [ChatProjectSessionSection] = []
         for device in devices {
