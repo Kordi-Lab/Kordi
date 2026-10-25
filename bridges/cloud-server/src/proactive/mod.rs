@@ -2,7 +2,8 @@
 //! the owner before it helps (docs/development/proactive-agent.md).
 //!
 //! The sweep copies PiP's shape: one cursor row per agent and group, a free
-//! text check, one tool-less evaluation run per candidate. An `offer` becomes
+//! text check, one evaluation run per candidate whose only tool is
+//! `search_memory` ([`memory_search`]). An `offer` becomes
 //! a proposal that only the owner sees, inside the group, from the proposals
 //! route, a `proactive.proposal_changed` hint, and a push; no message is
 //! posted. Nothing reaches the group until the owner allows it, and the
@@ -14,6 +15,8 @@ pub(crate) mod agents;
 mod complete;
 mod config;
 pub(crate) mod decision;
+pub(crate) mod desktop;
+pub(crate) mod memory_search;
 mod output;
 mod prefilter;
 mod prompt;
@@ -36,8 +39,15 @@ pub use worker::spawn;
 pub const RUN_PREFIX: &str = "proactive_eval_";
 /// Runs the owner allowed: ordinary group runs, delivered as the agent.
 pub const APPROVED_RUN_PREFIX: &str = "proactive_run_";
-/// The readiness row a Mac publishes when it can run evaluations. No Mac
-/// publishes it yet, so the cloud runner answers every evaluation.
+/// Whether `run_id` is a proactive run, which needs no project folder in a
+/// group that is a project session: an evaluation's only tool reads
+/// memories, and an approved run works in an empty folder of its own.
+pub fn needs_no_project_folder(run_id: &str) -> bool {
+    run_id.starts_with(RUN_PREFIX) || run_id.starts_with(APPROVED_RUN_PREFIX)
+}
+
+/// The readiness row a Mac publishes when it can run proactive runs
+/// ([`desktop`]). Without it the cloud runner answers at once.
 pub const CAPABILITY: &str = "proactive";
 
 #[cfg(test)]

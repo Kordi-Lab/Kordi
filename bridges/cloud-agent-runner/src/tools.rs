@@ -11,7 +11,7 @@ use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 use crate::client::{CloudAgentRun, CloudAgentRunClient};
-use crate::memory::{MemoryRequestError, NewRunnerMemory, RunMemoryScopes};
+use crate::memory::{run_memory_scopes, MemoryRequestError, NewRunnerMemory};
 use crate::sandbox_client::{BashOutput, SandboxBackendHandle, SandboxClientError};
 use crate::tool_policy::{decide_runner_tool, RunnerToolDecision, RunnerToolRequest};
 
@@ -219,8 +219,9 @@ async fn save_lesson_as_memory<C: CloudAgentRunClient + Sync>(
 ) -> kordi_core::error::KordiResult<ReflectionLessonResponse> {
     // The server enforces the same rule; checking here saves a round trip
     // and tells the model which scope ids it may use.
-    RunMemoryScopes::for_run(run)
-        .check_save(run, &request.scope, &request.scope_id)
+    let owner_request = run.owner_account_id == run.requester_account_id;
+    run_memory_scopes(run)
+        .check_save(owner_request, &request.scope, &request.scope_id)
         .map_err(KordiError::Tool)?;
     let client_memory_id = format!("mem_{}", uuid::Uuid::new_v4().simple());
     let memory = NewRunnerMemory {

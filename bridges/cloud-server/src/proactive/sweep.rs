@@ -295,7 +295,8 @@ async fn enqueue(
         fill_cloud_route(pool, &agent.owner_account_id, &candidate.session_id, route).await?;
     let route =
         serde_json::to_value(route).map_err(|error| sqlx_core::Error::Encode(Box::new(error)))?;
-    // A Mac that can run evaluations gets one presence timeout first.
+    // A Mac that can run evaluations gets one presence timeout first, and the
+    // owner's devices hear of the held run in the same transaction.
     let ready = crate::cloud_agent_runtime::agent_desktop_ready(
         pool,
         &agent.owner_account_id,
@@ -307,9 +308,10 @@ async fn enqueue(
         evaluation_system_prompt(&agent.name, &agent.owner_name, &agent.system_prompt);
     let run_id = format!("{RUN_PREFIX}{}", Uuid::new_v4().simple());
     let mut tx = pool.begin().await?;
+    // A new evaluation starts with its whole search budget (`memory_search`).
     let reserved = query(
         "UPDATE cloud_agent_proactive_state
-         SET active_run_id = $3, seen_sequence = $4, updated_at = now()
+         SET active_run_id = $3, seen_sequence = $4, memory_searches = 0, updated_at = now()
          WHERE agent_id = $1 AND conversation_id = $2 AND active_run_id IS NULL",
     )
     .bind(&candidate.agent_id)
@@ -342,6 +344,10 @@ async fn enqueue(
     .bind(preferred_until)
     .execute(&mut *tx)
     .await?;
+    if ready {
+        super::desktop::announce_evaluation(&mut tx, &agent.owner_account_id, &run_id, candidate)
+            .await?;
+    }
     tx.commit().await?;
     Ok(Outcome::Queued)
 }

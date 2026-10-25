@@ -52,7 +52,9 @@ export function useDesktopAgentReadiness({
   // owner's default route, a hosted account included, as chat runs do.
   const scheduled = Boolean(runtimeReady && accountId && macCanRunDigest(defaultRoute));
   const digest = scheduled;
-  const readinessKey = JSON.stringify([accountId, agentIdsKey, digest, scheduled]);
+  // Proactive evaluations and allowed offers wait for this Mac on the same terms.
+  const proactive = digest;
+  const readinessKey = JSON.stringify([accountId, agentIdsKey, digest, scheduled, proactive]);
   const registration = useMemo(() => ({ readinessKey, client }), [readinessKey, client]);
   const publicationTail = useRef(Promise.resolve());
   const [acknowledged, setAcknowledged] = useState<typeof registration | null>(null);
@@ -72,7 +74,7 @@ export function useDesktopAgentReadiness({
           const published = await withDeadline((async () => {
             const session = await loadSession();
             if (!session?.token || session.accountId !== accountId || cancelled) return false;
-            await client.desktopAgentExecution(session.token, 'ready', { agentIds: JSON.parse(agentIdsKey) as string[], digest, scheduled });
+            await client.desktopAgentExecution(session.token, 'ready', { agentIds: JSON.parse(agentIdsKey) as string[], digest, scheduled, proactive });
             return true;
           })(), DESKTOP_READINESS_PUBLICATION_DEADLINE_MS, 'Desktop readiness did not finish in time.');
           if (published && !cancelled) setAcknowledged(registration);
@@ -89,7 +91,7 @@ export function useDesktopAgentReadiness({
     void publish();
     const timer = setInterval(() => { void publish(); }, 10_000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [accountId, agentIdsKey, client, digest, registration, reportWarning, scheduled]);
+  }, [accountId, agentIdsKey, client, digest, proactive, registration, reportWarning, scheduled]);
 
   // Presence alone does not grant a desktop execution lease. Admission must
   // wait until the server has accepted this account's current capabilities.

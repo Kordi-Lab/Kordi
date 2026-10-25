@@ -115,7 +115,7 @@ test('execution waits for capability acknowledgement and ignores stale account r
     await view.render(<Probe accountId="acct_other" runtimeReady={false} />);
     assert.equal(ready, false);
     await waitFor(() => requests.length === 3);
-    assert.deepEqual(requests[2].input, { agentIds: [], digest: false, scheduled: false });
+    assert.deepEqual(requests[2].input, { agentIds: [], digest: false, scheduled: false, proactive: false });
     // Restoring the same capability list must obtain a fresh acknowledgement,
     // even while its withdrawal is still in flight.
     await view.render(<Probe accountId="acct_other" />);
@@ -222,5 +222,32 @@ test('a Mac offers to run digests and scheduled tasks with any model route', asy
     await waitFor(() => inputs.length >= 1);
     assert.equal((inputs.at(-1) as { digest: boolean }).digest, true, 'a hosted account still runs digests on this Mac');
     assert.equal((inputs.at(-1) as { scheduled: boolean }).scheduled, true, 'scheduled tasks still wait for this Mac');
+  } finally { await view.close(); }
+});
+
+test('a Mac offers proactive runs exactly when it offers digests, never as an agent', async () => {
+  const view = await fixture(async () => null);
+  const inputs: Array<{ agentIds: string[]; digest: boolean; proactive: boolean }> = [];
+  const client = new CloudAuthClient('http://localhost');
+  client.desktopAgentExecution = async <T,>(_token: string, _action: string, input: unknown): Promise<T> => {
+    inputs.push(input as (typeof inputs)[number]);
+    return {} as T;
+  };
+  const local = { model: 'openai/gpt-5.6', authProvider: 'openai', authChoice: 'local-active-oauth', thinking: null };
+  const reportWarning = () => {};
+  function Probe({ model, runtimeReady = true }: { model: string; runtimeReady?: boolean }) {
+    useDesktopAgentReadiness({ account: { accountId: 'acct_test' } as CloudAccount, client, runtimeReady, defaultRoute: { ...local, model }, reportWarning });
+    return null;
+  }
+  try {
+    await view.render(<Probe model={local.model} />);
+    await waitFor(() => inputs.length >= 1);
+    await view.render(<Probe model="" />);
+    await waitFor(() => inputs.length >= 2);
+    await view.render(<Probe model={local.model} runtimeReady={false} />);
+    await waitFor(() => inputs.length >= 3);
+    assert.deepEqual(inputs.map(input => [input.digest, input.proactive]), [[true, true], [false, false], [false, false]]);
+    assert.ok(inputs[0].agentIds.length > 0);
+    assert.ok(inputs.every(input => !input.agentIds.includes('proactive')), 'proactive is a capability, not an agent');
   } finally { await view.close(); }
 });

@@ -46,47 +46,15 @@ pub(crate) struct SessionBootstrapOptions {
     /// provider/model/auth settings. Purpose-built sessions use this to keep
     /// their runtime contract deterministic.
     pub isolate_extensions: bool,
+    /// An approved proactive run: its prompt loads no instruction file
+    /// (`AGENTS.md` or `CLAUDE.md`, not even the global one) and preloads no
+    /// memories. The run looks memories up with `search_memory`.
+    pub proactive_run: bool,
     pub session: Option<String>,
     pub continue_session: bool,
     pub resume: bool,
     /// Label for the active system prompt (template name, "custom", or "default").
     pub prompt_label: String,
-}
-
-impl From<&crate::Cli> for SessionBootstrapOptions {
-    fn from(cli: &crate::Cli) -> Self {
-        let prompt_label = prompt_label_for_cli(cli);
-        Self {
-            messages: cli.messages.clone(),
-            provider: cli.provider.clone(),
-            model: cli.model.clone(),
-            thinking: cli.thinking.clone(),
-            system_prompt: cli.system_prompt.clone(),
-            append_system_prompt: cli.append_system_prompt.clone(),
-            extensions: cli.extensions.clone(),
-            tool_selection: if cli.no_tools {
-                ToolSelectionPreference::None
-            } else if let Some(tools) = &cli.tools {
-                ToolSelectionPreference::Only(
-                    tools
-                        .split(',')
-                        .map(|name| name.trim())
-                        .filter(|name| !name.is_empty())
-                        .map(|name| name.to_string())
-                        .collect(),
-                )
-            } else {
-                ToolSelectionPreference::UseSettings
-            },
-            skill_names: None,
-            skill_paths: Vec::new(),
-            isolate_extensions: false,
-            session: cli.session.clone(),
-            continue_session: cli.r#continue,
-            resume: cli.resume,
-            prompt_label,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -114,6 +82,7 @@ pub(crate) struct RuntimeSlashCommandItem {
     pub value: String,
 }
 
+mod cli_options;
 pub(crate) mod memory;
 mod runtime_setup;
 pub(crate) use memory::{build_memory_aware_tools, reflection_runtime_for_settings};
@@ -345,18 +314,6 @@ fn build_slash_command_items(
     items
 }
 
-fn prompt_label_for_cli(cli: &crate::Cli) -> String {
-    if cli.system_prompt_template.is_some() {
-        cli.system_prompt_template.clone().unwrap_or_default()
-    } else if cli.system_prompt.is_some() {
-        "custom".to_string()
-    } else if cli.append_system_prompt.is_some() {
-        "default+append".to_string()
-    } else {
-        "default".to_string()
-    }
-}
-
 fn load_resumed_session_context(
     conn: &rusqlite::Connection,
     session_id: &str,
@@ -467,7 +424,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         settings.default_thinking.as_deref(),
     );
 
-    let agents_md = if entry.isolate_extensions {
+    let agents_md = if entry.isolate_extensions || entry.proactive_run {
         None
     } else {
         load_agents_md(&effective_cwd)
@@ -550,6 +507,8 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         &artifacts_dir,
         &effective_cwd,
     );
+    // The `reflection` tool stays; only the preloaded section goes.
+    let memory_prompt = memory_prompt.filter(|_| !entry.proactive_run);
     let reflection_lesson_section =
         memory::memory_prompt_block(memory_prompt.as_ref(), &session_id);
     let skill_section = build_skill_system_prompt_section(&session_resources);
@@ -636,6 +595,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         tool_ctx,
         memory_remote,
         memory_prompt,
+        proactive_run: entry.proactive_run,
         system_prompt,
         base_system_prompt,
         thinking_level: thinking_str.to_string(),

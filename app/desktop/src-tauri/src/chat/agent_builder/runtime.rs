@@ -43,6 +43,7 @@ fn builder_profile(workspace: &Path) -> DesktopRuntimeProfile {
             workspace.parent().unwrap_or_else(|| Path::new(".")),
         )],
         execution_policy: Some(ExecutionPolicy::Safety),
+        proactive_run: false,
     }
 }
 
@@ -149,6 +150,7 @@ pub(super) async fn run_draft_smoke_test(
         skill_names: Some(skill_names),
         skill_paths: vec![workspace.join("skills")],
         execution_policy: Some(ExecutionPolicy::Safety),
+        proactive_run: false,
     };
     let test_session_id = format!("session:agent-builder-test:{}", uuid::Uuid::new_v4());
     let result = async {

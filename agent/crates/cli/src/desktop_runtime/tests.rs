@@ -20,6 +20,7 @@ fn request_thinking_for_model(thinking_level: &str, model: &Model) -> Option<Str
 }
 
 include!("tests/environment.rs");
+include!("tests/proactive_run.rs");
 
 fn local_provider_settings(provider: &str, base_url: &str) -> Settings {
     Settings {

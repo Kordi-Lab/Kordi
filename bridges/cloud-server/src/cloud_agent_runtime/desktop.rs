@@ -186,8 +186,9 @@ async fn desktop_provider_route(
     run_id: &str,
     owner: &str,
 ) -> Result<Option<Value>, sqlx_core::Error> {
+    // A proactive evaluation holds the claiming Mac's route beside its own.
     let row: Option<(Value,)> = query_as(
-        "SELECT r.runtime_route_json FROM cloud_agent_fallback_runs r \
+        "SELECT COALESCE(r.runtime_route_json->$5::text, r.runtime_route_json) FROM cloud_agent_fallback_runs r \
          JOIN cloud_devices d ON d.device_id=$3 AND d.account_id=$2 \
          WHERE r.run_id=$1 AND r.owner_account_id=$2 AND r.claimed_by=$4 \
          AND r.execution_backend='desktop' AND r.status IN ('leased','running') \
@@ -198,6 +199,7 @@ async fn desktop_provider_route(
     .bind(&session.account_id)
     .bind(&session.device_id)
     .bind(owner)
+    .bind(crate::proactive::desktop::DESKTOP_ROUTE_KEY)
     .fetch_optional(pool)
     .await?;
     Ok(row.map(|value| value.0))

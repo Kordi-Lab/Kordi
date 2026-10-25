@@ -203,8 +203,8 @@ async fn plan_run(
     let route =
         serde_json::to_value(route).map_err(|error| sqlx_core::Error::Encode(Box::new(error)))?;
     let sandbox = ensure_sandbox_for_run(pool, &proposal.session_id, owner, owner).await?;
-    // The owner's ready Mac goes first once it can take these runs; no Mac
-    // publishes the capability yet, so the cloud runner answers at once.
+    // The owner's ready Mac goes first when it can run proactive runs and
+    // this agent (see `desktop`); otherwise the cloud runner answers at once.
     let prefer_desktop =
         crate::cloud_agent_runtime::agent_desktop_ready(pool, owner, &proposal.agent_id).await?
             && crate::cloud_agent_runtime::agent_desktop_ready(pool, owner, super::CAPABILITY)
