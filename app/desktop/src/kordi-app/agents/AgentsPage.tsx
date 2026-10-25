@@ -50,6 +50,7 @@ import { useFactoryBuildRouting } from './useFactoryBuildRouting';
 import { useSkillLibrary } from './useSkillLibrary';
 import { useFactoryCreationAvatar } from './useFactoryCreationAvatar';
 import { useFactoryAgentAvatarActions } from './useFactoryAgentAvatarActions';
+import { useFactoryBuildAgent } from './factoryBuildAgent';
 import { cloudAgentDefinitionChanges, factoryAgentAvatarPresentation, factoryAgentIdentityChanges, factoryLocalAgentCapabilities, publishDefaultAgentIdentity } from './factoryAgentIdentity';
 
 export function AgentsPage({
@@ -95,9 +96,7 @@ export function AgentsPage({
   const inspectedAgent = inspectedAgentSource && publishedAccessByAgentId[inspectedAgentSource.id]
     ? { ...inspectedAgentSource, cloudAgentAccessScope: publishedAccessByAgentId[inspectedAgentSource.id] }
     : inspectedAgentSource;
-  const selectedAgentSource = buildRoute?.artifactKind === 'agent' && buildRoute.artifactId
-    ? agents.find((agent) => agent.id === buildRoute.artifactId)
-    : undefined;
+  const selectedAgentSource = useFactoryBuildAgent(buildRoute, agents);
   const selectedAgent = selectedAgentSource && publishedAccessByAgentId[selectedAgentSource.id]
     ? { ...selectedAgentSource, cloudAgentAccessScope: publishedAccessByAgentId[selectedAgentSource.id] }
     : selectedAgentSource;

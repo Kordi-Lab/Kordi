@@ -44,8 +44,7 @@ export function useFactoryAgentAvatarActions({
     }
     setPending({ agentId: agent.id, imageUrl: previewUrl });
     void Promise.resolve(save)
-      // A saved avatar clears an error left by an earlier attempt.
-      .then(() => setPublishFeedback((current) => (current?.tone === 'error' ? null : current)))
+      .then(() => setPublishFeedback({ tone: 'success', text: 'Avatar saved' }))
       .catch((error: unknown) => {
         setPublishFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Kordi could not change the avatar.' });
       })

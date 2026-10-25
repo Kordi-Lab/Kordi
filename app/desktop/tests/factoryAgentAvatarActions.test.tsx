@@ -117,7 +117,7 @@ test('an existing cloud agent saves avatar picks at once with the expected versi
   ]);
   assert.deepEqual(result.localUpdates, []);
   assert.deepEqual(result.staged, []);
-  assert.ok(result.feedback.every((entry) => entry === null), 'no error is reported');
+  assert.deepEqual(result.feedback, [{ tone: 'success', text: 'Avatar saved' }, { tone: 'success', text: 'Avatar saved' }]);
   assert.deepEqual(factoryAgentIdentityChanges(cloudAgent, null, undefined), []);
 });
 
@@ -166,8 +166,8 @@ test('the Agent inspection header shows the avatar picker and saves to the right
   assert.deepEqual(inspectionAvatarControls({ ...baseAgent, isOwned: false }, onUpdateCloudAgent, onUpdateLocalAgentAvatar), {});
 });
 
-test('a saved avatar clears an earlier error toast and keeps other feedback', async () => {
-  const updates: Array<AgentSaveFeedback | null> = [];
+test('a failed avatar save reports the error', async () => {
+  const feedback: Array<AgentSaveFeedback | null> = [];
   const { factoryAvatar } = stagedAvatar();
   let actions: AvatarActions | null = null;
   function Probe() {
@@ -175,12 +175,8 @@ test('a saved avatar clears an earlier error toast and keeps other feedback', as
       creating: false,
       agent: cloudAgent,
       factoryAvatar,
-      onUpdateCloudAgent: async (agent) => agent,
-      setPublishFeedback: (value) => {
-        if (typeof value !== 'function') return;
-        updates.push(value({ tone: 'error', text: 'Selected provider has no resolved credential' }));
-        updates.push(value({ tone: 'info', text: 'Saved to the private agent draft.' }));
-      },
+      onUpdateCloudAgent: async () => { throw new Error('Avatar version changed'); },
+      setPublishFeedback: (value) => { feedback.push(typeof value === 'function' ? value(null) : value); },
     });
     return null;
   }
@@ -188,5 +184,5 @@ test('a saved avatar clears an earlier error toast and keeps other feedback', as
     await render(<Probe />);
     await act(async () => actions?.randomize('bird-owl-ink-paper'));
   });
-  assert.deepEqual(updates, [null, { tone: 'info', text: 'Saved to the private agent draft.' }]);
+  assert.deepEqual(feedback, [{ tone: 'error', text: 'Avatar version changed' }]);
 });

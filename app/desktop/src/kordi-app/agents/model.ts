@@ -114,6 +114,8 @@ export type FactoryBuildRoute = {
   artifactKind: FactoryArtifactKind;
   artifactId: string | null;
   returnContext: FactoryReturnContext | null;
+  /** The route edits the user's own default agent, whose id can change when the agent list is rebuilt. */
+  defaultAgent?: true;
 };
 
 export type FactoryLibraryArtifact = {
