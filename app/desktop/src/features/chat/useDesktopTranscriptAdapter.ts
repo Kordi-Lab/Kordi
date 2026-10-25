@@ -99,6 +99,11 @@ function supersededFailureNotices(messages: readonly DesktopChatMessage[]) {
   )));
 }
 
+function sameFailureText(text: string, error: string) {
+  const normalize = (value: string) => value.trim().replace(/\s+/gu, ' ');
+  return normalize(text) === normalize(error);
+}
+
 export function mapDesktopMessagesForTranscript(
   sessionId: string,
   messages: DesktopChatMessage[],
@@ -219,9 +224,14 @@ export function mapDesktopMessagesForTranscript(
                 : cancelledAssistant
                   ? 'Response stopped'
                   : 'Response complete',
-              assistantText: failedAssistant && !failureError ? '' : message.text,
+              // A failure whose text is only its error shows the error once.
+              assistantText: failedAssistant && (!failureError || sameFailureText(message.text, failureError)) ? '' : message.text,
               thinkingText: message.thinkingText ?? '',
-              segments: message.segments,
+              segments: failedAssistant
+                ? message.segments?.filter((segment) => (
+                  segment.kind !== 'text' || !sameFailureText(segment.text, failureError || message.text)
+                ))
+                : message.segments,
               tools: message.tools ?? [],
               completed: true,
               succeeded: !failedAssistant && !cancelledAssistant,
