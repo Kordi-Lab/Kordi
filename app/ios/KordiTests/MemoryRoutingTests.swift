@@ -72,6 +72,27 @@ final class MemoryRoutingTests: XCTestCase {
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
+    func testUpdateRequestAddsAndRemovesOneCard() throws {
+        let added = try encoded(CloudMemoryUpdateRequest(addProfileId: "prof_lab"))
+        XCTAssertEqual(added as? [String: String], ["addProfileId": "prof_lab"])
+        let removed = try encoded(CloudMemoryUpdateRequest(removeProfileId: "prof_work"))
+        XCTAssertEqual(removed as? [String: String], ["removeProfileId": "prof_work"])
+    }
+
+    func testMemoryDecodesItsCards() throws {
+        let json = Self.routedJSON.trimmingCharacters(in: .whitespacesAndNewlines).dropLast()
+            + #", "profileIds": ["prof_health", "prof_lab"], "excludedProfileIds": ["prof_daily"]}"#
+        let memory = try JSONDecoder().decode(CloudMemory.self, from: Data(json.utf8))
+        XCTAssertEqual(memory.profileIds, ["prof_health", "prof_lab"])
+        XCTAssertEqual(memory.excludedProfileIds, ["prof_daily"])
+        XCTAssertNil(try JSONDecoder().decode(CloudMemory.self, from: Data(Self.legacyJSON.utf8)).profileIds)
+    }
+
+    func testCardChoicesNeedMemoryVersionThree() {
+        XCTAssertFalse(MemoryPresentation.hasCardChoices(CloudAuthCapabilities(memoryVersion: 2)))
+        XCTAssertTrue(MemoryPresentation.hasCardChoices(CloudAuthCapabilities(memoryVersion: 3)))
+    }
+
     func testUpdateRequestSendsAnExplicitNullProfileOnlyWhenCleared() throws {
         let text = try encoded(CloudMemoryUpdateRequest(text: "Short replies."))
         XCTAssertEqual(text["text"] as? String, "Short replies.")
@@ -135,17 +156,35 @@ final class MemoryRoutingTests: XCTestCase {
         ]
         model.currentProfileID = "prof_work"
         let memory = try JSONDecoder().decode(CloudMemory.self, from: Data(Self.routedJSON.utf8))
-        XCTAssertEqual(model.moveTargets(for: CloudProfileMemory(memory: memory)).map(\.profileId), ["prof_health"])
-        XCTAssertEqual(model.moveTargets(for: CloudProfileMemory(memory: memory, everyProfile: true)).map(\.profileId), ["prof_work", "prof_health"])
+        // Card choices need memoryVersion 3; before it the section offers only Delete.
+        XCTAssertTrue(model.addTargets(for: CloudProfileMemory(memory: memory)).isEmpty)
+        XCTAssertFalse(model.offersRemoveFromCard(CloudProfileMemory(memory: memory)))
+    }
 
-        // "No profile" only clears a pin; a memory on the card by category or in every profile has none.
-        XCTAssertTrue(model.offersNoProfile(for: CloudProfileMemory(memory: memory)))
-        var byCategory = memory
-        byCategory.profileId = nil
-        XCTAssertFalse(model.offersNoProfile(for: CloudProfileMemory(memory: byCategory)))
-        XCTAssertEqual(model.moveTargets(for: CloudProfileMemory(memory: byCategory)).map(\.profileId), ["prof_health"])
-        var shared = byCategory
-        shared.category = "coordination_context"
-        XCTAssertFalse(model.offersNoProfile(for: CloudProfileMemory(memory: shared, everyProfile: true)))
+    @MainActor
+    func testCardPageOffersAddToCardAndRemoveFromCard() throws {
+        let me = CommonGroundPerson(accountId: "acct_a", name: "Alex", avatarUrl: nil)
+        let model = CommonGroundModel(me: me, profilesEnabled: true, memoriesEnabled: true, cardChoicesEnabled: true) { throw CancellationError() }
+        XCTAssertTrue(model.showsCardChoices)
+        model.profiles = [
+            CommonGroundProfileSummary(profileId: "prof_work", kind: "work", name: ""),
+            CommonGroundProfileSummary(profileId: "prof_health", kind: "health", name: "", position: 1),
+            CommonGroundProfileSummary(profileId: "prof_lab", kind: "custom", name: "Lab", position: 2),
+        ]
+        model.currentProfileID = "prof_health"
+        var memory = try JSONDecoder().decode(CloudMemory.self, from: Data(Self.routedJSON.utf8))
+        memory.profileIds = ["prof_health"]
+        XCTAssertEqual(model.addTargets(for: CloudProfileMemory(memory: memory)).map(\.profileId), ["prof_work", "prof_lab"])
+        XCTAssertTrue(model.offersRemoveFromCard(CloudProfileMemory(memory: memory)))
+        memory.profileIds = ["prof_health", "prof_lab"]
+        XCTAssertEqual(model.addTargets(for: CloudProfileMemory(memory: memory)).map(\.profileId), ["prof_work"])
+
+        // A schedule memory shown through its category is on every fixed card and stays on them.
+        var schedule = memory
+        schedule.category = "coordination_context"
+        schedule.profileIds = ["prof_work", "prof_health"]
+        let every = CloudProfileMemory(memory: schedule, everyProfile: true)
+        XCTAssertEqual(model.addTargets(for: every).map(\.profileId), ["prof_lab"])
+        XCTAssertFalse(model.offersRemoveFromCard(every))
     }
 }

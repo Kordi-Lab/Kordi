@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// The card page's Memories section: the memories routed to this profile,
-/// each with Move to… and Remove. Hidden without routing or memories.
+/// The card page's Memories section: the memories on this card, each with
+/// Add to card, Remove from card and Delete. Hidden without routing or memories.
 struct CommonGroundCardMemoriesSection: View {
     @EnvironmentObject private var model: CommonGroundModel
-    @State private var removeTarget: CloudProfileMemory?
+    @State private var deleteTarget: CloudProfileMemory?
 
     var body: some View {
         if model.showsProfileMemories, !model.profileMemories.isEmpty {
@@ -15,12 +15,12 @@ struct CommonGroundCardMemoriesSection: View {
                 }
             }
             .alert(
-                "Remove this memory?",
-                isPresented: Binding(get: { removeTarget != nil }, set: { if !$0 { removeTarget = nil } }),
-                presenting: removeTarget
+                "Delete this memory?",
+                isPresented: Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } }),
+                presenting: deleteTarget
             ) { memory in
-                Button("Remove", role: .destructive) {
-                    Task { await model.removeMemory(memory.id) }
+                Button("Delete", role: .destructive) {
+                    Task { await model.deleteMemory(memory.id) }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { _ in
@@ -34,7 +34,7 @@ struct CommonGroundCardMemoriesSection: View {
             text: memory.memory.text,
             detail: MemoryPresentation.detail(memory.memory),
             category: memory.memory.category,
-            captions: memory.everyProfile ? ["Every profile"] : []
+            captions: memory.everyProfile ? [MemoryOrganizer.everyCardTitle] : []
         )
         .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
         .padding(.vertical, 10)
@@ -43,24 +43,27 @@ struct CommonGroundCardMemoriesSection: View {
         .contextMenu { actions(memory) }
         .disabled(model.busy == "memory")
         .accessibilityElement(children: .combine)
-        .accessibilityAction(named: "Remove") { removeTarget = memory }
+        .accessibilityAction(named: "Delete") { deleteTarget = memory }
         .accessibilityIdentifier("profile-memory-\(memory.id)")
     }
 
     @ViewBuilder
     private func actions(_ memory: CloudProfileMemory) -> some View {
-        Menu("Move to…", systemImage: "arrow.right.square") {
-            ForEach(model.moveTargets(for: memory)) { profile in
-                Button(profile.title) {
-                    Task { await model.moveMemory(memory.id, toProfile: profile.profileId) }
-                }
-            }
-            if model.offersNoProfile(for: memory) {
-                Button("No profile") {
-                    Task { await model.moveMemory(memory.id, toProfile: nil) }
+        let targets = model.addTargets(for: memory)
+        if !targets.isEmpty {
+            Menu("Add to card", systemImage: "plus.rectangle.on.rectangle") {
+                ForEach(targets) { profile in
+                    Button("\(profile.title) card") {
+                        Task { await model.addMemory(memory.id, toCard: profile.profileId) }
+                    }
                 }
             }
         }
-        Button("Remove", systemImage: "trash", role: .destructive) { removeTarget = memory }
+        if model.offersRemoveFromCard(memory) {
+            Button("Remove from card", systemImage: "minus.rectangle") {
+                Task { await model.removeMemoryFromCard(memory.id) }
+            }
+        }
+        Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = memory }
     }
 }

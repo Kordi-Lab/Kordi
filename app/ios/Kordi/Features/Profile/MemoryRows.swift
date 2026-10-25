@@ -99,7 +99,7 @@ private struct MemoryRow: View {
     }
 }
 
-private struct MemoryEditSheet: View {
+struct MemoryEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     /// The memory being edited, or nil for a new memory.
     let memory: CloudMemory?

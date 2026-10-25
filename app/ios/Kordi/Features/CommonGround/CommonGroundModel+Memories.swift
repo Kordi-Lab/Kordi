@@ -1,10 +1,13 @@
 import Foundation
 
-/// The card page's Memories section: the owner's memories routed to the
-/// current profile, Move to another profile or none, and Remove.
+/// The card page's Memories section: the owner's memories on the current
+/// card, Add to card, Remove from card, and Delete.
 extension CommonGroundModel {
     /// Whether the card page lists memories: profiles and `memoryVersion` 2.
     var showsProfileMemories: Bool { memoriesEnabled && profilesEnabled }
+
+    /// Add to card and Remove from card need `memoryVersion` 3.
+    var showsCardChoices: Bool { showsProfileMemories && cardChoicesEnabled }
 
     /// "N new memories since this card was built" near Rebuild card.
     var memoriesSinceBuildCaption: String? {
@@ -12,16 +15,17 @@ extension CommonGroundModel {
         return MemoryPresentation.memoriesSinceBuildCaption(owner?.memoriesSinceBuild)
     }
 
-    /// The profiles a memory can move to: the owner's other profiles, and
-    /// this one too for a memory listed in every profile, which narrows it.
-    func moveTargets(for memory: CloudProfileMemory) -> [CommonGroundProfileSummary] {
-        profiles.filter { $0.profileId != currentProfileID || memory.everyProfile }
+    /// The cards a memory can be added to: the owner's cards it is not on.
+    func addTargets(for memory: CloudProfileMemory) -> [CommonGroundProfileSummary] {
+        guard showsCardChoices else { return [] }
+        let on = Set(memory.memory.profileIds ?? [currentProfileID].compactMap { $0 })
+        return profiles.filter { !on.contains($0.profileId) }
     }
 
-    /// "No profile" clears a pin, so the memory goes back to its category's
-    /// default profiles; it is offered only for a pinned memory.
-    func offersNoProfile(for memory: CloudProfileMemory) -> Bool {
-        !memory.everyProfile && memory.memory.profileId != nil
+    /// Remove from card takes the memory off the current card. A schedule
+    /// memory shown through its category is on every card, so it stays.
+    func offersRemoveFromCard(_ memory: CloudProfileMemory) -> Bool {
+        showsCardChoices && !memory.everyProfile && currentProfileID != nil
     }
 
     /// Loads the current profile's memories. Quiet on failure; an answer for
@@ -36,23 +40,34 @@ extension CommonGroundModel {
         profileMemories = list.memories
     }
 
-    /// Files a memory under another profile, or none when `profileId` is nil.
+    /// Adds a memory to another card; it stays on this one.
     @discardableResult
-    func moveMemory(_ memoryId: String, toProfile profileId: String?) async -> Bool {
-        guard (await run("memory", { try await $0.moveMemory(token: $1, memoryId: memoryId, toProfile: profileId) })) != nil else { return false }
-        await refreshMemories()
-        return true
+    func addMemory(_ memoryId: String, toCard profileId: String) async -> Bool {
+        await changeMemory(memoryId, CloudMemoryUpdateRequest(addProfileId: profileId))
+    }
+
+    /// Takes a memory off the current card; it stays in the account.
+    @discardableResult
+    func removeMemoryFromCard(_ memoryId: String) async -> Bool {
+        guard let profileId = currentProfileID else { return false }
+        return await changeMemory(memoryId, CloudMemoryUpdateRequest(removeProfileId: profileId))
     }
 
     /// Deletes a memory from the account, on every device.
     @discardableResult
-    func removeMemory(_ memoryId: String) async -> Bool {
+    func deleteMemory(_ memoryId: String) async -> Bool {
         guard (await run("memory", { try await $0.deleteMemory(token: $1, memoryId: memoryId) })) != nil else { return false }
         await refreshMemories()
         return true
     }
 
-    /// The list and the card's "new memories" count both change after a move or remove.
+    private func changeMemory(_ memoryId: String, _ request: CloudMemoryUpdateRequest) async -> Bool {
+        guard (await run("memory", { try await $0.changeMemory(token: $1, memoryId: memoryId, request) })) != nil else { return false }
+        await refreshMemories()
+        return true
+    }
+
+    /// The list and the card's "new memories" count both change after a card change or delete.
     private func refreshMemories() async {
         await loadProfileMemories()
         await refreshCard()

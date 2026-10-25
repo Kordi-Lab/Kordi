@@ -1144,7 +1144,7 @@ final class AppModel: ObservableObject {
 
     var isMemoryAvailable: Bool { MemoryPresentation.isAvailable(memoryCapabilities) }
 
-    private static let previewMemoryCapabilities = CloudAuthCapabilities(password: true, memoryVersion: 1)
+    private static let previewMemoryCapabilities = CloudAuthCapabilities(password: true, memoryVersion: 3)
 
     /// Fetches the memory capability in the background right after sign-in or a
     /// restored session, so it is cached before any detail view appears.
