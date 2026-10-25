@@ -75,4 +75,53 @@ final class AppearanceSettingsTests: XCTestCase {
             XCTAssertFalse(try source(path).contains("KordiTheme.signalBlue"), path)
         }
     }
+
+    func testChatThemeAccentsMatchTheMacPalette() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let palette = try String(
+            contentsOf: repoRoot.appendingPathComponent("app/desktop/src/styles/theme-palette.css"),
+            encoding: .utf8
+        )
+        let themeSource = try String(
+            contentsOf: repoRoot.appendingPathComponent("app/ios/Kordi/Core/Design/KordiTheme.swift"),
+            encoding: .utf8
+        )
+
+        func hex(_ property: String, in block: String) -> String? {
+            guard let range = block.range(of: "\(property): #[0-9A-Fa-f]{6}", options: .regularExpression) else {
+                return nil
+            }
+            return String(block[range].suffix(6)).uppercased()
+        }
+
+        // Each palette block names its theme in the selector; the unmarked default is Quiet Signal.
+        var macAccents: [String: (light: String, dark: String)] = [:]
+        for block in palette.components(separatedBy: "}") {
+            guard let light = hex("--app-palette-accent-light", in: block),
+                  let dark = hex("--app-palette-accent-dark", in: block) else { continue }
+            let marker = "data-kordi-chat-theme='"
+            let theme: String
+            if let range = block.range(of: "\(marker)[a-z]+'", options: .regularExpression) {
+                theme = String(block[range].dropFirst(marker.count).dropLast())
+            } else {
+                theme = KordiChatTheme.quiet.rawValue
+            }
+            macAccents[theme] = (light, dark)
+        }
+
+        XCTAssertEqual(Set(macAccents.keys), Set(KordiChatTheme.allCases.map(\.rawValue)))
+        for theme in KordiChatTheme.allCases {
+            let accent = try XCTUnwrap(macAccents[theme.rawValue], theme.rawValue)
+            XCTAssertTrue(
+                themeSource.contains(
+                    "case .\(theme.rawValue): KordiTheme.adaptive(light: 0x\(accent.light), dark: 0x\(accent.dark))"
+                ),
+                "\(theme.rawValue) accent should be 0x\(accent.light) / 0x\(accent.dark) like the Mac palette"
+            )
+        }
+    }
 }
