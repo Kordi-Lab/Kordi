@@ -1,4 +1,5 @@
 import { lazy, Suspense, useRef, useState } from 'react';
+import type { AppDialogAnchor } from '@/components/ui/dialog';
 import { CircleHelp } from 'lucide-react';
 import { cloudApiBaseUrl } from '@/features/cloud/authClient';
 import type { NavId } from '@/kordi-app/types';
@@ -8,7 +9,8 @@ import { requestHelpGrounding } from './helpNavigation';
 import type { HelpAction } from './helpContent';
 import { HelpWelcome } from './HelpWelcome';
 
-const HelpHub = lazy(() => import('./HelpHub'));
+const HelpMenu = lazy(() => import('./HelpMenu'));
+const HelpTour = lazy(() => import('./HelpTour'));
 
 type HelpEntryProps = {
   activeNav: NavId;
@@ -22,16 +24,37 @@ export function HelpEntry(props: HelpEntryProps) {
   return <AccountHelpEntry key={props.account.cloudAccount?.accountId ?? 'local'} {...props} />;
 }
 
-function AccountHelpEntry({ activeNav, setActiveNav, account, onOpenSupport, onOpenSession }: HelpEntryProps) {
+function AccountHelpEntry({ setActiveNav, account, onOpenSupport, onOpenSession }: HelpEntryProps) {
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<AppDialogAnchor | null>(null);
+  const [tour, setTour] = useState(false);
+  const [initialView, setInitialView] = useState<'home' | 'permissions'>('home');
+  const tourOpenedSettings = useRef(false);
+  const settingsAvailable = Boolean(account.cloudAccount && account.cloudSettings && account.setCloudAccountDialogTab);
   const trigger = useRef<HTMLButtonElement>(null);
   const progressKey = helpProgressKey(account.cloudAccount?.accountId ?? 'local', cloudApiBaseUrl());
   const [welcome, setWelcome] = useState(() => readHelpProgress(progressKey).welcome);
   const openHelp = () => {
+    setAnchor(trigger.current?.getBoundingClientRect() ?? null);
+    if (tourOpenedSettings.current) { account.setCloudAccountDialogTab?.(null); tourOpenedSettings.current = false; }
     trigger.current?.focus();
     setWelcome(false);
     saveHelpProgress(progressKey, { ...readHelpProgress(progressKey), welcome: false });
+    setTour(false);
+    setInitialView('home');
     setOpen(true);
+  };
+  const startTour = () => {
+    setWelcome(false);
+    saveHelpProgress(progressKey, { ...readHelpProgress(progressKey), welcome: false });
+    setOpen(false);
+    setTour(true);
+  };
+  const exitTour = (permissions = false) => {
+    setTour(false);
+    if (tourOpenedSettings.current) { account.setCloudAccountDialogTab?.(null); tourOpenedSettings.current = false; }
+    trigger.current?.focus();
+    if (permissions) { setAnchor(trigger.current?.getBoundingClientRect() ?? null); setInitialView('permissions'); setOpen(true); }
   };
   const action = async (target: HelpAction) => {
     if (target.kind === 'navigate') setActiveNav(target.page);
@@ -43,14 +66,24 @@ function AccountHelpEntry({ activeNav, setActiveNav, account, onOpenSupport, onO
     if (target.kind === 'support') await onOpenSupport?.();
   };
   return <div className="relative">
-    <button ref={trigger} type="button" className="app-workspace-nav-button relative mx-auto grid h-8 w-8 place-items-center rounded-[10px] p-0" data-active={open} aria-label={welcome ? 'Help & setup: get started with Kordi' : 'Help & setup'} title={welcome ? 'New to Kordi? Start here' : 'Help & setup'} aria-haspopup="dialog" aria-expanded={open} onClick={openHelp}>
+    <button data-help-target="help" ref={trigger} type="button" className="app-workspace-nav-button relative mx-auto grid h-8 w-8 place-items-center rounded-[10px] p-0" data-active={open || tour} aria-label={welcome ? 'Help & setup: get started with Kordi' : 'Help & setup'} title={welcome ? 'New to Kordi? Start here' : 'Help & setup'} aria-haspopup="dialog" aria-expanded={open || tour} onClick={openHelp}>
       <CircleHelp className="h-[18px] w-[18px]" aria-hidden="true" />
       {welcome ? <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true" /> : null}
     </button>
-    {welcome && !open ? <HelpWelcome trigger={trigger} onStart={openHelp} onDismiss={() => {
+    {welcome && !open && !tour ? <HelpWelcome trigger={trigger} onStart={startTour} onDismiss={() => {
           setWelcome(false);
           saveHelpProgress(progressKey, { ...readHelpProgress(progressKey), welcome: false });
         }} /> : null}
-    {open ? <Suspense fallback={<span role="status" className="text-xs">Loading help…</span>}><HelpHub activeNav={activeNav} progressKey={progressKey} settingsAvailable={Boolean(account.cloudAccount && account.cloudSettings && account.setCloudAccountDialogTab)} supportAvailable={Boolean(onOpenSupport)} onAction={action} onOpenSession={onOpenSession} onDismiss={() => setOpen(false)} /></Suspense> : null}
+    {open ? <Suspense fallback={<span role="status" className="text-xs">Loading help…</span>}><HelpMenu anchor={anchor} progressKey={progressKey} initialView={initialView} onStartTour={startTour} settingsAvailable={settingsAvailable} supportAvailable={Boolean(onOpenSupport)} onAction={action} onOpenSession={onOpenSession} onDismiss={() => setOpen(false)} /></Suspense> : null}
+    {tour ? <Suspense fallback={<span role="status" className="text-xs">Loading tour…</span>}><HelpTour progressKey={progressKey} settingsAvailable={settingsAvailable} onExit={exitTour} onPrepare={(step) => {
+      if (step.target === 'settings-auth' && settingsAvailable) {
+        tourOpenedSettings.current = true;
+        account.setCloudAccountDialogTab?.('auth');
+      } else if (tourOpenedSettings.current) {
+        account.setCloudAccountDialogTab?.(null);
+        tourOpenedSettings.current = false;
+      }
+      if (step.page) setActiveNav(step.page);
+    }} /></Suspense> : null}
   </div>;
 }

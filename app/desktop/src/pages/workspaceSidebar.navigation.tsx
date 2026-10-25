@@ -66,6 +66,7 @@ export function WorkspaceNavigationRail({
                 type="button"
                 onClick={() => setActiveNav(item.id)}
                 className="app-workspace-nav-button relative mx-auto grid h-8 w-8 place-items-center rounded-[10px] p-0"
+                data-help-target={`nav-${item.id}`}
                 data-active={active ? 'true' : 'false'}
                 aria-label={unread > 0
                   ? `${item.label}, ${unread} unread message${unread === 1 ? '' : 's'}`

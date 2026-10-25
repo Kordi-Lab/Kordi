@@ -84,11 +84,11 @@ try {
     throw new Error(`The help center exceeds its separate ${formatKb(MAX_HELP_CENTER_BYTES)} budget (${formatKb(helpBytes)}).`);
   }
   // Rolldown can move shared dependencies into a named lazy group, causing an
-  // eager import back into it. Only the dynamically imported HelpHub entry may
+  // eager import back into it. Only the dynamically imported help entries may
   // statically import the help chunk; other app chunks must not load it.
-  for (const chunk of chunks.filter((item) => !/^HelpHub-[\w-]+\.js$/.test(item.name))) {
+  for (const chunk of chunks.filter((item) => !/^(?:HelpMenu|HelpTour)-[\w-]+\.js$/.test(item.name))) {
     const source = await readFile(path.join(assetsDir, chunk.name), 'utf8');
-    if (/\b(?:import|export)\s*(?:\{[^}]*\}|\*[^;]*)?\s*(?:from\s*)?["']\.\/(?:help-center|HelpHub)-[\w-]+\.js["']/.test(source)) {
+    if (/\b(?:import|export)\s*(?:\{[^}]*\}|\*[^;]*)?\s*(?:from\s*)?["']\.\/(?:help-center|HelpMenu|HelpTour)-[\w-]+\.js["']/.test(source)) {
       throw new Error(`Help must load on demand, but ${chunk.name} imports it eagerly.`);
     }
   }

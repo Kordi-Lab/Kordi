@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import HelpHub from '../../src/features/onboarding/HelpHub';
+import HelpMenu from '../../src/features/onboarding/HelpMenu';
 import type { HelpAction } from '../../src/features/onboarding/helpContent';
+import { HelpWorkspacePreview } from './helpWorkspacePreview';
 import { HelpWelcome } from '../../src/features/onboarding/HelpWelcome';
 
 const theme = new URLSearchParams(window.location.search).get('theme') === 'light' ? 'light' : 'dark';
@@ -15,7 +16,7 @@ function Fixture() {
     <button onClick={() => setOpen(true)} aria-label="Help & setup">?</button>
     <p data-testid="destination">{JSON.stringify(action)}</p>
     <textarea aria-label="Message draft" defaultValue="Keep this draft" />
-    {open ? <HelpHub activeNav="contacts" progressKey="help-test-user" settingsAvailable supportAvailable onAction={setAction} onOpenSession={() => {}} onDismiss={() => setOpen(false)} /> : null}
+    {open ? <HelpMenu anchor={{ left: 24, top: 24, width: 32, height: 32 }} progressKey="help-test-user" settingsAvailable supportAvailable onAction={setAction} onOpenSession={() => {}} onStartTour={() => {}} onDismiss={() => setOpen(false)} /> : null}
   </div>;
 }
 function WelcomeFixture() {
@@ -26,4 +27,4 @@ function WelcomeFixture() {
     {!dismissed ? <HelpWelcome trigger={trigger} onStart={() => setDismissed(true)} onDismiss={() => setDismissed(true)} /> : null}
   </div>;
 }
-createRoot(document.querySelector('#root')!).render(new URLSearchParams(location.search).has('welcome') ? <WelcomeFixture /> : <Fixture />);
+createRoot(document.querySelector('#root')!).render(new URLSearchParams(location.search).has('welcome') ? <WelcomeFixture /> : new URLSearchParams(location.search).has('isolated') ? <Fixture /> : <HelpWorkspacePreview theme={theme} />);

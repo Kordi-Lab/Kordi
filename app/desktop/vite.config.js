@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 const DOCUMENT_EDITOR_SOURCE = /[\\/]src[\\/]features[\\/]documents[\\/]editor[\\/]/;
-const HELP_CENTER_SOURCE = /[\\/]src[\\/]features[\\/]onboarding[\\/](?:HelpHub|HelpPermissions|HelpReleaseNotes|helpContent|permissionAccess)\.[tj]sx?$/;
+const HELP_CENTER_SOURCE = /[\\/]src[\\/]features[\\/]onboarding[\\/](?:HelpMenu|HelpTour|helpTourSteps|helpTourGeometry|HelpPermissions|HelpReleaseNotes|helpContent|permissionAccess)\.[tj]sx?$/;
 const DOCUMENT_EDITOR_PACKAGES = /[\\/]node_modules[\\/](?:@tiptap|prosemirror-[a-z-]+|marked|linkifyjs|orderedmap|rope-sequence|w3c-keyname|yjs|y-websocket|y-protocols|lib0)[\\/]/;
 
 export default defineConfig(({ command, mode }) => {

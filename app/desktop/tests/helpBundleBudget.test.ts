@@ -14,17 +14,20 @@ test('help gets a bounded on-demand allowance, never an exemption for startup co
   mkdirSync(assets);
   const run = () => spawnSync(process.execPath, [script, assets], { encoding: 'utf8' });
   try {
-    writeFileSync(path.join(assets, 'index-test.js'), 'import("./HelpHub-test.js");');
-    writeFileSync(path.join(assets, 'HelpHub-test.js'), 'import{a}from"./help-center-test.js";export{a};');
+    writeFileSync(path.join(assets, 'index-test.js'), 'import("./HelpMenu-test.js");');
+    writeFileSync(path.join(assets, 'HelpMenu-test.js'), 'import{a}from"./help-center-test.js";export{a};');
     writeFileSync(path.join(assets, 'help-center-test.js'), 'export const a=1;');
+    writeFileSync(path.join(assets, 'HelpTour-test.js'), 'import{a}from"./help-center-test.js";export{a};');
     assert.equal(run().status, 0);
     writeFileSync(path.join(assets, 'index-test.js'), 'import{a}from"./help-center-test.js";');
     const eager = run();
     assert.notEqual(eager.status, 0);
     assert.match(eager.stderr, /imports it eagerly/);
-    writeFileSync(path.join(assets, 'index-test.js'), 'import{a}from"./HelpHub-test.js";');
+    writeFileSync(path.join(assets, 'index-test.js'), 'import{a}from"./HelpMenu-test.js";');
     assert.notEqual(run().status, 0, 'the lazy entry must not be imported eagerly either');
-    writeFileSync(path.join(assets, 'index-test.js'), 'import("./HelpHub-test.js");');
+    writeFileSync(path.join(assets, 'index-test.js'), 'import{a}from"./HelpTour-test.js";');
+    assert.notEqual(run().status, 0, 'the tour entry must not be imported eagerly');
+    writeFileSync(path.join(assets, 'index-test.js'), 'import("./HelpMenu-test.js");');
     writeFileSync(path.join(assets, 'help-center-test.css'), ' '.repeat(50_001));
     const oversized = run();
     assert.notEqual(oversized.status, 0);

@@ -35,16 +35,18 @@ function PermissionRow({ definition }: { definition: PermissionDefinition }) {
     } finally { setBusy(false); }
   };
   return (
-    <li className="help-permission-row">
-      <div>
-        <h3>{definition.name}</h3>
-        <p>{definition.description}</p>
-        <span className="help-status" data-status={status} aria-live="polite">{busy ? 'Updating access…' : status ? permissionStatusLabels[status] : 'Checking access…'}</span>
-        {!nativeMacPermissions() && (status === 'denied' || status === 'allowed') ? <p>Manage this permission in your browser or device settings.</p> : null}
-        {status === 'restricted' ? <p>This device’s policy controls access. Contact the person who manages it.</p> : null}
-        {error ? <p role="alert">{error}</p> : null}
+    <li className="help-permission-row help-device-permission">
+      <div className="help-permission-heading">
+        <div>
+          <h3>{definition.name}</h3>
+          <span className="help-status" data-status={status} aria-live="polite">{busy ? 'Updating access…' : status ? permissionStatusLabels[status] : 'Checking access…'}</span>
+        </div>
+        {action ? <button className="help-secondary" disabled={busy} onClick={() => void run()} aria-label={`${action}: ${definition.name}`}>{action}</button> : null}
       </div>
-      {action ? <button className="help-secondary" disabled={busy} onClick={() => void run()} aria-label={`${action}: ${definition.name}`}>{action}</button> : null}
+      <details className="help-permission-why"><summary>Why this is needed</summary><p>{definition.description}</p></details>
+      {!nativeMacPermissions() && (status === 'denied' || status === 'allowed') ? <p>Manage this permission in your browser or device settings.</p> : null}
+      {status === 'restricted' ? <p>This device’s policy controls access. Contact the person who manages it.</p> : null}
+      {error ? <p role="alert">{error}</p> : null}
     </li>
   );
 }
@@ -86,7 +88,8 @@ function PendingApprovals({ onOpenSession }: { onOpenSession: (id: string) => vo
   );
 }
 
-export function HelpPermissions({ onAction, onOpenSession, connectorsAvailable, groundingAvailable }: {
+export function HelpPermissions({ onAction, onOpenSession, connectorsAvailable, groundingAvailable, compact = false }: {
+  compact?: boolean;
   onAction: (action: HelpAction) => void;
   onOpenSession: (id: string) => void;
   connectorsAvailable: boolean;
@@ -94,18 +97,18 @@ export function HelpPermissions({ onAction, onOpenSession, connectorsAvailable, 
 }) {
   return (
     <>
-      <p className="help-eyebrow">SETUP</p><h2>Permissions & access</h2>
-      <p>Allow only what you want to use. Opening this page checks access without requesting it. Return here after changing device settings.</p>
+      {!compact ? <h2>Permissions & access</h2> : null}
+      <p>Allow a feature when you need it. Access is requested only when you choose Allow.</p>
       <ul className="help-permission-list">{permissionDefinitions.map((definition) => <PermissionRow key={definition.id} definition={definition} />)}</ul>
-      <section className="help-section"><h3>Services and agent access</h3>
+      <details className="help-section"><summary>Services and agent access</summary>
         <p>Connect accounts, choose which agents can use them, and manage read or action access in Connectors. Mac Contacts uses Automation access. The optional Notification Center connector needs Full Disk Access; its setup opens the right settings and lets you check again.</p>
         <button className="help-secondary" disabled={!connectorsAvailable} onClick={() => onAction({ kind: 'settings', tab: 'connectors' })}>Manage connectors & access</button>
         {!connectorsAvailable ? <p>Connectors are unavailable or their availability could not be checked.</p> : null}
-      </section>
-      <section className="help-section"><h3>Card sources and sharing</h3>
+      </details>
+      <details className="help-section"><summary>Card sources and sharing</summary>
         <p>Device permission does not choose what goes into your card. In Grounding, select sources for each build, review topics, and choose which profile to share.</p>
         <button className="help-secondary" disabled={!groundingAvailable} onClick={() => onAction({ kind: 'grounding' })}>Review cards & sharing</button>
-      </section>
+      </details>
       {isNativeDesktopShell() ? <PendingApprovals onOpenSession={onOpenSession} /> : <p>Pending Mac agent approvals are available in the desktop app. Review other action requests in their conversation.</p>}
     </>
   );

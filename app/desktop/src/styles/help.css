@@ -1,44 +1,7 @@
-.help-backdrop { z-index: 180; justify-content: flex-end; padding: 12px; backdrop-filter: none; background: rgb(0 0 0 / 18%); }
-.help-dialog { width: min(520px, 100%); max-width: 520px; padding: 0; border-radius: 20px; overflow: hidden; color: var(--app-transient-text); }
-.help-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 24px 16px; }
-.help-header h2 { margin: 0; font-size: 20px; letter-spacing: -.025em; }
-.help-header p { margin: 4px 0 0; font-size: 12px; color: var(--app-transient-muted-text); }
 .help-icon-button { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; }
-.help-tabs { display: flex; gap: 4px; padding: 0 16px 12px; border-bottom: 1px solid var(--app-transient-border); }
-.help-tabs button { display: flex; justify-content: center; align-items: center; gap: 7px; flex: 1; min-height: 38px; border-radius: 10px; font-size: 12px; color: var(--app-transient-muted-text); }
-.help-tabs button[aria-current] { color: var(--app-transient-text); background: var(--app-transient-raised-bg); font-weight: 600; }
-.help-content { padding: 20px 24px 24px; height: min(660px, calc(100dvh - 166px)); overflow: auto; overscroll-behavior: contain; }
-.help-content h2 { margin: 6px 0 10px; font-size: 23px; font-weight: 600; line-height: 1.2; letter-spacing: -.025em; }
-.help-content h3, .help-content h4 { margin: 0 0 5px; font-size: 13px; font-weight: 600; }
-.help-content p { font-size: 13px; line-height: 1.6; color: var(--app-transient-muted-text); margin: 8px 0 14px; }
-.help-content .help-eyebrow { font-size: 10px; font-weight: 650; letter-spacing: .09em; margin: 0; }
 .help-primary, .help-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; border-radius: 10px; padding: 8px 12px; font-size: 12px; font-weight: 600; }
 .help-primary { color: var(--app-sidebar-accent-text); background: var(--app-sidebar-accent); }
 .help-secondary { background: var(--app-transient-raised-bg); color: var(--app-transient-text); border: 1px solid var(--app-transient-border); }
-.help-dialog button:disabled { opacity: .5; cursor: not-allowed; }
-.help-dialog button:not(:disabled):hover { filter: brightness(.94); }
-.help-dialog button:focus-visible, .help-dialog input:focus-visible { outline: 2px solid var(--app-transient-focus-ring); outline-offset: 3px; }
-.help-welcome { padding: 4px 0 20px; }
-.help-context { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 14px; margin: 0 0 20px; border: 1px solid var(--app-transient-border); border-radius: 12px; text-align: left; }
-.help-context small { display: block; font-size: 9px; letter-spacing: .08em; color: var(--app-transient-muted-text); margin-bottom: 5px; }
-.help-context strong { display: block; font-size: 13px; font-weight: 600; }
-.help-search { display: flex; align-items: center; gap: 9px; padding: 9px 12px; background: var(--app-transient-raised-bg); border: 1px solid var(--app-transient-border); border-radius: 10px; }
-.help-search input { width: 100%; min-width: 0; background: transparent; font-size: 12px; }
-.help-content .help-result-count { font-size: 11px; margin: 12px 0 6px; }
-.help-topics { display: grid; }
-.help-topic { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 14px 0; text-align: left; border-bottom: 1px solid var(--app-transient-border); }
-.help-topic strong { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-.help-topic span span { display: block; color: var(--app-transient-muted-text); font-size: 12px; line-height: 1.5; }
-.help-topic svg { flex-shrink: 0; color: var(--app-transient-muted-text); }
-.help-home-footer, .help-intro-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 20px; }
-.help-text-button, .help-back { min-height: 36px; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
-.help-back { display: flex; gap: 6px; align-items: center; margin-bottom: 16px; text-decoration: none; color: var(--app-transient-muted-text); }
-.help-article ol { padding-left: 22px; margin: 20px 0 24px; }
-.help-article li { padding-left: 6px; margin-bottom: 16px; font-size: 13px; line-height: 1.7; }
-.help-content .help-footnote { font-size: 11px; margin-top: 18px; }
-.help-progress { display: flex; gap: 5px; margin: 12px 0 28px; }
-.help-progress span { flex: 1; height: 3px; border-radius: 2px; background: var(--app-transient-border); }
-.help-progress span[data-done="true"] { background: var(--app-sidebar-accent); }
 .help-permission-list { list-style: none; padding: 0; margin: 20px 0; }
 .help-permission-row { display: flex; gap: 14px; align-items: flex-start; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--app-transient-border); }
 .help-permission-row > div { min-width: 0; flex: 1; }
@@ -47,12 +10,54 @@
 .help-status { display: block; font-size: 11px; color: var(--app-transient-muted-text); }
 .help-status[data-status="allowed"] { color: var(--app-transient-text); font-weight: 600; }
 .help-section { padding: 18px 0; border-bottom: 1px solid var(--app-transient-border); }
-@media (max-width: 540px) {
-  .help-backdrop { padding: 8px; }
-  .help-header { padding: 18px 16px 12px; }
-  .help-content { padding: 16px; }
-  .help-tabs { padding-inline: 8px; }
-  .help-tabs button { font-size: 11px; gap: 4px; }
-  .help-permission-row { flex-wrap: wrap; }
-  .help-permission-row > div { flex-basis: 100%; }
-}
+.help-text-button { min-height: 34px; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+
+/* The workspace stays visible beneath a target-shaped spotlight. */
+.help-tour-layer { position: fixed; inset: 0; z-index: 300; pointer-events: none; }
+.help-tour-spotlight { position: fixed; border: 2px solid var(--app-transient-text); border-radius: 12px; box-shadow: 0 0 0 9999px rgb(0 0 0 / 62%), 0 0 0 4px rgb(255 255 255 / 12%); }
+.help-tour-dim { position: fixed; inset: 0; background: rgb(0 0 0 / 62%); }
+.help-tour-card { position: fixed; width: min(320px, calc(100vw - 24px)); pointer-events: auto; border-radius: 14px; background: var(--app-transient-surface-bg); color: var(--app-transient-text); border: 1px solid var(--app-transient-border); box-shadow: 0 12px 45px rgb(0 0 0 / 30%); outline: none; }
+.help-tour-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; color: var(--app-transient-muted-text); font-size: 11px; font-weight: 600; letter-spacing: .04em; }
+.help-tour-card h2 { margin: 0 0 8px; font-size: 17px; line-height: 1.35; font-weight: 650; letter-spacing: -.025em; }
+.help-tour-card p { margin: 0 0 18px; color: var(--app-transient-muted-text); font-size: 13px; line-height: 1.6; }
+.help-tour-actions, .help-tour-actions > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.help-tour-actions .help-primary, .help-tour-actions .help-secondary { min-height: 34px; padding: 6px 11px; font-size: 12px; border-radius: 8px; }
+.help-tour-actions .help-text-button { font-size: 12px; }
+.help-tour-card .help-tour-note { font-size: 12px; }
+.help-tour-arrow { position: fixed; width: 0; height: 0; border: 7px solid transparent; }
+.help-tour-arrow[data-side="right"] { position: absolute; left: 0; transform: translate(-100%, -50%); border-right-color: var(--app-transient-surface-bg); }
+.help-tour-arrow[data-side="left"] { position: absolute; right: 0; transform: translate(100%, -50%); border-left-color: var(--app-transient-surface-bg); }
+.help-tour-arrow[data-side="bottom"] { position: absolute; top: 0; transform: translate(-50%, -100%); border-bottom-color: var(--app-transient-surface-bg); }
+.help-tour-arrow[data-side="top"] { position: absolute; bottom: 0; transform: translate(-50%, 100%); border-top-color: var(--app-transient-surface-bg); }
+.help-tour-card :focus-visible { outline: 2px solid var(--app-transient-text); outline-offset: 3px; }
+
+.help-tour-body { max-height: calc(100dvh - 24px); overflow: auto; padding: 18px; }
+.help-tour-card button:disabled { opacity: .4; cursor: not-allowed; }
+
+.help-menu-backdrop { z-index: 310; }
+.help-menu { top: auto !important; bottom: 12px; width: min(280px, calc(100vw - 80px)); padding: 6px; border-radius: 12px; color: var(--app-transient-text); }
+.help-menu-detail { width: min(360px, calc(100vw - 80px)); }
+.help-menu > .app-dialog-popover-arrow { display: none; }
+.help-menu-header { display: flex; align-items: center; gap: 8px; padding: 4px 6px 6px; }
+.help-menu-header h2 { flex: 1; font-size: 13px; font-weight: 600; }
+.help-menu-header .help-icon-button { width: 28px; height: 28px; border-radius: 6px; }
+.help-menu-items { display: grid; }
+.help-menu-items > button { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 8px 10px; border-radius: 7px; font-size: 12px; text-align: left; }
+.help-menu-items > button > span { flex: 1; }
+.help-menu-items > button:hover, .help-menu-header button:hover { background: var(--app-transient-hover-bg); }
+.help-menu-divider { border-top: 1px solid var(--app-transient-border); margin: 5px 4px; }
+.help-menu-content { padding: 0 10px 10px; max-height: min(500px, calc(100dvh - 100px)); overflow: auto; overscroll-behavior: contain; }
+.help-menu-content h3 { font-size: 12px; font-weight: 600; margin: 0 0 4px; }
+.help-menu-content p { font-size: 12px; line-height: 1.5; color: var(--app-transient-muted-text); margin: 6px 0 12px; }
+.help-menu-content .help-permission-row { padding: 12px 0; }
+.help-menu-content .help-secondary { padding: 5px 9px; font-size: 11px; min-height: 30px; }
+.help-menu-content .help-section { padding: 12px 0; }
+.help-menu-content summary { font-size: 12px; cursor: pointer; }
+.help-permission-why summary { color: var(--app-transient-muted-text); font-size: 11px; margin-bottom: 4px; }
+.help-menu :focus-visible { outline: 2px solid var(--app-transient-focus-ring); outline-offset: 2px; }
+.help-menu-error { font-size: 12px; padding: 8px; }
+.help-device-permission { display: block; }
+.help-permission-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.help-permission-heading > div { min-width: 0; }
+.help-permission-heading > button { flex-shrink: 0; }
+.help-permission-why { width: 100%; }
