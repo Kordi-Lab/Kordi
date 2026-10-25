@@ -1,11 +1,7 @@
 import { backfillLocalHistoryImages } from './cloudSelfAgentImageBackfill';
-import { linkPublishedSelfAgentRequest } from './cloudSelfAgentRequestEntryLink';
-import {
-  useEffect,
-  useRef,
-  useState,
-  type MutableRefObject,
-} from 'react';
+import { linkPublishedSelfAgentRequestInMemory } from './cloudSelfAgentRequestEntryLink';
+import type { CanonicalSessionStateSetter } from './cloudGroupControlContext';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { withDeadline } from '@/lib/promiseDeadline';
 import type {
   CanonicalSessionState,
@@ -82,6 +78,7 @@ export function useCloudSelfAgentForwardSync({
   mergeMessage,
   syncCloudCollaborationDiff,
   reportWarning,
+  setCanonicalState,
 }: {
   account: CloudAccount | null;
   canonicalState: CanonicalSessionState | null | undefined;
@@ -94,6 +91,7 @@ export function useCloudSelfAgentForwardSync({
   mergeMessage: (message: CloudMessage) => void;
   syncCloudCollaborationDiff: () => Promise<void>;
   reportWarning: (message: string, error: unknown) => void;
+  setCanonicalState?: CanonicalSessionStateSetter;
 }) {
   const syncFlightRef = useRef(createSingleFlightState());
   const followUpFlightRef = useRef(createSingleFlightState());
@@ -428,7 +426,7 @@ export function useCloudSelfAgentForwardSync({
                 processedRequestIdsRef.current.add(message.messageId);
               }
               if (!publishedSelfAgentRequestAlreadyExecutedLocally(operation)) {
-                void linkPublishedSelfAgentRequest(canonicalStateRef.current, operation.localMessageId, message.messageId)
+                void linkPublishedSelfAgentRequestInMemory(canonicalStateRef.current, operation.localMessageId, message.messageId, setCanonicalState)
                   .catch((error: unknown) => reportWarning('[cloud-self-agent-sync] request link failed', error));
               }
             },
@@ -476,6 +474,7 @@ export function useCloudSelfAgentForwardSync({
   }, [
     account,
     cancelledRef,
+    setCanonicalState,
     canonicalState,
     canonicalStateRef,
     client,

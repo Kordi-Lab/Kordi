@@ -1,5 +1,7 @@
+import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import type { AppendCanonicalMessageRequest, CanonicalSessionMessage, CanonicalSessionState } from '@/kordi-app/types';
 import { upsertCanonicalMessageFast } from '@/lib/desktop';
+import type { CanonicalSessionStateSetter } from './cloudGroupControlContext';
 
 /**
  * Links a published Ask Agent request to its Cloud id before the Mac's native
@@ -26,6 +28,29 @@ export async function linkPublishedSelfAgentRequest(
     delegatedExchangeId: linked.delegatedExchangeId ?? null, status: linked.status,
     createdAtMs: linked.createdAtMs, sourceTransport: linked.sourceTransport ?? null,
     sourceEventId: linked.sourceEventId ?? null,
+  });
+  return linked;
+}
+
+/**
+ * Links the request and applies the linked row in memory too, so the
+ * transcript joins it with the Mac's copy of the turn without a reload.
+ */
+export async function linkPublishedSelfAgentRequestInMemory(
+  state: CanonicalSessionState | null,
+  localMessageId: string,
+  cloudMessageId: string,
+  setCanonicalState?: CanonicalSessionStateSetter,
+  persist?: (request: AppendCanonicalMessageRequest) => Promise<unknown>,
+) {
+  const linked = await linkPublishedSelfAgentRequest(state, localMessageId, cloudMessageId, persist);
+  // Patch the row as it is now: it may have changed, or gone, while the link was saved.
+  if (linked) setCanonicalState?.((current) => {
+    const row = current?.messages.find((message) => message.id === linked.id);
+    const content = row?.content && typeof row.content === 'object' && !Array.isArray(row.content)
+      ? row.content as Record<string, unknown> : {};
+    if (!row || content.desktopEntryId === cloudMessageId) return current;
+    return mergeCanonicalMessageRow(current, { ...row, content: { ...content, desktopEntryId: cloudMessageId } });
   });
   return linked;
 }
