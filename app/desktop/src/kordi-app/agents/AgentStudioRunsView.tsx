@@ -17,12 +17,10 @@ async function loadOwnerProactiveActivity(agentId: string) {
 }
 
 /** The agent's recent proactive evaluations, loaded once when the Runs tab opens. */
-function ProactiveActivityList({ agent, load, now }: { agent: Agent; load: LoadProactiveActivity; now?: number }) {
-  const agentId = agent.cloudAgentId ?? null;
+function ProactiveActivityList({ agentId, enabled, load, now }: { agentId: string; enabled: boolean; load: LoadProactiveActivity; now?: number }) {
   const [openedAt] = useState(() => Date.now());
   const [state, setState] = useState<{ agentId: string | null; entries: ProactiveActivityEntry[] | null; error: string | null }>({ agentId: null, entries: null, error: null });
   useEffect(() => {
-    if (!agentId) return;
     let cancelled = false;
     load(agentId)
       .then((entries) => { if (!cancelled) setState({ agentId, entries, error: null }); })
@@ -31,7 +29,7 @@ function ProactiveActivityList({ agent, load, now }: { agent: Agent; load: LoadP
   }, [agentId, load]);
   const current = state.agentId === agentId ? state : { entries: null, error: null };
   const entries = current.entries ?? [];
-  if (!agentId || (!agent.cloudAgentProactive?.enabled && entries.length === 0 && !current.error)) return null;
+  if (!enabled && entries.length === 0 && !current.error) return null;
   return (
     <section className="app-agent-studio-proactive-activity" aria-label="Proactive activity">
       <WorkspaceHeading title="Proactive" />
@@ -59,9 +57,12 @@ export function RunsView({
   builderTesting,
   onTestBuilderDraft,
   loadProactiveActivity = loadOwnerProactiveActivity,
+  proactiveActivity,
   now,
 }: {
   agent?: Agent;
+  /** The default agent's server id (`cloud-agent:<accountId>`) and published setting; cloud agents use their own. */
+  proactiveActivity?: { agentId: string; enabled: boolean };
   onOpenReachout?: (sessionId: string) => void;
   builderStatus?: DesktopAgentBuilderStatus | null;
   builderTesting?: boolean;
@@ -69,7 +70,8 @@ export function RunsView({
   loadProactiveActivity?: LoadProactiveActivity;
   now?: number;
 }) {
-  const proactive = agent?.cloudAgentId ? <ProactiveActivityList agent={agent} load={loadProactiveActivity} now={now} /> : null;
+  const activity = proactiveActivity ?? (agent?.cloudAgentId ? { agentId: agent.cloudAgentId, enabled: agent.cloudAgentProactive?.enabled === true } : null);
+  const proactive = activity ? <ProactiveActivityList agentId={activity.agentId} enabled={activity.enabled} load={loadProactiveActivity} now={now} /> : null;
   if (builderStatus) {
     const reportIsCurrent = Boolean(
       builderStatus.testReport

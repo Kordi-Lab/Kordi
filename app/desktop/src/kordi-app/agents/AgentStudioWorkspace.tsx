@@ -735,7 +735,7 @@ export function AgentStudioWorkspace({
             onWriteBuilderFile={onWriteBuilderFile}
           />
         ) : null}
-        {activeTab === 'runs' ? <RunsView agent={agent} onOpenReachout={onOpenReachout} builderStatus={builderStatus} builderTesting={builderTesting} onTestBuilderDraft={onTestBuilderDraft} /> : null}
+        {activeTab === 'runs' ? <RunsView agent={agent} proactiveActivity={proactive?.activity} onOpenReachout={onOpenReachout} builderStatus={builderStatus} builderTesting={builderTesting} onTestBuilderDraft={onTestBuilderDraft} /> : null}
         {activeTab === 'history' ? <HistoryView entries={persisted?.editHistory ?? []} /> : null}
         {publishFeedback?.text ? <div className={cn('app-agent-studio-toast', publishFeedback.tone === 'error' && 'is-error', publishFeedback.tone === 'success' && 'is-success')}>{publishFeedback.text}</div> : null}
         {routingOpen && canEditRouting ? (

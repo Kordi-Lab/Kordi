@@ -11,8 +11,8 @@ import type { ShapeAgentDraft } from './shapeAgentDraft';
 
 const noopAvatarAction = () => undefined;
 
-/** The Proactive row's value and, when it is editable, how a change reaches the draft. */
-export type AgentProactiveControl = { enabled: boolean; onChange?: (enabled: boolean) => void };
+/** The Proactive row's value, how a change reaches the draft, and (for the default agent) where the Runs tab loads activity. */
+export type AgentProactiveControl = { enabled: boolean; onChange?: (enabled: boolean) => void; activity?: { agentId: string; enabled: boolean } };
 
 const ACCESS_OPTIONS = (['private', 'participant_conversations'] as const).map((scope) => ({ value: scope, label: cloudAgentAccessLabel(scope) }));
 const PROACTIVE_OPTIONS = (['off', 'on'] as const).map((value) => ({ value, label: cloudAgentProactiveLabel(value === 'on'), description: cloudAgentProactiveDescription(value === 'on') }));

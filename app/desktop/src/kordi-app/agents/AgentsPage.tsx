@@ -47,7 +47,7 @@ import { useAgentBuilderSession } from './useAgentBuilderSession';
 import { useAgentsPageModel } from './useAgentsPageModel';
 import { useFactoryBuildRouting } from './useFactoryBuildRouting';
 import { useSkillLibrary } from './useSkillLibrary';
-import { useFactoryCreationAvatar } from './useFactoryCreationAvatar'; import { factoryProactiveControl, useCreationProactiveDraft } from './factoryProactiveDraft';
+import { useFactoryCreationAvatar } from './useFactoryCreationAvatar'; import { factoryProactiveControl, useCreationProactiveDraft, useDefaultAgentProactive, withDefaultAgentProactiveChange } from './factoryProactiveDraft';
 import { cloudAgentDefinitionChanges, factoryAgentAvatarPresentation, factoryAgentIdentityChanges, factoryLocalAgentCapabilities, publishDefaultAgentIdentity } from './factoryAgentIdentity';
 
 export function AgentsPage({
@@ -279,6 +279,7 @@ export function AgentsPage({
   const factoryAvatar = useFactoryCreationAvatar(creationDraftId, creating ? undefined : selectedAvatarUrl);
   const creationAccessScope: CloudAgentAccessScope = builder.status?.draft?.access === 'participant-conversations' ? 'participant_conversations' : 'private';
   const creationProactive = useCreationProactiveDraft(creating ? creationDraftId : null);
+  const defaultProactive = useDefaultAgentProactive(creating ? undefined : selectedAgent, cloudAccountId);
   const activeAgentConfig = selectedAgent && builder.status?.draft ? {
     systemPrompt: builder.status.draft.systemPrompt,
     loadedSkills: builder.status.draft.skills.map((skill) => skill.name),
@@ -299,7 +300,7 @@ export function AgentsPage({
   );
   const activeDraftChanges = selectedAgent?.cloudAgentId
     ? rawActiveDraftChanges
-    : publishableLocalAgentConfigChanges(rawActiveDraftChanges, hasLocalConfig, canToggleRuntimeSkills);
+    : withDefaultAgentProactiveChange(publishableLocalAgentConfigChanges(rawActiveDraftChanges, hasLocalConfig, canToggleRuntimeSkills), activeAgentConfig, defaultProactive.published);
   const editableCapabilityKinds = useMemo(() => {
     const kinds = new Set<AgentStudioCapabilityKind>();
     if (buildingStandaloneArtifact) {
@@ -544,9 +545,8 @@ export function AgentsPage({
           await onUpdateAgentModelRouting(selectedAgent, selectedRouting);
         }
         await publishDefaultAgentIdentity({ agent: selectedAgent, draft: builderDraft, mutation: factoryAvatar.mutation, avatarKey: selectedAvatarKey, onRenameLocalAgent, onUpdateLocalAgentAvatar });
-        const hasFileBackedChange = activeDraftChanges.some((change) => (
-          change.key !== 'skills' || !canToggleRuntimeSkills
-        ));
+        if (activeDraftChanges.some((change) => change.key === 'proactive') && activeAgentConfig.proactive) await defaultProactive.publish(activeAgentConfig.proactive.enabled);
+        const hasFileBackedChange = activeDraftChanges.some((change) => change.key !== 'proactive' && (change.key !== 'skills' || !canToggleRuntimeSkills));
         if (hasFileBackedChange) await saveAgentConfig(selectedAgent, 'all', activeAgentConfig);
         if (accessChanged) {
           setPublishedAccessByAgentId((current) => ({ ...current, [selectedAgent.id]: selectedAccessScope }));
@@ -759,7 +759,7 @@ export function AgentsPage({
               creationDraft={creationDraft}
               creationAccessScope={creationAccessScope}
               agentAccessScope={selectedAccessScope}
-              proactive={factoryProactiveControl({ creating, creation: creationProactive, agent: selectedAgent, config: activeAgentConfig, setProactiveDraft })}
+              proactive={factoryProactiveControl({ creating, creation: creationProactive, agent: selectedAgent, config: activeAgentConfig, setProactiveDraft, defaultAgent: defaultProactive })}
               onCreationAccessScopeChange={(scope) => {
                 void persistBuilderDraft((draft) => ({ ...draft, access: scope === 'participant_conversations' ? 'participant-conversations' : 'only-me' }));
               }}
