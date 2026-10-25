@@ -13,7 +13,8 @@
 //! leased by the cloud runner; both move it out of `queued` with a
 //! conditional update, so only one runs it. Neither claim carries the
 //! owner's memories: both runs look them up with `search_memory`
-//! ([`super::memory_search`]).
+//! ([`super::memory_search`]). A run whose stop was requested posts nothing:
+//! [`complete`] ends it as cancelled instead.
 
 use std::sync::Arc;
 
@@ -31,7 +32,8 @@ use uuid::Uuid;
 use super::{APPROVED_RUN_PREFIX, CAPABILITY, RUN_PREFIX};
 use crate::auth::routes::CloudSession;
 use crate::cloud_agent_runtime::runs::{
-    claimed_route_json, complete_run, AgentRuntimeRoute, ClaimRunRequest, RunError, RunResult,
+    claimed_route_json, complete_run, stop, terminal_backfill, AgentRuntimeRoute, ClaimRunRequest,
+    RunError, RunResult, DESKTOP_RELEASED_ERROR_CODE,
 };
 use crate::server::ServerState;
 
@@ -76,9 +78,14 @@ async fn ready(pool: &PgPool, session: &CloudSession, capability: &str) -> Resul
     Ok(ready)
 }
 
-/// Leases the queued run `run_id` of `owner` to `executor`, storing the
-/// Mac's hosted account route when it sent one. Returns whether this call
-/// took it.
+/// Leases the queued run `run_id` of `owner` to `executor`. Returns whether
+/// this call took it. A run a Mac handed back stays with the cloud.
+///
+/// The Mac's hosted account route, when it sent one, is what
+/// `/desktop/provider-auth` resolves for the claim holder. An approved run
+/// stores it as its route. An evaluation keeps its own route, which the
+/// cloud runs with after a hand-back or a takeover, and holds the Mac's
+/// beside it under [`DESKTOP_ROUTE_KEY`].
 async fn lease(
     pool: &PgPool,
     run_id: &str,
@@ -91,9 +98,11 @@ async fn lease(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'leased', execution_backend = 'desktop', claimed_by = $3, \
              lease_expires_at = $4, desktop_preferred_until = NULL, updated_at = $5, \
-             runtime_route_json = COALESCE($6, runtime_route_json) \
+             runtime_route_json = CASE WHEN $6::jsonb IS NULL THEN runtime_route_json - $8::text \
+               WHEN $7 THEN (runtime_route_json - $8::text) || jsonb_build_object($8::text, $6::jsonb) \
+               ELSE $6::jsonb END \
          WHERE run_id = $1 AND owner_account_id = $2 AND status = 'queued' \
-           AND cancel_requested_at IS NULL",
+           AND cancel_requested_at IS NULL AND error_code IS DISTINCT FROM $9",
     )
     .bind(run_id)
     .bind(owner)
@@ -101,10 +110,17 @@ async fn lease(
     .bind((now + chrono::Duration::seconds(LEASE_SECONDS)).to_rfc3339())
     .bind(now.to_rfc3339())
     .bind(claimed_route_json(route))
+    .bind(run_id.starts_with(RUN_PREFIX))
+    .bind(DESKTOP_ROUTE_KEY)
+    .bind(DESKTOP_RELEASED_ERROR_CODE)
     .execute(pool)
     .await?;
     Ok(taken.rows_affected() == 1)
 }
+
+/// The key under which an evaluation's route holds the claiming Mac's
+/// hosted account route ([`lease`]).
+pub(crate) const DESKTOP_ROUTE_KEY: &str = "desktopRoute";
 
 /// Whether `executor` holds the run with a live desktop lease.
 pub(super) async fn held(pool: &PgPool, run_id: &str, owner: &str, executor: &str) -> Result<bool> {
@@ -306,9 +322,34 @@ pub(crate) struct CompleteInput {
     text: String,
 }
 
+/// Ends the run `run_id` that `executor` holds after a stop request, as the
+/// Mac's own cancel does: `cancelled`, with the stop reply in the group for
+/// an approved run. Returns whether this call ended it.
+async fn end_stopped(state: &ServerState, run_id: &str, executor: &str) -> Result<bool> {
+    let ended = query(
+        "UPDATE cloud_agent_fallback_runs SET status = 'cancelled', completed_at = $3, updated_at = $3 \
+         WHERE run_id = $1 AND claimed_by = $2 AND execution_backend = 'desktop' \
+           AND status IN ('leased', 'running') AND cancel_requested_at IS NOT NULL",
+    )
+    .bind(run_id)
+    .bind(executor)
+    .bind(Utc::now().to_rfc3339())
+    .execute(state.db_pool())
+    .await?
+    .rows_affected()
+        == 1;
+    if ended {
+        terminal_backfill::publish_after_cancel(state, run_id).await;
+    }
+    Ok(ended)
+}
+
 /// Ends a proactive run with the Mac's reply, through the same completion as
 /// the cloud runner: an evaluation's reply is parsed into silence or an
-/// offer, an approved run's reply is delivered in the group as the agent.
+/// offer, an approved run's reply is delivered in the group as the agent and
+/// notifies its members as a cloud reply does. A run whose stop was requested
+/// posts nothing: it ends as cancelled and the Mac gets
+/// `409 execution_lease_lost`, as a renewal after a stop does.
 pub(crate) async fn complete(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -326,6 +367,12 @@ pub(crate) async fn complete(
         Ok(false) => return lease_lost(),
         Err(_) => return failed(),
     }
+    if stop::desktop_cancel_requested(pool, &run_id).await {
+        return match end_stopped(&state, &run_id, &owner).await {
+            Ok(_) => lease_lost(),
+            Err(_) => failed(),
+        };
+    }
     if evaluation && input.text.len() > MAX_EVALUATION_BYTES {
         return match super::fail(pool, &run_id, Some(&owner), "invalid_output").await {
             Ok(()) => Json(json!({"ok": true})).into_response(),
@@ -333,7 +380,14 @@ pub(crate) async fn complete(
         };
     }
     match complete_run(pool, &run_id, &owner, &input.text).await {
-        Ok(_) => Json(json!({"ok": true})).into_response(),
+        Ok(run) => {
+            // An evaluation posts nothing; its offer sends its own push.
+            if !evaluation {
+                let message = run.response_message_id.as_deref();
+                crate::cloud_agent_runtime::routes::notify_run_response(&state, message).await;
+            }
+            Json(json!({"ok": true})).into_response()
+        }
         Err(RunError::NotFound) => lease_lost(),
         Err(_) => failed(),
     }

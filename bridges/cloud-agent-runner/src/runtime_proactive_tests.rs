@@ -142,9 +142,12 @@ fn proactive_runs_get_no_memory_section() {
     }
 }
 
-/// Searches while it is offered the tool, then answers.
+/// Searches until it is told that no searches are left, then answers. With
+/// `never_answers` it keeps searching. Like the Anthropic API, it refuses a
+/// request whose history holds tool calls but defines no tools.
 #[derive(Default)]
 struct SearchingProvider {
+    never_answers: bool,
     offered: Mutex<Vec<Vec<String>>>,
     last_messages: Mutex<Vec<Value>>,
 }
@@ -162,6 +165,15 @@ impl CloudModelProvider for SearchingProvider {
             "no memory section"
         );
         *self.last_messages.lock().unwrap() = messages.to_vec();
+        if tools.is_empty()
+            && messages
+                .iter()
+                .any(|message| message["tool_calls"].is_array())
+        {
+            return Err(ModelLoopError::Provider(
+                "tool calls in the history need tool definitions".into(),
+            ));
+        }
         let mut offered = self.offered.lock().unwrap();
         offered.push(
             tools
@@ -169,7 +181,13 @@ impl CloudModelProvider for SearchingProvider {
                 .filter_map(|tool| tool["function"]["name"].as_str().map(str::to_string))
                 .collect(),
         );
-        if tools.is_empty() {
+        let told_to_answer = messages.last().is_some_and(|message| {
+            message["role"] == "tool"
+                && message["content"]
+                    .as_str()
+                    .is_some_and(|content| content.contains("No searches are left"))
+        });
+        if told_to_answer && !self.never_answers {
             return Ok(ModelProviderResponse::FinalText(
                 "{\"decision\":\"silence\"}".into(),
             ));
@@ -259,8 +277,9 @@ async fn an_evaluation_searches_memory_three_times_at_most_then_answers() {
     let only = vec!["search_memory".to_string()];
     assert_eq!(
         *provider.offered.lock().unwrap(),
-        vec![only.clone(), only.clone(), only, Vec::<String>::new()],
-        "only search_memory, and no tools once the searches are spent"
+        vec![only; 5],
+        "only search_memory, on every request: three searches, one call told \
+         that none are left, and the answer"
     );
     let search = "search:proactive_eval_search:kordi-memory:search_memory:{\"query\":\"deploy\"}";
     assert_eq!(
@@ -278,9 +297,46 @@ async fn an_evaluation_searches_memory_three_times_at_most_then_answers() {
         .iter()
         .filter(|message| message["role"] == "tool")
         .collect();
-    assert_eq!(results.len(), 3);
+    assert_eq!(results.len(), 4);
     assert!(results[0]["content"]
         .as_str()
         .unwrap()
         .contains("Deploys from the ops repo"));
+    assert!(results[3]["content"]
+        .as_str()
+        .unwrap()
+        .contains("No searches are left"));
+}
+
+#[tokio::test]
+async fn an_evaluation_that_keeps_searching_fails_after_its_requests() {
+    let client = SearchClient::default();
+    let provider = SearchingProvider {
+        never_answers: true,
+        ..SearchingProvider::default()
+    };
+    let run = searching_run("proactive_eval_loop");
+    let outcome = crate::proactive::step(&client, &provider, CloudModelEngine::Rust, run)
+        .await
+        .unwrap();
+    assert_eq!(
+        outcome,
+        RunnerStepOutcome::FailedProviderError {
+            run_id: "proactive_eval_loop".into()
+        }
+    );
+    assert_eq!(provider.offered.lock().unwrap().len(), 5);
+    let calls = client.calls.lock().unwrap();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| call.starts_with("search:"))
+            .count(),
+        3,
+        "the server answers three searches at most"
+    );
+    assert_eq!(
+        calls.last().unwrap(),
+        "fail:proactive_eval_loop:proactive_evaluation_failed"
+    );
 }

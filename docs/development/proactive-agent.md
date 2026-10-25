@@ -148,9 +148,16 @@ on the Mac and in the cloud.
 - Answer: `{"memories": [{"text", "scope", "category", "updatedAt"}],
   "note"}`. The note and the tool description say the memories are private
   to the owner and must not be quoted or mentioned in the group.
-- An evaluation gets three answers at most, counted per run id by the
-  connector call limiter; later calls get no memories and a note to answer.
-  The cloud runner also stops offering the tool after three calls.
+- An evaluation gets three answers at most, counted in
+  `cloud_agent_proactive_state.memory_searches` (migration 0155) while it
+  is the active evaluation of its group; the sweep resets the count when
+  it reserves a new evaluation. The Mac attempt and a cloud takeover of
+  the same evaluation share the budget. Later calls, and calls from an
+  evaluation that is no longer active, get no memories and a note to
+  answer; a failed count answers nothing. The cloud runner's Rust engine
+  keeps offering the tool on every request (a provider refuses tool calls
+  in the history without tool definitions), answers calls past three with
+  the same note itself, and fails the evaluation after five requests.
 - Every proactive run's lease carries the descriptor in `connectorTools`
   (connector id `kordi-memory`, group `read`), next to the document tools.
   The approved run's Mac turn, and the cloud runner for either run, call it
@@ -187,8 +194,9 @@ Evaluation runs:
   proactive desktop claim. It requires this device's fresh `proactive` row,
   the run to be the active run of its state row, and status `queued`. A
   conditional update leases it to the device (`execution_backend =
-  'desktop'`, the desktop executor, a 45 second lease, hold cleared, the
-  claimed route stored). The response mirrors a digest claim:
+  'desktop'`, the desktop executor, a 45 second lease, hold cleared). A
+  run a Mac handed back (`desktop_released`) is never claimed again. The
+  response mirrors a digest claim:
 
   ```json
   { "runId": "…", "acquired": true, "leaseSeconds": 45,
@@ -206,24 +214,34 @@ Evaluation runs:
   `modelChoice` is `named` when the agent's routing names a model and `chat`
   when the route came from the owner's chat (the default agent, or a
   definition without a model); `fastModels` is the digest's provider map.
-  A claim that sends a hosted account as `runtimeRoute` stores it on the
-  run, so `/v1/cloud/agent-runs/:run_id/desktop/provider-auth` resolves
-  that account for the claim holder.
+  A claim that sends a hosted account as `runtimeRoute` stores it beside
+  the run's own route, as `runtime_route_json.desktopRoute`, so
+  `/v1/cloud/agent-runs/:run_id/desktop/provider-auth` resolves that
+  account for the claim holder. The run's own route is never replaced: the
+  cloud runner runs the evaluation with it after a hand-back or a takeover.
 - Memory search: the Mac's single-turn command posts each tool call to the
   digest's `POST /v1/cloud/digest/desktop/:run_id/observe`
   `{claimId, tool, arguments}`. For a `proactive_eval_` run the route
   answers `search_memory` (see Memory) for the claim holder only; anyone
   else gets `409 execution_lease_lost`, and another tool name gets an
   `error` the model reads. No Mac change is needed.
-- An evaluation's only tool reads memories, so it needs no project folder:
-  in a group that is a project session it skips the project rule in the
-  claim, the hand-back, and the cloud lease.
+- Proactive runs need no project folder (`proactive::needs_no_project_folder`):
+  an evaluation's only tool reads memories, and an approved run works in an
+  empty folder of its own. In a group that is a project session both skip
+  the project rule in the claim, the hand-back, and the cloud lease, so the
+  cloud still takes a run over when the Mac lets it go or dies.
 - Renew and release use the generic desktop routes
   (`/v1/cloud/agent-runs/desktop/:run_id/renew`, `/release`).
+- The Mac gives an evaluation 180 seconds, the cloud runner's limit. A
+  turn still running then is given up: the lease is no longer renewed and
+  the run is released to the cloud.
 - Complete: `POST /v1/cloud/proactive/desktop/:run_id/complete`
   `{claimId, text}` from the claim holder (run `leased` or `running`) calls
   the same completion as the cloud runner. Text over 1 MiB fails the run as
-  `invalid_output`. Anyone else gets `409 execution_lease_lost`.
+  `invalid_output`. Anyone else gets `409 execution_lease_lost`. A run
+  whose stop was requested posts nothing: it ends as `cancelled`, with the
+  usual stop reply for an approved run, and the Mac gets
+  `409 execution_lease_lost`, as a renewal after a stop does.
 
 Approved runs:
 
@@ -242,15 +260,18 @@ Approved runs:
   own document tool and `search_memory`, none of the owner's connectors)
   plus the run's `prompt`, `systemPrompt` (the stored prompt, with no
   memory section) and `"proactive": {"kind": "approved"}`.
-  The claimed route is stored as for an evaluation.
-- In a group that is a project session the existing project rule applies:
-  a Mac without the project gets `{"acquired": false}`, the project Mac's
-  claim carries `project` as a chat claim does, and the cloud runner does
-  not lease the run while the project Mac is online.
+  A claimed hosted account is stored as the run's route. The claim carries
+  no `project`: the run works in its own folder (see Evaluation runs for
+  the project rule).
 - The Mac admits the run with the generic
   `/v1/cloud/agent-runs/desktop/:run_id/admit` and runs a full shared-chat
   agent turn with the owner's tools, like a scheduled Mac run, with
   `systemPrompt` as context.
+- Stop: a stop request reaches the Mac through the lease's renewal or
+  admission, as for any Mac run. The Mac cancels the turn and ends the run
+  with the generic `/v1/cloud/agent-runs/desktop/:run_id/cancel`, which
+  posts the stop reply; the answer is never posted, even when the turn
+  finished first.
 - The turn works in an empty folder of its own, not in the folder the app
   happens to run in. The start command takes `workingFolder:
   {"kind": "proactiveRun", "runId": "proactive_run_…"}`, which must name
@@ -272,9 +293,12 @@ Approved runs:
   and says the working folder is the run's own empty folder. Everything
   the run knows about the owner comes from `search_memory`; Kordi already
   imports the owner's `AGENTS.md` and `CLAUDE.md` into memory. Its tools
-  are those of any owner turn, `reflection` included, and a background
-  subsession it starts follows the same rules. Every other turn is
-  unchanged.
+  are those of any owner turn, `reflection` included, except that
+  `task_operator` starts no background subsession: the run's answer is its
+  own turn's reply, and its folder goes with the turn. The stored session
+  carries a `proactive_run_session` marker entry, so it opens as a
+  proactive run however it is resumed, for example when the owner opens
+  it. Every other turn is unchanged.
 - The run's system context adds one line: "This run works in an empty
   folder of its own. Do not search your owner's home folder or other
   personal folders. If you need code or files, get them from where your
@@ -284,8 +308,9 @@ Approved runs:
   server's project assignment accepts only `kind='ai'` conversations), so
   an approved run has no project folder to work in.
 - Complete: the same complete route calls the generic run completion, so
-  delivery (envelope, agent as sender, threaded under the trigger) and the
-  proposal status match a cloud run. Errors release the run to the cloud.
+  delivery (envelope, agent as sender, threaded under the trigger), the
+  members' notifications and the proposal status match a cloud run. Errors
+  release the run to the cloud.
 
 Desktop: one module handles both hints; an evaluation runs through the
 digest's single-turn command with the claim's tools (only
@@ -412,8 +437,6 @@ Design preview: `docs/design-previews/proactive-agent/`.
   `search_memory`.
 - Once a group can be linked to a project, run an approved run in that
   project's folder instead of the empty one.
-- A background session an approved run leaves running loses the run's
-  folder when the run's turn ends.
 
 - iPhone offer with Allow and Not now in the group, and the Blueprint row
   once an agent settings screen exists there.

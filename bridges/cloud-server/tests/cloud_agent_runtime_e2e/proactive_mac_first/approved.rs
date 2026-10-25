@@ -273,11 +273,12 @@ async fn a_released_approved_run_goes_to_the_cloud_once() {
     fx.finish().await;
 }
 
-/// The group is a session of a project on another Mac of the owner. An
-/// evaluation has no tools, so it ignores the project; the approved run
-/// keeps the project rule and waits for a Mac with the project.
+/// The group is a session of a project on another Mac of the owner, which
+/// is online. Neither run needs the project folder: an evaluation has no file
+/// tools and an approved run works in an empty folder of its own. So this
+/// Mac runs both, and the cloud takes over either when this Mac lets go.
 #[tokio::test]
-async fn an_evaluation_needs_no_project_folder_but_the_approved_run_does() {
+async fn proactive_runs_need_no_project_folder() {
     let Some(fx) = fixture("proactive-mac-project", true).await else {
         return;
     };
@@ -326,10 +327,40 @@ async fn an_evaluation_needs_no_project_folder_but_the_approved_run_does() {
 
     let (proposal_id, _) = fx.offer().await;
     let approved = fx.allow(&proposal_id).await;
-    let (status, body) = fx.mac_claim(&approved, uuid::Uuid::new_v4()).await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body, json!({"acquired": false}), "the project Mac runs it");
-    assert_eq!(fx.run_state(&approved).await.0, "queued");
+    let claimed = fx.mac_takes(&approved, uuid::Uuid::new_v4()).await;
+    assert!(claimed.get("project").is_none(), "{claimed}");
+    // This Mac dies: once its lease lapses the cloud runs the run.
+    query("UPDATE cloud_agent_fallback_runs SET lease_expires_at = (now() - interval '1 minute')::text WHERE run_id = $1")
+        .bind(&approved)
+        .execute(&fx.pool)
+        .await
+        .unwrap();
+    assert!(
+        runner_can_lease(&fx.router, &approved).await,
+        "the cloud takes it over while the project Mac is online"
+    );
+    query("UPDATE cloud_project_devices SET updated_at = now() WHERE device_id = $1")
+        .bind(&other_mac)
+        .execute(&fx.pool)
+        .await
+        .unwrap();
+    // A hand-back works the same. The offer's cooldown is over.
+    query("UPDATE cloud_agent_fallback_runs SET status = 'cancelled' WHERE run_id = $1")
+        .bind(&approved)
+        .execute(&fx.pool)
+        .await
+        .unwrap();
+    query("UPDATE cloud_agent_proactive_state SET cooldown_until = now() WHERE agent_id = $1")
+        .bind(&fx.agent_id)
+        .execute(&fx.pool)
+        .await
+        .unwrap();
+    let (proposal_id, _) = fx.offer().await;
+    let approved = fx.allow(&proposal_id).await;
+    let claim_id = uuid::Uuid::new_v4();
+    fx.mac_takes(&approved, claim_id).await;
+    assert_eq!(fx.release(&approved, claim_id).await["released"], true);
+    assert!(runner_can_lease(&fx.router, &approved).await);
     query("DELETE FROM cloud_project_devices WHERE device_id = $1")
         .bind(&other_mac)
         .execute(&fx.pool)
@@ -377,8 +408,10 @@ async fn a_mac_with_a_hosted_account_gets_its_credentials_for_both_run_kinds() {
                 material["providerAuth"]["payload"]["apiKey"],
                 "synthetic-hosted-key"
             );
+            // The route provider-auth resolves: an evaluation holds it beside its own.
             let (stored,): (Value,) = query_as(
-                "SELECT runtime_route_json FROM cloud_agent_fallback_runs WHERE run_id = $1",
+                "SELECT COALESCE(runtime_route_json->'desktopRoute', runtime_route_json) \
+                 FROM cloud_agent_fallback_runs WHERE run_id = $1",
             )
             .bind(&run_id)
             .fetch_one(&fx.pool)

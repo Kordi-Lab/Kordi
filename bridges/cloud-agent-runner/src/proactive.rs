@@ -21,6 +21,9 @@ pub const APPROVED_RUN_PREFIX: &str = "proactive_run_";
 pub const SEARCH_MEMORY_TOOL: &str = "search_memory";
 /// Searches an evaluation may make before it must answer.
 pub(crate) const MAX_SEARCHES: usize = 3;
+/// Model requests of the Rust engine's turn: one per search, one more whose
+/// calls are told that no searches are left, and the answer.
+const MAX_REQUESTS: usize = MAX_SEARCHES + 2;
 const TIMEOUT_SECONDS: u64 = 180;
 
 /// The evaluation's tools: `search_memory` when the lease carries it, and
@@ -82,8 +85,11 @@ impl<C: CloudAgentRunClient + Sync> kordi_omp_runtime::HostTool for SearchTools<
     }
 }
 
-/// The Rust engine's turn: up to [`MAX_SEARCHES`] searches, then one more
-/// request without tools, so the model must answer.
+/// The Rust engine's turn: up to [`MAX_SEARCHES`] searches, then calls are
+/// answered with the line that asks for the answer. Every request offers the
+/// tools: a provider refuses a request whose history holds tool calls but
+/// defines no tools. A model that still calls tools after
+/// [`MAX_REQUESTS`] requests fails the evaluation.
 async fn generate_rust<C, P>(
     client: &C,
     provider: &P,
@@ -100,16 +106,11 @@ where
         json!({ "role": "system", "content": run.system_prompt.trim() }),
         json!({ "role": "user", "content": run.prompt }),
     ];
-    loop {
-        let offered: &[Value] = if searches.load(Ordering::Relaxed) < MAX_SEARCHES {
-            &tools
-        } else {
-            &[]
-        };
-        match provider.next_response(auth, &messages, offered).await {
+    for _ in 0..MAX_REQUESTS {
+        match provider.next_response(auth, &messages, &tools).await {
             Ok(ModelProviderResponse::FinalText(text)) => return Ok(text),
             Ok(ModelProviderResponse::ToolCalls(calls))
-                if !offered.is_empty() && !calls.is_empty() =>
+                if !tools.is_empty() && !calls.is_empty() =>
             {
                 for ModelToolCall {
                     id,
@@ -130,6 +131,7 @@ where
             Err(error) => return Err(error.to_string()),
         }
     }
+    Err("the evaluation kept searching instead of answering".into())
 }
 
 async fn generate<C, P>(

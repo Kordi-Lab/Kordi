@@ -6,7 +6,7 @@ import { acquireDesktopExecutionLease, DESKTOP_EXECUTION_WATCHDOG_MS } from '@/f
 import { handBackDesktopRun } from '@/features/cloud/cloudDesktopRunHandback';
 import { cloudFetchImpl } from '@/features/cloud/cloudTransport';
 import { claimRuntimeRoute, digestRunRoute, macCanRunDigest, runDesktopDigest, type DigestRunChoice, type DigestTool } from '@/features/digest/digestMacRuns';
-import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
+import { cancelDesktopChatTurn, type DesktopChatContextMessage, type DesktopChatMessageRoute } from '@/lib/desktop';
 import { startDesktopSharedChatMessage } from '@/lib/desktopBackgroundSessions';
 import type { ProactiveRunRequest } from './proactiveRunHints';
 
@@ -15,14 +15,17 @@ import type { ProactiveRunRequest } from './proactiveRunHints';
 // this Mac, and announces each with an account hint. This Mac claims the run,
 // runs it, and submits the reply, which the server handles exactly like a
 // cloud reply. A run this Mac cannot finish goes back to the cloud at once; a
-// run it never claims is run by the cloud once the hold ends.
+// run it never claims is run by the cloud once the hold ends. A run the owner
+// stops ends here as stopped and posts nothing.
 
 const RENEW_MS = 10_000;
+/** The longest a Mac evaluation runs, as the cloud runner's evaluation limit; then the cloud runs it. */
+export const EVALUATION_TIMEOUT_MS = 180_000;
 
 /** Added to an approved run's system context: the run's tools work in an empty folder. */
 export const PROACTIVE_RUN_FOLDER_LINE = "This run works in an empty folder of its own. Do not search your owner's home folder or other personal folders. If you need code or files, get them from where your owner's memories say they live, or ask for them in your answer.";
 
-export type ProactiveMacOutcome = 'skipped' | 'not-acquired' | 'completed' | 'released';
+export type ProactiveMacOutcome = 'skipped' | 'not-acquired' | 'completed' | 'released' | 'stopped';
 
 type EvaluationClaim = {
   runId?: string;
@@ -42,6 +45,7 @@ export type ProactiveMacRuntime = {
   runTurn?: typeof runDesktopDigest;
   startTurn?: typeof startDesktopSharedChatMessage;
   waitForTurn?: typeof waitForCloudAgentTurn;
+  cancelTurn?: typeof cancelDesktopChatTurn;
   acquireLease?: typeof acquireDesktopExecutionLease;
   /** Wait between hand-back attempts; tests shorten it. */
   handBackRetryMs?: number;
@@ -73,6 +77,17 @@ function completePath(runId: string) {
   return `proactive/desktop/${encodeURIComponent(runId)}/complete`;
 }
 
+/** `work`, or a rejection once `ms` pass; the timer is cleared either way. */
+async function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Only the server's refusal ends a renewal; a slow or failed request is retried. */
 const renewalRefused = (error: unknown) => error instanceof CloudAuthError && [401, 403, 404, 409].includes(error.status);
 
@@ -95,6 +110,8 @@ function renewEvaluation(client: ProactiveMacRuntime['client'], token: string, r
  * Claims and runs one evaluation: one turn through the digest's command, with
  * the claim's prompt, system prompt, model choice and tools. Its only tool is
  * the memory search, which the server answers through the digest observe route.
+ * A turn still running after {@link EVALUATION_TIMEOUT_MS} is given up: the
+ * lease is no longer renewed and the run goes back to the cloud.
  */
 export async function runProactiveEvaluationOnMac(
   request: Extract<ProactiveRunRequest, { kind: 'evaluation' }>,
@@ -116,11 +133,11 @@ export async function runProactiveEvaluationOnMac(
     const prompt = text(evaluation?.prompt);
     if (evaluation?.kind !== 'evaluation' || !prompt) throw new Error('The evaluation claim had no prompt.');
     const chosen = digestRunRoute(route, evaluation);
-    const reply = await (runtime.runTurn ?? runDesktopDigest)({
+    const reply = await withTimeout((runtime.runTurn ?? runDesktopDigest)({
       runId, claimId, ownerAccountId: accountId,
       systemPrompt: evaluation.systemPrompt ?? '', prompt, tools: claimTools(evaluation.tools),
       route: chosen.route, fallbackModel: chosen.fallbackModel,
-    });
+    }), EVALUATION_TIMEOUT_MS, 'The evaluation took too long on this Mac.');
     if (renewal.lost) throw new Error('This Mac no longer holds the evaluation.');
     await (runtime.post ?? ((path, body) => postProactive(token, path, body)))(completePath(runId), { claimId, text: reply });
     return 'completed';
@@ -145,7 +162,8 @@ function approvedClaim(claim: Readonly<Record<string, unknown>>) {
 /**
  * Claims and runs one approved offer: a full shared-chat turn with the
  * owner's tools, scoped to the group the offer was made in, with the run's
- * system prompt as context.
+ * system prompt as context. A stop request from the owner cancels the turn
+ * and ends the run as stopped, as for any Mac run; nothing is posted.
  */
 export async function runProactiveApprovedOnMac(
   request: Extract<ProactiveRunRequest, { kind: 'approved' }>,
@@ -184,7 +202,17 @@ export async function runProactiveApprovedOnMac(
       { kind: 'proactiveRun', runId: request.runId },
     );
     lease.attach(turn.id);
+    let stopped = false;
+    const cancelTurn = runtime.cancelTurn ?? cancelDesktopChatTurn;
+    lease.onStopRequested(() => { stopped = true; void cancelTurn(turn.id).catch(() => undefined); });
     const final = turn.completed ? turn : await (runtime.waitForTurn ?? waitForCloudAgentTurn)(turn.id);
+    // A turn cancelled here, by a stop or on this Mac, ends the run; the
+    // server posts the stop reply. Without the lease the stop still ends it
+    // once the lease lapses, and any other lost turn goes back to the cloud.
+    if (stopped || (final.status === 'cancelled' && !lease.lost)) {
+      if (!lease.lost) await lease.cancel().catch((error: unknown) => runtime.report?.('[proactive-mac] stop not recorded', error));
+      return 'stopped';
+    }
     const reply = final.assistantText.trim();
     if (!final.succeeded || !reply) throw new Error(final.error || 'The run finished without an answer.');
     if (lease.lost) throw new Error('This Mac no longer holds the run.');

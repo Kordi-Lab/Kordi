@@ -7,7 +7,9 @@ import { ChatSyncSyncClient } from '../src/features/cloud/chatSyncSyncClient';
 import type { ChatSyncEvent, ChatSyncSyncResponse } from '../src/features/cloud/chatSyncTypes';
 import type { DesktopChatContextMessage } from '../src/lib/desktop';
 import type { DesktopChatTurnSnapshot } from '../src/kordi-app/types';
+import type { acquireDesktopExecutionLease } from '../src/features/cloud/cloudDesktopExecutionLease';
 import {
+  EVALUATION_TIMEOUT_MS,
   PROACTIVE_RUN_FOLDER_LINE,
   runProactiveApprovedOnMac,
   runProactiveEvaluationOnMac,
@@ -248,4 +250,88 @@ test('an approved run this Mac cannot finish goes back to the cloud', async () =
   const held = runtime({ runId: 'proactive_run_1', acquired: false });
   assert.equal(await runProactiveApprovedOnMac(approved, held.value), 'not-acquired');
   assert.deepEqual(held.calls.map((call) => call.path), ['claim']);
+});
+
+test('an evaluation still running after the cloud runner\'s limit goes back to the cloud and stops renewing', async () => {
+  mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+  try {
+    assert.equal(EVALUATION_TIMEOUT_MS, 180_000);
+    const hung = runtime(evalClaim(), { runTurn: () => new Promise<string>(() => undefined) });
+    const outcome = runProactiveEvaluationOnMac(evaluation, hung.value);
+    await flush();
+    mock.timers.tick(EVALUATION_TIMEOUT_MS - 1);
+    await flush();
+    assert.ok(!hung.calls.some((call) => call.path.endsWith('/release')), 'not before the limit');
+    mock.timers.tick(1);
+    assert.equal(await outcome, 'released');
+    assert.deepEqual(hung.calls.find((call) => call.path === 'proactive_eval_1/release')?.body, { claimId: hung.claimBody().claimId });
+    assert.ok(!hung.calls.some((call) => call.kind === 'post'));
+    const renewals = () => hung.calls.filter((call) => call.path.endsWith('/renew')).length;
+    const before = renewals();
+    assert.ok(before > 0);
+    mock.timers.tick(60_000);
+    await flush();
+    assert.equal(renewals(), before, 'the lease is no longer renewed');
+    // A finished evaluation leaves no timer behind.
+    const done = runtime(evalClaim());
+    assert.equal(await runProactiveEvaluationOnMac(evaluation, done.value), 'completed');
+    mock.timers.tick(EVALUATION_TIMEOUT_MS * 2);
+    await flush();
+    assert.ok(!done.calls.some((call) => call.path.endsWith('/release') || call.path.endsWith('/renew')));
+  } finally { mock.timers.reset(); }
+});
+
+test('an approved run the owner stopped before its turn cancels the turn and posts nothing', async () => {
+  const cancelled: string[] = [];
+  const cancelledTurn = turn({ status: 'cancelled', succeeded: false, assistantText: 'Partial' });
+  const stopped = runtime(approvedClaim, {
+    startTurn: async () => turn({ completed: false, assistantText: '' }),
+    // The stop was noted at admission, so the turn is cancelled as soon as it starts.
+    waitForTurn: async () => { assert.deepEqual(cancelled, ['turn_1']); return cancelledTurn; },
+    cancelTurn: async (turnId) => { cancelled.push(turnId); },
+  });
+  const client = stopped.value.client;
+  stopped.value.client = {
+    desktopAgentExecution: async <T,>(token: string, action: string, body: unknown) => (action.endsWith('/admit')
+      ? (stopped.calls.push({ kind: 'execution', path: action, body }), { admitted: true, cancelRequested: true } as T)
+      : client.desktopAgentExecution<T>(token, action, body)),
+  };
+  assert.equal(await runProactiveApprovedOnMac(approved, stopped.value), 'stopped');
+  assert.deepEqual(cancelled, ['turn_1'], 'the stop cancels the turn');
+  assert.deepEqual(stopped.calls.find((call) => call.path === 'proactive_run_1/cancel')?.body, { claimId: stopped.claimBody().claimId });
+  assert.ok(!stopped.calls.some((call) => call.kind === 'post'), 'nothing is posted');
+  assert.ok(!stopped.calls.some((call) => call.path.endsWith('/release')), 'a stopped run never goes to the cloud');
+});
+
+test('a stop that arrives while the turn runs wins over its answer', async () => {
+  let stop: (() => void) | null = null;
+  const leaseCalls: string[] = [];
+  const lease = {
+    runId: 'proactive_run_1', claimId: 'claim_1', claim: approvedClaim, project: null, deadline: Date.now() + 40_000, lost: false,
+    contextMessages: (messages: readonly DesktopChatContextMessage[]) => [...messages],
+    attach: (turnId: string) => { leaseCalls.push(`attach:${turnId}`); },
+    admitted: async () => true,
+    onStopRequested: (handler: () => void) => { stop = handler; },
+    cancel: async () => { leaseCalls.push('cancel'); },
+    dispose: () => { leaseCalls.push('dispose'); },
+    publisher: { sendMessage: async () => { throw new Error('unused'); } },
+  };
+  const cancelled: string[] = [];
+  let finish!: (snapshot: DesktopChatTurnSnapshot) => void;
+  const run = runtime(approvedClaim, {
+    acquireLease: (async () => lease) as unknown as typeof acquireDesktopExecutionLease,
+    startTurn: async () => turn({ completed: false, assistantText: '' }),
+    waitForTurn: () => new Promise((resolve) => { finish = resolve; }),
+    cancelTurn: async (turnId) => { cancelled.push(turnId); },
+  });
+  const outcome = runProactiveApprovedOnMac(approved, run.value);
+  await flush();
+  assert.ok(stop, 'the run listens for a stop');
+  stop!();
+  // The turn had already finished its answer when the cancel arrived.
+  finish(turn({ assistantText: 'Here is the agenda.' }));
+  assert.equal(await outcome, 'stopped');
+  assert.deepEqual(cancelled, ['turn_1']);
+  assert.deepEqual(leaseCalls, ['attach:turn_1', 'cancel', 'dispose']);
+  assert.ok(!run.calls.some((call) => call.kind === 'post'), 'the answer is not posted');
 });

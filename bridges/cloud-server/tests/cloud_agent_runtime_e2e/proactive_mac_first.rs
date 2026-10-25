@@ -27,8 +27,22 @@ struct Fixture {
 /// online and ready for her agent. `proactive` says whether the Mac also
 /// reports that it runs proactive runs.
 async fn fixture(prefix: &str, proactive: bool) -> Option<Fixture> {
+    fixture_with(prefix, proactive, None).await
+}
+
+/// [`fixture`] with the server's push service, when given.
+async fn fixture_with(
+    prefix: &str,
+    proactive: bool,
+    push: Option<kordi_cloud_server::notifications::PushNotificationService>,
+) -> Option<Fixture> {
     let pool = try_pool().await?;
-    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
+    let state = signup_email_fixture::state(pool.clone());
+    let state = match push {
+        Some(push) => state.with_notifications(push),
+        None => state,
+    };
+    let router = test_router(Arc::new(state));
     let owner = signup(&router, prefix, "Mina").await;
     let member = signup(&router, &format!("{prefix}-member"), "Riya").await;
     accept_contacts(&router, &member, &owner).await;
@@ -417,3 +431,7 @@ async fn runner_search(
 mod approved;
 #[path = "proactive_mac_first/evaluation.rs"]
 mod evaluation;
+#[path = "proactive_mac_first/routes.rs"]
+mod routes;
+#[path = "proactive_mac_first/stop.rs"]
+mod stop;

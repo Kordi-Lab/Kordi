@@ -36,9 +36,10 @@ async fn claim_request(
     if !input.run.is_well_formed() || input.run.owner_account_id != session.account_id {
         return denied();
     }
-    // A proactive evaluation's only tool searches memories, so it needs no
-    // project folder: it skips the project rule. Matched by its run id
-    // before any chat request path.
+    // Proactive runs need no project folder, so they skip the project rule:
+    // an evaluation's only tool searches memories, and an approved run works
+    // in an empty folder of its own. Matched by run id before any chat
+    // request path.
     if input
         .run
         .request_message_id
@@ -61,6 +62,20 @@ async fn claim_request(
                 "Could not claim agent execution.",
                 e.into(),
             ),
+        };
+    }
+    // An approved proactive run already exists and answers a message that
+    // never mentioned the agent, so it never reaches group mention checks.
+    if input
+        .run
+        .request_message_id
+        .starts_with(crate::proactive::APPROVED_RUN_PREFIX)
+    {
+        let claim = crate::proactive::desktop::claim_approved;
+        return match claim(state.db_pool(), &session, input.claim_id, &input.run).await {
+            Ok(Some(value)) => context_scope_response(&state, value).await,
+            Ok(None) => denied(),
+            Err(e) => run_error_response("desktop claim", "Could not claim agent execution.", e),
         };
     }
     let project = match crate::projects::project_route(
@@ -128,26 +143,6 @@ async fn claim_request(
                 "Could not claim agent execution.",
                 e.into(),
             ),
-        };
-    }
-    // An approved proactive run already exists and answers a message that
-    // never mentioned the agent, so it never reaches group mention checks.
-    if input
-        .run
-        .request_message_id
-        .starts_with(crate::proactive::APPROVED_RUN_PREFIX)
-    {
-        let claim = crate::proactive::desktop::claim_approved;
-        return match claim(state.db_pool(), &session, input.claim_id, &input.run).await {
-            Ok(Some(mut value)) => {
-                // The claiming Mac runs the turn in its own folder of this project.
-                if let (Some(route), true) = (project.as_ref(), value["acquired"] == true) {
-                    value["project"] = json!({"id":route.project_id,"name":route.project_name,"workspaceId":route.workspace_id});
-                }
-                context_scope_response(&state, value).await
-            }
-            Ok(None) => denied(),
-            Err(e) => run_error_response("desktop claim", "Could not claim agent execution.", e),
         };
     }
     // A scheduled run is an occurrence of the owner's task, not a chat message.

@@ -16,15 +16,17 @@
 //! - An evaluation a Mac claims gets the tool in its claim's `tools` and
 //!   calls it through the digest observe route that the Mac's single-turn
 //!   command already uses ([`observe`]).
-//! - An evaluation gets at most [`MAX_EVALUATION_SEARCHES`] answers.
-
-use std::time::Duration;
+//! - An evaluation gets at most [`MAX_EVALUATION_SEARCHES`] answers, counted
+//!   on its group's proactive state row while it is the active evaluation
+//!   ([`charge_evaluation_search`]). The Mac attempt and a cloud takeover of
+//!   the same evaluation share the budget; an evaluation that is no longer
+//!   active gets no answer.
 
 use axum::http::StatusCode;
 use kordi_tools::memory_guard::{check_memory_text, MemoryGuardError, MemoryGuardOptions};
 use kordi_tools::memory_prompt::{MemoryRun, MemoryScopes, MemorySettings};
 use serde_json::{json, Value};
-use sqlx_core::query_as::query_as;
+use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
@@ -43,10 +45,7 @@ const DEFAULT_LIMIT: usize = 5;
 const MAX_LIMIT: usize = 10;
 const MAX_QUERY_CHARS: usize = 500;
 /// Answers an evaluation gets; later calls are told to answer.
-pub(crate) const MAX_EVALUATION_SEARCHES: u32 = 3;
-const SEARCH_ACTION: &str = "proactive-memory-search";
-/// Longer than any evaluation runs.
-const SEARCH_WINDOW: Duration = Duration::from_secs(30 * 60);
+pub(crate) const MAX_EVALUATION_SEARCHES: i32 = 3;
 
 const DESCRIPTION: &str = "Search your owner's saved memories: what they own, know or maintain, where their code and files live, and how they like answers. Returns the memories that best match the query. They are private to your owner: use them silently, and never quote or mention them to anyone else.";
 const PRIVATE_NOTE: &str = "These memories are private to your owner. Use them silently; never quote or mention them in the group.";
@@ -233,24 +232,41 @@ fn arguments(args: &Value) -> Result<(String, usize), SearchError> {
 
 type RunRow = (String, String, String, Option<String>);
 
+/// Counts one search of the evaluation `run_id`. False once it had
+/// [`MAX_EVALUATION_SEARCHES`] answers or it is no longer the active
+/// evaluation of its group; nothing is counted then.
+pub(crate) async fn charge_evaluation_search(
+    pool: &PgPool,
+    run_id: &str,
+) -> Result<bool, sqlx_core::Error> {
+    let charged = query(
+        "UPDATE cloud_agent_proactive_state SET memory_searches = memory_searches + 1 \
+         WHERE active_run_id = $1 AND memory_searches < $2",
+    )
+    .bind(run_id)
+    .bind(MAX_EVALUATION_SEARCHES)
+    .execute(pool)
+    .await?;
+    Ok(charged.rows_affected() == 1)
+}
+
 /// Runs one search for `run_id`: the matches, or the line that ends an
 /// evaluation's searches.
 async fn answer(state: &ServerState, run_id: &str, args: &Value) -> Result<Value, SearchError> {
     let (query, limit) = arguments(args)?;
-    let budget = &state.connectors().budget;
-    if run_id.starts_with(RUN_PREFIX)
-        && !budget
-            .charge_action(
-                SEARCH_ACTION,
-                run_id,
-                MAX_EVALUATION_SEARCHES,
-                SEARCH_WINDOW,
-            )
-            .await
-    {
-        return Ok(json!({"memories": [], "note": NO_SEARCHES_LEFT}));
-    }
     let pool: &PgPool = state.db_pool();
+    if run_id.starts_with(RUN_PREFIX) {
+        // A failed count answers nothing.
+        let charged = charge_evaluation_search(pool, run_id)
+            .await
+            .map_err(|error| {
+                eprintln!("[proactive] memory search count: {error}");
+                SearchError::Server
+            })?;
+        if !charged {
+            return Ok(json!({"memories": [], "note": NO_SEARCHES_LEFT}));
+        }
+    }
     let row: Option<RunRow> = query_as(
         "SELECT owner_account_id, requester_account_id, session_id, subsession_id::text \
          FROM cloud_agent_fallback_runs WHERE run_id = $1",

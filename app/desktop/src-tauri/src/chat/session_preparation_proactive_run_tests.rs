@@ -2,7 +2,8 @@
 //! preparation path: its session opens as a proactive run, even when it was
 //! loaded as an ordinary chat first, and its prompt carries none of the
 //! owner's preloaded memories. An ordinary owner request in the same group
-//! keeps them.
+//! keeps them. Once stored, the run's session stays a proactive run however
+//! it is resumed.
 
 use super::group_tools_tests::{group_lease, identity, EnvGuard, GROUP, OWNER};
 use super::prepare_desktop_session_for_send;
@@ -77,4 +78,24 @@ async fn approved_proactive_runs_get_no_preloaded_memories() {
             "{request}"
         );
     }
+    // Unloaded, the run's session comes back as a proactive run through a
+    // path that names no working folder: a follow-up after it was unloaded,
+    // or the owner opening it.
+    let session_id = format!("cloud-agent:{OWNER}:{GROUP}:request:proactive_run_synthetic");
+    manager.sessions.lock().await.remove(&session_id);
+    let chat = root.join("chat");
+    std::fs::create_dir_all(&chat).unwrap();
+    ensure_loaded_or_create_explicit_session(&manager, &chat, session_id.clone())
+        .await
+        .unwrap();
+    let session = manager.sessions.lock().await.get(&session_id).cloned();
+    let session = session.expect("resumed session");
+    let mut runtime = session.lock().await;
+    assert!(runtime.is_proactive_run());
+    assert!(!runtime.next_turn_system_prompt().contains("## Memories"));
+    assert!(!runtime
+        .next_turn_system_prompt()
+        .contains("Reply in metric units."));
+    runtime.refresh_memory_prompt_section();
+    assert!(!runtime.next_turn_system_prompt().contains("## Memories"));
 }

@@ -79,6 +79,7 @@ tests=(
   memory_tests::upgrade_from_149_adds_memory_categories
   memory_tests::upgrade_from_150_adds_memory_card_overrides
   proactive_tests::upgrade_from_153_adds_proactive_agents
+  proactive_tests::upgrade_from_154_counts_evaluation_memory_searches
 )
 index=0
 for test_name in "${tests[@]}"; do

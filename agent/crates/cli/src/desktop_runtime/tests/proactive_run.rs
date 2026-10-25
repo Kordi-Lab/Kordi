@@ -5,17 +5,31 @@ const PROACTIVE_FIXTURES: [&str; 4] = [
     "Reply in metric units.",
 ];
 
-fn proactive_turn_prompt(runtime: &mut DesktopRuntimeSession, prompt: &str) -> Result<String> {
+fn proactive_turn(
+    runtime: &mut DesktopRuntimeSession,
+    prompt: &str,
+) -> Result<crate::turn_runner::TurnConfig> {
     let policy = runtime.turn_execution_policy()?;
     let workspace = runtime.execution_workspace(prompt, policy)?;
-    let turn = super::turn_execution::build_turn_config(
+    super::turn_execution::build_turn_config(
         &mut runtime.setup,
         tokio_util::sync::CancellationToken::new(),
         policy,
         false,
         workspace,
-    )?;
-    Ok(turn.system_prompt)
+    )
+}
+
+fn proactive_turn_prompt(runtime: &mut DesktopRuntimeSession, prompt: &str) -> Result<String> {
+    Ok(proactive_turn(runtime, prompt)?.system_prompt)
+}
+
+/// Whether the turn may start background subsessions.
+fn starts_subsessions(runtime: &mut DesktopRuntimeSession) -> Result<bool> {
+    Ok(proactive_turn(runtime, "continue")?
+        .tool_ctx
+        .task_operator
+        .is_some())
 }
 
 fn assert_no_ambient_context(prompt: &str, home: &std::path::Path) {
@@ -79,6 +93,7 @@ async fn proactive_run_prompts_load_no_instruction_files_memories_or_home_folder
     let named = std::fs::canonicalize(home.path().join("repo"))?;
     assert!(chat_turn.contains(&named.display().to_string()));
     assert!(chat_turn.contains("Instructions applicable to the selected workspace"));
+    assert!(starts_subsessions(&mut chat)?);
 
     let run_id = "proactive-run-session";
     let mut proactive = DesktopRuntimeSession::create_proactive_run(run.clone(), run_id).await?;
@@ -104,10 +119,33 @@ async fn proactive_run_prompts_load_no_instruction_files_memories_or_home_folder
     assert!(!turn.contains("~ against homeDirectory"));
     assert!(turn.contains("workingDirectory is this run's own empty folder"));
     assert!(turn.contains(&std::fs::canonicalize(&run)?.display().to_string()));
+    // Its answer is its own reply, so it starts no background subsessions.
+    assert!(!starts_subsessions(&mut proactive)?);
 
-    // A later attempt, a reload and a subsession of the run keep the rules.
+    // A later attempt, a reload, a subsession of the run, and a resume that
+    // does not say it is a proactive run (a later message, or the owner
+    // opening it) keep the rules. A plain chat stays a plain chat.
     proactive.materialize_session()?;
     drop(proactive);
+    chat.materialize_session()?;
+    drop(chat);
+    let mut reopened = DesktopRuntimeSession::resume(run.clone(), run_id).await?;
+    assert!(reopened.is_proactive_run());
+    assert_no_ambient_context(&reopened.setup.system_prompt, home.path());
+    assert_no_ambient_context(
+        &proactive_turn_prompt(&mut reopened, "continue")?,
+        home.path(),
+    );
+    assert!(!starts_subsessions(&mut reopened)?);
+    drop(reopened);
+    let markers: i64 = crate::desktop_runtime::open_sessions_db()?.query_row(
+        "SELECT COUNT(*) FROM entries WHERE session_id=?1 AND json_extract(payload,'$.custom_type')='proactive_run_session'",
+        [run_id], |row| row.get(0),
+    )?;
+    assert_eq!(markers, 1, "marked once");
+    let plain = DesktopRuntimeSession::resume(run.clone(), "plain-chat").await?;
+    assert!(!plain.is_proactive_run());
+    drop(plain);
     let mut resumed = DesktopRuntimeSession::resume_proactive_run(run.clone(), run_id).await?;
     assert!(resumed.is_proactive_run());
     assert_no_ambient_context(

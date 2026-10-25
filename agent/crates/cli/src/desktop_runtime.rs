@@ -678,8 +678,7 @@ fn ensure_session_row_created(setup: &mut SessionRuntimeSetup) -> Result<()> {
     if setup.session_created {
         return Ok(());
     }
-    let cwd = setup.tool_ctx.cwd.display().to_string();
-    kordi_session::store::create_session_with_id(&setup.conn, &setup.session_id, &cwd)?;
+    proactive_run::create_session_row(setup)?;
     // Do not persist the session's initial model/thinking defaults as transcript
     // entries. They are runtime defaults, not user-visible actions; only explicit
     // changes after the session exists should render as inline system chips.

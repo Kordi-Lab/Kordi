@@ -77,3 +77,38 @@ async fn upgrade_from_153_adds_proactive_agents() {
     );
     execute(&pool, &default_proposal).await;
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_154_counts_evaluation_memory_searches() {
+    let pool = fixture(154).await;
+    execute(&pool, "INSERT INTO cloud_chat_conversations(conversation_id,kind,created_by_account_id,client_operation_id,creation_fingerprint) VALUES('00000000-0000-4000-8000-000000000155','group','fixture-owner','00000000-0000-4000-8000-000000000002','fixture')").await;
+    execute(&pool, "INSERT INTO cloud_agent_proactive_state(agent_id,owner_account_id,conversation_id,seen_sequence,active_run_id,attempts) VALUES('cloud-agent:fixture-owner','fixture-owner','00000000-0000-4000-8000-000000000155',7,'proactive_eval_live',2)").await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let row: (i64, Option<String>, i32, i32) = query_as(
+        "SELECT seen_sequence, active_run_id, attempts, memory_searches FROM cloud_agent_proactive_state",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        row,
+        (7, Some("proactive_eval_live".to_string()), 2, 0),
+        "existing rows keep their state and start with no searches"
+    );
+    execute(
+        &pool,
+        "INSERT INTO cloud_agent_proactive_state(agent_id,owner_account_id,conversation_id) VALUES('cloud_agent_other','fixture-owner','00000000-0000-4000-8000-000000000155')",
+    )
+    .await;
+    let (searches,): (i32,) = query_as(
+        "SELECT memory_searches FROM cloud_agent_proactive_state WHERE agent_id = 'cloud_agent_other'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(searches, 0);
+}
