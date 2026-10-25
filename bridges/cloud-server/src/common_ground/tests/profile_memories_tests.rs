@@ -31,7 +31,7 @@ pub(super) fn own(text: &str, category: &str) -> Value {
 }
 
 /// A new group conversation with `account` as an active member.
-async fn group_of(pool: &PgPool, account: &str) -> String {
+pub(super) async fn group_of(pool: &PgPool, account: &str) -> String {
     let group_id = uuid::Uuid::new_v4();
     query(
         "INSERT INTO cloud_chat_conversations(conversation_id, kind, created_by_account_id, \

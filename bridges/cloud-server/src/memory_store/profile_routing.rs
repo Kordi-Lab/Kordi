@@ -41,7 +41,7 @@ pub(crate) struct ProfileMemory {
 
 /// The categories a profile of `kind` receives by default: its own and
 /// the cross-profile ones. None for custom profiles.
-fn routed_categories(kind: &str) -> Vec<String> {
+pub(super) fn routed_categories(kind: &str) -> Vec<String> {
     if !FIXED_PROFILE_KINDS.contains(&kind) {
         return Vec::new();
     }

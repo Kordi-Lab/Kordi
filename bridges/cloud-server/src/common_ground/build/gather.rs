@@ -61,6 +61,11 @@ pub(in crate::common_ground) struct AgentFile {
 }
 
 impl BuildRequest {
+    /// Whether the build reads the account's own memories.
+    pub fn memory_on(&self) -> bool {
+        self.memory
+    }
+
     pub fn agents_too_long(&self) -> bool {
         self.agents
             .iter()
