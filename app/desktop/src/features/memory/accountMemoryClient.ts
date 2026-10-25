@@ -4,7 +4,7 @@ import {
   type CloudAuthClient,
 } from '@/features/cloud/authClient';
 import { CloudAuthError } from '@/features/cloud/cloudAuthError';
-import { CloudMemoryClient, type CloudMemorySettings } from '@/features/cloud/cloudMemoryClient';
+import { CloudMemoryClient, type CloudMemory, type CloudMemorySettings } from '@/features/cloud/cloudMemoryClient';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { loadSession, type StoredSession } from '@/features/cloud/session';
 import {
@@ -18,6 +18,7 @@ import {
 } from '@/lib/desktopMemory';
 import { isNativeDesktopShell } from '@/lib/desktop';
 
+import { isMemoryCategory } from './memoryCategory';
 import type { MemoryClient } from './memoryClient';
 import {
   NOT_A_GROUP_MEMBER_MESSAGE,
@@ -32,7 +33,7 @@ export type AccountMemoryAuthClient = Pick<CloudAuthClient, 'request' | 'me'>;
 export type AccountMemoryRoutes = Pick<
   CloudMemoryClient,
   'list' | 'create' | 'update' | 'remove' | 'forgetAll' | 'settings' | 'updateSettings'
->;
+> & Partial<Pick<CloudMemoryClient, 'moveToProfile'>>;
 
 /** Memory commands of the desktop shell. They only exist in the native shell. */
 export type AccountMemoryDesktop = {
@@ -72,7 +73,19 @@ const nativeDesktop: AccountMemoryDesktop = {
   forgetLocal: desktopMemoryForgetLocal,
 };
 
-function toLesson(entry: {
+type RoutingFields = Pick<CloudMemory, 'category' | 'declarationType' | 'confidence' | 'profileId' | 'profileKind'>;
+
+/** Copies the routing fields a server sent; an unknown category is dropped so the row shows no chip. */
+function withRouting(lesson: MemoryLesson, entry: RoutingFields): MemoryLesson {
+  if (isMemoryCategory(entry.category)) lesson.category = entry.category;
+  if (entry.declarationType) lesson.declarationType = entry.declarationType;
+  if (entry.confidence !== undefined) lesson.confidence = entry.confidence;
+  if (entry.profileId !== undefined) lesson.profileId = entry.profileId;
+  if (entry.profileKind !== undefined) lesson.profileKind = entry.profileKind;
+  return lesson;
+}
+
+function toLesson(entry: RoutingFields & {
   lessonId: string;
   scope: MemoryLessonScope;
   scopeId: string;
@@ -98,7 +111,7 @@ function toLesson(entry: {
     lesson.ownerAccountId = entry.ownerAccountId;
     lesson.ownerName = entry.ownerName?.trim() || null;
   }
-  return lesson;
+  return withRouting(lesson, entry);
 }
 
 /** The server answers 403 `not_a_group_member` when someone outside the group edits a group memory. */
@@ -248,6 +261,15 @@ export function createAccountMemoryClient(options: AccountMemoryClientOptions = 
     async updateLesson(lessonId, text) {
       const stored = await requireSession();
       const { memoryId, ...rest } = await asGroupMember(memory().update(stored.token, lessonId, text));
+      markSynced(stored);
+      syncDesktop();
+      return toLesson({ lessonId: memoryId, ...rest });
+    },
+    async moveMemoryToProfile(lessonId, profileId) {
+      const stored = await requireSession();
+      const routes = memory();
+      if (!routes.moveToProfile) throw new Error('Could not move this memory.');
+      const { memoryId, ...rest } = await routes.moveToProfile(stored.token, lessonId, profileId);
       markSynced(stored);
       syncDesktop();
       return toLesson({ lessonId: memoryId, ...rest });

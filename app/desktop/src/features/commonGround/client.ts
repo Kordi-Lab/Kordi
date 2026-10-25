@@ -8,7 +8,8 @@ import { loadSession } from '@/features/cloud/session';
 import { isCardDesign, isCardIcon } from './cardDesign';
 import type {
   CgBuildRequest, CgCreatedGroup, CgDocument, CgCreateRoomInput, CgGroup, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPairCode, CgPerson,
-  CgPersonCard, CgProfile, CgProfileInput, CgProfilePatch, CgRecentEntry, CgRelationship, CgResults, CgRoom, CgRoomPreview, CgRoomSummary, CgTopicLists,
+  CgPersonCard, CgProfile, CgProfileInput, CgProfilePatch, CgRecentEntry, CgRelationship, CgResults, CgRoom, CgRoomPreview, CgRoomSummary, CgRoutedMemory,
+  CgTopicLists,
 } from './types';
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -119,6 +120,18 @@ function roomSummary(entry: Partial<CgRoomSummary> & { code: string }): CgRoomSu
   };
 }
 
+/** A routed memory from the server; missing fields read as empty. */
+export function routedMemoryOf(entry: Partial<CgRoutedMemory>): CgRoutedMemory {
+  return {
+    memoryId: entry.memoryId ?? '',
+    text: entry.text ?? '',
+    category: typeof entry.category === 'string' ? entry.category : null,
+    updatedAt: entry.updatedAt ?? '',
+    profileId: typeof entry.profileId === 'string' && entry.profileId ? entry.profileId : null,
+    everyProfile: entry.everyProfile === true,
+  };
+}
+
 /** A profile with its look; older servers and unknown values read as null. */
 export function profileOf(entry: CgProfile): CgProfile {
   return { ...entry, design: isCardDesign(entry.design) ? entry.design : null, icon: isCardIcon(entry.icon) ? entry.icon : null };
@@ -177,6 +190,13 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
     /** The owner's own Markdown documents a card may read, newest first. */
     documents: async () => (await data<{ documents?: CgDocument[] }>('GET', cg('documents')))?.documents ?? [],
     deleteProfile: (profileId: string) => data<null>('DELETE', cg(`profiles/${enc(profileId)}`)),
+    /** The owner's memories filed to a profile, newest first (`memoryVersion` 2). */
+    profileMemories: async (profileId: string) => (
+      (await data<{ memories?: Array<Partial<CgRoutedMemory>> }>('GET', cg(`profiles/${enc(profileId)}/memories`)))?.memories ?? []
+    ).map(routedMemoryOf).filter((memory) => memory.memoryId),
+    /** Files a memory to another profile; null leaves it to its category. */
+    moveMemory: (memoryId: string, profileId: string | null) => data<unknown>('PATCH', `memory/${enc(memoryId)}`, { profileId }),
+    removeMemory: (memoryId: string) => data<null>('DELETE', `memory/${enc(memoryId)}`),
     card: (profileId?: string | null) => data<CgOwnerView>('GET', cg(`card${profileQuery(profileId)}`)),
     saveTopics: (topics: CgTopicLists, profileId?: string | null) => data<CgOwnerView>('PUT', cg(`card${profileQuery(profileId)}`), {
       workingOn: topics.workingOn, interests: topics.interests, canHelp: topics.canHelp, lookingFor: topics.lookingFor,

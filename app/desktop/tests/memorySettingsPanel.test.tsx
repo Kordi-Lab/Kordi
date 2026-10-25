@@ -16,6 +16,7 @@ import {
   LESSON_MAX_CHARS,
   forgetConsequences,
   isGlobalMemory,
+  lessonOriginLabel,
   lessonSourceLabel,
   memoryAddedBy,
   validateLessonText,
@@ -87,6 +88,20 @@ test('memory text is normalized and limited', () => {
   assert.equal(validateLessonText('a'.repeat(LESSON_MAX_CHARS)).ok, true);
   assert.deepEqual(validateLessonText(''), { ok: false, reason: 'Enter a memory.' });
   assert.deepEqual(validateLessonText('a'.repeat(LESSON_MAX_CHARS + 1)), { ok: false, reason: 'Memories are 500 characters or fewer.' });
+});
+
+test('the origin label follows the declaration type before the source', () => {
+  const own = { source: 'manual' as const, ownerAccountId: 'acct-1', ownerName: 'Shu' };
+  assert.equal(lessonOriginLabel({ ...own, declarationType: 'model-inferred', confidence: 'high' }, 'acct-1'), 'Saved by your agent \u00b7 high confidence');
+  assert.equal(lessonOriginLabel({ ...own, declarationType: 'model-inferred', confidence: null }, 'acct-1'), 'Saved by your agent');
+  assert.equal(lessonOriginLabel({ ...own, declarationType: 'model-inferred', source: 'outcome', confidence: 'low' }, 'acct-1'), 'Saved by your agent \u00b7 low confidence');
+  assert.equal(lessonOriginLabel({ source: 'manual' }, 'acct-1'), 'Added by you');
+  assert.equal(lessonOriginLabel({ source: 'manual', declarationType: 'user-declared' }, 'acct-1'), 'Added by you');
+  assert.equal(lessonOriginLabel({ source: 'outcome', declarationType: 'user-declared' }, 'acct-1'), 'From an outcome');
+  const other = { source: 'manual' as const, ownerAccountId: 'acct-2', ownerName: 'Priya' };
+  assert.equal(lessonOriginLabel(other, 'acct-1'), 'Added by Priya');
+  assert.equal(lessonOriginLabel({ ...other, declarationType: 'model-inferred', confidence: 'medium' }, 'acct-1'), 'Saved by Priya \u00b7 medium confidence');
+  assert.equal(lessonOriginLabel({ ...other, ownerAccountId: 'acct-1', declarationType: 'model-inferred', confidence: 'high' }, 'acct-1'), 'Saved by your agent \u00b7 high confidence');
 });
 
 test('source labels and forget copy read plainly', () => {

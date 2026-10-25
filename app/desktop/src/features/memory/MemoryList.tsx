@@ -11,13 +11,13 @@ import {
 import { SettingsRow } from '@/kordi-app/components/settingsLayout';
 import { cn } from '@/lib/utils';
 
+import { MemoryCategoryChip } from './MemoryCategoryChip';
 import type { MemoryClient } from './memoryClient';
 import {
   LESSON_MAX_CHARS,
   lessonDateLabel,
-  lessonSourceLabel,
+  lessonOriginLabel,
   memoryErrorMessage,
-  memoryAddedBy,
   memoryOwnerCaption,
   validateLessonText,
   type MemoryAddTarget,
@@ -176,7 +176,7 @@ export function MemoryList({
 
   const renderLesson = (lesson: MemoryLesson) => {
     // Settings list only global memories and each conversation lists its own, so rows leave out the scope label.
-    const meta = `${lessonSourceLabel(lesson.source, memoryAddedBy(lesson, viewerAccountId))} · ${lessonDateLabel(lesson.updatedAt)}`;
+    const meta = `${lessonOriginLabel(lesson, viewerAccountId)} · ${lessonDateLabel(lesson.updatedAt)}`;
     if (edit?.lessonId === lesson.lessonId) return renderEditor(lesson, edit, meta);
     const prefix = lessonPrefix(lesson.text);
     const owner = memoryOwnerCaption(lesson, viewerAccountId);
@@ -185,7 +185,7 @@ export function MemoryList({
       <div key={lesson.lessonId} data-memory-lesson={lesson.lessonId}>
         <SettingsRow
           title={<span className="block whitespace-normal break-words text-[13px] font-normal leading-5">{lesson.text}</span>}
-          description={owner ? <>{meta}<span data-memory-owner="" className="block">{owner}</span></> : meta}
+          description={<>{meta}<MemoryCategoryChip category={lesson.category} />{owner ? <span data-memory-owner="" className="block">{owner}</span> : null}</>}
           control={(
             <>
               <Button type="button" variant="quiet" className={quietButtonClass} aria-label={`Edit memory: ${prefix}`} onClick={startEdit}>
