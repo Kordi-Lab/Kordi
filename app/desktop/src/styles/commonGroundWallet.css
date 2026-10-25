@@ -86,18 +86,6 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 .cg-paircode .cg-digits input:disabled { opacity: 0.5; }
 .cg-paircode .cg-digits.is-missing input { border-color: var(--app-transient-danger-text, oklch(58% 0.2 27)); background: color-mix(in srgb, var(--app-transient-danger-text, oklch(58% 0.2 27)) 10%, transparent); }
 .cg-pair-error { margin-top: -4px; padding: 0 14px 10px 48px; color: var(--app-transient-danger-text, oklch(58% 0.2 27)); font-size: 11px; }
-.cg-pair-confirm {
-  display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 48px; border-top: 0.5px solid var(--cg-line);
-  border-radius: 0 0 9px 9px; background: color-mix(in srgb, var(--app-accent) 5%, transparent); animation: cg-fade-in 200ms ease-out;
-}
-.cg-pair-confirm-text { display: flex; min-width: 0; flex: 1; flex-direction: column; }
-.cg-pair-confirm-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
-.cg-pair-confirm-sub { overflow: hidden; color: var(--utility-muted-text); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.cg-sugchip {
-  display: inline-flex; height: 24px; flex: none; align-items: center; gap: 6px; padding: 0 9px 0 5px; border: 0; border-radius: 7px;
-  background: var(--cg-fill); color: var(--utility-foreground); font: inherit; font-size: 11px; font-weight: 500; cursor: pointer;
-}
-.cg-sugchip:hover:not(:disabled) { background: color-mix(in srgb, var(--app-accent) 14%, transparent); }
 
 /* Pair: the row above Pair code; its popover shows your code and takes theirs. */
 .cg-pair-open { width: 100%; border: 0; border-radius: 9px 9px 0 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
@@ -312,5 +300,5 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 
 @media (prefers-reduced-motion: reduce) {
   .cg-deck-new, .cg-pop-card, .cg-design, .cg-line-act, .cg-look-icon, .cg-look-colour, .is-look { transition: none; }
-  .cg-share-chip, .cg-pair-confirm, .cg-pop, .cg-wallet-col.is-push, .cg-newcard-preview .cg-card { animation: none; }
+  .cg-share-chip, .cg-pop, .cg-wallet-col.is-push, .cg-newcard-preview .cg-card { animation: none; }
 }
