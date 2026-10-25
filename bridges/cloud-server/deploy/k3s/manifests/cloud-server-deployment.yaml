@@ -153,6 +153,44 @@ spec:
                 secretKeyRef:
                   name: kordi-cloud-oauth
                   key: KORDI_OAUTH_GOOGLE_CLIENT_SECRET
+            # Connector OAuth clients live in the kordi-connectors Secret. A
+            # missing key leaves that provider reported as not available.
+            - name: KORDI_CONNECTOR_GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-connectors
+                  key: google-client-id
+                  optional: true
+            - name: KORDI_CONNECTOR_GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-connectors
+                  key: google-client-secret
+                  optional: true
+            - name: KORDI_CONNECTOR_GITHUB_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-connectors
+                  key: github-client-id
+                  optional: true
+            - name: KORDI_CONNECTOR_GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-connectors
+                  key: github-client-secret
+                  optional: true
+            - name: KORDI_CONNECTOR_SLACK_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-connectors
+                  key: slack-client-id
+                  optional: true
+            - name: KORDI_CONNECTOR_SLACK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-connectors
+                  key: slack-client-secret
+                  optional: true
             - name: KORDI_CLOUD_PUBLIC_BASE_URL
               value: "https://kordi.ai"
             - name: KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST

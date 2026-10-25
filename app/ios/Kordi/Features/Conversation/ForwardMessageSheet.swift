@@ -7,6 +7,7 @@ struct MessageForwardRequest: Identifiable {
 }
 
 struct ForwardMessageSheet: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -118,13 +119,13 @@ struct ForwardMessageSheet: View {
                         } label: {
                             VStack(spacing: 8) {
                                 Text(item.rawValue).font(.subheadline.weight(filter == item ? .semibold : .regular))
-                                Rectangle().fill(filter == item ? KordiTheme.signalBlue : .clear).frame(height: 2)
+                                Rectangle().fill(filter == item ? chatTheme.accent : .clear).frame(height: 2)
                             }
                             .padding(.horizontal, 6)
                             .frame(minHeight: 44)
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(filter == item ? KordiTheme.signalBlue : .secondary)
+                        .foregroundStyle(filter == item ? chatTheme.accent : .secondary)
                         .accessibilityAddTraits(filter == item ? .isSelected : [])
                     }
                 }
@@ -152,7 +153,7 @@ struct ForwardMessageSheet: View {
                     .disabled(locked)
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     .listRowSeparator(.hidden)
-                    .listRowBackground(selected?.id == destination.id ? KordiTheme.signalBlue.opacity(0.08) : .clear)
+                    .listRowBackground(selected?.id == destination.id ? chatTheme.accent.opacity(0.08) : .clear)
                 }
                 if visible.isEmpty {
                     ContentUnavailableView {
@@ -202,7 +203,7 @@ struct ForwardMessageSheet: View {
                 .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
-            .tint(KordiTheme.signalBlue)
+            .tint(chatTheme.accent)
             .disabled(selected == nil || request.messages.isEmpty || batch.isSending)
             .accessibilityIdentifier("forward-submit")
         }
@@ -272,6 +273,7 @@ struct ForwardMessageSheet: View {
 }
 
 private struct ForwardDestinationRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let destination: MessageForwardDestination
     let selected: Bool
     let onSelect: () -> Void
@@ -291,7 +293,7 @@ private struct ForwardDestinationRow: View {
                     }
                     Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                         .font(.title3)
-                        .foregroundStyle(selected ? KordiTheme.signalBlue : .secondary)
+                        .foregroundStyle(selected ? chatTheme.accent : .secondary)
                 }
                 .accessibilityHidden(true)
             }
@@ -324,6 +326,7 @@ private struct ForwardDestinationRow: View {
 }
 
 private struct ForwardSuccessMark: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
     @State private var drawn = false
@@ -331,14 +334,14 @@ private struct ForwardSuccessMark: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(KordiTheme.signalBlue.opacity(0.3), lineWidth: 1)
+                .stroke(chatTheme.accent.opacity(0.3), lineWidth: 1)
                 .scaleEffect(appeared && !reduceMotion ? 1.3 : 1)
                 .opacity(appeared ? 0 : 1)
             Circle()
-                .fill(KordiTheme.signalBlue.opacity(0.12))
+                .fill(chatTheme.accent.opacity(0.12))
             ForwardCheckmark()
                 .trim(from: 0, to: drawn ? 1 : 0)
-                .stroke(KordiTheme.signalBlue, style: StrokeStyle(lineWidth: 2.8, lineCap: .round, lineJoin: .round))
+                .stroke(chatTheme.accent, style: StrokeStyle(lineWidth: 2.8, lineCap: .round, lineJoin: .round))
                 .padding(12)
         }
         .scaleEffect(appeared || reduceMotion ? 1 : 0.92)

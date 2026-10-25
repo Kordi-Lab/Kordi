@@ -270,6 +270,7 @@ final class VoiceHoldToTalkPresentation {
 }
 
 struct VoiceHoldToTalkOverlay: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let recorder: VoiceMessageRecorder
@@ -429,7 +430,7 @@ struct VoiceHoldToTalkOverlay: View {
 
     private var bubbleFill: Color {
         switch intent {
-        case .hold: KordiTheme.signalBlue
+        case .hold: chatTheme.accent
         case .cancel: Color(uiColor: .systemRed)
         case .convertToText: .white
         }
@@ -640,6 +641,7 @@ enum VoiceHoldToTalkPreviewState: String {
 
 /// Review, failed, and locked recordings share one draft pill.
 struct VoiceRecordingComposer: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let recorder: VoiceMessageRecorder
     let onCancel: () -> Void
@@ -817,7 +819,7 @@ struct VoiceRecordingComposer: View {
         } label: {
             Image(systemName: "scissors")
                 .font(.callout.weight(.semibold))
-                .foregroundStyle(showsTrim ? KordiTheme.signalBlue : Color.secondary)
+                .foregroundStyle(showsTrim ? chatTheme.accent : Color.secondary)
                 .frame(width: 34, height: 44)
                 .contentShape(Rectangle())
         }
@@ -906,7 +908,7 @@ struct VoiceRecordingComposer: View {
                 .font(.body.weight(.bold))
                 .foregroundStyle(.white)
                 .frame(width: 40, height: 40)
-                .background(KordiTheme.signalBlue, in: Circle())
+                .background(chatTheme.accent, in: Circle())
                 .contentShape(Circle().inset(by: -2))
         }
         .buttonStyle(.plain)
@@ -923,6 +925,7 @@ struct VoiceRecordingComposer: View {
 
 
 private struct VoiceTrimControl: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let durationMs: Int
     let startMs: Int
     let endMs: Int
@@ -938,7 +941,7 @@ private struct VoiceTrimControl: View {
                     .fill(Color.secondary.opacity(0.2))
                     .frame(height: 2)
                 Capsule()
-                    .fill(KordiTheme.signalBlue)
+                    .fill(chatTheme.accent)
                     .frame(width: max(2, endX - startX), height: 2)
                     .offset(x: startX)
                 trimHandle(
@@ -971,7 +974,7 @@ private struct VoiceTrimControl: View {
         Circle()
             .fill(.background)
             .overlay {
-                Circle().stroke(KordiTheme.signalBlue, lineWidth: 2)
+                Circle().stroke(chatTheme.accent, lineWidth: 2)
             }
             .frame(width: 14, height: 14)
             .contentShape(Rectangle().inset(by: -12))
@@ -996,6 +999,7 @@ private struct VoiceTrimControl: View {
 }
 
 struct VoiceMessageBubbleContent: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let voiceMessage: VoiceMessage
     let isActionPresented: Bool
@@ -1074,7 +1078,7 @@ struct VoiceMessageBubbleContent: View {
                             }
                             .buttonStyle(.plain)
                             .contentShape(Rectangle().inset(by: -8))
-                            .foregroundStyle(KordiTheme.signalBlue)
+                            .foregroundStyle(chatTheme.accent)
                             .accessibilityLabel("Retry playback")
                         }
 
@@ -1172,7 +1176,8 @@ struct VoiceMessageBubbleContent: View {
 private struct VoiceWaveform: View {
     let samples: [Double]
     let progress: Double
-    var activeColor = KordiTheme.signalBlue
+    @Environment(\.kordiChatTheme) private var chatTheme
+    var activeColor: Color?
     var height: CGFloat = 32
 
     var body: some View {
@@ -1181,7 +1186,7 @@ private struct VoiceWaveform: View {
                 Capsule()
                     .fill(
                         Double(index) / Double(max(1, values.count)) <= progress
-                            ? activeColor
+                            ? (activeColor ?? chatTheme.accent)
                             : Color.secondary.opacity(0.35)
                     )
                     .frame(maxWidth: 3, minHeight: 3, maxHeight: max(3, (height - 4) * sample))

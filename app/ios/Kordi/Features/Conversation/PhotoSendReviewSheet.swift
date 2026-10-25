@@ -40,6 +40,7 @@ private struct PhotoEditorRequest: Identifiable {
 }
 
 struct PhotoLibrarySendPicker: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dismiss) private var dismiss
     let allowsSeparateMessages: Bool
     let onSend: ([PendingAttachment], PhotoSendGrouping) async -> Bool
@@ -175,7 +176,7 @@ struct PhotoLibrarySendPicker: View {
                 .overlay(alignment: .topTrailing) {
                     ZStack {
                         Circle()
-                            .fill(selectionIndex == nil ? .black.opacity(0.24) : KordiTheme.signalBlue)
+                            .fill(selectionIndex == nil ? .black.opacity(0.24) : chatTheme.accent)
                         Circle()
                             .stroke(.white, lineWidth: 2)
                         if let selectionIndex {
@@ -190,7 +191,7 @@ struct PhotoLibrarySendPicker: View {
                 .overlay {
                     if selectionIndex != nil {
                         Rectangle()
-                            .stroke(KordiTheme.signalBlue, lineWidth: 3)
+                            .stroke(chatTheme.accent, lineWidth: 3)
                     }
                 }
                 .contentShape(Rectangle())
@@ -223,7 +224,7 @@ struct PhotoLibrarySendPicker: View {
                     HStack(spacing: 10) {
                         Image(systemName: grouping == .combined ? "checkmark.circle.fill" : "circle")
                             .font(.title3)
-                            .foregroundStyle(grouping == .combined ? KordiTheme.signalBlue : .secondary)
+                            .foregroundStyle(grouping == .combined ? chatTheme.accent : .secondary)
                         Text("Send photos as one grouped message")
                             .font(.body.weight(.medium))
                             .foregroundStyle(.primary)
@@ -250,7 +251,7 @@ struct PhotoLibrarySendPicker: View {
                     beginEditingSelection()
                 }
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(KordiTheme.signalBlue)
+                .foregroundStyle(chatTheme.accent)
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
                 .buttonStyle(.plain)
@@ -270,7 +271,7 @@ struct PhotoLibrarySendPicker: View {
                         .background(
                             selectedAssetIDs.isEmpty
                                 ? Color(uiColor: .tertiarySystemFill)
-                                : KordiTheme.signalBlue,
+                                : chatTheme.accent,
                             in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                         )
                 }
@@ -467,6 +468,7 @@ enum OutgoingAttachmentGroupingPlan {
 }
 
 struct VideoSendReviewSheet: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dismiss) private var dismiss
 
     let attachment: PendingAttachment
@@ -582,7 +584,7 @@ struct VideoSendReviewSheet: View {
                 .background(
                     player == nil || previewImage == nil
                         ? Color(uiColor: .tertiarySystemFill)
-                        : KordiTheme.signalBlue,
+                        : chatTheme.accent,
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                 )
             }

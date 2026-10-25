@@ -199,6 +199,19 @@ test('cloud server manifest targets the hosted product public base', async () =>
       new RegExp(`${name}[\\s\\S]*name: kordi-apns[\\s\\S]*key: ${name}[\\s\\S]*optional: true`),
     );
   }
+  for (const [name, key] of [
+    ['KORDI_CONNECTOR_GOOGLE_CLIENT_ID', 'google-client-id'],
+    ['KORDI_CONNECTOR_GOOGLE_CLIENT_SECRET', 'google-client-secret'],
+    ['KORDI_CONNECTOR_GITHUB_CLIENT_ID', 'github-client-id'],
+    ['KORDI_CONNECTOR_GITHUB_CLIENT_SECRET', 'github-client-secret'],
+    ['KORDI_CONNECTOR_SLACK_CLIENT_ID', 'slack-client-id'],
+    ['KORDI_CONNECTOR_SLACK_CLIENT_SECRET', 'slack-client-secret'],
+  ]) {
+    assert.match(
+      manifest,
+      new RegExp(`${name}[\\s\\S]*name: kordi-connectors[\\s\\S]*key: ${key}[\\s\\S]*optional: true`),
+    );
+  }
   assert.match(manifest, /KORDI_SUPPORT_OPENAI_API_KEY[\s\S]*name: kordi-support-openai/);
 });
 
@@ -237,6 +250,13 @@ test('product origin serves desktop routes without redirects', async () => {
   assert.match(caddyfile, /:8080 \{[\s\S]*import kordi_product_site/);
   assert.match(caddyfile, /root \* \/srv\/kordi-homepage\/current/);
   assert.match(caddyfile, /handle \/beta-api\/\*[\s\S]*reverse_proxy 127\.0\.0\.1:17181/);
+  for (const page of ['research', 'about', 'iphone', 'privacy', 'terms']) {
+    assert.match(
+      caddyfile,
+      new RegExp(`handle /${page} \\{\\s*rewrite \\* /${page}\\.html\\s*file_server`),
+    );
+    assert.match(caddyfile, new RegExp(`handle /${page}\\.html \\{\\s*redir \\* /${page} 308`));
+  }
   assert.match(caddyfile, /kordi\.ai, www\.kordi\.ai/);
   assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:30081/);
   assert.doesNotMatch(caddyfile, /reverse_proxy 127\.0\.0\.1:17081/);

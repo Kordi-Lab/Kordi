@@ -39,6 +39,7 @@ enum NewChatMode: CaseIterable, Hashable, Identifiable {
 }
 
 struct NewChatView: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
@@ -220,7 +221,7 @@ struct NewChatView: View {
                                 Spacer(minLength: 8)
                                 Image(systemName: selectedGroupContactIDs.contains(contact.accountId) ? "checkmark.circle.fill" : "circle")
                                     .font(.title3)
-                                    .foregroundStyle(selectedGroupContactIDs.contains(contact.accountId) ? KordiTheme.signalBlue : Color.secondary)
+                                    .foregroundStyle(selectedGroupContactIDs.contains(contact.accountId) ? chatTheme.accent : Color.secondary)
                             }
                             .contentShape(Rectangle())
                         }

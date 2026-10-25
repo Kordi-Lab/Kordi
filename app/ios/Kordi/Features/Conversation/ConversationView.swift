@@ -650,7 +650,7 @@ struct ConversationView: View {
                                                 VStack(spacing: 0) {
                                                     if scopedThreadRootMessageID != nil, showsThreadUnreadDivider, message.id == initialMessageID {
                                                         HStack { Rectangle().frame(height: 1); Text("New replies").font(.caption); Rectangle().frame(height: 1) }
-                                                            .foregroundStyle(KordiTheme.signalBlue).padding(.vertical, 8)
+                                                            .foregroundStyle(chatTheme.accent).padding(.vertical, 8)
                                                     }
                                                     timelineMessageRow(
                                                         row: row,
@@ -3234,6 +3234,7 @@ private struct ContactPresenceStatusText: View {
 }
 
 private struct ConversationCallBanner: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let call: CloudCall
     let title: String
     let subtitle: String
@@ -3254,7 +3255,7 @@ private struct ConversationCallBanner: View {
                 .font(.headline)
                 .foregroundStyle(.white)
                 .frame(width: 38, height: 38)
-                .background(KordiTheme.signalBlue.gradient, in: Circle())
+                .background(chatTheme.accent.gradient, in: Circle())
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -3643,6 +3644,7 @@ private struct EarlierMessagesLoader: View {
 }
 
 private struct MentionNavigationButton: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let count: Int
     let isLoading: Bool
     let action: () -> Void
@@ -3664,7 +3666,7 @@ private struct MentionNavigationButton: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 5)
                         .frame(minWidth: 20, minHeight: 20)
-                        .background(KordiTheme.signalBlue, in: Capsule())
+                        .background(chatTheme.accent, in: Capsule())
                         .offset(x: 7, y: -6)
                 }
                 .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
@@ -3672,7 +3674,7 @@ private struct MentionNavigationButton: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(KordiTheme.signalBlue)
+        .foregroundStyle(chatTheme.accent)
         .disabled(isLoading)
         .opacity(isLoading ? 0.6 : 1)
         .accessibilityLabel("Jump to next mention")
@@ -3682,6 +3684,7 @@ private struct MentionNavigationButton: View {
 }
 
 private struct LatestMessageButton: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let count: Int
     let action: () -> Void
     @ScaledMetric(relativeTo: .body) private var diameter: CGFloat = 38
@@ -3703,7 +3706,7 @@ private struct LatestMessageButton: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5)
                             .frame(minWidth: 20, minHeight: 20)
-                            .background(KordiTheme.signalBlue, in: Capsule())
+                            .background(chatTheme.accent, in: Capsule())
                             .offset(x: 7, y: -6)
                     }
                 }
@@ -4151,11 +4154,12 @@ private struct EmptyConversation: View {
         ConversationView(conversation: fixture.conversations[0])
     }
     .environmentObject(AppModel(previewMode: true))
-    .tint(KordiTheme.signalBlue)
+    .tint(KordiChatTheme.classic.accent)
 }
 
 
 private struct ThreadNavigationButton: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let count: Int
     let isLoading: Bool
     let action: () -> Void
@@ -4170,12 +4174,12 @@ private struct ThreadNavigationButton: View {
                 .overlay(alignment: .topTrailing) {
                     Text(ConversationAttentionBadge.countLabel(count)).font(.caption2.bold()).foregroundStyle(.white)
                         .padding(.horizontal, 5).frame(minWidth: 20, minHeight: 20)
-                        .background(KordiTheme.signalBlue, in: Capsule()).offset(x: 7, y: -6)
+                        .background(chatTheme.accent, in: Capsule()).offset(x: 7, y: -6)
                 }
                 .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
                 .frame(width: max(44, diameter), height: max(44, diameter)).contentShape(Circle())
         }
-        .buttonStyle(.plain).foregroundStyle(KordiTheme.signalBlue).disabled(isLoading).opacity(isLoading ? 0.6 : 1)
+        .buttonStyle(.plain).foregroundStyle(chatTheme.accent).disabled(isLoading).opacity(isLoading ? 0.6 : 1)
         .accessibilityLabel("Jump to next unread thread").accessibilityValue("\(count) unread discussions")
     }
 }

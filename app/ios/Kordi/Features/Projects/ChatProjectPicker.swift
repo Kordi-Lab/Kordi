@@ -110,6 +110,7 @@ struct ChatProjectPicker: View {
 
 /// Compact picker row with a custom inset divider in place of the native separator.
 private struct PickerRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.isEnabled) private var isEnabled
     let title: String
     let systemImage: String
@@ -129,7 +130,7 @@ private struct PickerRow: View {
                     .foregroundStyle(.primary)
                 Spacer(minLength: 8)
                 if isSelected {
-                    Image(systemName: "checkmark").foregroundStyle(KordiTheme.signalBlue)
+                    Image(systemName: "checkmark").foregroundStyle(chatTheme.accent)
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
