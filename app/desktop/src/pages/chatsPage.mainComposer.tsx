@@ -140,12 +140,11 @@ export function MainComposer({
     && shouldUseCompactModelRouteMenu(conversation);
   const routeSelection = collaborationRouting.enabled && collaborationRouting.model
     ? collaborationRouting.model.selection : composerSelection;
-  const sendGate = useComposerRouteAccountGuard({ sessionId: conversation.id, enabled: !collaborationRouting.enabled,
+  // Only the session route names an account, so only it can lose one; the replacement saves as a route menu pick does.
+  const sendGate = useComposerRouteAccountGuard({ sessionId: conversation.id, enabled: Boolean(collaborationRouting.enabled && collaborationRouting.model) && !display.activeLiveTurnIsRunning,
     paneKind: localRouting.paneKind, canConfigureModelRoute, selection: routeSelection, providerOptions: composerProviderOptions,
-    modelOptions: chatModelOptions ?? [], applyProviderChoice: (scope, option) => selectComposerProviderChoice(scope, option, localRouting.configTarget) });
-  const onSend: MainComposerProps['onSend'] = (draftOverride, attachmentOverride) => (
-    !sendGate.blocked ? sendMessage(draftOverride, attachmentOverride) : undefined
-  );
+    modelOptions: chatModelOptions ?? [], applyRoute: collaborationRouting.onSaveCompact });
+  const onSend: MainComposerProps['onSend'] = (draft, attachments) => (sendGate.blocked ? undefined : sendMessage(draft, attachments));
   const voice = useVoiceComposer({
     conversation,
     cloudAccountId,

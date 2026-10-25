@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { composerRouteDecision } from '../src/features/chat/useHostedComposerRouting';
 import { routeWithAccountNamespace } from '../src/features/cloud/routeAccountNamespace';
 import {
+  modelInAccountNamespace,
   resolveComposerRoutePick,
   type ComposerModelOption,
   type ComposerProviderOption,
@@ -51,6 +52,29 @@ test('a pinned account choice rewrites the model namespace within the provider f
     'anthropic/claude-fable-5',
     'another provider family is left alone',
   );
+});
+
+test('a model in another namespace of the family moves into the account namespace', () => {
+  assert.equal(modelInAccountNamespace('openai/gpt-6.1-sol', 'openai-codex'), 'openai-codex/gpt-6.1-sol');
+  assert.equal(modelInAccountNamespace('openai-codex/gpt-6.1-sol', 'openai'), 'openai/gpt-6.1-sol');
+  assert.equal(modelInAccountNamespace('openai/gpt-6.1-sol', 'openai-codex', modelOptions), 'openai-codex/gpt-6.1-sol');
+  assert.equal(modelInAccountNamespace('openai/gpt-6.1-sol', 'openai-codex', modelOptions.slice(0, 1)), 'openai/gpt-6.1-sol', 'not in the catalog');
+  assert.equal(modelInAccountNamespace('anthropic/claude-fable-5', 'openai-codex'), 'anthropic/claude-fable-5', 'another family');
+  assert.equal(modelInAccountNamespace('gpt-6.1-sol', 'openai-codex'), 'gpt-6.1-sol', 'no namespace');
+  assert.equal(modelInAccountNamespace('openai/gpt-6.1-sol', null), 'openai/gpt-6.1-sol', 'no account');
+});
+
+test('a model change on a pinned account keeps the model in the account namespace', () => {
+  const currentRoute = { model: 'openai-codex/gpt-6-sol', authProvider: 'openai-codex', authChoice: 'profile:work', thinking: 'high' };
+  assert.deepEqual(
+    composerRouteDecision({ model: 'openai/gpt-6.1-sol', thinking: 'medium' }, { accounts: [], currentRoute, pinLocalAccount: true }),
+    { route: { ...currentRoute, model: 'openai-codex/gpt-6.1-sol', thinking: 'medium' }, leavesCloud: false },
+  );
+  const listed = (models: ComposerModelOption[]) => composerRouteDecision(
+    { model: 'openai/gpt-6.1-sol', thinking: 'medium' }, { accounts: [], currentRoute, pinLocalAccount: true, modelOptions: models },
+  )?.route.model;
+  assert.equal(listed(modelOptions), 'openai-codex/gpt-6.1-sol');
+  assert.equal(listed(modelOptions.slice(0, 1)), 'openai/gpt-6.1-sol', 'the chat model list has no such model');
 });
 
 test('a stored route runs the account namespace model when the catalog offers it', () => {

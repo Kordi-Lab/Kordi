@@ -40,9 +40,3 @@ export function useAccountListsLoaded(): boolean {
   const hostedListed = Boolean(useHostedAccountsSnapshot().listed);
   return hostedListed && registeredAccountChoices().localChoices !== null;
 }
-
-/** The send gate for the live composer, re-evaluated when the hosted account list arrives. */
-export function useComposerSendGate(input: Omit<ComposerSendGateInput, 'accountListsLoaded'>): ComposerSendGate {
-  const accountListsLoaded = useAccountListsLoaded();
-  return composerSendGate({ ...input, accountListsLoaded });
-}

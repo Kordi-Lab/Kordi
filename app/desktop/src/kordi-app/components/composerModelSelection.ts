@@ -37,6 +37,25 @@ export function normalizeComposerProviderId(providerId: string) {
   return normalized === 'openai-codex' ? 'openai' : normalized;
 }
 
+/**
+ * The same model in the account's own namespace when both sit in one provider
+ * family: an `openai-codex` account runs `openai-codex/…`, never `openai/…`.
+ * Given a catalog, only a model it offers replaces the original.
+ */
+export function modelInAccountNamespace(
+  model: string,
+  providerId: string | null | undefined,
+  offered?: readonly { value: string }[],
+) {
+  const account = providerId?.trim() ?? '';
+  const separator = model.indexOf('/');
+  if (!account || separator <= 0) return model;
+  const namespace = model.slice(0, separator);
+  if (namespace === account || normalizeComposerProviderId(namespace) !== normalizeComposerProviderId(account)) return model;
+  const accountModel = `${account}/${model.slice(separator + 1)}`;
+  return !offered || offered.some((option) => option.value === accountModel) ? accountModel : model;
+}
+
 export function authChoiceFromProviderOption(option: ComposerProviderOption) {
   return option.value.includes('::') ? option.value.split('::').slice(1).join('::') : null;
 }
@@ -277,12 +296,7 @@ export function resolveComposerRoutePick({
   const offeredModel = offered.length === 0 || offered.some((option) => option.value === requestedModel)
     ? requestedModel
     : (offered.find((option) => modelIdOf(option.value) === modelIdOf(requestedModel)) ?? offered[0]).value;
-  // An account runs only models in its own provider namespace.
-  const accountModel = `${account.providerId}/${modelIdOf(offeredModel)}`;
-  const model = offeredModel.includes('/') && !offeredModel.startsWith(`${account.providerId}/`)
-    && modelOptions.some((option) => option.value === accountModel)
-    ? accountModel
-    : offeredModel;
+  const model = modelInAccountNamespace(offeredModel, account.providerId, modelOptions);
   const modelOption = modelOptions.find((option) => option.value === model);
   const thinking = pick.type === 'thinking'
     ? pick.value

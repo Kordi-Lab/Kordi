@@ -8,7 +8,7 @@ import type { ComposerScope } from '@/kordi-app/types';
 import { updateDesktopChatSessionConfig, type DesktopChatMessageRoute } from '@/lib/desktop';
 import type { ComposerConfigTargetOverride, ComposerSelectionState } from './composerController.types';
 import { hostedRouteAccounts, hostedRouteForChoice, hostedRouteForModel, type HostedRouteAccount } from './hostedComposerOptions';
-import { normalizeComposerProviderId } from '@/kordi-app/components/composerModelSelection';
+import { modelInAccountNamespace, normalizeComposerProviderId } from '@/kordi-app/components/composerModelSelection';
 
 /** The route a composer change applies; `leavesCloud` moves the session back to this Mac's runtime. */
 export type ComposerRouteDecision = { route: DesktopChatMessageRoute; leavesCloud: boolean };
@@ -20,16 +20,6 @@ export type ComposerRouteChange = {
   /** An explicit account choice from the provider or account menu. */
   choice?: { providerId: string; authChoice: string | null } | null;
 };
-
-/** Moves a model into the account's own namespace within the same provider family. */
-function modelInAccountFamily(model: string, providerId: string) {
-  const separator = model.indexOf('/');
-  if (separator <= 0) return model;
-  const namespace = model.slice(0, separator);
-  return namespace !== providerId && normalizeComposerProviderId(namespace) === normalizeComposerProviderId(providerId)
-    ? `${providerId}/${model.slice(separator + 1)}`
-    : model;
-}
 
 /**
  * Decides whether a composer change runs on Kordi Cloud. Choosing a hosted
@@ -45,6 +35,8 @@ export function composerRouteDecision(
     localProviderIds?: ReadonlySet<string>;
     catalog?: OmpCatalogEntry[];
     pinLocalAccount?: boolean;
+    /** The chat's model list; a model moves into the account namespace only when it lists one. */
+    modelOptions?: readonly { value: string }[];
   },
 ): ComposerRouteDecision | null {
   const onCloud = routeRunsOnKordiCloud(context.currentRoute);
@@ -56,7 +48,7 @@ export function composerRouteDecision(
       return route ? { route, leavesCloud: false } : null;
     }
     return (onCloud || context.pinLocalAccount) && change.model
-      ? { route: { model: modelInAccountFamily(change.model, choice.providerId), authProvider: choice.providerId, authChoice: choice.authChoice, thinking: change.thinking }, leavesCloud: onCloud }
+      ? { route: { model: modelInAccountNamespace(change.model, choice.providerId, context.modelOptions), authProvider: choice.providerId, authChoice: choice.authChoice, thinking: change.thinking }, leavesCloud: onCloud }
       : null;
   }
   if (!change.model) {
@@ -72,7 +64,8 @@ export function composerRouteDecision(
   if (context.pinLocalAccount && context.currentRoute?.authChoice
     && normalizeComposerProviderId(change.model.split('/')[0])
       === normalizeComposerProviderId(context.currentRoute.authProvider ?? context.currentRoute.model?.split('/')[0] ?? '')) {
-    return { route: { ...context.currentRoute, model: change.model, thinking: change.thinking }, leavesCloud: false };
+    const model = modelInAccountNamespace(change.model, context.currentRoute.authProvider, context.modelOptions);
+    return { route: { ...context.currentRoute, model, thinking: change.thinking }, leavesCloud: false };
   }
   return onCloud ? { route: { model: change.model, thinking: change.thinking }, leavesCloud: true } : null;
 }
@@ -86,12 +79,14 @@ export function useHostedComposerRouting({
   setDesktopChatError,
   publishCloudAgentRuntimeRouteChange,
   resolveChatRuntimeRoute,
+  chatModelOptions,
 }: {
   isNativeShell: boolean;
   setComposerSelections: Dispatch<SetStateAction<ComposerSelectionState>>;
   setDesktopChatError: Dispatch<SetStateAction<string | null>>;
   publishCloudAgentRuntimeRouteChange?: (input: CloudAgentRuntimeRouteChangeInput) => Promise<void>;
   resolveChatRuntimeRoute?: (sessionId?: string | null) => DesktopChatMessageRoute | null;
+  chatModelOptions?: readonly { value: string }[];
 }) {
   // A route applied moments ago wins until the session state catches up, so
   // an account choice followed by a model choice keeps the chosen account.
@@ -120,6 +115,7 @@ export function useHostedComposerRouting({
       localProviderIds: registry.localProviderIds,
       catalog,
       pinLocalAccount: Boolean(isolatedTarget),
+      modelOptions: chatModelOptions,
     });
     const model = decision?.route.model?.trim();
     if (!decision || !model) return false;
@@ -165,5 +161,5 @@ export function useHostedComposerRouting({
       if (savesRef.current.get(sessionId) === save) savesRef.current.delete(sessionId);
     });
     return true;
-  }, [isNativeShell, publishCloudAgentRuntimeRouteChange, resolveChatRuntimeRoute, setComposerSelections, setDesktopChatError]);
+  }, [chatModelOptions, isNativeShell, publishCloudAgentRuntimeRouteChange, resolveChatRuntimeRoute, setComposerSelections, setDesktopChatError]);
 }

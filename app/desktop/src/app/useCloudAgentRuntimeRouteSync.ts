@@ -209,15 +209,17 @@ export function useCloudAgentRuntimeRouteSync({
   ]);
 
   const chatAuthOptions = composerAuthByScope.optionsByScope.chat;
+  // Stored routes are repaired on read: the sign-in's own provider, then a
+  // model in that provider's namespace.
   const storedSessionRoute = useCallback((runtimeSessionId: string | null) => (
     runtimeSessionId
-      ? routeWithSignInProvider(
+      ? routeWithAccountNamespace(routeWithSignInProvider(
         compactCloudAgentRuntimeRoute(routesBySessionId[runtimeSessionId])
           ?? compactCloudAgentRuntimeRoute(recoveredRoutesBySessionId[runtimeSessionId]),
         chatAuthOptions,
-      )
+      ), chatModelOptions)
       : null
-  ), [chatAuthOptions, recoveredRoutesBySessionId, routesBySessionId]);
+  ), [chatAuthOptions, chatModelOptions, recoveredRoutesBySessionId, routesBySessionId]);
 
   const activeRuntimeSessionId = cloudAgentRuntimeSessionId(
     accountId,
@@ -233,8 +235,8 @@ export function useCloudAgentRuntimeRouteSync({
   // state catches up, so a send right after a route change runs with it.
   const resolveChatRuntimeRoute = useCallback((sessionId?: string | null) => {
     const pending = freshPendingRuntimeRoute(pendingRoutesRef.current, cloudAgentRuntimeSessionId(accountId, sessionId), Date.now());
-    return routeWithAccountNamespace(pending ? compactCloudAgentRuntimeRoute(pending) : renderedChatRuntimeRoute(sessionId), chatModelOptions);
-  }, [accountId, chatModelOptions, renderedChatRuntimeRoute]);
+    return pending ? compactCloudAgentRuntimeRoute(pending) : renderedChatRuntimeRoute(sessionId);
+  }, [accountId, renderedChatRuntimeRoute]);
 
   const sendRuntimeRouteChangeMessage = useCallback(async ({
     sessionId,
@@ -346,11 +348,11 @@ export function useCloudAgentRuntimeRouteSync({
       selectedModel: model,
       selectedThinking: input.thinking,
     });
-    const nextRoute = resolveCloudAgentRuntimeRouteChange({
+    const nextRoute = routeWithAccountNamespace(resolveCloudAgentRuntimeRouteChange({
       authOptions: composerAuthByScope.optionsByScope.chat,
       input,
       resolvedLocalRoute,
-    });
+    }), chatModelOptions);
     const runtimeSessionId = cloudAgentRuntimeSessionId(
       normalizedAccountId,
       sessionId,
@@ -417,7 +419,7 @@ export function useCloudAgentRuntimeRouteSync({
   ]);
 
   // The composer marks the active chat's hosted account and shows when it runs on Kordi Cloud.
-  const activeChatRoute = routeWithAccountNamespace(renderedChatRuntimeRoute(activeConversationId), chatModelOptions);
+  const activeChatRoute = renderedChatRuntimeRoute(activeConversationId);
   const activeChatRouteKey = JSON.stringify(activeChatRoute);
   useEffect(() => { setActiveChatRoute(JSON.parse(activeChatRouteKey) as DesktopChatMessageRoute | null); }, [activeChatRouteKey]);
 
