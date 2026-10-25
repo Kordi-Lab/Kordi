@@ -4,7 +4,7 @@ import { resolveTranscriptPlanCards } from '@/features/cloud/planCardSnapshot';
 import { Split } from 'lucide-react';
 
 import { shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
-import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
+import { transcriptMessageRenderKey, transcriptMessageRenderKeys } from '@/features/chat/transcriptRenderKeys';
 import { collectConversationImageAttachments, shouldPreviewAttachmentInline } from '@/features/chat/attachmentMediaGallery';
 import { createTranscriptTimeSeparatorCache } from '@/features/chat/transcriptTimestamps';
 import { useTranscriptTimeZone } from '@/features/chat/useTranscriptTimeZone';
@@ -197,6 +197,7 @@ export function useChatTranscriptViewport({
     [transcriptMessages],
   );
   const timelineEntries = useMemo(() => insertPinActivities(transcriptEntries, pinActivities, hasOlderMessages), [transcriptEntries, pinActivities, hasOlderMessages]);
+  const renderKeys = useMemo(() => transcriptMessageRenderKeys(transcriptEntries.map(({ message }) => message)), [transcriptEntries]);
   const pinBoundaries = useMemo(() => {
     const before = new Set<number>();
     const after = new Set<number>();
@@ -302,7 +303,7 @@ export function useChatTranscriptViewport({
       onSelectAllMessages={onSelectAllMessages}
       animateLatestAppend={animateLatestAppend}
       animateTailResize={animateTailResize}
-      getItemKey={(entry) => 'pinActivity' in entry ? entry.pinActivity.id : transcriptMessageRenderKey(entry.message, entry.originalIndex)}
+      getItemKey={(entry) => 'pinActivity' in entry ? entry.pinActivity.id : renderKeys.get(entry.message) ?? transcriptMessageRenderKey(entry.message, entry.originalIndex)}
       renderItem={(entry) => {
         if ('pinActivity' in entry) return <PinActivityNotice activity={entry.pinActivity} />;
         const { message, originalIndex: idx } = entry;
@@ -420,6 +421,7 @@ export function useChatTranscriptViewport({
     activeActivationIds, handleActivationEnd, lastQueuedRowIndex,
     pinBoundaries,
     timelineEntries,
+    renderKeys,
     transcriptColumns,
     activeForkSourceSessionId,
     activeForkSourceTitle,
