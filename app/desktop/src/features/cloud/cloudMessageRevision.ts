@@ -27,6 +27,7 @@ export function cloudMessageRevision(messages: readonly CloudMessage[]): string 
     addFingerprintValue(message.sessionId ?? '');
     addFingerprintValue(message.messageKind ?? '');
     addFingerprintValue(JSON.stringify(message.planCard ?? null));
+    addFingerprintValue(JSON.stringify(message.proactiveOffer ?? null));
     addFingerprintValue(String(message.version ?? ''));
     addFingerprintValue(String(message.body.length));
     for (const reaction of message.reactions ?? []) {

@@ -1,0 +1,19 @@
+/* The proactive offer card an owned agent posts in its owner's conversation. Builds on the plan card surface. */
+.app-proactive-offer-problem { margin-top: 2px; font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
+.app-proactive-offer-quote {
+  margin: 0; padding: 2px 0 2px 9px; border-left: 2px solid var(--app-divider, var(--app-chat-bubble-peer-border));
+  font-size: 12px; line-height: 16px; overflow-wrap: anywhere;
+}
+.app-proactive-offer-plan {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+  font-size: 11.5px; line-height: 15px; white-space: pre-line; color: var(--utility-muted-text, var(--app-chat-meta-peer));
+}
+.app-proactive-offer-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.app-proactive-offer-muted, .app-proactive-offer-state { font-size: 11px; line-height: 14px; color: var(--utility-muted-text, var(--app-chat-meta-peer)); }
+.app-proactive-offer-state { display: flex; align-items: center; gap: 8px; }
+.app-proactive-offer-state.app-plan-card-notice { color: #b23b3b; }
+.app-proactive-offer-open {
+  padding: 0; border: 0; background: transparent; color: var(--app-chat-accent); font: inherit; font-weight: 500; cursor: pointer;
+}
+.app-proactive-offer-open:hover { text-decoration: underline; }
+.app-proactive-offer-open:focus-visible { outline: 2px solid var(--app-chat-accent); outline-offset: 1px; border-radius: 3px; }

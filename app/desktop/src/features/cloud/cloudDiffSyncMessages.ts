@@ -1,5 +1,6 @@
 import type { CloudMessage, CloudSyncEvent } from './authClient';
 import { normalizePlanCardSnapshot } from './planCardSnapshot';
+import { normalizeProactiveOffer } from './proactiveOffer';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
 import { cloudVoiceMessageMetadataOnly } from './cloudVoiceMessage';
 import {
@@ -34,6 +35,7 @@ function normalizeCloudMessage(value: unknown): CloudMessage | null {
     : undefined;
   const voiceMessage = cloudVoiceMessageMetadataOnly(record.voiceMessage);
   const planCard = normalizePlanCardSnapshot(record.planCard);
+  const proactiveOffer = normalizeProactiveOffer(record.proactiveOffer);
   const conversationSequence = Number.isSafeInteger(record.conversationSequence)
     && Number(record.conversationSequence) > 0
     ? Number(record.conversationSequence)
@@ -65,6 +67,7 @@ function normalizeCloudMessage(value: unknown): CloudMessage | null {
     ...(attachments ? { attachments } : {}),
     ...(voiceMessage ? { voiceMessage } : {}),
     ...(planCard ? { planCard } : {}),
+    ...(proactiveOffer ? { proactiveOffer } : {}),
     ...(reactions ? { reactions } : {}),
   });
 }

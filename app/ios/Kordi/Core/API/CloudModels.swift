@@ -723,8 +723,15 @@ struct CloudAgentCapabilityDraft: Identifiable, Equatable {
     }
 }
 
+/// Whether an owned agent watches its owner's groups and offers help
+/// (docs/development/proactive-agent.md). Older servers omit it.
+struct CloudAgentProactive: Codable, Hashable {
+    var enabled: Bool
+}
+
 struct CloudAgentDraft: Equatable {
     var accessScope = CloudAgentAccessScope.privateAgent
+    var proactive: CloudAgentProactive?
     var name = ""
     var role = ""
     var description = ""
@@ -741,6 +748,7 @@ struct CloudAgentDraft: Equatable {
 
     init(agent: CloudAgent) {
         accessScope = CloudAgentAccessScope(rawValue: agent.accessScope) ?? .privateAgent
+        proactive = agent.proactive
         name = agent.name
         role = agent.role
         description = agent.description ?? ""
@@ -814,13 +822,14 @@ struct CloudAgent: Codable, Hashable, Identifiable {
     let avatarUrl: String?
     let avatar: CanonicalAvatarDescriptor
     let modelRouting: CloudModelRouting
+    let proactive: CloudAgentProactive?
 
     var id: String { agentId }
 
     enum CodingKeys: String, CodingKey {
         case agentId, ownerAccountId, accessScope, status, name, role, description
         case systemPrompt, sourceSummary, boundaries, resources, skills
-        case createdAt, updatedAt, archivedAt, ownerDisplayName, avatarUrl, avatar, modelRouting
+        case createdAt, updatedAt, archivedAt, ownerDisplayName, avatarUrl, avatar, modelRouting, proactive
     }
 
     init(
@@ -842,7 +851,8 @@ struct CloudAgent: Codable, Hashable, Identifiable {
         ownerDisplayName: String?,
         avatarUrl: String? = nil,
         avatar: CanonicalAvatarDescriptor,
-        modelRouting: CloudModelRouting = .empty
+        modelRouting: CloudModelRouting = .empty,
+        proactive: CloudAgentProactive? = nil
     ) {
         self.agentId = agentId
         self.ownerAccountId = ownerAccountId
@@ -863,6 +873,7 @@ struct CloudAgent: Codable, Hashable, Identifiable {
         self.avatarUrl = avatarUrl
         self.avatar = avatar
         self.modelRouting = modelRouting
+        self.proactive = proactive
     }
 
     init(from decoder: Decoder) throws {
@@ -886,6 +897,7 @@ struct CloudAgent: Codable, Hashable, Identifiable {
         avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
         avatar = try container.decode(CanonicalAvatarDescriptor.self, forKey: .avatar)
         modelRouting = try container.decodeIfPresent(CloudModelRouting.self, forKey: .modelRouting) ?? .empty
+        proactive = try? container.decodeIfPresent(CloudAgentProactive.self, forKey: .proactive)
     }
 }
 

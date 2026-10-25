@@ -51,7 +51,7 @@ import { MessageDeliveryStatusSlot,TranscriptMessageTransferActions } from './tr
 import { RequestReplyLine,SourceMessageQuoteRow,ThreadReplyLine } from './transcriptReplyAttribution';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { VoiceMessageContent } from './voiceMessage';
-import { PipSenderTag, PlanCardContent } from './planCard';
+import { PipSenderTag, PlanCardContent } from './planCard'; import { ProactiveOfferCard } from './proactiveOfferCard';
 import { CompactionSummaryMessage } from './transcriptCompactionSummary';
 import { isCompactionSummaryMessage } from './transcriptCompactionSummaryEligibility';
 export { MessageContextMenuContent, type MessageContextMenuActionHandlers } from './messageContextMenuContent';
@@ -572,7 +572,7 @@ function MessageBubbleView({
               {forkButton}
               {forkChip}
             </div>
-            <LiveChatTurnCard
+            {msg.proactiveOffer ? <ProactiveOfferCard offer={msg.proactiveOffer} /> : <LiveChatTurnCard
               turn={msg.turn}
               hideSourceQuote={threadLayout}
               historical={msg.turn.completed} showReasoning={msg.role === 'owned-agent'}
@@ -583,7 +583,7 @@ function MessageBubbleView({
               onNavigateToMessage={onNavigateToMessage}
               onOpenArtifact={onOpenArtifact}
               onOpenAuthSettings={onOpenAuthSettings}
-            />
+            />}
             <RelatedAgentSessionLinks sessions={relatedAgentSessions} agentName={msg.sender} statusBySessionId={relatedAgentSessionStatusById} onOpen={onOpenForkSession} />
             {msg.attachments?.length ? <div className="mt-1.5"><AttachmentPreview msg={msg} /></div> : null}
           </div>
@@ -617,7 +617,7 @@ function MessageBubbleView({
   const deliveryStatus = primaryMessageStatus(msg);
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage; const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
-  const hasVoice = Boolean(msg.voiceMessage); const hasPlanCard = Boolean(msg.planCard); const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0); const planCardOnly = showCompactFooter && hasPlanCard && !hasText && !hasVoice && !((msg.attachments?.length ?? 0) > 0) && !msg.supportContactTyping && !msg.supportContactResponse;
+  const hasVoice = Boolean(msg.voiceMessage); const hasPlanCard = Boolean(msg.planCard || msg.proactiveOffer); const hasText = Boolean(msg.callActivity) || (!hasVoice && !msg.proactiveOffer && msg.text.trim().length > 0); const planCardOnly = showCompactFooter && hasPlanCard && !hasText && !hasVoice && !((msg.attachments?.length ?? 0) > 0) && !msg.supportContactTyping && !msg.supportContactResponse;
   const hasAttachments = (msg.attachments?.length ?? 0) > 0; const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasOnlyBorderlessMediaAttachments = hasOnlyImageAttachments || (!hasText && !hasVoice && attachmentsAreOnlyMp4Videos(msg.attachments)); const hasMixedImageAttachments = hasText && (msg.attachments ?? []).some((attachment) => attachment.kind === 'image');
   const hasGroupedImageAttachments = hasAttachments && (msg.attachments?.length ?? 0) > 1 && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasDetachedImageGroup = hasGroupedImageAttachments && hasText;
   const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage); const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus; const hasLinkPreview = (isOwnHumanMessage || isPeerHumanMessage) && hasText && !msg.callActivity && !hasVoice && !hasPlanCard && !hasAttachments && Boolean(standaloneExternalMessageLink(msg.text)); const bareSurface = hasOnlyBorderlessMediaAttachments || planCardOnly;
@@ -672,7 +672,7 @@ function MessageBubbleView({
                   imageGallery={imageGallery}
                   imageDeliveryStatus={hasOnlyBorderlessMediaAttachments && isOwnHumanMessage ? bubbleDeliveryStatus : null}
                 />
-              ) : null}{msg.planCard ? <PlanCardContent card={msg.planCard} conversationId={msg.reactionConversationId} /> : null}
+              ) : null}{msg.planCard ? <PlanCardContent card={msg.planCard} conversationId={msg.reactionConversationId} /> : null}{msg.proactiveOffer ? <ProactiveOfferCard offer={msg.proactiveOffer} /> : null}
               {msg.supportContactTyping ? (
                 <SupportContactTypingIndicator />
               ) : hasText ? (
@@ -695,7 +695,7 @@ function MessageBubbleView({
       ) : (
         <>
           <div className={cn('flex flex-col', hasAttachments && !hasDetachedImageGroup && hasText ? 'gap-2.5' : 'gap-0')}>{msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} /> : null}
-            {hasAttachments && !hasDetachedImageGroup ? <AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}{msg.planCard ? <PlanCardContent card={msg.planCard} conversationId={msg.reactionConversationId} /> : null}
+            {hasAttachments && !hasDetachedImageGroup ? <AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}{msg.planCard ? <PlanCardContent card={msg.planCard} conversationId={msg.reactionConversationId} /> : null}{msg.proactiveOffer ? <ProactiveOfferCard offer={msg.proactiveOffer} /> : null}
             {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MarkdownContent text={msg.text} showLinkIcons copySurface="message" />) : null}
           </div>
           {(msg.statusChips?.length || footerDetail) ? (

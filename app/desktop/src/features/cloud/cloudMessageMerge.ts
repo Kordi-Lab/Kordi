@@ -156,6 +156,7 @@ export function cloudMessagesEqual(
     && (message.messageKind ?? null) === (other.messageKind ?? null)
     && cloudVoiceMessagesEqual(message.voiceMessage, other.voiceMessage)
     && JSON.stringify(message.planCard ?? null) === JSON.stringify(other.planCard ?? null)
+    && JSON.stringify(message.proactiveOffer ?? null) === JSON.stringify(other.proactiveOffer ?? null)
     && (message.canonicalHistoryLocalMessageId ?? null) === (other.canonicalHistoryLocalMessageId ?? null)
     && (message.version ?? null) === (other.version ?? null)
     && cloudReactionsEqual(message.reactions, other.reactions)
@@ -214,6 +215,9 @@ export function mergeCloudMessageMonotonicState(
     planCard: incomingIsOlder
       ? current.planCard
       : incoming.planCard ?? current.planCard,
+    proactiveOffer: incomingIsOlder
+      ? current.proactiveOffer
+      : incoming.proactiveOffer ?? current.proactiveOffer,
     deliveredAt: latestCloudReceiptAt(current.deliveredAt, incoming.deliveredAt),
     readAt: latestCloudReceiptAt(current.readAt, incoming.readAt),
     readByAccountIds: mergeCloudReaderAccountIds(

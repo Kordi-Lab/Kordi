@@ -1,5 +1,6 @@
 import type { MessagePlanCard } from '@/kordi-app/types/message';
 import type { CloudMessageAttachment, CloudVoiceMessage } from './cloudAttachmentTypes';
+import type { MessageProactiveOffer } from './proactiveOffer';
 
 export type CloudMessageDirection = 'incoming' | 'outgoing';
 
@@ -16,6 +17,7 @@ export type CloudMessage = {
   sessionId?: string | null;
   attachments?: CloudMessageAttachment[]; voiceMessage?: CloudVoiceMessage | null;
   planCard?: MessagePlanCard | null;
+  proactiveOffer?: MessageProactiveOffer | null;
   conversationId?: string | null;
   conversationSequence?: number | null;
   clientMessageId?: string | null;

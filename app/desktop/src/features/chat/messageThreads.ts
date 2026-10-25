@@ -56,6 +56,7 @@ function messageHasVisibleContent(message: Message) {
     || message.text.trim()
     || message.voiceMessage
     || message.planCard
+    || message.proactiveOffer
     || message.attachments?.length
     || message.detail?.trim()
     || message.sourceMessage

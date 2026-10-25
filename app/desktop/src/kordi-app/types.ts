@@ -165,7 +165,7 @@ export type Agent = {
   isCollaborationActive?: boolean;
   isCollaborationRegistered?: boolean;
   cloudAgentId?: string;
-  cloudAgentAccessScope?: 'private' | 'participant_conversations';
+  cloudAgentAccessScope?: 'private' | 'participant_conversations'; cloudAgentProactive?: { enabled: boolean };
   cloudAgentOwnerAccountId?: string;
   cloudAgentDescription?: string | null;
   cloudAgentSourceSummary?: string | null;
@@ -744,7 +744,7 @@ export type DesktopCollaborationConversationMessage = {
   attachments?: MessageAttachment[];
   mentions?: MessageMention[];
   messageAction?: MessageActionMetadata | null;
-  messageKind?: string | null; voiceMessage?: Message['voiceMessage']; readReceiptSummary?: Message['readReceiptSummary']; planCard?: Message['planCard'];
+  messageKind?: string | null; voiceMessage?: Message['voiceMessage']; readReceiptSummary?: Message['readReceiptSummary']; planCard?: Message['planCard']; proactiveOffer?: Message['proactiveOffer'];
   localTurn?: DesktopChatTurnSnapshot | null; reactionConversationId?: string | null; reactionTargetMessageId?: string | null; cloudMessageVersion?: number | null; editedAt?: string | null; reactions?: Array<{ value: string; accountIds: string[] }>;
 };
 export type DesktopCollaborationSessionThreadMessage = {

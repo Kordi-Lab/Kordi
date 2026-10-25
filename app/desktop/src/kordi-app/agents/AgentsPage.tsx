@@ -47,7 +47,7 @@ import { useAgentBuilderSession } from './useAgentBuilderSession';
 import { useAgentsPageModel } from './useAgentsPageModel';
 import { useFactoryBuildRouting } from './useFactoryBuildRouting';
 import { useSkillLibrary } from './useSkillLibrary';
-import { useFactoryCreationAvatar } from './useFactoryCreationAvatar';
+import { useFactoryCreationAvatar } from './useFactoryCreationAvatar'; import { factoryProactiveControl, useCreationProactiveDraft } from './factoryProactiveDraft';
 import { cloudAgentDefinitionChanges, factoryAgentAvatarPresentation, factoryAgentIdentityChanges, factoryLocalAgentCapabilities, publishDefaultAgentIdentity } from './factoryAgentIdentity';
 
 export function AgentsPage({
@@ -119,7 +119,7 @@ export function AgentsPage({
     availableTools,
     availablePlugins,
     activeDraftChanges: modelActiveDraftChanges,
-    resetAgentDraft,
+    resetAgentDraft, setProactiveDraft,
     saveAgentConfig,
     markAgentDraftPublished,
     saveActiveFile,
@@ -277,14 +277,13 @@ export function AgentsPage({
     : null;
   const creationDraftId = builder.status?.draftId ?? null;
   const factoryAvatar = useFactoryCreationAvatar(creationDraftId, creating ? undefined : selectedAvatarUrl);
-  const creationAccessScope: CloudAgentAccessScope = builder.status?.draft?.access === 'participant-conversations'
-    ? 'participant_conversations'
-    : 'private';
+  const creationAccessScope: CloudAgentAccessScope = builder.status?.draft?.access === 'participant-conversations' ? 'participant_conversations' : 'private';
+  const creationProactive = useCreationProactiveDraft(creating ? creationDraftId : null);
   const activeAgentConfig = selectedAgent && builder.status?.draft ? {
     systemPrompt: builder.status.draft.systemPrompt,
     loadedSkills: builder.status.draft.skills.map((skill) => skill.name),
     loadedTools: builder.status.draft.tools,
-    loadedPlugins: builder.status.draft.plugins,
+    loadedPlugins: builder.status.draft.plugins, proactive: modelActiveAgentConfig?.proactive,
   } : modelActiveAgentConfig;
   const rawActiveDraftChanges = activeAgentConfig && activePersistedConfig
     ? agentStudioConfigChanges(activeAgentConfig, activePersistedConfig)
@@ -316,9 +315,7 @@ export function AgentsPage({
     } else if (canToggleRuntimeSkills) kinds.add('skill');
     return kinds;
   }, [buildingStandaloneArtifact, canToggleRuntimeSkills, creating, hasLocalConfig, routeKind, selectedAgent?.cloudAgentId]);
-  const builderAccessScope: CloudAgentAccessScope = builder.status?.draft?.access === 'participant-conversations'
-    ? 'participant_conversations'
-    : 'private';
+  const builderAccessScope: CloudAgentAccessScope = builder.status?.draft?.access === 'participant-conversations' ? 'participant_conversations' : 'private';
   const publishedAccessScope: CloudAgentAccessScope = selectedAgent
     ? publishedAccessByAgentId[selectedAgent.id]
       ?? selectedAgent.cloudAgentAccessScope
@@ -483,7 +480,7 @@ export function AgentsPage({
         if (!creationDraft || !onCreateCloudAgent) return;
         const created = await onCreateCloudAgent(factoryAgentCreateInput({
           draft: creationDraft, runtime: status.draft, accessScope: creationAccessScope,
-          creatorAgent, avatarMutation: factoryAvatar.mutation,
+          creatorAgent, avatarMutation: factoryAvatar.mutation, proactive: creationProactive.input,
         }));
         factoryAvatar.clearAvatar();
         const targetKey = factoryArtifactTargetKey(cloudAccountId, 'agent', created.id);
@@ -522,7 +519,7 @@ export function AgentsPage({
               expectedVersion: selectedAgent.cloudAgentAvatarVersion,
             },
           } : {}),
-          ...(accessChanged ? { accessScope: selectedAccessScope } : {}),
+          ...(accessChanged ? { accessScope: selectedAccessScope } : {}), ...(activeDraftChanges.some((change) => change.key === 'proactive') && activeAgentConfig.proactive ? { proactive: activeAgentConfig.proactive } : {}),
         });
         markAgentDraftPublished(selectedAgent, activeAgentConfig);
         setAccessDraftByAgentId((current) => {
@@ -762,6 +759,7 @@ export function AgentsPage({
               creationDraft={creationDraft}
               creationAccessScope={creationAccessScope}
               agentAccessScope={selectedAccessScope}
+              proactive={factoryProactiveControl({ creating, creation: creationProactive, agent: selectedAgent, config: activeAgentConfig, setProactiveDraft })}
               onCreationAccessScopeChange={(scope) => {
                 void persistBuilderDraft((draft) => ({ ...draft, access: scope === 'participant_conversations' ? 'participant-conversations' : 'only-me' }));
               }}

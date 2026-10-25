@@ -33,6 +33,7 @@ export function messageSnapshotKey(msg: Message) {
     msg.reactionTargetMessageId ?? '',
     msg.cloudMessageVersion ?? '',
     msg.planCard ? [msg.planCard.eventId, msg.planCard.view ?? '', msg.planCard.revision, ...(msg.planCard.options ?? []).map((option) => option.votes.join('+'))].join(':') : '',
+    msg.proactiveOffer ? [msg.proactiveOffer.proposalId, msg.proactiveOffer.status, msg.proactiveOffer.runId ?? '', msg.proactiveOffer.expiresAt ?? ''].join(':') : '',
     msg.editedAt ?? '',
     msg.voiceMessage ? [
       msg.voiceMessage.mediaId,
