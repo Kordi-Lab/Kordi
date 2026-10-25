@@ -178,6 +178,9 @@ macro_rules! utc {
 const PROPOSAL_SELECT: &str = concat!(
     "SELECT jsonb_build_object(
          'proposalId', p.proposal_id, 'agentId', p.agent_id,
+         'agentName', COALESCE(agent.name, ",
+    super::agents::default_name_sql!("owner", "profile"),
+    "),
          'conversationId', p.conversation_id::text, 'sessionId', p.session_id,
          'conversationTitle', COALESCE(c.group_title, c.shared_title),
          'triggerMessageId', p.trigger_message_id, 'evidence', p.evidence_json,
@@ -195,6 +198,10 @@ const PROPOSAL_SELECT: &str = concat!(
     utc!("p.expires_at"),
     ")
      FROM cloud_agent_proactive_proposals p
+     JOIN cloud_accounts owner ON owner.account_id = p.owner_account_id
+     LEFT JOIN cloud_default_agent_profiles profile
+       ON profile.owner_account_id = p.owner_account_id
+     LEFT JOIN cloud_agent_definitions agent ON agent.agent_id = p.agent_id
      LEFT JOIN cloud_chat_conversations c ON c.conversation_id = p.conversation_id
      LEFT JOIN cloud_agent_fallback_runs run ON run.run_id = p.run_id"
 );
