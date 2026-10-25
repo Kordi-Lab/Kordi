@@ -330,7 +330,7 @@ export function useChatTranscriptViewport({
               isCompressionActive={isCompressionActive}
               own={msg.role === 'user' || msg.isOwnMessage === true}
               // The sent bubble's rule: a name only where it shows one, so becoming active changes no height.
-              sender={queuedBubbleSenderLabel(msg, densityMode, !pinBoundaries.after.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, groupingSeparators))}
+              sender={queuedBubbleSenderLabel(msg, msg.role === 'user' || msg.isOwnMessage === true, densityMode, !pinBoundaries.after.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, groupingSeparators))}
               threadLayout={threadLayout}
               densityMode={densityMode}
               showAvatar={idx === lastQueuedRowIndex && queuedMessages.length === 0}
