@@ -12,6 +12,7 @@ mod group_target;
 pub(crate) mod identity;
 mod leases;
 pub(crate) mod omp_state;
+mod plain_group_request;
 mod project_unavailable;
 pub(crate) mod prompt_history;
 pub(crate) mod route_fill;

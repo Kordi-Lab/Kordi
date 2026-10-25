@@ -9,5 +9,6 @@ mod default_agent_db;
 mod definition_db;
 mod fixture;
 mod offer_db;
+mod plain_reply_db;
 mod proposals_db;
 mod sweep_db;

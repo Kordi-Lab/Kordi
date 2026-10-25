@@ -17,7 +17,7 @@ fn setting_uri(agent_id: &str) -> String {
 
 /// The fixture with Scout off and the owner's default agent as `agent_id`,
 /// its setting `enabled` through the route.
-async fn default_fixture(enabled: bool) -> Option<Fixture> {
+pub(super) async fn default_fixture(enabled: bool) -> Option<Fixture> {
     let mut f = fixture().await?;
     query("UPDATE cloud_agent_definitions SET proactive_json = '{\"enabled\":false}' WHERE agent_id = $1")
         .bind(&f.agent_id)
