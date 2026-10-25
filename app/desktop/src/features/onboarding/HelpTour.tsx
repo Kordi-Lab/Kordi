@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, X } from 'lucide-react';
-import { helpTourSteps, type HelpTourStep } from './helpTourSteps';
+import { helpTours, type HelpTourId, type HelpTourStep } from './helpTourSteps';
 import { readHelpProgress, saveHelpProgress } from './helpProgress';
 import { helpTourGeometry, type TourRect } from './helpTourGeometry';
 import { cloudApiBaseUrl, defaultCloudAuthClient } from '@/features/cloud/authClient';
@@ -11,19 +11,24 @@ import '@/styles/help.css';
 
 type Props = {
   progressKey: string;
+  tourId?: HelpTourId;
   settingsAvailable: boolean;
   onPrepare: (step: HelpTourStep) => void;
   onExit: (permissions?: boolean) => void;
 };
 
-export default function HelpTour({ progressKey, settingsAvailable, onPrepare, onExit }: Props) {
-  const [index, setIndex] = useState(() => { const saved = readHelpProgress(progressKey); return saved.completed ? 0 : saved.step; });
+export default function HelpTour({ progressKey, tourId = 'workspace', settingsAvailable, onPrepare, onExit }: Props) {
+  const helpTourSteps = helpTours[tourId];
+  const [index, setIndex] = useState(() => { const saved = readHelpProgress(progressKey); return saved.completed ? 0 : Math.min(saved.step, helpTourSteps.length - 1); });
   const [saved, setSaved] = useState(true);
   const [anchor, setAnchor] = useState<{ target: string; rect: TourRect } | null>(null);
+  const [groundingState, setGroundingState] = useState({ card: '', social: '' });
   const [unavailable, setUnavailable] = useState<string[]>([]);
   const client = useMemo(() => defaultCloudAuthClient(), []);
   const { capabilities, status } = useCloudAuthCapabilitiesState(client, cloudApiBaseUrl());
   const steps = helpTourSteps.filter((item) => !unavailable.includes(item.target)
+    && !(item.groundingScreen === 'card' && groundingState.card === 'empty')
+    && !(['grounding-pair', 'grounding-room'].includes(item.target) && groundingState.social === 'empty')
     && (item.target !== 'grounding' || status === 'loading' || commonGroundVersionFromCapabilities(capabilities) !== null));
   const [trackedTarget, setTrackedTarget] = useState<string | null>(null);
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
@@ -34,10 +39,10 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
   const titleId = useId();
   const bodyId = useId();
   // Persist the canonical step index so hiding an unavailable feature does not shift saved progress.
-  const step = steps.find((item) => helpTourSteps.indexOf(item) >= index) ?? steps[steps.length - 1] ?? helpTourSteps[6];
+  const step = steps.find((item) => helpTourSteps.indexOf(item) >= index) ?? steps[steps.length - 1] ?? helpTourSteps[helpTourSteps.length - 1];
   const visibleIndex = steps.indexOf(step);
   const canonicalIndex = helpTourSteps.indexOf(step);
-  const targetName = canonicalIndex === 0 && !settingsAvailable ? 'profile' : step.target;
+  const targetName = step.target === 'settings-auth' && !settingsAvailable ? 'profile' : step.target;
   const rect = trackedTarget === targetName && anchor?.target === targetName ? anchor.rect : null;
   const last = visibleIndex === steps.length - 1;
   const popoverVisible = Boolean(rect);
@@ -52,6 +57,12 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
     let current: HTMLElement | null = null;
     let missingSince = performance.now();
     const measure = () => {
+      const grounding = document.querySelector<HTMLElement>('[data-help-grounding-card]');
+      if (grounding) {
+        const card = grounding.dataset.helpGroundingCard ?? '';
+        const social = grounding.dataset.helpGroundingSocial ?? '';
+        setGroundingState((old) => old.card === card && old.social === social ? old : { card, social });
+      }
       const element = document.querySelector<HTMLElement>(`[data-help-target="${targetName}"]`);
       if (element && element !== current) { current = element; element.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' }); }
       const bounds = element?.getBoundingClientRect();
@@ -62,7 +73,7 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
       if (nextRect) setAnchor((old) => old?.target === targetName && JSON.stringify(old.rect) === JSON.stringify(nextRect) ? old : { target: targetName, rect: nextRect });
       setTrackedTarget(nextRect ? targetName : null);
       if (nextRect) missingSince = performance.now();
-      else if (performance.now() - missingSince >= 1500) {
+      else if (performance.now() - missingSince >= (step.groundingScreen || step.settings ? 6000 : 1500)) {
         // A tour only explains controls the user can see and use.
         setUnavailable((old) => old.includes(step.target) ? old : [...old, step.target]);
         return;
@@ -106,8 +117,9 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
       <div className="help-tour-body">
       <div className="help-tour-top"><span aria-live="polite">Step {visibleIndex + 1} of {steps.length}</span><button className="help-icon-button" aria-label="Close tour" onClick={() => onExit()}><X size={16} /></button></div>
       <h2 id={titleId}>{step.title}</h2>
-      <p id={bodyId}>{canonicalIndex === 0 && !settingsAvailable ? 'Open your profile to sign in. Then open Authentication in settings to connect an AI provider.' : step.body}</p>
-      {last ? <button className="help-text-button" onClick={() => { remember(canonicalIndex, true); onExit(true); }}>Open Permissions & access</button> : null}
+      <p id={bodyId}>{step.target === 'settings-auth' && !settingsAvailable ? 'Open your profile to sign in. Then open Authentication in settings to connect an AI provider.' : step.body}</p>
+      {last && tourId === 'grounding' && groundingState.social === 'empty' ? <p>Build your first card to unlock pairing and rooms. Open the card tour from ? to learn how.</p> : null}
+      {last && tourId === 'workspace' ? <button className="help-text-button" onClick={() => { remember(canonicalIndex, true); onExit(true); }}>Open Permissions & access</button> : null}
       {!saved ? <p role="status">Progress could not be saved on this device.</p> : null}
       <div className="help-tour-actions"><button className="help-text-button" onClick={() => onExit()}>Skip tour</button><div><button className="help-secondary" disabled={visibleIndex <= 0} onClick={previous} aria-label="Previous step"><ArrowLeft size={16} /></button><button className="help-primary" onClick={next}>{last ? 'Finish tour' : 'Next'}{!last ? <ArrowRight size={15} /> : null}</button></div></div>
       </div>

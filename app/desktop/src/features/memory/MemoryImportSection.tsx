@@ -150,6 +150,7 @@ export function MemoryImportSection({
                   variant="secondary"
                   className="h-8 rounded-lg px-3.5 text-[12px]"
                   disabled={running}
+                  data-help-target="memory-import-files"
                   onClick={() => { void choose(); }}
                 >
                   Choose files…
@@ -159,6 +160,7 @@ export function MemoryImportSection({
                 type="button"
                 className="h-8 rounded-lg px-3.5 text-[12px]"
                 disabled={running || !providerReady || selected.size === 0}
+                data-help-target="memory-import-run"
                 onClick={() => { void run(); }}
               >
                 {running ? 'Importing…' : 'Import'}

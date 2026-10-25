@@ -98,12 +98,12 @@ export function BuildScreen({ state, store, host }: { state: CgState; store: Com
       </CgSection>
       <CgSection title="Notes">
         <CgGroup>
-          <textarea className="cg-textarea" value={picks.notes} onChange={(event) => set({ notes: event.target.value })} placeholder="What are you working on?" aria-label="Notes" />
+          <textarea data-help-target="grounding-notes" className="cg-textarea" value={picks.notes} onChange={(event) => set({ notes: event.target.value })} placeholder="What are you working on?" aria-label="Notes" />
         </CgGroup>
       </CgSection>
       <div className="cg-actions-center">
         <CgNotice text={state.notice ?? failed} />
-        <button type="button" className="cg-build-pill" disabled={!canBuildProfile(choices)} onClick={() => void store.build(commonGroundBuildRequest(choices))}>
+        <button type="button" data-help-target="grounding-build" className="cg-build-pill" disabled={!canBuildProfile(choices)} onClick={() => void store.build(commonGroundBuildRequest(choices))}>
           Build
         </button>
       </div>

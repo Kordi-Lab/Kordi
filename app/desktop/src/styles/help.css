@@ -12,7 +12,7 @@
 
 /* The workspace stays visible beneath a target-shaped spotlight. */
 .help-tour-layer { position: fixed; inset: 0; z-index: 300; pointer-events: none; }
-.help-tour-spotlight { position: fixed; border: 2px solid var(--app-transient-text); border-radius: 12px; box-shadow: 0 0 0 9999px rgb(0 0 0 / 38%), 0 0 0 4px rgb(255 255 255 / 12%); }
+.help-tour-spotlight { position: fixed; border: 1px solid color-mix(in srgb, var(--app-sidebar-accent) 65%, transparent); border-radius: 10px; box-shadow: 0 0 0 9999px rgb(0 0 0 / 24%); }
 .help-tour-dim { position: fixed; inset: 0; background: rgb(0 0 0 / 38%); }
 .help-tour-card { position: fixed; width: min(320px, calc(100vw - 24px)); pointer-events: auto; border-radius: 14px; background: var(--app-transient-surface-bg); color: var(--app-transient-text); border: 1px solid var(--app-transient-border); box-shadow: 0 12px 45px rgb(0 0 0 / 30%); outline: none; }
 .help-tour-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; color: var(--app-transient-muted-text); font-size: 11px; font-weight: 600; letter-spacing: .04em; }
@@ -93,3 +93,6 @@
     -webkit-backdrop-filter: none;
   }
 }
+
+.help-menu-items > button:disabled { opacity: .45; cursor: default; }
+.help-menu-note { margin: 2px 10px 10px; font-size: 11px; line-height: 1.5; color: var(--app-transient-muted-text); }

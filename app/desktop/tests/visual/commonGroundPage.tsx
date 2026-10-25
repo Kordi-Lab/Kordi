@@ -1,4 +1,6 @@
-import { StrictMode, useLayoutEffect, useMemo } from 'react';
+import HelpTour from '../../src/features/onboarding/HelpTour';
+import { requestHelpGrounding } from '../../src/features/onboarding/helpNavigation';
+import { StrictMode, useLayoutEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { createCommonGroundClient } from '../../src/features/commonGround/client';
@@ -23,10 +25,13 @@ const theme = params.get('theme') === 'light' ? 'light' : 'dark';
 const screen = params.get('screen') ?? 'home';
 localStorage.setItem('kordi.themeMode.v1', theme);
 const fx = commonGroundFixtures(theme);
+if (params.has('emptyCard')) {
+  fx.profiles = fx.profiles.map((profile) => ({ ...profile, hasCard: false }));
+}
 
 const ROUTES: Record<string, (query: string, body: Record<string, unknown>) => unknown> = {
   'GET profiles': () => ({ profiles: fx.profiles }),
-  'GET card': (query) => (screen === 'build' || query.includes('cgp_health') ? fx.healthOwner : fx.owner),
+  'GET card': (query) => params.has('emptyCard') ? { ...fx.owner, card: null } : (screen === 'build' || query.includes('cgp_health') ? fx.healthOwner : fx.owner),
   'GET recent': () => fx.recent,
   'GET profiles/cgp_work/memories': () => ({ memories: fx.memories }),
   'GET documents': () => ({ documents: fx.documents }),
@@ -43,12 +48,15 @@ const ROUTES: Record<string, (query: string, body: Record<string, unknown>) => u
   'GET people/acct_hana/match': () => (screen === 'meet' ? { ...fx.match, relationship: { ...fx.match.relationship, contact: true } } : fx.match),
 };
 
+const featureTourActions: string[] = [];
+Object.assign(window, { featureTourActions });
 const realFetch = window.fetch.bind(window);
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input instanceof Request ? input.url : input);
   const marker = '/v1/cloud/common-ground/';
   // Move to… and Remove call the account memory routes; the preview accepts them.
   if (url.includes('/v1/cloud/memory/')) return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  if (url.includes(marker) && init?.method && init.method !== 'GET') featureTourActions.push(init.method);
   const at = url.indexOf(marker);
   if (at < 0) return realFetch(input, init);
   const [path, query = ''] = url.slice(at + marker.length).split('?');
@@ -112,6 +120,8 @@ const CONTACTS: Contact[] = ['Maya Chen', 'Hana Sato', 'Ines Wolf', 'Rafa Mendes
 });
 
 function Preview({ store }: { store: CommonGroundStore }) {
+  const [tourOpen, setTourOpen] = useState(params.has('tour'));
+  const tourId = params.get('tour') === 'grounding' ? 'grounding' : 'cards';
   useLayoutEffect(() => {
     document.body.classList.toggle('theme-light', theme === 'light');
     document.body.classList.toggle('theme-dark', theme === 'dark');
@@ -139,6 +149,9 @@ function Preview({ store }: { store: CommonGroundStore }) {
         leadingListItems={<CommonGroundContactsRow selected onSelect={() => undefined} />}
         leadingDetail={<CommonGroundPage store={store} host={host} />}
       />
+      {tourOpen ? <HelpTour tourId={tourId} progressKey={`feature-tour-test:${tourId}`} settingsAvailable onExit={() => setTourOpen(false)} onPrepare={(step) => {
+        if (step.groundingScreen) requestHelpGrounding(fx.self.accountId, step.groundingScreen);
+      }} /> : null}
     </div>
   );
 }

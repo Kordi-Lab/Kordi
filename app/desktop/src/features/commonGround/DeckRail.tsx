@@ -21,7 +21,7 @@ export function DeckRail({ cards, selected, canAdd, onSelect, onOpen, onNew }: {
 }) {
   const layout = deckLayout(cards.map((card) => card.id), selected);
   return (
-    <nav className="cg-deck-rail" aria-label="Cards">
+    <nav data-help-target="grounding-cards" className="cg-deck-rail" aria-label="Cards">
       <div className="cg-deck" style={{ height: canAdd ? layout.height : layout.plusY }}>
         {cards.map((card, index) => {
           const tile = layout.tiles[index];
@@ -63,7 +63,7 @@ export function DeckRail({ cards, selected, canAdd, onSelect, onOpen, onNew }: {
           );
         })}
         {canAdd ? (
-          <button type="button" className="cg-deck-new" style={{ transform: `translate3d(0, ${layout.plusY}px, 0)` }} onClick={onNew}>
+          <button type="button" data-help-target="grounding-new-card" className="cg-deck-new" style={{ transform: `translate3d(0, ${layout.plusY}px, 0)` }} onClick={onNew}>
             <Plus className="h-[15px] w-[15px]" aria-hidden="true" />
             New card
           </button>

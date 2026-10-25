@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { helpTourSteps } from '../src/features/onboarding/helpTourSteps';
+import { helpTourSteps, helpTours } from '../src/features/onboarding/helpTourSteps';
 import { HELP_TOUR_STEP_COUNT } from '../src/features/onboarding/helpProgress';
 import { helpTourGeometry } from '../src/features/onboarding/helpTourGeometry';
 import { helpProgressKey, readHelpProgress, saveHelpProgress, markHelpWelcome } from '../src/features/onboarding/helpProgress';
 import { normalizePermission, permissionAction } from '../src/features/onboarding/permissionAccess';
-import { consumeHelpGrounding, hasHelpGrounding, requestHelpGrounding } from '../src/features/onboarding/helpNavigation';
+import { consumeHelpGrounding, consumeHelpGroundingScreen, hasHelpGrounding, requestHelpGrounding } from '../src/features/onboarding/helpNavigation';
 
 function memoryStorage(): Storage {
   const values = new Map<string, string>();
@@ -15,6 +15,7 @@ function memoryStorage(): Storage {
 
 test('the workspace tour covers setup, cards, social, conversations, Factory, Digest, and access', () => {
   assert.equal(helpTourSteps.length, HELP_TOUR_STEP_COUNT);
+  for (const steps of Object.values(helpTours)) assert.ok(steps.length <= HELP_TOUR_STEP_COUNT);
   assert.deepEqual(helpTourSteps.map((step) => step.target), ['settings-auth', 'grounding', 'nav-contacts', 'nav-chats', 'nav-agents', 'nav-digest', 'help']);
 });
 
@@ -60,6 +61,13 @@ test('Grounding navigation survives mounting and cannot cross into another accou
     requestHelpGrounding('first-user');
     assert.equal(consumeHelpGrounding('second-user'), false);
     assert.equal(hasHelpGrounding('first-user'), false);
+    requestHelpGrounding('first-user', 'build');
+    assert.equal(consumeHelpGrounding('first-user'), true);
+    assert.equal(consumeHelpGroundingScreen('first-user'), 'build');
+    assert.equal(consumeHelpGroundingScreen('first-user'), null);
+    requestHelpGrounding('first-user', 'card');
+    assert.equal(consumeHelpGroundingScreen('second-user'), null);
+    assert.equal(consumeHelpGroundingScreen('first-user'), null);
   } finally { Object.assign(globalThis, { window: previous }); }
 });
 

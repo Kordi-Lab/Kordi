@@ -168,7 +168,7 @@ export function MemoryOrganizer({
 
   return (
     <SettingsSection title={`All memories · ${lessons.length}`}>
-      <div data-memory-organizer="">
+      <div data-memory-organizer="" data-help-target="memory-review">
         <p className="sr-only" aria-live="polite">{statusMessage}</p>
         {lessons.length > 0 ? (
           <>

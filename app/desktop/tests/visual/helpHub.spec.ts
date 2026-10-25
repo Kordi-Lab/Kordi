@@ -11,7 +11,7 @@ test('help is a compact menu and direct navigation preserves the draft', async (
   await expect(menu).toBeVisible();
   const bounds = await menu.boundingBox();
   expect(bounds!.width).toBeLessThanOrEqual(300);
-  expect(bounds!.height).toBeLessThan(250);
+  expect(bounds!.height).toBeLessThan(300);
   await expect(page.getByRole('searchbox')).toHaveCount(0);
   await page.screenshot({ path: test.info().outputPath('help-menu-dark.png') });
   await page.getByRole('button', { name: 'Permissions & access', exact: true }).click();
@@ -276,3 +276,47 @@ test('startup welcome waits through a launch dialog without flashing first', asy
   await page.evaluate(() => document.querySelector('[role="dialog"]')!.remove());
   await expect(invite).toBeVisible();
 });
+
+
+test('feature tours remain discoverable when Grounding is unavailable', async ({ page }) => {
+  await page.route('**/v1/cloud/auth/capabilities', (route) => route.fulfill({ json: { password: true, memoryVersion: 3 } }));
+  await page.goto('/tests/visual/helpHub.html?isolated=1');
+  await page.getByRole('button', { name: 'Help & setup', exact: true }).click();
+  await page.getByRole('button', { name: 'Feature tours', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Meet people with Grounding' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Create and share cards' })).toBeDisabled();
+  await expect(page.getByText('Grounding and cards are not enabled in this workspace yet.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Import memory', exact: true })).toBeEnabled();
+});
+
+for (const [tour, targets] of [
+  ['grounding', ['grounding', 'grounding-cards', 'grounding-pair', 'grounding-room']],
+  ['cards', ['grounding-cards', 'grounding-new-card', 'grounding-documents', 'grounding-notes', 'grounding-build', 'grounding-topics', 'grounding-sharing']],
+  ['imports', ['settings-memory', 'memory-import-files', 'memory-import-run', 'memory-review']],
+] as const) {
+  test(`${tour} tour follows real feature controls without building, sharing, or importing`, async ({ page }) => {
+    await page.goto(tour === 'imports' ? '/tests/visual/memorySettings.html?tour=imports&theme=light' : `/tests/visual/commonGroundPage.html?tour=${tour}&theme=light`);
+    for (const [index, target] of targets.entries()) {
+      await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', target, { timeout: 10000 });
+      await expect(page.locator('.help-tour-card')).toBeVisible();
+      await expect(page.getByText(`Step ${index + 1} of ${targets.length}`, { exact: true })).toBeVisible();
+      if (index === 1) await page.screenshot({ path: test.info().outputPath(`${tour}-tour.png`) });
+      await page.getByRole('button', { name: index === targets.length - 1 ? 'Finish tour' : 'Next', exact: true }).click();
+    }
+    await expect(page.locator('.help-tour-layer')).toHaveCount(0);
+    expect(await page.evaluate(() => (window as unknown as { featureTourActions: string[] }).featureTourActions)).toEqual([]);
+  });
+}
+
+for (const tour of ['grounding', 'cards'] as const) {
+  test(`${tour} tour explains an unbuilt card without opening an empty review screen`, async ({ page }) => {
+    await page.goto(`/tests/visual/commonGroundPage.html?tour=${tour}&emptyCard=1&theme=light`);
+    const targets = tour === 'grounding' ? ['grounding', 'grounding-cards'] : ['grounding-cards', 'grounding-new-card', 'grounding-documents', 'grounding-notes', 'grounding-build'];
+    for (const [index, target] of targets.entries()) {
+      await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', target);
+      await page.getByRole('button', { name: index === targets.length - 1 ? 'Finish tour' : 'Next', exact: true }).click();
+    }
+    await expect(page.locator('.help-tour-layer')).toHaveCount(0);
+    expect(await page.evaluate(() => (window as unknown as { featureTourActions: string[] }).featureTourActions)).toEqual([]);
+  });
+}

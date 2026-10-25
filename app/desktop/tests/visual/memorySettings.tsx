@@ -1,3 +1,4 @@
+import HelpTour from '../../src/features/onboarding/HelpTour';
 // Login-free synthetic preview of the real account settings dialog opened on
 // the Memory tab. It uses the in-memory preview memory client, so it
 // makes no network calls and needs no session. The sample memories cover every
@@ -58,12 +59,19 @@ publishMemoryVersion(Number.isFinite(requestedVersion) && requestedVersion > 0 ?
 
 const memoryClient = createPreviewMemoryClient({ accountLabel: account.primaryEmail ?? 'taylor@memory.example' });
 const memoryImporter = createPreviewMemoryImporter();
+const featureTourActions: string[] = [];
+Object.assign(window, { featureTourActions });
+const originalChoose = memoryImporter.choose;
+if (originalChoose) memoryImporter.choose = async () => { featureTourActions.push('choose'); return originalChoose(); };
+const originalExtract = memoryImporter.extract;
+memoryImporter.extract = (...args) => { featureTourActions.push('import'); return originalExtract(...args); };
 // A signed-in provider, so the Import section is ready to run.
 const desktopAuthState = { authPath: '', hasAnyAuth: true, providers: [] };
 const noop = () => undefined;
 const resolved = async () => undefined;
 
 function Preview() {
+  const [tourOpen, setTourOpen] = useState(new URLSearchParams(location.search).has('tour'));
   const [activeSettingsSectionId, setActiveSettingsSectionId] = useState<SettingsSectionId>('auth');
   const [themeMode, setThemeMode] = useState<ThemeMode>(requestedTheme === 'light' || requestedTheme === 'dark' ? requestedTheme : 'auto');
 
@@ -106,6 +114,7 @@ function Preview() {
         themeMode={themeMode}
         setThemeMode={setThemeMode}
       />
+      {tourOpen ? <HelpTour tourId="imports" progressKey="feature-tour-test:imports" settingsAvailable onPrepare={noop} onExit={() => setTourOpen(false)} /> : null}
     </div>
   );
 }
