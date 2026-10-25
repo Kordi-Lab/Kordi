@@ -54,6 +54,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             put(update_agent).delete(archive_agent),
         )
         .route(
+            "/v1/cloud/agents/:agent_id/proactive",
+            get(proactive::get_setting).put(proactive::put_setting),
+        )
+        .route(
             "/v1/cloud/agents/:agent_id/proactive/proposals",
             get(proactive::list_proposals),
         )

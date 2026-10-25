@@ -26,7 +26,23 @@ async fn upgrade_from_148_adds_proactive_agents() {
         "other fields are untouched"
     );
     execute(&pool, "INSERT INTO cloud_chat_conversations(conversation_id,kind,created_by_account_id,client_operation_id,creation_fingerprint) VALUES('00000000-0000-4000-8000-000000000149','group','fixture-owner','00000000-0000-4000-8000-000000000001','fixture')").await;
-    execute(&pool, "INSERT INTO cloud_agent_proactive_state(agent_id,conversation_id) VALUES('cloud_agent_fixture','00000000-0000-4000-8000-000000000149')").await;
+    execute(&pool, "INSERT INTO cloud_agent_proactive_state(agent_id,owner_account_id,conversation_id) VALUES('cloud_agent_fixture','fixture-owner','00000000-0000-4000-8000-000000000149')").await;
+    // The default agent has no definition row; its rows need only the owner.
+    execute(&pool, "INSERT INTO cloud_account_proactive_settings(account_id,enabled) VALUES('fixture-owner',TRUE)").await;
+    execute(&pool, "INSERT INTO cloud_agent_proactive_state(agent_id,owner_account_id,conversation_id) VALUES('cloud-agent:fixture-owner','fixture-owner','00000000-0000-4000-8000-000000000149')").await;
+    let (enabled,): (bool,) = query_as(
+        "SELECT enabled FROM cloud_account_proactive_settings WHERE account_id = 'fixture-owner'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(enabled);
+    let orphan = sqlx_core::raw_sql::raw_sql(
+        "INSERT INTO cloud_account_proactive_settings(account_id) VALUES('no-such-account')",
+    )
+    .execute(&pool)
+    .await;
+    assert!(orphan.is_err(), "the setting belongs to an account");
     let insert = |id: &str, run: &str| {
         format!("INSERT INTO cloud_agent_proactive_proposals(proposal_id,agent_id,owner_account_id,conversation_id,session_id,trigger_message_id,problem,offer,plan,evaluation_run_id,expires_at) VALUES('{id}','cloud_agent_fixture','fixture-owner','00000000-0000-4000-8000-000000000149','session:group:g','m1','p','o','l','{run}',now() + interval '1 day')")
     };
@@ -54,5 +70,10 @@ async fn upgrade_from_148_adds_proactive_agents() {
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(state_rows, 1);
+    assert_eq!(state_rows, 2);
+    let default_proposal = insert("pro_c", "proactive_eval_c").replace(
+        "'pro_c','cloud_agent_fixture'",
+        "'pro_c','cloud-agent:fixture-owner'",
+    );
+    execute(&pool, &default_proposal).await;
 }

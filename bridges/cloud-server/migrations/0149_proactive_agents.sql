@@ -4,12 +4,23 @@
 ALTER TABLE cloud_agent_definitions
     ADD COLUMN IF NOT EXISTS proactive_json JSONB NOT NULL DEFAULT '{"enabled":false}';
 
+-- The same setting for the owner's default agent, which has no definition
+-- row and is known everywhere as `cloud-agent:<account_id>`.
+CREATE TABLE IF NOT EXISTS cloud_account_proactive_settings (
+    account_id  TEXT PRIMARY KEY
+        REFERENCES cloud_accounts (account_id) ON DELETE CASCADE,
+    enabled     BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- One sweep row per agent and group conversation: how far the agent has read,
 -- which evaluation is in flight, a bounded retry schedule, and the cooldown
--- after an offer.
+-- after an offer. `agent_id` is a definition id or the default agent's
+-- synthetic id, so it has no foreign key; the owner's row cleans up.
 CREATE TABLE IF NOT EXISTS cloud_agent_proactive_state (
-    agent_id         TEXT NOT NULL
-        REFERENCES cloud_agent_definitions (agent_id) ON DELETE CASCADE,
+    agent_id         TEXT NOT NULL,
+    owner_account_id TEXT NOT NULL
+        REFERENCES cloud_accounts (account_id) ON DELETE CASCADE,
     conversation_id  UUID NOT NULL
         REFERENCES cloud_chat_conversations (conversation_id) ON DELETE CASCADE,
     seen_sequence    BIGINT NOT NULL DEFAULT 0,
@@ -34,8 +45,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_agent_proactive_state_active_run
 -- Offers waiting for, or past, the owner's decision.
 CREATE TABLE IF NOT EXISTS cloud_agent_proactive_proposals (
     proposal_id        TEXT PRIMARY KEY,
-    agent_id           TEXT NOT NULL
-        REFERENCES cloud_agent_definitions (agent_id) ON DELETE CASCADE,
+    agent_id           TEXT NOT NULL,
     owner_account_id   TEXT NOT NULL
         REFERENCES cloud_accounts (account_id) ON DELETE CASCADE,
     conversation_id    UUID NOT NULL

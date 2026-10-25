@@ -1,5 +1,6 @@
 //! Owner-only routes under `/v1/cloud/agents/{agent_id}/proactive`, mounted
-//! with the other agent routes behind the cloud session.
+//! with the other agent routes behind the cloud session. `agent_id` is a
+//! definition id or the owner's default agent, `cloud-agent:<account_id>`.
 
 use std::sync::Arc;
 
@@ -13,7 +14,9 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
-use super::decision::{agent_owner, decide, Choice, DecisionError};
+use super::agents::{agent_owner, default_owner};
+use super::decision::{decide, Choice, DecisionError};
+use super::ProactiveSetting;
 use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
 
@@ -60,6 +63,102 @@ async fn owner_only(pool: &PgPool, account: &str, agent_id: &str) -> Result<(), 
         Ok(Some(_)) => Err(Box::new(forbidden())),
         Ok(None) => Err(Box::new(not_found())),
         Err(err) => Err(Box::new(server_error("owner check", err))),
+    }
+}
+
+/// The stored setting of an active definition, or `None` when there is none.
+async fn definition_setting(
+    pool: &PgPool,
+    agent_id: &str,
+) -> Result<Option<ProactiveSetting>, sqlx_core::Error> {
+    let row: Option<(Value,)> = query_as(
+        "SELECT proactive_json FROM cloud_agent_definitions
+         WHERE agent_id = $1 AND status = 'active' AND is_system_managed = FALSE",
+    )
+    .bind(agent_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|(value,)| ProactiveSetting::from_stored(&value)))
+}
+
+async fn current_setting(pool: &PgPool, agent_id: &str) -> Response {
+    let setting = match default_owner(agent_id) {
+        Some(owner) => super::setting::default_enabled(pool, owner)
+            .await
+            .map(|enabled| Some(ProactiveSetting { enabled })),
+        None => definition_setting(pool, agent_id).await,
+    };
+    match setting {
+        Ok(Some(setting)) => Json(setting.to_value()).into_response(),
+        Ok(None) => not_found(),
+        Err(err) => server_error("read setting", err),
+    }
+}
+
+/// `GET /v1/cloud/agents/{agent_id}/proactive`: `{"enabled": bool}` for a
+/// definition or the owner's default agent (`cloud-agent:<account_id>`).
+pub(crate) async fn get_setting(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(agent_id): Path<String>,
+) -> Response {
+    let pool = state.db_pool();
+    if let Err(response) = owner_only(pool, &session.account_id, &agent_id).await {
+        return *response;
+    }
+    current_setting(pool, &agent_id).await
+}
+
+/// `PUT /v1/cloud/agents/{agent_id}/proactive` with `{"enabled": bool}`.
+/// Turning it off cancels queued evaluations and expires pending offers.
+pub(crate) async fn put_setting(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(agent_id): Path<String>,
+    Json(body): Json<Value>,
+) -> Response {
+    let pool = state.db_pool();
+    if let Err(response) = owner_only(pool, &session.account_id, &agent_id).await {
+        return *response;
+    }
+    let setting = match ProactiveSetting::parse(&body) {
+        Ok(setting) => setting,
+        Err(message) => return error("invalid_proactive", &message, StatusCode::BAD_REQUEST),
+    };
+    if default_owner(&agent_id).is_some() {
+        if let Err(err) =
+            super::setting::set_default(pool, &session.account_id, setting.enabled).await
+        {
+            return server_error("store setting", err);
+        }
+        return current_setting(pool, &agent_id).await;
+    }
+    let stored = match serde_json::from_value(json!({"proactive": setting.to_value()})) {
+        Ok(input) => {
+            crate::cloud_agents::store::update_agent_definition(
+                pool,
+                &session.account_id,
+                &agent_id,
+                input,
+                chrono::Utc::now(),
+            )
+            .await
+        }
+        Err(err) => Err(crate::cloud_agents::store::CloudAgentStoreError::Invalid(
+            err.to_string(),
+        )),
+    };
+    match stored {
+        Ok(Some(agent)) => Json(agent.proactive.to_value()).into_response(),
+        Ok(None) => not_found(),
+        Err(err) => {
+            eprintln!("[proactive] store setting: {err}");
+            error(
+                "server_error",
+                "Could not process the proactive request.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
     }
 }
 

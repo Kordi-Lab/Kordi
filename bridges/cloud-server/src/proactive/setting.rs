@@ -81,6 +81,61 @@ pub async fn refresh_stopped(pool: &PgPool, proposal_ids: &[String]) {
     }
 }
 
+/// The default agent's setting for `account_id`; no row is off.
+pub async fn default_enabled(pool: &PgPool, account_id: &str) -> Result<bool, sqlx_core::Error> {
+    let row: Option<(bool,)> =
+        query_as("SELECT enabled FROM cloud_account_proactive_settings WHERE account_id = $1")
+            .bind(account_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.is_some_and(|(enabled,)| enabled))
+}
+
+/// Stores the default agent's setting. Turning it off stops what it started,
+/// as it does for a definition.
+pub async fn set_default(
+    pool: &PgPool,
+    account_id: &str,
+    enabled: bool,
+) -> Result<(), sqlx_core::Error> {
+    let mut transaction = pool.begin().await?;
+    query(
+        "INSERT INTO cloud_account_proactive_settings (account_id, enabled) VALUES ($1, $2)
+         ON CONFLICT (account_id) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()",
+    )
+    .bind(account_id)
+    .bind(enabled)
+    .execute(&mut *transaction)
+    .await?;
+    let stopped = match enabled {
+        false => {
+            let agent_id = super::agents::default_agent_id(account_id);
+            stop_in_transaction(&mut transaction, &agent_id).await?
+        }
+        true => Vec::new(),
+    };
+    transaction.commit().await?;
+    refresh_stopped(pool, &stopped).await;
+    Ok(())
+}
+
+/// Drops an archived definition's cursors and proposals, which have no
+/// foreign key to it. Called after [`refresh_stopped`] so the cards keep
+/// their final state.
+pub async fn forget(pool: &PgPool, agent_id: &str) -> Result<(), sqlx_core::Error> {
+    let mut transaction = pool.begin().await?;
+    for table in [
+        "cloud_agent_proactive_state",
+        "cloud_agent_proactive_proposals",
+    ] {
+        query(&format!("DELETE FROM {table} WHERE agent_id = $1"))
+            .bind(agent_id)
+            .execute(&mut *transaction)
+            .await?;
+    }
+    transaction.commit().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

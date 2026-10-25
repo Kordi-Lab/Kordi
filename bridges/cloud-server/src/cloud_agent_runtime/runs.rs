@@ -13,7 +13,7 @@ pub(crate) mod identity;
 mod leases;
 pub(crate) mod omp_state;
 mod project_unavailable;
-mod prompt_history;
+pub(crate) mod prompt_history;
 pub(crate) mod route_fill;
 pub mod stop;
 pub(crate) mod subsession_lifecycle;

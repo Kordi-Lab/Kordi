@@ -5,6 +5,7 @@
 //! them against its own database. Every test uses uuid-suffixed data.
 
 mod decision_db;
+mod default_agent_db;
 mod definition_db;
 mod fixture;
 mod offer_db;

@@ -1,6 +1,6 @@
 //! Sweep state and evaluation runs.
 //!
-//! Every enabled agent gets one cursor row per group its owner is in,
+//! Every enabled agent, a definition or an owner's default agent, gets one cursor row per group its owner is in,
 //! starting at the newest message. A row is a candidate once collaborators
 //! wrote and the chat went quiet; the snapshot then decides whether it is
 //! worth a model call, and a reservation queues exactly one run.
@@ -11,6 +11,7 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
+use super::agents::watchers_sql;
 use super::config::ProactiveConfig;
 use super::prefilter::worth_a_look;
 use super::prompt::evaluation_system_prompt;
@@ -21,13 +22,12 @@ use crate::cloud_agent_runtime::runs::AgentRuntimeRoute;
 
 const SWEEP_BATCH: i64 = 10;
 
-/// Conditions shared by seeding and selection: an active agent that has the
-/// setting on, and a group (not a Grounding group) its owner is in.
+/// Conditions shared by seeding and selection: a group (not a Grounding
+/// group) the owner of an agent with the setting on is in. `agent` is a row
+/// of [`watchers_sql`].
 macro_rules! watched_sql {
     () => {
-        "agent.status = 'active' AND agent.is_system_managed = FALSE
-           AND agent.proactive_json @> '{\"enabled\": true}'::jsonb
-           AND c.kind = ANY($1)
+        "c.kind = ANY($1)
            AND NOT EXISTS (SELECT 1 FROM cloud_common_ground_room_groups room
                            WHERE room.conversation_id = c.conversation_id)"
     };
@@ -36,9 +36,12 @@ macro_rules! watched_sql {
 /// A new watched conversation starts at its newest message, so history is
 /// never evaluated.
 const SEED_SQL: &str = concat!(
-    "INSERT INTO cloud_agent_proactive_state (agent_id, conversation_id, seen_sequence)
-     SELECT agent.agent_id, c.conversation_id, c.latest_message_sequence
-     FROM cloud_agent_definitions agent
+    "INSERT INTO cloud_agent_proactive_state
+         (agent_id, owner_account_id, conversation_id, seen_sequence)
+     SELECT agent.agent_id, agent.owner_account_id, c.conversation_id, c.latest_message_sequence
+     FROM ",
+    watchers_sql!(),
+    " agent
      JOIN cloud_chat_conversation_members owner_member
        ON owner_member.account_id = agent.owner_account_id
       AND owner_member.membership_state = 'active'
@@ -50,15 +53,18 @@ const SEED_SQL: &str = concat!(
 
 /// Rows whose owner left the group or whose agent stopped watching. A later
 /// return starts again at the newest message.
-const PRUNE_SQL: &str = "DELETE FROM cloud_agent_proactive_state state
+const PRUNE_SQL: &str = concat!(
+    "DELETE FROM cloud_agent_proactive_state state
      WHERE state.active_run_id IS NULL AND NOT EXISTS (
-         SELECT 1 FROM cloud_agent_definitions agent
+         SELECT 1 FROM ",
+    watchers_sql!(),
+    " agent
          JOIN cloud_chat_conversation_members member
            ON member.account_id = agent.owner_account_id
           AND member.conversation_id = state.conversation_id
           AND member.membership_state = 'active'
-         WHERE agent.agent_id = state.agent_id AND agent.status = 'active'
-           AND agent.proactive_json @> '{\"enabled\": true}'::jsonb)";
+         WHERE agent.agent_id = state.agent_id)"
+);
 
 /// Candidates: $1 conversation kinds, $2 service accounts, $3 batch, $4 quiet
 /// seconds, $5 max wait seconds, $6 daily cap, $7 cap window start (RFC 3339).
@@ -68,7 +74,9 @@ pub(super) const SWEEP_SQL: &str = concat!(
      SELECT s.agent_id, s.conversation_id, c.legacy_session_id, c.latest_message_sequence,
             s.seen_sequence
      FROM cloud_agent_proactive_state s
-     JOIN cloud_agent_definitions agent ON agent.agent_id = s.agent_id
+     JOIN ",
+    watchers_sql!(),
+    " agent ON agent.agent_id = s.agent_id
      JOIN cloud_chat_conversations c ON c.conversation_id = s.conversation_id
      JOIN cloud_chat_conversation_members owner_member
        ON owner_member.conversation_id = c.conversation_id

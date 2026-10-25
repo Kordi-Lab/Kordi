@@ -303,9 +303,16 @@ async fn turning_the_setting_off_stops_everything() {
 }
 
 #[tokio::test]
-async fn archiving_the_agent_expires_its_offers() {
+async fn archiving_the_agent_expires_its_offers_and_drops_its_rows() {
     let Some(f) = fixture().await else { return };
     let (proposal_id, _) = offer(&f).await;
+    let (card_id,): (String,) = query_as(
+        "SELECT card_message_id FROM cloud_agent_proactive_proposals WHERE proposal_id = $1",
+    )
+    .bind(&proposal_id)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
     let (status, _) = f
         .send(
             "DELETE",
@@ -315,17 +322,32 @@ async fn archiving_the_agent_expires_its_offers() {
         )
         .await;
     assert_eq!(status, 200);
-    let (proposal_status,): (String,) =
-        query_as("SELECT status FROM cloud_agent_proactive_proposals WHERE proposal_id = $1")
-            .bind(&proposal_id)
+    let (content,): (Value,) =
+        query_as("SELECT content FROM cloud_chat_messages WHERE message_id::text = $1")
+            .bind(&card_id)
             .fetch_one(&f.pool)
             .await
             .unwrap();
-    assert_eq!(proposal_status, "expired");
+    assert_eq!(
+        content["blocks"][1]["status"], "expired",
+        "the card's final state"
+    );
+    for table in [
+        "cloud_agent_proactive_state",
+        "cloud_agent_proactive_proposals",
+    ] {
+        let (rows,): (i64,) =
+            query_as(&format!("SELECT count(*) FROM {table} WHERE agent_id = $1"))
+                .bind(&f.agent_id)
+                .fetch_one(&f.pool)
+                .await
+                .unwrap();
+        assert_eq!(rows, 0, "{table}");
+    }
 }
 
 /// Sends a group envelope message as a collaborator, as clients do.
-async fn say_in_group(f: &Fixture, text: &str) -> String {
+pub(super) async fn say_in_group(f: &Fixture, text: &str) -> String {
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
     let id = format!("grp_msg_{}", uuid::Uuid::new_v4().simple());
     let person = |account: &str, name: &str| json!({"accountId": account, "displayName": name, "avatarUrl": null, "role": "person"});

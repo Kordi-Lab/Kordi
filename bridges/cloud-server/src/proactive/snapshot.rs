@@ -168,10 +168,43 @@ pub(super) fn decode(content: &Value, agent_id: &str, agent_name: &str) -> Decod
     decoded
 }
 
+/// The owner's default agent while its setting is on: no persona text, no
+/// skills, and the owner's default route.
+async fn load_default_agent(
+    pool: &PgPool,
+    agent_id: &str,
+    owner: &str,
+) -> Result<Option<Agent>, sqlx_core::Error> {
+    let row: Option<(Option<String>, String)> = query_as(concat!(
+        "SELECT account.display_name, ",
+        super::agents::default_name_sql!("account", "profile"),
+        " FROM cloud_account_proactive_settings setting
+         JOIN cloud_accounts account ON account.account_id = setting.account_id
+         LEFT JOIN cloud_default_agent_profiles profile
+           ON profile.owner_account_id = account.account_id
+         WHERE setting.account_id = $1 AND setting.enabled"
+    ))
+    .bind(owner)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|(owner_name, name)| Agent {
+        agent_id: agent_id.to_string(),
+        owner_account_id: owner.to_string(),
+        owner_name: owner_name.unwrap_or_else(|| "Owner".to_string()),
+        name,
+        system_prompt: String::new(),
+        skills: Value::Array(Vec::new()),
+        model_routing: Value::Null,
+    }))
+}
+
 pub(super) async fn load_agent(
     pool: &PgPool,
     agent_id: &str,
 ) -> Result<Option<Agent>, sqlx_core::Error> {
+    if let Some(owner) = super::agents::default_owner(agent_id) {
+        return load_default_agent(pool, agent_id, owner).await;
+    }
     let row: Option<(String, Option<String>, String, String, Value, Value)> = query_as(
         "SELECT agent.owner_account_id, owner.display_name, agent.name, agent.system_prompt,
                 agent.skills_json, agent.model_routing_json

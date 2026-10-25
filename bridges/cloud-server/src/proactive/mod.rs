@@ -5,8 +5,10 @@
 //! text check, one tool-less evaluation run per candidate. An `offer` becomes
 //! a proposal and a card in the owner's conversation with the agent; nothing
 //! reaches the group until the owner allows it, and the approved run is an
-//! ordinary owner-started group run with the usual delivery.
+//! ordinary owner-started group run with the usual delivery. The owner's
+//! default agent watches the same way under its synthetic id (agents.rs).
 
+pub(crate) mod agents;
 pub(crate) mod card;
 mod complete;
 mod config;

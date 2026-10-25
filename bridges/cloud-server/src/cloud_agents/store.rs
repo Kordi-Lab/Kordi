@@ -399,6 +399,7 @@ pub async fn archive_agent_definition(
         crate::proactive::setting::stop_in_transaction(&mut transaction, agent_id).await?;
     transaction.commit().await?;
     crate::proactive::setting::refresh_stopped(pool, &stopped).await;
+    crate::proactive::setting::forget(pool, agent_id).await?;
     Ok(Some(agent))
 }
 

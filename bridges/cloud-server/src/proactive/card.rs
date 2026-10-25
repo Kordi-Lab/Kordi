@@ -58,16 +58,23 @@ pub(crate) async fn load(
     pool: &PgPool,
     proposal_id: &str,
 ) -> Result<Option<CardProposal>, sqlx_core::Error> {
-    let row: Option<CardRow> = query_as(
-        "SELECT p.proposal_id, p.agent_id, agent.name, p.owner_account_id, p.conversation_id,
+    // The definition's name, else the default agent's.
+    let row: Option<CardRow> = query_as(concat!(
+        "SELECT p.proposal_id, p.agent_id, COALESCE(agent.name, ",
+        super::agents::default_name_sql!("owner", "profile"),
+        "), p.owner_account_id, p.conversation_id,
                 p.session_id, COALESCE(c.group_title, c.shared_title), p.trigger_message_id,
                 p.problem, p.offer, p.plan, p.status, p.run_id, p.card_message_id,
                 p.decided_at, p.expires_at
          FROM cloud_agent_proactive_proposals p
-         JOIN cloud_agent_definitions agent ON agent.agent_id = p.agent_id
+         JOIN cloud_accounts owner ON owner.account_id = p.owner_account_id
+         LEFT JOIN cloud_default_agent_profiles profile
+           ON profile.owner_account_id = p.owner_account_id
+         LEFT JOIN cloud_agent_definitions agent ON agent.agent_id = p.agent_id
          LEFT JOIN cloud_chat_conversations c ON c.conversation_id = p.conversation_id
-         WHERE p.proposal_id = $1",
-    )
+         WHERE p.proposal_id = $1
+           AND (agent.agent_id IS NOT NULL OR p.agent_id = 'cloud-agent:' || p.owner_account_id)"
+    ))
     .bind(proposal_id)
     .fetch_optional(pool)
     .await?;
@@ -155,7 +162,8 @@ fn content(proposal: &CardProposal) -> Value {
 }
 
 /// The owner's conversation with the agent: the latest one-person agent
-/// conversation in which the owner ran this agent, else one created for it.
+/// conversation in which the owner ran this agent (mention and scheduled runs
+/// of the default agent carry its synthetic id too), else one created for it.
 pub(crate) async fn agent_conversation(
     pool: &PgPool,
     owner_account_id: &str,
@@ -183,14 +191,21 @@ pub(crate) async fn agent_conversation(
     if let Some((conversation_id,)) = existing {
         return Ok(conversation_id);
     }
+    let operation = Uuid::new_v5(
+        &Uuid::NAMESPACE_OID,
+        format!("proactive-conversation:{agent_id}").as_bytes(),
+    );
+    // The default agent's chat has the shape of the desktop's own agent chats
+    // (`session:self-agent:<uuid>`), so it shows as the normal agent chat.
+    let client_session_id = match super::agents::default_owner(agent_id) {
+        Some(_) => format!("session:self-agent:{operation}"),
+        None => format!("session:self-agent:proactive:{agent_id}"),
+    };
     let request = CreateConversationRequest {
-        client_operation_id: Uuid::new_v5(
-            &Uuid::NAMESPACE_OID,
-            format!("proactive-conversation:{agent_id}").as_bytes(),
-        ),
+        client_operation_id: operation,
         kind: ConversationKind::Ai,
         shared_title: None,
-        client_session_id: format!("session:self-agent:proactive:{agent_id}"),
+        client_session_id,
         member_account_ids: vec![owner_account_id.to_string()],
     };
     let conversation =

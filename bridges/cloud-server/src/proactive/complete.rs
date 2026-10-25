@@ -113,16 +113,16 @@ async fn store_offer(
 ) -> Result<Option<String>, sqlx_core::Error> {
     // The same checks as at selection: the agent still watches and its owner
     // is still in the group.
-    let (allowed,): (bool,) = query_as(
+    let (allowed,): (bool,) = query_as(concat!(
         "SELECT EXISTS (
-             SELECT 1 FROM cloud_agent_definitions agent
+             SELECT 1 FROM ",
+        super::agents::watchers_sql!(),
+        " agent
              JOIN cloud_chat_conversation_members member
                ON member.account_id = agent.owner_account_id
               AND member.conversation_id = $2 AND member.membership_state = 'active'
-             WHERE agent.agent_id = $1 AND agent.owner_account_id = $3
-               AND agent.status = 'active'
-               AND agent.proactive_json @> '{\"enabled\": true}'::jsonb)",
-    )
+             WHERE agent.agent_id = $1 AND agent.owner_account_id = $3)"
+    ))
     .bind(&run.agent_id)
     .bind(conversation_id)
     .bind(&run.owner_account_id)

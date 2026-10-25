@@ -27,12 +27,32 @@ Column `proactive_json` on `cloud_agent_definitions` (migration
 `0149_proactive_agents.sql`), default `{"enabled":false}`. The server
 rejects any other key.
 
+The owner's default agent ("<Name>'s Kordi") has no definition row. It
+watches under its usual id `cloud-agent:<account_id>`, with the setting in
+`cloud_account_proactive_settings` (`account_id`, `enabled`, `updated_at`;
+no row is off). Its evaluation and approved runs carry that id in
+`execution_agent_id`, get the default Kordi system prompt, and have no
+skills; its card lands in the owner's chat with their Kordi, else in a new
+`session:self-agent:<uuid>` chat. State and proposal rows have no foreign
+key to the agent; they go with the owner's account, and archiving a
+definition deletes its rows.
+
+Routes, owner only, for both kinds (`{agent_id}` may be
+`cloud-agent:<account_id>`; another account gets `403`, an unknown
+definition `404`):
+
+- `GET /v1/cloud/agents/{agent_id}/proactive` returns `{"enabled": bool}`.
+- `PUT /v1/cloud/agents/{agent_id}/proactive` with `{"enabled": bool}`
+  returns the same shape. Off cancels queued evaluations and expires
+  pending proposals.
+
 ## What the agent watches
 
 Group conversations (not contact chats, not Grounding groups) where the
 owner is an active member. State per agent and conversation lives in
 `cloud_agent_proactive_state` (`seen_sequence`, `active_run_id`,
-`retry_after`, `cooldown_until`, `attempts`, `last_error`, `checked_at`).
+`owner_account_id`, `retry_after`, `cooldown_until`, `attempts`,
+`last_error`, `checked_at`).
 A conversation first seen by the sweep starts at its newest message;
 history is never evaluated.
 
@@ -40,7 +60,7 @@ The sweep (`bridges/cloud-server/src/proactive/`, modelled on `pip/`)
 runs every 5 seconds. A conversation is a candidate when all of these
 hold:
 
-- the agent is active and `proactive.enabled` is true;
+- the agent is active and its setting is on;
 - there are new messages since `seen_sequence`, at least one from a human
   member who is not the owner and not a service or agent account;
 - the newest such message is 60 seconds old, or the oldest new one is

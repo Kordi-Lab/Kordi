@@ -53,20 +53,7 @@ pub fn approved_run_id(proposal_id: &str) -> String {
     format!("{APPROVED_RUN_PREFIX}{proposal_id}")
 }
 
-/// Who owns `agent_id`, or `None` when no such agent exists.
-pub(crate) async fn agent_owner(
-    pool: &PgPool,
-    agent_id: &str,
-) -> Result<Option<String>, sqlx_core::Error> {
-    let row: Option<(String,)> = query_as(
-        "SELECT owner_account_id FROM cloud_agent_definitions
-         WHERE agent_id = $1 AND is_system_managed = FALSE",
-    )
-    .bind(agent_id)
-    .fetch_optional(pool)
-    .await?;
-    Ok(row.map(|(owner,)| owner))
-}
+pub(crate) use super::agents::agent_owner;
 
 type PersonaRow = (
     String,
@@ -87,10 +74,28 @@ struct RunPlan {
     prefer_desktop: bool,
 }
 
-async fn plan_run(
+/// The approved run's persona: `(owner name, system prompt, model routing)`.
+/// A definition answers as its shared Cloud Agent; the default agent gets the
+/// prompt every default Kordi group run gets.
+async fn persona(
     pool: &PgPool,
     proposal: &super::card::CardProposal,
-) -> Result<Option<RunPlan>, sqlx_core::Error> {
+) -> Result<Option<(String, String, Value)>, sqlx_core::Error> {
+    if super::agents::default_owner(&proposal.agent_id) == Some(&proposal.owner_account_id) {
+        let owner: Option<(Option<String>,)> =
+            query_as("SELECT display_name FROM cloud_accounts WHERE account_id = $1")
+                .bind(&proposal.owner_account_id)
+                .fetch_optional(pool)
+                .await?;
+        let system_prompt = crate::cloud_agent_runtime::runs::prompt_history::default_system_prompt(
+            Some(&proposal.session_id),
+            None,
+        );
+        return Ok(owner.map(|(name,)| {
+            let name = name.unwrap_or_else(|| "Owner".to_string());
+            (name, system_prompt, Value::Null)
+        }));
+    }
     let persona: Option<PersonaRow> = query_as(
         "SELECT agent.name, owner.display_name, agent.system_prompt, agent.source_summary,
                 agent.boundaries_json, agent.skills_json, agent.model_routing_json
@@ -102,11 +107,32 @@ async fn plan_run(
     .bind(&proposal.owner_account_id)
     .fetch_optional(pool)
     .await?;
-    let Some((name, owner_name, system_prompt, summary, boundaries, skills, routing)) = persona
-    else {
+    Ok(persona.map(
+        |(name, owner_name, system_prompt, summary, boundaries, skills, routing)| {
+            let owner_name = owner_name.unwrap_or_else(|| "Owner".to_string());
+            let system_prompt = group_system_prompt(
+                &AgentPersona {
+                    name: &name,
+                    owner_name: &owner_name,
+                    system_prompt: &system_prompt,
+                    source_summary: summary.as_deref(),
+                    boundaries: &boundaries,
+                    skills: &skills,
+                },
+                &proposal.session_id,
+            );
+            (owner_name, system_prompt, routing)
+        },
+    ))
+}
+
+async fn plan_run(
+    pool: &PgPool,
+    proposal: &super::card::CardProposal,
+) -> Result<Option<RunPlan>, sqlx_core::Error> {
+    let Some((owner_name, system_prompt, routing)) = persona(pool, proposal).await? else {
         return Ok(None);
     };
-    let owner_name = owner_name.unwrap_or_else(|| "Owner".to_string());
     let snapshot: Option<(String,)> = query_as(
         "SELECT run.prompt FROM cloud_agent_proactive_proposals p
          JOIN cloud_agent_fallback_runs run ON run.run_id = p.evaluation_run_id
@@ -170,17 +196,6 @@ async fn plan_run(
         plan: &proposal.plan,
         evidence: &evidence,
     });
-    let system_prompt = group_system_prompt(
-        &AgentPersona {
-            name: &name,
-            owner_name: &owner_name,
-            system_prompt: &system_prompt,
-            source_summary: summary.as_deref(),
-            boundaries: &boundaries,
-            skills: &skills,
-        },
-        &proposal.session_id,
-    );
     let owner = &proposal.owner_account_id;
     let route = serde_json::from_value::<AgentRuntimeRoute>(routing).unwrap_or_default();
     let route = fill_cloud_route(pool, owner, &proposal.session_id, route).await?;
@@ -235,17 +250,18 @@ pub async fn decide(
         Choice::Decline => None,
     };
     let mut tx = pool.begin().await?;
-    let (pending, expired, allowed): (bool, bool, bool) = query_as(
+    let (pending, expired, allowed): (bool, bool, bool) = query_as(concat!(
         "SELECT p.status = 'pending', p.expires_at <= now(),
-                EXISTS (SELECT 1 FROM cloud_agent_definitions agent
+                EXISTS (SELECT 1 FROM ",
+        super::agents::watchers_sql!(),
+        " agent
                         JOIN cloud_chat_conversation_members member
                           ON member.account_id = agent.owner_account_id
                          AND member.conversation_id = p.conversation_id
                          AND member.membership_state = 'active'
-                        WHERE agent.agent_id = p.agent_id AND agent.status = 'active'
-                          AND agent.proactive_json @> '{\"enabled\": true}'::jsonb)
-         FROM cloud_agent_proactive_proposals p WHERE p.proposal_id = $1 FOR UPDATE",
-    )
+                        WHERE agent.agent_id = p.agent_id)
+         FROM cloud_agent_proactive_proposals p WHERE p.proposal_id = $1 FOR UPDATE OF p"
+    ))
     .bind(proposal_id)
     .fetch_one(&mut *tx)
     .await?;
@@ -391,13 +407,21 @@ pub async fn reply_agent(
     if !run_id.starts_with(APPROVED_RUN_PREFIX) {
         return Ok(None);
     }
-    query_as(
-        "SELECT agent.agent_id, agent.name
+    // The run's agent: a definition, or the owner's default agent.
+    query_as(concat!(
+        "SELECT run.execution_agent_id, COALESCE(agent.name, ",
+        super::agents::default_name_sql!("owner", "profile"),
+        ")
          FROM cloud_agent_fallback_runs run
          JOIN cloud_agent_proactive_proposals p ON p.run_id = run.run_id
-         JOIN cloud_agent_definitions agent ON agent.agent_id = run.execution_agent_id
-         WHERE run.run_id = $1",
-    )
+         JOIN cloud_accounts owner ON owner.account_id = run.owner_account_id
+         LEFT JOIN cloud_default_agent_profiles profile
+           ON profile.owner_account_id = run.owner_account_id
+         LEFT JOIN cloud_agent_definitions agent ON agent.agent_id = run.execution_agent_id
+         WHERE run.run_id = $1
+           AND (agent.agent_id IS NOT NULL
+             OR run.execution_agent_id = 'cloud-agent:' || run.owner_account_id)"
+    ))
     .bind(run_id)
     .fetch_optional(pool)
     .await
