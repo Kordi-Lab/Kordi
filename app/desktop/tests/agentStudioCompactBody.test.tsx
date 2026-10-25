@@ -50,6 +50,15 @@ test('compact Factory switcher shows Chat and Blueprint tabs and selects the bod
 
     await act(async () => tabs[0]?.click());
     assert.equal(body?.getAttribute('data-compact-pane'), 'chat');
+
+    // Editing an existing agent opens on the Blueprint.
+    await act(async () => root?.render(
+      <AgentStudioCompactBody initialPane="workspace">
+        <section className="app-agent-studio-conversation" />
+        <section className="app-agent-studio-workspace" />
+      </AgentStudioCompactBody>,
+    ));
+    assert.equal(host.querySelector('.app-agent-studio-body')?.getAttribute('data-compact-pane'), 'workspace');
   } finally {
     await act(async () => root?.unmount());
     root = null;

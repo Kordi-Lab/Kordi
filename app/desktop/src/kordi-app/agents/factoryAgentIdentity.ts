@@ -1,4 +1,5 @@
 import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
+import { getLocalAgentAvatar, isLocalAgentAvatarSeed } from '@/features/canonical/localAgentAvatar';
 import {
   AGENT_CANONICAL_AVATAR_STYLE,
   generatedAvatarPreviewUrl,
@@ -21,12 +22,16 @@ export function factoryLocalAgentCapabilities(agent: Agent | undefined, canSetSk
 }
 
 export function factoryAgentAvatarPresentation(agent?: Agent) {
-  const seed = agent?.avatarSeed?.trim() || agent?.id || '';
+  const rawSeed = agent?.avatarSeed?.trim() || agent?.id || '';
+  // The user's own agent follows the live account snapshot, like IdentityAvatar.
+  const ownAgent = Boolean(agent) && isLocalAgentAvatarSeed(rawSeed);
+  const seed = ownAgent ? getLocalAgentAvatar().seed : rawSeed;
   const avatarKey = agent ? getIdentityAvatarKey('agent', seed) : null;
   return {
     avatarKey,
     avatarUrl: avatarKey
-      ? getAvatarOverride(avatarKey)
+      ? (ownAgent ? getLocalAgentAvatar().imageUrl : null)
+        || getAvatarOverride(avatarKey)
         || agent?.profileImageUrl
         || generatedAvatarPreviewUrl(AGENT_CANONICAL_AVATAR_STYLE, seed)
       : null,

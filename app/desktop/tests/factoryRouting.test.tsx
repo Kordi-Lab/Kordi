@@ -4,7 +4,6 @@ import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { AgentInspectionView } from '../src/kordi-app/agents/AgentInspectionView';
 import { AgentStudioWorkspace } from '../src/kordi-app/agents/AgentStudioWorkspace';
 import { CapabilityLibraryView } from '../src/kordi-app/agents/CapabilityLibraryView';
 import {
@@ -249,17 +248,11 @@ test('artifact targets round-trip exact identity without relying on list order',
   assert.notEqual(creation, createFactoryBuildTargetKey('account/one', 'plugin', 'build/other'));
 });
 
-test('Agent inspection exposes published configuration and routes every change to Build', () => {
-  let edits = 0;
-  const html = renderToStaticMarkup(<AgentInspectionView agent={agent} onEditInBuild={() => { edits += 1; }} />);
-  assert.doesNotMatch(html, /This page shows the published agent|private Build conversation/);
-  assert.match(html, /Edit in Build/);
-  assert.match(html, /Change in Build/);
-  assert.match(html, /Manage in Build/);
-  assert.match(html, /Cite the source used for every claim/);
-  assert.doesNotMatch(html, /Published files|No published/);
-  assert.doesNotMatch(html, /textarea|contenteditable/);
-  assert.equal(edits, 0);
+test('opening an agent from the Agent tab routes straight into its Build page', () => {
+  const pageSource = readFileSync(new URL('../src/kordi-app/agents/AgentsPage.tsx', import.meta.url), 'utf8');
+  assert.match(pageSource, /onOpenAgent=\{\(agentId\) => \{ onOpenAgent\(agentId\); const agent = agents\.find\(\(entry\) => entry\.id === agentId\); if \(agent\) void editAgentInBuild\(agent\);/);
+  assert.doesNotMatch(pageSource, /AgentInspectionView|Edit in Build/);
+  assert.match(pageSource, /<AgentStudioCompactBody initialPane=\{creating \? 'chat' : 'workspace'\}>/);
 });
 
 test('the collaboration-backed default Kordi exposes identity controls in Build', () => {
@@ -426,7 +419,7 @@ test('compact Factory layout shows one pane at a time behind the Chat / Blueprin
 
   const pageSource = readFileSync(new URL('../src/kordi-app/agents/AgentsPage.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(pageSource, /Factory \/ Build \/ \{builder\.status\?\.sessionId/);
-  assert.match(pageSource, /<AgentStudioCompactBody>/);
+  assert.match(pageSource, /<AgentStudioCompactBody initialPane=/);
   assert.match(pageSource, /Build session unavailable/);
   assert.match(pageSource, /Recover from published/);
 });
