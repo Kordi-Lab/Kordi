@@ -622,10 +622,10 @@ final class CompanionChatPanelTests: XCTestCase {
         ))
         let presentation = source[start.lowerBound..<end.lowerBound]
         let menuDismissal = try XCTUnwrap(presentation.range(of: "Task.sleep(for: .milliseconds(350))"))
-        let fullScreenCover = try XCTUnwrap(presentation.range(of: "showPhotoPicker = true"))
+        let pickerPresentation = try XCTUnwrap(presentation.range(of: "presentPhotoPicker()"))
 
         XCTAssertTrue(source.contains("onChoosePhotos: presentPhotoLibrary"))
-        XCTAssertLessThan(menuDismissal.lowerBound, fullScreenCover.lowerBound)
+        XCTAssertLessThan(menuDismissal.lowerBound, pickerPresentation.lowerBound)
     }
 
     func testExpressivePickerDoesNotDragTheNativeInputSurface() throws {
