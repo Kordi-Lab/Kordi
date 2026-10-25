@@ -6,6 +6,7 @@ import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessag
 import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import { projectCloudSelfAgentLiveTurns } from '../src/features/cloud/cloudGroupLiveProjection';
 import { cloudSelfAgentRequestClientMessageId } from '../src/features/cloud/cloudSelfAgentIdentity';
+import { hostedSelfAgentProgressId } from '../src/features/cloud/hostedSelfAgentRunProgress';
 import { projectPendingSelfAgentReplies } from '../src/features/cloud/cloudSelfAgentPendingReply';
 import { planCloudSelfAgentCanonicalSync } from '../src/features/cloud/cloudSelfAgentCanonicalSync';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
@@ -126,4 +127,77 @@ test('the synced placeholder alone still shows, and completes without a live tur
   assert.equal(complete.length, 1);
   assert.equal(complete[0].turn?.completed, true);
   assert.equal(complete[0].turn?.assistantText, reply);
+});
+
+// A message typed while the agent was busy is queued, then dispatched with the
+// content the dispatch path writes. Its row keeps the `queued-local-chat:` id,
+// and its Cloud id is linked later, so the Mac's processing reply is stored
+// before the link exists.
+const queuedRequestId = `queued-local-chat:${sessionId}:1`;
+const queuedRequest = {
+  ...localRequest,
+  id: queuedRequestId,
+  content: {
+    agentRuntimeRoute: route, deliveryState: 'sent', attachments: [], mentions: [],
+    timestampMs: sentAtMs, queuedMessage: true, queueState: 'sent', queueUpdatedAtMs: sentAtMs,
+  },
+  sourceEventId: `desktop-chat-ui:${queuedRequestId}`,
+} as CanonicalSessionMessage;
+const queuedState = { ...baseState, messages: [queuedRequest] } as CanonicalSessionState;
+
+function pendingRows(state: CanonicalSessionState, cloudMessages: CloudMessage[]) {
+  const projected = projectPendingSelfAgentReplies(state, Date.now(), { turns: {}, cloudMessages });
+  return projected!.messages.filter((message) => message.senderRole === 'owned-agent');
+}
+
+/** The early reply as stored when its parent is the Cloud request id, which no local row has. */
+const withCloudParent = (state: CanonicalSessionState, parentMessageId: string | null) => ({
+  ...state,
+  messages: state.messages.map((message) => (message.senderRole === 'owned-agent' ? { ...message, parentMessageId } : message)),
+});
+
+for (const [label, parent] of [['without a parent', null], ['with the Cloud request id as parent', wireRequestId]] as const) {
+  test(`a dispatched queued request shows one processing row beside its early stored reply (${label})`, () => {
+    const stored = withCloudParent(store(queuedState, [placeholder]), parent);
+    const rows = pendingRows(stored, [placeholder]);
+    assert.deepEqual(rows.filter((row) => row.id.startsWith('msg:cloud:self:pending:')).map((row) => row.id), [],
+      `rows: ${rows.map((row) => `${row.id} parent=${row.parentMessageId}`).join(', ')}`);
+    assert.equal(agentRows(stored, {}, [placeholder]).length, 1);
+  });
+}
+
+test('an early reply for another local request does not answer the dispatched queued request', () => {
+  const other = { ...localRequest, id: 'msg:ui:other', createdAtMs: sentAtMs - 500, content: { ...(localRequest.content as object), desktopEntryId: wireRequestId } } as CanonicalSessionMessage;
+  const stored = withCloudParent(store({ ...queuedState, messages: [other, queuedRequest] }, [placeholder]), 'msg:ui:other');
+  const rows = pendingRows(stored, [placeholder]);
+  assert.deepEqual(rows.filter((row) => row.id.startsWith('msg:cloud:self:pending:')).map((row) => row.id), [`msg:cloud:self:pending:${queuedRequestId}`]);
+});
+
+test('a dispatched queued request shows a processing row until its reply is stored', () => {
+  const rows = pendingRows(queuedState, []);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, `msg:cloud:self:pending:${queuedRequestId}`);
+});
+
+// The server run's progress row, as `updateHostedSelfAgentProgress` stores it.
+const progressRow = {
+  id: hostedSelfAgentProgressId(wireRequestId), sessionId, senderIdentityId: agentId, senderRole: 'owned-agent', messageKind: 'agent-turn',
+  contentText: '', content: { cloudRequestMessageId: wireRequestId, requestId: queuedRequestId, replyToMessageId: queuedRequestId, deliveryState: 'processing', hostedRunStatus: 'running' },
+  parentMessageId: queuedRequestId, delegatedExchangeId: null, status: 'processing', sequenceNum: 2,
+  createdAtMs: sentAtMs + 1, updatedAtMs: sentAtMs + 1, sourceTransport: 'cloud-self-agent-progress', sourceEventId: wireRequestId,
+} as CanonicalSessionMessage;
+
+test('a dispatched queued request folds the hosted progress row beside its stored reply', () => {
+  const stored = { ...store(queuedState, [placeholder]), };
+  const state = { ...stored, messages: [...stored.messages, progressRow] };
+  const rows = pendingRows(state, [placeholder]);
+  assert.deepEqual(rows.map((row) => row.id), [`msg:cloud:self:response:${wireRequestId}`]);
+  assert.equal(agentRows(state, {}, [placeholder]).length, 1);
+});
+
+test('a dispatched queued request folds the hosted progress row into its pending row', () => {
+  const state = { ...queuedState, messages: [...queuedState.messages, progressRow] };
+  const rows = pendingRows(state, []);
+  assert.deepEqual(rows.map((row) => row.id), [`msg:cloud:self:pending:${queuedRequestId}`]);
+  assert.equal(agentRows(state, {}, []).length, 1);
 });

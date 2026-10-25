@@ -58,14 +58,16 @@ function repliesTo(message: CanonicalSessionMessage, requestId: string) {
  * request is linked to its Cloud id, without a parent. It is still the
  * request's reply row; a pending row beside it showed a second processing row.
  */
-function repliesToCloudRequest(message: CanonicalSessionMessage, request: CanonicalSessionMessage, wireId: string | undefined, linkedWireIds: ReadonlySet<string>) {
+function repliesToCloudRequest(message: CanonicalSessionMessage, request: CanonicalSessionMessage, wireId: string | undefined, linkedWireIds: ReadonlySet<string>, localMessageIds: ReadonlySet<string>) {
   const cloudRequestMessageId = record(message.content).cloudRequestMessageId;
   if (typeof cloudRequestMessageId !== 'string' || !cloudRequestMessageId.trim()) return false;
   if (wireId) return cloudRequestMessageId === wireId || repliesTo(message, wireId);
   // The request's Cloud id is not known here yet: an unlinked reply created
-  // after it, for a Cloud request no other row claims, is this request's.
+  // after it, for a Cloud request no other row claims, is this request's. Its
+  // parent is none, or a Cloud id that no local row has (a queued request is
+  // linked to its Cloud id later), never another local request.
   return message.sessionId === request.sessionId && message.senderRole === 'owned-agent'
-    && !message.parentMessageId && message.createdAtMs >= request.createdAtMs
+    && (!message.parentMessageId || !localMessageIds.has(message.parentMessageId)) && message.createdAtMs >= request.createdAtMs
     && !linkedWireIds.has(cloudRequestMessageId);
 }
 
@@ -87,7 +89,7 @@ function waitingHostedRequest(message: CanonicalSessionMessage) {
   return message.senderRole === 'user'
     && message.sourceTransport === 'desktop-chat-ui'
     && ['sending', 'sent'].includes(message.status)
-    && content.queuedMessage !== true
+    && (content.queuedMessage !== true || content.queueState === 'sent')
     && routeRunsOnKordiCloud(content.agentRuntimeRoute as DesktopChatMessageRoute | null);
 }
 
@@ -163,6 +165,7 @@ export function projectPendingSelfAgentReplies(
   const pending: CanonicalSessionMessage[] = [];
   const folded = new Set<string>();
   let linkedWireIds: ReadonlySet<string> | null = null;
+  const localMessageIds = new Set(state.messages.map((message) => message.id));
   for (const request of newestUserBySession.values()) {
     if (!waitingHostedRequest(request)) continue;
     const linkedWireId = record(request.content).desktopEntryId;
@@ -170,9 +173,11 @@ export function projectPendingSelfAgentReplies(
       ?? (typeof linkedWireId === 'string' && linkedWireId.trim() ? linkedWireId.trim() : undefined);
     const claimedWireIds = wireId ? NO_WIRE_IDS : (linkedWireIds ??= linkedCloudRequestIds(state));
     const replies = state.messages.filter((message) => message.senderRole !== 'user' && (
-      repliesTo(message, request.id) || repliesToCloudRequest(message, request, wireId, claimedWireIds)
+      repliesTo(message, request.id) || repliesToCloudRequest(message, request, wireId, claimedWireIds, localMessageIds)
     ));
     const hostedRuns = replies.filter((message) => message.sourceTransport === HOSTED_PROGRESS_SOURCE);
+    // The run's progress row only repeats what the reply row (stored or pending) shows.
+    for (const run of hostedRuns) folded.add(run.id);
     if (replies.length > hostedRuns.length) continue;
     const agentIdentityId = sessionById.get(request.sessionId)?.primaryIdentityId?.trim();
     if (!agentIdentityId) continue;
@@ -180,7 +185,6 @@ export function projectPendingSelfAgentReplies(
     const localTurn = wireId ? local.turns?.[wireId] : undefined;
     // No run answered in time: say so instead of showing a run that does not exist.
     const notStarted = !localTurn && hostedRuns.length === 0 && nowMs - request.createdAtMs > startTimeoutMs(request);
-    for (const run of hostedRuns) folded.add(run.id);
     const row: CanonicalSessionMessage = {
       id: notStarted ? pendingSelfAgentNoticeRowId(request.id) : pendingSelfAgentReplyRowId(request.id, wireId),
       sessionId: request.sessionId,
@@ -203,7 +207,7 @@ export function projectPendingSelfAgentReplies(
     };
     pending.push(localTurn && localTurn.sessionId === request.sessionId ? withLiveTurn(row, localTurn) : row);
   }
-  if (pending.length === 0) return state;
+  if (pending.length === 0 && folded.size === 0) return state;
   const messages = folded.size ? state.messages.filter((message) => !folded.has(message.id)) : state.messages;
   return { ...state, messages: [...messages, ...pending] };
 }
