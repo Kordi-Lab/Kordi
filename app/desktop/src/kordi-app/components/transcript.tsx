@@ -51,7 +51,7 @@ import { MessageDeliveryStatusSlot,TranscriptMessageTransferActions } from './tr
 import { RequestReplyLine,SourceMessageQuoteRow,ThreadReplyLine } from './transcriptReplyAttribution';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { VoiceMessageContent } from './voiceMessage';
-import { PipSenderTag, PlanCardContent } from './planCard';
+import { PlanCardContent } from './planCard';
 import { CompactionSummaryMessage } from './transcriptCompactionSummary';
 import { isCompactionSummaryMessage } from './transcriptCompactionSummaryEligibility';
 export { MessageContextMenuContent, type MessageContextMenuActionHandlers } from './messageContextMenuContent';
@@ -642,7 +642,7 @@ function MessageBubbleView({
     <>
       {threadLayout && (!isGroupedWithPrevious || msg.sourceMessage) ? <ThreadMessageHeader msg={msg} name={avatarName} ownerName={agentOwnerName} /> : null}{showHeaderMeta && groupChatAgentAvatar ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} highlightName className="mb-1 px-0" /> : null}
       {showInlineHumanSender ? (
-        <div className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4" data-transcript-leading-decoration="true">{msg.sender}<PipSenderTag avatarUrl={msg.senderProfileImageUrl} /></div>
+        <div className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4" data-transcript-leading-decoration="true">{msg.sender}</div>
       ) : null}
       {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} /> : null}
       {standaloneEmojiItem ? <StandaloneEmojiMessage item={standaloneEmojiItem} own={isOwnHumanMessage} status={bubbleDeliveryStatus} /> : showCompactFooter ? (

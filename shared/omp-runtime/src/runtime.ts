@@ -39,23 +39,24 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
     });
     // A non-secret sentinel prevents upstream ambient environment key lookup for local no-auth routes.
     const credential = request.auth.kind === 'none' ? 'kordi-local-no-auth' : request.auth.credential!;
-    authStorage.setRuntimeApiKey(request.model.provider, credential);
+    authStorage.keys.setRuntime(request.model.provider, credential);
     const capabilityOptions = ompCapabilityOptions(request.capabilities ?? { ownerLocal: false, computer: false, browser: false }, request.tools.map(tool => tool.name));
-    const settings = capabilityOptions.settings!;
     // Exact Kordi account/model selection must never silently fall back to ambient accounts/models.
-    settings.set('retry.modelFallback', false);
-    settings.set('retry.usageAwareFallback', false);
-    settings.set('retry.waitForUsageReset', false);
-    settings.set('compaction.idleEnabled', false);
-    settings.set('compaction.handoffSaveToDisk', false);
-    settings.set('compaction.methodOrder', ['handoff']);
-    if (request.compaction) {
-      settings.set('compaction.enabled', request.compaction.enabled);
-      settings.set('compaction.reserveTokens', request.compaction.reserveTokens);
-      settings.set('compaction.keepRecentTokens', request.compaction.keepRecentTokens);
-      if (request.compaction.thresholdTokens !== undefined) settings.set('compaction.thresholdTokens', request.compaction.thresholdTokens);
-    }
-    settings.set('todo.enabled', false);
+    const settings = capabilityOptions.settings!.overlay({
+      'retry.modelFallback': false,
+      'retry.usageAwareFallback': false,
+      'retry.waitForUsageReset': false,
+      'compaction.idleEnabled': false,
+      'compaction.handoffSaveToDisk': false,
+      'compaction.methodOrder': ['handoff'],
+      ...(request.compaction ? {
+        'compaction.enabled': request.compaction.enabled,
+        'compaction.reserveTokens': request.compaction.reserveTokens,
+        'compaction.keepRecentTokens': request.compaction.keepRecentTokens,
+        ...(request.compaction.thresholdTokens !== undefined ? { 'compaction.thresholdTokens': request.compaction.thresholdTokens } : {}),
+      } : {}),
+      'todo.enabled': false,
+    });
     const modelRegistry = new ModelRegistry(authStorage, join(agentDir, 'models.yml'), {
       ignoreLocalModelConfig: true, settings, cacheDbPath: join(agentDir, 'models.db'),
       fetch: async () => { throw new Error('Model discovery is disabled.'); },
@@ -115,7 +116,7 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
       });
     };
     const created = await createAgentSession({
-      ...capabilityOptions, cwd: request.cwd, agentDir, authStorage, modelRegistry, model,
+      ...capabilityOptions, settings, cwd: request.cwd, agentDir, authStorage, modelRegistry, model,
       rebindModelAfterDiscovery: false,
       getApiKey: async selectedModel => {
         if (selectedModel.provider !== request.model.provider || selectedModel.id !== request.model.id) throw new RuntimeError('route_mismatch', 'Provider selection changed during the run.');

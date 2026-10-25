@@ -24,6 +24,8 @@ async fn reflection_runtime_writes_lesson_text_to_artifact_and_metadata_to_db() 
         scope_id: "session-123".to_string(),
         source: "user_correction".to_string(),
         lesson: "Do not inject lessons into the system prompt.".to_string(),
+        category: None,
+        confidence: None,
     })
     .await
     .expect("save lesson");
@@ -57,6 +59,8 @@ fn request(lesson: &str) -> ReflectionLessonRequest {
         scope_id: "session-guard".to_string(),
         source: "user_correction".to_string(),
         lesson: lesson.to_string(),
+        category: None,
+        confidence: None,
     }
 }
 

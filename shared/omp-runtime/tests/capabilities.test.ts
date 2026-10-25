@@ -3,14 +3,15 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AuthStorage, ModelRegistry, SessionManager, createAgentSession } from '@oh-my-pi/pi-coding-agent';
+import { lookup } from '@oh-my-pi/pi-coding-agent/config/registry';
 import { ompCapabilityOptions } from '../src/capabilities';
 
 test('shared runs cannot activate OMP Eval even when requested flags are true', () => {
   const options = ompCapabilityOptions({ ownerLocal: false, computer: true, browser: true }, ['kordi_read']);
   expect(options.restrictToolNames).toBe(true);
   expect(options.toolNames).toEqual(['kordi_read']);
-  expect(options.settings?.get('computer.enabled')).toBe(false);
-  expect(options.settings?.get('browser.enabled')).toBe(false);
+  expect(lookup('computer.enabled')!.get(options.settings!)).toBe(false);
+  expect(lookup('browser.enabled')!.get(options.settings!)).toBe(false);
   expect(options.disableExtensionDiscovery).toBe(true);
   expect(options.enableMCP).toBe(false);
 });
@@ -36,16 +37,16 @@ test('owner-local run without explicit computer or browser stays restricted', ()
   const options = ompCapabilityOptions({ ownerLocal: true, computer: false, browser: false }, ['kordi_read']);
   expect(options.restrictToolNames).toBe(true);
   expect(options.toolNames).toEqual(['kordi_read']);
-  expect(options.settings?.get('computer.enabled')).toBe(false);
-  expect(options.settings?.get('browser.enabled')).toBe(false);
+  expect(lookup('computer.enabled')!.get(options.settings!)).toBe(false);
+  expect(lookup('browser.enabled')!.get(options.settings!)).toBe(false);
 });
 
 test('owner-local authorized computer and browser activate only named Eval capability', () => {
   const options = ompCapabilityOptions({ ownerLocal: true, computer: true, browser: true }, ['kordi_read']);
   expect(options.restrictToolNames).toBe(false);
   expect(options.toolNames).toEqual(['kordi_read', 'eval']);
-  expect(options.settings?.get('computer.enabled')).toBe(true);
-  expect(options.settings?.get('browser.enabled')).toBe(true);
+  expect(lookup('computer.enabled')!.get(options.settings!)).toBe(true);
+  expect(lookup('browser.enabled')!.get(options.settings!)).toBe(true);
   expect(options.skills).toEqual([]);
   expect(options.rules).toEqual([]);
   expect(options.contextFiles).toEqual([]);

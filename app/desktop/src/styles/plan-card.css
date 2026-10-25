@@ -1,4 +1,4 @@
-/* PiP's plan cards: the vote card and the calendar card in a transcript. */
+/* The plan agent's cards: the vote card and the calendar card in a transcript. */
 
 /* --- Pip plan card --- */
 .app-plan-card {
@@ -107,12 +107,5 @@
 .app-plan-card-option-winner .app-plan-card-option-vote { border-color: color-mix(in oklab, #1e8a5f 60%, transparent); }
 .app-plan-card-calendar-note { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 14px; color: #1e8a5f; }
 .app-plan-card-notice { font-size: 11px; line-height: 14px; color: #b23b3b; }
-
-.app-sender-tag {
-  display: inline-block; margin-left: 6px; vertical-align: 1px;
-  font-size: 10.5px; font-weight: 500; letter-spacing: .01em;
-  padding: 1px 6px; border-radius: 999px; background: #fff4d6; color: #5a3d00;
-}
-:root[data-theme="dark"] .app-sender-tag, .dark .app-sender-tag { background: #3a2c0c; color: #fff1c9; }
 
 .app-plan-card-guidance { font-size: 11px; line-height: 14px; color: var(--utility-muted-text); }

@@ -6,11 +6,12 @@ use chrono::Utc;
 use serde_json::{json, Value};
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::plan_cards::store::parse_pg_timestamp;
 
+use super::addressing;
 use super::cards::seen_revision;
 use super::config::PipConfig;
 use super::context;
@@ -19,8 +20,18 @@ use super::mentions::mention_handle;
 const MESSAGE_TEXT_LIMIT: usize = 1200;
 const CLOUD_MESSAGE_PREFIXES: [&str; 2] = ["kordi-cloud-message:", "kordi-cloud-group:"];
 
-/// message_id, sequence, sender, sender display name, kind, content, created_at
-type MessageRow = (String, i64, String, Option<String>, String, Value, String);
+/// message_id, sequence, sender, sender display name, kind, content, created_at,
+/// client_message_id
+type MessageRow = (
+    String,
+    i64,
+    String,
+    Option<String>,
+    String,
+    Value,
+    String,
+    Option<String>,
+);
 /// account_id, display name, role, timezone
 type MemberRow = (String, Option<String>, String, Option<String>);
 
@@ -33,26 +44,51 @@ pub(super) struct Candidate {
     pub hooks_fired: Value,
 }
 
+/// The decoded JSON of a cloud envelope; None for plain text or a malformed
+/// envelope.
+pub(super) fn cloud_envelope(text: &str) -> Option<Value> {
+    let encoded = CLOUD_MESSAGE_PREFIXES
+        .iter()
+        .find_map(|prefix| text.strip_prefix(prefix))?;
+    URL_SAFE_NO_PAD
+        .decode(encoded.trim_end_matches('='))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+}
+
 fn decode_cloud_text(text: &str) -> String {
-    for prefix in CLOUD_MESSAGE_PREFIXES {
-        if let Some(encoded) = text.strip_prefix(prefix) {
-            let value = URL_SAFE_NO_PAD
-                .decode(encoded.trim_end_matches('='))
-                .ok()
-                .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
-            return value
-                .as_ref()
-                .and_then(|value| {
-                    value
-                        .get("text")
-                        .or_else(|| value.get("message").and_then(|message| message.get("text")))
-                })
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-        }
+    if !CLOUD_MESSAGE_PREFIXES
+        .iter()
+        .any(|prefix| text.starts_with(prefix))
+    {
+        return text.to_string();
     }
-    text.to_string()
+    cloud_envelope(text)
+        .as_ref()
+        .and_then(|value| {
+            value
+                .get("text")
+                .or_else(|| value.get("message").and_then(|message| message.get("text")))
+        })
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// The first text block's envelope, which carries mentions and targets.
+fn content_envelope(content: &Value) -> Option<Value> {
+    content
+        .get("blocks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
+        .find_map(|block| {
+            block
+                .get("text")
+                .and_then(Value::as_str)
+                .and_then(cloud_envelope)
+        })
 }
 
 fn message_text(content: &Value) -> String {
@@ -125,7 +161,7 @@ pub(super) async fn build_input(
     let rows: Vec<MessageRow> = query_as(
         "SELECT message.message_id::text, message.conversation_sequence, message.sender_account_id,
                 account.display_name, message.message_kind, message.content,
-                message.created_at::text
+                message.created_at::text, message.client_message_id::text
          FROM cloud_chat_messages message
          JOIN cloud_accounts account ON account.account_id = message.sender_account_id
          WHERE message.conversation_id = $1 AND message.deleted_at IS NULL
@@ -139,10 +175,31 @@ pub(super) async fn build_input(
     .bind(context::CONTEXT_MESSAGE_FETCH)
     .fetch_all(pool)
     .await?;
-    let messages = context::budget_messages(
+    // Whom each message is for, and the ids an agent run may name as its
+    // request, so messages for an agent or already answered stay context only.
+    let handles = addressing::member_handles(
+        members
+            .iter()
+            .map(|member| member.1.as_deref().unwrap_or("Member")),
+    );
+    let mut addressed = HashSet::new();
+    let mut ids_of = HashMap::new();
+    for (id, _, _, _, _, content, _, client_id) in &rows {
+        let envelope = content_envelope(content);
+        if envelope.as_ref().is_some_and(|envelope| {
+            addressing::addresses_other_agent(envelope, &config.account_id, &handles)
+        }) {
+            addressed.insert(id.clone());
+        }
+        let ids = addressing::request_ids(id, client_id.as_deref(), envelope.as_ref());
+        ids_of.insert(id.clone(), ids);
+    }
+    let all_ids: Vec<String> = ids_of.values().flatten().cloned().collect();
+    let answered = addressing::answered_ids(pool, &all_ids).await?;
+    let mut messages = context::budget_messages(
         rows.into_iter()
             .map(
-                |(id, sequence, sender, display_name, kind, content, created_at)| {
+                |(id, sequence, sender, display_name, kind, content, created_at, _)| {
                     context::ContextMessage {
                         id,
                         sequence,
@@ -159,6 +216,21 @@ pub(super) async fn build_input(
         candidate.seen_sequence,
         &config.account_id,
     );
+    for message in &mut messages {
+        let id = message["messageId"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        if addressed.contains(&id) {
+            message["addressesAgent"] = json!(true);
+        }
+        if ids_of
+            .get(&id)
+            .is_some_and(|ids| ids.iter().any(|id| answered.contains(id)))
+        {
+            message["answeredByAgent"] = json!(true);
+        }
+    }
 
     // The card PiP manages: the most recently changed one still in play. The
     // sweep's card and reminder conditions look at this same card.

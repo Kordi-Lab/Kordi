@@ -24,7 +24,7 @@ API shape on `/v1/cloud/agents` (create, update, list, shared):
 ```
 
 Column `proactive_json` on `cloud_agent_definitions` (migration
-`0150_proactive_agents.sql`), default `{"enabled":false}`. The server
+`0154_proactive_agents.sql`), default `{"enabled":false}`. The server
 rejects any other key.
 
 The owner's default agent ("<Name>'s Kordi") has no definition row. It

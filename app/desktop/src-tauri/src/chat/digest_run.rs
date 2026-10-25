@@ -110,7 +110,7 @@ fn observation_runtime(
 
 /// The routes to try, in order: the chosen one, then the same route with the
 /// provider's fast model when that differs.
-fn attempt_routes(
+pub(super) fn attempt_routes(
     route: DesktopChatMessageRoute,
     fallback_model: Option<String>,
 ) -> Vec<DesktopChatMessageRoute> {

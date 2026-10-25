@@ -141,6 +141,44 @@ fn v11_and_v12_migrations_keep_existing_reflection_rows() {
 }
 
 #[test]
+fn v13_migration_reads_old_reflection_rows_without_categories() {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(SCHEMA_V1).unwrap();
+    for (version, migration) in [
+        (2, MIGRATION_V2),
+        (3, MIGRATION_V3),
+        (4, MIGRATION_V4),
+        (5, MIGRATION_V5),
+        (6, ""),
+        (7, MIGRATION_V7),
+        (8, MIGRATION_V8),
+        (9, MIGRATION_V9),
+        (10, MIGRATION_V10),
+        (11, MIGRATION_V11),
+        (12, MIGRATION_V12),
+    ] {
+        conn.execute_batch(migration).unwrap();
+        set_version(&conn, version).unwrap();
+    }
+    conn.execute(
+        "INSERT INTO reflection_lessons (lesson_id, scope, scope_id, artifact_path, source, created_at, updated_at, archived_at, lesson_text, owner_account_id) VALUES ('old', 'conversation', 's-1', '/tmp/a.md', 'outcome', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', NULL, 'Run tests first.', 'acct_1')",
+        [],
+    )
+    .unwrap();
+
+    init_schema(&conn).unwrap();
+    assert_eq!(get_version(&conn), 13);
+
+    let rows = crate::reflection_lessons::list_all_reflection_lessons(&conn).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].lesson_text.as_deref(), Some("Run tests first."));
+    assert_eq!(rows[0].owner_account_id.as_deref(), Some("acct_1"));
+    assert_eq!(rows[0].category, None);
+    assert_eq!(rows[0].declaration_type, None);
+    assert_eq!(rows[0].confidence, None);
+}
+
+#[test]
 fn v10_migration_preserves_substantive_legacy_names_and_clears_weak_titles() {
     let conn = Connection::open_in_memory().unwrap();
     conn.execute_batch(SCHEMA_V1).unwrap();

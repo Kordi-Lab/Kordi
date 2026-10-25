@@ -171,6 +171,7 @@ pub async fn publish_terminal_response(
     if is_scheduled_run_request_id(&request_id)
         || crate::document_shares::agents::is_comment_request(&request_id)
         || run_id.starts_with(crate::digest::RUN_PREFIX)
+        || super::super::import_runs::is_import_run(run_id)
         || run_id.starts_with(crate::pip::RUN_PREFIX)
         || run_id.starts_with(crate::common_ground::RUN_PREFIX)
         || run_id.starts_with(crate::proactive::RUN_PREFIX)
@@ -273,7 +274,9 @@ fn run_status_for_reply(state: &str) -> &'static str {
 /// a grace period: a Cloud runner takes over an expired desktop lease within
 /// seconds when it can, so a run still held by the desktop after the grace has
 /// lost its executor (for example a project chat that runs only on its Mac).
+/// A memory import that timed out fails first (`import_runs::expire_stale`).
 pub(crate) async fn release_lost_desktop_runs(pool: &PgPool) -> RunResult<()> {
+    super::super::import_runs::expire_stale(pool, None).await?;
     let lapsed: Vec<(String, String, String, String, String)> = query_as(
         "SELECT run_id, owner_account_id, session_id, request_message_id, created_at \
          FROM cloud_agent_fallback_runs run \

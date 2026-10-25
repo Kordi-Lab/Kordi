@@ -90,8 +90,48 @@ struct CloudMemory: Codable, Hashable, Identifiable {
     /// group, so it can be another member. Nil from servers that predate it.
     var ownerAccountId: String? = nil
     var ownerName: String? = nil
+    /// Routing fields (#1977); nil from servers that predate them. `category`
+    /// is one of `MemoryPresentation.categoryLabels`' keys, `declarationType`
+    /// `user-declared` or `model-inferred`, `confidence` `low`, `medium` or
+    /// `high`, and `profileKind` `work`, `health`, `daily`, `all` or `custom`.
+    var category: String? = nil
+    var declarationType: String? = nil
+    var confidence: String? = nil
+    var profileId: String? = nil
+    var profileKind: String? = nil
+    /// The cards the memory feeds, in profile order, and the cards the person
+    /// removed it from (`memoryVersion` 3, #2035); nil from older servers.
+    var profileIds: [String]? = nil
+    var excludedProfileIds: [String]? = nil
 
     var id: String { memoryId }
+}
+
+/// A memory routed to one Grounding profile. `everyProfile` marks a
+/// schedule memory listed in every fixed-kind profile until it is moved.
+struct CloudProfileMemory: Decodable, Hashable, Identifiable {
+    let memory: CloudMemory
+    let everyProfile: Bool
+
+    var id: String { memory.memoryId }
+
+    init(memory: CloudMemory, everyProfile: Bool = false) {
+        self.memory = memory
+        self.everyProfile = everyProfile
+    }
+
+    private enum CodingKeys: String, CodingKey { case everyProfile }
+
+    init(from decoder: Decoder) throws {
+        memory = try CloudMemory(from: decoder)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        everyProfile = (try? container.decodeIfPresent(Bool.self, forKey: .everyProfile)) ?? false
+    }
+}
+
+/// `GET /v1/cloud/common-ground/profiles/{profileId}/memories`, newest first.
+struct CloudProfileMemoryList: Decodable, Hashable {
+    let memories: [CloudProfileMemory]
 }
 
 struct CloudMemorySettings: Codable, Equatable {
@@ -112,8 +152,36 @@ struct CloudMemoryForgetResponse: Decodable {
     let archived: Int
 }
 
+/// `PATCH /v1/cloud/memory/{id}`. Omitted fields keep their value; a
+/// cleared profile is sent as an explicit `"profileId": null`.
+/// `addProfileId` and `removeProfileId` change one card (`memoryVersion` 3).
 struct CloudMemoryUpdateRequest: Encodable {
-    let text: String
+    enum Profile: Equatable {
+        case keep
+        case move(String)
+        case clear
+    }
+
+    var text: String? = nil
+    var category: String? = nil
+    var profile: Profile = .keep
+    var addProfileId: String? = nil
+    var removeProfileId: String? = nil
+
+    private enum CodingKeys: String, CodingKey { case text, category, profileId, addProfileId, removeProfileId }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(text, forKey: .text)
+        try container.encodeIfPresent(category, forKey: .category)
+        try container.encodeIfPresent(addProfileId, forKey: .addProfileId)
+        try container.encodeIfPresent(removeProfileId, forKey: .removeProfileId)
+        switch profile {
+        case .keep: break
+        case .move(let profileId): try container.encode(profileId, forKey: .profileId)
+        case .clear: try container.encodeNil(forKey: .profileId)
+        }
+    }
 }
 
 /// Where a memory typed on a Memory screen is saved: the scope of the screen it was added from.
@@ -152,6 +220,19 @@ extension CloudAPIClient {
             token: token,
             body: CloudMemoryCreateRequest(target: target, text: text),
             fallback: "Could not save this memory. Try again."
+        )
+        return response.memory
+    }
+
+    /// Changes a memory's category or cards with one `PATCH`.
+    func changeMemory(token: String, memoryId: String, _ request: CloudMemoryUpdateRequest) async throws -> CloudMemory {
+        let segment = memoryId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? memoryId
+        let response: CloudMemoryResponse = try await send(
+            path: "/v1/cloud/memory/\(segment)",
+            method: "PATCH",
+            token: token,
+            body: request,
+            fallback: "Could not change this memory. Try again."
         )
         return response.memory
     }

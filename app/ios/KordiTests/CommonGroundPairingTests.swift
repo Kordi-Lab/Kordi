@@ -19,6 +19,13 @@ final class CommonGroundPairingTests: XCTestCase {
 
     // MARK: Wire
 
+    /// Four typed digits turn Create a code into Enter pair room; clearing them brings it back.
+    func testPairCodeLinkEntersOnceFourDigitsAreTyped() {
+        XCTAssertEqual(CommonGroundPairCodeRow.linkTitle(for: ""), "Create a code")
+        XCTAssertEqual(CommonGroundPairCodeRow.linkTitle(for: "516"), "Create a code")
+        XCTAssertEqual(CommonGroundPairCodeRow.linkTitle(for: "5160"), "Enter pair room")
+    }
+
     func testPairCodeAndRedeemDecode() throws {
         let code = try JSONDecoder().decode(CommonGroundPairCode.self, from: Data(Self.codeJSON.utf8))
         XCTAssertEqual(code.code, "K4M7-2QXA")

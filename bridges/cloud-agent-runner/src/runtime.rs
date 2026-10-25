@@ -182,7 +182,8 @@ where
         return Ok(RunnerStepOutcome::NoRun);
     };
 
-    if run.status == "cancelled" {
+    // A memory import runs only on the owner's Mac; the server never leases one.
+    if run.status == "cancelled" || run.run_id.starts_with("import_") {
         return Ok(RunnerStepOutcome::SkippedCancelled { run_id: run.run_id });
     }
 
@@ -448,6 +449,9 @@ mod common_ground_tests;
 #[cfg(test)]
 #[path = "runtime_connector_tests.rs"]
 mod connector_tests;
+#[cfg(test)]
+#[path = "runtime_import_tests.rs"]
+mod import_tests;
 #[cfg(test)]
 #[path = "runtime_proactive_tests.rs"]
 mod proactive_tests;

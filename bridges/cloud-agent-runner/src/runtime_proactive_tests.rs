@@ -92,6 +92,7 @@ fn the_memory_section_follows_the_run_scopes() {
         updated_at: "2026-10-01T00:00:00Z".into(),
         owner_account_id: None,
         owner_name: None,
+        ..RunnerMemory::default()
     };
     let loaded = RunMemory {
         enabled: true,

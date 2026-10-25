@@ -69,7 +69,7 @@ test('method rows are named by how you connect, never by the provider', () => {
 test('list descriptions carry the qualifier, the method and the model count', () => {
   const antigravity = display('google-antigravity');
   const models = pinnedOmpCatalog.providers.find((entry) => entry.id === 'google-antigravity')?.models.length;
-  assert.equal(providerListDescription(antigravity), `Gemini 3, Claude, GPT-OSS · Browser sign-in · ${models} models`);
+  assert.equal(providerListDescription(antigravity), `Gemini, Claude, GPT-OSS · Browser sign-in · ${models} models`);
   assert.match(providerListDescription(display('groq')), /^API key · \d+ models$/);
 });
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { serializeCloudflareAiGatewayCredential } from '@oh-my-pi/pi-catalog/wire/cloudflare-ai-gateway';
+import { serializeCloudflareCredential } from '@oh-my-pi/pi-catalog/wire/cloudflare';
 import { ompLoginRegistry, type LoginRegistry, type LoginSessionManager } from './login-sessions';
 import { manager, until } from './login-test-fixtures';
 import { documentationAsPublic, fakeResolver, guardedNetwork, redirectTo } from './network-test-fixtures';
@@ -139,7 +139,7 @@ describe('claimed material endpoint', () => {
   test('OMP templates never become a guessed host, and login-chosen routing fills them', async () => {
     expect(providerDefaultEndpoint('bedrock-mantle')).toEqual({ baseUrl: null, api: 'openai-responses' });
     expect(providerDefaultEndpoint('openai-codex')).toEqual({ baseUrl: 'https://chatgpt.com/backend-api', api: 'openai-codex-responses' });
-    const gateway = serializeCloudflareAiGatewayCredential('synthetic-gateway-token', 'account-1', 'gateway-1');
+    const gateway = serializeCloudflareCredential({ token: 'synthetic-gateway-token', accountId: 'account-1', gatewayId: 'gateway-1' });
     expect(await resolveLoginEndpoint('cloudflare-ai-gateway', gateway, guard)).toEqual({
       baseUrl: 'https://gateway.ai.cloudflare.com/v1/account-1/gateway-1/anthropic',
       api: 'anthropic-messages',

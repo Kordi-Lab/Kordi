@@ -280,9 +280,7 @@ export function AgentsPage({
   const creationDraftId = builder.status?.draftId ?? null;
   const factoryAvatar = useFactoryCreationAvatar(creationDraftId, creating ? undefined : selectedAvatarUrl);
   const avatarActions = useFactoryAgentAvatarActions({ creating, agent: selectedAgent, factoryAvatar, onUpdateCloudAgent, onUpdateLocalAgentAvatar, setPublishFeedback });
-  const creationAccessScope: CloudAgentAccessScope = builder.status?.draft?.access === 'participant-conversations'
-    ? 'participant_conversations'
-    : 'private';
+  const creationAccessScope: CloudAgentAccessScope = builder.status?.draft?.access === 'participant-conversations' ? 'participant_conversations' : 'private';
   const creationProactive = useCreationProactiveDraft(creating ? creationDraftId : null);
   const defaultProactive = useDefaultAgentProactive(creating ? undefined : selectedAgent, cloudAccountId);
   const activeAgentConfig = selectedAgent && builder.status?.draft ? {

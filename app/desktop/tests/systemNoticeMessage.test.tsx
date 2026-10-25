@@ -3,13 +3,13 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
-import { KORDI_PIP_AVATAR_URL, KORDI_SYSTEM_AVATAR_URL } from '../src/features/pip/pipIdentity';
+import { KORDI_SYSTEM_AVATAR_URL } from '../src/features/pip/pipIdentity';
 import { MessageBubble } from '../src/kordi-app/components/transcript';
 import type { CanonicalIdentity, CanonicalSessionMessage } from '../src/kordi-app/types';
 
 const pip: CanonicalIdentity = {
   id: 'human:acct_kordi_pip', kind: 'human', displayName: 'PiP', source: 'bridge', sourceHostId: 'cloud',
-  sourceIdentityId: 'acct_kordi_pip', humanId: 'acct_kordi_pip', profileImageUrl: KORDI_PIP_AVATAR_URL,
+  sourceIdentityId: 'acct_kordi_pip', humanId: 'acct_kordi_pip', profileImageUrl: KORDI_SYSTEM_AVATAR_URL,
   createdAtMs: 1, updatedAtMs: 1,
 } as CanonicalIdentity;
 
@@ -30,7 +30,7 @@ function pipMessage(messageKind: string, text: string): CanonicalSessionMessage 
   };
 }
 
-test('system notices show as System with the gray bird and no PiP tag', () => {
+test('system notices show as System with the gray bird and no tag', () => {
   const text = 'Welcome to the group.\nAlex joined. Ask me to plan something together.';
   const message = mapCanonicalMessage(pipMessage('system-notice', text), new Map([[pip.id, pip]]), 'human:me');
   assert.ok(message);
@@ -48,12 +48,14 @@ test('system notices show as System with the gray bird and no PiP tag', () => {
   assert.doesNotMatch(markup, /app-system-notice-row/);
 });
 
-test('ordinary PiP messages keep the PiP identity', () => {
-  const message = mapCanonicalMessage(pipMessage('text', 'Here is the plan.'), new Map([[pip.id, pip]]), 'human:me');
+test('plan agent messages show as System too', () => {
+  // An identity stored before the server rename still carries the old name and no picture.
+  const legacy = { ...pip, displayName: 'PiP', profileImageUrl: undefined } as CanonicalIdentity;
+  const message = mapCanonicalMessage(pipMessage('text', 'Here is the plan.'), new Map([[pip.id, legacy]]), 'human:me');
   assert.ok(message);
-  assert.equal(message.sender, 'PiP');
-  assert.equal(message.senderProfileImageUrl, KORDI_PIP_AVATAR_URL);
+  assert.equal(message.sender, 'System');
+  assert.equal(message.senderProfileImageUrl, KORDI_SYSTEM_AVATAR_URL);
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message, onOpenSenderProfile: () => {} }));
-  assert.match(markup, /Built-in agent/);
-  assert.match(markup, /aria-label="Open PiP profile"/);
+  assert.match(markup, />System</);
+  assert.doesNotMatch(markup, /Built-in agent|PiP|aria-label="Open System profile"/);
 });

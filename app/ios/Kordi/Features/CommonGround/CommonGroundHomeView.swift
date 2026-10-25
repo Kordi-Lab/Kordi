@@ -15,6 +15,7 @@ struct CommonGroundHome: View {
     @State private var joinCode: CommonGroundCodeTarget?
     @State private var createFor: CommonGroundCodeTarget?
     @State private var enterAfterCreate: String?
+    @State private var enterAfterJoin: String?
     @State private var createdRoom: CommonGroundRoom?
     @State private var addsCard = false
     @State private var lookFor: CommonGroundCodeTarget?
@@ -56,7 +57,7 @@ struct CommonGroundHome: View {
                         error: codeError,
                         enabled: canPair,
                         onTap: startTap,
-                        onComplete: entered,
+                        onEnter: entered,
                         onCreate: { create(for: model.currentProfileID) }
                     )
                     CommonGroundRoomsSection(path: $path)
@@ -92,9 +93,12 @@ struct CommonGroundHome: View {
             if phase == .active { Task { await model.refreshHome() } }
         }
         .task(id: model.isBuilding) { await model.waitForBuild() }
-        .sheet(item: $joinCode, onDismiss: { code = "" }) { target in
-            CommonGroundJoinSheet(code: target.code ?? "", cardWidth: cardWidth) { room, profile in
-                model.notice = profile.map { "Sharing \($0.title) in \(room.title)" } ?? "Joined \(room.title)"
+        .sheet(item: $joinCode, onDismiss: {
+            code = ""
+            if let joined = enterAfterJoin { enterAfterJoin = nil; path.append(.results(joined)) }
+        }) { target in
+            CommonGroundJoinSheet(code: target.code ?? "", cardWidth: cardWidth) { room, _ in
+                enterAfterJoin = room.code
             }
             .environmentObject(model)
             .presentationDetents([.height(model.roomDetail(target.code ?? "") == nil ? 470 : 492)])
@@ -208,9 +212,10 @@ struct CommonGroundHome: View {
         if model.sharing { createFor = CommonGroundCodeTarget(profileId: profileId) } else { afterSharing = .create(profileId) }
     }
 
-    /// Looks the code up once, then joins, asking to turn on sharing first.
-    /// A room you are already in opens as it is: joining again with another
-    /// card would switch the shared card and clear its matches.
+    /// Enter pair room: looks the code up once, then joins and opens the room,
+    /// asking to turn on sharing first. A room you are already in opens as it
+    /// is: joining again with another card would switch the shared card and
+    /// clear its matches.
     private func entered(_ entered: String) {
         codeError = nil
         guard !model.isInOpenRoom(entered) else { return open(entered) }
@@ -244,13 +249,10 @@ struct CommonGroundHome: View {
         }
         Task {
             let profileId = model.preselectedProfile(forRoom: entered)
-            if let room = await model.joinFromHome(entered, profileId: profileId) {
-                model.notice = model.profile(profileId).map { "Sharing \($0.title) in \(room.title)" } ?? "Joined \(room.title)"
-            } else {
-                // The row shows the error under the boxes instead of the toast.
-                codeError = model.notice
-                model.notice = nil
-            }
+            if await model.joinFromHome(entered, profileId: profileId) != nil { return open(entered) }
+            // The row shows the error under the boxes instead of the toast.
+            codeError = model.notice
+            model.notice = nil
             code = ""
         }
     }

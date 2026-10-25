@@ -2,8 +2,8 @@ use super::*;
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_149_adds_proactive_agents() {
-    let pool = fixture(149).await;
+async fn upgrade_from_153_adds_proactive_agents() {
+    let pool = fixture(153).await;
     execute(&pool, "INSERT INTO cloud_agent_definitions(agent_id,owner_account_id,name,role,system_prompt,model_routing_json,created_at,updated_at,avatar_source,avatar_style,avatar_seed,avatar_renderer_version,avatar_version,avatar_updated_at) VALUES('cloud_agent_fixture','fixture-owner','Scout','Helper','Help.','{\"defaultModel\":\"gpt-test\"}','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','generated','thumbs','cloud_agent_fixture','fixture',1,'2026-01-01T00:00:00Z')").await;
     let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
     a.unwrap();

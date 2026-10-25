@@ -33,7 +33,8 @@ fn model_context(input: &Value) -> Result<Value, ModelLoopError> {
         json!({"mode":"incremental","changes":changes,"previous":input["previous"],
         "calendarEventIndex":calendar_index,
         "locale":input["locale"],"timezone":input["timezone"],"asOf":input["asOf"],
-        "viewerAccountId":input["viewerAccountId"],"partial":input["partial"]}),
+        "viewerAccountId":input["viewerAccountId"],"partial":input["partial"],
+        "memories":input.get("memories").cloned().unwrap_or_else(|| json!([]))}),
     )
 }
 
@@ -77,7 +78,10 @@ fn json_object(text: &str) -> Option<Value> {
 /// do not get a whole digest rejected.
 fn schema_output(mut output: Value, incremental: bool) -> Value {
     let object = output.as_object_mut().expect("digest output is an object");
-    object.retain(|key, _| OUTPUT_LISTS.contains(&key.as_str()) || key == "removedItemIds");
+    // `memories` (#2053) is checked and saved by the server.
+    object.retain(|key, _| {
+        OUTPUT_LISTS.contains(&key.as_str()) || key == "removedItemIds" || key == "memories"
+    });
     for list in OUTPUT_LISTS {
         let items = object.entry(*list).or_insert_with(|| json!([]));
         if !items.is_array() {
@@ -461,5 +465,15 @@ mod output_tests {
             serde_json::from_str(&completed_output("{\"claims\":[]}".into(), true).unwrap())
                 .unwrap();
         assert_eq!(patch["removedItemIds"], json!([]));
+        let reply =
+            r#"{"claims":[],"memories":[{"text":"Prefers short replies","scope":"global"}]}"#;
+        let output: Value =
+            serde_json::from_str(&completed_output(reply.into(), false).unwrap()).unwrap();
+        assert_eq!(output["memories"][0]["text"], "Prefers short replies");
+        let input = json!({"sources":[],"changes":{},"previous":{},"memories":[{"text":"Known"}]});
+        assert_eq!(
+            model_context(&input).unwrap()["memories"][0]["text"],
+            "Known"
+        );
     }
 }

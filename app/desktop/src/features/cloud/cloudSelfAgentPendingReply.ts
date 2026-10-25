@@ -22,6 +22,15 @@ export function pendingSelfAgentReplyId(requestMessageId: string) {
 }
 
 /**
+ * The not-started notice is a row of its own. The transcript never reopens a
+ * finished turn, so a run that starts after the notice must replace the row,
+ * not reuse its id, or the notice would stay above the live reply (#2026).
+ */
+export function pendingSelfAgentNoticeRowId(requestMessageId: string) {
+  return `${pendingSelfAgentReplyId(requestMessageId)}:not-started`;
+}
+
+/**
  * The row id of a request's pending reply. Once the request's Cloud id is
  * known, it is the id its stored reply row will have, so that row replaces
  * the pending one in place: the same transcript row, with its waiting
@@ -41,6 +50,35 @@ function repliesTo(message: CanonicalSessionMessage, requestId: string) {
   return message.parentMessageId === requestId
     || content.requestId === requestId
     || content.replyToMessageId === requestId;
+}
+
+/**
+ * A stored reply for the request's Cloud id. The Mac publishes its processing
+ * reply within moments of the request, so that reply can be stored before the
+ * request is linked to its Cloud id, without a parent. It is still the
+ * request's reply row; a pending row beside it showed a second processing row.
+ */
+function repliesToCloudRequest(message: CanonicalSessionMessage, request: CanonicalSessionMessage, wireId: string | undefined, linkedWireIds: ReadonlySet<string>) {
+  const cloudRequestMessageId = record(message.content).cloudRequestMessageId;
+  if (typeof cloudRequestMessageId !== 'string' || !cloudRequestMessageId.trim()) return false;
+  if (wireId) return cloudRequestMessageId === wireId || repliesTo(message, wireId);
+  // The request's Cloud id is not known here yet: an unlinked reply created
+  // after it, for a Cloud request no other row claims, is this request's.
+  return message.sessionId === request.sessionId && message.senderRole === 'owned-agent'
+    && !message.parentMessageId && message.createdAtMs >= request.createdAtMs
+    && !linkedWireIds.has(cloudRequestMessageId);
+}
+
+const NO_WIRE_IDS: ReadonlySet<string> = new Set();
+
+/** Cloud request ids that a stored request row already carries. */
+function linkedCloudRequestIds(state: CanonicalSessionState) {
+  return new Set(state.messages.flatMap((message) => {
+    if (message.senderRole !== 'user') return [];
+    const entryId = record(message.content).desktopEntryId;
+    const ids = [typeof entryId === 'string' ? entryId : null, message.sourceTransport?.startsWith('cloud-') ? message.sourceEventId : null];
+    return ids.filter((id): id is string => Boolean(id?.trim()));
+  }));
 }
 
 /** A hosted Ask Agent request this Mac sent that no reply row answers yet. */
@@ -124,23 +162,27 @@ export function projectPendingSelfAgentReplies(
   const sessionById = new Map(state.sessions.map((session) => [session.id, session]));
   const pending: CanonicalSessionMessage[] = [];
   const folded = new Set<string>();
+  let linkedWireIds: ReadonlySet<string> | null = null;
   for (const request of newestUserBySession.values()) {
     if (!waitingHostedRequest(request)) continue;
-    const replies = state.messages.filter((message) => message.senderRole !== 'user' && repliesTo(message, request.id));
+    const linkedWireId = record(request.content).desktopEntryId;
+    const wireId = wireIdByClientId.get(cloudSelfAgentRequestClientMessageId(request.sessionId, request.id))
+      ?? (typeof linkedWireId === 'string' && linkedWireId.trim() ? linkedWireId.trim() : undefined);
+    const claimedWireIds = wireId ? NO_WIRE_IDS : (linkedWireIds ??= linkedCloudRequestIds(state));
+    const replies = state.messages.filter((message) => message.senderRole !== 'user' && (
+      repliesTo(message, request.id) || repliesToCloudRequest(message, request, wireId, claimedWireIds)
+    ));
     const hostedRuns = replies.filter((message) => message.sourceTransport === HOSTED_PROGRESS_SOURCE);
     if (replies.length > hostedRuns.length) continue;
     const agentIdentityId = sessionById.get(request.sessionId)?.primaryIdentityId?.trim();
     if (!agentIdentityId) continue;
     // The Mac runs it before its stored reply exists: show that turn here.
-    const linkedWireId = record(request.content).desktopEntryId;
-    const wireId = wireIdByClientId.get(cloudSelfAgentRequestClientMessageId(request.sessionId, request.id))
-      ?? (typeof linkedWireId === 'string' && linkedWireId.trim() ? linkedWireId.trim() : undefined);
     const localTurn = wireId ? local.turns?.[wireId] : undefined;
     // No run answered in time: say so instead of showing a run that does not exist.
     const notStarted = !localTurn && hostedRuns.length === 0 && nowMs - request.createdAtMs > startTimeoutMs(request);
     for (const run of hostedRuns) folded.add(run.id);
     const row: CanonicalSessionMessage = {
-      id: pendingSelfAgentReplyRowId(request.id, wireId),
+      id: notStarted ? pendingSelfAgentNoticeRowId(request.id) : pendingSelfAgentReplyRowId(request.id, wireId),
       sessionId: request.sessionId,
       senderIdentityId: agentIdentityId,
       senderRole: 'owned-agent',

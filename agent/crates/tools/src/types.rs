@@ -172,6 +172,12 @@ pub struct ReflectionLessonRequest {
     pub scope_id: String,
     pub source: String,
     pub lesson: String,
+    /// The memory category; `None` from an old cached prompt, which the
+    /// server files as `general_preferences`.
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub confidence: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

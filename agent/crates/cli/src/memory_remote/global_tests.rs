@@ -9,6 +9,8 @@ fn global_request(lesson: &str) -> ReflectionLessonRequest {
         scope_id: "account".to_string(),
         source: "user_correction".to_string(),
         lesson: lesson.to_string(),
+        category: None,
+        confidence: None,
     }
 }
 
@@ -77,6 +79,7 @@ async fn saving_text_the_scope_already_holds_reports_already_saved() {
         updated_at: "2026-10-07T09:00:00+00:00".to_string(),
         owner_account_id: None,
         owner_name: None,
+        ..RemoteMemory::default()
     });
     let from_account = (runtime.save_lesson)(global_request("Prefer short answers."))
         .await

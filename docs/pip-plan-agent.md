@@ -174,8 +174,10 @@ A transcript shows one card per plan. Only the newest message carrying a
 card renders it, at the newest snapshot known for that plan; every earlier
 copy keeps just its text.
 
-Both clients recognise PiP by its account id: it gets its own chick mark
-instead of a generated face, and a "Built-in agent" tag next to its name.
+People never see PiP as a persona of its own (#2029). Its account's display
+name is "System", and both clients recognise it by its account id and show its
+messages and plan cards as System with the gray Kordi bird, the same way they
+show Grounding and group notices. There is no separate mark or tag.
 
 ## What this stage does not include
 

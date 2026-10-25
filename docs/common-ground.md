@@ -27,13 +27,14 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
 1. **Intro.** Your avatar, the title "Find your common ground", one line: "Your agent writes a card from sources you choose. Only people you meet see it." Primary button **Build my card**.
 2. **Sources.** One screen, grouped. Every source is off until the person turns it on.
    - **Kordi**: Memory (the account's saved memories) and each connected connector (Gmail, Google Calendar, GitHub, Slack). A connector that is not connected shows **Connect**, which opens Settings › Connectors and returns here.
+     A Work, Health or Daily tasks profile reads only the memories routed to it (see [memory.md](memory.md)); a custom profile reads its pinned memories plus the owner's unpinned ones. Group memories never feed a card.
    - **On this iPhone** (iOS) / **On this Mac** (macOS): Calendar, Reminders. **Allow** shows the system prompt; the row then shows the count found and a switch.
    - **Agents on this Mac** (macOS only): instruction and memory files from local coding agents, redacted before use.
      The server reads up to 12 files, keeps at most 2,000 characters of each after redaction, and rejects a build whose agent text passes 60,000 characters.
    - **Links**: URLs and text separated by `;` (homepage, ORCID, papers). Sites that need sign-in are skipped with a reason.
    - **Notes**: free text.
    - Primary button **Build profile**, enabled when at least one source is on.
-3. **Building.** The Kordi mark and two steps ("Reading sources", "Writing your card"). Usually 10 to 30 seconds.
+3. **Building.** The Kordi mark and two steps ("Reading sources", "Building your card"). Usually 10 to 30 seconds.
 4. **Your card.** See [Card](#card). The first visit shows a single line under the title: "Remove anything you don't want to share."
 
 ### 2. Home
@@ -70,8 +71,8 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
 
 - **Start group** on the suggested group opens a confirmation sheet: group name (prefilled with the theme), the members with check marks, **Create**.
 - The group is created with you and the members who are already contacts. Everyone else in the selection gets an in-app invitation in the room results ("Alex invited you to …", **Join**), backed by a group invite link, so no one is added without accepting.
-- The group opens with PiP introducing everyone: one welcome line naming the topic, one line per person on what they work on and can help with (invited people marked), and a first thing to discuss. When an invitee joins, PiP posts a one-line "Name joined" with their top topics.
-- Group rows show the people in the group (creator first, up to eight, PiP left out); the member count counts people only.
+- The group opens with a System notice introducing everyone: one welcome line naming the topic, one line per person on what they work on and can help with (invited people marked), and a first thing to discuss. When an invitee joins, System posts a one-line "Name joined" with their top topics.
+- Group rows show the people in the group (creator first, up to eight, the plan agent left out); the member count counts people only.
 
 ## Profiles
 
