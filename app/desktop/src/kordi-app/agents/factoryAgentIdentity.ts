@@ -31,11 +31,11 @@ export function factoryAgentAvatarPresentation(agent?: Agent) {
   const avatarKey = agent ? getIdentityAvatarKey('agent', seed) : null;
   return {
     avatarKey,
-    // The account snapshot holds a `kordi-avatar://` marker; the picker needs an image URL.
+    // Markers and legacy agent URLs become the image URL the Blueprint picker draws as is.
     avatarUrl: avatarKey
       ? canonicalAvatarImageUrl(ownAgent ? getLocalAgentAvatar().imageUrl : null)
-        || getAvatarOverride(avatarKey)
-        || agent?.profileImageUrl
+        || canonicalAvatarImageUrl(getAvatarOverride(avatarKey))
+        || canonicalAvatarImageUrl(agent?.profileImageUrl)
         || generatedAvatarPreviewUrl(AGENT_CANONICAL_AVATAR_STYLE, seed)
       : null,
   };
