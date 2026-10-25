@@ -6,6 +6,7 @@ use super::{
 use kordi_core::agent_session::ThinkingLevel;
 
 const EXPECTED_MODEL_IDS: &[&str] = &[
+    "claude-sonnet-5-5",
     "claude-fable-5-1",
     "claude-fable-5",
     "claude-haiku-4-5",
@@ -17,6 +18,7 @@ const EXPECTED_MODEL_IDS: &[&str] = &[
     "claude-opus-4-6",
     "claude-opus-4-7",
     "claude-opus-4-8",
+    "claude-opus-5-5",
     "claude-sonnet-4-5",
     "claude-sonnet-4-5-20250929",
     "claude-sonnet-4-6",
@@ -35,16 +37,23 @@ const BUDGET_MODEL_IDS: &[&str] = &[
 ];
 
 const NATIVE_XHIGH_MODEL_IDS: &[&str] = &[
+    "claude-sonnet-5-5",
     "claude-fable-5-1",
     "claude-fable-5",
     "claude-opus-4-7",
     "claude-opus-4-8",
+    "claude-opus-5-5",
     "claude-sonnet-5",
 ];
 
 #[test]
 fn model_constants_define_the_exact_subscription_order_and_default() {
-    assert_eq!(DEFAULT_ANTHROPIC_MODEL_ID, "claude-opus-4-8");
+    assert_eq!(DEFAULT_ANTHROPIC_MODEL_ID, "claude-sonnet-5-5");
+    assert_eq!(
+        DEFAULT_ANTHROPIC_MODEL_ID,
+        kordi_core::agent_session::DEFAULT_ANTHROPIC_MODEL_ID,
+        "the runtime and provider defaults must agree"
+    );
     assert_eq!(ANTHROPIC_SUBSCRIPTION_MODEL_IDS, EXPECTED_MODEL_IDS);
     assert!(
         ANTHROPIC_SUBSCRIPTION_MODEL_IDS.contains(&DEFAULT_ANTHROPIC_MODEL_ID),
@@ -65,7 +74,12 @@ fn every_subscription_model_has_the_expected_capability_row() {
 
     let rows = [
         ExpectedCapabilities {
-            ids: &["claude-fable-5", "claude-fable-5-1"],
+            ids: &[
+                "claude-fable-5",
+                "claude-fable-5-1",
+                "claude-opus-5-5",
+                "claude-sonnet-5-5",
+            ],
             thinking_mode: ClaudeThinkingMode::Adaptive,
             native_xhigh: true,
             supports_max: true,
@@ -167,7 +181,7 @@ fn every_subscription_model_exposes_its_exact_thinking_levels() {
         );
     }
 
-    let fable_levels = [
+    let always_adaptive_levels = [
         ThinkingLevel::Minimal,
         ThinkingLevel::Low,
         ThinkingLevel::Medium,
@@ -175,10 +189,13 @@ fn every_subscription_model_exposes_its_exact_thinking_levels() {
         ThinkingLevel::XHigh,
         ThinkingLevel::Max,
     ];
-    assert_eq!(
-        thinking_levels("claude-fable-5"),
-        Some(fable_levels.as_slice())
-    );
+    for model_id in ["claude-fable-5", "claude-opus-5-5", "claude-sonnet-5-5"] {
+        assert_eq!(
+            thinking_levels(model_id),
+            Some(always_adaptive_levels.as_slice()),
+            "{model_id}"
+        );
+    }
 }
 
 #[test]
@@ -198,10 +215,13 @@ fn clamping_preserves_supported_and_explicit_stored_levels() {
         );
     }
 
-    assert_eq!(
-        clamp_thinking_level("claude-fable-5", ThinkingLevel::Off),
-        Some(ThinkingLevel::Off)
-    );
+    for model_id in ["claude-fable-5", "claude-opus-5-5", "claude-sonnet-5-5"] {
+        assert_eq!(
+            clamp_thinking_level(model_id, ThinkingLevel::Off),
+            Some(ThinkingLevel::Off),
+            "{model_id}"
+        );
+    }
 }
 
 #[test]

@@ -4,6 +4,15 @@ use crate::registry::{ApiType, Model};
 pub(super) fn builtin_models() -> Vec<Model> {
     vec![
         model(
+            "claude-sonnet-5-5",
+            "Claude Sonnet 5.5",
+            "anthropic",
+            ApiType::AnthropicMessages,
+            (1_000_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.anthropic.com"),
+            cost(2.0, 10.0, 0.2, 2.5),
+        ),
+        model(
             "claude-fable-5-1",
             "Claude Fable 5.1",
             "anthropic",
@@ -103,6 +112,15 @@ pub(super) fn builtin_models() -> Vec<Model> {
             cost(5.0, 25.0, 0.5, 6.25),
         ),
         model(
+            "claude-opus-5-5",
+            "Claude Opus 5.5",
+            "anthropic",
+            ApiType::AnthropicMessages,
+            (1_000_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.anthropic.com"),
+            cost(4.0, 20.0, 0.2, 5.0),
+        ),
+        model(
             "claude-sonnet-4-5",
             "Claude Sonnet 4.5 (latest)",
             "anthropic",
@@ -172,6 +190,13 @@ mod tests {
         }
 
         let expected = [
+            ExpectedModel {
+                id: "claude-sonnet-5-5",
+                name: "Claude Sonnet 5.5",
+                context_window: 1_000_000,
+                max_tokens: 128_000,
+                costs: (2.0, 10.0, 0.2, 2.5),
+            },
             ExpectedModel {
                 id: "claude-fable-5-1",
                 name: "Claude Fable 5.1",
@@ -248,6 +273,13 @@ mod tests {
                 context_window: 1_000_000,
                 max_tokens: 128_000,
                 costs: (5.0, 25.0, 0.5, 6.25),
+            },
+            ExpectedModel {
+                id: "claude-opus-5-5",
+                name: "Claude Opus 5.5",
+                context_window: 1_000_000,
+                max_tokens: 128_000,
+                costs: (4.0, 20.0, 0.2, 5.0),
             },
             ExpectedModel {
                 id: "claude-sonnet-4-5",

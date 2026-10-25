@@ -24,7 +24,7 @@ const NATIVE_XHIGH_LEVELS: &[ThinkingLevel] = &[
     ThinkingLevel::XHigh,
     ThinkingLevel::Max,
 ];
-const FABLE_LEVELS: &[ThinkingLevel] = &[
+const ALWAYS_ADAPTIVE_LEVELS: &[ThinkingLevel] = &[
     ThinkingLevel::Minimal,
     ThinkingLevel::Low,
     ThinkingLevel::Medium,
@@ -47,7 +47,8 @@ pub enum ClaudeThinkingMode {
 pub enum ThinkingOffBehavior {
     /// Send an explicit disabled thinking payload.
     Disabled,
-    /// Omit the thinking payload entirely, as required by Claude Fable 5.
+    /// Omit the thinking payload entirely, as required by models whose thinking
+    /// cannot be disabled (Claude Fable 5, Claude Opus 5.5, and Claude Sonnet 5.5).
     Omit,
 }
 
@@ -71,7 +72,8 @@ enum ClaudeModelProfile {
     Budget,
     AdaptiveMaxWithoutXHigh,
     AdaptiveXHighMaxWithoutTemperature,
-    Fable,
+    /// Thinking is always on: no Off level, no temperature, and a stored Off omits thinking.
+    AlwaysAdaptive,
 }
 
 impl ClaudeModelProfile {
@@ -80,7 +82,7 @@ impl ClaudeModelProfile {
             Self::Budget => ClaudeThinkingMode::Budget,
             Self::AdaptiveMaxWithoutXHigh
             | Self::AdaptiveXHighMaxWithoutTemperature
-            | Self::Fable => ClaudeThinkingMode::Adaptive,
+            | Self::AlwaysAdaptive => ClaudeThinkingMode::Adaptive,
         }
     }
 
@@ -89,17 +91,20 @@ impl ClaudeModelProfile {
             Self::Budget => BUDGET_LEVELS,
             Self::AdaptiveMaxWithoutXHigh => MAX_WITHOUT_XHIGH_LEVELS,
             Self::AdaptiveXHighMaxWithoutTemperature => NATIVE_XHIGH_LEVELS,
-            Self::Fable => FABLE_LEVELS,
+            Self::AlwaysAdaptive => ALWAYS_ADAPTIVE_LEVELS,
         }
     }
 
     fn supports_temperature(self) -> bool {
-        !matches!(self, Self::AdaptiveXHighMaxWithoutTemperature | Self::Fable)
+        !matches!(
+            self,
+            Self::AdaptiveXHighMaxWithoutTemperature | Self::AlwaysAdaptive
+        )
     }
 
     fn thinking_off(self) -> ThinkingOffBehavior {
         match self {
-            Self::Fable => ThinkingOffBehavior::Omit,
+            Self::AlwaysAdaptive => ThinkingOffBehavior::Omit,
             _ => ThinkingOffBehavior::Disabled,
         }
     }
@@ -141,9 +146,10 @@ macro_rules! define_claude_model_profiles {
 }
 
 define_claude_model_profiles! {
-    default: OPUS_4_8;
-    FABLE_5_1: "claude-fable-5-1" => Fable,
-    FABLE_5: "claude-fable-5" => Fable,
+    default: SONNET_5_5;
+    SONNET_5_5: "claude-sonnet-5-5" => AlwaysAdaptive,
+    FABLE_5_1: "claude-fable-5-1" => AlwaysAdaptive,
+    FABLE_5: "claude-fable-5" => AlwaysAdaptive,
     HAIKU_4_5: "claude-haiku-4-5" => Budget,
     HAIKU_4_5_20251001: "claude-haiku-4-5-20251001" => Budget,
     OPUS_4_1: "claude-opus-4-1" => Budget,
@@ -153,6 +159,7 @@ define_claude_model_profiles! {
     OPUS_4_6: "claude-opus-4-6" => AdaptiveMaxWithoutXHigh,
     OPUS_4_7: "claude-opus-4-7" => AdaptiveXHighMaxWithoutTemperature,
     OPUS_4_8: "claude-opus-4-8" => AdaptiveXHighMaxWithoutTemperature,
+    OPUS_5_5: "claude-opus-5-5" => AlwaysAdaptive,
     SONNET_4_5: "claude-sonnet-4-5" => Budget,
     SONNET_4_5_20250929: "claude-sonnet-4-5-20250929" => Budget,
     SONNET_4_6: "claude-sonnet-4-6" => AdaptiveMaxWithoutXHigh,
@@ -168,8 +175,8 @@ pub fn capabilities_for_model(model_id: &str) -> Option<ClaudeModelCapabilities>
 
 /// Returns the exposed thinking levels for an exact known Claude model ID.
 ///
-/// Unknown IDs return `None`. Fable omits [`ThinkingLevel::Off`] from this list,
-/// while [`clamp_thinking_level`] still preserves an explicitly stored Off value.
+/// Unknown IDs return `None`. Always-adaptive models omit [`ThinkingLevel::Off`] from
+/// this list, while [`clamp_thinking_level`] still preserves an explicitly stored Off value.
 pub fn thinking_levels(model_id: &str) -> Option<&'static [ThinkingLevel]> {
     profile_for_model(model_id).map(ClaudeModelProfile::thinking_levels)
 }
@@ -192,8 +199,8 @@ fn clamp_for_profile(profile: ClaudeModelProfile, requested: ThinkingLevel) -> T
 /// Clamps a requested thinking level to an exact known Claude model's profile.
 ///
 /// Unknown IDs return `None`. Known models preserve supported levels and Default;
-/// Fable also preserves its hidden Off value. Unsupported XHigh or Max values
-/// clamp to High.
+/// always-adaptive models also preserve their hidden Off value. Unsupported XHigh or Max
+/// values clamp to High.
 pub fn clamp_thinking_level(model_id: &str, requested: ThinkingLevel) -> Option<ThinkingLevel> {
     profile_for_model(model_id).map(|profile| clamp_for_profile(profile, requested))
 }

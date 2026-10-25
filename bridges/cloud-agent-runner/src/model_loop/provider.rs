@@ -14,7 +14,7 @@ use endpoint::{
     base_url_for, ensure_plain_api_key, ensure_supported_api, is_owner_local_provider_endpoint,
     normalize_provider,
 };
-use model_choice::snapshot_model;
+use model_choice::{default_thinking_for_model, snapshot_model};
 
 mod endpoint;
 mod model_choice;
@@ -173,6 +173,10 @@ impl OpenAiProviderConfig {
             .filter(|value| !value.is_empty())
         {
             self.thinking = thinking.to_string();
+        } else if self.thinking == "default" {
+            if let Some(thinking) = default_thinking_for_model(&self.provider, &self.model) {
+                self.thinking = thinking.to_string();
+            }
         }
         if self.model.is_empty() {
             return Err(ModelLoopError::Provider(CUSTOM_MODEL_MISSING.to_string()));

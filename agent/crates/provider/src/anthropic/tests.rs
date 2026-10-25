@@ -65,6 +65,10 @@ fn adaptive_models_emit_summarized_thinking_and_model_correct_effort() {
         ("claude-fable-5", "max", "max"),
         ("claude-fable-5-1", "xhigh", "xhigh"),
         ("claude-fable-5-1", "max", "max"),
+        ("claude-sonnet-5-5", "medium", "medium"),
+        ("claude-sonnet-5-5", "xhigh", "xhigh"),
+        ("claude-opus-5-5", "medium", "medium"),
+        ("claude-opus-5-5", "max", "max"),
     ] {
         let body = request_body(model, Some(thinking), ProviderAuthMode::ApiKey);
         assert_eq!(
@@ -86,7 +90,9 @@ fn current_models_with_sampling_restrictions_never_add_temperature() {
         "claude-fable-5",
         "claude-opus-4-7",
         "claude-opus-4-8",
+        "claude-opus-5-5",
         "claude-sonnet-5",
+        "claude-sonnet-5-5",
     ] {
         let body = request_body(model, Some("xhigh"), ProviderAuthMode::ApiKey);
         assert!(body.get("temperature").is_none(), "{model}");
@@ -99,9 +105,12 @@ fn explicit_off_uses_each_models_disabled_or_omitted_contract() {
     assert_eq!(opus["thinking"], json!({"type": "disabled"}));
     assert!(opus.get("output_config").is_none());
 
-    let fable = request_body("claude-fable-5", Some("off"), ProviderAuthMode::ApiKey);
-    assert!(fable.get("thinking").is_none());
-    assert!(fable.get("output_config").is_none());
+    // Thinking cannot be disabled on these models; a disabled payload is rejected.
+    for model in ["claude-fable-5", "claude-opus-5-5", "claude-sonnet-5-5"] {
+        let body = request_body(model, Some("off"), ProviderAuthMode::ApiKey);
+        assert!(body.get("thinking").is_none(), "{model}");
+        assert!(body.get("output_config").is_none(), "{model}");
+    }
 
     let unknown = request_body(
         "claude-unknown-live-id",

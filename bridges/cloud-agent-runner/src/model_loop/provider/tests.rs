@@ -79,7 +79,7 @@ fn provider_config_uses_native_anthropic_and_google_defaults() {
     .unwrap();
     assert_eq!(anthropic.provider, "anthropic");
     assert_eq!(anthropic.base_url, "https://api.anthropic.com");
-    assert_eq!(anthropic.model, "claude-sonnet-5");
+    assert_eq!(anthropic.model, "claude-sonnet-5-5");
 
     let google = OpenAiProviderConfig::from_material(&ProviderAuthMaterial {
         snapshot_id: "snap-google".to_string(),
@@ -413,7 +413,7 @@ fn another_vendors_model_on_a_known_family_snapshot_is_replaced() {
         json!({ "apiKey": "key", "model": "gpt-5.6-sol" }),
     ))
     .unwrap();
-    assert_eq!(anthropic.model, "claude-sonnet-5");
+    assert_eq!(anthropic.model, "claude-sonnet-5-5");
 }
 
 #[test]
