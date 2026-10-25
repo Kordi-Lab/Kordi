@@ -199,6 +199,19 @@ test('cloud server manifest targets the hosted product public base', async () =>
       new RegExp(`${name}[\\s\\S]*name: kordi-apns[\\s\\S]*key: ${name}[\\s\\S]*optional: true`),
     );
   }
+  for (const [name, key] of [
+    ['KORDI_CONNECTOR_GOOGLE_CLIENT_ID', 'google-client-id'],
+    ['KORDI_CONNECTOR_GOOGLE_CLIENT_SECRET', 'google-client-secret'],
+    ['KORDI_CONNECTOR_GITHUB_CLIENT_ID', 'github-client-id'],
+    ['KORDI_CONNECTOR_GITHUB_CLIENT_SECRET', 'github-client-secret'],
+    ['KORDI_CONNECTOR_SLACK_CLIENT_ID', 'slack-client-id'],
+    ['KORDI_CONNECTOR_SLACK_CLIENT_SECRET', 'slack-client-secret'],
+  ]) {
+    assert.match(
+      manifest,
+      new RegExp(`${name}[\\s\\S]*name: kordi-connectors[\\s\\S]*key: ${key}[\\s\\S]*optional: true`),
+    );
+  }
   assert.match(manifest, /KORDI_SUPPORT_OPENAI_API_KEY[\s\S]*name: kordi-support-openai/);
 });
 
