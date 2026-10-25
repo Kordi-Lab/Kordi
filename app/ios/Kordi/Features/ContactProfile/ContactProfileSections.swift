@@ -80,6 +80,7 @@ extension ContactProfileInfoRow where Leading == EmptyView, Trailing == EmptyVie
 
 /// Kordi ID row with a copy button that turns into a check for a moment.
 struct ContactProfileKordiIdRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let kordiId: String
     @State private var copied = false
 
@@ -87,7 +88,7 @@ struct ContactProfileKordiIdRow: View {
         ContactProfileInfoRow(
             value: ContactProfilePresentation.formattedKordiId(kordiId),
             caption: "Kordi ID",
-            valueColor: KordiTheme.signalBlue
+            valueColor: chatTheme.accent
         ) {
             EmptyView()
         } trailing: {

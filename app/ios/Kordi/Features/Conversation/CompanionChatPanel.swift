@@ -348,5 +348,5 @@ private struct CompanionPanelToolbar: ToolbarContent {
         )
     }
     .environmentObject(AppModel(previewMode: true))
-    .tint(KordiTheme.signalBlue)
+    .tint(KordiChatTheme.classic.accent)
 }

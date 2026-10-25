@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct GroupSpaceRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -47,14 +48,14 @@ struct GroupSpaceRow: View {
                     .font(.caption)
                     .foregroundStyle(
                         unmutedUnreadCount > 0 || unmutedMentionCount > 0
-                            ? KordiTheme.signalBlue
+                            ? chatTheme.accent
                             : .secondary
                     )
                 HStack(spacing: 5) {
                     if !isExpanded {
                         if let conversation = space.sessions.first(where: { ($0.threadAttention?.threadCount ?? 0) > 0 }) {
                             Button { model.openUnreadThread(in: conversation) } label: {
-                                Image(systemName: "bubble.left.and.bubble.right").foregroundStyle(KordiTheme.signalBlue).frame(minWidth: 44, minHeight: 44)
+                                Image(systemName: "bubble.left.and.bubble.right").foregroundStyle(chatTheme.accent).frame(minWidth: 44, minHeight: 44)
                             }.buttonStyle(.borderless).accessibilityLabel("Jump to next unread thread")
                         }
                         ConversationAttentionBadge(
@@ -129,6 +130,7 @@ struct GroupSpaceRow: View {
 }
 
 struct GroupSessionRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let session: ConversationSummary
     var isPinned = false
@@ -137,7 +139,7 @@ struct GroupSessionRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             RoundedRectangle(cornerRadius: 1, style: .continuous)
-                .fill(KordiTheme.signalBlue.opacity(0.3))
+                .fill(chatTheme.accent.opacity(0.3))
                 .frame(width: 2)
                 .padding(.vertical, 5)
 
@@ -161,7 +163,7 @@ struct GroupSessionRow: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(chatListTimestamp(session.lastActivityAt))
                     .font(.caption)
-                    .foregroundStyle(session.hasUnreadAttention && !isMuted ? KordiTheme.signalBlue : .secondary)
+                    .foregroundStyle(session.hasUnreadAttention && !isMuted ? chatTheme.accent : .secondary)
                 if session.hasUnreadAttention {
                     ConversationAttentionBadge(
                         unreadCount: session.unreadCount,

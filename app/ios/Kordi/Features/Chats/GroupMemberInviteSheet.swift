@@ -261,6 +261,7 @@ private enum GroupInviteListRow: Identifiable {
 }
 
 private struct GroupInviteListRowContent: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let row: GroupInviteListRow
     let selectedContactIDs: Set<String>
     let onToggle: (String) -> Void
@@ -288,7 +289,7 @@ private struct GroupInviteListRowContent: View {
             HStack(spacing: 10) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(isSelected ? KordiTheme.signalBlue : Color.secondary)
+                    .foregroundStyle(isSelected ? chatTheme.accent : Color.secondary)
                     .contentTransition(.symbolEffect(.replace))
                 IdentityAvatar(
                     name: contact.preferredName,
@@ -322,6 +323,7 @@ private struct GroupInviteListRowContent: View {
 }
 
 private struct GroupInviteCompletionView: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let memberCount: Int
     let reduceMotion: Bool
 
@@ -338,7 +340,7 @@ private struct GroupInviteCompletionView: View {
                     .font(.system(size: 32, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: 72, height: 72)
-                    .background(KordiTheme.signalBlue, in: Circle())
+                    .background(chatTheme.accent, in: Circle())
                     .scaleEffect(reduceMotion || isSettled ? 1 : 0.78)
                     .opacity(reduceMotion || isSettled ? 1 : 0.25)
 
@@ -364,6 +366,7 @@ private struct GroupInviteCompletionView: View {
 }
 
 private struct GroupInviteAlphabetIndex: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let sections: [GroupInviteContactSection]
     let onSelect: (GroupInviteContactSection.ID) -> Void
 
@@ -383,7 +386,7 @@ private struct GroupInviteAlphabetIndex: View {
                 .accessibilityLabel("Jump to \(section.title)")
             }
         }
-        .foregroundStyle(KordiTheme.signalBlue)
+        .foregroundStyle(chatTheme.accent)
         .padding(.vertical, 6)
         .padding(.trailing, 2)
     }

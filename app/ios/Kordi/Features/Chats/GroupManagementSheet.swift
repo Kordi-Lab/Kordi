@@ -7,6 +7,7 @@ struct GroupManagementPresentation: Identifiable {
 }
 
 struct GroupManagementSheet: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: AppModel
     let presentation: GroupManagementPresentation
@@ -134,7 +135,7 @@ struct GroupManagementSheet: View {
                                             .foregroundStyle(.primary)
                                         Spacer(minLength: 8)
                                         Image(systemName: selectedContactIDs.contains(contact.accountId) ? "checkmark.circle.fill" : "circle")
-                                            .foregroundStyle(selectedContactIDs.contains(contact.accountId) ? KordiTheme.signalBlue : Color.secondary)
+                                            .foregroundStyle(selectedContactIDs.contains(contact.accountId) ? chatTheme.accent : Color.secondary)
                                     }
                                     .contentShape(Rectangle())
                                 }

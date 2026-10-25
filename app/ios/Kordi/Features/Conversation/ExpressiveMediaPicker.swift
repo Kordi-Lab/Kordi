@@ -569,6 +569,7 @@ struct EmojiSelectionBoard: View {
 }
 
 private struct ExpressiveMediaLibraryPanel: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @State private var libraryEntries: [ExpressiveMediaLibraryEntry] = []
     @State private var isShowingPhotoPicker = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
@@ -625,7 +626,7 @@ private struct ExpressiveMediaLibraryPanel: View {
                         .frame(minHeight: 44)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(KordiTheme.signalBlue)
+                .foregroundStyle(chatTheme.accent)
                 .disabled(activeMediaID != nil || isSending)
                 .accessibilityHint(importerHint)
             }

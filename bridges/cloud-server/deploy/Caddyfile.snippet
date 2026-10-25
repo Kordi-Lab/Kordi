@@ -56,6 +56,9 @@
 	handle /about.html {
 		redir * /about 308
 	}
+	handle /iphone.html {
+		redir * /iphone 308
+	}
 	handle /privacy.html {
 		redir * /privacy 308
 	}
@@ -68,6 +71,9 @@
 	}
 	handle /about/ {
 		redir * /about 308
+	}
+	handle /iphone/ {
+		redir * /iphone 308
 	}
 	handle /privacy/ {
 		redir * /privacy 308
@@ -86,6 +92,10 @@
 	}
 	handle /about {
 		rewrite * /about.html
+		file_server
+	}
+	handle /iphone {
+		rewrite * /iphone.html
 		file_server
 	}
 	handle /privacy {

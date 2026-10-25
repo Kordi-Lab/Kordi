@@ -90,6 +90,7 @@ struct DocumentToolButtonStyle: ButtonStyle {
 
 /// Reaction pills under a block. Tapping one toggles the viewer's reaction.
 struct DocumentReactionPills: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let summaries: [DocumentReactionSummary]
     let canReact: Bool
     let onToggle: (String) -> Void
@@ -105,11 +106,11 @@ struct DocumentReactionPills: View {
                             .padding(.horizontal, 10)
                             .frame(minHeight: 30)
                             .background(
-                                summary.mine ? KordiTheme.signalBlue.opacity(0.14) : Color(uiColor: .secondarySystemBackground),
+                                summary.mine ? chatTheme.accent.opacity(0.14) : Color(uiColor: .secondarySystemBackground),
                                 in: Capsule()
                             )
                             .overlay {
-                                Capsule().stroke(summary.mine ? KordiTheme.signalBlue.opacity(0.5) : .clear, lineWidth: 1)
+                                Capsule().stroke(summary.mine ? chatTheme.accent.opacity(0.5) : .clear, lineWidth: 1)
                             }
                     }
                     .buttonStyle(.plain)
