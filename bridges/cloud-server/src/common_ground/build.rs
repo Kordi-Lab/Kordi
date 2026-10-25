@@ -6,9 +6,12 @@ use std::sync::Arc;
 
 mod documents;
 mod gather;
+mod related;
 
 #[cfg(test)]
 pub(super) use gather::{link_url_for_tests, request_for_tests};
+#[cfg(test)]
+pub(super) use related::{related_ids, user_block, Candidate};
 
 use axum::{extract::State, http::StatusCode, response::Response, Extension, Json};
 use chrono::Utc;
@@ -20,6 +23,7 @@ use super::prompt::{self, Gathered};
 use super::runs::{self, NewRun, CARD_PREFIX};
 use super::{card, db_error, err, limited, profiles, BUILD_LIMIT};
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
+use crate::memory_store::ProfileTarget;
 use crate::{auth::routes::CloudSession, server::ServerState};
 use documents::{gather_documents, DOCUMENTS_SOURCE};
 use gather::{gather, BuildRequest};
@@ -47,8 +51,20 @@ pub(super) async fn start(
             StatusCode::BAD_REQUEST,
         );
     }
-    let (mut evidence, mut used) = match gather(pool, account, &request).await {
+    // An account without a profile builds the work profile it gets below.
+    let target = match &existing {
+        Some(profile) => profile.memory_target(),
+        None => ProfileTarget {
+            profile_id: None,
+            kind: "work",
+        },
+    };
+    let (mut evidence, mut used) = match gather(pool, account, target, &request).await {
         Ok(gathered) => gathered,
+        Err(error) => return db_error(error),
+    };
+    let candidates = match related::candidates(pool, account, target, request.memory_on()).await {
+        Ok(candidates) => candidates,
         Err(error) => return db_error(error),
     };
     match gather_documents(&state, account, &request.documents).await {
@@ -81,10 +97,15 @@ pub(super) async fn start(
         },
     };
     let profile_id = profile.profile_id.as_str();
-    let system_prompt = prompt::system_prompt(&profile);
+    let mut system_prompt = prompt::system_prompt(&profile);
+    let mut user_prompt =
+        prompt::user_prompt(&Utc::now().date_naive().to_string(), &profile, &evidence);
+    if !candidates.is_empty() {
+        system_prompt = format!("{system_prompt}\n\n{}", related::SYSTEM_BLOCK);
+        user_prompt.push_str(&related::user_block(&candidates));
+    }
     let config = pip.config();
     let run_id = runs::new_run_id(CARD_PREFIX);
-    let today = Utc::now().date_naive().to_string();
     let picks = request.picks.map(|picks| picks.cleaned());
     let result = async {
         let mut tx = pool.begin().await?;
@@ -98,7 +119,8 @@ pub(super) async fn start(
         .await?;
         let sql = format!(
             "UPDATE cloud_common_ground_cards card SET active_run_id = $2, build_started_at = now(),
-                 build_evidence_json = $3, build_error_code = NULL, updated_at = now()
+                 build_evidence_json = $3, build_candidates_json = $4, build_error_code = NULL,
+                 updated_at = now()
              WHERE card.profile_id = $1 AND NOT ({})",
             card::BUILD_IN_FLIGHT_SQL
         );
@@ -106,6 +128,7 @@ pub(super) async fn start(
             .bind(profile_id)
             .bind(&run_id)
             .bind(serde_json::to_value(&evidence).unwrap_or_default())
+            .bind(related::stored_ids(&candidates))
             .execute(&mut *tx)
             .await?;
         if reserved.rows_affected() == 0 {
@@ -125,7 +148,7 @@ pub(super) async fn start(
         let new_run = NewRun {
             run_id: &run_id,
             requester: account,
-            prompt: prompt::user_prompt(&today, &profile, &evidence),
+            prompt: user_prompt,
             system_prompt: &system_prompt,
         };
         runs::insert(&mut tx, config, new_run).await?;
@@ -162,8 +185,9 @@ pub(super) async fn complete(
     runner_id: &str,
     text: &str,
 ) -> sqlx_core::Result<()> {
-    let row: Option<(String, String, Value)> = query_as(
-        "SELECT card.account_id, card.profile_id, card.build_evidence_json
+    let row: Option<(String, String, Value, Option<Value>)> = query_as(
+        "SELECT card.account_id, card.profile_id, card.build_evidence_json,
+             card.build_candidates_json
          FROM cloud_common_ground_cards card
          JOIN cloud_agent_fallback_runs run ON run.run_id = card.active_run_id
          WHERE run.run_id = $1 AND run.claimed_by = $2 AND run.status IN ('leased', 'running')",
@@ -172,7 +196,7 @@ pub(super) async fn complete(
     .bind(runner_id)
     .fetch_optional(pool)
     .await?;
-    let Some((account, profile_id, gathered)) = row else {
+    let Some((account, profile_id, gathered, offered)) = row else {
         return Err(sqlx_core::Error::RowNotFound);
     };
     let gathered: Vec<Gathered> = serde_json::from_value(gathered).unwrap_or_default();
@@ -188,7 +212,7 @@ pub(super) async fn complete(
     query(
         "UPDATE cloud_common_ground_cards SET topics_json = $2, evidence_json = $3,
              hidden_json = '[]'::jsonb, active_run_id = NULL, build_evidence_json = NULL,
-             build_error_code = NULL, built_at = now(), revision = revision + 1, updated_at = now()
+             build_candidates_json = NULL, build_error_code = NULL, built_at = now(), revision = revision + 1, updated_at = now()
          WHERE profile_id = $1 AND active_run_id = $4",
     )
     .bind(&profile_id)
@@ -197,6 +221,8 @@ pub(super) async fn complete(
     .bind(run_id)
     .execute(&mut *tx)
     .await?;
+    let related = related::related_ids(text, &offered.unwrap_or_default());
+    let added = related::relate(&mut tx, &account, &profile_id, &related).await;
     super::hint(
         &mut tx,
         &account,
@@ -204,7 +230,9 @@ pub(super) async fn complete(
         json!({ "built": true, "profileId": profile_id }),
     )
     .await?;
-    tx.commit().await
+    tx.commit().await?;
+    related::audit(pool, &account, &profile_id, added).await;
+    Ok(())
 }
 
 pub(super) async fn fail(
@@ -220,7 +248,7 @@ pub(super) async fn fail(
     }
     let account: Option<(String, String)> = query_as(
         "UPDATE cloud_common_ground_cards SET active_run_id = NULL, build_evidence_json = NULL,
-             build_error_code = $2, updated_at = now()
+             build_candidates_json = NULL, build_error_code = $2, updated_at = now()
          WHERE active_run_id = $1 RETURNING account_id, profile_id",
     )
     .bind(run_id)

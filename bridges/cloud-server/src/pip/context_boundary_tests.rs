@@ -76,7 +76,7 @@ async fn provider_context_excludes_pre_join_messages_across_retry_and_completion
         account_id: pip.clone(),
         owner_email: "pip-test@example.invalid".to_string(),
         agent_id: "pip-boundary-test".to_string(),
-        name: "PiP".to_string(),
+        name: "System".to_string(),
         subtitle: "Test".to_string(),
         provider_auth: super::PipProviderAuth::openai_api_key("synthetic-key", "synthetic-model")
             .unwrap(),

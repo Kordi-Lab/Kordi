@@ -13,6 +13,7 @@ mod common_ground_tests;
 mod connectors_tests;
 mod document_share_tests;
 mod email_verification_tests;
+mod memory_tests;
 mod pin_stack_tests;
 mod projection_tests;
 mod signup_email_tests;

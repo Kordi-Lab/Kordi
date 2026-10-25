@@ -1,11 +1,15 @@
 // Login-free synthetic preview of the real account settings dialog opened on
 // the Memory tab. It uses the in-memory preview memory client, so it
-// makes no network calls and needs no session.
+// makes no network calls and needs no session. The sample memories cover every
+// label layer: categories, Grounding cards (one, several, Every card, none),
+// and origins (Global, chats, projects, a group).
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import type { CloudAccount } from '../../src/features/cloud/authClient';
+import { publishMemoryVersion } from '../../src/features/memory/memoryAvailability';
 import { createPreviewMemoryClient } from '../../src/features/memory/memoryClient';
+import { createPreviewMemoryImporter } from '../../src/features/memory/memoryImportClient';
 import { settingsSections, type SettingsSectionId } from '../../src/kordi-app/data/settings';
 import type { ThemeMode } from '../../src/kordi-app/types';
 import { CloudAccountSettingsDialog } from '../../src/pages/CloudAccountSettingsDialog';
@@ -48,7 +52,14 @@ const account: CloudAccount = {
   passwordSet: false,
 };
 
+// `?memoryVersion=2` previews a server without several cards per memory.
+const requestedVersion = Number(new URLSearchParams(window.location.search).get('memoryVersion') ?? '3');
+publishMemoryVersion(Number.isFinite(requestedVersion) && requestedVersion > 0 ? requestedVersion : 3);
+
 const memoryClient = createPreviewMemoryClient({ accountLabel: account.primaryEmail ?? 'taylor@memory.example' });
+const memoryImporter = createPreviewMemoryImporter();
+// A signed-in provider, so the Import section is ready to run.
+const desktopAuthState = { authPath: '', hasAnyAuth: true, providers: [] };
 const noop = () => undefined;
 const resolved = async () => undefined;
 
@@ -76,12 +87,13 @@ function Preview() {
         onClose={noop}
         onUpdateProfile={resolved}
         memoryClient={memoryClient}
+        memoryImporter={memoryImporter}
         settingsSections={settingsSections}
         activeSettingsSectionId={activeSettingsSectionId}
         setActiveSettingsSectionId={setActiveSettingsSectionId}
         authSettingsLayoutWidth={620}
         isNativeShell={isNativeShell}
-        desktopAuthState={null}
+        desktopAuthState={desktopAuthState}
         isDesktopAuthLoading={false}
         desktopAuthError={null}
         activeLoginProviderId={null}

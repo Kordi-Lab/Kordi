@@ -5,6 +5,7 @@ import { AppDialog, AppDialogActions, AppDialogDescription, AppDialogTitle } fro
 import { SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import { profileDesign } from './cardDesign';
 import { AddTopic, CardLine } from './CardLines';
+import { CardMemories } from './CardMemories';
 import { cardSources, cardTimeline, cardTopics, firstCiters, sourceLook } from './cardReferences';
 import { CardNow, CardTimeline } from './CardTimeline';
 import { CardLookButton, CardLookPopover } from './CardLookPopover';
@@ -14,6 +15,7 @@ import { CardGlyph } from './ProfileCard';
 import { DeleteProfileDialog } from './ProfileDialogs';
 import { PROFILE_FOCUS_MAX, PROFILE_NAME_MAX, renameError, renamePatch } from './profiles';
 import { currentProfile, type CgState, type CommonGroundStore } from './store';
+import { newMemoriesLine, useProfileMemories } from './storeMemories';
 import { CG_TOPIC_SECTIONS, type CgOwnCard, type CgProfileKind, type CgTopicKey, type CgTopicLists } from './types';
 import { ownerIsCurrent, shortDay } from './wallet';
 
@@ -68,11 +70,20 @@ export function RenameFields({ name, focus, kind, withFocus = true, onSave, onCa
   );
 }
 
-/** The card page: a slim header, Now, the topics with their references, the timeline, the sources, and Share my card. */
-export function CardScreen({ state, store }: { state: CgState; store: CommonGroundStore }) {
+/**
+ * The card page: a slim header, Now, the topics with their references, the memories on the card
+ * (`memoryVersion` 2; adding and removing cards needs 3), the timeline, the sources, and Share my card.
+ */
+export function CardScreen({ state, store, memoryRouting = false, memoryCards = false }: {
+  state: CgState;
+  store: CommonGroundStore;
+  memoryRouting?: boolean;
+  memoryCards?: boolean;
+}) {
   const [confirming, setConfirming] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const look = useLookPopover();
+  const routed = useProfileMemories(store, state.profileId, memoryRouting);
   const card = state.owner?.card;
   if (!card || !state.owner) return null;
   // Switching cards keeps the new name off the old topics until the new card arrives.
@@ -83,6 +94,7 @@ export function CardScreen({ state, store }: { state: CgState; store: CommonGrou
   const update = (key: CgTopicKey, next: string[]) => void store.saveTopics({ ...lists(card), [key]: next });
   const lineCount = CG_TOPIC_SECTIONS.reduce((sum, [key]) => sum + card[key].length, 0);
   const meta = [`${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`, card.builtAt ? `built ${shortDay(card.builtAt)}` : ''].filter(Boolean).join(' · ');
+  const fresh = memoryRouting ? newMemoriesLine(state.owner.memoriesSinceBuild) : null;
   const sources = cardSources(card);
   const owners = firstCiters(card);
   const onCard = new Set(cardTopics(card));
@@ -121,7 +133,7 @@ export function CardScreen({ state, store }: { state: CgState; store: CommonGrou
             <>
               <h2>{name}</h2>
               {profile?.focus ? <div className="cg-cardpage-focus">{profile.focus}</div> : null}
-              <div className="cg-cardpage-meta">{meta}</div>
+              <div className="cg-cardpage-meta">{meta}{fresh ? <span data-cg-new-memories=""> · {fresh}</span> : null}</div>
             </>
           )}
         </div>
@@ -163,6 +175,17 @@ export function CardScreen({ state, store }: { state: CgState; store: CommonGrou
           </div>
         </section>
       ))}
+      {profile ? (
+        <CardMemories
+          memories={routed.memories}
+          profiles={state.profiles}
+          profileId={profile.profileId}
+          cardsEnabled={memoryCards}
+          onAddToCard={(memoryId, target) => void routed.addToCard(memoryId, target)}
+          onRemoveFromCard={(memoryId) => void routed.removeFromCard(memoryId)}
+          onDelete={(memoryId) => void routed.remove(memoryId)}
+        />
+      ) : null}
       <CardTimeline rows={timeline.rows} earlier={timeline.earlier} onCard={onCard} />
       {sources.length ? (
         <>

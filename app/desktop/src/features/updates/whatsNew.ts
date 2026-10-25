@@ -69,8 +69,8 @@ const CURATED_RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly WhatsNewHighl
   '0.0.2-beta.3': [
     {
       category: 'Group planning',
-      title: 'Turn conversations into shared plans with PiP',
-      detail: 'PiP creates current, confirmable plan cards from group context and keeps participants and status in sync.',
+      title: 'Turn conversations into shared plans',
+      detail: 'Kordi creates current, confirmable plan cards from group context and keeps participants and status in sync.',
       kind: 'collaboration',
     },
     {

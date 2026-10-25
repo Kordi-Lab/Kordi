@@ -10,6 +10,8 @@ fn request(scope: &str, scope_id: &str, lesson: &str) -> ReflectionLessonRequest
         scope_id: scope_id.to_string(),
         source: "user_correction".to_string(),
         lesson: lesson.to_string(),
+        category: None,
+        confidence: None,
     }
 }
 
@@ -192,6 +194,8 @@ async fn saves_and_uploads_carry_the_recorded_scope_label() {
                 scope_id: scope_id.to_string(),
                 source: "user_correction".to_string(),
                 lesson: format!("End replies with a summary for {scope_id}."),
+                category: None,
+                confidence: None,
             })
             .await
             .expect("save");

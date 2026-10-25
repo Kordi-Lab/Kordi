@@ -89,12 +89,6 @@ export function latestOnly() {
   };
 }
 
-/** "Workshop · 14 people": the room's kind and size, leaving out what is unknown. */
-export function roomPreviewLine(room: { kind: CgProfileKind | null; memberCount: number | null }, kindName: (kind: CgProfileKind) => string): string {
-  const people = room.memberCount === null ? '' : room.memberCount === 1 ? '1 person' : `${room.memberCount} people`;
-  return [room.kind ? kindName(room.kind) : '', people].filter(Boolean).join(' · ');
-}
-
 /** "built 14 Oct" style day for the card page. */
 export function shortDay(iso: string | null | undefined, now = new Date()): string {
   if (!iso) return '';

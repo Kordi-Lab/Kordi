@@ -79,7 +79,7 @@ pub(super) async fn save(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
     Path(run_id): Path<String>,
-    Json(input): Json<RunnerSaveMemoryRequest>,
+    Json(mut input): Json<RunnerSaveMemoryRequest>,
 ) -> Response {
     let run = match leased_run(&state, &headers, &run_id, input.runner_id.as_deref()).await {
         Ok(run) => run,
@@ -90,6 +90,8 @@ pub(super) async fn save(
     if let Err(error) = run.check_save_scope(&input.memory.scope, &input.memory.scope_id) {
         return error.into_response();
     }
+    // Everything a cloud run saves comes from the agent, whatever it claims.
+    input.memory.declared_by = Some("agent".to_owned());
     let owner = run.owner_account_id;
     let outcome = match memory_store::save(state.db_pool(), &owner, &input.memory).await {
         Ok(outcome) => outcome,
@@ -105,6 +107,8 @@ pub(super) async fn save(
                 "memoryId": memory.memory_id,
                 "scope": memory.scope,
                 "source": memory.source,
+                "category": memory.category,
+                "declarationType": memory.declaration_type,
                 "runId": run_id,
                 "via": "runner",
             }),

@@ -5,6 +5,7 @@
 //! card per conversation honest through the `plan_card` tool. It posts as an
 //! ordinary member; it never touches anyone's personal calendar.
 
+mod addressing;
 mod agent;
 pub(crate) mod cards;
 mod config;

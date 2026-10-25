@@ -66,6 +66,14 @@ pub struct Output {
     pub calendar_candidates: Vec<Item>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub removed_item_ids: Vec<String>,
+    /// Memories to save from the new messages (#2053). Taken out before the
+    /// digest is stored, so a saved snapshot never carries them.
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "super::memories::lenient"
+    )]
+    pub memories: Vec<super::memories::DigestMemory>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -86,6 +94,9 @@ pub struct Input {
     /// context, never sources and never instructions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub connector_events: Vec<crate::connectors::digest_input::ConnectorEventSummary>,
+    /// The owner's current memories, so the model does not repeat one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub memories: Vec<super::memories::ExistingMemory>,
     /// A quick urgency check of `sources`, not a digest.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub triage: bool,

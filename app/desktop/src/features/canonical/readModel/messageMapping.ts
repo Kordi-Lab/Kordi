@@ -6,7 +6,7 @@ import { canonicalMessageRole } from './messageRole';
 export { canonicalMessageRole } from './messageRole';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
 import { cloudAgentFallbackErrorNotice } from '@/features/cloud/cloudAgentMessages';
-import { cloudAgentStoredReplyHasRunOutput, isCloudAgentStoredNoProviderReply } from '@/features/cloud/cloudAgentReplyText';
+import { cloudAgentStoredReplyHasRunOutput, isCloudAgentStoredNoProviderReply, isFailedReplyTextOnlyItsError } from '@/features/cloud/cloudAgentReplyText';
 import { cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { storedVoiceMessage, withoutVoiceAttachment } from '@/features/cloud/cloudVoiceMessage';
@@ -389,7 +389,7 @@ export function mapCanonicalMessage(
   const isProcessingAgentPlaceholder = isAgentTurn
     && (deliveryState === 'queued' || deliveryState === 'processing')
     && (!rawDisplayText.trim() || isProcessingPlaceholderText(rawDisplayText));
-  const displayText = isProcessingAgentPlaceholder || legacyCollaborationAgentFailure || noProviderFailure ? '' : rawDisplayText;
+  const displayText = isProcessingAgentPlaceholder || legacyCollaborationAgentFailure || noProviderFailure || (isAgentTurn && statusFailed && isFailedReplyTextOnlyItsError(rawDisplayText, stringValue(content.error))) ? '' : rawDisplayText;
   // A reply that ended early keeps its partial text and marks how it ended.
   const rawEnding = isAgentTurn && completed && displayText.trim() ? stringValue(content.ending) : undefined;
   const ending = rawEnding === 'stopped' || rawEnding === 'interrupted' ? rawEnding : undefined;
@@ -433,7 +433,7 @@ export function mapCanonicalMessage(
     senderProfileImageUrl: identity?.profileImageUrl ?? null,
     senderAvatarSeed: canonicalIdentityAvatarSeed(identity),
     isOwnMessage,
-    showSenderMeta: role === 'person' || role === 'external-agent', ...systemNoticeSender(messageKind),
+    showSenderMeta: role === 'person' || role === 'external-agent', ...systemNoticeSender(messageKind, identity),
     text: isAgentTurn ? '' : displayText,
     time,
     timestampMs: message.createdAtMs,

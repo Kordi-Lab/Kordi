@@ -6,7 +6,7 @@ use std::sync::Arc;
 use axum::routing::post;
 use axum::Router;
 
-use crate::cloud_agent_runtime::desktop;
+use crate::cloud_agent_runtime::{desktop, desktop_tasks};
 use crate::server::ServerState;
 
 pub(super) fn routes() -> Router<Arc<ServerState>> {
@@ -25,6 +25,14 @@ pub(super) fn routes() -> Router<Arc<ServerState>> {
             post(desktop::interrupted),
         )
         .route("/v1/cloud/agent-runs/desktop/claim", post(desktop::claim))
+        .route(
+            "/v1/cloud/agent-runs/desktop/tasks",
+            post(desktop_tasks::tasks),
+        )
+        .route(
+            "/v1/cloud/agent-runs/desktop/:run_id/complete",
+            post(desktop_tasks::complete),
+        )
         .route(
             "/v1/cloud/agent-runs/desktop/:run_id/renew",
             post(desktop::renew),

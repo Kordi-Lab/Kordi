@@ -196,6 +196,7 @@ pub async fn input(
             Utc::now() - chrono::Duration::days(7),
         )
         .await?,
+        memories: super::memories::existing(pool, account).await,
         triage: false,
     })
 }
@@ -355,13 +356,15 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
     let input: Input =
         serde_json::from_value(value).map_err(|e| sqlx_core::Error::Decode(Box::new(e)))?;
     // The reason a generated digest is rejected is logged without its content.
-    let output = match serde_json::from_str::<Output>(text.trim()) {
+    let mut output = match serde_json::from_str::<Output>(text.trim()) {
         Ok(output) => output,
         Err(error) => {
             eprintln!("[digest] Rejected run {run}: output is not a digest ({error})");
             return fail(pool, run, Some(runner), "invalid_output").await;
         }
     };
+    // Memories are saved after the digest is stored and never kept in it.
+    let memories = std::mem::take(&mut output.memories);
     let mut output = match super::incremental::merge_output(&input, output) {
         Ok(output) => output,
         Err(error) => {
@@ -399,5 +402,7 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
     )
     .await
     .map_err(|_| sqlx_core::Error::Protocol("Could not publish digest update.".into()))?;
-    tx.commit().await
+    tx.commit().await?;
+    super::memories::save_all(pool, run, &account, &current, memories).await;
+    Ok(())
 }

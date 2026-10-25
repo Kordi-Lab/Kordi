@@ -103,6 +103,8 @@ test('the system account is hidden like PiP', () => {
   assert.equal(conversationPeer(direct, 'acct_me', KORDI_SYSTEM_ACCOUNT_ID), 'acct_sam');
   assert.equal(conversationPeer(direct, 'acct_me', 'acct_me'), 'acct_sam');
   assert.equal(cloudAvatarImageUrl(generatedAvatarMarker('lorelei', KORDI_SYSTEM_ACCOUNT_ID, 1)), KORDI_SYSTEM_AVATAR_URL);
+  assert.equal(cloudAvatarImageUrl(generatedAvatarMarker('lorelei', 'acct_kordi_pip', 1)), KORDI_SYSTEM_AVATAR_URL);
+  assert.equal(cloudMessageFromChatSync(chatMessage('acct_kordi_pip', 'text'), direct).messageKind, 'system-notice');
   assert.equal(normalizePlanCardSnapshot(planCardBlock)?.participants.length, 2);
   assert.equal(isBuiltInIdentity({ humanId: KORDI_SYSTEM_ACCOUNT_ID }), true);
   assert.equal(isBuiltInIdentity({ sourceIdentityId: 'acct_kordi_pip' }), true);

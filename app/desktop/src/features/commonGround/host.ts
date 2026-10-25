@@ -28,6 +28,10 @@ export type CgHost = {
   /** True when profiles keep their sources and documents can be read (`commonGroundVersion` 3). */
   sources?: boolean;
   memoryAvailable: boolean;
+  /** True when memories are filed to profiles (`memoryVersion` 2); the card page lists them. */
+  memoryRouting?: boolean;
+  /** True when a memory may feed several cards (`memoryVersion` 3); card pages add and remove them. */
+  memoryCards?: boolean;
   openChat: (person: CgPerson) => void;
   acceptRequest: (requestId: string) => Promise<void>;
   contactsChanged: () => void;

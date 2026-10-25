@@ -15,6 +15,7 @@ import type {
   Message,
   SessionStatusIndicator,
 } from '@/kordi-app/types';
+import { isRawConversationId, looksLikeSessionId } from '@/features/chat/sessionIdShape';
 import { CHAT_KIND_LABELS, chatKindDescriptionLabel, sessionIdChatKindLabel } from '@/features/chat/sessionKindLabels';
 
 export function canExposeCollaborationPerson(peer: DesktopCollaborationPeer) {
@@ -201,13 +202,6 @@ export function buildOutreachInlineMessages(conversation: DesktopCollaborationCo
   return messages;
 }
 
-function isRawConversationId(value?: string | null) {
-  const trimmed = value?.trim() ?? '';
-  return trimmed.startsWith('session:')
-    || trimmed.startsWith('bridge:')
-    || trimmed.startsWith('draft:');
-}
-
 function nonSelfParticipantNames(participants: string[]) {
   return participants
     .map((participant) => participant.trim())
@@ -264,11 +258,6 @@ export function localOwnedAgentSenderLabel(
 
 export function conversationSessionId(conversation: Pick<Conversation, 'id' | 'canonicalSessionId'>) {
   return conversation.canonicalSessionId || conversation.id;
-}
-
-function looksLikeSessionId(value: string) {
-  return isRawConversationId(value)
-    || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 export function formatSessionIdSubtitle(value?: string | null) {

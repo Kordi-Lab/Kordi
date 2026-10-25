@@ -8,12 +8,15 @@ use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::util::ServiceExt;
 
+mod cards;
+mod categories;
 mod dedup;
 mod global;
 mod group_shared;
 mod isolation;
 mod runs;
 mod scope_rules;
+mod sources;
 
 const RUNNER_TOKEN: &str = "memory-tests-runner-token";
 
@@ -292,7 +295,13 @@ async fn memory_save_edit_delete_and_forget_all() {
     );
     assert_eq!(
         fx.audit_metadata("memory_saved").await[0],
-        json!({ "memoryId": memory_id, "scope": "conversation", "source": "user_correction" })
+        json!({
+            "memoryId": memory_id,
+            "scope": "conversation",
+            "source": "user_correction",
+            "category": "general_preferences",
+            "declarationType": "model-inferred",
+        })
     );
 }
 
@@ -457,11 +466,11 @@ fn capabilities_report_memory_version() {
         password: true,
         oauth_providers: Vec::new(),
         connectors_version: None,
-        memory_version: 1,
+        memory_version: 3,
         common_ground_version: None,
         contact_profile_version: CONTACT_PROFILE_VERSION,
     })
     .unwrap();
-    assert_eq!(value["memoryVersion"], 1);
+    assert_eq!(value["memoryVersion"], 3);
     assert_eq!(value["contactProfileVersion"], 1);
 }

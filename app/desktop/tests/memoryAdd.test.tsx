@@ -94,6 +94,13 @@ function rowIds(host: ParentNode) {
 }
 
 /** Records every add the panel sends to the client. */
+/** Settings list every memory; these are the rows labeled Global. */
+function globalRowIds(host: ParentNode) {
+  return Array.from(host.querySelectorAll('[data-memory-lesson]'))
+    .filter((row) => row.querySelector('[data-memory-label="from"]')?.textContent === 'Global')
+    .map((row) => row.getAttribute('data-memory-lesson'));
+}
+
 function recordingClient() {
   const client = createPreviewMemoryClient({ latencyMs: 0 });
   const added: Array<[MemoryAddTarget, string]> = [];
@@ -129,7 +136,7 @@ test('a chat adds to itself, a group chat to its cloud group, and a project tab 
 test('settings add a global memory that appears first and names who added it', async () => {
   const { client, added } = recordingClient();
   await withRendered(<MemorySettingsPanel accountId="account-1" client={client} isNativeShell />, async (host, window) => {
-    assert.match(host.textContent ?? '', /Global memories · 2/);
+    assert.match(host.textContent ?? '', /All memories · 10/);
     await click(addRow(host), window);
     assert.equal(addRow(host), null);
     assert.equal(host.querySelector('[data-memory-new] textarea')?.getAttribute('aria-label'), 'New memory');
@@ -147,9 +154,10 @@ test('settings add a global memory that appears first and names who added it', a
     assert.deepEqual(added, [[GLOBAL_MEMORY_TARGET, 'Use metric units.']]);
     assert.equal(host.querySelector('[data-memory-new]'), null);
     assert.ok(addRow(host));
-    assert.deepEqual(rowIds(host), ['lesson-added-1', 'lesson-8', 'lesson-9']);
+    assert.deepEqual(globalRowIds(host), ['lesson-added-1', 'lesson-8', 'lesson-9']);
+    assert.equal(rowIds(host)[0], 'lesson-added-1');
     assert.match(host.querySelector('[data-memory-lesson="lesson-added-1"]')?.textContent ?? '', /Use metric units\.Added by you · Today/);
-    assert.match(host.textContent ?? '', /Global memories · 3/);
+    assert.match(host.textContent ?? '', /All memories · 11/);
   });
 });
 
@@ -170,7 +178,7 @@ test('with memory off there is no add row', async () => {
   await withRendered(<MemorySettingsPanel accountId="account-1" client={client} isNativeShell />, async (host) => {
     assert.match(host.textContent ?? '', /Memory is off\./);
     assert.equal(addRow(host), null);
-    assert.deepEqual(rowIds(host), ['lesson-8', 'lesson-9']);
+    assert.deepEqual(globalRowIds(host), ['lesson-8', 'lesson-9']);
   });
   await withRendered(
     <ChatMemoryTab conversation={{ id: PREVIEW_CONVERSATION_MEMORY_SCOPE_ID }} client={client} />,
@@ -260,6 +268,7 @@ test('adding text the scope already has shows the memory once', async () => {
     await click(addRow(host), window);
     await type(host, window, 'Answer in British English and keep replies short unless I ask for more detail.');
     await click(buttonByText(host, 'Save'), window);
-    assert.deepEqual(rowIds(host), ['lesson-8', 'lesson-9']);
+    assert.deepEqual(globalRowIds(host), ['lesson-8', 'lesson-9']);
+    assert.equal(rowIds(host).length, 10);
   });
 });

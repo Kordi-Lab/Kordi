@@ -2414,7 +2414,7 @@ actor CloudAPIClient {
     ) async throws -> CloudChatConversation {
         let accountId = try requireActiveAccountId()
         _ = try await bootstrapChat(token: token)
-        // PiP and System are server-managed members: clients never list them, so
+        // The plan agent and System are server-managed members: clients never list them, so
         // they never count as a difference to sync, and a client never removes them.
         let desiredMembers = Set(
             memberAccountIds.compactMap(\.nonEmpty).filter { !KordiSystemIdentity.isServiceAccount($0) }

@@ -16,6 +16,7 @@ import {
   LESSON_MAX_CHARS,
   forgetConsequences,
   isGlobalMemory,
+  lessonOriginLabel,
   lessonSourceLabel,
   memoryAddedBy,
   validateLessonText,
@@ -87,6 +88,20 @@ test('memory text is normalized and limited', () => {
   assert.equal(validateLessonText('a'.repeat(LESSON_MAX_CHARS)).ok, true);
   assert.deepEqual(validateLessonText(''), { ok: false, reason: 'Enter a memory.' });
   assert.deepEqual(validateLessonText('a'.repeat(LESSON_MAX_CHARS + 1)), { ok: false, reason: 'Memories are 500 characters or fewer.' });
+});
+
+test('the origin label follows the declaration type before the source', () => {
+  const own = { source: 'manual' as const, ownerAccountId: 'acct-1', ownerName: 'Shu' };
+  assert.equal(lessonOriginLabel({ ...own, declarationType: 'model-inferred', confidence: 'high' }, 'acct-1'), 'Saved by your agent \u00b7 high confidence');
+  assert.equal(lessonOriginLabel({ ...own, declarationType: 'model-inferred', confidence: null }, 'acct-1'), 'Saved by your agent');
+  assert.equal(lessonOriginLabel({ ...own, declarationType: 'model-inferred', source: 'outcome', confidence: 'low' }, 'acct-1'), 'Saved by your agent \u00b7 low confidence');
+  assert.equal(lessonOriginLabel({ source: 'manual' }, 'acct-1'), 'Added by you');
+  assert.equal(lessonOriginLabel({ source: 'manual', declarationType: 'user-declared' }, 'acct-1'), 'Added by you');
+  assert.equal(lessonOriginLabel({ source: 'outcome', declarationType: 'user-declared' }, 'acct-1'), 'From an outcome');
+  const other = { source: 'manual' as const, ownerAccountId: 'acct-2', ownerName: 'Priya' };
+  assert.equal(lessonOriginLabel(other, 'acct-1'), 'Added by Priya');
+  assert.equal(lessonOriginLabel({ ...other, declarationType: 'model-inferred', confidence: 'medium' }, 'acct-1'), 'Saved by Priya \u00b7 medium confidence');
+  assert.equal(lessonOriginLabel({ ...other, ownerAccountId: 'acct-1', declarationType: 'model-inferred', confidence: 'high' }, 'acct-1'), 'Saved by your agent \u00b7 high confidence');
 });
 
 test('source labels and forget copy read plainly', () => {
@@ -178,17 +193,17 @@ async function withPanel(
   }
 }
 
-test('panel lists only global memories and points to the conversation tabs for the rest', async () => {
+test('panel lists every memory of the account, newest first, without pointing to the conversation tabs', async () => {
   await withPanel(createPreviewMemoryClient({ latencyMs: 0 }), async (host) => {
     const headings = Array.from(host.querySelectorAll('h2')).map((heading) => heading.textContent);
-    assert.ok(headings.includes('Global memories · 2'));
-    assert.equal(headings.some((heading) => ['Conversations', 'Projects', 'Groups'].includes(heading ?? '')), false);
+    assert.ok(headings.includes('All memories · 10'));
+    assert.equal(headings.some((heading) => /Global memories/.test(heading ?? '')), false);
     assert.deepEqual(
       Array.from(host.querySelectorAll('[data-memory-lesson]')).map((row) => row.getAttribute('data-memory-lesson')),
-      ['lesson-8', 'lesson-9'],
+      ['lesson-1', 'lesson-8', 'lesson-3', 'lesson-2', 'lesson-10', 'lesson-5', 'lesson-9', 'lesson-4', 'lesson-6', 'lesson-7'],
     );
-    assert.doesNotMatch(host.querySelector('[data-memory-lesson="lesson-8"]')?.textContent ?? '', /Global/);
-    assert.match(host.textContent ?? '', /Other memories are on each conversation's Memory tab\./);
+    assert.match(host.querySelector('[data-memory-lesson="lesson-8"] [data-memory-label="from"]')?.textContent ?? '', /^Global$/);
+    assert.doesNotMatch(host.textContent ?? '', /Other memories are on each conversation/);
     assert.doesNotMatch(host.textContent ?? '', /[Rr]eplay/);
     assert.match(host.textContent ?? '', /Bridge conversation memory/);
   });
@@ -253,13 +268,13 @@ test('deleting a memory asks first, then removes the row', async () => {
     const dialog = document.body.querySelector('[role="dialog"], [role="alertdialog"]') ?? document.body;
     await click(buttonByText(dialog, 'Delete'), window);
     assert.equal(host.querySelector('[data-memory-lesson="lesson-9"]'), null);
-    assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 1);
-    assert.match(host.textContent ?? '', /Global memories · 1/);
+    assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 9);
+    assert.match(host.textContent ?? '', /All memories · 9/);
     assert.doesNotMatch(document.body.textContent ?? '', /Delete this memory\?/);
   });
 });
 
-test('forget everything leaves the empty state', async () => {
+test('forget everything leaves only memories other members saved', async () => {
   await withPanel(createPreviewMemoryClient({ latencyMs: 0 }), async (host, window) => {
     await click(buttonByText(host, 'Forget everything'), window);
     assert.match(document.body.textContent ?? '', /Forget all memories\?/);
@@ -268,9 +283,9 @@ test('forget everything leaves the empty state', async () => {
     const dialog = document.body.querySelector('[role="dialog"], [role="alertdialog"]');
     assert.ok(dialog);
     await click(buttonByText(dialog, 'Forget everything'), window);
-    assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 0);
-    assert.match(host.textContent ?? '', /No global memories yet\./);
-    assert.match(host.textContent ?? '', /Global memories · 0/);
+    // The group memory another member saved stays.
+    assert.deepEqual(Array.from(host.querySelectorAll('[data-memory-lesson]')).map((row) => row.getAttribute('data-memory-lesson')), ['lesson-10']);
+    assert.match(host.textContent ?? '', /All memories · 1/);
     assert.equal(buttonByText(host, 'Forget everything'), undefined);
   });
 });

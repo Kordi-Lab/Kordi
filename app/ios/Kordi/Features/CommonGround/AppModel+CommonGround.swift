@@ -43,7 +43,9 @@ extension AppModel {
             avatarUrl: account?.avatarUrl
         )
         let profiles = CommonGroundAvailability.hasProfiles(capabilities: memoryCapabilities)
-        return CommonGroundModel(me: me, profilesEnabled: profiles) { [weak self] in
+        let memories = MemoryPresentation.hasProfileRouting(memoryCapabilities)
+        let cardChoices = MemoryPresentation.hasCardChoices(memoryCapabilities)
+        return CommonGroundModel(me: me, profilesEnabled: profiles, memoriesEnabled: memories, cardChoicesEnabled: cardChoices) { [weak self] in
             guard let self else { throw CancellationError() }
             let (api, token, _) = try self.digestContext()
             return (api, token)
