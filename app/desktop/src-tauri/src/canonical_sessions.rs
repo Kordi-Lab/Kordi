@@ -13,7 +13,7 @@ mod cloud_group_authority;
 mod commands;
 mod core;
 mod desktop_runtime_status;
-mod desktop_sync;
+pub(crate) mod desktop_sync;
 mod group_participants;
 mod identity_context;
 mod identity_helpers;
