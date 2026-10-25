@@ -4,6 +4,15 @@ use crate::registry::{ApiType, Model};
 pub(super) fn builtin_models() -> Vec<Model> {
     vec![
         model(
+            "claude-sonnet-5-5",
+            "Claude Sonnet 5.5",
+            "anthropic",
+            ApiType::AnthropicMessages,
+            (1_000_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.anthropic.com"),
+            cost(2.0, 10.0, 0.2, 2.5),
+        ),
+        model(
             "claude-fable-5-1",
             "Claude Fable 5.1",
             "anthropic",
@@ -38,6 +47,15 @@ pub(super) fn builtin_models() -> Vec<Model> {
             (200_000, 64_000),
             runtime(ReasoningCapability::Supported, "https://api.anthropic.com"),
             cost(1.0, 5.0, 0.1, 1.25),
+        ),
+        model(
+            "claude-haiku-5-5",
+            "Claude Haiku 5.5",
+            "anthropic",
+            ApiType::AnthropicMessages,
+            (1_000_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.anthropic.com"),
+            cost(0.1, 0.5, 0.01, 0.125),
         ),
         model(
             "claude-opus-4-1",
@@ -101,6 +119,24 @@ pub(super) fn builtin_models() -> Vec<Model> {
             (1_000_000, 128_000),
             runtime(ReasoningCapability::Supported, "https://api.anthropic.com"),
             cost(5.0, 25.0, 0.5, 6.25),
+        ),
+        model(
+            "claude-opus-5",
+            "Claude Opus 5",
+            "anthropic",
+            ApiType::AnthropicMessages,
+            (1_000_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.anthropic.com"),
+            cost(5.0, 25.0, 0.5, 6.25),
+        ),
+        model(
+            "claude-opus-5-5",
+            "Claude Opus 5.5",
+            "anthropic",
+            ApiType::AnthropicMessages,
+            (1_000_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.anthropic.com"),
+            cost(4.0, 20.0, 0.2, 5.0),
         ),
         model(
             "claude-sonnet-4-5",
@@ -173,6 +209,13 @@ mod tests {
 
         let expected = [
             ExpectedModel {
+                id: "claude-sonnet-5-5",
+                name: "Claude Sonnet 5.5",
+                context_window: 1_000_000,
+                max_tokens: 128_000,
+                costs: (2.0, 10.0, 0.2, 2.5),
+            },
+            ExpectedModel {
                 id: "claude-fable-5-1",
                 name: "Claude Fable 5.1",
                 context_window: 1_000_000,
@@ -199,6 +242,13 @@ mod tests {
                 context_window: 200_000,
                 max_tokens: 64_000,
                 costs: (1.0, 5.0, 0.1, 1.25),
+            },
+            ExpectedModel {
+                id: "claude-haiku-5-5",
+                name: "Claude Haiku 5.5",
+                context_window: 1_000_000,
+                max_tokens: 128_000,
+                costs: (0.1, 0.5, 0.01, 0.125),
             },
             ExpectedModel {
                 id: "claude-opus-4-1",
@@ -248,6 +298,20 @@ mod tests {
                 context_window: 1_000_000,
                 max_tokens: 128_000,
                 costs: (5.0, 25.0, 0.5, 6.25),
+            },
+            ExpectedModel {
+                id: "claude-opus-5",
+                name: "Claude Opus 5",
+                context_window: 1_000_000,
+                max_tokens: 128_000,
+                costs: (5.0, 25.0, 0.5, 6.25),
+            },
+            ExpectedModel {
+                id: "claude-opus-5-5",
+                name: "Claude Opus 5.5",
+                context_window: 1_000_000,
+                max_tokens: 128_000,
+                costs: (4.0, 20.0, 0.2, 5.0),
             },
             ExpectedModel {
                 id: "claude-sonnet-4-5",

@@ -70,9 +70,21 @@ pub(super) fn model_fits_provider(model: &str, provider: &str) -> bool {
 pub(super) const OPENAI_CODEX_DEFAULT_MODEL: &str =
     kordi_core::agent_session::DEFAULT_OPENAI_MODEL_ID;
 
+/// The model a Claude snapshot runs when it stores none: the same default the
+/// Mac and iOS pickers use.
+pub(super) const ANTHROPIC_DEFAULT_MODEL: &str =
+    kordi_core::agent_session::DEFAULT_ANTHROPIC_MODEL_ID;
+
+/// The effort a run uses when neither the snapshot nor the route names one.
+/// Claude Sonnet 5.5, Kordi's Claude default, runs at medium as it does on
+/// the Mac; every other model keeps its own default (`None`).
+pub(super) fn default_thinking_for_model(provider: &str, model: &str) -> Option<&'static str> {
+    (provider == "anthropic" && model == ANTHROPIC_DEFAULT_MODEL).then_some("medium")
+}
+
 pub(super) fn default_model_for_provider(provider: &str) -> &'static str {
     match provider {
-        "anthropic" => "claude-sonnet-5",
+        "anthropic" => ANTHROPIC_DEFAULT_MODEL,
         "openai-codex" => OPENAI_CODEX_DEFAULT_MODEL,
         "google" => "gemini-3.1-pro",
         "groq" => "llama-3.3-70b-versatile",

@@ -1,5 +1,6 @@
 import { canonicalCloudProviderId } from '@/features/cloud/providerAuthSnapshot';
 import { withChatGptModelCatalog } from '@/features/cloud/chatgptModelCatalog';
+import { withClaudeModelCatalog } from '@/features/cloud/claudeModelCatalog';
 import { DEVICE_ACTIVE_CHOICES } from '@/features/cloud/routeAccountChoice';
 import type { CloudProviderAuthSnapshot } from '@/features/cloud/cloudAgentRuntimeTypes';
 import type { OmpLoginKind, OmpLoginSpec } from '@/features/cloud/providerLogin';
@@ -51,6 +52,11 @@ function ompLoginKind(kind: string): OmpLoginKind {
 
 type PinnedCatalogPayload = typeof import('../../../../../shared/omp-catalog/omp-provider-catalog.json');
 
+/** OMP's entry with Kordi's ChatGPT and Claude model order and defaults. */
+function withKordiModelDefaults<T extends OmpCatalogEntry>(entry: T): T {
+  return withClaudeModelCatalog(withChatGptModelCatalog(entry));
+}
+
 /** Resolves a provider's `modelThinking` profile ids against the catalog's shared `thinkingProfiles`. */
 function resolvedModelThinking(
   modelThinking: Record<string, string | undefined>,
@@ -68,7 +74,7 @@ function pinnedCatalogFrom(payload: PinnedCatalogPayload): OmpCatalog {
   const profiles: Record<string, OmpModelThinking | undefined> = payload.thinkingProfiles;
   return {
     version: payload.version,
-    providers: payload.providers.map((entry) => withChatGptModelCatalog({
+    providers: payload.providers.map((entry) => withKordiModelDefaults({
       id: entry.id,
       name: entry.name,
       models: entry.models,
@@ -124,7 +130,7 @@ export async function refreshOmpCatalog(
         const pinnedEntry = pinned.get(entry.id);
         const { modelThinking: _served, ...served } = entry;
         const login = entry.login ? served : { ...served, login: pinnedEntry?.login ?? null };
-        return withChatGptModelCatalog(pinnedEntry?.modelThinking ? { ...login, modelThinking: pinnedEntry.modelThinking } : login);
+        return withKordiModelDefaults(pinnedEntry?.modelThinking ? { ...login, modelThinking: pinnedEntry.modelThinking } : login);
       }),
     };
   } catch {
