@@ -17,7 +17,8 @@ import { transcriptMessageIsOwnHuman } from '@/kordi-app/components/transcriptMe
 import type { Message } from '@/kordi-app/types';
 import { formatDesktopClockTime } from '@/lib/time';
 import type { ChatSessionPaneProps } from '@/pages/chatsPage.types';
-import { QueuedMessageBubble, queuedBubbleSenderLabel } from '@/pages/chatsPage.queuedMessage';
+import { QueuedMessageBubble } from '@/pages/chatsPage.queuedMessage';
+import { queuedBubbleSenderLabel } from '@/features/chat/queuedBubbleSender';
 import { advanceActivation, finishActivation, initialActivationState, type ActivationRow } from '@/features/chat/queuedActivationMotion';
 import { queuedTranscriptRequestIds } from '@/features/chat/queuedDesktopMessages';
 import { insertPinActivities, PIN_ACTIVITY_ESTIMATED_HEIGHT } from '@/pages/chatsPage.pinActivity';

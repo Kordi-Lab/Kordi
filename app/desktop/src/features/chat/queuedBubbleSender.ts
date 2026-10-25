@@ -1,0 +1,16 @@
+import type { TranscriptDensityMode } from '@/kordi-app/components/transcript';
+
+/**
+ * The name above a queued request drawn in the transcript, by the sent
+ * bubble's rule: only where the sender is shown, never on a grouped follow-up,
+ * and not in compact one-to-one density. A queued bubble that shows a name the
+ * sent bubble drops changes height when it becomes active.
+ */
+export function queuedBubbleSenderLabel(
+  message: { sender?: string; showSenderMeta?: boolean },
+  densityMode: TranscriptDensityMode | undefined,
+  groupedWithPrevious: boolean,
+): string | undefined {
+  const compactHidesSender = Boolean(densityMode && densityMode !== 'default' && densityMode !== 'group-compact');
+  return message.showSenderMeta && message.sender && !groupedWithPrevious && !compactHidesSender ? message.sender : undefined;
+}
