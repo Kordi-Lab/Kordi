@@ -135,7 +135,7 @@ export function QueuedMessageBubble({
             </>
           )}
         </div>
-        {actions ? <span className="flex shrink-0 self-center">{actions}</span> : null}
+        {actions ? <span className="flex shrink-0 self-end">{actions}</span> : null}
         <MessageHoverTime msg={{ role: own ? 'user' : 'person', sender: sender ?? 'Me', text: message.text, time: message.time }} side={own ? 'own' : 'peer'} />
       </div>
     </div>
