@@ -475,7 +475,7 @@ body[data-kordi-chat-theme="classic"] .kordi-app.theme-light .app-chat-bubble-pe
   transition: opacity var(--app-motion-fast) var(--app-motion-ease);
 }
 
-:is(.app-queued-message, .app-queued-message-thread):is(:hover, :focus-within) .app-queued-message-actions {
+:is(.app-queued-message, .app-queued-message-thread, .app-queued-message-row):is(:hover, :focus-within) .app-queued-message-actions {
   opacity: 1;
 }
 

@@ -123,3 +123,39 @@ test('moving the viewport does not invent an outgoing row animation', async () =
   assert.deepEqual(animated, []);
   assert.equal(animations.has(row), false);
 });
+
+test('rows filled in around a remembered row do not slide it from the half-loaded layout', async () => {
+  const { captureTranscriptRowLayoutTops, alignAndRevealMeasuredTranscriptRows } = await import('../src/features/chat/virtualTranscriptMotion');
+  const viewport = document.createElement('div');
+  viewport.dataset.virtualTranscriptScroll = 'true';
+  const content = document.createElement('div');
+  viewport.append(content);
+  viewport.getBoundingClientRect = () => new window.DOMRect(0, 0, 400, 600);
+  const makeRow = (index: number, top: number) => {
+    const row = document.createElement('div');
+    row.dataset.transcriptWindowItem = 'true';
+    row.dataset.index = String(index);
+    row.getBoundingClientRect = () => new window.DOMRect(0, top, 400, 40);
+    Object.defineProperty(row, 'offsetHeight', { value: 40 });
+    return row;
+  };
+  // A chat opens with only its newest reply drawn near the top.
+  const reply = makeRow(0, 130);
+  content.append(reply);
+  const previousRowTops = captureTranscriptRowLayoutTops(content);
+  // History fills in above it and a new request is appended below.
+  content.replaceChildren(makeRow(0, 300), makeRow(1, 340), makeRow(2, 380), reply, makeRow(4, 590));
+  reply.dataset.index = '3';
+  reply.getBoundingClientRect = () => new window.DOMRect(0, 550, 400, 40);
+  const animated = alignAndRevealMeasuredTranscriptRows({
+    alignToTail: () => {}, gap: 4, reduceMotion: false, revealFromIndex: 4,
+    sizeContainer: content, previousRowTops,
+    virtualizer: {
+      getTotalSize: () => 640,
+      getVirtualItems: () => [0, 1, 2, 3, 4].map((index) => ({ index, size: 40, start: 300 + index * 40 })),
+      measureElement: () => {},
+    },
+  });
+  assert.deepEqual(animated, []);
+  assert.equal(animations.has(reply), false);
+});
