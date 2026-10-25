@@ -5,6 +5,14 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 test.use({ viewport: { width: 1280, height: 1000 } });
 
+/** Keeps the shots independent of the host's "Show scroll bars" setting (no classic gutter). */
+async function hideScrollbars(page: Page) {
+  await page.addStyleTag({
+    content:
+      '*::-webkit-scrollbar { display: none !important; } * { scrollbar-width: none !important; scrollbar-gutter: auto !important; scroll-behavior: auto !important; }',
+  });
+}
+
 /**
  * The settings dialog has a fixed height, so the shots scroll its content column to a target. The
  * offset is set directly on the nearest scrolling ancestor (no scrollIntoView, no smooth scroll),
@@ -37,6 +45,7 @@ for (const theme of ['light', 'dark'] as const) {
   test(`memory settings organizer (${theme})`, async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-10-20T10:00:00Z'));
     await page.goto(`/tests/visual/memorySettings.html?theme=${theme}`);
+    await hideScrollbars(page);
     await expect(page.getByRole('heading', { name: 'All memories · 10' })).toBeVisible();
     const organizer = page.locator('[data-memory-organizer]');
     await expect(organizer.getByRole('button', { name: 'Every card' }).first()).toBeVisible();
@@ -50,6 +59,7 @@ for (const theme of ['light', 'dark'] as const) {
 test('memory settings organizer with a filter and the card checklist (light)', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-10-20T10:00:00Z'));
   await page.goto('/tests/visual/memorySettings.html?theme=light');
+  await hideScrollbars(page);
   const organizer = page.locator('[data-memory-organizer]');
   await expect(page.getByRole('heading', { name: 'All memories · 10' })).toBeVisible();
   await scrollTo(page, listHeading(page));
@@ -65,6 +75,7 @@ test('memory settings organizer with a filter and the card checklist (light)', a
 test('memory settings organizer, project and group rows (light)', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-10-20T10:00:00Z'));
   await page.goto('/tests/visual/memorySettings.html?theme=light');
+  await hideScrollbars(page);
   const organizer = page.locator('[data-memory-organizer]');
   await expect(page.getByRole('heading', { name: 'All memories · 10' })).toBeVisible();
   // Group rows show the category and the group, never cards; another member's row has no category menu.
