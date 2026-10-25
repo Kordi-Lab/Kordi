@@ -2,10 +2,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use kordi_session::reflection_lessons::{
-    NewReflectionLesson, ReflectionLesson, ReflectionScope, ReflectionSource,
-    find_active_reflection_lesson_by_text, list_all_reflection_lessons, list_reflection_lessons,
-    new_reflection_lesson_id, save_reflection_lesson, touch_reflection_lesson,
+    NewReflectionLesson, ReflectionScope, ReflectionSource, find_active_reflection_lesson_by_text,
+    list_reflection_lessons, new_reflection_lesson_id, save_reflection_lesson,
+    touch_reflection_lesson,
 };
+use kordi_tools::memory_categories::MODEL_INFERRED;
 use kordi_tools::memory_guard::{MemoryGuardOptions, check_memory_text};
 use kordi_tools::{
     ReflectionLessonRequest, ReflectionLessonResponse, ReflectionRuntime, SaveReflectionLessonFn,
@@ -15,12 +16,14 @@ use tokio::sync::Mutex;
 
 use crate::memory_remote::{
     MemoryRemoteError, MemoryRemoteSlot, NewRemoteMemory, canonical_group_scope_id,
-    check_memory_scope, current_memory_remote, group_lessons_by_scope,
-    import_unlisted_artifact_lines, scope_label_for,
+    check_memory_scope, current_memory_remote, import_unlisted_artifact_lines, scope_label_for,
 };
 
-const LESSON_ARTIFACT_TITLE: &str = "# Scoped reflection lessons";
-const LESSON_SCOPE_ID_PREFIX: &str = "Scope ID: `";
+mod artifact;
+pub(crate) use artifact::{
+    ParsedLessonLine, lesson_declaration, parse_lesson_artifact, parse_lesson_artifact_scope_id,
+    rewrite_all_lesson_artifacts, rewrite_lesson_artifact,
+};
 
 pub(crate) fn reflection_lesson_artifact_path(
     artifacts_dir: &Path,
@@ -156,6 +159,9 @@ pub(crate) fn build_reflection_runtime(
                         source: request.source.clone(),
                         text: lesson_text.clone(),
                         client_memory_id: Some(lesson_id.clone()),
+                        category: request.category.clone(),
+                        confidence: request.confidence.clone(),
+                        declared_by: Some("agent".to_string()),
                     })
                     .await
                 {
@@ -206,6 +212,9 @@ pub(crate) fn build_reflection_runtime(
                         created_at,
                         updated_at,
                         owner_account_id,
+                        category: request.category.clone(),
+                        declaration_type: Some(MODEL_INFERRED.to_string()),
+                        confidence: request.confidence.clone(),
                     },
                 )
                 .map_err(tool_error)?;
@@ -237,160 +246,6 @@ fn reuse_existing_lesson(
     touch_reflection_lesson(conn, &existing.lesson_id, scope_label.as_deref())
         .map_err(tool_error)?;
     Ok(Some(existing.lesson_id))
-}
-
-fn lesson_artifact_header(scope: &str, scope_id: &str) -> String {
-    format!(
-        "{LESSON_ARTIFACT_TITLE}\n\nScope: `{scope}`\n{LESSON_SCOPE_ID_PREFIX}{}`\n\nLessons are stored here so the system prompt only needs this artifact path.\n\n## Lessons\n",
-        scope_id.trim()
-    )
-}
-
-fn sort_key(lesson: &ReflectionLesson) -> (Option<chrono::DateTime<chrono::Utc>>, String, String) {
-    (
-        chrono::DateTime::parse_from_rfc3339(&lesson.created_at)
-            .ok()
-            .map(|value| value.with_timezone(&chrono::Utc)),
-        lesson.created_at.clone(),
-        lesson.lesson_id.clone(),
-    )
-}
-
-/// Rewrite one lesson file from cache rows. The file is written to a sibling
-/// temporary file and renamed, so a crash leaves the old or the new file.
-pub(crate) fn rewrite_lesson_artifact(
-    artifact_path: &Path,
-    scope: &str,
-    scope_id: &str,
-    lessons: &[ReflectionLesson],
-) -> std::io::Result<()> {
-    let parent = artifact_path.parent().unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(parent)?;
-
-    let mut ordered = lessons
-        .iter()
-        .filter(|lesson| lesson.lesson_text.is_some())
-        .collect::<Vec<_>>();
-    ordered.sort_by_key(|lesson| sort_key(lesson));
-
-    let mut body = lesson_artifact_header(scope, scope_id);
-    for lesson in ordered {
-        let text = lesson
-            .lesson_text
-            .as_deref()
-            .unwrap_or_default()
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ");
-        body.push_str(&format!(
-            "- {} [{}] {}\n",
-            lesson.created_at.trim(),
-            lesson.source.as_str(),
-            text
-        ));
-    }
-
-    let file_name = artifact_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("lessons.md");
-    let temp_path = parent.join(format!(
-        ".{file_name}.{}.tmp",
-        uuid::Uuid::new_v4().simple()
-    ));
-    if let Err(error) = std::fs::write(&temp_path, body.as_bytes())
-        .and_then(|()| std::fs::rename(&temp_path, artifact_path))
-    {
-        let _ = std::fs::remove_file(&temp_path);
-        return Err(error);
-    }
-    Ok(())
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ParsedLessonLine {
-    pub created_at: String,
-    pub source: String,
-    pub text: String,
-}
-
-/// Parse `- <timestamp> [<source>] <text>` lines. Other lines are ignored.
-pub(crate) fn parse_lesson_artifact(text: &str) -> Vec<ParsedLessonLine> {
-    text.lines()
-        .filter_map(|line| {
-            let rest = line.strip_prefix("- ")?;
-            let (created_at, rest) = rest.split_once(' ')?;
-            chrono::DateTime::parse_from_rfc3339(created_at).ok()?;
-            let rest = rest.strip_prefix('[')?;
-            let (source, rest) = rest.split_once(']')?;
-            let text = rest.trim();
-            if source.trim().is_empty() || text.is_empty() {
-                return None;
-            }
-            Some(ParsedLessonLine {
-                created_at: created_at.to_string(),
-                source: source.trim().to_string(),
-                text: text.to_string(),
-            })
-        })
-        .collect()
-}
-
-/// Read the scope id from the `Scope ID:` header line.
-pub(crate) fn parse_lesson_artifact_scope_id(text: &str) -> Option<String> {
-    text.lines().find_map(|line| {
-        let value = line.trim().strip_prefix(LESSON_SCOPE_ID_PREFIX)?;
-        let value = value.strip_suffix('`')?.trim();
-        (!value.is_empty()).then(|| value.to_string())
-    })
-}
-
-/// Rewrite every lesson file from the cache. Files under `reflection-lessons/`
-/// whose scope has no rows left are rewritten to the empty header.
-pub(crate) fn rewrite_all_lesson_artifacts(
-    conn: &rusqlite::Connection,
-    artifacts_dir: &Path,
-) -> anyhow::Result<()> {
-    let groups = group_lessons_by_scope(list_all_reflection_lessons(conn)?);
-    let mut written = std::collections::HashSet::new();
-    for ((scope, scope_id), lessons) in &groups {
-        let path = reflection_lesson_artifact_path(artifacts_dir, scope, scope_id);
-        rewrite_lesson_artifact(&path, scope, scope_id, lessons)?;
-        written.insert(path);
-    }
-
-    let root = artifacts_dir.join("reflection-lessons");
-    let Ok(scopes) = std::fs::read_dir(&root) else {
-        return Ok(());
-    };
-    for scope_entry in scopes.flatten() {
-        if !scope_entry.path().is_dir() {
-            continue;
-        }
-        let Some(scope) = scope_entry.file_name().to_str().map(str::to_string) else {
-            continue;
-        };
-        let Ok(files) = std::fs::read_dir(scope_entry.path()) else {
-            continue;
-        };
-        for file in files.flatten() {
-            let path = file.path();
-            if path.extension().and_then(|ext| ext.to_str()) != Some("md")
-                || written.contains(&path)
-            {
-                continue;
-            }
-            let existing = std::fs::read_to_string(&path).unwrap_or_default();
-            let scope_id = parse_lesson_artifact_scope_id(&existing).unwrap_or_else(|| {
-                path.file_stem()
-                    .and_then(|stem| stem.to_str())
-                    .unwrap_or_default()
-                    .to_string()
-            });
-            rewrite_lesson_artifact(&path, &scope, &scope_id, &[])?;
-        }
-    }
-    Ok(())
 }
 
 fn scope_id_slug(scope_id: &str) -> String {

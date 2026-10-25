@@ -4,6 +4,8 @@ use kordi_session::reflection_lessons::{list_all_reflection_lessons, list_reflec
 use kordi_tools::ReflectionLessonRequest;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
+#[path = "category_tests.rs"]
+mod category_tests;
 #[path = "global_tests.rs"]
 mod global_tests;
 #[path = "scope_tests.rs"]
@@ -83,7 +85,17 @@ impl MemoryRemote for FakeRemote {
         }
         let n = self.counter.fetch_add(1, Ordering::SeqCst);
         let stamp = format!("2026-10-07T10:00:{:02}+00:00", n % 60);
+        // Like the server: a missing category is the default one, and an
+        // explicit `declaredBy` wins over the source.
+        let declaration_type = match memory.declared_by.as_deref() {
+            Some("user") => "user-declared",
+            Some(_) => "model-inferred",
+            None => kordi_tools::memory_categories::declaration_for_source(&memory.source),
+        };
         let saved = RemoteMemory {
+            category: memory.category.or(Some("general_preferences".to_string())),
+            declaration_type: Some(declaration_type.to_string()),
+            confidence: memory.confidence,
             memory_id,
             scope: memory.scope,
             scope_id: memory.scope_id,
@@ -94,6 +106,7 @@ impl MemoryRemote for FakeRemote {
             updated_at: stamp,
             owner_account_id: Some(self.account_id()),
             owner_name: None,
+            ..RemoteMemory::default()
         };
         memories.push(saved.clone());
         Ok(saved)
@@ -148,6 +161,8 @@ impl Harness {
             scope_id: "/work/acme-app".to_string(),
             source: "user_correction".to_string(),
             lesson: lesson.to_string(),
+            category: None,
+            confidence: None,
         })
         .await
         .map(|response| response.artifact_path)
@@ -178,11 +193,15 @@ fn parses_lesson_lines_and_scope_header() {
             crate::reflection_runtime::ParsedLessonLine {
                 created_at: "2026-10-01T09:00:00+00:00".to_string(),
                 source: "manual".to_string(),
+                category: None,
+                declaration_type: "user-declared".to_string(),
                 text: "Use pnpm, not npm.".to_string(),
             },
             crate::reflection_runtime::ParsedLessonLine {
                 created_at: "2026-10-01T09:00:01Z".to_string(),
                 source: "outcome".to_string(),
+                category: None,
+                declaration_type: "model-inferred".to_string(),
                 text: "Run the visual job serially.".to_string(),
             },
         ]
@@ -234,7 +253,7 @@ async fn write_through_stores_remote_id_and_rewrites_file() {
     let text = std::fs::read_to_string(harness.artifact()).unwrap();
     assert!(
         text.contains(
-            "- 2026-10-07T10:00:00+00:00 [user_correction] Run the migration test first."
+            "- 2026-10-07T10:00:00+00:00 [user_correction|general_preferences|model-inferred] Run the migration test first."
         )
     );
 }

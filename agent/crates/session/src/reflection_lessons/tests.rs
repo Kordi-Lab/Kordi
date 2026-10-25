@@ -263,3 +263,35 @@ fn global_scope_round_trips_and_sorts_first() {
     assert_eq!(lessons.len(), 1);
     assert_eq!(lessons[0].scope, ReflectionScope::Global);
 }
+
+#[test]
+fn category_declaration_and_confidence_round_trip() {
+    let conn = crate::store::open_memory().expect("memory db");
+    save_reflection_lesson(
+        &conn,
+        NewReflectionLesson {
+            category: Some("health_context".to_string()),
+            declaration_type: Some("model-inferred".to_string()),
+            confidence: Some("high".to_string()),
+            ..lesson("s-cat", "Runs 5k every Tuesday.", false)
+        },
+    )
+    .expect("save categorized");
+    save_reflection_lesson(&conn, lesson("s-cat", "Answer briefly.", false)).expect("save plain");
+
+    let rows = list_reflection_lessons(&conn, ReflectionScope::Conversation, "s-cat").unwrap();
+    let health = rows
+        .iter()
+        .find(|row| row.lesson_text.as_deref() == Some("Runs 5k every Tuesday."))
+        .unwrap();
+    assert_eq!(health.category.as_deref(), Some("health_context"));
+    assert_eq!(health.declaration_type.as_deref(), Some("model-inferred"));
+    assert_eq!(health.confidence.as_deref(), Some("high"));
+    let plain = rows
+        .iter()
+        .find(|row| row.lesson_text.as_deref() == Some("Answer briefly."))
+        .unwrap();
+    assert_eq!(plain.category, None);
+    assert_eq!(plain.declaration_type, None);
+    assert_eq!(plain.confidence, None);
+}

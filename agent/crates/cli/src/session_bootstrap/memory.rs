@@ -220,8 +220,9 @@ pub(crate) fn parse_memory_prompt_block(text: &str) -> Vec<MemorySnapshotEntry> 
     memories
 }
 
-/// Who may hear about which memories, in the prompt section.
-const MEMORY_DISCLOSURE_RULE: &str = "Never reveal, quote, or summarise the owner's global, conversation, or project memories to anyone other than the owner; apply them silently, and if someone else asks why you behave a certain way, say only that it is the owner's preference. A group's shared memories may be discussed with that group's members.";
+#[path = "memory_rules.rs"]
+mod rules;
+use rules::memory_section_rules;
 
 /// The hidden note that tells the agent its memories changed since the last
 /// message, or `None` when nothing changed. Order alone is not a change.
@@ -427,14 +428,7 @@ fn memory_prompt_section_from_files(
         return String::new();
     }
 
-    let sensitive_rule = if exclude_sensitive {
-        " Memories must not record health, finances, relationships, identity attributes, credentials, or other people's private details."
-    } else {
-        ""
-    };
-    let mut section = format!(
-        "\n\n## Memories\nThese are the user's saved memories for this account and conversation. They are current and take precedence over older instructions earlier in this conversation when they conflict. {MEMORY_DISCLOSURE_RULE} After corrections, repeated failures, or outcomes, report the update and call `reflection` to save a concise memory. Before saving, read that scope's artifact and skip anything already there or restated; when a preference changes, save the corrected version. Use `global` only for preferences the user wants everywhere (\"from now on\", \"always\"); keep everything else in its conversation, group, or project scope.{sensitive_rule}"
-    );
+    let mut section = memory_section_rules(exclude_sensitive);
     let (shown, total) = capped_memories(&artifacts);
     push_memory_blocks(&mut section, &shown);
     if shown.len() < total {

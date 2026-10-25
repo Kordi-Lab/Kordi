@@ -230,6 +230,8 @@ async fn save_lesson_as_memory<C: CloudAgentRunClient + Sync>(
         source: request.source.trim().to_string(),
         text: request.lesson.trim().to_string(),
         client_memory_id: Some(client_memory_id.clone()),
+        category: request.category.clone(),
+        confidence: request.confidence.clone(),
     };
     match client.save_memory(&run.run_id, memory).await {
         // A new memory takes this save's fresh clientMemoryId as its id. When

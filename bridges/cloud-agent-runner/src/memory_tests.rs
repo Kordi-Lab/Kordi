@@ -183,6 +183,7 @@ fn memory_row(id: &str, scope: &str, scope_id: &str, text: &str, at: &str) -> Ru
         updated_at: at.into(),
         owner_account_id: None,
         owner_name: None,
+        ..RunnerMemory::default()
     }
 }
 
@@ -323,7 +324,9 @@ async fn reflection_call_saves_memory_and_relays_the_server_rejection() {
                 "scope": "conversation",
                 "scopeId": SESSION_ID,
                 "source": "user_correction",
-                "lesson": "  Prefer short answers.  "
+                "lesson": "  Prefer short answers.  ",
+                "category": "general_preferences",
+                "confidence": "high"
             }),
         },
     ])]);
@@ -341,7 +344,10 @@ async fn reflection_call_saves_memory_and_relays_the_server_rejection() {
     assert!(client_id.starts_with("mem_") && client_id.len() == 36);
     let body = serde_json::to_value(memory).unwrap();
     assert_eq!(body["scopeId"], SESSION_ID);
+    assert_eq!(body["category"], "general_preferences");
+    assert_eq!(body["confidence"], "high");
     assert!(body.get("scopeLabel").is_none());
+    assert!(body.get("declaredBy").is_none());
 
     let tool_message = provider
         .last_messages()
