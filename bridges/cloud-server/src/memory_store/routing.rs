@@ -174,8 +174,8 @@ pub(crate) struct SaveFields {
 }
 
 /// Resolves the new fields of a save into `scope`. The declaration comes
-/// from `declaredBy` when given, else from the source (`manual` is the
-/// person's own). Inferred memories default to medium confidence; declared
+/// from `declaredBy` when given, else from the source (`manual` and
+/// `import` are the person's own). Inferred memories default to medium confidence; declared
 /// ones carry none.
 pub(crate) fn save_fields(input: &SaveMemoryRequest, scope: &str) -> MemoryResult<SaveFields> {
     let category = check_category(input.category.as_deref(), true)?;
@@ -186,7 +186,7 @@ pub(crate) fn save_fields(input: &SaveMemoryRequest, scope: &str) -> MemoryResul
         Some("user") => USER_DECLARED,
         Some("agent") => MODEL_INFERRED,
         Some(_) => return Err(invalid_declared_by()),
-        None if input.source.trim() == "manual" => USER_DECLARED,
+        None if matches!(input.source.trim(), "manual" | "import") => USER_DECLARED,
         None => MODEL_INFERRED,
     };
     let confidence = match input.confidence.as_deref().map(str::trim) {
@@ -296,6 +296,13 @@ mod tests {
         assert_eq!(fields.category, DEFAULT_CATEGORY);
         assert_eq!(fields.declaration_type, USER_DECLARED);
         assert_eq!(fields.confidence, None);
+
+        let imported = save_fields(&request("import"), "global").unwrap();
+        assert_eq!(imported.declaration_type, USER_DECLARED);
+        assert_eq!(imported.confidence, None);
+        let digest = save_fields(&request("digest"), "global").unwrap();
+        assert_eq!(digest.declaration_type, MODEL_INFERRED);
+        assert_eq!(digest.confidence, Some(DEFAULT_CONFIDENCE));
 
         let mut agent = request("user_correction");
         agent.confidence = Some("high".into());

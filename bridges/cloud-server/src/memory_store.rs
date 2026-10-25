@@ -28,6 +28,7 @@ use row::{memory_from_row, MemoryRow, MEMORY_SELECT};
 
 pub(crate) use groups::is_active_group_member;
 pub(crate) use profile_routing::{build_memories, count_since, profile_memories, ProfileTarget};
+pub(crate) use routing::{category_allowed_in_group, check_category, MEMORY_CONFIDENCES};
 pub(crate) use runs::{
     clear_omp_state, leased_run, omp_state_count, write_memory_audit, LeasedRun,
 };
@@ -41,8 +42,17 @@ pub(crate) const MEMORY_SCOPES: [&str; 4] = ["global", "conversation", "group", 
 /// The only scope id a `global` memory may use: global memories belong to the
 /// whole account.
 pub(crate) const GLOBAL_SCOPE_ID: &str = "account";
-pub(crate) const MEMORY_SOURCES: [&str; 4] =
-    ["user_correction", "repeated_failure", "outcome", "manual"];
+/// `digest` marks memories a digest run saved from recent conversations
+/// (#2053); `import` marks memories the Mac imported from the person's
+/// instruction files (#2054).
+pub(crate) const MEMORY_SOURCES: [&str; 6] = [
+    "user_correction",
+    "repeated_failure",
+    "outcome",
+    "manual",
+    "digest",
+    "import",
+];
 const MAX_SCOPE_ID_CHARS: usize = 256;
 const MAX_SCOPE_LABEL_CHARS: usize = 256;
 const MAX_CLIENT_MEMORY_ID_CHARS: usize = 128;
@@ -195,7 +205,7 @@ pub(crate) async fn save(
     if !MEMORY_SOURCES.contains(&source) {
         return Err(MemoryError::bad_request(
             "invalid_source",
-            "source must be user_correction, repeated_failure, outcome, or manual.",
+            "source must be user_correction, repeated_failure, outcome, manual, digest, or import.",
         ));
     }
     let mut scope_id = input.scope_id.trim().to_owned();

@@ -370,4 +370,9 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "memory card overrides",
         "0151_memory_card_overrides.sql"
     ),
+    migration!(
+        152,
+        "memory digest and import sources",
+        "0152_memory_digest_import_sources.sql"
+    ),
 ];
