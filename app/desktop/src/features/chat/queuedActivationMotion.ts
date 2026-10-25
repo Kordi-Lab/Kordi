@@ -5,6 +5,8 @@ export interface ActivationSnapshot {
   queuedIds: ReadonlySet<string>;
   /** Ids of every timeline row. */
   rowIds: ReadonlySet<string>;
+  /** How many live processing rows were drawn. */
+  processingCount: number;
 }
 
 export interface ActivationRow {
@@ -21,8 +23,11 @@ export interface ActivationRow {
 /**
  * Pick the rows that should play the activate animation: a request that was a
  * queued bubble last render and is a sent bubble now, and a processing row that
- * newly appeared. Nothing animates on the first render of a session, and a row
- * that already animated never animates again.
+ * newly appeared. A processing row that only replaces another one (the stored
+ * reply taking over from the pending row under a new id) is not new: only as
+ * many new processing rows animate as the live count grew. Nothing animates on
+ * the first render of a session, and a row that already animated never
+ * animates again.
  */
 export function planActivationMotion(
   previous: ActivationSnapshot | null,
@@ -34,9 +39,12 @@ export function planActivationMotion(
   const ids: string[] = [];
   for (const row of rows) {
     if (animatedIds.has(row.id)) continue;
-    const wasQueued = !row.queued && row.aliases.some((alias) => previous.queuedIds.has(alias));
-    const appeared = row.processing && !previous.rowIds.has(row.id);
-    if (wasQueued || appeared) ids.push(row.id);
+    if (!row.queued && row.aliases.some((alias) => previous.queuedIds.has(alias))) ids.push(row.id);
+  }
+  const grownBy = rows.filter((row) => row.processing).length - previous.processingCount;
+  if (grownBy > 0) {
+    const appeared = rows.filter((row) => row.processing && !previous.rowIds.has(row.id) && !animatedIds.has(row.id) && !ids.includes(row.id));
+    ids.push(...appeared.slice(-grownBy).map((row) => row.id));
   }
   return ids;
 }
@@ -68,12 +76,14 @@ export function advanceActivation(
   const base = sessionChanged ? initialActivationState : state;
   const planned = planActivationMotion(base.snapshot, sessionKey, rows, base.animatedIds);
   const rowIds = new Set(rows.map((row) => row.id));
+  const processingCount = rows.filter((row) => row.processing).length;
   if (
     !sessionChanged && planned.length === 0 && state.snapshot
+    && state.snapshot.processingCount === processingCount
     && sameSet(state.snapshot.queuedIds, queuedIds) && sameSet(state.snapshot.rowIds, rowIds)
   ) return state;
   return {
-    snapshot: { sessionKey, queuedIds, rowIds },
+    snapshot: { sessionKey, queuedIds, rowIds, processingCount },
     animatedIds: planned.length ? new Set([...base.animatedIds, ...planned]) : base.animatedIds,
     activeIds: planned.length ? new Set([...base.activeIds, ...planned]) : base.activeIds,
   };
