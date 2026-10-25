@@ -2,19 +2,19 @@ import { createRoot } from 'react-dom/client';
 import { mapCanonicalMessage } from '../../src/features/canonical/readModel/messageMapping';
 import { mapCollaborationConversationToViewModel } from '../../src/features/collaboration/transcript';
 import { conversation, host } from '../helpers/collaborationTranscriptFixtures';
-import { KORDI_PIP_AVATAR_URL } from '../../src/features/pip/pipIdentity';
+import { KORDI_SYSTEM_AVATAR_URL } from '../../src/features/pip/pipIdentity';
 import { MessageBubble } from '../../src/kordi-app/components/transcript';
 import type { CanonicalIdentity, CanonicalSessionMessage, Message } from '../../src/kordi-app/types';
 import type { MessagePlanCard } from '../../src/kordi-app/types/message';
 import '../../src/index.css';
 
-// Server "Grounding" notices mapped through the real read model, next to an ordinary PiP reply,
+// Server "Grounding" notices mapped through the real read model, next to a plan agent reply (also System),
 // then a direct-chat plan card the viewer organized, mapped through the direct-chat path.
 const theme = new URLSearchParams(location.search).get('theme') === 'dark' ? 'dark' : 'light';
 document.body.className = `kordi-app theme-${theme}`;
 document.documentElement.classList.toggle('dark', theme === 'dark');
 const pip = { id: 'human:acct_kordi_pip', kind: 'human', displayName: 'PiP', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_kordi_pip',
-  humanId: 'acct_kordi_pip', profileImageUrl: KORDI_PIP_AVATAR_URL, createdAtMs: 1, updatedAtMs: 1 } as CanonicalIdentity;
+  humanId: 'acct_kordi_pip', profileImageUrl: KORDI_SYSTEM_AVATAR_URL, createdAtMs: 1, updatedAtMs: 1 } as CanonicalIdentity;
 const maya = { id: 'human:acct_preview_maya', kind: 'human', displayName: 'Maya Chen', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_preview_maya',
   humanId: 'acct_preview_maya', avatarKey: 'maya-preview', createdAtMs: 1, updatedAtMs: 1 } as CanonicalIdentity;
 const identities = new Map([[pip.id, pip], [maya.id, maya]]);

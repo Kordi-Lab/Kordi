@@ -71,8 +71,8 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
 
 - **Start group** on the suggested group opens a confirmation sheet: group name (prefilled with the theme), the members with check marks, **Create**.
 - The group is created with you and the members who are already contacts. Everyone else in the selection gets an in-app invitation in the room results ("Alex invited you to …", **Join**), backed by a group invite link, so no one is added without accepting.
-- The group opens with PiP introducing everyone: one welcome line naming the topic, one line per person on what they work on and can help with (invited people marked), and a first thing to discuss. When an invitee joins, PiP posts a one-line "Name joined" with their top topics.
-- Group rows show the people in the group (creator first, up to eight, PiP left out); the member count counts people only.
+- The group opens with a System notice introducing everyone: one welcome line naming the topic, one line per person on what they work on and can help with (invited people marked), and a first thing to discuss. When an invitee joins, System posts a one-line "Name joined" with their top topics.
+- Group rows show the people in the group (creator first, up to eight, the plan agent left out); the member count counts people only.
 
 ## Profiles
 

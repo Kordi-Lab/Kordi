@@ -433,7 +433,7 @@ export function mapCanonicalMessage(
     senderProfileImageUrl: identity?.profileImageUrl ?? null,
     senderAvatarSeed: canonicalIdentityAvatarSeed(identity),
     isOwnMessage,
-    showSenderMeta: role === 'person' || role === 'external-agent', ...systemNoticeSender(messageKind),
+    showSenderMeta: role === 'person' || role === 'external-agent', ...systemNoticeSender(messageKind, identity),
     text: isAgentTurn ? '' : displayText,
     time,
     timestampMs: message.createdAtMs,

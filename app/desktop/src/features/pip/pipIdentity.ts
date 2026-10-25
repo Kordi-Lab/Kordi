@@ -1,14 +1,7 @@
-/** PiP, the built-in plan agent. Its account is system-managed on the server;
- * the client substitutes PiP's own mark and label for that account id. */
+/** PiP, the built-in plan agent. Its account is system-managed on the server, and the
+ * client shows its messages and cards as System with the gray Kordi bird. */
 export const KORDI_PIP_ACCOUNT_ID = 'acct_kordi_pip';
 export const KORDI_PIP_AGENT_ID = 'cloud_agent_kordi_pip';
-export const KORDI_PIP_NAME = 'PiP';
-export const KORDI_PIP_TAG = 'Built-in agent';
-export const KORDI_PIP_AVATAR_URL = '/kordi-pip-avatar.svg';
-
-export function isPipAvatarUrl(url: string | null | undefined): boolean {
-  return url?.trim() === KORDI_PIP_AVATAR_URL;
-}
 
 /** PiP's canonical identity, by the Cloud account or agent id it was created from. */
 export function isPipIdentity(identity: { humanId?: string | null; agentId?: string | null; sourceIdentityId?: string | null } | null | undefined): boolean {
@@ -23,8 +16,8 @@ export function isPipAccountId(accountId: string | null | undefined): boolean {
   return accountId?.trim() === KORDI_PIP_ACCOUNT_ID;
 }
 
-/** Server notices in group chats (introductions, joins) show as System with a gray Kordi bird,
- * whichever built-in account posted them. */
+/** Server notices in group chats (introductions, joins) and the plan agent's messages show as
+ * System with a gray Kordi bird, whichever built-in account posted them. */
 export const KORDI_SYSTEM_NOTICE_KIND = 'system-notice';
 export const KORDI_SYSTEM_NAME = 'System';
 export const KORDI_SYSTEM_AVATAR_URL = '/kordi-system-avatar.svg';

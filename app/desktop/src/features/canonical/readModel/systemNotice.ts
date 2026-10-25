@@ -1,4 +1,4 @@
-import { KORDI_SYSTEM_AVATAR_URL, KORDI_SYSTEM_NAME, KORDI_SYSTEM_NOTICE_KIND } from '@/features/pip/pipIdentity';
+import { isPipIdentity, KORDI_SYSTEM_AVATAR_URL, KORDI_SYSTEM_NAME, KORDI_SYSTEM_NOTICE_KIND } from '@/features/pip/pipIdentity';
 import type { CanonicalSessionMessage, Message } from '@/kordi-app/types';
 
 // Takes the kind itself: the read model counts property reads per row.
@@ -6,11 +6,11 @@ export function isSystemNoticeKind(messageKind: CanonicalSessionMessage['message
   return messageKind?.trim() === KORDI_SYSTEM_NOTICE_KIND;
 }
 
-/** Sender identity for a server notice; null keeps the poster's own identity. The seed keeps
- * notices from grouping with the posting account's own messages. A notice is never an own
- * bubble, even when the viewer's account posted it (an organizer's plan card). */
-export function systemNoticeSender(messageKind: CanonicalSessionMessage['messageKind'] | null | undefined) {
-  return isSystemNoticeKind(messageKind)
+/** Sender identity for a server notice or the plan agent; null keeps the poster's own identity.
+ * The seed keeps notices from grouping with the posting account's own messages. A notice is
+ * never an own bubble, even when the viewer's account posted it (an organizer's plan card). */
+export function systemNoticeSender(messageKind: CanonicalSessionMessage['messageKind'] | null | undefined, sender?: Parameters<typeof isPipIdentity>[0]) {
+  return isSystemNoticeKind(messageKind) || isPipIdentity(sender)
     ? { sender: KORDI_SYSTEM_NAME, senderProfileImageUrl: KORDI_SYSTEM_AVATAR_URL, showSenderMeta: true, senderAvatarSeed: 'kordi-system', senderOwnerName: undefined, isOwnMessage: false }
     : null;
 }

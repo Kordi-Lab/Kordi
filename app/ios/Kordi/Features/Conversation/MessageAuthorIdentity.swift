@@ -35,14 +35,11 @@ enum MessageAuthorIdentity {
         let participant = isAgentInSharedSpace ? nil : conversation.groupParticipants.first {
             $0.displayName.localizedCaseInsensitiveCompare(message.authorName) == .orderedSame
         }
-        // PiP posts in the chat without being a member, so it is never in
-        // groupParticipants; keep its own mark instead of the group's.
-        if participant == nil, conversation.kind == .group, KordiPipIdentity.isPipName(message.authorName) {
-            return ConversationAvatarIdentity(
-                name: KordiPipIdentity.displayName,
-                source: nil,
-                seed: KordiPipIdentity.accountId
-            )
+        // The plan agent posts in the chat without being a member, so it is
+        // never in groupParticipants; it shows as System, not as the group.
+        if participant == nil, conversation.kind == .group,
+           KordiPipIdentity.isPipName(message.authorName) || message.authorName == KordiSystemIdentity.displayName {
+            return KordiSystemIdentity.avatar
         }
         if isAgentInSharedSpace {
             return agent(message, participants: conversation.groupParticipants,

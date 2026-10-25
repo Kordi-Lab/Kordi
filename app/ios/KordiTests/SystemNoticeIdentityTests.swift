@@ -18,7 +18,7 @@ final class SystemNoticeIdentityTests: XCTestCase {
         XCTAssertEqual(message.authorName, "System")
         XCTAssertEqual(message.text, "Maya joined.")
         XCTAssertFalse(message.isSystemNotice, "Notices keep the normal bubble layout")
-        XCTAssertEqual(pipReply.authorName, KordiPipIdentity.displayName)
+        XCTAssertEqual(pipReply.authorName, KordiSystemIdentity.displayName, "The plan agent shows as System")
     }
 
     func testSystemNoticeResolvesToSystemNotPip() {
@@ -42,18 +42,19 @@ final class SystemNoticeIdentityTests: XCTestCase {
         ))
     }
 
-    func testPipMessageWithoutTheKindStaysPip() {
+    func testPlanAgentMessageWithoutTheKindShowsAsSystem() {
         let conversation = makeGroup()
-        let message = ChatMessage(
-            id: "pip", conversationId: conversation.id, author: .person, authorName: "PiP",
-            text: "Plan", createdAt: .distantPast, deliveryState: .delivered, errorMessage: nil,
-            requestMessageId: nil
-        )
+        for authorName in ["System", "PiP"] {
+            let message = ChatMessage(
+                id: "pip", conversationId: conversation.id, author: .person, authorName: authorName,
+                text: "Plan", createdAt: .distantPast, deliveryState: .delivered, errorMessage: nil,
+                requestMessageId: nil
+            )
 
-        let identity = MessageAuthorIdentity.resolve(message, in: conversation, account: nil, mentionTargets: [])
+            let identity = MessageAuthorIdentity.resolve(message, in: conversation, account: nil, mentionTargets: [])
 
-        XCTAssertEqual(identity.name, KordiPipIdentity.displayName)
-        XCTAssertEqual(identity.seed, KordiPipIdentity.accountId)
+            XCTAssertEqual(identity, KordiSystemIdentity.avatar, authorName)
+        }
     }
 
     private func makeGroup() -> ConversationSummary {
