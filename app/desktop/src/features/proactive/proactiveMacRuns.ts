@@ -19,6 +19,9 @@ import type { ProactiveRunRequest } from './proactiveRunHints';
 
 const RENEW_MS = 10_000;
 
+/** Added to an approved run's system context: the run's tools work in an empty folder. */
+export const PROACTIVE_RUN_FOLDER_LINE = "This run works in an empty folder of its own. Do not search your owner's home folder or other personal folders. If you need code or files, get them from where your owner's memories say they live, or ask for them in your answer.";
+
 export type ProactiveMacOutcome = 'skipped' | 'not-acquired' | 'completed' | 'released';
 
 type EvaluationClaim = {
@@ -163,10 +166,10 @@ export async function runProactiveApprovedOnMac(
     const scope = claim.contextSessionId || request.sessionId;
     const base = cloudGroupAgentRuntimeSessionId(accountId, scope, claim.agentId || request.agentId)
       ?? `session:proactive:${accountId}`;
-    const system: DesktopChatContextMessage[] = claim.systemPrompt ? [{
+    const system: DesktopChatContextMessage[] = [{
       id: `proactive-system:${lease.runId}`, authorName: 'Proactive run', authorKind: 'agent',
-      contextRole: 'system', text: claim.systemPrompt,
-    }] : [];
+      contextRole: 'system', text: [claim.systemPrompt, PROACTIVE_RUN_FOLDER_LINE].filter(Boolean).join('\n\n'),
+    }];
     const turn = await (runtime.startTurn ?? startDesktopSharedChatMessage)(
       request.runId,
       cloudGroupAgentRequestRuntimeSessionId(base, request.runId),
@@ -177,6 +180,8 @@ export async function runProactiveApprovedOnMac(
       [],
       scope,
       lease.deadline,
+      null,
+      { kind: 'proactiveRun', runId: request.runId },
     );
     lease.attach(turn.id);
     const final = turn.completed ? turn : await (runtime.waitForTurn ?? waitForCloudAgentTurn)(turn.id);

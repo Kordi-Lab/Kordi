@@ -189,6 +189,7 @@ impl ManagedChildAgentRunner {
             request_message_id: None,
             execution_lease_deadline_ms: None,
             inherited_hosted_auth: self.parent_hosted_auth.clone(),
+            working_folder: None,
         }
     }
 

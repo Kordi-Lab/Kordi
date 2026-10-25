@@ -36,6 +36,8 @@ pub async fn desktop_chat_start_shared_message(
     scheduled_task_session_id: Option<String>,
     execution_lease_deadline_ms: Option<i64>,
     background_follow_up_route: Option<serde_json::Value>,
+    // Names the folder; the path is built natively, never taken from the web view.
+    working_folder: Option<super::proactive_run_folder::WorkingFolderRequest>,
 ) -> Result<DesktopChatTurnSnapshot, String> {
     if let Some(follow_up_route) = background_follow_up_route {
         manager
@@ -60,6 +62,7 @@ pub async fn desktop_chat_start_shared_message(
             request_message_id: None,
             execution_lease_deadline_ms,
             inherited_hosted_auth: None,
+            working_folder,
         },
     )
     .await

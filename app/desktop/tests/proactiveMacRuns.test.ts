@@ -8,6 +8,7 @@ import type { ChatSyncEvent, ChatSyncSyncResponse } from '../src/features/cloud/
 import type { DesktopChatContextMessage } from '../src/lib/desktop';
 import type { DesktopChatTurnSnapshot } from '../src/kordi-app/types';
 import {
+  PROACTIVE_RUN_FOLDER_LINE,
   runProactiveApprovedOnMac,
   runProactiveEvaluationOnMac,
   type ProactiveMacRuntime,
@@ -194,8 +195,8 @@ test('an approved run starts a shared turn in the group and completes with its f
   assert.equal(claim.requesterAccountId, owner);
   assert.equal(claim.targetCloudAgentId, approved.agentId);
   assert.ok(calls.some((call) => call.path === 'proactive_run_1/admit'));
-  const [requestId, sessionId, prompt, attachments, startedRoute, context, tasks, scope] = started as [
-    string, string, string, string[], unknown, DesktopChatContextMessage[], unknown[], string,
+  const [requestId, sessionId, prompt, attachments, startedRoute, context, tasks, scope, , followUpRoute, workingFolder] = started as [
+    string, string, string, string[], unknown, DesktopChatContextMessage[], unknown[], string, unknown, unknown, unknown,
   ];
   assert.equal(requestId, 'proactive_run_1');
   assert.equal(sessionId, `${cloudAgentRuntimeSessionId(owner, GROUP)}:request:proactive_run_1`);
@@ -204,7 +205,12 @@ test('an approved run starts a shared turn in the group and completes with its f
   assert.deepEqual(startedRoute, route);
   assert.deepEqual(tasks, []);
   assert.equal(scope, GROUP);
-  assert.deepEqual(context.find((message) => message.contextRole === 'system')?.text, 'The owner allowed your offer.');
+  assert.equal(followUpRoute, null);
+  assert.deepEqual(workingFolder, { kind: 'proactiveRun', runId: 'proactive_run_1' }, 'the turn works in an empty folder of its own');
+  assert.equal(context.find((message) => message.contextRole === 'system')?.text, `The owner allowed your offer.\n\n${PROACTIVE_RUN_FOLDER_LINE}`);
+  assert.match(PROACTIVE_RUN_FOLDER_LINE, /empty folder of its own/);
+  assert.match(PROACTIVE_RUN_FOLDER_LINE, /Do not search your owner's home folder or other personal folders/);
+  assert.match(PROACTIVE_RUN_FOLDER_LINE, /ask for them in your answer/);
   const identity = context.find((message) => message.contextRole === 'runtimeIdentity');
   assert.equal(identity?.executionLease?.sessionId, GROUP, 'retrieval reads the group the offer was made in');
   assert.deepEqual(calls.filter((call) => call.kind === 'post'), [{
@@ -212,6 +218,17 @@ test('an approved run starts a shared turn in the group and completes with its f
   }]);
   assert.ok(!calls.some((call) => call.path.endsWith('/release')));
   assert.deepEqual(reports, []);
+});
+
+test('an approved run without a system prompt still gets the folder line', async () => {
+  let started: unknown[] = [];
+  const { value } = runtime({ ...approvedClaim, systemPrompt: '' }, {
+    startTurn: async (...args) => { started = args; return turn(); },
+  });
+  assert.equal(await runProactiveApprovedOnMac(approved, value), 'completed');
+  const context = started[5] as DesktopChatContextMessage[];
+  assert.deepEqual(context.filter((message) => message.contextRole === 'system').map((message) => message.text), [PROACTIVE_RUN_FOLDER_LINE]);
+  assert.deepEqual(started[10], { kind: 'proactiveRun', runId: 'proactive_run_1' });
 });
 
 test('an approved run this Mac cannot finish goes back to the cloud', async () => {

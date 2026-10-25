@@ -249,8 +249,27 @@ Approved runs:
   not lease the run while the project Mac is online.
 - The Mac admits the run with the generic
   `/v1/cloud/agent-runs/desktop/:run_id/admit` and runs a full shared-chat
-  agent turn with the owner's tools and workspace, like a scheduled Mac
-  run, with `systemPrompt` as context.
+  agent turn with the owner's tools, like a scheduled Mac run, with
+  `systemPrompt` as context.
+- The turn works in an empty folder of its own, not in the folder the app
+  happens to run in. The start command takes `workingFolder:
+  {"kind": "proactiveRun", "runId": "proactive_run_…"}`, which must name
+  the turn's own request; the Mac builds the path itself, as
+  `kordi-proactive-runs/<runId>` in the user's temporary folder (private
+  to the user, outside the home folder, so no personal `AGENTS.md` above
+  it applies). A folder left by a crashed attempt is emptied first. The
+  folder is removed when the turn ends, whether it succeeded or not, and
+  starting a run removes leftover run folders older than a day. Removal
+  stays inside that parent and never follows a link. Every other turn
+  keeps the app's folder.
+- The run's system context adds one line: "This run works in an empty
+  folder of its own. Do not search your owner's home folder or other
+  personal folders. If you need code or files, get them from where your
+  owner's memories say they live, or ask for them in your answer."
+- No project folder: a group cannot be linked to a project today (the
+  desktop's `canChooseChatProject` refuses collaboration chats and the
+  server's project assignment accepts only `kind='ai'` conversations), so
+  an approved run has no project folder to work in.
 - Complete: the same complete route calls the generic run completion, so
   delivery (envelope, agent as sender, threaded under the trigger) and the
   proposal status match a cloud run. Errors release the run to the cloud.
@@ -381,6 +400,10 @@ Design preview: `docs/design-previews/proactive-agent/`.
 - The Mac's own harness can still add its local memory cache to an approved
   run's shared-chat turn (`agent/crates/cli` session bootstrap); skip it
   for `proactive_run_` turns.
+- Once a group can be linked to a project, run an approved run in that
+  project's folder instead of the empty one.
+- A background session an approved run leaves running loses the run's
+  folder when the run's turn ends.
 
 - iPhone offer with Allow and Not now in the group, and the Blueprint row
   once an agent settings screen exists there.

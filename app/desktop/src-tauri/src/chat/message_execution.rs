@@ -32,6 +32,8 @@ pub(super) struct StartMessageInput {
     /// subsessions inherit it because they hold no execution lease of their
     /// own; it is resolved again against the parent lease near expiry.
     pub inherited_hosted_auth: Option<super::hosted_provider_auth::InheritedHostedAuth>,
+    /// A working folder of the turn's own instead of the app's folder.
+    pub working_folder: Option<super::proactive_run_folder::WorkingFolderRequest>,
 }
 
 async fn reserve_shared_request(
@@ -82,13 +84,24 @@ pub(super) async fn start_message(
         request_message_id,
         execution_lease_deadline_ms,
         inherited_hosted_auth,
+        working_folder,
     } = input;
     let attachment_paths = attachment_paths.unwrap_or_default();
     if text.trim().is_empty() && attachment_paths.is_empty() {
         return Err("Message is empty".to_string());
     }
 
-    let cwd = chat_cwd()?;
+    // Created after the request is reserved, so a repeated start cannot reset
+    // the folder of a running turn; removed when this turn ends.
+    let run_folder = working_folder
+        .map(|request| {
+            super::proactive_run_folder::create_for_turn(&request, request_message_id.as_deref())
+        })
+        .transpose()?;
+    let cwd = match &run_folder {
+        Some(folder) => folder.path().to_path_buf(),
+        None => chat_cwd()?,
+    };
     let target_session_id =
         ensure_loaded_or_create_explicit_session(manager, &cwd, session_id).await?;
     let session_handle = {
@@ -147,6 +160,7 @@ pub(super) async fn start_message(
         // including on failure. A canceled queued turn still waits for its
         // predecessor so cancellation cannot let later requests overtake it.
         let _completion = turn_completion;
+        let _run_folder = run_folder;
         if !admission::begin_preparation(&snapshot_for_task, &cancel, previous_turn).await {
             return;
         }

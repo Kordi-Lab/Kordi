@@ -6,6 +6,9 @@ import type {
   DesktopVisibleTaskRecord,
 } from '@/lib/desktop';
 
+/** A working folder of the turn's own; the Mac builds the path from the run id. */
+export type DesktopChatWorkingFolder = { kind: 'proactiveRun'; runId: string };
+
 export function desktopSharedRequestAlreadyStarted(error: unknown) {
   return String(error).includes('shared_request_already_started');
 }
@@ -22,6 +25,7 @@ export function startDesktopSharedChatMessage(
   executionLeaseDeadlineMs: number | null = null,
   /** Where a background follow-up of this request publishes its reply. */
   backgroundFollowUpRoute: unknown = null,
+  workingFolder: DesktopChatWorkingFolder | null = null,
 ) {
   return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_start_shared_message', {
     requestId,
@@ -34,6 +38,7 @@ export function startDesktopSharedChatMessage(
     scheduledTaskSessionId,
     executionLeaseDeadlineMs,
     backgroundFollowUpRoute,
+    workingFolder,
   });
 }
 
