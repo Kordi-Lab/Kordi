@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AgentSubsessionStopButton: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: AppModel
     let snapshot: CloudAgentSubsession
     @State private var failure: String?
@@ -29,7 +30,7 @@ struct AgentSubsessionStopButton: View {
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(KordiTheme.signalBlue)
+            .foregroundStyle(chatTheme.accent)
             .disabled(stopping)
             .accessibilityLabel("\(stopping ? "Stopping" : "Stop") background task: \(current.title)")
             .accessibilityHint("Stops this task and its queued follow-ups")
@@ -120,6 +121,7 @@ struct AgentRequestStopButton: View {
 /// The composer's Stop, in the send button's size and position. It stops the
 /// newest running request this account sent in the chat, else the queued one.
 struct ComposerAgentRequestStopButton: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: AppModel
     let conversationId: String
     let requestMessageId: String
@@ -146,7 +148,7 @@ struct ComposerAgentRequestStopButton: View {
                 } else {
                     Image(systemName: "stop.fill")
                         .font(.body.weight(.bold))
-                        .foregroundStyle(KordiTheme.signalBlue)
+                        .foregroundStyle(chatTheme.accent)
                 }
             }
             .frame(width: diameter, height: diameter)

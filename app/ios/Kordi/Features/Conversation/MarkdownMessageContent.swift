@@ -462,6 +462,7 @@ enum KordiMarkdownParser {
 }
 
 struct MarkdownMessageContent: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     enum Density: Equatable {
         case standard, threads
         case compact
@@ -547,7 +548,7 @@ struct MarkdownMessageContent: View {
                 }
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.plain)
-                .foregroundStyle(inlineAccent ?? KordiTheme.signalBlue)
+                .foregroundStyle(inlineAccent ?? chatTheme.accent)
                 .accessibilityHint("Changes how much of this long message is visible")
             }
         } else {
@@ -617,6 +618,7 @@ struct MarkdownMessageContent: View {
 }
 
 private struct InlineMarkdownText: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let text: String
     let font: Font
     @State private var siteIcons: [String: UIImage] = [:]
@@ -666,7 +668,7 @@ private struct InlineMarkdownText: View {
     private func siteIconColor(for url: URL) -> Color {
         Self.isDirectFileLink(url)
             ? KordiFileFamily.forFile(name: url.lastPathComponent).tint
-            : (inlineAccent ?? KordiTheme.signalBlue)
+            : (inlineAccent ?? chatTheme.accent)
     }
 
     private static func isDirectFileLink(_ url: URL) -> Bool {
@@ -729,7 +731,7 @@ private struct InlineMarkdownText: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(inlineAccent ?? KordiTheme.signalBlue)
+                .foregroundStyle(inlineAccent ?? chatTheme.accent)
                 .accessibilityLabel(linkLabelAccessibilityText(labelParts))
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -824,7 +826,7 @@ private struct InlineMarkdownText: View {
             case let .link(label, url):
                 fragment = AttributedString(KordiMarkdownParser.compactLinkLabel(label, url: url))
                 fragment.link = url
-                fragment.foregroundColor = inlineAccent ?? KordiTheme.signalBlue
+                fragment.foregroundColor = inlineAccent ?? chatTheme.accent
                 fragment.underlineStyle = .single
             case .blobEmoji, .notoEmoji:
                 continue
@@ -978,6 +980,7 @@ private extension EnvironmentValues {
 }
 
 private struct MarkdownListRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let item: KordiMarkdownListItem
     let font: Font
 
@@ -995,7 +998,7 @@ private struct MarkdownListRow: View {
         if let checked = item.checked {
             Image(systemName: checked ? "checkmark.square.fill" : "square")
                 .font(font)
-                .foregroundStyle(checked ? KordiTheme.signalBlue : .secondary)
+                .foregroundStyle(checked ? chatTheme.accent : .secondary)
                 .accessibilityLabel(checked ? "Completed" : "Not completed")
         } else if item.ordered {
             Text("\(item.ordinal).")

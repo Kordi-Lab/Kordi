@@ -3,6 +3,7 @@ import SwiftUI
 import UIKit
 
 struct CameraPhotoSendReviewSheet: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dismiss) private var dismiss
 
     let sourceImage: UIImage
@@ -75,7 +76,7 @@ struct CameraPhotoSendReviewSheet: View {
                     }
                     .frame(width: 44, height: 44)
                     .foregroundStyle(.white)
-                    .background(KordiTheme.signalBlue, in: Circle())
+                    .background(chatTheme.accent, in: Circle())
                 }
                 .buttonStyle(.plain)
                 .disabled(isSending)
@@ -102,7 +103,7 @@ struct CameraPhotoSendReviewSheet: View {
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .foregroundStyle(.white)
                 .background(
-                    isActive ? KordiTheme.signalBlue.opacity(0.34) : Color.clear,
+                    isActive ? chatTheme.accent.opacity(0.34) : Color.clear,
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                 )
         }
@@ -155,6 +156,7 @@ struct CameraPhotoSendReviewSheet: View {
 }
 
 struct PhotoLibraryImageEditor: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dismiss) private var dismiss
 
     let asset: PHAsset
@@ -242,8 +244,8 @@ struct PhotoLibraryImageEditor: View {
                 .foregroundStyle(.white)
                 .background(
                     isPrimary
-                        ? KordiTheme.signalBlue
-                        : isActive ? KordiTheme.signalBlue.opacity(0.34) : Color.white.opacity(0.1),
+                        ? chatTheme.accent
+                        : isActive ? chatTheme.accent.opacity(0.34) : Color.white.opacity(0.1),
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                 )
         }

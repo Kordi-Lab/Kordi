@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct VoiceTranscriptDetails: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let state: VoiceTranscriptState
     let onTranscribe: () -> Void
@@ -23,7 +24,7 @@ struct VoiceTranscriptDetails: View {
                     }
                     .font(.caption.weight(.semibold))
                     .buttonStyle(.plain)
-                    .foregroundStyle(KordiTheme.signalBlue)
+                    .foregroundStyle(chatTheme.accent)
                     .frame(minHeight: 28)
                 }
             case .transcribing:
@@ -65,7 +66,7 @@ struct VoiceTranscriptDetails: View {
             Button(title, action: onTranscribe)
                 .fontWeight(.semibold)
                 .buttonStyle(.plain)
-                .foregroundStyle(KordiTheme.signalBlue)
+                .foregroundStyle(chatTheme.accent)
                 .frame(minHeight: 28)
                 .contentShape(Rectangle().inset(by: -8))
                 .accessibilityLabel(prefix == nil ? "Transcribe voice message" : "Try transcribing again")

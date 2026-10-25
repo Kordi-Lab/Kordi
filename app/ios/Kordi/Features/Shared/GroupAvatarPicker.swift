@@ -2,6 +2,7 @@ import PhotosUI
 import SwiftUI
 
 struct GroupAvatarPicker: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let participants: [CloudGroupParticipant]
     let imageSource: String?
     var size: CGFloat = 56
@@ -34,7 +35,7 @@ struct GroupAvatarPicker: View {
                     }
                     .foregroundStyle(.white)
                     .frame(width: 21, height: 21)
-                    .background(KordiTheme.signalBlue, in: .rect(cornerRadius: 6))
+                    .background(chatTheme.accent, in: .rect(cornerRadius: 6))
                     .overlay {
                         RoundedRectangle(cornerRadius: 6)
                             .strokeBorder(Color(uiColor: .systemBackground), lineWidth: 2)
