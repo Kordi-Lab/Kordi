@@ -105,7 +105,7 @@ export function layoutDeck() {
   box.style.height = (plus.hidden ? y : y + 40) + 'px';
 }
 export function buildBlock(c) {
-  return `<div class="mc-empty"><span class="mc-emptycard" data-kind="${c.kind}"><span class="sc-glyph">${ic(c.kind)}</span></span><h2>${esc(c.name)}</h2><p>Your agent writes it</p><button class="mbtn prim" data-build="${esc(c.id)}">Build</button></div>`;
+  return `<div class="mc-empty"><span class="mc-emptycard" data-kind="${c.kind}"><span class="sc-glyph">${ic(c.kind)}</span></span><h2>${esc(c.name)}</h2><button class="mbtn prim" data-build="${esc(c.id)}">Build</button></div>`;
 }
 export function roomRowMac(r) {
   const trail = r.open ? `<span class="chev">${ic('chev')}</span>` : '';

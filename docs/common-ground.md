@@ -34,7 +34,7 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
    - **Links**: URLs and text separated by `;` (homepage, ORCID, papers). Sites that need sign-in are skipped with a reason.
    - **Notes**: free text.
    - Primary button **Build profile**, enabled when at least one source is on.
-3. **Building.** The Kordi mark and two steps ("Reading sources", "Writing your card"). Usually 10 to 30 seconds.
+3. **Building.** The Kordi mark and two steps ("Reading sources", "Building your card"). Usually 10 to 30 seconds.
 4. **Your card.** See [Card](#card). The first visit shows a single line under the title: "Remove anything you don't want to share."
 
 ### 2. Home
