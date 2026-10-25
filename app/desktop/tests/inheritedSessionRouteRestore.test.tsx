@@ -101,7 +101,7 @@ type SyncResult = ReturnType<typeof useCloudAgentRuntimeRouteSync>;
 type SentMessage = { conversationId: string; body: string; options: Record<string, unknown> };
 
 async function withRouteSync(
-  options: { cloudMessages?: CloudMessage[]; initialRoutes?: Record<string, DesktopChatMessageRoute> },
+  options: { cloudMessages?: CloudMessage[]; initialRoutes?: Record<string, DesktopChatMessageRoute>; chatAuthOptions?: unknown[] },
   run: (handle: { current: () => SyncResult; selections: () => ComposerSelectionState; sent: SentMessage[] }) => Promise<void>,
 ) {
   await withJsdomRoot(async (mount) => {
@@ -126,7 +126,7 @@ async function withRouteSync(
         canonicalSessionState: canonicalState,
         chatModelOptions: [],
         cloudAgentRuntimeRouteMessages: options.cloudMessages ?? [],
-        composerAuthByScope: { optionsByScope: { chat: [] } } as never,
+        composerAuthByScope: { optionsByScope: { chat: options.chatAuthOptions ?? [] } } as never,
         composerUi: { composerSelections, setComposerSelections } as never,
         defaultCloudAgentRuntimeRoute: null,
         desktopAuthState: null as never,
@@ -176,5 +176,23 @@ test('a send right after restart resolves the hosted route recorded by the sessi
     assert.equal(selections().chat.thinking, hostedRoute.thinking);
     await act(async () => { current().inheritCloudAgentRuntimeRoute('session:self-agent:other', PANEL_SESSION); });
     assert.equal(sent.length, 0, 'a session whose history already records a route is not recorded again');
+  });
+});
+
+test('a ChatGPT sign-in recorded under the OpenAI family id resolves and forks with its own provider', async () => {
+  const chatGptRoute: DesktopChatMessageRoute = {
+    model: 'openai-codex/gpt-6.1-sol', authProvider: 'openai-codex', authChoice: 'cloud-login:chatgpt', thinking: 'medium',
+  };
+  await withRouteSync({
+    cloudMessages: [hostedRequest('request', 3, { ...chatGptRoute, authProvider: 'openai' })],
+    chatAuthOptions: [{
+      providerId: 'openai-codex', providerLabel: 'ChatGPT', methodLabel: 'Saved account',
+      value: 'cloud-login:chatgpt', label: 'Work', active: true,
+    }],
+  }, async ({ current, sent }) => {
+    assert.deepEqual(current().resolveChatRuntimeRoute(PANEL_SESSION), chatGptRoute);
+    await act(async () => { current().inheritCloudAgentRuntimeRoute(PANEL_SESSION, 'session:fork:chatgpt'); });
+    assert.equal(sent.length, 1);
+    assert.deepEqual(parseCloudDirectMessageEnvelope(sent[0].body)?.agentRuntimeRoute, chatGptRoute);
   });
 });
