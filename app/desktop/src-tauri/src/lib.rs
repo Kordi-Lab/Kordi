@@ -234,6 +234,7 @@ pub fn run() {
             chat::memory::desktop_memory_list_local,
             chat::memory::desktop_memory_forget_local,
             chat::memory_import::desktop_memory_import_discover,
+            chat::memory_import::desktop_memory_import_choose,
             chat::memory_import_run::desktop_memory_import_extract,
             project::desktop_project_settings,
             project::desktop_project_create_from_folder,

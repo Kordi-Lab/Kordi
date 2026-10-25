@@ -3,12 +3,15 @@ import test from 'node:test';
 
 import {
   agentFileSizeLabel,
+  agentFilesBySource,
   importedCountLabel,
   memoryImportSaves,
   memoryTextKey,
   parseMemoryImportReply,
+  withChosenFiles,
   type AgentInstructionFile,
 } from '../src/features/memory/memoryImport';
+import { memoryImportRoute } from '../src/features/memory/memoryImportClient';
 import { lessonOriginLabel, lessonSourceLabel } from '../src/features/memory/memoryModel';
 
 const projectFile: AgentInstructionFile = {
@@ -16,6 +19,7 @@ const projectFile: AgentInstructionFile = {
   root: '/work/launch-site',
   projectName: 'launch-site',
   fileName: 'AGENTS.md',
+  source: 'Project file',
   size: 4_300,
   modifiedAt: 1,
 };
@@ -24,6 +28,7 @@ const homeFile: AgentInstructionFile = {
   root: null,
   projectName: 'Home',
   fileName: '.claude/CLAUDE.md',
+  source: 'Claude Code',
   size: 900,
   modifiedAt: 1,
 };
@@ -94,4 +99,27 @@ test('import labels', () => {
   assert.equal(importedCountLabel(3), 'Imported 3 memories');
   assert.equal(lessonSourceLabel('import'), 'Imported');
   assert.equal(lessonOriginLabel({ source: 'import', declarationType: 'user-declared' }, 'acct'), 'Imported');
+});
+
+test('chosen files join the list once, after the discovered ones', () => {
+  const chosen: AgentInstructionFile = { ...projectFile, path: '/work/notes/rules.md', root: '/work/notes', projectName: 'notes', fileName: 'rules.md' };
+  assert.deepEqual(
+    withChosenFiles([projectFile], [chosen, { ...projectFile }, { ...chosen }]).map((file) => file.path),
+    ['/work/launch-site/AGENTS.md', '/work/notes/rules.md'],
+  );
+});
+
+test('an import runs with the chat route at low thinking and falls back to the fast model', () => {
+  const route = { model: 'openai-codex/gpt-5.5', authProvider: 'openai-codex', authChoice: 'cloud-login:work', thinking: 'high' };
+  assert.deepEqual(memoryImportRoute(route), {
+    route: { ...route, thinking: 'low' },
+    fallbackModel: 'openai-codex/gpt-5.6-luna',
+  });
+  assert.deepEqual(memoryImportRoute({ ...route, model: 'openai-codex/gpt-5.6-luna' }).fallbackModel, null);
+  assert.deepEqual(memoryImportRoute(null), { route: null, fallbackModel: null });
+});
+
+test('the list is grouped by app in the order each app first appears', () => {
+  const groups = agentFilesBySource([projectFile, homeFile, { ...projectFile, path: '/work/other/AGENTS.md' }]);
+  assert.deepEqual(groups.map((group) => [group.source, group.files.length]), [['Project file', 2], ['Claude Code', 1]]);
 });

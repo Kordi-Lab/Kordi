@@ -4,12 +4,18 @@
 //! this Mac's provider, a fixed system prompt, and no tools. The reply is the
 //! model's JSON, which the caller parses and saves; nothing is saved here.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use kordi_cli::desktop_runtime::{DesktopRuntimeProfile, DesktopRuntimeSession};
 use kordi_tools::ExecutionPolicy;
 
-use super::memory_import::{discover_agent_files, known_project_roots, AgentInstructionFile};
+use super::digest_run::attempt_routes;
+use super::hosted_provider_auth::route_uses_hosted_auth;
+use super::memory_import::{
+    chosen_agent_file, discover_agent_files, known_project_roots, AgentInstructionFile,
+};
+use super::message_route::apply_desktop_chat_message_route;
+use super::DesktopChatMessageRoute;
 
 /// How many existing memories, and how much of each, go into the prompt.
 const EXISTING_LIMIT: usize = 60;
@@ -26,6 +32,7 @@ Rules:
 - Facts about the person's work, such as role, projects, or skills: category \"work_context\", scope \"project\".
 - Skip anything that is not durable, anything about other people, credentials, secrets, paths, hostnames, or infrastructure identifiers.
 - Skip anything already present in the existing memories, even when worded differently.
+- Claude Code memory files start with a frontmatter block (name, description, type user, feedback, project, or reference): a user entry is about the person (a global preference or a work fact), a feedback entry is a working rule (a task lesson in the project, or global when it is not about one project), project entries stay in the project, and reference entries, such as links or tickets, are skipped.
 - Write each memory as one plain sentence. At most 12 memories per file.
 - If nothing qualifies, return {\"memories\":[]}.";
 
@@ -56,38 +63,81 @@ pub(crate) fn import_prompt(
     existing: &[String],
 ) -> String {
     format!(
-        "Existing memories:\n{}\n\nFile: {}\nProject: {}\n<<<FILE\n{}\nFILE>>>",
+        "Existing memories:\n{}\n\nApp: {}\nFile: {}\nProject: {}\n<<<FILE\n{}\nFILE>>>",
         existing_block(existing),
+        file.source,
         file.path,
         file.project_name,
         text.trim(),
     )
 }
 
-/// The discovered file at `path`; any other path is refused.
-fn discovered_file(path: &str) -> Result<AgentInstructionFile, String> {
+/// The discovered file at `path`, or a file the person chose that passes
+/// `chosen_agent_file`; any other path is refused.
+fn importable_file(path: &str) -> Result<AgentInstructionFile, String> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
-    discover_agent_files(&known_project_roots(), home.as_deref())
+    match discover_agent_files(&known_project_roots(), home.as_deref())
         .into_iter()
         .find(|file| file.path == path)
-        .ok_or_else(|| "This file can no longer be imported.".to_string())
+    {
+        Some(file) => Ok(file),
+        None => chosen_agent_file(Path::new(path), home.as_deref()),
+    }
 }
 
-/// Runs one import turn for the agent file at `path` and returns the model's reply.
+/// Runs one import turn for the agent file at `path` and returns the model's
+/// reply. `route` is this Mac's chat route, resolved as for a digest run on
+/// this Mac: the chosen model first, then the provider's fast model.
 #[tauri::command]
 pub async fn desktop_memory_import_extract(
     path: String,
     existing_memories: Vec<String>,
+    route: Option<DesktopChatMessageRoute>,
+    fallback_model: Option<String>,
 ) -> Result<String, String> {
-    let file = discovered_file(&path)?;
+    let file = tauri::async_runtime::spawn_blocking(move || importable_file(&path))
+        .await
+        .map_err(|error| error.to_string())??;
     let text =
         std::fs::read_to_string(&file.path).map_err(|_| "Could not read this file.".to_string())?;
+    // A hosted account's credentials are released only for a run the server
+    // admitted, and an import is not one.
+    if route_uses_hosted_auth(route.as_ref()) {
+        return Err(HOSTED_ROUTE_UNAVAILABLE.to_string());
+    }
     let prompt = import_prompt(&file, &text, &existing_memories);
     let workspace = std::env::temp_dir().join("kordi-memory-imports");
     std::fs::create_dir_all(&workspace).map_err(|error| error.to_string())?;
+    let routes: Vec<Option<DesktopChatMessageRoute>> = match route {
+        Some(route) => attempt_routes(route, fallback_model)
+            .into_iter()
+            .map(Some)
+            .collect(),
+        None => vec![None],
+    };
+    let mut failure = String::new();
+    for route in routes {
+        match import_turn(&workspace, &prompt, route.as_ref()).await {
+            Ok(reply) => return Ok(reply),
+            Err(error) => failure = error,
+        }
+    }
+    Err(failure)
+}
+
+pub(crate) const HOSTED_ROUTE_UNAVAILABLE: &str = "Import needs a provider signed in on this Mac.";
+
+/// One import turn with `route` in a throwaway session.
+async fn import_turn(
+    workspace: &Path,
+    prompt: &str,
+    route: Option<&DesktopChatMessageRoute>,
+) -> Result<String, String> {
     let profile = DesktopRuntimeProfile {
-        system_prompt: Some(MEMORY_IMPORT_SYSTEM_PROMPT.to_string()),
+        provider: route.and_then(|route| route.auth_provider.clone()),
+        model: route.and_then(|route| route.model.clone()),
         thinking: Some("low".to_string()),
+        system_prompt: Some(MEMORY_IMPORT_SYSTEM_PROMPT.to_string()),
         // No tools: the file text is in the prompt.
         tool_names: Some(Vec::new()),
         execution_policy: Some(ExecutionPolicy::Safety),
@@ -95,12 +145,16 @@ pub async fn desktop_memory_import_extract(
     };
     let session_id = format!("session:memory-import:{}", uuid::Uuid::new_v4());
     let result = async {
-        let mut runtime =
-            DesktopRuntimeSession::create_profiled_with_id(workspace, &session_id, profile)
-                .await
-                .map_err(|error| error.to_string())?;
+        let mut runtime = DesktopRuntimeSession::create_profiled_with_id(
+            workspace.to_path_buf(),
+            &session_id,
+            profile,
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+        apply_desktop_chat_message_route(&mut runtime, route)?;
         let detail = runtime
-            .send_message(prompt, Vec::new())
+            .send_message(prompt.to_string(), Vec::new())
             .await
             .map_err(|error| error.to_string())?;
         detail
@@ -127,6 +181,7 @@ mod tests {
             root: Some("/work/launch-site".into()),
             project_name: "launch-site".into(),
             file_name: "AGENTS.md".into(),
+            source: "Project file".into(),
             size: 10,
             modified_at: 1,
         };
@@ -144,5 +199,8 @@ mod tests {
         );
         assert!(import_prompt(&file, "x", &[]).contains("Existing memories:\n(none)"));
         assert!(MEMORY_IMPORT_SYSTEM_PROMPT.contains("hcp-custom:task_lessons"));
+        assert!(prompt.contains("App: Project file\nFile: "));
+        assert!(MEMORY_IMPORT_SYSTEM_PROMPT
+            .contains("reference entries, such as links or tickets, are skipped"));
     }
 }

@@ -7,23 +7,30 @@ import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLay
 import type { MemoryClient } from './memoryClient';
 import {
   agentFileSizeLabel,
+  agentFilesBySource,
   importedCountLabel,
   memoryImportSaves,
   parseMemoryImportReply,
+  withChosenFiles,
   type AgentInstructionFile,
   type MemoryImporter,
 } from './memoryImport';
 import { lessonDateLabel, type MemoryLesson } from './memoryModel';
 
-type RowStatus = 'importing' | 'failed' | number;
+type RowStatus = 'importing' | { failed: string } | number;
 
 const mutedClass = 'font-normal text-slate-400';
 
 function statusLabel(status: RowStatus | undefined): string {
   if (status === undefined) return '';
   if (status === 'importing') return 'Importing…';
-  if (status === 'failed') return 'Could not import';
+  if (typeof status === 'object') return 'Could not import';
   return importedCountLabel(status);
+}
+
+function errorLine(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return typeof error === 'string' ? error : '';
 }
 
 /** Settings › Memory › Import: reads the person's agent files into memories, one file at a time. */
@@ -70,6 +77,20 @@ export function MemoryImportSection({
     });
   };
 
+  const choose = async () => {
+    if (!importer.choose) return;
+    let chosen: AgentInstructionFile[];
+    try {
+      chosen = await importer.choose();
+    } catch (error) {
+      setNotice(errorLine(error));
+      return;
+    }
+    const known = new Set(files.map((file) => file.path));
+    setFiles((current) => withChosenFiles(current ?? [], chosen));
+    setSelected((current) => new Set([...current, ...chosen.filter((file) => !known.has(file.path)).map((file) => file.path)]));
+  };
+
   const run = async () => {
     const chosen = files.filter((file) => selected.has(file.path));
     if (!chosen.length || !client.importLesson) return;
@@ -93,8 +114,8 @@ export function MemoryImportSection({
           }
         }
         status = saved;
-      } catch {
-        status = 'failed';
+      } catch (error) {
+        status = { failed: errorLine(error) };
       }
       total += saved;
       setStatuses((current) => ({ ...current, [file.path]: status }));
@@ -104,40 +125,68 @@ export function MemoryImportSection({
     if (total > 0) onImported();
   };
 
+  const failure = (path: string) => {
+    const status = statuses[path];
+    return typeof status === 'object' && status.failed ? status.failed : null;
+  };
+
   return (
     <SettingsSection title="Import">
       {files.length === 0 ? (
-        <SettingsRow title="No agent files found." description="Finds AGENTS.md and CLAUDE.md files for your projects." />
-      ) : files.map((file) => (
-        <SettingsRow
-          key={file.path}
-          icon={(
-            <input
-              type="checkbox"
-              className="h-4 w-4 accent-[color:var(--app-sidebar-accent)]"
-              aria-label={`${file.projectName} ${file.fileName}`}
-              checked={selected.has(file.path)}
-              disabled={running}
-              onChange={(event) => toggle(file.path, event.target.checked)}
+        <SettingsRow title="No agent files found." description="Finds instructions and memories from your coding agents." />
+      ) : agentFilesBySource(files).map((group) => (
+        <div key={group.source} data-memory-import-source={group.source}>
+          <div className="pt-3 text-[12px] font-medium leading-5 text-slate-400">{group.source}</div>
+          {group.files.map((file) => (
+            <SettingsRow
+              key={file.path}
+              icon={(
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-[color:var(--app-sidebar-accent)]"
+                  aria-label={`${file.projectName} ${file.fileName}`}
+                  checked={selected.has(file.path)}
+                  disabled={running}
+                  onChange={(event) => toggle(file.path, event.target.checked)}
+                />
+              )}
+              title={file.projectName}
+              description={(
+                <>
+                  {[file.fileName, agentFileSizeLabel(file.size), lessonDateLabel(new Date(file.modifiedAt).toISOString())].join(' · ')}
+                  {failure(file.path) ? <span className="block">{failure(file.path)}</span> : null}
+                </>
+              )}
+              control={statuses[file.path] !== undefined ? <span className="text-[12px] text-slate-400">{statusLabel(statuses[file.path])}</span> : null}
             />
-          )}
-          title={file.projectName}
-          description={[file.fileName, agentFileSizeLabel(file.size), lessonDateLabel(new Date(file.modifiedAt).toISOString())].join(' · ')}
-          control={statuses[file.path] !== undefined ? <span className="text-[12px] text-slate-400">{statusLabel(statuses[file.path])}</span> : null}
-        />
+          ))}
+        </div>
       ))}
-      {files.length > 0 ? (
+      {files.length > 0 || importer.choose ? (
         <SettingsRow
           title={<span className={mutedClass} aria-live="polite">{providerReady ? notice : CLOUD_AGENT_NO_PROVIDER_NOTICE}</span>}
           control={(
-            <Button
-              type="button"
-              className="h-8 rounded-lg px-3.5 text-[12px]"
-              disabled={running || !providerReady || selected.size === 0}
-              onClick={() => { void run(); }}
-            >
-              Import
-            </Button>
+            <>
+              {importer.choose ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-8 rounded-lg px-3.5 text-[12px]"
+                  disabled={running}
+                  onClick={() => { void choose(); }}
+                >
+                  Choose files…
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                className="h-8 rounded-lg px-3.5 text-[12px]"
+                disabled={running || !providerReady || selected.size === 0}
+                onClick={() => { void run(); }}
+              >
+                Import
+              </Button>
+            </>
           )}
         />
       ) : null}

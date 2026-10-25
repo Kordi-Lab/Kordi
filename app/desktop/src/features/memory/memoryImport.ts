@@ -8,16 +8,31 @@ export type AgentInstructionFile = {
   root: string | null;
   projectName: string;
   fileName: string;
+  /** The app the file belongs to, such as "Claude Code"; the list is grouped by it. */
+  source: string;
   size: number;
   /** Milliseconds since the Unix epoch. */
   modifiedAt: number;
 };
 
-/** Finds agent files and reads one into the model's JSON reply. */
+/** Finds agent files, lets the person choose more, and reads one into the model's JSON reply. */
 export type MemoryImporter = {
   discover(): Promise<AgentInstructionFile[]>;
+  /** Opens the file picker; the chosen `.md` files, in its folder's project. */
+  choose?(): Promise<AgentInstructionFile[]>;
   extract(file: AgentInstructionFile, existingMemories: string[]): Promise<string>;
 };
+
+/** `files` with the chosen files added after them, each path once. */
+export function withChosenFiles(files: ReadonlyArray<AgentInstructionFile>, chosen: ReadonlyArray<AgentInstructionFile>): AgentInstructionFile[] {
+  const paths = new Set(files.map((file) => file.path));
+  const added = chosen.filter((file) => {
+    if (paths.has(file.path)) return false;
+    paths.add(file.path);
+    return true;
+  });
+  return [...files, ...added];
+}
 
 /** A memory the model read from a file, after checks. */
 export type ImportedMemory = {
@@ -119,6 +134,13 @@ export function memoryImportSaves(
     });
   }
   return saves;
+}
+
+/** The files grouped by app, in the order each app first appears. */
+export function agentFilesBySource(files: ReadonlyArray<AgentInstructionFile>): Array<{ source: string; files: AgentInstructionFile[] }> {
+  const groups = new Map<string, AgentInstructionFile[]>();
+  for (const file of files) groups.set(file.source, [...(groups.get(file.source) ?? []), file]);
+  return Array.from(groups, ([source, grouped]) => ({ source, files: grouped }));
 }
 
 export function agentFileSizeLabel(size: number): string {

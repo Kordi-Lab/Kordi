@@ -24,6 +24,7 @@ mod hosted_provider_auth;
 pub(crate) mod interrupted_requests;
 pub(crate) mod memory;
 pub(crate) mod memory_import;
+pub(crate) mod memory_import_apps;
 pub(crate) mod memory_import_run;
 mod message_execution;
 pub(crate) mod message_route;

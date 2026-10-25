@@ -84,12 +84,17 @@ test('memory settings import section, before and after an import (light)', async
   const section = page.locator('section', { has: importHeading });
   await expect(section.getByRole('checkbox', { name: 'launch-site AGENTS.md' })).toBeChecked();
   await expect(section.getByRole('checkbox', { name: 'Home .claude/CLAUDE.md' })).toBeChecked();
+  await expect(section.locator('[data-memory-import-source]')).toHaveCount(2);
   await scrollTo(page, importHeading);
   await expect(page).toHaveScreenshot('memorySettings-import-light.png');
+  // The chooser's fixture returns a new file and one already listed, which is not added twice.
+  await section.getByRole('button', { name: 'Choose files…' }).click();
+  await expect(section.getByRole('checkbox', { name: 'Notes writing.md' })).toBeChecked();
+  await expect(section.getByRole('checkbox', { name: 'launch-site AGENTS.md' })).toHaveCount(1);
   await section.getByRole('button', { name: 'Import', exact: true }).click();
-  await expect(section.getByText('Imported 2 memories.')).toBeVisible();
+  await expect(section.getByText('Imported 3 memories.')).toBeVisible();
   await expect(section.getByText('Nothing new', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'All memories · 12' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'All memories · 13' })).toBeVisible();
   await scrollTo(page, importHeading);
   await expect(page).toHaveScreenshot('memorySettings-import-done-light.png');
 });

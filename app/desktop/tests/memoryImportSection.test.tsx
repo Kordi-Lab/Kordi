@@ -57,7 +57,8 @@ async function render(element: React.ReactElement) {
   };
 }
 
-const importButton = (container: HTMLElement) => Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Import');
+const button = (container: HTMLElement, name: string) => Array.from(container.querySelectorAll('button')).find((element) => element.textContent === name);
+const importButton = (container: HTMLElement) => button(container, 'Import');
 
 test('importing agent files saves new memories per file and reports the total', async () => {
   const saves: MemoryImportSave[] = [];
@@ -78,6 +79,7 @@ test('importing agent files saves new memories per file and reports the total', 
     assert.match(text(), /launch-site/);
     assert.match(text(), /AGENTS\.md · 4 KB/);
     assert.match(text(), /Home/);
+    assert.deepEqual(Array.from(view.container.querySelectorAll('[data-memory-import-source]'), (group) => group.getAttribute('data-memory-import-source')), ['Claude Code', 'Project file']);
     assert.equal(view.container.querySelectorAll('input[type="checkbox"]:checked').length, 2);
     await act(async () => { importButton(view.container)?.click(); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
@@ -113,9 +115,60 @@ test('without a provider the import cannot start; without files the section says
     <MemoryImportSection client={{ importLesson: async () => ({}) as MemoryLesson }} importer={emptyImporter} lessons={[]} providerReady onImported={() => undefined} />,
   );
   try {
-    assert.match(empty.container.textContent ?? '', /No agent files found\.Finds AGENTS\.md and CLAUDE\.md files for your projects\./);
+    assert.match(empty.container.textContent ?? '', /No agent files found\.Finds instructions and memories from your coding agents\./);
     assert.equal(importButton(empty.container), undefined);
   } finally {
     await empty.cleanup();
+  }
+});
+
+test('chosen files join the list checked, once, and import into their folder', async () => {
+  const saves: MemoryImportSave[] = [];
+  const view = await render(
+    <MemoryImportSection
+      client={{ importLesson: async (save) => { saves.push(save); return {} as MemoryLesson; } }}
+      importer={createPreviewMemoryImporter({ latencyMs: 0 })}
+      lessons={[]}
+      providerReady
+      onImported={() => undefined}
+    />,
+  );
+  try {
+    const checkboxes = () => Array.from(view.container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
+    await act(async () => { button(view.container, 'Choose files…')?.click(); });
+    assert.deepEqual(checkboxes().map((box) => [box.getAttribute('aria-label'), box.checked]), [
+      ['Home .claude/CLAUDE.md', true],
+      ['launch-site AGENTS.md', true],
+      ['Notes writing.md', true],
+    ], 'the chosen copy of a listed file is not added twice');
+    await act(async () => { checkboxes()[0].click(); checkboxes()[1].click(); });
+    await act(async () => { importButton(view.container)?.click(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    assert.deepEqual(saves.map((save) => [save.scopeId, save.scopeLabel, save.text]), [
+      ['/sample/Notes', 'Notes', 'Keep release notes to five bullets.'],
+    ]);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test('a file that cannot be imported shows the reason on its row', async () => {
+  const preview = createPreviewMemoryImporter({ latencyMs: 0 });
+  const importer: MemoryImporter = {
+    ...preview,
+    extract: async () => { throw new Error('Import needs a provider signed in on this Mac.'); },
+  };
+  const view = await render(
+    <MemoryImportSection client={{ importLesson: async () => ({}) as MemoryLesson }} importer={importer} lessons={[]} providerReady onImported={() => undefined} />,
+  );
+  try {
+    await act(async () => { importButton(view.container)?.click(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    const text = view.container.textContent ?? '';
+    assert.match(text, /AGENTS\.md · 4 KB · .*Import needs a provider signed in on this Mac\./);
+    assert.match(text, /Could not import/);
+    assert.match(text, /Nothing new\./);
+  } finally {
+    await view.cleanup();
   }
 });
