@@ -58,3 +58,25 @@ test('cloud-only sessions reconcile completed lifecycle copies without desktop m
   const earlier = response({ id: 'cloud:earlier', sequenceNum: 2, sourceEventId: 'wire:earlier' });
   assert.deepEqual([...selfAgentMirrorDuplicateIds([earlier, response()], identities, 'human:test', true)], ['cloud:terminal']);
 });
+
+function forkRequest(id: string, sequenceNum: number, createdAtMs: number, wireId: string): CanonicalSessionMessage {
+  return { id, sessionId: 'session:fork:test', senderIdentityId: 'human:test', senderRole: 'user', messageKind: 'text',
+    contentText: 'which model are you using', content: { desktopEntryId: wireId }, status: 'sent', parentMessageId: null,
+    sequenceNum, createdAtMs, updatedAtMs: createdAtMs, contentHash: null, sourceTransport: 'canonical-fork-snapshot',
+    sourceEventId: `fork-snapshot:session:fork:test:source:${id}` };
+}
+
+test('a fork shows one copy of a request whose local bubble and Cloud echo were both copied', () => {
+  const local = forkRequest('fork:local', 4, 1_000, 'request:wire');
+  const echo = forkRequest('fork:echo', 5, 1_100, 'request:wire');
+  const other = forkRequest('fork:other', 6, 2_000, 'request:other');
+  const duplicates = selfAgentMirrorDuplicateIds([local, echo, other], identities, 'human:test', true);
+  assert.deepEqual([...duplicates], ['fork:echo']);
+  const canonical = [local, echo, other].filter((row) => !duplicates.has(row.id))
+    .map((row) => mapCanonicalMessage(row, identities, 'human:test')!);
+  const runtime = canonical.map((message, index) => ({ ...message, id: `runtime:${index}`,
+    entryId: index === 0 ? 'request:wire' : 'request:other', isForkSnapshot: undefined }));
+  const merged = mergeCanonicalHistoryIntoRuntime(canonical, runtime);
+  assert.equal(merged.length, 2);
+  assert.ok(merged.every((message) => message.isForkSnapshot));
+});
