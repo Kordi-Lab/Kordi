@@ -1,5 +1,6 @@
 import { createAccountMemoryClient } from './accountMemoryClient';
 import { isMemoryCategory, type MemoryCategory } from './memoryCategory';
+import type { MemoryImportSave } from './memoryImport';
 import type { MemoryOriginSources } from './memoryOrigin';
 import type { MemoryCard } from './memoryOrganizerModel';
 import { PREVIEW_CARDS, PREVIEW_ORIGIN_SOURCES, createPreviewCardRouting } from './memoryPreviewCards';
@@ -17,6 +18,8 @@ export type MemoryClient = {
   listLessons(): Promise<MemoryLesson[]>;
   /** Saves a memory the person typed, in the scope of the page it was added from. */
   createLesson(target: MemoryAddTarget, text: string): Promise<MemoryLesson>;
+  /** Saves a memory read from one of the person's agent files (source `import`). */
+  importLesson?(save: MemoryImportSave): Promise<MemoryLesson>;
   updateLesson(lessonId: string, text: string): Promise<MemoryLesson>;
   archiveLesson(lessonId: string): Promise<void>;
   /** Changes a memory's category (`memoryVersion` 2). */
@@ -182,6 +185,17 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
         createdAt: at,
         updatedAt: at,
       };
+      lessons = [...lessons, created];
+      markSynced();
+      return cards.route(created);
+    },
+    async importLesson(save) {
+      await wait();
+      const existing = lessons.find((entry) => entry.scope === save.scope && entry.scopeId === save.scopeId && entry.text === save.text);
+      if (existing) return cards.route(existing);
+      addedCount += 1;
+      const at = new Date(now()).toISOString();
+      const created: MemoryLesson = { lessonId: `lesson-added-${addedCount}`, ...save, declarationType: 'user-declared', createdAt: at, updatedAt: at };
       lessons = [...lessons, created];
       markSynced();
       return cards.route(created);

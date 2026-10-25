@@ -27,6 +27,11 @@ import { connectorsClientForAccount } from '@/features/connectors/connectorsClie
 import { useConnectorsLinkSelection } from '@/features/connectors/useConnectorsLinkSelection';
 import { MemorySettingsPanel } from '@/features/memory/MemorySettingsPanel';
 import { memoryClientForEnvironment, type MemoryClient } from '@/features/memory/memoryClient';
+import type { MemoryImporter } from '@/features/memory/memoryImport';
+import { nativeMemoryImporter, useMemoryImportRoute } from '@/features/memory/memoryImportClient';
+import { useHostedAccountsSnapshot } from '@/features/cloud/hostedAccounts';
+import { authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import { cloudAccountSettingsNavGroups, type CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
 import { CloudProfilePanel } from './CloudProfilePanel';
 import { useCloudProfileEditor } from './useCloudProfileEditor';
@@ -55,6 +60,8 @@ export type CloudAccountSettingsConfig = {
   handleLogoutProvider: (providerId: string) => Promise<void>;
   themeMode: ThemeMode;
   setThemeMode: Dispatch<SetStateAction<ThemeMode>>;
+  /** This Mac's chat route, which Memory › Import runs with. */
+  memoryImportRoute?: DesktopChatMessageRoute | null;
 };
 
 type CloudAccountSettingsDialogProps = CloudAccountSettingsConfig & {
@@ -76,6 +83,8 @@ type CloudAccountSettingsDialogProps = CloudAccountSettingsConfig & {
   connectorsIsPreview?: boolean;
   /** Memory client; null hides the Memory section. Defaults to the build environment. */
   memoryClient?: MemoryClient | null;
+  /** Agent-file importer override for previews; defaults to this Mac's in the native shell. */
+  memoryImporter?: MemoryImporter | null;
 };
 
 export function CloudAccountSettingsDialog({
@@ -91,6 +100,7 @@ export function CloudAccountSettingsDialog({
   connectorsClient: connectorsClientOverride,
   connectorsIsPreview = false,
   memoryClient = environmentMemoryClient,
+  memoryImporter,
   settingsSections,
   setActiveSettingsSectionId,
   authSettingsLayoutWidth,
@@ -107,6 +117,7 @@ export function CloudAccountSettingsDialog({
   handleLogoutProvider,
   themeMode,
   setThemeMode,
+  memoryImportRoute = null,
 }: CloudAccountSettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<CloudAccountSettingsTabId>('profile');
   const profileEditor = useCloudProfileEditor({ account, onUpdateProfile });
@@ -133,6 +144,9 @@ export function CloudAccountSettingsDialog({
       defaultAgentName,
     });
   }, [capabilities, capabilitiesStatus, connectorsAccountId, connectorsClients, defaultAgentName]);
+  // The composer's own gate (`hasConfiguredProviderAuth`): a provider on this Mac or a hosted account.
+  const hosted = useHostedAccountsSnapshot();
+  useMemoryImportRoute(memoryImportRoute);
   const connectorsClient = hasConnectorsOverride ? connectorsClientOverride : connectorsSelection?.client ?? null;
   const connectorsArePreview = hasConnectorsOverride ? connectorsIsPreview : connectorsSelection?.source === 'preview';
   const connectorsServicesStatus = hasConnectorsOverride ? undefined : connectorsSelection?.servicesStatus;
@@ -265,7 +279,14 @@ export function CloudAccountSettingsDialog({
 
   const memoryPanel = memoryClient ? (
     <div className="app-cloud-account-settings-section max-w-[680px]">
-      <MemorySettingsPanel key={account.accountId} accountId={account.accountId} client={memoryClient} isNativeShell={isNativeShell} />
+      <MemorySettingsPanel
+        key={account.accountId}
+        accountId={account.accountId}
+        client={memoryClient}
+        isNativeShell={isNativeShell}
+        importer={memoryImporter === undefined ? (isNativeShell ? nativeMemoryImporter : null) : memoryImporter}
+        providerReady={authStateSatisfiesStartupGate(desktopAuthState, hosted.accounts)}
+      />
     </div>
   ) : null;
 

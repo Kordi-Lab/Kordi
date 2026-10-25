@@ -1,7 +1,7 @@
 import type { MemoryCategory, MemoryConfidence, MemoryDeclarationType, MemoryProfileKind } from './memoryCategory';
 
 export type MemoryLessonScope = 'global' | 'conversation' | 'project' | 'group';
-export type MemoryLessonSource = 'user_correction' | 'repeated_failure' | 'outcome' | 'manual';
+export type MemoryLessonSource = 'user_correction' | 'repeated_failure' | 'outcome' | 'manual' | 'import';
 
 export type MemoryLesson = {
   lessonId: string;
@@ -41,6 +41,7 @@ const sourceLabels: Record<MemoryLessonSource, string> = {
   repeated_failure: 'From a repeated failure',
   outcome: 'From an outcome',
   manual: 'Added by you',
+  import: 'Imported',
 };
 
 /** A memory someone typed names who added it; the others name where they came from. */

@@ -1,7 +1,7 @@
 import type { MemoryConfidence, MemoryDeclarationType, MemoryProfileKind } from '@/features/memory/memoryCategory';
 
 export type CloudMemoryScope = 'global' | 'conversation' | 'group' | 'project';
-export type CloudMemorySource = 'user_correction' | 'repeated_failure' | 'outcome' | 'manual';
+export type CloudMemorySource = 'user_correction' | 'repeated_failure' | 'outcome' | 'manual' | 'import';
 
 export type CloudMemory = {
   memoryId: string;
@@ -48,6 +48,8 @@ export type CloudMemoryCreate = {
   scopeLabel?: string | null;
   source: CloudMemorySource;
   text: string;
+  /** One of `MEMORY_CATEGORIES`; imported memories name theirs. */
+  category?: string;
 };
 
 export type CloudMemoryListResponse = { memories: CloudMemory[]; settings: CloudMemorySettings };

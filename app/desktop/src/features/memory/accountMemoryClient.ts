@@ -300,6 +300,13 @@ export function createAccountMemoryClient(options: AccountMemoryClientOptions = 
       syncDesktop();
       return toLesson({ lessonId: memoryId, ...rest });
     },
+    async importLesson(save) {
+      const stored = await requireSession();
+      const { memoryId, ...rest } = await memory().create(stored.token, save);
+      markSynced(stored);
+      syncDesktop();
+      return toLesson({ lessonId: memoryId, ...rest });
+    },
     async updateLesson(lessonId, text) {
       const stored = await requireSession();
       const { memoryId, ...rest } = await asGroupMember(memory().update(stored.token, lessonId, text));
