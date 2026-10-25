@@ -1,5 +1,10 @@
 import { CloudAuthError, defaultCloudAuthClient } from './authClient';
-import { normalizeProactiveActivity, type ProactiveActivityEntry } from './proactiveOffer';
+import {
+  normalizeProactiveActivity,
+  normalizeProactiveProposals,
+  type ProactiveActivityEntry,
+  type ProactiveProposal,
+} from './proactiveOffer';
 
 export type ProactiveDecision = 'allow' | 'decline';
 
@@ -30,6 +35,21 @@ export async function decideProactiveProposal(
     }
     throw error;
   }
+}
+
+/**
+ * The caller's pending proposals across every agent they own, optionally for
+ * one cloud conversation. Other members never get these.
+ */
+export async function listPendingProactiveProposals(token: string, conversationId?: string | null): Promise<ProactiveProposal[]> {
+  const params = new URLSearchParams({ status: 'pending' });
+  if (conversationId?.trim()) params.set('conversationId', conversationId.trim());
+  const body = await defaultCloudAuthClient().request<unknown>(
+    `/v1/cloud/proactive/proposals?${params.toString()}`,
+    { method: 'GET', headers: { authorization: `Bearer ${token}` } },
+    'Could not load proactive offers.',
+  );
+  return normalizeProactiveProposals(body);
 }
 
 /** The agent's recent proactive evaluations, newest first. */

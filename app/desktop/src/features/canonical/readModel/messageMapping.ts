@@ -11,7 +11,6 @@ import { cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from '
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { storedVoiceMessage, withoutVoiceAttachment } from '@/features/cloud/cloudVoiceMessage';
 import { normalizePlanCardSnapshot } from '@/features/cloud/planCardSnapshot';
-import { normalizeProactiveOffer } from '@/features/cloud/proactiveOffer';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
 import type { CanonicalIdentity, CanonicalSessionMessage, CanonicalSessionState, DesktopChatToolSnapshot, Message, MessageActionMetadata } from '@/kordi-app/types';
@@ -443,7 +442,6 @@ export function mapCanonicalMessage(
     messageKind: voiceMessage ? 'voice' : role === 'system' ? stringValue(content.kind) ?? messageKind : undefined,
     voiceMessage,
     planCard: normalizePlanCardSnapshot(content.planCard),
-    proactiveOffer: normalizeProactiveOffer(content.proactiveOffer),
     detail: stringValue(content.detail),
     attachments: withoutVoiceAttachment(canonicalAttachments(content.attachments), voiceMessage),
     mentions,

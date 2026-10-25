@@ -1,7 +1,6 @@
 import type { VoiceTranscription } from '@/features/chat/voiceTranscription';
 import type { LivePhoto, LivePhotoFiles } from '@/features/chat/livePhotos';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
-import type { MessageProactiveOffer } from '@/features/cloud/proactiveOffer';
 
 export type EditDiffLine = {
   kind: 'context' | 'add' | 'remove';
@@ -306,7 +305,6 @@ export type Message = {
   messageKind?: string | null;
   voiceMessage?: MessageVoice | null;
   planCard?: MessagePlanCard | null;
-  proactiveOffer?: MessageProactiveOffer | null;
   detail?: string;
   statusChips?: string[];
   attachments?: MessageAttachment[];

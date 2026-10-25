@@ -2,9 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import React, { act } from 'react';
 
-import { normalizeProactiveOffer } from '../src/features/cloud/proactiveOffer';
 import { __setSessionBackendForTests, type StoredSession } from '../src/features/cloud/session';
-import { ProactiveOfferCard } from '../src/kordi-app/components/proactiveOfferCard';
 import { AgentStudioBlueprintView } from '../src/kordi-app/agents/AgentStudioBlueprintView';
 import { RunsView } from '../src/kordi-app/agents/AgentStudioRunsView';
 import { factoryProactiveControl, useDefaultAgentProactive, withDefaultAgentProactiveChange } from '../src/kordi-app/agents/factoryProactiveDraft';
@@ -202,29 +200,5 @@ test('every proactive client path encodes an agent id with a colon', async () =>
     assert.equal(client.defaultAgentProactiveId('acct_owner'), DEFAULT_ID);
   } finally {
     server.restore();
-  }
-});
-
-test('Allow on a default-agent offer posts to the encoded decision path', async () => {
-  useSession({ token: 'tok', accountId: 'acct_owner', expiresAt: '2099-01-01T00:00:00Z' });
-  const offer = normalizeProactiveOffer({
-    type: 'proactive_offer', proposalId: 'pro_1', agentId: DEFAULT_ID, agentName: 'Kordi', conversationId: 'conv_g', sessionId: 'session:group:g1',
-    conversationTitle: 'Launch crew', problem: 'CI cache', offer: 'I can help.', plan: 'Rerun', status: 'pending', expiresAt: '2026-10-24T15:30:00Z',
-  })!;
-  const server = stubFetch({ value: false });
-  try {
-    await withJsdomRoot(async (mount) => {
-      const host = await mount(<ProactiveOfferCard offer={offer} now={Date.parse('2026-10-24T10:00:00Z')} />);
-      const allow = Array.from(host.querySelectorAll('button')).find((element) => element.textContent === 'Allow');
-      await act(async () => { allow!.click(); });
-      await flush();
-      assert.match(host.textContent ?? '', /Working in Launch crew…/);
-    });
-    assert.equal(server.calls.length, 1);
-    assert.match(server.calls[0]!.url, new RegExp(`/v1/cloud/agents/${ENCODED}/proactive/proposals/pro_1/decision$`));
-    assert.deepEqual(server.calls[0]!.body, { decision: 'allow' });
-  } finally {
-    server.restore();
-    __setSessionBackendForTests(null);
   }
 });

@@ -1,5 +1,4 @@
 import { normalizePlanCardSnapshot } from './planCardSnapshot';
-import { normalizeProactiveOffer } from './proactiveOffer';
 import type { CloudMessage, CloudMessageAttachment } from './authClient';
 import {
   normalizeCloudMessageReactions,
@@ -100,7 +99,6 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
   const messageKind = cachedMessageKind;
   const voiceMessage = cloudVoiceMessageMetadataOnly(record.voiceMessage);
   const planCard = normalizePlanCardSnapshot(record.planCard);
-  const proactiveOffer = normalizeProactiveOffer(record.proactiveOffer);
   const canonicalHistoryLocalMessageId = cleanText(record.canonicalHistoryLocalMessageId);
   const conversationSequence = Number.isSafeInteger(record.conversationSequence)
     && Number(record.conversationSequence) > 0 ? Number(record.conversationSequence) : null;
@@ -124,7 +122,6 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
     ...(messageKind ? { messageKind } : {}),
     ...(voiceMessage ? { voiceMessage } : {}),
     ...(planCard ? { planCard } : {}),
-    ...(proactiveOffer ? { proactiveOffer } : {}),
     ...(canonicalHistoryLocalMessageId ? { canonicalHistoryLocalMessageId } : {}),
     ...(conversationSequence ? { conversationSequence } : {}),
     ...(version ? { version } : {}),

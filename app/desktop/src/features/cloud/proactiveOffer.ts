@@ -1,11 +1,11 @@
 /**
- * The `proactive_offer` content block an owned agent posts in its owner's
- * conversation when it wants to help in a group (docs/development/proactive-agent.md).
- * The server refreshes the block in place when the proposal's status changes.
+ * A proposal an owned agent makes when it wants to help in a group
+ * (docs/development/proactive-agent.md). The owner sees it above the composer
+ * of that group and allows or declines it; nobody else sees it.
  */
 export type ProactiveOfferStatus = 'pending' | 'approved' | 'running' | 'done' | 'declined' | 'expired' | 'failed';
 
-export type MessageProactiveOffer = {
+export type ProactiveProposal = {
   proposalId: string;
   agentId: string;
   agentName: string;
@@ -20,6 +20,9 @@ export type MessageProactiveOffer = {
   expiresAt: string | null;
   runId: string | null;
   decidedAt: string | null;
+  replyMessageId: string | null;
+  error: string | null;
+  createdAt: string | null;
 };
 
 export type ProactiveActivityEntry = {
@@ -52,55 +55,69 @@ export function normalizeProactiveOfferStatus(value: unknown): ProactiveOfferSta
   return STATUSES.includes(value as ProactiveOfferStatus) ? value as ProactiveOfferStatus : null;
 }
 
-/** Reads a `proactive_offer` block, or a stored copy of one. Returns null when it cannot be acted on. */
-export function normalizeProactiveOffer(value: unknown): MessageProactiveOffer | null {
-  const block = record(value);
-  if (!block) return null;
-  if (block.type !== undefined && block.type !== 'proactive_offer') return null;
-  const proposalId = text(block.proposalId);
-  const agentId = text(block.agentId);
+/** Reads one proposal from the server. Returns null when it cannot be acted on. */
+export function normalizeProactiveProposal(value: unknown): ProactiveProposal | null {
+  const source = record(value);
+  if (!source) return null;
+  const proposalId = text(source.proposalId);
+  const agentId = text(source.agentId);
   if (!proposalId || !agentId) return null;
   return {
     proposalId,
     agentId,
-    agentName: text(block.agentName) || 'Your agent',
-    conversationId: nullableText(block.conversationId),
-    sessionId: nullableText(block.sessionId),
-    conversationTitle: text(block.conversationTitle) || 'a group',
-    triggerMessageId: nullableText(block.triggerMessageId),
-    problem: text(block.problem),
-    offer: text(block.offer),
-    plan: text(block.plan),
-    status: normalizeProactiveOfferStatus(block.status) ?? 'pending',
-    expiresAt: nullableText(block.expiresAt),
-    runId: nullableText(block.runId),
-    decidedAt: nullableText(block.decidedAt),
+    agentName: text(source.agentName) || 'Your agent',
+    conversationId: nullableText(source.conversationId),
+    sessionId: nullableText(source.sessionId),
+    conversationTitle: text(source.conversationTitle) || 'a group',
+    triggerMessageId: nullableText(source.triggerMessageId),
+    problem: text(source.problem),
+    offer: text(source.offer),
+    plan: text(source.plan),
+    status: normalizeProactiveOfferStatus(source.status) ?? 'pending',
+    expiresAt: nullableText(source.expiresAt),
+    runId: nullableText(source.runId),
+    decidedAt: nullableText(source.decidedAt),
+    replyMessageId: nullableText(source.replyMessageId),
+    error: nullableText(source.error),
+    createdAt: nullableText(source.createdAt),
   };
 }
 
-/** The first `proactive_offer` block of a chat message's content. */
-export function proactiveOfferFromChatContent(content: unknown): MessageProactiveOffer | null {
-  const blocks = record(content)?.blocks;
-  if (!Array.isArray(blocks)) return null;
-  for (const value of blocks) {
-    if (record(value)?.type !== 'proactive_offer') continue;
-    const offer = normalizeProactiveOffer(value);
-    if (offer) return offer;
-  }
-  return null;
+/** Whether a proposal can no longer be allowed, by status or by its expiry time. */
+export function proactiveProposalExpired(proposal: ProactiveProposal, now: number) {
+  const at = proposal.expiresAt ? Date.parse(proposal.expiresAt) : Number.NaN;
+  return proposal.status === 'expired' || (proposal.status === 'pending' && Number.isFinite(at) && at <= now);
 }
 
-/** Applies a decision result (the proposal the server returns) to the card the owner sees. */
-export function proactiveOfferWithProposal(offer: MessageProactiveOffer, proposal: unknown): MessageProactiveOffer {
-  const source = record(proposal);
+/** Reads `{ proposals: [...] }` or a bare list. */
+export function normalizeProactiveProposals(value: unknown): ProactiveProposal[] {
+  const entries = Array.isArray(value) ? value : record(value)?.proposals;
+  if (!Array.isArray(entries)) return [];
+  return entries.flatMap((entry) => {
+    const proposal = normalizeProactiveProposal(entry);
+    return proposal ? [proposal] : [];
+  });
+}
+
+/**
+ * Applies a decision result or a `proactive.proposal_changed` payload to a
+ * proposal the owner already sees. Fields the update leaves out keep their value.
+ */
+export function proactiveProposalWithUpdate(proposal: ProactiveProposal, update: unknown): ProactiveProposal {
+  const source = record(update);
   const nested = record(source?.proposal) ?? source;
-  if (!nested) return offer;
+  if (!nested) return proposal;
   return {
-    ...offer,
-    status: normalizeProactiveOfferStatus(nested.status) ?? offer.status,
-    runId: nullableText(nested.runId) ?? offer.runId,
-    decidedAt: nullableText(nested.decidedAt) ?? offer.decidedAt,
-    expiresAt: nullableText(nested.expiresAt) ?? offer.expiresAt,
+    ...proposal,
+    status: normalizeProactiveOfferStatus(nested.status) ?? proposal.status,
+    problem: text(nested.problem) || proposal.problem,
+    offer: text(nested.offer) || proposal.offer,
+    plan: text(nested.plan) || proposal.plan,
+    runId: nullableText(nested.runId) ?? proposal.runId,
+    decidedAt: nullableText(nested.decidedAt) ?? proposal.decidedAt,
+    expiresAt: nullableText(nested.expiresAt) ?? proposal.expiresAt,
+    replyMessageId: nullableText(nested.replyMessageId) ?? proposal.replyMessageId,
+    error: nullableText(nested.error) ?? proposal.error,
   };
 }
 

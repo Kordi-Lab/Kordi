@@ -1,7 +1,6 @@
 import { cloudVoiceMessageMetadataOnly } from './cloudVoiceMessage';
 import type { MessagePlanCard } from '@/kordi-app/types/message';
 import { normalizePlanCardSnapshot } from './planCardSnapshot';
-import { proactiveOfferFromChatContent } from './proactiveOffer';
 import { isBuiltInAccountId, isSystemAccountId, KORDI_SYSTEM_NOTICE_KIND } from '@/features/pip/pipIdentity';
 import { normalizedLivePhoto } from '@/features/chat/livePhotos';
 import type { CloudMessage, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput } from './authClient';
@@ -386,7 +385,6 @@ export function cloudMessageFromChatSync(
     attachments: attachmentsFromChatContent(message.content, message.kind),
     voiceMessage: voiceMessageFromChatContent(message.content),
     planCard: planCardFromChatContent(message.content),
-    proactiveOffer: proactiveOfferFromChatContent(message.content),
     conversationId: conversation.id,
     conversationSequence: message.conversation_sequence,
     clientMessageId: message.client_message_id,
