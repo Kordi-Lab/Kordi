@@ -1,15 +1,19 @@
 use super::{
     ANTHROPIC_SUBSCRIPTION_MODEL_IDS, ClaudeModelCapabilities, ClaudeThinkingMode,
-    DEFAULT_ANTHROPIC_MODEL_ID, ThinkingOffBehavior, adaptive_effort, capabilities_for_model,
-    clamp_thinking_level, thinking_levels,
+    DEFAULT_ANTHROPIC_MODEL_ID, ThinkingOffBehavior, ThinkingPlan, capabilities_for_model,
+    clamp_thinking_level, thinking_levels, thinking_plan,
 };
-use kordi_core::agent_session::ThinkingLevel;
+use kordi_core::agent_session::ThinkingLevel::{
+    self, Default, High, Low, Max, Medium, Minimal, Off, XHigh,
+};
 
 const EXPECTED_MODEL_IDS: &[&str] = &[
+    "claude-sonnet-5-5",
     "claude-fable-5-1",
     "claude-fable-5",
     "claude-haiku-4-5",
     "claude-haiku-4-5-20251001",
+    "claude-haiku-5-5",
     "claude-opus-4-1",
     "claude-opus-4-1-20250805",
     "claude-opus-4-5",
@@ -17,6 +21,8 @@ const EXPECTED_MODEL_IDS: &[&str] = &[
     "claude-opus-4-6",
     "claude-opus-4-7",
     "claude-opus-4-8",
+    "claude-opus-5",
+    "claude-opus-5-5",
     "claude-sonnet-4-5",
     "claude-sonnet-4-5-20250929",
     "claude-sonnet-4-6",
@@ -33,156 +39,160 @@ const BUDGET_MODEL_IDS: &[&str] = &[
     "claude-sonnet-4-5",
     "claude-sonnet-4-5-20250929",
 ];
-
-const NATIVE_XHIGH_MODEL_IDS: &[&str] = &[
-    "claude-fable-5-1",
-    "claude-fable-5",
+const ALWAYS_ON_MODEL_IDS: &[&str] = &["claude-fable-5", "claude-fable-5-1", "claude-opus-5-5"];
+/// Adaptive models whose Off is `{type: "disabled"}`, with OMP's low..max efforts.
+const DISABLED_OFF_MODEL_IDS: &[&str] = &[
+    "claude-haiku-5-5",
     "claude-opus-4-7",
     "claude-opus-4-8",
+    "claude-opus-5",
     "claude-sonnet-5",
 ];
 
 #[test]
 fn model_constants_define_the_exact_subscription_order_and_default() {
-    assert_eq!(DEFAULT_ANTHROPIC_MODEL_ID, "claude-opus-4-8");
-    assert_eq!(ANTHROPIC_SUBSCRIPTION_MODEL_IDS, EXPECTED_MODEL_IDS);
-    assert!(
-        ANTHROPIC_SUBSCRIPTION_MODEL_IDS.contains(&DEFAULT_ANTHROPIC_MODEL_ID),
-        "default model must be part of the subscription catalog"
+    assert_eq!(DEFAULT_ANTHROPIC_MODEL_ID, "claude-sonnet-5-5");
+    assert_eq!(
+        DEFAULT_ANTHROPIC_MODEL_ID,
+        kordi_core::agent_session::DEFAULT_ANTHROPIC_MODEL_ID,
+        "the runtime and provider defaults must agree"
     );
+    assert_eq!(ANTHROPIC_SUBSCRIPTION_MODEL_IDS, EXPECTED_MODEL_IDS);
 }
 
 #[test]
 fn every_subscription_model_has_the_expected_capability_row() {
-    struct ExpectedCapabilities {
-        ids: &'static [&'static str],
-        thinking_mode: ClaudeThinkingMode,
-        native_xhigh: bool,
-        supports_max: bool,
-        supports_temperature: bool,
-        thinking_off: ThinkingOffBehavior,
-    }
-
-    let rows = [
-        ExpectedCapabilities {
-            ids: &["claude-fable-5", "claude-fable-5-1"],
-            thinking_mode: ClaudeThinkingMode::Adaptive,
-            native_xhigh: true,
-            supports_max: true,
-            supports_temperature: false,
-            thinking_off: ThinkingOffBehavior::Omit,
-        },
-        ExpectedCapabilities {
-            ids: &["claude-opus-4-6", "claude-sonnet-4-6"],
-            thinking_mode: ClaudeThinkingMode::Adaptive,
-            native_xhigh: false,
-            supports_max: true,
-            supports_temperature: true,
-            thinking_off: ThinkingOffBehavior::Disabled,
-        },
-        ExpectedCapabilities {
-            ids: &["claude-opus-4-7", "claude-opus-4-8", "claude-sonnet-5"],
-            thinking_mode: ClaudeThinkingMode::Adaptive,
-            native_xhigh: true,
-            supports_max: true,
-            supports_temperature: false,
-            thinking_off: ThinkingOffBehavior::Disabled,
-        },
-        ExpectedCapabilities {
-            ids: BUDGET_MODEL_IDS,
-            thinking_mode: ClaudeThinkingMode::Budget,
-            native_xhigh: false,
-            supports_max: false,
-            supports_temperature: true,
-            thinking_off: ThinkingOffBehavior::Disabled,
-        },
-    ];
-
     fn assert_copy<T: Copy>() {}
     assert_copy::<ClaudeModelCapabilities>();
 
-    for row in rows {
-        for model_id in row.ids {
-            let capabilities = capabilities_for_model(model_id)
-                .unwrap_or_else(|| panic!("missing capabilities for {model_id}"));
-            assert_eq!(capabilities.thinking_mode, row.thinking_mode, "{model_id}");
-            assert_eq!(capabilities.native_xhigh, row.native_xhigh, "{model_id}");
-            assert_eq!(capabilities.supports_max, row.supports_max, "{model_id}");
+    let caps = |thinking_mode,
+                native_xhigh,
+                supports_max,
+                supports_temperature,
+                thinking_off,
+                supports_display| {
+        ClaudeModelCapabilities {
+            thinking_mode,
+            native_xhigh,
+            supports_max,
+            supports_temperature,
+            thinking_off,
+            supports_display,
+        }
+    };
+    let adaptive = ClaudeThinkingMode::Adaptive;
+    let budget = ClaudeThinkingMode::Budget;
+    // mode, native xhigh, max, temperature, off, display
+    let rows: [(&[&str], ClaudeModelCapabilities); 5] = [
+        (
+            &["claude-sonnet-5-5"],
+            caps(
+                adaptive,
+                true,
+                true,
+                false,
+                ThinkingOffBehavior::BetweenTools,
+                true,
+            ),
+        ),
+        (
+            ALWAYS_ON_MODEL_IDS,
+            caps(
+                adaptive,
+                true,
+                true,
+                false,
+                ThinkingOffBehavior::LowEffort,
+                true,
+            ),
+        ),
+        (
+            DISABLED_OFF_MODEL_IDS,
+            caps(
+                adaptive,
+                true,
+                true,
+                false,
+                ThinkingOffBehavior::Disabled,
+                true,
+            ),
+        ),
+        (
+            &["claude-opus-4-6", "claude-sonnet-4-6"],
+            caps(
+                adaptive,
+                false,
+                true,
+                true,
+                ThinkingOffBehavior::Disabled,
+                false,
+            ),
+        ),
+        (
+            BUDGET_MODEL_IDS,
+            caps(
+                budget,
+                true,
+                false,
+                true,
+                ThinkingOffBehavior::Disabled,
+                true,
+            ),
+        ),
+    ];
+    let mut covered = 0;
+    for (ids, expected) in rows {
+        for model_id in ids {
             assert_eq!(
-                capabilities.supports_temperature, row.supports_temperature,
+                capabilities_for_model(model_id),
+                Some(expected),
                 "{model_id}"
             );
-            assert_eq!(capabilities.thinking_off, row.thinking_off, "{model_id}");
+            covered += 1;
+        }
+    }
+    assert_eq!(covered, EXPECTED_MODEL_IDS.len());
+}
+
+#[test]
+fn every_subscription_model_exposes_omps_efforts() {
+    let low_to_max = [Low, Medium, High, XHigh, Max];
+    let cases: [(&[&str], Vec<ThinkingLevel>); 4] = [
+        (
+            BUDGET_MODEL_IDS,
+            vec![Off, Minimal, Low, Medium, High, XHigh],
+        ),
+        // Sonnet 4.6 keeps max, which the API lists and OMP's catalog does not.
+        (
+            &["claude-opus-4-6", "claude-sonnet-4-6"],
+            vec![Off, Low, Medium, High, Max],
+        ),
+        (ALWAYS_ON_MODEL_IDS, low_to_max.to_vec()),
+        (
+            &[
+                "claude-sonnet-5-5",
+                "claude-haiku-5-5",
+                "claude-opus-4-7",
+                "claude-opus-4-8",
+                "claude-opus-5",
+                "claude-sonnet-5",
+            ],
+            [&[Off][..], &low_to_max].concat(),
+        ),
+    ];
+    for (ids, levels) in cases {
+        for model_id in ids {
+            assert_eq!(
+                thinking_levels(model_id),
+                Some(levels.as_slice()),
+                "{model_id}"
+            );
         }
     }
 }
 
 #[test]
-fn every_subscription_model_exposes_its_exact_thinking_levels() {
-    let budget_levels = [
-        ThinkingLevel::Off,
-        ThinkingLevel::Minimal,
-        ThinkingLevel::Low,
-        ThinkingLevel::Medium,
-        ThinkingLevel::High,
-    ];
-    for model_id in BUDGET_MODEL_IDS {
-        assert_eq!(
-            thinking_levels(model_id),
-            Some(budget_levels.as_slice()),
-            "{model_id}"
-        );
-    }
-
-    let max_without_xhigh = [
-        ThinkingLevel::Off,
-        ThinkingLevel::Minimal,
-        ThinkingLevel::Low,
-        ThinkingLevel::Medium,
-        ThinkingLevel::High,
-        ThinkingLevel::Max,
-    ];
-    for model_id in ["claude-opus-4-6", "claude-sonnet-4-6"] {
-        assert_eq!(
-            thinking_levels(model_id),
-            Some(max_without_xhigh.as_slice()),
-            "{model_id}"
-        );
-    }
-
-    let native_xhigh_levels = [
-        ThinkingLevel::Off,
-        ThinkingLevel::Minimal,
-        ThinkingLevel::Low,
-        ThinkingLevel::Medium,
-        ThinkingLevel::High,
-        ThinkingLevel::XHigh,
-        ThinkingLevel::Max,
-    ];
-    for model_id in ["claude-opus-4-7", "claude-opus-4-8", "claude-sonnet-5"] {
-        assert_eq!(
-            thinking_levels(model_id),
-            Some(native_xhigh_levels.as_slice()),
-            "{model_id}"
-        );
-    }
-
-    let fable_levels = [
-        ThinkingLevel::Minimal,
-        ThinkingLevel::Low,
-        ThinkingLevel::Medium,
-        ThinkingLevel::High,
-        ThinkingLevel::XHigh,
-        ThinkingLevel::Max,
-    ];
-    assert_eq!(
-        thinking_levels("claude-fable-5"),
-        Some(fable_levels.as_slice())
-    );
-}
-
-#[test]
-fn clamping_preserves_supported_and_explicit_stored_levels() {
+fn clamping_keeps_supported_levels_off_and_default() {
     for model_id in EXPECTED_MODEL_IDS {
         for level in thinking_levels(model_id).expect("known model") {
             assert_eq!(
@@ -191,93 +201,88 @@ fn clamping_preserves_supported_and_explicit_stored_levels() {
                 "{model_id} {level}"
             );
         }
-        assert_eq!(
-            clamp_thinking_level(model_id, ThinkingLevel::Default),
-            Some(ThinkingLevel::Default),
-            "{model_id} default"
-        );
-    }
-
-    assert_eq!(
-        clamp_thinking_level("claude-fable-5", ThinkingLevel::Off),
-        Some(ThinkingLevel::Off)
-    );
-}
-
-#[test]
-fn unsupported_high_end_levels_clamp_to_the_highest_valid_effort() {
-    for model_id in BUDGET_MODEL_IDS {
-        assert_eq!(
-            clamp_thinking_level(model_id, ThinkingLevel::XHigh),
-            Some(ThinkingLevel::High),
-            "{model_id} xhigh"
-        );
-        assert_eq!(
-            clamp_thinking_level(model_id, ThinkingLevel::Max),
-            Some(ThinkingLevel::High),
-            "{model_id} max"
-        );
-    }
-
-    for model_id in ["claude-opus-4-6", "claude-sonnet-4-6"] {
-        assert_eq!(
-            clamp_thinking_level(model_id, ThinkingLevel::XHigh),
-            Some(ThinkingLevel::High),
-            "{model_id} xhigh"
-        );
-        assert_eq!(
-            clamp_thinking_level(model_id, ThinkingLevel::Max),
-            Some(ThinkingLevel::Max),
-            "{model_id} max"
-        );
-    }
-}
-
-#[test]
-fn adaptive_effort_is_model_aware_and_stable_for_json() {
-    for model_id in NATIVE_XHIGH_MODEL_IDS {
-        for (requested, expected) in [
-            (ThinkingLevel::Minimal, "low"),
-            (ThinkingLevel::Low, "low"),
-            (ThinkingLevel::Medium, "medium"),
-            (ThinkingLevel::High, "high"),
-            (ThinkingLevel::XHigh, "xhigh"),
-            (ThinkingLevel::Max, "max"),
-        ] {
+        for level in [Off, Default] {
             assert_eq!(
-                adaptive_effort(model_id, requested),
-                Some(expected),
-                "{model_id}"
+                clamp_thinking_level(model_id, level),
+                Some(level),
+                "{model_id} {level}"
             );
         }
     }
-
-    for model_id in ["claude-opus-4-6", "claude-sonnet-4-6"] {
-        assert_eq!(
-            adaptive_effort(model_id, ThinkingLevel::XHigh),
-            Some("high"),
-            "{model_id} xhigh"
-        );
-        assert_eq!(
-            adaptive_effort(model_id, ThinkingLevel::Max),
-            Some("max"),
-            "{model_id} max"
-        );
-    }
-
-    assert_eq!(adaptive_effort("claude-opus-4-8", ThinkingLevel::Off), None);
-    assert_eq!(
-        adaptive_effort("claude-opus-4-8", ThinkingLevel::Default),
-        None
-    );
-    assert_eq!(
-        adaptive_effort("claude-opus-4-5", ThinkingLevel::High),
-        None
-    );
 }
 
 #[test]
-fn capability_lookups_require_exact_known_ids() {
+fn unsupported_levels_clamp_down_else_to_the_lowest_level_as_omp_does() {
+    let cases: [(&str, ThinkingLevel, ThinkingLevel); 11] = [
+        // Below the ladder: the lowest supported level.
+        ("claude-sonnet-5-5", Minimal, Low),
+        ("claude-fable-5-1", Minimal, Low),
+        ("claude-opus-4-6", Minimal, Low),
+        ("claude-sonnet-4-6", Minimal, Low),
+        // A gap: the highest supported level below it.
+        ("claude-opus-4-6", XHigh, High),
+        ("claude-sonnet-4-6", XHigh, High),
+        // Above the ladder: its top.
+        ("claude-haiku-4-5", Max, XHigh),
+        ("claude-opus-4-1", Max, XHigh),
+        ("claude-opus-4-5", Max, XHigh),
+        ("claude-sonnet-4-5", Max, XHigh),
+        ("claude-haiku-4-5", Minimal, Minimal),
+    ];
+    for (model_id, requested, expected) in cases {
+        assert_eq!(
+            clamp_thinking_level(model_id, requested),
+            Some(expected),
+            "{model_id} {requested}"
+        );
+    }
+}
+
+#[test]
+fn plans_follow_omp_with_the_documented_differences() {
+    let adaptive = |effort, display| ThinkingPlan::Adaptive { effort, display };
+    let budget = |budget_tokens, output_limit, effort| ThinkingPlan::Budget {
+        budget_tokens,
+        output_limit: Some(output_limit),
+        display: true,
+        effort,
+    };
+    let cases = [
+        ("claude-sonnet-5-5", Off, ThinkingPlan::BetweenTools),
+        ("claude-sonnet-5-5", Minimal, adaptive("low", true)),
+        ("claude-opus-5-5", Off, ThinkingPlan::EffortOnly("low")),
+        ("claude-fable-5", Off, ThinkingPlan::EffortOnly("low")),
+        ("claude-opus-5", Off, ThinkingPlan::Disabled),
+        ("claude-haiku-5-5", Off, ThinkingPlan::Disabled),
+        ("claude-opus-4-6", XHigh, adaptive("high", false)),
+        ("claude-haiku-4-5", Low, budget(4_096, 64_000, None)),
+        ("claude-haiku-4-5", Max, budget(32_768, 64_000, None)),
+        ("claude-opus-4-1", XHigh, budget(32_768, 32_000, None)),
+        (
+            "claude-opus-4-5",
+            Minimal,
+            budget(1_024, 64_000, Some("low")),
+        ),
+        ("claude-opus-4-5", Max, budget(32_768, 64_000, Some("high"))),
+    ];
+    for (model_id, requested, expected) in cases {
+        assert_eq!(
+            thinking_plan(model_id, requested),
+            expected,
+            "{model_id} {requested}"
+        );
+    }
+    for model_id in EXPECTED_MODEL_IDS {
+        assert_eq!(
+            thinking_plan(model_id, Default),
+            ThinkingPlan::Omit,
+            "{model_id}"
+        );
+    }
+}
+
+#[test]
+fn unknown_ids_get_no_capabilities_and_conservative_budget_plans() {
     for unknown_id in [
         "claude-future-live-id",
         "vendor/claude-opus-4-8",
@@ -289,11 +294,22 @@ fn capability_lookups_require_exact_known_ids() {
         assert!(capabilities_for_model(unknown_id).is_none(), "{unknown_id}");
         assert!(thinking_levels(unknown_id).is_none(), "{unknown_id}");
         assert!(
-            clamp_thinking_level(unknown_id, ThinkingLevel::XHigh).is_none(),
+            clamp_thinking_level(unknown_id, XHigh).is_none(),
             "{unknown_id}"
         );
-        assert!(
-            adaptive_effort(unknown_id, ThinkingLevel::XHigh).is_none(),
+        assert_eq!(
+            thinking_plan(unknown_id, Off),
+            ThinkingPlan::Omit,
+            "{unknown_id}"
+        );
+        assert_eq!(
+            thinking_plan(unknown_id, Max),
+            ThinkingPlan::Budget {
+                budget_tokens: 16_384,
+                output_limit: None,
+                display: false,
+                effort: None,
+            },
             "{unknown_id}"
         );
     }

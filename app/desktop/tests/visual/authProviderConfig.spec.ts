@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
-  catalog, ompProvider, shortName, anthropicName, googleName, defaultModel,
+  ompProvider, shortName, anthropicName, googleName, defaultModel,
   secretLikeText, callbackHint, openPreview, providerRows, providerRow, section,
   account, detail, heading, pickerRows, steps, signedIn,
   startChat, chatNotice, expectDistinctStepDescriptions, openAddAccount, expectReturnedWith, finishAndReturn,
@@ -457,7 +457,7 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByRole('heading', { name: 'Your providers', level: 1 })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Continue to chat' })).toBeEnabled();
     await waitForLoadedProviderList(page);
-    await expect(page.getByText(`OMP catalog ${catalog.version}`, { exact: true })).toBeVisible();
+    await expect(page.getByText(/OMP catalog/)).toHaveCount(0);
     await expect(section(page, 'Connected providers').getByRole('button')).toHaveText([/OpenAI/]);
     // The pinned catalog fixes the first A-group rows.
     await expect(section(page, 'A providers').getByRole('button').nth(0)).toContainText('Abliteration');

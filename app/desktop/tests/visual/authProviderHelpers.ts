@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { withChatGptModelCatalog } from '../../src/features/cloud/chatgptModelCatalog';
+import { withClaudeModelCatalog } from '../../src/features/cloud/claudeModelCatalog';
 
 // Shared steps for the provider-configuration specs. They drive the synthetic,
 // offline AuthPreview fixture and its simulated OMP sign-in sessions.
@@ -19,11 +20,12 @@ export const catalog = JSON.parse(readFileSync(
   new URL('../../../../shared/omp-catalog/omp-provider-catalog.json', import.meta.url),
   'utf8',
 )) as CatalogPayload;
-// The app lists ChatGPT models newest first with GPT-6.1 Sol as the default.
+// The app lists ChatGPT models newest first with GPT-6.1 Sol as the default,
+// and Claude models with Sonnet 5.5 first and as the default.
 export const ompProvider = (id: string) => {
   const entry = catalog.providers.find((provider) => provider.id === id);
   if (!entry) throw new Error(`The pinned OMP catalog has no ${id} provider.`);
-  return withChatGptModelCatalog(entry);
+  return withClaudeModelCatalog(withChatGptModelCatalog(entry));
 };
 // List rows use the short name; the full OMP name appears once, in the detail header.
 export const shortName = (name: string) => name.replace(/\s*\([^()]*\)$/, '').replace(/\s+[A-Za-z+]+(?:\/[A-Za-z+]+)+$/, '');
@@ -103,7 +105,7 @@ export async function expectMergedCatalogList(page: Page) {
   const count = Number(placeholder?.match(/^Search (\d+) providers$/)?.[1]);
   expect(count).toBe(expectedProviderRows);
   await expect(providerRows(page)).toHaveCount(count);
-  await expect(page.getByText(`OMP catalog ${catalog.version}`, { exact: true })).toBeVisible();
+  await expect(page.getByText(/OMP catalog/)).toHaveCount(0);
   await expect(page.getByText(/could not load/i)).toHaveCount(0);
   await expect(section(page, 'Connected providers').getByRole('button')).toHaveText([/OpenAI/]);
   return count;

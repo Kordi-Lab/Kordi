@@ -114,6 +114,11 @@ final class ProviderAuthenticationTests: XCTestCase {
         XCTAssertTrue(anthropic.acceptsAPIKeyOnPhone)
         XCTAssertTrue(anthropic.subtitle.hasPrefix("Subscription sign-in or API key ·"), anthropic.subtitle)
         XCTAssertEqual(anthropic.name, OMPProviderCatalog.pinned.first { $0.id == "anthropic" }?.auth?.name)
+        // OMP names Opus 5.5 as Anthropic's default; Claude accounts open on Sonnet 5.5.
+        XCTAssertEqual(anthropic.defaultModel, "claude-sonnet-5-5")
+        XCTAssertEqual(OMPProviderCatalog.pinned.first { $0.id == "anthropic" }?.kordiDefaultModel, "claude-sonnet-5-5")
+        let older = OMPProviderCatalogEntry(id: "anthropic", defaultModel: "claude-opus-4-8", models: ["claude-opus-4-8"])
+        XCTAssertEqual(older.kordiDefaultModel, "claude-opus-4-8", "a catalog without Sonnet 5.5 keeps its default")
 
         let tokenOnly = OMPProviderAuthPolicy(
             kind: "custom",
@@ -253,7 +258,7 @@ struct ModelReleaseTests {
         #expect(AgentModelPicker.modelNamesByProvider["openai"]?.first == "gpt-6.1-sol")
         #expect(AgentModelPicker.modelNamesByProvider["openai"]?.contains(where: { $0.contains("daybreak") }) == false)
         #expect(ProviderAuthenticationDefinition.all.first(where: { $0.id == "openai" })?.defaultModel == "gpt-6.1-sol")
-        #expect(AgentModelPicker.modelNamesByProvider["anthropic"]?.first == "claude-fable-5-1")
+        #expect(AgentModelPicker.modelNamesByProvider["anthropic"]?.first == "claude-sonnet-5-5")
         for route in ["gpt-6-astra", "openai/gpt-6-astra", "openai-codex/gpt-6-astra", "openai/gpt-6-sol", "openai-codex/gpt-6-luna",
                       "openai-codex/gpt-6.1-sol"] {
             #expect(AgentModelPicker.thinkingLevels(for: route) == ["default", "low", "medium", "high", "xhigh", "max"])
@@ -261,6 +266,9 @@ struct ModelReleaseTests {
             #expect(AgentModelPicker.normalizedThinking("minimal", for: route) == "low")
             #expect(AgentModelPicker.normalizedThinking("max", for: route) == "max")
         }
+        let sonnet = "anthropic/claude-sonnet-5-5"
+        #expect(AgentModelPicker.thinkingLevels(for: sonnet) == ["default", "low", "medium", "high", "xhigh", "max"])
+        #expect(AgentModelPicker.normalizedThinking("medium", for: sonnet) == "medium")
         let fable = "anthropic/claude-fable-5-1"
         #expect(!AgentModelPicker.thinkingLevels(for: fable).contains("off"))
         #expect(AgentModelPicker.normalizedThinking("off", for: fable) == "default")

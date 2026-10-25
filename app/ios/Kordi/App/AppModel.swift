@@ -1473,7 +1473,7 @@ final class AppModel: ObservableObject {
         return account.modelHint?.nonEmpty
             // The pinned catalog's ChatGPT default predates the newest model.
             ?? (account.provider == "openai-codex" ? AgentModelPicker.modelNamesByProvider["openai"]?.first : nil)
-            ?? ompProviderCatalog.first(where: { $0.id == account.provider })?.defaultModel?.nonEmpty
+            ?? ompProviderCatalog.first(where: { $0.id == account.provider })?.kordiDefaultModel
             ?? ompProviderCatalog.first(where: { $0.id == account.provider })?.models.first
             ?? provider.defaultModel?.nonEmpty
             ?? provider.models.first

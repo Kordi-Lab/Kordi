@@ -40,6 +40,7 @@ struct AgentModelPicker: View {
             "gpt-5.3-codex-spark",
         ],
         "anthropic": [
+            "claude-sonnet-5-5",
             "claude-fable-5-1",
             "claude-sonnet-5",
             "claude-opus-4-8",
