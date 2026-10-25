@@ -70,6 +70,11 @@ extension CloudAPIClient {
         try await sendWithoutResponse(path: cg("profiles/\(cgSegment(profileId))"), method: "DELETE", token: token, fallback: "Could not delete the profile.")
     }
 
+    /// The owner's memories routed to one profile, newest first.
+    func commonGroundProfileMemories(token: String, profileId: String) async throws -> CloudProfileMemoryList {
+        try await send(path: cg("profiles/\(cgSegment(profileId))/memories"), method: "GET", token: token, fallback: "Could not load this card's memories.")
+    }
+
     // MARK: Rooms
 
     /// Rooms the viewer joined and has not left, newest first.

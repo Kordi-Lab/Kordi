@@ -94,7 +94,8 @@ final class PreviewMemoryService: MemoryService {
             hoursAgo: Double
         ) -> CloudMemory {
             let at = formatter.string(from: now.addingTimeInterval(-hoursAgo * 3_600))
-            return CloudMemory(memoryId: id, scope: scope, scopeId: scopeId, scopeLabel: scopeLabel, source: source, text: text, createdAt: at, updatedAt: at)
+            return CloudMemory(memoryId: id, scope: scope, scopeId: scopeId, scopeLabel: scopeLabel, source: source, text: text,
+                               createdAt: at, updatedAt: at, category: sampleCategories[id])
         }
         return [
             memory("lesson-1", .conversation, "conv-launch-copy", "Launch copy with Priya", .userCorrection,
@@ -126,6 +127,14 @@ final class PreviewMemoryService: MemoryService {
             }(),
         ]
     }
+
+    /// Categories for the samples, so rows show their chips in previews.
+    private static let sampleCategories: [String: String] = [
+        "lesson-1": "general_preferences", "lesson-2": "work_context", "lesson-3": "coordination_context",
+        "lesson-4": "hcp-custom:task_lessons", "lesson-5": "hcp-custom:task_lessons", "lesson-6": "hcp-custom:task_lessons",
+        "lesson-7": "general_preferences", "lesson-8": "general_preferences", "lesson-9": "coordination_context",
+        "lesson-10": "goals_and_constraints",
+    ]
 
     private func wait() async throws {
         try await Task.sleep(for: latency)

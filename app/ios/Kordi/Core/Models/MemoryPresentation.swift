@@ -22,6 +22,36 @@ enum MemoryPresentation {
         (capabilities?.memoryVersion ?? 0) >= 1
     }
 
+    /// Card pages list each profile's memories from `memoryVersion` 2.
+    static func hasProfileRouting(_ capabilities: CloudAuthCapabilities?) -> Bool {
+        (capabilities?.memoryVersion ?? 0) >= 2
+    }
+
+    /// Chip labels per category, shared with the Mac.
+    static let categoryLabels: [String: String] = [
+        "work_context": "Work",
+        "education_learner_profile": "Learning",
+        "health_context": "Health",
+        "coordination_context": "Schedule",
+        "location_context": "Location",
+        "purchase_history_preferences": "Shopping",
+        "general_preferences": "Preference",
+        "goals_and_constraints": "Goal",
+        "values_and_ethics": "Values",
+        "hcp-custom:task_lessons": "Task note",
+    ]
+
+    /// The chip for a memory's category; nil (no chip) when it is missing or unknown.
+    static func categoryLabel(for category: String?) -> String? {
+        category.flatMap { categoryLabels[$0] }
+    }
+
+    /// "3 new memories since this card was built"; nil when there are none.
+    static func memoriesSinceBuildCaption(_ count: Int?) -> String? {
+        guard let count, count > 0 else { return nil }
+        return count == 1 ? "1 new memory since this card was built" : "\(count) new memories since this card was built"
+    }
+
     /// A memory someone typed names who added it; the others name where they came from.
     static func sourceLabel(_ source: CloudMemorySource, addedBy: String? = nil) -> String {
         switch source {
@@ -135,9 +165,20 @@ enum MemoryPresentation {
     /// "From a correction · Today". Settings list only global memories and each
     /// conversation lists its own, so the scope label is left out.
     static func detail(_ memory: CloudMemory, viewerAccountId: String? = nil, now: Date = Date(), calendar: Calendar = .current) -> String {
-        [sourceLabel(memory.source, addedBy: addedBy(memory, viewerAccountId: viewerAccountId)), dateLabel(memory.updatedAt, now: now, calendar: calendar).nonEmptyMemoryText]
+        [originLabel(memory, viewerAccountId: viewerAccountId), dateLabel(memory.updatedAt, now: now, calendar: calendar).nonEmptyMemoryText]
             .compactMap { $0 }
             .joined(separator: " · ")
+    }
+
+    /// The declaration type wins over the source: a memory the agent inferred reads
+    /// "Saved by your agent · high confidence" (or names another member), even when
+    /// the agent passed source `manual`. Otherwise the source decides.
+    static func originLabel(_ memory: CloudMemory, viewerAccountId: String? = nil) -> String {
+        let addedBy = addedBy(memory, viewerAccountId: viewerAccountId)
+        guard memory.declarationType == "model-inferred" else { return sourceLabel(memory.source, addedBy: addedBy) }
+        let who = isOwn(memory, viewerAccountId: viewerAccountId) ? "your agent" : (addedBy ?? "a group member")
+        guard let confidence = memory.confidence?.nonEmptyMemoryText else { return "Saved by \(who)" }
+        return "Saved by \(who) · \(confidence) confidence"
     }
 
     static let notAGroupMemberMessage = "Only group members can change this memory."
@@ -155,6 +196,8 @@ enum MemoryPresentation {
         guard memory.scope == .group, !isOwn(memory, viewerAccountId: viewerAccountId) else { return nil }
         // A memory typed by hand already names who added it in its source label.
         guard memory.source != .manual else { return nil }
+        // An inferred memory already names who saved it in its origin label.
+        guard memory.declarationType != "model-inferred" else { return nil }
         return "Saved by \(memory.ownerName?.nonEmptyMemoryText ?? "a group member")"
     }
 
