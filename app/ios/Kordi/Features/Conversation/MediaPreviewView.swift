@@ -85,6 +85,15 @@ enum MediaPreviewDismissal {
         let threshold = max(96, min(viewportHeight * 0.18, 180))
         return distance >= threshold || projectedDistance >= threshold * 1.35
     }
+
+    // Shared by the chat image viewer and the photo picker preview so both
+    // move the same way: the backdrop clears, controls fade sooner, the photo
+    // shrinks slightly while dragged and shrinks and fades when closing.
+    static func backdropOpacity(offset: CGFloat) -> CGFloat { 1 - min(offset / 260, 1) }
+    static func chromeOpacity(offset: CGFloat) -> CGFloat { 1 - min(offset / 120, 1) }
+    static func dragScale(offset: CGFloat) -> CGFloat { 1 - min(offset / 260, 1) * 0.2 }
+    static let closingScale: CGFloat = 0.85
+    static let closingAnimation = Animation.easeOut(duration: 0.22)
 }
 
 struct MediaPreviewView: View {
@@ -114,9 +123,9 @@ struct MediaPreviewView: View {
 
     var body: some View {
         // Dragging down fades the backdrop and controls so the chat shows through.
-        let backdrop = isClosing ? 0 : 1 - min(dismissalOffset / 260, 1)
-        let chrome = isClosing ? 0 : 1 - min(dismissalOffset / 120, 1)
-        let dragScale = 1 - min(dismissalOffset / 260, 1) * 0.2
+        let backdrop = isClosing ? 0 : MediaPreviewDismissal.backdropOpacity(offset: dismissalOffset)
+        let chrome = isClosing ? 0 : MediaPreviewDismissal.chromeOpacity(offset: dismissalOffset)
+        let dragScale = MediaPreviewDismissal.dragScale(offset: dismissalOffset)
         VStack(spacing: 0) {
             header.opacity(chrome)
             GeometryReader { viewport in
@@ -133,7 +142,7 @@ struct MediaPreviewView: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .frame(width: viewport.size.width, height: viewport.size.height)
-                .scaleEffect(dragScale * (isClosing ? 0.85 : 1))
+                .scaleEffect(dragScale * (isClosing ? MediaPreviewDismissal.closingScale : 1))
                 .opacity(isClosing ? 0 : 1)
                 .offset(y: dismissalOffset)
                 .accessibilityAdjustableAction(moveSelection)
@@ -145,6 +154,9 @@ struct MediaPreviewView: View {
         .presentationBackground(.clear)
         .foregroundStyle(.white)
         .environment(\.colorScheme, .dark)
+        // Hosted by ConversationModalPresenter, the host is dark and the chat
+        // behind keeps its own appearance; as a SwiftUI cover it sets dark itself.
+        .preferredColorScheme(onClose == nil ? .dark : nil)
         .sensoryFeedback(.selection, trigger: selectedItemID)
         .onChange(of: selectedItemID) { _, _ in playback.reset(); saveStatus = nil }
         .onChange(of: currentItem?.attachment.id) { _, _ in playback.reset() }
@@ -159,7 +171,7 @@ struct MediaPreviewView: View {
     private func close() {
         guard !isClosing else { return }
         guard !reduceMotion else { return finishClosing() }
-        withAnimation(.easeOut(duration: 0.22)) { isClosing = true } completion: { finishClosing() }
+        withAnimation(MediaPreviewDismissal.closingAnimation) { isClosing = true } completion: { finishClosing() }
     }
 
     private func finishClosing() {

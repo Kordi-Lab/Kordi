@@ -18,6 +18,12 @@ final class PhotoLibraryAssets {
 
     func id(at index: Int) -> String? { asset(at: index)?.localIdentifier }
 
+    /// True when an edit was added, replaced or removed. Comparing keys alone
+    /// misses a second edit of the same photo.
+    static func editsDiffer(_ old: [String: UIImage], _ new: [String: UIImage]) -> Bool {
+        old.count != new.count || new.contains { old[$0.key] !== $0.value }
+    }
+
     /// Assets for the given identifiers, in the identifiers' order.
     static func assets(for ids: [String]) -> [PHAsset] {
         guard !ids.isEmpty else { return [] }
@@ -75,8 +81,8 @@ enum PhotoLibraryGridMetrics {
     /// between photos resolve to a neighbour so a drag never skips one.
     static func index(at point: CGPoint, itemSide: CGFloat, width: CGFloat, count: Int) -> Int? {
         guard count > 0, itemSide > 0 else { return nil }
-        let columnPitch = (width - itemSide) / CGFloat(columns - 1)
-        let column = min(max(Int(((point.x - itemSide / 2) / columnPitch).rounded()), 0), columns - 1)
+        let pitch = itemSide + spacing
+        let column = min(max(Int(((point.x - itemSide / 2) / pitch).rounded()), 0), columns - 1)
         let row = max(Int(floor(point.y / (itemSide + spacing))), 0)
         return min(row * columns + column, count - 1)
     }

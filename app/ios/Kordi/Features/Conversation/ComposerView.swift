@@ -545,7 +545,7 @@ struct ComposerView: View {
                     HStack(alignment: .center, spacing: 0) {
                         if editingMessage == nil && conversation.subsessionId == nil { expressivePickerButton }
                         Spacer(minLength: 0)
-                        if editingMessage == nil && model.canChangeRuntimeRouting(for: conversation) {
+                        if showsModelEffortPill {
                             modelEffortPill.padding(.trailing, 12)
                         }
                         Color.clear.frame(width: sendButtonDiameter)
@@ -834,8 +834,8 @@ struct ComposerView: View {
 
     private var attachmentMenuContent: some View {
         Menu {
-            // Chats that can change the model use the composer's model and effort pill instead.
-            if !model.canChangeRuntimeRouting(for: conversation) {
+            // Skipped while the composer's model and effort pill is on screen.
+            if !showsModelEffortPill {
                 Button(action: showAgentModelPicker) {
                     Label("Model and reasoning", systemImage: "slider.horizontal.3")
                 }
@@ -1170,6 +1170,10 @@ struct ComposerView: View {
                 ? min(mentionPickerMaxHeight, 188)
                 : mentionPickerMaxHeight
         )
+    }
+
+    private var showsModelEffortPill: Bool {
+        isMessageFieldExpanded && editingMessage == nil && model.canChangeRuntimeRouting(for: conversation)
     }
 
     private var modelEffortPill: some View {

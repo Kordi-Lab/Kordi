@@ -24,9 +24,9 @@ struct PhotoLibraryPreview: View {
     var body: some View {
         let asset = library.asset(at: index)
         // Same fades as the chat image viewer: the grid shows through quickly.
-        let backdrop = isClosing ? 0 : 1 - min(dismissOffset / 260, 1)
-        let chrome = isClosing ? 0 : 1 - min(dismissOffset / 120, 1)
-        let dragScale = 1 - min(dismissOffset / 260, 1) * 0.2
+        let backdrop = isClosing ? 0 : MediaPreviewDismissal.backdropOpacity(offset: dismissOffset)
+        let chrome = isClosing ? 0 : MediaPreviewDismissal.chromeOpacity(offset: dismissOffset)
+        let dragScale = MediaPreviewDismissal.dragScale(offset: dismissOffset)
         ZStack {
             Color.black.opacity(backdrop).ignoresSafeArea()
             PhotoLibraryPager(
@@ -46,7 +46,7 @@ struct PhotoLibraryPreview: View {
             .ignoresSafeArea()
             // The same motion as the chat image viewer, applied by SwiftUI so
             // layout passes during the drag cannot fight a UIKit transform.
-            .scaleEffect(dragScale * (isClosing ? 0.85 : 1))
+            .scaleEffect(dragScale * (isClosing ? MediaPreviewDismissal.closingScale : 1))
             .opacity(isClosing ? 0 : 1)
             .offset(y: dismissOffset)
         }
@@ -60,7 +60,7 @@ struct PhotoLibraryPreview: View {
     private func close() {
         guard !isClosing else { return }
         guard !UIAccessibility.isReduceMotionEnabled else { return onClose() }
-        withAnimation(.easeOut(duration: 0.22)) { isClosing = true } completion: { onClose() }
+        withAnimation(MediaPreviewDismissal.closingAnimation) { isClosing = true } completion: { onClose() }
     }
 
     private func topBar(_ asset: PHAsset?) -> some View {
@@ -223,7 +223,7 @@ private struct PhotoLibraryPager: UIViewRepresentable {
     func updateUIView(_ view: PagerCollectionView, context: Context) {
         let coordinator = context.coordinator
         let changed = coordinator.parent.map {
-            $0.editedImages.keys != editedImages.keys || $0.stillOnlyIDs != stillOnlyIDs
+            PhotoLibraryAssets.editsDiffer($0.editedImages, editedImages) || $0.stillOnlyIDs != stillOnlyIDs
         } ?? false
         coordinator.parent = self
         coordinator.index = $index
@@ -238,6 +238,7 @@ private struct PhotoLibraryPager: UIViewRepresentable {
         var parent: PhotoLibraryPager?
         var index: Binding<Int>
         private var lastWidth: CGFloat = 0
+        private var isPositioning = false
         private weak var dismissDrag: UIPanGestureRecognizer?
         private weak var pager: UICollectionView?
 
@@ -316,7 +317,8 @@ private struct PhotoLibraryPager: UIViewRepresentable {
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             let width = scrollView.bounds.width
-            guard width > 0, scrollView.isDragging || scrollView.isDecelerating else { return }
+            // Any settled scroll counts, including VoiceOver paging; layout passes do not.
+            guard width > 0, width == lastWidth, !isPositioning else { return }
             let page = Int((scrollView.contentOffset.x / width).rounded())
             let count = parent?.library.count ?? 0
             guard page >= 0, page < count, page != index.wrappedValue else { return }
@@ -327,6 +329,8 @@ private struct PhotoLibraryPager: UIViewRepresentable {
         func keepPage(in view: UICollectionView) {
             let width = view.bounds.width
             guard width > 0, width != lastWidth else { return }
+            isPositioning = true
+            defer { isPositioning = false }
             lastWidth = width
             view.collectionViewLayout.invalidateLayout()
             view.layoutIfNeeded()
@@ -426,7 +430,7 @@ private struct PhotoLibraryPager: UIViewRepresentable {
                     for: asset, targetSize: size, contentMode: .aspectFit, options: options
                 ) { [weak self] image, _ in
                     guard let image else { return }
-                    MainActor.assumeIsolated {
+                    Task { @MainActor in
                         guard let self, self.assetID == id else { return }
                         self.imageView.image = image
                     }
@@ -440,7 +444,7 @@ private struct PhotoLibraryPager: UIViewRepresentable {
                     for: asset, targetSize: size, contentMode: .aspectFit, options: options
                 ) { [weak self] livePhoto, _ in
                     guard let livePhoto else { return }
-                    MainActor.assumeIsolated {
+                    Task { @MainActor in
                         guard let self, self.assetID == id else { return }
                         self.liveView.livePhoto = livePhoto
                     }

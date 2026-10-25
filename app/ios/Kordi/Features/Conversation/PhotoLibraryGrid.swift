@@ -18,7 +18,7 @@ struct PhotoLibraryGrid: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> UICollectionView {
-        let view = UICollectionView(frame: .zero, collectionViewLayout: PhotoLibraryGridLayout())
+        let view = UICollectionView(frame: .zero, collectionViewLayout: PhotoLibraryGridLayout.make())
         view.backgroundColor = .systemBackground
         view.alwaysBounceVertical = true
         view.allowsSelection = false
@@ -41,6 +41,7 @@ struct PhotoLibraryGrid: UIViewRepresentable {
         private let imageManager = PHCachingImageManager()
         private weak var collectionView: UICollectionView?
         private weak var dragRecognizer: UIPanGestureRecognizer?
+        private weak var tapRecognizer: UITapGestureRecognizer?
         private var parent: PhotoLibraryGrid?
         private var dragSelection: PhotoLibraryDragSelection?
         private var autoscroll: CADisplayLink?
@@ -56,7 +57,10 @@ struct PhotoLibraryGrid: UIViewRepresentable {
             drag.delegate = self
             view.addGestureRecognizer(drag)
             dragRecognizer = drag
-            view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(handleTap)))
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+            tap.delegate = self
+            view.addGestureRecognizer(tap)
+            tapRecognizer = tap
         }
 
         func detach() {
@@ -72,7 +76,7 @@ struct PhotoLibraryGrid: UIViewRepresentable {
                 view.reloadData()
                 return
             }
-            if previous.editedImages.keys != grid.editedImages.keys {
+            if PhotoLibraryAssets.editsDiffer(previous.editedImages, grid.editedImages) {
                 view.reconfigureItems(at: view.indexPathsForVisibleItems)
                 return
             }
@@ -126,7 +130,18 @@ struct PhotoLibraryGrid: UIViewRepresentable {
             )
         }
 
+        /// Prefetched cells were configured before the latest selection change.
+        func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
+            guard let cell = cell as? PhotoLibraryGridCell else { return }
+            configureOverlay(cell, at: indexPath.item)
+        }
+
         // MARK: Tap
+
+        /// A tap that stops a fling only stops it, as in other scroll views.
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            gestureRecognizer !== tapRecognizer || collectionView?.isDecelerating != true
+        }
 
         @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
             guard let collectionView, let parent,
@@ -275,12 +290,13 @@ struct PhotoLibraryGrid: UIViewRepresentable {
             in collectionView: UICollectionView
         ) {
             let id = asset.localIdentifier
+            cell.imageManager = imageManager
             cell.requestID = imageManager.requestImage(
                 for: asset, targetSize: thumbnailSize(in: collectionView),
                 contentMode: .aspectFill, options: Self.thumbnailOptions
             ) { [weak cell] image, _ in
                 guard let image else { return }
-                MainActor.assumeIsolated {
+                Task { @MainActor in
                     guard let cell, cell.assetID == id else { return }
                     cell.showImage(image)
                 }
@@ -313,28 +329,26 @@ struct PhotoLibraryGrid: UIViewRepresentable {
     }
 }
 
-private final class PhotoLibraryGridLayout: UICollectionViewFlowLayout {
-    override init() {
-        super.init()
-        minimumInteritemSpacing = PhotoLibraryGridMetrics.spacing
-        minimumLineSpacing = PhotoLibraryGridMetrics.spacing
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-
-    override func prepare() {
-        if let collectionView {
+/// Four square columns with fixed gaps. Unlike a flow layout, a short last
+/// row stays left-aligned, which the drag hit test relies on.
+private enum PhotoLibraryGridLayout {
+    static func make() -> UICollectionViewCompositionalLayout {
+        UICollectionViewCompositionalLayout { _, environment in
             let side = PhotoLibraryGridMetrics.itemSide(
-                width: collectionView.bounds.width,
-                scale: collectionView.traitCollection.displayScale
+                width: environment.container.effectiveContentSize.width,
+                scale: environment.traitCollection.displayScale
             )
-            if side > 0, itemSize.width != side { itemSize = CGSize(width: side, height: side) }
+            let size = NSCollectionLayoutSize(widthDimension: .absolute(side), heightDimension: .absolute(side))
+            let group = NSCollectionLayoutGroup.horizontal(
+                layoutSize: NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(side)),
+                repeatingSubitem: NSCollectionLayoutItem(layoutSize: size),
+                count: PhotoLibraryGridMetrics.columns
+            )
+            group.interItemSpacing = .fixed(PhotoLibraryGridMetrics.spacing)
+            let section = NSCollectionLayoutSection(group: group)
+            section.interGroupSpacing = PhotoLibraryGridMetrics.spacing
+            return section
         }
-        super.prepare()
-    }
-
-    override func shouldInvalidateLayout(forBoundsChange newBounds: CGRect) -> Bool {
-        newBounds.width != collectionView?.bounds.width
     }
 }
 
@@ -346,6 +360,8 @@ private final class PhotoLibraryGridCell: UICollectionViewCell {
     private let selectionCircle = UIView()
     private let selectionNumber = UILabel()
     private(set) var assetID: String?
+    /// The manager that made `requestID`; cancelling on another one does nothing.
+    weak var imageManager: PHImageManager?
     var requestID = PHInvalidImageRequestID
     private var isLivePhoto = false
     private var isStillOnly = false
@@ -393,7 +409,7 @@ private final class PhotoLibraryGridCell: UICollectionViewCell {
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        PHImageManager.default().cancelImageRequest(requestID)
+        imageManager?.cancelImageRequest(requestID)
         requestID = PHInvalidImageRequestID
         imageView.image = nil
         assetID = nil

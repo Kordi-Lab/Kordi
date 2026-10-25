@@ -1204,6 +1204,7 @@ struct ConversationView: View {
             _ = await MessageDeleteParticleResources.prepared.value
         }
         .onDisappear {
+            ConversationModalPresenter.dismiss(ownedBy: conversation.id)
             rememberViewport(in: messages)
             scrollPosition.cancelInitialPositioning()
             scrollPosition.cancelScrolling()
@@ -2959,7 +2960,8 @@ struct ConversationView: View {
     }
 
     private func presentPhotoPicker() {
-        ConversationModalPresenter.present { close in
+        guard isReadPresentationVisible else { return } // The chat closed during the menu delay.
+        ConversationModalPresenter.present(ownerID: conversation.id) { close in
             PhotoLibrarySendPicker(allowsSeparateMessages: conversation.kind != .agent, onSend: sendPhotoSelection,
                 onError: { model.errorMessage = $0 }, onClose: close).environment(\.kordiChatTheme, chatTheme).tint(chatTheme.accent)
         }
@@ -3186,7 +3188,9 @@ struct ConversationView: View {
         guard let presentation = MediaPreviewPresentation.make(
             opening: attachment, from: message, in: timeline, initialImage: previewImage
         ) else { return }
-        ConversationModalPresenter.present(transparent: true, transition: .crossDissolve, statusBarStyle: .lightContent) { close in
+        dismissKeyboard()
+        ConversationModalPresenter.present(ownerID: conversation.id, transparent: true, transition: .crossDissolve,
+            interfaceStyle: .dark, statusBarStyle: .lightContent) { close in
             MediaPreviewView(presentation: presentation, onClose: close).environmentObject(model)
         }
     }
