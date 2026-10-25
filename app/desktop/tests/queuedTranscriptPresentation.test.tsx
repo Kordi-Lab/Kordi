@@ -41,6 +41,7 @@ test('synced queued requests show the queue card without a processing placeholde
     await act(async () => { root.render(<Transcript messages={[request, { ...response, turn: { ...response.turn!, status: 'preparing' } }]} />); });
     assert.equal(container.querySelectorAll('.app-queued-message').length, 0);
     assert.equal(container.querySelectorAll('.app-turn-progress-bird').length, 1);
+    assert.equal(container.querySelectorAll('.app-transcript-activate-enter').length, 2, 'the sent request and the processing row animate in');
   } finally {
     await act(async () => root.unmount());
     container.remove();

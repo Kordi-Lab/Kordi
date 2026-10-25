@@ -36,7 +36,28 @@
   }
 }
 
+/* A queued message becoming active, and the processing row after it. */
+.app-transcript-activate-enter {
+  animation: app-transcript-activate-enter 180ms var(--app-motion-ease, cubic-bezier(0.23, 1, 0.32, 1)) both;
+}
+
+@keyframes app-transcript-activate-enter {
+  from {
+    opacity: 0.55;
+    transform: translate3d(0, 6px, 0) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .app-transcript-activate-enter {
+    animation: none;
+  }
+
   [data-transcript-window-item] {
     animation: none !important;
     translate: none !important;

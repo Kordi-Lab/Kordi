@@ -22,6 +22,7 @@ const themes = only === 'light' || only === 'dark' ? [only] : ['light', 'dark'];
 function Transcript({ theme, compact = false }: { theme: string; compact?: boolean }) {
   const [queue, setQueue] = useState(initialQueue);
   const [edited, setEdited] = useState<string | null>(null);
+  const [activated, setActivated] = useState<QueuedPreviewMessage[]>([]);
   return (
     <section
       className={`kordi-app theme-${theme} app-chat-theme-surface`}
@@ -41,6 +42,33 @@ function Transcript({ theme, compact = false }: { theme: string; compact?: boole
           onCancel={(_sessionId, id) => setQueue((current) => current.filter((item) => item.id !== id))}
         />
       ))}
+      {activated.map((message, index) => (
+        <div key={message.id}>
+          <div className="app-transcript-activate-enter">
+            <MessageBubble
+              msg={{ id: message.id, role: 'user', sender: 'Me', senderType: 'human', isOwnMessage: true, text: message.text, time: message.time, statusChips: ['read'] }}
+              densityMode={compact ? 'contact-compact' : 'default'}
+            />
+          </div>
+          {index === activated.length - 1 ? (
+            <div className="app-transcript-activate-enter" style={{ padding: '8px 0 0 40px', fontSize: 13, opacity: 0.7 }}>Working</div>
+          ) : null}
+        </div>
+      ))}
+      {params.has('activate') && queue.length > 0 ? (
+        <button
+          type="button"
+          data-preview-activate="true"
+          style={{ marginTop: 16, fontSize: 12 }}
+          onClick={() => {
+            const next = queue[queue.length - 1];
+            setQueue((current) => current.filter((item) => item.id !== next.id));
+            setActivated((current) => [...current, next]);
+          }}
+        >
+          Activate last queued message
+        </button>
+      ) : null}
       {edited ? <p data-preview-edited={edited} style={{ marginTop: 16, fontSize: 12, opacity: 0.6 }}>Editing {edited}</p> : null}
     </section>
   );
