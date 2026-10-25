@@ -218,7 +218,6 @@ function CloudGateShell({ children, active = true }: { children: React.ReactNode
       isNativeShell: isTauriRuntime(),
       button: event.button,
       clientY: event.clientY,
-      // The web view may extend past the window top during gate transitions.
       shellTop: event.currentTarget.getBoundingClientRect().top + readAuthWindowCropOffset().y,
       target: event.target,
     })) {
