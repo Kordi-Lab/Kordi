@@ -179,5 +179,5 @@ test('desktop capabilities allow explicit Tauri move and directional resize call
   );
   assert.match(frameSource, /<NativeTitlebar/);
   assert.match(loginSource, /style=\{CLOUD_LOGIN_WINDOW_DRAG_STYLE\}/);
-  assert.equal(CLOUD_LOGIN_WINDOW_DRAG_STYLE.top, `${APP_WINDOW_RESIZE_EDGE}px`);
+  assert.equal(CLOUD_LOGIN_WINDOW_DRAG_STYLE.top, `calc(var(--app-gate-crop-y, 0px) + ${APP_WINDOW_RESIZE_EDGE}px)`);
 });
