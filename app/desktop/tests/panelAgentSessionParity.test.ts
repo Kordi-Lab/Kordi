@@ -396,7 +396,8 @@ test('queued Ask Agent bubbles expose icon-only edit and cancel actions before q
   const queuedBubble = queuedMessageSource();
   assert.match(chatsSource, /onCancelQueuedMessage/);
   assert.match(chatsSource, /onEditQueuedMessage/);
-  assert.match(queuedBubble, /app-queued-message-meta[\s\S]*\{actions\}/, 'queued action icons should sit on the queued status line');
+  assert.match(queuedBubble, /\{actions\}<\/span> : null\}\s*<MessageHoverTime/, 'queued action icons should sit beside the bubble, before the hover time');
+  assert.doesNotMatch(queuedBubble, /app-queued-message-label[^\n]*\n\s*\{actions\}/, 'queued action icons must not reserve width inside the bubble');
   assert.match(queuedBubble, /aria-label=\{`Edit queued message/);
   assert.match(queuedBubble, /aria-label=\{`Cancel queued message/);
   assert.match(queuedBubble, /<SquarePen className="h-3 w-3" aria-hidden="true" \/>/);

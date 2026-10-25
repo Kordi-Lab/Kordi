@@ -12,7 +12,7 @@ import type { QueuedDesktopChatMessage } from '@/kordi-app/types';
 import { generatedAvatarSeedForLabel, selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 
-const queuedActionButtonClass = 'app-button-quiet app-queued-message-action -my-1 inline-flex h-5 w-5 items-center justify-center rounded-full p-0';
+const queuedActionButtonClass = 'app-button-quiet app-queued-message-action inline-flex h-5 w-5 items-center justify-center rounded-full p-0';
 
 export function QueuedMessageBubble({
   message,
@@ -33,11 +33,12 @@ export function QueuedMessageBubble({
 }) {
   const profileAvatarSeed = useLocalProfileAvatarSeed();
   const statusLabel = isCompressionActive ? 'Queued during compression' : 'Queued';
+  const actionButtonClass = cn(queuedActionButtonClass, threadLayout && '-my-1');
   const actions = onEdit || onCancel ? (
     <span className="app-queued-message-actions inline-flex shrink-0 items-center" role="group" aria-label="Queued message actions">
       {onEdit ? <button
         type="button"
-        className={cn(queuedActionButtonClass, 'app-queued-message-edit')}
+        className={cn(actionButtonClass, 'app-queued-message-edit')}
         aria-label={`Edit queued message: ${message.text.slice(0, 48)}`}
         title="Edit queued message"
         onClick={() => onEdit?.(message.sessionId, message.id)}
@@ -46,7 +47,7 @@ export function QueuedMessageBubble({
       </button> : null}
       {onCancel ? <button
         type="button"
-        className={cn(queuedActionButtonClass, 'app-queued-message-cancel')}
+        className={cn(actionButtonClass, 'app-queued-message-cancel')}
         aria-label={`Cancel queued message: ${message.text.slice(0, 48)}`}
         title="Cancel queued message"
         onClick={() => onCancel?.(message.sessionId, message.id)}
@@ -102,7 +103,6 @@ export function QueuedMessageBubble({
     >
       <Clock3 className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
       <span className="app-queued-message-label">{statusLabel}</span>
-      {actions}
     </span>
   );
   const text = (
@@ -112,7 +112,7 @@ export function QueuedMessageBubble({
   );
   return (
     <div className={cn('flex w-full flex-col pt-0.5 pb-0.5', own ? 'items-end' : 'items-start')}>
-      <div className={cn('flex w-full max-w-full items-end gap-2', own ? 'flex-row-reverse' : 'flex-row')}>
+      <div className={cn('app-queued-message-row flex w-full max-w-full items-end gap-2', own ? 'flex-row-reverse' : 'flex-row')}>
         <span className="app-message-avatar-spacer h-8 w-8 shrink-0" aria-hidden="true" />
         <div
           className={cn(
@@ -135,6 +135,7 @@ export function QueuedMessageBubble({
             </>
           )}
         </div>
+        {actions ? <span className="flex shrink-0 self-center">{actions}</span> : null}
         <MessageHoverTime msg={{ role: own ? 'user' : 'person', sender: sender ?? 'Me', text: message.text, time: message.time }} side={own ? 'own' : 'peer'} />
       </div>
     </div>

@@ -59,7 +59,9 @@ test('non-thread layout renders a pending outgoing bubble with a quiet status li
     assert.ok(meta);
     assert.equal(meta.querySelector('.app-queued-message-label')?.textContent, 'Queued');
     assert.ok(!meta.textContent?.includes('07:26'), 'the clock time stays on hover like sent messages');
-    assert.ok(meta.querySelector('.app-queued-message-actions'));
+    assert.equal(meta.querySelector('.app-queued-message-actions'), null);
+    assert.equal(bubble.querySelector('.app-queued-message-actions'), null, 'actions sit outside the bubble');
+    assert.ok(bubble.closest('.app-queued-message-row')?.querySelector('.app-queued-message-actions'), 'actions live in the row');
     assert.ok(!meta.className.includes('uppercase'));
     await act(async () => (host.querySelector('.app-queued-message-edit') as HTMLButtonElement).click());
     await act(async () => (host.querySelector('.app-queued-message-cancel') as HTMLButtonElement).click());
