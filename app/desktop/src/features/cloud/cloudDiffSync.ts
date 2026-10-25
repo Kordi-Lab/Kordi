@@ -3,6 +3,7 @@ import { notifyDocumentSyncEvents } from '@/features/documents/documentSyncEvent
 import { notifyDocumentAgentRequests } from '@/features/documents/documentAgentRequests';
 import { notifyDigestRunRequests } from '@/features/digest/digestMacRuns';
 import { notifyProactiveProposalEvents } from '@/features/proactive/proactiveProposalEvents';
+import { notifyProactiveRunRequests } from '@/features/proactive/proactiveMacRuns';
 import { mergePinHistory, type CloudPinHistoryEvent } from './cloudPinHistory';
 import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSessionPin, CloudSessionTitle, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
 import { applyCloudAgentSyncEvents, type CloudAgentDefinition } from './cloudAgents';
@@ -474,6 +475,7 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
   notifyDocumentAgentRequests(events);
   notifyDigestRunRequests(events);
   notifyProactiveProposalEvents(events);
+  notifyProactiveRunRequests(events, input.accountId);
   const sessionForksById = applyCloudSyncEventsToSessionForks(input.sessionForksById ?? {}, events);
   const sessionPinsById = applyCloudSyncEventsToSessionPins(input.sessionPinsById ?? {}, events);
   const sessionTitlesById = applyCloudSyncEventsToSessionTitles(input.sessionTitlesById ?? {}, events);
