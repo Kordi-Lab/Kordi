@@ -16,6 +16,13 @@ export function isCloudAgentProviderFailureNoticeText(value: string | null | und
   return isCloudAgentStoredNoProviderFailure(text);
 }
 
+/** Whether a failed reply's text is only its error sentence, so the failure line should not repeat it. */
+export function isFailedReplyTextOnlyItsError(text: string | null | undefined, error: string | null | undefined): boolean {
+  const normalize = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const reply = normalize(text);
+  return reply !== '' && reply === normalize(error);
+}
+
 /** Whether a stored reply carries what a run produced: tool calls or attached files. */
 export function cloudAgentStoredReplyHasRunOutput(content: Record<string, unknown>): boolean {
   return [content.tools, content.attachments].some((value) => Array.isArray(value) && value.length > 0);
