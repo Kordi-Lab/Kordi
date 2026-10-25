@@ -152,6 +152,7 @@ export function WorkspaceSidebar({
     contactUnread,
   } = chatModel;
   const pendingContactRequestCount = Math.max(0, contactRequestCount);
+  const supportContact = displayedContacts.find((contact) => contact.systemContact && contact.supportTicketEnabled);
 
   const [sessionContextMenu, setSessionContextMenu] =
     useState<SessionContextMenuTarget | null>(null);
@@ -246,6 +247,12 @@ export function WorkspaceSidebar({
             contactUnread={contactUnread}
             pendingContactRequestCount={pendingContactRequestCount}
             account={account}
+            onOpenSession={(sessionId) => {
+              const conversation = chats.chatConversations.find((item) => item.id === sessionId || item.canonicalSessionId === sessionId);
+              setActiveNav(conversation?.type === 'person' ? 'chats' : 'agent-chats');
+              onSelectChatSession(conversation?.id ?? sessionId);
+            }}
+            onOpenSupport={supportContact ? () => onStartChatWithPerson(supportContact) : undefined}
             updater={{
               onCheckForUpdates,
               onInstallUpdate,

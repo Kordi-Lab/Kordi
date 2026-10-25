@@ -10,6 +10,7 @@ import {
   type SidebarUpdaterProps,
 } from '@/pages/workspaceSidebar.update';
 import type { WorkspaceSidebarAccount } from '@/pages/workspaceSidebar.types';
+import { HelpEntry } from '@/features/onboarding/HelpEntry';
 
 function formatUnreadCount(value: number) {
   return value > 99 ? '99+' : `${value}`;
@@ -24,6 +25,8 @@ export function WorkspaceNavigationRail({
   pendingContactRequestCount,
   account,
   updater,
+  onOpenSupport,
+  onOpenSession,
 }: {
   isNativeShell: boolean;
   activeNav: NavId;
@@ -33,6 +36,8 @@ export function WorkspaceNavigationRail({
   pendingContactRequestCount: number;
   account: WorkspaceSidebarAccount;
   updater: Omit<SidebarUpdaterProps, 'isNativeShell'>;
+  onOpenSupport?: () => Promise<void> | void;
+  onOpenSession: (id: string) => void;
 }) {
   return (
     <div
@@ -94,6 +99,13 @@ export function WorkspaceNavigationRail({
         <SidebarUpdater
           isNativeShell={isNativeShell}
           {...updater}
+        />
+        <HelpEntry
+          activeNav={activeNav}
+          setActiveNav={setActiveNav}
+          account={account}
+          onOpenSupport={onOpenSupport}
+          onOpenSession={onOpenSession}
         />
         <SidebarProfileControl
           localProfileAvatarSeed={account.localProfileAvatarSeed}

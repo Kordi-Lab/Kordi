@@ -16,6 +16,7 @@ mod digest_calendar;
 mod digest_calendar_sync;
 mod link_preview;
 mod mac_local;
+mod media_permissions;
 mod media_preview_window;
 mod menu_bar;
 mod message_notification;
@@ -227,6 +228,7 @@ pub fn run() {
             digest_calendar_sync::desktop_digest_calendar_delete,
             digest_calendar_sync::desktop_digest_calendar_observe,
             message_notification::desktop_request_notification_permission,
+            media_permissions::desktop_media_permission,
             message_notification::desktop_show_message_notification,
             chat::memory::desktop_memory_settings,
             chat::memory::desktop_memory_update_settings,

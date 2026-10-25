@@ -10,6 +10,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 const DOCUMENT_EDITOR_SOURCE = /[\\/]src[\\/]features[\\/]documents[\\/]editor[\\/]/;
+const HELP_CENTER_SOURCE = /[\\/]src[\\/]features[\\/]onboarding[\\/](?:HelpHub|HelpPermissions|HelpReleaseNotes|helpContent|permissionAccess)\.[tj]sx?$/;
 const DOCUMENT_EDITOR_PACKAGES = /[\\/]node_modules[\\/](?:@tiptap|prosemirror-[a-z-]+|marked|linkifyjs|orderedmap|rope-sequence|w3c-keyname|yjs|y-websocket|y-protocols|lib0)[\\/]/;
 
 export default defineConfig(({ command, mode }) => {
@@ -54,10 +55,12 @@ export default defineConfig(({ command, mode }) => {
               { name: 'contact-common-ground', minSize: 0, test: /[\\/]src[\\/]kordi-app[\\/]contacts[\\/](?:ContactCommonGround\.tsx|contactMatch\.ts)$/ },
               // Split before the 700 kB chunk budget, as agent-factory is.
               { name: 'cloud-features', test: /[\\/]src[\\/]features[\\/]cloud[\\/]/, maxSize: 650_000 },
-              { name: 'desktop-features', test: (id) => /[\\/]src[\\/]features[\\/]/.test(id) && !DOCUMENT_EDITOR_SOURCE.test(id) },
+              { name: 'desktop-features', test: (id) => /[\\/]src[\\/]features[\\/]/.test(id) && !DOCUMENT_EDITOR_SOURCE.test(id) && !HELP_CENTER_SOURCE.test(id) },
               // After the app groups, so modules the app shares with the editor stay in app chunks.
               { name: 'document-editor', test: (id) => DOCUMENT_EDITOR_PACKAGES.test(id) || DOCUMENT_EDITOR_SOURCE.test(id) },
               { name: 'workspace-ui', test: /[\\/]src[\\/](?:app|components|kordi-app|pages)[\\/]/ },
+              // Assign shared dependencies first so Help does not pull startup code into its lazy chunk.
+              { name: 'help-center', minSize: 0, test: HELP_CENTER_SOURCE },
             ],
           },
         },
