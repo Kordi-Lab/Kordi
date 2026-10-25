@@ -207,6 +207,13 @@ export function useChatTranscriptViewport({
     });
     return { before, after };
   }, [timelineEntries]);
+  const ownAvatarImageUrl = useMemo(() => {
+    for (let index = transcriptMessages.length - 1; index >= 0; index -= 1) {
+      const candidate = transcriptMessages[index];
+      if (transcriptMessageIsOwnHuman(candidate)) return candidate.senderProfileImageUrl ?? null;
+    }
+    return null;
+  }, [transcriptMessages]);
   const latestMessage = transcriptMessages[transcriptMessages.length - 1];
   const animateTailResize = Boolean(latestMessage?.turn);
   const latestEntry = timelineEntries[timelineEntries.length - 1];
@@ -282,6 +289,9 @@ export function useChatTranscriptViewport({
               own={msg.role === 'user' || msg.isOwnMessage === true}
               sender={msg.sender}
               threadLayout={threadLayout}
+              densityMode={densityMode}
+              showAvatar={pinBoundaries.before.has(idx) || !isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, 1, groupingSeparators)}
+              avatarImageUrl={msg.senderProfileImageUrl}
             />
           ) : <MessageBubble
             msg={msg}
@@ -346,7 +356,7 @@ export function useChatTranscriptViewport({
       tailKey={transcriptTailKey}
       tail={(
         <div className="space-y-1">
-          {queuedMessages.map((message) => (
+          {queuedMessages.map((message, index) => (
             <QueuedMessageBubble
               key={message.id}
               message={message}
@@ -354,6 +364,9 @@ export function useChatTranscriptViewport({
               onEdit={onEditQueuedMessage}
               onCancel={onCancelQueuedMessage}
               threadLayout={threadLayout}
+              densityMode={densityMode}
+              showAvatar={index === queuedMessages.length - 1}
+              avatarImageUrl={ownAvatarImageUrl}
             />
           ))}
         </div>
@@ -370,6 +383,7 @@ export function useChatTranscriptViewport({
     animateTailResize,
     canLoadOlderMessages,
     densityMode,
+    ownAvatarImageUrl,
     emptyState,
     forkSnapshotBoundaryIndex,
     handleLoadOlderMessages,

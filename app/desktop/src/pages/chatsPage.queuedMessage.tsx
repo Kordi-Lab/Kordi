@@ -6,6 +6,7 @@ import {
   humanMessageBubbleShapeClass,
 } from '@/features/chat/messageBubbleShape';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import type { TranscriptDensityMode } from '@/kordi-app/components/transcript';
 import { MessageInlineContent } from '@/kordi-app/components/messageInlineContent';
 import { MessageHoverTime } from '@/kordi-app/components/transcriptMessageTime';
 import type { QueuedDesktopChatMessage } from '@/kordi-app/types';
@@ -22,6 +23,9 @@ export function QueuedMessageBubble({
   own = true,
   sender,
   threadLayout = false,
+  densityMode,
+  showAvatar = true,
+  avatarImageUrl,
 }: {
   message: Pick<QueuedDesktopChatMessage, 'id' | 'sessionId' | 'text' | 'time'> & { attachments: readonly unknown[] };
   isCompressionActive: boolean;
@@ -30,6 +34,9 @@ export function QueuedMessageBubble({
   own?: boolean;
   sender?: string;
   threadLayout?: boolean;
+  densityMode?: TranscriptDensityMode;
+  showAvatar?: boolean;
+  avatarImageUrl?: string | null;
 }) {
   const profileAvatarSeed = useLocalProfileAvatarSeed();
   const statusLabel = isCompressionActive ? 'Queued during compression' : 'Queued';
@@ -71,6 +78,7 @@ export function QueuedMessageBubble({
             seed={own ? profileAvatarSeed : generatedAvatarSeedForLabel('human', name)}
             isSelf={own}
             name={name}
+            imageUrl={avatarImageUrl ?? undefined}
             className="h-7 w-7 mb-0.5 border border-white/10"
           />
           <div className="min-w-0 flex-1">
@@ -110,13 +118,28 @@ export function QueuedMessageBubble({
       <MessageInlineContent text={message.text} />
     </span>
   );
+  const compact = Boolean(densityMode && densityMode !== 'default');
+  const avatarSizeClass = compact ? 'h-7 w-7' : 'h-8 w-8';
+  const name = selfDisplayName(sender ?? 'Me', own);
   return (
     <div className={cn('flex w-full flex-col pt-0.5 pb-0.5', own ? 'items-end' : 'items-start')}>
-      <div className={cn('app-queued-message-row flex w-full max-w-full items-end gap-2', own ? 'flex-row-reverse' : 'flex-row')}>
-        <span className="app-message-avatar-spacer h-8 w-8 shrink-0" aria-hidden="true" />
+      <div className={cn('app-queued-message-row flex w-full max-w-full items-end', compact ? 'gap-1.5' : 'gap-2', own ? 'flex-row-reverse' : 'flex-row')}>
+        {showAvatar ? (
+          <IdentityAvatar
+            kind="human"
+            seed={own ? profileAvatarSeed : generatedAvatarSeedForLabel('human', name)}
+            isSelf={own}
+            name={name}
+            imageUrl={avatarImageUrl ?? undefined}
+            className={cn('mb-0.5 border border-white/10', avatarSizeClass)}
+          />
+        ) : (
+          <span className={cn('app-message-avatar-spacer shrink-0', avatarSizeClass)} aria-hidden="true" />
+        )}
         <div
           className={cn(
-            'app-queued-message app-message-hover-time-trigger w-fit min-w-0 max-w-[52rem] px-4 py-2.5 text-[14px]',
+            'app-queued-message app-message-hover-time-trigger w-fit min-w-0 max-w-[52rem] text-[14px]',
+            compact ? 'app-message-bubble-contact-compact rounded-[8px] px-3 py-1.5' : 'px-4 py-2.5',
             own
               ? cn(queuedMessageBubbleShapeClass, 'app-chat-bubble-user')
               : cn(humanMessageBubbleShapeClass('peer'), 'app-message-bubble-queued app-chat-bubble-peer'),

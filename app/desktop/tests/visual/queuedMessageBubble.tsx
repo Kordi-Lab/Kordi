@@ -19,21 +19,24 @@ const params = new URLSearchParams(window.location.search);
 const only = params.get('theme');
 const themes = only === 'light' || only === 'dark' ? [only] : ['light', 'dark'];
 
-function Transcript({ theme }: { theme: string }) {
+function Transcript({ theme, compact = false }: { theme: string; compact?: boolean }) {
   const [queue, setQueue] = useState(initialQueue);
   const [edited, setEdited] = useState<string | null>(null);
   return (
     <section
       className={`kordi-app theme-${theme} app-chat-theme-surface`}
       data-preview-theme={theme}
+      data-preview-density={compact ? 'compact' : 'default'}
       style={{ display: 'block', flex: 1, minWidth: 0, minHeight: '100vh', padding: '32px 24px', color: 'var(--utility-foreground)' }}
     >
-      <MessageBubble msg={sent} />
-      {queue.map((message) => (
+      <MessageBubble msg={sent} densityMode={compact ? 'contact-compact' : 'default'} isGroupedWithNext={compact} />
+      {queue.map((message, index) => (
         <QueuedMessageBubble
           key={message.id}
           message={message}
           isCompressionActive={false}
+          densityMode={compact ? 'contact-compact' : 'default'}
+          showAvatar={index === queue.length - 1}
           onEdit={(_sessionId, id) => setEdited(id)}
           onCancel={(_sessionId, id) => setQueue((current) => current.filter((item) => item.id !== id))}
         />
@@ -44,7 +47,8 @@ function Transcript({ theme }: { theme: string }) {
 }
 
 createRoot(document.getElementById('root')!).render(
-  <main style={{ display: 'flex', minHeight: '100vh' }}>
+  <main style={{ display: 'flex', flexWrap: 'wrap', minHeight: '100vh' }}>
     {themes.map((theme) => <Transcript key={theme} theme={theme} />)}
+    {themes.map((theme) => <Transcript key={`${theme}-compact`} theme={theme} compact />)}
   </main>,
 );

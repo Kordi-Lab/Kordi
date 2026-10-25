@@ -10,7 +10,7 @@ test('synced queued requests show the queue card without a processing placeholde
   const { useChatTranscriptViewport } = await import('../src/pages/chatsPage.transcriptViewport');
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 600 });
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 600 });
-  const request: Message = { id: 'request-b', role: 'user', sender: 'You', text: 'Next request', time: '10:00' };
+  const request: Message = { id: 'request-b', role: 'user', sender: 'You', text: 'Next request', time: '10:00', senderProfileImageUrl: 'https://example.test/own.png' };
   const response: Message = {
     id: 'response-b', role: 'owned-agent', sender: 'Kordi', text: '', time: '10:00', replyToMessageId: request.id,
     turn: {
@@ -35,6 +35,8 @@ test('synced queued requests show the queue card without a processing placeholde
     assert.equal(container.querySelector('.app-queued-message-label')?.textContent, 'Queued');
     assert.equal(container.querySelectorAll('.app-queued-message').length, 1);
     assert.equal(container.querySelectorAll('.app-turn-progress-bird').length, 0);
+    assert.equal(container.querySelectorAll('.app-queued-message-row .app-message-avatar-spacer').length, 0, 'the last queued bubble shows the sender avatar');
+    assert.match(container.querySelector('.app-queued-message-row')!.innerHTML, /example\.test\/own\.png/);
     assert.equal(container.querySelectorAll('.app-queued-message-actions').length, 0);
     await act(async () => { root.render(<Transcript messages={[request, { ...response, turn: { ...response.turn!, status: 'preparing' } }]} />); });
     assert.equal(container.querySelectorAll('.app-queued-message').length, 0);
