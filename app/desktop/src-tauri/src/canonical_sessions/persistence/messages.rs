@@ -357,6 +357,7 @@ fn upsert_message_in_transaction(
         ],
     )
     .map_err(|err| err.to_string())?;
+    super::follow_running_fork_copies(conn, &request.session_id, &id)?;
     conn.execute(
         "UPDATE sessions
          SET updated_at_ms = ?1,
