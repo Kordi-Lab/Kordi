@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { CloudAccount, CloudAuthClient } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
-import { runProactiveOnMac, setProactiveRunRequestHandler } from './proactiveMacRuns';
+import { setProactiveRunRequestHandler } from './proactiveRunHints';
 
 /** Runs this account's proactive evaluations and allowed offers on this Mac while its runtime is ready. */
 export function useProactiveMacRuns({
@@ -30,6 +30,8 @@ export function useProactiveMacRuns({
         const session = await loadSession();
         if (!session?.token || session.accountId !== accountId) return;
         const { client: current, defaultRoute: route, reportWarning: report } = latest.current;
+        // Loaded on the first run so the executor stays out of the cloud chunk.
+        const { runProactiveOnMac } = await import('./proactiveMacRuns');
         await runProactiveOnMac(request, { accountId, token: session.token, route, client: current, report });
       })().catch((error) => latest.current.reportWarning('[proactive-mac] run on this Mac failed', error));
     });

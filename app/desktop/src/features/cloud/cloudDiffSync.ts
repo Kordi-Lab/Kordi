@@ -3,7 +3,7 @@ import { notifyDocumentSyncEvents } from '@/features/documents/documentSyncEvent
 import { notifyDocumentAgentRequests } from '@/features/documents/documentAgentRequests';
 import { notifyDigestRunRequests } from '@/features/digest/digestMacRuns';
 import { notifyProactiveProposalEvents } from '@/features/proactive/proactiveProposalEvents';
-import { notifyProactiveRunRequests } from '@/features/proactive/proactiveMacRuns';
+import { notifyProactiveRunRequests } from '@/features/proactive/proactiveRunHints';
 import { mergePinHistory, type CloudPinHistoryEvent } from './cloudPinHistory';
 import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSessionPin, CloudSessionTitle, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
 import { applyCloudAgentSyncEvents, type CloudAgentDefinition } from './cloudAgents';

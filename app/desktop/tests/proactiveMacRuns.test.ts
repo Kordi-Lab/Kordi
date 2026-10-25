@@ -8,13 +8,15 @@ import type { ChatSyncEvent, ChatSyncSyncResponse } from '../src/features/cloud/
 import type { DesktopChatContextMessage } from '../src/lib/desktop';
 import type { DesktopChatTurnSnapshot } from '../src/kordi-app/types';
 import {
-  notifyProactiveRunRequests,
-  parseProactiveRunRequest,
   runProactiveApprovedOnMac,
   runProactiveEvaluationOnMac,
-  setProactiveRunRequestHandler,
   type ProactiveMacRuntime,
 } from '../src/features/proactive/proactiveMacRuns';
+import {
+  notifyProactiveRunRequests,
+  parseProactiveRunRequest,
+  setProactiveRunRequestHandler,
+} from '../src/features/proactive/proactiveRunHints';
 
 const owner = 'acct_owner';
 const GROUP = 'session:group:g1';
