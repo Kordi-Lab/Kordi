@@ -361,8 +361,7 @@ export function useCloudCollaborationState({
     processedRequestIdsRef: processedCloudAgentMentionIdsRef,
     mergeMessage,
     syncCloudCollaborationDiff,
-    reportWarning: reportCloudAgentExecutionWarning,
-    setCanonicalState: setCanonicalSessionState,
+    reportWarning: reportCloudAgentExecutionWarning, setCanonicalState: setCanonicalSessionState,
   });
 
   const cloudGroupControlApplication = useCloudGroupControlApplication({
