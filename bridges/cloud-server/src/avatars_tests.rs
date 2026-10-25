@@ -1,3 +1,4 @@
+use super::rendering::{rasterize_svg, render_png};
 use super::*;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
@@ -91,6 +92,63 @@ async fn preview_route_renders_every_style_as_png() {
             .expect("read rendered avatar");
         assert!(body.starts_with(b"\x89PNG\r\n\x1a\n"));
     }
+}
+
+async fn preview_png(style: &str, seed: &str) -> Vec<u8> {
+    let response = render_avatar_preview(
+        Extension(Arc::new(CloudRateLimiter::memory(
+            CloudRateLimitConfig::production(),
+        ))),
+        None,
+        HeaderMap::new(),
+        Path((style.to_string(), format!("{seed}.png"))),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK, "{style}/{seed}");
+    axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read rendered avatar")
+        .to_vec()
+}
+
+#[tokio::test]
+async fn untouched_agents_render_as_the_bird_their_seed_hashes_to() {
+    // A default agent nobody changed stores `thumbs` with `default-agent-<account>`; the
+    // shared fixtures pin this seed to the coral eagle, as the desktop and iOS hash it.
+    let seed = "default-agent-acct_123";
+    let bird = birds::parse_bird_seed(seed);
+    assert_eq!(
+        (bird.species, bird.tone, bird.palette),
+        ("eagle", "color", "coral")
+    );
+    let expected = rasterize_svg(&birds::render_svg("bird-eagle-color-coral")).expect("eagle");
+    assert_eq!(render_png(AGENT_AVATAR_STYLE, seed).unwrap(), expected);
+    assert_eq!(
+        render_png(BIRD_AVATAR_STYLE, "bird-eagle-color-coral").unwrap(),
+        expected
+    );
+    // The legacy preview, the bird preview the desktop maps a `thumbs` marker to, and the
+    // picked bird's own preview are one image.
+    for (style, seed) in [
+        (AGENT_AVATAR_STYLE, seed),
+        (BIRD_AVATAR_STYLE, seed),
+        (BIRD_AVATAR_STYLE, "bird-eagle-color-coral"),
+    ] {
+        assert_eq!(preview_png(style, seed).await, expected, "{style}/{seed}");
+    }
+}
+
+#[tokio::test]
+async fn people_keep_their_lorelei_avatars() {
+    let seed = "acct_123";
+    let style = dicebear_core::Style::from_str(dicebear_styles::get(HUMAN_AVATAR_STYLE).unwrap())
+        .expect("lorelei style");
+    let avatar = dicebear_core::Avatar::new(&style, json!({ "seed": seed, "size": 256 }))
+        .expect("lorelei avatar");
+    let expected = rasterize_svg(avatar.to_svg()).expect("lorelei");
+    assert_eq!(render_png(HUMAN_AVATAR_STYLE, seed).unwrap(), expected);
+    assert_eq!(preview_png(HUMAN_AVATAR_STYLE, seed).await, expected);
+    assert_ne!(render_png(AGENT_AVATAR_STYLE, seed).unwrap(), expected);
 }
 
 #[test]

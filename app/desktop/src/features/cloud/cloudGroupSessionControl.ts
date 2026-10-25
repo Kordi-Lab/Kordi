@@ -34,6 +34,7 @@ import {
 import {
   cloudGroupSessionPreparationSignature,
 } from './cloudGroupSessionPolicy';
+import { cloudGroupAgentAvatarsByAccount } from './cloudGroupIdentity';
 import { compareCloudGroupParticipants } from './cloudGroupParticipantTypes';
 import { loadSession } from './session';
 import type {
@@ -136,6 +137,7 @@ export async function applyCloudGroupSessionControl({
       groupSpaceId: cachedPreparation.groupSpaceId,
       participantByAccount: cachedPreparation.participantByAccount,
       identityIdByAccount: cachedPreparation.identityIdByAccount,
+      agentAvatarByAccount: cachedPreparation.agentAvatarByAccount,
     };
   }
 
@@ -167,12 +169,11 @@ export async function applyCloudGroupSessionControl({
       }));
     }
   }
-  const hydratedParticipants = cloudGroupParticipantsWithProfiles(
-    rawParticipants,
-    profileAccountIds
-      .map((accountId) => profileCache.get(accountId))
-      .filter((profile): profile is CloudPublicProfile => Boolean(profile)),
-  );
+  const profiles = profileAccountIds
+    .map((accountId) => profileCache.get(accountId))
+    .filter((profile): profile is CloudPublicProfile => Boolean(profile));
+  const hydratedParticipants = cloudGroupParticipantsWithProfiles(rawParticipants, profiles);
+  const agentAvatarByAccount = cloudGroupAgentAvatarsByAccount(rawParticipants, profiles);
   const participantByAccount = new Map<string, (typeof hydratedParticipants)[number]>();
   for (const participant of hydratedParticipants) {
     const accountId = participant.accountId;
@@ -231,6 +232,7 @@ export async function applyCloudGroupSessionControl({
       groupSpaceId,
       participantByAccount,
       identityIdByAccount,
+      agentAvatarByAccount,
     };
   }
   const groupRootSession = canonicalState.sessions.find((session) => session.id === groupSpaceId) ?? null;
@@ -439,6 +441,7 @@ export async function applyCloudGroupSessionControl({
       groupSpaceId,
       participantByAccount,
       identityIdByAccount,
+      agentAvatarByAccount,
     });
   }
   if (envelope.kind !== 'group-message' || !envelope.message) {
@@ -454,5 +457,6 @@ export async function applyCloudGroupSessionControl({
     groupSpaceId,
     participantByAccount,
     identityIdByAccount,
+    agentAvatarByAccount,
   };
 }

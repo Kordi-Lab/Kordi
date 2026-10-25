@@ -20,8 +20,8 @@ use crate::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter, RateLimitD
 use crate::server::ServerState;
 
 use self::rendering::{
-    avatar_render_semaphore, cache_rendered_avatar, cached_rendered_avatar, render_png,
-    AVATAR_RENDER_SIZE,
+    avatar_render_semaphore, cache_rendered_avatar, cached_rendered_avatar, render_key_png,
+    RenderKey,
 };
 
 pub mod assets;
@@ -30,6 +30,8 @@ mod rendering;
 
 pub const AVATAR_RENDERER_VERSION: &str = "dicebear-rust-10.6.0-styles-10.5.0";
 pub const HUMAN_AVATAR_STYLE: &str = "lorelei";
+/// The style every agent stores until someone picks a bird or uploads a photo. It renders
+/// as the bird its seed hashes to, so all clients show one bird per agent (`RenderKey`).
 pub const AGENT_AVATAR_STYLE: &str = "thumbs";
 /// Original paper-cut bird portraits for agents; see `avatars/birds.rs`.
 pub const BIRD_AVATAR_STYLE: &str = "kordi-birds";
@@ -294,7 +296,9 @@ async fn render_generated_avatar(
         return avatar_error(StatusCode::BAD_REQUEST, "Avatar seed is invalid.");
     }
 
-    let cache_key = format!("{renderer}:{style}:{seed}:{AVATAR_RENDER_SIZE}");
+    // A cached bird is served for any seed that draws it; the allowlist below only bounds
+    // render work, and the preview route draws any seed's bird anyway.
+    let cache_key = RenderKey::new(&style, seed);
     if let Some(bytes) = cached_rendered_avatar(&cache_key) {
         return avatar_png_response(bytes);
     }
@@ -317,7 +321,7 @@ async fn render_generated_avatar(
         }
     }
 
-    render_and_cache_avatar(&style, seed, cache_key).await
+    render_and_cache_avatar(cache_key).await
 }
 
 async fn render_avatar_preview(
@@ -335,7 +339,7 @@ async fn render_avatar_preview(
     if !is_valid_avatar_seed(seed) {
         return avatar_error(StatusCode::BAD_REQUEST, "Avatar seed is invalid.");
     }
-    let cache_key = format!("{AVATAR_RENDERER_VERSION}:{style}:{seed}:{AVATAR_RENDER_SIZE}");
+    let cache_key = RenderKey::new(&style, seed);
     if let Some(bytes) = cached_rendered_avatar(&cache_key) {
         return avatar_png_response(bytes);
     }
@@ -345,20 +349,18 @@ async fn render_avatar_preview(
     {
         return avatar_rate_limited(retry_after);
     }
-    render_and_cache_avatar(&style, seed, cache_key).await
+    render_and_cache_avatar(cache_key).await
 }
 
-async fn render_and_cache_avatar(style: &str, seed: &str, cache_key: String) -> Response {
-    let style_for_render = style.to_string();
-    let seed_for_render = seed.to_string();
+async fn render_and_cache_avatar(cache_key: RenderKey) -> Response {
+    let key_for_render = cache_key.clone();
     let Ok(render_permit) = avatar_render_semaphore().clone().try_acquire_owned() else {
         return avatar_error(
             StatusCode::SERVICE_UNAVAILABLE,
             "Avatar renderer is busy. Try again shortly.",
         );
     };
-    let rendered =
-        tokio::task::spawn_blocking(move || render_png(&style_for_render, &seed_for_render)).await;
+    let rendered = tokio::task::spawn_blocking(move || render_key_png(&key_for_render)).await;
     drop(render_permit);
     let bytes = match rendered {
         Ok(Ok(bytes)) => Arc::<[u8]>::from(bytes),
@@ -468,6 +470,8 @@ fn avatar_rate_limited(retry_after: Duration) -> Response {
     response
 }
 
+#[cfg(test)]
+mod agent_avatar_db_tests;
 #[cfg(test)]
 #[path = "avatars_tests.rs"]
 mod tests;
