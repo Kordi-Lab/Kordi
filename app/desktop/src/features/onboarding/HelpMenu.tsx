@@ -45,7 +45,8 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
       if (!controls.length) return;
       event.preventDefault(); event.stopPropagation();
       const index = controls.indexOf(document.activeElement as HTMLElement);
-      controls[(index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length]?.focus();
+      const destination = index < 0 ? (event.shiftKey ? controls.length - 1 : 0) : (index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length;
+      controls[destination]?.focus();
     }}>
     <header className="help-menu-header">
       {view !== 'home' ? <button className="help-icon-button" aria-label="Back to help menu" onClick={() => setView('home')}><ArrowLeft size={16} /></button> : <CircleHelp size={16} aria-hidden="true" />}

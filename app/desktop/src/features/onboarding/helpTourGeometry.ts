@@ -5,7 +5,7 @@ export function helpTourGeometry(target: TourRect | null, viewport: { width: num
   const margin = 12;
   const gap = 18;
   const clamp = (value: number, max: number) => Math.max(margin, Math.min(value, Math.max(margin, max)));
-  if (!target) return { left: clamp((viewport.width - panel.width) / 2, viewport.width - panel.width - margin), top: clamp((viewport.height - panel.height) / 2, viewport.height - panel.height - margin), side: 'none', arrow: 0 };
+  if (!target) return { left: clamp(64, viewport.width - panel.width - margin), top: clamp(viewport.height - panel.height - 20, viewport.height - panel.height - margin), side: 'none', arrow: 0 };
   const right = target.left + target.width;
   const bottom = target.top + target.height;
   const side = right + gap + panel.width <= viewport.width - margin ? 'right'

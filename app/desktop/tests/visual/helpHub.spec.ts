@@ -26,11 +26,16 @@ test('workspace tour highlights real controls, resumes, and opens permission rec
   await page.goto('/tests/visual/helpHub.html?theme=light');
   const trigger = page.getByRole('button', { name: 'Help & setup', exact: true });
   await trigger.click();
+  await page.screenshot({ path: test.info().outputPath('workspace-help-menu-light.png'), animations: 'disabled' });
   await page.getByRole('button', { name: 'Show me around' }).click();
   await expect(page.getByRole('dialog', { name: 'Help', exact: true })).toHaveCount(0);
   await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'settings-auth');
   await expect(page.getByRole('dialog', { name: 'Account settings' })).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Connect your AI accounts' })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Close tour', exact: true })).toBeFocused();
   await page.screenshot({ path: test.info().outputPath('tour-auth-light.png') });
   await page.keyboard.press('ArrowRight');
   await expect(page.getByText('Step 2 of 7')).toBeVisible();
@@ -140,6 +145,10 @@ test('native permissions request only on Allow and recover through Settings', as
   await expect.poll(async () => (await calls()).some((call) => call.command === 'desktop_open_external_url' && String(call.args?.url).includes('Privacy_Camera'))).toBe(true);
   await expect(page.getByText('Restricted by this device')).toBeVisible();
   expect((await calls()).filter((call) => call.args?.request === true)).toHaveLength(1);
+  const calendar = page.locator('.help-device-permission').filter({ has: page.getByRole('heading', { name: 'Calendar', exact: true }) });
+  await calendar.locator('summary').click();
+  await calendar.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath('permission-explanation.png'), animations: 'disabled' });
 });
 
 test('signup invitation waits for startup and dialogs and survives a collapsed rail', async ({ page }) => {
@@ -153,11 +162,30 @@ test('signup invitation waits for startup and dialogs and survives a collapsed r
   await page.evaluate(() => {
     const dialog = document.createElement('div');
     dialog.setAttribute('role', 'dialog');
-    document.body.append(dialog);
+    document.querySelector('.kordi-app')!.append(dialog);
   });
   await expect(invite).toHaveCount(0);
   await page.evaluate(() => document.querySelector('[role="dialog"]')!.remove());
   await expect(invite).toBeVisible();
   await page.getByRole('button', { name: 'Not now', exact: true }).click();
   await expect(invite).toHaveCount(0);
+});
+
+test('a delayed tour target never sends the glass popover to the middle of the window', async ({ page }) => {
+  await page.goto('/tests/visual/helpHub.html');
+  await page.getByRole('button', { name: 'Help & setup', exact: true }).click();
+  await page.getByRole('button', { name: 'Show me around' }).click();
+  const card = page.locator('.help-tour-card');
+  await expect(card).toHaveAttribute('data-positioned', 'true');
+  const before = await card.boundingBox();
+  await page.locator('[data-help-target="grounding"]').evaluate((node) => node.removeAttribute('data-help-target'));
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(card).toHaveAttribute('data-target', 'grounding');
+  await expect(card).toHaveAttribute('data-positioned', 'false');
+  const waiting = await card.boundingBox();
+  expect(Math.abs(waiting!.x - before!.x)).toBeLessThan(2);
+  expect(await card.evaluate((node) => getComputedStyle(node).backdropFilter)).toContain('blur(');
+  await page.locator('.app-common-ground-row').evaluate((node) => node.setAttribute('data-help-target', 'grounding'));
+  await expect(card).toHaveAttribute('data-positioned', 'true');
+  await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'grounding');
 });

@@ -18,6 +18,7 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
   const [saved, setSaved] = useState(true);
   const [anchor, setAnchor] = useState<{ target: string; rect: TourRect } | null>(null);
   const [waiting, setWaiting] = useState(true);
+  const [trackedTarget, setTrackedTarget] = useState<string | null>(null);
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [size, setSize] = useState({ width: 320, height: 250 });
   const panel = useRef<HTMLDivElement>(null);
@@ -27,15 +28,16 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
   const bodyId = useId();
   const step = helpTourSteps[index];
   const targetName = index === 0 && !settingsAvailable ? 'profile' : step.target;
-  const rect = anchor?.target === targetName ? anchor.rect : null;
+  const rect = trackedTarget === targetName && anchor?.target === targetName ? anchor.rect : null;
   const last = index === helpTourSteps.length - 1;
+  const popoverVisible = Boolean(anchor) || !waiting;
+  useLayoutEffect(() => { if (popoverVisible) panel.current?.focus(); }, [targetName, popoverVisible]);
   const remember = (next: number, completed = false) => setSaved(saveHelpProgress(progressKey, { step: next, completed, welcome: false }));
   const next = () => { if (last) { remember(index, true); onExit(); } else { remember(index + 1); setIndex(index + 1); } };
   const previous = () => { if (index > 0) { remember(index - 1); setIndex(index - 1); } };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     prepare.current(step);
-    panel.current?.focus();
     let frame = 0;
     let current: HTMLElement | null = null;
     const started = performance.now();
@@ -45,14 +47,17 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
       const bounds = element?.getBoundingClientRect();
       const visible = bounds && bounds.width > 0 && bounds.height > 0 && bounds.bottom > 0 && bounds.right > 0 && bounds.top < innerHeight && bounds.left < innerWidth && !element?.closest('[inert], [aria-hidden="true"]');
       const nextRect = visible ? { left: Math.max(4, bounds.left - 5), top: Math.max(4, bounds.top - 5), width: Math.min(innerWidth - 4, bounds.right + 5) - Math.max(4, bounds.left - 5), height: Math.min(innerHeight - 4, bounds.bottom + 5) - Math.max(4, bounds.top - 5) } : null;
-      setAnchor((old) => JSON.stringify(old) === JSON.stringify(nextRect ? { target: targetName, rect: nextRect } : null) ? old : nextRect ? { target: targetName, rect: nextRect } : null);
+      // Keep the last placement while navigation mounts the next target.
+      // Clearing it would send the popover to a fallback position for one frame.
+      if (nextRect) setAnchor((old) => old?.target === targetName && JSON.stringify(old.rect) === JSON.stringify(nextRect) ? old : { target: targetName, rect: nextRect });
+      setTrackedTarget(nextRect ? targetName : null);
       setWaiting(!nextRect && performance.now() - started < 1500);
       setViewport((old) => old.width === innerWidth && old.height === innerHeight ? old : { width: innerWidth, height: innerHeight });
       const panelBounds = panel.current?.getBoundingClientRect();
       if (panelBounds) setSize((old) => old.width === panelBounds.width && old.height === panelBounds.height ? old : { width: panelBounds.width, height: panelBounds.height });
       frame = requestAnimationFrame(measure);
     };
-    frame = requestAnimationFrame(measure);
+    measure();
     return () => cancelAnimationFrame(frame);
   }, [step, targetName]);
 
@@ -65,10 +70,10 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
     return () => document.removeEventListener('keydown', keydown, true);
   }, [onExit]);
 
-  const position = helpTourGeometry(rect, viewport, size);
+  const position = helpTourGeometry(rect ?? anchor?.rect ?? null, viewport, size);
   return createPortal(<div className="help-tour-layer">
     {rect ? <div className="help-tour-spotlight" data-target={targetName} style={rect} aria-hidden="true" /> : <div className="help-tour-dim" aria-hidden="true" />}
-    <div className="help-tour-card" ref={panel} style={{ left: position.left, top: position.top }} role="dialog" aria-labelledby={titleId} aria-describedby={bodyId} tabIndex={-1} onKeyDown={(event) => {
+    <div className="help-tour-card" ref={panel} data-target={targetName} data-positioned={Boolean(rect)} style={{ left: position.left, top: position.top, visibility: popoverVisible ? undefined : 'hidden' }} role="dialog" aria-labelledby={titleId} aria-describedby={bodyId} tabIndex={-1} onKeyDown={(event) => {
       if (event.altKey || event.ctrlKey || event.metaKey) return;
       if (event.key === 'ArrowRight') { event.preventDefault(); next(); }
       if (event.key === 'ArrowLeft') { event.preventDefault(); previous(); }
@@ -76,7 +81,8 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
         const buttons = Array.from(panel.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
         const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
         event.preventDefault();
-        buttons[(current + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
+        const destination = current < 0 ? (event.shiftKey ? buttons.length - 1 : 0) : (current + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length;
+        buttons[destination]?.focus();
       }
     }}>
       {rect ? <span className="help-tour-arrow" data-side={position.side} style={position.side === 'left' || position.side === 'right' ? { top: position.arrow } : { left: position.arrow }} aria-hidden="true" /> : null}

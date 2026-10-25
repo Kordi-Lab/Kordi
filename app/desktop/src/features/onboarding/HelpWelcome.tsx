@@ -15,12 +15,13 @@ export function HelpWelcome({ trigger, onStart, onDismiss }: {
         setPosition(null);
         return;
       }
-      setPosition({ left: Math.max(8, Math.min(rect.right + 12, window.innerWidth - 248)), bottom: Math.max(8, Math.min(window.innerHeight - rect.bottom, window.innerHeight - 200)) });
+      const next = { left: Math.max(8, Math.min(rect.right + 12, window.innerWidth - 248)), bottom: Math.max(8, Math.min(window.innerHeight - rect.bottom, window.innerHeight - 200)) };
+      setPosition((current) => current?.left === next.left && current.bottom === next.bottom ? current : next);
     };
     measure();
     window.addEventListener('resize', measure);
     const observer = new MutationObserver(measure);
-    observer.observe(document.body, { childList: true });
+    observer.observe(document.body, { childList: true, subtree: true });
     const workspace = trigger.current?.closest('.app-cloud-workspace-surface');
     if (workspace) observer.observe(workspace, { attributes: true, attributeFilter: ['inert', 'aria-hidden', 'data-ready'] });
     return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
