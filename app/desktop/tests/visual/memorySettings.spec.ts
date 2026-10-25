@@ -75,3 +75,21 @@ test('memory settings organizer, project and group rows (light)', async ({ page 
   await scrollTo(page, group);
   await expect(page).toHaveScreenshot('memorySettings-organizer-rows-light.png');
 });
+
+test('memory settings import section, before and after an import (light)', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-20T10:00:00Z'));
+  await page.goto('/tests/visual/memorySettings.html?theme=light');
+  await expect(page.getByRole('heading', { name: 'All memories · 10' })).toBeVisible();
+  const importHeading = page.getByRole('heading', { name: 'Import', exact: true });
+  const section = page.locator('section', { has: importHeading });
+  await expect(section.getByRole('checkbox', { name: 'launch-site AGENTS.md' })).toBeChecked();
+  await expect(section.getByRole('checkbox', { name: 'Home .claude/CLAUDE.md' })).toBeChecked();
+  await scrollTo(page, importHeading);
+  await expect(page).toHaveScreenshot('memorySettings-import-light.png');
+  await section.getByRole('button', { name: 'Import', exact: true }).click();
+  await expect(section.getByText('Imported 2 memories.')).toBeVisible();
+  await expect(section.getByText('Nothing new', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'All memories · 12' })).toBeVisible();
+  await scrollTo(page, importHeading);
+  await expect(page).toHaveScreenshot('memorySettings-import-done-light.png');
+});

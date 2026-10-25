@@ -1,0 +1,97 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import {
+  agentFileSizeLabel,
+  importedCountLabel,
+  memoryImportSaves,
+  memoryTextKey,
+  parseMemoryImportReply,
+  type AgentInstructionFile,
+} from '../src/features/memory/memoryImport';
+import { lessonOriginLabel, lessonSourceLabel } from '../src/features/memory/memoryModel';
+
+const projectFile: AgentInstructionFile = {
+  path: '/work/launch-site/AGENTS.md',
+  root: '/work/launch-site',
+  projectName: 'launch-site',
+  fileName: 'AGENTS.md',
+  size: 4_300,
+  modifiedAt: 1,
+};
+const homeFile: AgentInstructionFile = {
+  path: '/home/sample/.claude/CLAUDE.md',
+  root: null,
+  projectName: 'Home',
+  fileName: '.claude/CLAUDE.md',
+  size: 900,
+  modifiedAt: 1,
+};
+
+test('an import reply is parsed from JSON wrapped in a fence or a sentence', () => {
+  const reply = [
+    'Here are the memories:',
+    '```json',
+    JSON.stringify({ memories: [
+      { text: '  Use pnpm   for every script. ', category: 'hcp-custom:task_lessons', scope: 'project', file: projectFile.path },
+      { text: 'Answer in British English.', category: 'general_preferences', scope: 'global', file: projectFile.path },
+      { text: 'Leads the design team.', category: 'work_context', scope: 'project' },
+    ] }),
+    '```',
+  ].join('\n');
+  assert.deepEqual(parseMemoryImportReply(reply, [projectFile]), [
+    { text: 'Use pnpm for every script.', category: 'hcp-custom:task_lessons', scope: 'project', file: projectFile.path },
+    { text: 'Answer in British English.', category: 'general_preferences', scope: 'global', file: projectFile.path },
+    { text: 'Leads the design team.', category: 'work_context', scope: 'project', file: projectFile.path },
+  ]);
+});
+
+test('an import reply drops bad entries, unknown files, and anything past 12 per file', () => {
+  const many = Array.from({ length: 15 }, (_, index) => ({ text: `Rule number ${index}.`, file: projectFile.path }));
+  const reply = JSON.stringify({ memories: [
+    { text: '', file: projectFile.path },
+    { text: 'x'.repeat(501), file: projectFile.path },
+    { text: 'From a file that was not sent.', file: '/elsewhere/AGENTS.md' },
+    { text: 'No file with two files sent.' },
+    { text: 'Odd category falls back by scope.', category: 'secret_stuff', scope: 'global', file: homeFile.path },
+    'not an object',
+    ...many,
+  ] });
+  const parsed = parseMemoryImportReply(reply, [projectFile, homeFile]);
+  assert.equal(parsed.filter((memory) => memory.file === projectFile.path).length, 12);
+  assert.deepEqual(parsed.find((memory) => memory.file === homeFile.path), {
+    text: 'Odd category falls back by scope.', category: 'general_preferences', scope: 'global', file: homeFile.path,
+  });
+  assert.equal(parsed.find((memory) => memory.file === projectFile.path)?.category, 'hcp-custom:task_lessons');
+  assert.deepEqual(parseMemoryImportReply('No JSON here.', [projectFile]), []);
+  assert.deepEqual(parseMemoryImportReply('{"memories": "none"}', [projectFile]), []);
+  assert.deepEqual(parseMemoryImportReply('{"memories": [ broken', [projectFile]), []);
+});
+
+test('imported memories map to project or account scope, skip repeats, and carry no confidence', () => {
+  const saves = memoryImportSaves([
+    { text: 'Use pnpm for every script.', category: 'hcp-custom:task_lessons', scope: 'project', file: projectFile.path },
+    { text: 'Answer in British English.', category: 'general_preferences', scope: 'global', file: projectFile.path },
+    { text: 'answer in british   english. ', category: 'general_preferences', scope: 'global', file: homeFile.path },
+    { text: 'RUN THE LINTER BEFORE A COMMIT.', category: 'hcp-custom:task_lessons', scope: 'project', file: projectFile.path },
+    { text: 'Keep replies short.', category: 'hcp-custom:task_lessons', scope: 'project', file: homeFile.path },
+    { text: 'From an unknown file.', category: 'work_context', scope: 'project', file: '/elsewhere/AGENTS.md' },
+  ], [projectFile, homeFile], ['Run the linter before a commit.']);
+  assert.deepEqual(saves, [
+    { file: projectFile.path, save: { scope: 'project', scopeId: '/work/launch-site', scopeLabel: 'launch-site', source: 'import', text: 'Use pnpm for every script.', category: 'hcp-custom:task_lessons' } },
+    { file: projectFile.path, save: { scope: 'global', scopeId: 'account', scopeLabel: 'Global', source: 'import', text: 'Answer in British English.', category: 'general_preferences' } },
+    { file: homeFile.path, save: { scope: 'global', scopeId: 'account', scopeLabel: 'Global', source: 'import', text: 'Keep replies short.', category: 'hcp-custom:task_lessons' } },
+  ]);
+  assert.ok(saves.every(({ save }) => !('confidence' in save)));
+  assert.equal(memoryTextKey('  A  b C '), 'a b c');
+});
+
+test('import labels', () => {
+  assert.equal(agentFileSizeLabel(900), '900 B');
+  assert.equal(agentFileSizeLabel(4_300), '4 KB');
+  assert.equal(importedCountLabel(0), 'Nothing new');
+  assert.equal(importedCountLabel(1), 'Imported 1 memory');
+  assert.equal(importedCountLabel(3), 'Imported 3 memories');
+  assert.equal(lessonSourceLabel('import'), 'Imported');
+  assert.equal(lessonOriginLabel({ source: 'import', declarationType: 'user-declared' }, 'acct'), 'Imported');
+});

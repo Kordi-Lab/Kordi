@@ -12,6 +12,8 @@ import { SettingsRow, SettingsSection, SettingsSwitch } from '@/kordi-app/compon
 import { useServerMemoryVersion } from './memoryAvailability';
 import { destructiveConfirmClass } from './MemoryList';
 import type { MemoryClient } from './memoryClient';
+import type { MemoryImporter } from './memoryImport';
+import { MemoryImportSection } from './MemoryImportSection';
 import {
   GLOBAL_MEMORY_TARGET,
   forgetConsequences,
@@ -35,10 +37,16 @@ export function MemorySettingsPanel({
   client,
   isNativeShell: _isNativeShell,
   memoryVersion,
+  importer = null,
+  providerReady = false,
 }: {
   accountId: string;
   client: MemoryClient;
   isNativeShell: boolean;
+  /** Finds and reads agent files for Import; the section shows only with one. */
+  importer?: MemoryImporter | null;
+  /** Whether a provider is signed in on this Mac, which the import turn needs. */
+  providerReady?: boolean;
   /** The server's `memoryVersion`; defaults to the one the signed-in server reported. */
   memoryVersion?: number | null;
 }) {
@@ -195,6 +203,16 @@ export function MemorySettingsPanel({
               )}
             />
           </SettingsSection>
+
+          {settings.lessonsEnabled && importer && client.importLesson ? (
+            <MemoryImportSection
+              client={client}
+              importer={importer}
+              lessons={lessons}
+              providerReady={providerReady}
+              onImported={() => { void refresh(); }}
+            />
+          ) : null}
 
           <MemoryOrganizer
             client={client}

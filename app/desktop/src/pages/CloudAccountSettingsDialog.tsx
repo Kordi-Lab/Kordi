@@ -27,6 +27,8 @@ import { connectorsClientForAccount } from '@/features/connectors/connectorsClie
 import { useConnectorsLinkSelection } from '@/features/connectors/useConnectorsLinkSelection';
 import { MemorySettingsPanel } from '@/features/memory/MemorySettingsPanel';
 import { memoryClientForEnvironment, type MemoryClient } from '@/features/memory/memoryClient';
+import type { MemoryImporter } from '@/features/memory/memoryImport';
+import { nativeMemoryImporter } from '@/features/memory/memoryImportClient';
 import { cloudAccountSettingsNavGroups, type CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
 import { CloudProfilePanel } from './CloudProfilePanel';
 import { useCloudProfileEditor } from './useCloudProfileEditor';
@@ -76,6 +78,8 @@ type CloudAccountSettingsDialogProps = CloudAccountSettingsConfig & {
   connectorsIsPreview?: boolean;
   /** Memory client; null hides the Memory section. Defaults to the build environment. */
   memoryClient?: MemoryClient | null;
+  /** Agent-file importer override for previews; defaults to this Mac's in the native shell. */
+  memoryImporter?: MemoryImporter | null;
 };
 
 export function CloudAccountSettingsDialog({
@@ -91,6 +95,7 @@ export function CloudAccountSettingsDialog({
   connectorsClient: connectorsClientOverride,
   connectorsIsPreview = false,
   memoryClient = environmentMemoryClient,
+  memoryImporter,
   settingsSections,
   setActiveSettingsSectionId,
   authSettingsLayoutWidth,
@@ -265,7 +270,14 @@ export function CloudAccountSettingsDialog({
 
   const memoryPanel = memoryClient ? (
     <div className="app-cloud-account-settings-section max-w-[680px]">
-      <MemorySettingsPanel key={account.accountId} accountId={account.accountId} client={memoryClient} isNativeShell={isNativeShell} />
+      <MemorySettingsPanel
+        key={account.accountId}
+        accountId={account.accountId}
+        client={memoryClient}
+        isNativeShell={isNativeShell}
+        importer={memoryImporter === undefined ? (isNativeShell ? nativeMemoryImporter : null) : memoryImporter}
+        providerReady={Boolean(desktopAuthState?.hasAnyAuth)}
+      />
     </div>
   ) : null;
 

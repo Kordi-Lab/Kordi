@@ -9,6 +9,7 @@ import { createRoot } from 'react-dom/client';
 import type { CloudAccount } from '../../src/features/cloud/authClient';
 import { publishMemoryVersion } from '../../src/features/memory/memoryAvailability';
 import { createPreviewMemoryClient } from '../../src/features/memory/memoryClient';
+import { createPreviewMemoryImporter } from '../../src/features/memory/memoryImportClient';
 import { settingsSections, type SettingsSectionId } from '../../src/kordi-app/data/settings';
 import type { ThemeMode } from '../../src/kordi-app/types';
 import { CloudAccountSettingsDialog } from '../../src/pages/CloudAccountSettingsDialog';
@@ -56,6 +57,9 @@ const requestedVersion = Number(new URLSearchParams(window.location.search).get(
 publishMemoryVersion(Number.isFinite(requestedVersion) && requestedVersion > 0 ? requestedVersion : 3);
 
 const memoryClient = createPreviewMemoryClient({ accountLabel: account.primaryEmail ?? 'taylor@memory.example' });
+const memoryImporter = createPreviewMemoryImporter();
+// A signed-in provider, so the Import section is ready to run.
+const desktopAuthState = { authPath: '', hasAnyAuth: true, providers: [] };
 const noop = () => undefined;
 const resolved = async () => undefined;
 
@@ -83,12 +87,13 @@ function Preview() {
         onClose={noop}
         onUpdateProfile={resolved}
         memoryClient={memoryClient}
+        memoryImporter={memoryImporter}
         settingsSections={settingsSections}
         activeSettingsSectionId={activeSettingsSectionId}
         setActiveSettingsSectionId={setActiveSettingsSectionId}
         authSettingsLayoutWidth={620}
         isNativeShell={isNativeShell}
-        desktopAuthState={null}
+        desktopAuthState={desktopAuthState}
         isDesktopAuthLoading={false}
         desktopAuthError={null}
         activeLoginProviderId={null}
