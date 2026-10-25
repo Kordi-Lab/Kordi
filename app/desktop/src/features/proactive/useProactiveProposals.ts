@@ -5,18 +5,30 @@ import { loadSession } from '@/features/cloud/session';
 import { decideProactiveProposal, listPendingProactiveProposals, type ProactiveDecision } from '@/features/cloud/proactiveClient';
 import { proactiveProposalExpired, proactiveProposalWithUpdate, type ProactiveProposal } from '@/features/cloud/proactiveOffer';
 import type { Conversation } from '@/kordi-app/types';
+import { conversationIsGroupChat } from '@/pages/chatsPage.model';
 import { subscribeProactiveProposalChanges, type ProactiveProposalChange } from './proactiveProposalEvents';
 
 /** The ids one open conversation is known by: its session ids and, when known, its cloud conversation id. */
 export type ProactiveConversationKey = {
   accountId: string | null;
+  /** Only cloud groups get proactive offers; one-to-one chats never ask for them. */
+  isGroup: boolean;
   sessionIds: readonly string[];
   conversationId: string | null;
 };
 
+export type ProactiveConversation = Pick<Conversation, 'id' | 'canonicalSessionId' | 'messages' | 'participantSpaceId' | 'directness'>;
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Whether a value is a cloud conversation id the list route accepts as a filter. */
+export function isCloudConversationUuid(value: string | null | undefined): value is string {
+  return Boolean(value && UUID_PATTERN.test(value));
+}
+
 /** The session ids and cloud conversation id the open conversation is known by. */
 export function proactiveConversationKey(
-  conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'messages'>,
+  conversation: ProactiveConversation,
   accountId: string | null | undefined,
 ): ProactiveConversationKey {
   const sessionIds = [conversation.canonicalSessionId, conversation.id, cloudSessionIdFromConversationId(conversation.id)]
@@ -27,7 +39,8 @@ export function proactiveConversationKey(
   for (let index = messages.length - 1; index >= 0 && !conversationId; index -= 1) {
     conversationId = messages[index]?.reactionConversationId?.trim() || null;
   }
-  return { accountId: accountId?.trim() || null, sessionIds, conversationId };
+  const isGroup = conversationIsGroupChat(conversation) || conversation.id.startsWith('session:group:');
+  return { accountId: accountId?.trim() || null, isGroup, sessionIds, conversationId };
 }
 
 /** How long an expired or failed offer stays on screen before it hides. */
@@ -63,11 +76,11 @@ async function sessionToken(accountId: string): Promise<string | null> {
  * `proactive.proposal_changed` hints, and hides offers once they settle.
  */
 export function useProactiveProposals(key: ProactiveConversationKey, nowOverride?: number) {
-  const { accountId, conversationId } = key;
+  const { accountId, conversationId, isGroup } = key;
   const sessionKey = key.sessionIds.join('\n');
   const matches = useMemo(
-    () => matcherFor({ accountId, conversationId, sessionIds: sessionKey ? sessionKey.split('\n') : [] }),
-    [accountId, conversationId, sessionKey],
+    () => matcherFor({ accountId, isGroup, conversationId, sessionIds: sessionKey ? sessionKey.split('\n') : [] }),
+    [accountId, isGroup, conversationId, sessionKey],
   );
   const [proposals, setProposals] = useState<ProactiveProposal[]>([]);
   const latest = useRef<ProactiveProposal[]>([]);
@@ -102,7 +115,7 @@ export function useProactiveProposals(key: ProactiveConversationKey, nowOverride
   }, [commit, remove, removeLater]);
 
   const load = useCallback(async (isCurrent: () => boolean) => {
-    if (!accountId || (!sessionKey && !conversationId)) {
+    if (!accountId || !isGroup || (!sessionKey && !conversationId)) {
       commit([]);
       return;
     }
@@ -111,7 +124,10 @@ export function useProactiveProposals(key: ProactiveConversationKey, nowOverride
       if (isCurrent()) commit([]);
       return;
     }
-    const list = await listPendingProactiveProposals(token, conversationId).catch(() => null);
+    // A session-id fallback is not a cloud conversation id; the server rejects it,
+    // so ask for all pending offers and filter by session below.
+    const filter = isCloudConversationUuid(conversationId) ? conversationId : null;
+    const list = await listPendingProactiveProposals(token, filter).catch(() => null);
     if (!list || !isCurrent()) return;
     const now = nowOverride ?? Date.now();
     const working = latest.current.filter((item) => item.status !== 'pending' && matches(item));
@@ -121,7 +137,7 @@ export function useProactiveProposals(key: ProactiveConversationKey, nowOverride
     for (const item of fresh) {
       if (item.expiresAt) removeLater(item.proposalId, Date.parse(item.expiresAt) - now);
     }
-  }, [accountId, conversationId, sessionKey, matches, commit, removeLater, nowOverride]);
+  }, [accountId, isGroup, conversationId, sessionKey, matches, commit, removeLater, nowOverride]);
 
   useEffect(() => {
     let current = true;

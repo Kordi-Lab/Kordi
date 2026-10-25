@@ -4,10 +4,12 @@
  * document. The server announces each held run only once, so a hint the sync
  * mapping drops leaves the run to the cloud once its hold ends.
  * `proactive.proposal_changed` tells the owner that one of their agents'
- * proactive offers was created or changed.
+ * proactive offers was created or changed. `proactive.run_requested` is
+ * accepted for a future Mac path that runs allowed offers locally.
  */
 export const ACCOUNT_HINT_EVENT_TYPES: ReadonlySet<string> = new Set([
   'digest.run_requested',
   'document.agent_request',
   'proactive.proposal_changed',
+  'proactive.run_requested',
 ]);

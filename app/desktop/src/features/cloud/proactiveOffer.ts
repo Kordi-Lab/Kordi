@@ -25,17 +25,22 @@ export type ProactiveProposal = {
   createdAt: string | null;
 };
 
+/** The server's verdict for one evaluation; unknown values read as `silence`. */
+export type ProactiveActivityDecision = 'offer' | 'silence' | 'failed' | 'cancelled' | 'pending';
+
 export type ProactiveActivityEntry = {
   at: string;
   conversationId: string | null;
   conversationTitle: string;
-  decision: 'offer' | 'silence';
+  decision: ProactiveActivityDecision;
   proposalId: string | null;
   status: ProactiveOfferStatus | null;
   problem: string | null;
   runId: string | null;
   error: string | null;
 };
+
+const DECISIONS: readonly ProactiveActivityDecision[] = ['offer', 'silence', 'failed', 'cancelled', 'pending'];
 
 const STATUSES: readonly ProactiveOfferStatus[] = ['pending', 'approved', 'running', 'done', 'declined', 'expired', 'failed'];
 
@@ -132,7 +137,7 @@ export function normalizeProactiveActivity(value: unknown): ProactiveActivityEnt
       at,
       conversationId: nullableText(item.conversationId),
       conversationTitle: text(item.conversationTitle) || 'Group',
-      decision: item.decision === 'offer' ? 'offer' : 'silence',
+      decision: DECISIONS.includes(item.decision as ProactiveActivityDecision) ? item.decision as ProactiveActivityDecision : 'silence',
       proposalId: nullableText(item.proposalId),
       status: normalizeProactiveOfferStatus(item.status),
       problem: nullableText(item.problem),
@@ -163,7 +168,13 @@ export function relativeTimeLabel(at: string, now: number) {
   return `${Math.round(hours / 24)}d ago`;
 }
 
+/** The Runs tab's sentence-case label for one evaluation. A failed one names its error code. */
 export function proactiveActivityOutcome(entry: ProactiveActivityEntry) {
-  if (entry.decision !== 'offer') return 'Stayed quiet';
-  return entry.status ? `Offered · ${ACTIVITY_STATUS_LABEL[entry.status]}` : 'Offered';
+  switch (entry.decision) {
+    case 'offer': return entry.status ? `Offered · ${ACTIVITY_STATUS_LABEL[entry.status]}` : 'Offered';
+    case 'failed': return entry.error ? `Could not evaluate · ${entry.error}` : 'Could not evaluate';
+    case 'cancelled': return 'Cancelled';
+    case 'pending': return 'Evaluating';
+    default: return 'Stayed quiet';
+  }
 }

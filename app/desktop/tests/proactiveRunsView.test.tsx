@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import React, { act } from 'react';
 
-import type { ProactiveActivityEntry } from '../src/features/cloud/proactiveOffer';
+import { normalizeProactiveActivity, type ProactiveActivityEntry } from '../src/features/cloud/proactiveOffer';
 import { RunsView } from '../src/kordi-app/agents/AgentStudioRunsView';
 import type { Agent } from '../src/kordi-app/types';
 import { withJsdomRoot } from './helpers/mountWithJsdom';
@@ -56,4 +56,30 @@ test('a disabled agent without activity shows no proactive section', async () =>
     await flush();
     assert.equal(host.querySelector('.app-agent-studio-proactive-activity'), null);
   });
+});
+
+test('failed, pending and cancelled evaluations keep their own labels', async () => {
+  const more: ProactiveActivityEntry[] = [
+    { at: '2026-10-24T09:58:00Z', conversationId: 'g1', conversationTitle: 'Launch crew', decision: 'pending', proposalId: null, status: null, problem: null, runId: null, error: null },
+    { at: '2026-10-24T09:50:00Z', conversationId: 'g1', conversationTitle: 'Launch crew', decision: 'failed', proposalId: null, status: null, problem: null, runId: null, error: 'model_unavailable' },
+    { at: '2026-10-24T09:40:00Z', conversationId: 'g1', conversationTitle: 'Launch crew', decision: 'failed', proposalId: null, status: null, problem: null, runId: null, error: null },
+    { at: '2026-10-24T09:30:00Z', conversationId: 'g2', conversationTitle: 'Design review', decision: 'cancelled', proposalId: null, status: null, problem: null, runId: null, error: null },
+  ];
+  await withJsdomRoot(async (mount) => {
+    const host = await mount(<RunsView agent={agent} now={NOW} loadProactiveActivity={async () => more} />);
+    await flush();
+    const rows = Array.from(host.querySelectorAll('.app-agent-studio-proactive-activity .app-agent-studio-simple-list > div'));
+    assert.deepEqual(rows.map((row) => row.querySelector('small')?.textContent), [
+      'Evaluating',
+      'Could not evaluate · model_unavailable',
+      'Could not evaluate',
+      'Cancelled',
+    ]);
+    assert.deepEqual(rows.map((row) => row.getAttribute('data-proactive-decision')), ['pending', 'failed', 'failed', 'cancelled']);
+  });
+});
+
+test('activity decisions from the server are kept, unknown ones read as quiet', () => {
+  const read = normalizeProactiveActivity({ activity: ['offer', 'silence', 'failed', 'cancelled', 'pending', 'other'].map((decision) => ({ at: '2026-10-24T09:00:00Z', decision })) });
+  assert.deepEqual(read.map((entry) => entry.decision), ['offer', 'silence', 'failed', 'cancelled', 'pending', 'silence']);
 });

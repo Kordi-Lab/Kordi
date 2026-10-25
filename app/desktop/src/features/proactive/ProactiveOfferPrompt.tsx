@@ -1,18 +1,18 @@
 import { ProactiveOfferCard } from '@/kordi-app/components/proactiveOfferCard';
-import type { Conversation } from '@/kordi-app/types';
-import { proactiveConversationKey, useProactiveProposals } from './useProactiveProposals';
+import { proactiveConversationKey, useProactiveProposals, type ProactiveConversation } from './useProactiveProposals';
 
 /**
  * Offers from the signed-in owner's agents to help in the open conversation.
  * Sits above the composer, next to connector approvals. Other members never
- * see it: the server returns only the caller's own agents' proposals.
+ * see it: the server returns only the caller's own agents' proposals. Only
+ * cloud groups ask for offers; one-to-one chats never send the request.
  */
 export function ProactiveOfferPrompt({
   conversation,
   accountId,
   now,
 }: {
-  conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'messages'>;
+  conversation: ProactiveConversation;
   accountId: string | null | undefined;
   now?: number;
 }) {

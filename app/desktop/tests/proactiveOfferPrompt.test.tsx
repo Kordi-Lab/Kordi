@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import React, { act } from 'react';
 
+import { ACCOUNT_HINT_EVENT_TYPES } from '../src/features/cloud/accountHintEvents';
 import { listPendingProactiveProposals } from '../src/features/cloud/proactiveClient';
 import { normalizeProactiveProposal, proactiveProposalWithUpdate } from '../src/features/cloud/proactiveOffer';
 import { __setSessionBackendForTests, type StoredSession } from '../src/features/cloud/session';
@@ -22,8 +23,14 @@ const proposal = {
   offer: 'I can clear the cache key and rerun the job.', plan: 'Find the failing step\nBump the key\nRerun', status: 'pending',
   expiresAt: '2026-10-24T15:30:00Z', runId: null, decidedAt: null, createdAt: '2026-10-24T09:59:00Z',
 };
-const group: Pick<Conversation, 'id' | 'canonicalSessionId' | 'messages'> = { id: GROUP_SESSION, canonicalSessionId: GROUP_SESSION, messages: [] };
-const other: Pick<Conversation, 'id' | 'canonicalSessionId' | 'messages'> = { id: 'session:group:g2', canonicalSessionId: 'session:group:g2', messages: [] };
+type PromptConversation = Pick<Conversation, 'id' | 'canonicalSessionId' | 'messages' | 'participantSpaceId' | 'directness'>;
+const CONV_UUID = '7f3c2a10-4b5d-4e6f-8a9b-0c1d2e3f4a5b';
+const group: PromptConversation = { id: GROUP_SESSION, canonicalSessionId: GROUP_SESSION, messages: [] };
+const other: PromptConversation = { id: 'session:group:g2', canonicalSessionId: 'session:group:g2', messages: [] };
+const withConversationId = (conversationId: string): PromptConversation => ({
+  ...group,
+  messages: [{ role: 'person', sender: 'Priya', text: 'hi', time: '09:59', reactionConversationId: conversationId }],
+});
 
 function setSession(session: StoredSession | null) {
   __setSessionBackendForTests({ load: async () => session, save: async () => undefined, clear: async () => undefined });
@@ -99,7 +106,39 @@ test('the conversation key carries the session ids and the cloud conversation id
   const key = proactiveConversationKey({ id: GROUP_SESSION, canonicalSessionId: GROUP_SESSION, messages: [
     { role: 'person', sender: 'Priya', text: 'hi', time: '09:59', reactionConversationId: 'conv_g' },
   ] }, OWNER);
-  assert.deepEqual(key, { accountId: OWNER, sessionIds: [GROUP_SESSION], conversationId: 'conv_g' });
+  assert.deepEqual(key, { accountId: OWNER, isGroup: true, sessionIds: [GROUP_SESSION], conversationId: 'conv_g' });
+});
+
+test('a UUID conversation key filters the list route by conversation', async () => {
+  await withPrompt({ session: signedIn, list: () => [{ ...proposal, conversationId: CONV_UUID }], conversation: withConversationId(CONV_UUID) }, async (host, calls) => {
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]!.url, new RegExp(`\\?status=pending&conversationId=${CONV_UUID}$`));
+    assert.match(host.textContent ?? '', /Kordi can help here/);
+  });
+});
+
+test('a session-id fallback key asks for all pending offers and still filters by session', async () => {
+  const stray = { ...proposal, proposalId: 'pro_x', sessionId: 'session:group:g9', conversationId: 'conv_x', problem: 'Elsewhere.' };
+  await withPrompt({ session: signedIn, list: () => [proposal, stray], conversation: withConversationId(GROUP_SESSION) }, async (host, calls) => {
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]!.url, /\?status=pending$/);
+    const text = host.textContent ?? '';
+    assert.match(text, /Priya is stuck on the CI cache\./);
+    assert.doesNotMatch(text, /Elsewhere\./);
+  });
+});
+
+test('one-to-one agent and contact chats never ask for offers', async () => {
+  const agentChat: PromptConversation = { id: 'session:agent:a1', canonicalSessionId: 'session:agent:a1', messages: [] };
+  const contactChat: PromptConversation = { id: 'session:dm:c1', canonicalSessionId: 'session:dm:c1', messages: [], directness: 'Direct' };
+  for (const conversation of [agentChat, contactChat]) {
+    await withPrompt({ session: signedIn, list: () => [{ ...proposal, sessionId: conversation.id }], conversation }, async (host, calls) => {
+      assert.equal(calls.length, 0);
+      await hint({ proposalId: 'pro_9', agentId: DEFAULT_ID, conversationId: null, sessionId: conversation.id, status: 'pending' });
+      assert.equal(calls.length, 0);
+      assert.equal(host.querySelector('[data-proactive-offer-prompt]'), null);
+    });
+  }
 });
 
 test('the owner sees a matching pending offer above the composer', async () => {
@@ -175,5 +214,15 @@ test('a failed hint shows briefly instead of the buttons, and an expired offer n
   });
   await withPrompt({ session: signedIn, list: () => [{ ...proposal, expiresAt: '2026-10-24T09:00:00Z' }] }, async (host) => {
     assert.equal(host.querySelector('[data-proactive-offer-prompt]'), null);
+  });
+});
+
+test('proactive.run_requested hints pass the account hint allowlist and leave the prompt alone', async () => {
+  assert.ok(ACCOUNT_HINT_EVENT_TYPES.has('proactive.proposal_changed'));
+  assert.ok(ACCOUNT_HINT_EVENT_TYPES.has('proactive.run_requested'));
+  await withPrompt({ session: signedIn, list: () => [] }, async (_host, calls) => {
+    await act(async () => { notifyProactiveProposalEvents([{ eventType: 'proactive.run_requested', payload: { proposalId: 'pro_1', agentId: DEFAULT_ID, sessionId: GROUP_SESSION, status: 'pending' } }]); });
+    await flush();
+    assert.equal(calls.length, 1);
   });
 });

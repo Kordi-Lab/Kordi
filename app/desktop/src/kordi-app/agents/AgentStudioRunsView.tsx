@@ -1,14 +1,22 @@
 import { useEffect, useState } from 'react';
-import { Activity, Check, EyeOff, LoaderCircle, Sparkles, X } from 'lucide-react';
+import { Activity, Ban, Check, CircleAlert, Clock, EyeOff, LoaderCircle, Sparkles, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { DesktopAgentBuilderStatus } from '@/lib/desktop';
 import { loadSession } from '@/features/cloud/session';
 import { listProactiveActivity } from '@/features/cloud/proactiveClient';
-import { proactiveActivityOutcome, relativeTimeLabel, type ProactiveActivityEntry } from '@/features/cloud/proactiveOffer';
+import { proactiveActivityOutcome, relativeTimeLabel, type ProactiveActivityDecision, type ProactiveActivityEntry } from '@/features/cloud/proactiveOffer';
 import type { Agent } from '../types';
 import { EmptyWorkspaceState, WorkspaceHeading } from './AgentStudioWorkspaceParts';
 
 export type LoadProactiveActivity = (agentId: string) => Promise<ProactiveActivityEntry[]>;
+
+const DECISION_ICON: Record<ProactiveActivityDecision, typeof Activity> = {
+  offer: Sparkles,
+  silence: EyeOff,
+  failed: CircleAlert,
+  cancelled: Ban,
+  pending: Clock,
+};
 
 async function loadOwnerProactiveActivity(agentId: string) {
   const session = await loadSession();
@@ -37,13 +45,16 @@ function ProactiveActivityList({ agentId, enabled, load, now }: { agentId: strin
         : current.error ? <div className="app-agent-studio-file-feedback is-error">{current.error}</div>
           : entries.length === 0 ? <div className="app-agent-studio-runtime-note">No proactive activity yet.</div> : (
             <div className="app-agent-studio-simple-list">
-              {entries.map((entry, index) => (
-                <div key={`${entry.at}-${entry.proposalId ?? index}`} data-proactive-decision={entry.decision}>
-                  {entry.decision === 'offer' ? <Sparkles className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                  <span><strong>{entry.conversationTitle}</strong><small>{proactiveActivityOutcome(entry)}</small></span>
-                  <time dateTime={entry.at}>{relativeTimeLabel(entry.at, now ?? openedAt)}</time>
-                </div>
-              ))}
+              {entries.map((entry, index) => {
+                const Icon = DECISION_ICON[entry.decision];
+                return (
+                  <div key={`${entry.at}-${entry.proposalId ?? index}`} data-proactive-decision={entry.decision}>
+                    <Icon className="h-4 w-4" />
+                    <span><strong>{entry.conversationTitle}</strong><small>{proactiveActivityOutcome(entry)}</small></span>
+                    <time dateTime={entry.at}>{relativeTimeLabel(entry.at, now ?? openedAt)}</time>
+                  </div>
+                );
+              })}
             </div>
           )}
     </section>
