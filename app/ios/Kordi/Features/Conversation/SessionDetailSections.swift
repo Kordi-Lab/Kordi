@@ -269,6 +269,7 @@ struct SessionMediaThumbnail: View {
 }
 
 struct SessionTaskRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let task: CloudSessionTaskActivity
 
     var body: some View {
@@ -305,7 +306,7 @@ struct SessionTaskRow: View {
         switch task.status.lowercased() {
         case "completed", "done": .green
         case "failed", "blocked": .orange
-        default: KordiTheme.signalBlue
+        default: chatTheme.accent
         }
     }
 }

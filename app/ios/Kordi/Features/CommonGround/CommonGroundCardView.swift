@@ -4,6 +4,7 @@ import SwiftUI
 /// the profile, sharing, rebuild and delete. Tapping a tag opens its
 /// references, where it can be hidden from others.
 struct CommonGroundCardView: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: CommonGroundModel
     @Binding var path: [CommonGroundRoute]
     @State private var references: CommonGroundReferenceTopic?
@@ -157,7 +158,7 @@ struct CommonGroundCardView: View {
     private func draftChip(for key: WritableKeyPath<CommonGroundTopics, [String]>) -> some View {
         let max = CommonGroundModel.tagMax
         return HStack(spacing: 7) {
-            Circle().fill(commonGroundTint.opacity(0.35)).frame(width: 8, height: 8)
+            Circle().fill(chatTheme.accent.opacity(0.35)).frame(width: 8, height: 8)
             ZStack(alignment: .leading) {
                 // Invisible copy of the text sets the field's width.
                 Text(draft.isEmpty ? "New topic" : draft)
@@ -182,7 +183,7 @@ struct CommonGroundCardView: View {
         .padding(.horizontal, 12)
         .frame(height: commonGroundTagHeight)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: commonGroundTagShape)
-        .overlay(commonGroundTagShape.strokeBorder(commonGroundTint.opacity(0.55), lineWidth: 1.5))
+        .overlay(commonGroundTagShape.strokeBorder(chatTheme.accent.opacity(0.55), lineWidth: 1.5))
         .onChange(of: draft) { _, text in
             if text.count > max { draft = String(text.prefix(max)) }
         }

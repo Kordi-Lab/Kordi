@@ -63,7 +63,7 @@ fn uploaded_avatar_normalization_is_bounded_and_generates_all_variants() {
 
 #[test]
 fn renderer_is_deterministic_for_every_pinned_style() {
-    for style in [HUMAN_AVATAR_STYLE, AGENT_AVATAR_STYLE] {
+    for style in [HUMAN_AVATAR_STYLE, AGENT_AVATAR_STYLE, BIRD_AVATAR_STYLE] {
         let first = render_png(style, "stable_seed").expect("render avatar");
         let second = render_png(style, "stable_seed").expect("render avatar again");
         assert_eq!(first, second);
@@ -72,8 +72,8 @@ fn renderer_is_deterministic_for_every_pinned_style() {
 }
 
 #[tokio::test]
-async fn preview_route_renders_lorelei_and_thumbs_pngs() {
-    for style in [HUMAN_AVATAR_STYLE, AGENT_AVATAR_STYLE] {
+async fn preview_route_renders_every_style_as_png() {
+    for style in [HUMAN_AVATAR_STYLE, AGENT_AVATAR_STYLE, BIRD_AVATAR_STYLE] {
         let response = render_avatar_preview(
             Extension(Arc::new(CloudRateLimiter::memory(
                 CloudRateLimitConfig::production(),
@@ -224,4 +224,61 @@ fn avatar_rate_limit_uses_forwarded_ips_only_from_private_proxies() {
         avatar_request_ip(&headers, Some(&public_peer)),
         Some("198.51.100.2".parse().unwrap())
     );
+}
+
+fn regenerate(current_style: &str, entity_type: &str, seed: &str) -> AvatarDescriptor {
+    let current = AvatarDescriptor {
+        entity_type: entity_type.to_string(),
+        entity_id: "entity_123".to_string(),
+        source: "generated".to_string(),
+        style: current_style.to_string(),
+        seed: "stable_seed".to_string(),
+        renderer_version: AVATAR_RENDERER_VERSION.to_string(),
+        uploaded_asset: None,
+        version: 2,
+        updated_at: "before".to_string(),
+    };
+    apply_avatar_mutation(
+        &current,
+        &AvatarMutationRequest {
+            action: "regenerate".to_string(),
+            uploaded_asset: None,
+            seed: Some(seed.to_string()),
+            expected_version: Some(2),
+        },
+        "after",
+    )
+    .expect("regenerate avatar")
+}
+
+#[test]
+fn bird_seeds_switch_agents_to_the_bird_style() {
+    let next = regenerate(AGENT_AVATAR_STYLE, "agent", "bird-osprey-color-sky");
+    assert_eq!(next.style, BIRD_AVATAR_STYLE);
+    assert_eq!(
+        next.image_url(),
+        generated_avatar_marker(BIRD_AVATAR_STYLE, "bird-osprey-color-sky", 3)
+    );
+    assert_eq!(
+        regenerate(AGENT_AVATAR_STYLE, "agent", "3f9a1c2e4b5d6f70").style,
+        AGENT_AVATAR_STYLE
+    );
+    assert_eq!(
+        regenerate(BIRD_AVATAR_STYLE, "agent", "3f9a1c2e4b5d6f70").style,
+        BIRD_AVATAR_STYLE
+    );
+    assert_eq!(
+        regenerate(HUMAN_AVATAR_STYLE, "human", "bird-owl-ink-paper").style,
+        HUMAN_AVATAR_STYLE
+    );
+}
+
+#[test]
+fn bird_markers_round_trip() {
+    let marker = generated_avatar_marker(BIRD_AVATAR_STYLE, "bird-jay-mint", 4);
+    assert_eq!(
+        parse_generated_avatar_marker(&marker).map(|parsed| parsed.style),
+        Some(BIRD_AVATAR_STYLE.to_string())
+    );
+    assert!(parse_generated_avatar_marker(&generated_avatar_marker("other", "seed", 1)).is_none());
 }
