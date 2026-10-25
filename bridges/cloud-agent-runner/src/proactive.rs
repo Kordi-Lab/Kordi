@@ -13,15 +13,11 @@ pub const RUN_PREFIX: &str = "proactive_eval_";
 const TIMEOUT_SECONDS: u64 = 180;
 
 /// The run's system prompt with the memory section, when memory is on. The
-/// run has no tools, so memories are read here and never saved.
+/// run has no tools, so memories are read here and never saved. A Mac that
+/// runs the evaluation gets the same prompt from the server's claim.
 pub(crate) fn system_prompt(run: &CloudAgentRun, memory: &crate::memory::RunMemory) -> String {
-    let base = run.system_prompt.trim().to_string();
-    match memory_prompt_section(run, memory) {
-        Some(section) => format!(
-            "{base}\n\n{section}\nThis run has no tools: apply the memories, do not try to save new ones."
-        ),
-        None => base,
-    }
+    let section = memory_prompt_section(run, memory);
+    kordi_tools::memory_prompt::tool_less_system_prompt(&run.system_prompt, section.as_deref())
 }
 
 async fn generate<C, P>(
