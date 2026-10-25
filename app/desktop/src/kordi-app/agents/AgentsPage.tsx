@@ -14,6 +14,7 @@ import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
 import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
 import type { Agent } from '../types';
 import { AgentInspectionView } from './AgentInspectionView';
+import { AgentStudioCompactBody } from './AgentStudioCompactBody';
 import { AgentStudioConversation } from './AgentStudioConversation';
 import { AgentStudioRail } from './AgentStudioRail';
 import { AgentStudioWorkspace } from './AgentStudioWorkspace';
@@ -733,7 +734,7 @@ export function AgentsPage({
                   <p>{builder.error ?? 'The saved conversation cannot be opened.'} The published {routeKind} remains unchanged.</p>
                   <div><button type="button" className="app-button-quiet app-agent-studio-button" onClick={returnFromBuild}>Cancel</button><button type="button" className="app-button-quiet app-agent-studio-button is-primary" onClick={() => void builder.recover()}>Recover from published {routeKind}</button></div>
                 </div>
-              ) : <div className="app-agent-studio-body">
+              ) : <AgentStudioCompactBody>
             <AgentStudioConversation
               targetName={displayName}
               creating={creating}
@@ -825,8 +826,7 @@ export function AgentsPage({
               onTestBuilderDraft={() => void builder.testDraft()}
               onReadBuilderFile={builder.readFile}
               onWriteBuilderFile={builder.writeFile}
-            />
-              </div>}
+            /></AgentStudioCompactBody>}
             </>
           ) : (
             <div className="app-skill-library-state"><strong>{buildListLoading ? 'Loading builds…' : 'No build selected'}</strong><span>Choose a recent conversation or use + to start one.</span></div>

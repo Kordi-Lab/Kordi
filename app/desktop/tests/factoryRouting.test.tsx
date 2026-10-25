@@ -415,14 +415,18 @@ test('Skill Library uses a balanced three-pane inspection layout and keeps Commu
   );
 });
 
-test('compact Factory layout stacks conversation and workspace without hiding either', () => {
+test('compact Factory layout shows one pane at a time behind the Chat / Blueprint switcher', () => {
   const css = readDesktopShellCss();
   const compactRule = css.match(/@container agents-page \(max-width: 1120px\) \{([\s\S]*?)\n\}/)?.[1] ?? '';
-  assert.match(compactRule, /\.app-agent-studio-body\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s);
-  assert.doesNotMatch(compactRule, /data-compact-pane[^}]*display:\s*none/);
+  assert.match(compactRule, /\.app-agent-studio-compact-switcher\s*\{\s*display:\s*flex;/);
+  assert.match(compactRule, /\.app-agent-studio-body\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*overflow:\s*hidden;/s);
+  assert.doesNotMatch(compactRule, /min-height:\s*640px/);
+  assert.match(compactRule, /\[data-compact-pane="chat"\] \.app-agent-studio-workspace,\s*\.app-agent-studio-body\[data-compact-pane="workspace"\] \.app-agent-studio-conversation\s*\{\s*display:\s*none;/);
+  assert.match(css, /\.app-agent-studio-compact-switcher\s*\{[^}]*display:\s*none;/);
 
   const pageSource = readFileSync(new URL('../src/kordi-app/agents/AgentsPage.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(pageSource, /Factory \/ Build \/ \{builder\.status\?\.sessionId/);
+  assert.match(pageSource, /<AgentStudioCompactBody>/);
   assert.match(pageSource, /Build session unavailable/);
   assert.match(pageSource, /Recover from published/);
 });
