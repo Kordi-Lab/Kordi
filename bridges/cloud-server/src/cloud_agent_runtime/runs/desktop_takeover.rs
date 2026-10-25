@@ -110,7 +110,7 @@ pub(super) async fn release_to_cloud(pool: &PgPool, run_id: &str) -> RunResult<(
 /// runner, with no hold for a ready Mac. Returns `false`, leaving the run as
 /// it is, when this executor no longer holds it, a stop was requested, or the
 /// cloud cannot run it: a project session needs its project folder, and
-/// follow-up, comment, digest and scheduled runs end through their own paths.
+/// follow-up, comment, digest, import and scheduled runs end through their own paths.
 pub(crate) async fn hand_back_to_cloud(
     pool: &PgPool,
     run_id: &str,
@@ -124,7 +124,8 @@ pub(crate) async fn hand_back_to_cloud(
            AND cancel_requested_at IS NULL AND subsession_id IS NULL \
            AND document_comment_id IS NULL AND NOT legacy_duplicate \
            AND NOT starts_with(run_id, $4) AND NOT starts_with(request_message_id, $4) \
-           AND NOT starts_with(request_message_id, 'scheduled_run_')",
+           AND NOT starts_with(request_message_id, 'scheduled_run_') \
+           AND NOT starts_with(run_id, 'import_')",
     )
     .bind(run_id)
     .bind(owner_account_id)
