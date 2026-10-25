@@ -75,6 +75,7 @@ tests=(
   common_ground_tests::upgrade_from_145_widens_profile_designs
   common_ground_daily_tests::upgrade_from_146_renames_daily_profiles
   common_ground_sources_tests::upgrade_from_146_adds_profile_sources
+  proactive_tests::upgrade_from_148_adds_proactive_agents
 )
 index=0
 for test_name in "${tests[@]}"; do
@@ -104,3 +105,6 @@ DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib auth::routes::contact_profile:: -- --test-threads=1
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib auth::routes::contact_removal:: -- --test-threads=1
+# Proactive agent tests (docs/development/proactive-agent.md) follow the same rule.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib proactive:: -- --test-threads=1

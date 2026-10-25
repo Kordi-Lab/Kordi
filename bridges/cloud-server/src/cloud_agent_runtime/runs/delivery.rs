@@ -72,6 +72,15 @@ pub(super) async fn ensure_group_response_messages(
     let Some(mut request_envelope) = request_envelope else {
         return Ok(None);
     };
+    // A run allowed from a proactive offer answers a message that never
+    // mentioned the agent, so the reply names it as the sender.
+    if let (Some(message), Some((agent_id, name))) = (
+        request_envelope.message.as_mut(),
+        crate::proactive::reply_agent(pool, response.run_id).await?,
+    ) {
+        message.target_cloud_agent_id = Some(agent_id);
+        message.target_cloud_agent_name = Some(name);
+    }
     if let Some(message) = request_envelope.message.as_mut() {
         if message
             .message_action

@@ -173,6 +173,7 @@ pub async fn publish_terminal_response(
         || run_id.starts_with(crate::digest::RUN_PREFIX)
         || run_id.starts_with(crate::pip::RUN_PREFIX)
         || run_id.starts_with(crate::common_ground::RUN_PREFIX)
+        || run_id.starts_with(crate::proactive::RUN_PREFIX)
         || terminal_response_state(
             pool,
             ReplyScope {

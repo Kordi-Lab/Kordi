@@ -359,4 +359,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "common ground daily profile name",
         "0148_common_ground_daily_profile_name.sql"
     ),
+    migration!(149, "proactive agents", "0149_proactive_agents.sql"),
 ];

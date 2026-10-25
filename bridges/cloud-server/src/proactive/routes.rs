@@ -1,0 +1,309 @@
+//! Owner-only routes under `/v1/cloud/agents/{agent_id}/proactive`, mounted
+//! with the other agent routes behind the cloud session.
+
+use std::sync::Arc;
+
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::{Extension, Json};
+use serde::Deserialize;
+use serde_json::{json, Value};
+use sqlx_core::query_as::query_as;
+use sqlx_postgres::PgPool;
+use uuid::Uuid;
+
+use super::decision::{agent_owner, decide, Choice, DecisionError};
+use crate::auth::routes::CloudSession;
+use crate::server::ServerState;
+
+const ACTIVITY_DEFAULT: i64 = 50;
+const ACTIVITY_MAX: i64 = 200;
+const PROPOSALS_MAX: i64 = 100;
+const STATUSES: &[&str] = &[
+    "pending", "approved", "declined", "expired", "running", "done", "failed",
+];
+
+fn error(code: &str, message: &str, status: StatusCode) -> Response {
+    (status, Json(json!({"errorCode": code, "message": message}))).into_response()
+}
+
+fn server_error(context: &str, err: sqlx_core::Error) -> Response {
+    eprintln!("[proactive] {context}: {err}");
+    error(
+        "server_error",
+        "Could not process the proactive request.",
+        StatusCode::INTERNAL_SERVER_ERROR,
+    )
+}
+
+fn not_found() -> Response {
+    error(
+        "cloud_agent_not_found",
+        "Cloud Agent definition was not found.",
+        StatusCode::NOT_FOUND,
+    )
+}
+
+fn forbidden() -> Response {
+    error(
+        "not_agent_owner",
+        "Only the agent's owner can do this.",
+        StatusCode::FORBIDDEN,
+    )
+}
+
+/// `Ok(())` when `account` owns `agent_id`.
+async fn owner_only(pool: &PgPool, account: &str, agent_id: &str) -> Result<(), Response> {
+    match agent_owner(pool, agent_id).await {
+        Ok(Some(owner)) if owner == account => Ok(()),
+        Ok(Some(_)) => Err(forbidden()),
+        Ok(None) => Err(not_found()),
+        Err(err) => Err(server_error("owner check", err)),
+    }
+}
+
+/// RFC 3339 in UTC with milliseconds, as the card block writes it.
+macro_rules! utc {
+    ($column:literal) => {
+        concat!(
+            "to_char(",
+            $column,
+            " AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')"
+        )
+    };
+}
+
+/// One proposal as the routes return it.
+const PROPOSAL_SELECT: &str = concat!(
+    "SELECT jsonb_build_object(
+         'proposalId', p.proposal_id, 'agentId', p.agent_id,
+         'conversationId', p.conversation_id::text, 'sessionId', p.session_id,
+         'conversationTitle', COALESCE(c.group_title, c.shared_title),
+         'triggerMessageId', p.trigger_message_id, 'evidence', p.evidence_json,
+         'problem', p.problem, 'offer', p.offer, 'plan', p.plan, 'status', p.status,
+         'evaluationRunId', p.evaluation_run_id, 'runId', p.run_id,
+         'cardMessageId', p.card_message_id,
+         'replyMessageId', CASE WHEN p.status = 'done' THEN run.response_message_id END,
+         'error', CASE WHEN p.status = 'failed' THEN run.error_code END,
+         'createdAt', ",
+    utc!("p.created_at"),
+    ",
+         'decidedAt', ",
+    utc!("p.decided_at"),
+    ",
+         'expiresAt', ",
+    utc!("p.expires_at"),
+    ")
+     FROM cloud_agent_proactive_proposals p
+     LEFT JOIN cloud_chat_conversations c ON c.conversation_id = p.conversation_id
+     LEFT JOIN cloud_agent_fallback_runs run ON run.run_id = p.run_id"
+);
+
+async fn load_proposal(
+    pool: &PgPool,
+    proposal_id: &str,
+) -> Result<Option<Value>, sqlx_core::Error> {
+    let row: Option<(Value,)> = query_as(&format!("{PROPOSAL_SELECT} WHERE p.proposal_id = $1"))
+        .bind(proposal_id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.map(|(proposal,)| proposal))
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct DecisionBody {
+    decision: String,
+}
+
+pub(crate) async fn post_decision(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path((agent_id, proposal_id)): Path<(String, String)>,
+    Json(body): Json<DecisionBody>,
+) -> Response {
+    let Some(choice) = Choice::parse(body.decision.trim()) else {
+        return error(
+            "invalid_decision",
+            "decision must be \"allow\" or \"decline\".",
+            StatusCode::BAD_REQUEST,
+        );
+    };
+    let pool = state.db_pool();
+    match decide(pool, &session.account_id, &agent_id, &proposal_id, choice).await {
+        Ok(_) => match load_proposal(pool, &proposal_id).await {
+            Ok(Some(proposal)) => Json(json!({"proposal": proposal})).into_response(),
+            Ok(None) => not_found(),
+            Err(err) => server_error("load proposal", err),
+        },
+        Err(DecisionError::NotFound) => error(
+            "proposal_not_found",
+            "The proposal was not found.",
+            StatusCode::NOT_FOUND,
+        ),
+        Err(DecisionError::Forbidden) => forbidden(),
+        Err(DecisionError::Conflict) => error(
+            "proposal_not_pending",
+            "This offer is no longer waiting for a decision.",
+            StatusCode::CONFLICT,
+        ),
+        Err(DecisionError::Database(err)) => server_error("decision", err),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ProposalsQuery {
+    status: Option<String>,
+}
+
+pub(crate) async fn list_proposals(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(agent_id): Path<String>,
+    Query(params): Query<ProposalsQuery>,
+) -> Response {
+    let pool = state.db_pool();
+    if let Err(response) = owner_only(pool, &session.account_id, &agent_id).await {
+        return response;
+    }
+    let status = params
+        .status
+        .as_deref()
+        .map(str::trim)
+        .filter(|status| !status.is_empty())
+        .unwrap_or("pending");
+    if !STATUSES.contains(&status) {
+        return error(
+            "invalid_status",
+            "Unknown proposal status.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    let sql = format!(
+        "{PROPOSAL_SELECT} WHERE p.agent_id = $1 AND p.owner_account_id = $2 AND p.status = $3
+           AND (p.status <> 'pending' OR p.expires_at > now())
+         ORDER BY p.created_at DESC LIMIT $4"
+    );
+    let rows: Result<Vec<(Value,)>, _> = query_as(&sql)
+        .bind(&agent_id)
+        .bind(&session.account_id)
+        .bind(status)
+        .bind(PROPOSALS_MAX)
+        .fetch_all(pool)
+        .await;
+    match rows {
+        Ok(rows) => Json(json!({
+            "proposals": rows.into_iter().map(|(proposal,)| proposal).collect::<Vec<_>>()
+        }))
+        .into_response(),
+        Err(err) => server_error("list proposals", err),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ActivityQuery {
+    limit: Option<i64>,
+}
+
+type ActivityRow = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<Uuid>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+/// The decision an evaluation run stands for: `offer` when it made a
+/// proposal, `silence` when it completed without one, otherwise `pending`
+/// while it runs or `failed`/`cancelled`.
+fn activity_decision(run_status: &str, has_proposal: bool) -> &'static str {
+    match (run_status, has_proposal) {
+        (_, true) => "offer",
+        ("completed", false) => "silence",
+        ("failed", false) => "failed",
+        ("cancelled", false) => "cancelled",
+        _ => "pending",
+    }
+}
+
+pub(crate) async fn list_activity(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(agent_id): Path<String>,
+    Query(params): Query<ActivityQuery>,
+) -> Response {
+    let pool = state.db_pool();
+    if let Err(response) = owner_only(pool, &session.account_id, &agent_id).await {
+        return response;
+    }
+    let limit = params
+        .limit
+        .unwrap_or(ACTIVITY_DEFAULT)
+        .clamp(1, ACTIVITY_MAX);
+    let rows: Result<Vec<ActivityRow>, _> = query_as(
+        "SELECT run.run_id, run.created_at, run.status, run.error_code, c.conversation_id,
+                COALESCE(c.group_title, c.shared_title), p.proposal_id, p.status, p.problem,
+                p.run_id, approved.error_code
+         FROM cloud_agent_fallback_runs run
+         LEFT JOIN cloud_chat_conversations c ON c.legacy_session_id = run.session_id
+         LEFT JOIN cloud_agent_proactive_proposals p ON p.evaluation_run_id = run.run_id
+         LEFT JOIN cloud_agent_fallback_runs approved ON approved.run_id = p.run_id
+         WHERE run.execution_agent_id = $1 AND run.owner_account_id = $2
+           AND starts_with(run.run_id, 'proactive_eval_')
+         ORDER BY run.created_at DESC LIMIT $3",
+    )
+    .bind(&agent_id)
+    .bind(&session.account_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await;
+    let rows = match rows {
+        Ok(rows) => rows,
+        Err(err) => return server_error("list activity", err),
+    };
+    let items: Vec<Value> = rows
+        .into_iter()
+        .map(|row| {
+            let decision = activity_decision(&row.2, row.6.is_some());
+            let mut item = json!({
+                "at": row.1,
+                "evaluationRunId": row.0,
+                "conversationId": row.4.map(|id| id.to_string()),
+                "conversationTitle": row.5,
+                "decision": decision,
+            });
+            if decision == "offer" {
+                let status = row.7.unwrap_or_default();
+                item["proposalId"] = json!(row.6);
+                item["problem"] = json!(row.8);
+                item["runId"] = json!(row.9);
+                item["error"] = json!(row.10.filter(|_| status == "failed"));
+                item["status"] = json!(status);
+            } else if decision == "failed" {
+                item["error"] = json!(row.3);
+            }
+            item
+        })
+        .collect();
+    Json(json!({"activity": items})).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn activity_decisions_read_from_the_run_and_proposal() {
+        assert_eq!(activity_decision("completed", false), "silence");
+        assert_eq!(activity_decision("completed", true), "offer");
+        assert_eq!(activity_decision("failed", false), "failed");
+        assert_eq!(activity_decision("queued", false), "pending");
+        assert_eq!(activity_decision("cancelled", false), "cancelled");
+    }
+}

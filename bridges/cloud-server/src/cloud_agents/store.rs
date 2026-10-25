@@ -4,21 +4,23 @@ use sqlx_core::transaction::Transaction;
 use sqlx_postgres::{PgPool, Postgres};
 
 use crate::avatars::{
-    apply_avatar_mutation, descriptor_from_parts, new_avatar_seed, preserve_avatar_render_key,
-    AvatarDescriptor, AvatarMutationError, StoredAvatar, AGENT_AVATAR_STYLE,
-    AVATAR_RENDERER_VERSION,
+    apply_avatar_mutation, new_avatar_seed, preserve_avatar_render_key, AvatarDescriptor,
+    AvatarMutationError, AGENT_AVATAR_STYLE, AVATAR_RENDERER_VERSION,
 };
 use crate::cloud_agents::models::{
     clean_access_scope, clean_optional_text, clean_required_text, clean_string_list,
-    CloudAgentDefinition, CreateCloudAgentRequest, SharedCloudAgentSummary,
-    UpdateCloudAgentRequest, CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS,
-    CLOUD_AGENT_STATUS_ACTIVE, CLOUD_AGENT_STATUS_ARCHIVED,
+    CloudAgentDefinition, CreateCloudAgentRequest, UpdateCloudAgentRequest,
+    CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS, CLOUD_AGENT_STATUS_ACTIVE,
+    CLOUD_AGENT_STATUS_ARCHIVED,
 };
 use crate::cloud_agents::store_avatar::activate_agent_avatar_reference;
 use crate::cloud_agents::store_cleaning::{
     clean_resources, clean_skills, json_or_array, timestamp, BOUNDARY_MAX_ITEMS,
 };
-use crate::cloud_agents::store_rows::{row_to_definition, CloudAgentRow};
+use crate::cloud_agents::store_rows::{agent_columns, row_to_definition, CloudAgentRow};
+use crate::proactive::ProactiveSetting;
+
+pub use crate::cloud_agents::store_shared::list_shared_agent_summaries;
 
 const NAME_MAX_LEN: usize = 120;
 const ROLE_MAX_LEN: usize = 160;
@@ -122,6 +124,10 @@ pub async fn create_agent_definition(
     let resources = clean_resources(input.resources);
     let skills = clean_skills(input.skills);
     let model_routing = input.model_routing.unwrap_or_else(|| serde_json::json!({}));
+    let proactive = match input.proactive.as_ref() {
+        Some(value) => ProactiveSetting::parse(value).map_err(CloudAgentStoreError::Invalid)?,
+        None => ProactiveSetting::default(),
+    };
     let now_text = timestamp(now);
     let initial_avatar = AvatarDescriptor {
         entity_type: "agent".to_string(),
@@ -154,19 +160,16 @@ pub async fn create_agent_definition(
     )
     .await?;
 
-    let row = query_as::<_, CloudAgentRow>(
+    let row = query_as::<_, CloudAgentRow>(concat!(
         "INSERT INTO cloud_agent_definitions (
              agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
              model_routing_json, created_at, updated_at, avatar_url, avatar_source, avatar_style,
-             avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at
+             avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at, proactive_json
          ) VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13,
-             $14, $15, $16, $17, $18, $19, $20)
-         RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
-             system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at, avatar_url, avatar_source,
-             avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at",
-    )
+             $14, $15, $16, $17, $18, $19, $20, $21) RETURNING ",
+        agent_columns!()
+    ))
     .bind(&agent_id)
     .bind(owner_account_id)
     .bind(&access_scope)
@@ -187,6 +190,7 @@ pub async fn create_agent_definition(
     .bind(&avatar.renderer_version)
     .bind(avatar.version)
     .bind(&avatar.updated_at)
+    .bind(proactive.to_value())
     .fetch_one(&mut *transaction)
     .await?;
     let agent = row_to_definition(row);
@@ -206,102 +210,17 @@ pub async fn list_agent_definitions(
     pool: &PgPool,
     owner_account_id: &str,
 ) -> Result<Vec<CloudAgentDefinition>, CloudAgentStoreError> {
-    let rows = query_as::<_, CloudAgentRow>(
-        "SELECT agent_id, owner_account_id, access_scope, status, name, role, description,
-             system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at, avatar_url, avatar_source,
-             avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at
-         FROM cloud_agent_definitions
+    let rows = query_as::<_, CloudAgentRow>(concat!(
+        "SELECT ",
+        agent_columns!(),
+        " FROM cloud_agent_definitions
          WHERE owner_account_id = $1 AND status = 'active' AND is_system_managed = FALSE
-         ORDER BY updated_at DESC, agent_id ASC",
-    )
+         ORDER BY updated_at DESC, agent_id ASC"
+    ))
     .bind(owner_account_id)
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(row_to_definition).collect())
-}
-
-pub async fn list_shared_agent_summaries(
-    pool: &PgPool,
-    owner_account_ids: &[String],
-) -> Result<Vec<SharedCloudAgentSummary>, CloudAgentStoreError> {
-    let owners: Vec<String> = owner_account_ids
-        .iter()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .take(50)
-        .collect();
-    if owners.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    type SharedAgentRow = (
-        String,
-        String,
-        Option<String>,
-        String,
-        String,
-        String,
-        Option<String>,
-        String,
-        Option<String>,
-        String,
-        String,
-        String,
-        String,
-        i64,
-        String,
-    );
-    let rows = query_as::<_, SharedAgentRow>(
-        "SELECT a.agent_id, a.owner_account_id, c.display_name, a.access_scope, a.name, a.role, a.description, a.updated_at,
-             a.avatar_url, a.avatar_source, a.avatar_style, a.avatar_seed, a.avatar_renderer_version,
-             a.avatar_version, a.avatar_updated_at
-         FROM cloud_agent_definitions a
-         LEFT JOIN cloud_accounts c ON c.account_id = a.owner_account_id
-         WHERE a.owner_account_id = ANY($1)
-           AND a.status = $2
-           AND a.access_scope = $3
-           AND a.is_system_managed = FALSE
-         ORDER BY a.updated_at DESC, a.agent_id ASC",
-    )
-    .bind(&owners)
-    .bind(CLOUD_AGENT_STATUS_ACTIVE)
-    .bind(CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS)
-    .fetch_all(pool)
-    .await?;
-
-    Ok(rows
-        .into_iter()
-        .map(|row| {
-            let avatar = descriptor_from_parts(
-                "agent".to_string(),
-                row.0.clone(),
-                StoredAvatar {
-                    source: row.9,
-                    style: row.10,
-                    seed: row.11,
-                    renderer_version: row.12,
-                    avatar_url: row.8,
-                    version: row.13,
-                    updated_at: row.14,
-                },
-            );
-            SharedCloudAgentSummary {
-                agent_id: row.0,
-                owner_account_id: row.1,
-                owner_display_name: row.2,
-                access_scope: row.3,
-                name: row.4,
-                role: row.5,
-                description: row.6,
-                avatar_url: Some(avatar.image_url()),
-                avatar,
-                updated_at: row.7,
-            }
-        })
-        .collect())
 }
 
 pub async fn update_agent_definition(
@@ -321,6 +240,10 @@ pub async fn update_agent_definition(
         return Ok(None);
     }
     let was_shared = current.access_scope == CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS;
+    if let Some(value) = input.proactive.as_ref() {
+        current.proactive =
+            ProactiveSetting::parse(value).map_err(CloudAgentStoreError::Invalid)?;
+    }
 
     if let Some(value) = input.access_scope {
         current.access_scope =
@@ -383,20 +306,17 @@ pub async fn update_agent_definition(
         .await?;
         current.avatar_url = Some(current.avatar.image_url());
     }
-    let row = query_as::<_, CloudAgentRow>(
+    let row = query_as::<_, CloudAgentRow>(concat!(
         "UPDATE cloud_agent_definitions
          SET access_scope = $4, name = $5, role = $6, description = $7, system_prompt = $8, source_summary = $9,
              boundaries_json = $10, resources_json = $11, skills_json = $12, model_routing_json = $13,
              updated_at = $14, avatar_url = $15, avatar_source = $16, avatar_style = $17,
              avatar_seed = $18, avatar_renderer_version = $19, avatar_version = $20,
-             avatar_updated_at = $21
+             avatar_updated_at = $21, proactive_json = $22
          WHERE owner_account_id = $1 AND agent_id = $2 AND status = $3
-           AND is_system_managed = FALSE
-         RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
-             system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at, avatar_url, avatar_source,
-             avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at",
-    )
+           AND is_system_managed = FALSE RETURNING ",
+        agent_columns!()
+    ))
     .bind(owner_account_id)
     .bind(agent_id)
     .bind(CLOUD_AGENT_STATUS_ACTIVE)
@@ -418,6 +338,7 @@ pub async fn update_agent_definition(
     .bind(&current.avatar.renderer_version)
     .bind(current.avatar.version)
     .bind(&current.avatar.updated_at)
+    .bind(current.proactive.to_value())
     .fetch_optional(&mut *transaction)
     .await?;
     let Some(row) = row else {
@@ -432,7 +353,12 @@ pub async fn update_agent_definition(
         &agent,
     )
     .await?;
+    let stopped = match agent.proactive.enabled {
+        false => crate::proactive::setting::stop_in_transaction(&mut transaction, agent_id).await?,
+        true => Vec::new(),
+    };
     transaction.commit().await?;
+    crate::proactive::setting::refresh_stopped(pool, &stopped).await;
     Ok(Some(agent))
 }
 
@@ -444,16 +370,13 @@ pub async fn archive_agent_definition(
 ) -> Result<Option<CloudAgentDefinition>, CloudAgentStoreError> {
     let now_text = timestamp(now);
     let mut transaction = pool.begin().await?;
-    let row = query_as::<_, CloudAgentRow>(
+    let row = query_as::<_, CloudAgentRow>(concat!(
         "UPDATE cloud_agent_definitions
          SET status = $4, archived_at = $3, updated_at = $3
          WHERE owner_account_id = $1 AND agent_id = $2 AND status = 'active'
-           AND is_system_managed = FALSE
-         RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
-             system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at, avatar_url, avatar_source,
-             avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at",
-    )
+           AND is_system_managed = FALSE RETURNING ",
+        agent_columns!()
+    ))
     .bind(owner_account_id)
     .bind(agent_id)
     .bind(&now_text)
@@ -472,7 +395,10 @@ pub async fn archive_agent_definition(
         &agent,
     )
     .await?;
+    let stopped =
+        crate::proactive::setting::stop_in_transaction(&mut transaction, agent_id).await?;
     transaction.commit().await?;
+    crate::proactive::setting::refresh_stopped(pool, &stopped).await;
     Ok(Some(agent))
 }
 
@@ -481,15 +407,13 @@ async fn get_agent_definition_in_transaction(
     owner_account_id: &str,
     agent_id: &str,
 ) -> Result<Option<CloudAgentDefinition>, CloudAgentStoreError> {
-    let row = query_as::<_, CloudAgentRow>(
-        "SELECT agent_id, owner_account_id, access_scope, status, name, role, description,
-             system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at, avatar_url, avatar_source,
-             avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at
-         FROM cloud_agent_definitions
+    let row = query_as::<_, CloudAgentRow>(concat!(
+        "SELECT ",
+        agent_columns!(),
+        " FROM cloud_agent_definitions
          WHERE owner_account_id = $1 AND agent_id = $2 AND is_system_managed = FALSE
-         FOR UPDATE",
-    )
+         FOR UPDATE"
+    ))
     .bind(owner_account_id)
     .bind(agent_id)
     .fetch_optional(&mut **transaction)

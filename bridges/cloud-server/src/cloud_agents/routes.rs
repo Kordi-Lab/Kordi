@@ -4,7 +4,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, put};
+use axum::routing::{get, post, put};
 use axum::{Extension, Json, Router};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,7 @@ use crate::cloud_agents::store::{
     archive_agent_definition, create_agent_definition, list_agent_definitions,
     list_shared_agent_summaries, update_agent_definition, CloudAgentStoreError,
 };
+use crate::proactive::routes as proactive;
 use crate::server::ServerState;
 
 #[derive(Debug, Serialize)]
@@ -51,6 +52,18 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .route(
             "/v1/cloud/agents/:agent_id",
             put(update_agent).delete(archive_agent),
+        )
+        .route(
+            "/v1/cloud/agents/:agent_id/proactive/proposals",
+            get(proactive::list_proposals),
+        )
+        .route(
+            "/v1/cloud/agents/:agent_id/proactive/proposals/:proposal_id/decision",
+            post(proactive::post_decision),
+        )
+        .route(
+            "/v1/cloud/agents/:agent_id/proactive/activity",
+            get(proactive::list_activity),
         )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
