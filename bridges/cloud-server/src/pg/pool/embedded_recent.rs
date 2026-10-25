@@ -376,8 +376,8 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "0152_memory_digest_import_sources.sql"
     ),
     migration!(
-        152,
+        153,
         "common ground build candidates",
-        "0152_common_ground_build_candidates.sql"
+        "0153_common_ground_build_candidates.sql"
     ),
 ];
