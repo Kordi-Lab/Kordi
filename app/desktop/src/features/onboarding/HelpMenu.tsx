@@ -50,14 +50,14 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
     }}>
     <header className="help-menu-header">
       {view !== 'home' ? <button className="help-icon-button" aria-label="Back to help menu" onClick={() => setView('home')}><ArrowLeft size={16} /></button> : <CircleHelp size={16} aria-hidden="true" />}
-      <AppDialogTitle id={titleId}>{view === 'permissions' ? 'Permissions & access' : view === 'updates' ? 'What’s New' : 'Help'}</AppDialogTitle>
+      <AppDialogTitle id={titleId}>{view === 'permissions' ? 'Permissions & access' : view === 'updates' ? 'What’s new' : 'Help'}</AppDialogTitle>
       <button className="help-icon-button" onClick={onDismiss} aria-label="Close help"><X size={16} /></button>
     </header>
     {view === 'home' ? <div className="help-menu-items">
       <button onClick={onStartTour}><Play size={16} /><span>{progress.completed ? 'Replay tour' : progress.step > 0 ? 'Resume tour' : 'Show me around'}</span><ArrowRight size={14} /></button>
       <button onClick={() => setView('permissions')}><ShieldCheck size={16} /><span>Permissions & access</span><ArrowRight size={14} /></button>
       <div className="help-menu-divider" />
-      <button onClick={() => setView('updates')}><span>What’s New</span></button>
+      <button onClick={() => setView('updates')}><span>What’s new</span></button>
       {supportAvailable ? <button disabled={busy} onClick={() => void action({ kind: 'support' })}><span>Contact support</span></button> : null}
     </div> : <div className="help-menu-content">
       {view === 'permissions' ? <HelpPermissions compact onAction={(target) => void action(target)} onOpenSession={(id) => { onOpenSession(id); onDismiss(); }} connectorsAvailable={settingsAvailable && (nativeMacPermissions() || (capabilities.capabilities?.connectorsVersion ?? 0) > 0)} groundingAvailable={(capabilities.capabilities?.commonGroundVersion ?? 0) > 0} /> : <HelpReleaseNotes native={isNativeDesktopShell()} />}

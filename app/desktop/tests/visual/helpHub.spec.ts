@@ -31,7 +31,7 @@ test('workspace tour highlights real controls, resumes, and opens permission rec
   await expect(page.getByRole('dialog', { name: 'Help', exact: true })).toHaveCount(0);
   await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'settings-auth');
   await expect(page.getByRole('dialog', { name: 'Account settings' })).toBeVisible();
-  await expect(page.getByRole('dialog', { name: 'Connect your AI accounts' })).toBeFocused();
+  await expect(page.getByRole('dialog', { name: 'Connect an AI account' })).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeFocused();
   await page.keyboard.press('Tab');
@@ -69,9 +69,9 @@ test('spotlight follows resizing and handles disappearing controls', async ({ pa
   }).toBe(true);
   await page.screenshot({ path: test.info().outputPath('tour-narrow.png') });
   await page.locator('[data-help-target="grounding"]').evaluate((node) => node.removeAttribute('data-help-target'));
-  await expect(page.getByText('This control is not visible in this workspace.', { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.getByText('Step 3 of 7')).toBeVisible();
+  await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'nav-contacts');
+  await expect(page.getByText('Step 2 of 6')).toBeVisible();
+  await expect(page.getByText('This control is not visible', { exact: false })).toHaveCount(0);
   await page.getByRole('button', { name: 'Skip tour', exact: true }).click();
   await expect(page.locator('.help-tour-layer')).toHaveCount(0);
 });
@@ -182,10 +182,48 @@ test('a delayed tour target never sends the glass popover to the middle of the w
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(card).toHaveAttribute('data-target', 'grounding');
   await expect(card).toHaveAttribute('data-positioned', 'false');
-  const waiting = await card.boundingBox();
+  await expect(card).toBeHidden();
+  const waiting = await card.evaluate((node) => ({ x: node.getBoundingClientRect().x }));
   expect(Math.abs(waiting!.x - before!.x)).toBeLessThan(2);
   expect(await card.evaluate((node) => getComputedStyle(node).backdropFilter)).toContain('blur(');
   await page.locator('.app-common-ground-row').evaluate((node) => node.setAttribute('data-help-target', 'grounding'));
   await expect(card).toHaveAttribute('data-positioned', 'true');
   await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'grounding');
+});
+
+
+test('a workspace without Grounding gets a tour of available controls and preserves resume progress', async ({ page }) => {
+  await page.route('**/v1/cloud/auth/capabilities', (route) => route.fulfill({ json: { password: true, oauthProviders: ['google', 'github'] } }));
+  await page.goto('/tests/visual/helpHub.html?theme=light');
+  await page.locator('[data-help-target="grounding"]').evaluate((node) => node.remove());
+  const trigger = page.getByRole('button', { name: 'Help & setup', exact: true });
+  await trigger.click();
+  await page.getByRole('button', { name: 'Show me around' }).click();
+  await expect(page.getByText('Step 1 of 6')).toBeVisible();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'nav-contacts');
+  await expect(page.getByRole('dialog', { name: 'Add someone to your contacts' })).toBeVisible();
+  await expect(page.getByText('Step 2 of 6')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await trigger.click();
+  await page.getByRole('button', { name: 'Resume tour' }).click();
+  await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'nav-contacts');
+  await page.getByRole('button', { name: 'Previous step' }).click();
+  await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'settings-auth');
+});
+
+test('installed release highlights work offline with one sentence-case heading', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.assign(window, { __TAURI_INTERNALS__: {
+      transformCallback: () => 1,
+      invoke: async (command: string) => command === 'plugin:app|version' ? '0.0.2-beta.5.2' : null,
+    } });
+  });
+  await page.route('**/releases/**', (route) => route.abort());
+  await page.goto('/tests/visual/helpHub.html?isolated=1');
+  await page.getByRole('button', { name: 'Help & setup', exact: true }).click();
+  await page.getByRole('button', { name: 'What’s new', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'What’s new', exact: true })).toHaveCount(1);
+  await expect(page.getByText('Read, edit, and share documents together', { exact: true })).toBeVisible();
+  await expect(page.getByText('RELEASE HIGHLIGHTS', { exact: true })).toHaveCount(0);
 });

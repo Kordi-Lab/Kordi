@@ -1,9 +1,12 @@
-import { useEffect, useLayoutEffect, useId, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, X } from 'lucide-react';
 import { helpTourSteps, type HelpTourStep } from './helpTourSteps';
 import { readHelpProgress, saveHelpProgress } from './helpProgress';
 import { helpTourGeometry, type TourRect } from './helpTourGeometry';
+import { cloudApiBaseUrl, defaultCloudAuthClient } from '@/features/cloud/authClient';
+import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
+import { commonGroundVersionFromCapabilities } from '@/features/cloud/commonGroundCapability';
 import '@/styles/help.css';
 
 type Props = {
@@ -17,7 +20,11 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
   const [index, setIndex] = useState(() => { const saved = readHelpProgress(progressKey); return saved.completed ? 0 : saved.step; });
   const [saved, setSaved] = useState(true);
   const [anchor, setAnchor] = useState<{ target: string; rect: TourRect } | null>(null);
-  const [waiting, setWaiting] = useState(true);
+  const [unavailable, setUnavailable] = useState<string[]>([]);
+  const client = useMemo(() => defaultCloudAuthClient(), []);
+  const { capabilities, status } = useCloudAuthCapabilitiesState(client, cloudApiBaseUrl());
+  const steps = helpTourSteps.filter((item) => !unavailable.includes(item.target)
+    && (item.target !== 'grounding' || status === 'loading' || commonGroundVersionFromCapabilities(capabilities) !== null));
   const [trackedTarget, setTrackedTarget] = useState<string | null>(null);
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [size, setSize] = useState({ width: 320, height: 250 });
@@ -26,21 +33,24 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
   useLayoutEffect(() => { prepare.current = onPrepare; }, [onPrepare]);
   const titleId = useId();
   const bodyId = useId();
-  const step = helpTourSteps[index];
-  const targetName = index === 0 && !settingsAvailable ? 'profile' : step.target;
+  // Persist the canonical step index so hiding an unavailable feature does not shift saved progress.
+  const step = steps.find((item) => helpTourSteps.indexOf(item) >= index) ?? steps[steps.length - 1] ?? helpTourSteps[6];
+  const visibleIndex = steps.indexOf(step);
+  const canonicalIndex = helpTourSteps.indexOf(step);
+  const targetName = canonicalIndex === 0 && !settingsAvailable ? 'profile' : step.target;
   const rect = trackedTarget === targetName && anchor?.target === targetName ? anchor.rect : null;
-  const last = index === helpTourSteps.length - 1;
-  const popoverVisible = Boolean(anchor) || !waiting;
+  const last = visibleIndex === steps.length - 1;
+  const popoverVisible = Boolean(rect);
   useLayoutEffect(() => { if (popoverVisible) panel.current?.focus(); }, [targetName, popoverVisible]);
   const remember = (next: number, completed = false) => setSaved(saveHelpProgress(progressKey, { step: next, completed, welcome: false }));
-  const next = () => { if (last) { remember(index, true); onExit(); } else { remember(index + 1); setIndex(index + 1); } };
-  const previous = () => { if (index > 0) { remember(index - 1); setIndex(index - 1); } };
+  const next = () => { if (last) { remember(canonicalIndex, true); onExit(); } else { const destination = helpTourSteps.indexOf(steps[visibleIndex + 1]); remember(destination); setIndex(destination); } };
+  const previous = () => { if (visibleIndex > 0) { const destination = helpTourSteps.indexOf(steps[visibleIndex - 1]); remember(destination); setIndex(destination); } };
 
   useLayoutEffect(() => {
     prepare.current(step);
     let frame = 0;
     let current: HTMLElement | null = null;
-    const started = performance.now();
+    let missingSince = performance.now();
     const measure = () => {
       const element = document.querySelector<HTMLElement>(`[data-help-target="${targetName}"]`);
       if (element && element !== current) { current = element; element.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' }); }
@@ -51,7 +61,12 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
       // Clearing it would send the popover to a fallback position for one frame.
       if (nextRect) setAnchor((old) => old?.target === targetName && JSON.stringify(old.rect) === JSON.stringify(nextRect) ? old : { target: targetName, rect: nextRect });
       setTrackedTarget(nextRect ? targetName : null);
-      setWaiting(!nextRect && performance.now() - started < 1500);
+      if (nextRect) missingSince = performance.now();
+      else if (performance.now() - missingSince >= 1500) {
+        // A tour only explains controls the user can see and use.
+        setUnavailable((old) => old.includes(step.target) ? old : [...old, step.target]);
+        return;
+      }
       setViewport((old) => old.width === innerWidth && old.height === innerHeight ? old : { width: innerWidth, height: innerHeight });
       const panelBounds = panel.current?.getBoundingClientRect();
       if (panelBounds) setSize((old) => old.width === panelBounds.width && old.height === panelBounds.height ? old : { width: panelBounds.width, height: panelBounds.height });
@@ -60,6 +75,8 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
     measure();
     return () => cancelAnimationFrame(frame);
   }, [step, targetName]);
+
+  useEffect(() => { if (steps.length === 0) onExit(); }, [steps.length, onExit]);
 
   useEffect(() => {
     // Capture Escape before an underlying settings dialog can consume it.
@@ -72,7 +89,7 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
 
   const position = helpTourGeometry(rect ?? anchor?.rect ?? null, viewport, size);
   return createPortal(<div className="help-tour-layer">
-    {rect ? <div className="help-tour-spotlight" data-target={targetName} style={rect} aria-hidden="true" /> : <div className="help-tour-dim" aria-hidden="true" />}
+    {rect ? <div className="help-tour-spotlight" data-target={targetName} style={rect} aria-hidden="true" /> : null}
     <div className="help-tour-card" ref={panel} data-target={targetName} data-positioned={Boolean(rect)} style={{ left: position.left, top: position.top, visibility: popoverVisible ? undefined : 'hidden' }} role="dialog" aria-labelledby={titleId} aria-describedby={bodyId} tabIndex={-1} onKeyDown={(event) => {
       if (event.altKey || event.ctrlKey || event.metaKey) return;
       if (event.key === 'ArrowRight') { event.preventDefault(); next(); }
@@ -87,13 +104,12 @@ export default function HelpTour({ progressKey, settingsAvailable, onPrepare, on
     }}>
       {rect ? <span className="help-tour-arrow" data-side={position.side} style={position.side === 'left' || position.side === 'right' ? { top: position.arrow } : { left: position.arrow }} aria-hidden="true" /> : null}
       <div className="help-tour-body">
-      <div className="help-tour-top"><span aria-live="polite">Step {index + 1} of {helpTourSteps.length}</span><button className="help-icon-button" aria-label="Close tour" onClick={() => onExit()}><X size={16} /></button></div>
+      <div className="help-tour-top"><span aria-live="polite">Step {visibleIndex + 1} of {steps.length}</span><button className="help-icon-button" aria-label="Close tour" onClick={() => onExit()}><X size={16} /></button></div>
       <h2 id={titleId}>{step.title}</h2>
-      <p id={bodyId}>{index === 0 && !settingsAvailable ? 'Open your profile to sign in and reach account settings. Authentication connects the AI providers and models your agents use.' : step.body}</p>
-      {!rect ? <p className="help-tour-note" role="status">{waiting ? 'Finding this control…' : 'This control is not visible in this workspace. You can continue the tour or skip it for now.'}</p> : null}
-      {last ? <button className="help-text-button" onClick={() => { remember(index, true); onExit(true); }}>Open Permissions & access</button> : null}
+      <p id={bodyId}>{canonicalIndex === 0 && !settingsAvailable ? 'Open your profile to sign in. Then open Authentication in settings to connect an AI provider.' : step.body}</p>
+      {last ? <button className="help-text-button" onClick={() => { remember(canonicalIndex, true); onExit(true); }}>Open Permissions & access</button> : null}
       {!saved ? <p role="status">Progress could not be saved on this device.</p> : null}
-      <div className="help-tour-actions"><button className="help-text-button" onClick={() => onExit()}>Skip tour</button><div><button className="help-secondary" disabled={index === 0} onClick={previous} aria-label="Previous step"><ArrowLeft size={16} /></button><button className="help-primary" onClick={next}>{last ? 'Finish tour' : 'Next'}{!last ? <ArrowRight size={15} /> : null}</button></div></div>
+      <div className="help-tour-actions"><button className="help-text-button" onClick={() => onExit()}>Skip tour</button><div><button className="help-secondary" disabled={visibleIndex <= 0} onClick={previous} aria-label="Previous step"><ArrowLeft size={16} /></button><button className="help-primary" onClick={next}>{last ? 'Finish tour' : 'Next'}{!last ? <ArrowRight size={15} /> : null}</button></div></div>
       </div>
     </div>
   </div>, document.querySelector('.kordi-app') ?? document.body);
