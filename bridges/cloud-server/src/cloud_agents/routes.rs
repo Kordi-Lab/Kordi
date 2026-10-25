@@ -73,6 +73,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             "/v1/cloud/proactive/proposals",
             get(proactive::list_all_proposals),
         )
+        .route(
+            "/v1/cloud/proactive/desktop/:run_id/complete",
+            post(crate::proactive::desktop::complete),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,

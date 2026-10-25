@@ -1,0 +1,398 @@
+//! Proactive runs on the owner's Mac (docs/development/proactive-agent.md,
+//! "Mac execution").
+//!
+//! A Mac that can run them publishes the [`CAPABILITY`] readiness row. While
+//! it is fresh, the sweep holds a new evaluation for one presence timeout and
+//! announces it with `proactive.eval_requested`; an approved run is held the
+//! same way when the agent's own row is fresh too, and announced with
+//! `proactive.run_requested`. The Mac claims either through the generic
+//! desktop claim route with the run id as `requestMessageId`
+//! ([`claim_evaluation`], [`claim_approved`]), renews and releases it through
+//! the generic desktop routes, and ends it through [`complete`], which calls
+//! the same completion as the cloud runner. A run no Mac claims in time is
+//! leased by the cloud runner; both move it out of `queued` with a
+//! conditional update, so only one runs it.
+
+use std::sync::Arc;
+
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::{Extension, Json};
+use chrono::Utc;
+use kordi_tools::memory_prompt::{
+    memory_prompt_section, tool_less_system_prompt, MemoryRun, MemorySettings, PromptMemory,
+};
+use serde::Deserialize;
+use serde_json::{json, Value};
+use sqlx_core::{query::query, query_as::query_as};
+use sqlx_postgres::{PgPool, Postgres};
+use uuid::Uuid;
+
+use super::{APPROVED_RUN_PREFIX, CAPABILITY, RUN_PREFIX};
+use crate::auth::routes::CloudSession;
+use crate::cloud_agent_runtime::runs::{
+    claimed_route_json, complete_run, AgentRuntimeRoute, ClaimRunRequest, RunError, RunResult,
+};
+use crate::server::ServerState;
+
+type Result<T> = std::result::Result<T, sqlx_core::Error>;
+
+/// Seconds a desktop claim holds the run before it must renew, as for chat.
+const LEASE_SECONDS: i64 = 45;
+/// The longest evaluation reply the server reads, as for a digest.
+const MAX_EVALUATION_BYTES: usize = 1_048_576;
+
+/// Tells the owner's devices that an evaluation waits for a Mac.
+pub(super) async fn announce_evaluation(
+    tx: &mut sqlx_core::transaction::Transaction<'_, Postgres>,
+    owner: &str,
+    run_id: &str,
+    candidate: &super::snapshot::Candidate,
+) -> Result<()> {
+    let payload = json!({"runId": run_id, "sessionId": candidate.session_id});
+    crate::chat_sync::store::append_account_hint(tx, owner, "proactive.eval_requested", &payload)
+        .await
+        .map_err(|_| sqlx_core::Error::Protocol("Could not announce the evaluation.".into()))
+}
+
+fn executor(session: &CloudSession, claim_id: Uuid) -> String {
+    format!("desktop:{}:{claim_id}", session.device_id)
+}
+
+/// Whether this device of the signed-in account published `capability`
+/// within the readiness window.
+async fn ready(pool: &PgPool, session: &CloudSession, capability: &str) -> Result<bool> {
+    let (ready,): (bool,) = query_as(
+        "SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities ready \
+           JOIN cloud_devices device USING(device_id) \
+           WHERE ready.device_id = $1 AND device.account_id = $2 AND device.revoked_at IS NULL \
+             AND ready.agent_id = $3 AND ready.updated_at > now() - interval '35 seconds')",
+    )
+    .bind(&session.device_id)
+    .bind(&session.account_id)
+    .bind(capability)
+    .fetch_one(pool)
+    .await?;
+    Ok(ready)
+}
+
+/// Leases the queued run `run_id` of `owner` to `executor`, storing the
+/// Mac's hosted account route when it sent one. Returns whether this call
+/// took it.
+async fn lease(
+    pool: &PgPool,
+    run_id: &str,
+    owner: &str,
+    executor: &str,
+    route: Option<&AgentRuntimeRoute>,
+) -> Result<bool> {
+    let now = Utc::now();
+    let taken = query(
+        "UPDATE cloud_agent_fallback_runs \
+         SET status = 'leased', execution_backend = 'desktop', claimed_by = $3, \
+             lease_expires_at = $4, desktop_preferred_until = NULL, updated_at = $5, \
+             runtime_route_json = COALESCE($6, runtime_route_json) \
+         WHERE run_id = $1 AND owner_account_id = $2 AND status = 'queued' \
+           AND cancel_requested_at IS NULL",
+    )
+    .bind(run_id)
+    .bind(owner)
+    .bind(executor)
+    .bind((now + chrono::Duration::seconds(LEASE_SECONDS)).to_rfc3339())
+    .bind(now.to_rfc3339())
+    .bind(claimed_route_json(route))
+    .execute(pool)
+    .await?;
+    Ok(taken.rows_affected() == 1)
+}
+
+/// Whether `executor` holds the run with a live desktop lease.
+async fn held(pool: &PgPool, run_id: &str, owner: &str, executor: &str) -> Result<bool> {
+    let (held,): (bool,) = query_as(
+        "SELECT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs \
+           WHERE run_id = $1 AND owner_account_id = $2 AND claimed_by = $3 \
+             AND execution_backend = 'desktop' AND status IN ('leased', 'running') \
+             AND lease_expires_at::timestamptz > now())",
+    )
+    .bind(run_id)
+    .bind(owner)
+    .bind(executor)
+    .fetch_one(pool)
+    .await?;
+    Ok(held)
+}
+
+/// How a Mac reads the run's model, as for a digest: `named` when the agent's
+/// own routing names one, else `chat`, the route the cloud filled from the
+/// owner's chat.
+async fn model_choice(pool: &PgPool, agent_id: &str) -> Result<&'static str> {
+    if super::agents::default_owner(agent_id).is_some() {
+        return Ok("chat");
+    }
+    let named: Option<(bool,)> = query_as(
+        "SELECT COALESCE(btrim(model_routing_json->>'defaultModel'), '') <> '' \
+         FROM cloud_agent_definitions WHERE agent_id = $1",
+    )
+    .bind(agent_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(if named.is_some_and(|(named,)| named) {
+        "named"
+    } else {
+        "chat"
+    })
+}
+
+/// The evaluation's system prompt as the cloud runner builds it: the run's
+/// own prompt, the owner's memory section for this conversation, and the
+/// no-tools line. Memory that cannot be read is left out, as the runner does.
+pub(crate) async fn evaluation_system_prompt(
+    pool: &PgPool,
+    base: &str,
+    owner: &str,
+    requester: &str,
+    session_id: &str,
+    subsession_id: Option<&str>,
+) -> String {
+    let section = match crate::memory_store::list(pool, owner).await {
+        Ok(list) => {
+            let memories: Vec<PromptMemory<'_>> = list
+                .memories
+                .iter()
+                .map(|memory| PromptMemory {
+                    scope: &memory.scope,
+                    scope_id: &memory.scope_id,
+                    text: &memory.text,
+                    created_at: &memory.created_at,
+                    updated_at: &memory.updated_at,
+                })
+                .collect();
+            let run = MemoryRun {
+                session_id,
+                subsession_id,
+                owner_request: owner == requester,
+            };
+            let settings = MemorySettings {
+                enabled: list.settings.memory_enabled,
+                exclude_sensitive: list.settings.exclude_sensitive,
+            };
+            memory_prompt_section(&run, settings, &memories)
+        }
+        Err(error) => {
+            eprintln!(
+                "[proactive] Memory for a Mac evaluation is unavailable: {}",
+                error.code
+            );
+            None
+        }
+    };
+    tool_less_system_prompt(base, section.as_deref())
+}
+
+type HeldEvaluation = (String, String, String, String, Option<String>);
+
+/// Admits the signed-in owner's Mac to the queued evaluation `run_id`.
+/// `Ok(None)` refuses the claim: this Mac is not ready for proactive runs or
+/// the run is not the active evaluation of its conversation. Otherwise the
+/// answer says whether this claim holds the run and, when it does, what to
+/// run: one model turn with no tools.
+pub(crate) async fn claim_evaluation(
+    pool: &PgPool,
+    session: &CloudSession,
+    claim_id: Uuid,
+    run_id: &str,
+    route: Option<&AgentRuntimeRoute>,
+) -> Result<Option<Value>> {
+    let owner = &session.account_id;
+    let active: Option<(Option<Value>, String)> = query_as(
+        "SELECT run.runtime_route_json, run.execution_agent_id \
+         FROM cloud_agent_proactive_state state \
+         JOIN cloud_agent_fallback_runs run ON run.run_id = state.active_run_id \
+         WHERE state.active_run_id = $1 AND state.owner_account_id = $2 \
+           AND run.owner_account_id = $2",
+    )
+    .bind(run_id)
+    .bind(owner)
+    .fetch_optional(pool)
+    .await?;
+    let Some((asked, agent_id)) = active else {
+        return Ok(None);
+    };
+    if !ready(pool, session, CAPABILITY).await? {
+        return Ok(None);
+    }
+    let executor = executor(session, claim_id);
+    lease(pool, run_id, owner, &executor, route).await?;
+    let row: Option<HeldEvaluation> = query_as(
+        "SELECT prompt, system_prompt, requester_account_id, session_id, subsession_id::text \
+         FROM cloud_agent_fallback_runs \
+         WHERE run_id = $1 AND claimed_by = $2 AND execution_backend = 'desktop' \
+           AND status IN ('leased', 'running') AND lease_expires_at::timestamptz > now()",
+    )
+    .bind(run_id)
+    .bind(&executor)
+    .fetch_optional(pool)
+    .await?;
+    let Some((prompt, base, requester, session_id, subsession_id)) = row else {
+        return Ok(Some(json!({"runId": run_id, "acquired": false})));
+    };
+    let system_prompt = evaluation_system_prompt(
+        pool,
+        &base,
+        owner,
+        &requester,
+        &session_id,
+        subsession_id.as_deref(),
+    )
+    .await;
+    // The model the run asks for, and what a Mac that runs with its own
+    // account needs to apply it to its provider.
+    let asked: AgentRuntimeRoute = asked
+        .and_then(|value| serde_json::from_value(value).ok())
+        .unwrap_or_default();
+    let fast_models: serde_json::Map<String, Value> = crate::digest::model_choice::FAST_MODELS
+        .iter()
+        .map(|(provider, model)| (provider.to_string(), json!(model)))
+        .collect();
+    Ok(Some(json!({
+        "runId": run_id,
+        "acquired": true,
+        "leaseSeconds": LEASE_SECONDS,
+        "proactive": {
+            "kind": "evaluation",
+            "systemPrompt": system_prompt,
+            "prompt": prompt,
+            "tools": [],
+            "model": asked.default_model,
+            "thinking": asked.thinking,
+            "provider": asked.default_auth_provider,
+            "modelChoice": model_choice(pool, &agent_id).await?,
+            "fastModels": fast_models,
+        },
+    })))
+}
+
+/// Admits the signed-in owner's Mac to the queued approved run named by
+/// `input.request_message_id`. `Ok(None)` refuses the claim: this Mac is not
+/// ready for proactive runs or for the run's agent, the claim names another
+/// session, the owner left the group, the agent stopped watching, or the
+/// proposal is no longer `approved`. Otherwise the answer has the scheduled
+/// claim's shape plus the run's prompt and system prompt.
+pub(crate) async fn claim_approved(
+    pool: &PgPool,
+    session: &CloudSession,
+    claim_id: Uuid,
+    input: &ClaimRunRequest,
+) -> RunResult<Option<Value>> {
+    let owner = &session.account_id;
+    let run_id = input.request_message_id.trim();
+    let run: Option<(String, String, String, String)> = query_as(
+        "SELECT execution_agent_id, session_id, prompt, system_prompt \
+         FROM cloud_agent_fallback_runs \
+         WHERE run_id = $1 AND owner_account_id = $2 AND requester_account_id = $2",
+    )
+    .bind(run_id)
+    .bind(owner)
+    .fetch_optional(pool)
+    .await?;
+    let Some((agent_id, session_id, prompt, system_prompt)) = run else {
+        return Ok(None);
+    };
+    // The project rule ran against the claimed session, so it must be the run's.
+    if session_id != input.session_id.trim()
+        || !ready(pool, session, CAPABILITY).await?
+        || !ready(pool, session, &agent_id).await?
+    {
+        return Ok(None);
+    }
+    let (allowed,): (bool,) = query_as(concat!(
+        "SELECT EXISTS (SELECT 1 FROM cloud_agent_proactive_proposals p
+             JOIN cloud_chat_conversation_members member
+               ON member.conversation_id = p.conversation_id
+              AND member.account_id = p.owner_account_id
+              AND member.membership_state = 'active'
+             JOIN ",
+        super::agents::watchers_sql!(),
+        " agent ON agent.agent_id = p.agent_id AND agent.owner_account_id = p.owner_account_id
+             WHERE p.run_id = $1 AND p.owner_account_id = $2 AND p.status = 'approved')"
+    ))
+    .bind(run_id)
+    .bind(owner)
+    .fetch_one(pool)
+    .await?;
+    if !allowed {
+        return Ok(None);
+    }
+    let executor = executor(session, claim_id);
+    if !lease(pool, run_id, owner, &executor, input.runtime_route.as_ref()).await? {
+        return Ok(Some(json!({"runId": run_id, "acquired": false})));
+    }
+    let identity =
+        crate::cloud_agent_runtime::runs::identity::identity_for_run(pool, run_id).await?;
+    Ok(Some(json!({
+        "runId": run_id,
+        "acquired": true,
+        "leaseSeconds": LEASE_SECONDS,
+        "turnIdentity": identity,
+        "prompt": prompt,
+        "systemPrompt": system_prompt,
+        "proactive": {"kind": "approved"},
+    })))
+}
+
+fn lease_lost() -> Response {
+    (
+        StatusCode::CONFLICT,
+        Json(json!({"errorCode":"execution_lease_lost","message":"This runtime no longer owns the request."})),
+    )
+        .into_response()
+}
+
+fn failed() -> Response {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({"errorCode":"server_error","message":"Could not finish the proactive run."})),
+    )
+        .into_response()
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CompleteInput {
+    claim_id: Uuid,
+    text: String,
+}
+
+/// Ends a proactive run with the Mac's reply, through the same completion as
+/// the cloud runner: an evaluation's reply is parsed into silence or an
+/// offer, an approved run's reply is delivered in the group as the agent.
+pub(crate) async fn complete(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(run_id): Path<String>,
+    Json(input): Json<CompleteInput>,
+) -> Response {
+    let pool = state.db_pool();
+    let evaluation = run_id.starts_with(RUN_PREFIX);
+    if !evaluation && !run_id.starts_with(APPROVED_RUN_PREFIX) {
+        return lease_lost();
+    }
+    let owner = executor(&session, input.claim_id);
+    match held(pool, &run_id, &session.account_id, &owner).await {
+        Ok(true) => {}
+        Ok(false) => return lease_lost(),
+        Err(_) => return failed(),
+    }
+    if evaluation && input.text.len() > MAX_EVALUATION_BYTES {
+        return match super::fail(pool, &run_id, Some(&owner), "invalid_output").await {
+            Ok(()) => Json(json!({"ok": true})).into_response(),
+            Err(_) => failed(),
+        };
+    }
+    match complete_run(pool, &run_id, &owner, &input.text).await {
+        Ok(_) => Json(json!({"ok": true})).into_response(),
+        Err(RunError::NotFound) => lease_lost(),
+        Err(_) => failed(),
+    }
+}

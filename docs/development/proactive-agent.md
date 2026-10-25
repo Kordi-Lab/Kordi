@@ -118,14 +118,96 @@ activity log.
 The snapshot's `agent.capabilities` line tells the model what an allowed
 run can do, so a default agent with no skills list is judged fairly.
 
-Routing follows the Mac-first rule. A Mac that publishes the `proactive`
-readiness capability is preferred for one presence timeout, then the cloud
-runner leases the run. Until the Mac path ships (follow-up below), no Mac
-publishes the capability and the cloud runner, with the owner's cloud
-provider copy, answers every evaluation.
+Routing follows the Mac-first rule; see Mac execution below.
 
 Completion is dispatched by the `proactive_eval_` prefix, like `pip_` and
 `digest_`, and never reaches the group delivery path.
+
+## Mac execution
+
+The owner's Mac runs both run kinds while it is online. The cloud runner
+takes over when no Mac is ready, or when a ready Mac does not claim within
+one presence timeout (the hold in `desktop_preferred_until`).
+
+Readiness: `POST /v1/cloud/agent-runs/desktop/ready` takes `proactive: true`
+under the same condition as `digest` (runtime ready, signed in, a default
+route with a model). The server stores a `proactive` capability row for the
+device. An evaluation is held for the Mac when that row is fresh; an
+approved run when the `proactive` row and the agent's own row are fresh.
+`proactive` never goes into `agentIds`.
+
+Evaluation runs:
+
+- When held, the sweep appends the account hint `proactive.eval_requested`
+  `{runId, sessionId}` in the enqueue transaction.
+- Claim: the generic `POST /v1/cloud/agent-runs/desktop/claim` with
+  `requestMessageId` = the run id (`proactive_eval_…`) branches to the
+  proactive desktop claim. It requires this device's fresh `proactive` row,
+  the run to be the active run of its state row, and status `queued`. A
+  conditional update leases it to the device (`execution_backend =
+  'desktop'`, the desktop executor, a 45 second lease, hold cleared, the
+  claimed route stored). The response mirrors a digest claim:
+
+  ```json
+  { "runId": "…", "acquired": true, "leaseSeconds": 45,
+    "proactive": { "kind": "evaluation", "systemPrompt": "…", "prompt": "…",
+      "tools": [], "model": "…", "thinking": "…", "provider": "…",
+      "modelChoice": "named" | "chat",
+      "fastModels": { "openai": "gpt-5.6-luna", "anthropic": "claude-haiku-4-5" } } }
+  ```
+
+  `systemPrompt` already carries the memory section, rendered by the same
+  function the cloud runner uses for the same run
+  (`kordi_tools::memory_prompt`), and the no-tools line. `prompt` is the
+  snapshot. `model`, `thinking` and `provider` are the run's own route;
+  `modelChoice` is `named` when the agent's routing names a model and `chat`
+  when the route came from the owner's chat (the default agent, or a
+  definition without a model); `fastModels` is the digest's provider map.
+  A claim that sends a hosted account as `runtimeRoute` stores it on the
+  run, so `/v1/cloud/agent-runs/:run_id/desktop/provider-auth` resolves
+  that account for the claim holder.
+- An evaluation has no tools, so it needs no project folder: in a group
+  that is a project session it skips the project rule in the claim, the
+  hand-back, and the cloud lease.
+- Renew and release use the generic desktop routes
+  (`/v1/cloud/agent-runs/desktop/:run_id/renew`, `/release`).
+- Complete: `POST /v1/cloud/proactive/desktop/:run_id/complete`
+  `{claimId, text}` from the claim holder (run `leased` or `running`) calls
+  the same completion as the cloud runner. Text over 1 MiB fails the run as
+  `invalid_output`. Anyone else gets `409 execution_lease_lost`.
+
+Approved runs:
+
+- When held, the decision appends `proactive.run_requested`
+  `{runId, sessionId, agentId, proposalId}` in its transaction.
+- Claim: the generic claim route with `requestMessageId` = the run id
+  (`proactive_run_…`) branches to the proactive desktop claim before any
+  group mention validation, so it never creates a second run. It requires
+  fresh `proactive` and agent rows for this device, `sessionId` = the
+  run's group session, the owner's active membership of the group, the
+  agent still watching, the proposal `approved`, and status `queued`. The
+  response has the scheduled claim's shape (`turnIdentity` with the owner
+  as owner and requester and the run's agent, `contextSessionId` = the
+  group session, `trigger: "person_started"`, and the connector tools a
+  cloud lease of the run gets: with the `shared` audience only the group's
+  own document tool, none of the owner's connectors) plus the
+  run's `prompt`, `systemPrompt` and `"proactive": {"kind": "approved"}`.
+  The claimed route is stored as for an evaluation.
+- In a group that is a project session the existing project rule applies:
+  a Mac without the project gets `{"acquired": false}`, the project Mac's
+  claim carries `project` as a chat claim does, and the cloud runner does
+  not lease the run while the project Mac is online.
+- The Mac admits the run with the generic
+  `/v1/cloud/agent-runs/desktop/:run_id/admit` and runs a full shared-chat
+  agent turn with the owner's tools and workspace, like a scheduled Mac
+  run, with `systemPrompt` as context.
+- Complete: the same complete route calls the generic run completion, so
+  delivery (envelope, agent as sender, threaded under the trigger) and the
+  proposal status match a cloud run. Errors release the run to the cloud.
+
+Desktop: one module handles both hints; an evaluation runs through the
+digest's single-turn command with no tools, an approved run through the
+shared-chat start used by scheduled Mac runs.
 
 ## Offer and permission
 
@@ -201,8 +283,7 @@ Routes, owner only:
 | `system_prompt` | the agent's normal group system prompt |
 
 Because the owner is the requester, this is an ordinary owner-started
-run: it takes the existing Mac-first claim path (`prefer_ready_desktop`,
-then the cloud lease), the agent's usual tools on the Mac and the fixed
+run: the agent's usual tools on the Mac (see Mac execution) and the fixed
 cloud catalog on the runner, and the existing group delivery, so the
 agent's reply appears in the group as its own message. `shared` audience
 keeps connector tools out, as for every group run. The proposal follows
@@ -243,9 +324,6 @@ Design preview: `docs/design-previews/proactive-agent/`.
 
 ## Follow-ups
 
-- Mac execution of evaluation runs through the digest's desktop path
-  (`digest::desktop`, `chat/digest_run.rs`) with a `proactive` readiness
-  capability.
 - iPhone offer with Allow and Not now in the group, and the Blueprint row
   once an agent settings screen exists there.
 - Contact chats, with the other person's consent (issue #1711).

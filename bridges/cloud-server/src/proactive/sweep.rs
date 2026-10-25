@@ -295,7 +295,8 @@ async fn enqueue(
         fill_cloud_route(pool, &agent.owner_account_id, &candidate.session_id, route).await?;
     let route =
         serde_json::to_value(route).map_err(|error| sqlx_core::Error::Encode(Box::new(error)))?;
-    // A Mac that can run evaluations gets one presence timeout first.
+    // A Mac that can run evaluations gets one presence timeout first, and the
+    // owner's devices hear of the held run in the same transaction.
     let ready = crate::cloud_agent_runtime::agent_desktop_ready(
         pool,
         &agent.owner_account_id,
@@ -342,6 +343,10 @@ async fn enqueue(
     .bind(preferred_until)
     .execute(&mut *tx)
     .await?;
+    if ready {
+        super::desktop::announce_evaluation(&mut tx, &agent.owner_account_id, &run_id, candidate)
+            .await?;
+    }
     tx.commit().await?;
     Ok(Outcome::Queued)
 }
