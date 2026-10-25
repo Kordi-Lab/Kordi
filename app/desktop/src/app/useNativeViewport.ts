@@ -1,5 +1,5 @@
 import { useLayoutEffect } from 'react';
-import { isTauriRuntime } from '@/features/cloud/loginWindow';
+import { isTauriRuntime, subscribeAuthWindowCrop } from '@/features/cloud/loginWindow';
 import { INTERFACE_ZOOM_EVENT, readAppliedInterfaceZoom } from './interfaceZoom';
 
 /** Convert native client dimensions to the current page's layout coordinates. */
@@ -47,11 +47,16 @@ export function useNativeViewport() {
         unlisten.push(stop);
       }
       const [scale, size] = await Promise.all([nativeWindow.scaleFactor(), nativeWindow.innerSize()]);
-      if (!disposed) {
-        // Resize and monitor changes may arrive while the initial query is pending.
-        if (!hasScaleEvent) nativeScale = scale;
-        applyPhysicalSize(latestPhysicalSize ?? size);
-      }
+      if (disposed) return;
+      // Resize and monitor changes may arrive while the initial query is pending.
+      if (!hasScaleEvent) nativeScale = scale;
+      applyPhysicalSize(latestPhysicalSize ?? size);
+      // macOS reports the web view frame as the inner size. Reattaching the
+      // web view after a gate transition emits no native resize event, so
+      // re-read the size only when the native side reports that change.
+      unlisten.push(subscribeAuthWindowCrop(() => {
+        void nativeWindow.innerSize().then(next => { if (!disposed) applyPhysicalSize(next); }).catch(() => undefined);
+      }));
     }).catch(() => undefined);
     return () => {
       disposed = true;

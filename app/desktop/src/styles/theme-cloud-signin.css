@@ -21,7 +21,7 @@
 
 .app-cloud-starting-titlebar {
   position: absolute;
-  top: 12px;
+  top: calc(var(--app-gate-crop-y, 0px) + 12px);
   left: 0;
   right: 0;
   color: var(--app-cloud-signin-muted);

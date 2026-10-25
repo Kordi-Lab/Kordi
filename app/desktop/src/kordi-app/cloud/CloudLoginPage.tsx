@@ -301,7 +301,10 @@ export function CloudLoginPage({
         data-tauri-drag-region="true"
         aria-hidden="true"
       />
-      <div className={`pointer-events-none absolute left-0 right-0 top-3 text-center ${TYPE_TITLEBAR} ${INK_SUBTLE}`}>
+      <div
+        className={`pointer-events-none absolute left-0 right-0 text-center ${TYPE_TITLEBAR} ${INK_SUBTLE}`}
+        style={{ top: 'calc(var(--app-gate-crop-y, 0px) + 12px)' }}
+      >
         Kordi
       </div>
 
