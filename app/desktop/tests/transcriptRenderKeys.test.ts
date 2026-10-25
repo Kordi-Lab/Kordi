@@ -17,9 +17,10 @@ test('a Cloud agent reply keeps one row from its pending placeholder to its stor
   const stored = reply('msg:cloud:self:response:01a173e7', [request.id!, '01a173e7']);
   const before = transcriptMessageRenderKeys([request, pending]);
   const after = transcriptMessageRenderKeys([request, stored]);
-  assert.equal(before.get(pending), 'self-agent-reply:client-message:queued-local-chat:session:1');
+  assert.equal(before.get(pending), 'self-agent-reply:queued-local-chat:session:1');
   assert.equal(after.get(stored), before.get(pending));
-  // The request's runtime copy keeps the same reply key.
+  // The key does not depend on the request row: not loaded yet, or its runtime copy.
+  assert.equal(transcriptMessageRenderKeys([stored]).get(stored), before.get(pending));
   const runtimeRequest = { ...request, id: 'desktop-entry:session:1:7', entryId: '01a173e7' };
   assert.equal(transcriptMessageRenderKeys([runtimeRequest, stored]).get(stored), before.get(pending));
 });
@@ -29,12 +30,12 @@ test('reply keys stay unique, and other rows keep their own keys', () => {
   const stored = reply('msg:cloud:self:response:01a1');
   const notice = reply(`msg:cloud:self:pending:${request.id}:not-started`);
   const keys = transcriptMessageRenderKeys([request, pending, stored, notice]);
-  assert.equal(keys.get(pending), 'self-agent-reply:client-message:queued-local-chat:session:1');
+  assert.equal(keys.get(pending), 'self-agent-reply:queued-local-chat:session:1');
   assert.equal(keys.get(stored), 'message:msg:cloud:self:response:01a1');
   assert.equal(keys.get(notice), `message:msg:cloud:self:pending:${request.id}:not-started`);
   const group = reply('msg:cloud:group:1');
-  const orphan = reply('msg:cloud:self:response:02b2', ['unknown-request']);
-  const other = transcriptMessageRenderKeys([request, group, orphan]);
+  const aliasless = reply('msg:cloud:self:response:02b2', []);
+  const other = transcriptMessageRenderKeys([request, group, aliasless]);
   assert.equal(other.get(group), 'message:msg:cloud:group:1');
-  assert.equal(other.get(orphan), 'message:msg:cloud:self:response:02b2');
+  assert.equal(other.get(aliasless), 'message:msg:cloud:self:response:02b2');
 });

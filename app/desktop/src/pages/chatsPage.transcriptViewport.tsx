@@ -245,7 +245,8 @@ export function useChatTranscriptViewport({
     if (!('message' in entry)) return [];
     const { message } = entry;
     const aliases = [message.id, message.entryId, ...(message.replyAliasIds ?? [])].filter((id): id is string => Boolean(id));
-    const id = message.id ?? message.entryId;
+    // The row's render key, so a reply that changes id while it stays mounted keeps its fade.
+    const id = renderKeys.get(message) ?? message.id ?? message.entryId;
     if (!id) return [];
     const human = message.role === 'user' || message.role === 'person';
     return [{
@@ -254,7 +255,7 @@ export function useChatTranscriptViewport({
       queued: human && aliases.some((alias) => syncedQueuedIds.has(alias)),
       processing: message.role === 'owned-agent' && Boolean(message.turn) && !message.turn?.completed,
     }];
-  }), [syncedQueuedIds, timelineEntries]);
+  }), [renderKeys, syncedQueuedIds, timelineEntries]);
   const queuedIdsNow = useMemo(() => {
     const ids = new Set(syncedQueuedIds);
     for (const message of queuedMessages) ids.add(message.id);
@@ -307,6 +308,7 @@ export function useChatTranscriptViewport({
       renderItem={(entry) => {
         if ('pinActivity' in entry) return <PinActivityNotice activity={entry.pinActivity} />;
         const { message, originalIndex: idx } = entry;
+        const activationKey = renderKeys.get(message) ?? message.id ?? message.entryId ?? '';
         const timestampMs = message.timestampMs;
         const validTimestamp = typeof timestampMs === 'number' && Number.isFinite(timestampMs)
           && !Number.isNaN(new Date(timestampMs).getTime());
@@ -322,15 +324,15 @@ export function useChatTranscriptViewport({
           {presentation.firstUnreadMessageId && transcriptWindowMessageMatchesId(msg,presentation.firstUnreadMessageId,idx)?<div className="my-3 flex items-center gap-3 text-[11px] font-medium text-[color:var(--app-sidebar-accent)]"><span className="h-px flex-1 bg-current opacity-25"/>New replies<span className="h-px flex-1 bg-current opacity-25"/></div>:null}
           <div
             data-transcript-highlight-body="true"
-            className={msg.id && activeActivationIds.has(msg.id) ? 'app-transcript-activate-enter' : undefined}
-            onAnimationEnd={msg.id && activeActivationIds.has(msg.id) ? (event) => { if (event.target === event.currentTarget) handleActivationEnd(msg.id as string); } : undefined}
+            className={activeActivationIds.has(activationKey) ? 'app-transcript-activate-enter' : undefined}
+            onAnimationEnd={activeActivationIds.has(activationKey) ? (event) => { if (event.target === event.currentTarget) handleActivationEnd(activationKey); } : undefined}
           >
           {(msg.role === 'user' || msg.role === 'person') && [msg.id, msg.entryId, ...(msg.replyAliasIds ?? [])].some((id) => id && syncedQueuedIds.has(id)) ? (
             <QueuedMessageBubble
               message={{ id: msg.id ?? '', sessionId: sessionKey, text: msg.text, time: msg.time, attachments: msg.attachments ?? [] }}
               isCompressionActive={isCompressionActive}
               own={msg.role === 'user' || msg.isOwnMessage === true}
-              // The sent bubble's rule: a name only where it shows one, so becoming active changes no height.
+              // Your own bubble follows the sent bubble's name rule, so it keeps its height when it becomes active; other people keep their name.
               sender={queuedBubbleSenderLabel(msg, msg.role === 'user' || msg.isOwnMessage === true, densityMode, !pinBoundaries.after.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, groupingSeparators))}
               threadLayout={threadLayout}
               densityMode={densityMode}
