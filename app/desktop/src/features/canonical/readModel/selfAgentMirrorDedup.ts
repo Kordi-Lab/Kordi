@@ -142,13 +142,19 @@ export function selfAgentMirrorDuplicateIds(
     messages.flatMap((message) => message.sourceEventId ? [[message.sourceEventId, message] as const] : []),
   );
   const candidatesByKey = new Map<string, CanonicalSessionMessage[]>();
+  const forkSnapshotRequestsByWireId = new Map<string, CanonicalSessionMessage[]>();
   for (const message of messages) {
+    const transport = message.sourceTransport;
     if (
-      message.sourceTransport !== 'canonical-fork-snapshot'
-      && message.sourceTransport !== 'desktop-chat'
-      && message.sourceTransport !== 'desktop-chat-ui'
-      && message.sourceTransport !== 'cloud-self-agent'
+      transport !== 'canonical-fork-snapshot'
+      && transport !== 'desktop-chat'
+      && transport !== 'desktop-chat-ui'
+      && transport !== 'cloud-self-agent'
     ) continue;
+    if (transport === 'canonical-fork-snapshot' && message.senderRole === 'user') {
+      const wireId = stringValue(contentRecord(message.content).desktopEntryId)?.trim();
+      if (wireId) pushMapArray(forkSnapshotRequestsByWireId, `${message.sessionId}:${wireId}`, message);
+    }
     const key = selfAgentMirrorDuplicateKey(
       message,
       messageById,
@@ -348,6 +354,22 @@ export function selfAgentMirrorDuplicateIds(
       // Keep it visible even when legacy text matching preferred its raw echo.
       duplicateIds.delete(preferred.id);
       duplicateIds.add(message.id);
+    }
+  }
+  // A fork copies a request's local bubble and its Cloud echo, and both keep
+  // the request's wire id. Only the earliest copy shows.
+  for (const copies of forkSnapshotRequestsByWireId.values()) {
+    if (copies.length < 2) continue;
+    // The source chat shows the local bubble over its Cloud echo; so does the fork.
+    const isCloudEcho = (copy: CanonicalSessionMessage) => Number(copy.sourceEventId?.includes(':msg:cloud:self:') ?? false);
+    const ordered = [...copies].sort((left, right) => (
+      isCloudEcho(left) - isCloudEcho(right)
+      || left.sequenceNum - right.sequenceNum || left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id)
+    ));
+    const kept = ordered.find((copy) => !duplicateIds.has(copy.id));
+    if (!kept) continue;
+    for (const copy of ordered) {
+      if (copy.id !== kept.id) duplicateIds.add(copy.id);
     }
   }
   return duplicateIds;
