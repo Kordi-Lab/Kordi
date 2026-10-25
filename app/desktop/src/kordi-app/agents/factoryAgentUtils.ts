@@ -1,6 +1,7 @@
 import type { DesktopAgentBuilderDraft, DesktopAgentBuilderSeed, DesktopAgentBuilderStatus, DesktopChatMessageRoute } from '@/lib/desktop';
 import type { CloudAgentAccessScope, CreateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import type { CanonicalAvatarMutation } from '@/features/cloud/canonicalAvatar';
+import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
 import type { Agent } from '../types';
 import type { FactoryArtifactKind, FactoryLibraryArtifact } from './model';
 import type { ShapeAgentDraft } from './shapeAgentDraft';
@@ -76,6 +77,47 @@ export async function readyFactoryBuildForPublish(
   return tested;
 }
 
+/**
+ * Whether a Factory publish runs the model test. The default local agent never does; an existing
+ * Cloud Agent skips it when only its definition, access or avatar changed, because those do not
+ * depend on a provider credential. Prompt, capability and routing changes still test.
+ */
+export function factoryModelTestPolicy({ creating, agent, draftChanges, routingChanged }: {
+  creating: boolean;
+  agent?: Agent;
+  draftChanges: readonly unknown[];
+  routingChanged: boolean;
+}) {
+  const publishWithoutModelTest = Boolean(!creating && agent && !agent.cloudAgentId && usesDefaultLocalAgentSession(agent));
+  const skipModelTest = publishWithoutModelTest
+    || (!creating && Boolean(agent?.cloudAgentId) && draftChanges.length === 0 && !routingChanged);
+  return { publishWithoutModelTest, skipModelTest };
+}
+
+/** The draft status to publish: as it is when the model test is skipped, else tested first. */
+export async function factoryPublishStatus(
+  skipModelTest: boolean,
+  status: DesktopAgentBuilderStatus | null,
+  testDraft: () => Promise<DesktopAgentBuilderStatus | null>,
+) {
+  if (!skipModelTest) return readyFactoryBuildForPublish(status, testDraft);
+  if (!status) throw new Error('The Factory draft is unavailable.');
+  return status;
+}
+
+/** The definition fields a Cloud Agent's Factory draft starts from; changes are measured against them. */
+export function cloudAgentDraftDescription(agent?: Agent) {
+  return agent?.cloudAgentDescription ?? agent?.cloudAgentSourceSummary ?? agent?.role ?? '';
+}
+
+export function cloudAgentDraftSourceSummary(agent?: Agent) {
+  return agent?.cloudAgentSourceSummary ?? '';
+}
+
+export function cloudAgentDraftBoundaries(agent?: Agent) {
+  return agent?.cloudAgentBoundaries ?? [];
+}
+
 export function shapeDraftFromBuilder(draft: DesktopAgentBuilderDraft): ShapeAgentDraft {
   return {
     name: draft.name,
@@ -101,9 +143,9 @@ export function agentBuilderSeedForAgent(agent?: Agent): DesktopAgentBuilderSeed
   return {
     name: agent?.name ?? 'Agent',
     role: agent?.role ?? '',
-    description: agent?.cloudAgentDescription ?? agent?.cloudAgentSourceSummary ?? agent?.role ?? '',
-    sourceSummary: agent?.cloudAgentSourceSummary ?? '',
-    boundaries: agent?.cloudAgentBoundaries ?? [],
+    description: cloudAgentDraftDescription(agent),
+    sourceSummary: cloudAgentDraftSourceSummary(agent),
+    boundaries: cloudAgentDraftBoundaries(agent),
     systemPrompt: agent?.systemPrompt ?? '',
     access: agent?.cloudAgentAccessScope === 'participant_conversations' ? 'participant-conversations' : 'only-me',
     provider: agent?.defaultAuthProvider ?? null,

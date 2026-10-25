@@ -1,5 +1,6 @@
 import type { CloudAgentAccessScope, CloudAgentProactive, CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
-import { newCanonicalAvatarSeed, type CanonicalAvatarMutation } from '@/features/cloud/canonicalAvatar';
+import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
+import type { CanonicalAvatarMutation } from '@/features/cloud/canonicalAvatar';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
@@ -56,16 +57,30 @@ export function cloudAgentAvatarControls(
         },
       });
     },
-    onGenerate: async () => {
+    onPick: async (seed: string) => {
       await update(agent, {
         avatarMutation: {
           action: 'regenerate',
-          seed: newCanonicalAvatarSeed(),
+          seed,
           expectedVersion: agent.cloudAgentAvatarVersion,
         },
       });
     },
-    generateLabel: 'Random avatar',
+    currentSeed: agent.avatarSeed,
+  };
+}
+
+/** Avatar picker and upload for the inspected agent: Cloud Agents and the user's own default agent. */
+export function inspectionAvatarControls(
+  agent: Agent,
+  onUpdateCloudAgent?: AgentsPageProps['onUpdateCloudAgent'],
+  onUpdateLocalAgentAvatar?: AgentsPageProps['onUpdateLocalAgentAvatar'],
+) {
+  if (agent.cloudAgentId) return cloudAgentAvatarControls(agent, onUpdateCloudAgent);
+  if (!usesDefaultLocalAgentSession(agent) || !onUpdateLocalAgentAvatar) return {};
+  return {
+    onPick: async (seed: string) => { await onUpdateLocalAgentAvatar({ action: 'regenerate', seed }); },
+    onUpload: async (uploadedAsset: string) => { await onUpdateLocalAgentAvatar({ action: 'upload', uploadedAsset }); },
   };
 }
 
@@ -101,6 +116,8 @@ export type FactoryBuildRoute = {
   artifactKind: FactoryArtifactKind;
   artifactId: string | null;
   returnContext: FactoryReturnContext | null;
+  /** The route edits the user's own default agent, whose id can change when the agent list is rebuilt. */
+  defaultAgent?: true;
 };
 
 export type FactoryLibraryArtifact = {

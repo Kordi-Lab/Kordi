@@ -106,19 +106,28 @@
     grid-template-columns: 252px minmax(0, 1fr);
   }
 
+  /* One pane at a time behind the Chat / Blueprint switcher; each pane scrolls itself. */
+  .app-agent-studio-compact-switcher {
+    display: flex;
+  }
+
   .app-agent-studio-body {
     display: flex;
     flex-direction: column;
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: hidden;
   }
 
   .app-agent-studio-conversation,
   .app-agent-studio-workspace {
     position: relative;
     inset: auto;
-    flex: 0 0 auto;
-    min-height: 640px;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .app-agent-studio-body[data-compact-pane="chat"] .app-agent-studio-workspace,
+  .app-agent-studio-body[data-compact-pane="workspace"] .app-agent-studio-conversation {
+    display: none;
   }
 
   .app-agent-studio-conversation {

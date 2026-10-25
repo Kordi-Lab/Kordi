@@ -73,7 +73,7 @@ test('chat layout falls back to the generated seed for the owner agent in a grou
   assert.equal(message.senderOwnerName, 'You');
   const sources = await avatarSources('chat', message, 'group-compact');
   assert.equal(sources.length, 1);
-  assert.match(sources[0], /preview\/thumbs\/cloud_agent_baby\.png$/);
+  assert.match(sources[0], /preview\/kordi-birds\/cloud_agent_baby\.png$/);
 });
 
 test('chat layout keeps one-to-one agent replies without an avatar', async () => {
@@ -128,7 +128,7 @@ test('the owner agent avatar sits left of its header in both group paths', async
       const avatars = host.querySelectorAll('img');
       assert.equal(avatars.length, 1, `${msg.id} renders one avatar`);
       const avatar = avatars[0];
-      assert.match(avatar.getAttribute('src') ?? '', /preview\/thumbs\/cloud_agent_priya\.png$/);
+      assert.match(avatar.getAttribute('src') ?? '', /preview\/kordi-birds\/cloud_agent_priya\.png$/);
       const name = senderNameElement(host, msg.sender);
       assert.ok(name);
       assert.ok(avatar.compareDocumentPosition(name) & avatar.ownerDocument.defaultView!.Node.DOCUMENT_POSITION_FOLLOWING, `${msg.id} avatar comes before the header`);

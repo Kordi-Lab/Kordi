@@ -1,19 +1,22 @@
 import { useState } from 'react';
 import {
-  AGENT_CANONICAL_AVATAR_STYLE,
+  BIRD_CANONICAL_AVATAR_STYLE,
   generatedAvatarPreviewUrl,
-  newCanonicalAvatarSeed,
+  parseGeneratedAvatarMarker,
   type CanonicalAvatarMutation,
 } from '@/features/cloud/canonicalAvatar';
+import { randomBirdAvatarSeed, structuredBirdAvatarSeed } from '@/features/cloud/birdAvatars';
 
 type FactoryCreationAvatar = {
   imageUrl: string;
   mutation?: CanonicalAvatarMutation;
 };
 
-export function randomFactoryCreationAvatar(seed = newCanonicalAvatarSeed()): FactoryCreationAvatar | null {
-  const imageUrl = generatedAvatarPreviewUrl(AGENT_CANONICAL_AVATAR_STYLE, seed);
-  return imageUrl ? { imageUrl, mutation: { action: 'regenerate', seed } } : null;
+/** A bird avatar for a new or edited agent; any seed becomes the structured seed of the bird it renders as. */
+export function randomFactoryCreationAvatar(seed = randomBirdAvatarSeed()): FactoryCreationAvatar | null {
+  const birdSeed = structuredBirdAvatarSeed(seed);
+  const imageUrl = generatedAvatarPreviewUrl(BIRD_CANONICAL_AVATAR_STYLE, birdSeed);
+  return imageUrl ? { imageUrl, mutation: { action: 'regenerate', seed: birdSeed } } : null;
 }
 
 export function useFactoryCreationAvatar(draftId: string | null, existingImageUrl?: string | null) {
@@ -25,8 +28,9 @@ export function useFactoryCreationAvatar(draftId: string | null, existingImageUr
     imageUrl: uploadedAsset,
     mutation: { action: 'upload', uploadedAsset },
   });
-  const randomize = () => {
-    const avatar = randomFactoryCreationAvatar();
+  /** Picks the given bird seed, or a random bird without one. */
+  const randomize = (seed?: string) => {
+    const avatar = randomFactoryCreationAvatar(seed);
     if (avatar) setAvatar(avatar);
   };
   const clearAvatar = () => {
@@ -43,4 +47,17 @@ export function useFactoryCreationAvatar(draftId: string | null, existingImageUr
       : { imageUrl: existingImageUrl ?? '' })
     : null;
   return { imageUrl: avatar?.imageUrl ?? null, mutation: avatar?.mutation, upload, randomize, clearAvatar };
+}
+
+/** The generated seed behind a Factory avatar URL (marker, preview or render URL), else the fallback. */
+export function factoryAvatarSeed(imageUrl: string | null | undefined, fallbackSeed?: string | null) {
+  const value = imageUrl?.trim() ?? '';
+  const markerSeed = parseGeneratedAvatarMarker(value)?.seed;
+  if (markerSeed) return markerSeed;
+  const urlSeed = /\/v1\/avatars\/(?:[^/]+\/)?(?:kordi-birds|thumbs)\/([A-Za-z0-9_%-]+)\.png/u.exec(value)?.[1];
+  try {
+    return (urlSeed ? decodeURIComponent(urlSeed) : null) || fallbackSeed?.trim() || null;
+  } catch {
+    return fallbackSeed?.trim() || null;
+  }
 }

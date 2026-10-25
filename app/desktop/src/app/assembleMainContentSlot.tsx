@@ -222,6 +222,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
               expectedVersion: current.avatar.version,
             },
           });
+          await args.refreshDesktopChat().catch(() => undefined);
         },
         onSetAgentSkillEnabled: async (agent, skill, enabled) => {
           if (!usesDefaultLocalAgentSession(agent) && !agent.isCollaborationActive) {

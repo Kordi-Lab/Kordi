@@ -2,12 +2,14 @@ import { cloudApiBaseUrl } from './cloudApiEnvironment';
 
 export const CANONICAL_AVATAR_RENDERER_VERSION = 'dicebear-rust-10.6.0-styles-10.5.0';
 export const HUMAN_CANONICAL_AVATAR_STYLE = 'lorelei';
-export const AGENT_CANONICAL_AVATAR_STYLE = 'thumbs';
+export const LEGACY_AGENT_CANONICAL_AVATAR_STYLE = 'thumbs';
+export const BIRD_CANONICAL_AVATAR_STYLE = 'kordi-birds';
+export const AGENT_CANONICAL_AVATAR_STYLE = BIRD_CANONICAL_AVATAR_STYLE;
 export const CANONICAL_AVATAR_URL_PREFIX = 'kordi-avatar://';
 export const AVATAR_SOURCE_MAX_BYTES = 2 * 1024 * 1024;
 const UPLOADED_AVATAR_HOST = 'uploaded';
 
-export type CanonicalAvatarStyle = 'lorelei' | 'thumbs';
+export type CanonicalAvatarStyle = 'lorelei' | 'thumbs' | 'kordi-birds';
 export type CanonicalAvatarSource = 'generated' | 'uploaded';
 
 export type CanonicalAvatarDescriptor = {
@@ -41,7 +43,9 @@ export type UploadedAvatarMarker = {
 };
 
 function supportedStyle(value: string): value is CanonicalAvatarStyle {
-  return value === HUMAN_CANONICAL_AVATAR_STYLE || value === AGENT_CANONICAL_AVATAR_STYLE;
+  return value === HUMAN_CANONICAL_AVATAR_STYLE
+    || value === LEGACY_AGENT_CANONICAL_AVATAR_STYLE
+    || value === BIRD_CANONICAL_AVATAR_STYLE;
 }
 
 function validSeed(value: string) {

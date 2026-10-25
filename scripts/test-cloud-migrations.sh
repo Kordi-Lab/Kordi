@@ -75,7 +75,8 @@ tests=(
   common_ground_tests::upgrade_from_145_widens_profile_designs
   common_ground_daily_tests::upgrade_from_146_renames_daily_profiles
   common_ground_sources_tests::upgrade_from_146_adds_profile_sources
-  proactive_tests::upgrade_from_148_adds_proactive_agents
+  agent_avatar_tests::upgrade_from_148_accepts_bird_avatar_style
+  proactive_tests::upgrade_from_149_adds_proactive_agents
 )
 index=0
 for test_name in "${tests[@]}"; do
