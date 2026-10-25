@@ -1,5 +1,7 @@
 import { backfillLocalHistoryImages } from './cloudSelfAgentImageBackfill';
 import { linkPublishedSelfAgentRequest } from './cloudSelfAgentRequestEntryLink';
+import type { CanonicalSessionStateSetter } from './cloudGroupControlContext';
+import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import {
   useEffect,
   useRef,
@@ -82,6 +84,7 @@ export function useCloudSelfAgentForwardSync({
   mergeMessage,
   syncCloudCollaborationDiff,
   reportWarning,
+  setCanonicalState,
 }: {
   account: CloudAccount | null;
   canonicalState: CanonicalSessionState | null | undefined;
@@ -94,6 +97,8 @@ export function useCloudSelfAgentForwardSync({
   mergeMessage: (message: CloudMessage) => void;
   syncCloudCollaborationDiff: () => Promise<void>;
   reportWarning: (message: string, error: unknown) => void;
+  /** Applies a linked request in memory, so the transcript joins it with the Mac's turn without a reload. */
+  setCanonicalState?: CanonicalSessionStateSetter;
 }) {
   const syncFlightRef = useRef(createSingleFlightState());
   const followUpFlightRef = useRef(createSingleFlightState());
@@ -429,6 +434,9 @@ export function useCloudSelfAgentForwardSync({
               }
               if (!publishedSelfAgentRequestAlreadyExecutedLocally(operation)) {
                 void linkPublishedSelfAgentRequest(canonicalStateRef.current, operation.localMessageId, message.messageId)
+                  .then((linked) => {
+                    if (linked) setCanonicalState?.((current) => mergeCanonicalMessageRow(current, linked));
+                  })
                   .catch((error: unknown) => reportWarning('[cloud-self-agent-sync] request link failed', error));
               }
             },
@@ -476,6 +484,7 @@ export function useCloudSelfAgentForwardSync({
   }, [
     account,
     cancelledRef,
+    setCanonicalState,
     canonicalState,
     canonicalStateRef,
     client,
