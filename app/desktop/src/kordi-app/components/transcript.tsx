@@ -24,7 +24,7 @@ import {
 import { memo,useLayoutEffect,useRef,useState,type PointerEvent as ReactPointerEvent } from 'react';
 import type { EditFilePreview, Message, MessageAttachment, MessageSourceReference } from '../types';
 import { isSystemAvatarUrl } from '@/features/pip/pipIdentity';
-import { AgentHeaderMeta,AgentOwnerTag } from './AgentOwnerTag';
+import { AGENT_GROUP_NAME_CLASS,AgentHeaderMeta,AgentOwnerTag } from './AgentOwnerTag';
 import { IdentityAvatar,useLocalAgentAvatarSeed,useLocalProfileAvatarSeed,type IdentityAvatarKind } from './IdentityAvatar';
 import { ForwardedFromHeader } from './forwardedFromHeader';
 import { HumanMessageMarkdown } from './humanMessageMarkdown';
@@ -556,12 +556,12 @@ function MessageBubbleView({
           <span id={transcriptMessageDomId(msg.turn.id)} data-transcript-message-anchor="true" className="sr-only" aria-hidden="true" />
         ) : null}
         {threadLayout && !plainAgentResponse && (msg.sourceMessage ?? msg.turn.sourceMessage) ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage ?? msg.turn.sourceMessage} onNavigateToMessage={onNavigateToMessage} className="app-thread-quote-row" /> : null}
-        <div className={cn("flex max-w-full items-end gap-2", msg.turn.segments?.length ? "w-full" : "w-fit", threadLayout && "app-thread-message-main")}>
-          {threadLayout || groupChatAgentAvatar ? <IdentityAvatar kind="agent" seed={agentMessageAvatarSeed(msg, currentLocalAgentAvatarSeed)} name={msg.sender} imageUrl={msg.senderProfileImageUrl} className={cn("h-7 w-7 shrink-0", !threadLayout && "mb-0.5 border border-white/10")} /> : null}
+        <div className={cn("flex max-w-full gap-2", groupChatAgentAvatar ? "items-start" : "items-end", msg.turn.segments?.length ? "w-full" : "w-fit", threadLayout && "app-thread-message-main")}>
+          {threadLayout || groupChatAgentAvatar ? <IdentityAvatar kind="agent" seed={agentMessageAvatarSeed(msg, currentLocalAgentAvatarSeed)} name={msg.sender} imageUrl={msg.senderProfileImageUrl} className={cn("h-7 w-7 shrink-0", !threadLayout && "border border-white/10")} /> : null}
           <div className={cn("app-message-hover-time-trigger min-w-0 max-w-[58rem]", msg.turn.segments?.length ? "w-full" : "w-fit")}>
             <div className="flex min-h-[18px] w-full items-center gap-1.5">
               {threadLayout ? <ThreadMessageHeader msg={msg} name={msg.sender || "Agent"} ownerName={agentOwnerName} /> : null}
-              {!threadLayout ? <><div className="app-message-meta">{msg.sender}</div><AgentOwnerTag name={agentOwnerName} /></> : null}
+              {!threadLayout ? <><div className="app-message-meta"><span className={groupChatAgentAvatar ? AGENT_GROUP_NAME_CLASS : undefined}>{msg.sender}</span></div><AgentOwnerTag name={agentOwnerName} /></> : null}
               <AgentRequestHeaderStop
                 turn={msg.turn}
                 message={msg}
@@ -640,7 +640,7 @@ function MessageBubbleView({
   const standaloneEmojiItem = standaloneEmojiItemForMessage(msg, { isHuman: showCompactFooter, showsSender: showInlineHumanSender, footerDetail });
   const messageSurfaceContent = (
     <>
-      {threadLayout && (!isGroupedWithPrevious || msg.sourceMessage) ? <ThreadMessageHeader msg={msg} name={avatarName} ownerName={agentOwnerName} /> : null}
+      {threadLayout && (!isGroupedWithPrevious || msg.sourceMessage) ? <ThreadMessageHeader msg={msg} name={avatarName} ownerName={agentOwnerName} /> : null}{showHeaderMeta && groupChatAgentAvatar ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} highlightName className="mb-1 px-0" /> : null}
       {showInlineHumanSender ? (
         <div className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4" data-transcript-leading-decoration="true">{msg.sender}<PipSenderTag avatarUrl={msg.senderProfileImageUrl} /></div>
       ) : null}
@@ -740,11 +740,11 @@ function MessageBubbleView({
       data-message-layout={threadLayout ? 'threads' : undefined}
     >
       {threadLayout && msg.sourceMessage && !isForwardedMessage ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage} onNavigateToMessage={onNavigateToMessage} className="app-thread-quote-row" /> : null}
-      {showHeaderMeta && !threadLayout ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} className={showAvatarSlot ? 'pl-10' : undefined} /> : null}
+      {showHeaderMeta && !threadLayout && !groupChatAgentAvatar ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} /> : null}
       <div className={cn(
         'flex w-full max-w-full',
         threadLayout && 'app-thread-message-main',
-        hasOnlyBorderlessMediaAttachments ? 'items-start' : 'items-end',
+        hasOnlyBorderlessMediaAttachments || (isAgentMessage && groupChatAgentAvatar) ? 'items-start' : 'items-end',
         isAgentMessage ? 'w-fit max-w-full gap-2' : showAvatarSlot || selectionControl ? (useHumanCompactDensity ? 'gap-1.5' : 'gap-2') : 'gap-0',
         isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row',
       )}>
