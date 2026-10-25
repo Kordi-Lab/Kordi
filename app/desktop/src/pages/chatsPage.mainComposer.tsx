@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
-import { useComposerSendGate } from '@/features/chat/composerSendGate';
+import { useComposerRouteAccountGuard } from '@/features/chat/useRouteAccountFallback';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
 import {
@@ -140,11 +140,11 @@ export function MainComposer({
     && shouldUseCompactModelRouteMenu(conversation);
   const routeSelection = collaborationRouting.enabled && collaborationRouting.model
     ? collaborationRouting.model.selection : composerSelection;
-  const sendGate = useComposerSendGate({ paneKind: localRouting.paneKind, canConfigureModelRoute,
-    selection: routeSelection, providerOptions: composerProviderOptions });
-  const canSend = !sendGate.blocked;
+  const sendGate = useComposerRouteAccountGuard({ sessionId: conversation.id, enabled: !collaborationRouting.enabled,
+    paneKind: localRouting.paneKind, canConfigureModelRoute, selection: routeSelection, providerOptions: composerProviderOptions,
+    modelOptions: chatModelOptions ?? [], applyProviderChoice: (scope, option) => selectComposerProviderChoice(scope, option, localRouting.configTarget) });
   const onSend: MainComposerProps['onSend'] = (draftOverride, attachmentOverride) => (
-    canSend ? sendMessage(draftOverride, attachmentOverride) : undefined
+    !sendGate.blocked ? sendMessage(draftOverride, attachmentOverride) : undefined
   );
   const voice = useVoiceComposer({
     conversation,
@@ -485,7 +485,7 @@ export function MainComposer({
               </Button>
             ) : <VoiceComposerControls
               voice={voice}
-              hasSendableDraft={hasSendableDraft && canSend}
+              hasSendableDraft={hasSendableDraft && !sendGate.blocked}
               activeLiveTurnIsRunning={display.activeLiveTurnIsRunning}
               onSend={() => { void onSend(); }}
               stop={stop}

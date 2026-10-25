@@ -134,3 +134,28 @@ test('a new session without a provider on this Mac starts on a usable Kordi Clou
   }
   assert.equal(resolveDefaultCloudAgentRuntimeRoute(args), null, 'No usable account anywhere keeps the no-provider state');
 });
+
+test('default cloud agent route moves the model into the chosen account namespace', () => {
+  assert.deepEqual(resolveDefaultCloudAgentRuntimeRoute({
+    activeLoginProviderId: 'openai',
+    authOptions: [{
+      providerId: 'openai-codex', providerLabel: 'OpenAI', methodLabel: 'Saved account',
+      value: 'cloud-login:x', label: 'Work', active: false,
+    }],
+    chatModelOptions: [
+      { value: 'openai/gpt-6.1-sol', label: 'GPT-6.1 Sol' },
+      { value: 'openai-codex/gpt-6.1-sol', label: 'GPT-6.1 Sol' },
+    ],
+    desktopAuthState: authState([openAiProvider()]),
+    isNativeShell: true,
+    preferredModelValueForProvider: () => null,
+    resolveComposerProviderId: () => 'openai',
+    selectedModel: 'openai/gpt-6.1-sol',
+    selectedThinking: 'medium',
+  }), {
+    model: 'openai-codex/gpt-6.1-sol',
+    authProvider: 'openai-codex',
+    authChoice: 'cloud-login:x',
+    thinking: 'medium',
+  });
+});

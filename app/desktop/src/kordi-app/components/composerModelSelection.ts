@@ -274,9 +274,15 @@ export function resolveComposerRoutePick({
   if (!account) return null;
 
   const offered = composerModelsForProvider(account.providerId, modelOptions);
-  const model = offered.length === 0 || offered.some((option) => option.value === requestedModel)
+  const offeredModel = offered.length === 0 || offered.some((option) => option.value === requestedModel)
     ? requestedModel
     : (offered.find((option) => modelIdOf(option.value) === modelIdOf(requestedModel)) ?? offered[0]).value;
+  // An account runs only models in its own provider namespace.
+  const accountModel = `${account.providerId}/${modelIdOf(offeredModel)}`;
+  const model = offeredModel.includes('/') && !offeredModel.startsWith(`${account.providerId}/`)
+    && modelOptions.some((option) => option.value === accountModel)
+    ? accountModel
+    : offeredModel;
   const modelOption = modelOptions.find((option) => option.value === model);
   const thinking = pick.type === 'thinking'
     ? pick.value

@@ -28,6 +28,7 @@ import {
 import { resolveCloudAgentRuntimeRouteChange } from '@/features/cloud/cloudAgentRuntimeRouteChange';
 import { cloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { routeRunsOnKordiCloud, runtimeRoutesMatch } from '@/features/cloud/cloudAgentRuntimeRoute';
+import { routeWithAccountNamespace } from '@/features/cloud/routeAccountNamespace';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
 type CanonicalStore = ReturnType<
@@ -227,8 +228,8 @@ export function useCloudAgentRuntimeRouteSync({
   // state catches up, so a send right after a route change runs with it.
   const resolveChatRuntimeRoute = useCallback((sessionId?: string | null) => {
     const pending = freshPendingRuntimeRoute(pendingRoutesRef.current, cloudAgentRuntimeSessionId(accountId, sessionId), Date.now());
-    return pending ? compactCloudAgentRuntimeRoute(pending) : renderedChatRuntimeRoute(sessionId);
-  }, [accountId, renderedChatRuntimeRoute]);
+    return routeWithAccountNamespace(pending ? compactCloudAgentRuntimeRoute(pending) : renderedChatRuntimeRoute(sessionId), chatModelOptions);
+  }, [accountId, chatModelOptions, renderedChatRuntimeRoute]);
 
   const sendRuntimeRouteChangeMessage = useCallback(async ({
     sessionId,
@@ -411,7 +412,7 @@ export function useCloudAgentRuntimeRouteSync({
   ]);
 
   // The composer marks the active chat's hosted account and shows when it runs on Kordi Cloud.
-  const activeChatRoute = renderedChatRuntimeRoute(activeConversationId);
+  const activeChatRoute = routeWithAccountNamespace(renderedChatRuntimeRoute(activeConversationId), chatModelOptions);
   const activeChatRouteKey = JSON.stringify(activeChatRoute);
   useEffect(() => { setActiveChatRoute(JSON.parse(activeChatRouteKey) as DesktopChatMessageRoute | null); }, [activeChatRouteKey]);
 

@@ -39,6 +39,22 @@ export function portableCloudAgentAuthChoice(
   return null;
 }
 
+function modelForAccountNamespace(
+  model: string,
+  providerId: string,
+  chatModelOptions: ComposerModelOption[],
+  preferredModelValueForProvider: (providerId: string) => string | null,
+) {
+  const separator = model.indexOf('/');
+  if (!providerId || (separator > 0 ? model.slice(0, separator) : '') === providerId) return model;
+  const prefix = `${providerId}/`;
+  const qualified = `${prefix}${separator > 0 ? model.slice(separator + 1) : model}`;
+  if (chatModelOptions.some((option) => option.value === qualified)) return qualified;
+  const preferred = preferredModelValueForProvider(providerId);
+  if (preferred?.startsWith(prefix)) return preferred;
+  return chatModelOptions.find((option) => option.value.startsWith(prefix))?.value ?? model;
+}
+
 export function resolveDefaultCloudAgentRuntimeRoute({
   activeLoginProviderId,
   authOptions,
@@ -126,9 +142,14 @@ export function resolveDefaultCloudAgentRuntimeRoute({
   );
   const authOption =
     matchingAuthOptions.find((option) => option.active) ?? matchingAuthOptions[0] ?? null;
+  // The composer groups OpenAI and ChatGPT together, but an account runs only
+  // models in its own provider namespace.
+  const model = authOption
+    ? modelForAccountNamespace(routeModel, authOption.providerId, chatModelOptions, preferredModelValueForProvider)
+    : routeModel;
 
   return {
-    model: routeModel,
+    model,
     authProvider: authOption?.providerId ?? routeProviderId,
     authChoice: portableCloudAgentAuthChoice(
       authOption?.value,

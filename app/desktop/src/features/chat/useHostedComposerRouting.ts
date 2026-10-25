@@ -21,6 +21,16 @@ export type ComposerRouteChange = {
   choice?: { providerId: string; authChoice: string | null } | null;
 };
 
+/** Moves a model into the account's own namespace within the same provider family. */
+function modelInAccountFamily(model: string, providerId: string) {
+  const separator = model.indexOf('/');
+  if (separator <= 0) return model;
+  const namespace = model.slice(0, separator);
+  return namespace !== providerId && normalizeComposerProviderId(namespace) === normalizeComposerProviderId(providerId)
+    ? `${providerId}/${model.slice(separator + 1)}`
+    : model;
+}
+
 /**
  * Decides whether a composer change runs on Kordi Cloud. Choosing a hosted
  * account applies its route, as Start chat does; choosing a local account or a
@@ -46,7 +56,7 @@ export function composerRouteDecision(
       return route ? { route, leavesCloud: false } : null;
     }
     return (onCloud || context.pinLocalAccount) && change.model
-      ? { route: { model: change.model, authProvider: choice.providerId, authChoice: choice.authChoice, thinking: change.thinking }, leavesCloud: onCloud }
+      ? { route: { model: modelInAccountFamily(change.model, choice.providerId), authProvider: choice.providerId, authChoice: choice.authChoice, thinking: change.thinking }, leavesCloud: onCloud }
       : null;
   }
   if (!change.model) {
