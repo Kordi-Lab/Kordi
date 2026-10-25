@@ -23,6 +23,7 @@ import {
 } from '../src/kordi-app/agents/model';
 import type { Agent } from '../src/kordi-app/types';
 import { randomFactoryCreationAvatar } from '../src/kordi-app/agents/useFactoryCreationAvatar';
+import { parseBirdAvatarSeed } from '../src/features/cloud/birdAvatars';
 import type { DesktopAgentBuilderStatus, DesktopSkillLibraryEntry } from '../src/lib/desktop';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
@@ -104,8 +105,9 @@ test('new agent creation sends its avatar through the canonical Cloud mutation',
 
   const random = randomFactoryCreationAvatar();
   assert.equal(random?.mutation.action, 'regenerate');
-  assert.match(random?.imageUrl ?? '', /\/v1\/avatars\/preview\/thumbs\//);
-  assert.match(random?.mutation.seed ?? '', /^[A-Za-z0-9_-]+$/);
+  assert.match(random?.imageUrl ?? '', /\/v1\/avatars\/preview\/kordi-birds\/bird-/);
+  assert.ok(parseBirdAvatarSeed(random?.mutation.seed));
+  assert.equal(randomFactoryCreationAvatar('7bbaa257')?.mutation.seed, 'bird-penguin-color-mint');
 });
 
 test('publishing tests an untested draft once and continues only when it passes', async () => {
@@ -131,9 +133,9 @@ test('publishing tests an untested draft once and continues only when it passes'
 
 test('default Kordi profile changes publish without model credentials', () => {
   const source = readFileSync(new URL('../src/kordi-app/agents/AgentsPage.tsx', import.meta.url), 'utf8');
-  assert.match(source, /const publishWithoutModelTest = Boolean\(!creating[\s\S]*usesDefaultLocalAgentSession\(selectedAgent\)\)/);
-  assert.match(source, /publishWithoutModelTest \? builder\.status! : await readyFactoryBuildForPublish/);
-  assert.match(source, /if \(!publishWithoutModelTest\) await builder\.markPublished\(\)/);
+  assert.match(source, /const \{ publishWithoutModelTest, skipModelTest \} = factoryModelTestPolicy\(/);
+  assert.match(source, /await factoryPublishStatus\(skipModelTest, builder\.status, builder\.testDraft\)/);
+  assert.match(source, /if \(status\.publishReady && !publishWithoutModelTest\) await builder\.markPublished\(\)/);
 });
 
 test('local Kordi publication ignores stale file-only changes without blocking identity updates', () => {
@@ -216,10 +218,10 @@ test('new agent Blueprint exposes avatar and model setup behind one publish acti
   );
 
   assert.match(html, /aria-label="Upload agent avatar"/);
-  assert.match(html, /aria-label="Generate random agent avatar"/);
+  assert.match(html, /aria-label="Choose avatar"/);
   assert.match(html, /data-cloud-signup-avatar-upload="true"/);
-  assert.match(html, /data-cloud-signup-avatar-reroll="true"/);
-  assert.match(html, /lucide-dice-5/);
+  assert.doesNotMatch(html, /data-cloud-signup-avatar-reroll="true"/);
+  assert.match(html, /lucide-bird/);
   assert.match(html, /lucide-camera/);
   assert.ok(html.indexOf('data-cloud-signup-avatar-reroll') < html.indexOf('data-cloud-signup-avatar-upload'));
   assert.match(html, /flex h-12 w-7 shrink-0 flex-col overflow-hidden rounded-full/);
@@ -258,6 +260,10 @@ test('Agent inspection exposes published configuration and routes every change t
   assert.doesNotMatch(html, /Published files|No published/);
   assert.doesNotMatch(html, /textarea|contenteditable/);
   assert.equal(edits, 0);
+
+  const pageSource = readFileSync(new URL('../src/kordi-app/agents/AgentsPage.tsx', import.meta.url), 'utf8');
+  assert.match(pageSource, /onOpenAgent=\{\(agentId\) => \{ setFactorySection\('agents'\); onOpenAgent\(agentId\); \}\}/);
+  assert.match(pageSource, /<AgentStudioCompactBody initialPane=\{creating \? 'chat' : 'workspace'\}>/);
 });
 
 test('the collaboration-backed default Kordi exposes identity controls in Build', () => {
@@ -322,7 +328,7 @@ test('the collaboration-backed default Kordi exposes identity controls in Build'
   assert.match(html, /Only me/);
   assert.match(html, /aria-label="Edit name"/);
   assert.match(html, /aria-label="Upload agent avatar"/);
-  assert.match(html, /aria-label="Generate random agent avatar"/);
+  assert.match(html, /aria-label="Choose avatar"/);
   assert.ok(html.indexOf('>Name<') < html.indexOf('>Avatar<'));
   assert.ok(html.indexOf('>Avatar<') < html.indexOf('>Prompt<'));
   assert.match(html, /aria-label="Edit access"/);
@@ -413,14 +419,18 @@ test('Skill Library uses a balanced three-pane inspection layout and keeps Commu
   );
 });
 
-test('compact Factory layout stacks conversation and workspace without hiding either', () => {
+test('compact Factory layout shows one pane at a time behind the Chat / Blueprint switcher', () => {
   const css = readDesktopShellCss();
   const compactRule = css.match(/@container agents-page \(max-width: 1120px\) \{([\s\S]*?)\n\}/)?.[1] ?? '';
-  assert.match(compactRule, /\.app-agent-studio-body\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s);
-  assert.doesNotMatch(compactRule, /data-compact-pane[^}]*display:\s*none/);
+  assert.match(compactRule, /\.app-agent-studio-compact-switcher\s*\{\s*display:\s*flex;/);
+  assert.match(compactRule, /\.app-agent-studio-body\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*overflow:\s*hidden;/s);
+  assert.doesNotMatch(compactRule, /min-height:\s*640px/);
+  assert.match(compactRule, /\[data-compact-pane="chat"\] \.app-agent-studio-workspace,\s*\.app-agent-studio-body\[data-compact-pane="workspace"\] \.app-agent-studio-conversation\s*\{\s*display:\s*none;/);
+  assert.match(css, /\.app-agent-studio-compact-switcher\s*\{[^}]*display:\s*none;/);
 
   const pageSource = readFileSync(new URL('../src/kordi-app/agents/AgentsPage.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(pageSource, /Factory \/ Build \/ \{builder\.status\?\.sessionId/);
+  assert.match(pageSource, /<AgentStudioCompactBody initialPane=/);
   assert.match(pageSource, /Build session unavailable/);
   assert.match(pageSource, /Recover from published/);
 });

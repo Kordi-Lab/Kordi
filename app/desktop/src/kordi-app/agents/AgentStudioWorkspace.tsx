@@ -26,6 +26,7 @@ import type { Agent } from '../types';
 import { skillLibraryFileDisplay, visibleAgentStudioTabIds, type AgentEditHistoryEntry, type AgentSaveFeedback, type AgentStudioCapabilityKind, type AgentStudioConfigDraft, type AgentStudioTab, type FactoryArtifactKind, type PersistedAgentConfig } from './model';
 import type { ShapeAgentDraft } from './shapeAgentDraft';
 import { AgentStudioRoutingEditor } from './AgentStudioRoutingEditor';
+import { AgentStudioWorkspaceFooter } from './AgentStudioWorkspaceFooter';
 import { AgentStudioBlueprintView } from './AgentStudioBlueprintView';
 import { CLOUD_AGENT_TOOL_DESCRIPTIONS, type AgentModelRoutingDraft } from './factoryAgentUtils';
 
@@ -661,7 +662,7 @@ export function AgentStudioWorkspace({
   onCreationDraftChange: (draft: ShapeAgentDraft) => void;
   creationAvatarUrl?: string | null;
   onCreationAvatarUpload?: (avatar: string) => void;
-  onCreationAvatarRandomize?: () => void;
+  onCreationAvatarRandomize?: (seed?: string) => void;
   onCreationModelRoutingChange?: (values: AgentModelRoutingDraft) => Promise<void> | void;
   onToggleCapability: (kind: AgentStudioCapabilityKind, name: string, selected: boolean) => void;
   onAddCapability: (kind: AgentStudioCapabilityKind, name: string) => void;
@@ -824,12 +825,8 @@ export function AgentStudioWorkspace({
         ) : null}
       </div>
       </fieldset>
-      {builderStatus?.lifecycle !== 'published' && (changes.length > 0 || creating && creationDraft) ? (
-        <div className="app-agent-studio-workspace-footer">
-          <span>{standaloneBuild ? `${artifactKind[0]?.toUpperCase()}${artifactKind.slice(1)} draft` : creating ? 'New agent build' : `${changes.length} unpublished change${changes.length === 1 ? '' : 's'}`}</span>
-          <div className="flex gap-2"><button type="button" className="app-button-quiet app-agent-studio-button is-ghost is-small" onClick={onDiscard} disabled={publishing || draftMutationDisabled}>Discard</button><button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={onPublish} disabled={publishDisabled || publishing}>{builderTesting ? 'Testing…' : publishing ? 'Publishing…' : artifactKind === 'skill' ? 'Publish skill' : artifactKind === 'tool' ? 'Publish tool' : artifactKind === 'plugin' ? 'Publish plugin' : creating ? 'Publish agent' : 'Publish'}</button></div>
-        </div>
-      ) : null}
+      <AgentStudioWorkspaceFooter artifactKind={artifactKind} standaloneBuild={standaloneBuild} creating={creating} hasCreationDraft={Boolean(creationDraft)} hasAgent={Boolean(agent)} changeCount={changes.length} builderStatus={builderStatus}
+        builderTesting={builderTesting} publishing={publishing} publishDisabled={publishDisabled} draftMutationDisabled={draftMutationDisabled} onDiscard={onDiscard} onPublish={onPublish} />
     </section>
   );
 }
