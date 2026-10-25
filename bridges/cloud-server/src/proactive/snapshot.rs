@@ -9,6 +9,8 @@ use sqlx_postgres::PgPool;
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
+use crate::chat_sync::voice;
+
 /// Messages in one snapshot.
 pub(super) const SNAPSHOT_MESSAGES: i64 = 20;
 /// Characters kept from one message.
@@ -133,16 +135,21 @@ fn names_agent(message: &Value, agent_id: &str) -> bool {
 pub(super) fn decode(content: &Value, agent_id: &str, agent_name: &str) -> Decoded {
     let mut decoded = Decoded::default();
     let mut texts = Vec::new();
-    for block in content
-        .get("blocks")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
-    {
-        let Some(raw) = block.get("text").and_then(Value::as_str) else {
-            continue;
-        };
+    // A voice message's speech goes through the fail-closed voice rule, never
+    // the raw text block.
+    let guarded = voice::block(content).map(|_| voice::body_for_agent(content));
+    let raws: Vec<&str> = match &guarded {
+        Some(body) => vec![body.as_str()],
+        None => content
+            .get("blocks")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
+            .filter_map(|block| block.get("text").and_then(Value::as_str))
+            .collect(),
+    };
+    for raw in raws {
         let text = match envelope(raw) {
             Some((value, group)) => {
                 let message = if group { &value["message"] } else { &value };
@@ -431,10 +438,28 @@ mod tests {
     #[test]
     fn message_text_is_bounded() {
         let long = "y".repeat(MESSAGE_TEXT_LIMIT + 40);
-        let content = json!({"blocks": [{"type": "text", "text": long}, {"type": "voice"}]});
+        let content = json!({"blocks": [{"type": "text", "text": long}, {"type": "image"}]});
         let decoded = decode(&content, "a", "Scout");
         assert_eq!(decoded.text.chars().count(), MESSAGE_TEXT_LIMIT + 1);
         assert!(decoded.text.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn voice_messages_use_the_guarded_body() {
+        let pending = json!({"type": "voice", "mediaId": "audio-v1", "transcript": "",
+            "transcription": {"status": "pending", "sourceVersion": "audio-v1",
+                "engine": "apple-speech-v1", "attempts": 1}});
+        let content = json!({"blocks": [{"type": "text", "text": group_text(json!({
+            "id": "grp_voice", "text": "raw invented speech", "senderKind": "human"
+        }))}, pending]});
+        let decoded = decode(&content, "a", "Scout");
+        assert_eq!(decoded.id.as_deref(), Some("grp_voice"));
+        assert!(!decoded.text.contains("raw invented speech"));
+        assert!(decoded.text.contains("transcription pending"));
+        let plain = json!({"blocks": [{"type": "text", "text": "raw invented speech"}, pending]});
+        let decoded = decode(&plain, "a", "Scout");
+        assert!(!decoded.text.contains("raw invented speech"));
+        assert!(decoded.text.contains("transcription pending"));
     }
 
     #[test]

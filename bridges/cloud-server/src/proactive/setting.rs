@@ -105,20 +105,22 @@ pub async fn set_default(
 }
 
 /// Drops an archived definition's cursors and proposals, which have no
-/// foreign key to it. Called after [`stop_in_transaction`] committed, so
-/// the owner's devices already have the final `expired` hint.
-pub async fn forget(pool: &PgPool, agent_id: &str) -> Result<(), sqlx_core::Error> {
-    let mut transaction = pool.begin().await?;
+/// foreign key to it. Runs in the archive transaction after
+/// [`stop_in_transaction`], so both commit or roll back together.
+pub async fn forget_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
+    agent_id: &str,
+) -> Result<(), sqlx_core::Error> {
     for table in [
         "cloud_agent_proactive_state",
         "cloud_agent_proactive_proposals",
     ] {
         query(&format!("DELETE FROM {table} WHERE agent_id = $1"))
             .bind(agent_id)
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
     }
-    transaction.commit().await
+    Ok(())
 }
 
 #[cfg(test)]

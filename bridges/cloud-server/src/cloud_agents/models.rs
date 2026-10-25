@@ -64,7 +64,6 @@ pub struct SharedCloudAgentSummary {
     pub description: Option<String>,
     pub avatar_url: Option<String>,
     pub avatar: AvatarDescriptor,
-    pub proactive: ProactiveSetting,
     pub updated_at: String,
 }
 

@@ -12,6 +12,9 @@ use super::config::{ProactiveConfig, PROPOSAL_LIFETIME_HOURS};
 use super::output::{parse, Decision, Offer};
 use super::snapshot::trigger_message;
 
+/// Consecutive failures after which the failed messages are given up on.
+pub(super) const MAX_ATTEMPTS: i32 = 5;
+
 /// Retry schedule after a failed evaluation, by consecutive failures.
 pub(super) fn backoff_seconds(attempts: i32) -> i64 {
     match attempts.max(1) {
@@ -236,33 +239,67 @@ pub async fn fail(
     .fetch_optional(&mut *tx)
     .await?;
     if let Some((prompt,)) = failed {
-        let since = serde_json::from_str::<Value>(&prompt)
-            .ok()
+        let snapshot = serde_json::from_str::<Value>(&prompt).ok();
+        let since = snapshot
+            .as_ref()
             .and_then(|snapshot| snapshot["sinceSequence"].as_i64());
-        let attempts: Option<(i32,)> = query_as(
-            "SELECT attempts + 1 FROM cloud_agent_proactive_state WHERE active_run_id = $1",
+        let latest = snapshot.as_ref().and_then(latest_sequence);
+        let row: Option<(String, Uuid, i32)> = query_as(
+            "SELECT agent_id, conversation_id, attempts + 1
+             FROM cloud_agent_proactive_state WHERE active_run_id = $1",
         )
         .bind(run_id)
         .fetch_optional(&mut *tx)
         .await?;
-        let attempts = attempts.map(|(value,)| value).unwrap_or(1);
-        query(
-            "UPDATE cloud_agent_proactive_state
-             SET active_run_id = NULL, attempts = $2, last_error = $3,
-                 retry_after = now() + make_interval(secs => $4),
-                 seen_sequence = COALESCE(LEAST(seen_sequence, $5), seen_sequence),
-                 updated_at = now()
-             WHERE active_run_id = $1",
-        )
-        .bind(run_id)
-        .bind(attempts)
-        .bind(error_code)
-        .bind(backoff_seconds(attempts) as f64)
-        .bind(since)
-        .execute(&mut *tx)
-        .await?;
+        let attempts = row.as_ref().map(|row| row.2).unwrap_or(1);
+        if attempts >= MAX_ATTEMPTS {
+            // Give up on these messages: never evaluate them again.
+            if let Some((agent_id, conversation_id, _)) = &row {
+                eprintln!(
+                    "[proactive] Giving up on agent {agent_id} in {conversation_id} after {attempts} failed evaluations ({error_code})"
+                );
+            }
+            query(
+                "UPDATE cloud_agent_proactive_state
+                 SET active_run_id = NULL, attempts = 0, last_error = $2,
+                     retry_after = now(),
+                     seen_sequence = GREATEST(seen_sequence, COALESCE($3, seen_sequence)),
+                     updated_at = now()
+                 WHERE active_run_id = $1",
+            )
+            .bind(run_id)
+            .bind(error_code)
+            .bind(latest)
+            .execute(&mut *tx)
+            .await?;
+        } else {
+            query(
+                "UPDATE cloud_agent_proactive_state
+                 SET active_run_id = NULL, attempts = $2, last_error = $3,
+                     retry_after = now() + make_interval(secs => $4),
+                     seen_sequence = COALESCE(LEAST(seen_sequence, $5), seen_sequence),
+                     updated_at = now()
+                 WHERE active_run_id = $1",
+            )
+            .bind(run_id)
+            .bind(attempts)
+            .bind(error_code)
+            .bind(backoff_seconds(attempts) as f64)
+            .bind(since)
+            .execute(&mut *tx)
+            .await?;
+        }
     }
     tx.commit().await
+}
+
+/// The newest message sequence a snapshot saw.
+fn latest_sequence(snapshot: &Value) -> Option<i64> {
+    snapshot["messages"]
+        .as_array()?
+        .iter()
+        .filter_map(|message| message["sequence"].as_i64())
+        .max()
 }
 
 /// Frees conversations whose evaluation can no longer finish: it ended or
@@ -309,5 +346,12 @@ mod tests {
         assert_eq!(backoff_seconds(0), 60);
         assert_eq!(backoff_seconds(2), 300);
         assert_eq!(backoff_seconds(9), 43_200);
+    }
+
+    #[test]
+    fn the_latest_sequence_is_the_newest_snapshot_message() {
+        let snapshot = json!({"messages": [{"sequence": 4}, {"sequence": 9}, {"sequence": 7}]});
+        assert_eq!(latest_sequence(&snapshot), Some(9));
+        assert_eq!(latest_sequence(&json!({"messages": []})), None);
     }
 }

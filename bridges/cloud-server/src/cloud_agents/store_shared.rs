@@ -10,7 +10,6 @@ use crate::cloud_agents::models::{
     CLOUD_AGENT_STATUS_ACTIVE,
 };
 use crate::cloud_agents::store::CloudAgentStoreError;
-use crate::proactive::ProactiveSetting;
 
 pub async fn list_shared_agent_summaries(
     pool: &PgPool,
@@ -44,12 +43,11 @@ pub async fn list_shared_agent_summaries(
         String,
         i64,
         String,
-        serde_json::Value,
     );
     let rows = query_as::<_, SharedAgentRow>(
         "SELECT a.agent_id, a.owner_account_id, c.display_name, a.access_scope, a.name, a.role, a.description, a.updated_at,
              a.avatar_url, a.avatar_source, a.avatar_style, a.avatar_seed, a.avatar_renderer_version,
-             a.avatar_version, a.avatar_updated_at, a.proactive_json
+             a.avatar_version, a.avatar_updated_at
          FROM cloud_agent_definitions a
          LEFT JOIN cloud_accounts c ON c.account_id = a.owner_account_id
          WHERE a.owner_account_id = ANY($1)
@@ -90,7 +88,6 @@ pub async fn list_shared_agent_summaries(
                 description: row.6,
                 avatar_url: Some(avatar.image_url()),
                 avatar,
-                proactive: ProactiveSetting::from_stored(&row.15),
                 updated_at: row.7,
             }
         })

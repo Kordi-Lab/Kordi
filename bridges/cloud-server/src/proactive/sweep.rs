@@ -12,6 +12,7 @@ use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
 use super::agents::watchers_sql;
+use super::complete::{backoff_seconds, MAX_ATTEMPTS};
 use super::config::ProactiveConfig;
 use super::prefilter::worth_a_look;
 use super::prompt::evaluation_system_prompt;
@@ -174,11 +175,65 @@ pub async fn sweep(pool: &PgPool, config: &ProactiveConfig) -> Result<usize, sql
     seed(pool).await?;
     let mut queued = 0;
     for candidate in select(pool, config, SWEEP_BATCH).await? {
-        if consider(pool, &candidate).await? {
-            queued += 1;
+        match consider(pool, &candidate).await {
+            Ok(true) => queued += 1,
+            Ok(false) => {}
+            Err(error) => {
+                eprintln!(
+                    "[proactive] Evaluation of agent {} in {} failed before it queued: {error}",
+                    candidate.agent_id, candidate.conversation_id
+                );
+                if let Err(error) = defer(pool, &candidate).await {
+                    eprintln!("[proactive] Could not schedule the next look: {error}");
+                }
+            }
         }
     }
     Ok(queued)
+}
+
+/// Pushes back a candidate whose evaluation failed before it queued, under
+/// the same backoff and attempt cap as a failed evaluation run.
+pub(super) async fn defer(pool: &PgPool, candidate: &Candidate) -> Result<(), sqlx_core::Error> {
+    let attempts: Option<(i32,)> = query_as(
+        "SELECT attempts + 1 FROM cloud_agent_proactive_state
+         WHERE agent_id = $1 AND conversation_id = $2 AND active_run_id IS NULL",
+    )
+    .bind(&candidate.agent_id)
+    .bind(candidate.conversation_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some((attempts,)) = attempts else {
+        return Ok(());
+    };
+    let give_up = attempts >= MAX_ATTEMPTS;
+    if give_up {
+        eprintln!(
+            "[proactive] Giving up on agent {} in {} after {attempts} failed evaluations",
+            candidate.agent_id, candidate.conversation_id
+        );
+    }
+    query(
+        "UPDATE cloud_agent_proactive_state
+         SET attempts = CASE WHEN $3 THEN 0 ELSE $4 END,
+             seen_sequence = CASE WHEN $3 THEN GREATEST(seen_sequence, $5) ELSE seen_sequence END,
+             retry_after = now() + make_interval(secs => $6),
+             last_error = 'evaluation_setup_failed', updated_at = now()
+         WHERE agent_id = $1 AND conversation_id = $2 AND active_run_id IS NULL",
+    )
+    .bind(&candidate.agent_id)
+    .bind(candidate.conversation_id)
+    .bind(give_up)
+    .bind(attempts)
+    .bind(candidate.latest_sequence)
+    .bind(if give_up {
+        0.0
+    } else {
+        backoff_seconds(attempts) as f64
+    })
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 /// What happened to one candidate.

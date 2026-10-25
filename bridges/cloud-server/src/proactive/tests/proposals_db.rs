@@ -1,5 +1,6 @@
 //! `GET /v1/cloud/proactive/proposals`: the caller's offers across all of
-//! their agents, filtered by conversation, and lazy expiry on read.
+//! their agents, filtered by conversation; reads never write, the worker
+//! expires offers whose time ran out.
 
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
@@ -94,7 +95,7 @@ async fn the_cross_agent_list_shows_the_open_conversations_offers_to_the_owner_o
 }
 
 #[tokio::test]
-async fn reading_expires_offers_whose_time_ran_out_and_hints_it() {
+async fn the_worker_expires_offers_whose_time_ran_out_and_reads_never_write() {
     let Some(f) = fixture().await else { return };
     let (proposal_id, _) = offer(&f).await;
     query(
@@ -105,14 +106,20 @@ async fn reading_expires_offers_whose_time_ran_out_and_hints_it() {
     .execute(&f.pool)
     .await
     .unwrap();
-    let (status, body) = f
-        .send(
-            "GET",
-            &all_uri(&format!("?conversationId={}", f.group)),
-            &f.owner_token,
-            None,
-        )
-        .await;
+    let pending_uri = all_uri(&format!("?conversationId={}", f.group));
+    let (status, _) = f.send("GET", &pending_uri, &f.owner_token, None).await;
+    assert_eq!(status, 200);
+    let (stored,): (String,) =
+        query_as("SELECT status FROM cloud_agent_proactive_proposals WHERE proposal_id = $1")
+            .bind(&proposal_id)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(stored, "pending", "a read changes nothing");
+    assert_eq!(hints_for(&f, &f.owner, &proposal_id).await.len(), 1);
+
+    crate::proactive::sync_runs(&f.pool, None).await.unwrap();
+    let (status, body) = f.send("GET", &pending_uri, &f.owner_token, None).await;
     assert_eq!(status, 200);
     assert_eq!(body["proposals"].as_array().unwrap().len(), 0);
     let (stored,): (String,) =
@@ -128,8 +135,8 @@ async fn reading_expires_offers_whose_time_ran_out_and_hints_it() {
         .map(|hint| hint["status"].as_str().unwrap().to_string())
         .collect();
     assert_eq!(statuses, ["pending", "expired"]);
-    // A second read changes nothing and hints nothing.
-    f.send("GET", &all_uri(""), &f.owner_token, None).await;
+    // A second pass changes nothing and hints nothing.
+    crate::proactive::sync_runs(&f.pool, None).await.unwrap();
     assert_eq!(hints_for(&f, &f.owner, &proposal_id).await.len(), 2);
     assert_eq!(last_hint(&f, &proposal_id).await["status"], "expired");
     let (_, body) = f

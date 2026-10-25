@@ -134,23 +134,15 @@ pub(crate) async fn put_setting(
         }
         return current_setting(pool, &agent_id).await;
     }
-    let stored = match serde_json::from_value(json!({"proactive": setting.to_value()})) {
-        Ok(input) => {
-            crate::cloud_agents::store::update_agent_definition(
-                pool,
-                &session.account_id,
-                &agent_id,
-                input,
-                chrono::Utc::now(),
-            )
-            .await
-        }
-        Err(err) => Err(crate::cloud_agents::store::CloudAgentStoreError::Invalid(
-            err.to_string(),
-        )),
-    };
+    let stored = crate::cloud_agents::store::set_agent_proactive(
+        pool,
+        &session.account_id,
+        &agent_id,
+        setting,
+    )
+    .await;
     match stored {
-        Ok(Some(agent)) => Json(agent.proactive.to_value()).into_response(),
+        Ok(Some(setting)) => Json(setting.to_value()).into_response(),
         Ok(None) => not_found(),
         Err(err) => {
             eprintln!("[proactive] store setting: {err}");
@@ -266,8 +258,8 @@ pub(crate) struct ProposalsQuery {
 
 /// The caller's proposals with `params.status` (default `pending`), for one
 /// agent or, with `None`, every agent the caller owns: active definitions
-/// and the default agent. Pending proposals past their time are expired
-/// first, with their hints, so a pending list never shows them.
+/// and the default agent. Read-only: the proactive worker expires pending
+/// proposals past their time, with their hints.
 async fn proposals(
     pool: &PgPool,
     account: &str,
@@ -300,14 +292,6 @@ async fn proposals(
             }
         },
     };
-    let expired = async {
-        let mut tx = pool.begin().await?;
-        super::proposal::expire_due(&mut tx, Some(account)).await?;
-        tx.commit().await
-    };
-    if let Err(err) = expired.await {
-        return server_error("expire proposals", err);
-    }
     let sql = format!(
         "{PROPOSAL_SELECT} WHERE p.owner_account_id = $1 AND p.status = $2
            AND ($3::text IS NULL OR p.agent_id = $3)

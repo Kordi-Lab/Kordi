@@ -316,3 +316,48 @@ async fn failed_evaluations_back_off_and_retry_the_same_messages() {
             .unwrap();
     assert!(retry_later);
 }
+
+#[tokio::test]
+async fn evaluations_that_keep_failing_give_up_on_their_messages() {
+    let Some(f) = fixture().await else { return };
+    f.seed().await;
+    let (before, _, _) = f.state().await;
+    let attempts = || async {
+        let (attempts,): (i32,) =
+            query_as("SELECT attempts FROM cloud_agent_proactive_state WHERE agent_id = $1")
+                .bind(&f.agent_id)
+                .fetch_one(&f.pool)
+                .await
+                .unwrap();
+        attempts
+    };
+    for attempt in 1..crate::proactive::complete::MAX_ATTEMPTS {
+        let run_id = f.queue_evaluation().await;
+        crate::proactive::fail(&f.pool, &run_id, None, "model_provider_error")
+            .await
+            .unwrap();
+        assert_eq!(attempts().await, attempt);
+        assert_eq!(f.state().await.0, before, "retried from the same messages");
+        query("UPDATE cloud_agent_proactive_state SET retry_after = now() WHERE agent_id = $1")
+            .bind(&f.agent_id)
+            .execute(&f.pool)
+            .await
+            .unwrap();
+    }
+    let run_id = f.queue_evaluation().await;
+    crate::proactive::fail(&f.pool, &run_id, None, "model_provider_error")
+        .await
+        .unwrap();
+    let (seen, active, _) = f.state().await;
+    assert!(active.is_none());
+    assert_eq!(attempts().await, 0);
+    assert_eq!(
+        seen,
+        f.latest_sequence().await,
+        "the failed messages are done"
+    );
+    assert!(
+        f.candidate(&config()).await.is_none(),
+        "the same messages are never evaluated again"
+    );
+}

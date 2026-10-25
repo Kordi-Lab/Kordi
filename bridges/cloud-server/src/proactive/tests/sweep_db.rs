@@ -255,3 +255,37 @@ async fn the_daily_cap_and_disabled_agents_stop_selection() {
         .unwrap();
     assert!(f.candidate(&config()).await.is_none(), "a disabled agent");
 }
+
+#[tokio::test]
+async fn a_candidate_that_fails_before_it_queues_waits_and_stays_free() {
+    let Some(f) = fixture().await else { return };
+    f.seed().await;
+    let (before, _, _) = f.state().await;
+    say(
+        &f.pool,
+        &f.member,
+        f.group,
+        "Can anyone help with the deploy?",
+        5,
+    )
+    .await;
+    let candidate = f.candidate(&config()).await.expect("a candidate");
+    crate::proactive::sweep::defer(&f.pool, &candidate)
+        .await
+        .unwrap();
+    let (seen, active, _) = f.state().await;
+    assert!(active.is_none(), "nothing is reserved");
+    assert_eq!(seen, before, "the messages are kept for the retry");
+    let (attempts, later): (i32, bool) = query_as(
+        "SELECT attempts, retry_after > now() FROM cloud_agent_proactive_state WHERE agent_id = $1",
+    )
+    .bind(&f.agent_id)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!((attempts, later), (1, true));
+    assert!(
+        f.candidate(&config()).await.is_none(),
+        "not picked again on the next tick"
+    );
+}

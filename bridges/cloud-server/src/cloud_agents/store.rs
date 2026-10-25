@@ -240,6 +240,7 @@ pub async fn update_agent_definition(
         return Ok(None);
     }
     let was_shared = current.access_scope == CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS;
+    let was_proactive = current.proactive.enabled;
     if let Some(value) = input.proactive.as_ref() {
         current.proactive =
             ProactiveSetting::parse(value).map_err(CloudAgentStoreError::Invalid)?;
@@ -353,11 +354,64 @@ pub async fn update_agent_definition(
         &agent,
     )
     .await?;
-    if !agent.proactive.enabled {
+    if was_proactive && !agent.proactive.enabled {
         crate::proactive::setting::stop_in_transaction(&mut transaction, agent_id).await?;
     }
     transaction.commit().await?;
     Ok(Some(agent))
+}
+
+/// Stores only a definition's proactive setting. Turning it from on to off
+/// stops what it started; storing the current value changes nothing.
+pub async fn set_agent_proactive(
+    pool: &PgPool,
+    owner_account_id: &str,
+    agent_id: &str,
+    setting: ProactiveSetting,
+) -> Result<Option<ProactiveSetting>, CloudAgentStoreError> {
+    let mut transaction = pool.begin().await?;
+    let current: Option<(serde_json::Value,)> = query_as(
+        "SELECT proactive_json FROM cloud_agent_definitions
+         WHERE agent_id = $1 AND owner_account_id = $2 AND status = $3
+           AND is_system_managed = FALSE
+         FOR UPDATE",
+    )
+    .bind(agent_id)
+    .bind(owner_account_id)
+    .bind(CLOUD_AGENT_STATUS_ACTIVE)
+    .fetch_optional(&mut *transaction)
+    .await?;
+    let Some((current,)) = current else {
+        return Ok(None);
+    };
+    let was = ProactiveSetting::from_stored(&current);
+    if was == setting && current == setting.to_value() {
+        return Ok(Some(setting));
+    }
+    let row = query_as::<_, CloudAgentRow>(concat!(
+        "UPDATE cloud_agent_definitions SET proactive_json = $2
+         WHERE agent_id = $1 AND owner_account_id = $3 RETURNING ",
+        agent_columns!()
+    ))
+    .bind(agent_id)
+    .bind(setting.to_value())
+    .bind(owner_account_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    let agent = row_to_definition(row);
+    insert_agent_sync_event(
+        &mut transaction,
+        owner_account_id,
+        false,
+        "agent.definition.upserted",
+        &agent,
+    )
+    .await?;
+    if was.enabled && !setting.enabled {
+        crate::proactive::setting::stop_in_transaction(&mut transaction, agent_id).await?;
+    }
+    transaction.commit().await?;
+    Ok(Some(agent.proactive))
 }
 
 pub async fn archive_agent_definition(
@@ -394,8 +448,8 @@ pub async fn archive_agent_definition(
     )
     .await?;
     crate::proactive::setting::stop_in_transaction(&mut transaction, agent_id).await?;
+    crate::proactive::setting::forget_in_transaction(&mut transaction, agent_id).await?;
     transaction.commit().await?;
-    crate::proactive::setting::forget(pool, agent_id).await?;
     Ok(Some(agent))
 }
 
