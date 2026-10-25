@@ -106,6 +106,37 @@ function hostedRunRequestIds(state: CanonicalSessionState) {
   )));
 }
 
+/**
+ * Progress rows whose request already has a stored reply. That reply shows the
+ * run, whatever message is now the newest in the chat: a message queued while
+ * the agent works must not bring the run's progress row back beside it.
+ */
+function answeredHostedProgressIds(state: CanonicalSessionState): Set<string> {
+  const progress = state.messages.filter((message) => message.sourceTransport === HOSTED_PROGRESS_SOURCE);
+  if (progress.length === 0) return new Set();
+  const answeredWireIds = new Set<string>();
+  const answeredRequestIds = new Set<string>();
+  for (const message of state.messages) {
+    if (message.senderRole !== 'owned-agent' || message.sourceTransport === HOSTED_PROGRESS_SOURCE || message.sourceTransport === PENDING_SOURCE) continue;
+    const content = record(message.content);
+    const wireId = typeof content.cloudRequestMessageId === 'string' ? content.cloudRequestMessageId.trim() : '';
+    if (wireId) answeredWireIds.add(wireId);
+    for (const id of [message.parentMessageId, content.requestId, content.replyToMessageId]) {
+      if (typeof id === 'string' && id.trim()) answeredRequestIds.add(id.trim());
+    }
+  }
+  return new Set(progress.flatMap((row) => {
+    const content = record(row.content);
+    const wireId = typeof content.cloudRequestMessageId === 'string' ? content.cloudRequestMessageId.trim() : '';
+    const requestId = row.parentMessageId?.trim() ?? '';
+    return (wireId && answeredWireIds.has(wireId)) || (requestId && answeredRequestIds.has(requestId)) ? [row.id] : [];
+  }));
+}
+
+function withoutMessages(state: CanonicalSessionState, ids: ReadonlySet<string>): CanonicalSessionState {
+  return ids.size ? { ...state, messages: state.messages.filter((message) => !ids.has(message.id)) } : state;
+}
+
 /** When the newest waiting request's processing reply turns into its not-started notice. */
 export function nextPendingSelfAgentDeadlineMs(state: CanonicalSessionState | null, nowMs: number): number | null {
   if (!state) return null;
@@ -149,11 +180,12 @@ export function projectPendingSelfAgentReplies(
   local: { turns?: Readonly<Record<string, DesktopChatTurnSnapshot>>; cloudMessages?: readonly CloudMessage[] } = {},
 ): CanonicalSessionState | null {
   if (!state) return state;
+  const folded = answeredHostedProgressIds(state);
   const wireIdByClientId = new Map((local.cloudMessages ?? []).flatMap((message) => (
     message.clientMessageId ? [[message.clientMessageId, message.messageId] as const] : []
   )));
   const sessionIds = cloudSyncedLocalAgentSessionIds(state);
-  if (sessionIds.size === 0) return state;
+  if (sessionIds.size === 0) return withoutMessages(state, folded);
   const newestUserBySession = new Map<string, CanonicalSessionMessage>();
   for (const message of state.messages) {
     // A native transcript copy of the request is not a newer request.
@@ -163,7 +195,6 @@ export function projectPendingSelfAgentReplies(
   }
   const sessionById = new Map(state.sessions.map((session) => [session.id, session]));
   const pending: CanonicalSessionMessage[] = [];
-  const folded = new Set<string>();
   let linkedWireIds: ReadonlySet<string> | null = null;
   const localMessageIds = new Set(state.messages.map((message) => message.id));
   for (const request of newestUserBySession.values()) {
@@ -207,7 +238,6 @@ export function projectPendingSelfAgentReplies(
     };
     pending.push(localTurn && localTurn.sessionId === request.sessionId ? withLiveTurn(row, localTurn) : row);
   }
-  if (pending.length === 0 && folded.size === 0) return state;
-  const messages = folded.size ? state.messages.filter((message) => !folded.has(message.id)) : state.messages;
-  return { ...state, messages: [...messages, ...pending] };
+  const remaining = withoutMessages(state, folded);
+  return pending.length ? { ...remaining, messages: [...remaining.messages, ...pending] } : remaining;
 }

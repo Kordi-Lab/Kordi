@@ -201,3 +201,18 @@ test('a dispatched queued request folds the hosted progress row into its pending
   assert.deepEqual(rows.map((row) => row.id), [`msg:cloud:self:pending:${queuedRequestId}`]);
   assert.equal(agentRows(state, {}, []).length, 1);
 });
+
+test('a message queued while the agent works does not bring back the run progress row of the request before it', () => {
+  // A direct send whose stored reply and progress row exist, then a newer queued message.
+  const linked = { ...localRequest, content: { ...(localRequest.content as object), desktopEntryId: wireRequestId } } as CanonicalSessionMessage;
+  const stored = store({ ...baseState, messages: [linked] } as CanonicalSessionState, [placeholder]);
+  const directProgress = { ...progressRow, content: { ...(progressRow.content as object), requestId: linked.id, replyToMessageId: linked.id }, parentMessageId: linked.id } as CanonicalSessionMessage;
+  const newerQueued = {
+    ...queuedRequest, id: `queued-local-chat:${sessionId}:2`, createdAtMs: sentAtMs + 900, status: 'queued',
+    content: { ...(queuedRequest.content as object), queueState: 'queued', deliveryState: 'queued' },
+  } as CanonicalSessionMessage;
+  const state = { ...stored, messages: [...stored.messages, directProgress, newerQueued] };
+  const projected = projectPendingSelfAgentReplies(state, sentAtMs + 1_000, { cloudMessages: [placeholder] });
+  assert.equal(projected?.messages.some((message) => message.sourceTransport === 'cloud-self-agent-progress'), false);
+  assert.equal(projected?.messages.filter((message) => message.senderRole === 'owned-agent').length, 1);
+});
