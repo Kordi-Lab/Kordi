@@ -4,6 +4,7 @@ import SwiftUI
 
 /// Members as they arrive; Find common ground once two others are here.
 struct CommonGroundLobbyView: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: CommonGroundModel
     let code: String
     @Binding var path: [CommonGroundRoute]
@@ -18,10 +19,10 @@ struct CommonGroundLobbyView: View {
             } actions: {
                 CommonGroundActions(columns: 2) {
                     ShareLink(item: code) {
-                        SessionProfileActionLabel(title: "Share code", symbol: "square.and.arrow.up", tint: commonGroundTint, isSelected: false)
+                        SessionProfileActionLabel(title: "Share code", symbol: "square.and.arrow.up", tint: chatTheme.accent, isSelected: false)
                     }
                     .buttonStyle(.plain)
-                    SessionProfileActionButton(title: "Leave", symbol: "rectangle.portrait.and.arrow.right", tint: commonGroundTint) {
+                    SessionProfileActionButton(title: "Leave", symbol: "rectangle.portrait.and.arrow.right", tint: chatTheme.accent) {
                         Task {
                             await model.leaveRoom(code)
                             path = []

@@ -14,6 +14,7 @@ struct DocumentReaderScreen: View {
 /// The document reader (issue 1741): title, date pill, `@author` chip, the
 /// tab bar, and the blocks with their reactions and comments.
 struct DocumentReaderView: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: AppModel
     @StateObject private var reader: DocumentReaderModel
     @State private var tabs = DocumentTabs()
@@ -186,10 +187,10 @@ struct DocumentReaderView: View {
                     .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
                 Button("@\(document.author.displayName)") { showsPeopleCard = true }
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(KordiTheme.signalBlue)
+                    .foregroundStyle(chatTheme.accent)
                     .padding(.horizontal, 9)
                     .frame(minHeight: 26)
-                    .background(KordiTheme.signalBlue.opacity(0.1), in: Capsule())
+                    .background(chatTheme.accent.opacity(0.1), in: Capsule())
                     .buttonStyle(.plain)
                     .accessibilityHint("Shows the author")
             }

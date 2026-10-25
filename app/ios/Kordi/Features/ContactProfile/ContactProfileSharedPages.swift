@@ -220,6 +220,7 @@ struct ContactProfilePhotoTile: View {
 
 /// Document icon, file name, "size · date".
 struct ContactProfileFileRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let item: ContactProfileSharedAttachment
     let day: String
     let isLoading: Bool
@@ -234,9 +235,9 @@ struct ContactProfileFileRow: View {
             ContactProfileSharedRowLayout(title: item.attachment.name, caption: caption) {
                 Image(systemName: "doc")
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(KordiTheme.signalBlue)
+                    .foregroundStyle(chatTheme.accent)
                     .frame(width: ContactProfileSharedRowMetrics.leadSize, height: ContactProfileSharedRowMetrics.leadSize)
-                    .background(KordiTheme.signalBlue.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .background(chatTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             } trailing: {
                 if isLoading { ProgressView() }
             }
@@ -247,6 +248,7 @@ struct ContactProfileFileRow: View {
 
 /// Domain letter, link title or URL, domain, and the date on the right.
 struct ContactProfileLinkRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let link: ContactProfileSharedLink
     let day: String
     let action: () -> Void
@@ -257,7 +259,7 @@ struct ContactProfileLinkRow: View {
             ContactProfileSharedRowLayout(
                 title: link.title ?? fetchedTitle ?? link.displayURL,
                 caption: link.domain,
-                captionColor: KordiTheme.signalBlue
+                captionColor: chatTheme.accent
             ) {
                 Text(link.domain.prefix(1).uppercased())
                     .font(.system(size: 16, weight: .semibold))

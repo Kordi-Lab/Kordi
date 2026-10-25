@@ -163,6 +163,7 @@ enum ComposerTextExclusionLayout {
 }
 
 struct ComposerView: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -582,7 +583,7 @@ struct ComposerView: View {
             .frame(maxWidth: .infinity, minHeight: composerControlHeight)
             .background {
                 Capsule()
-                    .fill(KordiTheme.signalBlue.opacity(isVoicePressing ? 1 : 0))
+                    .fill(chatTheme.accent.opacity(isVoicePressing ? 1 : 0))
             }
             .padding(.trailing, sendButtonDiameter + 8)
             .scaleEffect(
@@ -916,7 +917,7 @@ struct ComposerView: View {
                 Circle()
                     .fill(
                         canSend && !isVoiceInputMode
-                            ? KordiTheme.signalBlue
+                            ? chatTheme.accent
                             : Color(uiColor: .tertiarySystemFill)
                     )
                 if isSending {
@@ -929,7 +930,7 @@ struct ComposerView: View {
                         .foregroundStyle(
                             canSend && !isVoiceInputMode
                                 ? .white
-                                : KordiTheme.signalBlue
+                                : chatTheme.accent
                         )
                 }
             }
@@ -1254,13 +1255,13 @@ struct ComposerView: View {
         HStack(spacing: 10) {
             Image(systemName: "pencil")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(KordiTheme.signalBlue)
+                .foregroundStyle(chatTheme.accent)
                 .frame(width: 16)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Edit message")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(KordiTheme.signalBlue)
+                    .foregroundStyle(chatTheme.accent)
                 BlobEmojiPreviewText(text: message.text)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1296,7 +1297,7 @@ struct ComposerView: View {
                                   : attachment.isMP4Video ? "play.rectangle.fill" : "doc.fill")
                                 .foregroundStyle(
                                     attachment.kind == .image || attachment.isMP4Video
-                                        ? KordiTheme.signalBlue
+                                        ? chatTheme.accent
                                         : .secondary
                                 )
                             VStack(alignment: .leading, spacing: 1) {
@@ -1313,12 +1314,12 @@ struct ComposerView: View {
                                 } label: {
                                     Text(attachment.subtype == .meme ? "Meme" : "Mark meme")
                                         .font(.caption2.weight(.semibold))
-                                        .foregroundStyle(attachment.subtype == .meme ? KordiTheme.signalBlue : .secondary)
+                                        .foregroundStyle(attachment.subtype == .meme ? chatTheme.accent : .secondary)
                                         .padding(.horizontal, 7)
                                         .frame(minHeight: 28)
                                         .background(
                                             attachment.subtype == .meme
-                                                ? KordiTheme.signalBlue.opacity(0.12)
+                                                ? chatTheme.accent.opacity(0.12)
                                                 : Color(uiColor: .tertiarySystemFill),
                                             in: Capsule()
                                         )
@@ -1371,7 +1372,7 @@ struct ComposerView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: photoGrouping == .combined ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(photoGrouping == .combined ? KordiTheme.signalBlue : .secondary)
+                            .foregroundStyle(photoGrouping == .combined ? chatTheme.accent : .secondary)
                         Text("Send photos as one grouped message")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.primary)
@@ -1555,6 +1556,7 @@ final class ComposerExpressiveInputView: UIInputView {
 }
 
 private struct ComposerDraftPane: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dismiss) private var dismiss
     let model: AppModel
     @Binding var text: String
@@ -1637,7 +1639,7 @@ private struct ComposerDraftPane: View {
         } label: {
             ZStack {
                 Circle()
-                    .fill(canSend ? KordiTheme.signalBlue : Color(uiColor: .tertiarySystemFill))
+                    .fill(canSend ? chatTheme.accent : Color(uiColor: .tertiarySystemFill))
                 if isSending {
                     ProgressView().tint(.white).controlSize(.small)
                 } else {

@@ -23,6 +23,7 @@ struct CommonGroundGroupDraft: Identifiable {
 /// Room results: the suggested group, people ranked by match, shared topics,
 /// and the groups started from this room. A closed room is read-only.
 struct CommonGroundResultsView: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: CommonGroundModel
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.commonGroundOpenConversation) private var openConversation
@@ -45,10 +46,10 @@ struct CommonGroundResultsView: View {
                 if !closed {
                     CommonGroundActions(columns: 2) {
                         ShareLink(item: code) {
-                            SessionProfileActionLabel(title: "Share code", symbol: "square.and.arrow.up", tint: commonGroundTint, isSelected: false)
+                            SessionProfileActionLabel(title: "Share code", symbol: "square.and.arrow.up", tint: chatTheme.accent, isSelected: false)
                         }
                         .buttonStyle(.plain)
-                        SessionProfileActionButton(title: "Leave", symbol: "rectangle.portrait.and.arrow.right", tint: commonGroundTint, action: leave)
+                        SessionProfileActionButton(title: "Leave", symbol: "rectangle.portrait.and.arrow.right", tint: chatTheme.accent, action: leave)
                     }
                 }
             }
@@ -264,6 +265,7 @@ struct CommonGroundResultsView: View {
 
 /// Name and members for a new group; the suggestion is preselected.
 struct CommonGroundStartGroupSheet: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: CommonGroundModel
     @Environment(\.dismiss) private var dismiss
     let people: [CommonGroundPerson]
@@ -324,7 +326,7 @@ struct CommonGroundStartGroupSheet: View {
                 Spacer(minLength: 8)
                 Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(isOn ? commonGroundTint : Color(uiColor: .tertiaryLabel))
+                    .foregroundStyle(isOn ? chatTheme.accent : Color(uiColor: .tertiaryLabel))
             }
             .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
             .padding(.vertical, 6)

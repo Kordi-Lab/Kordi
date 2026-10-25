@@ -256,6 +256,7 @@ struct DocumentCommentComposer: View {
 
 /// Comment text with `@Name` mentions of known people and the agent tinted.
 struct DocumentMentionText: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let text: String
     let names: [String]
 
@@ -269,7 +270,7 @@ struct DocumentMentionText: View {
         for name in names.sorted(by: { $0.count > $1.count }) {
             var searchStart = result.startIndex
             while let range = result[searchStart...].range(of: "@\(name)") {
-                result[range].foregroundColor = KordiTheme.signalBlue
+                result[range].foregroundColor = chatTheme.accent
                 result[range].font = .subheadline.weight(.semibold)
                 searchStart = range.upperBound
             }

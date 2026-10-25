@@ -3,6 +3,7 @@ import SwiftUI
 import UIKit
 
 struct ContactProfileTileLabel: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let title: String
     let systemImage: String
     @Environment(\.isEnabled) private var isEnabled
@@ -16,7 +17,7 @@ struct ContactProfileTileLabel: View {
                 .font(.caption.weight(.medium))
                 .lineLimit(1)
         }
-        .foregroundStyle(isEnabled ? KordiTheme.signalBlue : Color(uiColor: .tertiaryLabel))
+        .foregroundStyle(isEnabled ? chatTheme.accent : Color(uiColor: .tertiaryLabel))
         .frame(maxWidth: .infinity)
         .frame(height: ContactProfileMetrics.tileHeight)
         .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))

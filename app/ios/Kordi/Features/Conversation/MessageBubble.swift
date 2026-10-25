@@ -1259,7 +1259,7 @@ struct MessageBubble: View, Equatable {
         return switch message.author {
         case .me: chatTheme.ownAgentMention
         case .person: chatTheme.accent
-        case .agent: KordiTheme.agentMention
+        case .agent: chatTheme.accent
         }
     }
 
@@ -1269,8 +1269,8 @@ struct MessageBubble: View, Equatable {
     }
 
     private var bubbleAgentMentionColor: Color {
-        if isThreadLayout { return KordiTheme.agentMention }
-        return message.author == .me ? chatTheme.ownAgentMention : KordiTheme.agentMention
+        if isThreadLayout { return chatTheme.accent }
+        return message.author == .me ? chatTheme.ownAgentMention : chatTheme.accent
     }
 
     private var bubbleDeliveryColor: Color {
@@ -1512,6 +1512,7 @@ private struct BackgroundSessionThreadConnector: Shape {
 }
 
 struct BackgroundAgentSessionRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var model: AppModel
     @State private var snapshot: CloudAgentSubsession?
@@ -1538,7 +1539,7 @@ struct BackgroundAgentSessionRow: View {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(KordiTheme.signalBlue)
+                    .foregroundStyle(chatTheme.accent)
                     .frame(width: 20, height: 20)
                     .accessibilityHidden(true)
 
@@ -1558,7 +1559,7 @@ struct BackgroundAgentSessionRow: View {
                                 .accessibilityHidden(true)
                         }
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(KordiTheme.signalBlue)
+                        .foregroundStyle(chatTheme.accent)
                         .fixedSize()
                     }
 
@@ -1635,7 +1636,7 @@ struct BackgroundAgentSessionRow: View {
     private var statusColor: Color {
         if syncUnavailable || snapshot?.statusNotice != nil { return .secondary }
         return switch state {
-        case .running: KordiTheme.signalBlue
+        case .running: chatTheme.accent
         case .done: .green
         case .failed: .red
         case .stopped: .secondary
@@ -1697,6 +1698,7 @@ struct AgentExecutionActivityIndicator: View {
 }
 
 private struct ConversationCallActivityCard: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let message: ChatMessage
 
     private var activity: ChatCallActivity {
@@ -1741,7 +1743,7 @@ private struct ConversationCallActivityCard: View {
         HStack(spacing: 9) {
             Image(systemName: isVoiceCall ? "phone.fill" : "video.fill")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(activity.event == .ended ? Color.secondary : KordiTheme.signalBlue)
+                .foregroundStyle(activity.event == .ended ? Color.secondary : chatTheme.accent)
                 .frame(width: 20, height: 20)
                 .accessibilityHidden(true)
 

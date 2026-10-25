@@ -93,6 +93,7 @@ private struct AuthorProfileDestinationModifier: ViewModifier {
 /// One contact in the Contacts list: the row opens the chat, the avatar and a
 /// swipe open the profile.
 struct ContactsContactEntry: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let contact: CloudContact
     let conversation: ConversationSummary
     let onOpenConversation: ((ConversationSummary) -> Void)?
@@ -110,7 +111,7 @@ struct ContactsContactEntry: View {
         .contactsListRow()
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button("Profile", systemImage: "person.crop.circle", action: onOpenProfile)
-                .tint(KordiTheme.signalBlue)
+                .tint(chatTheme.accent)
         }
         .accessibilityAction(named: "Profile", onOpenProfile)
     }

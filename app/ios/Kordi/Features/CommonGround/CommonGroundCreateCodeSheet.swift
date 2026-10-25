@@ -3,6 +3,7 @@ import SwiftUI
 /// Create a code: a meetup name and the card to share, then the new
 /// four-digit code, large, with Enter room and Share this code.
 struct CommonGroundCreateCodeSheet: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: CommonGroundModel
     @Environment(\.dismiss) private var dismiss
     /// The card picked first: the shared one, or the card being turned over.
@@ -83,7 +84,7 @@ struct CommonGroundCreateCodeSheet: View {
                 .padding(3)
                 .overlay {
                     if isSelected {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(commonGroundTint, lineWidth: 2)
+                        RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(chatTheme.accent, lineWidth: 2)
                     }
                 }
                 .contentShape(Rectangle())
