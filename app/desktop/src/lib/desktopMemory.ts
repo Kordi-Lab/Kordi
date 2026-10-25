@@ -14,7 +14,7 @@ export type DesktopLocalMemory = {
   scope: 'global' | 'conversation' | 'group' | 'project';
   scopeId: string;
   scopeLabel: string | null;
-  source: 'user_correction' | 'repeated_failure' | 'outcome' | 'manual';
+  source: 'user_correction' | 'repeated_failure' | 'outcome' | 'manual' | 'import';
   text: string;
   createdAt: string;
   updatedAt: string;

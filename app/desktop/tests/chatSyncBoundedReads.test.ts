@@ -63,6 +63,8 @@ test('native group and self-agent recovery consume bounded message pages', () =>
 
 test('failed self-agent migrations back off before retrying', () => {
   const selfAgent = source('../src/features/cloud/useCloudSelfAgentForwardSync.ts');
-  assert.match(selfAgent, /CLOUD_SELF_AGENT_RECONCILE_RETRY_MS = 30_000/);
-  assert.match(selfAgent, /previousFailure\?\.accountId === account\.accountId/);
+  const backoff = source('../src/features/cloud/cloudSelfAgentReconcileBackoff.ts');
+  assert.match(backoff, /CLOUD_SELF_AGENT_RECONCILE_RETRY_MS = 30_000/);
+  assert.match(backoff, /failure\.accountId !== accountId/);
+  assert.match(selfAgent, /cloudSelfAgentReconcileBackoffHolds\(reconciliationFailureRef\.current, account\.accountId/);
 });

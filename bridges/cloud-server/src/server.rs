@@ -20,6 +20,8 @@ use crate::updates::store::{
     MinioReleaseStore, ReleaseCatalogStore, ReleaseStoreConfig, ReleaseStoreError,
 };
 
+mod workers;
+
 pub struct ServerState {
     pool: PgPool,
     events: EventBus,
@@ -427,21 +429,7 @@ pub async fn run(
         );
     }
     let state = Arc::new(state);
-    crate::chat_sync::realtime::spawn_wake_listener(
-        database_url.to_string(),
-        state.chat_sync_wakes().clone(),
-    );
-    crate::support::spawn_ticket_worker(state.clone());
-    crate::scheduled_tasks::worker::spawn_scheduled_task_worker(state.clone());
-    crate::digest::spawn(state.clone());
-    crate::pip::spawn(state.clone());
-    crate::plan_cards::projection::spawn(state.db_pool().clone());
-    crate::chat_sync::retention::spawn_retention_worker(state.db_pool().clone());
-    crate::cloud_agent_runtime::runs::terminal_backfill::spawn(state.db_pool().clone());
-    if let Some(notifications) = state.notifications() {
-        notifications.spawn_message_notification_worker(state.db_pool().clone());
-        notifications.spawn_calendar_worker(state.db_pool().clone());
-    }
+    workers::spawn_background_workers(&state, database_url);
     let sweeper_state = state.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(crate::presence::presence_sweep_interval());

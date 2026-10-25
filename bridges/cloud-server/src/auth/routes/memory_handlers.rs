@@ -52,6 +52,8 @@ pub(super) async fn save_memory(
                 "memoryId": memory.memory_id,
                 "scope": memory.scope,
                 "source": memory.source,
+                "category": memory.category,
+                "declarationType": memory.declaration_type,
             }),
         )
         .await;
@@ -65,20 +67,19 @@ pub(super) async fn update_memory(
     axum::extract::Path(memory_id): axum::extract::Path<String>,
     Json(input): Json<UpdateMemoryRequest>,
 ) -> Response {
-    match memory_store::update_text(
-        state.db_pool(),
-        &session.account_id,
-        &memory_id,
-        &input.text,
-    )
-    .await
+    match memory_store::update_memory(state.db_pool(), &session.account_id, &memory_id, &input)
+        .await
     {
         Ok(memory) => {
             audit(
                 &session,
                 &state,
                 "memory_updated",
-                serde_json::json!({ "memoryId": memory.memory_id }),
+                serde_json::json!({
+                    "memoryId": memory.memory_id,
+                    "category": memory.category,
+                    "declarationType": memory.declaration_type,
+                }),
             )
             .await;
             Json(MemoryEnvelope { memory }).into_response()

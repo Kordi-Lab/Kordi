@@ -4,6 +4,18 @@ use sqlx_postgres::PgRow;
 use crate::avatars::{descriptor_from_parts, StoredAvatar};
 use crate::cloud_agents::models::CloudAgentDefinition;
 
+/// Every column a [`CloudAgentRow`] reads, for `SELECT` and `RETURNING`.
+macro_rules! agent_columns {
+    () => {
+        "agent_id, owner_account_id, access_scope, status, name, role, description,
+             system_prompt, source_summary, boundaries_json, resources_json, skills_json,
+             model_routing_json, proactive_json, created_at, updated_at, archived_at, avatar_url,
+             avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version,
+             avatar_updated_at"
+    };
+}
+pub(super) use agent_columns;
+
 pub(super) struct CloudAgentRow {
     agent_id: String,
     owner_account_id: String,
@@ -18,6 +30,7 @@ pub(super) struct CloudAgentRow {
     resources_json: serde_json::Value,
     skills_json: serde_json::Value,
     model_routing_json: serde_json::Value,
+    proactive_json: serde_json::Value,
     created_at: String,
     updated_at: String,
     archived_at: Option<String>,
@@ -46,6 +59,7 @@ impl<'row> FromRow<'row, PgRow> for CloudAgentRow {
             resources_json: row.try_get("resources_json")?,
             skills_json: row.try_get("skills_json")?,
             model_routing_json: row.try_get("model_routing_json")?,
+            proactive_json: row.try_get("proactive_json")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
             archived_at: row.try_get("archived_at")?,
@@ -90,6 +104,7 @@ pub(super) fn row_to_definition(row: CloudAgentRow) -> CloudAgentDefinition {
         resources: serde_json::from_value(row.resources_json).unwrap_or_default(),
         skills: serde_json::from_value(row.skills_json).unwrap_or_default(),
         model_routing: row.model_routing_json,
+        proactive: crate::proactive::ProactiveSetting::from_stored(&row.proactive_json),
         created_at: row.created_at,
         updated_at: row.updated_at,
         archived_at: row.archived_at,

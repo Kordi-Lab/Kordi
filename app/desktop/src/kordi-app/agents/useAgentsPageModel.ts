@@ -49,6 +49,7 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
               loadedSkills: agentDrafts[agent.id]?.loadedSkills ?? persisted.loadedSkills,
               loadedTools: agentDrafts[agent.id]?.loadedTools ?? persisted.loadedTools,
               loadedPlugins: agentDrafts[agent.id]?.loadedPlugins ?? persisted.loadedPlugins,
+              proactive: agentDrafts[agent.id]?.proactive ?? persisted.proactive,
             },
           ];
         }),
@@ -193,6 +194,7 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
         loadedSkills: stored?.loadedSkills ?? persisted.loadedSkills,
         loadedTools: stored?.loadedTools ?? persisted.loadedTools,
         loadedPlugins: stored?.loadedPlugins ?? persisted.loadedPlugins,
+        proactive: stored?.proactive ?? persisted.proactive,
       };
       return {
         ...current,
@@ -220,6 +222,7 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
         loadedSkills: persisted.loadedSkills,
         loadedTools: persisted.loadedTools,
         loadedPlugins: persisted.loadedPlugins,
+        proactive: persisted.proactive,
       },
     }));
     setEditingSectionByAgentId((current) => ({ ...current, [agent.id]: null }));
@@ -427,6 +430,7 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
       })),
     updatePrompt: (agentId: string, value: string) => updateAgentDraft(agentId, (current) => ({ ...current, systemPrompt: value })),
     replaceAgentDraft,
+    setProactiveDraft: (agentId: string, enabled: boolean) => updateAgentDraft(agentId, (current) => ({ ...current, proactive: { enabled } })),
     updateActiveFileDraft,
     toggleSkill: (agentId: string, skill: string, selected: boolean) =>
       updateAgentDraft(agentId, (current) => ({

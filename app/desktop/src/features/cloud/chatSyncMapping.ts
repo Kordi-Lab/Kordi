@@ -388,7 +388,7 @@ export function cloudMessageFromChatSync(
     conversationId: conversation.id,
     conversationSequence: message.conversation_sequence,
     clientMessageId: message.client_message_id,
-    messageKind: isSystemAccountId(message.sender_account_id) ? KORDI_SYSTEM_NOTICE_KIND : message.kind,
+    messageKind: isBuiltInAccountId(message.sender_account_id) ? KORDI_SYSTEM_NOTICE_KIND : message.kind,
     canonicalHistoryLocalMessageId:
       canonicalHistory?.localMessageId ?? null,
     version: message.version,

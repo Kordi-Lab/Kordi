@@ -449,6 +449,7 @@ mod tests {
             source: "manual".to_string(),
             text: "Use pnpm.".to_string(),
             client_memory_id: Some("mem_abc".to_string()),
+            ..NewRemoteMemory::default()
         })
         .unwrap();
         assert_eq!(body["clientMemoryId"], "mem_abc");

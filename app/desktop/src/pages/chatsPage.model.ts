@@ -20,7 +20,7 @@ function participantIsSelf(participant: ConversationParticipant) {
   return participant.role === 'self' || (participant.source === 'local' && participant.kind === 'human');
 }
 
-export function conversationIsGroupChat(conversation: Conversation) {
+export function conversationIsGroupChat(conversation: Pick<Conversation, 'canonicalSessionId' | 'participantSpaceId' | 'directness'>) {
   return conversation.canonicalSessionId?.startsWith('session:group:') === true
     || conversation.participantSpaceId?.startsWith('group:') === true
     || /\bgroup\b/i.test(conversation.directness ?? '');

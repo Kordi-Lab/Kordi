@@ -3,7 +3,6 @@ import SwiftUI
 struct ThreadMessageHeader: View {
     let message: ChatMessage
     let authorName: String
-    let avatarSeed: String?
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -16,9 +15,6 @@ struct ThreadMessageHeader: View {
     private var author: some View {
         HStack(spacing: 5) {
             Text(authorName).font(.body.weight(.semibold))
-            if KordiPipIdentity.matches(name: authorName, seed: avatarSeed) {
-                Text(KordiPipIdentity.tag).font(.caption2.weight(.medium)).foregroundStyle(.secondary)
-            }
             if let ownerName = message.senderOwnerName?.nonEmpty {
                 Text("Owner · \(ownerName)").font(.caption2).foregroundStyle(.secondary)
             }

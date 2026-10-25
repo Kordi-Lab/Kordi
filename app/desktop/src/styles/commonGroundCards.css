@@ -88,7 +88,6 @@
 }
 .cg-swatch.is-empty { background: none; box-shadow: none; border: 1.5px dashed color-mix(in srgb, var(--c1) 70%, var(--app-divider)); }
 .cg-swatch.is-chip { width: 18px; height: 12px; border-radius: 3px; }
-.cg-swatch.is-join { width: 16px; height: 11px; border-radius: 3px; box-shadow: 0 0 0 1px rgb(255 255 255 / 0.6); }
 
 /* Rail tile, 176×110. */
 .cg-card.is-tile {

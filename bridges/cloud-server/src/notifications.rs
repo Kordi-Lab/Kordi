@@ -9,8 +9,11 @@ mod calendar;
 mod calls;
 #[path = "notifications_message.rs"]
 mod message;
+#[path = "notifications_proactive.rs"]
+mod proactive;
 
 pub(crate) use message::{is_agent_authored_message, is_frontend_visible_message};
+pub use proactive::ProactiveOfferPush;
 
 #[derive(Clone)]
 pub struct PushNotificationService {

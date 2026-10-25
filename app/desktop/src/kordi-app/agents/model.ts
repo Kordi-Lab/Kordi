@@ -1,4 +1,4 @@
-import type { CloudAgentAccessScope, CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
+import type { CloudAgentAccessScope, CloudAgentProactive, CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
 import type { CanonicalAvatarMutation } from '@/features/cloud/canonicalAvatar';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
@@ -92,6 +92,8 @@ export type AgentConfigDraft = {
 export type AgentStudioConfigDraft = AgentConfigDraft & {
   loadedTools: string[];
   loadedPlugins: string[];
+  /** Cloud agents only; kept in the stored draft like the other fields until publish. */
+  proactive?: CloudAgentProactive;
 };
 
 export type AgentStudioCapabilityKind = 'skill' | 'tool' | 'plugin';
@@ -206,6 +208,7 @@ export type AgentEditHistoryEntry = {
 export type PersistedAgentConfig = AgentConfigDraft & {
   loadedTools: string[];
   loadedPlugins: string[];
+  proactive?: CloudAgentProactive;
   editHistory: AgentEditHistoryEntry[];
 };
 
@@ -228,6 +231,16 @@ export function cloudAgentAccessDescription(scope: CloudAgentAccessScope | undef
     : 'Only you can use this agent. It stays synced privately to your Cloud account.';
 }
 
+export function cloudAgentProactiveLabel(enabled: boolean | undefined) {
+  return enabled ? 'On' : 'Off';
+}
+
+export function cloudAgentProactiveDescription(enabled: boolean | undefined) {
+  return enabled
+    ? 'Watches the groups you are in and asks you before it helps.'
+    : 'Does nothing on its own.';
+}
+
 export function buildAgentDraft(agent: Agent): AgentConfigDraft {
   return {
     systemPrompt: agent.systemPrompt,
@@ -240,7 +253,14 @@ export function buildAgentStudioDraft(agent: Agent): AgentStudioConfigDraft {
     ...buildAgentDraft(agent),
     loadedTools: agent.loadedTools,
     loadedPlugins: agent.loadedPlugins,
+    ...(agent.cloudAgentId ? { proactive: { enabled: agent.cloudAgentProactive?.enabled === true } } : {}),
   };
+}
+
+function storedProactive(value: unknown): CloudAgentProactive | undefined {
+  return value && typeof value === 'object' && typeof (value as { enabled?: unknown }).enabled === 'boolean'
+    ? { enabled: (value as { enabled: boolean }).enabled }
+    : undefined;
 }
 
 export function buildPersistedAgentConfig(agent: Agent): PersistedAgentConfig {
@@ -258,7 +278,7 @@ function sameStringList(left: string[], right: string[]) {
 }
 
 export function agentStudioConfigChanges(draft: AgentStudioConfigDraft, persisted: PersistedAgentConfig) {
-  const changes: Array<{ key: 'prompt' | 'skills' | 'tools' | 'plugins'; label: string; detail: string }> = [];
+  const changes: Array<{ key: 'prompt' | 'skills' | 'tools' | 'plugins' | 'proactive'; label: string; detail: string }> = [];
   if (draft.systemPrompt !== persisted.systemPrompt) {
     changes.push({ key: 'prompt', label: 'System prompt updated', detail: 'prompt' });
   }
@@ -270,6 +290,9 @@ export function agentStudioConfigChanges(draft: AgentStudioConfigDraft, persiste
   }
   if (!sameStringList(draft.loadedPlugins, persisted.loadedPlugins)) {
     changes.push({ key: 'plugins', label: 'Plugin selection updated', detail: `${draft.loadedPlugins.length} loaded` });
+  }
+  if (draft.proactive && draft.proactive.enabled !== (persisted.proactive?.enabled ?? false)) {
+    changes.push({ key: 'proactive', label: 'Proactive updated', detail: cloudAgentProactiveLabel(draft.proactive.enabled) });
   }
   return changes;
 }
@@ -322,6 +345,7 @@ export function buildUnavailableFilePreview(agent: Agent, file?: string | null) 
 export function parsePersistedAgentConfig(raw: string, agent: Agent): PersistedAgentConfig {
   try {
     const parsed = JSON.parse(raw) as Partial<PersistedAgentConfig> & { editHistory?: unknown };
+    const proactive = storedProactive(parsed.proactive) ?? buildAgentStudioDraft(agent).proactive;
     return {
       systemPrompt: typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : agent.systemPrompt,
       loadedSkills: Array.isArray(parsed.loadedSkills)
@@ -333,6 +357,7 @@ export function parsePersistedAgentConfig(raw: string, agent: Agent): PersistedA
       loadedPlugins: Array.isArray(parsed.loadedPlugins)
         ? parsed.loadedPlugins.filter((entry): entry is string => typeof entry === 'string')
         : agent.loadedPlugins,
+      ...(proactive ? { proactive } : {}),
       editHistory: Array.isArray(parsed.editHistory)
         ? parsed.editHistory.flatMap((entry) => {
             if (!entry || typeof entry !== 'object') return [];
@@ -370,6 +395,7 @@ export function readStoredAgentDrafts() {
           loadedPlugins: Array.isArray(draft.loadedPlugins)
             ? draft.loadedPlugins.filter((entry): entry is string => typeof entry === 'string')
             : undefined,
+          proactive: storedProactive(draft.proactive),
         },
       ]),
     );

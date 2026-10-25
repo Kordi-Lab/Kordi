@@ -19,7 +19,7 @@ A busy Mac retains its queue. Changing the model engine does not change the exis
 
 ## Packages and transport
 
-- `shared/omp-runtime` pins `@oh-my-pi/pi-coding-agent` and the matching catalog/native dependency family to `18.2.11`. It has a separate Bun 1.4.2 lockfile.
+- `shared/omp-runtime` pins `@oh-my-pi/pi-coding-agent` and the matching catalog/native dependency family to `18.12.6`. It has a separate Bun 1.4.2 lockfile.
 - `shared/rust/omp-runtime` supervises one JSONL worker per turn. Credentials travel through stdin, never process arguments or logs. Ambient provider credentials are not inherited.
 - The desktop adapter lives in `agent/crates/cli/src/omp_turn.rs`; the cloud adapter lives in `bridges/cloud-agent-runner/src/model_loop/omp.rs`.
 - A request freezes provider, model, account material, history, tools, and capability scope. Model fallback is disabled. Plugins cannot redirect the selected model.

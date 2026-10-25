@@ -129,6 +129,20 @@ export type CgOwnerView = {
   used?: string[];
   /** The profile this card belongs to; absent before profiles. */
   profile?: (CgProfileTag & { focus: string | null }) | null;
+  /** Memories filed to this profile since the card was built (`memoryVersion` 2). */
+  memoriesSinceBuild?: number;
+};
+
+/** A memory filed to a profile; `everyProfile` marks a schedule memory every fixed-kind profile lists. */
+export type CgRoutedMemory = {
+  memoryId: string;
+  text: string;
+  category: string | null;
+  updatedAt: string;
+  profileId: string | null;
+  /** The cards the memory feeds, in profile order (`memoryVersion` 3); empty from older servers. */
+  profileIds: string[];
+  everyProfile: boolean;
 };
 
 export type CgDeviceSource = 'calendar' | 'reminders';

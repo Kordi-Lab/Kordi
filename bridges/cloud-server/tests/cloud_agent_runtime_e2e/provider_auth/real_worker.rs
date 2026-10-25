@@ -16,9 +16,9 @@ use super::omp_worker::{lock_worker_env, WORKER_TOKEN_ENV, WORKER_URL_ENV};
 use super::*;
 
 const GROQ_KEY: &str = "synthetic-groq-key";
-/// Providers in the pinned OMP 18.2.11 catalog, plus the login-only Codex
+/// Providers in the pinned OMP 18.12.6 catalog, plus the login-only Codex
 /// device sign-in.
-const OMP_CATALOG_PROVIDERS: usize = 74;
+const OMP_CATALOG_PROVIDERS: usize = 80;
 
 /// Kills the worker when the test ends, including when an assertion fails.
 struct WorkerProcess(Child);
@@ -151,7 +151,7 @@ async fn provider_login_saves_a_groq_key_through_the_real_omp_worker() {
     .await;
     assert_eq!(status, StatusCode::ACCEPTED, "{started}");
     assert_eq!(started["status"], "awaiting-input");
-    // The key step carries OMP's own Groq policy text (null in OMP 18.2.11).
+    // The key step carries OMP's own Groq policy text (null in OMP 18.12.6).
     assert_eq!(
         started["step"],
         json!({

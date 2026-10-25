@@ -38,6 +38,7 @@ struct CommonGroundCardView: View {
                         let section = CommonGroundTopics.sections[index]
                         topicSection(section.title, section.key, topics: card.topics[keyPath: section.key])
                     }
+                    CommonGroundCardMemoriesSection()
                     if let profile, !profile.timeline.isEmpty || !profile.earlier.isEmpty {
                         CommonGroundTimeline(profile: profile, onOpen: open)
                     }
@@ -67,6 +68,7 @@ struct CommonGroundCardView: View {
                 .accessibilityLabel("Profile")
             }
         }
+        .task(id: model.currentProfileID) { await model.loadProfileMemories() }
         .commonGroundProfileEditor($editing) { path = [] }
         .sheet(item: $references) { topic in
             CommonGroundReferences(topic: topic.label, profile: profile)
@@ -93,7 +95,7 @@ struct CommonGroundCardView: View {
                 .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
                 .frame(minHeight: SessionDetailMetrics.rowMinHeight)
                 SessionDetailSeparator(leading: SessionDetailMetrics.rowHorizontalInset)
-                CommonGroundRow(title: "Rebuild card") { path.append(.build) }
+                CommonGroundRow(title: "Rebuild card", subtitle: model.memoriesSinceBuildCaption) { path.append(.build) }
             }
             CommonGroundSection {
                 Button(role: .destructive) { confirmsDelete = true } label: {

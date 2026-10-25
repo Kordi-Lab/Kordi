@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memory routing · Kordi proposal</title>
+<link rel="stylesheet" href="preview.css">
+</head>
+<body>
+<!-- Standalone design preview: category chips on memory rows and a Memories section on the Grounding card page. Synthetic data, no network calls, system fonts only. -->
+<main class="stage">
+  <section class="block" aria-labelledby="rows-title">
+    <h1 class="note" id="rows-title">Memory rows</h1>
+    <div class="pair">
+      <div class="mac-frame">
+        <div class="frame-label">Mac</div>
+        <div class="mac-pane" id="mac-rows"></div>
+      </div>
+      <div class="phone-frame">
+        <div class="frame-label">iPhone</div>
+        <div class="phone" id="ios-rows"></div>
+      </div>
+    </div>
+  </section>
+  <section class="block" aria-labelledby="card-title">
+    <h1 class="note" id="card-title">Grounding card page</h1>
+    <div class="pair">
+      <div class="mac-frame">
+        <div class="frame-label">Mac</div>
+        <div class="mac-pane is-card" id="mac-card"></div>
+      </div>
+      <div class="phone-frame">
+        <div class="frame-label">iPhone</div>
+        <div class="phone" id="ios-card"></div>
+      </div>
+    </div>
+  </section>
+</main>
+<script type="module" src="preview.js"></script>
+</body>
+</html>

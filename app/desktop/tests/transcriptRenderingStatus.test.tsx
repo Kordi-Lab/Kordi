@@ -13,7 +13,7 @@ test('transcript human avatars are large enough to read beside message bubbles',
   const avatarEnd = source.indexOf('data-message-context-menu-anchor', avatarStart);
   assert.ok(avatarStart >= 0 && avatarEnd > avatarStart, 'message avatar rendering block should be present');
   const avatarBlock = source.slice(avatarStart, avatarEnd);
-  const avatarSizeContract = /useHumanCompactDensity \? 'h-7 w-7' : 'h-8 w-8'/g;
+  const avatarSizeContract = /smallAvatar \? 'h-7 w-7' : 'h-8 w-8'/g;
 
   assert.ok((avatarBlock.match(avatarSizeContract) ?? []).length >= 2, 'both clickable and static message avatars should retain the readable size contract');
   assert.doesNotMatch(avatarBlock, /h-5\.5 w-5\.5/);

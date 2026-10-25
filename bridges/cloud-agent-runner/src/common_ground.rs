@@ -24,7 +24,7 @@ pub(crate) fn omp_thinking(thinking: &str) -> &str {
     }
 }
 
-struct NoTools;
+pub(crate) struct NoTools;
 
 #[async_trait::async_trait]
 impl kordi_omp_runtime::HostTool for NoTools {

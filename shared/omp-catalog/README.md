@@ -1,7 +1,7 @@
 # OMP provider catalog
 
 `omp-provider-catalog.json` is a pinned, checked-in snapshot of the oh-my-pi (OMP) provider
-catalog from `@oh-my-pi/pi-catalog@18.2.11`. It lists every provider OMP bundles, each with
+catalog from `@oh-my-pi/pi-catalog@18.12.6`. It lists every provider OMP bundles, each with
 its id, display name, default model, endpoint, auth method, login policy, text-model IDs, and
 per-model thinking efforts, so the desktop app, iOS app, and offline previews can load the full
 provider list without a backend or network call. It also lists login-only providers that OMP omits from its bundled

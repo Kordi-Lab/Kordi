@@ -37,7 +37,7 @@ export function BuildScreen({ state, store, host }: { state: CgState; store: Com
   const [titles, setTitles] = useState<CgDeviceTitles>({});
 
   const building = state.owner?.build.status === 'building' || state.busy === 'build';
-  if (building) return <CgProgress line="Your agent is writing your card" />;
+  if (building) return <CgProgress line="Building your card" />;
 
   const set = (patch: Partial<typeof picks>) => change((current) => ({ ...current, ...patch }));
   const choices: CgBuildChoices = {
@@ -74,7 +74,7 @@ export function BuildScreen({ state, store, host }: { state: CgState; store: Com
   return (
     <>
       {state.stack.length > 1 ? <CgBack onBack={() => store.back()} /> : null}
-      <CgHero avatar={<CgAvatar person={host.self} size={72} isSelf />} title={buildTitle(profile)} line={profile?.focus || 'Your agent writes it'} />
+      <CgHero avatar={<CgAvatar person={host.self} size={72} isSelf />} title={buildTitle(profile)} line={profile?.focus || undefined} />
       {memoryRow || documentsRow ? <CgSection title="Kordi"><CgGroup className="cg-docs-group">{memoryRow}{documentsRow}</CgGroup></CgSection> : null}
       <ConnectorsSection
         access={host.connectors}

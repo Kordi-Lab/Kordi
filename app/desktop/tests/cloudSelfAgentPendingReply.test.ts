@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  nextPendingSelfAgentDeadlineMs, pendingSelfAgentReplyId, projectPendingSelfAgentReplies,
+  nextPendingSelfAgentDeadlineMs, pendingSelfAgentNoticeRowId, pendingSelfAgentReplyId, projectPendingSelfAgentReplies,
   PENDING_SELF_AGENT_ATTACHMENT_START_TIMEOUT_MS, PENDING_SELF_AGENT_NOT_STARTED_TEXT, PENDING_SELF_AGENT_START_TIMEOUT_MS,
 } from '../src/features/cloud/cloudSelfAgentPendingReply';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
@@ -22,7 +22,7 @@ const state = (messages: CanonicalSessionMessage[]) => ({
   messages,
 }) as unknown as CanonicalSessionState;
 const pendingRow = (projected: CanonicalSessionState | null) => projected?.messages
-  .find((message) => message.id === pendingSelfAgentReplyId(request.id));
+  .find((message) => [pendingSelfAgentReplyId(request.id), pendingSelfAgentNoticeRowId(request.id)].includes(message.id));
 
 test('a sent hosted request shows a processing reply right away', () => {
   const row = pendingRow(projectPendingSelfAgentReplies(state([request]), 10_050));
@@ -92,6 +92,7 @@ test('a request that no run answers in time becomes an actionable failed reply',
   const late = pendingRow(projectPendingSelfAgentReplies(state([request]), request.createdAtMs + PENDING_SELF_AGENT_START_TIMEOUT_MS + 1));
   assert.equal(late?.status, 'failed');
   assert.equal((late?.content as Record<string, unknown>).error, PENDING_SELF_AGENT_NOT_STARTED_TEXT);
+  assert.equal(late?.id, pendingSelfAgentNoticeRowId(request.id), 'the notice never takes the id a live reply will use');
   const { mapCanonicalMessage } = await import('../src/features/canonical/readModel/messageMapping');
   const { agentRequestStopTarget } = await import('../src/features/chat/agentRequestStop');
   const identities = new Map([['agent:me', { id: 'agent:me', kind: 'agent', displayName: 'Agent', ownerIdentityId: 'human:me' }]]);

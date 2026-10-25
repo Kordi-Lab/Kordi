@@ -1,17 +1,23 @@
 import SwiftUI
 
 /// Home's Tap row (one to one) above the Pair code row: the "#" tile, four
-/// digit boxes typed through one number field, an inline error and the
-/// Create a code link. Tap stays enabled without a card: it opens the build.
+/// digit boxes typed through one number field, an inline error and a link
+/// under them: Create a code, or Enter pair room once four digits are typed.
+/// Tap stays enabled without a card: it opens the build.
 struct CommonGroundPairCodeRow: View {
     @Environment(\.kordiChatTheme) private var chatTheme
     @Binding var code: String
     var error: String?
     var enabled = true
     var onTap: (() -> Void)? = nil
-    let onComplete: (String) -> Void
+    let onEnter: (String) -> Void
     let onCreate: () -> Void
     @FocusState private var focused: Bool
+
+    /// The link under the boxes: a full code enters its room, otherwise Create a code.
+    static func linkTitle(for code: String) -> String {
+        code.count == 4 ? "Enter pair room" : "Create a code"
+    }
 
     private let titleInset: CGFloat = 58
     /// A code with no room only turns the boxes red; other errors keep their line.
@@ -70,9 +76,11 @@ struct CommonGroundPairCodeRow: View {
                     .padding(.top, -6)
             }
             SessionDetailSeparator(leading: titleInset - 16)
-            Button(action: onCreate) {
-                Text("Create a code")
-                    .font(.body)
+            Button {
+                if code.count == 4 { onEnter(code) } else { onCreate() }
+            } label: {
+                Text(Self.linkTitle(for: code))
+                    .font(code.count == 4 ? .body.weight(.semibold) : .body)
                     .foregroundStyle(chatTheme.accent)
                     .padding(.leading, titleInset)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -117,10 +125,8 @@ struct CommonGroundPairCodeRow: View {
         .onChange(of: code) { _, text in
             let clean = String(text.filter(\.isNumber).prefix(4))
             if clean != text { code = clean; return }
-            if clean.count == 4 {
-                focused = false
-                onComplete(clean)
-            }
+            // A full code puts the keyboard away so Enter pair room shows.
+            if clean.count == 4 { focused = false }
         }
     }
 }

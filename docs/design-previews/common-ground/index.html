@@ -1098,7 +1098,7 @@ const IOS = {
   },
   building() {
     const st = (i, label) => { const cls = S.build > i ? 'done' : S.build === i ? 'on' : ''; return `<div class="step ${cls}"><span class="st">${cls === 'done' ? ic('check') : ''}</span>${label}</div>`; };
-    return page({ back: false, mid: true, body: `<div class="centerbox"><div class="mark"><i></i><i></i><i></i></div><div class="steps">${st(0, 'Reading sources')}${st(1, 'Writing your card')}</div></div>` });
+    return page({ back: false, mid: true, body: `<div class="centerbox"><div class="mark"><i></i><i></i><i></i></div><div class="steps">${st(0, 'Reading sources')}${st(1, 'Building your card')}</div></div>` });
   },
   card() {
     return page({ body: `<div class="hero">${avatar('me', 92, 'lift')}<h1>Your card</h1><div class="line">${S.firstVisit ? "Remove anything you don't want to share." : 'Built by your agent'}</div></div>
@@ -1325,7 +1325,7 @@ const MAC_PHASE = {
   },
   building() {
     const st = (i, label) => { const cls = S.build > i ? 'done' : S.build === i ? 'on' : ''; return `<div class="step ${cls}"><span class="st">${cls === 'done' ? ic('check') : ''}</span>${label}</div>`; };
-    return `<div class="m-center"><div class="m-intro"><div class="mark"><i></i><i></i><i></i></div><div class="steps">${st(0, 'Reading sources')}${st(1, 'Writing your card')}</div></div></div>`;
+    return `<div class="m-center"><div class="m-intro"><div class="mark"><i></i><i></i><i></i></div><div class="steps">${st(0, 'Reading sources')}${st(1, 'Building your card')}</div></div></div>`;
   },
   page() {
     return `<div class="m-cols"><div class="m-col" id="mLeft">

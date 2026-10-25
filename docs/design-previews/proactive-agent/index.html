@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Proactive agent · Kordi proposal</title>
+<style>
+:root{
+  --font:-apple-system,"SF Pro Text",Inter,system-ui,sans-serif;
+  --page:#e9e9ee;--chrome:#fff;--chrome-text:#1c1c1e;--chrome-muted:rgba(60,60,67,.6);--chip:rgba(120,120,128,.12);
+  /* Mac dialog tokens (light): theme-palette.css + theme-shell-controls.css, hue 250 */
+  --m-canvas:oklch(95.5% .012 250);--m-rail:oklch(93.6% .015 250);--m-ink:rgb(15 23 42);--m-300:rgb(71 85 105);
+  --m-400:rgb(82 94 109);--m-500:rgb(73 83 97);--m-border:oklch(36% .025 250 / .15);--m-divider:oklch(36% .025 250 / .10);
+  --m-danger:rgb(190 18 60 / .18);--m-error:rgb(159 18 57);--m-accent:#365F98;--m-accent-ink:oklch(98% .005 250);
+  --m-selected:oklch(36% .025 250 / .08);--m-shadow:0 14px 36px rgb(0 0 0 / .16);
+  /* iOS tokens (light): X-style edit profile, Kordi iOS blue */
+  --i-page:#fff;--i-label:#000;--i-secondary:rgba(60,60,67,.6);--i-tertiary:rgba(60,60,67,.3);
+  --i-accent:#365F98;--i-red:#9F1239;--i-hair:rgba(0,0,0,.12);
+  --i-banner-a:oklch(91% .025 255);--i-banner-b:oklch(86% .035 260);--i-banner-edge:rgba(0,0,0,.12);
+  --i-cam:rgba(0,0,0,.4);--i-cam-ink:#fff;--i-av-a:#7d8ba3;--i-av-b:#55617a;
+  --i-bezel:#0b0b0c;--i-acc-ink:#fff;--i-bub:rgba(120,120,128,.16);--i-shadow:0 30px 70px rgba(0,0,0,.18),0 2px 6px rgba(0,0,0,.08);
+}
+:root[data-theme="dark"]{
+  --page:#141416;--chrome:#1c1c1e;--chrome-text:#f2f2f7;--chrome-muted:rgba(235,235,245,.6);--chip:rgba(120,120,128,.24);
+  --m-canvas:oklch(21.5% .018 250);--m-rail:oklch(19.5% .02 250);--m-ink:#fff;--m-300:#cbd5e1;--m-400:#94a3b8;--m-500:#64748b;
+  --m-border:oklch(85% .018 250 / .16);--m-divider:oklch(85% .018 250 / .10);--m-danger:rgb(251 113 133 / .24);--m-error:#fecdd3;
+  --m-accent:#AEC4E3;--m-accent-ink:oklch(22% .025 250);--m-selected:oklch(85% .018 250 / .09);--m-shadow:0 14px 36px rgb(0 0 0 / .28);
+  --i-page:#000;--i-label:#fff;--i-secondary:rgba(235,235,245,.6);--i-tertiary:rgba(235,235,245,.3);
+  --i-accent:#AEC4E3;--i-red:#FDA4AF;--i-hair:rgba(255,255,255,.18);
+  --i-banner-a:oklch(29% .03 255);--i-banner-b:oklch(23% .025 260);--i-banner-edge:rgba(255,255,255,.18);
+  --i-cam:rgba(0,0,0,.4);--i-cam-ink:#fff;--i-av-a:#7d8ba3;--i-av-b:#55617a;
+  --i-bezel:#2a2a2d;--i-acc-ink:#0b1b33;--i-bub:rgba(120,120,128,.28);--i-shadow:0 30px 70px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.4);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --page:#141416;--chrome:#1c1c1e;--chrome-text:#f2f2f7;--chrome-muted:rgba(235,235,245,.6);--chip:rgba(120,120,128,.24);
+  --m-canvas:oklch(21.5% .018 250);--m-rail:oklch(19.5% .02 250);--m-ink:#fff;--m-300:#cbd5e1;--m-400:#94a3b8;--m-500:#64748b;
+  --m-border:oklch(85% .018 250 / .16);--m-divider:oklch(85% .018 250 / .10);--m-danger:rgb(251 113 133 / .24);--m-error:#fecdd3;
+  --m-accent:#AEC4E3;--m-accent-ink:oklch(22% .025 250);--m-selected:oklch(85% .018 250 / .09);--m-shadow:0 14px 36px rgb(0 0 0 / .28);
+  --i-page:#000;--i-label:#fff;--i-secondary:rgba(235,235,245,.6);--i-tertiary:rgba(235,235,245,.3);
+  --i-accent:#AEC4E3;--i-red:#FDA4AF;--i-hair:rgba(255,255,255,.18);
+  --i-banner-a:oklch(29% .03 255);--i-banner-b:oklch(23% .025 260);--i-banner-edge:rgba(255,255,255,.18);
+  --i-cam:rgba(0,0,0,.4);--i-cam-ink:#fff;--i-av-a:#7d8ba3;--i-av-b:#55617a;
+  --i-bezel:#2a2a2d;--i-acc-ink:#0b1b33;--i-bub:rgba(120,120,128,.28);--i-shadow:0 30px 70px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.4);
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--chrome-text);font-family:var(--font);-webkit-font-smoothing:antialiased}
+.bar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:12px 18px;align-items:center;padding:12px 20px;background:var(--chrome);font-size:13px;color:var(--chrome-muted);border-bottom:1px solid var(--chip)}
+.bar strong{color:var(--chrome-text);font-weight:600}
+.seg{display:inline-flex;gap:2px;background:var(--chip);border-radius:8px;padding:2px;margin-left:6px}
+.seg button{font:inherit;font-size:12px;border:0;background:transparent;color:var(--chrome-text);padding:4px 10px;border-radius:6px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--chrome);box-shadow:0 1px 2px rgba(0,0,0,.18);font-weight:600}
+.seg button:disabled{opacity:.35;cursor:default}
+.stage{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start;padding:24px 20px 32px;overflow-x:auto}
+.cap{font-size:12px;font-weight:600;color:var(--chrome-muted);margin:0 0 8px 4px}
+svg{display:block;flex:none}
+button{font-family:inherit}
+/* shared chat tokens, set per device */
+.dlg,.phone{--bg:var(--m-canvas);--ink:var(--m-ink);--mut:var(--m-400);--hair:var(--m-divider);--brd:var(--m-border);--acc:var(--m-accent);--acc-ink:var(--m-accent-ink);--bub:var(--m-selected)}
+.phone{--bg:var(--i-page);--ink:var(--i-label);--mut:var(--i-secondary);--hair:var(--i-hair);--brd:var(--i-hair);--acc:var(--i-accent);--acc-ink:var(--i-acc-ink);--bub:var(--i-bub)}
+.dlg{width:900px;height:680px;max-width:calc(100vw - 40px);display:flex;flex-direction:column;border-radius:12px;overflow:hidden;background:var(--bg);color:var(--ink);box-shadow:var(--m-shadow);font-size:13px;position:relative}
+.phone{position:relative;width:413px;height:872px;border-radius:58px;border:10px solid var(--i-bezel);background:var(--bg);color:var(--ink);box-shadow:var(--i-shadow);overflow:hidden;flex:none;font-size:15px;display:flex;flex-direction:column}
+.sbar{height:54px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:6px 32px 0 44px;font-weight:600;font-size:17px}
+.sbar .gl{display:flex;gap:6px;align-items:center}
+.col{display:flex;flex-direction:column;min-width:0}
+.av{border-radius:50%;display:grid;place-items:center;font-weight:600;color:#fff;flex:none}
+.av.agent{background:var(--acc);color:var(--acc-ink)}
+.ph-banner{width:393px;margin-bottom:12px;padding:12px 14px;border-radius:22px;display:flex;gap:10px;background:var(--chrome);box-shadow:0 8px 24px rgba(0,0,0,.14);color:var(--chrome-text)}
+.ph-banner .ic{width:38px;height:38px;border-radius:9px;background:#365F98;color:#fff;display:grid;place-items:center;flex:none}
+.ph-banner b{font-size:15px}.ph-banner p{margin:1px 0 0;font-size:14px;line-height:19px}.ph-banner b+p{font-weight:600}.ph-banner p+p{font-weight:400;color:var(--chrome-muted)}
+/* ---- Blueprint ---- */
+.tabs{display:flex;gap:4px;padding:0 20px;height:48px;flex:none;align-items:flex-end;border-bottom:1px solid var(--hair);background:var(--bg)}
+.tab{display:flex;align-items:center;gap:7px;padding:0 12px;height:38px;color:var(--mut);border-bottom:2px solid transparent}
+.tab.on{color:var(--ink);font-weight:600;border-bottom-color:var(--acc)}
+.bp{flex:1;min-height:0;overflow:visible;position:relative;padding:0 24px}
+.brow{display:flex;align-items:center;min-height:54px;padding:8px 0;border-top:1px solid var(--hair)}
+.brow:first-child{border-top:0}
+.brow .k{width:200px;flex:none;display:flex;gap:10px;align-items:center;color:var(--ink);font-weight:500}
+.brow .k svg{color:var(--mut)}
+.brow .v{flex:1;min-width:0;line-height:19px}
+.brow .v b{display:block;font-weight:600}
+.brow .v span{display:block;color:var(--mut);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brow .pen{width:28px;height:28px;display:grid;place-items:center;color:var(--mut);border-radius:6px;flex:none}
+.brow .pen.act{background:var(--bub);color:var(--ink)}
+.bav{display:flex;align-items:center;gap:8px;flex:1}
+.bav .av{width:36px;height:36px;background:var(--acc);color:var(--acc-ink)}
+.mini{width:28px;height:28px;border-radius:50%;border:1px solid var(--brd);display:grid;place-items:center;color:var(--mut)}
+.pop{position:absolute;right:24px;top:100%;margin-top:-6px;width:340px;z-index:3;background:var(--bg);border:1px solid var(--brd);border-radius:10px;box-shadow:var(--m-shadow);padding:6px}
+.opt{display:flex;gap:10px;padding:8px 10px;border-radius:7px;line-height:19px}
+.opt.sel{background:var(--bub)}
+.opt .t{flex:1}.opt b{display:block;font-weight:600}.opt span{display:block;color:var(--mut);font-size:12px}
+.opt .ck{width:16px;color:var(--acc);padding-top:2px}
+.bfoot{position:absolute;left:0;right:0;bottom:0;height:84px;border-top:1px solid var(--hair);padding:0 24px;display:flex;align-items:center;gap:16px;background:var(--bg)}
+.bfoot .m{flex:1;line-height:19px}.bfoot b{display:block;font-weight:600}.bfoot .mu{color:var(--mut);font-size:12px}
+.upd{display:flex;gap:6px;align-items:center;color:var(--mut);font-size:12px}.upd svg{color:var(--acc)}
+.btn{height:32px;border-radius:8px;padding:0 14px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--brd);background:transparent;color:var(--ink)}
+.btn.pri{background:var(--acc);color:var(--acc-ink);border-color:transparent}
+/* ---- Chat ---- */
+.chead{height:56px;flex:none;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid var(--hair);font-weight:600;font-size:14px}
+.phone .chead{height:48px;justify-content:center;padding:0 16px;font-size:16px}
+.chat{flex:1;min-height:0;overflow:auto;padding:20px 24px;display:flex;flex-direction:column;gap:14px;scrollbar-width:none}
+.phone .chat{padding:14px 12px}
+.msg{display:flex;gap:10px;align-items:flex-start;max-width:640px}
+.phone .msg{max-width:100%}
+.msg.me{align-self:flex-end;flex-direction:row-reverse}
+.msg .col{gap:3px;min-width:0}
+.who{font-size:12px;font-weight:600;color:var(--mut)}
+.bub{padding:8px 12px;border-radius:14px;background:var(--bub);line-height:19px}
+.me .bub{background:var(--acc);color:var(--acc-ink)}
+.offer{border:1px solid var(--brd);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:9px;line-height:19px;width:100%}
+.offer .q{border-left:3px solid var(--acc);padding-left:10px;margin-left:4px}
+.offer .plan{color:var(--mut);font-size:12px;line-height:18px}
+.acts{display:flex;align-items:center;gap:8px;margin-top:2px;min-height:32px}
+.acts .mu{color:var(--mut);font-size:12px}.acts .sp{flex:1}
+.acts a{color:var(--acc);font-weight:600;text-decoration:none}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--hair);border-top-color:var(--acc);animation:sp .9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+.thread{margin-left:22px;padding-left:14px;border-left:2px solid var(--hair)}
+.phone .thread{margin-left:14px}
+.reply-cap{font-size:12px;color:var(--mut)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--brd);border-radius:8px;font-size:12px;align-self:flex-start}
+.comp{flex:none;display:flex;align-items:center;gap:8px;padding:12px 20px 16px}
+.phone .comp{padding:8px 12px 30px}
+.comp .f{flex:1;height:38px;border:1px solid var(--brd);border-radius:19px;padding:0 16px;display:flex;align-items:center;color:var(--mut)}
+.comp .s{width:34px;height:34px;border-radius:50%;background:var(--acc);color:var(--acc-ink);display:grid;place-items:center}
+@media (max-width:640px){.bar{padding:10px 16px}.stage{padding:16px}}
+</style>
+</head>
+<body>
+<div class="bar" id="bar">
+  <strong>Proactive agent</strong>
+  <label>Surface<span class="seg" data-key="surface"><button data-v="blueprint">Blueprint</button><button data-v="offer">Offer card</button><button data-v="group">Group reply</button></span></label>
+  <label>State<span class="seg" data-key="state" id="states"></span></label>
+  <label>Device<span class="seg" data-key="device"><button data-v="mac">Mac</button><button data-v="ios">iPhone</button></span></label>
+  <label>Theme<span class="seg" data-key="theme"><button data-v="light">Light</button><button data-v="dark">Dark</button></span></label>
+</div>
+<div class="stage" id="stage"></div>
+<script>
+const SURFACES={
+  blueprint:{states:[["off","Off"],["on","On"],["menu","Menu open"]],def:"on"},
+  offer:{states:[["pending","Pending"],["working","Working"],["done","Done"],["declined","Declined"],["expired","Expired"]],def:"pending"},
+  group:{states:[["reply","Reply"]],def:"reply"}
+};
+const DEFAULTS={surface:"blueprint",state:"on",device:"mac",theme:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"};
+const params=new URLSearchParams(location.search),state={};
+for(const k in DEFAULTS){const v=params.get(k);state[k]=v||DEFAULTS[k];}
+function normalize(){
+  if(!SURFACES[state.surface])state.surface=DEFAULTS.surface;
+  if(!SURFACES[state.surface].states.some(s=>s[0]===state.state))state.state=SURFACES[state.surface].def;
+  if(!["mac","ios"].includes(state.device))state.device="mac";
+  if(!["light","dark"].includes(state.theme))state.theme=DEFAULTS.theme;
+  if(state.surface==="blueprint")state.device="mac";
+}
+const svg=(d,s=16,w=1.7)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const I={
+  blueprint:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M9 9v11"/>',
+  caps:'<path d="M12 3l2.4 5.2 5.6.7-4.1 3.9 1 5.6L12 15.6 7.1 18.4l1-5.6L4 8.9l5.6-.7z"/>',
+  files:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
+  runs:'<path d="M7 4l12 8-12 8z"/>',
+  history:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
+  image:'<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>',
+  doc:'<path d="M6 3h8l4 4v14H6z"/><path d="M9 12h6M9 16h6"/>',
+  cpu:'<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+  bolt:'<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>',
+  tool:'<path d="M14.5 6.5a4 4 0 005 5L11 20a2.1 2.1 0 01-3-3z"/>',
+  lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>',
+  eye:'<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  pen:'<path d="M4 20l1-4L16.5 4.5a2 2 0 013 3L8 19z"/>',
+  dice:'<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r=".8" fill="currentColor"/><circle cx="15" cy="15" r=".8" fill="currentColor"/><circle cx="15" cy="9" r=".8" fill="currentColor"/><circle cx="9" cy="15" r=".8" fill="currentColor"/>',
+  camera:'<path d="M4 8.5A1.5 1.5 0 015.5 7h2.2l1.5-2h5.6l1.5 2h2.2A1.5 1.5 0 0120 8.5v9a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 17.5z"/><circle cx="12" cy="13" r="3.4"/>',
+  check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  send:'<path d="M12 19V6M6 11.5l6-6 6 6"/>',
+  clip:'<path d="M20 11l-8.5 8.5a5 5 0 01-7-7L13 4a3.3 3.3 0 014.7 4.7L9.2 17.2a1.7 1.7 0 01-2.4-2.4L14 7.6"/>'
+};
+const BIRD='<svg width="60%" height="60%" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2.5 15.5C6 15.5 8 14 9.2 11.6 10.4 8.8 12.8 7 15.8 7l3.2-2.6-.5 3.3 3 1.2-3.2 1.9c-.2 5.4-4.1 9.4-9.3 9.4-2.2 0-4.2-.9-5-3z"/><circle cx="16.6" cy="9.6" r=".9" fill="var(--acc)"/></svg>';
+const PEOPLE={Alex:"#4f7cac",Priya:"#b4566b",Mei:"#4d8a6a"};
+const person=(n,s)=>`<div class="av" style="width:${s}px;height:${s}px;font-size:${Math.round(s*.4)}px;background:${PEOPLE[n]}" aria-label="${n}">${n[0]}</div>`;
+const agent=s=>`<div class="av agent" style="width:${s}px;height:${s}px" aria-label="Alex's Kordi">${BIRD}</div>`;
+
+/* ---------- Blueprint (Mac) ---------- */
+function blueprint(){
+  const menu=state.state==="menu",on=state.state!=="off";
+  const tab=(ic,l,s)=>`<div class="tab${s?" on":""}">${svg(I[ic],15)}<span>${l}</span></div>`;
+  const row=(ic,k,v,d,extra="",pen=true)=>`<div class="brow"${extra}><div class="k">${svg(I[ic],17)}<span>${k}</span></div><div class="v"><b>${v}</b><span>${d}</span></div><span class="pen">${pen?svg(I.pen,15):""}</span></div>`;
+  const popt=(sel,t,d)=>`<div class="opt${sel?" sel":""}" role="menuitemradio" aria-checked="${sel}"><span class="ck">${sel?svg(I.check,16,2.2):""}</span><div class="t"><b>${t}</b><span>${d}</span></div></div>`;
+  const OFF="Does nothing on its own.",ON="Watches the groups you are in and asks you before it helps.";
+  const proactive=`<div class="brow" style="position:relative"><div class="k">${svg(I.eye,17)}<span>Proactive</span></div><div class="v"><b>${on?"On":"Off"}</b><span>${on?ON:OFF}</span></div><span class="pen${menu?" act":""}">${svg(I.pen,15)}</span>${menu?`<div class="pop" role="menu">${popt(false,"Off",OFF)}${popt(true,"On",ON)}</div>`:""}</div>`;
+  return `<div><div class="cap">Factory · Blueprint</div><div class="dlg" role="region" aria-label="Blueprint">
+    <div class="tabs">${tab("blueprint","Blueprint",1)}${tab("caps","Capabilities")}${tab("files","Files")}${tab("runs","Runs")}${tab("history","History")}</div>
+    <div class="bp">
+      ${row("user","Name","Alex's Kordi","Shown in chats, mentions, and replies.")}
+      <div class="brow"><div class="k">${svg(I.image,17)}<span>Avatar</span></div><div class="bav">${agent(36)}<span class="mini">${svg(I.dice,14)}</span><span class="mini">${svg(I.camera,14)}</span></div><span class="pen"></span></div>
+      ${row("doc","Prompt","Configured","You are Kordi, Alex's local Kordi agent. Use Kordi as you…")}
+      ${row("cpu","Model","openai-codex/gpt-6.1-sol","openai")}
+      ${row("bolt","Skills","24 loaded","pick-ui-library, animate, quieter, shape, organize, …")}
+      ${row("tool","Tools","19 selected","local_app, read, bash, edit, write, update_plan, task_operator, …")}
+      ${row("lock","Access","Only me","Only you can use this agent. It stays synced privately to your Cloud account.")}
+      ${proactive}
+      <div class="bfoot"><div class="m"><b>1 change ready to review</b><span class="mu">Validation passed. Nothing is live until you publish.</span></div>
+        <span class="upd">${svg(I.check,14,2.2)}Proactive updated</span>
+        <button class="btn">Discard</button><button class="btn pri">Publish</button></div>
+    </div></div></div>`;
+}
+
+/* ---------- Chat surfaces ---------- */
+const msg=(who,body,me)=>`<div class="msg${me?" me":""}">${me?"":(who==="agent"?agent(32):person(who,32))}<div class="col">${me?"":`<span class="who">${who==="agent"?"Alex's Kordi":who}</span>`}<div class="bub">${body}</div></div></div>`;
+function actions(){
+  const s=state.state;
+  if(s==="pending")return `<div class="acts"><span class="mu">Expires in 23 h</span><span class="sp"></span><button class="btn">Not now</button><button class="btn pri">Allow</button></div>`;
+  if(s==="working")return `<div class="acts"><span class="spin" role="status" aria-label="Working"></span><span class="mu">Working in Lab sync…</span></div>`;
+  if(s==="done")return `<div class="acts"><span class="mu">Replied in Lab sync</span><a href="#" onclick="return false">Open</a></div>`;
+  return `<div class="acts"><span class="mu">${s==="declined"?"Not now":"Expired"}</span></div>`;
+}
+function offerCard(){
+  return `<div class="msg">${agent(32)}<div class="col" style="flex:1"><span class="who">Alex's Kordi</span>
+  <div class="offer"><b>Alex's Kordi can help in Lab sync</b>
+    <div>Priya is stuck: the figure script fails on the new dataset.</div>
+    <div class="q">Priya, I can rerun the figure script on the new dataset and post the fixed plot.</div>
+    <div class="plan">Read the script and the error in the thread.<br>Run it on the new dataset, fix the loader, attach the output.</div>
+    ${actions()}</div></div></div>`;
+}
+function groupReply(){
+  return msg("Mei","Draft 2 is in the shared folder.")+msg("Priya","The figure script crashes on the new dataset, KeyError: 'timestamp'. Anyone seen this?")+
+  `<div class="thread"><div class="msg">${agent(32)}<div class="col"><span class="reply-cap">Replying to Priya</span><span class="who">Alex's Kordi</span>
+   <div class="bub">Priya, the new dataset names the column date instead of timestamp. I patched the loader to accept both and re-ran the script; the fixed figure is attached.</div>
+   <span class="chip">${svg(I.clip,13)}figure3.png</span></div></div></div>`;
+}
+function chatBody(){
+  if(state.surface==="group")return groupReply();
+  return msg("Alex","Can you summarise yesterday's lab meeting?",1)+msg("agent","Done, it is in the Lab notes doc.")+offerCard();
+}
+const composer=()=>`<div class="comp"><div class="f">${state.surface==="group"?"Message Lab sync":"Message Alex's Kordi"}</div><span class="s">${svg(I.send,18,2.2)}</span></div>`;
+const title=()=>state.surface==="group"?"Lab sync":"Alex's Kordi";
+function macChat(){
+  return `<div><div class="cap">${title()} · Mac</div><div class="dlg"><div class="chead">${state.surface==="group"?"":agent(28)}<span>${title()}</span></div><div class="chat">${chatBody()}</div>${composer()}</div></div>`;
+}
+function iosChat(){
+  const banner=state.surface==="offer"&&state.state==="pending"?`<div class="ph-banner"><div class="ic">${BIRD.replace('var(--acc)','#365F98')}</div><div><b>Kordi</b><p>Alex's Kordi can help in Lab sync</p><p>Priya is stuck on the figure script. Allow or decline in the app.</p></div></div>`:"";
+  return `<div>${banner}<div class="cap">${title()} · iPhone 393pt</div><div class="phone">
+    <div class="sbar"><span>9:41</span><span class="gl"><svg width="18" height="11" viewBox="0 0 18 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="6" rx="1"/><rect x="10" y="2.5" width="3" height="8.5" rx="1"/><rect x="15" y="0" width="3" height="11" rx="1"/></svg><svg width="26" height="12" viewBox="0 0 26 12"><rect x=".5" y=".5" width="22" height="11" rx="3" fill="none" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="17" height="8" rx="1.6" fill="currentColor"/><rect x="24" y="4" width="1.5" height="4" rx=".7" fill="currentColor" opacity=".4"/></svg></span></div>
+    <div class="chead">${title()}</div><div class="chat">${chatBody()}</div>${composer()}</div></div>`;
+}
+
+function render(){
+  normalize();
+  document.documentElement.dataset.theme=state.theme;
+  document.getElementById("states").innerHTML=SURFACES[state.surface].states.map(([v,l])=>`<button data-v="${v}">${l}</button>`).join("");
+  document.getElementById("stage").innerHTML=state.surface==="blueprint"?blueprint():state.device==="mac"?macChat():iosChat();
+  document.querySelectorAll(".seg").forEach(seg=>seg.querySelectorAll("button").forEach(b=>{
+    b.setAttribute("aria-pressed",String(state[seg.dataset.key]===b.dataset.v));
+    b.disabled=state.surface==="blueprint"&&seg.dataset.key==="device"&&b.dataset.v==="ios";
+  }));
+  const q=new URLSearchParams(state).toString();
+  if(location.search.slice(1)!==q)history.replaceState(null,"","?"+q);
+}
+document.getElementById("bar").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-v]");if(!b||b.disabled)return;
+  const k=b.parentElement.dataset.key;state[k]=b.dataset.v;
+  if(k==="surface")state.state=SURFACES[state.surface]?.def;
+  render();
+});
+render();
+</script>
+</body>
+</html>

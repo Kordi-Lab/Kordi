@@ -25,6 +25,7 @@ pub mod pg;
 pub mod pip;
 pub mod plan_cards;
 pub mod presence;
+pub mod proactive;
 pub mod projects;
 pub mod scheduled_tasks;
 pub mod server;

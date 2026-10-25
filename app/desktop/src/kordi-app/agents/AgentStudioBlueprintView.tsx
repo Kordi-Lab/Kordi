@@ -1,16 +1,22 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import { Bot, Check, FileCode2, LockKeyhole, Pencil, Puzzle, Settings2, Wrench, X } from 'lucide-react';
+import { useRef, useState, type ReactNode } from 'react';
+import { Bot, Check, FileCode2, LockKeyhole, Pencil, Puzzle, Radar, Settings2, Wrench, X } from 'lucide-react';
 import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
 import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
 import type { DesktopAgentBuilderStatus } from '@/lib/desktop';
-import { cn } from '@/lib/utils';
 import { CloudSignupAvatarPicker } from '../cloud/CloudSignupAvatarPicker';
 import type { Agent } from '../types';
-import { cloudAgentAccessDescription, cloudAgentAccessLabel, type AgentStudioConfigDraft } from './model';
+import { cloudAgentAccessDescription, cloudAgentAccessLabel, cloudAgentProactiveDescription, cloudAgentProactiveLabel, type AgentStudioConfigDraft } from './model';
+import { BlueprintMenuRow } from './BlueprintMenuRow';
 import type { ShapeAgentDraft } from './shapeAgentDraft';
 import { factoryAvatarSeed } from './useFactoryCreationAvatar';
 
 const noopAvatarAction = () => undefined;
+
+/** The Proactive row's value, how a change reaches the draft, and (for the default agent) where the Runs tab loads activity. */
+export type AgentProactiveControl = { enabled: boolean; onChange?: (enabled: boolean) => void; activity?: { agentId: string; enabled: boolean } };
+
+const ACCESS_OPTIONS = (['private', 'participant_conversations'] as const).map((scope) => ({ value: scope, label: cloudAgentAccessLabel(scope) }));
+const PROACTIVE_OPTIONS = (['off', 'on'] as const).map((value) => ({ value, label: cloudAgentProactiveLabel(value === 'on'), description: cloudAgentProactiveDescription(value === 'on') }));
 
 function BlueprintRow({ icon: Icon, label, value, detail, onEdit }: {
   icon: typeof Bot;
@@ -83,6 +89,7 @@ export function AgentStudioBlueprintView({
   changes,
   accessScope,
   onAccessScopeChange,
+  proactive,
   canEditPrompt,
   onPromptChange,
   onNameChange,
@@ -101,6 +108,7 @@ export function AgentStudioBlueprintView({
   changes: Array<{ key: string; label: string; detail: string }>;
   accessScope: CloudAgentAccessScope;
   onAccessScopeChange: (scope: CloudAgentAccessScope) => void;
+  proactive?: AgentProactiveControl;
   canEditPrompt: boolean;
   onPromptChange: (value: string) => void;
   onNameChange?: (value: string) => void;
@@ -114,9 +122,6 @@ export function AgentStudioBlueprintView({
 }) {
   const [promptEditorOpen, setPromptEditorOpen] = useState(false);
   const [nameEditorOpen, setNameEditorOpen] = useState(false);
-  const [accessMenuOpen, setAccessMenuOpen] = useState(false);
-  const accessControlRef = useRef<HTMLDivElement | null>(null);
-  const accessTriggerRef = useRef<HTMLButtonElement | null>(null);
   const prompt = creating ? creationDraft?.systemPrompt ?? '' : config?.systemPrompt ?? '';
   const name = creating ? creationDraft?.name ?? '' : builderStatus?.draft?.name ?? agent?.name ?? '';
   const canEditName = Boolean(onNameChange && (
@@ -134,35 +139,6 @@ export function AgentStudioBlueprintView({
   const skills = creating ? creationDraft?.skills.map((skill) => skill.name) ?? [] : config?.loadedSkills ?? [];
   const tools = creating ? builderStatus?.draft?.tools ?? [] : config?.loadedTools ?? [];
   const totalChanges = creating ? (creationDraft ? 1 : 0) : changes.length;
-
-  useEffect(() => {
-    if (!accessMenuOpen) return;
-    accessControlRef.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')?.focus();
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!accessControlRef.current?.contains(event.target as Node)) setAccessMenuOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      setAccessMenuOpen(false);
-      accessTriggerRef.current?.focus();
-    };
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [accessMenuOpen]);
-
-  const handleAccessMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    event.preventDefault();
-    const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'));
-    const currentIndex = options.indexOf(document.activeElement as HTMLButtonElement);
-    const direction = event.key === 'ArrowDown' ? 1 : -1;
-    options[currentIndex < 0 ? 0 : (currentIndex + direction + options.length) % options.length]?.focus();
-  };
 
   const shortPrompt = prompt.replace(/\s+/g, ' ').trim();
   return (
@@ -198,31 +174,10 @@ export function AgentStudioBlueprintView({
         />
         <BlueprintRow icon={Puzzle} label="Skills" value={`${skills.length} loaded`} detail={skills.join(', ') || 'No skills selected'} onEdit={onOpenCapabilities} />
         <BlueprintRow icon={Wrench} label="Tools" value={`${tools.length} selected`} detail={tools.join(', ') || 'No tools selected'} onEdit={onOpenCapabilities} />
-        <div className="app-agent-studio-blueprint-row">
-          <div className="app-agent-studio-blueprint-label"><LockKeyhole className="h-4 w-4" />Access</div>
-          <div className="min-w-0">
-            <div className="app-agent-studio-blueprint-value">{cloudAgentAccessLabel(accessScope)}</div>
-            <div className="app-agent-studio-blueprint-detail">{cloudAgentAccessDescription(accessScope)}</div>
-          </div>
-          {creating || agent ? (
-            <div className="app-agent-studio-access-control" ref={accessControlRef}>
-              <button ref={accessTriggerRef} type="button" className="app-button-quiet app-agent-studio-icon-button is-inline-edit app-agent-studio-access-edit" aria-label="Edit access" aria-haspopup="menu" aria-expanded={accessMenuOpen} onClick={() => setAccessMenuOpen((open) => !open)}><Pencil className="h-3.5 w-3.5" aria-hidden="true" /></button>
-              {accessMenuOpen ? (
-                <div className="app-agent-studio-access-menu" role="menu" aria-label="Agent access" onKeyDown={handleAccessMenuKeyDown}>
-                  {(['private', 'participant_conversations'] as const).map((scope) => {
-                    const selected = accessScope === scope;
-                    return (
-                      <button key={scope} type="button" role="menuitemradio" aria-checked={selected} className={cn(selected && 'is-selected')} onClick={() => { onAccessScopeChange(scope); setAccessMenuOpen(false); accessTriggerRef.current?.focus(); }}>
-                        <span className="app-agent-studio-access-menu-check" aria-hidden="true">{selected ? <Check className="h-3.5 w-3.5" /> : null}</span>
-                        <span>{cloudAgentAccessLabel(scope)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-          ) : <span />}
-        </div>
+        <BlueprintMenuRow icon={LockKeyhole} label="Access" menuLabel="Agent access" value={accessScope} detail={cloudAgentAccessDescription(accessScope)} options={ACCESS_OPTIONS} onSelect={creating || agent ? onAccessScopeChange : undefined} />
+        {proactive ? (
+          <BlueprintMenuRow icon={Radar} label="Proactive" menuLabel="Agent proactive" value={proactive.enabled ? 'on' : 'off'} detail={cloudAgentProactiveDescription(proactive.enabled)} options={PROACTIVE_OPTIONS} onSelect={proactive.onChange && (creating || agent) ? (value) => proactive.onChange?.(value === 'on') : undefined} />
+        ) : null}
         {totalChanges > 0 ? (
           <div className="app-agent-studio-draft-summary"><div>
             <strong>{creating ? 'Build ready to review' : `${totalChanges} change${totalChanges === 1 ? '' : 's'} ready to review`}</strong>

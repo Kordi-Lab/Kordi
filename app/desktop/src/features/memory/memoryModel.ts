@@ -1,5 +1,7 @@
+import type { MemoryCategory, MemoryConfidence, MemoryDeclarationType, MemoryProfileKind } from './memoryCategory';
+
 export type MemoryLessonScope = 'global' | 'conversation' | 'project' | 'group';
-export type MemoryLessonSource = 'user_correction' | 'repeated_failure' | 'outcome' | 'manual';
+export type MemoryLessonSource = 'user_correction' | 'repeated_failure' | 'outcome' | 'manual' | 'import';
 
 export type MemoryLesson = {
   lessonId: string;
@@ -13,6 +15,15 @@ export type MemoryLesson = {
   /** The account that saved the memory; absent for memories read from this Mac. */
   ownerAccountId?: string;
   ownerName?: string | null;
+  /** Routing fields from servers with categories; absent for memories read from this Mac. */
+  category?: MemoryCategory;
+  declarationType?: MemoryDeclarationType;
+  confidence?: MemoryConfidence | null;
+  profileId?: string | null;
+  profileKind?: MemoryProfileKind | null;
+  /** The Grounding cards the memory feeds, in profile order (`memoryVersion` 3). */
+  profileIds?: string[];
+  excludedProfileIds?: string[];
 };
 
 export type MemorySettings = { lessonsEnabled: boolean; excludeSensitive: boolean };
@@ -30,6 +41,7 @@ const sourceLabels: Record<MemoryLessonSource, string> = {
   repeated_failure: 'From a repeated failure',
   outcome: 'From an outcome',
   manual: 'Added by you',
+  import: 'Imported',
 };
 
 /** A memory someone typed names who added it; the others name where they came from. */
@@ -39,7 +51,22 @@ export function lessonSourceLabel(source: MemoryLessonSource, addedBy?: string |
   return name ? `Added by ${name}` : 'Added by you';
 }
 
-/** Account settings list only global memories; the rest show on each conversation's Memory tab. */
+/**
+ * The meta label of a memory row. The declaration type wins over the source: a memory the agent
+ * inferred reads "Saved by your agent" (or "Saved by <member>" for another member's agent), with its
+ * confidence, even when the agent passed source `manual`. Otherwise the source decides.
+ */
+export function lessonOriginLabel(
+  lesson: Pick<MemoryLesson, 'source' | 'ownerAccountId' | 'ownerName' | 'declarationType' | 'confidence'>,
+  viewerAccountId: string | null | undefined,
+): string {
+  const addedBy = memoryAddedBy(lesson, viewerAccountId);
+  if (lesson.declarationType !== 'model-inferred') return lessonSourceLabel(lesson.source, addedBy);
+  const who = isOwnMemory(lesson, viewerAccountId) ? 'your agent' : addedBy ?? 'a group member';
+  return lesson.confidence ? `Saved by ${who} \u00b7 ${lesson.confidence} confidence` : `Saved by ${who}`;
+}
+
+/** Memories saved for the whole account, not for one chat, project or group. */
 export function isGlobalMemory(lesson: Pick<MemoryLesson, 'scope'>): boolean {
   return lesson.scope === 'global';
 }
@@ -63,10 +90,12 @@ export function memoryAddedBy(
 
 /** "Saved by …" for a group memory another member saved, otherwise null. */
 export function memoryOwnerCaption(
-  lesson: Pick<MemoryLesson, 'scope' | 'ownerAccountId' | 'ownerName'> & Partial<Pick<MemoryLesson, 'source'>>,
+  lesson: Pick<MemoryLesson, 'scope' | 'ownerAccountId' | 'ownerName'> & Partial<Pick<MemoryLesson, 'source' | 'declarationType'>>,
   viewerAccountId: string | null | undefined,
 ): string | null {
   if (lesson.scope !== 'group' || isOwnMemory(lesson, viewerAccountId)) return null;
+  // An inferred memory already names who saved it in its origin label.
+  if ('declarationType' in lesson && lesson.declarationType === 'model-inferred') return null;
   // A memory typed by hand already names who added it in its source label.
   if ('source' in lesson && lesson.source === 'manual') return null;
   return `Saved by ${lesson.ownerName?.trim() || 'a group member'}`;

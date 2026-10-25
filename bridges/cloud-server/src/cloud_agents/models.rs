@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::avatars::{AvatarDescriptor, AvatarMutationRequest};
+use crate::proactive::ProactiveSetting;
 
 pub const CLOUD_AGENT_ACCESS_PRIVATE: &str = "private";
 pub const CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS: &str = "participant_conversations";
@@ -45,6 +46,7 @@ pub struct CloudAgentDefinition {
     pub resources: Vec<CloudAgentResource>,
     pub skills: Vec<CloudAgentSkill>,
     pub model_routing: serde_json::Value,
+    pub proactive: ProactiveSetting,
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,
@@ -84,6 +86,9 @@ pub struct CreateCloudAgentRequest {
     pub skills: Vec<CloudAgentSkill>,
     #[serde(default)]
     pub model_routing: Option<serde_json::Value>,
+    /// `{"enabled": bool}`; validated by [`ProactiveSetting::parse`].
+    #[serde(default)]
+    pub proactive: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,6 +105,9 @@ pub struct UpdateCloudAgentRequest {
     pub resources: Option<Vec<CloudAgentResource>>,
     pub skills: Option<Vec<CloudAgentSkill>>,
     pub model_routing: Option<serde_json::Value>,
+    /// Missing means unchanged.
+    #[serde(default)]
+    pub proactive: Option<serde_json::Value>,
 }
 
 pub fn clean_required_text(value: &str, field: &str, max_len: usize) -> Result<String, String> {

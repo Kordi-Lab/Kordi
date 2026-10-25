@@ -423,7 +423,7 @@ impl PushNotificationService {
     }
 }
 
-fn is_permanent_token_error(error: &ApnsError) -> bool {
+pub(super) fn is_permanent_token_error(error: &ApnsError) -> bool {
     use a2::response::ErrorReason;
     matches!(
         error,
