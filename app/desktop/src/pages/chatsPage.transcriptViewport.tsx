@@ -17,7 +17,7 @@ import { transcriptMessageIsOwnHuman } from '@/kordi-app/components/transcriptMe
 import type { Message } from '@/kordi-app/types';
 import { formatDesktopClockTime } from '@/lib/time';
 import type { ChatSessionPaneProps } from '@/pages/chatsPage.types';
-import { QueuedMessageBubble } from '@/pages/chatsPage.queuedMessage';
+import { QueuedMessageBubble, queuedBubbleSenderLabel } from '@/pages/chatsPage.queuedMessage';
 import { advanceActivation, finishActivation, initialActivationState, type ActivationRow } from '@/features/chat/queuedActivationMotion';
 import { queuedTranscriptRequestIds } from '@/features/chat/queuedDesktopMessages';
 import { insertPinActivities, PIN_ACTIVITY_ESTIMATED_HEIGHT } from '@/pages/chatsPage.pinActivity';
@@ -328,7 +328,8 @@ export function useChatTranscriptViewport({
               message={{ id: msg.id ?? '', sessionId: sessionKey, text: msg.text, time: msg.time, attachments: msg.attachments ?? [] }}
               isCompressionActive={isCompressionActive}
               own={msg.role === 'user' || msg.isOwnMessage === true}
-              sender={msg.sender}
+              // The sent bubble's rule: a name only where it shows one, so becoming active changes no height.
+              sender={queuedBubbleSenderLabel(msg, densityMode, !pinBoundaries.after.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, groupingSeparators))}
               threadLayout={threadLayout}
               densityMode={densityMode}
               showAvatar={idx === lastQueuedRowIndex && queuedMessages.length === 0}

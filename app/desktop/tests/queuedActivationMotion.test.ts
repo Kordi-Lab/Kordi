@@ -61,3 +61,12 @@ test('advanceActivation tracks active rows, is stable when idle, and clears on f
   assert.equal(advanceActivation(done, 's', sentRows, new Set()), done, 'finished rows never animate again');
   assert.equal(advanceActivation(active, 'other', sentRows, new Set()).activeIds.size, 0);
 });
+
+test('a queued request in the transcript shows a name only where the sent bubble does', async () => {
+  const { queuedBubbleSenderLabel } = await import('../src/pages/chatsPage.queuedMessage');
+  assert.equal(queuedBubbleSenderLabel({ sender: 'Me', showSenderMeta: false }, 'default', false), undefined, 'own message in an agent chat');
+  assert.equal(queuedBubbleSenderLabel({ sender: 'Priya', showSenderMeta: true }, 'group-compact', false), 'Priya');
+  assert.equal(queuedBubbleSenderLabel({ sender: 'Priya', showSenderMeta: true }, 'group-compact', true), undefined, 'grouped follow-up');
+  assert.equal(queuedBubbleSenderLabel({ sender: 'Priya', showSenderMeta: true }, 'contact-compact', false), undefined, 'compact one-to-one density');
+});
+
