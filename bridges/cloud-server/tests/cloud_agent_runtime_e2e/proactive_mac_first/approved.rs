@@ -1,5 +1,7 @@
-//! Approved runs: held for the ready Mac, claimed by run id, delivered in
-//! the group as the agent, and run by the cloud when no Mac does.
+//! Approved runs: held for the ready Mac, claimed by run id with
+//! `search_memory` among their tools and no memories in the prompt,
+//! delivered in the group as the agent, and run by the cloud when no Mac
+//! does.
 
 use super::*;
 
@@ -8,6 +10,12 @@ async fn an_allowed_offer_runs_on_the_ready_mac_and_answers_as_the_agent() {
     let Some(fx) = fixture("proactive-mac-allow", true).await else {
         return;
     };
+    fx.seed_memory(
+        "global",
+        "account",
+        "Keeps the deploy scripts in the ops repo.",
+    )
+    .await;
     let (proposal_id, trigger) = fx.offer().await;
     let run_id = fx.allow(&proposal_id).await;
     let (status, backend, held) = fx.run_state(&run_id).await;
@@ -79,18 +87,24 @@ async fn an_allowed_offer_runs_on_the_ready_mac_and_answers_as_the_agent() {
     assert_eq!(claimed["contextSessionId"], fx.session_id.as_str());
     assert_eq!(claimed["trigger"], "person_started");
     // The same descriptors as a cloud lease of this run: a shared run gets
-    // only the group's own document tool, never the owner's connectors.
+    // only the group's own document tool and the memory search, never the
+    // owner's connectors.
     let tools: Vec<&str> = claimed["connectorTools"]
         .as_array()
         .unwrap()
         .iter()
         .map(|tool| tool["connectorId"].as_str().unwrap())
         .collect();
-    assert!(tools.iter().all(|id| *id == "kordi-documents"), "{tools:?}");
-    assert!(claimed["prompt"]
-        .as_str()
-        .unwrap()
-        .contains("Mina asked you to help Riya"));
+    assert!(
+        tools
+            .iter()
+            .all(|id| ["kordi-documents", "kordi-memory"].contains(id)),
+        "{tools:?}"
+    );
+    assert!(tool_names(&claimed["connectorTools"]).contains(&"search_memory".to_string()));
+    let prompt = claimed["prompt"].as_str().unwrap();
+    assert!(prompt.contains("Mina asked you to help Riya"));
+    assert!(prompt.contains("First search your owner's memories with search_memory"));
     let (system_prompt,): (String,) =
         query_as("SELECT system_prompt FROM cloud_agent_fallback_runs WHERE run_id = $1")
             .bind(&run_id)
@@ -99,6 +113,8 @@ async fn an_allowed_offer_runs_on_the_ready_mac_and_answers_as_the_agent() {
             .unwrap();
     assert_eq!(claimed["systemPrompt"], system_prompt.as_str());
     assert!(!system_prompt.is_empty());
+    assert!(!system_prompt.contains("## Memories"));
+    assert!(!system_prompt.contains("ops repo"), "memories are searched");
     let (status, second) = fx.mac_claim(&run_id, uuid::Uuid::new_v4()).await;
     assert_eq!(
         (status, &second["acquired"]),
@@ -111,6 +127,22 @@ async fn an_allowed_offer_runs_on_the_ready_mac_and_answers_as_the_agent() {
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{renewed}");
+
+    // The Mac turn searches through the broker as the claim holder.
+    let (status, answer) = fx.mac_search(&run_id, claim_id, "deploy scripts").await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert_eq!(
+        found(&answer["result"]),
+        vec!["Keeps the deploy scripts in the ops repo."]
+    );
+    let (status, _) = fx
+        .mac_search(&run_id, uuid::Uuid::new_v4(), "deploy scripts")
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "only the claim holder searches"
+    );
 
     // The Mac admits the run before its turn starts, as for scheduled runs.
     let (status, admitted) = fx
@@ -180,10 +212,38 @@ async fn an_approved_run_no_mac_claims_goes_to_the_cloud_after_the_hold() {
 }
 
 #[tokio::test]
+async fn with_memory_off_the_approved_run_search_finds_nothing() {
+    let Some(fx) = fixture("proactive-mac-allow-nomemory", true).await else {
+        return;
+    };
+    fx.seed_memory(
+        "global",
+        "account",
+        "Keeps the deploy scripts in the ops repo.",
+    )
+    .await;
+    let (proposal_id, _) = fx.offer().await;
+    let run_id = fx.allow(&proposal_id).await;
+    fx.memory_off().await;
+    let claim_id = uuid::Uuid::new_v4();
+    let claimed = fx.mac_takes(&run_id, claim_id).await;
+    assert!(!claimed["systemPrompt"]
+        .as_str()
+        .unwrap()
+        .contains("ops repo"));
+    let (status, answer) = fx.mac_search(&run_id, claim_id, "deploy scripts").await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert!(found(&answer["result"]).is_empty());
+    fx.finish().await;
+}
+
+#[tokio::test]
 async fn a_released_approved_run_goes_to_the_cloud_once() {
     let Some(fx) = fixture("proactive-mac-handback", true).await else {
         return;
     };
+    fx.seed_memory("global", "account", "Answer in British English.")
+        .await;
     let (proposal_id, _) = fx.offer().await;
     let run_id = fx.allow(&proposal_id).await;
     let claim_id = uuid::Uuid::new_v4();
@@ -194,8 +254,19 @@ async fn a_released_approved_run_goes_to_the_cloud_once() {
         false,
         "once"
     );
-    assert!(runner_can_lease(&fx.router, &run_id).await);
+    let runner = "runner-proactive-handback";
+    let run = runner_lease(&fx.router, runner, &run_id).await;
+    assert_eq!(run["runId"], run_id.as_str(), "the cloud runs it");
     assert!(!runner_can_lease(&fx.router, &run_id).await, "leased once");
+    // The cloud runner gets the same search and no memories in the prompt.
+    assert!(tool_names(&run["connectorTools"]).contains(&"search_memory".to_string()));
+    assert!(!run["systemPrompt"]
+        .as_str()
+        .unwrap()
+        .contains("British English"));
+    let (status, answer) = runner_search(&fx.router, runner, &run_id, "British English").await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert_eq!(found(&answer["result"]), vec!["Answer in British English."]);
     let (status, late) = fx.mac_claim(&run_id, uuid::Uuid::new_v4()).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(late["acquired"], false);

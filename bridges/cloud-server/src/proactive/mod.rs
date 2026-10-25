@@ -2,7 +2,8 @@
 //! the owner before it helps (docs/development/proactive-agent.md).
 //!
 //! The sweep copies PiP's shape: one cursor row per agent and group, a free
-//! text check, one tool-less evaluation run per candidate. An `offer` becomes
+//! text check, one evaluation run per candidate whose only tool is
+//! `search_memory` ([`memory_search`]). An `offer` becomes
 //! a proposal that only the owner sees, inside the group, from the proposals
 //! route, a `proactive.proposal_changed` hint, and a push; no message is
 //! posted. Nothing reaches the group until the owner allows it, and the
@@ -15,6 +16,7 @@ mod complete;
 mod config;
 pub(crate) mod decision;
 pub(crate) mod desktop;
+pub(crate) mod memory_search;
 mod output;
 mod prefilter;
 mod prompt;

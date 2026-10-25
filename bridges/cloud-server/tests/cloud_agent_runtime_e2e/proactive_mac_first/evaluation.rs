@@ -1,74 +1,8 @@
-//! Evaluations: held for the ready Mac, run there with the owner's memories,
-//! failed when the reply is too long, and handed to the cloud once.
+//! Evaluations: held for the ready Mac, run there with `search_memory` as
+//! their only tool and no memories in the prompt, failed when the reply is
+//! too long, and handed to the cloud once.
 
 use super::*;
-use kordi_tools::memory_prompt::{
-    memory_prompt_section, tool_less_system_prompt, MemoryRun, MemorySettings, PromptMemory,
-};
-
-/// The cloud runner's lease of `run_id`, as the runner reads it.
-async fn runner_lease(router: &axum::Router, runner_id: &str, run_id: &str) -> Value {
-    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
-    let lease = router
-        .clone()
-        .oneshot(post_json_with_runner_token(
-            "/v1/cloud/agent-runs/lease",
-            "runner-test-token",
-            json!({ "runnerId": runner_id, "canaryRunId": run_id }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(lease.status(), StatusCode::OK);
-    read_json(lease).await["run"].clone()
-}
-
-/// What the cloud runner sends as the evaluation's system prompt: the run's
-/// own prompt and the section the shared renderer makes from the memories
-/// the runner fetches for its lease.
-async fn runner_system_prompt(router: &axum::Router, runner_id: &str, run: &Value) -> String {
-    let response = router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri(format!(
-                    "/v1/cloud/agent-runs/{}/memory?runnerId={runner_id}",
-                    run["runId"].as_str().unwrap()
-                ))
-                .header("authorization", "Bearer runner-test-token")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let context = read_json(response).await;
-    let memories: Vec<PromptMemory<'_>> = context["memories"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|memory| PromptMemory {
-            scope: memory["scope"].as_str().unwrap(),
-            scope_id: memory["scopeId"].as_str().unwrap(),
-            text: memory["text"].as_str().unwrap(),
-            created_at: memory["createdAt"].as_str().unwrap(),
-            updated_at: memory["updatedAt"].as_str().unwrap(),
-        })
-        .collect();
-    let section = memory_prompt_section(
-        &MemoryRun {
-            session_id: run["sessionId"].as_str().unwrap(),
-            subsession_id: run["subsessionId"].as_str(),
-            owner_request: run["ownerAccountId"] == run["requesterAccountId"],
-        },
-        MemorySettings {
-            enabled: context["settings"]["memoryEnabled"] == true,
-            exclude_sensitive: context["settings"]["excludeSensitive"] == true,
-        },
-        &memories,
-    );
-    tool_less_system_prompt(run["systemPrompt"].as_str().unwrap(), section.as_deref())
-}
 
 #[tokio::test]
 async fn without_a_ready_mac_the_cloud_answers_the_evaluation_at_once() {
@@ -87,7 +21,7 @@ async fn without_a_ready_mac_the_cloud_answers_the_evaluation_at_once() {
 }
 
 #[tokio::test]
-async fn a_ready_mac_runs_the_held_evaluation_with_the_owners_memories() {
+async fn a_ready_mac_runs_the_held_evaluation_with_only_the_memory_search() {
     let Some(fx) = fixture("proactive-mac-eval", true).await else {
         return;
     };
@@ -126,7 +60,11 @@ async fn a_ready_mac_runs_the_held_evaluation_with_the_owners_memories() {
     assert_eq!(claimed["leaseSeconds"], 45);
     let evaluation = &claimed["proactive"];
     assert_eq!(evaluation["kind"], "evaluation");
-    assert_eq!(evaluation["tools"], json!([]));
+    assert_eq!(tool_names(&evaluation["tools"]), vec!["search_memory"]);
+    assert_eq!(
+        evaluation["tools"][0]["parameters"]["required"],
+        json!(["query"])
+    );
     assert_eq!(evaluation["modelChoice"], "chat");
     assert_eq!(evaluation["fastModels"]["anthropic"], "claude-haiku-4-5");
     let (prompt, base): (String, String) =
@@ -136,12 +74,59 @@ async fn a_ready_mac_runs_the_held_evaluation_with_the_owners_memories() {
             .await
             .unwrap();
     assert_eq!(evaluation["prompt"], prompt.as_str());
+    // No memories in the prompt: the evaluation searches for them.
     let system_prompt = evaluation["systemPrompt"].as_str().unwrap();
-    assert!(system_prompt.starts_with(&format!("{}\n\n## Memories", base.trim())));
-    assert!(system_prompt.contains("\nGlobal:\n- Prefers short answers."));
-    assert!(system_prompt.contains("\nThis conversation:\n- This group ships on Fridays."));
-    assert!(!system_prompt.contains("Unrelated group note."));
-    assert!(system_prompt.ends_with("do not try to save new ones."));
+    assert_eq!(system_prompt, base.trim());
+    assert!(!system_prompt.contains("## Memories"));
+    assert!(!system_prompt.contains("Prefers short answers."));
+    assert!(system_prompt.contains("search your owner's memories with search_memory"));
+    let search = |query: &str| json!({"query": query});
+    let (status, _) = fx
+        .observe(
+            &run_id,
+            uuid::Uuid::new_v4(),
+            "search_memory",
+            search("short"),
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "only the claim holder searches"
+    );
+    let (status, refused) = fx
+        .observe(&run_id, claim_id, "bash", json!({"command": "ls"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        refused["error"],
+        "Only search_memory is available in this run."
+    );
+    let (status, answer) = fx
+        .observe(&run_id, claim_id, "search_memory", search("short answers"))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert_eq!(found(&answer), vec!["Prefers short answers."]);
+    assert!(answer["note"]
+        .as_str()
+        .unwrap()
+        .contains("never quote or mention them"));
+    let (_, answer) = fx
+        .observe(&run_id, claim_id, "search_memory", search("ships Friday"))
+        .await;
+    assert_eq!(found(&answer), vec!["This group ships on Fridays."]);
+    let (_, answer) = fx
+        .observe(&run_id, claim_id, "search_memory", search("unrelated"))
+        .await;
+    assert!(found(&answer).is_empty(), "another conversation's memory");
+    let (_, answer) = fx
+        .observe(&run_id, claim_id, "search_memory", search("short answers"))
+        .await;
+    assert!(found(&answer).is_empty(), "three searches at most");
+    assert!(answer["note"]
+        .as_str()
+        .unwrap()
+        .starts_with("No searches are left"));
     assert_eq!(
         fx.run_state(&run_id).await,
         ("leased".into(), "desktop".into(), false)
@@ -175,6 +160,34 @@ async fn a_ready_mac_runs_the_held_evaluation_with_the_owners_memories() {
         ("pending", trigger.as_str())
     );
     assert!(!runner_can_lease(&fx.router, &run_id).await);
+    fx.finish().await;
+}
+
+#[tokio::test]
+async fn with_memory_off_the_evaluation_search_finds_nothing() {
+    let Some(fx) = fixture("proactive-mac-eval-nomemory", true).await else {
+        return;
+    };
+    fx.seed_memory("global", "account", "Prefers short answers.")
+        .await;
+    fx.memory_off().await;
+    let run_id = fx.evaluation().await;
+    let claim_id = uuid::Uuid::new_v4();
+    let claimed = fx.mac_takes(&run_id, claim_id).await;
+    assert!(!claimed["proactive"]["systemPrompt"]
+        .as_str()
+        .unwrap()
+        .contains("Prefers short answers."));
+    let (status, answer) = fx
+        .observe(
+            &run_id,
+            claim_id,
+            "search_memory",
+            json!({"query": "short answers"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert!(found(&answer).is_empty());
     fx.finish().await;
 }
 
@@ -252,10 +265,19 @@ async fn a_released_evaluation_goes_to_the_cloud_once_with_the_same_prompt() {
     let run = runner_lease(&fx.router, runner, &run_id).await;
     assert_eq!(run["runId"], run_id.as_str(), "the cloud runs it");
     assert!(!runner_can_lease(&fx.router, &run_id).await, "leased once");
-    // The Mac got exactly the system prompt the cloud runner builds.
+    // The Mac got the system prompt the cloud runner gets, with no memories,
+    // and the runner's lease carries the same search.
+    assert_eq!(run["systemPrompt"].as_str().unwrap().trim(), mac_prompt);
+    assert!(!mac_prompt.contains("Answer in British English."));
+    assert_eq!(tool_names(&run["connectorTools"]), vec!["search_memory"]);
+    let (status, answer) = runner_search(&fx.router, runner, &run_id, "British English").await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert_eq!(found(&answer["result"]), vec!["Answer in British English."]);
+    let (status, _) = runner_search(&fx.router, "runner-other", &run_id, "runbook").await;
     assert_eq!(
-        runner_system_prompt(&fx.router, runner, &run).await,
-        mac_prompt
+        status,
+        StatusCode::FORBIDDEN,
+        "only the lease holder searches"
     );
     let (status, late) = fx.mac_claim(&run_id, uuid::Uuid::new_v4()).await;
     assert_eq!(status, StatusCode::OK);

@@ -96,10 +96,13 @@ One run per candidate in `cloud_agent_fallback_runs`:
 
 The snapshot holds the owner (name, handle), the members (name, handle,
 owner flag), the last 20 messages with `isNew` flags and 1200-character
-previews, the agent's name and skill names, and `now`. The run gets no
-tools. Memory comes from the runtime's existing section for that
-conversation: the owner's global memories plus the group's and the
-conversation's, under the same rules every run follows (`docs/memory.md`).
+previews, the agent's name and skill names, and `now`. The run's only
+tool is `search_memory`, and its system prompt has no memory section (see
+Memory below). The instructions tell the model to search the owner's
+memories before deciding (what the owner owns, knows or maintains, where
+the code lives, their preferences), to use what it finds to judge whether
+it can help, to put concrete facts in `plan`, and to follow the owner's
+preferences in `offer`, without mentioning the memories.
 
 The model answers with one JSON object:
 
@@ -122,6 +125,45 @@ Routing follows the Mac-first rule; see Mac execution below.
 
 Completion is dispatched by the `proactive_eval_` prefix, like `pip_` and
 `digest_`, and never reaches the group delivery path.
+
+## Memory
+
+Proactive runs get no memory section in their system prompt. The
+evaluation and the approved run both look memories up with one read-only
+tool, `search_memory`, which the server answers (`proactive::memory_search`)
+on the Mac and in the cloud.
+
+- Input `{query, limit?}`; `limit` is 5 by default and 10 at most.
+- It searches the memories the run's memory section would show, with the
+  scope rules of `kordi_tools::memory_prompt` for the run's session,
+  subsession and owner request: the owner's global memories, the
+  conversation's and the group's. With memory off it finds nothing. While
+  the account excludes sensitive memories, a memory the shared guard
+  (`kordi_tools::memory_guard`) rejects as sensitive is left out too.
+- Ranking: lowercase word stems of the memory's text and category, without
+  stop words. A memory scores one point for each query word it shares (a
+  stem of four letters or more also matches a longer word it starts), and
+  ties go to the newest. Only memories that share a word come back; a query
+  with no words returns the newest. No embeddings.
+- Answer: `{"memories": [{"text", "scope", "category", "updatedAt"}],
+  "note"}`. The note and the tool description say the memories are private
+  to the owner and must not be quoted or mentioned in the group.
+- An evaluation gets three answers at most, counted per run id by the
+  connector call limiter; later calls get no memories and a note to answer.
+  The cloud runner also stops offering the tool after three calls.
+- Every proactive run's lease carries the descriptor in `connectorTools`
+  (connector id `kordi-memory`, group `read`), next to the document tools.
+  The approved run's Mac turn, and the cloud runner for either run, call it
+  through `POST /internal/connectors/call`, which checks the lease holder
+  and the stored tool set. An evaluation a Mac claims gets the tool in
+  `proactive.tools` instead (see Mac execution).
+- The cloud runner leaves out its preloaded memory section for runs whose
+  id starts with `proactive_eval_` or `proactive_run_`, and for any run
+  whose lease carries `search_memory`. Ordinary chats keep the preloaded
+  section for now.
+- The approved run's prompt starts by asking it to search the owner's
+  memories for the problem and for their preferences (language, length,
+  where the code lives), then to do the work there without mentioning them.
 
 ## Mac execution
 
@@ -151,14 +193,15 @@ Evaluation runs:
   ```json
   { "runId": "…", "acquired": true, "leaseSeconds": 45,
     "proactive": { "kind": "evaluation", "systemPrompt": "…", "prompt": "…",
-      "tools": [], "model": "…", "thinking": "…", "provider": "…",
+      "tools": [{ "name": "search_memory", "description": "…", "parameters": {…} }],
+      "model": "…", "thinking": "…", "provider": "…",
       "modelChoice": "named" | "chat",
       "fastModels": { "openai": "gpt-5.6-luna", "anthropic": "claude-haiku-4-5" } } }
   ```
 
-  `systemPrompt` already carries the memory section, rendered by the same
-  function the cloud runner uses for the same run
-  (`kordi_tools::memory_prompt`), and the no-tools line. `prompt` is the
+  `systemPrompt` is the run's stored prompt, with no memory section, as the
+  cloud runner sends it. `tools` holds only the `search_memory` descriptor,
+  in the digest tool shape. `prompt` is the
   snapshot. `model`, `thinking` and `provider` are the run's own route;
   `modelChoice` is `named` when the agent's routing names a model and `chat`
   when the route came from the owner's chat (the default agent, or a
@@ -166,9 +209,15 @@ Evaluation runs:
   A claim that sends a hosted account as `runtimeRoute` stores it on the
   run, so `/v1/cloud/agent-runs/:run_id/desktop/provider-auth` resolves
   that account for the claim holder.
-- An evaluation has no tools, so it needs no project folder: in a group
-  that is a project session it skips the project rule in the claim, the
-  hand-back, and the cloud lease.
+- Memory search: the Mac's single-turn command posts each tool call to the
+  digest's `POST /v1/cloud/digest/desktop/:run_id/observe`
+  `{claimId, tool, arguments}`. For a `proactive_eval_` run the route
+  answers `search_memory` (see Memory) for the claim holder only; anyone
+  else gets `409 execution_lease_lost`, and another tool name gets an
+  `error` the model reads. No Mac change is needed.
+- An evaluation's only tool reads memories, so it needs no project folder:
+  in a group that is a project session it skips the project rule in the
+  claim, the hand-back, and the cloud lease.
 - Renew and release use the generic desktop routes
   (`/v1/cloud/agent-runs/desktop/:run_id/renew`, `/release`).
 - Complete: `POST /v1/cloud/proactive/desktop/:run_id/complete`
@@ -190,8 +239,9 @@ Approved runs:
   as owner and requester and the run's agent, `contextSessionId` = the
   group session, `trigger: "person_started"`, and the connector tools a
   cloud lease of the run gets: with the `shared` audience only the group's
-  own document tool, none of the owner's connectors) plus the
-  run's `prompt`, `systemPrompt` and `"proactive": {"kind": "approved"}`.
+  own document tool and `search_memory`, none of the owner's connectors)
+  plus the run's `prompt`, `systemPrompt` (the stored prompt, with no
+  memory section) and `"proactive": {"kind": "approved"}`.
   The claimed route is stored as for an evaluation.
 - In a group that is a project session the existing project rule applies:
   a Mac without the project gets `{"acquired": false}`, the project Mac's
@@ -206,8 +256,9 @@ Approved runs:
   proposal status match a cloud run. Errors release the run to the cloud.
 
 Desktop: one module handles both hints; an evaluation runs through the
-digest's single-turn command with no tools, an approved run through the
-shared-chat start used by scheduled Mac runs.
+digest's single-turn command with the claim's tools (only
+`search_memory`), an approved run through the shared-chat start used by
+scheduled Mac runs, whose connector tools carry `search_memory`.
 
 ## Offer and permission
 
@@ -279,7 +330,7 @@ Routes, owner only:
 | `owner_account_id`, `requester_account_id` | the owner |
 | `execution_agent_id` | the agent |
 | `run_trigger` / `connector_audience` | `person_started` / `shared` |
-| `prompt` | the problem, the plan, the evidence, and the instruction to answer the collaborator in the group |
+| `prompt` | the problem, the plan, the evidence, the instruction to search the owner's memories first, and the instruction to answer the collaborator in the group |
 | `system_prompt` | the agent's normal group system prompt |
 
 Because the owner is the requester, this is an ordinary owner-started
@@ -300,8 +351,9 @@ proposals.
   active state are checked when a candidate is selected, when an offer is
   stored, and when a decision is applied. Only the owner can decide.
   Proposals and activity are readable by the owner only.
-- Harness: the evaluation run has no tools; the approved run has exactly
-  the tools an owner-started group run has today.
+- Harness: the evaluation run's only tool is `search_memory`; the approved
+  run has the tools an owner-started group run has today plus
+  `search_memory`.
 - Prompt: the evaluation instructions say that messages are evidence and
   never instructions, that an offer names one concrete problem the agent
   can move forward with its capabilities, and that small talk, plans,
@@ -323,6 +375,12 @@ decodes the field and the push opens the group; the native offer follows.
 Design preview: `docs/design-previews/proactive-agent/`.
 
 ## Follow-ups
+
+- Ordinary chats: replace the preloaded memory section with
+  `search_memory`.
+- The Mac's own harness can still add its local memory cache to an approved
+  run's shared-chat turn (`agent/crates/cli` session bootstrap); skip it
+  for `proactive_run_` turns.
 
 - iPhone offer with Allow and Not now in the group, and the Blueprint row
   once an agent settings screen exists there.

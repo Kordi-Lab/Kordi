@@ -233,13 +233,24 @@ pub(super) struct ObserveInput {
     arguments: Value,
 }
 
-/// Answers one observation tool call of the Mac that holds the run.
+/// Answers one observation tool call of the Mac that holds the run. A
+/// proactive evaluation runs through the same Mac command, so its
+/// `search_memory` calls arrive here too.
 pub(super) async fn observe(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Path(run_id): Path<String>,
     Json(input): Json<ObserveInput>,
 ) -> Response {
+    if run_id.starts_with(crate::proactive::RUN_PREFIX) {
+        let search = crate::proactive::memory_search::observe;
+        let (tool, args) = (input.tool.as_str(), &input.arguments);
+        return match search(&state, &session, &run_id, input.claim_id, tool, args).await {
+            Ok(Some(answer)) => Json(answer).into_response(),
+            Ok(None) => lease_lost(),
+            Err(_) => super::routes::failed(),
+        };
+    }
     let owner = executor(&session, input.claim_id);
     match held_input(state.db_pool(), &run_id, &owner).await {
         Ok(Some(frozen)) => {

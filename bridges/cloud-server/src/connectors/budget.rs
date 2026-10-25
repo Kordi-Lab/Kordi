@@ -65,6 +65,23 @@ impl CallBudget {
         self.per_hour
     }
 
+    /// Charges one use of `action` to `key` through the same shared limiter,
+    /// at most `limit` per `window`. False once the limit is spent.
+    pub async fn charge_action(
+        &self,
+        action: &str,
+        key: &str,
+        limit: u32,
+        window: Duration,
+    ) -> bool {
+        matches!(
+            self.limiter
+                .observe_account_action(action, key, limit, window)
+                .await,
+            RateLimitDecision::Allowed
+        )
+    }
+
     /// Charges one call to `account_id`. False when the hour's budget is
     /// already spent; nothing is charged then.
     pub async fn charge(&self, account_id: &str) -> bool {

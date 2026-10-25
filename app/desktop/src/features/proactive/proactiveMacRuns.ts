@@ -5,7 +5,7 @@ import { CloudAuthError } from '@/features/cloud/cloudAuthError';
 import { acquireDesktopExecutionLease, DESKTOP_EXECUTION_WATCHDOG_MS } from '@/features/cloud/cloudDesktopExecutionLease';
 import { handBackDesktopRun } from '@/features/cloud/cloudDesktopRunHandback';
 import { cloudFetchImpl } from '@/features/cloud/cloudTransport';
-import { claimRuntimeRoute, digestRunRoute, macCanRunDigest, runDesktopDigest, type DigestRunChoice } from '@/features/digest/digestMacRuns';
+import { claimRuntimeRoute, digestRunRoute, macCanRunDigest, runDesktopDigest, type DigestRunChoice, type DigestTool } from '@/features/digest/digestMacRuns';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 import { startDesktopSharedChatMessage } from '@/lib/desktopBackgroundSessions';
 import type { ProactiveRunRequest } from './proactiveRunHints';
@@ -24,7 +24,7 @@ export type ProactiveMacOutcome = 'skipped' | 'not-acquired' | 'completed' | 're
 type EvaluationClaim = {
   runId?: string;
   acquired: boolean;
-  proactive?: DigestRunChoice & { kind?: string; systemPrompt?: string; prompt?: string };
+  proactive?: DigestRunChoice & { kind?: string; systemPrompt?: string; prompt?: string; tools?: unknown };
 };
 
 export type ProactiveMacRuntime = {
@@ -57,6 +57,15 @@ async function postProactive(token: string, path: string, body: unknown) {
   if (!response.ok) throw Object.assign(new Error('The proactive run could not be completed.'), { status: response.status });
 }
 
+/** The claim's tools (the memory search) in the digest command's shape; anything else is dropped. */
+function claimTools(value: unknown): DigestTool[] {
+  if (!Array.isArray(value)) return [];
+  return (value as unknown[]).filter((tool): tool is DigestTool => {
+    const entry = tool as { name?: unknown; description?: unknown } | null;
+    return typeof entry?.name === 'string' && typeof entry.description === 'string';
+  });
+}
+
 function completePath(runId: string) {
   return `proactive/desktop/${encodeURIComponent(runId)}/complete`;
 }
@@ -80,8 +89,9 @@ function renewEvaluation(client: ProactiveMacRuntime['client'], token: string, r
 }
 
 /**
- * Claims and runs one evaluation: one turn without tools through the digest's
- * command, with the claim's prompt, system prompt and model choice.
+ * Claims and runs one evaluation: one turn through the digest's command, with
+ * the claim's prompt, system prompt, model choice and tools. Its only tool is
+ * the memory search, which the server answers through the digest observe route.
  */
 export async function runProactiveEvaluationOnMac(
   request: Extract<ProactiveRunRequest, { kind: 'evaluation' }>,
@@ -105,7 +115,7 @@ export async function runProactiveEvaluationOnMac(
     const chosen = digestRunRoute(route, evaluation);
     const reply = await (runtime.runTurn ?? runDesktopDigest)({
       runId, claimId, ownerAccountId: accountId,
-      systemPrompt: evaluation.systemPrompt ?? '', prompt, tools: [],
+      systemPrompt: evaluation.systemPrompt ?? '', prompt, tools: claimTools(evaluation.tools),
       route: chosen.route, fallbackModel: chosen.fallbackModel,
     });
     if (renewal.lost) throw new Error('This Mac no longer holds the evaluation.');

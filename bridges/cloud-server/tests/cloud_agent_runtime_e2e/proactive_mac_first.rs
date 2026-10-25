@@ -2,6 +2,8 @@
 //! approved run are held for it and announced, the Mac claims them by run id
 //! through the generic desktop claim, and the cloud runner takes over
 //! exactly once when no Mac does (docs/development/proactive-agent.md).
+//! Neither run gets the owner's memories in its prompt; both search them
+//! with `search_memory`, which the server answers for the run's holder.
 
 use super::hosted_only_admission::runner_can_lease;
 use super::*;
@@ -275,6 +277,47 @@ impl Fixture {
         assert!(status.is_success(), "{status} {body}");
     }
 
+    /// The owner turns account memory off.
+    async fn memory_off(&self) {
+        let (status, body) = self
+            .put("/v1/cloud/memory/settings", json!({"memoryEnabled": false}))
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["memoryEnabled"], false);
+    }
+
+    /// A Mac evaluation's tool call, through the digest observe route its
+    /// single-turn command posts to.
+    async fn observe(
+        &self,
+        run_id: &str,
+        claim_id: uuid::Uuid,
+        tool: &str,
+        arguments: Value,
+    ) -> (StatusCode, Value) {
+        self.post(
+            &format!("/v1/cloud/digest/desktop/{run_id}/observe"),
+            json!({"claimId": claim_id, "tool": tool, "arguments": arguments}),
+        )
+        .await
+    }
+
+    /// A Mac turn's `search_memory` call through the connector broker, as
+    /// the holder of `claim_id`.
+    async fn mac_search(
+        &self,
+        run_id: &str,
+        claim_id: uuid::Uuid,
+        query: &str,
+    ) -> (StatusCode, Value) {
+        self.post(
+            "/internal/connectors/call",
+            json!({"leaseId": run_id, "claimId": claim_id, "connectorId": "kordi-memory",
+                "tool": "search_memory", "args": {"query": query}}),
+        )
+        .await
+    }
+
     /// Ends this owner's runs so no later lease of another test picks them up.
     async fn finish(&self) {
         query("UPDATE cloud_agent_fallback_runs SET status='cancelled' WHERE owner_account_id=$1 AND status IN ('queued','leased','running')")
@@ -311,6 +354,63 @@ fn offer_reply(trigger: &str) -> String {
         "evidence": [trigger],
     })
     .to_string()
+}
+
+/// The memory texts of a `search_memory` answer.
+fn found(answer: &Value) -> Vec<String> {
+    answer["memories"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no memories in {answer}"))
+        .iter()
+        .map(|memory| memory["text"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// The names of the connector tools on a claim or a lease.
+fn tool_names(tools: &Value) -> Vec<String> {
+    tools
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// The cloud runner's lease of `run_id`, as the runner reads it.
+async fn runner_lease(router: &axum::Router, runner_id: &str, run_id: &str) -> Value {
+    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
+    let lease = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            "/v1/cloud/agent-runs/lease",
+            "runner-test-token",
+            json!({ "runnerId": runner_id, "canaryRunId": run_id }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(lease.status(), StatusCode::OK);
+    read_json(lease).await["run"].clone()
+}
+
+/// The cloud runner's `search_memory` call through the connector broker.
+async fn runner_search(
+    router: &axum::Router,
+    runner_id: &str,
+    run_id: &str,
+    query: &str,
+) -> (StatusCode, Value) {
+    let response = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            "/internal/connectors/call",
+            "runner-test-token",
+            json!({"leaseId": run_id, "runnerId": runner_id, "connectorId": "kordi-memory",
+                "tool": "search_memory", "args": {"query": query}}),
+        ))
+        .await
+        .unwrap();
+    let status = response.status();
+    (status, read_json(response).await)
 }
 
 #[path = "proactive_mac_first/approved.rs"]

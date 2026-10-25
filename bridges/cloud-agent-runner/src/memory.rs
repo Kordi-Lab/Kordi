@@ -243,10 +243,23 @@ impl RunnerMemory {
     }
 }
 
-/// The `## Memories` system prompt section, or `None` when memory is off.
-/// The server renders the same section for a run it hands to the owner's
-/// Mac, with the same function.
+/// Whether the run looks memories up with `search_memory` instead of
+/// getting them in its system prompt: a proactive run
+/// (docs/development/proactive-agent.md), or any run whose lease carries
+/// the tool.
+pub fn searches_memory(run: &CloudAgentRun) -> bool {
+    use crate::proactive::{APPROVED_RUN_PREFIX, RUN_PREFIX, SEARCH_MEMORY_TOOL};
+    run.run_id.starts_with(RUN_PREFIX)
+        || run.run_id.starts_with(APPROVED_RUN_PREFIX)
+        || run.connectors.descriptor(SEARCH_MEMORY_TOOL).is_some()
+}
+
+/// The `## Memories` system prompt section, or `None` when memory is off or
+/// the run searches memories instead ([`searches_memory`]).
 pub fn memory_prompt_section(run: &CloudAgentRun, memory: &RunMemory) -> Option<String> {
+    if searches_memory(run) {
+        return None;
+    }
     let memories = memory
         .memories
         .iter()

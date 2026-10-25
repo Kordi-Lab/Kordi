@@ -36,8 +36,9 @@ async fn claim_request(
     if !input.run.is_well_formed() || input.run.owner_account_id != session.account_id {
         return denied();
     }
-    // A proactive evaluation has no tools, so no project folder: it skips the
-    // project rule. Matched by its run id before any chat request path.
+    // A proactive evaluation's only tool searches memories, so it needs no
+    // project folder: it skips the project rule. Matched by its run id
+    // before any chat request path.
     if input
         .run
         .request_message_id

@@ -126,12 +126,13 @@ test('the chat sync hands proactive hints to this Mac for the account it syncs',
   assert.deepEqual(seen, ['proactive_eval_sync', 'proactive_run_sync']);
 });
 
-test('an evaluation claims the run, renews it, runs one turn without tools and completes with the reply', async () => {
+test('an evaluation claims the run, renews it, runs one turn with the memory search and completes with the reply', async () => {
   mock.timers.enable({ apis: ['setInterval'] });
   try {
     let finish!: (reply: string) => void;
     let ran: Parameters<NonNullable<ProactiveMacRuntime['runTurn']>>[0] | null = null;
-    const { value, calls, reports, claimBody } = runtime(evalClaim(), {
+    const search = { name: 'search_memory', description: 'Search your owner\'s memories.', parameters: { type: 'object' } };
+    const { value, calls, reports, claimBody } = runtime(evalClaim({ tools: [search, { name: 3 }] }), {
       runTurn: (input) => { ran = input; return new Promise((resolve) => { finish = resolve; }); },
     });
     const outcome = runProactiveEvaluationOnMac(evaluation, value);
@@ -149,7 +150,7 @@ test('an evaluation claims the run, renews it, runs one turn without tools and c
     assert.deepEqual(calls.find((call) => call.path === 'proactive_eval_1/renew')?.body, { claimId: claim.claimId });
     assert.deepEqual(ran, {
       runId: 'proactive_eval_1', claimId: claim.claimId, ownerAccountId: owner,
-      systemPrompt: 'Decide whether to offer help.', prompt: 'Group snapshot', tools: [],
+      systemPrompt: 'Decide whether to offer help.', prompt: 'Group snapshot', tools: [search],
       route: { ...route, model: 'openai/gpt-5.6-luna', thinking: 'low' }, fallbackModel: null,
     });
     assert.deepEqual(calls.filter((call) => call.kind === 'post'), [{

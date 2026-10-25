@@ -11,7 +11,9 @@
 //! the generic desktop routes, and ends it through [`complete`], which calls
 //! the same completion as the cloud runner. A run no Mac claims in time is
 //! leased by the cloud runner; both move it out of `queued` with a
-//! conditional update, so only one runs it.
+//! conditional update, so only one runs it. Neither claim carries the
+//! owner's memories: both runs look them up with `search_memory`
+//! ([`super::memory_search`]).
 
 use std::sync::Arc;
 
@@ -20,9 +22,6 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 use chrono::Utc;
-use kordi_tools::memory_prompt::{
-    memory_prompt_section, tool_less_system_prompt, MemoryRun, MemorySettings, PromptMemory,
-};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx_core::{query::query, query_as::query_as};
@@ -56,7 +55,7 @@ pub(super) async fn announce_evaluation(
         .map_err(|_| sqlx_core::Error::Protocol("Could not announce the evaluation.".into()))
 }
 
-fn executor(session: &CloudSession, claim_id: Uuid) -> String {
+pub(super) fn executor(session: &CloudSession, claim_id: Uuid) -> String {
     format!("desktop:{}:{claim_id}", session.device_id)
 }
 
@@ -108,7 +107,7 @@ async fn lease(
 }
 
 /// Whether `executor` holds the run with a live desktop lease.
-async fn held(pool: &PgPool, run_id: &str, owner: &str, executor: &str) -> Result<bool> {
+pub(super) async fn held(pool: &PgPool, run_id: &str, owner: &str, executor: &str) -> Result<bool> {
     let (held,): (bool,) = query_as(
         "SELECT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs \
            WHERE run_id = $1 AND owner_account_id = $2 AND claimed_by = $3 \
@@ -144,59 +143,12 @@ async fn model_choice(pool: &PgPool, agent_id: &str) -> Result<&'static str> {
     })
 }
 
-/// The evaluation's system prompt as the cloud runner builds it: the run's
-/// own prompt, the owner's memory section for this conversation, and the
-/// no-tools line. Memory that cannot be read is left out, as the runner does.
-pub(crate) async fn evaluation_system_prompt(
-    pool: &PgPool,
-    base: &str,
-    owner: &str,
-    requester: &str,
-    session_id: &str,
-    subsession_id: Option<&str>,
-) -> String {
-    let section = match crate::memory_store::list(pool, owner).await {
-        Ok(list) => {
-            let memories: Vec<PromptMemory<'_>> = list
-                .memories
-                .iter()
-                .map(|memory| PromptMemory {
-                    scope: &memory.scope,
-                    scope_id: &memory.scope_id,
-                    text: &memory.text,
-                    created_at: &memory.created_at,
-                    updated_at: &memory.updated_at,
-                })
-                .collect();
-            let run = MemoryRun {
-                session_id,
-                subsession_id,
-                owner_request: owner == requester,
-            };
-            let settings = MemorySettings {
-                enabled: list.settings.memory_enabled,
-                exclude_sensitive: list.settings.exclude_sensitive,
-            };
-            memory_prompt_section(&run, settings, &memories)
-        }
-        Err(error) => {
-            eprintln!(
-                "[proactive] Memory for a Mac evaluation is unavailable: {}",
-                error.code
-            );
-            None
-        }
-    };
-    tool_less_system_prompt(base, section.as_deref())
-}
-
-type HeldEvaluation = (String, String, String, String, Option<String>);
-
 /// Admits the signed-in owner's Mac to the queued evaluation `run_id`.
 /// `Ok(None)` refuses the claim: this Mac is not ready for proactive runs or
 /// the run is not the active evaluation of its conversation. Otherwise the
 /// answer says whether this claim holds the run and, when it does, what to
-/// run: one model turn with no tools.
+/// run: one model turn whose only tool is `search_memory`, answered through
+/// the digest observe route.
 pub(crate) async fn claim_evaluation(
     pool: &PgPool,
     session: &CloudSession,
@@ -224,9 +176,8 @@ pub(crate) async fn claim_evaluation(
     }
     let executor = executor(session, claim_id);
     lease(pool, run_id, owner, &executor, route).await?;
-    let row: Option<HeldEvaluation> = query_as(
-        "SELECT prompt, system_prompt, requester_account_id, session_id, subsession_id::text \
-         FROM cloud_agent_fallback_runs \
+    let row: Option<(String, String)> = query_as(
+        "SELECT prompt, system_prompt FROM cloud_agent_fallback_runs \
          WHERE run_id = $1 AND claimed_by = $2 AND execution_backend = 'desktop' \
            AND status IN ('leased', 'running') AND lease_expires_at::timestamptz > now()",
     )
@@ -234,18 +185,9 @@ pub(crate) async fn claim_evaluation(
     .bind(&executor)
     .fetch_optional(pool)
     .await?;
-    let Some((prompt, base, requester, session_id, subsession_id)) = row else {
+    let Some((prompt, system_prompt)) = row else {
         return Ok(Some(json!({"runId": run_id, "acquired": false})));
     };
-    let system_prompt = evaluation_system_prompt(
-        pool,
-        &base,
-        owner,
-        &requester,
-        &session_id,
-        subsession_id.as_deref(),
-    )
-    .await;
     // The model the run asks for, and what a Mac that runs with its own
     // account needs to apply it to its provider.
     let asked: AgentRuntimeRoute = asked
@@ -261,9 +203,9 @@ pub(crate) async fn claim_evaluation(
         "leaseSeconds": LEASE_SECONDS,
         "proactive": {
             "kind": "evaluation",
-            "systemPrompt": system_prompt,
+            "systemPrompt": system_prompt.trim(),
             "prompt": prompt,
-            "tools": [],
+            "tools": [super::memory_search::mac_tool()],
             "model": asked.default_model,
             "thinking": asked.thinking,
             "provider": asked.default_auth_provider,
