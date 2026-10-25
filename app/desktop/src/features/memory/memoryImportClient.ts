@@ -1,9 +1,12 @@
 import { useEffect } from 'react';
 
+import { defaultCloudAuthClient } from '@/features/cloud/authClient';
+import { loadSession } from '@/features/cloud/session';
 import { digestRunRoute } from '@/features/digest/digestMacRuns';
 import { invokeDesktop, type DesktopChatMessageRoute } from '@/lib/desktop';
 
 import type { AgentInstructionFile, MemoryImporter } from './memoryImport';
+import { startMemoryImportRun, type MemoryImportExtractInput } from './memoryImportRuns';
 
 /** Each provider's fast model, as the server's digest `FAST_MODELS`. */
 const FAST_MODELS: Record<string, string> = {
@@ -30,14 +33,22 @@ export function useMemoryImportRoute(route: DesktopChatMessageRoute | null) {
   useEffect(() => { importRoute = route; }, [route]);
 }
 
-/** Discovery, the picker and the import turn run in the native shell, with this Mac's chat route. */
+const extractNative = (input: MemoryImportExtractInput) => invokeDesktop<string>('desktop_memory_import_extract', input);
+
+/**
+ * Discovery, the picker and the import turn run in the native shell, with this Mac's chat route.
+ * A hosted account's import runs under a run the server admits (`startMemoryImportRun`).
+ */
 export const nativeMemoryImporter: MemoryImporter = {
   discover: () => invokeDesktop<AgentInstructionFile[]>('desktop_memory_import_discover'),
   choose: () => invokeDesktop<AgentInstructionFile[]>('desktop_memory_import_choose'),
-  extract: (file, existingMemories) => invokeDesktop<string>('desktop_memory_import_extract', {
-    path: file.path,
-    existingMemories,
-    ...memoryImportRoute(importRoute),
+  extract: (file, existingMemories) => extractNative({ path: file.path, existingMemories, ...memoryImportRoute(importRoute) }),
+  start: () => startMemoryImportRun({
+    route: importRoute,
+    localRoute: memoryImportRoute,
+    session: loadSession,
+    client: defaultCloudAuthClient(),
+    invoke: extractNative,
   }),
 };
 

@@ -98,12 +98,23 @@ export function MemoryImportSection({
     setNotice('');
     setStatuses(Object.fromEntries(chosen.map((file) => [file.path, 'importing' as const])));
     const existing = lessons.map((lesson) => lesson.text);
+    let batch: Awaited<ReturnType<NonNullable<MemoryImporter['start']>>>;
+    try {
+      batch = importer.start ? await importer.start() : { extract: (file, memories) => importer.extract(file, memories), finish: () => Promise.resolve() };
+    } catch (error) {
+      const failed: RowStatus = { failed: errorLine(error) };
+      setStatuses(Object.fromEntries(chosen.map((file) => [file.path, failed])));
+      setRunning(false);
+      return;
+    }
     let total = 0;
+    let read = 0;
     for (const file of chosen) {
       let saved = 0;
       let status: RowStatus;
       try {
-        const reply = await importer.extract(file, existing);
+        const reply = await batch.extract(file, existing);
+        read += 1;
         for (const { save } of memoryImportSaves(parseMemoryImportReply(reply, [file]), [file], existing)) {
           try {
             await client.importLesson(save);
@@ -120,6 +131,7 @@ export function MemoryImportSection({
       total += saved;
       setStatuses((current) => ({ ...current, [file.path]: status }));
     }
+    await batch.finish(read > 0);
     setNotice(total === 0 ? 'Nothing new.' : `${importedCountLabel(total)}.`);
     setRunning(false);
     if (total > 0) onImported();

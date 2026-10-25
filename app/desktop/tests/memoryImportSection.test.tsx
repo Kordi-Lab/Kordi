@@ -172,3 +172,47 @@ test('a file that cannot be imported shows the reason on its row', async () => {
     await view.cleanup();
   }
 });
+
+test('a refused import run shows the server line on every row and finishes no run', async () => {
+  const preview = createPreviewMemoryImporter({ latencyMs: 0 });
+  const importer: MemoryImporter = {
+    ...preview,
+    start: async () => { throw new Error('Another import is running.'); },
+  };
+  const view = await render(
+    <MemoryImportSection client={{ importLesson: async () => ({}) as MemoryLesson }} importer={importer} lessons={[]} providerReady onImported={() => undefined} />,
+  );
+  try {
+    await act(async () => { importButton(view.container)?.click(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    const text = view.container.textContent ?? '';
+    assert.equal(text.match(/Another import is running\./g)?.length, 2);
+    assert.equal(text.match(/Could not import/g)?.length, 2);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test('an import run reads each file under it and is completed once', async () => {
+  const preview = createPreviewMemoryImporter({ latencyMs: 0 });
+  const finished: boolean[] = [];
+  const read: string[] = [];
+  const importer: MemoryImporter = {
+    ...preview,
+    start: async () => ({
+      extract: (file, existing) => { read.push(file.path); return preview.extract(file, existing); },
+      finish: async (ok) => { finished.push(ok); },
+    }),
+  };
+  const view = await render(
+    <MemoryImportSection client={{ importLesson: async () => ({}) as MemoryLesson }} importer={importer} lessons={[]} providerReady onImported={() => undefined} />,
+  );
+  try {
+    await act(async () => { importButton(view.container)?.click(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    assert.equal(read.length, 2);
+    assert.deepEqual(finished, [true]);
+  } finally {
+    await view.cleanup();
+  }
+});

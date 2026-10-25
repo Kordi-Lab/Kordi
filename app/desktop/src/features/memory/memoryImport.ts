@@ -21,6 +21,8 @@ export type MemoryImporter = {
   /** Opens the file picker; the chosen `.md` files, in its folder's project. */
   choose?(): Promise<AgentInstructionFile[]>;
   extract(file: AgentInstructionFile, existingMemories: string[]): Promise<string>;
+  /** Starts one import of several files; without it each file goes to `extract`. */
+  start?(): Promise<{ extract: MemoryImporter['extract']; finish(ok: boolean): Promise<void> }>;
 };
 
 /** `files` with the chosen files added after them, each path once. */
