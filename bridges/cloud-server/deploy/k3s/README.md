@@ -257,6 +257,29 @@ kubectl -n kordi-cloud logs deployment/kordi-cloud-server --since=10m \
   | grep -E 'Kordi support|support tickets'
 ```
 
+## Connectors
+
+Connector sign-ins (Google Calendar, Gmail, GitHub, Slack) read their OAuth
+clients from the `kordi-connectors` Secret; a provider whose keys are missing is
+reported as not available on this server. Register each OAuth client with the
+callback `https://kordi.ai/v1/cloud/connectors/oauth/callback` and never reuse
+the sign-in clients from `kordi-cloud-oauth`.
+
+```bash
+kubectl -n kordi-cloud create secret generic kordi-connectors \
+  --from-literal=google-client-id="..." \
+  --from-literal=google-client-secret="..." \
+  --from-literal=github-client-id="..." \
+  --from-literal=github-client-secret="..." \
+  --from-literal=slack-client-id="..." \
+  --from-literal=slack-client-secret="..."
+```
+
+The manifest references every key as optional, so the Deployment starts without
+the Secret; add keys later with `kubectl -n kordi-cloud edit secret
+kordi-connectors` and restart the Deployment with `kubectl -n kordi-cloud
+rollout restart deployment/kordi-cloud-server`.
+
 ## Voice and video media
 
 Read [Hosting Kordi voice and video calls](../../../../docs/call-hosting.md)
