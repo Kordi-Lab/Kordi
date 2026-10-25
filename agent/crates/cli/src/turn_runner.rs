@@ -107,6 +107,11 @@ mod omp_tools;
 mod panic;
 mod persistence;
 mod runner;
+
+/// A provider's retry reason, cleaned of credentials and IDs before it is shown.
+fn retry_text(message: &str) -> String {
+    kordi_omp_runtime::provider_reason(message).unwrap_or_default()
+}
 mod tool_argument_progress;
 mod tool_policy;
 mod tool_support;

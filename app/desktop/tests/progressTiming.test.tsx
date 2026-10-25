@@ -50,3 +50,16 @@ test('saved execution timing survives canonical hydration, including older neste
   const activeContent = cloudAgentExecutionCanonicalContent({ ...execution, completed: false });
   assert.equal(activeContent.completedAtMs, undefined);
 });
+
+test('a retrying turn shows the provider reason under its label', () => {
+  const retrying: DesktopChatTurnSnapshot = {
+    ...turn, status: 'retrying', completed: false, succeeded: false, completedAtMs: null, assistantText: '',
+    thinkingText: '', segments: [], tools: [],
+    retryReason: 'Codex is at capacity, please try again later (code=turn_rate_limit_exceeded)',
+  };
+  const html = renderToStaticMarkup(createElement(TurnProgress, { turn: retrying, renderTool: () => null }));
+  assert.match(html, /aria-label="Retrying…/);
+  assert.match(html, /class="app-turn-retry-reason">Codex is at capacity, please try again later \(code=turn_rate_limit_exceeded\)</);
+  const recovered = renderToStaticMarkup(createElement(TurnProgress, { turn: { ...retrying, status: 'streaming' }, renderTool: () => null }));
+  assert.doesNotMatch(recovered, /app-turn-retry-reason/);
+});

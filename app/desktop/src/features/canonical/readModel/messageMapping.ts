@@ -420,6 +420,11 @@ export function mapCanonicalMessage(
   const voiceMessage = storedVoiceMessage(content.voiceMessage, isOwnMessage);
   return {
     id: message.id,
+    // A message typed in this window keeps its canonical id as its render
+    // identity from the first frame, as the optimistic copy and the runtime
+    // merge give it. Without it, a queued request changed its row key when it
+    // was sent, and the transcript rebuilt the bubble instead of moving it.
+    ...(role === 'user' && sourceTransport === 'desktop-chat-ui' ? { clientMessageId: message.id } : {}),
     // Cloud user messages already carry the runtime entry ID as sourceEventId,
     // before desktop sync enriches their metadata. Use that stable identity
     // rather than text/time matching; runtime admission may cross a minute.

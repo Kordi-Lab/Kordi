@@ -170,7 +170,8 @@ pub(crate) async fn run_turn_inner(
         .map_err(|error| {
             // A fixed code only: the error never carries message content.
             tracing::warn!(code = error.diagnostic_code(), "OMP turn failed");
-            anyhow!(error)
+            // This Mac's own turn: its owner sees the provider's cleaned reason.
+            anyhow!(error.with_provider_reason())
         })?;
     persist_result(&config.conn, &config.session_id, &scope, &request, &result).await?;
     if result.checkpoint.is_some() {

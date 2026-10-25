@@ -134,6 +134,7 @@ pub(super) async fn start_message(
         completed_at_ms: None,
         transcript_entry_id: None,
         error: None,
+        retry_reason: None,
         transcript_refresh_required: false,
         background_follow_up: None,
     }));

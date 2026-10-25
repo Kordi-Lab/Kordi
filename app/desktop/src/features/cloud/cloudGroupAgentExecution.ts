@@ -1,3 +1,4 @@
+import { withoutProviderResponse } from './providerFailureText';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
 import { mergeDesktopTurnSnapshot } from '@/features/chat/desktopLiveTurns';
@@ -339,8 +340,8 @@ export async function respondToCloudGroupAgentMention(
   const succeeded = responseText.length > 0;
   const failureMessage = succeeded
     ? null
-    : cloudAgentProviderFailureNotice(finalTurn.error || finalTurn.message)
-      ?? (finalTurn.error?.trim()
+    : cloudAgentProviderFailureNotice(withoutProviderResponse(finalTurn.error) || finalTurn.message)
+      ?? (withoutProviderResponse(finalTurn.error)?.trim()
         || finalTurn.message?.trim()
         || 'Cloud agent returned no text response');
   const responseDeliveryState: 'complete' | 'failed' = succeeded

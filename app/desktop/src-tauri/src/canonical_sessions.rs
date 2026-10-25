@@ -91,8 +91,8 @@ pub(crate) use self::message_lookup::{
 pub use self::message_mirror_command::desktop_canonical_reconcile_message_mirror;
 pub(crate) use self::message_visibility::latest_readable_session_message_id;
 pub(crate) use self::persistence::{
-    append_message_in_db, create_delegated_exchange_in_db, select_delegated_exchange,
-    select_message, select_message_by_source, upsert_message_in_db,
+    append_message_in_db, create_delegated_exchange_in_db, follow_running_fork_copies,
+    select_delegated_exchange, select_message, select_message_by_source, upsert_message_in_db,
 };
 use self::persistence::{
     enforce_only_local_group_self, open_or_create_session_in_db, select_identity, select_session,

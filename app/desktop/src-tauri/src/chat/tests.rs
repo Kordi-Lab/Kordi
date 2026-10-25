@@ -88,6 +88,7 @@ async fn running_turn_lookup_is_session_scoped() {
         completed_at_ms: None,
         transcript_entry_id: None,
         error: None,
+        retry_reason: None,
         transcript_refresh_required: false,
         background_follow_up: None,
     }));
@@ -132,6 +133,7 @@ async fn concurrent_turn_admission_queues_per_canonical_session() {
                 completed_at_ms: None,
                 transcript_entry_id: None,
                 error: None,
+                retry_reason: None,
                 transcript_refresh_required: false,
                 background_follow_up: None,
             })),

@@ -196,7 +196,8 @@ function send(value: JsonObject) {
 }
 function finishError(error: unknown) {
   send({ type: 'error', code: error instanceof RuntimeError ? error.code : 'runtime_error',
-    message: error instanceof RuntimeError ? error.message : 'The agent runtime could not complete this request.' });
+    message: error instanceof RuntimeError ? error.message : 'The agent runtime could not complete this request.',
+    ...(error instanceof RuntimeError && error.providerReason ? { providerReason: error.providerReason } : {}) });
   terminal = true;
 }
 function cancelPending() {

@@ -4,10 +4,12 @@
 
 mod error;
 mod protocol;
+mod provider_reason;
 mod supervisor_helpers;
 mod warm_pool;
 mod worker_command;
 pub use error::{ProtocolViolation, RuntimeError};
+pub use provider_reason::provider_reason;
 use supervisor_helpers::{
     ToolCancelGuard, acquire_computer_lock, check_frame, read_line_bounded, validate_request,
     write_json_line,
@@ -462,6 +464,7 @@ impl OmpRuntime {
                     sequence,
                     code,
                     _message: _,
+                    provider_reason: raw_reason,
                 } => {
                     check_frame(
                         request,
@@ -472,16 +475,7 @@ impl OmpRuntime {
                         sequence,
                         &mut last_sequence,
                     )?;
-                    let code = if code.len() <= 64
-                        && code
-                            .chars()
-                            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-                    {
-                        code
-                    } else {
-                        "worker_error".to_string()
-                    };
-                    return Err(RuntimeError::Worker(code));
+                    return Err(RuntimeError::from_worker_frame(code, raw_reason.as_deref()));
                 }
             }
         }

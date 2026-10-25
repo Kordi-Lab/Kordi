@@ -98,6 +98,39 @@ async fn host_does_not_count_tool_or_hook_calls() {
     assert_eq!(run(&script, &request).await.unwrap().text, "done");
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn provider_failure_shows_the_cleaned_provider_reason() {
+    let script = r#"read request
+printf '%s\n' '{"type":"ready","schemaVersion":1}'
+printf '%s\n' '{"type":"error","schemaVersion":1,"runId":"run-1","attemptId":"attempt-1","sequence":1,"code":"provider_http_429","message":"The selected provider could not complete this request.","providerReason":"Codex error event: Codex is at capacity, please try again later (code=turn_rate_limit_exceeded) Bearer abc123secret"}'
+"#;
+    let error = run(script, &request()).await.err().unwrap();
+    assert_eq!(error.diagnostic_code(), "provider_http_429");
+    // Servers classify the plain text and other people may read it: no provider text.
+    assert_eq!(
+        error.to_string(),
+        "The provider is busy or rate-limited. Try again shortly."
+    );
+    assert_eq!(
+        error.with_provider_reason(),
+        "The provider is busy or rate-limited. Try again shortly. Provider response: Codex is at capacity, please try again later (code=turn_rate_limit_exceeded) Bearer [hidden]"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_reason_on_a_non_provider_code_is_ignored() {
+    let script = r#"read request
+printf '%s\n' '{"type":"ready","schemaVersion":1}'
+printf '%s\n' '{"type":"error","schemaVersion":1,"runId":"run-1","attemptId":"attempt-1","sequence":1,"code":"hook_error","message":"Hook failed.","providerReason":"private hook detail"}'
+"#;
+    assert_eq!(
+        run(script, &request()).await.err(),
+        Some(RuntimeError::Worker("hook_error".into()))
+    );
+}
+
 #[test]
 fn diagnostic_codes_are_fixed_identifiers() {
     for error in [
@@ -105,6 +138,10 @@ fn diagnostic_codes_are_fixed_identifiers() {
         RuntimeError::Protocol(ProtocolViolation::PendingCallbacks),
         RuntimeError::OutputLimit,
         RuntimeError::Worker("provider_http_429".into()),
+        RuntimeError::Provider {
+            code: "provider_error".into(),
+            reason: "Provider text".into(),
+        },
     ] {
         let code = error.diagnostic_code();
         assert!(!code.is_empty() && code.len() <= 64);

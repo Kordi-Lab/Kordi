@@ -250,7 +250,7 @@ test('synchronized profile choice stays bound to its selected account', () => {
     { model: 'openai/gpt-5.6-sol', authProvider: 'openai-codex', authChoice: 'profile:old-device', thinking: 'max' },
     { model: 'openai/gpt-5.6-sol', authProvider: 'openai', authChoice: 'local-active-oauth', thinking: 'max' },
   ), {
-    model: 'openai/gpt-5.6-sol', authProvider: 'openai',
+    model: 'openai/gpt-5.6-sol', authProvider: 'openai-codex',
     authChoice: 'profile:old-device', thinking: 'max',
   });
 });
@@ -294,7 +294,7 @@ test('ordered Cloud route changes win over a lagging canonical mirror atomically
   ];
   const next = applySynchronizedCloudAgentRuntimeRoutes({}, 'acct_me', canonicalMessages, cloudMessages);
   assert.deepEqual(next[runtimeSessionId], {
-    model: 'openai/gpt-5.6-sol', authProvider: 'openai',
+    model: 'openai/gpt-5.6-sol', authProvider: 'openai-codex',
     authChoice: 'local-active-oauth', thinking: 'max',
   });
   for (let replay = 0; replay < 100; replay += 1) {
@@ -339,4 +339,32 @@ test('the latest preceding model-change event is authoritative for the next requ
     route,
     { model: 'anthropic/claude-sonnet-4-6', authProvider: 'anthropic', authChoice: 'claude-oauth' },
   ), route);
+});
+
+test('a restart rebuilds a ChatGPT sign-in route with its own provider id', () => {
+  const sessionId = 'session:self-agent:chatgpt-restart';
+  const runtimeSessionId = cloudAgentRuntimeSessionId('acct_me', sessionId) ?? '';
+  const route = {
+    model: 'openai-codex/gpt-6.1-sol', authProvider: 'openai-codex',
+    authChoice: 'cloud-login:chatgpt', thinking: 'medium',
+  };
+  const history = [{
+    id: 'model-change', sessionId, senderIdentityId: 'identity_me', senderRole: 'system',
+    messageKind: 'agent-model-change', contentText: 'Switched model to openai-codex/gpt-6.1-sol',
+    content: { agentRuntimeRoute: route },
+    status: 'complete', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1,
+  }];
+  assert.deepEqual(applyCloudAgentModelChangeMessages({}, 'acct_me', history)[runtimeSessionId], route);
+  // A model-only change in the same family keeps the account and its provider id.
+  assert.deepEqual(cloudAgentRuntimeRouteAfterModelChange(route, { model: 'openai-codex/gpt-6.1-luna' }), {
+    ...route, model: 'openai-codex/gpt-6.1-luna',
+  });
+});
+
+test('a same-family route without a sign-in does not borrow the local sign-in', () => {
+  assert.deepEqual(cloudAgentRuntimeRouteAfterModelChange(
+    { model: 'openai/gpt-5.6-luna', authProvider: 'openai', thinking: 'high' },
+    { model: 'openai/gpt-5.6-sol' },
+    { model: 'openai-codex/gpt-5.6-sol', authProvider: 'openai-codex', authChoice: 'cloud-login:work' },
+  ), { model: 'openai/gpt-5.6-sol', authProvider: 'openai', thinking: 'high' });
 });
