@@ -50,6 +50,7 @@ import {
 import {
   applyCloudGroupSessionControl,
 } from './cloudGroupSessionControl';
+import { useCloudGroupProfileRefresh } from './cloudGroupProfileRefresh';
 import {
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
   resolveCloudGroupAdminSnapshot,
@@ -286,6 +287,14 @@ export function useCloudGroupControlApplication({
     },
     [flushCanonicalState, publishCanonicalState],
   );
+  useCloudGroupProfileRefresh({
+    account,
+    client,
+    profileCacheRef,
+    preparationCacheRef: sessionPreparationCacheRef,
+    canonicalStateRef,
+    setState: publishCanonicalStateImmediately,
+  });
   // Built per use, so the refs are read when the work runs, not during render.
   const agentRuntime = useCallback((): CloudGroupAgentRuntime => ({
     client,
