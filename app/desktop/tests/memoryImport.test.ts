@@ -11,6 +11,7 @@ import {
   withChosenFiles,
   type AgentInstructionFile,
 } from '../src/features/memory/memoryImport';
+import { appSummary, memoryImportTree, rollUpLabel } from '../src/features/memory/memoryImportTreeModel';
 import { memoryImportRoute } from '../src/features/memory/memoryImportClient';
 import { lessonOriginLabel, lessonSourceLabel } from '../src/features/memory/memoryModel';
 
@@ -122,4 +123,24 @@ test('an import runs with the chat route at low thinking and falls back to the f
 test('the list is grouped by app in the order each app first appears', () => {
   const groups = agentFilesBySource([projectFile, homeFile, { ...projectFile, path: '/work/other/AGENTS.md' }]);
   assert.deepEqual(groups.map((group) => [group.source, group.files.length]), [['Project file', 2], ['Claude Code', 1]]);
+});
+
+test('the import tree skips the project level for a one-project app and rolls results up', () => {
+  const file = (path: string, source: string, root: string | null, projectName: string): AgentInstructionFile => ({
+    path, root, projectName, fileName: path.split('/').pop() ?? path, source, size: 100, modifiedAt: 0,
+  });
+  const files = [
+    file('/a/one.md', 'Claude Code', '/a', 'a'),
+    file('/b/two.md', 'Claude Code', '/b', 'b'),
+    file('/home/three.md', 'Claude Code', null, 'Home'),
+    file('/a/AGENTS.md', 'Project file', '/a', 'a'),
+  ];
+  const [claude, project] = memoryImportTree(files);
+  assert.deepEqual([claude.name, appSummary(claude), claude.projects.map((group) => group.name)], ['Claude Code', '3 projects · 3 files', ['a', 'b', 'Home']]);
+  assert.deepEqual([project.name, appSummary(project), project.projects.length], ['Project files', '1 file', 0]);
+  assert.equal(rollUpLabel(claude.files, {}, 'app'), '');
+  assert.equal(rollUpLabel(claude.files, { '/a/one.md': 2, '/b/two.md': 'importing' }, 'project'), 'Importing 1/2…');
+  assert.equal(rollUpLabel(claude.files, { '/a/one.md': 2, '/b/two.md': 'importing' }, 'app'), 'Importing…');
+  assert.equal(rollUpLabel(claude.files, { '/a/one.md': 2, '/b/two.md': { failed: 'x' } }, 'app'), 'Imported 2 memories');
+  assert.equal(rollUpLabel(claude.files, { '/a/one.md': { failed: 'x' } }, 'app'), 'Could not import');
 });

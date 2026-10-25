@@ -6,8 +6,6 @@ import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLay
 
 import type { MemoryClient } from './memoryClient';
 import {
-  agentFileSizeLabel,
-  agentFilesBySource,
   importedCountLabel,
   memoryImportSaves,
   parseMemoryImportReply,
@@ -15,18 +13,11 @@ import {
   type AgentInstructionFile,
   type MemoryImporter,
 } from './memoryImport';
-import { lessonDateLabel, type MemoryLesson } from './memoryModel';
-
-type RowStatus = 'importing' | { failed: string } | number;
+import type { MemoryLesson } from './memoryModel';
+import { MemoryImportTree } from './MemoryImportTree';
+import { countLabel, memoryImportTree, withSelection, type ImportRowStatus as RowStatus } from './memoryImportTreeModel';
 
 const mutedClass = 'font-normal text-slate-400';
-
-function statusLabel(status: RowStatus | undefined): string {
-  if (status === undefined) return '';
-  if (status === 'importing') return 'Importing…';
-  if (typeof status === 'object') return 'Could not import';
-  return importedCountLabel(status);
-}
 
 function errorLine(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -67,15 +58,6 @@ export function MemoryImportSection({
   }, [importer]);
 
   if (!files) return null;
-
-  const toggle = (path: string, checked: boolean) => {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (checked) next.add(path);
-      else next.delete(path);
-      return next;
-    });
-  };
 
   const choose = async () => {
     if (!importer.choose) return;
@@ -137,46 +119,29 @@ export function MemoryImportSection({
     if (total > 0) onImported();
   };
 
-  const failure = (path: string) => {
-    const status = statuses[path];
-    return typeof status === 'object' && status.failed ? status.failed : null;
-  };
+  const noticeLine = providerReady ? notice : CLOUD_AGENT_NO_PROVIDER_NOTICE;
 
   return (
     <SettingsSection title="Import">
       {files.length === 0 ? (
         <SettingsRow title="No agent files found." description="Finds instructions and memories from your coding agents." />
-      ) : agentFilesBySource(files).map((group) => (
-        <div key={group.source} data-memory-import-source={group.source}>
-          <div className="pt-3 text-[12px] font-medium leading-5 text-slate-400">{group.source}</div>
-          {group.files.map((file) => (
-            <SettingsRow
-              key={file.path}
-              icon={(
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-[color:var(--app-sidebar-accent)]"
-                  aria-label={`${file.projectName} ${file.fileName}`}
-                  checked={selected.has(file.path)}
-                  disabled={running}
-                  onChange={(event) => toggle(file.path, event.target.checked)}
-                />
-              )}
-              title={file.projectName}
-              description={(
-                <>
-                  {[file.fileName, agentFileSizeLabel(file.size), lessonDateLabel(new Date(file.modifiedAt).toISOString())].join(' · ')}
-                  {failure(file.path) ? <span className="block">{failure(file.path)}</span> : null}
-                </>
-              )}
-              control={statuses[file.path] !== undefined ? <span className="text-[12px] text-slate-400">{statusLabel(statuses[file.path])}</span> : null}
-            />
-          ))}
-        </div>
-      ))}
+      ) : (
+        <MemoryImportTree
+          apps={memoryImportTree(files)}
+          selected={selected}
+          statuses={statuses}
+          disabled={running}
+          onSelect={(group, checked) => setSelected((current) => withSelection(current, group, checked))}
+        />
+      )}
       {files.length > 0 || importer.choose ? (
         <SettingsRow
-          title={<span className={mutedClass} aria-live="polite">{providerReady ? notice : CLOUD_AGENT_NO_PROVIDER_NOTICE}</span>}
+          title={(
+            <span className={mutedClass}>
+              {files.length > 0 ? `${countLabel(selected.size, 'file')} selected` : null}
+              <span aria-live="polite">{noticeLine ? `${files.length > 0 ? ' · ' : ''}${noticeLine}` : ''}</span>
+            </span>
+          )}
           control={(
             <>
               {importer.choose ? (

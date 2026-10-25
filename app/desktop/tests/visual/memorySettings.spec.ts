@@ -76,25 +76,46 @@ test('memory settings organizer, project and group rows (light)', async ({ page 
   await expect(page).toHaveScreenshot('memorySettings-organizer-rows-light.png');
 });
 
-test('memory settings import section, before and after an import (light)', async ({ page }) => {
+async function openImport(page: Page, theme: 'light' | 'dark') {
   await page.clock.setFixedTime(new Date('2026-10-20T10:00:00Z'));
-  await page.goto('/tests/visual/memorySettings.html?theme=light');
+  await page.goto(`/tests/visual/memorySettings.html?theme=${theme}`);
   await expect(page.getByRole('heading', { name: 'All memories · 10' })).toBeVisible();
   const importHeading = page.getByRole('heading', { name: 'Import', exact: true });
-  const section = page.locator('section', { has: importHeading });
-  await expect(section.getByRole('checkbox', { name: 'launch-site AGENTS.md' })).toBeChecked();
-  await expect(section.getByRole('checkbox', { name: 'Home .claude/CLAUDE.md' })).toBeChecked();
-  await expect(section.locator('[data-memory-import-source]')).toHaveCount(2);
+  return { importHeading, section: page.locator('section', { has: importHeading }) };
+}
+
+// Opens Claude Code and its launch-site project.
+async function expandLaunchSite(section: Locator) {
+  await section.getByRole('treeitem', { name: 'Claude Code', exact: true }).getByRole('button', { name: /^Claude Code/ }).click();
+  await section.getByRole('treeitem', { name: 'Claude Code launch-site', exact: true }).getByRole('button', { name: /^launch-site/ }).click();
+  await expect(section.getByRole('checkbox', { name: 'launch-site memory/feedback-always-checkpoint.md' })).toBeChecked();
+}
+
+test('memory settings import section, collapsed, opened and after an import (light)', async ({ page }) => {
+  const { importHeading, section } = await openImport(page, 'light');
+  await expect(section.getByRole('checkbox', { name: 'Claude Code', exact: true })).toBeChecked();
+  await expect(section.getByRole('checkbox', { name: 'Project files', exact: true })).toBeChecked();
+  await expect(section.locator('[data-memory-import-row]')).toHaveCount(2);
+  await expect(section.getByText('9 files selected')).toBeVisible();
   await scrollTo(page, importHeading);
   await expect(page).toHaveScreenshot('memorySettings-import-light.png');
+  await expandLaunchSite(section);
+  await scrollTo(page, importHeading);
+  await expect(page).toHaveScreenshot('memorySettings-import-expanded-light.png');
   // The chooser's fixture returns a new file and one already listed, which is not added twice.
   await section.getByRole('button', { name: 'Choose files…' }).click();
-  await expect(section.getByRole('checkbox', { name: 'Notes writing.md' })).toBeChecked();
-  await expect(section.getByRole('checkbox', { name: 'launch-site AGENTS.md' })).toHaveCount(1);
+  await expect(section.getByRole('checkbox', { name: 'Chosen files', exact: true })).toBeChecked();
+  await expect(section.getByText('10 files selected')).toBeVisible();
   await section.getByRole('button', { name: 'Import', exact: true }).click();
-  await expect(section.getByText('Imported 3 memories.')).toBeVisible();
-  await expect(section.getByText('Nothing new', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'All memories · 13' })).toBeVisible();
+  await expect(section.getByText('Imported 5 memories.')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'All memories · 15' })).toBeVisible();
   await scrollTo(page, importHeading);
   await expect(page).toHaveScreenshot('memorySettings-import-done-light.png');
+});
+
+test('memory settings import section, opened (dark)', async ({ page }) => {
+  const { importHeading, section } = await openImport(page, 'dark');
+  await expandLaunchSite(section);
+  await scrollTo(page, importHeading);
+  await expect(page).toHaveScreenshot('memorySettings-import-expanded-dark.png');
 });

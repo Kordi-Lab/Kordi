@@ -54,48 +54,41 @@ export const nativeMemoryImporter: MemoryImporter = {
 
 const DAY = 86_400_000;
 
-/** Sample files of two apps, a chosen one, and fixed replies, for previews; it reads nothing on this Mac. */
+const LAUNCH_SITE = '/sample/Projects/launch-site';
+const DOCS_SITE = '/sample/Projects/docs-site';
+
+function sampleFile(source: string, root: string | null, projectName: string, path: string, fileName: string, size: number, age: number, now: number): AgentInstructionFile {
+  return { path, root, projectName, fileName, source, size, modifiedAt: now - age * DAY };
+}
+
+function sampleReply(file: string, ...texts: string[]) {
+  return { memories: texts.map((text) => ({ text, category: 'hcp-custom:task_lessons', scope: 'project', file })) };
+}
+
+/** Sample files of two apps in two projects, a chosen one, and fixed replies, for previews; it reads nothing on this Mac. */
 export function createPreviewMemoryImporter(options: { now?: () => number; latencyMs?: number } = {}): MemoryImporter {
   const now = options.now ?? Date.now;
   const latencyMs = options.latencyMs ?? 600;
+  const at = now();
+  const claude = (root: string, name: string, slug: string, file: string, size: number, age: number) =>
+    sampleFile('Claude Code', root, name, `/sample/.claude/projects/${slug}/memory/${file}`, `memory/${file}`, size, age, at);
   const files: AgentInstructionFile[] = [
-    {
-      path: '/sample/.claude/CLAUDE.md',
-      root: null,
-      projectName: 'Home',
-      fileName: '.claude/CLAUDE.md',
-      source: 'Claude Code',
-      size: 1_200,
-      modifiedAt: now() - 9 * DAY,
-    },
-    {
-      path: '/sample/Projects/launch-site/AGENTS.md',
-      root: '/sample/Projects/launch-site',
-      projectName: 'launch-site',
-      fileName: 'AGENTS.md',
-      source: 'Project file',
-      size: 4_300,
-      modifiedAt: now() - 2 * DAY,
-    },
+    claude(LAUNCH_SITE, 'launch-site', '-sample-Projects-launch-site', 'feedback-always-checkpoint.md', 1_100, 3),
+    claude(LAUNCH_SITE, 'launch-site', '-sample-Projects-launch-site', 'project-image-budget.md', 800, 5),
+    claude(LAUNCH_SITE, 'launch-site', '-sample-Projects-launch-site', 'reference-deploy-steps.md', 2_600, 12),
+    claude(DOCS_SITE, 'docs-site', '-sample-Projects-docs-site', 'feedback-short-headings.md', 700, 6),
+    claude(DOCS_SITE, 'docs-site', '-sample-Projects-docs-site', 'project-search-index.md', 1_900, 20),
+    sampleFile('Claude Code', null, 'Home', '/sample/.claude/CLAUDE.md', '.claude/CLAUDE.md', 1_200, 9, at),
+    sampleFile('Project file', LAUNCH_SITE, 'launch-site', `${LAUNCH_SITE}/AGENTS.md`, 'AGENTS.md', 4_300, 2, at),
+    sampleFile('Project file', LAUNCH_SITE, 'launch-site', `${LAUNCH_SITE}/CLAUDE.md`, 'CLAUDE.md', 1_500, 7, at),
+    sampleFile('Project file', DOCS_SITE, 'docs-site', `${DOCS_SITE}/AGENTS.md`, 'AGENTS.md', 3_200, 4, at),
   ];
-  const chosen: AgentInstructionFile = {
-    path: '/sample/Notes/writing.md',
-    root: '/sample/Notes',
-    projectName: 'Notes',
-    fileName: 'writing.md',
-    source: 'Chosen files',
-    size: 2_100,
-    modifiedAt: now() - 4 * DAY,
-  };
+  const chosen = sampleFile('Chosen files', '/sample/Notes', 'Notes', '/sample/Notes/writing.md', 'writing.md', 2_100, 4, at);
   const replies: Record<string, unknown> = {
-    [chosen.path]: { memories: [
-      { text: 'Keep release notes to five bullets.', category: 'hcp-custom:task_lessons', scope: 'project', file: chosen.path },
-    ] },
-    [files[1].path]: { memories: [
-      { text: 'Run the image size check before every site build.', category: 'hcp-custom:task_lessons', scope: 'project', file: files[1].path },
-      { text: 'Use pnpm for every script in this repository.', category: 'hcp-custom:task_lessons', scope: 'project', file: files[1].path },
-    ] },
-    [files[0].path]: { memories: [] },
+    [chosen.path]: sampleReply(chosen.path, 'Keep release notes to five bullets.'),
+    [files[0].path]: sampleReply(files[0].path, 'Commit a checkpoint before each large refactor.'),
+    [files[3].path]: sampleReply(files[3].path, 'Keep docs headings under six words.'),
+    [files[6].path]: sampleReply(files[6].path, 'Run the image size check before every site build.', 'Use pnpm for every script in this repository.'),
   };
   const wait = () => new Promise<void>((resolve) => { setTimeout(resolve, latencyMs); });
   return {
@@ -103,7 +96,7 @@ export function createPreviewMemoryImporter(options: { now?: () => number; laten
       return Promise.resolve(files.map((file) => ({ ...file })));
     },
     choose() {
-      return Promise.resolve([{ ...chosen }, { ...files[1] }]);
+      return Promise.resolve([{ ...chosen }, { ...files[6] }]);
     },
     async extract(file) {
       await wait();
