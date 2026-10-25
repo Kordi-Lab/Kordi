@@ -107,8 +107,13 @@ printf '%s\n' '{"type":"error","schemaVersion":1,"runId":"run-1","attemptId":"at
 "#;
     let error = run(script, &request()).await.err().unwrap();
     assert_eq!(error.diagnostic_code(), "provider_http_429");
+    // Servers classify the plain text and other people may read it: no provider text.
     assert_eq!(
         error.to_string(),
+        "The provider is busy or rate-limited. Try again shortly."
+    );
+    assert_eq!(
+        error.with_provider_reason(),
         "The provider is busy or rate-limited. Try again shortly. Provider response: Codex is at capacity, please try again later (code=turn_rate_limit_exceeded) Bearer [hidden]"
     );
 }

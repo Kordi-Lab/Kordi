@@ -1,8 +1,10 @@
 use std::fmt;
 
-/// Public wording comes from a fixed classification. A provider failure may
-/// add the provider's own reason, already cleaned by `provider_reason`, so the
-/// user sees the real fault. Logs use only `diagnostic_code`.
+/// Public wording comes from a fixed classification, and `Display` is only
+/// that wording: servers classify it and other people may see it. A provider
+/// failure also carries the provider's own reason, already cleaned by
+/// `provider_reason`, which `with_provider_reason` adds for the account owner.
+/// Logs use only `diagnostic_code`.
 #[derive(Debug, PartialEq, Eq)]
 pub enum RuntimeError {
     InvalidRequest,
@@ -34,14 +36,7 @@ impl fmt::Display for RuntimeError {
             Self::Cancelled => "The agent request was cancelled.",
             Self::UnexpectedExit => "The agent stopped before completing this request. Try again.",
             Self::Callback => "A tool or extension could not complete this request. Try again.",
-            Self::Worker(code) => worker_message(code),
-            Self::Provider { code, reason } => {
-                return write!(
-                    formatter,
-                    "{} Provider response: {reason}",
-                    worker_message(code)
-                );
-            }
+            Self::Worker(code) | Self::Provider { code, .. } => worker_message(code),
         };
         formatter.write_str(message)
     }
@@ -50,6 +45,15 @@ impl fmt::Display for RuntimeError {
 impl std::error::Error for RuntimeError {}
 
 impl RuntimeError {
+    /// The fixed wording plus the provider's cleaned reason, for the person
+    /// whose account ran the request.
+    pub fn with_provider_reason(&self) -> String {
+        match self {
+            Self::Provider { reason, .. } => format!("{self} Provider response: {reason}"),
+            _ => self.to_string(),
+        }
+    }
+
     /// A worker error frame: an unexpected code becomes `worker_error`, and
     /// only a provider failure keeps the provider's cleaned reason.
     pub(crate) fn from_worker_frame(code: String, raw_reason: Option<&str>) -> Self {

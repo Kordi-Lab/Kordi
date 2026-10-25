@@ -204,11 +204,13 @@ export function cloudAgentRuntimeRouteAfterModelChange(
   const localProvider = routeProvider(localExecutionRoute);
   const normalizedProvider = cleanText(provider)?.toLowerCase() ?? null;
   const changeAuthChoice = cleanText(changeRoute.authChoice);
+  // A route in the same family keeps its own sign-in, even none; only a
+  // different family borrows the local execution route's.
   const keptRoute = changeAuthChoice || !normalizedProvider
     ? null
-    : currentProvider === normalizedProvider && cleanText(current?.authChoice)
+    : currentProvider === normalizedProvider
       ? current
-      : localProvider === normalizedProvider && cleanText(localExecutionRoute?.authChoice)
+      : localProvider === normalizedProvider
         ? localExecutionRoute
         : null;
   const modelNamespace = nextModel && nextModel.indexOf('/') > 0

@@ -26,7 +26,7 @@ import type {
   DesktopCollaborationState
 } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
-import { formatDesktopClockTime,formatDesktopLastActiveLabel } from '@/lib/time';
+import { formatDesktopClockTime,formatDesktopLastActiveLabel } from '@/lib/time'; import { withoutProviderResponse } from './providerFailureText';
 
 import type { CloudAccount,CloudMessage } from './authClient';
 import { cloudAvatarImageUrl } from './avatar';
@@ -263,7 +263,7 @@ function cloudAgentCompletedLocalTurnCollaborationMessage({
   const assistantText = localTurn.assistantText.trim();
   const cancelled = localTurn.status === 'cancelled';
   const succeeded = localTurn.succeeded && assistantText.length > 0;
-  const fallbackText = localTurn.error?.trim() || localTurn.message?.trim() || 'Cloud agent returned no text response';
+  const fallbackText = withoutProviderResponse(localTurn.error)?.trim() || localTurn.message?.trim() || 'Cloud agent returned no text response';
   const text = succeeded
     ? assistantText
     : cancelled

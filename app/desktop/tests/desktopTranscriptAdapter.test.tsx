@@ -391,3 +391,12 @@ test('a failure whose text repeats its error shows the error once', () => {
   assert.equal(partial.turn?.assistantText, 'Checked two files.');
   assert.equal(partial.turn?.error, error);
 });
+
+test('a failed reply with tools keeps its partial text when no separate error was stored', () => {
+  const [reply] = mapDesktopMessagesForTranscript('session-partial-tools', [
+    { role: 'assistant', sender: 'Kordi', text: 'Checked two files.', timeLabel: '12:00', timestampMs: 10, failed: true,
+      tools: [{ id: 'tool', name: 'read', arguments: '{}', liveOutput: '', status: 'done', isError: false }],
+      segments: [{ id: 'tool:tool', kind: 'tool', toolId: 'tool' }, { id: 'text:0', kind: 'text', text: 'Checked two files.' }] },
+  ]);
+  assert.equal(reply.turn?.segments?.filter((segment) => segment.kind === 'text').length, 1);
+});

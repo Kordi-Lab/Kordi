@@ -360,3 +360,11 @@ test('a restart rebuilds a ChatGPT sign-in route with its own provider id', () =
     ...route, model: 'openai-codex/gpt-6.1-luna',
   });
 });
+
+test('a same-family route without a sign-in does not borrow the local sign-in', () => {
+  assert.deepEqual(cloudAgentRuntimeRouteAfterModelChange(
+    { model: 'openai/gpt-5.6-luna', authProvider: 'openai', thinking: 'high' },
+    { model: 'openai/gpt-5.6-sol' },
+    { model: 'openai-codex/gpt-5.6-sol', authProvider: 'openai-codex', authChoice: 'cloud-login:work' },
+  ), { model: 'openai/gpt-5.6-sol', authProvider: 'openai', thinking: 'high' });
+});

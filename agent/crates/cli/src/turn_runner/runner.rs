@@ -593,7 +593,7 @@ async fn collect_stream_events_with_retry(
                 attempt: retry_attempt,
                 max_attempts,
                 delay_ms,
-                error_message: message,
+                error_message: super::retry_text(&message),
             });
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_millis(delay_ms)) => {}
@@ -700,7 +700,7 @@ fn build_request_options(
                 attempt,
                 max_attempts,
                 delay_ms,
-                error_message,
+                error_message: super::retry_text(&error_message),
             },
             ProviderRetryEvent::End { .. } => TurnEvent::AutoRetryEnd,
         };

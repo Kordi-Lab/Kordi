@@ -227,7 +227,8 @@ export function mapDesktopMessagesForTranscript(
               // A failure whose text is only its error shows the error once.
               assistantText: failedAssistant && (!failureError || sameFailureText(message.text, failureError)) ? '' : message.text,
               thinkingText: message.thinkingText ?? '',
-              segments: failedAssistant
+              // Without a separate error, only a reply with no tools or thinking is just its failure text.
+              segments: failedAssistant && (failureError || (!message.tools?.length && !message.thinkingText?.trim()))
                 ? message.segments?.filter((segment) => (
                   segment.kind !== 'text' || !sameFailureText(segment.text, failureError || message.text)
                 ))
