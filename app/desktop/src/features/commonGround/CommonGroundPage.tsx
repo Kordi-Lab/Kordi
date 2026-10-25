@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import { getHelpTourLocation, useHelpTourLocation } from '@/features/onboarding/helpTourSession';
+import { HelpGroundingDemo } from './HelpGroundingDemo';
 import { consumeHelpGroundingScreen, OPEN_GROUNDING_EVENT } from '@/features/onboarding/helpNavigation';
 import { BuildScreen } from './BuildScreen';
 import { CardScreen } from './CardScreen';
@@ -16,6 +18,8 @@ import { WalletShell } from './WalletShell';
 /** Common ground in the Contacts detail pane. Navigation lives in the store. */
 export function CommonGroundPage({ store, host }: { store: CommonGroundStore; host: CgHost }) {
   const state = useCommonGround(store);
+  const tour = useHelpTourLocation();
+  const demo = Boolean(tour?.groundingScreen && state.loaded && state.owner && !state.owner.card);
   const ownerReady = Boolean(state.owner);
   const helpCard = state.loaded && state.owner ? (state.owner.card ? 'built' : 'empty') : undefined;
   const helpSocial = state.loaded && state.owner ? (hasAnyCard(state) ? 'ready' : 'empty') : undefined;
@@ -23,7 +27,7 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
     if (!state.loaded || !ownerReady) return;
     const navigate = () => {
       const name = consumeHelpGroundingScreen(host.self.accountId);
-      if (name) {
+      if (name && !(getHelpTourLocation()?.groundingScreen && !store.getSnapshot().owner?.card)) {
         const destination = name === 'card' && !store.getSnapshot().owner?.card ? 'build' : name;
         if (store.top().name !== destination) store.replace({ name: destination });
       }
@@ -31,8 +35,9 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
     navigate();
     window.addEventListener(OPEN_GROUNDING_EVENT, navigate);
     return () => window.removeEventListener(OPEN_GROUNDING_EVENT, navigate);
-  }, [host.self.accountId, state.loaded, ownerReady, store]);
+  }, [host.self.accountId, state.loaded, ownerReady, store, demo]);
   usePairLinkRedeem(store, state.loaded);
+  if (demo && tour?.groundingScreen) return <HelpGroundingDemo screen={tour.groundingScreen} />;
   const screen = state.stack[state.stack.length - 1];
   const props = { state, store, host };
   let body;

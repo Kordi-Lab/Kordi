@@ -1,3 +1,4 @@
+import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Blocks, Bot, Globe2, Hammer, Plus, Puzzle, Wrench } from 'lucide-react';
 
@@ -241,8 +242,8 @@ export function AgentStudioRail({
             <span className="app-agent-studio-agent-state">{artifact.status}</span>
           </button>
         )) : null}
-        {section === 'build' && filteredBuilds.length === 0 ? <div className="app-agent-studio-rail-empty"><Hammer className="mx-auto mb-2 h-4 w-4" />Start a build with the + button.</div> : null}
-        {section === 'agents' && filteredAgents.length === 0 ? <div className="app-agent-studio-rail-empty">No agents match this search.</div> : null}
+        {section === 'build' && filteredBuilds.length === 0 ? <div className="app-agent-studio-rail-empty">{agents.length === 0 ? <HelpEmptyExample kind="agents" /> : null}<Hammer className="mx-auto mb-2 h-4 w-4" />Start a build with the + button.</div> : null}
+        {section === 'agents' && filteredAgents.length === 0 ? <div className="app-agent-studio-rail-empty">{agents.length === 0 ? <HelpEmptyExample kind="agents" /> : null}No agents match this search.</div> : null}
         {section === 'library' && !(librarySection === 'skill' && libraryCommunity) && filteredLibrary.length === 0 ? <div className="app-agent-studio-rail-empty">No {librarySection}s match this search.</div> : null}
       </div>
     </aside>

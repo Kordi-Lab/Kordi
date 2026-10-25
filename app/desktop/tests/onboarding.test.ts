@@ -16,7 +16,9 @@ function memoryStorage(): Storage {
 test('the workspace tour covers setup, cards, social, conversations, Factory, Digest, and access', () => {
   assert.equal(helpTourSteps.length, HELP_TOUR_STEP_COUNT);
   for (const steps of Object.values(helpTours)) assert.ok(steps.length <= HELP_TOUR_STEP_COUNT);
-  assert.deepEqual(helpTourSteps.map((step) => step.target), ['settings-auth', 'grounding', 'nav-contacts', 'nav-chats', 'nav-agents', 'nav-digest', 'help']);
+  for (const target of ['settings-auth', 'grounding-topics', 'grounding-sharing', 'grounding-pair', 'grounding-room', 'nav-contacts', 'nav-chats', 'nav-agents', 'memory-import-run', 'memory-review', 'nav-digest', 'help']) assert.ok(helpTourSteps.some((step) => step.target === target));
+  const sections = [...new Set(helpTourSteps.map((step) => step.section))];
+  for (const section of sections) assert.ok(helpTourSteps.filter((step) => step.section === section).length <= 7);
 });
 
 test('progress is isolated by account and environment and tolerates damaged or unavailable storage', () => {
@@ -31,7 +33,7 @@ test('progress is isolated by account and environment and tolerates damaged or u
   storage.setItem(first, '{');
   assert.equal(readHelpProgress(first, storage).step, 0);
   storage.setItem(first, '{"step":999,"completed":"true"}');
-  assert.deepEqual(readHelpProgress(first, storage), { step: 6, completed: false, welcome: false });
+  assert.deepEqual(readHelpProgress(first, storage), { step: HELP_TOUR_STEP_COUNT - 1, completed: false, welcome: false });
   assert.equal(saveHelpProgress(first, { step: 1, completed: false, welcome: false }, null), false);
   assert.doesNotThrow(() => markHelpWelcome('test', 'loopback'));
 });

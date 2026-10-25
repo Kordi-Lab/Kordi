@@ -97,3 +97,19 @@
 
 .help-menu-items > button:disabled { opacity: .45; cursor: default; }
 .help-menu-note { margin: 2px 10px 10px; font-size: 11px; line-height: 1.5; color: var(--app-transient-muted-text); }
+
+.help-menu-section-label { margin: 4px 10px; font-size: 11px; color: var(--app-transient-muted-text); }
+.help-tour-sections-toggle { margin: 0; padding: 4px 0; font-size: 11px; color: var(--app-sidebar-accent); text-decoration: underline; text-underline-offset: 3px; }
+.help-tour-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 0 0 12px; }
+.help-tour-sections button { padding: 7px 8px; text-align: left; border-radius: 7px; font-size: 12px; background: var(--app-transient-raised-bg); }
+.help-tour-sections button[aria-current] { color: var(--app-sidebar-accent); }
+.help-example-label { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 10px 16px; font-size: 12px; border-bottom: 1px solid var(--app-transient-border); color: var(--app-transient-muted-text); }
+.help-example-content { border: 0; margin: 0; padding: 0; min-width: 0; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.help-example-content > .cg-scroll { flex: 1; }
+.help-empty-example { margin: 12px 0; padding: 14px; border-radius: 12px; border: 1px solid var(--app-transient-border); background: var(--app-transient-raised-bg); color: var(--app-transient-text); font-size: 12px; line-height: 1.5; }
+.help-empty-example strong { display: block; margin: 8px 0; font-weight: 600; }
+.help-empty-example p { margin: 5px 0; }
+.help-example-badge { color: var(--app-transient-muted-text); font-size: 11px; }
+.help-import-example > p { color: var(--app-transient-muted-text); font-size: 12px; margin: 8px 0 16px; }
+.cg-page .help-example-content :disabled { opacity: 1; cursor: default; }
+.help-example-content .cg-wallet-col.is-push { animation: none; }

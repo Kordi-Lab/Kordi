@@ -3,6 +3,7 @@ import type { NavId } from '@/kordi-app/types';
 
 export type HelpTourStep = {
   target: string;
+  section?: string;
   title: string;
   body: string;
   page?: NavId;
@@ -10,7 +11,7 @@ export type HelpTourStep = {
   groundingScreen?: 'home' | 'build' | 'card';
 };
 
-export const helpTourSteps: readonly HelpTourStep[] = [
+const overviewSteps: readonly HelpTourStep[] = [
   { target: 'settings-auth', settings: 'auth', title: 'Connect an AI account', body: 'Choose a provider here, then sign in or add its API key. This lets your agents use that provider’s models.' },
   { target: 'grounding', page: 'contacts', title: 'Create a card about yourself', body: 'Click Grounding to create a card with your interests and what you want to work on. You choose what to share with other people.' },
   { target: 'nav-contacts', page: 'contacts', title: 'Add someone to your contacts', body: 'Open Contacts, then use the add-person button above the list to find or invite someone. Select a contact to see their profile and message them.' },
@@ -23,7 +24,7 @@ export const helpTourSteps: readonly HelpTourStep[] = [
 
 export type HelpTourId = 'workspace' | 'grounding' | 'cards' | 'imports';
 export const helpTours: Record<HelpTourId, readonly HelpTourStep[]> = {
-  workspace: helpTourSteps,
+  workspace: overviewSteps,
   grounding: [
     { target: 'grounding', page: 'contacts', title: 'Meet people through Grounding', body: 'Grounding is in Contacts. Open it to find people with shared interests using the cards you choose to share.' },
     { target: 'grounding-cards', groundingScreen: 'home', title: 'Choose the card you want to share', body: 'Select a card for this conversation: work, interests, or a custom topic. Your other cards stay separate.' },
@@ -46,3 +47,19 @@ export const helpTours: Record<HelpTourId, readonly HelpTourStep[]> = {
     { target: 'memory-review', settings: 'memory', title: 'Review what was imported', body: 'Find the imported memories here. Search, edit, or remove anything you do not want Kordi to remember.' },
   ],
 };
+
+// One walkthrough, with short sections and direct entry points in Help.
+const section = (name: string, steps: readonly HelpTourStep[]) => steps.map((step) => ({ ...step, section: name }));
+export const helpTourSteps: readonly HelpTourStep[] = [
+  ...section('Authentication', overviewSteps.slice(0, 1)),
+  ...section('Cards', helpTours.cards),
+  ...section('Grounding', helpTours.grounding.slice(2)),
+  ...section('Contacts', overviewSteps.slice(2, 3)),
+  ...section('Chat', overviewSteps.slice(3, 4)),
+  ...section('Agents', overviewSteps.slice(4, 5)),
+  ...section('Import memory', helpTours.imports),
+  ...section('Digest', overviewSteps.slice(5, 6)),
+  ...section('Help', overviewSteps.slice(6)),
+];
+helpTours.workspace = helpTourSteps;
+export const helpTourEntry: Record<HelpTourId, string> = { workspace: 'settings-auth', cards: 'grounding-cards', grounding: 'grounding-pair', imports: 'settings-memory' };

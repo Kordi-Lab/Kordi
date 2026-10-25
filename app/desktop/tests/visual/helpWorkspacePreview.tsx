@@ -1,3 +1,9 @@
+import { useHelpTourLocation } from '../../src/features/onboarding/helpTourSession';
+import { CommonGroundPage } from '../../src/features/commonGround/CommonGroundPage';
+import { CommonGroundStore } from '../../src/features/commonGround/store';
+import { createCommonGroundClient } from '../../src/features/commonGround/client';
+import type { CgHost } from '../../src/features/commonGround/host';
+import { commonGroundFixtures } from './commonGroundFixtures';
 import { useState } from 'react';
 import { WorkspaceNavigationRail } from '../../src/pages/workspaceSidebar.navigation';
 import { ChatSidebarChrome } from '../../src/pages/workspaceSidebar.chrome';
@@ -27,6 +33,14 @@ const people: Contact[] = ['Maya Chen', 'Ethan Park', 'Priya Shah'].map((name, i
 
 /** Actual navigation, account settings, and Contacts components with fictional local data. */
 export function HelpWorkspacePreview({ theme }: { theme: 'dark' | 'light' }) {
+  const tour = useHelpTourLocation();
+  const [groundingStore] = useState(() => {
+    const fx = commonGroundFixtures(theme);
+    const store = new CommonGroundStore(createCommonGroundClient({ token: async () => 'preview', fetchImpl: () => async () => new Response(JSON.stringify({ rooms: [] }), { status: 200 }) }), { profiles: true });
+    store.set({ loaded: true, owner: { ...fx.owner, card: null }, profiles: fx.profiles.map((profile) => ({ ...profile, hasCard: false })), profileId: fx.profiles[0].profileId });
+    return store;
+  });
+  const groundingHost: CgHost = { self: { accountId: account.accountId, name: 'Taylor Preview', avatarUrl: null }, profiles: true, sources: true, memoryAvailable: true, connectors: null, device: null, agentFiles: null, openChat: noop, acceptRequest: resolved, contactsChanged: noop, openGroup: noop, openUrl: noop };
   const [activeNav, setActiveNav] = useState<NavId>('contacts');
   const [tab, setTab] = useState<CloudAccountSettingsTabId | null>(null);
   const [section, setSection] = useState<SettingsSectionId>('auth');
@@ -55,7 +69,8 @@ export function HelpWorkspacePreview({ theme }: { theme: 'dark' | 'light' }) {
         contactSearch={search} onContactSearchChange={setSearch} expandedContactGroups={{ 'other-users': true, 'my-agents': true, 'other-users-agents': true }} onToggleGroup={noop}
         activeContactId={person} onSelectContact={(_group, id) => setPerson(id)} contactOverlayMode={person ? 'contact' : null} activeContact={people.find((item) => item.id === person) ?? people[0]}
         onCloseOverlay={() => setPerson('')} getStatusBadgeClass={() => ''}
-        leadingListItems={<CommonGroundContactsRow selected={false} onSelect={noop} />}
+        leadingListItems={<CommonGroundContactsRow selected={Boolean(tour?.groundingScreen)} onSelect={noop} />}
+        leadingDetail={tour?.groundingScreen ? <CommonGroundPage store={groundingStore} host={groundingHost} /> : undefined}
       /> : <>
         {(activeNav === 'chats' || activeNav === 'agent-chats') ? <aside className="app-side-shell" style={{ width: 260, padding: 12 }}><ChatSidebarChrome chatChannel={activeNav === 'chats' ? 'contact' : 'agent'} chatSearch={search} setChatSearch={setSearch} collaborationSyncAriaLabel={null} collaborationSyncStatus="idle" onOpenCreate={noop} />{people.map((item) => <div className="app-contact-row" key={item.id} style={{ padding: '16px 8px', fontSize: 13 }}>{item.name}</div>)}</aside> : null}
         <section style={{ flex: 1, padding: 28, display: 'flex', flexDirection: 'column', gap: 12 }}>

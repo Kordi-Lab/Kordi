@@ -1,3 +1,4 @@
+import { HelpImportExample } from '@/features/onboarding/HelpEmptyExample';
 import { useCallback, useEffect, useId, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -212,7 +213,7 @@ export function MemorySettingsPanel({
               providerReady={providerReady}
               onImported={() => { void refresh(); }}
             />
-          ) : null}
+          ) : <HelpImportExample />}
 
           <MemoryOrganizer
             client={client}

@@ -1,3 +1,4 @@
+import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
 import { useState } from 'react';
 import { UserPlus } from 'lucide-react';
 
@@ -168,6 +169,7 @@ export function ContactsListColumn({
           {groupSpaces && onOpenGroup ? (
             <ContactsGroupsSection spaces={groupSpaces} search={contactSearch} onOpenGroup={onOpenGroup} />
           ) : null}
+          {!contactSearch.trim() && filteredGroupedContacts.every((group) => group.items.length === 0) ? <HelpEmptyExample kind="contacts" /> : null}
           <ContactGroupList
             groups={filteredGroupedContacts}
             expandedContactGroups={expandedContactGroups}

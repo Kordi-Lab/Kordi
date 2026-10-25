@@ -59,6 +59,11 @@ publishMemoryVersion(Number.isFinite(requestedVersion) && requestedVersion > 0 ?
 
 const memoryClient = createPreviewMemoryClient({ accountLabel: account.primaryEmail ?? 'taylor@memory.example' });
 const memoryImporter = createPreviewMemoryImporter();
+if (new URLSearchParams(location.search).has('emptyMemory')) {
+  memoryClient.listLessons = async () => [];
+  memoryImporter.discover = async () => [];
+  if (new URLSearchParams(location.search).has('memoryOff')) memoryClient.settings = async () => ({ lessonsEnabled: false, excludeSensitive: true });
+}
 const featureTourActions: string[] = [];
 Object.assign(window, { featureTourActions });
 const originalChoose = memoryImporter.choose;

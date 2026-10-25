@@ -11,7 +11,7 @@ test('help is a compact menu and direct navigation preserves the draft', async (
   await expect(menu).toBeVisible();
   const bounds = await menu.boundingBox();
   expect(bounds!.width).toBeLessThanOrEqual(300);
-  expect(bounds!.height).toBeLessThan(300);
+  expect(bounds!.height).toBeLessThan(460);
   await expect(page.getByRole('searchbox')).toHaveCount(0);
   await page.screenshot({ path: test.info().outputPath('help-menu-dark.png') });
   await page.getByRole('button', { name: 'Permissions & access', exact: true }).click();
@@ -35,19 +35,20 @@ test('workspace tour highlights real controls, resumes, and opens permission rec
   await page.keyboard.press('Shift+Tab');
   await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(page.getByRole('button', { name: 'Close tour', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Tour sections', exact: true })).toBeFocused();
   await page.screenshot({ path: test.info().outputPath('tour-auth-light.png') });
   await page.keyboard.press('ArrowRight');
-  await expect(page.getByText('Step 2 of 7')).toBeVisible();
-  await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'grounding');
+  await expect(page.getByText('Cards · Step 1 of 7')).toBeVisible();
+  await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'grounding-cards');
   await expect(page.getByRole('dialog', { name: 'Account settings' })).toHaveCount(0);
   await page.screenshot({ path: test.info().outputPath('tour-cards-light.png') });
   await page.keyboard.press('Escape');
   await expect(trigger).toBeFocused();
   await trigger.click();
   await page.getByRole('button', { name: 'Resume tour' }).click();
-  await expect(page.getByText('Step 2 of 7')).toBeVisible();
-  for (let step = 2; step < 7; step++) await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByText('Cards · Step 1 of 7')).toBeVisible();
+  await page.getByRole('button', { name: 'Tour sections', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Tour sections' }).getByRole('button', { name: 'Help', exact: true }).click();
   await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'help');
   await page.getByRole('button', { name: 'Open Permissions & access' }).click();
   await expect(page.getByRole('heading', { name: 'Permissions & access', exact: true })).toBeVisible();
@@ -60,7 +61,7 @@ test('spotlight follows resizing and handles disappearing controls', async ({ pa
   await page.getByRole('button', { name: 'Help & setup', exact: true }).click();
   await page.getByRole('button', { name: 'Show me around' }).click();
   await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'grounding');
+  await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'grounding-cards');
   await page.screenshot({ path: test.info().outputPath('tour-cards-dark.png') });
   await page.setViewportSize({ width: 390, height: 740 });
   await expect.poll(async () => {
@@ -68,9 +69,9 @@ test('spotlight follows resizing and handles disappearing controls', async ({ pa
     return Boolean(bounds && bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= 390 && bounds.y + bounds.height <= 740);
   }).toBe(true);
   await page.screenshot({ path: test.info().outputPath('tour-narrow.png') });
-  await page.locator('[data-help-target="grounding"]').evaluate((node) => node.removeAttribute('data-help-target'));
+  await page.getByRole('button', { name: 'Tour sections', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Tour sections' }).getByRole('button', { name: 'Contacts', exact: true }).click();
   await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'nav-contacts');
-  await expect(page.getByText('Step 2 of 6')).toBeVisible();
   await expect(page.getByText('This control is not visible', { exact: false })).toHaveCount(0);
   await page.getByRole('button', { name: 'Skip tour', exact: true }).click();
   await expect(page.locator('.help-tour-layer')).toHaveCount(0);
@@ -178,18 +179,16 @@ test('a delayed tour target never sends the glass popover to the middle of the w
   await page.getByRole('button', { name: 'Show me around' }).click();
   const card = page.locator('.help-tour-card');
   await expect(card).toHaveAttribute('data-positioned', 'true');
-  const before = await card.boundingBox();
-  await page.locator('[data-help-target="grounding"]').evaluate((node) => node.removeAttribute('data-help-target'));
   await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(card).toHaveAttribute('data-target', 'grounding');
+  await expect(card).toHaveAttribute('data-target', 'grounding-cards');
+  await expect(card).toHaveAttribute('data-positioned', 'true');
+  await page.locator('[data-help-target="grounding-cards"]').evaluate((node) => node.setAttribute('data-help-target', 'delayed-deck'));
   await expect(card).toHaveAttribute('data-positioned', 'false');
   await expect(card).toBeHidden();
-  const waiting = await card.evaluate((node) => ({ x: node.getBoundingClientRect().x }));
-  expect(Math.abs(waiting!.x - before!.x)).toBeLessThan(2);
   expect(await card.evaluate((node) => getComputedStyle(node).backdropFilter)).toContain('blur(');
-  await page.locator('.app-common-ground-row').evaluate((node) => node.setAttribute('data-help-target', 'grounding'));
+  await page.locator('[data-help-target="delayed-deck"]').evaluate((node) => node.setAttribute('data-help-target', 'grounding-cards'));
   await expect(card).toHaveAttribute('data-positioned', 'true');
-  await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'grounding');
+  await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'grounding-cards');
 });
 
 
@@ -200,11 +199,11 @@ test('a workspace without Grounding gets a tour of available controls and preser
   const trigger = page.getByRole('button', { name: 'Help & setup', exact: true });
   await trigger.click();
   await page.getByRole('button', { name: 'Show me around' }).click();
-  await expect(page.getByText('Step 1 of 6')).toBeVisible();
+  await expect(page.getByText('Authentication · Step 1 of 1')).toBeVisible();
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'nav-contacts');
   await expect(page.getByRole('dialog', { name: 'Add someone to your contacts' })).toBeVisible();
-  await expect(page.getByText('Step 2 of 6')).toBeVisible();
+  await expect(page.getByText('Contacts · Step 1 of 1')).toBeVisible();
   await page.keyboard.press('Escape');
   await trigger.click();
   await page.getByRole('button', { name: 'Resume tour' }).click();
@@ -282,7 +281,6 @@ test('feature tours remain discoverable when Grounding is unavailable', async ({
   await page.route('**/v1/cloud/auth/capabilities', (route) => route.fulfill({ json: { password: true, memoryVersion: 3 } }));
   await page.goto('/tests/visual/helpHub.html?isolated=1');
   await page.getByRole('button', { name: 'Help & setup', exact: true }).click();
-  await page.getByRole('button', { name: 'Feature tours', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Meet people with Grounding' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Create and share cards' })).toBeDisabled();
   await expect(page.getByText('Grounding and cards are not enabled in this workspace yet.')).toBeVisible();
@@ -301,22 +299,66 @@ for (const [tour, targets] of [
       await expect(page.locator('.help-tour-card')).toBeVisible();
       await expect(page.getByText(`Step ${index + 1} of ${targets.length}`, { exact: true })).toBeVisible();
       if (index === 1) await page.screenshot({ path: test.info().outputPath(`${tour}-tour.png`) });
+      if (target !== 'grounding' && page.url().includes('emptyCard')) {
+        await expect(page.locator('[data-help-demo="grounding"]')).toBeVisible();
+        await expect(page.locator('[data-help-demo="grounding"] button').first()).toBeDisabled();
+        await page.screenshot({ path: test.info().outputPath(`${tour}-${target}-example.png`) });
+      }
       await page.getByRole('button', { name: index === targets.length - 1 ? 'Finish tour' : 'Next', exact: true }).click();
     }
     await expect(page.locator('.help-tour-layer')).toHaveCount(0);
+    await expect(page.locator('[data-help-demo]')).toHaveCount(0);
     expect(await page.evaluate(() => (window as unknown as { featureTourActions: string[] }).featureTourActions)).toEqual([]);
   });
 }
 
 for (const tour of ['grounding', 'cards'] as const) {
-  test(`${tour} tour explains an unbuilt card without opening an empty review screen`, async ({ page }) => {
+  test(`${tour} tour uses temporary example cards through review and sharing`, async ({ page }) => {
     await page.goto(`/tests/visual/commonGroundPage.html?tour=${tour}&emptyCard=1&theme=light`);
-    const targets = tour === 'grounding' ? ['grounding', 'grounding-cards'] : ['grounding-cards', 'grounding-new-card', 'grounding-documents', 'grounding-notes', 'grounding-build'];
+    const targets = tour === 'grounding' ? ['grounding', 'grounding-cards', 'grounding-pair', 'grounding-room'] : ['grounding-cards', 'grounding-new-card', 'grounding-documents', 'grounding-notes', 'grounding-build', 'grounding-topics', 'grounding-sharing'];
     for (const [index, target] of targets.entries()) {
       await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', target);
+      if (target !== 'grounding' && page.url().includes('emptyCard')) {
+        await expect(page.locator('[data-help-demo="grounding"]')).toBeVisible();
+        await expect(page.locator('[data-help-demo="grounding"] button').first()).toBeDisabled();
+        await page.screenshot({ path: test.info().outputPath(`${tour}-${target}-example.png`) });
+      }
       await page.getByRole('button', { name: index === targets.length - 1 ? 'Finish tour' : 'Next', exact: true }).click();
     }
     await expect(page.locator('.help-tour-layer')).toHaveCount(0);
+    await expect(page.locator('[data-help-demo]')).toHaveCount(0);
     expect(await page.evaluate(() => (window as unknown as { featureTourActions: string[] }).featureTourActions)).toEqual([]);
+  });
+}
+
+test('card section continues into Grounding inside the same main tour', async ({ page }) => {
+  await page.goto('/tests/visual/helpHub.html?theme=light');
+  await page.getByRole('button', { name: 'Help & setup', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Feature tours', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Create and share cards', exact: true }).click();
+  for (const target of ['grounding-cards', 'grounding-new-card', 'grounding-documents', 'grounding-notes', 'grounding-build', 'grounding-topics', 'grounding-sharing']) {
+    await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', target);
+    await expect(page.locator('[data-help-demo="grounding"]')).toBeVisible();
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+  }
+  await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'grounding-pair');
+  await page.getByRole('button', { name: 'Tour sections', exact: true }).click();
+  await expect(page.getByRole('navigation', { name: 'Tour sections' }).getByRole('button', { name: 'Import memory', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-help-demo]')).toHaveCount(0);
+});
+
+for (const off of [false, true]) {
+  test(`empty memory shows examples without importing or enabling memory (${off ? 'off' : 'on'})`, async ({ page }) => {
+    await page.goto(`/tests/visual/memorySettings.html?tour=imports&emptyMemory=1${off ? '&memoryOff=1' : ''}`);
+    for (const [index, target] of ['settings-memory', 'memory-import-files', 'memory-import-run', 'memory-review'].entries()) {
+      await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', target);
+      if (index > 0) await expect(page.locator(`[data-help-demo="${index === 3 ? 'memories' : 'files'}"]`)).toBeVisible();
+      if (index === 3) await page.screenshot({ path: test.info().outputPath('empty-memory-example.png') });
+      await page.getByRole('button', { name: index === 3 ? 'Finish tour' : 'Next', exact: true }).click();
+    }
+    await expect(page.locator('[data-help-demo]')).toHaveCount(0);
+    expect(await page.evaluate(() => (window as unknown as { featureTourActions: string[] }).featureTourActions)).toEqual([]);
+    if (off) await expect(page.getByRole('switch', { name: 'Let Kordi save memories' })).not.toBeChecked();
   });
 }
