@@ -65,7 +65,7 @@ test('an owned agent reply in a group channel shows the agent, not the channel',
     assert.ok(!host.textContent?.includes(CHANNEL_TITLE));
     assert.match(host.textContent ?? '', /Owner · You/);
     const src = host.querySelector('img')?.getAttribute('src') ?? '';
-    assert.match(src, /preview\/thumbs\/cloud_agent_baby\.png$/);
+    assert.match(src, /preview\/kordi-birds\/cloud_agent_baby\.png$/);
   });
 });
 
@@ -98,7 +98,7 @@ test('an unknown agent never takes the group picture or the local agent avatar',
     assert.equal(host.querySelector('.app-thread-message-author')?.textContent, 'Visiting Agent');
     const src = host.querySelector('img')?.getAttribute('src') ?? '';
     assert.notEqual(src, CHANNEL_PICTURE);
-    assert.match(src, new RegExp(`preview/thumbs/${seed}\\.png$`));
+    assert.match(src, new RegExp(`preview/kordi-birds/${seed}\\.png$`));
   });
 });
 

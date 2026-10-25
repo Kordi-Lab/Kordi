@@ -85,7 +85,7 @@ test('the Factory rail shows the own agent avatar for the default host agent', (
 
   const row = agentRowAvatar(renderAgentRail(factoryAgent(fields)));
   assert.match(row, /data-avatar-state="ready"/);
-  assert.match(row, /<img[^>]+src="[^"]*\/v1\/avatars\/preview\/thumbs\/default-agent-acct_x\.png"/);
+  assert.match(row, /<img[^>]+src="[^"]*\/v1\/avatars\/preview\/kordi-birds\/default-agent-acct_x\.png"/);
   // Same 36px tile as the agent rows in the Chats sidebar.
   assert.match(row, /class="relative inline-flex shrink-0 rounded-\[17%\] h-9 w-9"/);
 });

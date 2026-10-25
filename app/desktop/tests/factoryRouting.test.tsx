@@ -23,6 +23,7 @@ import {
 } from '../src/kordi-app/agents/model';
 import type { Agent } from '../src/kordi-app/types';
 import { randomFactoryCreationAvatar } from '../src/kordi-app/agents/useFactoryCreationAvatar';
+import { parseBirdAvatarSeed } from '../src/features/cloud/birdAvatars';
 import type { DesktopAgentBuilderStatus, DesktopSkillLibraryEntry } from '../src/lib/desktop';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
@@ -104,8 +105,9 @@ test('new agent creation sends its avatar through the canonical Cloud mutation',
 
   const random = randomFactoryCreationAvatar();
   assert.equal(random?.mutation.action, 'regenerate');
-  assert.match(random?.imageUrl ?? '', /\/v1\/avatars\/preview\/thumbs\//);
-  assert.match(random?.mutation.seed ?? '', /^[A-Za-z0-9_-]+$/);
+  assert.match(random?.imageUrl ?? '', /\/v1\/avatars\/preview\/kordi-birds\/bird-/);
+  assert.ok(parseBirdAvatarSeed(random?.mutation.seed));
+  assert.equal(randomFactoryCreationAvatar('7bbaa257')?.mutation.seed, 'bird-penguin-color-mint');
 });
 
 test('publishing tests an untested draft once and continues only when it passes', async () => {
@@ -216,10 +218,10 @@ test('new agent Blueprint exposes avatar and model setup behind one publish acti
   );
 
   assert.match(html, /aria-label="Upload agent avatar"/);
-  assert.match(html, /aria-label="Generate random agent avatar"/);
+  assert.match(html, /aria-label="Choose avatar"/);
   assert.match(html, /data-cloud-signup-avatar-upload="true"/);
-  assert.match(html, /data-cloud-signup-avatar-reroll="true"/);
-  assert.match(html, /lucide-dice-5/);
+  assert.doesNotMatch(html, /data-cloud-signup-avatar-reroll="true"/);
+  assert.match(html, /lucide-bird/);
   assert.match(html, /lucide-camera/);
   assert.ok(html.indexOf('data-cloud-signup-avatar-reroll') < html.indexOf('data-cloud-signup-avatar-upload'));
   assert.match(html, /flex h-12 w-7 shrink-0 flex-col overflow-hidden rounded-full/);
@@ -322,7 +324,7 @@ test('the collaboration-backed default Kordi exposes identity controls in Build'
   assert.match(html, /Only me/);
   assert.match(html, /aria-label="Edit name"/);
   assert.match(html, /aria-label="Upload agent avatar"/);
-  assert.match(html, /aria-label="Generate random agent avatar"/);
+  assert.match(html, /aria-label="Choose avatar"/);
   assert.ok(html.indexOf('>Name<') < html.indexOf('>Avatar<'));
   assert.ok(html.indexOf('>Avatar<') < html.indexOf('>Prompt<'));
   assert.match(html, /aria-label="Edit access"/);

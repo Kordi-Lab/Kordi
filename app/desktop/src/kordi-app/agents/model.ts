@@ -1,5 +1,5 @@
 import type { CloudAgentAccessScope, CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
-import { newCanonicalAvatarSeed, type CanonicalAvatarMutation } from '@/features/cloud/canonicalAvatar';
+import type { CanonicalAvatarMutation } from '@/features/cloud/canonicalAvatar';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
@@ -56,16 +56,16 @@ export function cloudAgentAvatarControls(
         },
       });
     },
-    onGenerate: async () => {
+    onPick: async (seed: string) => {
       await update(agent, {
         avatarMutation: {
           action: 'regenerate',
-          seed: newCanonicalAvatarSeed(),
+          seed,
           expectedVersion: agent.cloudAgentAvatarVersion,
         },
       });
     },
-    generateLabel: 'Random avatar',
+    currentSeed: agent.avatarSeed,
   };
 }
 

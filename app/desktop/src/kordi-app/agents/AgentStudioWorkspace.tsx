@@ -661,7 +661,7 @@ export function AgentStudioWorkspace({
   onCreationDraftChange: (draft: ShapeAgentDraft) => void;
   creationAvatarUrl?: string | null;
   onCreationAvatarUpload?: (avatar: string) => void;
-  onCreationAvatarRandomize?: () => void;
+  onCreationAvatarRandomize?: (seed?: string) => void;
   onCreationModelRoutingChange?: (values: AgentModelRoutingDraft) => Promise<void> | void;
   onToggleCapability: (kind: AgentStudioCapabilityKind, name: string, selected: boolean) => void;
   onAddCapability: (kind: AgentStudioCapabilityKind, name: string) => void;
