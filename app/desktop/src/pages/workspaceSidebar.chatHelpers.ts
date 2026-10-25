@@ -49,9 +49,7 @@ export function participantSpaceSessionIdLabel(session: {
 }
 
 export function participantSpaceSessionPreviewText(preview: string) {
-  const formatted = formatSessionIdSubtitle(preview);
-  if (/^session id:/i.test(formatted)) return '';
-  return formatted;
+  return preview.trim();
 }
 
 function sessionActionIdForConversation(conversation: ConversationItem) {

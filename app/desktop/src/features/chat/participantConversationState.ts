@@ -101,10 +101,9 @@ export function latestParticipantSpacePreviewMessage(conversation: Conversation)
   return null;
 }
 
+// The preview line comes only from messages; never fall back to the subtitle or name.
 export function latestParticipantSpaceMessageText(conversation: Conversation) {
-  return latestParticipantSpacePreviewMessage(conversation)?.preview
-    || safePreviewText(conversation.subtitle)
-    || safePreviewText(conversation.name);
+  return latestParticipantSpacePreviewMessage(conversation)?.preview ?? '';
 }
 
 export function isBlankSessionLabel(value: string | undefined | null) {
