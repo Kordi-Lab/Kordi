@@ -14,6 +14,7 @@ private struct SessionFeatureNotice {
 }
 
 struct SessionDetailView: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
     @Environment(\.dismiss) private var dismiss
@@ -95,7 +96,7 @@ struct SessionDetailView: View {
     }
 
     private var heroTint: Color {
-        currentConversation.kind == .agent ? KordiTheme.agentViolet : KordiTheme.signalBlue
+        currentConversation.kind == .agent ? KordiTheme.agentViolet : chatTheme.accent
     }
 
     private var statusText: String {

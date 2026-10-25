@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Quarters, newest first, on a dotted rail; past topics close the list muted.
 struct CommonGroundTimeline: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let profile: CommonGroundProfile
     let onOpen: (String) -> Void
 
@@ -52,7 +53,7 @@ struct CommonGroundTimeline: View {
                 .foregroundStyle(muted ? .secondary : .primary)
                 .frame(width: Self.periodWidth, alignment: .leading)
             Circle()
-                .fill(muted ? Color(uiColor: .tertiaryLabel) : commonGroundTint)
+                .fill(muted ? Color(uiColor: .tertiaryLabel) : chatTheme.accent)
                 .frame(width: 8, height: 8)
                 .padding(.top, Self.dotCenter - Self.rowPadding - 4)
             FlowLayout(spacing: 6) {

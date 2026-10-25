@@ -25,11 +25,14 @@ use self::rendering::{
 };
 
 pub mod assets;
+pub mod birds;
 mod rendering;
 
 pub const AVATAR_RENDERER_VERSION: &str = "dicebear-rust-10.6.0-styles-10.5.0";
 pub const HUMAN_AVATAR_STYLE: &str = "lorelei";
 pub const AGENT_AVATAR_STYLE: &str = "thumbs";
+/// Original paper-cut bird portraits for agents; see `avatars/birds.rs`.
+pub const BIRD_AVATAR_STYLE: &str = "kordi-birds";
 pub use assets::clean_uploaded_avatar;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -210,6 +213,10 @@ pub fn apply_avatar_mutation(
                 return Err(AvatarMutationError::Invalid(
                     "Generated avatar seed is invalid.".to_string(),
                 ));
+            }
+            // A structured bird seed picks the bird style for agents; people keep Lorelei.
+            if seed.starts_with(birds::BIRD_SEED_PREFIX) && !is_human_avatar_style(&next.style) {
+                next.style = BIRD_AVATAR_STYLE.to_string();
             }
             next.source = "generated".to_string();
             next.seed = seed;
@@ -415,7 +422,7 @@ async fn canonical_avatar_render_key_exists(
 }
 
 fn is_supported_style(style: &str) -> bool {
-    is_human_avatar_style(style) || style == AGENT_AVATAR_STYLE
+    is_human_avatar_style(style) || style == AGENT_AVATAR_STYLE || style == BIRD_AVATAR_STYLE
 }
 
 pub fn is_human_avatar_style(style: &str) -> bool {

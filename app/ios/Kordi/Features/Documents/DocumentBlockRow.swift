@@ -3,6 +3,7 @@ import SwiftUI
 /// One document block: its content, the floating menu when selected, its
 /// reaction pills, its open comment threads, and the composer.
 struct DocumentBlockRow<Content: View>: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let block: DocumentBlock
     let reader: DocumentReaderModel
     let document: DocumentResponse
@@ -25,7 +26,7 @@ struct DocumentBlockRow<Content: View>: View {
                 .padding(.vertical, 4)
                 .padding(.horizontal, 6)
                 .background(
-                    isSelected ? KordiTheme.signalBlue.opacity(0.1) : .clear,
+                    isSelected ? chatTheme.accent.opacity(0.1) : .clear,
                     in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                 )
                 .contentShape(Rectangle())

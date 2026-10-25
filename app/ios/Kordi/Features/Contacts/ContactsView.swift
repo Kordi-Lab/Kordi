@@ -314,6 +314,7 @@ struct ContactIdentityRow: View {
 }
 
 private struct ContactRequestRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: AppModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let request: CloudContactRequest
@@ -367,7 +368,7 @@ private struct ContactRequestRow: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .frame(minHeight: 30)
-                    .background(KordiTheme.signalBlue, in: Capsule())
+                    .background(chatTheme.accent, in: Capsule())
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
@@ -419,6 +420,7 @@ private struct AddContactSheet: View {
 }
 
 struct AddContactSearchView: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: AppModel
     let onRequestSent: () -> Void
     @State private var kordiId = ""
@@ -505,7 +507,7 @@ struct AddContactSearchView: View {
                     Button(action: search) {
                         Image(systemName: "arrow.right.circle.fill")
                             .font(.title3)
-                            .foregroundStyle(canSearch ? KordiTheme.signalBlue : Color(uiColor: .tertiaryLabel))
+                            .foregroundStyle(canSearch ? chatTheme.accent : Color(uiColor: .tertiaryLabel))
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }

@@ -7,6 +7,7 @@ enum ConversationRowPresentation: Equatable {
 }
 
 struct ConversationRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: AppModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let conversation: ConversationSummary
@@ -38,7 +39,7 @@ struct ConversationRow: View {
             Spacer(minLength: 8)
             if (conversation.threadAttention?.threadCount ?? 0) > 0 {
                 Button { model.openUnreadThread(in: conversation) } label: {
-                    Image(systemName: "bubble.left.and.bubble.right").font(.subheadline).foregroundStyle(KordiTheme.signalBlue).frame(minWidth: 44, minHeight: 44)
+                    Image(systemName: "bubble.left.and.bubble.right").font(.subheadline).foregroundStyle(chatTheme.accent).frame(minWidth: 44, minHeight: 44)
                 }.buttonStyle(.borderless).accessibilityLabel("Jump to next unread thread")
             }
             trailingStatus
@@ -176,7 +177,7 @@ struct ConversationRow: View {
     }
 
     private var attentionTint: Color {
-        conversation.hasUnreadAttention && !isMuted ? KordiTheme.signalBlue : .secondary
+        conversation.hasUnreadAttention && !isMuted ? chatTheme.accent : .secondary
     }
 
     private func contactAgentStatus(ownerName: String, activity: AgentActivity) -> Text {
@@ -258,6 +259,7 @@ private struct ConversationAttachmentThumbnail: View {
 }
 
 struct ConversationAttentionBadge: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let unreadCount: Int
     let mentionCount: Int
     var isMuted = false
@@ -269,14 +271,14 @@ struct ConversationAttentionBadge: View {
                 if mentionCount > 0 {
                     Text("@")
                         .font(.caption.bold())
-                        .foregroundStyle(isMuted ? Color.secondary : KordiTheme.signalBlue)
+                        .foregroundStyle(isMuted ? Color.secondary : chatTheme.accent)
                 }
                 Text(Self.countLabel(displayUnreadCount))
                     .font(.caption2.bold())
                     .foregroundStyle(.white)
                     .padding(.horizontal, 5)
                     .frame(minWidth: 20, minHeight: 20)
-                    .background(isMuted ? Color.secondary : KordiTheme.signalBlue, in: Capsule())
+                    .background(isMuted ? Color.secondary : chatTheme.accent, in: Capsule())
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(

@@ -75,8 +75,9 @@ tests=(
   common_ground_tests::upgrade_from_145_widens_profile_designs
   common_ground_daily_tests::upgrade_from_146_renames_daily_profiles
   common_ground_sources_tests::upgrade_from_146_adds_profile_sources
-  memory_tests::upgrade_from_148_adds_memory_categories
-  memory_tests::upgrade_from_149_adds_memory_card_overrides
+  agent_avatar_tests::upgrade_from_148_accepts_bird_avatar_style
+  memory_tests::upgrade_from_149_adds_memory_categories
+  memory_tests::upgrade_from_150_adds_memory_card_overrides
 )
 index=0
 for test_name in "${tests[@]}"; do

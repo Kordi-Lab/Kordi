@@ -5,8 +5,8 @@ type Backfill = (String, String, String, Option<String>, Option<String>);
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_148_adds_memory_categories() {
-    let pool = fixture(148).await;
+async fn upgrade_from_149_adds_memory_categories() {
+    let pool = fixture(149).await;
     execute(
         &pool,
         "INSERT INTO cloud_account_memories \
@@ -102,8 +102,8 @@ type Override = (String, String, bool);
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_149_adds_memory_card_overrides() {
-    let pool = fixture(149).await;
+async fn upgrade_from_150_adds_memory_card_overrides() {
+    let pool = fixture(150).await;
     execute(
         &pool,
         "INSERT INTO cloud_common_ground_profiles (profile_id, account_id, kind, name, position) VALUES \

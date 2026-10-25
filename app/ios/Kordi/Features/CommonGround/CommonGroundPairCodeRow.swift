@@ -4,6 +4,7 @@ import SwiftUI
 /// digit boxes typed through one number field, an inline error and the
 /// Create a code link. Tap stays enabled without a card: it opens the build.
 struct CommonGroundPairCodeRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Binding var code: String
     var error: String?
     var enabled = true
@@ -46,7 +47,7 @@ struct CommonGroundPairCodeRow: View {
             .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: 30, height: 30)
-            .background(commonGroundTint, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(chatTheme.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .accessibilityHidden(true)
     }
 
@@ -72,7 +73,7 @@ struct CommonGroundPairCodeRow: View {
             Button(action: onCreate) {
                 Text("Create a code")
                     .font(.body)
-                    .foregroundStyle(commonGroundTint)
+                    .foregroundStyle(chatTheme.accent)
                     .padding(.leading, titleInset)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentShape(Rectangle())
@@ -104,7 +105,7 @@ struct CommonGroundPairCodeRow: View {
                             if missing {
                                 RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.red, lineWidth: 1.5)
                             } else if focused && index == min(code.count, 3) {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(commonGroundTint, lineWidth: 1.5)
+                                RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(chatTheme.accent, lineWidth: 1.5)
                             }
                         }
                 }
@@ -223,6 +224,7 @@ struct CommonGroundSheetHeader: View {
 /// Cards in a paged, centred carousel: the selected one full size, the
 /// others smaller and faded, page dots below.
 struct CommonGroundCardCarousel<Card: View>: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let ids: [String]
     @Binding var selection: String?
     let cardWidth: CGFloat
@@ -248,10 +250,10 @@ struct CommonGroundCardCarousel<Card: View>: View {
                                 if let text = label(id) {
                                     Label(text, systemImage: "sparkles")
                                         .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(commonGroundTint)
+                                        .foregroundStyle(chatTheme.accent)
                                         .padding(.horizontal, 9)
                                         .frame(height: 22)
-                                        .background(commonGroundTint.opacity(0.14), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                        .background(chatTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                                         .fixedSize()
                                         .offset(y: -28)
                                 }
