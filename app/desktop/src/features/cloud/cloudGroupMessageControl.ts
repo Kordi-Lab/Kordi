@@ -97,6 +97,7 @@ export async function applyCloudGroupMessageControl({
     canonicalState,
     participantByAccount,
     identityIdByAccount,
+    agentAvatarByAccount,
   } = context;
   let nextState = context.nextState;
   const message = envelope.message;
@@ -180,7 +181,7 @@ export async function applyCloudGroupMessageControl({
       humanId: message.senderAccountId,
       agentId: senderAgentId,
       avatarKey: senderAgentId,
-      profileImageUrl: cloudGroupAgentProfileImageUrl(participantByAccount.get(message.senderAccountId), senderAgentId ?? ''),
+      profileImageUrl: cloudGroupAgentProfileImageUrl((agentAvatarByAccount ?? participantByAccount).get(message.senderAccountId), senderAgentId ?? ''),
       metadata: { accountId: message.senderAccountId, cloudGroupAgent: true },
     });
     nextState = stateOps.upsertIdentity(nextState, senderIdentity) ?? nextState;

@@ -4,6 +4,7 @@ import { Bot, Check, Forward, Search, Users, X } from 'lucide-react';
 import { AppDialog } from '@/components/ui/dialog';
 import { filterForwardDestinations, forwardDestinationPath, type ForwardDestination } from '@/features/chat/messageForwarding';
 import type { ForwardMessageSource } from '@/features/chat/messageActionMetadata';
+import { canonicalAvatarImageUrl } from '@/features/cloud/canonicalAvatar';
 import { useMessageDocumentPreviewText } from '@/features/documents/documentPreviewTitles';
 import { formatDesktopLastActiveLabel } from '@/lib/time';
 
@@ -27,9 +28,10 @@ function SourcePreview({ source }: { source: ForwardMessageSource }) {
 
 function DestinationAvatar({ destination }: { destination: ForwardDestination }) {
   const [failed, setFailed] = useState(false);
+  const imageUrl = canonicalAvatarImageUrl(destination.profileImageUrl);
   return <span className={`forward-avatar forward-avatar-${destination.kind ?? 'group'}`} aria-hidden="true">
-    {destination.profileImageUrl && !failed
-      ? <img src={destination.profileImageUrl} alt="" onError={() => setFailed(true)} />
+    {imageUrl && !failed
+      ? <img src={imageUrl} alt="" onError={() => setFailed(true)} />
       : destination.kind === 'person'
         ? destination.label.split(/\s+/).slice(0, 2).map((part) => Array.from(part)[0]).join('').toLocaleUpperCase()
         : destination.kind === 'agent' ? <Bot /> : <Users />}
