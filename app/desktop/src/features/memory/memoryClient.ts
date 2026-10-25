@@ -1,5 +1,8 @@
 import { createAccountMemoryClient } from './accountMemoryClient';
-import type { MemoryCategory } from './memoryCategory';
+import { isMemoryCategory, type MemoryCategory } from './memoryCategory';
+import type { MemoryOriginSources } from './memoryOrigin';
+import type { MemoryCard } from './memoryOrganizerModel';
+import { PREVIEW_CARDS, PREVIEW_ORIGIN_SOURCES, createPreviewCardRouting } from './memoryPreviewCards';
 import {
   validateLessonText,
   type MemoryAddTarget,
@@ -16,8 +19,16 @@ export type MemoryClient = {
   createLesson(target: MemoryAddTarget, text: string): Promise<MemoryLesson>;
   updateLesson(lessonId: string, text: string): Promise<MemoryLesson>;
   archiveLesson(lessonId: string): Promise<void>;
-  /** Files a memory to a Grounding profile (`memoryVersion` 2); null returns it to its category's profile. */
-  moveMemoryToProfile?(lessonId: string, profileId: string | null): Promise<MemoryLesson>;
+  /** Changes a memory's category (`memoryVersion` 2). */
+  updateMemoryCategory?(lessonId: string, category: MemoryCategory): Promise<MemoryLesson>;
+  /** Adds a memory to one more Grounding card (`memoryVersion` 3). */
+  addMemoryToCard?(lessonId: string, profileId: string): Promise<MemoryLesson>;
+  /** Removes a memory from one Grounding card (`memoryVersion` 3). */
+  removeMemoryFromCard?(lessonId: string, profileId: string): Promise<MemoryLesson>;
+  /** The owner's Grounding cards, for card labels. */
+  listCards?(): Promise<MemoryCard[]>;
+  /** The chats and groups that name memory origins. */
+  originSources?(): Promise<MemoryOriginSources>;
   forgetAll(): Promise<{ archived: number }>;
   /** Which account the memories sync with and when they were last synced. */
   syncState(): Promise<MemorySyncState>;
@@ -87,7 +98,9 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
   ): MemoryLesson => {
     const at = ago(seededAt, ageMs);
     const category = PREVIEW_CATEGORIES[lessonId];
-    return { lessonId, scope, scopeId, scopeLabel, source, text, createdAt: at, updatedAt: at, ...(category ? { category } : {}) };
+    // One memory the agent inferred, so the preview shows that origin label too.
+    const inferred = lessonId === 'lesson-2' ? { declarationType: 'model-inferred' as const, confidence: 'high' as const } : {};
+    return { lessonId, scope, scopeId, scopeLabel, source, text, createdAt: at, updatedAt: at, ...(category ? { category } : {}), ...inferred };
   };
 
   let settings: MemorySettings = { lessonsEnabled: true, excludeSensitive: true };
@@ -121,7 +134,18 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
   const isOwn = (entry: MemoryLesson) => !entry.ownerAccountId || entry.ownerAccountId === PREVIEW_VIEWER_ACCOUNT_ID;
 
   const wait = () => new Promise<void>((resolve) => { setTimeout(resolve, latencyMs); });
-  const copyLessons = () => lessons.map((entry) => ({ ...entry }));
+  const cards = createPreviewCardRouting();
+  const copyLessons = () => lessons.map(cards.route);
+  const findLesson = (lessonId: string) => {
+    const existing = lessons.find((entry) => entry.lessonId === lessonId);
+    if (!existing) throw new Error('This memory no longer exists.');
+    return existing;
+  };
+  const replaceLesson = (next: MemoryLesson) => {
+    lessons = lessons.map((entry) => (entry.lessonId === next.lessonId ? next : entry));
+    markSynced();
+    return cards.route(next);
+  };
 
   return {
     async settings() {
@@ -146,7 +170,7 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
       // Like the server, the same text in the same scope returns the memory already saved.
       const existing = lessons.find((entry) => entry.scope === target.scope
         && entry.scopeId === target.scopeId && entry.text === validation.text);
-      if (existing) return { ...existing };
+      if (existing) return cards.route(existing);
       addedCount += 1;
       const created: MemoryLesson = {
         lessonId: `lesson-added-${addedCount}`,
@@ -160,7 +184,7 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
       };
       lessons = [...lessons, created];
       markSynced();
-      return { ...created };
+      return cards.route(created);
     },
     async updateLesson(lessonId, text) {
       await wait();
@@ -171,7 +195,30 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
       const updated = { ...existing, text: validation.text, updatedAt: new Date(now()).toISOString() };
       lessons = lessons.map((entry) => (entry.lessonId === lessonId ? updated : entry));
       markSynced();
-      return { ...updated };
+      return cards.route(updated);
+    },
+    async updateMemoryCategory(lessonId, category) {
+      await wait();
+      if (!isMemoryCategory(category)) throw new Error('Could not change this memory.');
+      return replaceLesson({ ...findLesson(lessonId), category, updatedAt: new Date(now()).toISOString() });
+    },
+    async addMemoryToCard(lessonId, profileId) {
+      await wait();
+      const existing = findLesson(lessonId);
+      cards.add(existing, profileId);
+      return replaceLesson({ ...existing, updatedAt: new Date(now()).toISOString() });
+    },
+    async removeMemoryFromCard(lessonId, profileId) {
+      await wait();
+      const existing = findLesson(lessonId);
+      cards.remove(existing, profileId);
+      return replaceLesson({ ...existing, updatedAt: new Date(now()).toISOString() });
+    },
+    listCards() {
+      return Promise.resolve(PREVIEW_CARDS.map((card) => ({ ...card })));
+    },
+    originSources() {
+      return Promise.resolve(PREVIEW_ORIGIN_SOURCES);
     },
     async archiveLesson(lessonId) {
       await wait();
@@ -228,4 +275,14 @@ export function memoryClientForEnvironment(): MemoryClient {
  */
 export function memorySectionAvailable(memoryVersion: number | null | undefined): boolean {
   return Boolean(memoryVersion) || isPreviewFlag(memoryPreviewFlag());
+}
+
+/** Category changes need `memoryVersion` 2. */
+export function memoryCategoriesEditable(memoryVersion: number | null | undefined): boolean {
+  return (memoryVersion ?? 0) >= 2 || isPreviewFlag(memoryPreviewFlag());
+}
+
+/** Card labels and their controls need `memoryVersion` 3 (several cards per memory). */
+export function memoryCardsAvailable(memoryVersion: number | null | undefined): boolean {
+  return (memoryVersion ?? 0) >= 3 || isPreviewFlag(memoryPreviewFlag());
 }

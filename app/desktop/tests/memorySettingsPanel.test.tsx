@@ -193,17 +193,17 @@ async function withPanel(
   }
 }
 
-test('panel lists only global memories and points to the conversation tabs for the rest', async () => {
+test('panel lists every memory of the account, newest first, without pointing to the conversation tabs', async () => {
   await withPanel(createPreviewMemoryClient({ latencyMs: 0 }), async (host) => {
     const headings = Array.from(host.querySelectorAll('h2')).map((heading) => heading.textContent);
-    assert.ok(headings.includes('Global memories · 2'));
-    assert.equal(headings.some((heading) => ['Conversations', 'Projects', 'Groups'].includes(heading ?? '')), false);
+    assert.ok(headings.includes('All memories · 10'));
+    assert.equal(headings.some((heading) => /Global memories/.test(heading ?? '')), false);
     assert.deepEqual(
       Array.from(host.querySelectorAll('[data-memory-lesson]')).map((row) => row.getAttribute('data-memory-lesson')),
-      ['lesson-8', 'lesson-9'],
+      ['lesson-1', 'lesson-8', 'lesson-3', 'lesson-2', 'lesson-10', 'lesson-5', 'lesson-9', 'lesson-4', 'lesson-6', 'lesson-7'],
     );
-    assert.doesNotMatch(host.querySelector('[data-memory-lesson="lesson-8"]')?.textContent ?? '', /Global/);
-    assert.match(host.textContent ?? '', /Other memories are on each conversation's Memory tab\./);
+    assert.match(host.querySelector('[data-memory-lesson="lesson-8"] [data-memory-label="from"]')?.textContent ?? '', /^Global$/);
+    assert.doesNotMatch(host.textContent ?? '', /Other memories are on each conversation/);
     assert.doesNotMatch(host.textContent ?? '', /[Rr]eplay/);
     assert.match(host.textContent ?? '', /Bridge conversation memory/);
   });
@@ -268,13 +268,13 @@ test('deleting a memory asks first, then removes the row', async () => {
     const dialog = document.body.querySelector('[role="dialog"], [role="alertdialog"]') ?? document.body;
     await click(buttonByText(dialog, 'Delete'), window);
     assert.equal(host.querySelector('[data-memory-lesson="lesson-9"]'), null);
-    assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 1);
-    assert.match(host.textContent ?? '', /Global memories · 1/);
+    assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 9);
+    assert.match(host.textContent ?? '', /All memories · 9/);
     assert.doesNotMatch(document.body.textContent ?? '', /Delete this memory\?/);
   });
 });
 
-test('forget everything leaves the empty state', async () => {
+test('forget everything leaves only memories other members saved', async () => {
   await withPanel(createPreviewMemoryClient({ latencyMs: 0 }), async (host, window) => {
     await click(buttonByText(host, 'Forget everything'), window);
     assert.match(document.body.textContent ?? '', /Forget all memories\?/);
@@ -283,9 +283,9 @@ test('forget everything leaves the empty state', async () => {
     const dialog = document.body.querySelector('[role="dialog"], [role="alertdialog"]');
     assert.ok(dialog);
     await click(buttonByText(dialog, 'Forget everything'), window);
-    assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 0);
-    assert.match(host.textContent ?? '', /No global memories yet\./);
-    assert.match(host.textContent ?? '', /Global memories · 0/);
+    // The group memory another member saved stays.
+    assert.deepEqual(Array.from(host.querySelectorAll('[data-memory-lesson]')).map((row) => row.getAttribute('data-memory-lesson')), ['lesson-10']);
+    assert.match(host.textContent ?? '', /All memories · 1/);
     assert.equal(buttonByText(host, 'Forget everything'), undefined);
   });
 });

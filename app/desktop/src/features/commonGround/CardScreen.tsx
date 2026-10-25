@@ -71,10 +71,15 @@ export function RenameFields({ name, focus, kind, withFocus = true, onSave, onCa
 }
 
 /**
- * The card page: a slim header, Now, the topics with their references, the memories filed to the
- * profile (`memoryVersion` 2), the timeline, the sources, and Share my card.
+ * The card page: a slim header, Now, the topics with their references, the memories on the card
+ * (`memoryVersion` 2; adding and removing cards needs 3), the timeline, the sources, and Share my card.
  */
-export function CardScreen({ state, store, memoryRouting = false }: { state: CgState; store: CommonGroundStore; memoryRouting?: boolean }) {
+export function CardScreen({ state, store, memoryRouting = false, memoryCards = false }: {
+  state: CgState;
+  store: CommonGroundStore;
+  memoryRouting?: boolean;
+  memoryCards?: boolean;
+}) {
   const [confirming, setConfirming] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const look = useLookPopover();
@@ -175,8 +180,10 @@ export function CardScreen({ state, store, memoryRouting = false }: { state: CgS
           memories={routed.memories}
           profiles={state.profiles}
           profileId={profile.profileId}
-          onMove={(memoryId, target) => void routed.move(memoryId, target)}
-          onRemove={(memoryId) => void routed.remove(memoryId)}
+          cardsEnabled={memoryCards}
+          onAddToCard={(memoryId, target) => void routed.addToCard(memoryId, target)}
+          onRemoveFromCard={(memoryId) => void routed.removeFromCard(memoryId)}
+          onDelete={(memoryId) => void routed.remove(memoryId)}
         />
       ) : null}
       <CardTimeline rows={timeline.rows} earlier={timeline.earlier} onCard={onCard} />

@@ -20,9 +20,22 @@ export type CloudMemory = {
   category?: string;
   declarationType?: MemoryDeclarationType;
   confidence?: MemoryConfidence | null;
-  /** The profile the memory is filed to: set by the person, or resolved from the category. */
+  /** The one card the person added the memory to, when there is exactly one (legacy pin). */
   profileId?: string | null;
   profileKind?: MemoryProfileKind | null;
+  /** The cards the memory feeds, in profile order (`memoryVersion` 3). Group memories have none. */
+  profileIds?: string[];
+  /** The cards the person removed the memory from (`memoryVersion` 3). */
+  excludedProfileIds?: string[];
+};
+
+/** A memory change. `addProfileId` and `removeProfileId` need `memoryVersion` 3. */
+export type CloudMemoryPatch = {
+  text?: string;
+  category?: string;
+  profileId?: string | null;
+  addProfileId?: string;
+  removeProfileId?: string;
 };
 
 export type CloudMemorySettings = { memoryEnabled: boolean; excludeSensitive: boolean };
@@ -80,12 +93,12 @@ export class CloudMemoryClient {
     return response.memory;
   }
 
-  /** Files a memory to one of the person's profiles; null returns it to its category's profile. */
-  async moveToProfile(token: string, memoryId: string, profileId: string | null): Promise<CloudMemory> {
+  /** Changes a memory's category or cards. */
+  async patch(token: string, memoryId: string, patch: CloudMemoryPatch): Promise<CloudMemory> {
     const response = await this.request<{ memory: CloudMemory }>(
       `/v1/cloud/memory/${encodeURIComponent(memoryId)}`,
-      authorized(token, 'PATCH', { profileId }),
-      'Could not move this memory.',
+      authorized(token, 'PATCH', patch),
+      'Could not change this memory.',
     );
     return response.memory;
   }

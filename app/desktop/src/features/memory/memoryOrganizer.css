@@ -1,0 +1,56 @@
+/* Settings › Memory organizer: search, filter rows and the labels under each memory. */
+.mo-find { position: relative; display: block; margin: 2px 0 10px; color: var(--utility-muted-text); }
+.mo-find svg { position: absolute; top: 50%; left: 9px; width: 13px; height: 13px; transform: translateY(-50%); }
+.mo-find input {
+  width: 100%; height: 28px; padding: 0 10px 0 28px; border: 0.5px solid var(--app-divider); border-radius: 7px;
+  background: transparent; color: var(--utility-foreground); font: inherit; font-size: 12px; outline: none;
+}
+.mo-find input:focus-visible { box-shadow: 0 0 0 2px var(--app-quiet-control-focus-ring, var(--app-accent)); }
+
+/* Filter rows: one line per layer, names aligned. */
+.mo-filters { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+.mo-layer { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding-left: 72px; }
+.mo-layer-name { position: absolute; top: 4px; left: 0; color: var(--utility-muted-text); font-size: 11px; white-space: nowrap; }
+.mo-filter {
+  display: inline-flex; height: 22px; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid transparent; border-radius: 999px;
+  background: var(--app-palette-selected); color: var(--utility-muted-text); font: inherit; font-size: 11px; font-weight: 500; white-space: nowrap; cursor: pointer;
+}
+.mo-filter.is-card { border-color: var(--app-divider); background: none; }
+.mo-filter.is-from { background: none; }
+.mo-filter:hover { color: var(--utility-foreground); }
+.mo-filter[aria-pressed="true"] { border-color: transparent; background: var(--utility-foreground); color: var(--utility-background); }
+.mo-count { opacity: 0.6; font-variant-numeric: tabular-nums; }
+.mo-clear {
+  align-self: flex-start; height: 22px; margin-left: 72px; padding: 0 6px; border: 0; background: none;
+  color: var(--app-quiet-control-focus-ring); font: inherit; font-size: 11px; font-weight: 500; cursor: pointer;
+}
+
+/* Row labels: filled category, outlined cards, dashed "+ Card", plain origin. */
+.mo-labels { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.mo-chip {
+  position: relative; display: inline-flex; height: 18px; align-items: center; border: 0; border-radius: 999px;
+  background: var(--app-palette-selected); color: var(--utility-muted-text); font: inherit; font-size: 10px; font-weight: 500; line-height: 1;
+}
+.mo-chip.is-card { border: 1px solid var(--app-divider); background: none; }
+.mo-chip.is-add { padding: 0 7px; border: 1px dashed var(--app-divider); background: none; cursor: pointer; }
+.mo-chip.is-from { padding: 0 4px; background: none; cursor: pointer; }
+.mo-part, .mo-icon {
+  display: inline-flex; height: 100%; align-items: center; border: 0; background: none; color: inherit; font: inherit; cursor: pointer;
+}
+.mo-part { padding: 0 7px; border-radius: 999px; }
+.mo-icon { margin-left: -4px; padding: 0 5px 0 3px; border-radius: 0 999px 999px 0; }
+.mo-icon svg { width: 9px; height: 9px; }
+.mo-part:hover, .mo-icon:hover, .mo-chip.is-add:hover, .mo-chip.is-add[aria-expanded="true"], .mo-chip.is-from:hover { color: var(--utility-foreground); }
+.mo-part:disabled, .mo-icon:disabled, .mo-chip.is-add:disabled { cursor: default; opacity: 0.6; }
+.mo-wrap { position: relative; display: inline-flex; }
+.mo-menu {
+  position: absolute; z-index: 30; top: 100%; left: 0; min-width: 168px; margin-top: 4px; padding: 4px; border: 0.5px solid var(--app-divider); border-radius: 10px;
+  background: var(--app-transient-surface-fallback, var(--utility-background)); box-shadow: 0 10px 30px rgb(0 0 0 / 0.18), 0 1px 3px rgb(0 0 0 / 0.08);
+}
+.mo-menu button {
+  display: flex; width: 100%; align-items: center; gap: 8px; padding: 6px 10px; border: 0; border-radius: 6px; background: none;
+  color: var(--utility-foreground); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.mo-menu button:hover, .mo-menu button:focus-visible { background: var(--app-quiet-control-hover-bg); outline: none; }
+.mo-check { display: inline-grid; width: 14px; flex: none; place-items: center; }
+.mo-check svg { width: 13px; height: 13px; }

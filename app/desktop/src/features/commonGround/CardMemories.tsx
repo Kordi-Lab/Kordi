@@ -1,53 +1,68 @@
 import { useId, useRef, useState } from 'react';
-import { ArrowRight, X } from 'lucide-react';
+import { Check, Minus, Plus, Trash2 } from 'lucide-react';
 
 import { AppDialog, AppDialogActions, AppDialogDescription, AppDialogTitle } from '@/components/ui/dialog';
 import { MemoryCategoryChip } from '@/features/memory/MemoryCategoryChip';
 import { lessonDateLabel } from '@/features/memory/memoryModel';
 import { CgButton } from './parts';
-import { moveTargets, type CgMoveTarget } from './storeMemories';
+import { cardChoices, type CgCardChoice } from './storeMemories';
 import type { CgProfile, CgRoutedMemory } from './types';
 import { usePopoverDismiss } from './usePopoverDismiss';
 
-function MoveMenu({ targets, onPick, onClose }: { targets: CgMoveTarget[]; onPick: (target: string | null) => void; onClose: () => void }) {
+/** Add to card…: the other cards as a checklist; a checked card already has the memory. */
+function CardChecklist({ choices, onPick, onClose }: { choices: CgCardChoice[]; onPick: (profileId: string) => void; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
-  usePopoverDismiss(ref, '[data-cg-move]', onClose);
+  usePopoverDismiss(ref, '[data-cg-add-card]', onClose);
   return (
     <div ref={ref} className="cg-mem-menu" role="menu">
-      {targets.map((target) => (
-        <button key={target.profileId ?? 'none'} type="button" role="menuitem" className={target.profileId ? undefined : 'is-none'} onClick={() => onPick(target.profileId)}>
-          {target.label}
+      {choices.map((choice) => (
+        <button
+          key={choice.profileId}
+          type="button"
+          role="menuitemcheckbox"
+          aria-checked={choice.on}
+          disabled={choice.on}
+          className="cg-mem-check"
+          onClick={() => onPick(choice.profileId)}
+        >
+          <span className="cg-mem-tick">{choice.on ? <Check className="h-[13px] w-[13px]" aria-hidden="true" /> : null}</span>
+          {choice.label}
         </button>
       ))}
     </div>
   );
 }
 
-function RemoveMemoryDialog({ memory, onCancel, onRemove }: { memory: CgRoutedMemory; onCancel: () => void; onRemove: () => void }) {
+function DeleteMemoryDialog({ memory, onCancel, onDelete }: { memory: CgRoutedMemory; onCancel: () => void; onDelete: () => void }) {
   const titleId = useId();
   const lineId = useId();
   return (
     <AppDialog titleId={titleId} descriptionId={lineId} onDismiss={onCancel} className="cg-dialog">
-      <AppDialogTitle id={titleId}>Remove this memory?</AppDialogTitle>
+      <AppDialogTitle id={titleId}>Delete this memory?</AppDialogTitle>
       <AppDialogDescription id={lineId}>{memory.text}</AppDialogDescription>
       <AppDialogActions>
         <CgButton quiet onClick={onCancel}>Cancel</CgButton>
-        <button type="button" className="cg-button is-danger" onClick={onRemove}>Remove</button>
+        <button type="button" className="cg-button is-danger" onClick={onDelete}>Delete</button>
       </AppDialogActions>
     </AppDialog>
   );
 }
 
-/** The card page's Memories: what the owner's agent filed to this profile, newest first. */
-export function CardMemories({ memories, profiles, profileId, onMove, onRemove }: {
+/**
+ * The card page's Memories: the owner's memories on this card, newest first. With several cards per
+ * memory (`cardsEnabled`, `memoryVersion` 3) a memory can be added to other cards or removed from this one.
+ */
+export function CardMemories({ memories, profiles, profileId, cardsEnabled = false, onAddToCard, onRemoveFromCard, onDelete }: {
   memories: CgRoutedMemory[];
   profiles: CgProfile[];
   profileId: string;
-  onMove: (memoryId: string, target: string | null) => void;
-  onRemove: (memoryId: string) => void;
+  cardsEnabled?: boolean;
+  onAddToCard: (memoryId: string, target: string) => void;
+  onRemoveFromCard: (memoryId: string) => void;
+  onDelete: (memoryId: string) => void;
 }) {
   const [menu, setMenu] = useState<string | null>(null);
-  const [removing, setRemoving] = useState<CgRoutedMemory | null>(null);
+  const [deleting, setDeleting] = useState<CgRoutedMemory | null>(null);
   if (!memories.length) return null;
   return (
     <section data-cg-memories="">
@@ -56,6 +71,7 @@ export function CardMemories({ memories, profiles, profileId, onMove, onRemove }
         {memories.map((memory) => {
           const open = menu === memory.memoryId;
           const date = lessonDateLabel(memory.updatedAt);
+          const choices = cardsEnabled ? cardChoices(memory, profiles, profileId) : [];
           return (
             <div key={memory.memoryId} className="cg-mem" data-memory-id={memory.memoryId}>
               <span className="cg-mem-text">
@@ -63,31 +79,38 @@ export function CardMemories({ memories, profiles, profileId, onMove, onRemove }
                 <span className="cg-mem-sub">
                   <MemoryCategoryChip category={memory.category} className="ml-0" />
                   {date ? <span>{date}</span> : null}
-                  {memory.everyProfile ? <span>· Every profile</span> : null}
+                  {memory.everyProfile ? <span>· Every card</span> : null}
                 </span>
               </span>
-              <button type="button" className="cg-line-act" data-cg-move="" aria-haspopup="menu" aria-expanded={open} onClick={() => setMenu(open ? null : memory.memoryId)}>
-                <ArrowRight className="h-[13px] w-[13px]" aria-hidden="true" />Move to…
-              </button>
-              <button type="button" className="cg-line-act" onClick={() => setRemoving(memory)}>
-                <X className="h-[13px] w-[13px]" aria-hidden="true" />Remove
+              {choices.length ? (
+                <button type="button" className="cg-line-act" data-cg-add-card="" aria-haspopup="menu" aria-expanded={open} onClick={() => setMenu(open ? null : memory.memoryId)}>
+                  <Plus className="h-[13px] w-[13px]" aria-hidden="true" />Add to card…
+                </button>
+              ) : null}
+              {cardsEnabled ? (
+                <button type="button" className="cg-line-act" data-cg-remove-card="" onClick={() => onRemoveFromCard(memory.memoryId)}>
+                  <Minus className="h-[13px] w-[13px]" aria-hidden="true" />Remove from card
+                </button>
+              ) : null}
+              <button type="button" className="cg-line-act" data-cg-delete-memory="" onClick={() => setDeleting(memory)}>
+                <Trash2 className="h-[13px] w-[13px]" aria-hidden="true" />Delete
               </button>
               {open ? (
-                <MoveMenu
-                  targets={moveTargets(memory, profiles, profileId)}
+                <CardChecklist
+                  choices={choices}
                   onClose={() => setMenu(null)}
-                  onPick={(target) => { setMenu(null); onMove(memory.memoryId, target); }}
+                  onPick={(target) => { setMenu(null); onAddToCard(memory.memoryId, target); }}
                 />
               ) : null}
             </div>
           );
         })}
       </div>
-      {removing ? (
-        <RemoveMemoryDialog
-          memory={removing}
-          onCancel={() => setRemoving(null)}
-          onRemove={() => { setRemoving(null); onRemove(removing.memoryId); }}
+      {deleting ? (
+        <DeleteMemoryDialog
+          memory={deleting}
+          onCancel={() => setDeleting(null)}
+          onDelete={() => { setDeleting(null); onDelete(deleting.memoryId); }}
         />
       ) : null}
     </section>

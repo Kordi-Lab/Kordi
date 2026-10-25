@@ -1,24 +1,20 @@
-// The Memories section of a card page (`memoryVersion` 2): the owner's memories filed to the open
-// profile, with Move to… and Remove. Each change reloads the list and the card, so the
-// "N new memories" line follows it.
+// The Memories section of a card page (`memoryVersion` 2): the owner's memories on the open card,
+// with Add to card…, Remove from card (`memoryVersion` 3) and Delete. Each change reloads the list
+// and the card, so the "N new memories" line follows it.
 
 import { useEffect, useState } from 'react';
 
 import type { CommonGroundStore } from './store';
 import type { CgProfile, CgRoutedMemory } from './types';
 
-export type CgMoveTarget = { profileId: string | null; label: string };
+export type CgCardChoice = { profileId: string; label: string; on: boolean };
 
-/**
- * Where a memory can go: the owner's other profiles, which pin it there. A pinned memory also gets
- * No profile, which clears the pin so its category files it again. A memory every profile lists can
- * be pinned to any one profile, this one included.
- */
-export function moveTargets(memory: CgRoutedMemory, profiles: CgProfile[], profileId: string): CgMoveTarget[] {
-  const named = profiles
-    .filter((profile) => memory.everyProfile || profile.profileId !== profileId)
-    .map((profile) => ({ profileId: profile.profileId, label: profile.name }));
-  return !memory.everyProfile && memory.profileId ? [...named, { profileId: null, label: 'No profile' }] : named;
+/** The checklist of Add to card…: the owner's other cards, checked when the memory is already on them. */
+export function cardChoices(memory: CgRoutedMemory, profiles: CgProfile[], profileId: string): CgCardChoice[] {
+  const on = new Set(memory.profileIds);
+  return profiles
+    .filter((profile) => profile.profileId !== profileId)
+    .map((profile) => ({ profileId: profile.profileId, label: profile.name, on: on.has(profile.profileId) }));
 }
 
 export type CgMemoryHost = Pick<CommonGroundStore, 'client' | 'getSnapshot' | 'set' | 'run'>;
@@ -28,11 +24,18 @@ async function refreshOwner(host: CgMemoryHost, profileId: string) {
   if (owner && host.getSnapshot().profileId === profileId) host.set({ owner });
 }
 
-/** Files a memory to `target`, or back to its category with null. */
-export async function moveMemory(host: CgMemoryHost, profileId: string, memoryId: string, target: string | null): Promise<boolean> {
-  const moved = await host.run('memory', async () => { await host.client.moveMemory(memoryId, target); return true; });
-  if (moved) await refreshOwner(host, profileId);
-  return Boolean(moved);
+/** Adds a memory to `target`; it stays on this card and its other cards. */
+export async function addMemoryToCard(host: CgMemoryHost, profileId: string, memoryId: string, target: string): Promise<boolean> {
+  const added = await host.run('memory', async () => { await host.client.addMemoryToCard(memoryId, target); return true; });
+  if (added) await refreshOwner(host, profileId);
+  return Boolean(added);
+}
+
+/** Removes a memory from this card; it stays on its other cards. */
+export async function removeMemoryFromCard(host: CgMemoryHost, profileId: string, memoryId: string): Promise<boolean> {
+  const removed = await host.run('memory', async () => { await host.client.removeMemoryFromCard(memoryId, profileId); return true; });
+  if (removed) await refreshOwner(host, profileId);
+  return Boolean(removed);
 }
 
 /** Archives a memory; no card or agent reads it again. */
@@ -44,7 +47,8 @@ export async function removeMemory(host: CgMemoryHost, profileId: string, memory
 
 export type ProfileMemories = {
   memories: CgRoutedMemory[];
-  move: (memoryId: string, target: string | null) => Promise<boolean>;
+  addToCard: (memoryId: string, target: string) => Promise<boolean>;
+  removeFromCard: (memoryId: string) => Promise<boolean>;
   remove: (memoryId: string) => Promise<boolean>;
 };
 
@@ -67,7 +71,8 @@ export function useProfileMemories(host: CgMemoryHost, profileId: string | null,
   };
   return {
     memories: enabled && profileId && loaded?.profileId === profileId ? loaded.memories : [],
-    move: (memoryId, target) => (profileId ? moveMemory(host, profileId, memoryId, target).then(reload) : Promise.resolve(false)),
+    addToCard: (memoryId, target) => (profileId ? addMemoryToCard(host, profileId, memoryId, target).then(reload) : Promise.resolve(false)),
+    removeFromCard: (memoryId) => (profileId ? removeMemoryFromCard(host, profileId, memoryId).then(reload) : Promise.resolve(false)),
     remove: (memoryId) => (profileId ? removeMemory(host, profileId, memoryId).then(reload) : Promise.resolve(false)),
   };
 }

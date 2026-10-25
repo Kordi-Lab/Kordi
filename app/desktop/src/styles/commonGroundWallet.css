@@ -290,7 +290,7 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 .cg-line-add:hover { background: var(--cg-fill); color: var(--utility-foreground); }
 .cg-line-add.is-editing { cursor: text; box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--app-accent) 55%, transparent); }
 .cg-line-add.is-editing input { min-width: 0; width: 160px; padding: 0; border: 0; background: transparent; color: var(--utility-foreground); font: inherit; outline: none; }
-/* Memories filed to the card: text, then the category chip and date; Move to… and Remove on hover. */
+/* Memories on the card: text, then the category chip and date; Add to card…, Remove from card and Delete on hover. */
 .cg-mem { position: relative; display: flex; align-items: flex-start; gap: 4px; padding: 10px 8px 10px 14px; }
 .cg-mem + .cg-mem { border-top: 0.5px solid var(--cg-line); }
 .cg-mem-text { display: flex; min-width: 0; flex: 1; flex-direction: column; }
@@ -303,7 +303,10 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 }
 .cg-mem-menu button { display: block; width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--utility-foreground); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .cg-mem-menu button:hover { background: var(--cg-fill); }
-.cg-mem-menu button.is-none { margin-top: 4px; border-top: 0.5px solid var(--cg-line); border-radius: 0 0 6px 6px; }
+.cg-mem-menu button.cg-mem-check { display: flex; align-items: center; gap: 8px; }
+.cg-mem-menu button.cg-mem-check:disabled { cursor: default; opacity: 0.6; }
+.cg-mem-menu button.cg-mem-check:disabled:hover { background: none; }
+.cg-mem-tick { display: inline-grid; width: 14px; flex: none; place-items: center; }
 .cg-src-icon { display: grid; width: 26px; height: 26px; flex: none; place-items: center; border-radius: 7px; color: #fff; }
 .cg-cardpage-share { margin-top: 12px; }
 

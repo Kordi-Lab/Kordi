@@ -69,12 +69,12 @@ export function commonGroundFixtures(theme: 'light' | 'dark') {
       },
     },
   };
-  // The Work card's routed memories, newest first; the schedule memory is listed on every fixed-kind profile.
+  // The Work card's memories, newest first; the schedule memory is listed on every fixed-kind card, the course also on Workshops.
   const memories: CgRoutedMemory[] = [
-    { memoryId: 'mem_1', text: 'Reviewing the retrieval benchmark draft with Hana this week.', category: 'work_context', updatedAt: '2026-10-20T08:00:00Z', profileId: 'cgp_work', everyProfile: false },
-    { memoryId: 'mem_2', text: 'Taking the evening course on causal inference until December.', category: 'education_learner_profile', updatedAt: '2026-10-19T18:00:00Z', profileId: 'cgp_work', everyProfile: false },
-    { memoryId: 'mem_3', text: 'Free for meetings 10:00 to 16:00 Central European Time on weekdays.', category: 'coordination_context', updatedAt: '2026-10-18T09:00:00Z', profileId: null, everyProfile: true },
-    { memoryId: 'mem_4', text: 'Leads the evaluation working group with Maya and Rafa.', category: 'work_context', updatedAt: '2026-10-02T09:00:00Z', profileId: 'cgp_work', everyProfile: false },
+    { memoryId: 'mem_1', text: 'Reviewing the retrieval benchmark draft with Hana this week.', category: 'work_context', updatedAt: '2026-10-20T08:00:00Z', profileId: 'cgp_work', profileIds: ['cgp_work'], everyProfile: false },
+    { memoryId: 'mem_2', text: 'Taking the evening course on causal inference until December.', category: 'education_learner_profile', updatedAt: '2026-10-19T18:00:00Z', profileId: 'cgp_work', profileIds: ['cgp_work', 'cgp_ws'], everyProfile: false },
+    { memoryId: 'mem_3', text: 'Free for meetings 10:00 to 16:00 Central European Time on weekdays.', category: 'coordination_context', updatedAt: '2026-10-18T09:00:00Z', profileId: null, profileIds: ['cgp_work', 'cgp_health'], everyProfile: true },
+    { memoryId: 'mem_4', text: 'Leads the evaluation working group with Maya and Rafa.', category: 'work_context', updatedAt: '2026-10-02T09:00:00Z', profileId: 'cgp_work', profileIds: ['cgp_work'], everyProfile: false },
   ];
   const owner = { memoriesSinceBuild: 3, card, sharing: true, build: { status: 'idle', errorCode: null }, profile: { profileId: 'cgp_work', kind: 'work', name: 'Work', design: null, icon: null, focus: null } };
   const healthOwner = { card: null, sharing: true, build: { status: 'idle', errorCode: null }, profile: { profileId: 'cgp_health', kind: 'health', name: 'Health', design: null, icon: null, focus: 'Running and sleep' } };
