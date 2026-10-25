@@ -78,6 +78,7 @@ tests=(
   agent_avatar_tests::upgrade_from_148_accepts_bird_avatar_style
   memory_tests::upgrade_from_149_adds_memory_categories
   memory_tests::upgrade_from_150_adds_memory_card_overrides
+  proactive_tests::upgrade_from_153_adds_proactive_agents
 )
 index=0
 for test_name in "${tests[@]}"; do
@@ -107,3 +108,6 @@ DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib auth::routes::contact_profile:: -- --test-threads=1
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib auth::routes::contact_removal:: -- --test-threads=1
+# Proactive agent tests (docs/development/proactive-agent.md) follow the same rule.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib proactive:: -- --test-threads=1

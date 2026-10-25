@@ -342,8 +342,8 @@ fn scheduled_task_worker_claims_due_jobs_on_interval() {
     assert!(worker.contains("claim_due_scheduled_task_runs"));
     assert!(worker.contains("waiting_for_desktop"));
 
-    let server = std::fs::read_to_string("src/server.rs").expect("read server");
-    assert!(server.contains("scheduled_tasks::worker::spawn_scheduled_task_worker"));
+    let workers = std::fs::read_to_string("src/server/workers.rs").expect("read server workers");
+    assert!(workers.contains("scheduled_tasks::worker::spawn_scheduled_task_worker"));
 }
 
 #[test]

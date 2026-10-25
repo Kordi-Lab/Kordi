@@ -2,6 +2,7 @@ import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRoutin
 import { getLocalAgentAvatar, isLocalAgentAvatarSeed } from '@/features/canonical/localAgentAvatar';
 import {
   AGENT_CANONICAL_AVATAR_STYLE,
+  canonicalAvatarImageUrl,
   generatedAvatarPreviewUrl,
   type CanonicalAvatarMutation,
 } from '@/features/cloud/canonicalAvatar';
@@ -30,8 +31,9 @@ export function factoryAgentAvatarPresentation(agent?: Agent) {
   const avatarKey = agent ? getIdentityAvatarKey('agent', seed) : null;
   return {
     avatarKey,
+    // The account snapshot holds a `kordi-avatar://` marker; the picker needs an image URL.
     avatarUrl: avatarKey
-      ? (ownAgent ? getLocalAgentAvatar().imageUrl : null)
+      ? canonicalAvatarImageUrl(ownAgent ? getLocalAgentAvatar().imageUrl : null)
         || getAvatarOverride(avatarKey)
         || agent?.profileImageUrl
         || generatedAvatarPreviewUrl(AGENT_CANONICAL_AVATAR_STYLE, seed)

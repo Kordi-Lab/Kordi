@@ -104,6 +104,7 @@ pub(crate) async fn run_facts(
         || crate::cloud_agent_runtime::import_runs::is_import_run(run_id)
         || run_id.starts_with(crate::pip::RUN_PREFIX)
         || run_id.starts_with(crate::common_ground::RUN_PREFIX)
+        || run_id.starts_with(crate::proactive::RUN_PREFIX)
     {
         return Ok(None);
     }

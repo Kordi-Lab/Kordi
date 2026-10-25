@@ -21,6 +21,7 @@ import type { ReactNode } from 'react';
 import { ContactInfoPopover } from '@/pages/ContactInfoPopover';
 import { MainComposer } from '@/pages/chatsPage.mainComposer';
 import { ToolApprovalPrompts } from '@/features/connectors/ToolApprovalPrompts';
+import { ProactiveOfferPrompt } from '@/features/proactive/ProactiveOfferPrompt';
 import { MainChatHeader } from '@/pages/chatsPage.mainHeader';
 import {
   canonicalHistorySessionIdForConversation,
@@ -367,6 +368,7 @@ export function ChatMainWorkspace({
                     }
                   >
                     <ToolApprovalPrompts />
+                    <ProactiveOfferPrompt conversation={activeConv} accountId={session.cloudAccount?.accountId} />
                     <MainComposer
                       conversation={activeConv}
                       cloudAccountId={session.cloudAccount?.accountId}

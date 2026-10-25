@@ -174,6 +174,7 @@ pub async fn publish_terminal_response(
         || super::super::import_runs::is_import_run(run_id)
         || run_id.starts_with(crate::pip::RUN_PREFIX)
         || run_id.starts_with(crate::common_ground::RUN_PREFIX)
+        || run_id.starts_with(crate::proactive::RUN_PREFIX)
         || terminal_response_state(
             pool,
             ReplyScope {

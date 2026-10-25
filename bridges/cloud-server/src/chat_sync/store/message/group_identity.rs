@@ -279,7 +279,7 @@ pub(super) async fn normalize_group_envelope(
                     .map(|profile| profile.2.clone())
             } else {
                 query_as::<_, (String,)>(
-                    "SELECT display_name FROM cloud_agent_definitions \
+                    "SELECT name FROM cloud_agent_definitions \
                      WHERE agent_id = $1 AND owner_account_id = $2 AND status = 'active'",
                 )
                 .bind(&sender_agent_id)

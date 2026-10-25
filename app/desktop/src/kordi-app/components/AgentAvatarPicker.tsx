@@ -51,16 +51,17 @@ function useAnchoredPosition(open: boolean, anchorRef: RefObject<HTMLElement | n
   return position;
 }
 
-/** Bird avatar picker for agents: tone, species and colour apply at once and keep the popover open. */
+/** Bird avatar picker for agents: tone, species and colour stay pending until Save. */
 export function AgentAvatarPicker({ open, onOpenChange, anchorRef, placementRef, currentSeed, onPick, onUpload }: AgentAvatarPickerProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [selection, setSelection] = useState<BirdAvatar>(() => birdAvatarFromSeed(currentSeed ?? ''));
-  const [syncedSeed, setSyncedSeed] = useState(currentSeed);
+  const [synced, setSynced] = useState({ open, currentSeed });
   const position = useAnchoredPosition(open, placementRef ?? anchorRef);
 
-  // Follow a new saved seed from outside, as React's "adjust state on prop change" pattern.
-  if (syncedSeed !== currentSeed) {
-    setSyncedSeed(currentSeed);
+  // Reset the pending choice to the saved seed when the popover opens or the saved seed changes,
+  // as React's "adjust state on prop change" pattern.
+  if (synced.open !== open || synced.currentSeed !== currentSeed) {
+    setSynced({ open, currentSeed });
     setSelection(birdAvatarFromSeed(currentSeed ?? ''));
   }
 
@@ -87,11 +88,10 @@ export function AgentAvatarPicker({ open, onOpenChange, anchorRef, placementRef,
 
   if (!open || typeof document === 'undefined') return null;
 
-  const pick = (next: Partial<BirdAvatar>) => {
-    const bird = { ...selection, ...next };
-    setSelection(bird);
-    onPick(birdAvatarSeed(bird.species, bird.tone, bird.palette));
-  };
+  const pick = (next: Partial<BirdAvatar>) => setSelection((current) => ({ ...current, ...next }));
+  const pendingSeed = birdAvatarSeed(selection.species, selection.tone, selection.palette);
+  const savedSeed = birdAvatarFromSeed(currentSeed ?? '');
+  const unchanged = pendingSeed === birdAvatarSeed(savedSeed.species, savedSeed.tone, savedSeed.palette);
 
   return createPortal(
     <div
@@ -179,14 +179,26 @@ export function AgentAvatarPicker({ open, onOpenChange, anchorRef, placementRef,
       <button
         type="button"
         className={cn('block w-full border-t border-[var(--app-transient-divider)] px-1.5 py-[9px] text-left text-[13px] hover:bg-[var(--app-transient-hover-bg)]', !onUpload && 'mt-1')}
-        onClick={() => {
-          const seed = randomBirdAvatarSeed();
-          setSelection(birdAvatarFromSeed(seed));
-          onPick(seed);
-        }}
+        onClick={() => setSelection(birdAvatarFromSeed(randomBirdAvatarSeed()))}
       >
         Shuffle
       </button>
+      <div className="mt-2 flex justify-end gap-2 border-t border-[var(--app-transient-divider)] pt-3">
+        <button type="button" className="app-button-quiet rounded-full px-3 py-1 text-[12px]" onClick={() => onOpenChange(false)}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="app-button-primary rounded-full px-3 py-1 text-[12px] disabled:pointer-events-none"
+          disabled={unchanged}
+          onClick={() => {
+            onOpenChange(false);
+            onPick(pendingSeed);
+          }}
+        >
+          Save
+        </button>
+      </div>
     </div>,
     document.body,
   );

@@ -16,6 +16,7 @@ import { cloudFetchImpl } from './cloudTransport';
 
 export type CloudAgentAccessScope = 'private' | 'participant_conversations';
 export type CloudAgentStatus = 'active' | 'archived';
+export type CloudAgentProactive = { enabled: boolean };
 
 export type CloudAgentResource = {
   kind: 'url' | 'file' | 'text' | string;
@@ -42,6 +43,7 @@ export type CreateCloudAgentInput = {
   resources?: CloudAgentResource[];
   skills?: CloudAgentSkill[];
   modelRouting?: Record<string, unknown>;
+  proactive?: CloudAgentProactive;
 };
 
 export type UpdateCloudAgentInput = Partial<CreateCloudAgentInput>;
