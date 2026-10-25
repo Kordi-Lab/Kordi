@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils';
+
 export function AgentOwnerTag({ name }: { name?: string | null }) {
   const owner = name?.trim();
   if (!owner) return null;
@@ -12,9 +14,9 @@ export function AgentOwnerTag({ name }: { name?: string | null }) {
   );
 }
 
-export function AgentHeaderMeta({ sender, ownerName }: { sender?: string | null; ownerName?: string | null }) {
+export function AgentHeaderMeta({ sender, ownerName, className }: { sender?: string | null; ownerName?: string | null; className?: string }) {
   return (
-    <div className="app-message-meta flex items-center gap-1.5 px-1">
+    <div className={cn('app-message-meta flex items-center gap-1.5 px-1', className)}>
       <span>{sender}</span>
       <AgentOwnerTag name={ownerName} />
     </div>

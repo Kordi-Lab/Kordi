@@ -192,7 +192,7 @@ function MessageBubbleView({
     finishChatPerformanceSpan(renderSpan, { rowCount: 1 });
   }, [renderSpan]);
   const [isEditExpanded, setIsEditExpanded] = useState(true);
-  const threadLayout = useMessageLayout() === 'threads';
+  const threadLayout = useMessageLayout() === 'threads'; const groupChatAgentAvatar = !threadLayout && densityMode === 'group-compact';
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed();
   const selectionId = messageSelectionId(msg);
@@ -557,7 +557,7 @@ function MessageBubbleView({
         ) : null}
         {threadLayout && !plainAgentResponse && (msg.sourceMessage ?? msg.turn.sourceMessage) ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage ?? msg.turn.sourceMessage} onNavigateToMessage={onNavigateToMessage} className="app-thread-quote-row" /> : null}
         <div className={cn("flex max-w-full items-end gap-2", msg.turn.segments?.length ? "w-full" : "w-fit", threadLayout && "app-thread-message-main")}>
-          {threadLayout ? <IdentityAvatar kind="agent" seed={agentMessageAvatarSeed(msg, currentLocalAgentAvatarSeed)} name={msg.sender} imageUrl={msg.senderProfileImageUrl} className="h-7 w-7 shrink-0" /> : null}
+          {threadLayout || groupChatAgentAvatar ? <IdentityAvatar kind="agent" seed={agentMessageAvatarSeed(msg, currentLocalAgentAvatarSeed)} name={msg.sender} imageUrl={msg.senderProfileImageUrl} className={cn("h-7 w-7 shrink-0", !threadLayout && "mb-0.5 border border-white/10")} /> : null}
           <div className={cn("app-message-hover-time-trigger min-w-0 max-w-[58rem]", msg.turn.segments?.length ? "w-full" : "w-fit")}>
             <div className="flex min-h-[18px] w-full items-center gap-1.5">
               {threadLayout ? <ThreadMessageHeader msg={msg} name={msg.sender || "Agent"} ownerName={agentOwnerName} /> : null}
@@ -635,7 +635,7 @@ function MessageBubbleView({
       && onRequestCollaborationContact
       && contactRequestFailureCanBeRetried(msg.detail),
   );
-  const footerDetail = showContactRequestAction ? undefined : msg.detail; const showAvatarSlot = threadLayout || !isAgentMessage; const showAvatar = showAvatarSlot && (threadLayout ? !isGroupedWithPrevious || Boolean(msg.sourceMessage) : !isGroupedWithNext);
+  const footerDetail = showContactRequestAction ? undefined : msg.detail; const showAvatarSlot = threadLayout || !isAgentMessage || groupChatAgentAvatar; const smallAvatar = threadLayout || useHumanCompactDensity || groupChatAgentAvatar; const showAvatar = showAvatarSlot && (threadLayout ? !isGroupedWithPrevious || Boolean(msg.sourceMessage) : !isGroupedWithNext);
   const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode && !isSystemAvatarUrl(msg.senderProfileImageUrl)); const isForwardedMessage = msg.messageAction?.kind === 'forward'; const forwardedSource = isForwardedMessage ? msg.messageAction?.source : null;
   const standaloneEmojiItem = standaloneEmojiItemForMessage(msg, { isHuman: showCompactFooter, showsSender: showInlineHumanSender, footerDetail });
   const messageSurfaceContent = (
@@ -740,7 +740,7 @@ function MessageBubbleView({
       data-message-layout={threadLayout ? 'threads' : undefined}
     >
       {threadLayout && msg.sourceMessage && !isForwardedMessage ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage} onNavigateToMessage={onNavigateToMessage} className="app-thread-quote-row" /> : null}
-      {showHeaderMeta && !threadLayout ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} /> : null}
+      {showHeaderMeta && !threadLayout ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} className={showAvatarSlot ? 'pl-10' : undefined} /> : null}
       <div className={cn(
         'flex w-full max-w-full',
         threadLayout && 'app-thread-message-main',
@@ -769,7 +769,7 @@ function MessageBubbleView({
                 imageUrl={msg.senderProfileImageUrl}
                 className={cn(
                   'mb-0.5 border border-white/10 transition hover:ring-2 hover:ring-[color:var(--app-sidebar-accent)]/35',
-                  threadLayout || useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8',
+                  smallAvatar ? 'h-7 w-7' : 'h-8 w-8',
                 )}
               />
             </button>
@@ -781,12 +781,12 @@ function MessageBubbleView({
               imageUrl={msg.senderProfileImageUrl}
               className={cn(
                 'mb-0.5 border border-white/10',
-                threadLayout || useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8',
+                smallAvatar ? 'h-7 w-7' : 'h-8 w-8',
               )}
             />
           )
         ) : showAvatarSlot ? (
-          <span className={cn('app-message-avatar-spacer shrink-0', threadLayout || useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8')} aria-hidden="true" />
+          <span className={cn('app-message-avatar-spacer shrink-0', smallAvatar ? 'h-7 w-7' : 'h-8 w-8')} aria-hidden="true" />
         ) : null}
         <TranscriptMessageSurface data-message-context-menu-anchor="true"
           data-message-media-side={hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined} data-message-mixed-images={hasMixedImageAttachments ? 'true' : undefined}
