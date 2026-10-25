@@ -154,7 +154,10 @@ export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, ava
         normalizedSeed,
       )
     : null;
-  const originalImageUrl = canonicalAvatarImageUrl(identityImageUrl || localOverride || ownAgentImageUrl)
+  // The account snapshot is the source of truth for the user's own agent; row props can be stale.
+  const originalImageUrl = canonicalAvatarImageUrl(isOwnAgent
+    ? ownAgentImageUrl || identityImageUrl || localOverride
+    : identityImageUrl || localOverride || ownAgentImageUrl)
     || generatedImageUrl;
   const needsNativeProxy = shouldLoadAvatarThroughNativeProxy(originalImageUrl);
   const remoteAvatar = useRemoteAvatarImage(originalImageUrl, needsNativeProxy);

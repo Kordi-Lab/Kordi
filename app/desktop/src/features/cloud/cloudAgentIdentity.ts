@@ -157,7 +157,7 @@ export function legacyDefaultAgentProfileUpdate({
       };
     } else {
       const markerSeed = parseGeneratedAvatarMarker(localAvatar)?.seed;
-      const previewSeed = /\/v1\/avatars\/preview\/thumbs\/([^/.?]+)\.png/u.exec(localAvatar)?.[1];
+      const previewSeed = /\/v1\/avatars\/preview\/(?:thumbs|kordi-birds)\/([^/.?]+)\.png/u.exec(localAvatar)?.[1];
       let seed = markerSeed;
       try {
         seed ||= previewSeed ? decodeURIComponent(previewSeed) : undefined;

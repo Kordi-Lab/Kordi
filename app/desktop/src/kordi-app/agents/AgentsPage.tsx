@@ -14,6 +14,7 @@ import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
 import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
 import type { Agent } from '../types';
 import { AgentInspectionView } from './AgentInspectionView';
+import { AgentStudioCompactBody } from './AgentStudioCompactBody';
 import { AgentStudioConversation } from './AgentStudioConversation';
 import { AgentStudioRail } from './AgentStudioRail';
 import { AgentStudioWorkspace } from './AgentStudioWorkspace';
@@ -22,7 +23,7 @@ import {
   agentBuilderSkillSlug,
   factoryAgentCreateInput,
   modelRoutingForAgent,
-  readyFactoryBuildForPublish,
+  factoryModelTestPolicy, factoryPublishStatus,
   sameModelRouting,
   shapeDraftFromBuilder,
   type AgentModelRoutingDraft,
@@ -48,6 +49,8 @@ import { useAgentsPageModel } from './useAgentsPageModel';
 import { useFactoryBuildRouting } from './useFactoryBuildRouting';
 import { useSkillLibrary } from './useSkillLibrary';
 import { useFactoryCreationAvatar } from './useFactoryCreationAvatar';
+import { useFactoryAgentAvatarActions } from './useFactoryAgentAvatarActions';
+import { useFactoryBuildAgent } from './factoryBuildAgent';
 import { cloudAgentDefinitionChanges, factoryAgentAvatarPresentation, factoryAgentIdentityChanges, factoryLocalAgentCapabilities, publishDefaultAgentIdentity } from './factoryAgentIdentity';
 
 export function AgentsPage({
@@ -93,9 +96,7 @@ export function AgentsPage({
   const inspectedAgent = inspectedAgentSource && publishedAccessByAgentId[inspectedAgentSource.id]
     ? { ...inspectedAgentSource, cloudAgentAccessScope: publishedAccessByAgentId[inspectedAgentSource.id] }
     : inspectedAgentSource;
-  const selectedAgentSource = buildRoute?.artifactKind === 'agent' && buildRoute.artifactId
-    ? agents.find((agent) => agent.id === buildRoute.artifactId)
-    : undefined;
+  const selectedAgentSource = useFactoryBuildAgent(buildRoute, agents);
   const selectedAgent = selectedAgentSource && publishedAccessByAgentId[selectedAgentSource.id]
     ? { ...selectedAgentSource, cloudAgentAccessScope: publishedAccessByAgentId[selectedAgentSource.id] }
     : selectedAgentSource;
@@ -277,6 +278,7 @@ export function AgentsPage({
     : null;
   const creationDraftId = builder.status?.draftId ?? null;
   const factoryAvatar = useFactoryCreationAvatar(creationDraftId, creating ? undefined : selectedAvatarUrl);
+  const avatarActions = useFactoryAgentAvatarActions({ creating, agent: selectedAgent, factoryAvatar, onUpdateCloudAgent, onUpdateLocalAgentAvatar, setPublishFeedback });
   const creationAccessScope: CloudAgentAccessScope = builder.status?.draft?.access === 'participant-conversations'
     ? 'participant_conversations'
     : 'private';
@@ -349,7 +351,7 @@ export function AgentsPage({
   const studioChanges = routingChanged
     ? [...studioChangesWithAccess, { key: 'routing' as const, label: 'Model routing updated', detail: selectedRouting.defaultModel || 'Runtime default' }]
     : studioChangesWithAccess;
-  const publishWithoutModelTest = Boolean(!creating && selectedAgent && !selectedAgent.cloudAgentId && usesDefaultLocalAgentSession(selectedAgent));
+  const { publishWithoutModelTest, skipModelTest } = factoryModelTestPolicy({ creating, agent: selectedAgent, draftChanges: activeDraftChanges, routingChanged });
   const publishDisabled = Boolean(publishing
     || builder.opening
     || builder.testing
@@ -444,9 +446,9 @@ export function AgentsPage({
           ? 'Publishing the Agent…'
           : `Publishing ${selectedAgent?.name ?? 'agent'}…`;
     setPublishing(true);
-    setPublishFeedback({ tone: 'info', text: publishWithoutModelTest || builder.status?.publishReady ? publishingText : 'Testing the draft before publishing…' });
+    setPublishFeedback({ tone: 'info', text: skipModelTest || builder.status?.publishReady ? publishingText : 'Testing the draft before publishing…' });
     try {
-      const status = publishWithoutModelTest ? builder.status! : await readyFactoryBuildForPublish(builder.status, builder.testDraft);
+      const status = await factoryPublishStatus(skipModelTest, builder.status, builder.testDraft);
       setPublishFeedback({ tone: 'info', text: publishingText });
       if (creating) {
         if (creatingSkill) {
@@ -566,7 +568,7 @@ export function AgentsPage({
           loadedPlugins: activePersistedConfig.loadedPlugins,
         }, 'Published Factory runtime changes');
       }
-      if (!publishWithoutModelTest) await builder.markPublished();
+      if (status.publishReady && !publishWithoutModelTest) await builder.markPublished();
       factoryAvatar.clearAvatar();
       setPublishFeedback({ tone: 'success', text: `${builderDraft?.name.trim() || selectedAgent.name} is published and ready.` });
     } catch (error) {
@@ -664,7 +666,7 @@ export function AgentsPage({
       ? 'Published'
       : !builder.status?.draft || !builder.status.validation.valid
         ? 'Needs setup'
-        : publishWithoutModelTest || builder.status.publishReady
+        : skipModelTest || builder.status.publishReady
           ? 'Ready to publish'
           : !builder.status.testReport || builder.status.testReport.fingerprint !== builder.status.validation.fingerprint || !builder.status.testReport.passed
             ? 'Needs testing'
@@ -705,7 +707,7 @@ export function AgentsPage({
           }}
           onCreateArtifact={startFactoryBuild}
         />
-        {factorySection === 'agents' ? <AgentInspectionView agent={inspectedAgent} onEditInBuild={(agent) => void editAgentInBuild(agent)} /> : null}
+        {factorySection === 'agents' ? <AgentInspectionView agent={inspectedAgent} onEditInBuild={(agent) => void editAgentInBuild(agent)} onUpdateCloudAgent={onUpdateCloudAgent} onUpdateLocalAgentAvatar={onUpdateLocalAgentAvatar} /> : null}
         {factorySection === 'library' ? (
           <CapabilityLibraryView
             key={`${librarySection}:${selectedLibraryId ?? 'none'}`}
@@ -733,7 +735,7 @@ export function AgentsPage({
                   <p>{builder.error ?? 'The saved conversation cannot be opened.'} The published {routeKind} remains unchanged.</p>
                   <div><button type="button" className="app-button-quiet app-agent-studio-button" onClick={returnFromBuild}>Cancel</button><button type="button" className="app-button-quiet app-agent-studio-button is-primary" onClick={() => void builder.recover()}>Recover from published {routeKind}</button></div>
                 </div>
-              ) : <div className="app-agent-studio-body">
+              ) : <AgentStudioCompactBody initialPane={creating ? 'chat' : 'workspace'}>
             <AgentStudioConversation
               targetName={displayName}
               creating={creating}
@@ -778,9 +780,7 @@ export function AgentsPage({
               onPromptChange={updateBuilderPrompt}
               onNameChange={(value) => { void persistBuilderDraft((draft) => ({ ...draft, name: value })); }}
               onCreationDraftChange={updateBuilderShapeDraft}
-              creationAvatarUrl={factoryAvatar.imageUrl}
-              onCreationAvatarUpload={factoryAvatar.upload}
-              onCreationAvatarRandomize={factoryAvatar.randomize}
+              creationAvatarUrl={avatarActions.imageUrl} onCreationAvatarUpload={avatarActions.upload} onCreationAvatarRandomize={avatarActions.randomize}
               onCreationModelRoutingChange={stageCreationModelRouting}
               onToggleCapability={(kind, name, selected) => {
                 updateBuilderCapability(kind, name, selected);
@@ -825,8 +825,7 @@ export function AgentsPage({
               onTestBuilderDraft={() => void builder.testDraft()}
               onReadBuilderFile={builder.readFile}
               onWriteBuilderFile={builder.writeFile}
-            />
-              </div>}
+            /></AgentStudioCompactBody>}
             </>
           ) : (
             <div className="app-skill-library-state"><strong>{buildListLoading ? 'Loading builds…' : 'No build selected'}</strong><span>Choose a recent conversation or use + to start one.</span></div>

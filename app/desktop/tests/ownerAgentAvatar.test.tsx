@@ -130,7 +130,7 @@ test('stale local and stored own-agent rows render the same account agent pictur
       assert.equal(sources[1], sources[0]);
 
       const other = await mount(<IdentityAvatar kind="agent" seed="default-agent-acct_peer" name="Peer Kordi" />);
-      assert.match(other.querySelector('img')?.getAttribute('src') ?? '', /preview\/thumbs\/default-agent-acct_peer\.png$/);
+      assert.match(other.querySelector('img')?.getAttribute('src') ?? '', /preview\/kordi-birds\/default-agent-acct_peer\.png$/);
     } finally {
       setLocalAgentAvatar(null);
     }

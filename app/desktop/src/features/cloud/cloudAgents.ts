@@ -1,4 +1,4 @@
-import { getLocalAgentAvatar } from '@/features/canonical/localAgentAvatar';
+import { DEFAULT_LOCAL_AGENT_AVATAR_SEED } from '@/features/canonical/localAgentAvatar';
 import type { Agent, DesktopCollaborationAgent } from '@/kordi-app/types';
 import type { CloudSyncEvent } from './authClient';
 import type { CloudAgentAccessScope, CloudAgentResource, CloudAgentSkill, CloudAgentStatus } from './cloudAgentsClient';
@@ -130,7 +130,8 @@ function cloudAgentId(definition: CloudAgentDefinition): string {
  */
 export function collaborationAgentAvatarFields(agent: Pick<DesktopCollaborationAgent, 'id' | 'isDefault' | 'profileImageUrl'>) {
   return {
-    avatarSeed: agent.isDefault ? getLocalAgentAvatar().seed : agent.id,
+    // The stable own-agent seed, so avatars follow the live account snapshot after a change.
+    avatarSeed: agent.isDefault ? DEFAULT_LOCAL_AGENT_AVATAR_SEED : agent.id,
     profileImageUrl: agent.profileImageUrl?.trim() || null,
   };
 }

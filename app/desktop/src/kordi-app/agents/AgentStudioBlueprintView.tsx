@@ -8,6 +8,7 @@ import { CloudSignupAvatarPicker } from '../cloud/CloudSignupAvatarPicker';
 import type { Agent } from '../types';
 import { cloudAgentAccessDescription, cloudAgentAccessLabel, type AgentStudioConfigDraft } from './model';
 import type { ShapeAgentDraft } from './shapeAgentDraft';
+import { factoryAvatarSeed } from './useFactoryCreationAvatar';
 
 const noopAvatarAction = () => undefined;
 
@@ -106,7 +107,7 @@ export function AgentStudioBlueprintView({
   onCreationDraftChange: (draft: ShapeAgentDraft) => void;
   creationAvatarUrl?: string | null;
   onCreationAvatarUpload?: (avatar: string) => void;
-  onCreationAvatarRandomize?: () => void;
+  onCreationAvatarRandomize?: (seed?: string) => void;
   onOpenCapabilities: () => void;
   onOpenRouting?: () => void;
   builderStatus?: DesktopAgentBuilderStatus | null;
@@ -178,7 +179,7 @@ export function AgentStudioBlueprintView({
           <BlueprintRow
             icon={Bot}
             label="Avatar"
-            value={<CloudSignupAvatarPicker imageUrl={creationAvatarUrl ?? ''} onUpload={onCreationAvatarUpload ?? noopAvatarAction} onRegenerate={onCreationAvatarRandomize ?? noopAvatarAction} uploadLabel="Upload agent avatar" regenerateLabel="Generate random agent avatar" />}
+            value={<CloudSignupAvatarPicker imageUrl={creationAvatarUrl ?? ''} onUpload={onCreationAvatarUpload ?? noopAvatarAction} onRegenerate={onCreationAvatarRandomize ?? noopAvatarAction} onPick={onCreationAvatarRandomize} currentSeed={factoryAvatarSeed(creationAvatarUrl, agent?.avatarSeed ?? agent?.id)} uploadLabel="Upload agent avatar" />}
           />
         ) : null}
         <BlueprintRow

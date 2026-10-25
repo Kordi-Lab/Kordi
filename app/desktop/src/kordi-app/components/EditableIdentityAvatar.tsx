@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { Camera, Dice5 } from 'lucide-react';
+import { Bird, Camera, Dice5 } from 'lucide-react';
+import { AgentAvatarPicker } from './AgentAvatarPicker';
 import { fileToAvatarDataUrl, setAvatarOverride } from './avatarOverrides';
 import { resolveLocalAgentAvatarSeed } from '@/features/canonical/localAgentAvatar';
 import { getIdentityAvatarKey, IdentityAvatar, type IdentityAvatarProps } from './IdentityAvatar';
@@ -10,6 +11,9 @@ type EditableIdentityAvatarProps = IdentityAvatarProps & {
   onUpload?: (dataUrl: string) => Promise<void> | void;
   onGenerate?: () => Promise<void> | void;
   generateLabel?: string;
+  /** Agents only: opens the bird picker instead of the dice; called with the chosen seed. */
+  onPick?: (seed: string) => Promise<void> | void;
+  currentSeed?: string | null;
 };
 
 export function EditableIdentityAvatar({
@@ -17,9 +21,14 @@ export function EditableIdentityAvatar({
   onUpload,
   onGenerate,
   generateLabel = 'Random avatar',
+  onPick,
+  currentSeed,
   ...avatarProps
 }: EditableIdentityAvatarProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const pickerTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const controlRef = useRef<HTMLDivElement | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const localAgentAvatar = useLocalAgentAvatar();
@@ -56,9 +65,22 @@ export function EditableIdentityAvatar({
       });
   };
 
+  const runAvatarAction = (action: () => Promise<void> | void, failure: string) => {
+    setIsSaving(true);
+    setError(null);
+    void Promise.resolve()
+      .then(action)
+      .catch((caught: unknown) => {
+        setError(caught instanceof Error ? caught.message : failure);
+      })
+      .finally(() => setIsSaving(false));
+  };
+
+  const topButtonClassName = 'grid min-h-6 flex-1 place-items-center border-b border-[var(--app-cloud-login-inner-border)] transition hover:bg-[var(--app-cloud-login-sunk-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)] disabled:opacity-50';
+
   return (
     <div className="grid gap-1.5">
-      <div className="flex items-stretch gap-1">
+      <div ref={controlRef} className="flex items-stretch gap-1">
         <IdentityAvatar {...avatarProps} avatarKey={avatarKey} />
         <input
           ref={inputRef}
@@ -68,22 +90,27 @@ export function EditableIdentityAvatar({
           onChange={(event) => handleFileChange(event.currentTarget.files?.[0])}
         />
         <div className="flex w-7 shrink-0 flex-col overflow-hidden rounded-full border border-[var(--app-cloud-login-inner-border)] bg-[var(--app-cloud-login-raised-bg)] text-muted-foreground">
-          {onGenerate ? (
+          {onPick ? (
+            <button
+              ref={pickerTriggerRef}
+              type="button"
+              className={topButtonClassName}
+              title="Choose avatar"
+              aria-label="Choose avatar"
+              aria-haspopup="dialog"
+              aria-expanded={pickerOpen}
+              onClick={() => setPickerOpen((current) => !current)}
+            >
+              <Bird className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+            </button>
+          ) : onGenerate ? (
             <button
               type="button"
-              className="grid min-h-6 flex-1 place-items-center border-b border-[var(--app-cloud-login-inner-border)] transition hover:bg-[var(--app-cloud-login-sunk-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)] disabled:opacity-50"
+              className={topButtonClassName}
               disabled={isSaving}
               title={generateLabel}
               aria-label={generateLabel}
-              onClick={() => {
-                setIsSaving(true);
-                setError(null);
-                void Promise.resolve(onGenerate())
-                  .catch((caught: unknown) => {
-                    setError(caught instanceof Error ? caught.message : 'Could not create a random avatar.');
-                  })
-                  .finally(() => setIsSaving(false));
-              }}
+              onClick={() => runAvatarAction(onGenerate, 'Could not create a random avatar.')}
             >
               <Dice5 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
             </button>
@@ -100,6 +127,17 @@ export function EditableIdentityAvatar({
           </button>
         </div>
       </div>
+      {onPick ? (
+        <AgentAvatarPicker
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          anchorRef={pickerTriggerRef}
+          placementRef={controlRef}
+          currentSeed={currentSeed ?? normalizedSeed}
+          onPick={(seed) => runAvatarAction(() => onPick(seed), 'Could not change the avatar.')}
+          onUpload={() => inputRef.current?.click()}
+        />
+      ) : null}
       {isSaving ? <span className="sr-only" aria-live="polite">Saving avatar…</span> : null}
       {error ? <div className="app-error-text max-w-[18rem] text-[11px] leading-4 text-rose-300">{error}</div> : null}
     </div>

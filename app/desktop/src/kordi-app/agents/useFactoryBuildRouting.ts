@@ -6,6 +6,7 @@ import {
   resolveDesktopAgentBuilder,
   type DesktopAgentBuilderSummary,
 } from '@/lib/desktopAgentBuilderCatalog';
+import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
 import type { Agent } from '../types';
 import { agentBuilderSeedForAgent, newArtifactSeed, seedForLibraryArtifact } from './factoryAgentUtils';
 import {
@@ -128,6 +129,7 @@ export function useFactoryBuildRouting({
         artifactKind: 'agent',
         artifactId: agent.id,
         returnContext: { section: 'agents', selectedId: agent.id },
+        ...(usesDefaultLocalAgentSession(agent) ? { defaultAgent: true as const } : {}),
       }, agentBuilderSeedForAgent(agent));
     } finally {
       setRoutingToBuild(false);
@@ -201,6 +203,7 @@ export function useFactoryBuildRouting({
         artifactKind: kind,
         artifactId,
         returnContext: currentReturnContext(),
+        ...(agent && usesDefaultLocalAgentSession(agent) ? { defaultAgent: true as const } : {}),
       }, seed);
     } finally {
       setRoutingToBuild(false);

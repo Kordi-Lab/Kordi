@@ -1,4 +1,5 @@
 import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
+import { getLocalAgentAvatar, isLocalAgentAvatarSeed } from '@/features/canonical/localAgentAvatar';
 import {
   AGENT_CANONICAL_AVATAR_STYLE,
   generatedAvatarPreviewUrl,
@@ -8,6 +9,7 @@ import type { DesktopAgentBuilderDraft } from '@/lib/desktop';
 import type { Agent } from '../types';
 import { getAvatarOverride, setAvatarOverride } from '../components/avatarOverrides';
 import { getIdentityAvatarKey } from '../components/IdentityAvatar';
+import { cloudAgentDraftBoundaries, cloudAgentDraftDescription, cloudAgentDraftSourceSummary } from './factoryAgentUtils';
 import { getAgentConfigPath, isRepoFilePath, type AgentsPageProps } from './model';
 
 type IdentityChange = { key: 'definition'; label: string; detail: string };
@@ -21,12 +23,16 @@ export function factoryLocalAgentCapabilities(agent: Agent | undefined, canSetSk
 }
 
 export function factoryAgentAvatarPresentation(agent?: Agent) {
-  const seed = agent?.avatarSeed?.trim() || agent?.id || '';
+  const rawSeed = agent?.avatarSeed?.trim() || agent?.id || '';
+  // The user's own agent follows the live account snapshot, like IdentityAvatar.
+  const ownAgent = Boolean(agent) && isLocalAgentAvatarSeed(rawSeed);
+  const seed = ownAgent ? getLocalAgentAvatar().seed : rawSeed;
   const avatarKey = agent ? getIdentityAvatarKey('agent', seed) : null;
   return {
     avatarKey,
     avatarUrl: avatarKey
-      ? getAvatarOverride(avatarKey)
+      ? (ownAgent ? getLocalAgentAvatar().imageUrl : null)
+        || getAvatarOverride(avatarKey)
         || agent?.profileImageUrl
         || generatedAvatarPreviewUrl(AGENT_CANONICAL_AVATAR_STYLE, seed)
       : null,
@@ -57,9 +63,9 @@ export function cloudAgentDefinitionChanges(
   return [
     draft.name !== agent.name ? { key: 'definition' as const, label: 'Agent name updated', detail: draft.name } : null,
     draft.role !== agent.role ? { key: 'definition' as const, label: 'Agent role updated', detail: draft.role } : null,
-    draft.description !== (agent.cloudAgentDescription ?? '') ? { key: 'definition' as const, label: 'Agent description updated', detail: draft.description || 'Cleared' } : null,
-    draft.sourceSummary !== (agent.cloudAgentSourceSummary ?? '') ? { key: 'definition' as const, label: 'Source summary updated', detail: draft.sourceSummary || 'Cleared' } : null,
-    JSON.stringify(draft.boundaries) !== JSON.stringify(agent.cloudAgentBoundaries ?? []) ? { key: 'definition' as const, label: 'Agent boundaries updated', detail: `${draft.boundaries.length} configured` } : null,
+    draft.description !== cloudAgentDraftDescription(agent) ? { key: 'definition' as const, label: 'Agent description updated', detail: draft.description || 'Cleared' } : null,
+    draft.sourceSummary !== cloudAgentDraftSourceSummary(agent) ? { key: 'definition' as const, label: 'Source summary updated', detail: draft.sourceSummary || 'Cleared' } : null,
+    JSON.stringify(draft.boundaries) !== JSON.stringify(cloudAgentDraftBoundaries(agent)) ? { key: 'definition' as const, label: 'Agent boundaries updated', detail: `${draft.boundaries.length} configured` } : null,
   ].filter((change): change is IdentityChange => Boolean(change));
 }
 
