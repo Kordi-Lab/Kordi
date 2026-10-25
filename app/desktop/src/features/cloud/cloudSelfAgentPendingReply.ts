@@ -22,6 +22,15 @@ export function pendingSelfAgentReplyId(requestMessageId: string) {
 }
 
 /**
+ * The not-started notice is a row of its own. The transcript never reopens a
+ * finished turn, so a run that starts after the notice must replace the row,
+ * not reuse its id, or the notice would stay above the live reply (#2026).
+ */
+export function pendingSelfAgentNoticeRowId(requestMessageId: string) {
+  return `${pendingSelfAgentReplyId(requestMessageId)}:not-started`;
+}
+
+/**
  * The row id of a request's pending reply. Once the request's Cloud id is
  * known, it is the id its stored reply row will have, so that row replaces
  * the pending one in place: the same transcript row, with its waiting
@@ -173,7 +182,7 @@ export function projectPendingSelfAgentReplies(
     const notStarted = !localTurn && hostedRuns.length === 0 && nowMs - request.createdAtMs > startTimeoutMs(request);
     for (const run of hostedRuns) folded.add(run.id);
     const row: CanonicalSessionMessage = {
-      id: pendingSelfAgentReplyRowId(request.id, wireId),
+      id: notStarted ? pendingSelfAgentNoticeRowId(request.id) : pendingSelfAgentReplyRowId(request.id, wireId),
       sessionId: request.sessionId,
       senderIdentityId: agentIdentityId,
       senderRole: 'owned-agent',
