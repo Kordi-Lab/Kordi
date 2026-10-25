@@ -158,6 +158,7 @@ mod tests {
             completed_at_ms: completed.then_some(2),
             transcript_entry_id: None,
             error: None,
+            retry_reason: None,
             transcript_refresh_required: false,
             background_follow_up: None,
         }

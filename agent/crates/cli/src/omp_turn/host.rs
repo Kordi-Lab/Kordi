@@ -264,7 +264,13 @@ pub(super) fn map_event(event: RuntimeEvent) -> Option<TurnEvent> {
                 .get("delayMs")
                 .and_then(|value| value.as_u64())
                 .unwrap_or(0),
-            error_message: String::new(),
+            // The provider's reason, cleaned of credentials and IDs.
+            error_message: event
+                .data
+                .get("reason")
+                .and_then(|value| value.as_str())
+                .and_then(kordi_omp_runtime::provider_reason)
+                .unwrap_or_default(),
         }),
         "retry" if string("phase").as_deref() == Some("end") => Some(TurnEvent::AutoRetryEnd),
         "turn_start" => Some(TurnEvent::TurnStart {

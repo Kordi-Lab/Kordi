@@ -66,6 +66,8 @@ export function TurnProgress({ turn, trailing, renderTool, legacyAnswer }: {
       </button>
       {live ? trailing : null}
     </div> : null}
+    {showHeader && live && turn.status === 'retrying' && turn.retryReason?.trim()
+      ? <p className="app-turn-retry-reason">{turn.retryReason.trim()}</p> : null}
     <ProgressDisclosure expanded={showHeader && trajectoryExpanded}>
       {ordered && hasActivity ? <>
         {turn.thinkingText ? <ActivityGroup tools={[]} label="Reasoning" thinkingText={turn.thinkingText} renderTool={renderTool} /> : null}

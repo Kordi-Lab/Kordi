@@ -403,6 +403,8 @@ export type DesktopChatTurnSnapshot = {
   completedAtMs?: number | null;
   transcriptEntryId?: string | null;
   error?: string | null;
+  /** The provider's reason while the runtime retries a failed request. */
+  retryReason?: string | null;
   transcriptRefreshRequired?: boolean;
   /** A runtime follow-up turn that reports a finished background session. */
   backgroundFollowUp?: DesktopBackgroundFollowUp | null;

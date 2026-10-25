@@ -63,7 +63,7 @@ pub(crate) async fn run<C: CloudAgentRunClient + Sync>(
 
 fn can_use_fallback(error: &RuntimeError) -> bool {
     matches!(error, RuntimeError::Timeout)
-        || matches!(error, RuntimeError::Worker(code) if code.starts_with("provider_"))
+        || matches!(error, RuntimeError::Worker(code) | RuntimeError::Provider { code, .. } if code.starts_with("provider_"))
 }
 
 #[derive(Default)]

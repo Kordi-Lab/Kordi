@@ -23,6 +23,7 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
   let toolCalls = 0;
   let providerFailed = false;
   let providerFailureCode = 'provider_error';
+  let providerFailureReason: string | undefined;
   const fail = (code: string, message: string) => {
     terminalError ??= new RuntimeError(code, message);
     if (session) void session.abort();
@@ -160,7 +161,10 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
           if (event.message.role === 'assistant') {
             // Let the SDK complete its bounded retry policy before deciding the turn failed.
             providerFailed = event.message.stopReason === 'error';
-            if (providerFailed) providerFailureCode = providerErrorCode(event.message);
+            if (providerFailed) {
+              providerFailureCode = providerErrorCode(event.message);
+              providerFailureReason = providerReasonText(event.message.errorMessage);
+            }
             if (event.message.stopReason === 'aborted') fail('cancelled', 'Run cancelled.');
           }
           break;
@@ -176,7 +180,8 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
           break;
         case 'auto_compaction_start': host.event({ kind: 'compaction', phase: 'start' }); break;
         case 'auto_compaction_end': host.event({ kind: 'compaction', phase: 'end', aborted: event.aborted }); break;
-        case 'auto_retry_start': host.event({ kind: 'retry', phase: 'start', attempt: event.attempt, maxAttempts: event.maxAttempts, delayMs: event.delayMs }); break;
+        case 'auto_retry_start': host.event({ kind: 'retry', phase: 'start', attempt: event.attempt, maxAttempts: event.maxAttempts, delayMs: event.delayMs,
+          ...(providerReasonText(event.errorMessage) ? { reason: providerReasonText(event.errorMessage) } : {}) }); break;
         case 'auto_retry_end': host.event({ kind: 'retry', phase: 'end', attempt: event.attempt, success: event.success }); break;
       }
     });
@@ -188,7 +193,7 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
       await session.prompt(request.prompt.text, { images: request.prompt.images, expandPromptTemplates: false });
     }
     if (terminalError) throw terminalError;
-    if (providerFailed) throw new RuntimeError(providerFailureCode, 'The selected provider could not complete this request.');
+    if (providerFailed) throw new RuntimeError(providerFailureCode, 'The selected provider could not complete this request.', providerFailureReason);
     const entries = sessionManager.getEntries();
     const newEntries = entries.slice(initialEntryCount);
     const messages = newEntries.filter((entry): entry is any => entry.type === 'message' && entry.message.role !== 'user').map(entry => toKordiMessage(entry.message));
@@ -231,5 +236,15 @@ export function providerErrorCode(error: { errorStatus?: number; errorMessage?: 
   if (/certificate|TLS|SSL/i.test(message)) return 'provider_tls';
   if (/fetch failed|unable to connect|connection refused|network|ENOTFOUND|ECONN/i.test(message)) return 'provider_connection';
   if (Number.isInteger(error.errorStatus) && error.errorStatus! >= 400 && error.errorStatus! <= 599) return `provider_http_${error.errorStatus}`;
+  // Stream error events (Codex) carry no HTTP status.
+  if (/rate.?limit|too many requests|at capacity/i.test(message)) return 'provider_http_429';
+  if (/overloaded|temporarily unavailable/i.test(message)) return 'provider_http_503';
   return 'provider_error';
+}
+
+/** The first line of a provider error, size-capped. The Kordi host removes credentials and IDs before display. */
+export function providerReasonText(errorMessage: unknown) {
+  if (typeof errorMessage !== 'string') return undefined;
+  const line = errorMessage.split(/\r?\n/u, 1)[0]?.trim().slice(0, 2000);
+  return line || undefined;
 }
