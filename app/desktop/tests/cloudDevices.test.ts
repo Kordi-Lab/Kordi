@@ -105,11 +105,15 @@ test('durable directory events refresh profiles without replacing the signed-in 
   });
   let profileAccountId = '';
   let directoryRefreshes = 0;
+  let changedAccounts: string[] = [];
   let changedAgentOwners: string[] = [];
   dom.window.addEventListener('kordi-cloud-profile-updated', (event) => {
     profileAccountId = (event as CustomEvent<{ accountId?: string }>).detail?.accountId ?? '';
   });
-  dom.window.addEventListener(CLOUD_DIRECTORY_SYNC_EVENT, () => { directoryRefreshes += 1; });
+  dom.window.addEventListener(CLOUD_DIRECTORY_SYNC_EVENT, (event) => {
+    directoryRefreshes += 1;
+    changedAccounts = (event as CustomEvent<{ accountIds?: string[] }>).detail?.accountIds ?? [];
+  });
   dom.window.addEventListener(CLOUD_AGENT_DIRECTORY_SYNC_EVENT, (event) => {
     changedAgentOwners = (event as CustomEvent<{ ownerAccountIds?: string[] }>)
       .detail?.ownerAccountIds ?? [];
@@ -131,10 +135,13 @@ test('durable directory events refresh profiles without replacing the signed-in 
     publishCloudDeviceEvents([
       event('account.profile.updated', { account: { accountId: 'acct_me' } }),
       event('account.directory.changed', { accountId: 'acct_peer' }),
+      event('account.directory.changed', { accountId: 'acct_peer', agentAvatarVersion: 3 }),
+      event('account.directory.changed', { accountId: 'acct_other' }),
       event('agent.directory.changed', { ownerAccountId: 'acct_owner' }),
     ], 'acct_me', undefined);
     assert.equal(profileAccountId, 'acct_me');
     assert.equal(directoryRefreshes, 1);
+    assert.deepEqual(changedAccounts, ['acct_peer', 'acct_other']);
     assert.deepEqual(changedAgentOwners, ['acct_owner']);
   } finally {
     previous.forEach((descriptor, key) => {

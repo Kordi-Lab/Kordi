@@ -34,7 +34,7 @@ clap.workspace = true
 hex = "0.4"
 bs58 = "0.5"
 dicebear-core = "=10.6.0"
-dicebear-styles = { version = "=10.5.0", features = ["lorelei", "thumbs"] }
+dicebear-styles = { version = "=10.5.0", features = ["lorelei"] }
 resvg = { version = "=0.48.1", default-features = false, features = ["raster-images"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }

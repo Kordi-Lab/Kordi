@@ -5,6 +5,8 @@ import type { ChatSyncEvent } from './chatSyncTypes';
 export const CLOUD_DIRECTORY_SYNC_EVENT = 'kordi-cloud-directory-sync';
 export const CLOUD_AGENT_DIRECTORY_SYNC_EVENT = 'kordi-cloud-agent-directory-sync';
 export type CloudAgentDirectorySyncDetail = { ownerAccountIds: string[] };
+/** The accounts whose public profile changed, from `account.directory.changed`. */
+export type CloudDirectorySyncDetail = { accountIds: string[] };
 
 function objectRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -31,8 +33,17 @@ export function publishCloudDeviceEvents(
   if (profile?.accountId === accountId) {
     window.dispatchEvent(new CustomEvent('kordi-cloud-profile-updated', { detail: profile }));
   }
-  if (events.some((event) => event.type === 'account.directory.changed')) {
-    window.dispatchEvent(new Event(CLOUD_DIRECTORY_SYNC_EVENT));
+  const directoryEvents = events.filter((event) => event.type === 'account.directory.changed');
+  if (directoryEvents.length > 0) {
+    const accountIds = [...new Set(directoryEvents.flatMap((event) => (
+      typeof event.payload.accountId === 'string' && event.payload.accountId.trim()
+        ? [event.payload.accountId.trim()]
+        : []
+    )))];
+    window.dispatchEvent(new CustomEvent<CloudDirectorySyncDetail>(
+      CLOUD_DIRECTORY_SYNC_EVENT,
+      { detail: { accountIds } },
+    ));
   }
   const ownerAccountIds = [...new Set(events.flatMap((event) => {
     const ownerAccountId = event.type === 'agent.directory.changed'

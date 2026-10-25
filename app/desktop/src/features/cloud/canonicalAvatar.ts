@@ -90,6 +90,11 @@ export function generatedAvatarMarker(
 export function generatedAvatarRenderUrl(value: string | null | undefined): string | null {
   const marker = parseGeneratedAvatarMarker(value);
   if (!marker) return null;
+  // Agents still on the legacy style draw as the bird their seed hashes to. Only the preview
+  // route renders a seed the account never stored under the bird style.
+  if (marker.style === LEGACY_AGENT_CANONICAL_AVATAR_STYLE) {
+    return generatedAvatarPreviewUrl(BIRD_CANONICAL_AVATAR_STYLE, marker.seed);
+  }
   try {
     const baseUrl = cloudApiBaseUrl();
     return `${baseUrl}/v1/avatars/${marker.rendererVersion}/${marker.style}/${encodeURIComponent(marker.seed)}.png?v=${marker.version}`;
@@ -143,13 +148,26 @@ export function generatedAvatarPreviewUrl(
   }
 }
 
+const LEGACY_AGENT_AVATAR_URL = /^(https?:\/\/[^?#]+?)\/v1\/avatars\/[^/?#]+\/thumbs\/([^/?#]+)\.png(?:[?#].*)?$/iu;
+
+/** A server-rendered legacy agent URL (`/v1/avatars/<renderer or preview>/thumbs/<seed>.png`) as its bird. */
+function legacyAgentAvatarBirdUrl(value: string): string | null {
+  const match = LEGACY_AGENT_AVATAR_URL.exec(value);
+  if (!match) return null;
+  try {
+    return generatedAvatarPreviewUrl(BIRD_CANONICAL_AVATAR_STYLE, decodeURIComponent(match[2]), match[1]);
+  } catch {
+    return null;
+  }
+}
+
 export function canonicalAvatarImageUrl(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith(CANONICAL_AVATAR_URL_PREFIX)) {
     return uploadedAvatarRenderUrl(trimmed) ?? generatedAvatarRenderUrl(trimmed);
   }
-  return trimmed;
+  return legacyAgentAvatarBirdUrl(trimmed) ?? trimmed;
 }
 
 export function avatarDataUrlBlob(value: string): Blob {

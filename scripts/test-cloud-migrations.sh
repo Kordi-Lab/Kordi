@@ -108,6 +108,9 @@ DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib auth::routes::contact_profile:: -- --test-threads=1
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib auth::routes::contact_removal:: -- --test-threads=1
+# Agent avatar tests (docs/avatar-system.md) use the Common ground fixture.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib avatars::agent_avatar_db_tests:: -- --test-threads=1
 # Proactive agent tests (docs/development/proactive-agent.md) follow the same rule.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib proactive:: -- --test-threads=1

@@ -45,7 +45,7 @@ pub const BIRD_PALETTES: [(&str, &str); 8] = [
     ("lavender", "#d6cdf3"),
 ];
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BirdAvatar {
     pub species: &'static str,
     pub tone: &'static str,
@@ -94,7 +94,12 @@ pub fn parse_bird_seed(seed: &str) -> BirdAvatar {
 
 /// The 128 x 128 SVG for a seed, with its palette background filled in.
 pub fn render_svg(seed: &str) -> String {
-    let bird = parse_bird_seed(seed);
+    render_bird_svg(parse_bird_seed(seed))
+}
+
+/// The 128 x 128 SVG for a bird, with its palette background filled in. The picture
+/// depends only on the bird, never on the seed that named it.
+pub fn render_bird_svg(bird: BirdAvatar) -> String {
     let template = TEMPLATES
         .iter()
         .find(|(species, tone, _)| *species == bird.species && *tone == bird.tone)
