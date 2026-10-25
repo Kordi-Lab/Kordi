@@ -36,7 +36,7 @@ import {
   usePendingGroupInvitation,
 } from '@/features/cloud/groupInvitationDeepLink';
 import { shouldShowCloudLoginGate, type CloudSessionStatus } from '@/features/cloud/sessionGate';
-import { isTauriRuntime, type CloudLoginMode } from '@/features/cloud/loginWindow';
+import { isTauriRuntime, readAuthWindowCropOffset, type CloudLoginMode } from '@/features/cloud/loginWindow';
 import { readLoginModePreference } from '@/features/cloud/loginModePreference';
 import { useCloudWindowSurface } from '@/features/cloud/useCloudWindowSurface';
 import { useCloudSyncPresentation } from '@/features/cloud/useCloudSyncPresentation';
@@ -218,7 +218,7 @@ function CloudGateShell({ children, active = true }: { children: React.ReactNode
       isNativeShell: isTauriRuntime(),
       button: event.button,
       clientY: event.clientY,
-      shellTop: event.currentTarget.getBoundingClientRect().top,
+      shellTop: event.currentTarget.getBoundingClientRect().top + readAuthWindowCropOffset().y,
       target: event.target,
     })) {
       return;

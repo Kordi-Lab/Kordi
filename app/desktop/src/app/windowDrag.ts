@@ -2,9 +2,9 @@ export const APP_WINDOW_DRAG_HEIGHT = 64;
 export const APP_WINDOW_RESIZE_EDGE = 12;
 export const APP_WINDOW_RESIZE_CORNER = 24;
 export const CLOUD_LOGIN_WINDOW_DRAG_STYLE = {
-  left: `${APP_WINDOW_RESIZE_EDGE}px`,
-  right: `${APP_WINDOW_RESIZE_EDGE}px`,
-  top: `${APP_WINDOW_RESIZE_EDGE}px`,
+  left: `calc(var(--app-gate-crop-x, 0px) + ${APP_WINDOW_RESIZE_EDGE}px)`,
+  right: `calc(var(--app-gate-crop-x, 0px) + ${APP_WINDOW_RESIZE_EDGE}px)`,
+  top: `calc(var(--app-gate-crop-y, 0px) + ${APP_WINDOW_RESIZE_EDGE}px)`,
   height: `${48 - APP_WINDOW_RESIZE_EDGE}px`,
   WebkitAppRegion: 'drag',
 } as const;
