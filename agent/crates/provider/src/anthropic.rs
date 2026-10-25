@@ -1,8 +1,8 @@
 pub mod capabilities;
 mod events;
+mod thinking;
 
 use async_trait::async_trait;
-use kordi_core::agent_session::ThinkingLevel;
 use kordi_core::error::{KordiError, KordiResult};
 use reqwest::Client;
 use serde_json::{Value, json};
@@ -14,10 +14,6 @@ use crate::retry::with_retry;
 use crate::transforms::convert_messages_for_anthropic;
 use crate::{CompletionRequest, Provider, ProviderAuthMode, RequestOptions, StreamEvent};
 
-use capabilities::{
-    ClaudeThinkingMode, ThinkingOffBehavior, adaptive_effort, capabilities_for_model,
-    clamp_thinking_level,
-};
 use events::{AnthropicEventState, sse_error_message};
 use kordi_core::types::CacheMetricsSource;
 
@@ -320,57 +316,12 @@ fn build_anthropic_request_body(
         body["tools"] = json!(tools);
     }
 
-    let Some(thinking) = request.thinking.as_deref() else {
-        return body;
-    };
-    if thinking == "default" {
-        return body;
-    }
-
-    let requested = ThinkingLevel::parse(thinking).unwrap_or(ThinkingLevel::Medium);
-    let capabilities = capabilities_for_model(&request.model);
-    if requested == ThinkingLevel::Off {
-        if capabilities
-            .is_some_and(|capabilities| capabilities.thinking_off == ThinkingOffBehavior::Disabled)
-        {
-            body["thinking"] = json!({ "type": "disabled" });
-        }
-        return body;
-    }
-
-    let effective = clamp_thinking_level(&request.model, requested).unwrap_or(match requested {
-        ThinkingLevel::XHigh | ThinkingLevel::Max => ThinkingLevel::High,
-        other => other,
-    });
-
-    if capabilities
-        .is_some_and(|capabilities| capabilities.thinking_mode == ClaudeThinkingMode::Adaptive)
-    {
-        if let Some(effort) = adaptive_effort(&request.model, effective) {
-            body["thinking"] = json!({
-                "type": "adaptive",
-                "display": "summarized",
-            });
-            body["output_config"] = json!({ "effort": effort });
-        }
-        return body;
-    }
-
-    let budget: u32 = match effective {
-        ThinkingLevel::Minimal => 1_024,
-        ThinkingLevel::Low => 2_048,
-        ThinkingLevel::Medium => 8_192,
-        ThinkingLevel::High | ThinkingLevel::XHigh | ThinkingLevel::Max => 16_384,
-        ThinkingLevel::Off | ThinkingLevel::Default => return body,
-    };
-    body["thinking"] = json!({
-        "type": "enabled",
-        "budget_tokens": budget,
-    });
-    if max_tokens < budget + 4_096 {
-        body["max_tokens"] = json!(budget + 4_096);
-    }
-
+    thinking::apply_thinking(
+        &mut body,
+        &request.model,
+        request.thinking.as_deref(),
+        max_tokens,
+    );
     body
 }
 

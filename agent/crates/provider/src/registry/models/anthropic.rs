@@ -49,6 +49,15 @@ pub(super) fn builtin_models() -> Vec<Model> {
             cost(1.0, 5.0, 0.1, 1.25),
         ),
         model(
+            "claude-haiku-5-5",
+            "Claude Haiku 5.5",
+            "anthropic",
+            ApiType::AnthropicMessages,
+            (1_000_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.anthropic.com"),
+            cost(0.1, 0.5, 0.01, 0.125),
+        ),
+        model(
             "claude-opus-4-1",
             "Claude Opus 4.1 (latest)",
             "anthropic",
@@ -105,6 +114,15 @@ pub(super) fn builtin_models() -> Vec<Model> {
         model(
             "claude-opus-4-8",
             "Claude Opus 4.8",
+            "anthropic",
+            ApiType::AnthropicMessages,
+            (1_000_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.anthropic.com"),
+            cost(5.0, 25.0, 0.5, 6.25),
+        ),
+        model(
+            "claude-opus-5",
+            "Claude Opus 5",
             "anthropic",
             ApiType::AnthropicMessages,
             (1_000_000, 128_000),
@@ -226,6 +244,13 @@ mod tests {
                 costs: (1.0, 5.0, 0.1, 1.25),
             },
             ExpectedModel {
+                id: "claude-haiku-5-5",
+                name: "Claude Haiku 5.5",
+                context_window: 1_000_000,
+                max_tokens: 128_000,
+                costs: (0.1, 0.5, 0.01, 0.125),
+            },
+            ExpectedModel {
                 id: "claude-opus-4-1",
                 name: "Claude Opus 4.1 (latest)",
                 context_window: 200_000,
@@ -270,6 +295,13 @@ mod tests {
             ExpectedModel {
                 id: "claude-opus-4-8",
                 name: "Claude Opus 4.8",
+                context_window: 1_000_000,
+                max_tokens: 128_000,
+                costs: (5.0, 25.0, 0.5, 6.25),
+            },
+            ExpectedModel {
+                id: "claude-opus-5",
+                name: "Claude Opus 5",
                 context_window: 1_000_000,
                 max_tokens: 128_000,
                 costs: (5.0, 25.0, 0.5, 6.25),
