@@ -11,6 +11,7 @@ enum ContactProfileStyle {
 /// The contact profile sheet (issue #1945): header and tiles from the contact
 /// row right away, sections once `GET /v1/cloud/contacts/{id}/profile` answers.
 struct ContactProfileView: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
     @Environment(\.dismiss) private var dismiss
@@ -76,7 +77,7 @@ struct ContactProfileView: View {
 
     private var tint: Color {
         switch presentation.kind {
-        case .person: KordiTheme.signalBlue
+        case .person: chatTheme.accent
         case .agent: KordiTheme.agentViolet
         case .system: Color(uiColor: .systemGray)
         }

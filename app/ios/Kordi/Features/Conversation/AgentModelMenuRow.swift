@@ -2,6 +2,7 @@ import SwiftUI
 
 /// One labeled menu of the agent model sheet, shown as a popover list.
 struct AgentModelMenuRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let title: String
     let options: [String]
     @Binding var selection: String
@@ -31,7 +32,7 @@ struct AgentModelMenuRow: View {
                     if isEnabled && !options.isEmpty {
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(KordiTheme.signalBlue)
+                            .foregroundStyle(chatTheme.accent)
                             .accessibilityHidden(true)
                     }
                 }
@@ -58,14 +59,14 @@ struct AgentModelMenuRow: View {
                             } label: {
                                 Text(optionLabel(option))
                                     .font(.body.weight(isSelected ? .semibold : .regular))
-                                    .foregroundStyle(isSelected ? KordiTheme.signalBlue : .primary)
+                                    .foregroundStyle(isSelected ? chatTheme.accent : .primary)
                                     .lineLimit(1)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 12)
                                     .frame(minHeight: 44)
                                     .background(
                                         isSelected
-                                            ? KordiTheme.signalBlue.opacity(0.12)
+                                            ? chatTheme.accent.opacity(0.12)
                                             : Color.clear,
                                         in: RoundedRectangle(cornerRadius: 10, style: .continuous)
                                     )

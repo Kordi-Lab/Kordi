@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PinnedMessageBar: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let items: [PinnedMessageItem]
     let onOpen: (PinnedMessageItem) -> Void
     let onUnpin: (PinnedMessageItem) -> Void
@@ -24,7 +25,7 @@ struct PinnedMessageBar: View {
                         VStack(spacing: 3) {
                             ForEach(items) { item in
                                 Capsule()
-                                    .fill(KordiTheme.signalBlue.opacity(item.id == active.id ? 1 : 0.25))
+                                    .fill(chatTheme.accent.opacity(item.id == active.id ? 1 : 0.25))
                             }
                         }
                         .frame(width: 3, height: 34)
@@ -37,7 +38,7 @@ struct PinnedMessageBar: View {
                                         .font(.caption).monospacedDigit()
                                 }
                             }
-                            .foregroundStyle(KordiTheme.signalBlue)
+                            .foregroundStyle(chatTheme.accent)
                             Text(active.message.text.nonEmpty ?? "Attachment")
                                 .font(.subheadline).foregroundStyle(.primary).lineLimit(1)
                         }
@@ -55,7 +56,7 @@ struct PinnedMessageBar: View {
                         Image(systemName: "pin")
                         Image(systemName: "list.bullet").font(.caption)
                     }
-                    .font(.body).foregroundStyle(KordiTheme.signalBlue)
+                    .font(.body).foregroundStyle(chatTheme.accent)
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
                 }
@@ -82,6 +83,7 @@ struct PinnedMessageBar: View {
 }
 
 private struct PinnedMessagesSheet: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dismiss) private var dismiss
     let items: [PinnedMessageItem]
     let onOpen: (PinnedMessageItem) -> Void
@@ -99,7 +101,7 @@ private struct PinnedMessagesSheet: View {
                             HStack(spacing: 8) {
                                 Text(item.message.authorName.nonEmpty ?? "Message")
                                     .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(KordiTheme.signalBlue)
+                                    .foregroundStyle(chatTheme.accent)
                                 Text(item.scope == "shared" ? "Everyone" : "Only you")
                                     .font(.caption).foregroundStyle(.secondary)
                             }

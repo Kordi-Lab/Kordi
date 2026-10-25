@@ -117,6 +117,7 @@ struct NativeLivePhotoView: UIViewRepresentable {
 }
 
 struct LivePhotoLibraryReview: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dismiss) private var dismiss
     let asset: PHAsset
     @Binding var sendsStillOnly: Bool
@@ -147,7 +148,7 @@ struct LivePhotoLibraryReview: View {
                     }
                 }
                 Toggle("Send as Live Photo", isOn: Binding(get: { !sendsStillOnly }, set: { sendsStillOnly = !$0 }))
-                    .tint(KordiTheme.signalBlue).font(.subheadline)
+                    .tint(chatTheme.accent).font(.subheadline)
             }
             .padding(20)
         }

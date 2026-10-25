@@ -53,6 +53,22 @@ function update(next: Partial<HostedAccountsState>) {
   for (const listener of [...listeners]) listener();
 }
 
+// A failed load retries with backoff; the last delay repeats until a list arrives.
+const RETRY_DELAYS_MS = [5_000, 15_000, 60_000];
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryAttempt = 0;
+
+function cancelRetry() {
+  if (retryTimer === null) return;
+  clearTimeout(retryTimer);
+  retryTimer = null;
+}
+
+function resetRetry() {
+  cancelRetry();
+  retryAttempt = 0;
+}
+
 function applySnapshots(snapshots: CloudProviderAuthSnapshot[]) {
   setHostedAccountChoices(snapshots.filter((snapshot) => !snapshot.revokedAt).map((snapshot) => snapshot.authChoice));
   update({ accounts: hostedAccountsFromSnapshots(snapshots), hasLoaded: true, listed: true });
@@ -60,6 +76,7 @@ function applySnapshots(snapshots: CloudProviderAuthSnapshot[]) {
 
 export function publishHostedProviderSnapshots(snapshots: CloudProviderAuthSnapshot[]) {
   generation += 1;
+  resetRetry();
   applySnapshots(snapshots);
 }
 
@@ -68,16 +85,38 @@ export function hostedAccountsState(): HostedAccountsState {
   return state;
 }
 
-async function loadHostedAccounts() {
-  const started = ++generation;
+/** Lists the signed-in account's snapshots; null when the fetch failed, empty when signed out. */
+export type HostedSnapshotLoader = () => Promise<CloudProviderAuthSnapshot[] | null>;
+
+async function listSnapshotsFromCloud(): Promise<CloudProviderAuthSnapshot[] | null> {
   const session = await loadSession().catch(() => null);
-  const snapshots = session
-    ? await createCloudProviderAuthApi().listProviderAuthSnapshots(session.token, false).catch(() => null)
-    : [];
+  if (!session) return [];
+  return createCloudProviderAuthApi().listProviderAuthSnapshots(session.token, false).catch(() => null);
+}
+
+async function loadHostedAccounts(listSnapshots: HostedSnapshotLoader = listSnapshotsFromCloud) {
+  cancelRetry();
+  const started = ++generation;
+  const snapshots = await listSnapshots().catch(() => null);
   // A newer load or a publish from the Authentication page wins.
   if (started !== generation) return;
-  if (snapshots) applySnapshots(snapshots);
-  else update({ hasLoaded: true });
+  if (snapshots) {
+    resetRetry();
+    applySnapshots(snapshots);
+    return;
+  }
+  update({ hasLoaded: true });
+  const delay = RETRY_DELAYS_MS[Math.min(retryAttempt, RETRY_DELAYS_MS.length - 1)];
+  retryAttempt += 1;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void loadHostedAccounts(listSnapshots);
+  }, delay);
+}
+
+/** Loads the hosted accounts again now; a failed load keeps retrying with backoff. */
+export function reloadHostedAccounts(listSnapshots?: HostedSnapshotLoader): Promise<void> {
+  return loadHostedAccounts(listSnapshots);
 }
 
 function subscribe(listener: () => void) {
@@ -98,12 +137,17 @@ export function useHostedAccounts(enabled: boolean): HostedAccountsState {
     void loadHostedAccounts();
     void loadPinnedOmpCatalog().then((catalog) => update({ catalog: catalog.providers })).catch(() => undefined);
     const reload = () => { void loadHostedAccounts(); };
-    const clear = () => { generation += 1; applySnapshots([]); };
+    const reloadIfUnlisted = () => { if (!state.listed) reload(); };
+    const clear = () => { generation += 1; resetRetry(); applySnapshots([]); };
+    if (typeof window === 'undefined') return cancelRetry;
     window.addEventListener(CLOUD_SESSION_CHANGED_EVENT, reload);
     window.addEventListener(CLOUD_SESSION_SIGNED_OUT_EVENT, clear);
+    window.addEventListener('focus', reloadIfUnlisted);
     return () => {
+      cancelRetry();
       window.removeEventListener(CLOUD_SESSION_CHANGED_EVENT, reload);
       window.removeEventListener(CLOUD_SESSION_SIGNED_OUT_EVENT, clear);
+      window.removeEventListener('focus', reloadIfUnlisted);
     };
   }, [enabled]);
   return enabled ? current : emptyState;

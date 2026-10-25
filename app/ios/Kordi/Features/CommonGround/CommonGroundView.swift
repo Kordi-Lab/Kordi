@@ -32,6 +32,7 @@ extension EnvironmentValues {
 /// Built from the conversation info page's parts (hero, glass action tiles,
 /// grouped sections, segmented picker) so it reads as the same product.
 struct CommonGroundView: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     /// Leaves Common ground from its home page; nil hides the back button.
     let onClose: (() -> Void)?
     let onOpenConversation: (ConversationSummary) -> Void
@@ -65,7 +66,7 @@ struct CommonGroundView: View {
         .overlay(alignment: .top) { CommonGroundToast(text: $model.notice) }
         .environmentObject(model)
         .environment(\.commonGroundOpenConversation, onOpenConversation)
-        .tint(commonGroundTint)
+        .tint(chatTheme.accent)
     }
 
     /// First run is Home's empty wallet: one suggested Work card to build.
@@ -74,10 +75,9 @@ struct CommonGroundView: View {
     }
 }
 
-let commonGroundTint = KordiTheme.signalBlue
-
 /// Info-page frame: tinted grouped background, hidden bar, round glass back.
 struct CommonGroundPage<Content: View>: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dismiss) private var dismiss
     var showsBack = true
     var onBack: (() -> Void)? = nil
@@ -93,7 +93,7 @@ struct CommonGroundPage<Content: View>: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background {
-            SessionDetailBackground(tint: commonGroundTint).ignoresSafeArea()
+            SessionDetailBackground(tint: chatTheme.accent).ignoresSafeArea()
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -106,6 +106,7 @@ struct CommonGroundPage<Content: View>: View {
 
 /// Full-screen wait state on the page background, with the animated mark.
 struct CommonGroundWaitPage: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dismiss) private var dismiss
     let steps: [String]
     var onBack: (() -> Void)? = nil
@@ -118,7 +119,7 @@ struct CommonGroundWaitPage: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .background { SessionDetailBackground(tint: commonGroundTint).ignoresSafeArea() }
+        .background { SessionDetailBackground(tint: chatTheme.accent).ignoresSafeArea() }
         .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .topLeading) {
             SessionDetailBackButton { if let onBack { onBack() } else { dismiss() } }

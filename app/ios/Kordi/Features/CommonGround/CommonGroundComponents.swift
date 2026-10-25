@@ -127,6 +127,7 @@ struct CommonGroundPeopleRows: View {
 
 /// Two overlapping avatars with the match score on a tinted capsule.
 struct CommonGroundMatchBadge: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let me: CommonGroundPerson
     let person: CommonGroundPerson
     let score: Int?
@@ -143,7 +144,7 @@ struct CommonGroundMatchBadge: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(commonGroundTint, in: Capsule())
+                    .background(chatTheme.accent, in: Capsule())
                     .overlay(Capsule().stroke(Color(uiColor: .systemBackground), lineWidth: 2))
                     .offset(y: 12)
             }

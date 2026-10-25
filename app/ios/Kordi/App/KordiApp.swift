@@ -1,6 +1,6 @@
 /*
  THESIS: Contacts, human chats, agent sessions, and a concise activity digest are first-class mobile destinations; account settings stay one tap away without competing with page actions.
- OWN-WORLD: Native grouped canvases, Signal Blue actions, Agent Violet identity, circular avatars, continuous list rows, and explicit state labels.
+ OWN-WORLD: Native grouped canvases, the selected chat theme's accent coordinating the shell's actions, Agent Violet identity, circular avatars, continuous list rows, and explicit state labels.
  STORY: Sign in, switch among Contacts, Chats, Agents, and Digest, open the right conversation, and reach account settings from the persistent bottom-right avatar.
  FIRST VIEWPORT: Each root page sits above one stable destination bar whose account avatar occupies the final position.
  FORM: Native navigation stacks with a compact destination bar and continuous lists; assigned surface structure, seed a5fd657b.
@@ -117,7 +117,7 @@ struct KordiApp: App {
                 .environmentObject(callCoordinator)
                 .environmentObject(notificationCoordinator)
                 .environment(\.kordiChatTheme, selectedChatTheme)
-                .tint(KordiTheme.signalBlue)
+                .tint(selectedChatTheme.accent)
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 0) {
                         if showsPreviewThemeControls {
@@ -134,6 +134,8 @@ struct KordiApp: App {
                                 hasVideo: call.call.kind.allowsVideo,
                                 onOpen: callCoordinator.showCallScreen
                             )
+                            // The inset sits outside the root theme environment.
+                            .environment(\.kordiChatTheme, selectedChatTheme)
                             .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
                         }
                     }
@@ -147,6 +149,8 @@ struct KordiApp: App {
                 .sheet(isPresented: $showsConnectorsSettings) {
                     AccountSheet(connectorsRequest: connectorsSettingsRequest)
                         .environmentObject(model)
+                        .environment(\.kordiChatTheme, selectedChatTheme)
+                        .tint(selectedChatTheme.accent)
                 }
                 .fullScreenCover(isPresented: $callCoordinator.isCallScreenPresented) {
                     KordiCallView(room: callCoordinator.room)
@@ -250,6 +254,7 @@ struct KordiApp: App {
 }
 
 private struct MinimizedCallBar: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let title: String
     let phase: KordiCallPhase
     let hasVideo: Bool
@@ -262,7 +267,7 @@ private struct MinimizedCallBar: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .frame(width: 34, height: 34)
-                    .background(KordiTheme.signalBlue.gradient, in: Circle())
+                    .background(chatTheme.accent.gradient, in: Circle())
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
@@ -277,7 +282,7 @@ private struct MinimizedCallBar: View {
 
                 Label("Return", systemImage: "chevron.up")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(KordiTheme.signalBlue)
+                    .foregroundStyle(chatTheme.accent)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -601,7 +606,7 @@ struct MainTabView: View {
             .environmentObject(callCoordinator)
             .environment(\.kordiChatTheme, chatTheme)
             .environment(\.scenePhase, scenePhase)
-            .tint(KordiTheme.signalBlue)
+            .tint(chatTheme.accent)
         } destination: { route in
             MainNavigationDestination(path: $path, route: route, selectedTab: selection)
                 .environmentObject(model)
@@ -609,7 +614,7 @@ struct MainTabView: View {
                 .environmentObject(callCoordinator)
                 .environment(\.kordiChatTheme, chatTheme)
                 .environment(\.scenePhase, scenePhase)
-                .tint(KordiTheme.signalBlue)
+                .tint(chatTheme.accent)
         }
         .ignoresSafeArea(.container, edges: hasTopAccessory ? .bottom : .vertical)
         .sensoryFeedback(.selection, trigger: selection)
@@ -815,5 +820,5 @@ struct MainTabUnreadCounts: Equatable {
         .environmentObject(AppModel(previewMode: true))
         .environmentObject(KordiNotificationCoordinator())
         .environmentObject(KordiCallCoordinator())
-        .tint(KordiTheme.signalBlue)
+        .tint(KordiChatTheme.classic.accent)
 }

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
+import { useComposerSendGate } from '@/features/chat/composerSendGate';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
 import {
@@ -23,7 +24,6 @@ import {
   ComposerSlashMenu,
 } from '@/kordi-app/components';
 import { ComposerAttachmentAddMenu, ComposerAttachmentList } from '@/kordi-app/components/composerAttachments';
-import { isRouteAccountUnavailable } from '@/kordi-app/components/composerModelSelection';
 import { cn } from '@/lib/utils';
 import { ComposerDropSurface } from './chatsPage.composerDropSurface';
 import { CollaborationRoutingControls } from '@/pages/chatsPage.collaborationRoutingControls';
@@ -138,13 +138,11 @@ export function MainComposer({
   const canConfigureModelRoute = canConfigureConversationModelRoute(conversation);
   const useCompactRouteMenu = canConfigureModelRoute
     && shouldUseCompactModelRouteMenu(conversation);
-  // An agent route bound to a removed account cannot run until the owner picks another account.
   const routeSelection = collaborationRouting.enabled && collaborationRouting.model
     ? collaborationRouting.model.selection : composerSelection;
-  const routeAccountUnavailable = canConfigureModelRoute
-    && (localRouting.paneKind === 'agent' || collaborationRouting.enabled)
-    && isRouteAccountUnavailable(routeSelection, composerProviderOptions);
-  const canSend = !routeAccountUnavailable;
+  const sendGate = useComposerSendGate({ paneKind: localRouting.paneKind, canConfigureModelRoute,
+    selection: routeSelection, providerOptions: composerProviderOptions });
+  const canSend = !sendGate.blocked;
   const onSend: MainComposerProps['onSend'] = (draftOverride, attachmentOverride) => (
     canSend ? sendMessage(draftOverride, attachmentOverride) : undefined
   );
@@ -347,6 +345,8 @@ export function MainComposer({
             </div>}
             {!editingMessage && collaborationRouting.enabled && collaborationRouting.error
               ? <p className="app-error-text mt-1 text-[11px] leading-4 text-rose-500" role="alert">{collaborationRouting.error}</p> : null}
+            {!editingMessage && sendGate.notice
+              ? <p className="mt-1 text-[11px] leading-4 text-[color:var(--utility-muted-text)]" role="status">{sendGate.notice}</p> : null}
             {messageEditError ? (
               <p id={editErrorMessageId} className="app-error-text mt-1 text-[11px] leading-4 text-rose-500" role="alert">
                 {messageEditError}

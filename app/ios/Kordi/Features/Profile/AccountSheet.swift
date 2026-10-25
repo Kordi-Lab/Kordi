@@ -655,7 +655,7 @@ private extension CloudDeviceAuthorization {
     AccountSheet()
         .environmentObject(AppModel(previewMode: true))
         .environmentObject(KordiCallCoordinator())
-        .tint(KordiTheme.signalBlue)
+        .tint(KordiChatTheme.classic.accent)
 }
 
 struct MemorySettingsPreview: View {
@@ -673,6 +673,7 @@ struct AccountAuthenticationPreview: View {
 }
 
 struct AccountAuthenticationDetailPreview: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: AppModel
     let providerID: String
 
@@ -685,11 +686,12 @@ struct AccountAuthenticationDetailPreview: View {
                     }
             }
         }
-        .tint(KordiTheme.signalBlue)
+        .tint(chatTheme.accent)
     }
 }
 
 struct AppearanceSettingsPreview: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
 
     var body: some View {
@@ -697,17 +699,18 @@ struct AppearanceSettingsPreview: View {
             AppearanceSettingsView()
         }
         .preferredColorScheme(AppearanceSettingsSelection.preferredColorScheme(appearanceRawValue))
-        .tint(KordiTheme.signalBlue)
+        .tint(chatTheme.accent)
     }
 }
 
 struct ProfileSettingsPreview: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     var body: some View {
         NavigationStack {
             ProfileSettingsView(
                 openingEmailVerification: ProcessInfo.processInfo.arguments.contains("--preview-email-verification")
             )
         }
-        .tint(KordiTheme.signalBlue)
+        .tint(chatTheme.accent)
     }
 }
