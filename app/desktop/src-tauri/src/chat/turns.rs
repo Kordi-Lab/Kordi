@@ -330,20 +330,25 @@ pub(super) fn apply_desktop_turn_event(
                 state.status = "failed".to_string();
                 state.message = message.clone();
                 state.error = Some(message.clone());
+                state.retry_reason = None;
             })
         }
         TurnEvent::AutoRetryStart {
             attempt,
             max_attempts,
+            error_message,
             ..
         } => update_turn(snapshot, |state| {
             state.status = "retrying".to_string();
             state.message = format!("Retrying request ({attempt}/{max_attempts})…");
+            let reason = error_message.trim();
+            state.retry_reason = (!reason.is_empty()).then(|| reason.to_string());
         }),
         TurnEvent::AutoRetryEnd => update_turn(snapshot, |state| {
             state.status = "streaming".to_string();
             state.message = "Retry complete. Continuing…".to_string();
             state.error = None;
+            state.retry_reason = None;
         }),
         TurnEvent::AutoCompactionStart => update_turn(snapshot, |state| {
             state.status = "compacting".to_string();

@@ -288,6 +288,9 @@ pub(crate) enum WorkerOutput {
         code: String,
         #[serde(rename = "message")]
         _message: String,
+        /// The provider's raw error text; cleaned with `provider_reason` before use.
+        #[serde(default, rename = "providerReason")]
+        provider_reason: Option<String>,
     },
 }
 

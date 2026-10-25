@@ -65,6 +65,9 @@ pub struct DesktopChatTurnSnapshot {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transcript_entry_id: Option<String>,
     pub error: Option<String>,
+    /// The provider's cleaned reason while the runtime retries a failed request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_reason: Option<String>,
     pub transcript_refresh_required: bool,
     /// Set on a runtime follow-up turn that reports a background session's outcome.
     #[serde(skip_serializing_if = "Option::is_none")]

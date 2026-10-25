@@ -396,9 +396,12 @@ test('queued Ask Agent bubbles expose icon-only edit and cancel actions before q
   const queuedBubble = queuedMessageSource();
   assert.match(chatsSource, /onCancelQueuedMessage/);
   assert.match(chatsSource, /onEditQueuedMessage/);
-  assert.match(queuedBubble, /app-queued-message-meta[\s\S]*\{actions\}/, 'queued action icons should sit on the queued status line');
+  assert.match(queuedBubble, /\{actions\}<\/span> : null\}\s*<MessageHoverTime/, 'queued action icons should sit beside the bubble, before the hover time');
+  assert.doesNotMatch(queuedBubble, /app-queued-message-label[^\n]*\n\s*\{actions\}/, 'queued action icons must not reserve width inside the bubble');
   assert.match(queuedBubble, /aria-label=\{`Edit queued message/);
   assert.match(queuedBubble, /aria-label=\{`Cancel queued message/);
+  assert.match(queuedBubble, /densityMode/, 'queued bubbles follow the transcript density');
+  assert.match(queuedBubble, /showAvatar/, 'queued bubbles show the sender avatar on the last bubble');
   assert.match(queuedBubble, /<SquarePen className="h-3 w-3" aria-hidden="true" \/>/);
   assert.match(queuedBubble, /<X className="h-3 w-3" aria-hidden="true" \/>/);
   assert.doesNotMatch(queuedBubble, />\s*(Edit|Cancel)\s*<\/button>/, 'queued actions should be icon-only, not visible text buttons');

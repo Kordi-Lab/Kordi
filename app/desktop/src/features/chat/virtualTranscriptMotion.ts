@@ -117,11 +117,18 @@ export function alignAndRevealMeasuredTranscriptRows({
       animation.cancel();
     };
   };
-  previousRows.forEach((row, index) => {
-    const previousTop = presentationTops[index];
-    if (previousTop !== undefined) animateRow(row, previousTop - layoutTops[index]);
-  });
-  const lastPresentationTop = presentationTops[presentationTops.length - 1];
+  // When most rows on screen are new (history filled in as a chat opened, or
+  // the window jumped), the remembered positions belong to another layout: a
+  // row would slide in from where a half-loaded chat drew it. Nothing slides.
+  const knownPreviousRows = presentationTops.filter((top) => top !== undefined).length;
+  const relayout = previousRows.length > 1 && knownPreviousRows * 2 < previousRows.length;
+  if (!relayout) {
+    previousRows.forEach((row, index) => {
+      const previousTop = presentationTops[index];
+      if (previousTop !== undefined) animateRow(row, previousTop - layoutTops[index]);
+    });
+  }
+  const lastPresentationTop = relayout ? undefined : presentationTops[presentationTops.length - 1];
   const enteringDistance = lastPresentationTop === undefined ? 0 : lastPresentationTop - layoutTops[layoutTops.length - 1];
   if (enteringDistance > 1 && revealFromIndex !== undefined) {
     // New and existing rows share one displacement curve, so they never overlap

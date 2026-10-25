@@ -117,6 +117,7 @@ async fn run_agent_prompt_once(
         completed_at_ms: None,
         transcript_entry_id: None,
         error: None,
+        retry_reason: None,
         transcript_refresh_required: false,
         background_follow_up: None,
     }));
@@ -409,6 +410,7 @@ mod tests {
             completed_at_ms: Some(2),
             transcript_entry_id: None,
             error: Some("default auth failed".to_string()),
+            retry_reason: None,
             transcript_refresh_required: false,
             background_follow_up: None,
         };
