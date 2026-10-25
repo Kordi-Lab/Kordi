@@ -54,12 +54,12 @@ fn forbidden() -> Response {
 }
 
 /// `Ok(())` when `account` owns `agent_id`.
-async fn owner_only(pool: &PgPool, account: &str, agent_id: &str) -> Result<(), Response> {
+async fn owner_only(pool: &PgPool, account: &str, agent_id: &str) -> Result<(), Box<Response>> {
     match agent_owner(pool, agent_id).await {
         Ok(Some(owner)) if owner == account => Ok(()),
-        Ok(Some(_)) => Err(forbidden()),
-        Ok(None) => Err(not_found()),
-        Err(err) => Err(server_error("owner check", err)),
+        Ok(Some(_)) => Err(Box::new(forbidden())),
+        Ok(None) => Err(Box::new(not_found())),
+        Err(err) => Err(Box::new(server_error("owner check", err))),
     }
 }
 
@@ -164,7 +164,7 @@ pub(crate) async fn list_proposals(
 ) -> Response {
     let pool = state.db_pool();
     if let Err(response) = owner_only(pool, &session.account_id, &agent_id).await {
-        return response;
+        return *response;
     }
     let status = params
         .status
@@ -240,7 +240,7 @@ pub(crate) async fn list_activity(
 ) -> Response {
     let pool = state.db_pool();
     if let Err(response) = owner_only(pool, &session.account_id, &agent_id).await {
-        return response;
+        return *response;
     }
     let limit = params
         .limit
