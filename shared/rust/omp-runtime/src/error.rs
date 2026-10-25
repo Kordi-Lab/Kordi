@@ -1,7 +1,10 @@
 use std::fmt;
 
-/// Public wording is deliberately independent of provider response bodies.
-/// The fixed worker code remains available for diagnostics through the variant.
+/// Public wording comes from a fixed classification, and `Display` is only
+/// that wording: servers classify it and other people may see it. A provider
+/// failure also carries the provider's own reason, already cleaned by
+/// `provider_reason`, which `with_provider_reason` adds for the account owner.
+/// Logs use only `diagnostic_code`.
 #[derive(Debug, PartialEq, Eq)]
 pub enum RuntimeError {
     InvalidRequest,
@@ -13,6 +16,11 @@ pub enum RuntimeError {
     UnexpectedExit,
     Callback,
     Worker(String),
+    /// A provider failure with its cleaned reason.
+    Provider {
+        code: String,
+        reason: String,
+    },
 }
 
 impl fmt::Display for RuntimeError {
@@ -28,7 +36,7 @@ impl fmt::Display for RuntimeError {
             Self::Cancelled => "The agent request was cancelled.",
             Self::UnexpectedExit => "The agent stopped before completing this request. Try again.",
             Self::Callback => "A tool or extension could not complete this request. Try again.",
-            Self::Worker(code) => worker_message(code),
+            Self::Worker(code) | Self::Provider { code, .. } => worker_message(code),
         };
         formatter.write_str(message)
     }
@@ -37,6 +45,37 @@ impl fmt::Display for RuntimeError {
 impl std::error::Error for RuntimeError {}
 
 impl RuntimeError {
+    /// The fixed wording plus the provider's cleaned reason, for the person
+    /// whose account ran the request.
+    pub fn with_provider_reason(&self) -> String {
+        match self {
+            Self::Provider { reason, .. } => format!("{self} Provider response: {reason}"),
+            _ => self.to_string(),
+        }
+    }
+
+    /// A worker error frame: an unexpected code becomes `worker_error`, and
+    /// only a provider failure keeps the provider's cleaned reason.
+    pub(crate) fn from_worker_frame(code: String, raw_reason: Option<&str>) -> Self {
+        let code = if code.len() <= 64
+            && code
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        {
+            code
+        } else {
+            "worker_error".to_string()
+        };
+        let reason = code
+            .starts_with("provider_")
+            .then(|| raw_reason.and_then(crate::provider_reason))
+            .flatten();
+        match reason {
+            Some(reason) => Self::Provider { code, reason },
+            None => Self::Worker(code),
+        }
+    }
+
     /// A fixed, non-sensitive classification for logs. It never contains
     /// message content, tool data, or provider response text.
     pub fn diagnostic_code(&self) -> &str {
@@ -50,7 +89,7 @@ impl RuntimeError {
             Self::UnexpectedExit => "unexpected_exit",
             Self::Callback => "callback",
             // Worker codes are already restricted to `[A-Za-z0-9_]{1,64}`.
-            Self::Worker(code) => code,
+            Self::Worker(code) | Self::Provider { code, .. } => code,
         }
     }
 }

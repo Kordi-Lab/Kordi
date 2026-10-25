@@ -1144,7 +1144,7 @@ final class AppModel: ObservableObject {
 
     var isMemoryAvailable: Bool { MemoryPresentation.isAvailable(memoryCapabilities) }
 
-    private static let previewMemoryCapabilities = CloudAuthCapabilities(password: true, memoryVersion: 1)
+    private static let previewMemoryCapabilities = CloudAuthCapabilities(password: true, memoryVersion: 3)
 
     /// Fetches the memory capability in the background right after sign-in or a
     /// restored session, so it is cached before any detail view appears.
@@ -1473,7 +1473,7 @@ final class AppModel: ObservableObject {
         return account.modelHint?.nonEmpty
             // The pinned catalog's ChatGPT default predates the newest model.
             ?? (account.provider == "openai-codex" ? AgentModelPicker.modelNamesByProvider["openai"]?.first : nil)
-            ?? ompProviderCatalog.first(where: { $0.id == account.provider })?.defaultModel?.nonEmpty
+            ?? ompProviderCatalog.first(where: { $0.id == account.provider })?.kordiDefaultModel
             ?? ompProviderCatalog.first(where: { $0.id == account.provider })?.models.first
             ?? provider.defaultModel?.nonEmpty
             ?? provider.models.first

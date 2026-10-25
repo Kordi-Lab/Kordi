@@ -309,7 +309,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellComposerRouteArgs & KordiShe
   startWindowResize: (direction: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right') => (event: ReactMouseEvent<HTMLDivElement>) => void;
 };
 export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
-  | 'isNativeShell'
+  | 'isNativeShell' | 'defaultCloudAgentRuntimeRoute'
   | 'isSingleWorkspacePage'
   | 'collapseChatSessions'
   | 'showSessionRail'

@@ -29,7 +29,7 @@ use crate::server::ServerState;
 pub(crate) mod service_auth;
 use service_auth::{include_service_provider_auth, service_provider_auths};
 
-pub(super) async fn notify_run_response(state: &ServerState, response_message_id: Option<&str>) {
+pub(crate) async fn notify_run_response(state: &ServerState, response_message_id: Option<&str>) {
     let Some(notifications) = state.notifications() else {
         return;
     };

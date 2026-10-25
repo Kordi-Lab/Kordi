@@ -179,6 +179,8 @@ async fn compute_and_store(
         Ok(documents) => tools.extend(documents),
         Err(error) => eprintln!("[documents] document tools for {run_id}: {error}"),
     }
+    // A proactive run searches its owner's memories through the same field.
+    tools.extend(crate::proactive::memory_search::lease_tools(run_id));
     let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_str()).collect();
     eprintln!("[connectors] lease tools for {run_id}: {names:?}");
     let json = serde_json::to_value(&tools).unwrap_or_else(|_| Value::Array(Vec::new()));

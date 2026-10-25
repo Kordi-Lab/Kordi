@@ -368,8 +368,35 @@ test('a timed-out turn keeps its partial reply as text and shows its failure onc
 
 test('a bare failure without a finished live reply still renders as the error', () => {
   const [reply] = mapDesktopMessagesForTranscript('session-failure', [
-    { role: 'assistant', sender: 'Kordi', text: 'Provider unavailable.', timeLabel: '12:00', timestampMs: 10, failed: true },
+    { role: 'assistant', sender: 'Kordi', text: 'Provider unavailable.', timeLabel: '12:00', timestampMs: 10, failed: true,
+      segments: [{ id: 'text:0', kind: 'text', text: 'Provider unavailable.' }] },
   ]);
   assert.equal(reply.turn?.assistantText, '');
+  assert.deepEqual(reply.turn?.segments, [], 'the error is not repeated as reply text');
   assert.equal(reply.turn?.error, 'Provider unavailable.');
+});
+
+test('a failure whose text repeats its error shows the error once', () => {
+  const error = 'The provider could not complete this request. Try again.';
+  const [reply] = mapDesktopMessagesForTranscript('session-failure', [
+    { role: 'assistant', sender: 'Kordi', text: error, error, timeLabel: '12:00', timestampMs: 10, failed: true,
+      segments: [{ id: 'text:0', kind: 'text', text: error }] },
+  ]);
+  assert.equal(reply.turn?.assistantText, '');
+  assert.deepEqual(reply.turn?.segments, []);
+  assert.equal(reply.turn?.error, error);
+  const [partial] = mapDesktopMessagesForTranscript('session-partial', [
+    { role: 'assistant', sender: 'Kordi', text: 'Checked two files.', error, timeLabel: '12:00', timestampMs: 10, failed: true },
+  ]);
+  assert.equal(partial.turn?.assistantText, 'Checked two files.');
+  assert.equal(partial.turn?.error, error);
+});
+
+test('a failed reply with tools keeps its partial text when no separate error was stored', () => {
+  const [reply] = mapDesktopMessagesForTranscript('session-partial-tools', [
+    { role: 'assistant', sender: 'Kordi', text: 'Checked two files.', timeLabel: '12:00', timestampMs: 10, failed: true,
+      tools: [{ id: 'tool', name: 'read', arguments: '{}', liveOutput: '', status: 'done', isError: false }],
+      segments: [{ id: 'tool:tool', kind: 'tool', toolId: 'tool' }, { id: 'text:0', kind: 'text', text: 'Checked two files.' }] },
+  ]);
+  assert.equal(reply.turn?.segments?.filter((segment) => segment.kind === 'text').length, 1);
 });

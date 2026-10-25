@@ -31,6 +31,7 @@ pub(super) fn input() -> Input {
         viewer_account_id: "viewer".into(),
         changes: None,
         connector_events: vec![],
+        memories: vec![],
         triage: false,
     }
 }

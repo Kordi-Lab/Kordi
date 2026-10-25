@@ -639,7 +639,6 @@ mod tests {
             thinking_levels_for_model(model, None),
             &[
                 ThinkingLevel::Off,
-                ThinkingLevel::Minimal,
                 ThinkingLevel::Low,
                 ThinkingLevel::Medium,
                 ThinkingLevel::High,
@@ -701,7 +700,7 @@ mod tests {
     }
 
     #[test]
-    fn budget_claude_models_expose_standard_levels_and_clamp_max() {
+    fn budget_claude_models_expose_omp_levels_and_clamp_max() {
         let registry = ModelRegistry::new();
         let model = registry.find("anthropic", "claude-haiku-4-5").unwrap();
 
@@ -713,11 +712,12 @@ mod tests {
                 ThinkingLevel::Low,
                 ThinkingLevel::Medium,
                 ThinkingLevel::High,
+                ThinkingLevel::XHigh,
             ]
         );
         assert_eq!(
             effective_thinking_level_for_model(model, None, ThinkingLevel::Max),
-            ThinkingLevel::High
+            ThinkingLevel::XHigh
         );
     }
 

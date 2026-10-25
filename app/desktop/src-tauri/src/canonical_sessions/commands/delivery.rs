@@ -365,6 +365,7 @@ pub(super) fn update_canonical_message_delivery_in_db(
         ],
     )
     .map_err(|err| err.to_string())?;
+    super::super::follow_running_fork_copies(&tx, session_id, message_id)?;
     tx.execute(
         "UPDATE sessions
          SET updated_at_ms = ?1,

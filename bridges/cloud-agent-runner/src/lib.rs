@@ -17,3 +17,4 @@ pub mod tools;
 pub mod digest;
 pub mod pip;
 pub mod pip_tool;
+pub mod proactive;

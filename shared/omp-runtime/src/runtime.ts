@@ -6,6 +6,7 @@ import { buildModel } from '@oh-my-pi/pi-catalog/build';
 import { ompCapabilityOptions } from './capabilities';
 import { toKordiMessage, toOmpMessage } from './messages';
 import { RuntimeError, type JsonObject, type RunRequest, type ToolResult } from './protocol';
+import { ompThinkingLevel } from './thinkingLevel';
 
 export type RuntimeHost = {
   event(event: JsonObject): void;
@@ -23,6 +24,7 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
   let toolCalls = 0;
   let providerFailed = false;
   let providerFailureCode = 'provider_error';
+  let providerFailureReason: string | undefined;
   const fail = (code: string, message: string) => {
     terminalError ??= new RuntimeError(code, message);
     if (session) void session.abort();
@@ -39,23 +41,24 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
     });
     // A non-secret sentinel prevents upstream ambient environment key lookup for local no-auth routes.
     const credential = request.auth.kind === 'none' ? 'kordi-local-no-auth' : request.auth.credential!;
-    authStorage.setRuntimeApiKey(request.model.provider, credential);
+    authStorage.keys.setRuntime(request.model.provider, credential);
     const capabilityOptions = ompCapabilityOptions(request.capabilities ?? { ownerLocal: false, computer: false, browser: false }, request.tools.map(tool => tool.name));
-    const settings = capabilityOptions.settings!;
     // Exact Kordi account/model selection must never silently fall back to ambient accounts/models.
-    settings.set('retry.modelFallback', false);
-    settings.set('retry.usageAwareFallback', false);
-    settings.set('retry.waitForUsageReset', false);
-    settings.set('compaction.idleEnabled', false);
-    settings.set('compaction.handoffSaveToDisk', false);
-    settings.set('compaction.methodOrder', ['handoff']);
-    if (request.compaction) {
-      settings.set('compaction.enabled', request.compaction.enabled);
-      settings.set('compaction.reserveTokens', request.compaction.reserveTokens);
-      settings.set('compaction.keepRecentTokens', request.compaction.keepRecentTokens);
-      if (request.compaction.thresholdTokens !== undefined) settings.set('compaction.thresholdTokens', request.compaction.thresholdTokens);
-    }
-    settings.set('todo.enabled', false);
+    const settings = capabilityOptions.settings!.overlay({
+      'retry.modelFallback': false,
+      'retry.usageAwareFallback': false,
+      'retry.waitForUsageReset': false,
+      'compaction.idleEnabled': false,
+      'compaction.handoffSaveToDisk': false,
+      'compaction.methodOrder': ['handoff'],
+      ...(request.compaction ? {
+        'compaction.enabled': request.compaction.enabled,
+        'compaction.reserveTokens': request.compaction.reserveTokens,
+        'compaction.keepRecentTokens': request.compaction.keepRecentTokens,
+        ...(request.compaction.thresholdTokens !== undefined ? { 'compaction.thresholdTokens': request.compaction.thresholdTokens } : {}),
+      } : {}),
+      'todo.enabled': false,
+    });
     const modelRegistry = new ModelRegistry(authStorage, join(agentDir, 'models.yml'), {
       ignoreLocalModelConfig: true, settings, cacheDbPath: join(agentDir, 'models.db'),
       fetch: async () => { throw new Error('Model discovery is disabled.'); },
@@ -115,14 +118,14 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
       });
     };
     const created = await createAgentSession({
-      ...capabilityOptions, cwd: request.cwd, agentDir, authStorage, modelRegistry, model,
+      ...capabilityOptions, settings, cwd: request.cwd, agentDir, authStorage, modelRegistry, model,
       rebindModelAfterDiscovery: false,
       getApiKey: async selectedModel => {
         if (selectedModel.provider !== request.model.provider || selectedModel.id !== request.model.id) throw new RuntimeError('route_mismatch', 'Provider selection changed during the run.');
         return credential;
       },
       systemPrompt: request.systemPrompt, sessionManager, customTools,
-      thinkingLevel: (request.thinking === 'default' ? undefined : request.thinking) as any,
+      thinkingLevel: ompThinkingLevel(request.model.provider, request.model.id, request.thinking) as any,
       providerSessionId: request.sessionId,
       preloadedExtensionPaths: [], preloadedCustomToolPaths: [], extensions: [],
       preloadedPreparedExtensions: request.hooks?.length || request.prompt.trailingMessages?.length ? [{ path: '<kordi-hooks>', resolvedPath: '<kordi-hooks>', factory: hookBridge, error: null }] : [],
@@ -159,7 +162,10 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
           if (event.message.role === 'assistant') {
             // Let the SDK complete its bounded retry policy before deciding the turn failed.
             providerFailed = event.message.stopReason === 'error';
-            if (providerFailed) providerFailureCode = providerErrorCode(event.message);
+            if (providerFailed) {
+              providerFailureCode = providerErrorCode(event.message);
+              providerFailureReason = providerReasonText(event.message.errorMessage);
+            }
             if (event.message.stopReason === 'aborted') fail('cancelled', 'Run cancelled.');
           }
           break;
@@ -175,7 +181,8 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
           break;
         case 'auto_compaction_start': host.event({ kind: 'compaction', phase: 'start' }); break;
         case 'auto_compaction_end': host.event({ kind: 'compaction', phase: 'end', aborted: event.aborted }); break;
-        case 'auto_retry_start': host.event({ kind: 'retry', phase: 'start', attempt: event.attempt, maxAttempts: event.maxAttempts, delayMs: event.delayMs }); break;
+        case 'auto_retry_start': host.event({ kind: 'retry', phase: 'start', attempt: event.attempt, maxAttempts: event.maxAttempts, delayMs: event.delayMs,
+          ...(providerReasonText(event.errorMessage) ? { reason: providerReasonText(event.errorMessage) } : {}) }); break;
         case 'auto_retry_end': host.event({ kind: 'retry', phase: 'end', attempt: event.attempt, success: event.success }); break;
       }
     });
@@ -187,7 +194,7 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
       await session.prompt(request.prompt.text, { images: request.prompt.images, expandPromptTemplates: false });
     }
     if (terminalError) throw terminalError;
-    if (providerFailed) throw new RuntimeError(providerFailureCode, 'The selected provider could not complete this request.');
+    if (providerFailed) throw new RuntimeError(providerFailureCode, 'The selected provider could not complete this request.', providerFailureReason);
     const entries = sessionManager.getEntries();
     const newEntries = entries.slice(initialEntryCount);
     const messages = newEntries.filter((entry): entry is any => entry.type === 'message' && entry.message.role !== 'user').map(entry => toKordiMessage(entry.message));
@@ -230,5 +237,15 @@ export function providerErrorCode(error: { errorStatus?: number; errorMessage?: 
   if (/certificate|TLS|SSL/i.test(message)) return 'provider_tls';
   if (/fetch failed|unable to connect|connection refused|network|ENOTFOUND|ECONN/i.test(message)) return 'provider_connection';
   if (Number.isInteger(error.errorStatus) && error.errorStatus! >= 400 && error.errorStatus! <= 599) return `provider_http_${error.errorStatus}`;
+  // Stream error events (Codex) carry no HTTP status.
+  if (/rate.?limit|too many requests|at capacity/i.test(message)) return 'provider_http_429';
+  if (/overloaded|temporarily unavailable/i.test(message)) return 'provider_http_503';
   return 'provider_error';
+}
+
+/** The first line of a provider error, size-capped. The Kordi host removes credentials and IDs before display. */
+export function providerReasonText(errorMessage: unknown) {
+  if (typeof errorMessage !== 'string') return undefined;
+  const line = errorMessage.split(/\r?\n/u, 1)[0]?.trim().slice(0, 2000);
+  return line || undefined;
 }

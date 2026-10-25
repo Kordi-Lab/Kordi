@@ -1,7 +1,7 @@
-import { getLocalAgentAvatar } from '@/features/canonical/localAgentAvatar';
+import { DEFAULT_LOCAL_AGENT_AVATAR_SEED } from '@/features/canonical/localAgentAvatar';
 import type { Agent, DesktopCollaborationAgent } from '@/kordi-app/types';
 import type { CloudSyncEvent } from './authClient';
-import type { CloudAgentAccessScope, CloudAgentResource, CloudAgentSkill, CloudAgentStatus } from './cloudAgentsClient';
+import type { CloudAgentAccessScope, CloudAgentProactive, CloudAgentResource, CloudAgentSkill, CloudAgentStatus } from './cloudAgentsClient';
 import {
   canonicalAvatarImageSource,
   canonicalAvatarImageUrl,
@@ -25,6 +25,7 @@ export type CloudAgentDefinition = {
   resources: CloudAgentResource[];
   skills: CloudAgentSkill[];
   modelRouting: Record<string, unknown>;
+  proactive: CloudAgentProactive;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
@@ -81,6 +82,11 @@ function normalizeModelRouting(value: unknown): Record<string, unknown> {
   return objectRecord(value) ?? {};
 }
 
+/** Proactive is off unless the server says `{ enabled: true }`; older servers omit the field. */
+export function normalizeCloudAgentProactive(value: unknown): CloudAgentProactive {
+  return { enabled: objectRecord(value)?.enabled === true };
+}
+
 export function normalizeCloudAgentDefinition(value: unknown): CloudAgentDefinition | null {
   const record = objectRecord(value);
   if (!record) return null;
@@ -113,6 +119,7 @@ export function normalizeCloudAgentDefinition(value: unknown): CloudAgentDefinit
     resources: normalizeResources(record.resources),
     skills: normalizeSkills(record.skills),
     modelRouting: normalizeModelRouting(record.modelRouting),
+    proactive: normalizeCloudAgentProactive(record.proactive),
     createdAt,
     updatedAt,
     archivedAt: cleanNullableText(record.archivedAt),
@@ -130,7 +137,8 @@ function cloudAgentId(definition: CloudAgentDefinition): string {
  */
 export function collaborationAgentAvatarFields(agent: Pick<DesktopCollaborationAgent, 'id' | 'isDefault' | 'profileImageUrl'>) {
   return {
-    avatarSeed: agent.isDefault ? getLocalAgentAvatar().seed : agent.id,
+    // The stable own-agent seed, so avatars follow the live account snapshot after a change.
+    avatarSeed: agent.isDefault ? DEFAULT_LOCAL_AGENT_AVATAR_SEED : agent.id,
     profileImageUrl: agent.profileImageUrl?.trim() || null,
   };
 }
@@ -173,6 +181,7 @@ export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): A
     profileImageUrl: canonicalAvatarImageUrl(canonicalAvatarImageSource(definition.avatar)),
     cloudAgentId: definition.agentId,
     cloudAgentAccessScope: definition.accessScope,
+    cloudAgentProactive: definition.proactive,
     cloudAgentOwnerAccountId: definition.ownerAccountId,
     cloudAgentDescription: definition.description,
     cloudAgentSourceSummary: definition.sourceSummary,

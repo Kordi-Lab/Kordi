@@ -359,4 +359,31 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "common ground daily profile name",
         "0148_common_ground_daily_profile_name.sql"
     ),
+    migration!(
+        149,
+        "agent bird avatar style",
+        "0149_agent_bird_avatar_style.sql"
+    ),
+    migration!(150, "memory categories", "0150_memory_categories.sql"),
+    migration!(
+        151,
+        "memory card overrides",
+        "0151_memory_card_overrides.sql"
+    ),
+    migration!(
+        152,
+        "memory digest and import sources",
+        "0152_memory_digest_import_sources.sql"
+    ),
+    migration!(
+        153,
+        "common ground build candidates",
+        "0153_common_ground_build_candidates.sql"
+    ),
+    migration!(154, "proactive agents", "0154_proactive_agents.sql"),
+    migration!(
+        155,
+        "proactive evaluation memory search count",
+        "0155_proactive_memory_searches.sql"
+    ),
 ];

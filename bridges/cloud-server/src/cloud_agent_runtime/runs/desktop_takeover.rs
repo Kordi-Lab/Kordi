@@ -109,8 +109,9 @@ pub(super) async fn release_to_cloud(pool: &PgPool, run_id: &str) -> RunResult<(
 /// Queues a chat run this Mac claimed but could not start for the cloud
 /// runner, with no hold for a ready Mac. Returns `false`, leaving the run as
 /// it is, when this executor no longer holds it, a stop was requested, or the
-/// cloud cannot run it: a project session needs its project folder, and
-/// follow-up, comment, digest and scheduled runs end through their own paths.
+/// cloud cannot run it: a project session needs its project folder (except
+/// for proactive runs, which need none), and follow-up, comment, digest,
+/// import and scheduled runs end through their own paths.
 pub(crate) async fn hand_back_to_cloud(
     pool: &PgPool,
     run_id: &str,
@@ -124,7 +125,8 @@ pub(crate) async fn hand_back_to_cloud(
            AND cancel_requested_at IS NULL AND subsession_id IS NULL \
            AND document_comment_id IS NULL AND NOT legacy_duplicate \
            AND NOT starts_with(run_id, $4) AND NOT starts_with(request_message_id, $4) \
-           AND NOT starts_with(request_message_id, 'scheduled_run_')",
+           AND NOT starts_with(request_message_id, 'scheduled_run_') \
+           AND NOT starts_with(run_id, 'import_')",
     )
     .bind(run_id)
     .bind(owner_account_id)
@@ -135,9 +137,13 @@ pub(crate) async fn hand_back_to_cloud(
     let Some((session_id, route)) = held else {
         return Ok(false);
     };
-    if crate::projects::project_session_binding(pool, owner_account_id, &session_id)
-        .await?
-        .is_some()
+    // A proactive run needs no project folder (an evaluation has no file
+    // tools, an approved run works in a folder of its own), so the cloud can
+    // answer it in any session.
+    if !crate::proactive::needs_no_project_folder(run_id)
+        && crate::projects::project_session_binding(pool, owner_account_id, &session_id)
+            .await?
+            .is_some()
     {
         return Ok(false);
     }

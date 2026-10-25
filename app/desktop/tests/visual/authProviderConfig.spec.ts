@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
-  catalog, ompProvider, shortName, anthropicName, googleName, defaultModel,
+  ompProvider, shortName, anthropicName, googleName, defaultModel,
   secretLikeText, callbackHint, openPreview, providerRows, providerRow, section,
   account, detail, heading, pickerRows, steps, signedIn,
   startChat, chatNotice, expectDistinctStepDescriptions, openAddAccount, expectReturnedWith, finishAndReturn,
@@ -16,7 +16,7 @@ test('settings list shows connected providers first, then the merged OMP catalog
   const count = await expectMergedCatalogList(page);
   await expect(providerRow(page, 'OpenAI')).toContainText('2 accounts saved');
   await expect(providerRow(page, 'Groq')).toContainText(`API key · ${ompProvider('groq').models.length} models`);
-  await expect(providerRow(page, 'Antigravity')).toContainText(`Gemini 3, Claude, GPT-OSS · Browser sign-in · ${ompProvider('google-antigravity').models.length} models`);
+  await expect(providerRow(page, 'Google Antigravity')).toContainText(`Gemini, Claude, GPT-OSS · Browser sign-in · ${ompProvider('google-antigravity').models.length} models`);
   for (const label of ['Anthropic', googleName, 'Custom API', 'LM Studio', 'Ollama']) await expect(providerRow(page, label)).toHaveCount(1);
   await expect(providerRow(page, 'ChatGPT')).toHaveCount(0);
   await expect(providerRows(page).filter({ hasText: anthropicName })).toHaveCount(0);
@@ -135,13 +135,13 @@ test('pickers follow OMP: Anthropic offers two methods, a single method skips th
 test('the provider name appears once and sign-in is not repeated', async ({ page }) => {
   await openPreview(page, 'settings');
   const fullName = ompProvider('google-antigravity').auth.name;
-  await openProvider(page, 'antigravity', 'Antigravity', fullName);
+  await openProvider(page, 'antigravity', 'Google Antigravity', fullName);
   const text = await detail(page).innerText();
   expect(text.split(fullName).length - 1).toBe(1);
   expect((text.match(/Sign in/g) ?? []).length).toBeLessThanOrEqual(2);
   await expect(detail(page).getByRole('button', { name: /^Add account/ })).toContainText('Browser sign-in');
   await openAddAccount(page);
-  await expect(heading(page)).toHaveText('Browser sign-in · Antigravity');
+  await expect(heading(page)).toHaveText('Browser sign-in · Google Antigravity');
   const loginText = await detail(page).innerText();
   expect(loginText.includes(fullName)).toBe(false);
   expect((loginText.match(/Sign in/g) ?? []).length).toBeLessThanOrEqual(2);
@@ -457,7 +457,7 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByRole('heading', { name: 'Your providers', level: 1 })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Continue to chat' })).toBeEnabled();
     await waitForLoadedProviderList(page);
-    await expect(page.getByText(`OMP catalog ${catalog.version}`, { exact: true })).toBeVisible();
+    await expect(page.getByText(/OMP catalog/)).toHaveCount(0);
     await expect(section(page, 'Connected providers').getByRole('button')).toHaveText([/OpenAI/]);
     // The pinned catalog fixes the first A-group rows.
     await expect(section(page, 'A providers').getByRole('button').nth(0)).toContainText('Abliteration');

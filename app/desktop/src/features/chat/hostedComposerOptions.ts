@@ -127,7 +127,11 @@ function routeFor(account: HostedRouteAccount, model: string, thinking?: string 
   return { model: `${account.providerId}/${model}`, authProvider: account.providerId, authChoice: account.authChoice, thinking: thinking ?? null };
 }
 
-/** The Kordi Cloud route for choosing a hosted account: the requested model when it serves it, else its default. */
+/**
+ * The Kordi Cloud route for choosing a hosted account: the requested model
+ * when it serves it, else its default. The thinking level passes through as
+ * given; no level leaves the model's own default (Medium on Claude Sonnet 5.5).
+ */
 export function hostedRouteForChoice(
   account: HostedRouteAccount,
   options: { model?: string | null; thinking?: string | null; catalog?: OmpCatalogEntry[] } = {},

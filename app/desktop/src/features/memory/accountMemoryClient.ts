@@ -4,8 +4,9 @@ import {
   type CloudAuthClient,
 } from '@/features/cloud/authClient';
 import { CloudAuthError } from '@/features/cloud/cloudAuthError';
-import { CloudMemoryClient, type CloudMemorySettings } from '@/features/cloud/cloudMemoryClient';
+import { CloudMemoryClient, type CloudMemory, type CloudMemoryPatch, type CloudMemorySettings } from '@/features/cloud/cloudMemoryClient';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
+import { createCommonGroundClient, isRouteMissing } from '@/features/commonGround/client';
 import { loadSession, type StoredSession } from '@/features/cloud/session';
 import {
   desktopMemoryForgetLocal,
@@ -18,7 +19,10 @@ import {
 } from '@/lib/desktopMemory';
 import { isNativeDesktopShell } from '@/lib/desktop';
 
+import { isMemoryCategory } from './memoryCategory';
 import type { MemoryClient } from './memoryClient';
+import { loadMemoryOriginSources, type MemoryOriginSources } from './memoryOrigin';
+import type { MemoryCard } from './memoryOrganizerModel';
 import {
   NOT_A_GROUP_MEMBER_MESSAGE,
   type MemoryLesson,
@@ -32,7 +36,7 @@ export type AccountMemoryAuthClient = Pick<CloudAuthClient, 'request' | 'me'>;
 export type AccountMemoryRoutes = Pick<
   CloudMemoryClient,
   'list' | 'create' | 'update' | 'remove' | 'forgetAll' | 'settings' | 'updateSettings'
->;
+> & Partial<Pick<CloudMemoryClient, 'patch'>>;
 
 /** Memory commands of the desktop shell. They only exist in the native shell. */
 export type AccountMemoryDesktop = {
@@ -50,6 +54,10 @@ export type AccountMemoryClientOptions = {
   loadSession?: () => Promise<StoredSession | null>;
   desktop?: AccountMemoryDesktop;
   now?: () => number;
+  /** The owner's Grounding cards; defaults to the common ground profiles route. */
+  loadCards?: () => Promise<MemoryCard[]>;
+  /** The chats and groups that name memory origins; defaults to the ones on this Mac. */
+  loadOriginSources?: (accountId: string | null) => Promise<MemoryOriginSources>;
 };
 
 export const SIGN_IN_TO_EDIT_MEMORIES = 'Sign in to edit memories.';
@@ -63,6 +71,17 @@ const fallbackScopeLabels: Record<MemoryLessonScope, string> = {
   group: 'Group',
 };
 
+/** The owner's common ground profiles; a server without profiles has no cards. */
+async function commonGroundCards(): Promise<MemoryCard[]> {
+  try {
+    const profiles = await createCommonGroundClient().profiles();
+    return profiles.map(({ profileId, kind, name }) => ({ profileId, kind, name }));
+  } catch (caught) {
+    if (isRouteMissing(caught)) return [];
+    throw caught;
+  }
+}
+
 const nativeDesktop: AccountMemoryDesktop = {
   isNativeShell: isNativeDesktopShell,
   settings: desktopMemorySettings,
@@ -72,7 +91,31 @@ const nativeDesktop: AccountMemoryDesktop = {
   forgetLocal: desktopMemoryForgetLocal,
 };
 
-function toLesson(entry: {
+type RoutingFields = Pick<
+  CloudMemory,
+  'category' | 'declarationType' | 'confidence' | 'profileId' | 'profileKind' | 'profileIds' | 'excludedProfileIds'
+>;
+
+function idList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
+
+/** Copies the routing fields a server sent; an unknown category is dropped so the row shows no chip. */
+function withRouting(lesson: MemoryLesson, entry: RoutingFields): MemoryLesson {
+  if (isMemoryCategory(entry.category)) lesson.category = entry.category;
+  if (entry.declarationType) lesson.declarationType = entry.declarationType;
+  if (entry.confidence !== undefined) lesson.confidence = entry.confidence;
+  if (entry.profileId !== undefined) lesson.profileId = entry.profileId;
+  if (entry.profileKind !== undefined) lesson.profileKind = entry.profileKind;
+  const profileIds = idList(entry.profileIds);
+  if (profileIds) lesson.profileIds = profileIds;
+  const excludedProfileIds = idList(entry.excludedProfileIds);
+  if (excludedProfileIds) lesson.excludedProfileIds = excludedProfileIds;
+  return lesson;
+}
+
+function toLesson(entry: RoutingFields & {
   lessonId: string;
   scope: MemoryLessonScope;
   scopeId: string;
@@ -98,7 +141,7 @@ function toLesson(entry: {
     lesson.ownerAccountId = entry.ownerAccountId;
     lesson.ownerName = entry.ownerName?.trim() || null;
   }
-  return lesson;
+  return withRouting(lesson, entry);
 }
 
 /** The server answers 403 `not_a_group_member` when someone outside the group edits a group memory. */
@@ -144,6 +187,8 @@ export function createAccountMemoryClient(options: AccountMemoryClientOptions = 
   const readSession = options.loadSession ?? loadSession;
   const desktop = options.desktop ?? nativeDesktop;
   const now = options.now ?? Date.now;
+  const loadCards = options.loadCards ?? commonGroundCards;
+  const loadOriginSources = options.loadOriginSources ?? loadMemoryOriginSources;
   let lastSynced: { accountId: string; at: string } | null = null;
   let pendingList: Promise<unknown> | null = null;
   let cachedAccount: { token: string; account: Promise<CloudAccount | null> } | null = null;
@@ -193,6 +238,16 @@ export function createAccountMemoryClient(options: AccountMemoryClientOptions = 
     } catch {
       return { ...DEFAULT_SETTINGS };
     }
+  };
+
+  const patchLesson = async (lessonId: string, patch: CloudMemoryPatch): Promise<MemoryLesson> => {
+    const stored = await requireSession();
+    const routes = memory();
+    if (!routes.patch) throw new Error('Could not change this memory.');
+    const { memoryId, ...rest } = await routes.patch(stored.token, lessonId, patch);
+    markSynced(stored);
+    syncDesktop();
+    return toLesson({ lessonId: memoryId, ...rest });
   };
 
   const listLessons = async (): Promise<MemoryLesson[]> => {
@@ -245,12 +300,35 @@ export function createAccountMemoryClient(options: AccountMemoryClientOptions = 
       syncDesktop();
       return toLesson({ lessonId: memoryId, ...rest });
     },
+    async importLesson(save) {
+      const stored = await requireSession();
+      const { memoryId, ...rest } = await memory().create(stored.token, save);
+      markSynced(stored);
+      syncDesktop();
+      return toLesson({ lessonId: memoryId, ...rest });
+    },
     async updateLesson(lessonId, text) {
       const stored = await requireSession();
       const { memoryId, ...rest } = await asGroupMember(memory().update(stored.token, lessonId, text));
       markSynced(stored);
       syncDesktop();
       return toLesson({ lessonId: memoryId, ...rest });
+    },
+    updateMemoryCategory(lessonId, category) {
+      return patchLesson(lessonId, { category });
+    },
+    addMemoryToCard(lessonId, profileId) {
+      return patchLesson(lessonId, { addProfileId: profileId });
+    },
+    removeMemoryFromCard(lessonId, profileId) {
+      return patchLesson(lessonId, { removeProfileId: profileId });
+    },
+    async listCards() {
+      if (!(await session())) return [];
+      return loadCards();
+    },
+    async originSources() {
+      return loadOriginSources((await session())?.accountId ?? null);
     },
     async archiveLesson(lessonId) {
       const stored = await requireSession();

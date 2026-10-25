@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   Check,
@@ -26,7 +26,10 @@ import type { Agent } from '../types';
 import { skillLibraryFileDisplay, visibleAgentStudioTabIds, type AgentEditHistoryEntry, type AgentSaveFeedback, type AgentStudioCapabilityKind, type AgentStudioConfigDraft, type AgentStudioTab, type FactoryArtifactKind, type PersistedAgentConfig } from './model';
 import type { ShapeAgentDraft } from './shapeAgentDraft';
 import { AgentStudioRoutingEditor } from './AgentStudioRoutingEditor';
-import { AgentStudioBlueprintView } from './AgentStudioBlueprintView';
+import { AgentStudioWorkspaceFooter } from './AgentStudioWorkspaceFooter';
+import { AgentStudioBlueprintView, type AgentProactiveControl } from './AgentStudioBlueprintView';
+import { RunsView } from './AgentStudioRunsView';
+import { EmptyWorkspaceState, WorkspaceHeading } from './AgentStudioWorkspaceParts';
 import { CLOUD_AGENT_TOOL_DESCRIPTIONS, type AgentModelRoutingDraft } from './factoryAgentUtils';
 
 type FilePreviewState = { status: 'idle' | 'loading' | 'ready' | 'error'; text: string; error?: string };
@@ -56,25 +59,6 @@ function cleanCapabilityName(raw: string) {
   if (!trimmed) return '';
   const tail = trimmed.split(/[\\/]/).pop() ?? trimmed;
   return tail.replace(/\.git$/i, '').trim() || trimmed;
-}
-
-function EmptyWorkspaceState({ icon: Icon, title, detail }: { icon: typeof FileText; title: string; detail: string }) {
-  return (
-    <div className="app-agent-studio-empty">
-      <Icon className="h-4 w-4" />
-      <strong>{title}</strong>
-      <span>{detail}</span>
-    </div>
-  );
-}
-
-function WorkspaceHeading({ title, action }: { title: string; action?: ReactNode }) {
-  return (
-    <div className="app-agent-studio-view-head">
-      <h3>{title}</h3>
-      {action}
-    </div>
-  );
 }
 
 type CapabilityItem = {
@@ -511,64 +495,6 @@ function BuilderDraftFilesView({
   );
 }
 
-function RunsView({
-  agent,
-  onOpenReachout,
-  builderStatus,
-  builderTesting,
-  onTestBuilderDraft,
-}: {
-  agent?: Agent;
-  onOpenReachout?: (sessionId: string) => void;
-  builderStatus?: DesktopAgentBuilderStatus | null;
-  builderTesting?: boolean;
-  onTestBuilderDraft?: () => void;
-}) {
-  if (builderStatus) {
-    const reportIsCurrent = Boolean(
-      builderStatus.testReport
-        && builderStatus.testReport.fingerprint === builderStatus.validation.fingerprint,
-    );
-    return (
-      <div className="app-agent-studio-view-scroll">
-        <WorkspaceHeading
-          title="Validate and test"
-          action={<button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" disabled={!builderStatus.validation.valid || builderTesting} onClick={onTestBuilderDraft}>{builderTesting ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Testing…</> : 'Test draft'}</button>}
-        />
-        <div className="app-agent-studio-run-checks">
-          <section className={cn('app-agent-studio-run-check', builderStatus.validation.valid ? 'is-success' : 'is-error')}>
-            <span>{builderStatus.validation.valid ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}</span>
-            <div><strong>{builderStatus.validation.valid ? 'Files are valid' : 'Draft needs attention'}</strong><p>{builderStatus.validation.valid ? `${builderStatus.validation.files.length} draft files passed structural validation.` : builderStatus.validation.errors.join(' ')}</p></div>
-          </section>
-          <section className={cn('app-agent-studio-run-check', reportIsCurrent && builderStatus.testReport?.passed ? 'is-success' : builderStatus.testReport && reportIsCurrent ? 'is-error' : '')}>
-            <span>{builderTesting ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : reportIsCurrent && builderStatus.testReport?.passed ? <Check className="h-3.5 w-3.5" /> : <Activity className="h-3.5 w-3.5" />}</span>
-            <div><strong>{builderTesting ? 'Testing the candidate runtime' : reportIsCurrent ? builderStatus.testReport?.passed ? 'Runtime test passed' : 'Runtime test failed' : 'Runtime test required'}</strong><p>{builderTesting ? 'Kordi is starting a disposable session with the candidate prompt and skills.' : reportIsCurrent ? builderStatus.testReport?.summary : 'Run a new test after every file change.'}</p></div>
-          </section>
-        </div>
-      </div>
-    );
-  }
-  const reachouts = agent?.collaborationReachouts ?? [];
-  const activities = agent?.lastActivities ?? [];
-  return (
-    <div className="app-agent-studio-view-scroll">
-      <WorkspaceHeading title="Runs" />
-      {reachouts.length === 0 && activities.length === 0 ? <EmptyWorkspaceState icon={Activity} title="No runtime activity yet" detail="Runs and direct reachouts will appear here when this agent starts working." /> : (
-        <div className="app-agent-studio-simple-list">
-          {reachouts.map((reachout) => (
-            <button key={reachout.sessionId} type="button" onClick={() => onOpenReachout?.(reachout.sessionId)} disabled={!onOpenReachout}>
-              <Activity className="h-4 w-4" /><span><strong>{reachout.title}</strong><small>{reachout.preview || 'No messages yet'}</small></span><time>{reachout.updatedAtLabel ?? ''}</time>
-            </button>
-          ))}
-          {activities.map((activity, index) => (
-            <div key={`${activity}-${index}`}><Check className="h-4 w-4" /><span><strong>{activity}</strong></span><time>Recent</time></div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function HistoryView({ entries }: { entries: AgentEditHistoryEntry[] }) {
   return (
     <div className="app-agent-studio-view-scroll">
@@ -592,6 +518,7 @@ export function AgentStudioWorkspace({
   creationAccessScope,
   agentAccessScope,
   onCreationAccessScopeChange,
+  proactive,
   config,
   persisted,
   changes,
@@ -647,9 +574,11 @@ export function AgentStudioWorkspace({
   creationAccessScope: CloudAgentAccessScope;
   agentAccessScope: CloudAgentAccessScope;
   onCreationAccessScopeChange: (scope: CloudAgentAccessScope) => void;
+  /** The Blueprint's Proactive row; omitted when the agent cannot watch groups. */
+  proactive?: AgentProactiveControl;
   config: AgentStudioConfigDraft | null;
   persisted: PersistedAgentConfig | null;
-  changes: Array<{ key: 'prompt' | 'skills' | 'tools' | 'plugins' | 'definition' | 'access' | 'routing'; label: string; detail: string }>;
+  changes: Array<{ key: 'prompt' | 'skills' | 'tools' | 'plugins' | 'definition' | 'access' | 'proactive' | 'routing'; label: string; detail: string }>;
   availableSkills: string[];
   skillDescriptions: Readonly<Record<string, string>>;
   availableTools: string[];
@@ -661,7 +590,7 @@ export function AgentStudioWorkspace({
   onCreationDraftChange: (draft: ShapeAgentDraft) => void;
   creationAvatarUrl?: string | null;
   onCreationAvatarUpload?: (avatar: string) => void;
-  onCreationAvatarRandomize?: () => void;
+  onCreationAvatarRandomize?: (seed?: string) => void;
   onCreationModelRoutingChange?: (values: AgentModelRoutingDraft) => Promise<void> | void;
   onToggleCapability: (kind: AgentStudioCapabilityKind, name: string, selected: boolean) => void;
   onAddCapability: (kind: AgentStudioCapabilityKind, name: string) => void;
@@ -752,6 +681,7 @@ export function AgentStudioWorkspace({
             changes={changes}
             accessScope={accessScope}
             onAccessScopeChange={setAccessScope}
+            proactive={proactive}
             canEditPrompt={canEditPrompt}
             onPromptChange={onPromptChange} onNameChange={onNameChange}
             onCreationDraftChange={onCreationDraftChange}
@@ -806,7 +736,7 @@ export function AgentStudioWorkspace({
             onWriteBuilderFile={onWriteBuilderFile}
           />
         ) : null}
-        {activeTab === 'runs' ? <RunsView agent={agent} onOpenReachout={onOpenReachout} builderStatus={builderStatus} builderTesting={builderTesting} onTestBuilderDraft={onTestBuilderDraft} /> : null}
+        {activeTab === 'runs' ? <RunsView agent={agent} proactiveActivity={proactive?.activity} onOpenReachout={onOpenReachout} builderStatus={builderStatus} builderTesting={builderTesting} onTestBuilderDraft={onTestBuilderDraft} /> : null}
         {activeTab === 'history' ? <HistoryView entries={persisted?.editHistory ?? []} /> : null}
         {publishFeedback?.text ? <div className={cn('app-agent-studio-toast', publishFeedback.tone === 'error' && 'is-error', publishFeedback.tone === 'success' && 'is-success')}>{publishFeedback.text}</div> : null}
         {routingOpen && canEditRouting ? (
@@ -824,12 +754,8 @@ export function AgentStudioWorkspace({
         ) : null}
       </div>
       </fieldset>
-      {builderStatus?.lifecycle !== 'published' && (changes.length > 0 || creating && creationDraft) ? (
-        <div className="app-agent-studio-workspace-footer">
-          <span>{standaloneBuild ? `${artifactKind[0]?.toUpperCase()}${artifactKind.slice(1)} draft` : creating ? 'New agent build' : `${changes.length} unpublished change${changes.length === 1 ? '' : 's'}`}</span>
-          <div className="flex gap-2"><button type="button" className="app-button-quiet app-agent-studio-button is-ghost is-small" onClick={onDiscard} disabled={publishing || draftMutationDisabled}>Discard</button><button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={onPublish} disabled={publishDisabled || publishing}>{builderTesting ? 'Testing…' : publishing ? 'Publishing…' : artifactKind === 'skill' ? 'Publish skill' : artifactKind === 'tool' ? 'Publish tool' : artifactKind === 'plugin' ? 'Publish plugin' : creating ? 'Publish agent' : 'Publish'}</button></div>
-        </div>
-      ) : null}
+      <AgentStudioWorkspaceFooter artifactKind={artifactKind} standaloneBuild={standaloneBuild} creating={creating} hasCreationDraft={Boolean(creationDraft)} hasAgent={Boolean(agent)} changeCount={changes.length} builderStatus={builderStatus}
+        builderTesting={builderTesting} publishing={publishing} publishDisabled={publishDisabled} draftMutationDisabled={draftMutationDisabled} onDiscard={onDiscard} onPublish={onPublish} />
     </section>
   );
 }

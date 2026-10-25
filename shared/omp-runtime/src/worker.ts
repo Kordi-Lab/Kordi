@@ -79,7 +79,8 @@ if (!selectedWorker && process.argv.includes('__kordi_smoke_eval')) {
           if (message.type === 'ready') {
             computerWorker.send({ type: 'capabilities', id: 'packaged-smoke',
               session: { cwd: process.cwd(), sessionId: 'packaged-smoke', captureMaxWidth: 1280,
-                captureMaxHeight: 896, display: 'primary', readOnly: true } });
+                captureMaxHeight: 896, display: 'primary', readOnly: true, backgroundFallback: 'refuse' },
+              escape: { key: 'packaged-smoke', acknowledged: 0 } });
           } else if (message.type === 'capabilities') {
             if (message.ok) resolve(message.capabilities as unknown as Record<string, unknown>);
             else reject(new Error(message.error.message));
@@ -195,7 +196,8 @@ function send(value: JsonObject) {
 }
 function finishError(error: unknown) {
   send({ type: 'error', code: error instanceof RuntimeError ? error.code : 'runtime_error',
-    message: error instanceof RuntimeError ? error.message : 'The agent runtime could not complete this request.' });
+    message: error instanceof RuntimeError ? error.message : 'The agent runtime could not complete this request.',
+    ...(error instanceof RuntimeError && error.providerReason ? { providerReason: error.providerReason } : {}) });
   terminal = true;
 }
 function cancelPending() {

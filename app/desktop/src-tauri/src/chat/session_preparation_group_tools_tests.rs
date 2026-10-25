@@ -13,14 +13,14 @@ use kordi_tools::connector_tools::{
 use super::prepare_desktop_session_for_send;
 use crate::chat::DesktopChatManager;
 
-const OWNER: &str = "acct_owner_synthetic";
+pub(super) const OWNER: &str = "acct_owner_synthetic";
 const MEMBER: &str = "acct_member_synthetic";
-const GROUP: &str = "session:group:synthetic-documents";
+pub(super) const GROUP: &str = "session:group:synthetic-documents";
 
-struct EnvGuard(Vec<(&'static str, Option<std::ffi::OsString>)>);
+pub(super) struct EnvGuard(Vec<(&'static str, Option<std::ffi::OsString>)>);
 
 impl EnvGuard {
-    fn set(values: &[(&'static str, std::ffi::OsString)]) -> Self {
+    pub(super) fn set(values: &[(&'static str, std::ffi::OsString)]) -> Self {
         let previous = values
             .iter()
             .map(|(key, value)| {
@@ -60,7 +60,7 @@ fn tool(provider: &str, name: &str, group: ConnectorToolGroup) -> ConnectorToolD
 }
 
 /// The lease a group claim delivers to the owner's Mac.
-fn group_lease() -> DesktopCloudExecutionLease {
+pub(super) fn group_lease() -> DesktopCloudExecutionLease {
     DesktopCloudExecutionLease {
         session_id: GROUP.into(),
         run_id: "car_synthetic".into(),
@@ -83,7 +83,7 @@ fn group_lease() -> DesktopCloudExecutionLease {
     }
 }
 
-fn identity(
+pub(super) fn identity(
     requester: &str,
     lease: Option<DesktopCloudExecutionLease>,
 ) -> DesktopChatContextMessage {

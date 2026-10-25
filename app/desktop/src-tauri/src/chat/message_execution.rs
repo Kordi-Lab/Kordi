@@ -10,10 +10,10 @@ use kordi_cli::desktop_runtime::{
 use super::{
     agent_builder, apply_desktop_chat_message_route, apply_desktop_turn_event,
     attach_cloud_scheduled_task_runtime_for_session, chat_cwd, desktop_task_tools_from_messages,
-    ensure_loaded_or_create_explicit_session, ensure_provider_ready_for_send, now_millis,
-    prepare_desktop_session_for_send, reserve_turn_in_session, snapshot_turn,
-    sync_completed_desktop_session_to_canonical, turn_snapshot_has_model_task_tools, update_turn,
-    DesktopChatManager, DesktopChatMessageRoute, DesktopChatTurnHandle, DesktopChatTurnSnapshot,
+    ensure_provider_ready_for_send, now_millis, prepare_desktop_session_for_send,
+    reserve_turn_in_session, snapshot_turn, sync_completed_desktop_session_to_canonical,
+    turn_snapshot_has_model_task_tools, update_turn, DesktopChatManager, DesktopChatMessageRoute,
+    DesktopChatTurnHandle, DesktopChatTurnSnapshot,
 };
 
 pub(super) struct StartMessageInput {
@@ -32,6 +32,8 @@ pub(super) struct StartMessageInput {
     /// subsessions inherit it because they hold no execution lease of their
     /// own; it is resolved again against the parent lease near expiry.
     pub inherited_hosted_auth: Option<super::hosted_provider_auth::InheritedHostedAuth>,
+    /// A working folder of the turn's own instead of the app's folder.
+    pub working_folder: Option<super::proactive_run_folder::WorkingFolderRequest>,
 }
 
 async fn reserve_shared_request(
@@ -82,15 +84,31 @@ pub(super) async fn start_message(
         request_message_id,
         execution_lease_deadline_ms,
         inherited_hosted_auth,
+        working_folder,
     } = input;
     let attachment_paths = attachment_paths.unwrap_or_default();
     if text.trim().is_empty() && attachment_paths.is_empty() {
         return Err("Message is empty".to_string());
     }
 
-    let cwd = chat_cwd()?;
-    let target_session_id =
-        ensure_loaded_or_create_explicit_session(manager, &cwd, session_id).await?;
+    // Created after the request is reserved, so a repeated start cannot reset
+    // the folder of a running turn; removed when this turn ends.
+    let run_folder = working_folder
+        .map(|request| {
+            super::proactive_run_folder::create_for_turn(&request, request_message_id.as_deref())
+        })
+        .transpose()?;
+    let cwd = match &run_folder {
+        Some(folder) => folder.path().to_path_buf(),
+        None => chat_cwd()?,
+    };
+    let target_session_id = super::session_lifecycle::ensure_loaded_or_create_session(
+        manager,
+        &cwd,
+        session_id,
+        run_folder.is_some(),
+    )
+    .await?;
     let session_handle = {
         let sessions = manager.sessions.lock().await;
         sessions
@@ -116,6 +134,7 @@ pub(super) async fn start_message(
         completed_at_ms: None,
         transcript_entry_id: None,
         error: None,
+        retry_reason: None,
         transcript_refresh_required: false,
         background_follow_up: None,
     }));
@@ -147,6 +166,7 @@ pub(super) async fn start_message(
         // including on failure. A canceled queued turn still waits for its
         // predecessor so cancellation cannot let later requests overtake it.
         let _completion = turn_completion;
+        let _run_folder = run_folder;
         if !admission::begin_preparation(&snapshot_for_task, &cancel, previous_turn).await {
             return;
         }

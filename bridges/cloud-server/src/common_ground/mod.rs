@@ -138,6 +138,10 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
             put(profiles::update).delete(profiles::delete),
         )
         .route(
+            "/v1/cloud/common-ground/profiles/:profile_id/memories",
+            get(profiles::memories),
+        )
+        .route(
             "/v1/cloud/common-ground/card/hidden",
             put(card::update_hidden),
         )

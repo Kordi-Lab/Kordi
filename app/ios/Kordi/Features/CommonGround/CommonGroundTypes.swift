@@ -221,8 +221,10 @@ struct CommonGroundOwnerView: Decodable, Hashable {
     var build: CommonGroundBuildState
     /// The profile this card belongs to; nil before profiles.
     var profile: CommonGroundProfileTag?
+    /// Routed memories saved after the card was built; nil before `memoryVersion` 2.
+    var memoriesSinceBuild: Int?
 
-    private enum CodingKeys: String, CodingKey { case card, sharing, build, profile }
+    private enum CodingKeys: String, CodingKey { case card, sharing, build, profile, memoriesSinceBuild }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -230,6 +232,7 @@ struct CommonGroundOwnerView: Decodable, Hashable {
         sharing = c.cgValue(.sharing, true)
         build = c.cgValue(.build, CommonGroundBuildState(status: "idle", errorCode: nil))
         profile = c.cgValue(.profile, nil as CommonGroundProfileTag?)
+        memoriesSinceBuild = c.cgValue(.memoriesSinceBuild, nil as Int?)
     }
 }
 

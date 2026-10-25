@@ -391,6 +391,8 @@ mod calendar;
 mod claims;
 #[path = "cloud_agent_runtime_e2e/cloud_subsessions.rs"]
 mod cloud_subsessions;
+#[path = "cloud_agent_runtime_e2e/desktop_import_tasks.rs"]
+mod desktop_import_tasks;
 #[path = "cloud_agent_runtime_e2e/desktop_reply_row.rs"]
 mod desktop_reply_row;
 #[path = "cloud_agent_runtime_e2e/digest_mac_first.rs"]
@@ -409,6 +411,8 @@ mod hosted_only_admission;
 mod mac_first_routing;
 #[path = "cloud_agent_runtime_e2e/omp_state.rs"]
 mod omp_state;
+#[path = "cloud_agent_runtime_e2e/proactive_mac_first.rs"]
+mod proactive_mac_first;
 #[path = "cloud_agent_runtime_e2e/provider_auth.rs"]
 mod provider_auth;
 #[path = "cloud_agent_runtime_e2e/runner.rs"]

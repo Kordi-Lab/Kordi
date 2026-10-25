@@ -9,20 +9,28 @@
 //! CASCADE`.
 
 use axum::http::StatusCode;
-use chrono::{DateTime, Utc};
 use kordi_tools::memory_guard::{check_memory_text, MemoryGuardOptions};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+mod card_relations;
+mod cards;
 mod edit;
 mod groups;
+mod profile_routing;
+mod routing;
+mod row;
 mod runs;
 mod types;
 
-pub(crate) use edit::{archive, update_text};
+pub(crate) use card_relations::{card_candidates, relate_to_card, CandidateMemory};
+pub(crate) use edit::{archive, update_memory};
+use row::{memory_from_row, MemoryRow, MEMORY_SELECT};
 
 pub(crate) use groups::is_active_group_member;
+pub(crate) use profile_routing::{build_memories, count_since, profile_memories, ProfileTarget};
+pub(crate) use routing::{category_allowed_in_group, check_category, MEMORY_CONFIDENCES};
 pub(crate) use runs::{
     clear_omp_state, leased_run, omp_state_count, write_memory_audit, LeasedRun,
 };
@@ -36,58 +44,20 @@ pub(crate) const MEMORY_SCOPES: [&str; 4] = ["global", "conversation", "group", 
 /// The only scope id a `global` memory may use: global memories belong to the
 /// whole account.
 pub(crate) const GLOBAL_SCOPE_ID: &str = "account";
-pub(crate) const MEMORY_SOURCES: [&str; 4] =
-    ["user_correction", "repeated_failure", "outcome", "manual"];
+/// `digest` marks memories a digest run saved from recent conversations
+/// (#2053); `import` marks memories the Mac imported from the person's
+/// instruction files (#2054).
+pub(crate) const MEMORY_SOURCES: [&str; 6] = [
+    "user_correction",
+    "repeated_failure",
+    "outcome",
+    "manual",
+    "digest",
+    "import",
+];
 const MAX_SCOPE_ID_CHARS: usize = 256;
 const MAX_SCOPE_LABEL_CHARS: usize = 256;
 const MAX_CLIENT_MEMORY_ID_CHARS: usize = 128;
-
-type MemoryRow = (
-    String,
-    String,
-    String,
-    Option<String>,
-    String,
-    String,
-    DateTime<Utc>,
-    DateTime<Utc>,
-    String,
-    Option<String>,
-);
-
-/// Selects memory rows from a CTE named `m` (a query or a `RETURNING *`
-/// write) with the owner's display name.
-const MEMORY_SELECT: &str = "SELECT m.memory_id, m.scope, m.scope_id, m.scope_label, m.source, \
-     m.text, m.created_at, m.updated_at, m.owner_account_id, \
-     NULLIF(btrim(owner.display_name), '') \
-     FROM m LEFT JOIN cloud_accounts owner ON owner.account_id = m.owner_account_id";
-
-fn memory_from_row(row: MemoryRow) -> MemoryResponse {
-    let (
-        memory_id,
-        scope,
-        scope_id,
-        scope_label,
-        source,
-        text,
-        created_at,
-        updated_at,
-        owner_account_id,
-        owner_name,
-    ) = row;
-    MemoryResponse {
-        memory_id,
-        scope,
-        scope_id,
-        scope_label,
-        source,
-        text,
-        created_at: created_at.to_rfc3339(),
-        updated_at: updated_at.to_rfc3339(),
-        owner_account_id,
-        owner_name,
-    }
-}
 
 /// Texts the opt-out quote guard protects for this account and scope.
 ///
@@ -237,7 +207,7 @@ pub(crate) async fn save(
     if !MEMORY_SOURCES.contains(&source) {
         return Err(MemoryError::bad_request(
             "invalid_source",
-            "source must be user_correction, repeated_failure, outcome, or manual.",
+            "source must be user_correction, repeated_failure, outcome, manual, digest, or import.",
         ));
     }
     let mut scope_id = input.scope_id.trim().to_owned();
@@ -265,6 +235,7 @@ pub(crate) async fn save(
             "scopeLabel must be 256 characters or fewer.",
         ));
     }
+    let fields = routing::save_fields(input, scope)?;
     let client_memory_id = input.client_memory_id.as_deref().map(str::trim);
     if client_memory_id.is_some_and(|id| !valid_client_memory_id(id)) {
         return Err(MemoryError::bad_request(
@@ -359,8 +330,9 @@ pub(crate) async fn save(
         .unwrap_or_else(|| format!("mem_{}", uuid::Uuid::new_v4().simple()));
     let inserted: Option<MemoryRow> = query_as(&format!(
         "WITH m AS (INSERT INTO cloud_account_memories \
-         (memory_id, owner_account_id, scope, scope_id, scope_label, source, text) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         (memory_id, owner_account_id, scope, scope_id, scope_label, source, text, \
+          category, declaration_type, confidence) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
          ON CONFLICT (memory_id) DO NOTHING \
          RETURNING *) {MEMORY_SELECT}"
     ))
@@ -371,6 +343,9 @@ pub(crate) async fn save(
     .bind(scope_label)
     .bind(source)
     .bind(&text)
+    .bind(fields.category)
+    .bind(fields.declaration_type)
+    .bind(fields.confidence)
     .fetch_optional(&mut *transaction)
     .await?;
     transaction.commit().await?;

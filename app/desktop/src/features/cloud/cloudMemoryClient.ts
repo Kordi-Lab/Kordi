@@ -1,5 +1,7 @@
+import type { MemoryConfidence, MemoryDeclarationType, MemoryProfileKind } from '@/features/memory/memoryCategory';
+
 export type CloudMemoryScope = 'global' | 'conversation' | 'group' | 'project';
-export type CloudMemorySource = 'user_correction' | 'repeated_failure' | 'outcome' | 'manual';
+export type CloudMemorySource = 'user_correction' | 'repeated_failure' | 'outcome' | 'manual' | 'import';
 
 export type CloudMemory = {
   memoryId: string;
@@ -13,6 +15,27 @@ export type CloudMemory = {
   /** The account that saved the memory. Group memories are shared, so it can be another member. */
   ownerAccountId?: string;
   ownerName?: string | null;
+  /** Routing fields (`memoryVersion` 2); older servers leave them out. */
+  /** One of `MEMORY_CATEGORIES`; newer servers may send others, which show no chip. */
+  category?: string;
+  declarationType?: MemoryDeclarationType;
+  confidence?: MemoryConfidence | null;
+  /** The one card the person added the memory to, when there is exactly one (legacy pin). */
+  profileId?: string | null;
+  profileKind?: MemoryProfileKind | null;
+  /** The cards the memory feeds, in profile order (`memoryVersion` 3). Group memories have none. */
+  profileIds?: string[];
+  /** The cards the person removed the memory from (`memoryVersion` 3). */
+  excludedProfileIds?: string[];
+};
+
+/** A memory change. `addProfileId` and `removeProfileId` need `memoryVersion` 3. */
+export type CloudMemoryPatch = {
+  text?: string;
+  category?: string;
+  profileId?: string | null;
+  addProfileId?: string;
+  removeProfileId?: string;
 };
 
 export type CloudMemorySettings = { memoryEnabled: boolean; excludeSensitive: boolean };
@@ -25,6 +48,8 @@ export type CloudMemoryCreate = {
   scopeLabel?: string | null;
   source: CloudMemorySource;
   text: string;
+  /** One of `MEMORY_CATEGORIES`; imported memories name theirs. */
+  category?: string;
 };
 
 export type CloudMemoryListResponse = { memories: CloudMemory[]; settings: CloudMemorySettings };
@@ -66,6 +91,16 @@ export class CloudMemoryClient {
       `/v1/cloud/memory/${encodeURIComponent(memoryId)}`,
       authorized(token, 'PATCH', { text }),
       'Could not save this memory.',
+    );
+    return response.memory;
+  }
+
+  /** Changes a memory's category or cards. */
+  async patch(token: string, memoryId: string, patch: CloudMemoryPatch): Promise<CloudMemory> {
+    const response = await this.request<{ memory: CloudMemory }>(
+      `/v1/cloud/memory/${encodeURIComponent(memoryId)}`,
+      authorized(token, 'PATCH', patch),
+      'Could not change this memory.',
     );
     return response.memory;
   }

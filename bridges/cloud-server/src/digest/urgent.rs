@@ -195,6 +195,7 @@ pub async fn start(pool: &PgPool, account: &str) -> Result<()> {
         viewer_account_id: account.into(),
         changes: None,
         connector_events: vec![],
+        memories: vec![],
         triage: true,
     };
     super::queue::queue(pool, account, &input, None, Trigger::Triage).await?;

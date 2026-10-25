@@ -375,6 +375,7 @@ pub(super) fn build_turn_config(
             &workspace,
             execution_policy,
             setup.tool_ctx.session_observation.is_some(),
+            setup.proactive_run,
         ),
         model: setup.model.clone(),
         provider: setup.provider.clone(),
@@ -402,8 +403,10 @@ pub(super) fn build_turn_config(
                 || shared_scope)
                 .then(|| setup.tool_ctx.session_observation.clone())
                 .flatten(),
-            task_operator: (execution_policy != kordi_tools::ExecutionPolicy::Shared
+            // An approved proactive run starts no background subsessions.
+            task_operator: ((execution_policy != kordi_tools::ExecutionPolicy::Shared
                 || shared_scope)
+                && !setup.proactive_run)
                 .then(|| setup.tool_ctx.task_operator.clone())
                 .flatten(),
             schedule_task: setup.tool_ctx.schedule_task.clone(),

@@ -80,12 +80,7 @@ private struct MemoryRow: View {
     var body: some View {
         Button(action: edit) {
             HStack(spacing: 10) {
-                CompactSettingsLabel(
-                    title: memory.text,
-                    subtitle: [detail, ownerCaption].compactMap { $0 }.joined(separator: "\n"),
-                    systemImage: nil,
-                    titleLineLimit: 3
-                )
+                MemoryRowLabel(text: memory.text, detail: detail, category: memory.category, captions: ownerCaption.map { [$0] } ?? [])
                 Spacer(minLength: 0)
                 SettingsChevron()
             }
@@ -104,7 +99,7 @@ private struct MemoryRow: View {
     }
 }
 
-private struct MemoryEditSheet: View {
+struct MemoryEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     /// The memory being edited, or nil for a new memory.
     let memory: CloudMemory?

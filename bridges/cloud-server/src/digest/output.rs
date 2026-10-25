@@ -51,7 +51,8 @@ fn model_context(input: &Value) -> Option<Value> {
         json!({"mode":"incremental","changes":input["changes"],"previous":input["previous"],
         "calendarEventIndex":calendar_index,
         "locale":input["locale"],"timezone":input["timezone"],"asOf":input["asOf"],
-        "viewerAccountId":input["viewerAccountId"],"partial":input["partial"]}),
+        "viewerAccountId":input["viewerAccountId"],"partial":input["partial"],
+        "memories":input.get("memories").cloned().unwrap_or_else(|| json!([]))}),
     )
 }
 
@@ -148,7 +149,12 @@ pub(crate) fn normalized_reply(text: &str, input: &Value) -> String {
     let object = output
         .as_object_mut()
         .expect("json_object returns an object");
-    object.retain(|key, _| OUTPUT_LISTS.contains(&key.as_str()) || key == "removedItemIds");
+    object.retain(|key, _| {
+        OUTPUT_LISTS.contains(&key.as_str()) || key == "removedItemIds" || key == "memories"
+    });
+    if let Some(memories) = object.get_mut("memories") {
+        super::memories::reduce(memories);
+    }
     for list in OUTPUT_LISTS {
         let items = object.entry(*list).or_insert_with(|| json!([]));
         if !items.is_array() {

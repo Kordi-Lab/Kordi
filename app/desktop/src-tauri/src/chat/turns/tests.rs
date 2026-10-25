@@ -25,6 +25,7 @@ async fn new_admission_preserves_recent_terminal_snapshots_for_publishers() {
                 completed_at_ms,
                 transcript_entry_id: None,
                 error: None,
+                retry_reason: None,
                 transcript_refresh_required: false,
                 background_follow_up: None,
             })),
@@ -112,6 +113,7 @@ fn persisted_abort_completes_only_its_mounted_live_turn() {
         completed_at_ms: None,
         transcript_entry_id: None,
         error: Some("tool failed".to_string()),
+        retry_reason: None,
         transcript_refresh_required: false,
         background_follow_up: None,
     };
@@ -153,6 +155,7 @@ fn tool_result_before_start_keeps_the_background_session_result() {
         completed_at_ms: None,
         transcript_entry_id: None,
         error: None,
+        retry_reason: None,
         transcript_refresh_required: false,
         background_follow_up: None,
     }));
@@ -198,4 +201,46 @@ fn tool_result_before_start_keeps_the_background_session_result() {
     assert_eq!(tool.status, "done");
     assert_eq!(tool.result_text.as_deref(), Some(result));
     assert_eq!(tool.arguments, "{\"action\":\"spawn\"}");
+}
+
+#[test]
+fn a_retry_shows_the_provider_reason_until_it_ends() {
+    let snapshot = Arc::new(Mutex::new(DesktopChatTurnSnapshot {
+        id: "turn".to_string(),
+        session_id: "session".to_string(),
+        prompt: String::new(),
+        status: "streaming".to_string(),
+        message: String::new(),
+        assistant_text: String::new(),
+        thinking_text: String::new(),
+        segments: Vec::new(),
+        tools: vec![],
+        completed: false,
+        succeeded: false,
+        started_at_ms: 0,
+        completed_at_ms: None,
+        transcript_entry_id: None,
+        error: None,
+        retry_reason: None,
+        transcript_refresh_required: false,
+        background_follow_up: None,
+    }));
+    let reason = "Codex is at capacity, please try again later (code=turn_rate_limit_exceeded)";
+    apply_desktop_turn_event(
+        &snapshot,
+        &TurnEvent::AutoRetryStart {
+            attempt: 2,
+            max_attempts: 10,
+            delay_ms: 1_000,
+            error_message: reason.to_string(),
+        },
+    );
+    {
+        let turn = snapshot.lock().unwrap();
+        assert_eq!(turn.status, "retrying");
+        assert_eq!(turn.retry_reason.as_deref(), Some(reason));
+        assert!(turn.error.is_none());
+    }
+    apply_desktop_turn_event(&snapshot, &TurnEvent::AutoRetryEnd);
+    assert!(snapshot.lock().unwrap().retry_reason.is_none());
 }

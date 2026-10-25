@@ -12,8 +12,9 @@ mod group_target;
 pub(crate) mod identity;
 mod leases;
 pub(crate) mod omp_state;
+mod plain_group_request;
 mod project_unavailable;
-mod prompt_history;
+pub(crate) mod prompt_history;
 pub(crate) mod route_fill;
 pub mod stop;
 pub(crate) mod subsession_lifecycle;
@@ -37,7 +38,7 @@ pub use completion::{
 use delivery::{
     cloud_group_response_recipients, direct_person_peer_account_id, is_scheduled_run_request_id,
 };
-pub(crate) use desktop_takeover::hand_back_to_cloud;
+pub(crate) use desktop_takeover::{hand_back_to_cloud, DESKTOP_RELEASED_ERROR_CODE};
 pub(crate) use envelopes::cloud_agent_response_is_processing_for_request;
 pub use envelopes::encode_cloud_agent_response_body;
 #[cfg(test)]

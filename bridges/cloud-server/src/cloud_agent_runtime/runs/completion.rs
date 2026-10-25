@@ -238,6 +238,9 @@ async fn complete(
         Some(row) => {
             mark_scheduled_task_run_completed(pool, &request_message_id, &response_message_id, now)
                 .await?;
+            if approved(run_id) {
+                crate::proactive::sync_runs(pool, Some(run_id)).await?;
+            }
             runner_response_from_row(pool, row).await
         }
         None => Err(RunError::NotFound),
@@ -430,10 +433,18 @@ async fn fail(
         Some(row) => {
             mark_scheduled_task_run_failed(pool, &request_message_id, error_code, message, now)
                 .await?;
+            if approved(run_id) {
+                crate::proactive::sync_runs(pool, Some(run_id)).await?;
+            }
             runner_response_from_row(pool, row).await
         }
         None => Err(RunError::NotFound),
     }
+}
+
+/// A run the owner allowed from a proactive offer; its proposal follows it.
+fn approved(run_id: &str) -> bool {
+    run_id.starts_with(crate::proactive::APPROVED_RUN_PREFIX)
 }
 
 async fn digest_run_response(pool: &PgPool, run_id: &str) -> RunResult<RunnerRunResponse> {

@@ -104,6 +104,13 @@ pub(super) async fn broker_call(
             crate::document_shares::agents::tools::call(&state, &holder, &input).await;
         return (status, Json(response)).into_response();
     }
+    // A proactive run's memory search is answered from the owner's
+    // memories; it involves no connector either.
+    if input.connector_id.trim() == crate::proactive::memory_search::MEMORY_CONNECTOR_ID {
+        let (status, response) =
+            crate::proactive::memory_search::call(&state, &holder, &input).await;
+        return (status, Json(response)).into_response();
+    }
     // A decline only writes the audit row; the tool never runs.
     let response = if input.declined_by_owner {
         declined::record_on_lease(state.db_pool(), state.connectors(), &holder, &input).await

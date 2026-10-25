@@ -8,7 +8,7 @@ import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessag
 import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import { projectCloudSelfAgentLiveTurns } from '../src/features/cloud/cloudGroupLiveProjection';
 import { cloudSelfAgentRequestClientMessageId } from '../src/features/cloud/cloudSelfAgentIdentity';
-import { projectPendingSelfAgentReplies } from '../src/features/cloud/cloudSelfAgentPendingReply';
+import { PENDING_SELF_AGENT_NOT_STARTED_TEXT, projectPendingSelfAgentReplies } from '../src/features/cloud/cloudSelfAgentPendingReply';
 import { cloudSelfAgentLocalTurnsToOmit, cloudSelfAgentTerminalOrLocalRequestIds, omitTerminalCloudSelfAgentLocalTurns } from '../src/features/cloud/cloudSelfAgentExecutionState';
 import { planCloudSelfAgentCanonicalSync } from '../src/features/cloud/cloudSelfAgentCanonicalSync';
 import { cloudSelfAgentStoppedReply, settledCloudSelfAgentTurn } from '../src/features/cloud/cloudSelfAgentTerminalReply';
@@ -308,5 +308,38 @@ test('a stop settles the Ask Agent row once and it never shows running again', a
     await check('stored stopped reply', (r) => expectSettled('stored stopped', r, 'Hello, how'));
     assert.deepEqual(scene.turns, {}, 'the turn goes once the stored reply is terminal');
     await check('turn dropped', (r) => expectSettled('turn dropped', r, 'Hello, how'));
+  });
+});
+
+test('a request that starts after its did-not-start notice loses the notice (#2026)', async () => {
+  await withPane(async (root, host) => {
+    // Sent 20 s ago and forwarded only now, as a failing reconcile used to delay it.
+    const lateAtMs = Date.now() - 20_000;
+    const lateRequest = { ...localRequest, createdAtMs: lateAtMs, updatedAtMs: lateAtMs };
+    const scene: Scene = { state: { ...baseState, messages: [lateRequest] }, wire: [], turns: {} };
+    const noNotice = (label: string, rendered: Rendered) => {
+      assert.ok(!rendered.text.includes(PENDING_SELF_AGENT_NOT_STARTED_TEXT), `${label}: the notice is gone`);
+      expectRunning(label, rendered);
+    };
+    const notice = await renderScene(root, host, scene);
+    assert.equal(notice.agentRows.length, 1);
+    assert.ok(notice.text.includes(PENDING_SELF_AGENT_NOT_STARTED_TEXT), 'the watchdog fired first');
+    scene.wire = [serverRequest];
+    scene.state = { ...scene.state, messages: [{ ...lateRequest, content: { ...(lateRequest.content as object), desktopEntryId: wireRequestId } }] };
+    // Published, and still not started: the notice may stay until the run claims the request.
+    assert.equal((await renderScene(root, host, scene)).agentRows.length, 1, 'published late: one agent row');
+    scene.state = updateHostedSelfAgentProgress(scene.state, { request: serverRequest, runStatus: 'queued', cloudMessages: scene.wire })!;
+    noNotice('hosted run queued', await renderScene(root, host, scene));
+    scene.turns = { [wireRequestId]: nativeTurn('starting', '') };
+    noNotice('native turn starting', await renderScene(root, host, scene));
+    scene.wire = [...scene.wire, progress('progress-1', '', 2_160)];
+    scene.state = applyPlan(removeHostedSelfAgentProgress(scene.state, wireRequestId)!, scene.wire);
+    noNotice('stored processing row', await renderScene(root, host, scene));
+    scene.wire = [...scene.wire, progress('final', 'Hello, how can I help?', 13_600, 'complete')];
+    scene.state = applyPlan(scene.state, scene.wire);
+    scene.turns = {};
+    const settled = await renderScene(root, host, scene);
+    expectSettled('stored final reply', settled, 'Hello, how can I help?');
+    assert.ok(!settled.text.includes(PENDING_SELF_AGENT_NOT_STARTED_TEXT), 'the final reply shows without the notice');
   });
 });

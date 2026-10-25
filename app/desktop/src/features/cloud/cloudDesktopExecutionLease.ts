@@ -75,6 +75,8 @@ export async function acquireDesktopExecutionLease(client: Pick<CloudAuthClient,
   return {
     runId: result.runId,
     claimId,
+    /** The whole claim answer, for run kinds whose claim carries more fields. */
+    claim: result as Readonly<Record<string, unknown>>,
     /** The project this run belongs to; the turn runs in this Mac's folder of it. */
     project: claimedProjectFromLease(result.project),
     contextMessages(messages: readonly DesktopChatContextMessage[]) {

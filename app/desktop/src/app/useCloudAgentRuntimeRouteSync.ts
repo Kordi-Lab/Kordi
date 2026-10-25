@@ -29,6 +29,7 @@ import { resolveCloudAgentRuntimeRouteChange } from '@/features/cloud/cloudAgent
 import { cloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { routeRunsOnKordiCloud, runtimeRoutesMatch } from '@/features/cloud/cloudAgentRuntimeRoute';
 import { routeWithAccountNamespace } from '@/features/cloud/routeAccountNamespace';
+import { routeWithSignInProvider } from '@/features/cloud/routeSignInProvider';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
 type CanonicalStore = ReturnType<
@@ -207,12 +208,16 @@ export function useCloudAgentRuntimeRouteSync({
     setRoutesBySessionId,
   ]);
 
+  const chatAuthOptions = composerAuthByScope.optionsByScope.chat;
   const storedSessionRoute = useCallback((runtimeSessionId: string | null) => (
     runtimeSessionId
-      ? compactCloudAgentRuntimeRoute(routesBySessionId[runtimeSessionId])
-        ?? compactCloudAgentRuntimeRoute(recoveredRoutesBySessionId[runtimeSessionId])
+      ? routeWithSignInProvider(
+        compactCloudAgentRuntimeRoute(routesBySessionId[runtimeSessionId])
+          ?? compactCloudAgentRuntimeRoute(recoveredRoutesBySessionId[runtimeSessionId]),
+        chatAuthOptions,
+      )
       : null
-  ), [recoveredRoutesBySessionId, routesBySessionId]);
+  ), [chatAuthOptions, recoveredRoutesBySessionId, routesBySessionId]);
 
   const activeRuntimeSessionId = cloudAgentRuntimeSessionId(
     accountId,

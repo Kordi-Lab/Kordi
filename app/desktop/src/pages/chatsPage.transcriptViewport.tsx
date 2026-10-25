@@ -4,7 +4,7 @@ import { resolveTranscriptPlanCards } from '@/features/cloud/planCardSnapshot';
 import { Split } from 'lucide-react';
 
 import { shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
-import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
+import { transcriptMessageRenderKey, transcriptMessageRenderKeys } from '@/features/chat/transcriptRenderKeys';
 import { collectConversationImageAttachments, shouldPreviewAttachmentInline } from '@/features/chat/attachmentMediaGallery';
 import { createTranscriptTimeSeparatorCache } from '@/features/chat/transcriptTimestamps';
 import { useTranscriptTimeZone } from '@/features/chat/useTranscriptTimeZone';
@@ -18,6 +18,8 @@ import type { Message } from '@/kordi-app/types';
 import { formatDesktopClockTime } from '@/lib/time';
 import type { ChatSessionPaneProps } from '@/pages/chatsPage.types';
 import { QueuedMessageBubble } from '@/pages/chatsPage.queuedMessage';
+import { queuedBubbleSenderLabel } from '@/features/chat/queuedBubbleSender';
+import { advanceActivation, finishActivation, initialActivationState, type ActivationRow } from '@/features/chat/queuedActivationMotion';
 import { queuedTranscriptRequestIds } from '@/features/chat/queuedDesktopMessages';
 import { insertPinActivities, PIN_ACTIVITY_ESTIMATED_HEIGHT } from '@/pages/chatsPage.pinActivity';
 import { PinActivityNotice } from '@/pages/chatsPage.pins';
@@ -195,6 +197,7 @@ export function useChatTranscriptViewport({
     [transcriptMessages],
   );
   const timelineEntries = useMemo(() => insertPinActivities(transcriptEntries, pinActivities, hasOlderMessages), [transcriptEntries, pinActivities, hasOlderMessages]);
+  const renderKeys = useMemo(() => transcriptMessageRenderKeys(transcriptEntries.map(({ message }) => message)), [transcriptEntries]);
   const pinBoundaries = useMemo(() => {
     const before = new Set<number>();
     const after = new Set<number>();
@@ -207,6 +210,13 @@ export function useChatTranscriptViewport({
     });
     return { before, after };
   }, [timelineEntries]);
+  const ownAvatarImageUrl = useMemo(() => {
+    for (let index = transcriptMessages.length - 1; index >= 0; index -= 1) {
+      const candidate = transcriptMessages[index];
+      if (transcriptMessageIsOwnHuman(candidate)) return candidate.senderProfileImageUrl ?? null;
+    }
+    return null;
+  }, [transcriptMessages]);
   const latestMessage = transcriptMessages[transcriptMessages.length - 1];
   const animateTailResize = Boolean(latestMessage?.turn);
   const latestEntry = timelineEntries[timelineEntries.length - 1];
@@ -218,6 +228,43 @@ export function useChatTranscriptViewport({
       latestMessage.statusChips?.[0]?.trim().toLowerCase(),
     ),
   );
+
+  const lastQueuedRowIndex = useMemo(() => {
+    let last = -1;
+    for (const entry of timelineEntries) {
+      if (!('message' in entry)) continue;
+      const { message } = entry;
+      if ((message.role === 'user' || message.role === 'person') && [message.id, message.entryId, ...(message.replyAliasIds ?? [])].some((id) => id && syncedQueuedIds.has(id))) last = entry.originalIndex;
+    }
+    return last;
+  }, [syncedQueuedIds, timelineEntries]);
+
+  // A queued message that becomes active, and the processing row that follows it, animate once.
+  const [activation, setActivation] = useState(initialActivationState);
+  const activationRows = useMemo<ActivationRow[]>(() => timelineEntries.flatMap((entry) => {
+    if (!('message' in entry)) return [];
+    const { message } = entry;
+    const aliases = [message.id, message.entryId, ...(message.replyAliasIds ?? [])].filter((id): id is string => Boolean(id));
+    // The row's render key, so a reply that changes id while it stays mounted keeps its fade.
+    const id = renderKeys.get(message) ?? message.id ?? message.entryId;
+    if (!id) return [];
+    const human = message.role === 'user' || message.role === 'person';
+    return [{
+      id,
+      aliases,
+      queued: human && aliases.some((alias) => syncedQueuedIds.has(alias)),
+      processing: message.role === 'owned-agent' && Boolean(message.turn) && !message.turn?.completed,
+    }];
+  }), [renderKeys, syncedQueuedIds, timelineEntries]);
+  const queuedIdsNow = useMemo(() => {
+    const ids = new Set(syncedQueuedIds);
+    for (const message of queuedMessages) ids.add(message.id);
+    return ids;
+  }, [queuedMessages, syncedQueuedIds]);
+  const nextActivation = advanceActivation(activation, sessionKey, activationRows, queuedIdsNow);
+  if (nextActivation !== activation) setActivation(nextActivation);
+  const activeActivationIds = nextActivation.activeIds;
+  const handleActivationEnd = useCallback((id: string) => setActivation((current) => finishActivation(current, id)), []);
 
   const passiveUpdateKey = JSON.stringify(pinnedMessageIds ?? []);
   const messageContentKey = `${transcriptEntries.length}:${latestMessage?.id ?? ''}:${latestPinActivityId}`;
@@ -257,10 +304,11 @@ export function useChatTranscriptViewport({
       onSelectAllMessages={onSelectAllMessages}
       animateLatestAppend={animateLatestAppend}
       animateTailResize={animateTailResize}
-      getItemKey={(entry) => 'pinActivity' in entry ? entry.pinActivity.id : transcriptMessageRenderKey(entry.message, entry.originalIndex)}
+      getItemKey={(entry) => 'pinActivity' in entry ? entry.pinActivity.id : renderKeys.get(entry.message) ?? transcriptMessageRenderKey(entry.message, entry.originalIndex)}
       renderItem={(entry) => {
         if ('pinActivity' in entry) return <PinActivityNotice activity={entry.pinActivity} />;
         const { message, originalIndex: idx } = entry;
+        const activationKey = renderKeys.get(message) ?? message.id ?? message.entryId ?? '';
         const timestampMs = message.timestampMs;
         const validTimestamp = typeof timestampMs === 'number' && Number.isFinite(timestampMs)
           && !Number.isNaN(new Date(timestampMs).getTime());
@@ -274,14 +322,22 @@ export function useChatTranscriptViewport({
             <TranscriptTimeSeparator timestampMs={timestampMs} label={timeSeparators[idx]} timeZone={timeZone} dateOnly={threadLayout} />
           ) : null}
           {presentation.firstUnreadMessageId && transcriptWindowMessageMatchesId(msg,presentation.firstUnreadMessageId,idx)?<div className="my-3 flex items-center gap-3 text-[11px] font-medium text-[color:var(--app-sidebar-accent)]"><span className="h-px flex-1 bg-current opacity-25"/>New replies<span className="h-px flex-1 bg-current opacity-25"/></div>:null}
-          <div data-transcript-highlight-body="true">
+          <div
+            data-transcript-highlight-body="true"
+            className={activeActivationIds.has(activationKey) ? 'app-transcript-activate-enter' : undefined}
+            onAnimationEnd={activeActivationIds.has(activationKey) ? (event) => { if (event.target === event.currentTarget) handleActivationEnd(activationKey); } : undefined}
+          >
           {(msg.role === 'user' || msg.role === 'person') && [msg.id, msg.entryId, ...(msg.replyAliasIds ?? [])].some((id) => id && syncedQueuedIds.has(id)) ? (
             <QueuedMessageBubble
               message={{ id: msg.id ?? '', sessionId: sessionKey, text: msg.text, time: msg.time, attachments: msg.attachments ?? [] }}
               isCompressionActive={isCompressionActive}
               own={msg.role === 'user' || msg.isOwnMessage === true}
-              sender={msg.sender}
+              // Your own bubble follows the sent bubble's name rule, so it keeps its height when it becomes active; other people keep their name.
+              sender={queuedBubbleSenderLabel(msg, msg.role === 'user' || msg.isOwnMessage === true, densityMode, !pinBoundaries.after.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, groupingSeparators))}
               threadLayout={threadLayout}
+              densityMode={densityMode}
+              showAvatar={idx === lastQueuedRowIndex && queuedMessages.length === 0}
+              avatarImageUrl={msg.role === 'user' || msg.isOwnMessage === true ? ownAvatarImageUrl ?? msg.senderProfileImageUrl : msg.senderProfileImageUrl}
             />
           ) : <MessageBubble
             msg={msg}
@@ -346,7 +402,7 @@ export function useChatTranscriptViewport({
       tailKey={transcriptTailKey}
       tail={(
         <div className="space-y-1">
-          {queuedMessages.map((message) => (
+          {queuedMessages.map((message, index) => (
             <QueuedMessageBubble
               key={message.id}
               message={message}
@@ -354,6 +410,9 @@ export function useChatTranscriptViewport({
               onEdit={onEditQueuedMessage}
               onCancel={onCancelQueuedMessage}
               threadLayout={threadLayout}
+              densityMode={densityMode}
+              showAvatar={index === queuedMessages.length - 1}
+              avatarImageUrl={ownAvatarImageUrl}
             />
           ))}
         </div>
@@ -361,8 +420,10 @@ export function useChatTranscriptViewport({
     />
   ), [
     passiveUpdateKey, messageContentKey,
+    activeActivationIds, handleActivationEnd, lastQueuedRowIndex,
     pinBoundaries,
     timelineEntries,
+    renderKeys,
     transcriptColumns,
     activeForkSourceSessionId,
     activeForkSourceTitle,
@@ -370,6 +431,7 @@ export function useChatTranscriptViewport({
     animateTailResize,
     canLoadOlderMessages,
     densityMode,
+    ownAvatarImageUrl,
     emptyState,
     forkSnapshotBoundaryIndex,
     handleLoadOlderMessages,

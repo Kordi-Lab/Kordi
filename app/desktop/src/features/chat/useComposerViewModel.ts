@@ -9,6 +9,7 @@ import {
 } from '@/kordi-app/auth/model';
 import type { OmpCatalogEntry } from '@/kordi-app/auth/ompCatalog';
 import type { ComposerAuthOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
+import { CLAUDE_DEFAULT_MODEL } from '@/features/cloud/claudeModelCatalog';
 import { useHostedAccounts } from '@/features/cloud/hostedAccounts';
 import { catalogModelThinkingLevels } from '@/features/cloud/modelThinkingLevels';
 import { setLocalAccountChoices, setLocalProviderIds } from '@/features/cloud/hostedAccountRegistry';
@@ -137,11 +138,17 @@ export function preferredModelValueForProviderFromOptions(
     });
     if (exactRuntimeMatch) return exactRuntimeMatch.value;
   }
-  const preferredNeedles = modelProviderId === 'anthropic'
-    ? ['claude-opus-4-7', 'claude-opus-4.7', 'claude-opus-4-6', 'claude-opus']
-    : modelProviderId === 'openai'
-      ? ['gpt-6.1-sol', 'gpt-6-1-sol', 'gpt-5.6-sol', 'gpt-5-6-sol', 'gpt-5.5', 'gpt-5.4', 'gpt-5']
-      : [];
+  // Claude opens on Sonnet 5.5, else the previous Sonnet. Labels are display
+  // names ("Claude Sonnet 5.5"), so Claude models match by exact model id.
+  if (modelProviderId === 'anthropic') {
+    for (const modelId of [CLAUDE_DEFAULT_MODEL, 'claude-sonnet-5']) {
+      const match = providerModels.find((option) => option.value === `anthropic/${modelId}`);
+      if (match) return match.value;
+    }
+  }
+  const preferredNeedles = modelProviderId === 'openai'
+    ? ['gpt-6.1-sol', 'gpt-6-1-sol', 'gpt-5.6-sol', 'gpt-5-6-sol', 'gpt-5.5', 'gpt-5.4', 'gpt-5']
+    : [];
 
   for (const needle of preferredNeedles) {
     const match = providerModels.find((option) => option.label.toLowerCase().includes(needle));

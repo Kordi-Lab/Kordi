@@ -1,4 +1,4 @@
-import { KORDI_PIP_ACCOUNT_ID, KORDI_PIP_AVATAR_URL, KORDI_SYSTEM_ACCOUNT_ID, KORDI_SYSTEM_AVATAR_URL } from '@/features/pip/pipIdentity';
+import { isBuiltInAccountId, KORDI_SYSTEM_AVATAR_URL } from '@/features/pip/pipIdentity';
 import {
   canonicalAvatarImageUrl,
   parseGeneratedAvatarMarker,
@@ -13,10 +13,9 @@ export function cloudAvatarSeedFromUrl(avatarUrl: string | null | undefined): st
 export function cloudAvatarImageUrl(avatarUrl: string | null | undefined): string | null {
   const trimmed = avatarUrl?.trim();
   if (!trimmed || trimmed.startsWith(CLOUD_PIXEL_AVATAR_URL_PREFIX)) return null;
-  // PiP's account carries a generated human marker on the server; show its
-  // own mark instead of a generated face.
-  if (cloudAvatarSeedFromUrl(trimmed) === KORDI_PIP_ACCOUNT_ID) return KORDI_PIP_AVATAR_URL;
-  if (cloudAvatarSeedFromUrl(trimmed) === KORDI_SYSTEM_ACCOUNT_ID) return KORDI_SYSTEM_AVATAR_URL;
+  // PiP and the system account carry generated human markers on the server;
+  // both show as System's gray bird instead of a generated face.
+  if (isBuiltInAccountId(cloudAvatarSeedFromUrl(trimmed))) return KORDI_SYSTEM_AVATAR_URL;
   return canonicalAvatarImageUrl(trimmed);
 }
 

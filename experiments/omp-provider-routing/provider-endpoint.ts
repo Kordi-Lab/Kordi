@@ -15,7 +15,7 @@ import { resolveGitHubCopilotBaseUrl } from '@oh-my-pi/pi-ai/providers/github-co
 import { getBundledModel, getBundledModels, type GeneratedProvider } from '@oh-my-pi/pi-catalog';
 import { providerEntry } from '@oh-my-pi/pi-catalog/compat/providers';
 import { parseAlibabaTokenPlanCredential } from '@oh-my-pi/pi-catalog/wire/alibaba-token-plan';
-import { parseCloudflareAiGatewayCredential } from '@oh-my-pi/pi-catalog/wire/cloudflare-ai-gateway';
+import { parseCloudflareCredential } from '@oh-my-pi/pi-catalog/wire/cloudflare';
 import {
   assertPublicHost,
   isBlockedAddress,
@@ -65,7 +65,7 @@ function chosenBaseUrl(provider: string, result: OAuthCredentials | string, mode
   if (typeof result === 'string') {
     if (provider === 'alibaba-token-plan') return parseAlibabaTokenPlanCredential(result)?.baseUrl;
     if (provider === 'cloudflare-ai-gateway') {
-      const credential = parseCloudflareAiGatewayCredential(result);
+      const credential = parseCloudflareCredential(result);
       if (!credential?.accountId || !credential.gatewayId || !model?.baseUrl) return undefined;
       return model.baseUrl
         .replace('<account>', encodeURIComponent(credential.accountId))

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  AGENT_CANONICAL_AVATAR_STYLE,
   avatarDataUrlBlob,
   canonicalAvatarImageSource,
   generatedAvatarMarker,
@@ -98,9 +99,30 @@ test('signup avatar previews use the configured Kordi API origin', () => {
   );
 });
 
-test('agent avatar previews use the pinned Thumbs style', () => {
+test('agent avatar previews use the bird style and keep legacy Thumbs renderable', () => {
+  assert.equal(AGENT_CANONICAL_AVATAR_STYLE, 'kordi-birds');
+  assert.equal(
+    generatedAvatarPreviewUrl(AGENT_CANONICAL_AVATAR_STYLE, 'bird-owl-ink-paper', 'http://srv'),
+    'http://srv/v1/avatars/preview/kordi-birds/bird-owl-ink-paper.png',
+  );
   assert.equal(
     generatedAvatarPreviewUrl('thumbs', 'agent_seed', 'http://srv'),
     'http://srv/v1/avatars/preview/thumbs/agent_seed.png',
   );
+  assert.equal(
+    parseGeneratedAvatarMarker('kordi-avatar://dicebear-rust-10.6.0-styles-10.5.0/kordi-birds/bird-jay-mint?version=2')?.style,
+    'kordi-birds',
+  );
+  const descriptor = {
+    entityType: 'agent',
+    entityId: 'agent_id',
+    source: 'generated',
+    seed: 'bird-osprey-color-sky',
+    rendererVersion: 'dicebear-rust-10.6.0-styles-10.5.0',
+    version: 2,
+    updatedAt: '2026-10-24T00:00:00Z',
+  };
+  assert.equal(normalizeCanonicalAvatarDescriptor({ ...descriptor, style: 'kordi-birds' })?.style, 'kordi-birds');
+  assert.equal(normalizeCanonicalAvatarDescriptor({ ...descriptor, style: 'thumbs' })?.style, 'thumbs');
+  assert.equal(normalizeCanonicalAvatarDescriptor({ ...descriptor, style: 'kordi-birds-2' }), null);
 });

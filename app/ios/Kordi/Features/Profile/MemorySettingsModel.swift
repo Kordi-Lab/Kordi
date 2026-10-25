@@ -12,10 +12,21 @@ protocol MemoryService: AnyObject {
     func updateSettings(memoryEnabled: Bool?, excludeSensitive: Bool?) async throws -> CloudMemorySettings
     /// The cloud ids of the group conversations whose client session id is `sessionId`.
     func cloudGroupConversationIds(sessionId: String) async -> [String]
+    /// Changes a memory's category or cards (`memoryVersion` 3).
+    func change(memoryId: String, _ request: CloudMemoryUpdateRequest) async throws -> CloudMemory
+    /// The owner's cards, in profile order; empty when they cannot load.
+    func cards() async -> [MemoryCard]
+    /// The cloud conversations already loaded, for group names.
+    func cloudConversations() async -> [CloudChatConversation]
 }
 
 extension MemoryService {
     func cloudGroupConversationIds(sessionId: String) async -> [String] { [] }
+    func change(memoryId: String, _ request: CloudMemoryUpdateRequest) async throws -> CloudMemory {
+        throw CloudAPIError(code: "invalid_update", message: "Could not change this memory. Try again.", statusCode: 400)
+    }
+    func cards() async -> [MemoryCard] { [] }
+    func cloudConversations() async -> [CloudChatConversation] { [] }
 }
 
 @MainActor
@@ -59,6 +70,19 @@ final class CloudMemoryService: MemoryService {
         try await api.updateMemorySettings(token: token(), memoryEnabled: memoryEnabled, excludeSensitive: excludeSensitive)
     }
 
+    func change(memoryId: String, _ request: CloudMemoryUpdateRequest) async throws -> CloudMemory {
+        try await api.changeMemory(token: token(), memoryId: memoryId, request)
+    }
+
+    func cards() async -> [MemoryCard] {
+        guard let token = tokenProvider(), let list = try? await api.commonGroundProfiles(token: token) else { return [] }
+        return list.profiles.sorted { $0.position < $1.position }.map(MemoryCard.init(profile:))
+    }
+
+    func cloudConversations() async -> [CloudChatConversation] {
+        await api.cachedChatConversations()
+    }
+
     func cloudGroupConversationIds(sessionId: String) async -> [String] {
         let sessionId = sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sessionId.isEmpty else { return [] }
@@ -74,6 +98,7 @@ final class CloudMemoryService: MemoryService {
 final class PreviewMemoryService: MemoryService {
     private var memories: [CloudMemory]
     private var settings = CloudMemorySettings(memoryEnabled: true, excludeSensitive: true)
+    private var previewCards = PreviewMemoryCards()
     private var addedCount = 0
     private let latency: Duration
 
@@ -94,7 +119,8 @@ final class PreviewMemoryService: MemoryService {
             hoursAgo: Double
         ) -> CloudMemory {
             let at = formatter.string(from: now.addingTimeInterval(-hoursAgo * 3_600))
-            return CloudMemory(memoryId: id, scope: scope, scopeId: scopeId, scopeLabel: scopeLabel, source: source, text: text, createdAt: at, updatedAt: at)
+            return CloudMemory(memoryId: id, scope: scope, scopeId: scopeId, scopeLabel: scopeLabel, source: source, text: text,
+                               createdAt: at, updatedAt: at, category: sampleCategories[id])
         }
         return [
             memory("lesson-1", .conversation, "conv-launch-copy", "Launch copy with Priya", .userCorrection,
@@ -127,13 +153,21 @@ final class PreviewMemoryService: MemoryService {
         ]
     }
 
+    /// Categories for the samples, so rows show their chips in previews.
+    private static let sampleCategories: [String: String] = [
+        "lesson-1": "general_preferences", "lesson-2": "work_context", "lesson-3": "coordination_context",
+        "lesson-4": "hcp-custom:task_lessons", "lesson-5": "hcp-custom:task_lessons", "lesson-6": "hcp-custom:task_lessons",
+        "lesson-7": "general_preferences", "lesson-8": "general_preferences", "lesson-9": "coordination_context",
+        "lesson-10": "goals_and_constraints",
+    ]
+
     private func wait() async throws {
         try await Task.sleep(for: latency)
     }
 
     func list() async throws -> CloudMemoryListResponse {
         try await wait()
-        return CloudMemoryListResponse(memories: memories, settings: settings)
+        return CloudMemoryListResponse(memories: memories.map(previewCards.filled), settings: settings)
     }
 
     func create(target: MemoryAddTarget, text: String) async throws -> CloudMemory {
@@ -152,7 +186,7 @@ final class PreviewMemoryService: MemoryService {
             scopeLabel: target.scopeLabel, source: .manual, text: normalized, createdAt: at, updatedAt: at
         )
         memories.append(created)
-        return created
+        return previewCards.filled(created)
     }
 
     func update(memoryId: String, text: String) async throws -> CloudMemory {
@@ -165,8 +199,20 @@ final class PreviewMemoryService: MemoryService {
         }
         memories[index].text = normalized
         memories[index].updatedAt = ISO8601DateFormatter().string(from: Date())
-        return memories[index]
+        return previewCards.filled(memories[index])
     }
+
+    func change(memoryId: String, _ request: CloudMemoryUpdateRequest) async throws -> CloudMemory {
+        try await wait()
+        guard let index = memories.firstIndex(where: { $0.memoryId == memoryId }) else {
+            throw CloudAPIError(code: "memory_not_found", message: "This memory no longer exists.", statusCode: 404)
+        }
+        if let category = request.category { memories[index].category = category }
+        try previewCards.apply(request, to: memories[index])
+        return previewCards.filled(memories[index])
+    }
+
+    func cards() async -> [MemoryCard] { previewCards.cards }
 
     func delete(memoryId: String) async throws {
         try await wait()
@@ -198,16 +244,30 @@ final class MemorySettingsModel: ObservableObject {
     @Published private(set) var isUpdatingSettings = false
     @Published private(set) var isMutating = false
     @Published var errorMessage: String?
+    /// The owner's cards and the origin names for Account › Memory's labels.
+    @Published private(set) var cards: [MemoryCard] = []
+    @Published private(set) var originNames: MemoryOriginNames
 
     let accountLabel: String?
     /// The signed-in account, to tell group memories other members saved apart.
     let viewerAccountId: String?
+    /// `memoryVersion` 3 with profiles: card labels and card actions.
+    let cardsEnabled: Bool
+    private let conversations: [ConversationSummary]
     private let service: any MemoryService
 
-    init(service: any MemoryService, accountLabel: String?, viewerAccountId: String? = nil) {
+    init(service: any MemoryService, accountLabel: String?, viewerAccountId: String? = nil,
+         cardsEnabled: Bool = false, conversations: [ConversationSummary] = []) {
         self.service = service
         self.accountLabel = accountLabel
         self.viewerAccountId = viewerAccountId
+        self.cardsEnabled = cardsEnabled
+        self.conversations = conversations
+        originNames = MemoryOriginNames(conversations: conversations)
+    }
+
+    var organizer: MemoryOrganizer {
+        MemoryOrganizer(memories: memories, cards: cards, cardsEnabled: cardsEnabled, viewerAccountId: viewerAccountId, origins: originNames)
     }
 
     var hasLoaded: Bool { settings != nil }
@@ -252,6 +312,28 @@ final class MemorySettingsModel: ObservableObject {
             errorMessage = nil
         } catch {
             report(error, fallback: "Could not load memory settings.")
+        }
+        originNames = MemoryOriginNames(conversations: conversations, cloudConversations: await service.cloudConversations())
+        if cardsEnabled { cards = await service.cards() }
+    }
+
+    func setCategory(_ memory: CloudMemory, to category: String) async {
+        await change(memory, CloudMemoryUpdateRequest(category: category), fallback: "Could not change the category. Try again.")
+    }
+
+    func addToCard(_ memory: CloudMemory, card: MemoryCard) async {
+        await change(memory, CloudMemoryUpdateRequest(addProfileId: card.profileId), fallback: "Could not add this memory to the card. Try again.")
+    }
+
+    func removeFromCard(_ memory: CloudMemory, card: MemoryCard) async {
+        await change(memory, CloudMemoryUpdateRequest(removeProfileId: card.profileId), fallback: "Could not remove this memory from the card. Try again.")
+    }
+
+    private func change(_ memory: CloudMemory, _ request: CloudMemoryUpdateRequest, fallback: String) async {
+        await mutate(fallback: fallback) {
+            let updated = try await self.service.change(memoryId: memory.memoryId, request)
+            self.memories = self.memories.map { $0.memoryId == memory.memoryId ? updated : $0 }
+            self.lastSyncedAt = Date()
         }
     }
 

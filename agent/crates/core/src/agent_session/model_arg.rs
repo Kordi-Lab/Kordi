@@ -1,6 +1,8 @@
 use crate::types::ThinkingLevel;
 
 pub const DEFAULT_OPENAI_MODEL_ID: &str = "gpt-6.1-sol";
+/// The model a Claude account opens on when no model was chosen.
+pub const DEFAULT_ANTHROPIC_MODEL_ID: &str = "claude-sonnet-5-5";
 
 pub fn parse_model_arg(
     provider: Option<&str>,
@@ -8,7 +10,7 @@ pub fn parse_model_arg(
 ) -> (String, String, Option<String>) {
     let default_provider = provider.unwrap_or("openai").to_string();
     let default_model = match default_provider.as_str() {
-        "anthropic" => "claude-opus-4-6",
+        "anthropic" => DEFAULT_ANTHROPIC_MODEL_ID,
         "openai" | "openai-codex" => DEFAULT_OPENAI_MODEL_ID,
         "google" => "gemini-3.1-pro",
         "github-copilot" => "gpt-5.4",
@@ -42,12 +44,25 @@ pub fn parse_model_arg(
 
 #[cfg(test)]
 mod tests {
-    use super::parse_model_arg;
+    use super::{DEFAULT_ANTHROPIC_MODEL_ID, parse_model_arg};
 
     #[test]
     fn openai_default_model_is_gpt_61_sol() {
         assert_eq!(parse_model_arg(Some("openai"), None).1, "gpt-6.1-sol");
         assert_eq!(parse_model_arg(Some("openai-codex"), None).1, "gpt-6.1-sol");
+    }
+
+    #[test]
+    fn anthropic_default_model_is_claude_sonnet_55() {
+        assert_eq!(DEFAULT_ANTHROPIC_MODEL_ID, "claude-sonnet-5-5");
+        assert_eq!(
+            parse_model_arg(Some("anthropic"), None).1,
+            "claude-sonnet-5-5"
+        );
+        assert_eq!(
+            parse_model_arg(Some("anthropic"), Some("claude-opus-4-8")).1,
+            "claude-opus-4-8"
+        );
     }
 
     #[test]

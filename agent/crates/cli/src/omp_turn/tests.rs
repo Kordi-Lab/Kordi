@@ -304,3 +304,34 @@ async fn malformed_omp_result_does_not_append_partial_history() -> Result<()> {
     assert_eq!(store::get_entries(&conn, &request.session_id)?.len(), 1);
     Ok(())
 }
+
+#[test]
+fn a_retry_event_carries_the_cleaned_provider_reason() {
+    let mut data = serde_json::Map::new();
+    data.insert("phase".into(), "start".into());
+    data.insert("attempt".into(), 2.into());
+    data.insert("maxAttempts".into(), 10.into());
+    data.insert("delayMs".into(), 1_000.into());
+    data.insert(
+        "reason".into(),
+        "Codex error event: Codex is at capacity, please try again later (code=turn_rate_limit_exceeded) Bearer abc123secret"
+            .into(),
+    );
+    let event = host::map_event(kordi_omp_runtime::RuntimeEvent {
+        kind: "retry".into(),
+        data,
+    });
+    let Some(TurnEvent::AutoRetryStart {
+        attempt,
+        error_message,
+        ..
+    }) = event
+    else {
+        panic!("a retry start event");
+    };
+    assert_eq!(attempt, 2);
+    assert_eq!(
+        error_message,
+        "Codex is at capacity, please try again later (code=turn_rate_limit_exceeded) Bearer [hidden]"
+    );
+}

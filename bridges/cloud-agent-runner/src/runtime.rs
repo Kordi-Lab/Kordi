@@ -182,7 +182,8 @@ where
         return Ok(RunnerStepOutcome::NoRun);
     };
 
-    if run.status == "cancelled" {
+    // A memory import runs only on the owner's Mac; the server never leases one.
+    if run.status == "cancelled" || run.run_id.starts_with("import_") {
         return Ok(RunnerStepOutcome::SkippedCancelled { run_id: run.run_id });
     }
 
@@ -256,6 +257,9 @@ where
     }
     if run.run_id.starts_with(crate::common_ground::RUN_PREFIX) {
         return crate::common_ground::step(client, provider, engine, run).await;
+    }
+    if run.run_id.starts_with(crate::proactive::RUN_PREFIX) {
+        return crate::proactive::step(client, provider, engine, run).await;
     }
     if run.run_id.starts_with("digest_") {
         let response = {
@@ -445,6 +449,12 @@ mod common_ground_tests;
 #[cfg(test)]
 #[path = "runtime_connector_tests.rs"]
 mod connector_tests;
+#[cfg(test)]
+#[path = "runtime_import_tests.rs"]
+mod import_tests;
+#[cfg(test)]
+#[path = "runtime_proactive_tests.rs"]
+mod proactive_tests;
 #[cfg(test)]
 #[path = "runtime_tests.rs"]
 mod tests;

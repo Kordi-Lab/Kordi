@@ -1,6 +1,8 @@
 import { Bot, ChevronRight, FileText, Settings2 } from 'lucide-react';
 
+import { EditableIdentityAvatar } from '../components/EditableIdentityAvatar';
 import type { Agent } from '../types';
+import { inspectionAvatarControls, type AgentsPageProps } from './model';
 
 function ReadOnlySection({
   title,
@@ -25,9 +27,13 @@ function ReadOnlySection({
 export function AgentInspectionView({
   agent,
   onEditInBuild,
+  onUpdateCloudAgent,
+  onUpdateLocalAgentAvatar,
 }: {
   agent?: Agent;
   onEditInBuild: (agent: Agent) => void;
+  onUpdateCloudAgent?: AgentsPageProps['onUpdateCloudAgent'];
+  onUpdateLocalAgentAvatar?: AgentsPageProps['onUpdateLocalAgentAvatar'];
 }) {
   if (!agent) {
     return (
@@ -50,7 +56,15 @@ export function AgentInspectionView({
     <main className="app-agent-studio-main app-factory-inspect-main">
       <header className="app-agent-studio-header">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="app-agent-studio-factory-mark" aria-hidden="true"><Bot className="h-5 w-5" /></span>
+          <EditableIdentityAvatar
+            kind="agent"
+            seed={agent.avatarSeed ?? agent.id}
+            name={agent.name}
+            imageUrl={agent.profileImageUrl}
+            label={`${agent.name} avatar`}
+            className="h-12 w-12"
+            {...inspectionAvatarControls(agent, onUpdateCloudAgent, onUpdateLocalAgentAvatar)}
+          />
           <div className="min-w-0"><h2>{agent.name}</h2><p>{agent.role || 'Kordi agent'}</p></div>
         </div>
         <button type="button" className="app-button-quiet app-agent-studio-button is-primary" onClick={() => onEditInBuild(agent)}>Edit in Build</button>

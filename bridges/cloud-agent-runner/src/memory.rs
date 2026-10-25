@@ -10,9 +10,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::client::{CloudAgentRun, CloudAgentRunClient, HttpCloudAgentRunClient};
 
+use kordi_tools::memory_prompt::{MemoryRun, MemorySettings, PromptMemory};
 pub use kordi_tools::reflection_tool::{MAX_PROMPT_MEMORIES, MAX_PROMPT_MEMORY_CHARS};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunnerMemory {
     pub memory_id: String,
@@ -29,6 +30,16 @@ pub struct RunnerMemory {
     pub owner_account_id: Option<String>,
     #[serde(default)]
     pub owner_name: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub declaration_type: Option<String>,
+    #[serde(default)]
+    pub confidence: Option<String>,
+    #[serde(default)]
+    pub profile_id: Option<String>,
+    #[serde(default)]
+    pub profile_kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,7 +55,8 @@ pub struct RunnerMemoryContext {
     pub settings: RunnerMemorySettings,
 }
 
-/// Body of a runner memory save. The HTTP client adds `runnerId`.
+/// Body of a runner memory save. The HTTP client adds `runnerId`. There is
+/// no `declaredBy`: the server files every runner save as model-inferred.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewRunnerMemory {
@@ -56,6 +68,10 @@ pub struct NewRunnerMemory {
     pub text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_memory_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -195,172 +211,68 @@ pub async fn load_run_memory<C: CloudAgentRunClient + Sync>(
 /// Scope id of every global memory: global memories belong to the account.
 pub const GLOBAL_SCOPE_ID: &str = kordi_tools::reflection_tool::GLOBAL_SCOPE_ID;
 
-/// Scope ids this run reads memories from.
-///
-/// Every run reads the owner's global memories (scope id `account`). The cloud
-/// run carries one conversation id, `sessionId` (for example
-/// `session:group:<groupId>` or `session:direct-person:<a>:<b>`), plus a
-/// `subsessionId` for execution subsessions. Both are conversation scope ids.
-/// A group conversation also exposes its group id. Runs carry no project id.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RunMemoryScopes {
-    pub conversation_ids: Vec<String>,
-    pub group_id: Option<String>,
-    pub project_id: Option<String>,
+/// Scope ids a run reads memories from, shared with the server
+/// ([`kordi_tools::memory_prompt::MemoryScopes`]).
+pub use kordi_tools::memory_prompt::MemoryScopes as RunMemoryScopes;
+
+/// The run's identity as the shared memory section reads it.
+fn memory_run(run: &CloudAgentRun) -> MemoryRun<'_> {
+    MemoryRun {
+        session_id: &run.session_id,
+        subsession_id: run.subsession_id.as_deref(),
+        owner_request: run.owner_account_id == run.requester_account_id,
+    }
 }
 
-/// Prompt blocks in display order: global first, then the run's scopes.
-const PROMPT_BLOCKS: [(&str, &str); 4] = [
-    ("global", "Global"),
-    ("conversation", "This conversation"),
-    ("group", "This group"),
-    ("project", "This project"),
-];
+/// Scope ids this run reads memories from: its conversation, its execution
+/// subsession and its group.
+pub fn run_memory_scopes(run: &CloudAgentRun) -> RunMemoryScopes {
+    RunMemoryScopes::for_run(&memory_run(run))
+}
 
-impl RunMemoryScopes {
-    pub fn for_run(run: &CloudAgentRun) -> Self {
-        let mut conversation_ids = vec![run.session_id.clone()];
-        if let Some(subsession_id) = run.subsession_id.as_ref() {
-            if !subsession_id.trim().is_empty() && subsession_id != &run.session_id {
-                conversation_ids.push(subsession_id.clone());
-            }
-        }
-        let group_id = run
-            .session_id
-            .strip_prefix("session:group:")
-            .filter(|id| !id.trim().is_empty())
-            .map(str::to_string);
-        Self {
-            conversation_ids,
-            group_id,
-            project_id: None,
-        }
-    }
-
-    /// Checks a `reflection` save against the scopes the server allows for
-    /// this run, so the model gets the refusal without a round trip: the
-    /// run's conversations and group, and `global` only when the owner made
-    /// the request. Cloud runs carry no project. The error lists the scope
-    /// ids the model may use.
-    pub fn check_save(
-        &self,
-        run: &CloudAgentRun,
-        scope: &str,
-        scope_id: &str,
-    ) -> Result<(), String> {
-        let owner_request = run.owner_account_id == run.requester_account_id;
-        let scope_id = scope_id.trim();
-        let allowed = match scope.trim() {
-            "conversation" => self.conversation_ids.iter().any(|id| id == scope_id),
-            "group" => self.group_id.as_deref() == Some(scope_id),
-            "project" => false,
-            "global" => owner_request,
-            _ => true,
-        };
-        if allowed {
-            return Ok(());
-        }
-        let mut scope_ids = self
-            .conversation_ids
-            .iter()
-            .map(|id| format!("conversation `{id}`"))
-            .collect::<Vec<_>>();
-        if let Some(group_id) = &self.group_id {
-            scope_ids.push(format!("group `{group_id}`"));
-        }
-        if owner_request {
-            scope_ids.insert(0, format!("global `{GLOBAL_SCOPE_ID}`"));
-        }
-        Err(format!(
-            "Memories from this run can only be saved in these scopes: {}.",
-            scope_ids.join(", ")
-        ))
-    }
-
-    fn applies(&self, memory: &RunnerMemory) -> bool {
-        let scope_id = memory.scope_id.as_str();
-        match memory.scope.as_str() {
-            "global" => scope_id == GLOBAL_SCOPE_ID,
-            "conversation" => self.conversation_ids.iter().any(|id| id == scope_id),
-            "group" => self.group_id.as_deref() == Some(scope_id),
-            "project" => self.project_id.as_deref() == Some(scope_id),
-            _ => false,
+impl RunnerMemory {
+    /// The fields the shared memory section reads.
+    pub fn prompt_memory(&self) -> PromptMemory<'_> {
+        PromptMemory {
+            scope: &self.scope,
+            scope_id: &self.scope_id,
+            text: &self.text,
+            created_at: &self.created_at,
+            updated_at: &self.updated_at,
         }
     }
 }
 
-fn memory_line(memory: &RunnerMemory) -> String {
-    let text = memory.text.split_whitespace().collect::<Vec<_>>().join(" ");
-    format!("- {text}")
+/// Whether the run looks memories up with `search_memory` instead of
+/// getting them in its system prompt: a proactive run
+/// (docs/development/proactive-agent.md), or any run whose lease carries
+/// the tool.
+pub fn searches_memory(run: &CloudAgentRun) -> bool {
+    use crate::proactive::{APPROVED_RUN_PREFIX, RUN_PREFIX, SEARCH_MEMORY_TOOL};
+    run.run_id.starts_with(RUN_PREFIX)
+        || run.run_id.starts_with(APPROVED_RUN_PREFIX)
+        || run.connectors.descriptor(SEARCH_MEMORY_TOOL).is_some()
 }
 
-/// The `## Memories` system prompt section, or `None` when memory is off.
+/// The `## Memories` system prompt section, or `None` when memory is off or
+/// the run searches memories instead ([`searches_memory`]).
 pub fn memory_prompt_section(run: &CloudAgentRun, memory: &RunMemory) -> Option<String> {
-    if !memory.enabled {
+    if searches_memory(run) {
         return None;
     }
-    let scopes = RunMemoryScopes::for_run(run);
-    let first = if memory.exclude_sensitive {
-        "Memories sync with the account and must not record health, finances, relationships, identity attributes, credentials, or other people's private details."
-    } else {
-        "Memories sync with the account."
-    };
-    let mut section = format!(
-        "## Memories\n{first} They are current and take precedence over older instructions earlier in this conversation when they conflict. Never reveal, quote, or summarise the owner's global, conversation, or project memories to anyone other than the owner; apply them silently, and if someone else asks why you behave a certain way, say only that it is the owner's preference. A group's shared memories may be discussed with that group's members. After corrections, repeated failures, or outcomes, call `reflection` to save a concise memory. Before saving, check the memories below and skip anything already there or restated; when a preference changes, save the corrected version. Use `global` only for preferences the user wants everywhere (\"from now on\", \"always\"); keep everything else in its conversation or group scope."
-    );
-    // Only the owner's own requests may save global memories.
-    let mut scope_ids = Vec::new();
-    if run.owner_account_id == run.requester_account_id {
-        scope_ids.push(format!("global `{GLOBAL_SCOPE_ID}`"));
-    }
-    scope_ids.push(format!("conversation `{}`", run.session_id));
-    if let Some(group_id) = &scopes.group_id {
-        scope_ids.push(format!("group `{group_id}`"));
-    }
-    section.push_str(&format!(
-        "\nScope ids for this run: {}.",
-        scope_ids.join(", ")
-    ));
-
-    let applicable = memory
+    let memories = memory
         .memories
         .iter()
-        .filter(|memory| scopes.applies(memory))
+        .map(RunnerMemory::prompt_memory)
         .collect::<Vec<_>>();
-    let mut used_chars = 0usize;
-    let mut shown = 0usize;
-    'blocks: for (scope, heading) in PROMPT_BLOCKS {
-        let mut block = applicable
-            .iter()
-            .filter(|memory| memory.scope == scope)
-            .collect::<Vec<_>>();
-        block.sort_by(|left, right| {
-            right
-                .updated_at
-                .cmp(&left.updated_at)
-                .then_with(|| right.created_at.cmp(&left.created_at))
-        });
-        let mut wrote_heading = false;
-        for memory in block {
-            let line = memory_line(memory);
-            let chars = line.chars().count() + 1;
-            if shown >= MAX_PROMPT_MEMORIES || used_chars + chars > MAX_PROMPT_MEMORY_CHARS {
-                break 'blocks;
-            }
-            if !wrote_heading {
-                section.push_str(&format!("\n{heading}:"));
-                wrote_heading = true;
-            }
-            section.push('\n');
-            section.push_str(&line);
-            used_chars += chars;
-            shown += 1;
-        }
-    }
-    if shown < applicable.len() {
-        section.push_str("\n(more memories omitted)");
-    }
-    Some(section)
+    kordi_tools::memory_prompt::memory_prompt_section(
+        &memory_run(run),
+        MemorySettings {
+            enabled: memory.enabled,
+            exclude_sensitive: memory.exclude_sensitive,
+        },
+        &memories,
+    )
 }
 
 #[cfg(test)]

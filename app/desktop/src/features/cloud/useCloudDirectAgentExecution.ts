@@ -73,6 +73,7 @@ import { cloudAgentTurnReplyText } from './cloudAgentReplyText';
 import { useDocumentAgentRequests } from '@/features/documents/useDocumentAgentRequests';
 import { useDigestMacRuns } from '@/features/digest/useDigestMacRuns';
 import { useScheduledMacRuns } from './useScheduledMacRuns';
+import { useProactiveMacRuns } from '@/features/proactive/useProactiveMacRuns';
 
 export function useCloudDirectAgentExecution({
   account,
@@ -136,6 +137,8 @@ export function useCloudDirectAgentExecution({
   useDigestMacRuns({ account, client, defaultRoute: defaultCloudAgentRuntimeRoute, runtimeReady, reportWarning });
   // Scheduled tasks of this account run on this Mac while it is ready.
   useScheduledMacRuns({ account, client, defaultRoute: defaultCloudAgentRuntimeRoute, runtimeReady, reportWarning });
+  // Proactive evaluations and allowed offers of this account run on this Mac while it is ready.
+  useProactiveMacRuns({ account, client, defaultRoute: defaultCloudAgentRuntimeRoute, runtimeReady, reportWarning });
   useEffect(() => {
     if (!account || !initialMessagesSettled || !runtimeReady) return;
     for (const [peerId, messages] of cloudMessageIndex.byPeerId) {

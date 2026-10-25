@@ -29,3 +29,12 @@ export function publishMemoryVersion(memoryVersion: number | null | undefined) {
 export function useMemoryTabAvailable(): boolean {
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
+
+function versionSnapshot(): number | null {
+  return serverMemoryVersion;
+}
+
+/** The `memoryVersion` the signed-in server reports, or null before it is known. */
+export function useServerMemoryVersion(): number | null {
+  return useSyncExternalStore(subscribe, versionSnapshot, versionSnapshot);
+}

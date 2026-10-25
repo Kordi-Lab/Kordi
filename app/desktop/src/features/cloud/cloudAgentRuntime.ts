@@ -195,23 +195,36 @@ export function cloudAgentRuntimeRouteAfterModelChange(
     ...current,
     ...changeRoute,
   });
+  // The provider family (OpenAI and ChatGPT are one) decides which account a
+  // route keeps; the route itself stores that account's own provider id.
   const provider = routeProvider(changeRoute)
     ?? routeProvider({ model: nextModel })
     ?? routeProvider(current);
   const currentProvider = routeProvider(current);
   const localProvider = routeProvider(localExecutionRoute);
   const normalizedProvider = cleanText(provider)?.toLowerCase() ?? null;
-  const synchronizedAuthChoice = cleanText(changeRoute.authChoice)
-    ?? (normalizedProvider && currentProvider === normalizedProvider
-      ? cleanText(current?.authChoice)
-      : normalizedProvider && localProvider === normalizedProvider
-        ? cleanText(localExecutionRoute?.authChoice)
-        : null);
+  const changeAuthChoice = cleanText(changeRoute.authChoice);
+  // A route in the same family keeps its own sign-in, even none; only a
+  // different family borrows the local execution route's.
+  const keptRoute = changeAuthChoice || !normalizedProvider
+    ? null
+    : currentProvider === normalizedProvider
+      ? current
+      : localProvider === normalizedProvider
+        ? localExecutionRoute
+        : null;
+  const modelNamespace = nextModel && nextModel.indexOf('/') > 0
+    ? nextModel.slice(0, nextModel.indexOf('/'))
+    : null;
   return compactCloudAgentRuntimeRoute({
     ...current,
     model: nextModel,
-    authProvider: provider,
-    authChoice: synchronizedAuthChoice,
+    authProvider: cleanText(keptRoute?.authProvider)
+      ?? cleanText(changeRoute.authProvider)
+      ?? cleanText(modelNamespace)
+      ?? cleanText(current?.authProvider)
+      ?? provider,
+    authChoice: changeAuthChoice ?? cleanText(keptRoute?.authChoice),
     thinking: changeRoute.thinking ?? current?.thinking,
   });
 }

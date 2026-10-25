@@ -4,13 +4,11 @@ import { ChevronRight, Hash } from 'lucide-react';
 import { profileDesign } from './cardDesign';
 import { CreateCodePopover, type CgShareChoice } from './CreateCodePopover';
 import { PairPopover } from './PairPopover';
-import { roomTitle } from './format';
-import { CardSwatch } from './ProfileCard';
-import { kindLabel, shareableProfiles } from './profiles';
+import { shareableProfiles } from './profiles';
 import { currentProfile, type CgState, type CommonGroundStore } from './store';
 import type { CgCodeLookup } from './storeRooms';
 import type { CgRoomPreview } from './types';
-import { latestOnly, roomPreviewLine, suggestedProfile } from './wallet';
+import { latestOnly, suggestedProfile } from './wallet';
 
 /** Four digit boxes; the fourth digit hands the code on. */
 function Digits({ disabled, missing, onCode }: { disabled: boolean; missing: boolean; onCode: (code: string | null) => void }) {
@@ -89,49 +87,54 @@ function PairRow({ state, store }: { state: CgState; store: CommonGroundStore })
 }
 
 /**
- * The Pair code row: four digits look up a room and show it under the boxes with Join, which
- * shares the selected card; a "Suggested" chip joins with the card the room suggests, without
- * changing the selected one. A room you are in opens. Create opens a meetup on a new code.
+ * The Pair code row: Create opens a meetup on a new code; four typed digits turn it into Enter
+ * pair room, which opens a room you are in, or joins the room and opens it, sharing the card the
+ * room suggests, else the selected one. A code with no room turns the boxes red.
  */
 export function PairCodePanel({ state, store }: { state: CgState; store: CommonGroundStore }) {
+  const [code, setCode] = useState<string | null>(null);
   const [lookup, setLookup] = useState<CgCodeLookup | null>(null);
   const [digitsKey, setDigitsKey] = useState(0);
   const [creating, setCreating] = useState(false);
-  const [joining, setJoining] = useState(false);
+  const [entering, setEntering] = useState(false);
   const [requests] = useState(latestOnly);
   const closeCreate = useCallback(() => setCreating(false), []);
-  const profile = currentProfile(state);
-  const canShare = state.profilesOn ? Boolean(profile?.hasCard) : Boolean(state.owner?.card);
   const shareable = shareableProfiles(state.profiles);
   const canCreate = state.profilesOn ? shareable.length > 0 : Boolean(state.owner?.card);
-  const busy = joining || state.busy === 'join';
-  const clear = () => { requests.cancel(); setLookup(null); setDigitsKey((key) => key + 1); };
+  const busy = entering || state.busy === 'join';
+  const clear = () => { requests.cancel(); setCode(null); setLookup(null); setDigitsKey((key) => key + 1); };
 
-  const onCode = (code: string | null) => {
-    // Only the newest code may show a preview or open a room.
-    const isLatest = requests.next();
-    if (!code) { setLookup(null); return; }
-    void store.lookUpCode(code).then((found) => {
-      if (!isLatest()) return;
-      if (found.status === 'joined') { clear(); store.openRoom(found.code); return; }
-      if (found.status === 'missing') setDigitsKey((key) => key + 1);
-      setLookup(found);
-    });
+  const onCode = (typed: string | null) => {
+    requests.cancel();
+    setCode(typed);
+    setLookup(null);
+    if (typed) setCreating(false);
   };
 
-  const join = async (room: CgRoomPreview, profileId: string | null) => {
-    const sharing = state.profiles.find((item) => item.profileId === profileId);
-    setJoining(true);
+  const join = async (room: CgRoomPreview) => {
+    const suggestion = suggestedProfile(state.profiles, room.kind, state.profileId, room.suggestedProfileId);
+    const sharing = suggestion ?? state.profiles.find((item) => item.profileId === state.profileId);
+    // joinRoom opens the room page on success.
+    if (await store.joinRoom(room.code, sharing ? { profileId: sharing.profileId, kind: sharing.kind } : {})) clear();
+  };
+
+  const enter = async () => {
+    if (!code) return;
+    // Only the newest code may open a room.
+    const isLatest = requests.next();
+    setEntering(true);
     try {
-      const ok = await store.joinRoom(room.code, sharing ? { profileId: sharing.profileId, kind: sharing.kind } : {});
-      if (ok) clear();
+      const found = await store.lookUpCode(code);
+      if (!isLatest()) return;
+      if (found.status === 'joined') { clear(); store.openRoom(found.code); return; }
+      if (found.status === 'preview') { await join(found.room); return; }
+      if (found.status === 'missing') { setCode(null); setDigitsKey((key) => key + 1); }
+      setLookup(found);
     } finally {
-      setJoining(false);
+      setEntering(false);
     }
   };
 
-  const preview = lookup?.status === 'preview' ? lookup.room : null;
-  const suggestion = preview ? suggestedProfile(state.profiles, preview.kind, state.profileId, preview.suggestedProfileId) : null;
   // A code with no room turns the boxes red instead of adding a line.
   const missing = lookup?.status === 'missing';
   const error = lookup?.status === 'error' ? lookup.message : null;
@@ -142,42 +145,24 @@ export function PairCodePanel({ state, store }: { state: CgState; store: CommonG
         <span className="cg-pair-icon" aria-hidden="true"><Hash className="h-[15px] w-[15px]" /></span>
         <span className="cg-pair-title">Pair code</span>
         <Digits key={digitsKey} disabled={!canCreate || busy} missing={missing} onCode={onCode} />
-        <button
-          type="button"
-          className="cg-mbtn"
-          data-cg-create="true"
-          disabled={!canCreate}
-          aria-expanded={creating}
-          onClick={() => setCreating((open) => !open)}
-        >
-          Create
-        </button>
+        {code ? (
+          <button type="button" className="cg-mbtn is-primary" data-cg-enter="true" disabled={busy} onClick={() => void enter()}>
+            Enter pair room
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="cg-mbtn"
+            data-cg-create="true"
+            disabled={!canCreate}
+            aria-expanded={creating}
+            onClick={() => setCreating((open) => !open)}
+          >
+            Create
+          </button>
+        )}
       </div>
       {error ? <div className="cg-pair-error" role="alert">{error}</div> : null}
-      {preview ? (
-        <div className="cg-pair-confirm">
-          <span className="cg-pair-confirm-text">
-            <span className="cg-pair-confirm-title">{roomTitle(preview.code, preview.name)}</span>
-            {roomPreviewLine(preview, kindLabel) ? <span className="cg-pair-confirm-sub">{roomPreviewLine(preview, kindLabel)}</span> : null}
-          </span>
-          {suggestion ? (
-            <button
-              type="button"
-              className="cg-sugchip"
-              title={`Share ${suggestion.name} and join`}
-              disabled={busy}
-              onClick={() => void join(preview, suggestion.profileId)}
-            >
-              <CardSwatch design={profileDesign(suggestion)} className="is-chip" />
-              Suggested: {suggestion.name}
-            </button>
-          ) : null}
-          <button type="button" className="cg-mbtn is-tint" disabled={busy || !canShare} onClick={() => void join(preview, state.profileId)}>
-            {profile ? <CardSwatch design={profileDesign(profile)} className="is-join" /> : null}
-            Join
-          </button>
-        </div>
-      ) : null}
       {creating ? (
         <CreateCodePopover
           cards={(state.profilesOn ? shareable : []).map((item): CgShareChoice => ({ id: item.profileId, name: item.name, design: profileDesign(item), icon: item.icon, kind: item.kind }))

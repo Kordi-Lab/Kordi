@@ -258,6 +258,7 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
           handleLogoutProvider: args.handleLogoutProvider,
           themeMode: args.themeMode,
           setThemeMode: args.setThemeMode,
+          memoryImportRoute: args.defaultCloudAgentRuntimeRoute,
         },
         cloudMemoryVersion: cloudSession.memoryVersion ?? null,
         onUpdateCloudProfile: async (input) => { await cloudSession.updateProfile(input); },

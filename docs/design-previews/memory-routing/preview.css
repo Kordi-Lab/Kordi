@@ -1,0 +1,96 @@
+/* Memory routing design preview. Light and dark follow the system; ?theme=light|dark overrides. */
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --ground: #e9e8e4; --frame: #ffffff; --bg: #f2f2f7; --card: #ffffff;
+  --fill: rgba(120,120,128,.12); --line: rgba(60,60,67,.14);
+  --text: #000; --muted: rgba(60,60,67,.62); --tint: #2563eb; --red: #d70015;
+  --m-main: #fbfbfc; --m-panel: #ffffff; --m-line: rgba(0,0,0,.085); --m-fg: #1d1d1f; --m-fg2: rgba(0,0,0,.6);
+  --m-fill: rgba(0,0,0,.06); --m-prim: #16181d; --m-prim-fg: #fafafa; --pop: 0 10px 30px rgba(0,0,0,.14), 0 1px 3px rgba(0,0,0,.08);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #121214; --frame: #1c1c1e; --bg: #000; --card: #1c1c1e;
+    --fill: rgba(118,118,128,.24); --line: rgba(84,84,88,.6);
+    --text: #fff; --muted: rgba(235,235,245,.6); --tint: #60a5fa; --red: #ff6961;
+    --m-main: #17181a; --m-panel: #1f2023; --m-line: rgba(255,255,255,.08); --m-fg: rgba(255,255,255,.92); --m-fg2: rgba(255,255,255,.6);
+    --m-fill: rgba(255,255,255,.07); --m-prim: #f5f5f5; --m-prim-fg: #16181d; --pop: 0 10px 30px rgba(0,0,0,.5), 0 1px 3px rgba(0,0,0,.4);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #121214; --frame: #1c1c1e; --bg: #000; --card: #1c1c1e;
+  --fill: rgba(118,118,128,.24); --line: rgba(84,84,88,.6);
+  --text: #fff; --muted: rgba(235,235,245,.6); --tint: #60a5fa; --red: #ff6961;
+  --m-main: #17181a; --m-panel: #1f2023; --m-line: rgba(255,255,255,.08); --m-fg: rgba(255,255,255,.92); --m-fg2: rgba(255,255,255,.6);
+  --m-fill: rgba(255,255,255,.07); --m-prim: #f5f5f5; --m-prim-fg: #16181d; --pop: 0 10px 30px rgba(0,0,0,.5), 0 1px 3px rgba(0,0,0,.4);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--text); font: 13px/1.4 var(--sans); }
+button { font: inherit; color: inherit; }
+.stage { display: flex; flex-direction: column; gap: 40px; max-width: 1180px; margin: 0 auto; padding: 32px 16px 64px; }
+.note { margin: 0 0 12px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.pair { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 28px; }
+.frame-label { margin: 0 0 6px 4px; color: var(--muted); font-size: 11px; }
+.mac-frame { min-width: 0; flex: 1 1 560px; }
+.phone-frame { flex: 0 0 360px; max-width: 100%; }
+.mac-pane { padding: 24px 28px 32px; border: 1px solid var(--m-line); border-radius: 12px; background: var(--m-main); color: var(--m-fg); }
+.phone { min-height: 200px; padding: 16px 16px 28px; border-radius: 28px; background: var(--bg); box-shadow: 0 0 0 8px var(--frame); }
+
+/* Mac settings-style memory rows (flat, hairlines). */
+.m-ctx { margin: 0 0 4px; color: var(--m-fg2); font-size: 11px; font-weight: 600; }
+.m-ctx + .m-list { margin-bottom: 22px; }
+.m-list { border-top: .5px solid var(--m-line); }
+.m-mem { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: .5px solid var(--m-line); }
+.m-mem-text { min-width: 0; flex: 1; }
+.m-mem-title { font-size: 13px; line-height: 20px; }
+.m-mem-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; color: var(--m-fg2); font-size: 12px; line-height: 20px; }
+.m-mem-acts { display: flex; gap: 4px; }
+.qbtn { height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: var(--m-fg2); font-size: 12px; cursor: pointer; }
+.qbtn:hover { background: var(--m-fill); color: var(--m-fg); }
+.chip { display: inline-flex; height: 16px; align-items: center; padding: 0 6px; border-radius: 999px; background: var(--m-fill); color: var(--m-fg2); font-size: 10px; font-weight: 500; }
+
+/* Mac card page. */
+.cp-head { display: flex; align-items: center; gap: 10px; padding-bottom: 14px; border-bottom: .5px solid var(--m-line); }
+.cp-glyph { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 8px; background: linear-gradient(150deg, #dbe7ff, #b9cdf8); color: #1e3a8a; }
+.cp-title { min-width: 0; flex: 1; }
+.cp-title h2 { margin: 0; font-size: 15px; font-weight: 650; }
+.cp-meta { overflow: hidden; color: var(--m-fg2); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.mbtn { display: inline-flex; height: 28px; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--m-line); border-radius: 7px; background: var(--m-main); font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.mbtn.is-primary { border-color: transparent; background: var(--m-prim); color: var(--m-prim-fg); }
+.mbtn.is-danger { color: var(--red); }
+.msec { margin: 18px 2px 8px; color: var(--m-fg2); font-size: 11px; font-weight: 600; }
+.panel { position: relative; border: 1px solid var(--m-line); border-radius: 10px; background: var(--m-panel); }
+.topic { padding: 10px 14px; font-size: 13px; }
+.topic + .topic, .mrow + .mrow { border-top: .5px solid var(--m-line); }
+.mrow { position: relative; display: flex; align-items: flex-start; gap: 8px; padding: 10px 8px 10px 14px; }
+.mrow-text { min-width: 0; flex: 1; }
+.mrow-title { font-size: 13px; line-height: 1.45; }
+.mrow-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; color: var(--m-fg2); font-size: 11px; }
+.act { display: inline-flex; height: 24px; align-items: center; gap: 4px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--m-fg2); font-size: 11px; font-weight: 500; cursor: pointer; }
+.act:hover { background: var(--m-fill); color: var(--m-fg); }
+.menu { position: absolute; z-index: 5; top: 36px; right: 8px; min-width: 180px; padding: 4px; border: .5px solid var(--m-line); border-radius: 10px; background: var(--m-panel); box-shadow: var(--pop); }
+.menu button { display: block; width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: none; font-size: 13px; text-align: left; cursor: pointer; }
+.menu button:hover { background: var(--m-fill); }
+.menu hr { margin: 4px 6px; border: 0; border-top: .5px solid var(--m-line); }
+.stub { padding: 12px 14px; color: var(--m-fg2); font-size: 12px; }
+
+/* iPhone: flat Settings-sheet rows. */
+.i-title { margin: 6px 4px 14px; font-size: 22px; font-weight: 700; }
+.i-meta { margin: -10px 4px 14px; color: var(--muted); font-size: 13px; }
+.i-sec { margin: 22px 4px 6px; color: var(--muted); font-size: 13px; }
+.i-list { border-top: .5px solid var(--line); }
+.i-row { display: flex; gap: 10px; align-items: flex-start; padding: 11px 4px; border-bottom: .5px solid var(--line); }
+.i-row-text { min-width: 0; flex: 1; }
+.i-row-title { font-size: 16px; line-height: 21px; }
+.i-row-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; color: var(--muted); font-size: 13px; }
+.i-chip { display: inline-flex; height: 18px; align-items: center; padding: 0 7px; border-radius: 999px; background: var(--fill); color: var(--muted); font-size: 11px; font-weight: 500; }
+.i-more { display: grid; width: 30px; height: 30px; flex: none; place-items: center; border: 0; border-radius: 50%; background: var(--fill); color: var(--tint); cursor: pointer; }
+.i-btn { height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--fill); color: var(--tint); font-size: 15px; font-weight: 600; cursor: pointer; }
+.i-sheet { margin-top: 18px; padding: 8px; border-radius: 14px; background: var(--card); }
+.i-sheet button { display: block; width: 100%; padding: 11px 10px; border: 0; background: none; font-size: 16px; text-align: left; }
+.i-sheet button + button { border-top: .5px solid var(--line); }
+.i-sheet .is-danger { color: var(--red); }
+.i-sheet-title { padding: 6px 10px; color: var(--muted); font-size: 13px; }
+svg.i { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }

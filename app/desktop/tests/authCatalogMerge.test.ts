@@ -71,7 +71,7 @@ test('every pinned provider with a model appears, plus Custom API and the local 
   }
   assert.ok(ids.has('custom'));
   assert.equal(providers.find((provider) => provider.id === 'custom')?.label, 'Custom API');
-  assert.equal(providers.length, 72, 'OMP rows (ChatGPT folded into OpenAI) plus custom, lm-studio, and ollama');
+  assert.equal(providers.length, 77, 'OMP rows (ChatGPT folded into OpenAI) plus custom, lm-studio, and ollama');
   assert.equal(providers.length, ompWithModels.length - 1 + 3);
   assert.equal(providers.some((provider) => provider.id === 'openai-codex'), false);
 });

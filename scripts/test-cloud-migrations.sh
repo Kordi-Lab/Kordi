@@ -75,6 +75,11 @@ tests=(
   common_ground_tests::upgrade_from_145_widens_profile_designs
   common_ground_daily_tests::upgrade_from_146_renames_daily_profiles
   common_ground_sources_tests::upgrade_from_146_adds_profile_sources
+  agent_avatar_tests::upgrade_from_148_accepts_bird_avatar_style
+  memory_tests::upgrade_from_149_adds_memory_categories
+  memory_tests::upgrade_from_150_adds_memory_card_overrides
+  proactive_tests::upgrade_from_153_adds_proactive_agents
+  proactive_tests::upgrade_from_154_counts_evaluation_memory_searches
 )
 index=0
 for test_name in "${tests[@]}"; do
@@ -104,3 +109,9 @@ DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib auth::routes::contact_profile:: -- --test-threads=1
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib auth::routes::contact_removal:: -- --test-threads=1
+# Agent avatar tests (docs/avatar-system.md) use the Common ground fixture.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib avatars::agent_avatar_db_tests:: -- --test-threads=1
+# Proactive agent tests (docs/development/proactive-agent.md) follow the same rule.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib proactive:: -- --test-threads=1

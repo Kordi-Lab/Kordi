@@ -1,11 +1,7 @@
 import { backfillLocalHistoryImages } from './cloudSelfAgentImageBackfill';
-import { linkPublishedSelfAgentRequest } from './cloudSelfAgentRequestEntryLink';
-import {
-  useEffect,
-  useRef,
-  useState,
-  type MutableRefObject,
-} from 'react';
+import { linkPublishedSelfAgentRequestInMemory } from './cloudSelfAgentRequestEntryLink';
+import type { CanonicalSessionStateSetter } from './cloudGroupControlContext';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { withDeadline } from '@/lib/promiseDeadline';
 import type {
   CanonicalSessionState,
@@ -64,8 +60,9 @@ import {
   loadRemoteRecoveryMessages,
 } from './cloudSelfAgentRecoveryMessages';
 import { indexRemoteSelfAgentOperations } from './cloudSelfAgentRemoteIdentity';
+import { CLOUD_SELF_AGENT_RECONCILE_RETRY_MS, cloudSelfAgentReconcileBackoffHolds, pendingCloudSelfAgentForwardIds,
+  type CloudSelfAgentReconcileFailure } from './cloudSelfAgentReconcileBackoff';
 
-const CLOUD_SELF_AGENT_RECONCILE_RETRY_MS = 30_000;
 /** A run that holds the single-flight lock longer is released and retried. */
 export const CLOUD_SELF_AGENT_RECONCILE_DEADLINE_MS = 180_000;
 
@@ -81,6 +78,7 @@ export function useCloudSelfAgentForwardSync({
   mergeMessage,
   syncCloudCollaborationDiff,
   reportWarning,
+  setCanonicalState,
 }: {
   account: CloudAccount | null;
   canonicalState: CanonicalSessionState | null | undefined;
@@ -93,6 +91,7 @@ export function useCloudSelfAgentForwardSync({
   mergeMessage: (message: CloudMessage) => void;
   syncCloudCollaborationDiff: () => Promise<void>;
   reportWarning: (message: string, error: unknown) => void;
+  setCanonicalState?: CanonicalSessionStateSetter;
 }) {
   const syncFlightRef = useRef(createSingleFlightState());
   const followUpFlightRef = useRef(createSingleFlightState());
@@ -101,10 +100,7 @@ export function useCloudSelfAgentForwardSync({
   const [reconcileRetryTick, setReconcileRetryTick] = useState(0);
   const reconcileRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (reconcileRetryTimerRef.current) clearTimeout(reconcileRetryTimerRef.current); }, []);
-  const reconciliationFailureRef = useRef<{
-    accountId: string;
-    failedAtMs: number;
-  } | null>(null);
+  const reconciliationFailureRef = useRef<CloudSelfAgentReconcileFailure | null>(null);
   const executionBySessionIdRef = useCloudSelfAgentExecutionStreaming({
     account,
     canonicalStateRef,
@@ -202,8 +198,9 @@ export function useCloudSelfAgentForwardSync({
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;
 
+    let pendingMessageIds: ReadonlySet<string> = new Set();
     const recordFailure = (message: string, error: unknown) => {
-      reconciliationFailureRef.current = { accountId: account.accountId, failedAtMs: Date.now() };
+      reconciliationFailureRef.current = { accountId: account.accountId, failedAtMs: Date.now(), pendingMessageIds };
       reportWarning(message, error);
       if (reconcileRetryTimerRef.current) clearTimeout(reconcileRetryTimerRef.current);
       reconcileRetryTimerRef.current = setTimeout(() => setReconcileRetryTick((tick) => tick + 1), CLOUD_SELF_AGENT_RECONCILE_RETRY_MS + 250);
@@ -212,12 +209,9 @@ export function useCloudSelfAgentForwardSync({
     let abandoned = false;
     const stopped = () => cancelledRef.current || abandoned;
     void requestSingleFlightRun(syncFlightRef.current, () => withDeadline((async () => {
-      const previousFailure = reconciliationFailureRef.current;
-      if (
-        previousFailure?.accountId === account.accountId
-        && Date.now() - previousFailure.failedAtMs
-          < CLOUD_SELF_AGENT_RECONCILE_RETRY_MS
-      ) return;
+      // A failure delays its own retry, never a message sent since (#2026).
+      pendingMessageIds = pendingCloudSelfAgentForwardIds(account.accountId, canonicalStateRef.current ?? canonicalState ?? null);
+      if (cloudSelfAgentReconcileBackoffHolds(reconciliationFailureRef.current, account.accountId, Date.now(), pendingMessageIds)) return;
       try {
         const forwardCutoffMs = loadCloudSelfAgentForwardCutoff(account.accountId)
           ?? saveCloudSelfAgentForwardCutoff(account.accountId);
@@ -432,7 +426,7 @@ export function useCloudSelfAgentForwardSync({
                 processedRequestIdsRef.current.add(message.messageId);
               }
               if (!publishedSelfAgentRequestAlreadyExecutedLocally(operation)) {
-                void linkPublishedSelfAgentRequest(canonicalStateRef.current, operation.localMessageId, message.messageId)
+                void linkPublishedSelfAgentRequestInMemory(canonicalStateRef.current, operation.localMessageId, message.messageId, setCanonicalState)
                   .catch((error: unknown) => reportWarning('[cloud-self-agent-sync] request link failed', error));
               }
             },
@@ -480,6 +474,7 @@ export function useCloudSelfAgentForwardSync({
   }, [
     account,
     cancelledRef,
+    setCanonicalState,
     canonicalState,
     canonicalStateRef,
     client,

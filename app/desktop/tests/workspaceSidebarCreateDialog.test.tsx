@@ -6,6 +6,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ChatCreateDialog } from '../src/pages/ChatCreateDialog';
 import { participantSpaceSessionIdLabel, participantSpaceSessionRowTitle, sessionContextMenuTargetForConversation } from '../src/pages/WorkspaceSidebar';
+import { participantSpaceSessionPreviewText } from '../src/pages/workspaceSidebar.chatHelpers';
 import { usesDefaultLocalAgentSession } from '../src/app/openLocalAgentChat';
 import { conversation, contact, agent } from './helpers/workspaceSidebarParticipantSpacesFixtures';
 
@@ -218,4 +219,10 @@ test('participant-space direct sessions expose remove-chat context menu targets'
     x: 42,
     y: 84,
   });
+});
+
+test('participantSpaceSessionPreviewText shows message text verbatim', () => {
+  assert.equal(participantSpaceSessionPreviewText('12345678'), '12345678');
+  assert.equal(participantSpaceSessionPreviewText('  see you at 5  '), 'see you at 5');
+  assert.equal(participantSpaceSessionPreviewText(''), '');
 });

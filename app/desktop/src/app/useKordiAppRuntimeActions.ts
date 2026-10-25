@@ -30,6 +30,7 @@ export function useKordiAppRuntimeActions({
       canonicalSessionState,
       setCanonicalSessionState,
       hydrateCanonicalSessionPage,
+      refreshCanonicalState,
     },
     ui: {
       projectsUi,
@@ -135,6 +136,7 @@ export function useKordiAppRuntimeActions({
   const syncCloudAgentFork = useKordiCloudAgentFork({
     account: cloudSession.account,
     recordCloudSessionFork,
+    refreshCanonicalState,
   });
 
   const {

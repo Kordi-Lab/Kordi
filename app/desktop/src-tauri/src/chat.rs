@@ -23,10 +23,14 @@ pub(crate) mod digest_run;
 mod hosted_provider_auth;
 pub(crate) mod interrupted_requests;
 pub(crate) mod memory;
+pub(crate) mod memory_import;
+pub(crate) mod memory_import_apps;
+pub(crate) mod memory_import_run;
 mod message_execution;
 pub(crate) mod message_route;
 pub(crate) mod model_options;
 mod models;
+pub(crate) mod proactive_run_folder;
 pub(crate) mod project_actions;
 pub(crate) mod session_actions;
 mod session_commands;
@@ -264,6 +268,7 @@ pub async fn desktop_chat_start_message(
             request_message_id,
             execution_lease_deadline_ms,
             inherited_hosted_auth: None,
+            working_folder: None,
         },
     )
     .await

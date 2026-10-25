@@ -1,5 +1,6 @@
 //! Background runs that belong to a feature instead of a chat: the digest,
-//! PiP, and Common ground runs. Each feature stores its own result.
+//! PiP, Common ground, and proactive evaluation runs. Each feature stores its
+//! own result.
 
 use sqlx_postgres::PgPool;
 
@@ -18,6 +19,8 @@ pub(super) async fn complete(
         crate::pip::store::complete(pool, run_id, runner_id, response_text).await?;
     } else if run_id.starts_with(crate::common_ground::RUN_PREFIX) {
         crate::common_ground::complete(pool, run_id, runner_id, response_text).await?;
+    } else if run_id.starts_with(crate::proactive::RUN_PREFIX) {
+        crate::proactive::complete(pool, run_id, runner_id, response_text).await?;
     } else {
         return Ok(false);
     }
@@ -38,6 +41,8 @@ pub(super) async fn fail(
         crate::pip::store::fail(pool, run_id, runner, error_code).await?;
     } else if run_id.starts_with(crate::common_ground::RUN_PREFIX) {
         crate::common_ground::fail(pool, run_id, runner, error_code).await?;
+    } else if run_id.starts_with(crate::proactive::RUN_PREFIX) {
+        crate::proactive::fail(pool, run_id, runner, error_code).await?;
     } else {
         return Ok(false);
     }
