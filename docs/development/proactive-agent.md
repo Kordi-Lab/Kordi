@@ -256,12 +256,25 @@ Approved runs:
   {"kind": "proactiveRun", "runId": "proactive_run_…"}`, which must name
   the turn's own request; the Mac builds the path itself, as
   `kordi-proactive-runs/<runId>` in the user's temporary folder (private
-  to the user, outside the home folder, so no personal `AGENTS.md` above
-  it applies). A folder left by a crashed attempt is emptied first. The
-  folder is removed when the turn ends, whether it succeeded or not, and
-  starting a run removes leftover run folders older than a day. Removal
-  stays inside that parent and never follows a link. Every other turn
-  keeps the app's folder.
+  to the user and outside the home folder). A folder left by a crashed
+  attempt is emptied first. The folder is removed when the turn ends,
+  whether it succeeded or not, and starting a run removes leftover run
+  folders older than a day. Removal stays inside that parent and never
+  follows a link. A folder named in the run's prompt does not replace it.
+  Every other turn keeps the app's folder.
+- The same `workingFolder` opens the turn's session as a proactive run
+  (`DesktopRuntimeSession::create_proactive_run`, or
+  `resume_proactive_run` for a session an earlier attempt stored). Its
+  prompt loads no instruction files: no `AGENTS.md` or `CLAUDE.md`, not
+  the global one and not one in the folder or above it, wherever the
+  folder is. It preloads no memories: no `## Memories` section and no
+  memory-update notes. Its local execution context has no `homeDirectory`
+  and says the working folder is the run's own empty folder. Everything
+  the run knows about the owner comes from `search_memory`; Kordi already
+  imports the owner's `AGENTS.md` and `CLAUDE.md` into memory. Its tools
+  are those of any owner turn, `reflection` included, and a background
+  subsession it starts follows the same rules. Every other turn is
+  unchanged.
 - The run's system context adds one line: "This run works in an empty
   folder of its own. Do not search your owner's home folder or other
   personal folders. If you need code or files, get them from where your
@@ -397,9 +410,6 @@ Design preview: `docs/design-previews/proactive-agent/`.
 
 - Ordinary chats: replace the preloaded memory section with
   `search_memory`.
-- The Mac's own harness can still add its local memory cache to an approved
-  run's shared-chat turn (`agent/crates/cli` session bootstrap); skip it
-  for `proactive_run_` turns.
 - Once a group can be linked to a project, run an approved run in that
   project's folder instead of the empty one.
 - A background session an approved run leaves running loses the run's

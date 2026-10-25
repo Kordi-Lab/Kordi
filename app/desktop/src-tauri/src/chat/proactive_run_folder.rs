@@ -2,9 +2,10 @@
 //!
 //! The web view only names the run. The path is built here, under a dedicated
 //! parent in this user's temporary folder, so a turn can never be pointed at
-//! another folder. The parent lies outside the home folder, so no personal
-//! `AGENTS.md` or project settings above it reach the run's prompt, and a
-//! session resumed after a restart finds its folder at the same path again.
+//! another folder. The parent lies outside the home folder, so no project
+//! settings above it apply, and a session resumed after a restart finds its
+//! folder at the same path again. The run's prompt loads no instruction file
+//! wherever its folder is (`DesktopRuntimeSession::create_proactive_run`).
 
 use std::io;
 use std::path::{Path, PathBuf};

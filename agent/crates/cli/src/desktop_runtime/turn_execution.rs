@@ -375,6 +375,7 @@ pub(super) fn build_turn_config(
             &workspace,
             execution_policy,
             setup.tool_ctx.session_observation.is_some(),
+            setup.proactive_run,
         ),
         model: setup.model.clone(),
         provider: setup.provider.clone(),

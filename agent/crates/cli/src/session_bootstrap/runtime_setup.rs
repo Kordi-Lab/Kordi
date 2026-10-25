@@ -44,6 +44,14 @@ pub(crate) struct SessionRuntimeSetup {
         reason = "the CLI binary shares this setup with the desktop runtime library"
     )]
     pub memory_prompt: Option<super::memory::MemoryPromptInputs>,
+    /// Set from `SessionBootstrapOptions::proactive_run`. The desktop runtime
+    /// keeps it across reloads and gives such turns no instruction file and
+    /// no home-folder pointer.
+    #[allow(
+        dead_code,
+        reason = "the CLI binary shares this setup with the desktop runtime library"
+    )]
+    pub proactive_run: bool,
     pub system_prompt: String,
     pub base_system_prompt: String,
     pub thinking_level: String,

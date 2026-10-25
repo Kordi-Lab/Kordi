@@ -1,8 +1,9 @@
 //! Session bootstrap option, selection, and prompt-construction regressions.
 
+use super::cli_options::prompt_label_for_cli;
 use super::{
-    SessionBootstrapOptions, prompt_label_for_cli, resolve_startup_session_id,
-    resolve_thinking_level, resolve_tool_selection_for_runtime,
+    SessionBootstrapOptions, resolve_startup_session_id, resolve_thinking_level,
+    resolve_tool_selection_for_runtime,
 };
 use crate::tool_registry::{ToolSelection, ToolSelectionPreference, build_tool_defs};
 use async_trait::async_trait;

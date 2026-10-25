@@ -28,7 +28,7 @@ async fn owner_workspace_is_durable_and_shared_requests_cannot_select_it() -> Re
     let workspace =
         runtime.execution_workspace("@\"~/My Project\" inspect the repository", policy)?;
     assert_eq!(workspace, canonical_project);
-    let header = super::workspace::environment_prompt("base", &workspace, policy, true);
+    let header = super::workspace::environment_prompt("base", &workspace, policy, true, false);
     assert!(header.contains("Project instruction fixture"));
     assert!(header.contains("YOLO"));
     assert!(header.contains("workingDirectory"));
@@ -55,6 +55,7 @@ async fn owner_workspace_is_durable_and_shared_requests_cannot_select_it() -> Re
         &workspace,
         kordi_tools::ExecutionPolicy::Shared,
         true,
+        false,
     );
     assert!(!shared_header.contains("My Project"));
     assert!(!shared_header.contains("Project instruction fixture"));

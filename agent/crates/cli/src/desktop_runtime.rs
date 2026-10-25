@@ -22,6 +22,7 @@ mod identity;
 mod memory_updates;
 mod model_options;
 mod models;
+mod proactive_run;
 mod prompt_context;
 mod shared_context;
 mod tool_runtimes;
@@ -114,6 +115,9 @@ pub struct DesktopRuntimeProfile {
     pub skill_paths: Vec<PathBuf>,
     #[serde(skip)]
     pub execution_policy: Option<kordi_tools::ExecutionPolicy>,
+    /// A subsession of an approved proactive run follows the run's prompt rules.
+    #[serde(default)]
+    pub proactive_run: bool,
 }
 
 impl DesktopRuntimeSession {
@@ -135,11 +139,7 @@ impl DesktopRuntimeSession {
     }
 
     pub async fn create_with_id(cwd: std::path::PathBuf, session_id: &str) -> Result<Self> {
-        let (_runtime_host, _ui, mut setup) =
-            prepare_session_runtime_for_cwd(cwd, SessionBootstrapOptions::default()).await?;
-        retarget_runtime_setup_session(&mut setup, session_id)?;
-        normalize_setup_thinking(&mut setup);
-        Ok(Self::from_setup(setup, true))
+        Self::create_chat(cwd, session_id, false).await
     }
 
     pub async fn resume(cwd: std::path::PathBuf, session_id: &str) -> Result<Self> {
@@ -155,15 +155,7 @@ impl DesktopRuntimeSession {
             )
             .await;
         }
-        let runtime_cwd = runtime_cwd_for_session(cwd, session_id)?;
-        let entry = SessionBootstrapOptions {
-            session: Some(session_id.to_string()),
-            ..SessionBootstrapOptions::default()
-        };
-        let (_runtime_host, _ui, mut setup) =
-            prepare_session_runtime_for_cwd(runtime_cwd, entry).await?;
-        normalize_setup_thinking(&mut setup);
-        Ok(Self::from_setup(setup, true))
+        Self::resume_chat(cwd, session_id, false).await
     }
 
     pub async fn create_profiled_with_id(
@@ -211,10 +203,7 @@ impl DesktopRuntimeSession {
     pub async fn reload_resources(&mut self) -> Result<()> {
         let cwd = self.setup.tool_ctx.cwd.clone();
         let session_id = self.setup.session_id.clone();
-        let entry = SessionBootstrapOptions {
-            session: Some(session_id),
-            ..SessionBootstrapOptions::default()
-        };
+        let entry = proactive_run::chat_options(Some(session_id), self.setup.proactive_run);
         let (_runtime_host, _ui, setup) = prepare_session_runtime_for_cwd(cwd, entry).await?;
         let remote = crate::memory_remote::current_memory_remote(&self.setup.memory_remote);
         self.setup = setup;
@@ -589,6 +578,7 @@ fn profile_bootstrap_options(
         skill_names: profile.skill_names.clone(),
         skill_paths: profile.skill_paths.clone(),
         isolate_extensions: true,
+        proactive_run: profile.proactive_run,
         session,
         prompt_label: "desktop-profile".to_string(),
         ..SessionBootstrapOptions::default()

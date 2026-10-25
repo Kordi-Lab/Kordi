@@ -148,25 +148,45 @@ pub(super) async fn ensure_loaded_or_create_explicit_session(
     cwd: &std::path::Path,
     session_id: String,
 ) -> Result<String, String> {
+    ensure_loaded_or_create_session(manager, cwd, session_id, false).await
+}
+
+/// `proactive_run` opens the session of an approved proactive run's turn,
+/// whose prompt loads no instruction file and preloads no memories; a session
+/// loaded without it is opened again that way.
+pub(super) async fn ensure_loaded_or_create_session(
+    manager: &DesktopChatManager,
+    cwd: &std::path::Path,
+    session_id: String,
+    proactive_run: bool,
+) -> Result<String, String> {
     if session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
         return ensure_loaded_session(manager, cwd, Some(session_id)).await;
     }
 
-    {
-        let sessions = manager.sessions.lock().await;
-        if sessions.contains_key(&session_id) {
+    let loaded = manager.sessions.lock().await.get(&session_id).cloned();
+    if let Some(session) = loaded {
+        if !proactive_run || session.lock().await.is_proactive_run() {
             return Ok(session_id);
         }
     }
 
     let persisted =
         kordi_cli::desktop_runtime::list_session_summaries(cwd).map_err(|err| err.to_string())?;
-    let mut runtime = if persisted.iter().any(|session| session.id == session_id)
-        || session_exists_globally(&session_id)?
-    {
+    let stored = persisted.iter().any(|session| session.id == session_id)
+        || session_exists_globally(&session_id)?;
+    let mut runtime = if stored && !proactive_run {
         resume_desktop_runtime(cwd, &session_id).await?
+    } else if stored {
+        DesktopRuntimeSession::resume_proactive_run(cwd.to_path_buf(), &session_id)
+            .await
+            .map_err(|err| err.to_string())?
     } else if agent_builder::is_agent_builder_session_id(&session_id) {
         return Err("Agent Builder session is unavailable".to_string());
+    } else if proactive_run {
+        DesktopRuntimeSession::create_proactive_run(cwd.to_path_buf(), &session_id)
+            .await
+            .map_err(|err| err.to_string())?
     } else {
         DesktopRuntimeSession::create_with_id(cwd.to_path_buf(), &session_id)
             .await

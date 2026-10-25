@@ -324,6 +324,7 @@ pub(super) async fn prepare_desktop_session_for_send(
                     .join("\n\n"),
             ),
             skill_names: Some(agent.loaded_skills),
+            proactive_run: runtime.is_proactive_run(),
             ..DesktopRuntimeProfile::default()
         };
         // The owner's own request keeps its tools in background sessions.
@@ -399,6 +400,9 @@ fn allow_memory_scopes(
 #[cfg(test)]
 #[path = "session_preparation_group_tools_tests.rs"]
 mod group_tools_tests;
+#[cfg(test)]
+#[path = "session_preparation_proactive_run_tests.rs"]
+mod proactive_run_tests;
 
 #[cfg(test)]
 mod tests {

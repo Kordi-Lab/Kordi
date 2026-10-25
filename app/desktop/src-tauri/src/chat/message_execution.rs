@@ -10,10 +10,10 @@ use kordi_cli::desktop_runtime::{
 use super::{
     agent_builder, apply_desktop_chat_message_route, apply_desktop_turn_event,
     attach_cloud_scheduled_task_runtime_for_session, chat_cwd, desktop_task_tools_from_messages,
-    ensure_loaded_or_create_explicit_session, ensure_provider_ready_for_send, now_millis,
-    prepare_desktop_session_for_send, reserve_turn_in_session, snapshot_turn,
-    sync_completed_desktop_session_to_canonical, turn_snapshot_has_model_task_tools, update_turn,
-    DesktopChatManager, DesktopChatMessageRoute, DesktopChatTurnHandle, DesktopChatTurnSnapshot,
+    ensure_provider_ready_for_send, now_millis, prepare_desktop_session_for_send,
+    reserve_turn_in_session, snapshot_turn, sync_completed_desktop_session_to_canonical,
+    turn_snapshot_has_model_task_tools, update_turn, DesktopChatManager, DesktopChatMessageRoute,
+    DesktopChatTurnHandle, DesktopChatTurnSnapshot,
 };
 
 pub(super) struct StartMessageInput {
@@ -102,8 +102,13 @@ pub(super) async fn start_message(
         Some(folder) => folder.path().to_path_buf(),
         None => chat_cwd()?,
     };
-    let target_session_id =
-        ensure_loaded_or_create_explicit_session(manager, &cwd, session_id).await?;
+    let target_session_id = super::session_lifecycle::ensure_loaded_or_create_session(
+        manager,
+        &cwd,
+        session_id,
+        run_folder.is_some(),
+    )
+    .await?;
     let session_handle = {
         let sessions = manager.sessions.lock().await;
         sessions

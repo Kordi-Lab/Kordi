@@ -51,7 +51,12 @@ impl DesktopRuntimeSession {
         let previous = self
             .saved_execution_workspace()?
             .unwrap_or_else(|| self.setup.tool_ctx.cwd.clone());
-        let selected = referenced_workspace(prompt, &previous);
+        // An approved proactive run stays in its own folder.
+        let selected = if self.setup.proactive_run {
+            None
+        } else {
+            referenced_workspace(prompt, &previous)
+        };
         let workspace = selected.as_ref().unwrap_or(&previous);
         if !workspace.is_dir() {
             bail!(
@@ -90,18 +95,21 @@ impl DesktopRuntimeSession {
     }
 }
 
+/// `proactive_run` marks an approved proactive run's turn: no instruction
+/// file and no home-folder pointer, as its memories hold what it needs.
 pub(super) fn environment_prompt(
     base: &str,
     workspace: &Path,
     policy: ExecutionPolicy,
     has_history: bool,
+    proactive_run: bool,
 ) -> String {
     if policy == ExecutionPolicy::Shared {
         return format!(
             "{base}\n\nRuntime authority: non-owner shared request. Local files, shell commands and Mac applications are unavailable. Do not claim to have used them."
         );
     }
-    let facts = serde_json::json!({
+    let mut facts = serde_json::json!({
         "executionLocation": "local device",
         "platform": std::env::consts::OS,
         "workingDirectory": workspace,
@@ -109,16 +117,26 @@ pub(super) fn environment_prompt(
         "executionPolicy": policy.as_str(),
         "chatHistoryAvailable": has_history,
     });
+    let paths = if proactive_run {
+        if let Some(facts) = facts.as_object_mut() {
+            facts.remove("homeDirectory");
+        }
+        "workingDirectory is this run's own empty folder; resolve relative paths against it."
+    } else {
+        "Resolve relative paths against workingDirectory and ~ against homeDirectory. A folder reference selects that folder when unambiguous."
+    };
     let permissions = if policy == ExecutionPolicy::Yolo {
         "The owner has enabled YOLO. Carry out the owner's requested file, command and app operations without asking for Kordi permission again. Operating-system permissions and missing credentials remain real boundaries; report the actual tool error."
     } else {
         "Safety mode is enabled. Respect the configured workspace and execution restrictions."
     };
-    let instructions = crate::agents_md::load_agents_md(workspace)
+    let instructions = (!proactive_run)
+        .then(|| crate::agents_md::load_agents_md(workspace))
+        .flatten()
         .map(|text| format!("\n\nInstructions applicable to the selected workspace (retain their directory scope):\n{text}"))
         .unwrap_or_default();
     format!(
-        "{base}\n\n<local_execution_context>\n{facts}\n{permissions}\nThe model provider's location does not change tool execution: file and shell tools run on this device. Resolve relative paths against workingDirectory and ~ against homeDirectory. A folder reference selects that folder when unambiguous. Use history tools before asking the owner to repeat available chat context. For action requests, continue through tool execution and verification, or identify a concrete blocker. Never report an issue created, a file read, or an app inspected without supporting results. Use local_app for Mac application discovery and automation when available; browser_fetch uses a fresh headless profile and cannot access the owner's signed-in browser tabs.\n</local_execution_context>{instructions}"
+        "{base}\n\n<local_execution_context>\n{facts}\n{permissions}\nThe model provider's location does not change tool execution: file and shell tools run on this device. {paths} Use history tools before asking the owner to repeat available chat context. For action requests, continue through tool execution and verification, or identify a concrete blocker. Never report an issue created, a file read, or an app inspected without supporting results. Use local_app for Mac application discovery and automation when available; browser_fetch uses a fresh headless profile and cannot access the owner's signed-in browser tabs.\n</local_execution_context>{instructions}"
     )
 }
 
