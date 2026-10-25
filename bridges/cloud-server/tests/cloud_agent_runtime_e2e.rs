@@ -391,6 +391,8 @@ mod calendar;
 mod claims;
 #[path = "cloud_agent_runtime_e2e/cloud_subsessions.rs"]
 mod cloud_subsessions;
+#[path = "cloud_agent_runtime_e2e/desktop_import_tasks.rs"]
+mod desktop_import_tasks;
 #[path = "cloud_agent_runtime_e2e/desktop_reply_row.rs"]
 mod desktop_reply_row;
 #[path = "cloud_agent_runtime_e2e/digest_mac_first.rs"]
