@@ -33,7 +33,7 @@ export function markOptimisticCanonicalMessageSent(
           ...contentRecord(message.content),
           ...contentPatch,
           deliveryState: 'sent',
-          ...(contentRecord(message.content).queuedMessage === true ? { queueState: 'sent' } : {}),
+          ...(contentRecord(message.content).queuedMessage === true ? { queueState: 'sent', queueUpdatedAtMs: updatedAtMs } : {}),
         },
       };
     }),

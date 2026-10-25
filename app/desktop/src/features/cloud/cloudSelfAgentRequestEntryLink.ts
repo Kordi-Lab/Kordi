@@ -44,6 +44,13 @@ export async function linkPublishedSelfAgentRequestInMemory(
   persist?: (request: AppendCanonicalMessageRequest) => Promise<unknown>,
 ) {
   const linked = await linkPublishedSelfAgentRequest(state, localMessageId, cloudMessageId, persist);
-  if (linked) setCanonicalState?.((current) => mergeCanonicalMessageRow(current, linked));
+  // Patch the row as it is now: it may have changed, or gone, while the link was saved.
+  if (linked) setCanonicalState?.((current) => {
+    const row = current?.messages.find((message) => message.id === linked.id);
+    const content = row?.content && typeof row.content === 'object' && !Array.isArray(row.content)
+      ? row.content as Record<string, unknown> : {};
+    if (!row || content.desktopEntryId === cloudMessageId) return current;
+    return mergeCanonicalMessageRow(current, { ...row, content: { ...content, desktopEntryId: cloudMessageId } });
+  });
   return linked;
 }

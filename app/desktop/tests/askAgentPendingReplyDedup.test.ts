@@ -7,7 +7,7 @@ import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDir
 import { projectCloudSelfAgentLiveTurns } from '../src/features/cloud/cloudGroupLiveProjection';
 import { cloudSelfAgentRequestClientMessageId } from '../src/features/cloud/cloudSelfAgentIdentity';
 import { hostedSelfAgentProgressId } from '../src/features/cloud/hostedSelfAgentRunProgress';
-import { projectPendingSelfAgentReplies } from '../src/features/cloud/cloudSelfAgentPendingReply';
+import { nextPendingSelfAgentDeadlineMs, PENDING_SELF_AGENT_START_TIMEOUT_MS, projectPendingSelfAgentReplies } from '../src/features/cloud/cloudSelfAgentPendingReply';
 import { planCloudSelfAgentCanonicalSync } from '../src/features/cloud/cloudSelfAgentCanonicalSync';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { canDisplayAgentTurn } from '../src/features/chat/agentProcessingVisibility';
@@ -167,7 +167,8 @@ for (const [label, parent] of [['without a parent', null], ['with the Cloud requ
 }
 
 test('an early reply for another local request does not answer the dispatched queued request', () => {
-  const other = { ...localRequest, id: 'msg:ui:other', createdAtMs: sentAtMs - 500, content: { ...(localRequest.content as object), desktopEntryId: wireRequestId } } as CanonicalSessionMessage;
+  // No Cloud id names the other request yet: only the parent rule tells the replies apart.
+  const other = { ...localRequest, id: 'msg:ui:other', createdAtMs: sentAtMs - 500 } as CanonicalSessionMessage;
   const stored = withCloudParent(store({ ...queuedState, messages: [other, queuedRequest] }, [placeholder]), 'msg:ui:other');
   const rows = pendingRows(stored, [placeholder]);
   assert.deepEqual(rows.filter((row) => row.id.startsWith('msg:cloud:self:pending:')).map((row) => row.id), [`msg:cloud:self:pending:${queuedRequestId}`]);
@@ -215,4 +216,23 @@ test('a message queued while the agent works does not bring back the run progres
   const projected = projectPendingSelfAgentReplies(state, sentAtMs + 1_000, { cloudMessages: [placeholder] });
   assert.equal(projected?.messages.some((message) => message.sourceTransport === 'cloud-self-agent-progress'), false);
   assert.equal(projected?.messages.filter((message) => message.senderRole === 'owned-agent').length, 1);
+});
+
+test('a request that waited in the queue is timed from when it was sent', () => {
+  const queuedAtMs = sentAtMs - 60_000;
+  const waited = { ...queuedRequest, createdAtMs: queuedAtMs, updatedAtMs: sentAtMs } as CanonicalSessionMessage;
+  const state = { ...baseState, messages: [waited] } as CanonicalSessionState;
+  const rows = projectPendingSelfAgentReplies(state, sentAtMs + 1_000, { turns: {}, cloudMessages: [] })!
+    .messages.filter((message) => message.senderRole === 'owned-agent');
+  assert.deepEqual(rows.map((row) => row.id), [`msg:cloud:self:pending:${queuedRequestId}`], 'still waiting, not "did not start"');
+  assert.equal(nextPendingSelfAgentDeadlineMs(state, sentAtMs + 1_000), sentAtMs + PENDING_SELF_AGENT_START_TIMEOUT_MS);
+});
+
+test('a sent request keeps its processing row while another message waits in the queue', () => {
+  const waiting = {
+    ...queuedRequest, id: `queued-local-chat:${sessionId}:2`, createdAtMs: sentAtMs + 500, status: 'queued',
+    content: { ...(queuedRequest.content as object), queueState: 'queued', queueUpdatedAtMs: sentAtMs + 500 },
+  } as CanonicalSessionMessage;
+  const rows = pendingRows({ ...baseState, messages: [queuedRequest, waiting] } as CanonicalSessionState, []);
+  assert.deepEqual(rows.map((row) => row.id), [`msg:cloud:self:pending:${queuedRequestId}`]);
 });

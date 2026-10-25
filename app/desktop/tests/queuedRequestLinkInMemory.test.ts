@@ -30,3 +30,19 @@ test('a sent queued request is linked in memory, so it joins the Mac\'s copy ins
   const merged = mergeCanonicalHistoryIntoRuntime([mapped], [runtimeCopy]);
   assert.equal(merged.filter((message) => message.role === 'user').length, 1);
 });
+
+test('the in-memory link patches the row as it is after the save, and never brings a removed row back', async () => {
+  let next: CanonicalSessionState | null = state;
+  const edited = { ...queued, content: { ...(queued.content as object), attachments: [{ name: 'notes.txt' }] } };
+  await linkPublishedSelfAgentRequestInMemory(state, queued.id, wireId, (update) => { next = update(next); }, async () => {
+    next = { ...state, messages: [edited] } as CanonicalSessionState;
+  });
+  const content = (next as CanonicalSessionState).messages[0].content as Record<string, unknown>;
+  assert.equal(content.desktopEntryId, wireId);
+  assert.deepEqual(content.attachments, [{ name: 'notes.txt' }], 'a change made during the save is kept');
+  let removed: CanonicalSessionState | null = state;
+  await linkPublishedSelfAgentRequestInMemory(state, queued.id, wireId, (update) => { removed = update(removed); }, async () => {
+    removed = { ...state, messages: [] } as CanonicalSessionState;
+  });
+  assert.equal((removed as CanonicalSessionState).messages.length, 0);
+});

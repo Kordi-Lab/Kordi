@@ -93,6 +93,13 @@ function waitingHostedRequest(message: CanonicalSessionMessage) {
     && routeRunsOnKordiCloud(content.agentRuntimeRoute as DesktopChatMessageRoute | null);
 }
 
+/** A queued request waits for its run from when it was sent, not from when it was queued. */
+function waitingSinceMs(message: CanonicalSessionMessage) {
+  const content = record(message.content);
+  const sentAtMs = content.queuedMessage === true && typeof content.queueUpdatedAtMs === 'number' ? content.queueUpdatedAtMs : 0;
+  return Math.max(message.createdAtMs, sentAtMs);
+}
+
 function startTimeoutMs(message: CanonicalSessionMessage) {
   const attachments = record(message.content).attachments;
   return Array.isArray(attachments) && attachments.length > 0
@@ -144,7 +151,7 @@ export function nextPendingSelfAgentDeadlineMs(state: CanonicalSessionState | nu
   const started = hostedRunRequestIds(state);
   for (const message of state.messages) {
     if (message.senderRole !== 'user' || !waitingHostedRequest(message) || started.has(message.id)) continue;
-    const deadline = message.createdAtMs + startTimeoutMs(message);
+    const deadline = waitingSinceMs(message) + startTimeoutMs(message);
     if (deadline > nowMs && (next === null || deadline < next)) next = deadline;
   }
   return next;
@@ -188,8 +195,11 @@ export function projectPendingSelfAgentReplies(
   if (sessionIds.size === 0) return withoutMessages(state, folded);
   const newestUserBySession = new Map<string, CanonicalSessionMessage>();
   for (const message of state.messages) {
-    // A native transcript copy of the request is not a newer request.
+    // A native transcript copy of the request is not a newer request, and
+    // neither is a message still waiting in the queue behind a sent one.
     if (!sessionIds.has(message.sessionId) || message.senderRole !== 'user' || message.sourceTransport === 'desktop-chat') continue;
+    const queue = record(message.content);
+    if (queue.queuedMessage === true && queue.queueState !== 'sent') continue;
     const current = newestUserBySession.get(message.sessionId);
     if (!current || message.createdAtMs > current.createdAtMs) newestUserBySession.set(message.sessionId, message);
   }
@@ -215,7 +225,7 @@ export function projectPendingSelfAgentReplies(
     // The Mac runs it before its stored reply exists: show that turn here.
     const localTurn = wireId ? local.turns?.[wireId] : undefined;
     // No run answered in time: say so instead of showing a run that does not exist.
-    const notStarted = !localTurn && hostedRuns.length === 0 && nowMs - request.createdAtMs > startTimeoutMs(request);
+    const notStarted = !localTurn && hostedRuns.length === 0 && nowMs - waitingSinceMs(request) > startTimeoutMs(request);
     const row: CanonicalSessionMessage = {
       id: notStarted ? pendingSelfAgentNoticeRowId(request.id) : pendingSelfAgentReplyRowId(request.id, wireId),
       sessionId: request.sessionId,
