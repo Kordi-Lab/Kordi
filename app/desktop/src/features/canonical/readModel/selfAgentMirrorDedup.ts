@@ -360,8 +360,11 @@ export function selfAgentMirrorDuplicateIds(
   // the request's wire id. Only the earliest copy shows.
   for (const copies of forkSnapshotRequestsByWireId.values()) {
     if (copies.length < 2) continue;
+    // The source chat shows the local bubble over its Cloud echo; so does the fork.
+    const isCloudEcho = (copy: CanonicalSessionMessage) => Number(copy.sourceEventId?.includes(':msg:cloud:self:') ?? false);
     const ordered = [...copies].sort((left, right) => (
-      left.sequenceNum - right.sequenceNum || left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id)
+      isCloudEcho(left) - isCloudEcho(right)
+      || left.sequenceNum - right.sequenceNum || left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id)
     ));
     const kept = ordered.find((copy) => !duplicateIds.has(copy.id));
     if (!kept) continue;

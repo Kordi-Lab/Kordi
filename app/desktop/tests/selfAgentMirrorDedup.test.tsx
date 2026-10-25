@@ -80,3 +80,9 @@ test('a fork shows one copy of a request whose local bubble and Cloud echo were 
   assert.equal(merged.length, 2);
   assert.ok(merged.every((message) => message.isForkSnapshot));
 });
+
+test('a fork keeps the local bubble over its Cloud echo, whatever their order', () => {
+  const echo = { ...forkRequest('fork:echo', 3, 1_000, 'request:wire'), sourceEventId: 'fork-snapshot:session:fork:test:source:msg:cloud:self:request:wire' };
+  const local = { ...forkRequest('fork:local', 4, 1_100, 'request:wire'), sourceEventId: 'fork-snapshot:session:fork:test:source:msg:ui:1' };
+  assert.deepEqual([...selfAgentMirrorDuplicateIds([echo, local], identities, 'human:test', true)], ['fork:echo']);
+});

@@ -33,3 +33,17 @@ test('finished copies, unknown sources, and plain rows stay as they are', () => 
   assert.equal(followRunningForkSnapshots(orphan), orphan);
   assert.equal(followRunningForkSnapshots(null), null);
 });
+
+test('a running copy of a running source keeps the same state object', () => {
+  const runningSource = { ...parentReply, status: 'processing', contentText: '', content: { deliveryState: 'processing' }, contentHash: 'h1' };
+  const copy = { ...forkCopy, content: { deliveryState: 'processing' }, contentHash: 'h1' };
+  const unchanged = state([runningSource, copy]);
+  assert.equal(followRunningForkSnapshots(unchanged), unchanged);
+});
+
+test('a fork of a fork follows the chain to the finished reply', () => {
+  const nested = row({ id: 'msg:nested', sessionId: 'session:fork:20c6', sourceTransport: 'canonical-fork-snapshot',
+    sourceEventId: 'fork-snapshot:session:fork:20c6:session:fork:10b5:msg:copy' });
+  const next = followRunningForkSnapshots(state([parentReply, forkCopy, nested]))!;
+  assert.equal(next.messages.find((message) => message.id === 'msg:nested')!.contentText, 'Hey! What can I help with?');
+});

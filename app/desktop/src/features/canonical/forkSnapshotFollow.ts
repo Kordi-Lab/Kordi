@@ -17,6 +17,14 @@ function snapshotSource(
   return null;
 }
 
+function sameReplyState(left: CanonicalSessionMessage, right: CanonicalSessionMessage) {
+  // Rows are parsed separately, so their content objects never share identity.
+  return left.status === right.status && left.contentText === right.contentText
+    && (left.contentHash && right.contentHash
+      ? left.contentHash === right.contentHash
+      : JSON.stringify(left.content) === JSON.stringify(right.content));
+}
+
 /**
  * A fork copies its source's history when it is made. A reply that was still
  * running then shows its source row's progress until it finishes, as the
@@ -29,9 +37,15 @@ export function followRunningForkSnapshots<State extends CanonicalSessionState |
   const messages = state.messages.map((message) => {
     if (message.sourceTransport !== 'canonical-fork-snapshot' || !RUNNING_STATUSES.has(message.status)) return message;
     messageById ??= new Map(state.messages.map((row) => [row.id, row]));
-    const source = snapshotSource(message, messageById);
-    if (!source || (source.status === message.status && source.contentText === message.contentText
-      && source.content === message.content)) return message;
+    let source = snapshotSource(message, messageById);
+    // A fork of a fork follows the chain to the reply that is actually running.
+    for (let depth = 0; source && depth < 8 && source.sourceTransport === 'canonical-fork-snapshot'
+      && RUNNING_STATUSES.has(source.status); depth += 1) {
+      const next = snapshotSource(source, messageById);
+      if (!next) break;
+      source = next;
+    }
+    if (!source || sameReplyState(source, message)) return message;
     changed = true;
     return {
       ...message,
