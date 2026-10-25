@@ -117,7 +117,7 @@ test('an existing cloud agent saves avatar picks at once with the expected versi
   ]);
   assert.deepEqual(result.localUpdates, []);
   assert.deepEqual(result.staged, []);
-  assert.deepEqual(result.feedback, []);
+  assert.ok(result.feedback.every((entry) => entry === null), 'no error is reported');
   assert.deepEqual(factoryAgentIdentityChanges(cloudAgent, null, undefined), []);
 });
 
@@ -164,4 +164,29 @@ test('the Agent inspection header shows the avatar picker and saves to the right
   const localHtml = renderToStaticMarkup(<AgentInspectionView agent={defaultAgent} onEditInBuild={() => undefined} onUpdateLocalAgentAvatar={onUpdateLocalAgentAvatar} />);
   assert.match(localHtml, /aria-label="Choose avatar"/);
   assert.deepEqual(inspectionAvatarControls({ ...baseAgent, isOwned: false }, onUpdateCloudAgent, onUpdateLocalAgentAvatar), {});
+});
+
+test('a saved avatar clears an earlier error toast and keeps other feedback', async () => {
+  const updates: Array<AgentSaveFeedback | null> = [];
+  const { factoryAvatar } = stagedAvatar();
+  let actions: AvatarActions | null = null;
+  function Probe() {
+    actions = useFactoryAgentAvatarActions({
+      creating: false,
+      agent: cloudAgent,
+      factoryAvatar,
+      onUpdateCloudAgent: async (agent) => agent,
+      setPublishFeedback: (value) => {
+        if (typeof value !== 'function') return;
+        updates.push(value({ tone: 'error', text: 'Selected provider has no resolved credential' }));
+        updates.push(value({ tone: 'info', text: 'Saved to the private agent draft.' }));
+      },
+    });
+    return null;
+  }
+  await withDom(async (render) => {
+    await render(<Probe />);
+    await act(async () => actions?.randomize('bird-owl-ink-paper'));
+  });
+  assert.deepEqual(updates, [null, { tone: 'info', text: 'Saved to the private agent draft.' }]);
 });
