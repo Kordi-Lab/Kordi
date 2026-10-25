@@ -52,6 +52,8 @@ export default defineConfig(({ command, mode }) => {
               { name: 'agent-factory', test: /[\\/]src[\\/]kordi-app[\\/]agents[\\/]/, maxSize: 650_000 },
               // The contact profile's Common ground section and match model, kept out of the cloud chunk.
               { name: 'contact-common-ground', minSize: 0, test: /[\\/]src[\\/]kordi-app[\\/]contacts[\\/](?:ContactCommonGround\.tsx|contactMatch\.ts)$/ },
+              // Collaborators' live avatar refresh, kept out of the cloud chunk.
+              { name: 'cloud-group-refresh', minSize: 0, test: /[\\/]src[\\/]features[\\/]cloud[\\/]cloudGroupProfileRefresh\.ts$/ },
               { name: 'cloud-features', test: /[\\/]src[\\/]features[\\/]cloud[\\/]/ },
               { name: 'desktop-features', test: (id) => /[\\/]src[\\/]features[\\/]/.test(id) && !DOCUMENT_EDITOR_SOURCE.test(id) },
               // After the app groups, so modules the app shares with the editor stay in app chunks.
