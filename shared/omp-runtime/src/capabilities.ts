@@ -17,6 +17,8 @@ export function createOmpRuntimeSettings(capabilities: RuntimeCapabilities): Set
   return Settings.isolated({
     'computer.enabled': capabilities.ownerLocal && capabilities.computer,
     'browser.enabled': capabilities.ownerLocal && capabilities.browser,
+    // Upstream enables the archive Eval prelude by default; Kordi admits only computer and browser.
+    'archive.enabled': false,
     'goal.enabled': false,
     'task.maxRecursionDepth': 0,
     'task.isolation.enabled': false,

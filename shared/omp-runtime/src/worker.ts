@@ -79,7 +79,8 @@ if (!selectedWorker && process.argv.includes('__kordi_smoke_eval')) {
           if (message.type === 'ready') {
             computerWorker.send({ type: 'capabilities', id: 'packaged-smoke',
               session: { cwd: process.cwd(), sessionId: 'packaged-smoke', captureMaxWidth: 1280,
-                captureMaxHeight: 896, display: 'primary', readOnly: true } });
+                captureMaxHeight: 896, display: 'primary', readOnly: true, backgroundFallback: 'refuse' },
+              escape: { key: 'packaged-smoke', acknowledged: 0 } });
           } else if (message.type === 'capabilities') {
             if (message.ok) resolve(message.capabilities as unknown as Record<string, unknown>);
             else reject(new Error(message.error.message));

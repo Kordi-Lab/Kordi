@@ -1,7 +1,7 @@
 {
   "name": "kordi",
   "version": "0.0.18",
-  "ompRuntimeVersion": "18.2.11",
+  "ompRuntimeVersion": "18.12.6",
   "description": "Kordi — a Rust-native AI coding agent for the terminal",
   "license": "MIT",
   "repository": {
