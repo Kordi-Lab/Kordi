@@ -353,12 +353,10 @@ pub async fn update_agent_definition(
         &agent,
     )
     .await?;
-    let stopped = match agent.proactive.enabled {
-        false => crate::proactive::setting::stop_in_transaction(&mut transaction, agent_id).await?,
-        true => Vec::new(),
-    };
+    if !agent.proactive.enabled {
+        crate::proactive::setting::stop_in_transaction(&mut transaction, agent_id).await?;
+    }
     transaction.commit().await?;
-    crate::proactive::setting::refresh_stopped(pool, &stopped).await;
     Ok(Some(agent))
 }
 
@@ -395,10 +393,8 @@ pub async fn archive_agent_definition(
         &agent,
     )
     .await?;
-    let stopped =
-        crate::proactive::setting::stop_in_transaction(&mut transaction, agent_id).await?;
+    crate::proactive::setting::stop_in_transaction(&mut transaction, agent_id).await?;
     transaction.commit().await?;
-    crate::proactive::setting::refresh_stopped(pool, &stopped).await;
     crate::proactive::setting::forget(pool, agent_id).await?;
     Ok(Some(agent))
 }

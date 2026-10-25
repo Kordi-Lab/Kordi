@@ -6,7 +6,7 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 
 use super::fixture::*;
-use super::offer_db::{card, offer};
+use super::offer_db::{hints_for, last_hint, offer};
 
 fn decision_uri(f: &Fixture, proposal_id: &str) -> String {
     format!(
@@ -96,9 +96,9 @@ async fn allow_queues_an_owner_started_group_run() {
     assert!(row.10.contains("You are Scout, Mina's Cloud Agent."));
     assert!(row.10.contains("Be precise and kind."));
     assert!(row.11.is_some(), "a group run has the group's sandbox");
-    let (_, _, _, content) = card(&f, &proposal_id).await;
-    assert_eq!(content["blocks"][1]["status"], "approved");
-    assert_eq!(content["blocks"][1]["runId"], run_id);
+    let hint = last_hint(&f, &proposal_id).await;
+    assert_eq!(hint["status"], "approved");
+    assert_eq!(hint["runId"], run_id);
 
     let (status, _) = f.send("POST", &uri, &f.owner_token, allow).await;
     assert_eq!(status, 409, "decided once");
@@ -127,8 +127,21 @@ async fn allow_queues_an_owner_started_group_run() {
     let proposal = &done["proposals"][0];
     assert_eq!(proposal["proposalId"], proposal_id);
     assert!(proposal["replyMessageId"].is_string());
-    let (_, _, _, content) = card(&f, &proposal_id).await;
-    assert_eq!(content["blocks"][1]["status"], "done");
+    let hint = last_hint(&f, &proposal_id).await;
+    assert_eq!(hint["status"], "done");
+    assert_eq!(hint["replyMessageId"], proposal["replyMessageId"]);
+    let statuses: Vec<String> = hints_for(&f, &f.owner, &proposal_id)
+        .await
+        .iter()
+        .map(|hint| hint["status"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(statuses.first().map(String::as_str), Some("pending"));
+    assert!(
+        statuses.ends_with(&["approved".into(), "done".into()])
+            || statuses.ends_with(&["approved".into(), "running".into(), "done".into()]),
+        "{statuses:?}"
+    );
+    assert!(hints_for(&f, &f.member, &proposal_id).await.is_empty());
 }
 
 #[tokio::test]
@@ -157,8 +170,7 @@ async fn decline_and_expiry_post_nothing() {
     .await
     .unwrap();
     assert_eq!(runs, 0);
-    let (_, _, _, content) = card(&f, &proposal_id).await;
-    assert_eq!(content["blocks"][1]["status"], "declined");
+    assert_eq!(last_hint(&f, &proposal_id).await["status"], "declined");
 
     // A second offer that runs out of time cannot be allowed.
     query("UPDATE cloud_agent_proactive_state SET cooldown_until = now() WHERE agent_id = $1")
@@ -188,6 +200,7 @@ async fn decline_and_expiry_post_nothing() {
             .await
             .unwrap();
     assert_eq!(status, "expired");
+    assert_eq!(last_hint(&f, &late).await["status"], "expired");
     let (status, _) = f
         .send(
             "POST",
@@ -281,8 +294,7 @@ async fn turning_the_setting_off_stops_everything() {
             .await
             .unwrap();
     assert_eq!(proposal_status, "expired");
-    let (_, _, _, content) = card(&f, &proposal_id).await;
-    assert_eq!(content["blocks"][1]["status"], "expired");
+    assert_eq!(last_hint(&f, &proposal_id).await["status"], "expired");
     let (active,): (i64,) = query_as(
         "SELECT count(*) FROM cloud_agent_proactive_state WHERE agent_id = $1 AND active_run_id IS NOT NULL",
     )
@@ -306,13 +318,6 @@ async fn turning_the_setting_off_stops_everything() {
 async fn archiving_the_agent_expires_its_offers_and_drops_its_rows() {
     let Some(f) = fixture().await else { return };
     let (proposal_id, _) = offer(&f).await;
-    let (card_id,): (String,) = query_as(
-        "SELECT card_message_id FROM cloud_agent_proactive_proposals WHERE proposal_id = $1",
-    )
-    .bind(&proposal_id)
-    .fetch_one(&f.pool)
-    .await
-    .unwrap();
     let (status, _) = f
         .send(
             "DELETE",
@@ -322,15 +327,10 @@ async fn archiving_the_agent_expires_its_offers_and_drops_its_rows() {
         )
         .await;
     assert_eq!(status, 200);
-    let (content,): (Value,) =
-        query_as("SELECT content FROM cloud_chat_messages WHERE message_id::text = $1")
-            .bind(&card_id)
-            .fetch_one(&f.pool)
-            .await
-            .unwrap();
     assert_eq!(
-        content["blocks"][1]["status"], "expired",
-        "the card's final state"
+        last_hint(&f, &proposal_id).await["status"],
+        "expired",
+        "the owner's devices hear the final state"
     );
     for table in [
         "cloud_agent_proactive_state",

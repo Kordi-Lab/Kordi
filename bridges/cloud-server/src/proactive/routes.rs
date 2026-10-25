@@ -1,4 +1,5 @@
-//! Owner-only routes under `/v1/cloud/agents/{agent_id}/proactive`, mounted
+//! Owner-only routes under `/v1/cloud/agents/{agent_id}/proactive`, plus
+//! `/v1/cloud/proactive/proposals` across all of the caller's agents, mounted
 //! with the other agent routes behind the cloud session. `agent_id` is a
 //! definition id or the owner's default agent, `cloud-agent:<account_id>`.
 
@@ -162,7 +163,7 @@ pub(crate) async fn put_setting(
     }
 }
 
-/// RFC 3339 in UTC with milliseconds, as the card block writes it.
+/// RFC 3339 in UTC with milliseconds, as the proposal hint writes it.
 macro_rules! utc {
     ($column:literal) => {
         concat!(
@@ -182,7 +183,6 @@ const PROPOSAL_SELECT: &str = concat!(
          'triggerMessageId', p.trigger_message_id, 'evidence', p.evidence_json,
          'problem', p.problem, 'offer', p.offer, 'plan', p.plan, 'status', p.status,
          'evaluationRunId', p.evaluation_run_id, 'runId', p.run_id,
-         'cardMessageId', p.card_message_id,
          'replyMessageId', CASE WHEN p.status = 'done' THEN run.response_message_id END,
          'error', CASE WHEN p.status = 'failed' THEN run.error_code END,
          'createdAt', ",
@@ -251,20 +251,22 @@ pub(crate) async fn post_decision(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ProposalsQuery {
     status: Option<String>,
+    conversation_id: Option<String>,
 }
 
-pub(crate) async fn list_proposals(
-    State(state): State<Arc<ServerState>>,
-    Extension(session): Extension<CloudSession>,
-    Path(agent_id): Path<String>,
-    Query(params): Query<ProposalsQuery>,
+/// The caller's proposals with `params.status` (default `pending`), for one
+/// agent or, with `None`, every agent the caller owns: active definitions
+/// and the default agent. Pending proposals past their time are expired
+/// first, with their hints, so a pending list never shows them.
+async fn proposals(
+    pool: &PgPool,
+    account: &str,
+    agent_id: Option<&str>,
+    params: &ProposalsQuery,
 ) -> Response {
-    let pool = state.db_pool();
-    if let Err(response) = owner_only(pool, &session.account_id, &agent_id).await {
-        return *response;
-    }
     let status = params
         .status
         .as_deref()
@@ -278,15 +280,42 @@ pub(crate) async fn list_proposals(
             StatusCode::BAD_REQUEST,
         );
     }
+    let conversation = match params.conversation_id.as_deref().map(str::trim) {
+        None | Some("") => None,
+        Some(id) => match Uuid::parse_str(id) {
+            Ok(id) => Some(id),
+            Err(_) => {
+                return error(
+                    "invalid_conversation",
+                    "conversationId must be a conversation id.",
+                    StatusCode::BAD_REQUEST,
+                )
+            }
+        },
+    };
+    let expired = async {
+        let mut tx = pool.begin().await?;
+        super::proposal::expire_due(&mut tx, Some(account)).await?;
+        tx.commit().await
+    };
+    if let Err(err) = expired.await {
+        return server_error("expire proposals", err);
+    }
     let sql = format!(
-        "{PROPOSAL_SELECT} WHERE p.agent_id = $1 AND p.owner_account_id = $2 AND p.status = $3
-           AND (p.status <> 'pending' OR p.expires_at > now())
-         ORDER BY p.created_at DESC LIMIT $4"
+        "{PROPOSAL_SELECT} WHERE p.owner_account_id = $1 AND p.status = $2
+           AND ($3::text IS NULL OR p.agent_id = $3)
+           AND ($4::uuid IS NULL OR p.conversation_id = $4)
+           AND (p.agent_id = 'cloud-agent:' || p.owner_account_id
+             OR EXISTS (SELECT 1 FROM cloud_agent_definitions d
+                        WHERE d.agent_id = p.agent_id AND d.owner_account_id = p.owner_account_id
+                          AND d.status = 'active' AND d.is_system_managed = FALSE))
+         ORDER BY p.created_at DESC LIMIT $5"
     );
     let rows: Result<Vec<(Value,)>, _> = query_as(&sql)
-        .bind(&agent_id)
-        .bind(&session.account_id)
+        .bind(account)
         .bind(status)
+        .bind(agent_id)
+        .bind(conversation)
         .bind(PROPOSALS_MAX)
         .fetch_all(pool)
         .await;
@@ -297,6 +326,31 @@ pub(crate) async fn list_proposals(
         .into_response(),
         Err(err) => server_error("list proposals", err),
     }
+}
+
+/// `GET /v1/cloud/agents/{agent_id}/proactive/proposals?status=&conversationId=`
+pub(crate) async fn list_proposals(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(agent_id): Path<String>,
+    Query(params): Query<ProposalsQuery>,
+) -> Response {
+    let pool = state.db_pool();
+    if let Err(response) = owner_only(pool, &session.account_id, &agent_id).await {
+        return *response;
+    }
+    proposals(pool, &session.account_id, Some(&agent_id), &params).await
+}
+
+/// `GET /v1/cloud/proactive/proposals?status=&conversationId=`: the caller's
+/// proposals across all of their agents, so a client can show the offers
+/// for the open conversation with one call. Other people's never appear.
+pub(crate) async fn list_all_proposals(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Query(params): Query<ProposalsQuery>,
+) -> Response {
+    proposals(state.db_pool(), &session.account_id, None, &params).await
 }
 
 #[derive(Debug, Deserialize)]

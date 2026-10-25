@@ -3,19 +3,22 @@
 //!
 //! The sweep copies PiP's shape: one cursor row per agent and group, a free
 //! text check, one tool-less evaluation run per candidate. An `offer` becomes
-//! a proposal and a card in the owner's conversation with the agent; nothing
-//! reaches the group until the owner allows it, and the approved run is an
-//! ordinary owner-started group run with the usual delivery. The owner's
-//! default agent watches the same way under its synthetic id (agents.rs).
+//! a proposal that only the owner sees, inside the group, from the proposals
+//! route, a `proactive.proposal_changed` hint, and a push; no message is
+//! posted. Nothing reaches the group until the owner allows it, and the
+//! approved run is an ordinary owner-started group run with the usual
+//! delivery. The owner's default agent watches the same way under its
+//! synthetic id (agents.rs).
 
 pub(crate) mod agents;
-pub(crate) mod card;
 mod complete;
 mod config;
 pub(crate) mod decision;
 mod output;
 mod prefilter;
 mod prompt;
+pub(crate) mod proposal;
+mod push;
 pub mod routes;
 pub mod setting;
 mod snapshot;

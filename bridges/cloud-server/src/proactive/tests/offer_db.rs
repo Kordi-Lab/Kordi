@@ -1,5 +1,5 @@
 //! Finished evaluations: silence writes nothing, an offer becomes a proposal
-//! and a card in the owner's conversation with the agent.
+//! and a `proactive.proposal_changed` hint for the owner, never a message.
 
 use serde_json::Value;
 use sqlx_core::query::query;
@@ -43,16 +43,40 @@ pub(super) async fn offer(f: &Fixture) -> (String, String) {
     (proposal_id, trigger)
 }
 
-/// (conversation kind, session, sender, content) of a proposal's card.
-pub(super) async fn card(f: &Fixture, proposal_id: &str) -> (String, String, String, Value) {
-    query_as(
-        "SELECT c.kind, c.legacy_session_id, m.sender_account_id, m.content \
-         FROM cloud_agent_proactive_proposals p \
-         JOIN cloud_chat_messages m ON m.message_id::text = p.card_message_id \
-         JOIN cloud_chat_conversations c ON c.conversation_id = m.conversation_id \
-         WHERE p.proposal_id = $1",
+/// The `proactive.proposal_changed` payloads `account` received for a
+/// proposal, oldest first.
+pub(super) async fn hints_for(f: &Fixture, account: &str, proposal_id: &str) -> Vec<Value> {
+    let rows: Vec<(Value,)> = query_as(
+        "SELECT payload FROM cloud_chat_user_sync_events \
+         WHERE account_id = $1 AND event_type = 'proactive.proposal_changed' \
+           AND payload->>'proposalId' = $2 ORDER BY stream_seq",
     )
+    .bind(account)
     .bind(proposal_id)
+    .fetch_all(&f.pool)
+    .await
+    .unwrap();
+    rows.into_iter().map(|(payload,)| payload).collect()
+}
+
+/// The owner's latest hint for a proposal.
+pub(super) async fn last_hint(f: &Fixture, proposal_id: &str) -> Value {
+    hints_for(f, &f.owner, proposal_id)
+        .await
+        .pop()
+        .expect("a hint for the owner")
+}
+
+/// Every conversation and message the owner can see, to show an offer adds
+/// neither.
+pub(super) async fn owner_footprint(f: &Fixture) -> (i64, i64) {
+    query_as(
+        "SELECT (SELECT count(*) FROM cloud_chat_conversation_members WHERE account_id = $1), \
+                (SELECT count(*) FROM cloud_chat_messages m \
+                 JOIN cloud_chat_conversation_members member USING (conversation_id) \
+                 WHERE member.account_id = $1)",
+    )
+    .bind(&f.owner)
     .fetch_one(&f.pool)
     .await
     .unwrap()
@@ -110,9 +134,24 @@ async fn silence_writes_nothing_and_frees_the_conversation() {
 }
 
 #[tokio::test]
-async fn an_offer_becomes_a_proposal_and_a_card() {
+async fn an_offer_becomes_a_proposal_and_a_hint_but_no_message() {
     let Some(f) = fixture().await else { return };
-    let (proposal_id, trigger) = offer(&f).await;
+    let run_id = f.queue_evaluation().await;
+    let footprint = owner_footprint(&f).await;
+    let trigger = trigger_of(&f, &run_id).await;
+    f.finish(&run_id, &offer_reply(&trigger)).await;
+    assert_eq!(
+        owner_footprint(&f).await,
+        footprint,
+        "no message and no new chat"
+    );
+    let (proposal_id,): (String,) = query_as(
+        "SELECT proposal_id FROM cloud_agent_proactive_proposals WHERE evaluation_run_id = $1",
+    )
+    .bind(&run_id)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
     assert!(proposal_id.starts_with("pro_"));
     type Row = (
         String,
@@ -151,29 +190,43 @@ async fn an_offer_becomes_a_proposal_and_a_card() {
     assert!(active.is_none());
     assert!(cooling, "an offer starts the cooldown");
 
-    let (kind, session, sender, content) = card(&f, &proposal_id).await;
-    assert_eq!(kind, "ai");
+    let hints = hints_for(&f, &f.owner, &proposal_id).await;
+    assert_eq!(hints.len(), 1, "one hint on creation");
+    let hint = &hints[0];
+    let mut keys: Vec<&str> = hint
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
     assert_eq!(
-        session,
-        format!("session:self-agent:proactive:{}", f.agent_id)
+        keys,
+        [
+            "agentId",
+            "conversationId",
+            "expiresAt",
+            "offer",
+            "plan",
+            "problem",
+            "proposalId",
+            "replyMessageId",
+            "runId",
+            "sessionId",
+            "status"
+        ]
     );
-    assert_eq!(sender, f.owner);
-    let blocks = content["blocks"].as_array().unwrap();
-    assert_eq!(blocks.len(), 2);
-    let fallback = blocks[0]["text"].as_str().unwrap();
-    assert!(fallback.starts_with("kordi-cloud-agent-response:"));
-    let block = &blocks[1];
-    assert_eq!(block["type"], "proactive_offer");
-    assert_eq!(block["proposalId"], proposal_id);
-    assert_eq!(block["agentId"], f.agent_id);
-    assert_eq!(block["agentName"], "Scout");
-    assert_eq!(block["conversationId"], f.group.to_string());
-    assert_eq!(block["sessionId"], f.session_id);
-    assert_eq!(block["conversationTitle"], "Launch");
-    assert_eq!(block["triggerMessageId"], trigger);
-    assert_eq!(block["status"], "pending");
-    assert!(block["runId"].is_null() && block["decidedAt"].is_null());
-    assert!(block["expiresAt"].as_str().unwrap().ends_with('Z'));
+    assert_eq!(hint["agentId"], f.agent_id);
+    assert_eq!(hint["conversationId"], f.group.to_string());
+    assert_eq!(hint["sessionId"], f.session_id);
+    assert_eq!(hint["status"], "pending");
+    assert_eq!(hint["problem"], "The deploy fails on every push");
+    assert!(hint["runId"].is_null() && hint["replyMessageId"].is_null());
+    assert!(hint["expiresAt"].as_str().unwrap().ends_with('Z'));
+    assert!(
+        hints_for(&f, &f.member, &proposal_id).await.is_empty(),
+        "only the owner hears of it"
+    );
 
     // Cooldown, then the pending proposal, hold the conversation.
     say(&f.pool, &f.member, f.group, "still failing, help?", 5).await;
@@ -193,10 +246,10 @@ async fn an_offer_becomes_a_proposal_and_a_card() {
         .await
         .unwrap();
     crate::proactive::sync_runs(&f.pool, None).await.unwrap();
-    let (_, _, _, content) = card(&f, &proposal_id).await;
     assert_eq!(
-        content["blocks"][1]["status"], "expired",
-        "the card refreshed in place"
+        last_hint(&f, &proposal_id).await["status"],
+        "expired",
+        "the sweep expires it and tells the owner"
     );
     assert!(f.candidate(&config()).await.is_some(), "free again");
 

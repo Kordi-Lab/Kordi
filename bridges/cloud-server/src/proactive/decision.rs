@@ -3,7 +3,8 @@
 //! `allow` queues one ordinary owner-started group run that answers the
 //! collaborator's message as the agent; `decline` records the decision and
 //! posts nothing. The proposal then follows its run: `running` once a runner
-//! holds it, `done` or `failed` when it ends.
+//! holds it, `done` or `failed` when it ends. Every change appends the
+//! `proactive.proposal_changed` hint for the owner in the same transaction.
 
 use chrono::Utc;
 use serde_json::Value;
@@ -79,7 +80,7 @@ struct RunPlan {
 /// prompt every default Kordi group run gets.
 async fn persona(
     pool: &PgPool,
-    proposal: &super::card::CardProposal,
+    proposal: &super::proposal::Proposal,
 ) -> Result<Option<(String, String, Value)>, sqlx_core::Error> {
     if super::agents::default_owner(&proposal.agent_id) == Some(&proposal.owner_account_id) {
         let owner: Option<(Option<String>,)> =
@@ -128,7 +129,7 @@ async fn persona(
 
 async fn plan_run(
     pool: &PgPool,
-    proposal: &super::card::CardProposal,
+    proposal: &super::proposal::Proposal,
 ) -> Result<Option<RunPlan>, sqlx_core::Error> {
     let Some((owner_name, system_prompt, routing)) = persona(pool, proposal).await? else {
         return Ok(None);
@@ -226,14 +227,14 @@ pub async fn decide(
     agent_id: &str,
     proposal_id: &str,
     choice: Choice,
-) -> Result<super::card::CardProposal, DecisionError> {
+) -> Result<super::proposal::Proposal, DecisionError> {
     let Some(owner) = agent_owner(pool, agent_id).await? else {
         return Err(DecisionError::NotFound);
     };
     if owner != account_id {
         return Err(DecisionError::Forbidden);
     }
-    let Some(proposal) = super::card::load(pool, proposal_id).await? else {
+    let Some(proposal) = super::proposal::load(pool, proposal_id).await? else {
         return Err(DecisionError::NotFound);
     };
     if proposal.agent_id != agent_id {
@@ -275,8 +276,8 @@ pub async fn decide(
         .bind(proposal_id)
         .execute(&mut *tx)
         .await?;
+        super::proposal::hint(&mut tx, &[proposal_id.to_string()]).await?;
         tx.commit().await?;
-        refresh_card(pool, proposal_id).await;
         return Err(DecisionError::Conflict);
     }
     match (choice, plan) {
@@ -350,24 +351,19 @@ pub async fn decide(
             }
         }
     }
+    super::proposal::hint(&mut tx, &[proposal_id.to_string()]).await?;
     tx.commit().await?;
-    refresh_card(pool, proposal_id).await;
-    super::card::load(pool, proposal_id)
+    super::proposal::load(pool, proposal_id)
         .await?
         .ok_or(DecisionError::NotFound)
 }
 
-async fn refresh_card(pool: &PgPool, proposal_id: &str) {
-    if let Err(error) = super::card::refresh(pool, proposal_id).await {
-        eprintln!("[proactive] Could not refresh card {proposal_id}: {error}");
-    }
-}
-
 /// Moves approved proposals along with their runs (all of them, or the one
-/// behind `run_id`) and expires pending proposals whose time ran out, then
-/// refreshes their cards. Returns how many proposals changed.
+/// behind `run_id`) and expires pending proposals whose time ran out, with a
+/// hint for each change. Returns how many proposals changed.
 pub async fn sync_runs(pool: &PgPool, run_id: Option<&str>) -> Result<usize, sqlx_core::Error> {
-    let mut changed: Vec<(String,)> = query_as(
+    let mut tx = pool.begin().await?;
+    let moved: Vec<(String,)> = query_as(
         "UPDATE cloud_agent_proactive_proposals p
          SET status = CASE
              WHEN run.status = 'completed' THEN 'done'
@@ -381,21 +377,16 @@ pub async fn sync_runs(pool: &PgPool, run_id: Option<&str>) -> Result<usize, sql
          RETURNING p.proposal_id",
     )
     .bind(run_id)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
+    let moved: Vec<String> = moved.into_iter().map(|(id,)| id).collect();
+    super::proposal::hint(&mut tx, &moved).await?;
+    let mut changed = moved.len();
     if run_id.is_none() {
-        let expired: Vec<(String,)> = query_as(
-            "UPDATE cloud_agent_proactive_proposals SET status = 'expired'
-             WHERE status = 'pending' AND expires_at <= now() RETURNING proposal_id",
-        )
-        .fetch_all(pool)
-        .await?;
-        changed.extend(expired);
+        changed += super::proposal::expire_due(&mut tx, None).await?.len();
     }
-    for (proposal_id,) in &changed {
-        refresh_card(pool, proposal_id).await;
-    }
-    Ok(changed.len())
+    tx.commit().await?;
+    Ok(changed)
 }
 
 /// The agent an approved run answers as, so group delivery names it as the

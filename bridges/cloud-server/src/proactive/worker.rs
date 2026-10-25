@@ -8,6 +8,7 @@ const STALE_CHECK_EVERY_TICKS: u32 = 12;
 /// their runs, and expires stale ones. Only new collaborator messages that
 /// pass the free check queue a run, so an idle server issues no model calls.
 pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
+    super::push::install(state.notifications());
     tokio::spawn(async move {
         let config = super::ProactiveConfig::from_env();
         let mut timer = tokio::time::interval(std::time::Duration::from_secs(config.sweep_seconds));

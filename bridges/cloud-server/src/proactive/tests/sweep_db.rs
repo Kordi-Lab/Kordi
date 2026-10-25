@@ -174,7 +174,9 @@ async fn an_evaluation_run_has_the_documented_columns() {
     assert!(row.12.is_none(), "no sandbox");
     assert!(row.10.starts_with("You are Scout, Mina's agent."));
     assert!(row.10.contains("Be precise and kind."));
-    assert!(row.10.contains("Silence is the default."));
+    assert!(row
+        .10
+        .contains("Your owner reviews every offer before anything is posted"));
     let snapshot: Value = serde_json::from_str(&row.9).unwrap();
     assert_eq!(snapshot["agent"]["skills"], json!(["Build doctor"]));
     assert_eq!(snapshot["owner"]["handle"], "@Mina");

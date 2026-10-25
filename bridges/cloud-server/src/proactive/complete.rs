@@ -1,5 +1,5 @@
 //! Finished and failed evaluation runs. Silence writes nothing but the run's
-//! own status; an offer becomes a proposal and a card for the owner.
+//! own status; an offer becomes a proposal, a hint and a push for the owner.
 
 use chrono::Utc;
 use serde_json::{json, Value};
@@ -66,6 +66,18 @@ pub async fn complete(
         return Ok(());
     };
     let decision = parse(response_text);
+    // Operators can tell a model that chose silence from a reply that did not
+    // parse; the text itself stays out of the log.
+    let trimmed = response_text.trim();
+    eprintln!(
+        "[proactive] evaluation {run_id}: {} (reply {} chars, json={})",
+        match &decision {
+            Decision::Silence => "silence",
+            Decision::Offer(_) => "offer",
+        },
+        trimmed.chars().count(),
+        serde_json::from_str::<serde_json::Value>(trimmed).is_ok()
+    );
     let now = Utc::now();
     let mut tx = pool.begin().await?;
     let finished = query(
@@ -97,9 +109,7 @@ pub async fn complete(
     };
     tx.commit().await?;
     if let Some(proposal_id) = proposal_id {
-        if let Err(error) = super::card::post(pool, &proposal_id).await {
-            eprintln!("[proactive] Could not post the card for {proposal_id}: {error}");
-        }
+        super::push::offer(pool, &proposal_id);
     }
     Ok(())
 }
@@ -146,15 +156,18 @@ async fn store_offer(
     let Some(trigger) = trigger.filter(|_| allowed) else {
         return Ok(None);
     };
-    query(
+    let expired: Vec<(String,)> = query_as(
         "UPDATE cloud_agent_proactive_proposals SET status = 'expired'
          WHERE agent_id = $1 AND conversation_id = $2 AND status = 'pending'
-           AND expires_at <= now()",
+           AND expires_at <= now()
+         RETURNING proposal_id",
     )
     .bind(&run.agent_id)
     .bind(conversation_id)
-    .execute(&mut **tx)
+    .fetch_all(&mut **tx)
     .await?;
+    let expired: Vec<String> = expired.into_iter().map(|(id,)| id).collect();
+    super::proposal::hint(tx, &expired).await?;
     let proposal_id = format!("pro_{}", Uuid::new_v4().simple());
     let config = ProactiveConfig::from_env();
     let inserted = query(
@@ -193,6 +206,7 @@ async fn store_offer(
     .bind(config.cooldown_seconds as f64)
     .execute(&mut **tx)
     .await?;
+    super::proposal::hint(tx, std::slice::from_ref(&proposal_id)).await?;
     Ok(Some(proposal_id))
 }
 

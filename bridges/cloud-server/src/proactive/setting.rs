@@ -34,12 +34,11 @@ impl ProactiveSetting {
 }
 
 /// Cancels the agent's queued evaluations, frees their conversations, and
-/// expires its pending proposals. Returns the expired proposal ids, whose
-/// cards the caller refreshes once the transaction commits.
+/// expires its pending proposals, hinting the owner about each.
 pub async fn stop_in_transaction(
     transaction: &mut Transaction<'_, Postgres>,
     agent_id: &str,
-) -> Result<Vec<String>, sqlx_core::Error> {
+) -> Result<(), sqlx_core::Error> {
     let now = chrono::Utc::now().to_rfc3339();
     let cancelled: Vec<(String,)> = query_as(
         "UPDATE cloud_agent_fallback_runs
@@ -68,17 +67,8 @@ pub async fn stop_in_transaction(
     .bind(agent_id)
     .fetch_all(&mut **transaction)
     .await?;
-    Ok(expired.into_iter().map(|(id,)| id).collect())
-}
-
-/// Refreshes the cards of proposals [`stop_in_transaction`] expired. Best
-/// effort: the proposals already changed, so a failed refresh is logged.
-pub async fn refresh_stopped(pool: &PgPool, proposal_ids: &[String]) {
-    for proposal_id in proposal_ids {
-        if let Err(error) = super::card::refresh(pool, proposal_id).await {
-            eprintln!("[proactive] Could not refresh card {proposal_id}: {error}");
-        }
-    }
+    let expired: Vec<String> = expired.into_iter().map(|(id,)| id).collect();
+    super::proposal::hint(transaction, &expired).await
 }
 
 /// The default agent's setting for `account_id`; no row is off.
@@ -107,21 +97,16 @@ pub async fn set_default(
     .bind(enabled)
     .execute(&mut *transaction)
     .await?;
-    let stopped = match enabled {
-        false => {
-            let agent_id = super::agents::default_agent_id(account_id);
-            stop_in_transaction(&mut transaction, &agent_id).await?
-        }
-        true => Vec::new(),
-    };
-    transaction.commit().await?;
-    refresh_stopped(pool, &stopped).await;
-    Ok(())
+    if !enabled {
+        let agent_id = super::agents::default_agent_id(account_id);
+        stop_in_transaction(&mut transaction, &agent_id).await?;
+    }
+    transaction.commit().await
 }
 
 /// Drops an archived definition's cursors and proposals, which have no
-/// foreign key to it. Called after [`refresh_stopped`] so the cards keep
-/// their final state.
+/// foreign key to it. Called after [`stop_in_transaction`] committed, so
+/// the owner's devices already have the final `expired` hint.
 pub async fn forget(pool: &PgPool, agent_id: &str) -> Result<(), sqlx_core::Error> {
     let mut transaction = pool.begin().await?;
     for table in [

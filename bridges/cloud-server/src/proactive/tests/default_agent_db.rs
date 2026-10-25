@@ -1,5 +1,5 @@
 //! The owner's default agent (`cloud-agent:<account_id>`), which has no
-//! definition row: its setting, sweep, card, and approved run.
+//! definition row: its setting, sweep, offer hint, and approved run.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde_json::{json, Value};
@@ -9,8 +9,7 @@ use uuid::Uuid;
 
 use super::decision_db::say_in_group;
 use super::fixture::*;
-use super::offer_db::{card, offer};
-use crate::chat_sync::models::{ConversationKind, CreateConversationRequest};
+use super::offer_db::{hints_for, last_hint, offer, owner_footprint};
 
 fn setting_uri(agent_id: &str) -> String {
     format!("/v1/cloud/agents/{agent_id}/proactive")
@@ -87,12 +86,12 @@ async fn the_sweep_watches_the_default_agent_only_while_it_is_on() {
         system_prompt.starts_with("You are Mina's Kordi, Mina's agent."),
         "{system_prompt}"
     );
-    assert!(system_prompt.contains("Silence is the default."));
+    assert!(system_prompt.contains("Your owner reviews every offer before anything is posted"));
     let snapshot: Value = serde_json::from_str(&prompt).unwrap();
-    assert_eq!(
-        snapshot["agent"],
-        json!({"agentId": f.agent_id, "name": "Mina's Kordi", "skills": []})
-    );
+    assert_eq!(snapshot["agent"]["agentId"], f.agent_id);
+    assert_eq!(snapshot["agent"]["name"], "Mina's Kordi");
+    assert_eq!(snapshot["agent"]["skills"], json!([]));
+    assert!(snapshot["agent"]["capabilities"].is_string());
 
     // The daily cap counts the synthetic id's evaluations.
     f.finish(&run_id, "{\"decision\": \"silence\"}").await;
@@ -113,65 +112,41 @@ async fn the_sweep_watches_the_default_agent_only_while_it_is_on() {
 }
 
 #[tokio::test]
-async fn an_offer_lands_in_the_owners_chat_with_their_kordi() {
+async fn an_offer_opens_no_chat_with_the_owners_kordi() {
     let Some(f) = default_fixture(true).await else {
         return;
     };
-    // The owner already asked their Kordi something in this chat.
-    let session = format!("session:self-agent:{}", Uuid::new_v4());
-    let request = CreateConversationRequest {
-        client_operation_id: Uuid::new_v4(),
-        kind: ConversationKind::Ai,
-        shared_title: None,
-        client_session_id: session.clone(),
-        member_account_ids: vec![f.owner.clone()],
-    };
-    crate::chat_sync::store::create_conversation(&f.pool, &f.owner, request)
-        .await
-        .unwrap();
-    let asked = format!("car_{}", Uuid::new_v4().simple());
-    query(
-        "INSERT INTO cloud_agent_fallback_runs (run_id, idempotency_key, request_message_id, \
-         session_id, owner_account_id, requester_account_id, status, prompt, system_prompt, \
-         runtime_route_json, created_at, updated_at, execution_backend, execution_agent_id, \
-         run_trigger, connector_audience) \
-         VALUES ($1, $1, $1, $2, $3, $3, 'completed', 'hi', '', '{}', $4, $4, 'cloud', $5, \
-                 'person_started', 'shared')",
+    let footprint = owner_footprint(&f).await;
+    let (proposal_id, _) = offer(&f).await;
+    let after = owner_footprint(&f).await;
+    assert_eq!(after.0, footprint.0, "no new chat for the owner");
+    assert_eq!(after.1, footprint.1 + 1, "only the collaborator's message");
+    let (self_agent_chats,): (i64,) = query_as(
+        "SELECT count(*) FROM cloud_chat_conversations \
+         WHERE created_by_account_id = $1 AND starts_with(legacy_session_id, 'session:self-agent:')",
     )
-    .bind(&asked)
-    .bind(&session)
     .bind(&f.owner)
-    .bind(chrono::Utc::now().to_rfc3339())
-    .bind(&f.agent_id)
-    .execute(&f.pool)
+    .fetch_one(&f.pool)
     .await
     .unwrap();
-    let (proposal_id, _) = offer(&f).await;
-    let (kind, card_session, _, content) = card(&f, &proposal_id).await;
-    assert_eq!(
-        (kind.as_str(), card_session.as_str()),
-        ("ai", session.as_str())
-    );
-    assert_eq!(content["blocks"][1]["agentId"], f.agent_id);
-    assert_eq!(content["blocks"][1]["agentName"], "Mina's Kordi");
+    assert_eq!(self_agent_chats, 0);
+    let hint = last_hint(&f, &proposal_id).await;
+    assert_eq!(hint["agentId"], f.agent_id);
+    assert_eq!(hint["conversationId"], f.group.to_string());
+    assert_eq!(hint["status"], "pending");
+    assert!(hints_for(&f, &f.member, &proposal_id).await.is_empty());
+    let (status, body) = f
+        .send(
+            "GET",
+            &format!("/v1/cloud/proactive/proposals?conversationId={}", f.group),
+            &f.owner_token,
+            None,
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["proposals"][0]["proposalId"], proposal_id);
+    assert_eq!(body["proposals"][0]["agentId"], f.agent_id);
     assert!(f.state().await.2, "the cooldown follows the synthetic id");
-}
-
-#[tokio::test]
-async fn without_a_chat_the_card_opens_a_normal_agent_chat() {
-    let Some(f) = default_fixture(true).await else {
-        return;
-    };
-    let (proposal_id, _) = offer(&f).await;
-    let (kind, session, _, _) = card(&f, &proposal_id).await;
-    assert_eq!(kind, "ai");
-    let id = session
-        .strip_prefix("session:self-agent:")
-        .expect("a self-agent chat");
-    assert!(
-        Uuid::parse_str(id).is_ok(),
-        "the desktop's own id shape: {session}"
-    );
 }
 
 #[tokio::test]
@@ -422,8 +397,7 @@ async fn turning_the_default_agent_off_stops_everything() {
             .await
             .unwrap();
     assert_eq!(proposal_status, "expired");
-    let (_, _, _, content) = card(&f, &proposal_id).await;
-    assert_eq!(content["blocks"][1]["status"], "expired");
+    assert_eq!(last_hint(&f, &proposal_id).await["status"], "expired");
     f.seed().await;
     let (rows,): (i64,) =
         query_as("SELECT count(*) FROM cloud_agent_proactive_state WHERE agent_id = $1")

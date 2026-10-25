@@ -59,7 +59,6 @@ CREATE TABLE IF NOT EXISTS cloud_agent_proactive_proposals (
     status             TEXT NOT NULL DEFAULT 'pending',
     evaluation_run_id  TEXT NOT NULL UNIQUE,
     run_id             TEXT UNIQUE,
-    card_message_id    TEXT,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     decided_at         TIMESTAMPTZ,
     expires_at         TIMESTAMPTZ NOT NULL,

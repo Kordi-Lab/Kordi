@@ -17,6 +17,10 @@ pub(super) const MESSAGE_TEXT_LIMIT: usize = 1200;
 /// message_id, sequence, sender, sender display name, content, created_at
 type MessageRow = (String, i64, String, Option<String>, Value, String);
 
+/// What an allowed run can do, told to the evaluation so it judges fairly;
+/// the approved run gets the owner's usual tools.
+const AGENT_CAPABILITIES: &str = "When the owner allows a run, you work with tools: read, write and run code in a workspace, search and fetch the web, and read this conversation's history.";
+
 /// A conversation the sweep picked for one agent.
 #[derive(Debug, Clone)]
 pub(super) struct Candidate {
@@ -318,7 +322,7 @@ pub(super) async fn build(
         .collect();
     Ok(Snapshot {
         value: json!({
-            "agent": {"agentId": agent.agent_id, "name": agent.name, "skills": skills},
+            "agent": {"agentId": agent.agent_id, "name": agent.name, "skills": skills, "capabilities": AGENT_CAPABILITIES},
             "owner": {
                 "accountId": owner,
                 "name": agent.owner_name,

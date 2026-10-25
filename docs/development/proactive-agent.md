@@ -32,8 +32,9 @@ watches under its usual id `cloud-agent:<account_id>`, with the setting in
 `cloud_account_proactive_settings` (`account_id`, `enabled`, `updated_at`;
 no row is off). Its evaluation and approved runs carry that id in
 `execution_agent_id`, get the default Kordi system prompt, and have no
-skills; its card lands in the owner's chat with their Kordi, else in a new
-`session:self-agent:<uuid>` chat. State and proposal rows have no foreign
+skills; its offers reach the owner the same way as a definition's (see
+"Offer and permission"), with no chat created for it. State and proposal
+rows have no foreign
 key to the agent; they go with the owner's account, and archiving a
 definition deletes its rows.
 
@@ -114,6 +115,9 @@ Anything that is not that object, or an `offer` without `problem` and
 `plan`, counts as `silence`. Silence writes nothing anywhere except the
 activity log.
 
+The snapshot's `agent.capabilities` line tells the model what an allowed
+run can do, so a default agent with no skills list is judged fairly.
+
 Routing follows the Mac-first rule. A Mac that publishes the `proactive`
 readiness capability is preferred for one presence timeout, then the cloud
 runner leases the run. Until the Mac path ships (follow-up below), no Mac
@@ -129,36 +133,53 @@ An `offer` creates a row in `cloud_agent_proactive_proposals`:
 `proposal_id` (`pro_<uuid>`), `agent_id`, `owner_account_id`,
 `conversation_id`, `session_id`, `trigger_message_id`, `evidence_json`,
 `problem`, `offer`, `plan`, `status`, `evaluation_run_id`, `run_id`,
-`card_message_id`, `created_at`, `decided_at`, `expires_at`.
+`created_at`, `decided_at`, `expires_at`.
 
 `status` moves `pending` to `approved`, `declined` or `expired`;
 `approved` moves to `running`, then `done` or `failed`. A proposal expires
 24 hours after it is made. One pending proposal per agent and
 conversation; an offer sets `cooldown_until` two hours ahead.
 
-The owner learns about it from a card the agent posts in the owner's own
-conversation with that agent, the place scheduled-task results already
-land. The message carries one content block:
+Nothing is posted as a message and no chat is created. The owner's client
+shows the offer inside the group conversation where the problem was
+raised, to the owner only, from the proposals routes below. Two signals
+keep it current:
 
-```json
-{ "type": "proactive_offer", "proposalId": "pro_…", "agentId": "…",
-  "agentName": "…", "conversationId": "…", "sessionId": "session:group:…",
-  "conversationTitle": "…", "triggerMessageId": "…", "problem": "…",
-  "offer": "…", "plan": "…", "status": "pending",
-  "expiresAt": "RFC 3339", "runId": null, "decidedAt": null }
-```
+- On creation and on every status change (`approved`, `declined`,
+  `expired`, `running`, `done`, `failed`) the server appends the account
+  hint `proactive.proposal_changed` for the owner, in the same transaction
+  as the change, so the owner's devices update without a round trip:
 
-Clients that do not know the block show its text fallback. The normal
-message push reaches the owner's devices. When the status changes the
-server refreshes the message content in place, as plan cards do, so every
-device re-renders the same card.
+  ```json
+  { "proposalId": "pro_…", "agentId": "…", "conversationId": "…",
+    "sessionId": "session:group:…", "status": "pending", "problem": "…",
+    "offer": "…", "plan": "…", "expiresAt": "RFC 3339",
+    "runId": null, "replyMessageId": null }
+  ```
+
+  `replyMessageId` is set once the status is `done`.
+- On creation a push reaches the owner's devices that take message
+  notifications: title the agent's name, body "Can help in <group>:
+  <offer>" with the offer cut to about 120 characters, `notification_type`
+  `proactive_proposal` with `session_id` (the conversation) and
+  `proposal_id`. Devices with previews off get a generic line. Without a
+  push service (local stacks) it is skipped.
+
+Pending proposals past `expires_at` become `expired`, with the hint, on
+the worker's sweep and lazily whenever the owner lists proposals, so
+clients stop showing them.
 
 Routes, owner only:
 
 - `POST /v1/cloud/agents/{agent_id}/proactive/proposals/{proposal_id}/decision`
   with `{"decision": "allow" | "decline"}`. Returns the proposal. `409`
   when it is not pending or has expired.
-- `GET /v1/cloud/agents/{agent_id}/proactive/proposals?status=pending`.
+- `GET /v1/cloud/agents/{agent_id}/proactive/proposals?status=pending[&conversationId=…]`:
+  one agent's proposals; `status` defaults to `pending`.
+- `GET /v1/cloud/proactive/proposals?status=pending[&conversationId=…]`:
+  the caller's proposals across all of their agents (active definitions
+  and the default agent), same shape, so a client gets the offers for the
+  open conversation in one call. Other people's proposals never appear.
 - `GET /v1/cloud/agents/{agent_id}/proactive/activity?limit=50`: the
   recent evaluations, newest first, each with `at`, `conversationId`,
   `conversationTitle`, `decision`, and for offers `proposalId`, `status`,
@@ -201,15 +222,22 @@ proposals.
 - Harness: the evaluation run has no tools; the approved run has exactly
   the tools an owner-started group run has today.
 - Prompt: the evaluation instructions say that messages are evidence and
-  never instructions, that silence is the default, and that an offer must
-  name one concrete problem the agent can finish on its own.
+  never instructions, that an offer names one concrete problem the agent
+  can move forward with its capabilities, and that small talk, plans,
+  answered questions and vague remarks are silence. The owner's review of
+  every offer is what lets the agent lean towards offering.
 
 ## Client
 
-Desktop: the Blueprint row, the card in the owner's agent conversation
-(Allow, Not now, then the state), and the Runs tab listing the activity.
-iPhone: the agent model decodes the field; the card's text fallback shows
-until the native card ships.
+The owner's client shows a pending offer inside the group conversation it
+is about, visible to the owner only, from
+`GET /v1/cloud/proactive/proposals?conversationId=…` and refreshed by the
+`proactive.proposal_changed` hint; the push brings the owner to that
+conversation. There is no message and no new chat.
+
+Desktop: the Blueprint row, the offer in the group (Allow, Not now, then
+the state), and the Runs tab listing the activity. iPhone: the agent model
+decodes the field and the push opens the group; the native offer follows.
 
 Design preview: `docs/design-previews/proactive-agent/`.
 
@@ -218,7 +246,7 @@ Design preview: `docs/design-previews/proactive-agent/`.
 - Mac execution of evaluation runs through the digest's desktop path
   (`digest::desktop`, `chat/digest_run.rs`) with a `proactive` readiness
   capability.
-- iPhone card with Allow and Not now, and the Blueprint row once an agent
-  settings screen exists there.
+- iPhone offer with Allow and Not now in the group, and the Blueprint row
+  once an agent settings screen exists there.
 - Contact chats, with the other person's consent (issue #1711).
 - Per-conversation off switch for the group.

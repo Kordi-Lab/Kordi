@@ -69,6 +69,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             "/v1/cloud/agents/:agent_id/proactive/activity",
             get(proactive::list_activity),
         )
+        .route(
+            "/v1/cloud/proactive/proposals",
+            get(proactive::list_all_proposals),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,
