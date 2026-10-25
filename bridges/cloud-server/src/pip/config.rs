@@ -96,6 +96,7 @@ impl fmt::Debug for PipProviderAuth {
 
 #[derive(Debug, Clone)]
 pub struct PendingPipConfig {
+    pub group_chat_enabled: bool,
     pub account_id: String,
     pub owner_email: String,
     pub agent_id: String,
@@ -106,6 +107,7 @@ pub struct PendingPipConfig {
 
 #[derive(Debug, Clone)]
 pub struct PipConfig {
+    pub group_chat_enabled: bool,
     pub account_id: String,
     pub owner_email: String,
     pub agent_id: String,
@@ -224,6 +226,7 @@ impl PendingPipConfig {
             ));
         }
         Ok(Some(Self {
+            group_chat_enabled: !switched_off(get("KORDI_PIP_GROUP_CHAT_ENABLED").as_deref()),
             account_id: required_or_default(
                 &mut get,
                 "KORDI_PIP_ACCOUNT_ID",
@@ -263,6 +266,7 @@ impl PipConfig {
 #[cfg(test)]
 pub(crate) fn test_config(account_id: &str) -> PipConfig {
     PipConfig {
+        group_chat_enabled: true,
         account_id: account_id.to_string(),
         owner_email: "pip-test@example.invalid".to_string(),
         agent_id: format!("pip-agent-{account_id}"),
@@ -307,6 +311,19 @@ mod tests {
     }
 
     #[test]
+    fn grounding_credentials_can_be_enabled_without_group_chat_automation() {
+        let values = HashMap::from([
+            ("KORDI_PIP_OPENAI_API_KEY", "synthetic-key"),
+            ("KORDI_PIP_GROUP_CHAT_ENABLED", "false"),
+        ]);
+        let config = PendingPipConfig::from_lookup(|key| values.get(key).map(|v| v.to_string()))
+            .unwrap()
+            .expect("Grounding service remains available");
+        assert!(!config.group_chat_enabled);
+        assert_eq!(config.provider_auth.api_key(), "synthetic-key");
+    }
+
+    #[test]
     fn enabled_pip_requires_its_own_api_key() {
         let values = HashMap::from([("KORDI_PIP_ENABLED", "true")]);
         let error =
@@ -325,6 +342,7 @@ mod tests {
             PendingPipConfig::from_lookup(|key| values.get(key).map(|value| value.to_string()))
                 .unwrap()
                 .unwrap();
+        assert!(config.group_chat_enabled);
         assert_eq!(config.account_id, DEFAULT_PIP_ACCOUNT_ID);
         assert_eq!(config.agent_id, DEFAULT_PIP_AGENT_ID);
         assert_eq!(config.name, "System");

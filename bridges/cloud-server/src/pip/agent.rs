@@ -82,6 +82,7 @@ pub async fn bootstrap_pip_agent(
     .await?;
 
     let config = PipConfig {
+        group_chat_enabled: pending.group_chat_enabled,
         account_id: pending.account_id,
         owner_email: pending.owner_email,
         agent_id: pending.agent_id,
@@ -136,9 +137,11 @@ pub async fn bootstrap_pip_agent(
         ));
     }
 
-    let joined = super::membership::join_all_groups(pool, &config.account_id).await?;
-    if joined > 0 {
-        println!("PiP joined {joined} existing group conversation(s)");
+    if config.group_chat_enabled {
+        let joined = super::membership::join_all_groups(pool, &config.account_id).await?;
+        if joined > 0 {
+            println!("PiP joined {joined} existing group conversation(s)");
+        }
     }
     let left = super::membership::leave_room_groups(pool, &config.account_id).await?;
     if left > 0 {
