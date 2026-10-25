@@ -103,7 +103,7 @@ export async function expectMergedCatalogList(page: Page) {
   const count = Number(placeholder?.match(/^Search (\d+) providers$/)?.[1]);
   expect(count).toBe(expectedProviderRows);
   await expect(providerRows(page)).toHaveCount(count);
-  await expect(page.getByText(`OMP catalog ${catalog.version}`, { exact: true })).toBeVisible();
+  await expect(page.getByText(/OMP catalog/)).toHaveCount(0);
   await expect(page.getByText(/could not load/i)).toHaveCount(0);
   await expect(section(page, 'Connected providers').getByRole('button')).toHaveText([/OpenAI/]);
   return count;
