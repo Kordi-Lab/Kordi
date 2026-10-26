@@ -33,7 +33,7 @@ export function NearbyDeviceLocation({ nearby }: { nearby: CgNearbyStore }) {
     }
   };
   return (
-    <div className="cg-nb-status">
+    <div className="cg-nb-status cg-nb-location">
       <button type="button" className="cg-link" disabled={busy} onClick={() => void locate()}>
         {busy ? 'Finding your location…' : 'Use this device’s location'}
       </button>

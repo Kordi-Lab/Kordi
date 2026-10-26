@@ -110,3 +110,7 @@
   .cg-nb-menu { animation: none; }
   .cg-nb-chip { transition: none; }
 }
+
+/* Keep location permission guidance readable in narrow wallet columns. */
+.cg-nb-status.cg-nb-location { flex-direction: column; align-items: flex-start; gap: 4px; }
+.cg-nb-location p { margin: 0; }
