@@ -46,6 +46,7 @@ tower = { version = "0.5", features = ["limit"] }
 argon2 = "0.5"
 async-trait = "0.1"
 google-cloud-auth = { version = "1.18", default-features = false }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 password-hash = { version = "0.5", features = ["alloc", "rand_core"] }
 async-nats = "0.37"
 bytes = "1"

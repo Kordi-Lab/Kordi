@@ -37,10 +37,7 @@ impl ServiceTokenSource for GoogleTokenSource {
             let config: serde_json::Value = serde_json::from_slice(&contents)
                 .map_err(|_| "Google Cloud workload identity configuration is invalid")?;
             validate_workload_identity(&config)?;
-            let credentials = external_account::Builder::new(config)
-                .with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
-                .build_access_token_credentials()
-                .map_err(|_| "Google Cloud workload identity configuration is invalid")?;
+            let credentials = google_credentials(config)?;
             *cached = Some((Instant::now(), credentials));
         }
         let (_, credentials) = cached
@@ -55,6 +52,19 @@ impl ServiceTokenSource for GoogleTokenSource {
         }
         Ok(token.token)
     }
+}
+
+fn google_credentials(config: serde_json::Value) -> Result<AccessTokenCredentials, &'static str> {
+    // The Google SDK's reqwest client disables its default TLS provider.
+    // Install the workspace's ring provider before the SDK can construct a
+    // client. Another caller may already have installed a valid provider.
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+    external_account::Builder::new(config)
+        .with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
+        .build_access_token_credentials()
+        .map_err(|_| "Google Cloud workload identity configuration is invalid")
 }
 
 // The SDK requests a one-hour impersonated token. Its normal cache refresh
@@ -231,25 +241,74 @@ mod tests {
     }
     #[tokio::test]
     async fn workload_identity_sdk_builds_with_the_server_tls_configuration() {
+        // CryptoProvider is process-global. Run this test alone in a fresh
+        // process so another test cannot hide a missing initialization.
+        const CHILD: &str = "KORDI_TEST_GOOGLE_CRYPTO_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "service_model::tests::workload_identity_sdk_builds_with_the_server_tls_configuration",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .status()
+                .unwrap();
+            assert!(status.success(), "isolated Google SDK token flow failed");
+            return;
+        }
+        assert!(rustls::crypto::CryptoProvider::get_default().is_none());
+        struct TokenFile(std::path::PathBuf);
+        impl Drop for TokenFile {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let token_file = TokenFile(
+            std::env::temp_dir().join(format!("kordi-synthetic-workload-{}", uuid::Uuid::new_v4())),
+        );
+        std::fs::write(&token_file.0, "synthetic-workload-subject").unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new()
+            .route(
+                "/token",
+                axum::routing::post(|| async {
+                    axum::Json(serde_json::json!({
+                        "access_token":"synthetic-federated-token",
+                        "issued_token_type":"urn:ietf:params:oauth:token-type:access_token",
+                        "token_type":"Bearer",
+                        "expires_in":3600
+                    }))
+                }),
+            )
+            .route(
+                "/impersonate",
+                axum::routing::post(|headers: axum::http::HeaderMap| async move {
+                    assert_eq!(headers["authorization"], "Bearer synthetic-federated-token");
+                    axum::Json(serde_json::json!({
+                        "accessToken":"synthetic-impersonated-token",
+                        "expireTime":(chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339()
+                    }))
+                }),
+            );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let config = serde_json::json!({
             "type":"external_account",
             "audience":"//iam.googleapis.com/projects/123456/locations/global/workloadIdentityPools/test/providers/test",
             "subject_token_type":"urn:ietf:params:oauth:token-type:jwt",
-            "token_url":"https://sts.googleapis.com/v1/token",
-            "service_account_impersonation_url":"https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/test@example.invalid:generateAccessToken",
-            "credential_source":{"file":"/nonexistent-kordi-synthetic-workload-token"},
+            "token_url":format!("{origin}/token"),
+            "service_account_impersonation_url":format!("{origin}/impersonate"),
+            "credential_source":{"file":token_file.0},
         });
-        validate_workload_identity(&config).unwrap();
-        let credentials = external_account::Builder::new(config)
-            .with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
-            .build_access_token_credentials()
+        // Only this SDK-boundary test substitutes loopback endpoints. The
+        // production validator still permits only Google's official URLs.
+        let credentials = google_credentials(config).unwrap();
+        let token = tokio::time::timeout(Duration::from_secs(5), credentials.access_token())
+            .await
+            .expect("synthetic token flow should finish promptly")
             .unwrap();
-        // Missing source material fails locally, without contacting Google or
-        // using any ambient developer credential. This also exercises TLS
-        // client construction with the workspace's crypto provider features.
-        let result = tokio::time::timeout(Duration::from_secs(2), credentials.access_token()).await;
-        assert!(result
-            .expect("missing source should fail promptly")
-            .is_err());
+        assert_eq!(token.token, "synthetic-impersonated-token");
+        server.abort();
     }
 }
