@@ -111,11 +111,11 @@ struct DocumentReaderView: View {
                     .presentationDetents([.medium])
             }
         }
-        .navigationDestination(item: $messageConversation) { conversation in
+        .stableNavigationDestination(item: $messageConversation) { conversation in
             ConversationView(conversation: conversation)
                 .task { _ = await model.restoreConversationIfNeeded(conversation) }
         }
-        .navigationDestination(item: $sessionConversation) { conversation in
+        .stableNavigationDestination(item: $sessionConversation) { conversation in
             ConversationView(conversation: conversation)
         }
         .alert("Your name", isPresented: Binding(

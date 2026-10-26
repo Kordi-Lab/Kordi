@@ -16,12 +16,14 @@ enum ConversationModalPresenter {
         transition: UIModalTransitionStyle = .coverVertical,
         interfaceStyle: UIUserInterfaceStyle = .unspecified,
         statusBarStyle: UIStatusBarStyle = .default,
+        onDismiss: (() -> Void)? = nil,
         @ViewBuilder content: (_ close: @escaping () -> Void) -> Content
     ) {
         guard let presenter = topViewController(), !(presenter is ConversationModalHostingController) else { return }
         let closer = Closer()
         let host = ConversationModalHostingController(rootView: AnyView(content(closer.close)))
         host.ownerID = ownerID
+        host.onDismiss = onDismiss
         host.statusBarStyle = statusBarStyle
         host.overrideUserInterfaceStyle = interfaceStyle
         // Over full screen keeps the chat in the window: its appear and
@@ -84,6 +86,15 @@ enum ConversationModalPresenter {
 final class ConversationModalHostingController: UIHostingController<AnyView> {
     var ownerID: String?
     var statusBarStyle: UIStatusBarStyle = .default
+    /// Runs once the modal has closed, however it was closed.
+    var onDismiss: (() -> Void)?
 
     override var preferredStatusBarStyle: UIStatusBarStyle { statusBarStyle }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        guard isBeingDismissed else { return }
+        onDismiss?()
+        onDismiss = nil
+    }
 }

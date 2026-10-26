@@ -249,8 +249,8 @@ struct SessionDetailView: View {
                 do { try await Task.sleep(for: .seconds(3)) } catch { return }
             }
         }
-        .navigationDestination(item: $documentReader) { DocumentReaderScreen(request: $0) }
-        .navigationDestination(item: $selectedAgentThread) { task in
+        .stableNavigationDestination(item: $documentReader) { DocumentReaderScreen(request: $0) }
+        .stableNavigationDestination(item: $selectedAgentThread) { task in
             AgentSubsessionView(sessionId: task.sessionId)
         }
         .fullScreenCover(item: $mediaPreview) { presentation in
@@ -263,16 +263,16 @@ struct SessionDetailView: View {
         .sheet(item: $groupInviteSpace) { space in
             GroupMemberInviteSheet(space: space)
         }
-        .navigationDestination(item: $relatedConversation) { destination in
+        .stableNavigationDestination(item: $relatedConversation) { destination in
             ConversationView(conversation: destination)
         }
-        .navigationDestination(item: $participantProfileConversation) { destination in
+        .stableNavigationDestination(item: $participantProfileConversation) { destination in
             SessionDetailView(
                 conversation: destination,
                 presentationContext: .groupParticipantProfile
             )
         }
-        .navigationDestination(item: $chatConversation) { destination in
+        .stableNavigationDestination(item: $chatConversation) { destination in
             ConversationView(conversation: destination)
         }
         .onDisappear {
