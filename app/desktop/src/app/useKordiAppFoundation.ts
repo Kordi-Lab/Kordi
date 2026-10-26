@@ -187,6 +187,7 @@ export function useKordiAppFoundation({
     handleCloseInlineAuthDialog,
     dismissAuthGate,
     showAuthGate,
+    workspaceHelpAvailable,
   } = useKordiAuthNavigationState({
     isNativeShell,
     activeNav,
@@ -432,7 +433,7 @@ export function useKordiAppFoundation({
       visibleSettingsSections, visibleActiveSettingsSectionId,
       openCloudAccountAuthentication, inlineAuthDialog,
       openAuthSettings, openLoginFlow, handleCloseInlineAuthDialog,
-      dismissAuthGate, showAuthGate,
+      dismissAuthGate, showAuthGate, workspaceHelpAvailable,
     },
     composer: {
       chatDraftSessionId, activeChatQuote, onClearChatQuote,

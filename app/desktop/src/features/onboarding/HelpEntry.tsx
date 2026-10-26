@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from 'react';
+import { lazy, Suspense, useContext, useRef, useState } from 'react';
 import type { AppDialogAnchor } from '@/components/ui/dialog';
 import { CircleHelp } from 'lucide-react';
 import { cloudApiBaseUrl } from '@/features/cloud/authClient';
@@ -9,6 +9,7 @@ import { requestHelpGrounding } from './helpNavigation';
 import type { HelpTourId } from './helpTourSteps';
 import type { HelpAction } from './helpContent';
 import { HelpWelcome } from './HelpWelcome';
+import { HelpAvailabilityContext } from './helpAvailability';
 
 const HelpMenu = lazy(() => import('./HelpMenu'));
 const HelpTour = lazy(() => import('./HelpTour'));
@@ -22,6 +23,8 @@ type HelpEntryProps = {
 };
 
 export function HelpEntry(props: HelpEntryProps) {
+  const available = useContext(HelpAvailabilityContext);
+  if (!available) return null;
   return <AccountHelpEntry key={props.account.cloudAccount?.accountId ?? 'local'} {...props} />;
 }
 

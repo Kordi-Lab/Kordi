@@ -9,6 +9,7 @@ import {
 import { NativeTitlebar, type NativeTitlebarActions } from '@/app/NativeTitlebar';
 import { useNativeBackdrop } from '@/app/useNativeBackdrop';
 import { cn } from '@/lib/utils';
+import { HelpAvailabilityContext } from '@/features/onboarding/helpAvailability';
 
 type AppShellFrameProps = NativeTitlebarActions & {
   rootThemeClass: string;
@@ -28,6 +29,7 @@ type AppShellFrameProps = NativeTitlebarActions & {
   mainContent: ReactNode;
   rightDetailRail?: ReactNode;
   authGate?: ReactNode;
+  workspaceHelpAvailable: boolean;
   inlineAuthDialog?: ReactNode;
   messageForwardDialog?: ReactNode;
   messageDeleteDialog?: ReactNode;
@@ -60,6 +62,7 @@ export function AppShellFrame({
   mainContent,
   rightDetailRail,
   authGate,
+  workspaceHelpAvailable,
   inlineAuthDialog,
   messageForwardDialog,
   messageDeleteDialog,
@@ -166,7 +169,9 @@ export function AppShellFrame({
             gridTemplateRows: 'minmax(0, 1fr)',
           } as CSSProperties}
         >
-          {sidebar}
+          <HelpAvailabilityContext value={workspaceHelpAvailable && !authGate}>
+            {sidebar}
+          </HelpAvailabilityContext>
           {showSessionRail && !collapseChatSessions && (
             <div
               onMouseDown={onSessionResizeMouseDown}

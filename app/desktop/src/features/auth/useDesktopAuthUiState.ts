@@ -131,6 +131,9 @@ export function useDesktopAuthUiState({
 
   return {
     inlineAuthDialog,
+    // Keep help available during later provider refreshes once the user has entered.
+    workspaceHelpAvailable: !isNativeShell || isAuthGateResolvedForSession
+      || (!isDesktopAuthLoading && desktopAuthState !== null && startupGateSatisfied),
     openAuthSettings,
     openLoginFlow,
     handleCloseInlineAuthDialog,

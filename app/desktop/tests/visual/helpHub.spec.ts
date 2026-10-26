@@ -4,6 +4,28 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/v1/cloud/auth/capabilities', (route) => route.fulfill({ json: { password: true, oauthProviders: ['google', 'github'], commonGroundVersion: 3, connectorsVersion: 1, memoryVersion: 3 } }));
 });
 
+for (const enterWorkspace of ['Skip for now', 'Connect test provider']) {
+  test(`welcome and tours wait for provider setup: ${enterWorkspace}`, async ({ page }) => {
+    await page.goto('/tests/visual/helpHub.html?startup=1');
+    const welcome = page.getByRole('complementary', { name: 'Welcome to Kordi' });
+    await expect(page.getByRole('button', { name: /Help & setup/ })).toHaveCount(0);
+    await expect(welcome).toHaveCount(0);
+    await page.getByRole('button', { name: 'Finish loading providers' }).click();
+    await expect(page.getByRole('heading', { name: 'Connect a provider' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Help & setup/ })).toHaveCount(0);
+    await expect(welcome).toHaveCount(0);
+    await expect(page.locator('.help-tour-layer')).toHaveCount(0);
+    await page.getByRole('button', { name: enterWorkspace, exact: true }).click();
+    await expect(page.locator('.app-auth-gate-overlay')).toHaveCount(0);
+    await expect(welcome).toBeVisible();
+    await page.getByRole('button', { name: 'Explore Kordi', exact: true }).click();
+    await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'profile');
+    await expect(welcome).toHaveCount(0);
+    await page.getByRole('button', { name: 'Skip tour', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Help & setup', exact: true })).toBeVisible();
+  });
+}
+
 test('help is a compact menu and direct navigation preserves the draft', async ({ page }) => {
   await page.goto('/tests/visual/helpHub.html?isolated=1');
   await page.getByRole('button', { name: 'Help & setup', exact: true }).click();

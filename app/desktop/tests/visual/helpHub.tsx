@@ -4,6 +4,7 @@ import HelpMenu from '../../src/features/onboarding/HelpMenu';
 import type { HelpAction } from '../../src/features/onboarding/helpContent';
 import { HelpWorkspacePreview } from './helpWorkspacePreview';
 import { HelpWelcome } from '../../src/features/onboarding/HelpWelcome';
+import { HelpStartupFixture } from './helpStartup';
 
 const theme = new URLSearchParams(window.location.search).get('theme') === 'light' ? 'light' : 'dark';
 document.body.classList.add(`theme-${theme}`);
@@ -27,4 +28,4 @@ function WelcomeFixture() {
     {!dismissed ? <HelpWelcome trigger={trigger} onStart={() => setDismissed(true)} onDismiss={() => setDismissed(true)} /> : null}
   </div>;
 }
-createRoot(document.querySelector('#root')!).render(new URLSearchParams(location.search).has('welcome') ? <WelcomeFixture /> : new URLSearchParams(location.search).has('isolated') ? <Fixture /> : <HelpWorkspacePreview theme={theme} />);
+createRoot(document.querySelector('#root')!).render(new URLSearchParams(location.search).has('startup') ? <HelpStartupFixture /> : new URLSearchParams(location.search).has('welcome') ? <WelcomeFixture /> : new URLSearchParams(location.search).has('isolated') ? <Fixture /> : <HelpWorkspacePreview theme={theme} />);
