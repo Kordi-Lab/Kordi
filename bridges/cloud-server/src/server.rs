@@ -430,7 +430,7 @@ pub async fn run(
         );
     }
     let state = Arc::new(state);
-    workers::spawn_background_workers(&state, database_url);
+    workers::spawn_background_workers(&state, database_url, &rate_limiter);
     let sweeper_state = state.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(crate::presence::presence_sweep_interval());

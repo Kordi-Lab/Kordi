@@ -108,6 +108,8 @@ pub async fn complete(
         super::build::complete(pool, run_id, runner_id, text).await
     } else if run_id.starts_with(INTRO_PREFIX) {
         super::intro::complete(pool, run_id, runner_id, text).await
+    } else if run_id.starts_with(super::nearby::NEED_PREFIX) {
+        super::nearby::complete_check(pool, run_id, runner_id, text).await
     } else {
         super::matching::complete(pool, run_id, runner_id, text).await
     }
@@ -123,6 +125,8 @@ pub async fn fail(
         super::build::fail(pool, run_id, runner_id, code).await
     } else if run_id.starts_with(INTRO_PREFIX) {
         super::intro::fail(pool, run_id, runner_id, code).await
+    } else if run_id.starts_with(super::nearby::NEED_PREFIX) {
+        super::nearby::fail_check(pool, run_id, runner_id, code).await
     } else {
         super::matching::fail(pool, run_id, runner_id, code).await
     }

@@ -25,6 +25,8 @@ final class KordiAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         coldLaunchNotificationPayload = launchOptions?[.remoteNotification] as? [AnyHashable: Any]
+        // Before launch ends: location events that relaunch the app, and the refresh task.
+        CommonGroundNearbyLocator.shared.launch()
         return true
     }
 
@@ -33,10 +35,7 @@ final class KordiAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
-        NotificationCenter.default.post(
-            name: .kordiDidRegisterForRemoteNotifications,
-            object: token
-        )
+        NotificationCenter.default.post(name: .kordiDidRegisterForRemoteNotifications, object: token)
     }
 
     func userNotificationCenter(

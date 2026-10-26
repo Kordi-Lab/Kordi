@@ -13,7 +13,7 @@ mod store;
 pub(super) use finish::{complete, fail};
 pub(super) use recent::recent;
 pub(super) use routes::{match_detail, results};
-pub(super) use store::stored_results;
+pub(super) use store::{fresh_results, queue_matches, stored_results, Pending, Queued};
 
 use serde::{Deserialize, Serialize};
 use sqlx_core::query_as::query_as;

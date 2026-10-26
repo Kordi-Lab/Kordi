@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ChevronLeft } from 'lucide-react';
 
+import { cn } from '@/lib/utils';
 import { newCardInput } from './cardDesign';
 import { DeckRail } from './DeckRail';
 import { NewCardDialog } from './NewCardDialog';
@@ -44,19 +45,26 @@ export function SharingChip({ chipKey, face }: { chipKey: string; face: CgCardFa
  * Grounding Home and the card page on the Mac: a header (back, title, the shared card) above
  * the deck rail and one centre column.
  */
-export function WalletShell({ state, store, owner, title, onBack, children }: {
+export function WalletShell({ state, store, owner, title, onBack, chip, actions, center = false, children }: {
   state: CgState;
   store: CommonGroundStore;
   /** The signed-in account, drawn on its cards. */
   owner?: CgCardOwner;
   title: string;
   onBack?: () => void;
+  /** Replaces the "Sharing" chip of the current card (Nearby shares its own card). */
+  chip?: ReactNode;
+  /** Buttons after the chip, such as Nearby's More menu. */
+  actions?: ReactNode;
+  /** Centres the column's content, as for Nearby before it is on. */
+  center?: boolean;
   children: ReactNode;
 }) {
   const [creating, setCreating] = useState(false);
   const profile = currentProfile(state);
   const cards = state.profilesOn ? deckCards(state, owner) : [];
-  const onCard = state.stack[state.stack.length - 1]?.name === 'card';
+  const page = state.stack[state.stack.length - 1]?.name ?? 'home';
+  const onCard = page === 'card';
   const select = (id: string) => {
     if (id === 'suggested') return;
     const target = state.profiles.find((item) => item.profileId === id);
@@ -76,7 +84,8 @@ export function WalletShell({ state, store, owner, title, onBack, children }: {
           </button>
         ) : null}
         <h1>{title}</h1>
-        {profile ? <SharingChip chipKey={profile.profileId} face={profileFace(profile, state)} /> : null}
+        {chip !== undefined ? chip : profile ? <SharingChip chipKey={profile.profileId} face={profileFace(profile, state)} /> : null}
+        {actions}
       </header>
       <div className={state.profilesOn ? 'cg-wallet-body' : 'cg-wallet-body is-plain'}>
         {state.profilesOn ? (
@@ -89,8 +98,8 @@ export function WalletShell({ state, store, owner, title, onBack, children }: {
             onNew={() => setCreating(true)}
           />
         ) : null}
-        <div className="cg-wallet-main">
-          <div key={`${onCard ? 'card' : 'home'}:${onCard ? state.profileId : ''}`} className={onCard ? 'cg-wallet-col is-push' : 'cg-wallet-col'}>
+        <div className={center ? 'cg-wallet-main is-center' : 'cg-wallet-main'}>
+          <div key={`${page}:${onCard ? state.profileId : ''}`} className={cn('cg-wallet-col', page !== 'home' && 'is-push', page === 'nearby' && 'is-nearby')}>
             {children}
           </div>
         </div>

@@ -27,12 +27,19 @@ use sqlx_postgres::PgPool;
 
 use super::{db_error, people as cg_people};
 
-/// The response to send instead when `viewer` may not act on `other`.
+/// The response to send instead when `viewer` may not act on `other`: they
+/// share a room or a pairing, or else see each other through nearby right
+/// now.
 async fn require_visible(pool: &PgPool, viewer: &str, other: &str) -> Option<Response> {
     if viewer == other {
         return Some(cg_people::not_found());
     }
-    match cg_people::can_see(pool, viewer, other).await {
+    let visible = match cg_people::can_see(pool, viewer, other).await {
+        Ok(true) => Ok(true),
+        Ok(false) => super::nearby::visible(pool, viewer, other).await,
+        Err(error) => Err(error),
+    };
+    match visible {
         Ok(true) => None,
         Ok(false) => Some(cg_people::not_found()),
         Err(error) => Some(db_error(error)),
