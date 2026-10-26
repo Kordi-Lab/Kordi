@@ -75,13 +75,14 @@ pub(crate) async fn signed_in(pool: &PgPool, label: &str) -> (String, String) {
     (account_id, session.plaintext_token)
 }
 
-/// The router with PiP configured as `service`, so card builds can queue.
+/// The router with the System agent configured as `service`, so card builds can
+/// queue.
 pub(crate) fn app(pool: &PgPool, service: Option<&str>) -> Router {
     let mut state = ServerState::new(pool.clone(), EventBus::noop());
     if let Some(service) = service {
-        state = state.with_pip(crate::pip::PipService::new(crate::pip::test_config(
-            service,
-        )));
+        state = state.with_system_agent(crate::system_agent::SystemAgentService::new(
+            crate::system_agent::test_config(service),
+        ));
     }
     crate::server::router(Arc::new(state))
 }

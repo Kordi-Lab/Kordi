@@ -9,10 +9,10 @@ pub(crate) async fn run<C: CloudAgentRunClient + Sync>(
     material: ProviderAuthMaterial,
 ) -> Result<String, ModelLoopError> {
     let input: Value = serde_json::from_str(&run.prompt)
-        .map_err(|_| ModelLoopError::Provider("Invalid PiP sweep input".into()))?;
+        .map_err(|_| ModelLoopError::Provider("Invalid System agent sweep input".into()))?;
     if input.get("messages").and_then(Value::as_array).is_none() {
         return Err(ModelLoopError::Provider(
-            "PiP sweep input has no messages".into(),
+            "System agent sweep input has no messages".into(),
         ));
     }
     let mut auth = OpenAiProviderConfig::from_material(&material)?;
@@ -86,7 +86,7 @@ impl Journal {
             .any(|block| block["id"].as_str().is_none_or(|id| !results.contains(id)));
         if messages.is_empty() || incomplete {
             return Err(ModelLoopError::Provider(
-                "PiP provider fallback cannot resume an incomplete tool action".into(),
+                "System agent provider fallback cannot resume an incomplete tool action".into(),
             ));
         }
         Ok(messages)
@@ -100,7 +100,7 @@ impl EventSink for Journal {
             if let Some(message) = event.data.get("message") {
                 self.0
                     .lock()
-                    .map_err(|_| "PiP journal unavailable")?
+                    .map_err(|_| "System agent journal unavailable")?
                     .push(message.clone());
             }
         }
@@ -116,7 +116,7 @@ struct PlanCardTools<'a, C> {
 #[async_trait::async_trait]
 impl<C: CloudAgentRunClient + Sync> HostTool for PlanCardTools<'_, C> {
     async fn execute(&self, call: ToolCall, _: CancellationToken) -> ToolResult {
-        let value = if call.name == crate::pip_tool::NAME {
+        let value = if call.name == crate::system_agent_tool::NAME {
             self.client
                 .plan_card_action(&self.run.run_id, call.input)
                 .await

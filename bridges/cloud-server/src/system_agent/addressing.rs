@@ -1,7 +1,7 @@
-//! Whom a member's message is for. A member talking to an agent (their own
-//! or anyone else's), or a message an agent already answered, is not PiP's
-//! cue to speak: PiP still reads it as context, but only plain chat between
-//! people can wake it.
+//! Whom a member's message is for. A member talking to an agent (their own or
+//! anyone else's), or a message an agent already answered, is not the System
+//! agent's cue to speak: it still reads the message as context, but only plain
+//! chat between people can wake it.
 
 use std::collections::{BTreeSet, HashSet};
 
@@ -37,18 +37,18 @@ fn envelope_field<'a>(envelope: &'a Value, name: &str) -> Option<&'a Value> {
         .filter(|value| !value.is_null())
 }
 
-/// Whether a decoded envelope targets or mentions an agent other than PiP.
-/// When a mention does not say what it points at, any handle that is not a
-/// member's counts as an agent's.
+/// Whether a decoded envelope targets or mentions an agent other than the
+/// System agent. When a mention does not say what it points at, any handle that
+/// is not a member's counts as an agent's.
 pub(super) fn addresses_other_agent(
     envelope: &Value,
-    pip_account_id: &str,
+    system_agent_account_id: &str,
     member_handles: &BTreeSet<String>,
 ) -> bool {
-    let is_pip = |value: &str| value.contains(pip_account_id);
+    let is_system_agent = |value: &str| value.contains(system_agent_account_id);
     if envelope_field(envelope, "targetCloudAgentId")
         .and_then(non_empty)
-        .is_some_and(|target| !is_pip(target))
+        .is_some_and(|target| !is_system_agent(target))
     {
         return true;
     }
@@ -59,7 +59,7 @@ pub(super) fn addresses_other_agent(
         .any(|mention| {
             let ids = ["targetIdentityId", "agentId", "humanId"]
                 .map(|key| mention.get(key).and_then(non_empty));
-            if ids.iter().flatten().any(|id| is_pip(id)) {
+            if ids.iter().flatten().any(|id| is_system_agent(id)) {
                 return false;
             }
             match mention.get("targetKind").and_then(Value::as_str) {
@@ -103,8 +103,8 @@ pub(super) fn request_ids(
         .collect()
 }
 
-/// The ids among `ids` that an agent run (not PiP's own) answered or is
-/// answering. Failed and cancelled runs did not answer.
+/// The ids among `ids` that an agent run (not the System agent's own) answered
+/// or is answering. Failed and cancelled runs did not answer.
 pub(super) async fn answered_ids(
     pool: &PgPool,
     ids: &[String],
@@ -130,7 +130,9 @@ pub(super) fn new_chat_worth_a_look(input: &Value) -> bool {
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|message| message["isNew"] == json!(true) && message["fromPip"] != json!(true))
+        .filter(|message| {
+            message["isNew"] == json!(true) && message["fromSystemAgent"] != json!(true)
+        })
         .filter(|message| {
             message["addressesAgent"] != json!(true) && message["answeredByAgent"] != json!(true)
         })
@@ -150,51 +152,51 @@ mod tests {
     fn input(message: Value) -> Value {
         let mut message = message;
         message["isNew"] = json!(true);
-        message["fromPip"] = json!(false);
+        message["fromSystemAgent"] = json!(false);
         json!({"messages": [message], "openCard": null})
     }
 
     #[test]
     fn agent_targets_and_agent_mentions_address_an_agent() {
-        let pip = "acct_kordi_pip";
+        let system_agent = "acct_kordi_pip";
         let group = |message: Value| json!({"kind": "group-message", "message": message});
         assert!(addresses_other_agent(
             &group(json!({"text": "check my memory", "targetCloudAgentId": "cloud-agent:acct_a"})),
-            pip,
+            system_agent,
             &handles()
         ));
         assert!(addresses_other_agent(
             &json!({"kind": "message", "mentions": [{"label": "KordiAlex", "targetKind": "agent",
                 "targetIdentityId": "agent:cloud-agent:acct_a"}]}),
-            pip,
+            system_agent,
             &handles()
         ));
         // Old clients send only a label: a handle that is no member's is an agent's.
         assert!(addresses_other_agent(
             &group(json!({"mentions": [{"label": "@KordiMemTesterA"}]})),
-            pip,
+            system_agent,
             &handles()
         ));
         assert!(!addresses_other_agent(
             &group(json!({"mentions": [{"label": "@RiyaShah"}]})),
-            pip,
+            system_agent,
             &handles()
         ));
         assert!(!addresses_other_agent(
             &json!({"mentions": [{"label": "Riya", "targetKind": "person",
                 "targetIdentityId": "human:acct_r"}]}),
-            pip,
+            system_agent,
             &handles()
         ));
-        // Talking to PiP itself is not talking to another agent.
+        // Talking to the System agent itself is not talking to another agent.
         assert!(!addresses_other_agent(
             &json!({"targetCloudAgentId": "cloud-agent:acct_kordi_pip"}),
-            pip,
+            system_agent,
             &handles()
         ));
         assert!(!addresses_other_agent(
             &group(json!({"text": "Dinner Friday at 7?"})),
-            pip,
+            system_agent,
             &handles()
         ));
     }
@@ -210,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn messages_for_an_agent_or_already_answered_do_not_wake_pip() {
+    fn messages_for_an_agent_or_already_answered_do_not_wake_system_agent() {
         let plain = json!({"text": "Can we meet Friday at 7?"});
         assert!(new_chat_worth_a_look(&input(plain.clone())));
         let mut addressed = plain.clone();
@@ -222,8 +224,8 @@ mod tests {
     }
 
     #[test]
-    fn the_prompt_keeps_pip_quiet_about_messages_for_other_agents() {
-        assert!(super::super::prompt::PIP_SYSTEM_PROMPT
+    fn the_prompt_keeps_system_agent_quiet_about_messages_for_other_agents() {
+        assert!(super::super::prompt::SYSTEM_AGENT_PROMPT
             .contains("stay quiet about it unless the card itself needs attention"));
     }
 }

@@ -1,4 +1,5 @@
-//! PiP's plan card messages, and which card revision PiP has already seen.
+//! The System agent's plan card messages, and which card revision it has
+//! already seen.
 
 use serde_json::{json, Value};
 use sqlx_core::executor::Executor;
@@ -11,10 +12,11 @@ use crate::chat_sync::models::SendMessageRequest;
 use crate::plan_cards::models::{PlanCardRow, PlanCardState};
 
 /// Key prefix in `cloud_pip_conversation_state.hooks_fired` holding the newest
-/// revision of one card PiP has seen, so a vote wakes PiP once per change.
+/// revision of one card the System agent has seen, so a vote wakes it once per
+/// change.
 pub(crate) const CARD_SEEN_PREFIX: &str = "card_seen:";
 
-/// The newest revision of `event_id` PiP has seen, or 0.
+/// The newest revision of `event_id` the System agent has seen, or 0.
 pub(crate) fn seen_revision(hooks_fired: &Value, event_id: &str) -> i64 {
     hooks_fired
         .get(format!("{CARD_SEEN_PREFIX}{event_id}"))
@@ -22,8 +24,9 @@ pub(crate) fn seen_revision(hooks_fired: &Value, event_id: &str) -> i64 {
         .unwrap_or(0)
 }
 
-/// Records that PiP has seen `revision` of a card. The stored revision never
-/// moves back, so a run finishing after PiP's own later action changes nothing.
+/// Records that the System agent has seen `revision` of a card. The stored
+/// revision never moves back, so a run finishing after the System agent's own
+/// later action changes nothing.
 pub(crate) async fn mark_card_seen<'e>(
     executor: impl Executor<'e, Database = Postgres>,
     conversation_id: Uuid,
@@ -158,9 +161,9 @@ fn refreshed_card_content(mut content: Value, row: &PlanCardRow) -> Option<Value
 
 /// Refreshes in place every message from `sender` that carries `row`'s card,
 /// keeping each one's view. Returns whether any message carries the card and
-/// whether one already shows the view the card now wants. A member who
-/// proposed a card in their own chat (Common ground's Meet) carries it in
-/// their own message, so their card stays current the same way PiP's does.
+/// whether one already shows the view the card now wants. A member who proposed
+/// a card in their own chat (Common ground's Meet) carries it in their own
+/// message, so their card stays current the same way the System agent's does.
 pub(crate) async fn refresh_card_carriers(
     pool: &PgPool,
     sender: &str,
@@ -199,22 +202,23 @@ pub(crate) async fn refresh_card_carriers(
     Ok((has_carrier, shows_wanted))
 }
 
-/// Brings PiP's card messages for a plan up to date. Every message already
-/// carrying the card is refreshed in place, keeping its own view, so votes and
-/// answers show on the card with no new chat line. When the plan needs a view
-/// no message shows yet (the vote card when a poll opens, the calendar card
-/// when a poll resolves), PiP posts it as a new card-only message and its
-/// sequence is returned.
+/// Brings the System agent's card messages for a plan up to date. Every message
+/// already carrying the card is refreshed in place, keeping its own view, so
+/// votes and answers show on the card with no new chat line. When the plan
+/// needs a view no message shows yet (the vote card when a poll opens, the
+/// calendar card when a poll resolves), the System agent posts it as a new
+/// card-only message and its sequence is returned.
 pub(crate) async fn sync_card_messages(
     pool: &PgPool,
-    pip_account_id: &str,
+    system_agent_account_id: &str,
     row: &PlanCardRow,
 ) -> Result<Option<i64>, sqlx_core::Error> {
     let Ok(conversation_id) = Uuid::parse_str(&row.conversation_id) else {
         return Ok(None);
     };
     let wanted = card_view(row);
-    let (has_carrier, shows_wanted) = refresh_card_carriers(pool, pip_account_id, row).await?;
+    let (has_carrier, shows_wanted) =
+        refresh_card_carriers(pool, system_agent_account_id, row).await?;
     // A canceled plan updates the cards it already has; it never adds one.
     if shows_wanted || (row.state == PlanCardState::Canceled && has_carrier) {
         return Ok(None);
@@ -233,12 +237,16 @@ pub(crate) async fn sync_card_messages(
         reply_to_message_id: None,
         attachment_ids: Vec::new(),
     };
-    // PiP's own messages never wake the sweep, so the cursor stays put and
-    // members' messages posted meanwhile are still read.
-    let outcome =
-        crate::chat_sync::store::send_message(pool, pip_account_id, conversation_id, request)
-            .await
-            .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
+    // The System agent's own messages never wake the sweep, so the cursor stays
+    // put and members' messages posted meanwhile are still read.
+    let outcome = crate::chat_sync::store::send_message(
+        pool,
+        system_agent_account_id,
+        conversation_id,
+        request,
+    )
+    .await
+    .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
     Ok(Some(outcome.value.conversation_sequence))
 }
 

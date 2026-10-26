@@ -1,5 +1,6 @@
-//! Grounding groups hold System, not PiP: System posts their notices, PiP is
-//! never backfilled into them, and startup takes PiP out of older ones.
+//! Grounding groups hold the System account, not the System agent: System
+//! posts their notices, the System agent is never backfilled into them, and
+//! startup takes it out of older ones.
 
 use serde_json::json;
 use sqlx_core::{query::query, query_as::query_as};
@@ -10,8 +11,10 @@ use super::db_fixture::send;
 use super::support::{make_contacts, people_in_a_room};
 use crate::system_account::SYSTEM_ACCOUNT_ID;
 
-fn pip() -> String {
-    crate::pip::service_account_id().unwrap().to_string()
+fn system_agent() -> String {
+    crate::system_agent::service_account_id()
+        .unwrap()
+        .to_string()
 }
 
 async fn start(app: &axum::Router, code: &str, token: &str, members: &[&str]) -> Uuid {
@@ -44,7 +47,8 @@ async fn state(pool: &PgPool, conversation_id: Uuid, account: &str) -> Option<St
     .map(|(state,): (String,)| state)
 }
 
-/// Makes `account` an active member the way PiP's old backfill did.
+/// Makes `account` an active member the way the System agent's old backfill
+/// did.
 async fn add_member(pool: &PgPool, conversation_id: Uuid, account: &str) {
     query(
         "INSERT INTO cloud_chat_conversation_members
@@ -73,7 +77,7 @@ async fn senders(pool: &PgPool, conversation_id: Uuid) -> Vec<(String, String)> 
 }
 
 #[test]
-fn system_and_pip_are_service_members() {
+fn system_and_system_agent_are_service_members() {
     assert_eq!(SYSTEM_ACCOUNT_ID, "acct_kordi_system");
     assert!(crate::system_account::is_service_account(SYSTEM_ACCOUNT_ID));
     assert!(crate::system_account::service_account_ids().contains(&SYSTEM_ACCOUNT_ID.to_string()));
@@ -81,7 +85,7 @@ fn system_and_pip_are_service_members() {
 }
 
 #[tokio::test]
-async fn a_new_group_holds_system_not_pip_and_hides_it() {
+async fn a_new_group_holds_system_not_system_agent_and_hides_it() {
     let Some(pool) = super::db_fixture::pool().await else {
         return;
     };
@@ -96,7 +100,7 @@ async fn a_new_group_holds_system_not_pip_and_hides_it() {
             .as_deref(),
         Some("active")
     );
-    assert_eq!(state(&pool, conversation_id, &pip()).await, None);
+    assert_eq!(state(&pool, conversation_id, &system_agent()).await, None);
     let (display_name,): (Option<String>,) =
         query_as("SELECT display_name FROM cloud_accounts WHERE account_id = $1")
             .bind(SYSTEM_ACCOUNT_ID)
@@ -135,7 +139,7 @@ async fn a_new_group_holds_system_not_pip_and_hides_it() {
 }
 
 #[tokio::test]
-async fn an_older_group_with_only_pip_gets_its_joined_line_from_system() {
+async fn an_older_group_with_only_system_agent_gets_its_joined_line_from_system() {
     let Some(pool) = super::db_fixture::pool().await else {
         return;
     };
@@ -144,7 +148,7 @@ async fn an_older_group_with_only_pip_gets_its_joined_line_from_system() {
         [people[0].clone(), people[1].clone(), people[2].clone()];
     make_contacts(&pool, &alex, &priya).await;
     let conversation_id = start(&app, &code, &alex_token, &[&sam, &priya]).await;
-    // As a group started before System: PiP in it, System not.
+    // Like an older group: the System agent is in it, System is not.
     query(
         "DELETE FROM cloud_chat_conversation_members
          WHERE conversation_id = $1 AND account_id = $2",
@@ -154,7 +158,7 @@ async fn an_older_group_with_only_pip_gets_its_joined_line_from_system() {
     .execute(&pool)
     .await
     .unwrap();
-    add_member(&pool, conversation_id, &pip()).await;
+    add_member(&pool, conversation_id, &system_agent()).await;
 
     let (_, theirs) = send(
         &app,
@@ -187,7 +191,7 @@ async fn an_older_group_with_only_pip_gets_its_joined_line_from_system() {
 }
 
 #[tokio::test]
-async fn pip_stays_out_of_grounding_groups() {
+async fn system_agent_stays_out_of_grounding_groups() {
     let Some(pool) = super::db_fixture::pool().await else {
         return;
     };
@@ -197,26 +201,26 @@ async fn pip_stays_out_of_grounding_groups() {
     let room_group = start(&app, &code, &alex_token, &[&priya]).await;
     let plain_group = Uuid::new_v4();
     crate::plan_cards::tests::seed_conversation(&pool, plain_group, &alex, &[&alex, &priya]).await;
-    let pip = pip();
+    let system_agent = system_agent();
 
-    crate::pip::membership::join_all_groups(&pool, &pip)
+    crate::system_agent::membership::join_all_groups(&pool, &system_agent)
         .await
         .unwrap();
-    assert_eq!(state(&pool, room_group, &pip).await, None);
+    assert_eq!(state(&pool, room_group, &system_agent).await, None);
     assert_eq!(
-        state(&pool, plain_group, &pip).await.as_deref(),
+        state(&pool, plain_group, &system_agent).await.as_deref(),
         Some("active")
     );
     assert!(
-        !crate::pip::membership::join_conversation(&pool, &pip, room_group)
+        !crate::system_agent::membership::join_conversation(&pool, &system_agent, room_group)
             .await
             .unwrap()
     );
-    assert_eq!(state(&pool, room_group, &pip).await, None);
+    assert_eq!(state(&pool, room_group, &system_agent).await, None);
 
-    // A room group PiP joined before this change loses it at startup, and
-    // members' devices hear about it.
-    add_member(&pool, room_group, &pip).await;
+    // A room group the System agent joined before this change loses it at
+    // startup, and members' devices hear about it.
+    add_member(&pool, room_group, &system_agent).await;
     let (before,): (i64,) = query_as(
         "SELECT COUNT(*) FROM cloud_chat_user_sync_events
          WHERE account_id = $1 AND conversation_id = $2 AND event_type = 'membership.updated'",
@@ -227,19 +231,19 @@ async fn pip_stays_out_of_grounding_groups() {
     .await
     .unwrap();
     assert!(
-        crate::pip::membership::leave_room_groups(&pool, &pip)
+        crate::system_agent::membership::leave_room_groups(&pool, &system_agent)
             .await
             .unwrap()
             >= 1
     );
     assert_eq!(
-        state(&pool, room_group, &pip).await.as_deref(),
+        state(&pool, room_group, &system_agent).await.as_deref(),
         Some("removed")
     );
     assert_eq!(
-        state(&pool, plain_group, &pip).await.as_deref(),
+        state(&pool, plain_group, &system_agent).await.as_deref(),
         Some("active"),
-        "only Grounding groups lose PiP"
+        "only Grounding groups lose the System agent"
     );
     let (after,): (i64,) = query_as(
         "SELECT COUNT(*) FROM cloud_chat_user_sync_events

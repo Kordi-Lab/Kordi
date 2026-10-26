@@ -103,7 +103,8 @@ pub(in crate::common_ground) async fn join(
     }
     if response.status == "joined" {
         audit_join(&state, &session, &group_invitation_id, &group_space_id).await;
-        // A group started before System posted notices has only PiP.
+        // A group started before System posted notices has only the System
+        // agent.
         let posted = match crate::system_account::join(pool, conversation_id).await {
             Ok(_) => intro::post_joined(pool, SYSTEM_ACCOUNT_ID, room_id, conversation_id, viewer)
                 .await

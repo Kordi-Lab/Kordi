@@ -22,7 +22,6 @@ pub mod events;
 pub(crate) mod memory_store;
 pub mod notifications;
 pub mod pg;
-pub mod pip;
 pub mod plan_cards;
 pub mod presence;
 pub mod proactive;
@@ -31,6 +30,7 @@ pub mod scheduled_tasks;
 pub mod server;
 pub mod support;
 pub mod system_account;
+pub mod system_agent;
 pub mod updates;
 pub mod ws;
 

@@ -30,10 +30,10 @@ enum KordiSystemIdentity {
         accountId?.trimmingCharacters(in: .whitespacesAndNewlines) == Self.accountId
     }
 
-    /// The plan agent and the System account are server-managed: never listed, counted,
+    /// The System agent and the System account are server-managed: never listed, counted,
     /// pictured, or synchronized as members.
     static func isServiceAccount(_ accountId: String?) -> Bool {
-        KordiPipIdentity.isPip(accountId: accountId) || isSystem(accountId: accountId)
+        KordiSystemAgentIdentity.isSystemAgent(accountId: accountId) || isSystem(accountId: accountId)
     }
 
     /// A notice is never the viewer's own bubble, even when the viewer's

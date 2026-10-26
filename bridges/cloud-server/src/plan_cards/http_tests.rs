@@ -112,7 +112,8 @@ async fn full_lifecycle_over_real_http() {
         .unwrap();
     assert_eq!(unauthenticated.status(), 401);
 
-    // Members never propose over HTTP: only PiP opens and revises cards.
+    // Members never propose over HTTP: only the System agent opens and revises
+    // cards.
     let propose_body = json!({
         "action": "propose",
         "conversationId": conversation_id.to_string(),
@@ -136,16 +137,17 @@ async fn full_lifecycle_over_real_http() {
         .unwrap();
     assert_eq!(response.status(), 403, "members cannot propose cards");
 
-    // PiP proposes through the same request shape inside its own chat.
+    // The System agent proposes through the same request shape inside its own
+    // chat.
     let request: super::wire::Request = serde_json::from_value(propose_body).unwrap();
-    let pip = super::routes::Actor {
+    let system_agent = super::routes::Actor {
         account_id: jordan.clone(),
         on_behalf_of_conversation: Some(conversation_id),
         represented_accounts: std::collections::BTreeSet::new(),
     };
-    let card = super::routes::dispatch_row(&pool, &pip, request)
+    let card = super::routes::dispatch_row(&pool, &system_agent, request)
         .await
-        .unwrap_or_else(|_| panic!("PiP's propose should succeed"));
+        .unwrap_or_else(|_| panic!("The System agent's propose should succeed"));
     let card = serde_json::to_value(card).unwrap();
     assert_eq!(card["state"], "polling");
     assert_eq!(card["revision"], 1);

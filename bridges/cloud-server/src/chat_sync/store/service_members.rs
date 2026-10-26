@@ -1,7 +1,7 @@
-//! Server-managed members, PiP and System, belong to a conversation without
-//! being one of its people. Clients never list them, so member lists that clients
-//! send are compared, replaced, and counted as if they were not there, and a
-//! client can never remove one.
+//! Server-managed members, the System agent and the System account, belong to a
+//! conversation without being one of its people. Clients never list them, so
+//! member lists that clients send are compared, replaced, and counted as if
+//! they were not there, and a client can never remove one.
 
 use super::support::*;
 use super::*;
