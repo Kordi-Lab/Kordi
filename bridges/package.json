@@ -8,6 +8,8 @@
     "bridges": "./bin/bridges.js"
   },
   "files": [
+    "LICENSE",
+    "NOTICE",
     "bin",
     "index.cjs",
     "scripts",
@@ -25,7 +27,7 @@
     "type": "git",
     "url": "https://github.com/Kordi-AI/Kordi.git"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "Kordi contributors",
   "keywords": [
     "agent",

@@ -316,4 +316,4 @@ npm pack --dry-run
 
 ## License
 
-MIT
+[Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for preserved attribution notices.

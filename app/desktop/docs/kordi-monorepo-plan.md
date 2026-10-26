@@ -184,7 +184,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license = "Apache-2.0"
 
 [workspace.dependencies]
 kordi-core = { path = "agent/crates/core" }
