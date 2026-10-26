@@ -98,7 +98,7 @@ export function useComposerInputActions({
   const configRequestsRef = useRef(new Map<string, symbol>());
   // Hosted accounts run on Kordi Cloud: their choices apply a session route instead of this Mac's runtime.
   const routeComposerChange = useHostedComposerRouting({
-    isNativeShell, setComposerSelections, setDesktopChatError, publishCloudAgentRuntimeRouteChange, resolveChatRuntimeRoute,
+    isNativeShell, setComposerSelections, setDesktopChatError, publishCloudAgentRuntimeRouteChange, resolveChatRuntimeRoute, chatModelOptions,
   });
   const desktopActiveSessionId = desktopChatState?.activeSessionId;
   const routeTargetSessionId = useCallback((scope: ComposerScope, override?: ComposerConfigTargetOverride) => (

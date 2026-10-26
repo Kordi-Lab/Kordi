@@ -25,6 +25,8 @@ type MainComposerCollaborationRouting = {
   onSelectAgent: (agentId: string) => void;
   onUpdate: (patch: CollaborationRoutingPatch) => void | boolean | Promise<void | boolean>;
   onSaveCompact: (input: CompactComposerModelMenuSaveInput) => void | boolean | Promise<void | boolean>;
+  /** A send or turn is running, so a route change would be refused. */
+  busy: boolean;
   defaultThinkingForModel: (
     modelValue: string | null | undefined,
     currentThinking: string | null | undefined,

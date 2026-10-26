@@ -28,6 +28,7 @@ import {
 import { resolveCloudAgentRuntimeRouteChange } from '@/features/cloud/cloudAgentRuntimeRouteChange';
 import { cloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { routeRunsOnKordiCloud, runtimeRoutesMatch } from '@/features/cloud/cloudAgentRuntimeRoute';
+import { routeWithAccountNamespace } from '@/features/cloud/routeAccountNamespace';
 import { routeWithSignInProvider } from '@/features/cloud/routeSignInProvider';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
@@ -208,15 +209,17 @@ export function useCloudAgentRuntimeRouteSync({
   ]);
 
   const chatAuthOptions = composerAuthByScope.optionsByScope.chat;
+  // Stored routes are repaired on read: the sign-in's own provider, then a
+  // model in that provider's namespace.
   const storedSessionRoute = useCallback((runtimeSessionId: string | null) => (
     runtimeSessionId
-      ? routeWithSignInProvider(
+      ? routeWithAccountNamespace(routeWithSignInProvider(
         compactCloudAgentRuntimeRoute(routesBySessionId[runtimeSessionId])
           ?? compactCloudAgentRuntimeRoute(recoveredRoutesBySessionId[runtimeSessionId]),
         chatAuthOptions,
-      )
+      ), chatModelOptions)
       : null
-  ), [chatAuthOptions, recoveredRoutesBySessionId, routesBySessionId]);
+  ), [chatAuthOptions, chatModelOptions, recoveredRoutesBySessionId, routesBySessionId]);
 
   const activeRuntimeSessionId = cloudAgentRuntimeSessionId(
     accountId,
@@ -345,11 +348,11 @@ export function useCloudAgentRuntimeRouteSync({
       selectedModel: model,
       selectedThinking: input.thinking,
     });
-    const nextRoute = resolveCloudAgentRuntimeRouteChange({
+    const nextRoute = routeWithAccountNamespace(resolveCloudAgentRuntimeRouteChange({
       authOptions: composerAuthByScope.optionsByScope.chat,
       input,
       resolvedLocalRoute,
-    });
+    }), chatModelOptions);
     const runtimeSessionId = cloudAgentRuntimeSessionId(
       normalizedAccountId,
       sessionId,

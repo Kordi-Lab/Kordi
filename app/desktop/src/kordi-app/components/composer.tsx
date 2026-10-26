@@ -174,7 +174,7 @@ export type CompactComposerModelMenuSaveInput = ComposerRoute;
 
 export function CompactComposerModelMenu({ scope, selection, providerOptions = [],
   modelOptions = composerModelOptions.map((value) => ({ value, label: value })),
-  defaultOpen = false, onSave, confirmAccountChanges = true,
+  defaultOpen = false, onSave, confirmAccountChanges = true, sharedRoute,
 }: {
   scope: ComposerScope;
   selection: { mode: string; model: string; thinking: string; authProvider?: string | null; authChoice?: string | null };
@@ -182,17 +182,18 @@ export function CompactComposerModelMenu({ scope, selection, providerOptions = [
   modelOptions?: ComposerModelOption[];
   defaultOpen?: boolean;
   confirmAccountChanges?: boolean;
+  sharedRoute?: boolean;
   onSave: (input: CompactComposerModelMenuSaveInput) => void | boolean | Promise<void | boolean>;
 }) {
   return <div className="min-w-0 max-w-full" data-compact-model-menu="true" data-composer-scope={scope}>
     <ModelEffortPicker selection={selection} providerOptions={providerOptions} modelOptions={modelOptions}
-      defaultOpen={defaultOpen} onApply={onSave} confirmAccountChanges={confirmAccountChanges} />
+      defaultOpen={defaultOpen} onApply={onSave} confirmAccountChanges={confirmAccountChanges} sharedRoute={sharedRoute} />
   </div>;
 }
 
 export function ComposerModelControls({ scope, selection, onSelectValue, onSelectProviderChoice,
   providerOptions = [], modelOptions = composerModelOptions.map((value) => ({ value, label: value })),
-  onSelectRoute, onSignIn, confirmAccountChanges = false,
+  onSelectRoute, onSignIn, confirmAccountChanges = false, sharedRoute,
 }: {
   scope: ComposerScope;
   selection: { mode: string; model: string; thinking: string; authProvider?: string | null; authChoice?: string | null };
@@ -207,12 +208,13 @@ export function ComposerModelControls({ scope, selection, onSelectValue, onSelec
   modelOptions?: ComposerModelOption[];
   compact?: boolean;
   confirmAccountChanges?: boolean;
+  sharedRoute?: boolean;
   onSelectRoute?: (scope: ComposerScope, route: ComposerRoute, type: 'provider' | 'model' | 'thinking') => void | boolean | Promise<void | boolean>;
   onSignIn?: () => void;
 }) {
   return <div className="min-w-0 max-w-full" data-composer-model-controls={scope}>
     <ModelEffortPicker selection={selection} providerOptions={providerOptions} modelOptions={modelOptions}
-      onSignIn={onSignIn} confirmAccountChanges={confirmAccountChanges}
+      onSignIn={onSignIn} confirmAccountChanges={confirmAccountChanges} sharedRoute={sharedRoute}
       onApply={async (route, type) => {
         if (onSelectRoute) return onSelectRoute(scope, route, type);
         const current = resolveComposerModelSelection({ selection, providerOptions, modelOptions });
