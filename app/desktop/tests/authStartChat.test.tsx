@@ -126,7 +126,7 @@ test('a new hosted account becomes active only when the provider had no active a
   assert.equal(startChatTarget(openai)?.account.label, 'Work');
 });
 
-test('an active saved account shows Active, and other saved accounts show their storage', () => {
+test('an active saved account shows Active, and no saved account shows where it is stored', () => {
   const provider = withActiveAccount(display('cerebras', [], [hosted('cerebras', 'Research'), hosted('cerebras', 'Billing')]), 'cloud-login:research');
   const markup = renderToStaticMarkup(createElement(AuthSavedAccounts, {
     provider,
@@ -138,9 +138,19 @@ test('an active saved account shows Active, and other saved accounts show their 
   const billing = markup.slice(markup.indexOf('aria-label="Billing"'));
   assert.match(research, />Added</);
   assert.match(research, />Active</);
-  assert.doesNotMatch(research, />In your account</);
-  assert.match(billing, />In your account</);
   assert.doesNotMatch(billing, />Active</);
+  assert.doesNotMatch(markup, /In your account/);
+
+  // Every account syncs through Kordi Cloud, so a Mac sign-in carries no storage label either.
+  const mac = renderToStaticMarkup(createElement(AuthSavedAccounts, {
+    provider: display('openai', [localProvider('openai-codex', [option('Work', true), option('Personal', false)])], [hosted('openai', 'Team')]),
+    recentlyAdded: [],
+    onSelectAuthChoice: () => {},
+    onRemoveAuthProfile: () => {},
+  }));
+  assert.match(mac, /aria-label="Personal"/);
+  assert.match(mac, /aria-label="Team"/);
+  assert.doesNotMatch(mac, /On this Mac|In your account/);
 });
 
 test('an old mixed-provider account uses neutral saved-account copy', () => {

@@ -64,7 +64,6 @@ export function AuthSavedAccounts({ provider, recentlyAdded = [], needsReconnect
                 <>
                   {custom ? customApiAccountSummary(option.modelHint)
                     : option.method === 'Account' ? 'Saved account' : savedAccountMethodLabel(provider, method)}
-                  {option.source !== 'Cloud' ? ' · On this Mac' : null}
                   {updated ? ` · Last active ${updated}` : ''}
                   {reconnectNeeded ? <span className="block text-amber-200">Account needs reconnecting</span> : null}
                   {modelMissing ? <span className="block text-amber-200">{CUSTOM_MODEL_REQUIRED}</span> : null}
@@ -84,9 +83,7 @@ export function AuthSavedAccounts({ provider, recentlyAdded = [], needsReconnect
                     </AuthActionButton>
                   ) : option.active ? (
                     <span className={authActiveBadgeClass}>Active</span>
-                  ) : option.source === 'Cloud' ? (
-                    <span className="app-auth-badge-hosted inline-flex h-7 items-center rounded-full border border-white/10 px-2.5 text-[11px] font-medium text-slate-300">In your account</span>
-                  ) : (
+                  ) : option.source === 'Cloud' ? null : (
                     <AuthActionButton type="button" className={authButtonNeutralClass} onClick={() => onSelectAuthChoice(option.providerId, option.value)}>
                       {option.profileId ? 'Use this profile' : 'Use environment'}
                     </AuthActionButton>
