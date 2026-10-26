@@ -119,6 +119,7 @@ test('direct Cloud forwards use real local display name as source sender label',
 
   assert.equal(view.messages[0]?.sender, 'Me');
   assert.equal(source?.senderLabel, 'Me Cloud');
+  assert.equal(source?.sourceMessageId, bridgeMessage.reactionTargetMessageId);
 });
 
 test('direct Cloud forwards use real remote human name as source sender label', () => {
@@ -160,6 +161,7 @@ test('direct Cloud forwards use real remote human name as source sender label', 
 
   assert.equal(view.messages[0]?.sender, 'Peer Person');
   assert.equal(source?.senderLabel, 'Peer Person');
+  assert.equal(source?.sourceMessageId, bridgeMessage.reactionTargetMessageId);
 });
 
 test('direct Cloud forwards use real local agent owner name as source sender label', () => {

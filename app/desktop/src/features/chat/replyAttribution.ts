@@ -8,6 +8,7 @@ import type {
   MessageSourceReference,
 } from '@/kordi-app/types';
 import { sourceAvatarFieldsForMessage, withKnownSourceAvatar } from './sourceMessageAvatar';
+import { resolveThreadMessageId } from './messageThreads';
 
 export type ReplyAttributionResult = {
   messages: Message[];
@@ -245,9 +246,13 @@ function addReplySummary(
 }
 
 function withSourceMessage(message: Message, sourceMessage?: MessageSourceReference) {
+  // A verified alias can identify the same source under a different display ID.
+  const storedSource = message.sourceMessage && sourceMessage
+    ? { ...message.sourceMessage, messageId: sourceMessage.messageId }
+    : message.sourceMessage;
   return {
     ...message,
-    sourceMessage: isAgentResponse(message) || !message.sourceMessage ? sourceMessage : withKnownSourceAvatar(message.sourceMessage, sourceMessage),
+    sourceMessage: isAgentResponse(message) || !storedSource ? sourceMessage : withKnownSourceAvatar(storedSource, sourceMessage),
     turn: message.turn
       ? {
           ...message.turn,
@@ -385,6 +390,8 @@ export function buildReplyAttribution(
     }
     return withId;
   });
+  const primaryIdByAlias = new Map([...sourceByMessageId].map(([alias, source]) => [alias, source.messageId]));
+  const sourceForReference = (reference: string) => sourceByMessageId.get(resolveThreadMessageId(reference, primaryIdByAlias));
   const completedReplyKeys = new Set(messagesWithIds.flatMap((message) => {
     const key = message.turn?.completed ? agentReplyLifecycleKey(message) : null;
     return key ? [key] : [];
@@ -397,7 +404,7 @@ export function buildReplyAttribution(
       requestCandidates.push({ messageId, message });
       mentionCandidates.push({ messageId, message });
       const explicitTarget = explicitReplyTargetForMessage(message);
-      const sourceMessage = explicitTarget ? sourceByMessageId.get(explicitTarget) : undefined;
+      const sourceMessage = explicitTarget ? sourceForReference(explicitTarget) : undefined;
       if (sourceMessage && sourceMessage.messageId !== messageId) {
         addReplySummary(summariesByRequestId, sourceMessage.messageId, messageId, true);
         return withSourceMessage({ ...message, replyToMessageId: sourceMessage.messageId }, sourceMessage);
@@ -417,7 +424,7 @@ export function buildReplyAttribution(
       if (suppressAgentReplyAttribution) return withoutAgentReplyAttribution(message);
       return message.messageAction?.kind === 'thread' ? withSourceMessage(message) : message;
     }
-    const sourceMessage = sourceByMessageId.get(replyTargetId)
+    const sourceMessage = sourceForReference(replyTargetId)
       ?? [message.sourceMessage, message.turn?.sourceMessage].find(source => source?.messageId === replyTargetId);
     if (!sourceMessage || sourceMessage.messageId === messageId) {
       return suppressAgentReplyAttribution ? withoutAgentReplyAttribution(message) : withSourceMessage(message);
@@ -442,7 +449,7 @@ export function buildReplyAttribution(
     const explicitTargetId = explicitReplyTargetForTurn(liveTurn);
     const replyTargetId = explicitTargetId ?? inferredReplyTargetForLiveTurn(liveTurn, requestCandidates, inferLatestHumanRequest);
     if (!replyTargetId) return suppressAgentReplyAttribution ? withoutLiveTurnReplyAttribution(liveTurn) : liveTurn;
-    const sourceMessage = sourceByMessageId.get(replyTargetId)
+    const sourceMessage = sourceForReference(replyTargetId)
       ?? (liveTurn.sourceMessage?.messageId === replyTargetId ? liveTurn.sourceMessage : undefined);
     if (!sourceMessage) return suppressAgentReplyAttribution ? withoutLiveTurnReplyAttribution(liveTurn) : { ...liveTurn, sourceMessage: undefined };
     if (suppressAgentReplyAttribution) return withoutLiveTurnReplyAttribution(liveTurn);

@@ -114,3 +114,30 @@ test('the thread quote line renders the quoted sender avatar instead of an inval
     }
   });
 });
+
+
+test('wire and legacy desktop quote references retain the sender avatar and navigate to the loaded row', () => {
+  const wireId = '10000000-0000-4000-8000-000000000001';
+  const displayedId = `collaboration-message:this-viewer:${wireId}`;
+  const original = humanRequest({
+    id: displayedId, role: 'person', isOwnMessage: false, sender: 'Peer Person',
+    reactionTargetMessageId: wireId, senderAvatarSeed: 'acct_peer_seed',
+    senderProfileImageUrl: 'https://images.test/peer.png',
+  });
+  for (const reference of [wireId, `collaboration-message:another-viewer:${wireId}`]) {
+    const reply = humanRequest({
+      id: 'reply', replyToMessageId: reference,
+      sourceMessage: { messageId: reference, senderLabel: 'Peer Person', text: 'Saved preview' },
+    });
+    const messages = buildReplyAttribution([original, reply]).messages;
+    assert.equal(messages[1].replyToMessageId, displayedId);
+    assert.equal(messages[1].sourceMessage?.messageId, displayedId);
+    assert.equal(messages[1].sourceMessage?.text, 'Saved preview');
+    assert.equal(messages[1].sourceMessage?.senderProfileImageUrl, original.senderProfileImageUrl);
+    assert.equal(messages[0].replySummary?.replyCount, 1);
+  }
+  const unknown = 'collaboration-message:another-viewer:20000000-0000-4000-8000-000000000002';
+  const reply = humanRequest({ id: 'unknown-reply', replyToMessageId: unknown,
+    sourceMessage: { messageId: unknown, senderLabel: 'Peer Person', text: original.text } });
+  assert.equal(buildReplyAttribution([original, reply]).messages[1].sourceMessage?.senderProfileImageUrl, undefined);
+});

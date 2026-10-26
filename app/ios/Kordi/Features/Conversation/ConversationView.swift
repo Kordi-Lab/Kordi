@@ -527,7 +527,7 @@ struct ConversationView: View {
             })?.id
         }
         let visibleStartIndex = timeline.count - visibleTimeline.count
-        let messagesById = Dictionary(uniqueKeysWithValues: renderedMessages.map { ($0.id, $0) })
+        let messageReferences = projection.messageReferences
         let presentationStartIndex = max(timeline.startIndex, visibleStartIndex - 1)
         var viewerCalendar = calendar
         viewerCalendar.timeZone = timeZone
@@ -538,7 +538,7 @@ struct ConversationView: View {
             calendar: viewerCalendar
         )
         let sessionPin = model.sessionPinsByID[conversation.sessionId]
-        let pinnedMessages = PinnedMessageItem.make(pin: sessionPin, conversationID: conversation.id, messagesByID: messagesById)
+        let pinnedMessages = PinnedMessageItem.make(pin: sessionPin, conversationID: conversation.id, messagesByID: messageReferences.messagesByID)
         let pinnedMessageIDs = Set(pinnedMessages.map(\.message.id))
         let activeConversationCall = model.activeCall(for: conversation)
         let coordinatorOwnsConversationCall = callCoordinator.activeCall?.call.id
@@ -656,7 +656,7 @@ struct ConversationView: View {
                                                         row: row,
                                                         presentation: presentation,
                                                         timeline: timeline,
-                                                        messagesByID: messagesById,
+                                                        messageReferences: messageReferences,
                                                         mentionTargets: mentionTargets,
                                                         isPendingMention: pendingMentionMessageIDs.contains(message.id),
                                                         pinnedMessageIDs: pinnedMessageIDs,
@@ -704,7 +704,7 @@ struct ConversationView: View {
                                                 .modifier(OutgoingMessageEntrance(
                                                     pendingPosition: stagedMessageIDs.contains(message.clientMessageId ?? message.id)
                                                         || (message.author == .agent && message.requestMessageId
-                                                            .flatMap { messagesById[$0] }
+                                                            .flatMap { messageReferences.message(for: $0) }
                                                             .map { stagedMessageIDs.contains($0.clientMessageId ?? $0.id) } == true)
                                                 ))
                                             }
@@ -1463,7 +1463,7 @@ struct ConversationView: View {
         row: ConversationTimelineRow,
         presentation: ConversationMessagePresentation,
         timeline: [ChatMessage],
-        messagesByID: [String: ChatMessage],
+        messageReferences: MessageReferenceIndex,
         mentionTargets: [ComposerMentionTarget],
         isPendingMention: Bool,
         pinnedMessageIDs: Set<String>,
@@ -1477,7 +1477,7 @@ struct ConversationView: View {
     ) -> some View {
         let message = row.message
         let avatar = avatarIdentity(for: message, mentionTargets: mentionTargets)
-        let replySource = message.quotedReplyMessageId.flatMap { messagesByID[$0] }
+        let replySource = message.quotedReplyMessageId.flatMap { messageReferences.message(for: $0) }
         let backgroundSessions = message.backgroundAgentSessions.map {
             BackgroundAgentSessionPresentation(
                 session: $0,
@@ -1979,10 +1979,8 @@ struct ConversationView: View {
         in timeline: [ChatMessage],
         proxy: ScrollViewProxy
     ) {
-        guard let sourceIndex = timeline.firstIndex(where: {
-            MessageQuotePresentation.message($0, matchesReference: messageReference)
-        }) else { return }
-        let messageID = timeline[sourceIndex].id
+        let messageID = MessageReferenceIndex(messages: timeline).resolve(messageReference)
+        guard let sourceIndex = timeline.firstIndex(where: { $0.id == messageID }) else { return }
         let targetIdentity = model.timelineIdentity(for: timeline[sourceIndex])
         let requiredLimit = timeline.count - sourceIndex
         let needsWiderWindow = requiredLimit > visibleMessageLimit
