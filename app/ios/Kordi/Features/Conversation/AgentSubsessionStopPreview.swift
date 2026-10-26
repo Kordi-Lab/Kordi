@@ -50,7 +50,7 @@ struct AgentSubsessionStopPreviewView: View {
             }
             .padding()
             .task { model.installSubsessionStopPreview(snapshot) }
-            .navigationDestination(item: $selected) { AgentSubsessionView(sessionId: $0.sessionId) }
+            .stableNavigationDestination(item: $selected) { AgentSubsessionView(sessionId: $0.sessionId) }
         }
     }
 }
