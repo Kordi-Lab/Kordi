@@ -167,3 +167,7 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 Contributions start with a GitHub issue and land through a reviewed pull request. If this is your first Kordi contribution, read the [community contributor guide](docs/community-contributor-guide.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for the detailed branch workflow, validation commands, and PR checklist.
 
 Kordi currently targets macOS and iPhone and is in beta. Product behavior, hosted interfaces, and contributor workflows may evolve as the project approaches a stable release.
+
+## License
+
+Kordi is licensed under the [Apache License 2.0](LICENSE), except for third-party components and assets that carry their own licenses. See [NOTICE](NOTICE) for preserved copyright and historical MIT notices.
