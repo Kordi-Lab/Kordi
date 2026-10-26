@@ -71,6 +71,17 @@ enum PhotoLibraryGridMetrics {
     /// The selection circle's tap target in a cell's top-trailing corner.
     static let selectionHitSide: CGFloat = 44
 
+    /// Video length as in Photos: 0:07, 12:34, 1:02:03.
+    static func durationText(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let secs = total % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, secs)
+            : String(format: "%d:%02d", minutes, secs)
+    }
+
     static func itemSide(width: CGFloat, scale: CGFloat) -> CGFloat {
         let available = width - spacing * CGFloat(columns - 1)
         guard available > 0, scale > 0 else { return 0 }
