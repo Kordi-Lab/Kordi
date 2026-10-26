@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <key>NSLocationUsageDescription</key>
+  <string>Kordi uses your location when you ask to find nearby people. Others see only a rough distance.</string>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>Kordi uses your location when you ask to find nearby people. Others see only a rough distance.</string>
   <key>NSCalendarsFullAccessUsageDescription</key>
   <string>Kordi reads calendars you select to import events into your private digest, and, when you turn on Calendar and Reminders in Connectors, your agent can read your events on this Mac when you ask. It does not send invitations.</string>
   <key>NSRemindersFullAccessUsageDescription</key>
