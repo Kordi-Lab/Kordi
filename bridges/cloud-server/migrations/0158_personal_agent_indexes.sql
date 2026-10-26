@@ -1,5 +1,5 @@
 -- Indexes the personal agent sweep reads (docs/development/personal-agent.md),
--- on existing tables, apart from 0156 so that migration stays short. The
+-- on existing tables, apart from 0157 so that migration stays short. The
 -- runner applies each migration in one transaction, so these are plain
 -- CREATE INDEX: writes to the two tables wait while they build, and a busy
 -- lock fails the migration fast instead of queueing writes behind it.

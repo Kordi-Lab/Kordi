@@ -5,10 +5,14 @@ use std::sync::Arc;
 use super::ServerState;
 
 /// Starts every periodic worker: realtime wakes, support tickets, scheduled
-/// tasks, digests, the System agent, proactive and personal agents, plan-card projection,
-/// retention, terminal backfill, and the notification workers when
-/// notifications are configured.
-pub(super) fn spawn_background_workers(state: &Arc<ServerState>, database_url: &str) {
+/// tasks, digests, the System agent, proactive and personal agents,
+/// Grounding nearby alerts, plan-card projection, retention, terminal
+/// backfill, and the notification workers when notifications are configured.
+pub(super) fn spawn_background_workers(
+    state: &Arc<ServerState>,
+    database_url: &str,
+    rate_limiter: &Arc<crate::auth::rate_limit::CloudRateLimiter>,
+) {
     crate::chat_sync::realtime::spawn_wake_listener(
         database_url.to_string(),
         state.chat_sync_wakes().clone(),
@@ -19,6 +23,7 @@ pub(super) fn spawn_background_workers(state: &Arc<ServerState>, database_url: &
     crate::system_agent::spawn(state.clone());
     crate::proactive::spawn(state.clone());
     crate::personal_agent::spawn(state.clone());
+    crate::common_ground::spawn_nearby(state.clone(), rate_limiter.clone());
     crate::plan_cards::projection::spawn(state.db_pool().clone());
     crate::chat_sync::retention::spawn_retention_worker(state.db_pool().clone());
     crate::cloud_agent_runtime::runs::terminal_backfill::spawn(state.db_pool().clone());

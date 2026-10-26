@@ -752,6 +752,7 @@ final class AppModel: ObservableObject {
         digestWarmup.reset()
         let oldToken = token
         let oldAccountId = account?.accountId
+        if let oldToken { await CommonGroundNearbyLocator.shared.signOut(api: api, token: oldToken) }
         if let oldToken {
             await presencePublisher.stopAndPublishOffline(token: oldToken)
         } else {
@@ -8172,7 +8173,6 @@ final class AppModel: ObservableObject {
         if messageSyncState != .offline { messageSyncState = .offline }
     }
 }
-
 
 extension AppModel {
     func digestContext() throws -> (CloudAPIClient, String, String) {

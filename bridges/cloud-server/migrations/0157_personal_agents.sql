@@ -7,7 +7,7 @@
 --
 -- Only new, empty tables: the foreign keys briefly lock the referenced tables,
 -- so a busy lock fails this migration fast instead of queueing writes behind
--- it. The indexes on existing tables are in 0157.
+-- it. The indexes on existing tables are in 0158.
 SET LOCAL lock_timeout = '5s';
 
 -- The Proactive setting (`personalAgent.proactive`). No row is off.

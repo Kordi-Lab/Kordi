@@ -80,8 +80,9 @@ tests=(
   memory_tests::upgrade_from_150_adds_memory_card_overrides
   proactive_tests::upgrade_from_153_adds_proactive_agents
   proactive_tests::upgrade_from_154_counts_evaluation_memory_searches
-  personal_agent_tests::upgrade_from_155_adds_personal_agents
-  personal_agent_tests::upgrade_from_156_indexes_personal_agent_reads
+  common_ground_nearby_tests::upgrade_from_155_adds_common_ground_nearby
+  personal_agent_tests::upgrade_from_156_adds_personal_agents
+  personal_agent_tests::upgrade_from_157_indexes_personal_agent_reads
 )
 index=0
 for test_name in "${tests[@]}"; do

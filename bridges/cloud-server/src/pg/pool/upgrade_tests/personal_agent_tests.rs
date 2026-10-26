@@ -2,8 +2,8 @@ use super::*;
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_155_adds_personal_agents() {
-    let pool = fixture(155).await;
+async fn upgrade_from_156_adds_personal_agents() {
+    let pool = fixture(156).await;
     execute(&pool, "INSERT INTO cloud_agent_definitions(agent_id,owner_account_id,name,role,system_prompt,model_routing_json,created_at,updated_at,avatar_source,avatar_style,avatar_seed,avatar_renderer_version,avatar_version,avatar_updated_at,proactive_json) VALUES('cloud_agent_fixture','fixture-owner','Scout','Helper','Help.','{}','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','generated','thumbs','cloud_agent_fixture','fixture',1,'2026-01-01T00:00:00Z','{\"enabled\":true}')").await;
     execute(&pool, "INSERT INTO cloud_connectors(connector_id,account_id,provider,status) VALUES('conn_mail','fixture-owner','gmail','connected')").await;
     execute(&pool, "INSERT INTO cloud_connector_events(event_id,connector_id,provider,kind,occurred_at,expires_at) VALUES('evt_old','conn_mail','gmail','message.received',now(),now() + interval '1 day')").await;
@@ -65,15 +65,15 @@ async fn upgrade_from_155_adds_personal_agents() {
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_156_indexes_personal_agent_reads() {
-    let pool = fixture(156).await;
+async fn upgrade_from_157_indexes_personal_agent_reads() {
+    let pool = fixture(157).await;
     let (before,): (Option<String>,) = query_as(
         "SELECT to_regclass('public.idx_cloud_connector_events_connector_received')::text",
     )
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert!(before.is_none(), "0156 builds no index on existing tables");
+    assert!(before.is_none(), "0157 builds no index on existing tables");
     execute(&pool, "INSERT INTO cloud_connectors(connector_id,account_id,provider,status) VALUES('conn_mail','fixture-owner','gmail','connected')").await;
     execute(&pool, "INSERT INTO cloud_connector_events(event_id,connector_id,provider,kind,occurred_at,expires_at) VALUES('evt_kept','conn_mail','gmail','message.received',now(),now() + interval '1 day')").await;
     execute(&pool, "INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at,execution_agent_id) VALUES('personal_agent_eval_kept','personal_agent_eval_kept','personal_agent_eval_kept','personal-agent:cloud-agent:fixture-owner','fixture-owner','fixture-owner','completed','{}','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','cloud-agent:fixture-owner')").await;

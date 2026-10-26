@@ -62,9 +62,9 @@ Agent definition JSON (`/v1/cloud/agents` create, update, list, and the
   drop the `personal_agent` marker without a bootstrap (a newly created
   conversation's `conversation.created` already carries it).
 - Storage: `cloud_personal_agent_settings` (`agent_id`, `owner_account_id`,
-  `proactive`, `updated_at`; migration `0156_personal_agents.sql`, which
+  `proactive`, `updated_at`; migration `0157_personal_agents.sql`, which
   creates only the new tables; the indexes on existing tables are in
-  `0157_personal_agent_indexes.sql`, and both set a 5 second
+  `0158_personal_agent_indexes.sql`, and both set a 5 second
   `lock_timeout`), one table for definitions and the default agent.
   Changing it through the route publishes `agent.definition.upserted` for
   a definition; the default agent has no definition event.

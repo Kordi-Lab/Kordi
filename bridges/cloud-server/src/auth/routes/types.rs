@@ -83,12 +83,10 @@ pub struct AuthCapabilitiesResponse {
     /// Present when the account memory routes exist (#1710).
     #[serde(rename = "memoryVersion")]
     pub memory_version: u32,
-    /// Present when the Common ground routes can build cards (#1847).
-    #[serde(
-        rename = "commonGroundVersion",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub common_ground_version: Option<u32>,
+    /// `commonGroundVersion` when the Common ground routes can build cards
+    /// (#1847), and `commonGroundNearbyVersion` with it (#2100).
+    #[serde(flatten)]
+    pub common_ground: crate::common_ground::Capabilities,
     /// Present when `/v1/cloud/contacts/:account_id/profile` exists (#1945).
     #[serde(rename = "contactProfileVersion")]
     pub contact_profile_version: u32,

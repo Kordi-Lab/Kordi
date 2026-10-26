@@ -375,6 +375,12 @@ async fn revoke_devices(
     {
         return device_server_error("Could not revoke device sessions.");
     }
+    if crate::common_ground::forget_nearby_devices(&mut transaction, &affected_ids)
+        .await
+        .is_err()
+    {
+        return device_server_error("Could not revoke device sessions.");
+    }
     for (device_id, display_name) in &affected {
         if append_device_sync_event(
             &mut transaction,

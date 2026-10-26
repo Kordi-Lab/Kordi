@@ -9,8 +9,13 @@
  * Mac (`features/proactive/proactiveMacRuns`). `personal_agent.eval_requested`
  * holds a personal agent's evaluation of new connector events, which this Mac
  * runs like a proactive evaluation.
+ * `common_ground.nearby.updated`
+ * and `common_ground.nearby.alert` refresh open Grounding Nearby views
+ * (`features/commonGround/nearbyHints`).
  */
 export const ACCOUNT_HINT_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'common_ground.nearby.alert',
+  'common_ground.nearby.updated',
   'digest.run_requested',
   'document.agent_request',
   'personal_agent.eval_requested',
