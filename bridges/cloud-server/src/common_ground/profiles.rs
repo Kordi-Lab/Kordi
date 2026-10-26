@@ -175,15 +175,21 @@ where
 }
 
 /// The work profile if there is one, else the first by position.
-pub(super) async fn default_profile(
-    pool: &PgPool,
+pub(super) async fn default_profile<'e, E>(
+    executor: E,
     account: &str,
-) -> sqlx_core::Result<Option<Profile>> {
+) -> sqlx_core::Result<Option<Profile>>
+where
+    E: sqlx_core::executor::Executor<'e, Database = Postgres>,
+{
     let sql = format!(
         "SELECT {COLUMNS} FROM cloud_common_ground_profiles WHERE account_id = $1
          ORDER BY kind = 'work' DESC, position LIMIT 1"
     );
-    let row: Option<ProfileRow> = query_as(&sql).bind(account).fetch_optional(pool).await?;
+    let row: Option<ProfileRow> = query_as(&sql)
+        .bind(account)
+        .fetch_optional(executor)
+        .await?;
     Ok(row.map(from_row))
 }
 

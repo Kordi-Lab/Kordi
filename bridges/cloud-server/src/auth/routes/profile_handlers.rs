@@ -396,6 +396,7 @@ pub(super) async fn logout(
             StatusCode::INTERNAL_SERVER_ERROR,
         );
     }
+    crate::common_ground::forget_nearby_device(pool, &session.device_id).await;
     let _ = write_audit(
         pool,
         Some(&session.account_id),

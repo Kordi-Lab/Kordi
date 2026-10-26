@@ -467,7 +467,7 @@ fn capabilities_report_memory_version() {
         oauth_providers: Vec::new(),
         connectors_version: None,
         memory_version: 3,
-        common_ground_version: None,
+        common_ground: Default::default(),
         contact_profile_version: CONTACT_PROFILE_VERSION,
     })
     .unwrap();
