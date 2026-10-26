@@ -66,7 +66,7 @@ struct ChatHomeView: View {
 
     private var agentSessions: [AgentSessionListItem] {
         AgentSessionTimelineCatalog.build(
-            conversations: model.conversations,
+            conversations: model.conversations.filter { $0.personalAgentId == nil },
             searchText: searchQuery,
             collapsedForkParentIds: collapsedAgentForkParentIds,
             pinnedSessionIds: model.pinnedSessionIds

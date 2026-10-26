@@ -7,6 +7,7 @@ extension AppModel {
             conversations: conversations,
             personalAgents: personalAgents,
             ownAccountId: account?.accountId ?? "",
+            activeOwnedAgentIds: loadedActiveOwnedAgentIds,
             searchText: searchText
         )
     }
@@ -148,6 +149,8 @@ struct PersonalAgentRow: View {
 struct PersonalAgentAvatar: View {
     let conversation: ConversationSummary
     var size: CGFloat = PersonalAgentRow.avatarSize
+    /// The surface behind the avatar, so the dot reads as cut out of it.
+    var ringColor = Color(uiColor: .systemBackground)
 
     private var dotSize: CGFloat { max(9, (size * 0.26).rounded()) }
     private var ringWidth: CGFloat { size >= 40 ? 2.5 : 2 }
@@ -165,7 +168,7 @@ struct PersonalAgentAvatar: View {
                 .fill(Color(uiColor: .systemGreen))
                 .frame(width: dotSize, height: dotSize)
                 .padding(ringWidth)
-                .background(Circle().fill(Color(uiColor: .systemBackground)))
+                .background(Circle().fill(ringColor))
                 .offset(x: ringWidth + 1, y: ringWidth + 1)
         }
         .accessibilityHidden(true)

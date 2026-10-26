@@ -12,6 +12,8 @@ enum CloudConversationCatalog {
         sessionForksById: [String: CloudSessionForkSummary] = [:],
         hiddenSessionIds: Set<String> = [],
         deletedSessionIds: Set<String> = [],
+        personalAgents: [CloudPersonalAgent]? = nil,
+        ownedAgentsLoaded: Bool = true,
         now: Date = Date()
     ) -> [ConversationSummary] {
         let invisibleSessionIds = hiddenSessionIds.union(deletedSessionIds)
@@ -87,7 +89,11 @@ enum CloudConversationCatalog {
             canonicalConversations: visibleCanonicalConversations,
             sessionForksById: sessionForksById
         ).filter { !existingAgentSessionIds.contains($0.sessionId) }
-        agentSessions = PersonalAgentSessionCatalog.tagged(agentSessions, canonicalBySessionId: canonicalConversationsBySessionId)
+        agentSessions = PersonalAgentSessionCatalog.tagged(
+            agentSessions, canonicalBySessionId: canonicalConversationsBySessionId, ownAccountId: account.accountId,
+            activeOwnedAgentIds: ownedAgentsLoaded ? PersonalAgentSessionCatalog.activeAgentIds(ownedAgents) : nil,
+            personalAgents: personalAgents
+        )
         let discoveredAgentIds = Set(agentSessions.filter { $0.personalAgentId == nil }.compactMap(\.agentId))
         let hasDefaultAgentSession = agentSessions.contains {
             $0.personalAgentId == nil

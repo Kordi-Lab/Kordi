@@ -3,19 +3,19 @@ import Testing
 @testable import Kordi
 
 struct PersonalAgentTests {
-    private static let owner = "acct_owner"
-    private static let defaultAgentId = "cloud-agent:acct_owner"
-    private static let researchAgentId = "agent_research"
-    private static let inboxAgentId = "agent_inbox"
+    static let owner = "acct_owner"
+    static let defaultAgentId = "cloud-agent:acct_owner"
+    static let researchAgentId = "agent_research"
+    static let inboxAgentId = "agent_inbox"
 
-    private static let avatar = CanonicalAvatarDescriptor(
+    static let avatar = CanonicalAvatarDescriptor(
         entityType: "agent", entityId: defaultAgentId, source: "generated",
         style: CanonicalAvatarSystem.agentStyle, seed: "personal-agent",
         rendererVersion: CanonicalAvatarSystem.rendererVersion, uploadedAsset: nil,
         version: 1, updatedAt: "2026-10-25T00:00:00Z"
     )
 
-    private static var account: CloudAccount {
+    static var account: CloudAccount {
         var account = CloudAccount(accountId: owner, kordiId: nil, displayName: "Alex", primaryEmail: nil,
             avatarUrl: nil, avatar: avatar, nodeId: nil, passwordSet: true)
         account.defaultAgent = CloudDefaultAgentProfile(
@@ -24,17 +24,17 @@ struct PersonalAgentTests {
         return account
     }
 
-    private static func agent(_ id: String, name: String, description: String) -> CloudAgent {
+    static func agent(_ id: String, name: String, description: String) -> CloudAgent {
         CloudAgent(agentId: id, ownerAccountId: owner, accessScope: "private", status: "active",
             name: name, role: "Assistant", description: description,
             updatedAt: "2026-10-20T00:00:00Z", ownerDisplayName: "Alex", avatar: avatar)
     }
 
-    private static func sessionId(_ agentId: String) -> String {
+    static func sessionId(_ agentId: String) -> String {
         "session:self-agent:\(owner):personal:\(agentId)"
     }
 
-    private static func canonical(agentId: String?, sessionId: String, sequence: Int64 = 0) -> CloudChatConversation {
+    static func canonical(agentId: String?, sessionId: String, sequence: Int64 = 0) -> CloudChatConversation {
         var conversation = CloudChatConversation(
             id: "conv-\(sessionId)", kind: "ai", sharedTitle: nil, version: 1,
             createdByAccountId: owner, legacySessionId: sessionId,
@@ -51,7 +51,7 @@ struct PersonalAgentTests {
         return conversation
     }
 
-    private static func agentResponseBody(text: String, sources: Any) throws -> String {
+    static func agentResponseBody(text: String, sources: Any) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: [
             "kind": "agent-response",
             "requestId": "personal_agent_eval_1",
@@ -65,13 +65,13 @@ struct PersonalAgentTests {
             .replacingOccurrences(of: "=", with: "")
     }
 
-    private static func outreach(body: String, sessionId: String) -> CloudMessageDTO {
+    static func outreach(body: String, sessionId: String) -> CloudMessageDTO {
         CloudMessageDTO(messageId: "outreach-1", fromAccountId: owner, toAccountId: owner,
             body: body, createdAt: "2026-10-25T09:00:00Z", deliveredAt: nil, readAt: nil,
             direction: "incoming", sessionId: sessionId, attachments: [], conversationSequence: 1)
     }
 
-    private static func summary(
+    static func summary(
         id: String, agentId: String, name: String, sessionId: String,
         personal: Bool, minutesAgo: Double = 0
     ) -> ConversationSummary {
@@ -200,7 +200,7 @@ struct PersonalAgentTests {
         )
         #expect(!sections.flatMap(\.sessions).contains { $0.conversation.personalAgentId != nil })
 
-        let rows = PersonalAgentSessionCatalog.rows(conversations: catalog, personalAgents: [], ownAccountId: Self.owner)
+        let rows = PersonalAgentSessionCatalog.rows(conversations: catalog, personalAgents: nil, ownAccountId: Self.owner)
         #expect(rows.map(\.sessionId) == [defaultSession, researchSession])
     }
 
@@ -241,11 +241,13 @@ struct PersonalAgentTests {
         )
         #expect(searched.map(\.sessionId) == [researchSession])
 
-        // Without the list, the default agent still comes first.
+        // Before the list loads, the default agent still comes first.
         let unlisted = PersonalAgentSessionCatalog.rows(
-            conversations: conversations, personalAgents: [], ownAccountId: Self.owner
+            conversations: conversations, personalAgents: nil, ownAccountId: Self.owner
         )
         #expect(unlisted.map(\.sessionId) == [defaultSession, researchSession])
+        // A loaded empty list is authoritative.
+        #expect(PersonalAgentSessionCatalog.rows(conversations: conversations, personalAgents: [], ownAccountId: Self.owner).isEmpty)
         #expect(PersonalAgentSessionCatalog.rows(conversations: conversations, personalAgents: personalAgents, ownAccountId: "").isEmpty)
     }
 

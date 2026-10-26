@@ -6,31 +6,60 @@ import Foundation
 enum PersonalAgentSessionCatalog {
     static let emptyPreview = "No messages yet"
 
-    /// Marks the agent sessions the server bound to an owned agent and shows
-    /// them under the agent's name instead of a session title.
+    /// Marks the owner's personal sessions and shows them under the agent's
+    /// name instead of a session title. A loaded `personalAgents` list is
+    /// authoritative over snapshot bindings, which can outlive an archived
+    /// agent; either way the agent must be the default agent or an active
+    /// owned agent (`activeOwnedAgentIds` is nil until the owned agents load).
     static func tagged(
         _ conversations: [ConversationSummary],
-        canonicalBySessionId: [String: CloudChatConversation]
+        canonicalBySessionId: [String: CloudChatConversation],
+        ownAccountId: String,
+        activeOwnedAgentIds: Set<String>?,
+        personalAgents: [CloudPersonalAgent]?
     ) -> [ConversationSummary] {
-        conversations.map { conversation in
-            guard conversation.kind == .agent,
-                  let agentId = canonicalBySessionId[conversation.sessionId]?.personalAgentId else {
-                return conversation
-            }
+        let listedAgentIdBySessionId = personalAgents.map { list in
+            Dictionary(list.map { ($0.sessionId, $0.agentId) }, uniquingKeysWith: { first, _ in first })
+        }
+        return conversations.map { conversation in
             var tagged = conversation
+            tagged.personalAgentId = nil
+            let candidate: String?
+            if let listedAgentIdBySessionId {
+                candidate = listedAgentIdBySessionId[conversation.sessionId]
+            } else {
+                candidate = canonicalBySessionId[conversation.sessionId]?.personalAgentId
+            }
+            guard conversation.kind == .agent, let agentId = candidate?.nonEmpty,
+                  isPersonalAgent(agentId, ownAccountId: ownAccountId, activeOwnedAgentIds: activeOwnedAgentIds) else {
+                return tagged
+            }
             tagged.personalAgentId = agentId
             tagged.displayName = conversation.agentDisplayName?.nonEmpty ?? conversation.displayName
             return tagged
         }
     }
 
-    /// Rows for the Personal agent section: the server's order first (default
-    /// agent, then owned definitions by creation time), then any other
-    /// personal session that synced before the list loaded.
+    static func isPersonalAgent(_ agentId: String, ownAccountId: String, activeOwnedAgentIds: Set<String>?) -> Bool {
+        guard let ownAccountId = ownAccountId.nonEmpty else { return false }
+        if CanonicalAvatarSystem.agentID(agentId, ownerAccountID: ownAccountId)
+            == CanonicalAvatarSystem.agentID(nil, ownerAccountID: ownAccountId) { return true }
+        return activeOwnedAgentIds?.contains(agentId) ?? true
+    }
+
+    static func activeAgentIds(_ agents: [CloudAgent]) -> Set<String> {
+        Set(agents.filter { ($0.status == nil || $0.status == "active") && $0.archivedAt == nil }.map(\.agentId))
+    }
+
+    /// Rows for the Personal agent section. A loaded list gives the server's
+    /// order (default agent, then owned definitions by creation time) and
+    /// fills sessions that have not synced yet; before it loads, the tagged
+    /// sessions show with the default agent first.
     static func rows(
         conversations: [ConversationSummary],
-        personalAgents: [CloudPersonalAgent],
+        personalAgents: [CloudPersonalAgent]?,
         ownAccountId: String,
+        activeOwnedAgentIds: Set<String>? = nil,
         searchText: String = ""
     ) -> [ConversationSummary] {
         guard let ownAccountId = ownAccountId.nonEmpty else { return [] }
@@ -43,32 +72,47 @@ enum PersonalAgentSessionCatalog {
         }
 
         var rows: [ConversationSummary] = []
-        var listedAgentIds = Set<String>()
-        for entry in personalAgents where listedAgentIds.insert(entry.agentId).inserted {
-            if let conversation = latestByAgentId[entry.agentId]
-                ?? conversations.first(where: { $0.personalAgentId != nil && $0.sessionId == entry.sessionId }) {
-                rows.append(conversation)
-            } else if let placeholder = placeholder(for: entry, in: conversations, ownAccountId: ownAccountId) {
-                rows.append(placeholder)
+        if let personalAgents {
+            var listedAgentIds = Set<String>()
+            for entry in personalAgents where listedAgentIds.insert(entry.agentId).inserted
+                && isPersonalAgent(entry.agentId, ownAccountId: ownAccountId, activeOwnedAgentIds: activeOwnedAgentIds) {
+                if let conversation = conversations.first(where: {
+                    $0.personalAgentId == entry.agentId && $0.sessionId == entry.sessionId
+                }) ?? latestByAgentId[entry.agentId] {
+                    rows.append(conversation)
+                } else if let placeholder = placeholder(for: entry, in: conversations, ownAccountId: ownAccountId) {
+                    rows.append(placeholder)
+                }
             }
-        }
-        let defaultAgentId = CanonicalAvatarSystem.agentID(nil, ownerAccountID: ownAccountId)
-        rows += latestByAgentId
-            .filter { !listedAgentIds.contains($0.key) }
-            .map(\.value)
-            .sorted { left, right in
+        } else {
+            let defaultAgentId = CanonicalAvatarSystem.agentID(nil, ownerAccountID: ownAccountId)
+            rows = latestByAgentId.values.sorted { left, right in
                 let leftDefault = left.agentId == defaultAgentId
                 let rightDefault = right.agentId == defaultAgentId
                 if leftDefault != rightDefault { return leftDefault }
                 return name(of: left).localizedCaseInsensitiveCompare(name(of: right)) == .orderedAscending
             }
+        }
 
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return rows }
-        return rows.filter {
-            name(of: $0).localizedCaseInsensitiveContains(query)
-                || $0.lastMessage.localizedCaseInsensitiveContains(query)
-        }
+        return rows.filter { matches($0, query: query) }
+    }
+
+    /// The same fields the Agents tab searches in its other sections.
+    static func matches(_ conversation: ConversationSummary, query: String) -> Bool {
+        name(of: conversation).localizedCaseInsensitiveContains(query)
+            || conversation.displayName.localizedCaseInsensitiveContains(query)
+            || conversation.lastMessage.localizedCaseInsensitiveContains(query)
+            || conversation.agentDisplayName?.localizedCaseInsensitiveContains(query) == true
+            || conversation.ownerDisplayName?.localizedCaseInsensitiveContains(query) == true
+    }
+
+    /// A personal session already exists on the server, so its first send
+    /// never names the session or saves a new runtime route.
+    static func isNewAgentSession(_ conversation: ConversationSummary, existingSessionIds: Set<String>) -> Bool {
+        conversation.kind == .agent && conversation.personalAgentId == nil
+            && !existingSessionIds.contains(conversation.sessionId)
     }
 
     static func name(of conversation: ConversationSummary) -> String {

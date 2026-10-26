@@ -2642,6 +2642,7 @@ struct ConversationView: View {
                         if conversation.subsessionId == nil { sessionActionsButton }
                     }
                 }
+                .sharedBackgroundVisibility(ConversationHeaderTrailingLabel.hidesSharedBackground(for: conversation) ? .hidden : .automatic)
             } else {
                 ToolbarItem(placement: .principal) { conversationTitleButton }
                 if canOpenCompanionPanel {
@@ -2726,9 +2727,7 @@ struct ConversationView: View {
 
     private var sessionActionsButton: some View {
         Button(action: openSessionDetails) {
-            Image(systemName: "ellipsis")
-                .font(.body.weight(.semibold))
-                .frame(width: 44, height: 44)
+            ConversationHeaderTrailingLabel(conversation: conversation)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -2794,7 +2793,7 @@ struct ConversationView: View {
     }
 
     private var canOpenCompanionPanel: Bool {
-        allowsCompanionPanel
+        allowsCompanionPanel && conversation.personalAgentId == nil
     }
 
     private func openCompanionPanel() {
@@ -3370,7 +3369,7 @@ enum ConversationTimelineScrollBehavior {
             || previous.mentions != current.mentions || previous.reactions != current.reactions { return true }
         if previous.agentExecution != current.agentExecution || previous.agentQueuePosition != current.agentQueuePosition
             || previous.backgroundAgentSessions != current.backgroundAgentSessions
-            || previous.agentReplyEnding != current.agentReplyEnding { return true }
+            || previous.agentReplyEnding != current.agentReplyEnding || previous.sources != current.sources { return true }
         return previous.author != current.author || previous.authorName != current.authorName
             || previous.senderOwnerName != current.senderOwnerName || previous.errorMessage != current.errorMessage
             || (previous.editedAt != nil) != (current.editedAt != nil)
