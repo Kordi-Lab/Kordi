@@ -200,9 +200,12 @@ pub(super) async fn complete(
         return Err(sqlx_core::Error::RowNotFound);
     };
     let gathered: Vec<Gathered> = serde_json::from_value(gathered).unwrap_or_default();
-    let Some((topics, evidence)) = prompt::parse_reply(text, &gathered) else {
-        eprintln!("[common-ground] Rejected run {run_id}: the reply is not a card");
-        return fail(pool, run_id, Some(runner_id), "invalid_output").await;
+    let (topics, evidence) = match prompt::parse_reply(text, &gathered) {
+        Ok(card) => card,
+        Err(error) => {
+            eprintln!("[common-ground] Rejected run {run_id}: {}", error.code());
+            return fail(pool, run_id, Some(runner_id), error.code()).await;
+        }
     };
     let mut tx = pool.begin().await?;
     if !runs::mark_completed(&mut tx, run_id, runner_id).await? {
