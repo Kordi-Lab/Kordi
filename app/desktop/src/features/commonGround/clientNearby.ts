@@ -1,6 +1,7 @@
 // Typed calls for `/v1/cloud/common-ground/nearby…`, folded into the Grounding client. Replies are
-// normalised so missing fields read as their defaults. The Mac never posts or deletes a location.
+// normalised so missing fields read as their defaults. Any signed-in device can post a location.
 
+import type { NearbyLocationInput } from './nearbyLocationFix';
 import type { CgMatchStatus, CgPerson, CgRelationship, CgTopicLists } from './types';
 import type {
   CgNearbyAlerts, CgNearbyCheck, CgNearbyCheckKind, CgNearbyEntry, CgNearbyLocation, CgNearbyPatch, CgNearbyPerson, CgNearbyRequestCheck,
@@ -142,6 +143,7 @@ export function needOf(value: unknown): CgNeed {
 /** The nearby routes, built on the Grounding client's `data` call. */
 export function nearbyRoutes(data: Data) {
   return {
+    postNearbyLocation: (fix: NearbyLocationInput) => data<{ location: CgNearbyLocation }>('POST', nb('/location'), fix),
     nearby: async () => nearbySettingsOf(await data<unknown>('GET', nb())),
     saveNearby: async (patch: CgNearbyPatch) => nearbySettingsOf(await data<unknown>('PUT', nb(), patch)),
     /** A range or score left out uses the stored settings; passing them does not change the settings. */

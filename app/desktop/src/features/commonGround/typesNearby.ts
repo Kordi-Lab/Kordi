@@ -8,7 +8,7 @@ export const CG_NEARBY_RANGES = [500, 1000, 2000, 5000, 10000, 25000] as const;
 export const CG_NEARBY_MIN_SCORES = [0, 50, 70, 85] as const;
 export const CG_NEARBY_PER_DAY = [1, 3, 10] as const;
 
-/** The account's newest location row, fresh or not; the Mac reads the one its iPhone sent. */
+/** The account's newest location row, fresh or not, from any signed-in device. */
 export type CgNearbyLocation = { capturedAt: string; freshUntil: string; fresh: boolean };
 
 export type CgNearbyAlerts = { requests: boolean; matches: boolean; matchMinScore: number; maxPerDay: number };

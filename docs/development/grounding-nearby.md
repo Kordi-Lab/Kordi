@@ -370,9 +370,11 @@ These tables are in one migration. Every account foreign key is `ON DELETE CASCA
 ### Mac
 
 - **Entry:** a Nearby row in the Pair panel on Grounding Home. It opens the Nearby screen in the same column.
-- The Mac uses the location that the account's iPhone sent. It shows "From your iPhone · 3 min ago". Without a fresh location it shows "Open Kordi on your iPhone to update your location."
+- Nearby uses the most recent fresh location from any signed-in device. The Mac and browser offer "Use this device’s location" to request a single foreground fix with OS/browser permission. Coordinates are rounded before posting through the same per-device route. No automatic desktop background tracking is started.
+- People remains visible with explicit states for missing location, loading, paused search, errors, and no matches. Refresh results reloads settings, requests, and people without changing the filters.
+- Help > Permissions & access includes Location, with an Allow action and recovery through Location Services settings. Opening the permissions panel only reads authorization; it does not request access or publish coordinates.
 - Settings, requests, results, the person page and the actions work as on iPhone.
-- Alerts appear in the list and through the realtime hint. In this version the Mac does not post its own location or show system notifications.
+- Alerts appear in the list and through the realtime hint. In this version the Mac does not show Nearby system notifications.
 
 ## Limits that stay
 

@@ -40,13 +40,13 @@ export function locationFresh(location: CgNearbyLocation | null | undefined, now
   return Number.isNaN(until) || until > now;
 }
 
-/** "From your iPhone · 3 min ago". */
+/** "Location updated · 3 min ago". */
 export function locationLine(location: CgNearbyLocation, now = Date.now()): string {
   const minutes = Math.max(1, Math.floor((now - Date.parse(location.capturedAt)) / 60_000) || 1);
-  return `From your iPhone · ${minutes} min ago`;
+  return `Location updated · ${minutes} min ago`;
 }
 
-export const NO_PHONE_LINE = 'Open Kordi on your iPhone to update your location.';
+export const NO_PHONE_LINE = 'Update your location to find people nearby.';
 
 /** Off, paused, on without a current location from the iPhone, or on. */
 export type CgNearbyPhase = 'off' | 'paused' | 'no-phone' | 'on';
@@ -141,8 +141,8 @@ export function needWindowError(startsAt: Date | null, endsAt: Date | null, now 
 export function nearbyRowSub(phase: CgNearbyPhase, settings: CgNearbySettings | null, people: number | null, now = new Date()): string | null {
   if (phase === 'off') return settings ? 'Off' : null;
   if (phase === 'paused' && settings?.pausedUntil) return pausedLine(settings.pausedUntil, now);
-  if (phase === 'no-phone') return 'No location from your iPhone';
-  return people === null ? 'From your iPhone' : `${peopleCount(people)} · from your iPhone`;
+  if (phase === 'no-phone') return 'Location needed';
+  return people === null ? 'Using your latest device location' : `${peopleCount(people)} nearby`;
 }
 
 /** The trimmed entry to add to Open to, or null when it is empty, a duplicate or over the limit. */
