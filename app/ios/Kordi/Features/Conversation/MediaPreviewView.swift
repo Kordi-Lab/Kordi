@@ -85,6 +85,15 @@ enum MediaPreviewDismissal {
         let threshold = max(96, min(viewportHeight * 0.18, 180))
         return distance >= threshold || projectedDistance >= threshold * 1.35
     }
+
+    // Shared by the chat image viewer and the photo picker preview so both
+    // move the same way: the backdrop clears, controls fade sooner, the photo
+    // shrinks slightly while dragged and shrinks and fades when closing.
+    static func backdropOpacity(offset: CGFloat) -> CGFloat { 1 - min(offset / 260, 1) }
+    static func chromeOpacity(offset: CGFloat) -> CGFloat { 1 - min(offset / 120, 1) }
+    static func dragScale(offset: CGFloat) -> CGFloat { 1 - min(offset / 260, 1) * 0.2 }
+    static let closingScale: CGFloat = 0.85
+    static let closingAnimation = Animation.easeOut(duration: 0.22)
 }
 
 struct MediaPreviewView: View {
@@ -92,9 +101,12 @@ struct MediaPreviewView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let presentation: MediaPreviewPresentation
+    /// Closes the viewer when it is hosted outside a SwiftUI presentation.
+    let onClose: (() -> Void)?
 
     @State private var selectedItemID: ConversationMediaItem.ID
     @State private var dismissalOffset: CGFloat = 0
+    @State private var isClosing = false
     @State private var shareItem: SharedFileItem?
     @State private var liveShareURLs: [URL] = []
     @State private var showLiveShare = false
@@ -103,14 +115,19 @@ struct MediaPreviewView: View {
     @State private var saveStatus: String?
     @State private var playback = LivePhotoPlayback()
 
-    init(presentation: MediaPreviewPresentation) {
+    init(presentation: MediaPreviewPresentation, onClose: (() -> Void)? = nil) {
         self.presentation = presentation
+        self.onClose = onClose
         _selectedItemID = State(initialValue: presentation.initialItemID)
     }
 
     var body: some View {
+        // Dragging down fades the backdrop and controls so the chat shows through.
+        let backdrop = isClosing ? 0 : MediaPreviewDismissal.backdropOpacity(offset: dismissalOffset)
+        let chrome = isClosing ? 0 : MediaPreviewDismissal.chromeOpacity(offset: dismissalOffset)
+        let dragScale = MediaPreviewDismissal.dragScale(offset: dismissalOffset)
         VStack(spacing: 0) {
-            header
+            header.opacity(chrome)
             GeometryReader { viewport in
                 TabView(selection: $selectedItemID) {
                     ForEach(presentation.items) { item in
@@ -125,28 +142,45 @@ struct MediaPreviewView: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .frame(width: viewport.size.width, height: viewport.size.height)
+                .scaleEffect(dragScale * (isClosing ? MediaPreviewDismissal.closingScale : 1))
+                .opacity(isClosing ? 0 : 1)
                 .offset(y: dismissalOffset)
-                .clipped()
                 .accessibilityAdjustableAction(moveSelection)
                 .simultaneousGesture(dismissalGesture(viewportHeight: viewport.size.height))
             }
-            footer
+            footer.opacity(chrome)
         }
-        .background { Color.black.ignoresSafeArea() }
+        .background { Color.black.opacity(backdrop).ignoresSafeArea() }
+        .presentationBackground(.clear)
         .foregroundStyle(.white)
-        .preferredColorScheme(.dark)
+        .environment(\.colorScheme, .dark)
+        // Hosted by ConversationModalPresenter, the host is dark and the chat
+        // behind keeps its own appearance; as a SwiftUI cover it sets dark itself.
+        .preferredColorScheme(onClose == nil ? .dark : nil)
         .sensoryFeedback(.selection, trigger: selectedItemID)
         .onChange(of: selectedItemID) { _, _ in playback.reset(); saveStatus = nil }
         .onChange(of: currentItem?.attachment.id) { _, _ in playback.reset() }
         .onDisappear { playback.reset() }
         .sheet(item: $shareItem) { item in ActivityShareSheet(items: [item.url]) }
         .sheet(isPresented: $showLiveShare) { ActivityShareSheet(items: liveShareURLs) }
-        .accessibilityAction(.escape, dismiss.callAsFunction)
+        .accessibilityAction(.escape, close)
+    }
+
+    /// The photo shrinks and fades with the backdrop, the same way the
+    /// photo picker's preview closes.
+    private func close() {
+        guard !isClosing else { return }
+        guard !reduceMotion else { return finishClosing() }
+        withAnimation(MediaPreviewDismissal.closingAnimation) { isClosing = true } completion: { finishClosing() }
+    }
+
+    private func finishClosing() {
+        if let onClose { onClose() } else { dismiss() }
     }
 
     private var header: some View {
         HStack(spacing: 12) {
-            Button("Close image preview", systemImage: "chevron.backward") { dismiss() }
+            Button("Close image preview", systemImage: "chevron.backward", action: close)
                 .labelStyle(.iconOnly).frame(width: 44, height: 44)
             VStack(spacing: 3) {
                 Text(currentItem?.senderName ?? "Photo").font(.headline).lineLimit(1)
@@ -221,7 +255,7 @@ struct MediaPreviewView: View {
             .onChanged { dismissalOffset = MediaPreviewDismissal.verticalOffset(for: $0.translation) }
             .onEnded { value in
                 if MediaPreviewDismissal.shouldDismiss(translation: value.translation, predictedEndTranslation: value.predictedEndTranslation, viewportHeight: viewportHeight) {
-                    dismiss()
+                    close()
                 } else {
                     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { dismissalOffset = 0 }
                 }

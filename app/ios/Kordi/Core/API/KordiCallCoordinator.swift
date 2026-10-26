@@ -182,7 +182,10 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
     @Published private(set) var previewVideoTrack: LocalVideoTrack?
     @Published private(set) var connectedAt: Date?
     @Published private(set) var isStartingCall = false
-    @Published var isCallScreenPresented = false
+    @Published var isCallScreenPresented = false {
+        // A chat's photo picker or image viewer would block the call screen.
+        didSet { if isCallScreenPresented, !oldValue { ConversationModalPresenter.dismissAll() } }
+    }
     @Published var isParticipantListPresented = false
 
     let room: Room
