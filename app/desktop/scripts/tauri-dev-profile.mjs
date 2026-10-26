@@ -166,6 +166,8 @@ const nextConfig = {
     externalBin: ompExternalBins(hostTargetTriple()),
     createUpdaterArtifacts: false,
     icon: resolveDesktopPreviewIcons(process.env),
+    // Packaged previews need a valid bundle signature for macOS permission prompts.
+    macOS: { ...baseConfig.bundle?.macOS, signingIdentity: '-' },
   },
   build: {
     ...baseConfig.build,
