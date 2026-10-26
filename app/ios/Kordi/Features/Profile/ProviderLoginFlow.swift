@@ -83,7 +83,7 @@ struct ProviderLoginMethodPicker: View {
         }
         .navigationTitle("Add \(provider.shortName) account")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $selected) { method in
+        .stableNavigationDestination(item: $selected) { method in
             ProviderLoginScreen(
                 provider: provider,
                 method: method,

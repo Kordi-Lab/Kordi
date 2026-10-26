@@ -41,7 +41,7 @@ struct ContactProfileSharedPageView: View {
             isLoading = false
         }
         .quickLookPreview($previewURL)
-        .navigationDestination(item: $documentReader) { DocumentReaderScreen(request: $0) }
+        .stableNavigationDestination(item: $documentReader) { DocumentReaderScreen(request: $0) }
         .fullScreenCover(item: $mediaPreview) { MediaPreviewView(presentation: $0) }
         .fullScreenCover(item: $videoPreview) { presentation in
             FullScreenMessageVideo(player: presentation.player, name: presentation.attachment.name, poster: presentation.poster)

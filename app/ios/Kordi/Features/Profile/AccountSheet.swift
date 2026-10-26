@@ -674,7 +674,7 @@ struct AccountAuthenticationDetailPreview: View {
         NavigationStack {
             if let provider = PreviewLoginSteps.definition(for: providerID, in: model.authenticationProviderDefinitions) {
                 ProviderAuthenticationDetailView(provider: provider)
-                    .navigationDestination(item: $model.startedAgentChat) { chat in
+                    .stableNavigationDestination(item: $model.startedAgentChat) { chat in
                         ConversationView(conversation: chat)
                     }
             }
