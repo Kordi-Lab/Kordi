@@ -22,7 +22,8 @@ import {
   type ConnectorProviderId,
   type ConnectorState,
 } from './connectorsModel';
-import { connectorIcons, denseNavRowsClass, macPermissionHelp, type ConnectorDialog } from './connectorsPanelConstants';
+import { ConnectorLogo } from './ConnectorLogo';
+import { denseNavRowsClass, macPermissionHelp, type ConnectorDialog } from './connectorsPanelConstants';
 import { ConnectorBadge } from './connectorsPanelShared';
 
 function errorMessage(caught: unknown, fallback: string): string {
@@ -361,14 +362,13 @@ export function ConnectorsSettingsPanel({
 
   const renderListRow = (definition: ConnectorDefinition) => {
     const state = states[definition.providerId];
-    const Icon = connectorIcons[definition.providerId];
     const available = definition.availability === 'available';
     const value = connectorListValue(definition, state);
     return (
       <div key={definition.providerId} data-connector-row={definition.providerId}>
         <SettingsRow
           className="app-connector-row"
-          icon={<Icon aria-hidden="true" className="h-[18px] w-[18px] text-white" />}
+          icon={<ConnectorLogo providerId={definition.providerId} />}
           title={(
             <span className="flex min-w-0 items-center gap-2">
               <span className="truncate">{definition.name}</span>

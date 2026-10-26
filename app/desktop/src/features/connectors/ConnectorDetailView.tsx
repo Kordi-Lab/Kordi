@@ -13,7 +13,8 @@ import {
   type ConnectorScope,
   type ConnectorState,
 } from './connectorsModel';
-import { connectorIcons, denseNavRowsClass } from './connectorsPanelConstants';
+import { ConnectorLogo } from './ConnectorLogo';
+import { denseNavRowsClass } from './connectorsPanelConstants';
 import { ConnectorBadge } from './connectorsPanelShared';
 
 const NOTIFICATION_CENTER_NOTE = 'Reads app name, title, text, and time for recent notifications on this Mac. Nothing from it is saved to lessons.';
@@ -58,7 +59,6 @@ export function ConnectorDetailView({
   onOpenAudit: () => void;
   onDisconnect: () => void;
 }) {
-  const Icon = connectorIcons[definition.providerId];
   const connected = state?.status === 'connected';
   const macLocal = definition.kind === 'mac_local';
   // A Mac source that is on can always be turned off, even without permission.
@@ -79,7 +79,7 @@ export function ConnectorDetailView({
           Back to connectors
         </Button>
         <span aria-hidden="true" className="h-4 w-px bg-[color:var(--app-divider)]" />
-        <Icon aria-hidden="true" className="h-[18px] w-[18px] shrink-0 text-white" />
+        <ConnectorLogo providerId={definition.providerId} />
         <h1 className={cn('m-0 min-w-0 truncate', settingsType.heading)}>{definition.name}</h1>
         <ConnectorBadge definition={definition} />
       </div>
