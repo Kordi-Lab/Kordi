@@ -7,6 +7,8 @@
 
 use std::{env, fmt};
 
+use crate::service_model::{vertex_configuration, ServiceCredential};
+
 // Stored ids (account, agent, owner email, auth choice, snapshot) keep the
 // old name so existing rows stay valid.
 pub const DEFAULT_SYSTEM_AGENT_ACCOUNT_ID: &str = "acct_kordi_pip";
@@ -24,7 +26,7 @@ const SYSTEM_AGENT_OPENAI_SNAPSHOT_ID: &str = "pip-service-openai";
 
 #[derive(Clone)]
 pub struct SystemAgentProviderAuth {
-    api_key: String,
+    credential: ServiceCredential,
     model: String,
     base_url: String,
 }
@@ -47,7 +49,7 @@ impl SystemAgentProviderAuth {
             ));
         }
         Ok(Self {
-            api_key,
+            credential: ServiceCredential::ApiKey(api_key),
             model,
             base_url: DEFAULT_SYSTEM_AGENT_OPENAI_BASE_URL.to_string(),
         })
@@ -60,11 +62,19 @@ impl SystemAgentProviderAuth {
     }
 
     pub fn provider(&self) -> &'static str {
-        SYSTEM_AGENT_OPENAI_PROVIDER
+        if self.credential.is_google_cloud() {
+            "vertex-ai"
+        } else {
+            SYSTEM_AGENT_OPENAI_PROVIDER
+        }
     }
 
     pub fn auth_choice(&self) -> &'static str {
-        SYSTEM_AGENT_OPENAI_AUTH_CHOICE
+        if self.credential.is_google_cloud() {
+            "pip-service-google-cloud"
+        } else {
+            SYSTEM_AGENT_OPENAI_AUTH_CHOICE
+        }
     }
 
     pub fn base_url(&self) -> &str {
@@ -72,15 +82,24 @@ impl SystemAgentProviderAuth {
     }
 
     pub fn snapshot_id(&self) -> &'static str {
-        SYSTEM_AGENT_OPENAI_SNAPSHOT_ID
+        if self.credential.is_google_cloud() {
+            "pip-service-vertex"
+        } else {
+            SYSTEM_AGENT_OPENAI_SNAPSHOT_ID
+        }
     }
 
     pub fn model(&self) -> &str {
         &self.model
     }
 
+    pub(crate) fn credential(&self) -> &ServiceCredential {
+        &self.credential
+    }
+
+    #[cfg(test)]
     pub(crate) fn api_key(&self) -> &str {
-        &self.api_key
+        self.credential.api_key()
     }
 }
 
@@ -204,7 +223,15 @@ fn required_or_default(
 
 impl PendingSystemAgentConfig {
     pub fn from_env() -> Result<Option<Self>, SystemAgentConfigError> {
-        Self::from_lookup(|key| env::var(key).ok())
+        let config = Self::from_lookup(|key| env::var(key).ok())?;
+        if let Some(config) = &config {
+            config
+                .provider_auth
+                .credential()
+                .validate_configuration()
+                .map_err(SystemAgentConfigError::Invalid)?;
+        }
+        Ok(config)
     }
 
     pub fn from_lookup(
@@ -217,18 +244,41 @@ impl PendingSystemAgentConfig {
         if switched_off(switch.as_deref()) {
             return Ok(None);
         }
-        let Some(api_key) = setting(&mut get, "OPENAI_API_KEY") else {
-            return if enabled(switch.as_deref()) {
-                Err(SystemAgentConfigError::Invalid(
-                    "KORDI_SYSTEM_AGENT_OPENAI_API_KEY is required",
+        let provider_auth = match setting(&mut get, "PROVIDER").as_deref() {
+            Some("vertex-ai") => {
+                let model = setting(&mut get, "VERTEX_MODEL");
+                let (credential, base_url, model) = vertex_configuration(&mut get, model)
+                    .map_err(SystemAgentConfigError::Invalid)?;
+                SystemAgentProviderAuth {
+                    credential,
+                    base_url,
+                    model,
+                }
+            }
+            None | Some("openai") => {
+                let Some(api_key) = setting(&mut get, "OPENAI_API_KEY") else {
+                    return if enabled(switch.as_deref()) {
+                        Err(SystemAgentConfigError::Invalid(
+                            "KORDI_SYSTEM_AGENT_OPENAI_API_KEY is required",
+                        ))
+                    } else {
+                        Ok(None)
+                    };
+                };
+                let model = required_or_default(
+                    &mut get,
+                    "OPENAI_MODEL",
+                    DEFAULT_SYSTEM_AGENT_OPENAI_MODEL,
+                );
+                let base_url = validated_base_url(setting(&mut get, "OPENAI_BASE_URL"))?;
+                SystemAgentProviderAuth::openai_api_key(api_key, model)?.with_base_url(base_url)
+            }
+            Some(_) => {
+                return Err(SystemAgentConfigError::Invalid(
+                    "KORDI_SYSTEM_AGENT_PROVIDER must be openai or vertex-ai",
                 ))
-            } else {
-                Ok(None)
-            };
+            }
         };
-        let model =
-            required_or_default(&mut get, "OPENAI_MODEL", DEFAULT_SYSTEM_AGENT_OPENAI_MODEL);
-        let base_url = validated_base_url(setting(&mut get, "OPENAI_BASE_URL"))?;
         let owner_email =
             required_or_default(&mut get, "OWNER_EMAIL", DEFAULT_SYSTEM_AGENT_OWNER_EMAIL);
         if !owner_email.contains('@') {
@@ -251,8 +301,7 @@ impl PendingSystemAgentConfig {
                 "AGENT_SUBTITLE",
                 DEFAULT_SYSTEM_AGENT_SUBTITLE,
             ),
-            provider_auth: SystemAgentProviderAuth::openai_api_key(api_key, model)?
-                .with_base_url(base_url),
+            provider_auth,
         }))
     }
 }
@@ -290,198 +339,5 @@ pub(crate) fn test_config(account_id: &str) -> SystemAgentConfig {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::HashMap;
-
-    #[test]
-    fn system_agent_is_off_without_a_key() {
-        let values: HashMap<&str, &str> = HashMap::new();
-        let config = PendingSystemAgentConfig::from_lookup(|key| {
-            values.get(key).map(|value| value.to_string())
-        })
-        .unwrap();
-        assert!(config.is_none());
-    }
-
-    #[test]
-    fn system_agent_is_on_whenever_a_key_is_configured_unless_switched_off() {
-        let on = HashMap::from([("KORDI_SYSTEM_AGENT_OPENAI_API_KEY", "sk-test")]);
-        assert!(PendingSystemAgentConfig::from_lookup(|key| on
-            .get(key)
-            .map(|value| value.to_string()))
-        .unwrap()
-        .is_some());
-        let off = HashMap::from([
-            ("KORDI_SYSTEM_AGENT_OPENAI_API_KEY", "sk-test"),
-            ("KORDI_SYSTEM_AGENT_ENABLED", "false"),
-        ]);
-        assert!(PendingSystemAgentConfig::from_lookup(|key| off
-            .get(key)
-            .map(|value| value.to_string()))
-        .unwrap()
-        .is_none());
-    }
-
-    #[test]
-    fn grounding_credentials_can_be_enabled_without_group_chat_automation() {
-        for name in [
-            "KORDI_SYSTEM_AGENT_GROUP_CHAT_ENABLED",
-            "KORDI_PIP_GROUP_CHAT_ENABLED",
-        ] {
-            let config = configured(&[
-                ("KORDI_SYSTEM_AGENT_OPENAI_API_KEY", "synthetic-key"),
-                (name, "false"),
-            ])
-            .expect("Grounding service remains available");
-            assert!(!config.group_chat_enabled);
-            assert_eq!(config.provider_auth.api_key(), "synthetic-key");
-        }
-        let config = configured(&[
-            ("KORDI_SYSTEM_AGENT_OPENAI_API_KEY", "synthetic-key"),
-            ("KORDI_SYSTEM_AGENT_GROUP_CHAT_ENABLED", "true"),
-            ("KORDI_PIP_GROUP_CHAT_ENABLED", "false"),
-        ])
-        .unwrap();
-        assert!(
-            config.group_chat_enabled,
-            "the new setting takes precedence"
-        );
-    }
-
-    #[test]
-    fn enabled_system_agent_requires_its_own_api_key() {
-        let values = HashMap::from([("KORDI_SYSTEM_AGENT_ENABLED", "true")]);
-        let error = PendingSystemAgentConfig::from_lookup(|key| {
-            values.get(key).map(|value| value.to_string())
-        })
-        .unwrap_err();
-        assert!(matches!(error, SystemAgentConfigError::Invalid(_)));
-    }
-
-    #[test]
-    fn defaults_fill_everything_but_the_key() {
-        let values = HashMap::from([
-            ("KORDI_SYSTEM_AGENT_ENABLED", "yes"),
-            ("KORDI_SYSTEM_AGENT_OPENAI_API_KEY", " sk-test "),
-        ]);
-        let config = PendingSystemAgentConfig::from_lookup(|key| {
-            values.get(key).map(|value| value.to_string())
-        })
-        .unwrap()
-        .unwrap();
-        assert!(config.group_chat_enabled);
-        assert_eq!(config.account_id, DEFAULT_SYSTEM_AGENT_ACCOUNT_ID);
-        assert_eq!(config.agent_id, DEFAULT_SYSTEM_AGENT_ID);
-        assert_eq!(config.name, "System");
-        assert_eq!(config.provider_auth.api_key(), "sk-test");
-        assert_eq!(
-            config.provider_auth.model(),
-            DEFAULT_SYSTEM_AGENT_OPENAI_MODEL
-        );
-        assert!(!format!("{:?}", config.provider_auth).contains("sk-test"));
-    }
-
-    fn lookup(
-        extra: Option<&'static str>,
-    ) -> Result<PendingSystemAgentConfig, SystemAgentConfigError> {
-        let mut values = HashMap::from([("KORDI_SYSTEM_AGENT_OPENAI_API_KEY", "sk-test")]);
-        if let Some(url) = extra {
-            values.insert("KORDI_SYSTEM_AGENT_OPENAI_BASE_URL", url);
-        }
-        PendingSystemAgentConfig::from_lookup(|key| values.get(key).map(|value| value.to_string()))
-            .map(|config| config.expect("configured"))
-    }
-
-    #[test]
-    fn base_url_defaults_to_openai_when_unset() {
-        let config = lookup(None).unwrap();
-        assert_eq!(
-            config.provider_auth.base_url(),
-            DEFAULT_SYSTEM_AGENT_OPENAI_BASE_URL
-        );
-    }
-
-    #[test]
-    fn base_url_override_is_used_and_trailing_slash_stripped() {
-        let config = lookup(Some(" https://gateway.example.invalid/v1/ ")).unwrap();
-        assert_eq!(
-            config.provider_auth.base_url(),
-            "https://gateway.example.invalid/v1"
-        );
-        let config = lookup(Some("http://127.0.0.1:4000/v1")).unwrap();
-        assert_eq!(config.provider_auth.base_url(), "http://127.0.0.1:4000/v1");
-    }
-
-    fn configured(values: &[(&str, &str)]) -> Option<PendingSystemAgentConfig> {
-        let values: HashMap<&str, &str> = values.iter().copied().collect();
-        PendingSystemAgentConfig::from_lookup(|key| values.get(key).map(|value| value.to_string()))
-            .unwrap()
-    }
-
-    #[test]
-    fn new_and_old_setting_names_are_both_read() {
-        let new = configured(&[
-            ("KORDI_SYSTEM_AGENT_OPENAI_API_KEY", "sk-new"),
-            ("KORDI_SYSTEM_AGENT_OPENAI_MODEL", "model-new"),
-        ])
-        .unwrap();
-        assert_eq!(new.provider_auth.api_key(), "sk-new");
-        assert_eq!(new.provider_auth.model(), "model-new");
-        let old = configured(&[
-            ("KORDI_PIP_OPENAI_API_KEY", "sk-old"),
-            ("KORDI_PIP_OPENAI_MODEL", "model-old"),
-            ("KORDI_PIP_OWNER_EMAIL", "old@example.invalid"),
-        ])
-        .unwrap();
-        assert_eq!(old.provider_auth.api_key(), "sk-old");
-        assert_eq!(old.provider_auth.model(), "model-old");
-        assert_eq!(old.owner_email, "old@example.invalid");
-    }
-
-    #[test]
-    fn the_new_setting_name_wins_over_the_old_one() {
-        let config = configured(&[
-            ("KORDI_SYSTEM_AGENT_OPENAI_API_KEY", "sk-new"),
-            ("KORDI_PIP_OPENAI_API_KEY", "sk-old"),
-            ("KORDI_SYSTEM_AGENT_AGENT_NAME", " "),
-            ("KORDI_PIP_AGENT_NAME", "Old name"),
-        ])
-        .unwrap();
-        assert_eq!(config.provider_auth.api_key(), "sk-new");
-        assert_eq!(config.name, "Old name", "a blank new value falls back");
-        let on = [
-            ("KORDI_SYSTEM_AGENT_OPENAI_API_KEY", "sk-new"),
-            ("KORDI_SYSTEM_AGENT_ENABLED", "true"),
-            ("KORDI_PIP_ENABLED", "false"),
-        ];
-        assert!(configured(&on).is_some());
-    }
-
-    #[test]
-    fn either_enabled_name_switches_it_off() {
-        for name in ["KORDI_SYSTEM_AGENT_ENABLED", "KORDI_PIP_ENABLED"] {
-            let values = [
-                ("KORDI_SYSTEM_AGENT_OPENAI_API_KEY", "sk-test"),
-                (name, "false"),
-            ];
-            assert!(configured(&values).is_none(), "{name}");
-        }
-    }
-
-    #[test]
-    fn non_https_base_url_is_rejected() {
-        for bad in [
-            "http://gateway.example.invalid/v1",
-            "ftp://x",
-            "gateway.example.invalid",
-            "http://localhost.evil.invalid/v1",
-        ] {
-            let error = lookup(Some(bad)).unwrap_err();
-            assert!(
-                matches!(error, SystemAgentConfigError::Invalid(m) if m == "KORDI_SYSTEM_AGENT_OPENAI_BASE_URL must be an https URL"),
-                "{bad}"
-            );
-        }
-    }
-}
+#[path = "config_tests.rs"]
+mod tests;

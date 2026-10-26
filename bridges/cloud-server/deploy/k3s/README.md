@@ -230,7 +230,10 @@ At startup the server logs "Kordi signup email verification is configured" when
 the Secret is complete, otherwise "Kordi password signup is unavailable until
 signup email delivery is configured".
 
-The hosted support chat uses a dedicated OpenAI API key owned by the service.
+For Google Cloud, use [workload identity and Vertex service models](../../../../docs/service-models-google-cloud.md).
+This replaces static service model keys without changing member credentials.
+
+Legacy OpenAI deployments use a dedicated API key owned by the service.
 It never borrows a provider-auth snapshot from the support owner or the person
 asking for help. Store the key only in the `kordi-support-openai` Secret:
 

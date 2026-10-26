@@ -1,11 +1,11 @@
 # The System agent
 
 The System agent is the agent Kordi runs for everyone in a conversation. It
-runs on a Kordi-operated provider key, never on a member's key, and people see
+runs on a Kordi-operated provider credential, never on a member's key, and people see
 it as System with the gray Kordi bird (#2029). It used to be called PiP; the
 stored identifiers below keep that name.
 
-Kordi runs two agents on its own keys: the System agent described here, and
+Kordi runs two agents on its own service credentials: the System agent described here, and
 Kordi Support, which people chat with directly. In code, "system agent" as a
 contact kind (`system_agent`) means Support's direct chat contact, not this
 agent.
@@ -15,7 +15,7 @@ agent.
 | Job | What the System agent does | Code |
 | --- | --- | --- |
 | Group plans | A standing member of every group conversation except Grounding groups. It notices when a plan is forming, keeps one plan card per conversation through the `plan_card` tool, and reminds people before the event. | `bridges/cloud-server/src/system_agent/`, `plan_cards/` |
-| Grounding | Card builds, matching and group intros run on its key. Grounding is available only while the System agent is configured (`common_ground::available`). | `bridges/cloud-server/src/common_ground/` |
+| Grounding | Card builds, matching and group intros run on its service credential. Grounding is available only while the System agent is configured (`common_ground::available`). | `bridges/cloud-server/src/common_ground/` |
 
 These are not System agent jobs:
 
@@ -47,10 +47,18 @@ its id and show it as System.
 
 ## Configuration
 
+Google Cloud deployments use workload identity and explicit Vertex model IDs; see
+[Service models on Google Cloud](service-models-google-cloud.md). The OpenAI
+settings below remain available for existing deployments and isolated fixtures.
+
+
 | Variable | Meaning |
 | --- | --- |
+| `KORDI_SYSTEM_AGENT_PROVIDER` | `vertex-ai` selects Google Cloud; omitted or `openai` retains the existing provider |
+| `KORDI_SYSTEM_AGENT_VERTEX_MODEL` | Explicit model ID for the Vertex Chat Completions endpoint; no default |
+| `KORDI_SYSTEM_AGENT_GROUP_CHAT_ENABLED` | `false` keeps Grounding available while disabling group-plan automation |
 | `KORDI_SYSTEM_AGENT_OPENAI_API_KEY` | Kordi-operated OpenAI key; the System agent is on whenever it is set |
-| `KORDI_SYSTEM_AGENT_ENABLED` | `false` switches it off; `true` without a key is a startup error |
+| `KORDI_SYSTEM_AGENT_ENABLED` | `false` switches it off; `true` without a complete provider configuration is an error |
 | `KORDI_SYSTEM_AGENT_OPENAI_MODEL` | Model name; defaults to the support agent's default |
 | `KORDI_SYSTEM_AGENT_OPENAI_BASE_URL` | OpenAI-compatible gateway; https only (plain http for loopback); defaults to the OpenAI API |
 | `KORDI_SYSTEM_AGENT_ACCOUNT_ID`, `KORDI_SYSTEM_AGENT_AGENT_ID`, `KORDI_SYSTEM_AGENT_AGENT_NAME`, `KORDI_SYSTEM_AGENT_AGENT_SUBTITLE`, `KORDI_SYSTEM_AGENT_OWNER_EMAIL` | Identity overrides; defaults are fine for every environment |
@@ -60,7 +68,7 @@ the old names keep working; the new name wins when both are set.
 
 With the System agent off, Grounding is off too: the server stops advertising
 `commonGroundVersion` and the clients hide Grounding. A test stack that needs
-Grounding must configure a key.
+Grounding must configure a service model.
 
 The isolated development stack passes these through `deploy/dev/compose.yaml`
 from the ignored `deploy/dev/.env` file.
@@ -91,8 +99,8 @@ It never reads or writes anyone's personal calendar.
 
 ## When the System agent spends a model call
 
-It is always on in every group once `KORDI_SYSTEM_AGENT_OPENAI_API_KEY` is
-set; `KORDI_SYSTEM_AGENT_ENABLED=false` switches it off. There are no
+It is on in every group once its provider is configured, unless
+`KORDI_SYSTEM_AGENT_GROUP_CHAT_ENABLED=false`; `KORDI_SYSTEM_AGENT_ENABLED=false` switches it off. There are no
 per-group caps. A five-second sweep considers a group only when one of these
 holds:
 

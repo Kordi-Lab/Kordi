@@ -1,5 +1,6 @@
 """Production safety regressions run entirely against synthetic local fixtures."""
 from argparse import Namespace
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
@@ -196,6 +197,29 @@ class ProductionTests(unittest.TestCase):
         changed = [call[-1] for call in calls if "set" in call]
         self.assertEqual(changed, [f"{CONTAINERS[service]}=docker.io/library/kordi-{service}@"
                                    f"{self.manifest['images'][service]['digest']}" for service in PRODUCTION_SERVICES])
+
+    def test_image_promotion_preserves_google_identity_and_environment(self):
+        specs = {service: {"serviceAccountName": "synthetic-service", "automountServiceAccountToken": False,
+                          "volumes": [{"name": "identity", "projected": {"sources": []}}],
+                          "containers": [{"name": CONTAINERS[service], "image": "old",
+                                          "env": [{"name": "KORDI_SUPPORT_PROVIDER", "value": "vertex-ai"}],
+                                          "volumeMounts": [{"name": "identity", "mountPath": "/identity", "readOnly": True}]}]}
+                 for service in PRODUCTION_SERVICES}
+        expected = deepcopy(specs)
+
+        def command(arguments):
+            if arguments[5:7] == ["set", "image"]:
+                service = arguments[7].removeprefix("deployment/kordi-")
+                specs[service]["containers"][0]["image"] = arguments[8].split("=", 1)[1]
+            else:
+                self.assertEqual(arguments[5:7], ["rollout", "status"])
+            return ""
+
+        with patch("backend_deploy_production.run", side_effect=command):
+            apply_images(self.previous)
+        for service in PRODUCTION_SERVICES:
+            expected[service]["containers"][0]["image"] = self.previous[service]
+        self.assertEqual(specs, expected)
 
     def test_independent_deployments_contend_for_the_same_host_lock(self):
         with lock("host-wide", self.directory / "locks", timeout=0):

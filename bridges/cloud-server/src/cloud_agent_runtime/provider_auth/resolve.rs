@@ -52,6 +52,7 @@ pub async fn provider_auth_for_run(
 
     if let Some(provider_auth) =
         service_provider_auth_for_run(&owner_account_id, run_id, &runtime_route, service_auths)
+            .await?
     {
         return Ok(ProviderAuthForRunResult::Found(provider_auth));
     }

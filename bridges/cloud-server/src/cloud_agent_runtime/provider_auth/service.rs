@@ -3,6 +3,8 @@ use std::fmt;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::service_model::ServiceCredential;
+
 use super::provider_family::equivalent_provider_ids;
 #[derive(Debug, Serialize)]
 pub struct RunnerProviderAuthMaterialEnvelope {
@@ -25,7 +27,7 @@ pub struct ServiceProviderAuth<'a> {
     pub snapshot_id: &'a str,
     pub provider: &'a str,
     pub auth_choice: &'a str,
-    pub api_key: &'a str,
+    pub(crate) credential: &'a ServiceCredential,
     pub base_url: &'a str,
     pub model: &'a str,
     /// When set, the credential only serves runs whose id starts with this
@@ -53,26 +55,36 @@ impl ServiceProviderAuth<'_> {
     }
 }
 
-pub(super) fn service_provider_auth_for_run(
+pub(super) async fn service_provider_auth_for_run(
     owner_account_id: &str,
     run_id: &str,
     runtime_route: &Value,
     service_auths: Vec<ServiceProviderAuth<'_>>,
-) -> Option<RunnerProviderAuthMaterial> {
-    let service_auth = service_auths
+) -> Result<Option<RunnerProviderAuthMaterial>, sqlx_core::Error> {
+    let Some(service_auth) = service_auths
         .into_iter()
-        .find(|auth| auth.matches_run(owner_account_id, run_id, runtime_route))?;
+        .find(|auth| auth.matches_run(owner_account_id, run_id, runtime_route))
+    else {
+        return Ok(None);
+    };
+    // Admission happens before any access to Google workload credentials. A
+    // refresh failure must not fall through to a member's saved account.
+    let token = service_auth
+        .credential
+        .bearer_token()
+        .await
+        .map_err(|message| sqlx_core::Error::Protocol(message.to_string()))?;
 
-    Some(RunnerProviderAuthMaterial {
+    Ok(Some(RunnerProviderAuthMaterial {
         snapshot_id: service_auth.snapshot_id.to_string(),
         provider: service_auth.provider.to_string(),
         auth_choice: service_auth.auth_choice.to_string(),
         payload: serde_json::json!({
-            "apiKey": service_auth.api_key,
+            "apiKey": token,
             "baseUrl": service_auth.base_url,
             "model": service_auth.model,
         }),
-    })
+    }))
 }
 
 impl fmt::Debug for RunnerProviderAuthMaterial {
@@ -105,18 +117,19 @@ mod tests {
         assert!(!debug.contains("secret-support-key"));
     }
 
-    #[test]
-    fn a_prefixed_service_key_only_serves_its_own_runs() {
+    #[tokio::test]
+    async fn a_prefixed_service_key_only_serves_its_own_runs() {
         let route = serde_json::json!({
             "defaultAuthProvider": "openai",
             "defaultAuthChoice": "pip-service-api-key",
         });
+        let credential = ServiceCredential::ApiKey("secret-system-agent-key".to_string());
         let system_agent_key = || ServiceProviderAuth {
             owner_account_id: "acct_kordi_pip",
             snapshot_id: "pip-service-openai",
             provider: "openai",
             auth_choice: "pip-service-api-key",
-            api_key: "secret-system-agent-key",
+            credential: &credential,
             base_url: "https://api.openai.com/v1",
             model: "gpt",
             run_id_prefix: Some("pip_"),
@@ -127,6 +140,8 @@ mod tests {
             &route,
             vec![system_agent_key()]
         )
+        .await
+        .unwrap()
         .is_some());
         assert!(service_provider_auth_for_run(
             "acct_kordi_pip",
@@ -134,6 +149,79 @@ mod tests {
             &route,
             vec![system_agent_key()]
         )
+        .await
+        .unwrap()
         .is_none());
+    }
+    struct CountingTokenSource(std::sync::atomic::AtomicUsize);
+
+    #[async_trait::async_trait]
+    impl crate::service_model::ServiceTokenSource for CountingTokenSource {
+        async fn access_token(&self) -> Result<String, &'static str> {
+            let n = self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if n == 2 {
+                return Err("synthetic refresh failure");
+            }
+            Ok(format!("short-lived-token-{n}"))
+        }
+    }
+
+    #[tokio::test]
+    async fn google_token_resolution_is_scoped_and_refresh_failures_are_closed() {
+        let source =
+            std::sync::Arc::new(CountingTokenSource(std::sync::atomic::AtomicUsize::new(0)));
+        let credential = ServiceCredential::GoogleCloud(source.clone());
+        let endpoint = "https://aiplatform.googleapis.com/v1/projects/test-project/locations/global/endpoints/openapi";
+        let auth = || ServiceProviderAuth {
+            owner_account_id: "service-owner",
+            snapshot_id: "pip-service-vertex",
+            provider: "vertex-ai",
+            auth_choice: "pip-service-google-cloud",
+            credential: &credential,
+            base_url: endpoint,
+            model: "google/synthetic-model",
+            run_id_prefix: Some("cg_"),
+        };
+        let route = serde_json::json!({
+            "defaultAuthProvider": "vertex-ai",
+            "defaultAuthChoice": "pip-service-google-cloud",
+        });
+        for (owner, run_id, candidate_route) in [
+            ("member", "cg_123", route.clone()),
+            ("service-owner", "user_run", route.clone()),
+            (
+                "service-owner",
+                "cg_123",
+                serde_json::json!({"defaultAuthProvider":"openai", "defaultAuthChoice":"pip-service-google-cloud"}),
+            ),
+            (
+                "service-owner",
+                "cg_123",
+                serde_json::json!({"defaultAuthProvider":"vertex-ai", "defaultAuthChoice":"user-snapshot"}),
+            ),
+        ] {
+            assert!(
+                service_provider_auth_for_run(owner, run_id, &candidate_route, vec![auth()])
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        assert_eq!(source.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+        for n in 0..2 {
+            let material =
+                service_provider_auth_for_run("service-owner", "cg_123", &route, vec![auth()])
+                    .await
+                    .unwrap()
+                    .unwrap();
+            assert_eq!(material.payload["apiKey"], format!("short-lived-token-{n}"));
+            assert!(material.payload.get("refreshToken").is_none());
+            assert!(!format!("{material:?}").contains("short-lived-token"));
+        }
+        assert!(
+            service_provider_auth_for_run("service-owner", "cg_123", &route, vec![auth()])
+                .await
+                .is_err()
+        );
     }
 }
