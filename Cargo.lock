@@ -3851,6 +3851,7 @@ dependencies = [
  "notify-rust",
  "objc2",
  "objc2-avf-audio",
+ "objc2-core-location",
  "objc2-event-kit",
  "objc2-foundation",
  "objc2-speech",

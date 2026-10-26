@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronRight, LoaderCircle, Plus } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, LoaderCircle, Plus, RefreshCw } from 'lucide-react';
 
 import { SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import { cn } from '@/lib/utils';
@@ -95,12 +95,23 @@ function PersonRow({ entry, onOpen }: { entry: CgNearbyEntry; onOpen: () => void
 }
 
 /** People: the Within and match filters, then who is around, and how many are still being matched. */
-export function NearbyPeople({ settings, results, nearby, onOpen }: {
+export function NearbyPeople({ settings, results, nearby, unavailable, notice, onOpen }: {
   settings: CgNearbySettings;
   results: CgNearbyResults | null;
+  unavailable?: 'location' | 'paused';
+  notice?: string | null;
   nearby: CgNearbyStore;
   onOpen: (accountId: string) => void;
 }) {
+  const [refreshing, setRefreshing] = useState(false);
+  const pendingRefresh = useRef(false);
+  const refresh = async () => {
+    if (pendingRefresh.current) return;
+    pendingRefresh.current = true;
+    setRefreshing(true);
+    nearby.set({ notice: null });
+    try { await nearby.refresh(); } finally { pendingRefresh.current = false; setRefreshing(false); }
+  };
   const rows = results?.people.filter((entry) => entry.status !== 'matching') ?? [];
   const more = matchingCount(results);
   return (
@@ -108,6 +119,10 @@ export function NearbyPeople({ settings, results, nearby, onOpen }: {
       <div className="cg-nb-sechead">
         <h2 className="cg-msec">People</h2>
         <span className="cg-nb-pills">
+          <button type="button" className="cg-mbtn is-sm" disabled={refreshing} onClick={() => void refresh()}>
+            <RefreshCw className={cn('h-3 w-3', refreshing && 'animate-spin motion-reduce:animate-none')} aria-hidden="true" />
+            {refreshing ? 'Refreshing…' : 'Refresh results'}
+          </button>
           <NbMenuButton id="range" label="Within" className="cg-mbtn is-sm" items={checkItems(NEARBY_RANGES, settings.range, (range) => void nearby.setFilters({ range }))}>
             {rangePill(settings.range)}{caret}
           </NbMenuButton>
@@ -116,7 +131,7 @@ export function NearbyPeople({ settings, results, nearby, onOpen }: {
           </NbMenuButton>
         </span>
       </div>
-      {results ? (
+      {results && !unavailable ? (
         <div className="cg-panel">
           {rows.map((entry) => <PersonRow key={entry.person.accountId} entry={entry} onOpen={() => onOpen(entry.person.accountId)} />)}
           {more ? (
@@ -126,10 +141,21 @@ export function NearbyPeople({ settings, results, nearby, onOpen }: {
             </div>
           ) : null}
           {!rows.length && !more ? (
-            <div className="cg-mrow is-plain"><span className="cg-mrow-text"><span className="cg-mrow-sub">No one nearby yet</span></span></div>
+            <div className="cg-mrow is-plain" role="status"><span className="cg-mrow-text"><span className="cg-mrow-title">No matches nearby</span><span className="cg-mrow-sub">Try a wider distance or a lower match score.</span></span></div>
           ) : null}
         </div>
-      ) : null}
+      ) : (
+        <div className="cg-panel" role="status">
+          <div className="cg-mrow is-plain">
+            <span className="cg-mrow-text">
+              <span className="cg-mrow-title">{unavailable === 'location' ? 'No results yet' : unavailable === 'paused' ? 'Nearby is paused' : notice ? 'Could not load nearby people' : 'Finding nearby people…'}</span>
+              {unavailable === 'location' ? <span className="cg-mrow-sub">Update your location to see who is nearby.</span> : null}
+              {unavailable === 'paused' ? <span className="cg-mrow-sub">Resume Nearby to see results.</span> : null}
+            </span>
+            {!unavailable && notice ? <button type="button" className="cg-link" disabled={refreshing} onClick={() => void refresh()}>Try again</button> : null}
+          </div>
+        </div>
+      )}
     </>
   );
 }
