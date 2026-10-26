@@ -101,7 +101,7 @@ struct PersonalAgentSection: View {
 }
 
 struct PersonalAgentRow: View {
-    static let avatarSize: CGFloat = 36
+    static let avatarSize: CGFloat = 32
     static let separatorLeading: CGFloat = 16 + avatarSize + 10
 
     @Environment(\.kordiChatTheme) private var chatTheme
@@ -112,37 +112,40 @@ struct PersonalAgentRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             PersonalAgentAvatar(conversation: conversation, size: Self.avatarSize)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(PersonalAgentSessionCatalog.name(of: conversation))
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                        .layoutPriority(1)
-                    ChatListStateIndicators(isPinned: false, isMuted: isMuted)
-                    Spacer(minLength: 8)
-                    Text(chatListTimestamp(conversation.lastActivityAt))
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(PersonalAgentSessionCatalog.name(of: conversation))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                            .layoutPriority(1)
+                        ChatListStateIndicators(isPinned: false, isMuted: isMuted)
+                    }
+                    BlobEmojiPreviewText(text: PersonalAgentSessionCatalog.preview(of: conversation))
                         .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 1)
+                }
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(chatListTimestamp(conversation.lastActivityAt))
+                        .font(.caption2)
                         .foregroundStyle(conversation.hasUnreadAttention && !isMuted ? chatTheme.accent : .secondary)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
-                }
-                HStack(alignment: .center, spacing: 8) {
-                    BlobEmojiPreviewText(text: PersonalAgentSessionCatalog.preview(of: conversation))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    ConversationAttentionBadge(
-                        unreadCount: conversation.unreadCount,
-                        mentionCount: conversation.unreadMentionCount,
-                        isMuted: isMuted
-                    )
+                    if conversation.hasUnreadAttention {
+                        ConversationAttentionBadge(
+                            unreadCount: conversation.unreadCount,
+                            mentionCount: conversation.unreadMentionCount,
+                            isMuted: isMuted
+                        )
+                    }
                 }
             }
         }
-        .padding(.vertical, 5)
-        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 46, alignment: .leading)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 44, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
