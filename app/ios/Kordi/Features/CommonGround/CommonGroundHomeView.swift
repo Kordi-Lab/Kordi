@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Grounding's Home: the shared card's chip, the wallet, Tap and the Pair
-/// code row, Rooms, Recent and Your card. A pairing link opens here.
+/// Grounding's Home: the shared card's chip, the wallet, Tap, the Pair
+/// code row and Nearby, Rooms, Recent and Your card. A pairing link opens here.
 struct CommonGroundHome: View {
     @EnvironmentObject private var model: CommonGroundModel
     @Environment(\.scenePhase) private var scenePhase
@@ -57,6 +57,7 @@ struct CommonGroundHome: View {
                         error: codeError,
                         enabled: canPair,
                         onTap: startTap,
+                        nearby: model.nearbyEnabled ? .init(value: model.nearbyRowValue, open: openNearby) : nil,
                         onEnter: entered,
                         onCreate: { create(for: model.currentProfileID) }
                     )
@@ -88,9 +89,12 @@ struct CommonGroundHome: View {
             }
         }
         .onChange(of: code) { _, typed in if !typed.isEmpty { codeError = nil } }
-        .task { await model.refreshHome() }
+        .task {
+            await model.refreshHome()
+            await model.refreshNearbySummary()
+        }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await model.refreshHome() } }
+            if phase == .active { Task { await model.refreshHome(); await model.refreshNearbySummary() } }
         }
         .task(id: model.isBuilding) { await model.waitForBuild() }
         .sheet(item: $joinCode, onDismiss: {
@@ -181,6 +185,11 @@ struct CommonGroundHome: View {
     }
 
     // MARK: Actions
+
+    /// Nearby without a card opens the build, like Tap.
+    private func openNearby() {
+        path.append(canPair ? .nearby : .build)
+    }
 
     /// Tap without a card opens the build; with sharing off it asks first.
     private func startTap() {
