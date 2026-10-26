@@ -401,7 +401,7 @@ export function MainComposer({
                 modelOptions={chatModelOptions && chatModelOptions.length > 0
                   ? chatModelOptions
                   : undefined}
-                onSave={collaborationRouting.onSaveCompact}
+                onSave={collaborationRouting.onSaveCompact} sharedRoute={localRouting.paneKind !== 'agent'}
               />
             ) : null}
             {!editingMessage && !voiceSurfaceActive && localRouting.paneKind === 'agent'
@@ -453,7 +453,7 @@ export function MainComposer({
                     menu={{
                       openSelector: openComposerSelector,
                       agentSelectorOpen: collaborationRouting.agentSelectorOpen,
-                      compact: display.showCompanionPane,
+                      compact: display.showCompanionPane, sharedRoute: localRouting.paneKind !== 'agent',
                     }}
                     onSignIn={display.onOpenAuthentication}
                     options={{
