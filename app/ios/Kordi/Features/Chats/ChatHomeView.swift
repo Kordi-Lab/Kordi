@@ -499,7 +499,7 @@ struct ChatHomeView: View {
                 Text(error).font(.footnote).foregroundStyle(KordiTheme.destructiveText).padding(.horizontal, 16)
             }
             newAgentSessionButton
-            PersonalAgentSection(searchQuery: searchQuery) { if !dismissActiveSwipeActions() { openConversation($0) } }
+            PersonalAgentSection(searchQuery: searchQuery, isCollapsed: sectionCollapsedBinding("personal-agent")) { if !dismissActiveSwipeActions() { openConversation($0) } }
             projectSessionList
             if agentSessions.isEmpty && model.projectDevices.flatMap(\.projects).isEmpty && model.personalAgentRows(searchText: searchQuery).isEmpty {
                 ContentUnavailableView(
@@ -570,6 +570,13 @@ struct ChatHomeView: View {
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
+    }
+
+    private func sectionCollapsedBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { collapsedProjectIDs.contains(id) },
+            set: { if $0 { collapsedProjectIDs.insert(id) } else { collapsedProjectIDs.remove(id) } }
+        )
     }
 
     private func agentSectionToggle(_ title: String, id: String) -> some View {

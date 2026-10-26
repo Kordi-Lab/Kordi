@@ -19,19 +19,33 @@ struct PersonalAgentSection: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let searchQuery: String
+    @Binding var isCollapsed: Bool
     let onOpen: (ConversationSummary) -> Void
 
     var body: some View {
         let rows = model.personalAgentRows(searchText: searchQuery)
         if !rows.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Personal agent")
+                Button {
+                    isCollapsed.toggle()
+                } label: {
+                    HStack(spacing: 7) {
+                        Text("Personal agent")
+                        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                            .font(.caption2)
+                    }
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 44 : 32, alignment: .leading)
                     .padding(.horizontal, 16)
-                    .accessibilityAddTraits(.isHeader)
-                ForEach(rows) { row($0) }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
+                if !isCollapsed || !searchQuery.isEmpty {
+                    ForEach(rows) { row($0) }
+                }
             }
             .listRowInsets(EdgeInsets())
             .listRowSeparator(.hidden)
