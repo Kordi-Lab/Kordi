@@ -7,8 +7,13 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
-/// New events in one snapshot, newest first.
+/// New events one evaluation takes, the oldest first; the rest wait for
+/// the next one.
 pub(super) const SNAPSHOT_EVENTS: i64 = 50;
+/// An event that happened longer ago than this, or before the setting was
+/// turned on, is skipped without an evaluation: a new connector's first poll
+/// stores old mail and calendar changes.
+pub(super) const MAX_EVENT_AGE_HOURS: i32 = 6;
 /// Events received this recently wait for the next sweep, so an insert that
 /// is still committing with an earlier `received_at` is never skipped.
 pub(super) const SETTLE_SECONDS: i64 = 5;
@@ -42,7 +47,15 @@ pub(super) struct Event {
     pub occurred_at: DateTime<Utc>,
     pub received_at: DateTime<Utc>,
     pub payload: Value,
+    /// It happened before the setting was turned on or more than
+    /// [`MAX_EVENT_AGE_HOURS`] ago: it moves the cursor but is not shown.
+    pub stale: bool,
 }
+
+/// The newest event an agent has looked at: (`received_at`, `event_id`).
+/// Events at one `received_at` are ordered by id, so a batch can end
+/// between them.
+pub(super) type Cursor = (DateTime<Utc>, String);
 
 impl Event {
     fn to_value(&self) -> Value {
@@ -70,8 +83,16 @@ fn handle(public_handle: Option<String>, name: &str) -> String {
     format!("@{handle}")
 }
 
-/// event_id, provider, kind, occurred_at, received_at, payload
-type EventRow = (String, String, String, DateTime<Utc>, DateTime<Utc>, Value);
+/// event_id, provider, kind, occurred_at, received_at, payload, stale
+type EventRow = (
+    String,
+    String,
+    String,
+    DateTime<Utc>,
+    DateTime<Utc>,
+    Value,
+    bool,
+);
 
 type AgentRow = (
     String,
@@ -141,43 +162,51 @@ pub(super) async fn load_agent(
 }
 
 /// The events from connectors granted to the agent that the server received
-/// after `cursor`, newest first and at most [`SNAPSHOT_EVENTS`]. Revoked
-/// connectors, expired events, content-free kinds, and events received in
-/// the last [`SETTLE_SECONDS`] are left out.
+/// after `cursor`, the oldest first and at most [`SNAPSHOT_EVENTS`], each
+/// marked `stale` against `enabled_at`. Revoked connectors, expired events,
+/// content-free kinds, and events received in the last [`SETTLE_SECONDS`]
+/// are left out.
 pub(super) async fn new_events(
     pool: &PgPool,
     agent: &Agent,
-    cursor: DateTime<Utc>,
+    cursor: &Cursor,
+    enabled_at: DateTime<Utc>,
 ) -> Result<Vec<Event>, sqlx_core::Error> {
     let rows: Vec<EventRow> = query_as(
-        "SELECT e.event_id, e.provider, e.kind, e.occurred_at, e.received_at, e.payload
+        "SELECT e.event_id, e.provider, e.kind, e.occurred_at, e.received_at, e.payload,
+                e.occurred_at < GREATEST($7, now() - make_interval(hours => $8))
          FROM cloud_connector_events e
          JOIN cloud_connectors c ON c.connector_id = e.connector_id
          JOIN cloud_connector_agent_grants g
            ON g.connector_id = c.connector_id AND g.agent_id = $2
          WHERE c.account_id = $1 AND c.status <> 'revoked'
-           AND e.received_at > $3 AND e.received_at <= now() - make_interval(secs => $4)
+           AND e.received_at >= $3 AND (e.received_at, e.event_id) > ($3, $9)
+           AND e.received_at <= now() - make_interval(secs => $4)
            AND e.expires_at > now() AND NOT (e.kind = ANY($5))
-         ORDER BY e.received_at DESC, e.event_id DESC LIMIT $6",
+         ORDER BY e.received_at ASC, e.event_id ASC LIMIT $6",
     )
     .bind(&agent.owner_account_id)
     .bind(&agent.agent_id)
-    .bind(cursor)
+    .bind(cursor.0)
     .bind(SETTLE_SECONDS as f64)
     .bind(IGNORED_KINDS)
     .bind(SNAPSHOT_EVENTS)
+    .bind(enabled_at)
+    .bind(MAX_EVENT_AGE_HOURS)
+    .bind(&cursor.1)
     .fetch_all(pool)
     .await?;
     Ok(rows
         .into_iter()
         .map(
-            |(event_id, provider, kind, occurred_at, received_at, payload)| Event {
+            |(event_id, provider, kind, occurred_at, received_at, payload, stale)| Event {
                 event_id,
                 provider,
                 kind,
                 occurred_at,
                 received_at,
                 payload,
+                stale,
             },
         )
         .collect())
@@ -281,6 +310,7 @@ mod tests {
             occurred_at: Utc::now(),
             received_at: Utc::now(),
             payload,
+            stale: false,
         }
     }
 

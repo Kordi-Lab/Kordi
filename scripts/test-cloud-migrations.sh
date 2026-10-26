@@ -81,6 +81,7 @@ tests=(
   proactive_tests::upgrade_from_153_adds_proactive_agents
   proactive_tests::upgrade_from_154_counts_evaluation_memory_searches
   personal_agent_tests::upgrade_from_155_adds_personal_agents
+  personal_agent_tests::upgrade_from_156_indexes_personal_agent_reads
 )
 index=0
 for test_name in "${tests[@]}"; do

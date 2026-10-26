@@ -4,7 +4,7 @@
 //! the owner's devices after commit.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde_json::{json, Value};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
@@ -18,6 +18,20 @@ use super::snapshot;
 use crate::chat_sync::models::SendMessageRequest;
 
 const RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
+
+/// Moves the cursor to the run's cursor when that is newer, and clears the
+/// run's. Every `SET` expression reads the row as it was before the update.
+macro_rules! take_run_cursor {
+    () => {
+        "cursor_received_at = CASE WHEN (run_cursor_received_at, run_cursor_event_id)
+               > (cursor_received_at, cursor_event_id)
+             THEN run_cursor_received_at ELSE cursor_received_at END,
+         cursor_event_id = CASE WHEN (run_cursor_received_at, run_cursor_event_id)
+               > (cursor_received_at, cursor_event_id)
+             THEN run_cursor_event_id ELSE cursor_event_id END,
+         run_cursor_received_at = NULL, run_cursor_event_id = NULL"
+    };
+}
 
 struct EvaluationRun {
     agent_id: String,
@@ -107,8 +121,8 @@ pub async fn complete(
     if finished.rows_affected() == 0 {
         return Ok(());
     }
-    let active: Option<(Option<DateTime<Utc>>,)> = query_as(
-        "SELECT run_cursor_received_at FROM cloud_personal_agent_state
+    let active: Option<(String,)> = query_as(
+        "SELECT agent_id FROM cloud_personal_agent_state
          WHERE agent_id = $1 AND owner_account_id = $2 AND active_run_id = $3 FOR UPDATE",
     )
     .bind(&run.agent_id)
@@ -116,24 +130,23 @@ pub async fn complete(
     .bind(run_id)
     .fetch_optional(&mut *tx)
     .await?;
-    let Some((run_cursor,)) = active else {
+    if active.is_none() {
         return tx.commit().await;
-    };
+    }
     let posted = match &decision {
         Decision::Share(share) => deliver(&mut tx, run_id, &run, share).await?,
         Decision::Skip => None,
     };
-    query(
+    query(concat!(
         "UPDATE cloud_personal_agent_state
-         SET active_run_id = NULL, run_cursor_received_at = NULL, attempts = 0, last_error = NULL,
-             cursor_received_at = GREATEST(cursor_received_at, COALESCE($2, cursor_received_at)),
-             cooldown_until = CASE WHEN $3 THEN now() + make_interval(secs => $4)
+         SET active_run_id = NULL, attempts = 0, last_error = NULL, ",
+        take_run_cursor!(),
+        ", cooldown_until = CASE WHEN $2 THEN now() + make_interval(secs => $3)
                               ELSE cooldown_until END,
              updated_at = now()
-         WHERE agent_id = $1",
-    )
+         WHERE agent_id = $1"
+    ))
     .bind(&run.agent_id)
-    .bind(run_cursor)
     .bind(posted.is_some())
     .bind(PersonalAgentConfig::from_env().cooldown_seconds as f64)
     .execute(&mut *tx)
@@ -230,52 +243,70 @@ pub async fn fail(
     if failed.rows_affected() == 0 {
         return tx.commit().await;
     }
+    retry_in_transaction(&mut tx, run_id, error_code).await?;
+    tx.commit().await
+}
+
+/// Frees the agent of its ended evaluation `run_id` and schedules the next
+/// look from the same cursor with bounded backoff. After [`MAX_ATTEMPTS`]
+/// in a row the evaluation's events are skipped.
+async fn retry_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    run_id: &str,
+    error_code: &str,
+) -> Result<(), sqlx_core::Error> {
     let row: Option<(String, i32)> = query_as(
         "SELECT agent_id, attempts + 1 FROM cloud_personal_agent_state
          WHERE active_run_id = $1 FOR UPDATE",
     )
     .bind(run_id)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await?;
-    if let Some((agent_id, attempts)) = row {
-        let give_up = attempts >= MAX_ATTEMPTS;
-        if give_up {
-            eprintln!(
-                "[personal_agent] Giving up on the events of agent {agent_id} after {attempts} failed evaluations ({error_code})"
-            );
-        }
-        query(
+    let Some((agent_id, attempts)) = row else {
+        return Ok(());
+    };
+    if attempts >= MAX_ATTEMPTS {
+        eprintln!(
+            "[personal_agent] Giving up on the events of agent {agent_id} after {attempts} failed evaluations ({error_code})"
+        );
+        query(concat!(
             "UPDATE cloud_personal_agent_state
-             SET active_run_id = NULL, last_error = $2,
-                 attempts = CASE WHEN $3 THEN 0 ELSE $4 END,
-                 cursor_received_at = CASE WHEN $3
-                   THEN GREATEST(cursor_received_at, COALESCE(run_cursor_received_at, cursor_received_at))
-                   ELSE cursor_received_at END,
-                 run_cursor_received_at = NULL,
-                 retry_after = now() + make_interval(secs => $5), updated_at = now()
-             WHERE active_run_id = $1",
-        )
+             SET active_run_id = NULL, last_error = $2, attempts = 0, retry_after = now(), ",
+            take_run_cursor!(),
+            ", updated_at = now()
+             WHERE active_run_id = $1"
+        ))
         .bind(run_id)
         .bind(error_code)
-        .bind(give_up)
-        .bind(attempts)
-        .bind(if give_up {
-            0.0
-        } else {
-            backoff_seconds(attempts) as f64
-        })
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
+        return Ok(());
     }
-    tx.commit().await
+    query(
+        "UPDATE cloud_personal_agent_state
+         SET active_run_id = NULL, run_cursor_received_at = NULL, run_cursor_event_id = NULL,
+             last_error = $2, attempts = $3, retry_after = now() + make_interval(secs => $4),
+             updated_at = now()
+         WHERE active_run_id = $1",
+    )
+    .bind(run_id)
+    .bind(error_code)
+    .bind(attempts)
+    .bind(backoff_seconds(attempts) as f64)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
 }
 
-/// Frees agents whose evaluation can no longer finish: it ended or vanished
-/// without clearing the reservation, or its lease expired long ago.
+/// Frees agents whose evaluation can no longer finish. A run that generic
+/// code ended (a Mac's cancel, an interrupted or lost desktop run) or that
+/// vanished counts as a failure, so the next look waits out the backoff; a
+/// run whose lease expired long ago is failed first.
 pub async fn release_stale_runs(pool: &PgPool) -> Result<u64, sqlx_core::Error> {
-    let stale: Vec<(String, bool)> = query_as(
+    let stale: Vec<(String, bool, String)> = query_as(
         "SELECT state.active_run_id,
-                run.run_id IS NULL OR run.status NOT IN ('queued', 'leased', 'running')
+                run.run_id IS NULL OR run.status NOT IN ('queued', 'leased', 'running'),
+                COALESCE(run.error_code, 'run_' || COALESCE(run.status, 'missing'))
          FROM cloud_personal_agent_state state
          LEFT JOIN cloud_agent_fallback_runs run ON run.run_id = state.active_run_id
          WHERE state.active_run_id IS NOT NULL
@@ -288,16 +319,11 @@ pub async fn release_stale_runs(pool: &PgPool) -> Result<u64, sqlx_core::Error> 
     .fetch_all(pool)
     .await?;
     let mut released = 0;
-    for (run_id, ended) in stale {
+    for (run_id, ended, error_code) in stale {
         if ended {
-            query(
-                "UPDATE cloud_personal_agent_state
-                 SET active_run_id = NULL, run_cursor_received_at = NULL, updated_at = now()
-                 WHERE active_run_id = $1",
-            )
-            .bind(&run_id)
-            .execute(pool)
-            .await?;
+            let mut tx = pool.begin().await?;
+            retry_in_transaction(&mut tx, &run_id, &error_code).await?;
+            tx.commit().await?;
         } else {
             fail(pool, &run_id, None, "lease_expired").await?;
         }

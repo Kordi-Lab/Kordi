@@ -45,8 +45,10 @@ Agent definition JSON (`/v1/cloud/agents` create, update, list, and the
   the agent and clears its active run; a run a runner or Mac already holds
   finishes but posts nothing.
 - Storage: `cloud_personal_agent_settings` (`agent_id`, `owner_account_id`,
-  `proactive`, `updated_at`; migration `0156_personal_agents.sql`), one
-  table for definitions and the default agent. No row is off. Changing it
+  `proactive`, `updated_at`; migration `0156_personal_agents.sql`, which
+  creates only the new tables; the indexes on existing tables are in
+  `0157_personal_agent_indexes.sql`, and both set a 5 second
+  `lock_timeout`), one table for definitions and the default agent. No row is off. Changing it
   through the route publishes `agent.definition.upserted` for a
   definition; the default agent has no definition event.
 
@@ -61,7 +63,9 @@ active owned definition), owner as the only member.
   create that would make a new one returns `400`.
 - The binding is `cloud_personal_agent_sessions` (`agent_id`,
   `owner_account_id`, `conversation_id` unique, `created_at`). The sweep
-  also creates a missing session before it queues an evaluation.
+  also creates a missing session before it queues an evaluation. A
+  definition is bound only while it is active, checked under a lock in the
+  binding transaction, so a concurrent archive cannot leave a binding.
 - `GET /v1/cloud/personal-agents` lists them and creates any missing one in
   the same request (idempotent, safe under concurrent calls):
 
@@ -81,18 +85,25 @@ active owned definition), owner as the only member.
   `cloud_personal_agent_sessions` the way `origin: "grounding"` is.
 - A request message in a personal session without `targetCloudAgentId`
   targets the session's agent (server default), not the default agent.
+  A cloud reply there gets the definition's persona ("You are <name>,
+  <owner>'s Cloud Agent." and its prompt, boundaries and skills) even for
+  an agent that is not shared with participants.
 - Hide (archive) and delete of a personal session return
   `409 personal_session_locked`. Pin, mute and unread work as usual.
 - Archiving a definition removes its personal-session binding, setting and
   state rows, after cancelling its queued evaluations. The conversation
-  stays as an ordinary agent chat; its message log rows stay too.
+  stays as an ordinary agent chat; its message log rows stay too. Its
+  version moves and its members get a `conversation.updated` without
+  `personal_agent`, so clients drop the marker without a bootstrap.
 
 ## Watching connector events
 
 Inputs are `cloud_connector_events` of connectors granted to the agent
-(`cloud_connector_agent_grants`), with `received_at` after the agent's
-cursor. Polls can store old `occurred_at` values, so the cursor is
-`received_at` (new index on `(connector_id, received_at)`).
+(`cloud_connector_agent_grants`), after the agent's cursor. Polls can store
+old `occurred_at` values, so the cursor is the pair (`received_at`,
+`event_id`) of the newest event looked at (new index on
+`(connector_id, received_at)`); the id orders events received at the same
+time.
 
 A worker sweep (every 5 s, `personal_agent::spawn` from
 `server/workers.rs`) picks an agent when all of these hold:
@@ -110,17 +121,29 @@ with no content; the poll it starts stores the messages), and events
 received in the last 5 seconds (so an insert still committing is not
 skipped) do not count.
 
+One evaluation takes the oldest 50 new events by (`received_at`,
+`event_id`); the rest are evaluated by the next one, and the cursor moves
+only to the newest event taken. Events in the batch whose `occurred_at` is
+before the later of the time Proactive was turned on and now minus 6 hours
+(a new connector's first poll, a backfill) are not shown to the model but
+still move the cursor; a batch of only such events moves the cursor with
+no evaluation.
+
 Defaults are overridable with `KORDI_PERSONAL_AGENT_SWEEP_SECONDS` (5),
 `_QUIET_SECONDS` (60), `_MAX_WAIT_SECONDS` (300), `_DAILY_EVALUATIONS`
 (48), `_DAILY_SHARES` (8) and `_COOLDOWN_SECONDS` (1200), like
 `KORDI_PROACTIVE_*`.
 
 State per agent lives in `cloud_personal_agent_state`
-(`cursor_received_at`, `active_run_id`, `run_cursor_received_at`,
-`retry_after`, `cooldown_until`, `attempts`, `last_error`,
-`memory_searches`, `checked_at`). The reservation stores the newest
-`received_at` of the snapshot as `run_cursor_received_at`; the cursor
-moves to it when the run ends.
+(`cursor_received_at`, `cursor_event_id`, `enabled_at`, `active_run_id`,
+`run_cursor_received_at`, `run_cursor_event_id`, `retry_after`,
+`cooldown_until`, `attempts`, `last_error`, `memory_searches`,
+`checked_at`). Turning the setting on sets the cursor and `enabled_at` to
+now. The reservation stores the newest event taken as the run cursor; the
+cursor moves to it when the run ends. It reserves only while the setting
+is still on (the setting row stays locked until the run is queued) and the
+cursor is still the one the sweep read, so turning Proactive off, or off
+and on, during a sweep never queues a run.
 
 ## Evaluation run
 
@@ -137,7 +160,7 @@ One row in `cloud_agent_fallback_runs`:
 | `system_prompt` | the agent's persona plus the instructions below |
 
 Snapshot: `owner {name, handle}`, `agent {agentId, name}`, `now`, `events`
-(the new events, newest first, at most 50: `eventId, provider, kind,
+(the batch's shown events, newest first, at most 50: `eventId, provider, kind,
 occurredAt, title, summary`; `title` is the source label below, `summary`
 the stored payload, or `{"truncated": true}` over 2000 bytes),
 `recentShares` (this agent's shares of the last 7 days, newest first, at
@@ -221,7 +244,14 @@ reads `agentName` from any `agent-response` that carries it and keeps
 `skip` moves the cursor and posts nothing. A failed run backs off (1, 5,
 30 minutes, then 2 hours) from the same cursor; after five failures in a
 row its events are skipped. An evaluation whose lease expired more than
-10 minutes ago fails as `lease_expired`.
+10 minutes ago fails as `lease_expired`. A run that other code ended (a
+Mac's cancel, an interrupted or lost desktop run) or that vanished counts
+as a failure the same way, with its error code or `run_<status>`.
+
+Chat runs never reuse an evaluation's route: a claim without a model fills
+it from the owner's latest chat run, skipping every background feature
+run (`digest_`, `import_`, `pip_`, `cg_`, `proactive_eval_`,
+`proactive_run_`, `personal_agent_eval_`).
 
 ## Clients
 

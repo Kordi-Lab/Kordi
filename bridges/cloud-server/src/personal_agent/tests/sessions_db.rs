@@ -238,3 +238,94 @@ async fn archiving_a_definition_releases_its_session() {
     let (status, _) = f.send("PUT", &uri, &f.owner_token, None).await;
     assert!(status.is_success(), "an ordinary chat again");
 }
+
+#[tokio::test]
+async fn archived_definitions_lose_the_marker_and_get_no_new_session() {
+    let Some(f) = fixture().await else { return };
+    let (conversation_id, _) = f.personal_session(&f.agent_id).await;
+    let (before,): (i32,) =
+        query_as("SELECT version FROM cloud_chat_conversations WHERE conversation_id = $1")
+            .bind(conversation_id)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    let (status, _) = f
+        .send(
+            "DELETE",
+            &format!("/v1/cloud/agents/{}", f.agent_id),
+            &f.owner_token,
+            None,
+        )
+        .await;
+    assert_eq!(status, 200);
+    let (payload,): (serde_json::Value,) = query_as(
+        "SELECT payload FROM cloud_chat_user_sync_events \
+         WHERE account_id = $1 AND event_type = 'conversation.updated' \
+           AND payload #>> '{conversation,id}' = $2 ORDER BY stream_seq DESC LIMIT 1",
+    )
+    .bind(&f.owner)
+    .bind(conversation_id.to_string())
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert!(
+        payload["conversation"].get("personal_agent").is_none(),
+        "{payload}"
+    );
+    assert_eq!(payload["conversation"]["version"], before + 1);
+    let again = crate::personal_agent::sessions::ensure(&f.pool, &f.owner, &f.agent_id).await;
+    assert!(
+        matches!(again, Err(StoreError::NotFound)),
+        "an archived agent"
+    );
+    let (bindings,): (i64,) =
+        query_as("SELECT count(*) FROM cloud_personal_agent_sessions WHERE agent_id = $1")
+            .bind(&f.agent_id)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(bindings, 0);
+}
+
+#[tokio::test]
+async fn a_private_agent_answers_with_its_persona_in_its_personal_session() {
+    let Some(f) = fixture().await else { return };
+    let (conversation_id, session_id) = f.personal_session(&f.agent_id).await;
+    let message = store::send_message(
+        &f.pool,
+        &f.owner,
+        conversation_id,
+        SendMessageRequest {
+            client_message_id: Uuid::new_v4(),
+            kind: "text".into(),
+            content: json!({"schema": 1, "blocks": [{"type": "text", "text": "Any news?"}]}),
+            reply_to_message_id: None,
+            attachment_ids: Vec::new(),
+        },
+    )
+    .await
+    .unwrap()
+    .value;
+    let input = claim(&session_id, &f.owner, &message.id.to_string());
+    let prefix =
+        crate::cloud_agent_runtime::runs::prompt_history::shared_cloud_agent_prompt_prefix(
+            &f.pool, &input,
+        )
+        .await
+        .unwrap()
+        .expect("the persona");
+    assert!(
+        prefix.starts_with("You are Scout, Mina's Cloud Agent."),
+        "{prefix}"
+    );
+    assert!(prefix.contains("Be precise and kind."));
+    let other = format!("session:self-agent:{}", Uuid::new_v4());
+    let elsewhere = claim(&other, &f.owner, "m");
+    let prefix =
+        crate::cloud_agent_runtime::runs::prompt_history::shared_cloud_agent_prompt_prefix(
+            &f.pool, &elsewhere,
+        )
+        .await
+        .unwrap();
+    assert!(prefix.is_none(), "a private agent elsewhere is unchanged");
+}

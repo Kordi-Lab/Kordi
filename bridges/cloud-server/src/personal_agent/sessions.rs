@@ -66,8 +66,9 @@ pub(crate) async fn bound(
 }
 
 /// Returns the agent's personal session, creating and binding it first when
-/// it has none. Racing calls get one conversation: creation takes the
-/// session id's lock and uses an operation id derived from the session id.
+/// it has none and the agent is the default agent or an active definition.
+/// Racing calls get one conversation: creation takes the session id's lock
+/// and uses an operation id derived from the session id.
 pub(crate) async fn ensure(
     pool: &PgPool,
     owner_account_id: &str,
@@ -85,6 +86,23 @@ pub(crate) async fn ensure(
         member_account_ids: vec![owner_account_id.to_string()],
     };
     let mut transaction = pool.begin().await?;
+    // A definition must still be active when it is bound. The lock holds an
+    // archive until this commits; the archive then unbinds the session.
+    if crate::proactive::agents::default_owner(agent_id).is_none() {
+        let active: Option<(String,)> = query_as(
+            "SELECT agent_id FROM cloud_agent_definitions
+             WHERE agent_id = $1 AND owner_account_id = $2 AND status = 'active'
+               AND is_system_managed = FALSE
+             FOR SHARE",
+        )
+        .bind(agent_id)
+        .bind(owner_account_id)
+        .fetch_optional(&mut *transaction)
+        .await?;
+        if active.is_none() {
+            return Err(StoreError::NotFound);
+        }
+    }
     let outcome = store::create_personal_session_in_transaction(
         &mut transaction,
         owner_account_id,

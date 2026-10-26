@@ -160,3 +160,42 @@ async fn failures_back_off_and_then_skip_the_events() {
         }
     }
 }
+
+#[tokio::test]
+async fn runs_ended_elsewhere_back_off_like_failures() {
+    let Some(f) = fixture().await else { return };
+    let (run_id, event_id) = f.queue_evaluation().await;
+    let start = f.state().await.0;
+    let mut run_id = run_id;
+    for attempt in 1..=5 {
+        // A Mac cancelled the run through the generic desktop route.
+        query("UPDATE cloud_agent_fallback_runs SET status = 'cancelled' WHERE run_id = $1")
+            .bind(&run_id)
+            .execute(&f.pool)
+            .await
+            .unwrap();
+        crate::personal_agent::release_stale_runs(&f.pool)
+            .await
+            .unwrap();
+        let (cursor, active, _, attempts) = f.state().await;
+        assert_eq!(active, None);
+        if attempt < 5 {
+            assert_eq!((cursor, attempts), (start, attempt));
+            assert!(f.candidate(&quick()).await.is_none(), "backing off");
+        } else {
+            assert_eq!(attempts, 0, "the schedule starts over");
+            assert_eq!(cursor, received_at(&f, &event_id).await, "events skipped");
+            return;
+        }
+        query("UPDATE cloud_personal_agent_state SET retry_after = now() WHERE agent_id = $1")
+            .bind(&f.agent_id)
+            .execute(&f.pool)
+            .await
+            .unwrap();
+        let candidate = f.candidate(&quick()).await.expect("retried");
+        crate::personal_agent::sweep::evaluate(&f.pool, &candidate)
+            .await
+            .unwrap();
+        run_id = f.state().await.1.expect("a retry");
+    }
+}

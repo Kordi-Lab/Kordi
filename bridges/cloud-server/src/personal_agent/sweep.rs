@@ -1,22 +1,28 @@
 //! Sweep state and evaluation runs.
 //!
 //! Every agent with its Proactive setting on has one state row whose cursor
-//! is the `received_at` of the newest connector event it has looked at. An
-//! agent is a candidate once events granted to it arrived after the cursor
-//! and went quiet (batching), while it is off cooldown and under its daily
-//! caps; a reservation then queues exactly one evaluation.
+//! is the newest connector event it has looked at, as (`received_at`,
+//! `event_id`). An agent is a candidate once events granted to it arrived
+//! after the cursor and went quiet (batching), while it is off cooldown and
+//! under its daily caps. One evaluation takes the oldest new events, at most
+//! [`super::snapshot::SNAPSHOT_EVENTS`]; events that happened before the
+//! setting was turned on, or long ago, only move the cursor. A reservation
+//! then queues exactly one run.
 
 use chrono::{DateTime, Utc};
 use serde_json::json;
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
-use sqlx_postgres::PgPool;
+use sqlx_core::transaction::Transaction;
+use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
 use super::config::{backoff_seconds, PersonalAgentConfig, MAX_ATTEMPTS};
 use super::prompt::evaluation_system_prompt;
 use super::sessions::PersonalSession;
-use super::snapshot::{build, load_agent, new_events, Agent, IGNORED_KINDS, SETTLE_SECONDS};
+use super::snapshot::{
+    build, load_agent, new_events, Agent, Cursor, Event, IGNORED_KINDS, SETTLE_SECONDS,
+};
 use super::{run_session_id, EVAL_HINT, RUN_PREFIX};
 use crate::cloud_agent_runtime::runs::route_fill::fill_cloud_route;
 use crate::cloud_agent_runtime::runs::AgentRuntimeRoute;
@@ -34,7 +40,8 @@ const SEED_SQL: &str = "INSERT INTO cloud_personal_agent_state (agent_id, owner_
 /// messages, $7 settle seconds, $8 ignored event kinds.
 pub(super) const SWEEP_SQL: &str = "UPDATE cloud_personal_agent_state state SET checked_at = now()
  FROM (
-     SELECT s.agent_id, s.owner_account_id, s.cursor_received_at
+     SELECT s.agent_id, s.owner_account_id, s.cursor_received_at, s.cursor_event_id,
+            s.enabled_at
      FROM cloud_personal_agent_state s
      JOIN cloud_personal_agent_settings setting
        ON setting.agent_id = s.agent_id AND setting.owner_account_id = s.owner_account_id
@@ -46,7 +53,8 @@ pub(super) const SWEEP_SQL: &str = "UPDATE cloud_personal_agent_state state SET 
          JOIN cloud_connector_agent_grants g
            ON g.connector_id = c.connector_id AND g.agent_id = s.agent_id
          WHERE c.account_id = s.owner_account_id AND c.status <> 'revoked'
-           AND e.received_at > s.cursor_received_at
+           AND e.received_at >= s.cursor_received_at
+           AND (e.received_at, e.event_id) > (s.cursor_received_at, s.cursor_event_id)
            AND e.received_at <= now() - make_interval(secs => $7)
            AND e.expires_at > now() AND NOT (e.kind = ANY($8))
      ) fresh
@@ -68,14 +76,17 @@ pub(super) const SWEEP_SQL: &str = "UPDATE cloud_personal_agent_state state SET 
      LIMIT $1
  ) picked
  WHERE state.agent_id = picked.agent_id
- RETURNING picked.agent_id, picked.owner_account_id, picked.cursor_received_at";
+ RETURNING picked.agent_id, picked.owner_account_id, picked.cursor_received_at,
+           picked.cursor_event_id, picked.enabled_at";
 
 /// An agent the sweep picked.
 #[derive(Debug, Clone)]
 pub(super) struct Candidate {
     pub agent_id: String,
     pub owner_account_id: String,
-    pub cursor: DateTime<Utc>,
+    pub cursor: Cursor,
+    /// When the setting was turned on; older events are never shown.
+    pub enabled_at: DateTime<Utc>,
 }
 
 /// What happened to one candidate.
@@ -91,6 +102,8 @@ pub(super) async fn seed(pool: &PgPool) -> Result<(), sqlx_core::Error> {
     Ok(())
 }
 
+type CandidateRow = (String, String, DateTime<Utc>, String, DateTime<Utc>);
+
 /// The agents the next sweep would evaluate, with the gate applied.
 pub(super) async fn select(
     pool: &PgPool,
@@ -98,7 +111,7 @@ pub(super) async fn select(
     limit: i64,
 ) -> Result<Vec<Candidate>, sqlx_core::Error> {
     let window_start = (Utc::now() - chrono::Duration::hours(24)).to_rfc3339();
-    let rows: Vec<(String, String, DateTime<Utc>)> = query_as(SWEEP_SQL)
+    let rows: Vec<CandidateRow> = query_as(SWEEP_SQL)
         .bind(limit)
         .bind(config.quiet_seconds as f64)
         .bind(config.max_wait_seconds as f64)
@@ -111,11 +124,14 @@ pub(super) async fn select(
         .await?;
     Ok(rows
         .into_iter()
-        .map(|(agent_id, owner_account_id, cursor)| Candidate {
-            agent_id,
-            owner_account_id,
-            cursor,
-        })
+        .map(
+            |(agent_id, owner_account_id, received_at, event_id, enabled_at)| Candidate {
+                agent_id,
+                owner_account_id,
+                cursor: (received_at, event_id),
+                enabled_at,
+            },
+        )
         .collect())
 }
 
@@ -159,6 +175,8 @@ async fn defer(pool: &PgPool, candidate: &Candidate) -> Result<(), sqlx_core::Er
     query(
         "UPDATE cloud_personal_agent_state
          SET attempts = CASE WHEN $2 THEN 0 ELSE $3 END,
+             cursor_event_id = CASE WHEN $2 AND cursor_received_at < now() - make_interval(secs => $5)
+               THEN '' ELSE cursor_event_id END,
              cursor_received_at = CASE WHEN $2
                THEN GREATEST(cursor_received_at, now() - make_interval(secs => $5))
                ELSE cursor_received_at END,
@@ -180,8 +198,32 @@ async fn defer(pool: &PgPool, candidate: &Candidate) -> Result<(), sqlx_core::Er
     Ok(())
 }
 
+/// Moves the cursor of a candidate whose events are all stale, as long as
+/// nothing changed it since the sweep picked the agent.
+async fn advance(
+    pool: &PgPool,
+    candidate: &Candidate,
+    to: &Cursor,
+) -> Result<(), sqlx_core::Error> {
+    query(
+        "UPDATE cloud_personal_agent_state
+         SET cursor_received_at = $4, cursor_event_id = $5, updated_at = now()
+         WHERE agent_id = $1 AND active_run_id IS NULL
+           AND cursor_received_at = $2 AND cursor_event_id = $3",
+    )
+    .bind(&candidate.agent_id)
+    .bind(candidate.cursor.0)
+    .bind(&candidate.cursor.1)
+    .bind(to.0)
+    .bind(&to.1)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Builds the snapshot of a candidate's new events and queues one
-/// evaluation for it. The cursor moves only when the evaluation ends.
+/// evaluation for it. The cursor moves only when the evaluation ends, or at
+/// once when every event in the batch is stale.
 pub(super) async fn evaluate(
     pool: &PgPool,
     candidate: &Candidate,
@@ -192,23 +234,76 @@ pub(super) async fn evaluate(
     if agent.owner_account_id != candidate.owner_account_id {
         return Ok(Outcome::Skipped);
     }
-    let events = new_events(pool, &agent, candidate.cursor).await?;
-    let Some(newest) = events.iter().map(|event| event.received_at).max() else {
+    let events = new_events(pool, &agent, &candidate.cursor, candidate.enabled_at).await?;
+    let Some(last) = events.last() else {
         return Ok(Outcome::Skipped);
     };
+    let to: Cursor = (last.received_at, last.event_id.clone());
+    // The snapshot shows the fresh events, newest first.
+    let fresh: Vec<Event> = events
+        .into_iter()
+        .filter(|event| !event.stale)
+        .rev()
+        .collect();
+    if fresh.is_empty() {
+        advance(pool, candidate, &to).await?;
+        return Ok(Outcome::Skipped);
+    }
     let session = super::sessions::ensure(pool, &agent.owner_account_id, &agent.agent_id)
         .await
         .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
-    let snapshot = build(pool, &agent, session.conversation_id, &events).await?;
-    enqueue(pool, &agent, &session, &snapshot, newest).await
+    let snapshot = build(pool, &agent, session.conversation_id, &fresh).await?;
+    enqueue(pool, &agent, candidate, &session, &snapshot, &to).await
+}
+
+/// Reserves the agent for `run_id` with the cursor the run moves to. Nothing
+/// is reserved unless the setting is still on and the cursor is still the
+/// one the candidate was read with: turning the setting off, or off and on,
+/// during a sweep never yields a run. The setting row stays locked until the
+/// caller commits, so a concurrent change waits and then cancels the run.
+pub(super) async fn reserve(
+    tx: &mut Transaction<'_, Postgres>,
+    candidate: &Candidate,
+    run_id: &str,
+    to: &Cursor,
+) -> Result<bool, sqlx_core::Error> {
+    let on: Option<(bool,)> = query_as(
+        "SELECT proactive FROM cloud_personal_agent_settings
+         WHERE agent_id = $1 AND owner_account_id = $2 FOR SHARE",
+    )
+    .bind(&candidate.agent_id)
+    .bind(&candidate.owner_account_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    if !on.is_some_and(|(on,)| on) {
+        return Ok(false);
+    }
+    // A new evaluation starts with its whole search budget.
+    let reserved = query(
+        "UPDATE cloud_personal_agent_state
+         SET active_run_id = $4, run_cursor_received_at = $5, run_cursor_event_id = $6,
+             memory_searches = 0, updated_at = now()
+         WHERE agent_id = $1 AND active_run_id IS NULL
+           AND cursor_received_at = $2 AND cursor_event_id = $3",
+    )
+    .bind(&candidate.agent_id)
+    .bind(candidate.cursor.0)
+    .bind(&candidate.cursor.1)
+    .bind(run_id)
+    .bind(to.0)
+    .bind(&to.1)
+    .execute(&mut **tx)
+    .await?;
+    Ok(reserved.rows_affected() == 1)
 }
 
 async fn enqueue(
     pool: &PgPool,
     agent: &Agent,
+    candidate: &Candidate,
     session: &PersonalSession,
     snapshot: &serde_json::Value,
-    newest: DateTime<Utc>,
+    to: &Cursor,
 ) -> Result<Outcome, sqlx_core::Error> {
     let route = serde_json::from_value::<AgentRuntimeRoute>(agent.model_routing.clone())
         .unwrap_or_default();
@@ -229,19 +324,7 @@ async fn enqueue(
     let run_id = format!("{RUN_PREFIX}{}", Uuid::new_v4().simple());
     let run_session = run_session_id(&agent.agent_id);
     let mut tx = pool.begin().await?;
-    // A new evaluation starts with its whole search budget.
-    let reserved = query(
-        "UPDATE cloud_personal_agent_state
-         SET active_run_id = $2, run_cursor_received_at = $3, memory_searches = 0,
-             updated_at = now()
-         WHERE agent_id = $1 AND active_run_id IS NULL",
-    )
-    .bind(&agent.agent_id)
-    .bind(&run_id)
-    .bind(newest)
-    .execute(&mut *tx)
-    .await?;
-    if reserved.rows_affected() == 0 {
+    if !reserve(&mut tx, candidate, &run_id, to).await? {
         return Ok(Outcome::Skipped);
     }
     let now = Utc::now().to_rfc3339();

@@ -164,20 +164,34 @@ pub(super) async fn event_on(
     payload: Value,
     seconds_ago: i64,
 ) -> String {
+    event_at(pool, connector_id, kind, payload, seconds_ago, seconds_ago).await
+}
+
+/// Stores an event that happened `occurred_ago` seconds ago and that the
+/// server received `received_ago` seconds ago; returns its id.
+pub(super) async fn event_at(
+    pool: &PgPool,
+    connector_id: &str,
+    kind: &str,
+    payload: Value,
+    received_ago: i64,
+    occurred_ago: i64,
+) -> String {
     let event_id = format!("cnevt_pa_{}", Uuid::new_v4().simple());
     query(
         "INSERT INTO cloud_connector_events \
          (event_id, connector_id, provider, kind, external_id, occurred_at, payload, \
           received_at, expires_at) \
-         SELECT $1, connector_id, provider, $2, $1, now() - interval '3 days', $3, \
+         SELECT $1, connector_id, provider, $2, $1, now() - make_interval(secs => $6), $3, \
                 now() - make_interval(secs => $4), now() + interval '30 days' \
          FROM cloud_connectors WHERE connector_id = $5",
     )
     .bind(&event_id)
     .bind(kind)
     .bind(payload)
-    .bind(seconds_ago as f64)
+    .bind(received_ago as f64)
     .bind(connector_id)
+    .bind(occurred_ago as f64)
     .execute(pool)
     .await
     .unwrap();
@@ -244,10 +258,11 @@ impl Fixture {
         self.rewind().await;
     }
 
+    /// Moves the cursor and the time the setting was turned on an hour back.
     pub async fn rewind(&self) {
         query(
-            "UPDATE cloud_personal_agent_state SET cursor_received_at = now() - interval '1 hour' \
-             WHERE agent_id = $1",
+            "UPDATE cloud_personal_agent_state SET cursor_received_at = now() - interval '1 hour', \
+             cursor_event_id = '', enabled_at = now() - interval '1 hour' WHERE agent_id = $1",
         )
         .bind(&self.agent_id)
         .execute(&self.pool)

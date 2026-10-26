@@ -82,7 +82,8 @@ pub(crate) async fn store_in_transaction(
     Ok(was)
 }
 
-/// Starts (or restarts) the agent's cursor at now with a clean schedule.
+/// Starts (or restarts) the agent's cursor at now with a clean schedule, and
+/// records now as the time it was turned on: older events are never shown.
 async fn seed_in_transaction(
     transaction: Tx<'_, '_>,
     owner_account_id: &str,
@@ -90,8 +91,9 @@ async fn seed_in_transaction(
 ) -> Result<(), sqlx_core::Error> {
     query(
         "INSERT INTO cloud_personal_agent_state (agent_id, owner_account_id) VALUES ($1, $2)
-         ON CONFLICT (agent_id) DO UPDATE SET cursor_received_at = now(), active_run_id = NULL,
-             run_cursor_received_at = NULL, retry_after = now(), attempts = 0,
+         ON CONFLICT (agent_id) DO UPDATE SET cursor_received_at = now(), cursor_event_id = '',
+             enabled_at = now(), active_run_id = NULL, run_cursor_received_at = NULL,
+             run_cursor_event_id = NULL, retry_after = now(), attempts = 0,
              last_error = NULL, memory_searches = 0, updated_at = now()",
     )
     .bind(agent_id)
@@ -121,7 +123,8 @@ pub(crate) async fn stop_in_transaction(
     .await?;
     query(
         "UPDATE cloud_personal_agent_state
-         SET active_run_id = NULL, run_cursor_received_at = NULL, updated_at = now()
+         SET active_run_id = NULL, run_cursor_received_at = NULL, run_cursor_event_id = NULL,
+             updated_at = now()
          WHERE agent_id = $1",
     )
     .bind(agent_id)
@@ -132,14 +135,20 @@ pub(crate) async fn stop_in_transaction(
 
 /// Removes an archived definition's personal session binding, setting and
 /// state, after stopping its evaluations. The conversation and the log of
-/// what it posted stay; the chat becomes an ordinary agent chat.
+/// what it posted stay; the chat becomes an ordinary agent chat, and its
+/// members' devices get a `conversation.updated` without `personal_agent`.
 pub(crate) async fn forget_in_transaction(
     transaction: Tx<'_, '_>,
     agent_id: &str,
 ) -> Result<(), sqlx_core::Error> {
     stop_in_transaction(transaction, agent_id).await?;
+    crate::chat_sync::store::unbind_personal_session(transaction, agent_id)
+        .await
+        .map_err(|error| match error {
+            crate::chat_sync::store::StoreError::Database(error) => error,
+            other => sqlx_core::Error::Protocol(other.to_string()),
+        })?;
     for table in [
-        "cloud_personal_agent_sessions",
         "cloud_personal_agent_settings",
         "cloud_personal_agent_state",
     ] {

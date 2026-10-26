@@ -62,3 +62,35 @@ async fn upgrade_from_155_adds_personal_agents() {
     assert!(cursor_now, "a new state row starts at now");
     assert!(index.is_some(), "events are read by received_at");
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_156_indexes_personal_agent_reads() {
+    let pool = fixture(156).await;
+    let (before,): (Option<String>,) = query_as(
+        "SELECT to_regclass('public.idx_cloud_connector_events_connector_received')::text",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(before.is_none(), "0156 builds no index on existing tables");
+    execute(&pool, "INSERT INTO cloud_connectors(connector_id,account_id,provider,status) VALUES('conn_mail','fixture-owner','gmail','connected')").await;
+    execute(&pool, "INSERT INTO cloud_connector_events(event_id,connector_id,provider,kind,occurred_at,expires_at) VALUES('evt_kept','conn_mail','gmail','message.received',now(),now() + interval '1 day')").await;
+    execute(&pool, "INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at,execution_agent_id) VALUES('personal_agent_eval_kept','personal_agent_eval_kept','personal_agent_eval_kept','personal-agent:cloud-agent:fixture-owner','fixture-owner','fixture-owner','completed','{}','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','cloud-agent:fixture-owner')").await;
+    let (a, b) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    a.unwrap();
+    b.unwrap();
+    latest_version(&pool).await;
+    let (events, runs, received, evaluations): (i64, i64, Option<String>, Option<String>) =
+        query_as(
+            "SELECT (SELECT count(*) FROM cloud_connector_events), \
+                (SELECT count(*) FROM cloud_agent_fallback_runs), \
+                to_regclass('public.idx_cloud_connector_events_connector_received')::text, \
+                to_regclass('public.idx_cloud_agent_fallback_runs_personal_agent_eval')::text",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!((events, runs), (1, 1), "rows are kept");
+    assert!(received.is_some() && evaluations.is_some());
+}

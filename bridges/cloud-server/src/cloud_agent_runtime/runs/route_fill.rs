@@ -17,8 +17,21 @@ use crate::cloud_agent_runtime::provider_auth::{
 
 const CANDIDATE_LIMIT: i64 = 16;
 
+/// Background feature runs, whose routes are never a chat's: the digest and
+/// imports ask for their own model, PiP and Common ground run on a service
+/// account, and proactive and personal agent runs carry an agent's routing.
+const FEATURE_RUN_PREFIXES: &[&str] = &[
+    crate::digest::RUN_PREFIX,
+    crate::cloud_agent_runtime::import_runs::RUN_PREFIX,
+    crate::pip::RUN_PREFIX,
+    crate::common_ground::RUN_PREFIX,
+    crate::proactive::RUN_PREFIX,
+    crate::proactive::APPROVED_RUN_PREFIX,
+    crate::personal_agent::RUN_PREFIX,
+];
+
 /// The route a Cloud claim runs with. A route that already names a model is
-/// kept. Digest runs, which ask for their own model, are never reused. Otherwise the owner's latest recorded route with a model replaces it
+/// kept. Background feature runs ([`FEATURE_RUN_PREFIXES`]) are never reused. Otherwise the owner's latest recorded route with a model replaces it
 /// when the owner has a live hosted account for that route. A thinking level
 /// the claim chose is kept, and a claim that names an account only takes a
 /// route for that same account.
@@ -98,7 +111,9 @@ async fn recent_route(
     let rows: Vec<(Value,)> = query_as(
         "SELECT runtime_route_json FROM cloud_agent_fallback_runs \
          WHERE owner_account_id = $1 AND ($2::TEXT IS NULL OR session_id = $2) \
-           AND NOT legacy_duplicate AND run_id NOT LIKE 'digest\\_%' \
+           AND NOT legacy_duplicate \
+           AND NOT EXISTS (SELECT 1 FROM unnest($6::TEXT[]) prefix \
+                           WHERE starts_with(run_id, prefix)) \
            AND COALESCE(runtime_route_json->>'defaultModel', '') <> '' \
            AND ($3::TEXT IS NULL OR runtime_route_json->>'defaultAuthChoice' = $3) \
            AND ($4::TEXT IS NULL OR runtime_route_json->>'defaultAuthProvider' = $4) \
@@ -109,6 +124,7 @@ async fn recent_route(
     .bind(claim.default_auth_choice.as_deref())
     .bind(claim.default_auth_provider.as_deref())
     .bind(CANDIDATE_LIMIT)
+    .bind(FEATURE_RUN_PREFIXES)
     .fetch_all(pool)
     .await?;
     for (value,) in rows {

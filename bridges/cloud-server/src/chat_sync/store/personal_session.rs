@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 
+use serde_json::json;
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_core::transaction::Transaction;
@@ -47,6 +48,46 @@ pub(super) async fn bind(
     .bind(conversation_id)
     .execute(&mut **transaction)
     .await?;
+    Ok(())
+}
+
+/// Drops `agent_id`'s personal session binding. The conversation stays as an
+/// ordinary agent chat: its version moves and every member's devices get a
+/// `conversation.updated` without `personal_agent`.
+pub(crate) async fn unbind_personal_session(
+    transaction: &mut Transaction<'_, Postgres>,
+    agent_id: &str,
+) -> Result<(), StoreError> {
+    let unbound: Vec<(Uuid,)> = query_as(
+        "DELETE FROM cloud_personal_agent_sessions WHERE agent_id = $1 RETURNING conversation_id",
+    )
+    .bind(agent_id)
+    .fetch_all(&mut **transaction)
+    .await?;
+    for (conversation_id,) in unbound {
+        let (version,): (i32,) = query_as(
+            "UPDATE cloud_chat_conversations SET version = version + 1, updated_at = now() \
+             WHERE conversation_id = $1 RETURNING version",
+        )
+        .bind(conversation_id)
+        .fetch_one(&mut **transaction)
+        .await?;
+        let payloads =
+            super::support::load_active_conversation_projections(transaction, conversation_id)
+                .await?
+                .into_iter()
+                .map(|(account, conversation)| (account, json!({ "conversation": conversation })))
+                .collect();
+        super::sync_events::insert_sync_event_fanout(
+            transaction,
+            "conversation.updated",
+            Some(conversation_id),
+            Some(conversation_id),
+            Some(version),
+            payloads,
+        )
+        .await?;
+    }
     Ok(())
 }
 
