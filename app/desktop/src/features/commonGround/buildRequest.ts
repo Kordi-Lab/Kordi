@@ -1,6 +1,6 @@
 // The Build screen's choices turned into the build request, kept free of React for tests.
 
-import type { CgAgentFile, CgBuildRequest, CgDeviceItem, CgSourcePicks } from './types';
+import type { CgAgentFile, CgBuildRequest, CgDeviceItem, CgProfileKind, CgSourcePicks } from './types';
 
 export type CgBuildChoices = {
   memory: boolean;
@@ -67,4 +67,14 @@ export function buildFailureMessage(errorCode: string | null) {
   return errorCode === 'no_topics'
     ? 'Nothing here fits this profile. Add a note or choose other sources.'
     : 'Could not build your card. Try again.';
+}
+
+/** The hint in the build screen's notes box: what this profile keeps. Work when there is no profile, as the server builds. */
+export function notesHint(kind: CgProfileKind | null | undefined) {
+  switch (kind) {
+    case 'health': return 'How do you stay active?';
+    case 'daily': return 'What do you enjoy doing?';
+    case 'custom': return 'What should this profile show?';
+    default: return 'What are you working on?';
+  }
 }

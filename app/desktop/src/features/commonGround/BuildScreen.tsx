@@ -5,7 +5,7 @@ import { SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import { ConnectorsSection } from './BuildConnectors';
 import { DeviceRows, type CgDeviceTitles } from './BuildDeviceRows';
 import { DocumentsRow } from './BuildDocuments';
-import { agentFilesSummary, buildFailureMessage, canBuildProfile, commonGroundBuildRequest, type CgBuildChoices } from './buildRequest';
+import { agentFilesSummary, buildFailureMessage, canBuildProfile, commonGroundBuildRequest, notesHint, type CgBuildChoices } from './buildRequest';
 import { DEVICE_SOURCES } from './deviceAccess';
 import type { CgHost } from './host';
 import { CgAvatar, CgBack, CgGroup, CgHero, CgIcon, CgNotice, CgProgress, CgRow, CgSection } from './parts';
@@ -98,7 +98,7 @@ export function BuildScreen({ state, store, host }: { state: CgState; store: Com
       </CgSection>
       <CgSection title="Notes">
         <CgGroup>
-          <textarea className="cg-textarea" value={picks.notes} onChange={(event) => set({ notes: event.target.value })} placeholder="What are you working on?" aria-label="Notes" />
+          <textarea className="cg-textarea" value={picks.notes} onChange={(event) => set({ notes: event.target.value })} placeholder={notesHint(profile?.kind)} aria-label="Notes" />
         </CgGroup>
       </CgSection>
       <div className="cg-actions-center">

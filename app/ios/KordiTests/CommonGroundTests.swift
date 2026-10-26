@@ -340,6 +340,10 @@ final class CommonGroundTests: XCTestCase {
         XCTAssertEqual(CommonGroundBuildCopy.connectorLine(.slack, status: .needsReauth), "Sign in again")
         XCTAssertEqual(CommonGroundModel.messages["common_ground_no_card"], "Build your profile first.")
         XCTAssertEqual(CommonGroundModel.messages["no_topics"], "Nothing here fits this profile. Add a note or choose other sources.")
+        XCTAssertEqual(CommonGroundProfileKind.work.notesHint, "What are you working on?")
+        XCTAssertEqual(CommonGroundProfileKind.health.notesHint, "How do you stay active?")
+        XCTAssertEqual(CommonGroundProfileKind.daily.notesHint, "What do you enjoy doing?")
+        XCTAssertEqual(CommonGroundProfileKind.custom.notesHint, "What should this profile show?")
     }
 }
 

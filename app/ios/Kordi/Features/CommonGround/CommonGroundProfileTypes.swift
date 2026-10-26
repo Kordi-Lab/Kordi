@@ -25,6 +25,16 @@ enum CommonGroundProfileKind: String, CaseIterable, Identifiable {
 
     /// Work, Health and Daily exist at most once per person.
     var isFixed: Bool { self != .custom }
+
+    /// The hint in the build screen's notes box: what this profile keeps.
+    var notesHint: String {
+        switch self {
+        case .work: "What are you working on?"
+        case .health: "How do you stay active?"
+        case .daily: "What do you enjoy doing?"
+        case .custom: "What should this profile show?"
+        }
+    }
 }
 
 /// `{profileId, kind, name, focus, design, icon}`: a profile as a card, room or person carries it.
