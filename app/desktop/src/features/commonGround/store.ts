@@ -331,9 +331,14 @@ export class CommonGroundStore {
     if (saved) this.set({ owner: saved });
   }
 
-  async setSharing(sharing: boolean): Promise<void> {
-    const saved = await this.run('sharing', () => this.client.setSharing(sharing, this.state.profileId));
-    if (saved) this.set({ owner: saved });
+  async setSharing(sharing: boolean, profileId = this.state.profileId): Promise<boolean> {
+    const saved = await this.run('sharing', () => this.client.setSharing(sharing, profileId));
+    if (!saved) return false;
+    this.set({
+      ...(this.state.profileId === profileId ? { owner: saved } : {}),
+      profiles: this.state.profiles.map((profile) => profile.profileId === profileId ? { ...profile, sharing: saved.sharing } : profile),
+    });
+    return true;
   }
 
   async deleteCard(): Promise<boolean> {

@@ -45,7 +45,7 @@ export function SharingChip({ chipKey, face }: { chipKey: string; face: CgCardFa
  * Grounding Home and the card page on the Mac: a header (back, title, the shared card) above
  * the deck rail and one centre column.
  */
-export function WalletShell({ state, store, owner, title, onBack, chip, actions, center = false, children }: {
+export function WalletShell({ state, store, owner, title, onBack, chip, actions, selectedProfileId, onSelectProfile, selectionDisabled = false, center = false, children }: {
   state: CgState;
   store: CommonGroundStore;
   /** The signed-in account, drawn on its cards. */
@@ -56,6 +56,10 @@ export function WalletShell({ state, store, owner, title, onBack, chip, actions,
   chip?: ReactNode;
   /** Buttons after the chip, such as Nearby's More menu. */
   actions?: ReactNode;
+  /** A screen such as Nearby owns its card selection. */
+  selectedProfileId?: string | null;
+  onSelectProfile?: (id: string) => void;
+  selectionDisabled?: boolean;
   /** Centres the column's content, as for Nearby before it is on. */
   center?: boolean;
   children: ReactNode;
@@ -66,7 +70,8 @@ export function WalletShell({ state, store, owner, title, onBack, chip, actions,
   const page = state.stack[state.stack.length - 1]?.name ?? 'home';
   const onCard = page === 'card';
   const select = (id: string) => {
-    if (id === 'suggested') return;
+    if (id === 'suggested' || selectionDisabled) return;
+    if (onSelectProfile) { onSelectProfile(id); return; }
     const target = state.profiles.find((item) => item.profileId === id);
     if (id !== state.profileId) void store.selectProfile(id);
     if (onCard && !target?.hasCard) store.back();
@@ -91,7 +96,8 @@ export function WalletShell({ state, store, owner, title, onBack, chip, actions,
         {state.profilesOn ? (
           <DeckRail
             cards={cards}
-            selected={state.profiles.length ? state.profileId : 'suggested'}
+            selected={state.profiles.length ? selectedProfileId ?? state.profileId : 'suggested'}
+            disabled={selectionDisabled}
             canAdd={state.profiles.length < MAX_PROFILES}
             onSelect={select}
             onOpen={openCard}

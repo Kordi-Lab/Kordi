@@ -6,7 +6,7 @@ import type { CgHost } from './host';
 import { NearbyConsentDialog, NearbyRequestDialog } from './NearbyDialogs';
 import { NbMenuButton } from './NearbyMenu';
 import { NearbyAlerts, NearbyNeeds, NearbyOpenTo, NearbyPeople } from './NearbySections';
-import { checkItems, locationLine, nearbyCards, NO_PHONE_LINE, pausedLine, pauseUntil, type CgNearbyPhase } from './nearbyFormat';
+import { checkItems, locationLine, NO_PHONE_LINE, pausedLine, pauseUntil, type CgNearbyPhase } from './nearbyFormat';
 import { needInput, needPatch } from './nearbyRequest';
 import { CgNotice } from './parts';
 import { CardSwatch } from './ProfileCard';
@@ -14,16 +14,17 @@ import type { CgState, CommonGroundStore } from './store';
 import type { CgNearbyState, CgNearbyStore } from './storeNearby';
 import type { CgNeed } from './typesNearby';
 import { useNearby } from './useNearby';
+import { useNearbyCardSelection } from './useNearbyCardSelection';
 import { WalletShell } from './WalletShell';
 
 /** "Sharing: Work" for the card Nearby shares; it opens the cards that can be shared. */
-function NearbyChip({ state, nb, nearby }: { state: CgState; nb: CgNearbyState; nearby: CgNearbyStore }) {
+function NearbyChip({ state, nb, onSelect, disabled }: { state: CgState; nb: CgNearbyState; onSelect: (id: string) => void; disabled: boolean }) {
   const profile = state.profiles.find((item) => item.profileId === nb.settings?.profileId);
   if (!profile) return null;
-  const cards = nearbyCards(state.profiles);
+  const cards = state.profiles.filter((card) => card.hasCard);
   const choices = (cards.some((card) => card.profileId === profile.profileId) ? cards : [profile, ...cards]).map((card): [string, string] => [card.profileId, card.name]);
   return (
-    <NbMenuButton id="card" label="Card" className="cg-share-chip is-menu" align="right" items={checkItems(choices, profile.profileId, (id) => void nearby.setProfile(id))}>
+    <NbMenuButton id="card" label="Card" className="cg-share-chip is-menu" align="right" disabled={disabled} items={checkItems(choices, profile.profileId, onSelect)}>
       <CardSwatch design={profileDesign(profile)} className="is-chip" />
       <span>Sharing: <b>{profile.name}</b></span>
       <ChevronDown className="cg-nb-caret" aria-hidden="true" />
@@ -86,6 +87,8 @@ export function NearbyScreen({ state, store, host }: { state: CgState; store: Co
   const phase = nearby.phase();
   const off = phase === 'off';
   const settings = nb.settings;
+  const selection = useNearbyCardSelection(state, store, nearby, off);
+  const switching = selection.busy || nb.busy === 'profile';
   const shell = (body: ReactNode, on: boolean) => (
     <WalletShell
       state={state}
@@ -93,11 +96,15 @@ export function NearbyScreen({ state, store, host }: { state: CgState; store: Co
       owner={host.self}
       title="Nearby"
       onBack={() => store.back()}
-      chip={on ? <NearbyChip state={state} nb={nb} nearby={nearby} /> : undefined}
+      selectedProfileId={on ? settings?.profileId : state.profileId}
+      onSelectProfile={selection.select}
+      selectionDisabled={!nb.loaded || Boolean(nb.busy) || switching}
+      chip={on ? <NearbyChip state={state} nb={nb} onSelect={selection.select} disabled={Boolean(nb.busy) || switching} /> : null}
       actions={on ? <MoreMenu nearby={nearby} /> : null}
       center={!on}
     >
       {body}
+      {selection.dialog}
     </WalletShell>
   );
 
@@ -110,7 +117,7 @@ export function NearbyScreen({ state, store, host }: { state: CgState; store: Co
   const consentDialog = consent ? (
     <NearbyConsentDialog
       profiles={state.profiles}
-      initialProfileId={settings.profileId ?? state.profileId}
+      initialProfileId={state.profileId ?? settings.profileId}
       busy={nb.busy === 'enable'}
       notice={consent.failed ? nb.notice : null}
       onCancel={() => setConsent(null)}
@@ -132,6 +139,7 @@ export function NearbyScreen({ state, store, host }: { state: CgState; store: Co
   const need = editing?.need ?? null;
   return shell(
     <div className="cg-nb">
+      {switching ? <div className="cg-nb-status" role="status">Updating nearby matches…</div> : null}
       <StatusLine phase={phase} nb={nb} nearby={nearby} />
       {editing ? null : <CgNotice text={nb.notice} />}
       <h2 className="cg-msec">Open to</h2>
