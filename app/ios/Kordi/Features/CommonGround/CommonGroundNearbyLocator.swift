@@ -207,7 +207,7 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
             guard generation == locationGeneration, foreground else { return }
             guard access.granted else { return }
             guard precise else { return }
-            guard let fix = await oneFix(timeout: 15) else {
+            guard let fix = await oneFix(timeout: 30) else {
                 locationError = "Could not find your location. Try again."
                 return
             }

@@ -1,4 +1,5 @@
 import XCTest
+import CoreLocation
 @testable import Kordi
 
 /// Nearby people (#2100): wire shapes from docs/development/grounding-nearby.md,
@@ -342,6 +343,56 @@ final class CommonGroundNearbyTests: XCTestCase {
         XCTAssertEqual(locator.locationError, "Turn on Nearby before updating your location.")
     }
 
+    func testManualFixStopsContinuousUpdatesBeforeRequesting() async {
+        let name = "nearby-request-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let locator = CommonGroundNearbyLocator(defaults: defaults)
+        let manager = NearbyLocationRequestRecorder()
+        locator.manager = manager
+        locator.updating = true
+        let waiting = Task { @MainActor in await locator.oneFix(timeout: 1) }
+        await Task.yield()
+        XCTAssertEqual(manager.events, ["stop", "request"])
+        XCTAssertFalse(locator.updating)
+        locator.resolveFixWaiters(nil)
+        _ = await waiting.value
+    }
+
+    func testTemporaryLocationErrorKeepsWaitingForTheNextFix() async {
+        let name = "nearby-fix-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let locator = CommonGroundNearbyLocator(defaults: defaults)
+        let key = UUID()
+        let waiting = Task { @MainActor in
+            await withCheckedContinuation { continuation in locator.fixWaiters[key] = continuation }
+        }
+        await Task.yield()
+        locator.failed(NSError(domain: kCLErrorDomain, code: CLError.locationUnknown.rawValue))
+        XCTAssertEqual(locator.fixWaiters.count, 1, "A temporary GPS failure must not finish the update.")
+        locator.received([CLLocation(latitude: 0, longitude: 0)])
+        let fix = await waiting.value
+        XCTAssertNotNil(fix)
+        XCTAssertTrue(locator.fixWaiters.isEmpty)
+    }
+
+    func testDeniedLocationErrorFinishesWaiting() async {
+        let name = "nearby-denied-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let locator = CommonGroundNearbyLocator(defaults: defaults)
+        let key = UUID()
+        let waiting = Task { @MainActor in
+            await withCheckedContinuation { continuation in locator.fixWaiters[key] = continuation }
+        }
+        await Task.yield()
+        locator.failed(NSError(domain: kCLErrorDomain, code: CLError.denied.rawValue))
+        let fix = await waiting.value
+        XCTAssertNil(fix)
+        XCTAssertTrue(locator.fixWaiters.isEmpty)
+    }
+
     func testPollingBacksOffWithoutProgress() {
         let changed = Date(timeIntervalSince1970: 1_000_000)
         typealias Poll = CommonGroundNearbyPoll
@@ -402,4 +453,10 @@ final class CommonGroundNearbyTests: XCTestCase {
         CommonGroundNearbyDeviceState.save(nil, to: defaults)
         XCTAssertNil(CommonGroundNearbyDeviceState.load(from: defaults))
     }
+}
+
+private final class NearbyLocationRequestRecorder: CLLocationManager {
+    var events: [String] = []
+    override func stopUpdatingLocation() { events.append("stop") }
+    override func requestLocation() { events.append("request") }
 }

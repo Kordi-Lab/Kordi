@@ -90,6 +90,12 @@ extension CommonGroundNearbyLocator {
         let key = UUID()
         return await withCheckedContinuation { continuation in
             fixWaiters[key] = continuation
+            // requestLocation is ignored while standard updates are running.
+            // Stop them first; received(_:) resumes them for a visible screen.
+            if updating {
+                manager.stopUpdatingLocation()
+                updating = false
+            }
             manager.requestLocation()
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(timeout))
@@ -117,7 +123,11 @@ extension CommonGroundNearbyLocator {
     }
 
     func failed(_ error: Error) {
-        resolveFixWaiters(nil)
+        let failure = error as NSError
+        // A one-shot request may briefly have no fix. Keep its waiter alive
+        // for the next standard update, bounded by the existing deadline.
+        let temporary = failure.domain == kCLErrorDomain && failure.code == CLError.locationUnknown.rawValue
+        if !temporary { resolveFixWaiters(nil) }
         // A screen still showing keeps trying with standard updates.
         if foreground, !updating, let manager, access.granted {
             manager.startUpdatingLocation()
