@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline';
 import { parentPort } from 'node:worker_threads';
-import { declareWorkerHostEntry, installWorkerInbox } from '@oh-my-pi/pi-utils/worker-host';
+import { declareWorkerHostEntry } from '@oh-my-pi/pi-utils/worker-host';
+import { installDeferredWorkerInbox } from './workerInbox';
 import { parseCommand, RuntimeError, type JsonObject, type RunRequest, type ToolResult } from './protocol';
 import runtimePackage from '../package.json';
 
@@ -14,7 +15,7 @@ const selectedWorker = process.argv.find(argument => [
   '__omp_worker_computer', '__omp_worker_tab', '__omp_worker_js_eval',
 ].includes(argument));
 if (selectedWorker) {
-  if (parentPort) installWorkerInbox(parentPort);
+  if (parentPort) installDeferredWorkerInbox(parentPort);
   if (selectedWorker === '__omp_worker_computer') {
     const { startComputerWorker } = await import('@oh-my-pi/pi-coding-agent/tools/computer/worker-entry');
     startComputerWorker();
