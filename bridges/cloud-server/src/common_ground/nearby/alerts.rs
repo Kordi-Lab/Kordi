@@ -23,7 +23,7 @@ const MAX_AROUND: i64 = 200;
 /// What the sweep needs to queue runs.
 pub(super) struct Queueing<'a> {
     pub pool: &'a PgPool,
-    pub service: &'a crate::pip::PipConfig,
+    pub service: &'a crate::system_agent::SystemAgentConfig,
     pub rate_limiter: &'a CloudRateLimiter,
 }
 

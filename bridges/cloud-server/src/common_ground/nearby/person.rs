@@ -60,7 +60,7 @@ pub(super) async fn read(
     Extension(session): Extension<CloudSession>,
     Path(other): Path<String>,
 ) -> Response {
-    let Some(pip) = state.pip() else {
+    let Some(pip) = state.system_agent() else {
         return unavailable();
     };
     let pool = state.db_pool();

@@ -4,6 +4,7 @@ import type { ProjectImportApi } from '../../src/features/projects/projectImport
 export type ImportedProject = { name: string; root: string; source: 'local' | 'github'; repository?: string };
 const api: ProjectImportApi = {
   chooseFolder: async () => '/preview/research-notes',
+  create: async (name, parent) => ({ name, root: `${parent || '/preview/KordiProjects'}/${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` }),
   repositories: async () => ({ hasMore: false, repositories: [
     { fullName: 'demo-workspace/kordi', description: 'Desktop agent workspace', language: 'TypeScript', private: false },
     { fullName: 'demo-workspace/personal-site', description: 'Portfolio and writing', language: 'Astro', private: false },

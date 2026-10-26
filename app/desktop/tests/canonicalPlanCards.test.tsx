@@ -7,10 +7,10 @@ function readModel() {
   const state: CanonicalSessionState = {
     storagePath: '',
     profile: { id: 'profile', humanIdentityId: 'me', storageRoot: '', createdAtMs: 1, updatedAtMs: 1 },
-    identities: [{ id: 'pip', kind: 'human', displayName: 'PiP', source: 'cloud', avatarKey: 'pip', createdAtMs: 1, updatedAtMs: 1 }],
+    identities: [{ id: 'system-agent', kind: 'human', displayName: 'System', source: 'cloud', avatarKey: 'system-agent', createdAtMs: 1, updatedAtMs: 1 }],
     sessions: [{ id: 'group', kind: 'group', title: 'Test group', status: 'active', createdByIdentityId: 'me', createdAtMs: 1, updatedAtMs: 2 }],
     participants: [], delegatedExchanges: [], presence: [], contextSnapshots: [],
-    messages: [{ id: 'card-message', sessionId: 'group', senderIdentityId: 'pip', senderRole: 'person', messageKind: 'text',
+    messages: [{ id: 'card-message', sessionId: 'group', senderIdentityId: 'system-agent', senderRole: 'person', messageKind: 'text',
       contentText: '', status: 'received', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 2,
       content: { planCard: { eventId: 'plan', title: 'Lunch', revision: 10, state: 'awaiting_confirmation', view: 'event', participants: [], unresolvedFields: [], options: [] } },
     }],

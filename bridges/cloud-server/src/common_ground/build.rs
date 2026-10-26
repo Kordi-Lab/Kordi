@@ -34,7 +34,7 @@ pub(super) async fn start(
     Extension(session): Extension<CloudSession>,
     Json(request): Json<BuildRequest>,
 ) -> Response {
-    let Some(pip) = state.pip() else {
+    let Some(system_agent) = state.system_agent() else {
         return super::unavailable();
     };
     let pool = state.db_pool();
@@ -104,7 +104,7 @@ pub(super) async fn start(
         system_prompt = format!("{system_prompt}\n\n{}", related::SYSTEM_BLOCK);
         user_prompt.push_str(&related::user_block(&candidates));
     }
-    let config = pip.config();
+    let config = system_agent.config();
     let run_id = runs::new_run_id(CARD_PREFIX);
     let picks = request.picks.map(|picks| picks.cleaned());
     let result = async {

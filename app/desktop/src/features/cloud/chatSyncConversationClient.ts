@@ -1,5 +1,5 @@
 import { deleteCanonicalCloudMessage } from '@/features/canonical/canonicalMessageSources';
-import { isBuiltInAccountId } from '@/features/pip/pipIdentity';
+import { isBuiltInAccountId } from '@/features/systemAgent/systemAgentIdentity';
 import { livePhotoAttachmentIds } from '@/features/chat/livePhotos';
 import type { CloudMessage, CloudSessionTitle, SendCloudMessageOptions, UpdateCloudSessionTitleInput } from './authClient';
 import {
@@ -37,7 +37,7 @@ export class ChatSyncConversationClient {
       throw new Error('A stable session id is required for reliable chat delivery.');
     }
     const kind = input.kind ?? inferConversationKind(accountId, peerAccountId, sessionId);
-    // PiP and the system account are server-managed members: clients never list them, so they
+    // The System agent and the system account are server-managed members: clients never list them, so they
     // never count as a difference to synchronize, and a client never removes them.
     const memberAccountIds = [...new Set(
       (input.memberAccountIds ?? [peerAccountId])

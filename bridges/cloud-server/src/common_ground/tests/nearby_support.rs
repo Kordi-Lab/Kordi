@@ -203,7 +203,7 @@ pub(super) async fn answer_check(pool: &PgPool, account: &str) -> Vec<String> {
 /// One sweep with the test service and no push service.
 pub(super) async fn sweep(pool: &PgPool, service: &str) -> Vec<(String, Outcome)> {
     let limiter = CloudRateLimiter::memory(CloudRateLimitConfig::production());
-    sweep_once(pool, &crate::pip::test_config(service), &limiter, None)
+    sweep_once(pool, &crate::system_agent::test_config(service), &limiter, None)
         .await
         .unwrap()
 }

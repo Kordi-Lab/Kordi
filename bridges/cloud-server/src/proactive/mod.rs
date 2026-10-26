@@ -1,15 +1,14 @@
 //! Proactive agents: an owned agent that watches its owner's groups and asks
 //! the owner before it helps (docs/development/proactive-agent.md).
 //!
-//! The sweep copies PiP's shape: one cursor row per agent and group, a free
-//! text check, one evaluation run per candidate whose only tool is
-//! `search_memory` ([`memory_search`]). An `offer` becomes
-//! a proposal that only the owner sees, inside the group, from the proposals
-//! route, a `proactive.proposal_changed` hint, and a push; no message is
-//! posted. Nothing reaches the group until the owner allows it, and the
-//! approved run is an ordinary owner-started group run with the usual
-//! delivery. The owner's default agent watches the same way under its
-//! synthetic id (agents.rs).
+//! The sweep copies the System agent's shape: one cursor row per agent and
+//! group, a free text check, one evaluation run per candidate whose only tool
+//! is `search_memory` ([`memory_search`]). An `offer` becomes a proposal that
+//! only the owner sees, inside the group, from the proposals route, a
+//! `proactive.proposal_changed` hint, and a push; no message is posted. Nothing
+//! reaches the group until the owner allows it, and the approved run is an
+//! ordinary owner-started group run with the usual delivery. The owner's
+//! default agent watches the same way under its synthetic id (agents.rs).
 
 pub(crate) mod agents;
 mod complete;

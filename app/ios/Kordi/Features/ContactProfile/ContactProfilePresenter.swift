@@ -42,7 +42,7 @@ private struct ContactProfileSheetModifier: ViewModifier {
                 // A fresh view, model and scroll position for every subject.
                 .id(subject.id)
             }
-            .navigationDestination(item: $pushed) { conversation in
+            .stableNavigationDestination(item: $pushed) { conversation in
                 ConversationView(conversation: conversation)
                     .task { _ = await model.restoreConversationIfNeeded(conversation) }
             }
@@ -75,7 +75,7 @@ private struct AuthorProfileDestinationModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .navigationDestination(item: detailsItem) { destination in
+            .stableNavigationDestination(item: detailsItem) { destination in
                 SessionDetailView(
                     conversation: destination,
                     presentationContext: .authorProfile(sourceConversation: source, destination: destination)

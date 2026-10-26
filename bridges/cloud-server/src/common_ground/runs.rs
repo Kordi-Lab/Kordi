@@ -1,7 +1,7 @@
 //! Background runs for Common ground. Every run belongs to the Kordi-operated
-//! service account (PiP's credential), so it uses the Kordi key rather than a
-//! member's own provider. Runs have no chat and no tools; the runner answers
-//! each with one completion, and the server parses the reply.
+//! service account (the System agent's credential), so it uses the Kordi key
+//! rather than a member's own provider. Runs have no chat and no tools; the
+//! runner answers each with one completion, and the server parses the reply.
 
 use chrono::Utc;
 use sqlx_core::{query::query, transaction::Transaction};
@@ -29,7 +29,7 @@ pub(super) struct NewRun<'a> {
 
 pub(super) async fn insert(
     tx: &mut Transaction<'_, Postgres>,
-    service: &crate::pip::PipConfig,
+    service: &crate::system_agent::SystemAgentConfig,
     run: NewRun<'_>,
 ) -> sqlx_core::Result<()> {
     let now = Utc::now().to_rfc3339();

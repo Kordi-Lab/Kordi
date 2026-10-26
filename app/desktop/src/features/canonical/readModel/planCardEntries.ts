@@ -3,7 +3,7 @@ import type { Message } from '@/kordi-app/types';
 import type { CanonicalMessageSortPosition } from './messageSort';
 
 /**
- * Transcript entries for one mapped message. A card and PiP's words are always
+ * Transcript entries for one mapped message. A card and the System agent's words are always
  * two messages, even when an older message stored them together: the card
  * first, then the text.
  */

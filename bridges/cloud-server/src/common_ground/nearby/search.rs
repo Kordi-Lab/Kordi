@@ -53,7 +53,7 @@ pub(super) async fn search(
     Extension(session): Extension<CloudSession>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
-    let Some(pip) = state.pip() else {
+    let Some(pip) = state.system_agent() else {
         return unavailable();
     };
     let pool = state.db_pool();

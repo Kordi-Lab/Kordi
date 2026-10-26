@@ -39,8 +39,8 @@ pub(super) async fn sync_plan(
         .and_then(|(shared, group)| group.or(shared))
         .filter(|value| !value.trim().is_empty());
     let mut description = match group {
-        Some(group) => format!("Planned with PiP in {group}."),
-        None => "Planned with PiP.".to_string(),
+        Some(group) => format!("Planned with the System agent in {group}."),
+        None => "Planned with the System agent.".to_string(),
     };
     if let Some(location) = row
         .location
@@ -64,15 +64,15 @@ pub(super) async fn sync_plan(
         .iter()
         .map(|participant| participant.account_id.clone())
         .collect();
-    // PiP outranks the digest: once a plan is confirmed, competing calendar
-    // suggestions leave every member's saved digest right away.
+    // The System agent outranks the digest: once a plan is confirmed, competing
+    // calendar suggestions leave every member's saved digest right away.
     if row.state == PlanCardState::Confirmed {
-        let plan = crate::digest::pip_guard::TrackedPlan {
+        let plan = crate::digest::system_agent_guard::TrackedPlan {
             conversation_id: Some(row.conversation_id.clone()),
             title: row.title.clone(),
             start_at: start.map(|value| value.with_timezone(&chrono::Utc)),
         };
-        crate::digest::pip_guard::clear_saved_conflicts(tx, &members, &plan).await?;
+        crate::digest::system_agent_guard::clear_saved_conflicts(tx, &members, &plan).await?;
     }
     let mut calendar_changed: Vec<String> = Vec::new();
 
@@ -118,7 +118,7 @@ pub(super) async fn sync_plan(
             }
         }
     }
-    // A calendar PiP changed is a digest change for that person.
+    // A calendar the System agent changed is a digest change for that person.
     crate::digest::changes::mark_accounts(&mut **tx, &calendar_changed).await?;
     Ok(())
 }

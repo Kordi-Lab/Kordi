@@ -26,7 +26,7 @@ pub(in crate::common_ground) fn spawn(
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             timer.tick().await;
-            let Some(pip) = state.pip() else {
+            let Some(pip) = state.system_agent() else {
                 continue;
             };
             let swept = sweep_once(
@@ -50,7 +50,7 @@ pub(in crate::common_ground) fn spawn(
 /// Returns each delivery outcome.
 pub(in crate::common_ground) async fn sweep_once(
     pool: &PgPool,
-    service: &crate::pip::PipConfig,
+    service: &crate::system_agent::SystemAgentConfig,
     rate_limiter: &CloudRateLimiter,
     push: Option<&PushNotificationService>,
 ) -> sqlx_core::Result<Vec<(String, Outcome)>> {

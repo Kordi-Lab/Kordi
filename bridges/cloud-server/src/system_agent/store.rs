@@ -1,4 +1,4 @@
-//! Sweep state, run creation and run completion for PiP.
+//! Sweep state, run creation and run completion for the System agent.
 //!
 //! The sweep copies the digest worker's shape: a bounded batch of dirty
 //! conversations, an atomic per-row reservation, one queued cloud run per
@@ -18,13 +18,14 @@ use crate::chat_sync::models::SendMessageRequest;
 
 use super::addressing;
 use super::cards::{mark_card_seen, sync_card_messages};
-use super::config::PipConfig;
+use super::config::SystemAgentConfig;
 use super::input::{build_input, Candidate};
-use super::mentions::{encode_pip_message_with_mentions, resolve_mentions};
-use super::prompt::PIP_SYSTEM_PROMPT;
+use super::mentions::{encode_system_agent_message_with_mentions, resolve_mentions};
+use super::prompt::SYSTEM_AGENT_PROMPT;
 
 pub use super::retry::{fail, release_stale_runs};
 
+/// Stored run ids keep the old prefix.
 pub const RUN_PREFIX: &str = "pip_";
 const SWEEP_BATCH: i64 = 10;
 
@@ -51,7 +52,7 @@ pub(super) const SWEEP_SQL: &str = concat!(
      WHERE s.active_run_id IS NULL
        AND s.retry_after <= now()
        AND (
-         -- Members' new messages (never PiP's own), once the chat has been
+         -- Members' new messages (never the System agent's own), once the chat has been
          -- quiet for 30 seconds, or two minutes after the first one.
          (c.latest_message_sequence > s.seen_sequence
           AND EXISTS (SELECT 1 FROM cloud_chat_messages msg
@@ -117,9 +118,9 @@ pub fn parse_run_output(text: &str) -> RunOutput {
 }
 
 /// One sweep pass. Returns the number of runs queued.
-pub async fn sweep(pool: &PgPool, config: &PipConfig) -> Result<usize, sqlx_core::Error> {
-    // A chat PiP is already in but has no state yet starts at its newest
-    // message, like a chat PiP just joined.
+pub async fn sweep(pool: &PgPool, config: &SystemAgentConfig) -> Result<usize, sqlx_core::Error> {
+    // A chat the System agent is already in but has no state yet starts at its
+    // newest message, like a chat the System agent just joined.
     query(
         "INSERT INTO cloud_pip_conversation_state
              (conversation_id, seen_sequence, context_start_sequence)
@@ -133,7 +134,7 @@ pub async fn sweep(pool: &PgPool, config: &PipConfig) -> Result<usize, sqlx_core
          ON CONFLICT (conversation_id) DO NOTHING",
     )
     .bind(&config.account_id)
-    .bind(super::membership::PIP_CONVERSATION_KINDS)
+    .bind(super::membership::SYSTEM_AGENT_CONVERSATION_KINDS)
     .execute(pool)
     .await?;
 
@@ -173,7 +174,7 @@ pub async fn sweep(pool: &PgPool, config: &PipConfig) -> Result<usize, sqlx_core
 
 async fn enqueue(
     pool: &PgPool,
-    config: &PipConfig,
+    config: &SystemAgentConfig,
     candidate: &Candidate,
 ) -> Result<bool, sqlx_core::Error> {
     let input = build_input(pool, config, candidate).await?;
@@ -229,7 +230,7 @@ async fn enqueue(
     .bind(&candidate.legacy_session_id)
     .bind(&config.account_id)
     .bind(input.to_string())
-    .bind(PIP_SYSTEM_PROMPT)
+    .bind(SYSTEM_AGENT_PROMPT)
     .bind(config.model_routing())
     .bind(&now)
     .execute(&mut *tx)
@@ -270,7 +271,8 @@ async fn active_run(
     ))
 }
 
-/// Posts PiP's words as their own message, with `@Handle` mentions resolved.
+/// Posts the System agent's words as their own message, with `@Handle` mentions
+/// resolved.
 async fn post_text(
     pool: &PgPool,
     run_id: &str,
@@ -292,7 +294,7 @@ async fn post_text(
         kind: "text".to_string(),
         content: json!({
             "schema": 1,
-            "blocks": [{"type": "text", "text": encode_pip_message_with_mentions(text, mentions)}],
+            "blocks": [{"type": "text", "text": encode_system_agent_message_with_mentions(text, mentions)}],
             "legacy_attachments": [],
         }),
         reply_to_message_id: None,
@@ -308,16 +310,17 @@ async fn post_text(
     {
         Ok(outcome) => Ok(Some(outcome.value.id.to_string())),
         Err(error) => {
-            eprintln!("[pip] Could not post PiP's text message: {error}");
+            eprintln!("[system-agent] Could not post the System agent's text message: {error}");
             Ok(None)
         }
     }
 }
 
 /// Every reminder a run was offered counts as fired once the run finishes,
-/// whether PiP posted a nudge or chose to stay silent. The sweep keeps picking
-/// a chat while a due reminder is unmarked, so waiting for the model to list
-/// it in `hooksHandled` would rerun the chat every tick until the plan starts.
+/// whether the System agent posted a nudge or chose to stay silent. The sweep
+/// keeps picking a chat while a due reminder is unmarked, so waiting for the
+/// model to list it in `hooksHandled` would rerun the chat every tick until the
+/// plan starts.
 fn offered_reminders(input: &Value) -> Value {
     let mut hooks = json!({});
     for key in input["hooks"]
@@ -332,8 +335,8 @@ fn offered_reminders(input: &Value) -> Value {
     hooks
 }
 
-/// Records a finished run: posts PiP's message (if any) into the conversation
-/// and marks the one-shot reminders it was offered.
+/// Records a finished run: posts the System agent's message (if any) into the
+/// conversation and marks the one-shot reminders it was offered.
 pub async fn complete(
     pool: &PgPool,
     run_id: &str,
@@ -345,8 +348,8 @@ pub async fn complete(
     };
     let output = parse_run_output(response_text);
     // A card the run touched gets its card message first (a new vote or
-    // calendar card, or an in-place refresh); PiP's words follow as their own
-    // message.
+    // calendar card, or an in-place refresh); the System agent's words follow
+    // as their own message.
     let touched: Option<(String,)> = query_as(
         "SELECT event_id FROM cloud_plan_cards
          WHERE conversation_id = $1 AND updated_at >= $2::timestamptz
@@ -359,7 +362,7 @@ pub async fn complete(
     if let Some((event_id,)) = touched {
         if let Some(row) = crate::plan_cards::store::load(pool, &event_id).await? {
             if let Err(error) = sync_card_messages(pool, &run.owner_account_id, &row).await {
-                eprintln!("[pip] Could not post the plan card: {error}");
+                eprintln!("[system-agent] Could not post the plan card: {error}");
             }
         }
     }
@@ -383,8 +386,9 @@ pub async fn complete(
     .bind(&now)
     .execute(&mut *tx)
     .await?;
-    // PiP saw the card as its input showed it; its own tool calls are recorded
-    // as they happen, so votes cast during the run still wake the next sweep.
+    // The System agent saw the card as its input showed it; its own tool calls
+    // are recorded as they happen, so votes cast during the run still wake the
+    // next sweep.
     let card = &run.input["openCard"];
     if let (Some(event_id), Some(revision)) = (card["eventId"].as_str(), card["revision"].as_i64())
     {

@@ -1,5 +1,5 @@
-//! Failed and abandoned PiP runs: bounded backoff, and a retry from the
-//! messages the failed run started at.
+//! Failed and abandoned System agent runs: bounded backoff, and a retry from
+//! the messages the failed run started at.
 
 use chrono::Utc;
 use serde_json::Value;
@@ -47,7 +47,7 @@ pub async fn fail(
     let mut tx = pool.begin().await?;
     let changed = query(
         "UPDATE cloud_agent_fallback_runs
-         SET status = 'failed', error_code = $3, error_message = 'PiP could not finish this pass.',
+         SET status = 'failed', error_code = $3, error_message = 'The System agent could not finish this pass.',
              updated_at = $4
          WHERE run_id = $1 AND ($2::text IS NULL OR claimed_by = $2)
            AND status IN ('queued', 'leased', 'running')",

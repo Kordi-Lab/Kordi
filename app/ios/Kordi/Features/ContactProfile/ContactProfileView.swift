@@ -138,7 +138,7 @@ struct ContactProfileView: View {
     }
 
     private var routedContent: some View {
-        content.navigationDestination(item: $route) { route in
+        content.stableNavigationDestination(item: $route) { route in
             switch route {
             case .groups:
                 ContactProfileGroupsList(groups: presentation.shared?.groups ?? [], onOpen: openGroup)

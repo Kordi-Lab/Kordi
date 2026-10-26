@@ -85,7 +85,7 @@ pub(super) async fn current(
 /// budget is spent. Only a queued run is charged.
 pub(super) async fn queue(
     pool: &PgPool,
-    service: &crate::pip::PipConfig,
+    service: &crate::system_agent::SystemAgentConfig,
     rate_limiter: &CloudRateLimiter,
     need: &Need,
     people: &[&Present],

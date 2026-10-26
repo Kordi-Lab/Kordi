@@ -132,7 +132,7 @@ private struct ConversationThreadPresentationModifier: ViewModifier {
             content
                 // Back from a pushed discussion is the native chevron without the conversation title.
                 .background(NavigationMinimalBackButtonBridge())
-                .navigationDestination(item: $activeRootMessageID) { threadRootID in
+                .stableNavigationDestination(item: $activeRootMessageID) { threadRootID in
                     threadDestination(rootID: threadRootID)
                 }
         case .inspector:
@@ -316,7 +316,6 @@ struct ConversationView: View {
     @State private var voiceRecorder = VoiceMessageRecorder()
     @State private var voiceHoldPresentation = VoiceHoldToTalkPresentation()
     @State private var previewURL: URL?
-    @State private var videoPreview: VideoPreviewPresentation?
     @State private var fullScreenVideoAttachmentID: String?
     @State private var liveShareURLs: [URL] = []
     @State private var showLiveShare = false
@@ -1318,7 +1317,8 @@ struct ConversationView: View {
             }
             synchronizeReadPresentation()
         }
-        .onChange(of: conversation.id) { _, _ in
+        .onChange(of: conversation.id) { previousID, _ in
+            ConversationModalPresenter.dismiss(ownedBy: previousID)
             voiceHoldPresentation.dismiss()
             voiceRecorder.cancel()
             videoReview?.discardOwnedFile()
@@ -1326,7 +1326,6 @@ struct ConversationView: View {
             cameraPhotoReview = nil
             videoReview = nil
             queuedVideoReviews = []
-            videoPreview = nil
             fullScreenVideoAttachmentID = nil
             synchronizeReadPresentation()
         }
@@ -1365,15 +1364,6 @@ struct ConversationView: View {
             )
         }
         .quickLookPreview($previewURL)
-        .fullScreenCover(item: $videoPreview, onDismiss: {
-            fullScreenVideoAttachmentID = nil
-        }) { presentation in
-            FullScreenMessageVideo(
-                player: presentation.player,
-                name: presentation.attachment.name,
-                poster: presentation.poster
-            )
-        }
         .sheet(isPresented: $showLiveShare) { ActivityShareSheet(items: liveShareURLs) }
         .sheet(item: $shareItem) { item in
             ActivityShareSheet(items: [item.url])
@@ -1384,9 +1374,9 @@ struct ConversationView: View {
         .navigationDestination(isPresented: $showSessionDetails) {
             ConversationDetailsPage(conversation: conversation)
         }
-        .navigationDestination(item: $documentReader) { DocumentReaderScreen(request: $0) }
+        .stableNavigationDestination(item: $documentReader) { DocumentReaderScreen(request: $0) }
         .authorProfileDestination(item: $authorProfileConversation, source: conversation)
-        .navigationDestination(item: $selectedBackgroundSession) { session in
+        .stableNavigationDestination(item: $selectedBackgroundSession) { session in
             AgentSubsessionView(sessionId: session.sessionId)
         }
         .sheet(item: $forwardRequest, onDismiss: finishForwardDismissal) { request in
@@ -1446,7 +1436,7 @@ struct ConversationView: View {
                 sourceConversation: conversation
             )
         }
-        .navigationDestination(item: $forwardedDestination) { destination in
+        .stableNavigationDestination(item: $forwardedDestination) { destination in
             ConversationView(conversation: destination)
         }
     }
@@ -1626,17 +1616,18 @@ struct ConversationView: View {
                         await model.prepareAttachmentPreviewImage(attachment)
                     },
                     onOpenVideo: { attachment, player, poster in
-                        let videoPresentation = VideoPreviewPresentation(
-                            attachment: attachment,
-                            inlinePlayer: player,
-                            poster: poster
-                        )
                         player.pause()
                         fullScreenVideoAttachmentID = attachment.id
                         Task { @MainActor in
                             await Task.yield()
                             guard fullScreenVideoAttachmentID == attachment.id else { return }
-                            videoPreview = videoPresentation
+                            dismissKeyboard()
+                            // Fades in over the chat like the image viewer and closes with a drag down.
+                            ConversationModalPresenter.present(ownerID: conversation.id, transparent: true,
+                                transition: .crossDissolve, interfaceStyle: .dark, statusBarStyle: .lightContent,
+                                onDismiss: { fullScreenVideoAttachmentID = nil }) { close in
+                                FullScreenMessageVideo(player: player, name: attachment.name, poster: poster, onClose: close)
+                            }
                         }
                     },
                     onAddAttachmentToMediaLibrary: { attachment in
@@ -2966,7 +2957,8 @@ struct ConversationView: View {
         guard isReadPresentationVisible else { return } // The chat closed during the menu delay.
         ConversationModalPresenter.present(ownerID: conversation.id) { close in
             PhotoLibrarySendPicker(allowsSeparateMessages: conversation.kind != .agent, onSend: sendPhotoSelection,
-                onError: { model.errorMessage = $0 }, onClose: close).environment(\.kordiChatTheme, chatTheme).tint(chatTheme.accent)
+                onError: { model.errorMessage = $0 }, onClose: close, onPreparing: { isPreparingAttachments = $0 })
+                .environment(\.kordiChatTheme, chatTheme).tint(chatTheme.accent)
         }
     }
 
@@ -3111,21 +3103,27 @@ struct ConversationView: View {
         }
     }
 
+    /// The camera already offers Retake and Use Video, so a recorded video is
+    /// sent without a second review page.
     private func importCameraVideo(_ url: URL) {
         guard !isPreparingAttachments else { return }
         isPreparingAttachments = true
         Task {
-            defer { isPreparingAttachments = false }
+            let attachment: PendingAttachment
             do {
+                defer { isPreparingAttachments = false }
                 guard attachments.count < PendingAttachmentLoader.maximumAttachmentCount else {
                     throw AttachmentTransferError.tooManyFiles(
                         PendingAttachmentLoader.maximumAttachmentCount
                     )
                 }
-                let attachment = try await PendingAttachmentLoader.loadCameraVideo(url)
-                enqueueVideoReviews([attachment])
+                attachment = try await PendingAttachmentLoader.loadCameraVideo(url)
             } catch {
                 model.errorMessage = error.localizedDescription
+                return
+            }
+            if !(await sendPhotoSelection([attachment], grouping: .combined)) {
+                attachment.discardOwnedFile()
             }
         }
     }

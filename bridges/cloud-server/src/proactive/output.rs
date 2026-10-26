@@ -1,6 +1,6 @@
-//! The evaluation's answer. Anything that is not the documented object, or
-//! an `offer` without a problem and a plan, is silence: unlike PiP, bare text
-//! is never treated as something to post.
+//! The evaluation's answer. Anything that is not the documented object, or an
+//! `offer` without a problem and a plan, is silence: unlike the System agent,
+//! bare text is never treated as something to post.
 
 use serde::Deserialize;
 

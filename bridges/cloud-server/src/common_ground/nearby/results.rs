@@ -85,7 +85,7 @@ impl Evaluated {
 /// verdict. Queued work is charged to the viewer's budgets.
 pub(super) async fn evaluate(
     pool: &PgPool,
-    service: &crate::pip::PipConfig,
+    service: &crate::system_agent::SystemAgentConfig,
     rate_limiter: &CloudRateLimiter,
     viewer: &Viewer,
     people: &[Present],

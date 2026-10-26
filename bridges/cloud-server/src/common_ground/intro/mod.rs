@@ -89,7 +89,7 @@ async fn introduced(
 /// Queues the intro run for a group that was just created.
 pub(super) async fn queue(
     pool: &PgPool,
-    service: &crate::pip::PipConfig,
+    service: &crate::system_agent::SystemAgentConfig,
     intro: NewIntro<'_>,
 ) -> sqlx_core::Result<()> {
     let accounts: Vec<(String, Role)> = std::iter::once((intro.creator.to_string(), Role::Creator))
@@ -146,7 +146,7 @@ fn clean_reply(text: &str) -> String {
 }
 
 /// Everyone an intro names, as it names them: the creator, the people added
-/// and the people invited, without System or PiP.
+/// and the people invited, without the System account or the System agent.
 async fn intro_members(
     pool: &PgPool,
     group_space_id: &str,
@@ -208,7 +208,7 @@ pub(super) async fn complete(
         eprintln!("[common-ground] Rejected run {run_id}: the intro is empty");
         return fail(pool, run_id, Some(runner_id), "invalid_output").await;
     }
-    // A group started before System posted notices has only PiP.
+    // A group started before System posted notices has only the System agent.
     if let Err(error) = system_account::join(pool, conversation_id).await {
         eprintln!("[common-ground] Could not add System for run {run_id}: {error}");
         return fail(pool, run_id, Some(runner_id), "post_failed").await;
@@ -264,16 +264,16 @@ pub(super) async fn fail(
 /// stored matches with `account`'s room card as viewer, in join order.
 async fn related_people(
     pool: &PgPool,
-    pip_account: &str,
+    system_agent_account: &str,
     room_id: Uuid,
     conversation_id: Uuid,
     account: &str,
 ) -> sqlx_core::Result<(Option<Topics>, Vec<(Member, Relation)>)> {
-    let mut skip: Vec<String> = crate::pip::service_account_id()
+    let mut skip: Vec<String> = crate::system_agent::service_account_id()
         .into_iter()
         .map(str::to_string)
         .collect();
-    skip.extend([pip_account.to_string(), account.to_string()]);
+    skip.extend([system_agent_account.to_string(), account.to_string()]);
     let others: Vec<(String,)> = query_as(
         "SELECT account_id FROM cloud_chat_conversation_members
          WHERE conversation_id = $1 AND membership_state = 'active'

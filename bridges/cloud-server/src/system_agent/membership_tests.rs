@@ -1,6 +1,6 @@
-//! PiP joining a group against a real database: members' devices hear about
-//! it, PiP starts reading at the newest message, and the member lists clients
-//! send never remove PiP.
+//! The System agent joining a group against a real database: members' devices
+//! hear about it, the System agent starts reading at the newest message, and
+//! the member lists clients send never remove the System agent.
 
 use serde_json::json;
 use sqlx_core::query::query;
@@ -12,7 +12,7 @@ use crate::plan_cards::tests::{seed_account, seed_conversation};
 
 #[tokio::test]
 #[ignore = "requires a task-owned PostgreSQL database in KORDI_DIGEST_TEST_DATABASE_URL"]
-async fn pip_joins_at_the_newest_message_and_client_member_lists_keep_it() {
+async fn system_agent_joins_at_the_newest_message_and_client_member_lists_keep_it() {
     let url =
         std::env::var("KORDI_DIGEST_TEST_DATABASE_URL").expect("isolated test database required");
     let pool = sqlx_postgres::PgPoolOptions::new()
@@ -23,11 +23,11 @@ async fn pip_joins_at_the_newest_message_and_client_member_lists_keep_it() {
     crate::pg::pool::apply_migrations(&pool)
         .await
         .expect("migrate test database");
-    let pip = super::test_service_account();
+    let system_agent = super::test_service_account();
     query("INSERT INTO cloud_accounts(account_id,created_at,updated_at,avatar_source,avatar_style,avatar_seed,avatar_renderer_version,avatar_version,avatar_updated_at,avatar_url) VALUES($1,$2,$2,'generated','lorelei',$1,'test',1,$2,$3) ON CONFLICT (account_id) DO NOTHING")
-        .bind(pip)
+        .bind(system_agent)
         .bind(chrono::Utc::now().to_rfc3339())
-        .bind(crate::avatars::generated_avatar_marker("lorelei", pip, 1))
+        .bind(crate::avatars::generated_avatar_marker("lorelei", system_agent, 1))
         .execute(&pool)
         .await
         .unwrap();
@@ -57,11 +57,13 @@ async fn pip_joins_at_the_newest_message_and_client_member_lists_keep_it() {
             .expect("send message");
     }
 
-    assert!(super::membership::join_conversation(&pool, pip, chat)
-        .await
-        .unwrap());
     assert!(
-        !super::membership::join_conversation(&pool, pip, chat)
+        super::membership::join_conversation(&pool, system_agent, chat)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !super::membership::join_conversation(&pool, system_agent, chat)
             .await
             .unwrap(),
         "joining again changes nothing"
@@ -77,10 +79,13 @@ async fn pip_joins_at_the_newest_message_and_client_member_lists_keep_it() {
     .await
     .unwrap();
     assert!(latest >= 2);
-    assert_eq!(seen, latest, "history from before PiP joined is not new");
+    assert_eq!(
+        seen, latest,
+        "history from before the System agent joined is not new"
+    );
     assert_eq!(
         context_start, latest,
-        "history from before PiP joined is never provider context"
+        "history from before the System agent joined is never provider context"
     );
     let notified: Vec<(String,)> = query_as(
         "SELECT account_id FROM cloud_chat_user_sync_events
@@ -98,7 +103,8 @@ async fn pip_joins_at_the_newest_message_and_client_member_lists_keep_it() {
         expected
     );
 
-    // The owner's client sends the group as it shows it: without PiP.
+    // The owner's client sends the group as it shows it: without the System
+    // agent.
     let conversation = crate::chat_sync::store::add_conversation_members(
         &pool,
         &jordan,
@@ -114,5 +120,5 @@ async fn pip_joins_at_the_newest_message_and_client_member_lists_keep_it() {
     assert!(conversation
         .members
         .iter()
-        .any(|member| member.account_id == pip && member.membership_state == "active"));
+        .any(|member| member.account_id == system_agent && member.membership_state == "active"));
 }

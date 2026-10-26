@@ -97,7 +97,8 @@ async fn revising_a_card_keeps_votes_and_answers_that_still_apply() {
         .await
         .unwrap();
 
-    // PiP adds a third option at the front: every option id shifts.
+    // The System agent adds a third option at the front: every option id
+    // shifts.
     let sunday = (chrono::Utc::now() + chrono::Duration::days(5)).to_rfc3339();
     let revised = store::propose(
         &pool,

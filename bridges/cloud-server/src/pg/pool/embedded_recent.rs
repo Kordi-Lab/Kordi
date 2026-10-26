@@ -149,6 +149,7 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "shared plan cards for group-chat coordination",
         sql: include_str!("../../../migrations/0094_plan_cards.sql"),
     },
+    // The recorded description keeps the old name.
     EmbeddedMigration {
         version: 95,
         description: "pip conversation sweep state",
@@ -169,6 +170,7 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "digest failure backoff",
         sql: include_str!("../../../migrations/0098_digest_failure_backoff.sql"),
     },
+    // The recorded description keeps the old name.
     EmbeddedMigration {
         version: 99,
         description: "durable plan-card projection and immutable PiP context",
