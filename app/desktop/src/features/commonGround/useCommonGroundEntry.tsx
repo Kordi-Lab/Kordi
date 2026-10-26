@@ -13,6 +13,7 @@ import { connectorsClientForAccount } from '@/features/connectors/connectorsClie
 import { CONNECTORS_SETTINGS_LINK_EVENT, type ConnectorsSettingsTarget } from '@/features/connectors/connectorsSettingsLink';
 import { openDesktopExternalUrl } from '@/lib/desktop';
 import type { Contact, ContactClass, ContactRequest } from '@/kordi-app/types';
+import { CommonGroundAvailabilityPanel } from './CommonGroundAvailabilityPanel';
 import { CommonGroundContactsRow } from './CommonGroundContactsRow';
 import { CommonGroundLazyPanel } from './CommonGroundLazyPanel';
 import { desktopAgentFiles, desktopDeviceAccess } from './deviceAccess';
@@ -50,8 +51,8 @@ function openConnectorsSettings(providerId: ConnectorsSettingsTarget['providerId
 }
 
 /**
- * The pinned Common ground row and its page in Contacts, shown for a signed-in account when the
- * server reports `commonGroundVersion`.
+ * The pinned Grounding row stays visible for signed-in accounts. Service availability
+ * controls the detail pane, so a failed capability check cannot hide the destination.
  */
 export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, options: CommonGroundEntryOptions): CommonGroundEntry {
   // A pairing link opens Grounding, which redeems the code.
@@ -62,9 +63,8 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
     return () => window.removeEventListener(COMMON_GROUND_PAIR_LINK_EVENT, onPairLink);
   }, []);
   const authClient = useMemo(() => defaultCloudAuthClient(), []);
-  const { capabilities, status: capabilitiesStatus } = useCloudAuthCapabilitiesState(options.account ? authClient : null, cloudApiBaseUrl());
+  const { capabilities, status: capabilitiesStatus, refetch } = useCloudAuthCapabilitiesState(options.account ? authClient : null, cloudApiBaseUrl());
   const version = commonGroundVersionFromCapabilities(capabilities);
-  const available = Boolean(options.account) && version !== null;
   const profiles = (version ?? 0) >= 2;
   const sources = (version ?? 0) >= 3;
   const nearby = profiles && commonGroundNearbyVersionFromCapabilities(capabilities) !== null;
@@ -117,7 +117,7 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
     openUrl: (url) => { void openDesktopExternalUrl(url); },
   }), [accountId, displayName, avatarUrl, handle, profiles, sources, nearby, memoryAvailable, memoryRouting, memoryCards, connectors]);
 
-  if (!available) return handlers;
+  if (!options.account) return handlers;
   const { onSelectRequest } = handlers;
   return {
     onSelectContact: (groupId, contactId) => {
@@ -133,6 +133,10 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
       handlers.onCloseOverlay();
     },
     leadingListItems: <CommonGroundContactsRow selected={selected} onSelect={() => setSelected(true)} />,
-    leadingDetail: selected ? <CommonGroundLazyPanel host={host} /> : null,
+    leadingDetail: selected ? (
+      version !== null
+        ? <CommonGroundLazyPanel key={accountId} host={host} />
+        : <CommonGroundAvailabilityPanel status={capabilitiesStatus} onRetry={refetch} />
+    ) : null,
   };
 }

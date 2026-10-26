@@ -18,7 +18,7 @@ This document is the UX and UI design for iOS and macOS. It is tracked in [#1847
 | Primary | The Contacts toolbar icon beside **Add contact**: a hug glyph (two people) in the same style as the other toolbar icons, with a red dot when a room invitation is waiting. No pinned row in the list. | A **Common ground** row with the same hug glyph, pinned at the top of the Contacts list. Selecting it opens Common ground in the Contacts detail area, the way selecting a contact opens their profile. No separate sidebar item. |
 | Card and sources | **Settings › Common ground**: your card, sources, sharing on or off, delete card. | The card column on the page; the same settings in **Settings › Common ground**. |
 | Deep links | `kordi://common-ground/room/<code>` and pairing QR codes open the app at the right step. | The same links open the page. |
-| Availability | Shown only when the server reports the `commonGroundVersion` capability. | Same. |
+| Availability | Shown only when the server reports the `commonGroundVersion` capability. | The entry stays visible for signed-in accounts, including with no contacts or search results. Its detail pane shows loading, a retryable connection error, or service unavailability until the server reports `commonGroundVersion`. Retry fetches fresh capabilities. |
 
 ## Flows
 
