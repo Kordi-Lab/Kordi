@@ -104,7 +104,7 @@ enum CloudMessageCodec {
             attachments: message.attachments,
             messageKind: canonicalMessageKind(message),
             hasVoiceMessage: message.voiceMessage != nil
-        )
+        ).nonEmpty ?? message.planCard?.conversationPreview ?? ""
     }
 
     static func previewText(_ message: CloudGroupMessagePayload) -> String {

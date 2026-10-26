@@ -79,6 +79,41 @@ func modelSubsessionIdentityAndStateRemainIndependentOfDisplayNames(status: Stri
 }
 
 final class CloudMessageCodecTests: XCTestCase {
+    func testCardOnlyMessagePreviewIncludesPlanStateAndTitle() throws {
+        let cases: [(String, String?, String)] = [
+            ("confirmed", "event", "Plan confirmed: Coffee with Maya"),
+            ("canceled", "event", "Plan canceled: Coffee with Maya"),
+            ("awaiting_confirmation", "event", "Plan awaiting confirmation: Coffee with Maya"),
+            ("polling", "vote", "Vote: Coffee with Maya"),
+            ("future_state", nil, "Plan: Coffee with Maya")
+        ]
+        for (state, view, expected) in cases {
+            var payload: [String: Any] = ["eventId": "plan-preview", "revision": 1,
+                                          "state": state, "title": "  Coffee with Maya  "]
+            if let view { payload["view"] = view }
+            let card = try JSONDecoder().decode(PlanCard.self, from: JSONSerialization.data(withJSONObject: payload))
+            let message = CloudMessageDTO(messageId: "card", fromAccountId: "acct_peer", toAccountId: "acct_me",
+                body: " ", createdAt: "2026-10-26T10:00:00Z", deliveredAt: nil, readAt: nil,
+                direction: "incoming", sessionId: "session", messageKind: KordiSystemIdentity.messageKind, planCard: card)
+            XCTAssertEqual(CloudMessageCodec.previewText(message), expected)
+        }
+    }
+
+    func testPlanPreviewKeepsTextAndAttachmentPrecedenceAndHandlesUntitledCards() throws {
+        let card = try JSONDecoder().decode(PlanCard.self, from: Data(#"{"eventId":"plan-preview","revision":1,"state":"confirmed","title":"  "}"#.utf8))
+        func message(text: String, attachments: [CloudMessageAttachment] = []) -> CloudMessageDTO {
+            CloudMessageDTO(messageId: "card", fromAccountId: "acct_peer", toAccountId: "acct_me",
+                body: text, createdAt: "2026-10-26T10:00:00Z", deliveredAt: nil, readAt: nil,
+                direction: "incoming", sessionId: "session", attachments: attachments, planCard: card)
+        }
+        XCTAssertEqual(CloudMessageCodec.previewText(message(text: "Meet at the north entrance")), "Meet at the north entrance")
+        XCTAssertEqual(CloudMessageCodec.previewText(message(text: "", attachments: [
+            CloudMessageAttachment(attachmentId: "photo", name: "map.png", kind: "image", mimeType: "image/png",
+                sizeBytes: 100, downloadUrl: nil, previewUrl: nil)
+        ])), "Photo")
+        XCTAssertEqual(CloudMessageCodec.previewText(message(text: "")), "Plan confirmed")
+    }
+
     func testDirectEnvelopeDecodesMacRuntimeRouteFieldNames() throws {
         let json = #"{"schemaVersion":1,"kind":"message","text":"Switched model to openai/gpt-5.6-luna","agentRuntimeRoute":{"model":"openai/gpt-5.6-luna","authProvider":"openai-codex","authChoice":"local-active-oauth","thinking":"max"}}"#
         let encoded = Data(json.utf8).base64EncodedString()

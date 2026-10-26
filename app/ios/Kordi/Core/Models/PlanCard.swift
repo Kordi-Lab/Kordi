@@ -119,6 +119,19 @@ struct PlanCard: Codable, Hashable {
 
     enum CardView { case vote, event }
 
+    /// A card-only message still needs a readable summary in the chat list.
+    var conversationPreview: String {
+        let label: String
+        switch state {
+        case .confirmed: label = "Plan confirmed"
+        case .canceled: label = "Plan canceled"
+        case .awaitingConfirmation: label = "Plan awaiting confirmation"
+        case .polling, .unknown: label = cardView == .vote ? "Vote" : "Plan"
+        }
+        guard let title = title.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty else { return label }
+        return "\(label): \(title)"
+    }
+
     var cardView: CardView {
         switch view {
         case "vote": return .vote
