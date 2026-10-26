@@ -11,9 +11,9 @@
 .cg-wallet-main.is-center { display: flex; align-items: center; justify-content: center; }
 .cg-nb-status { display: flex; align-items: baseline; gap: 6px; margin: 0 2px; color: var(--utility-muted-text); font-size: 12px; }
 .cg-nb-resume { font-weight: 600; }
-.cg-nb-sechead { display: flex; align-items: center; gap: 8px; margin: 18px 2px 8px; }
+.cg-nb-sechead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 18px 2px 8px; }
 .cg-nb-sechead .cg-msec { flex: 1; margin: 0; }
-.cg-nb-pills { display: flex; gap: 6px; }
+.cg-nb-pills { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 100%; }
 
 /* Header: the shared card as a menu, and More. */
 .cg-share-chip.is-menu { padding-right: 9px; border: 0; color: inherit; font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; }
@@ -110,3 +110,7 @@
   .cg-nb-menu { animation: none; }
   .cg-nb-chip { transition: none; }
 }
+
+/* Keep location permission guidance readable in narrow wallet columns. */
+.cg-nb-status.cg-nb-location { flex-direction: column; align-items: flex-start; gap: 4px; }
+.cg-nb-location p { margin: 0; }

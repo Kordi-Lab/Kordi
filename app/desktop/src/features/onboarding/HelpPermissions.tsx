@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, Bell, CalendarDays, Camera, Check, ChevronDown, ListTodo, Mic, Speech } from 'lucide-react';
+import { ArrowUpRight, Bell, CalendarDays, Camera, Check, ChevronDown, ListTodo, MapPin, Mic, Speech } from 'lucide-react';
 import { invokeDesktop, isNativeDesktopShell } from '@/lib/desktop';
 import { parsePendingToolApprovals, TOOL_APPROVAL_PENDING_COMMAND, TOOL_APPROVAL_REQUEST_EVENT, TOOL_APPROVAL_RESOLVED_EVENT, toolApprovalHeadline, type ToolApprovalPrompt } from '@/features/connectors/toolApprovalModel';
 import { nativeMacPermissions, openPermissionSettings, permissionAction, permissionDefinitions, readHelpPermission, requestHelpPermission, type PermissionDefinition, type PermissionStatus } from './permissionAccess';
 import type { HelpAction } from './helpContent';
 
-const permissionIcons = { notifications: Bell, microphone: Mic, camera: Camera, speech: Speech, calendar: CalendarDays, reminders: ListTodo };
+const permissionIcons = { notifications: Bell, location: MapPin, microphone: Mic, camera: Camera, speech: Speech, calendar: CalendarDays, reminders: ListTodo };
 
 function PermissionRow({ definition }: { definition: PermissionDefinition }) {
   const [status, setStatus] = useState<PermissionStatus | null>(null);

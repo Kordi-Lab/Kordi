@@ -360,8 +360,8 @@ test('nearby labels: distance bands, filters and the location line', () => {
   assert.equal(rangePill(25000), 'Within 25 km');
   assert.equal(scorePill(0), 'Any match');
   assert.equal(scorePill(70), '70%+ match');
-  assert.equal(locationLine({ capturedAt: iso(-3 * 60_000 - 5_000), freshUntil: iso(60_000), fresh: true }, NOW), 'From your iPhone · 3 min ago');
-  assert.equal(locationLine({ capturedAt: iso(-5_000), freshUntil: iso(60_000), fresh: true }, NOW), 'From your iPhone · 1 min ago');
+  assert.equal(locationLine({ capturedAt: iso(-3 * 60_000 - 5_000), freshUntil: iso(60_000), fresh: true }, NOW), 'Location updated · 3 min ago');
+  assert.equal(locationLine({ capturedAt: iso(-5_000), freshUntil: iso(60_000), fresh: true }, NOW), 'Location updated · 1 min ago');
 });
 
 test('nearby labels: the phase and the Home row line', () => {
@@ -375,11 +375,11 @@ test('nearby labels: the phase and the Home row line', () => {
   assert.equal(nearbyPhase(settings({ location: { ...freshLocation(), fresh: false } }), null), 'no-phone');
   assert.equal(nearbyPhase(settings(), 'no_location'), 'no-phone');
   assert.equal(nearbyPhase(settings(), null), 'on');
-  assert.equal(nearbyRowSub('on', settings(), 4), '4 people · from your iPhone');
-  assert.equal(nearbyRowSub('on', settings(), 1), '1 person · from your iPhone');
+  assert.equal(nearbyRowSub('on', settings(), 4), '4 people nearby');
+  assert.equal(nearbyRowSub('on', settings(), 1), '1 person nearby');
   assert.equal(nearbyRowSub('off', settings({ enabled: false }), null), 'Off');
   assert.equal(nearbyRowSub('paused', paused, null, at), 'Paused until 3:00 PM');
-  assert.equal(nearbyRowSub('no-phone', settings(), null), 'No location from your iPhone');
+  assert.equal(nearbyRowSub('no-phone', settings(), null), 'Location needed');
 });
 
 test('nearby labels: pauses read as a time today, else tomorrow', () => {
