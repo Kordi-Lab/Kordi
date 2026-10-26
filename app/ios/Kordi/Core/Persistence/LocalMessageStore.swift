@@ -34,6 +34,7 @@ final class CachedConversationRecord {
     var groupParticipantsJSON: String?
     var messageCount: Int?
     var forkedFromSessionId: String?
+    var personalAgentId: String?
 
     init(accountId: String, conversation: ConversationSummary) {
         id = scopedCacheRecordID(accountId: accountId, entityId: conversation.id)
@@ -60,6 +61,7 @@ final class CachedConversationRecord {
         groupSpaceId = conversation.groupSpaceId
         messageCount = conversation.messageCount
         forkedFromSessionId = conversation.forkedFromSessionId
+        personalAgentId = conversation.personalAgentId
         groupParticipantsJSON = try? String(
             data: JSONEncoder().encode(conversation.groupParticipants),
             encoding: .utf8
@@ -75,7 +77,7 @@ final class CachedConversationRecord {
         let lastAttachment = lastAttachmentJSON
             .flatMap { $0.data(using: .utf8) }
             .flatMap { try? JSONDecoder().decode(ChatAttachment.self, from: $0) }
-        return ConversationSummary(
+        var conversation = ConversationSummary(
             id: conversationId,
             kind: kind,
             peerAccountId: peerAccountId,
@@ -97,6 +99,8 @@ final class CachedConversationRecord {
             unreadMentionCount: unreadMentionCount,
             lastReadSequence: lastReadSequence
         )
+        conversation.personalAgentId = personalAgentId
+        return conversation
     }
 }
 
@@ -131,6 +135,7 @@ final class CachedMessageRecord {
     var backgroundAgentSessionsJSON: String?
     var reactionsJSON: String?
     var mentionsJSON: String?
+    var sourcesJSON: String?
 
     init(accountId: String, message: ChatMessage) {
         id = scopedCacheRecordID(accountId: accountId, entityId: message.id)
@@ -162,6 +167,7 @@ final class CachedMessageRecord {
         backgroundAgentSessionsJSON = Self.encode(message.backgroundAgentSessions)
         reactionsJSON = Self.encode(message.reactions)
         mentionsJSON = Self.encode(message.mentions)
+        sourcesJSON = message.sources.isEmpty ? nil : Self.encode(message.sources)
     }
 
     func update(from message: ChatMessage) {
@@ -191,6 +197,7 @@ final class CachedMessageRecord {
         backgroundAgentSessionsJSON = Self.encode(message.backgroundAgentSessions)
         reactionsJSON = Self.encode(message.reactions)
         mentionsJSON = Self.encode(message.mentions)
+        sourcesJSON = message.sources.isEmpty ? nil : Self.encode(message.sources)
     }
 
     var value: ChatMessage? {
@@ -230,6 +237,7 @@ final class CachedMessageRecord {
                 [BackgroundAgentSession].self,
                 from: backgroundAgentSessionsJSON
             ) ?? [],
+            sources: Self.decode(MessageSourceList.self, from: sourcesJSON)?.values ?? [],
             reactions: Self.decode([MessageReaction].self, from: reactionsJSON) ?? []
         )
     }

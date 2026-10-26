@@ -30,6 +30,8 @@ enum CloudMessageCodec {
         let executionClaimId: String?
         let backgroundSessions: [BackgroundAgentSession.Wire]?
         let messageAction: MessageActionMetadata?
+        /// Connector events a personal-agent message is based on (#2091).
+        let sources: MessageSourceList?
     }
 
     struct AgentCancelEnvelope: Codable, Equatable {
@@ -228,6 +230,10 @@ enum CloudMessageCodec {
         BackgroundAgentSession.validated(
             parsedEnvelopes(body).response?.backgroundSessions ?? []
         )
+    }
+
+    static func agentResponseSources(_ body: String) -> [MessageSource] {
+        parsedEnvelopes(body).response?.sources?.values ?? []
     }
 
     static func agentResponseMessageAction(_ body: String) -> MessageActionMetadata? {

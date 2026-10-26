@@ -128,9 +128,10 @@ enum CompanionPanelCatalog {
             )
         }
 
+        // A personal session stays selectable but is never the default (#2091).
         let existing = availableSections
             .flatMap(\.sessions)
-            .filter { $0.id != source.id }
+            .filter { $0.id != source.id && $0.personalAgentId == nil }
             .sorted {
                 $0.lastActivityAt > $1.lastActivityAt || (
                     $0.lastActivityAt == $1.lastActivityAt

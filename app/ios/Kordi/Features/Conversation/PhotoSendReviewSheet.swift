@@ -41,26 +41,21 @@ private struct PhotoEditorRequest: Identifiable {
 
 struct PhotoLibrarySendPicker: View {
     @Environment(\.kordiChatTheme) private var chatTheme
-    @Environment(\.dismiss) private var dismiss
     let allowsSeparateMessages: Bool
     let onSend: ([PendingAttachment], PhotoSendGrouping) async -> Bool
     let onError: (String) -> Void
+    let onClose: () -> Void
 
     @State private var authorizationStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-    @State private var assets: [PHAsset] = []
+    @State private var library: PhotoLibraryAssets?
     @State private var selectedAssetIDs: [String] = []
     @State private var editedPhotos: [String: PhotoLibraryEdit] = [:]
     @State private var editingRequest: PhotoEditorRequest?
+    @State private var liveEditRequest: PhotoEditorRequest?
     @State private var stillOnlyIDs: Set<String> = []
-    @State private var liveReview: PhotoEditorRequest?
-    @State private var editLiveConfirmation = false
+    @State private var previewIndex: Int?
     @State private var grouping: PhotoSendGrouping = .combined
     @State private var isSending = false
-
-    private let columns = Array(
-        repeating: GridItem(.flexible(), spacing: 2),
-        count: 4
-    )
 
     var body: some View {
         VStack(spacing: 0) {
@@ -72,8 +67,7 @@ struct PhotoLibrarySendPicker: View {
                 case .denied, .restricted:
                     deniedAccessView
                 case .notDetermined:
-                    ProgressView("Loading photos")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    Color(uiColor: .systemBackground)
                 @unknown default:
                     deniedAccessView
                 }
@@ -85,25 +79,37 @@ struct PhotoLibrarySendPicker: View {
                 sendBar
             }
         }
-        .interactiveDismissDisabled(isSending)
+        .animation(.snappy(duration: 0.22), value: showsGroupingOption)
+        .overlay {
+            if let library, let previewIndex {
+                PhotoLibraryPreview(
+                    library: library,
+                    index: Binding(get: { previewIndex }, set: { self.previewIndex = $0 }),
+                    selectedIDs: $selectedAssetIDs,
+                    stillOnlyIDs: $stillOnlyIDs,
+                    editedImages: editedPhotos.mapValues(\.image),
+                    isSending: isSending,
+                    onEdit: beginEditing,
+                    onSend: sendSelection(fallbackID:),
+                    onClose: { self.previewIndex = nil }
+                )
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: previewIndex == nil)
+        .statusBarHidden(previewIndex != nil)
         .fullScreenCover(item: $editingRequest) { request in
-            PhotoLibraryImageEditor(
-                asset: request.asset,
-                edit: $editedPhotos[request.id]
-            )
+            PhotoLibraryImageEditor(asset: request.asset, edit: editBinding(for: request.id))
         }
-        .sheet(item: $liveReview) { request in
-            LivePhotoLibraryReview(asset: request.asset, sendsStillOnly: Binding(
-                get: { stillOnlyIDs.contains(request.id) },
-                set: { if $0 { stillOnlyIDs.insert(request.id) } else { stillOnlyIDs.remove(request.id) } }
-            ))
-        }
-        .confirmationDialog("Editing will send this Live Photo as a still image.", isPresented: $editLiveConfirmation, titleVisibility: .visible) {
+        .confirmationDialog(
+            "Editing will send this Live Photo as a still image.",
+            isPresented: Binding(get: { liveEditRequest != nil }, set: { if !$0 { liveEditRequest = nil } }),
+            titleVisibility: .visible,
+            presenting: liveEditRequest
+        ) { request in
             Button("Edit and send still image") {
-                if let id = selectedAssetIDs.last, let asset = assets.first(where: { $0.localIdentifier == id }) {
-                    stillOnlyIDs.insert(id)
-                    editingRequest = PhotoEditorRequest(asset: asset)
-                }
+                stillOnlyIDs.insert(request.id)
+                editingRequest = request
             }
         }
         .task {
@@ -116,15 +122,13 @@ struct PhotoLibrarySendPicker: View {
             Text("Recents")
                 .font(.headline)
             HStack {
-                Button("Close", systemImage: "xmark") {
-                    dismiss()
-                }
-                .labelStyle(.iconOnly)
-                .font(.title3)
-                .foregroundStyle(.primary)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-                .disabled(isSending)
+                Button("Close", systemImage: "xmark", action: onClose)
+                    .labelStyle(.iconOnly)
+                    .font(.title3)
+                    .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                    .disabled(isSending)
                 Spacer()
             }
         }
@@ -133,72 +137,33 @@ struct PhotoLibrarySendPicker: View {
         .background(.bar)
     }
 
+    @ViewBuilder
     private var photoGrid: some View {
-        Group {
-            if assets.isEmpty {
+        if let library {
+            if library.count == 0 {
                 ContentUnavailableView(
                     "No photos",
                     systemImage: "photo.on.rectangle.angled",
                     description: Text("Photos in your library will appear here.")
                 )
             } else {
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: 2) {
-                        ForEach(assets, id: \.localIdentifier) { asset in
-                            photoCell(asset)
-                        }
-                    }
-                }
+                PhotoLibraryGrid(
+                    library: library,
+                    selectedIDs: selectedAssetIDs,
+                    editedImages: editedPhotos.mapValues(\.image),
+                    stillOnlyIDs: stillOnlyIDs,
+                    accent: chatTheme.accent,
+                    onSelectionChange: { selectedAssetIDs = $0 },
+                    onToggleLive: { id in
+                        guard editedPhotos[id] == nil else { return } // Edits are always sent as stills.
+                        if stillOnlyIDs.remove(id) == nil { stillOnlyIDs.insert(id) }
+                    },
+                    onOpen: { previewIndex = $0 }
+                )
             }
+        } else {
+            Color(uiColor: .systemBackground)
         }
-    }
-
-    private func photoCell(_ asset: PHAsset) -> some View {
-        let selectionIndex = selectedAssetIDs.firstIndex(of: asset.localIdentifier)
-        return Button {
-            selectedAssetIDs = PhotoLibrarySelection.toggling(
-                asset.localIdentifier,
-                in: selectedAssetIDs
-            )
-        } label: {
-            PhotoLibraryThumbnail(
-                asset: asset,
-                editedImage: editedPhotos[asset.localIdentifier]?.image
-            )
-                .overlay(alignment: .bottomLeading) {
-                    if asset.mediaSubtypes.contains(.photoLive) {
-                        Image(systemName: "livephoto").font(.system(size: 16, weight: .medium))
-                            .frame(width: 24, height: 24).foregroundStyle(.white)
-                            .background(.black.opacity(0.45), in: Circle()).padding(4)
-                            .accessibilityLabel("Live Photo")
-                    }
-                }
-                .overlay(alignment: .topTrailing) {
-                    ZStack {
-                        Circle()
-                            .fill(selectionIndex == nil ? .black.opacity(0.24) : chatTheme.accent)
-                        Circle()
-                            .stroke(.white, lineWidth: 2)
-                        if let selectionIndex {
-                            Text("\(selectionIndex + 1)")
-                                .font(.caption.bold())
-                                .foregroundStyle(.white)
-                        }
-                    }
-                    .frame(width: 27, height: 27)
-                    .padding(6)
-                }
-                .overlay {
-                    if selectionIndex != nil {
-                        Rectangle()
-                            .stroke(chatTheme.accent, lineWidth: 3)
-                    }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Photo")
-        .accessibilityValue(selectionIndex.map { "Selected \($0 + 1)" } ?? "Not selected")
     }
 
     private var deniedAccessView: some View {
@@ -214,10 +179,14 @@ struct PhotoLibrarySendPicker: View {
         }
     }
 
+    private var showsGroupingOption: Bool {
+        allowsSeparateMessages && selectedAssetIDs.count > 1
+    }
+
     private var sendBar: some View {
         VStack(spacing: 0) {
             Divider()
-            if allowsSeparateMessages, selectedAssetIDs.count > 1 {
+            if showsGroupingOption {
                 Button {
                     grouping = grouping == .combined ? .separate : .combined
                 } label: {
@@ -236,16 +205,11 @@ struct PhotoLibrarySendPicker: View {
                 .padding(.horizontal, 18)
                 .frame(minHeight: 52)
             }
-
-            if let id = selectedAssetIDs.last, let asset = assets.first(where: { $0.localIdentifier == id }), asset.mediaSubtypes.contains(.photoLive) {
-                Button("Review Live Photo", systemImage: "livephoto") { liveReview = PhotoEditorRequest(asset: asset) }
-                    .frame(minHeight: 44).disabled(isSending || editedPhotos[id] != nil)
-                if stillOnlyIDs.contains(id) { Text("This photo will be sent as a still image.").font(.caption) }
-            }
             HStack(spacing: 12) {
                 Text(selectedAssetIDs.isEmpty ? "Select photos" : "\(selectedAssetIDs.count) selected")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
                 Spacer(minLength: 8)
                 Button("Edit", systemImage: "pencil") {
                     beginEditingSelection()
@@ -261,7 +225,7 @@ struct PhotoLibrarySendPicker: View {
                 .accessibilityHint("Edits the most recently selected photo")
                 Spacer(minLength: 8)
                 Button {
-                    sendSelection()
+                    sendSelection(fallbackID: nil)
                 } label: {
                     Text("Send (\(selectedAssetIDs.count))")
                         .fontWeight(.semibold)
@@ -287,10 +251,29 @@ struct PhotoLibrarySendPicker: View {
     @MainActor
     private func beginEditingSelection() {
         guard let id = PhotoLibrarySelection.editingID(in: selectedAssetIDs),
-              let asset = assets.first(where: { $0.localIdentifier == id }) else { return }
-        if asset.mediaSubtypes.contains(.photoLive), !stillOnlyIDs.contains(id) {
-            editLiveConfirmation = true
-        } else { editingRequest = PhotoEditorRequest(asset: asset) }
+              let asset = PhotoLibraryAssets.assets(for: [id]).first else { return }
+        beginEditing(asset)
+    }
+
+    @MainActor
+    private func beginEditing(_ asset: PHAsset) {
+        let request = PhotoEditorRequest(asset: asset)
+        if asset.mediaSubtypes.contains(.photoLive), !stillOnlyIDs.contains(request.id) {
+            liveEditRequest = request
+        } else {
+            editingRequest = request
+        }
+    }
+
+    /// Saving an edit also selects the photo, as in Photos and Telegram.
+    private func editBinding(for id: String) -> Binding<PhotoLibraryEdit?> {
+        Binding(
+            get: { editedPhotos[id] },
+            set: { edit in
+                editedPhotos[id] = edit
+                if edit != nil, !selectedAssetIDs.contains(id) { selectedAssetIDs.append(id) }
+            }
+        )
     }
 
     @MainActor
@@ -298,36 +281,33 @@ struct PhotoLibrarySendPicker: View {
         if authorizationStatus == .notDetermined {
             authorizationStatus = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         }
-        guard authorizationStatus == .authorized || authorizationStatus == .limited else { return }
+        guard authorizationStatus == .authorized || authorizationStatus == .limited, library == nil else { return }
 
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        let result = PHAsset.fetchAssets(with: .image, options: options)
-        var fetched: [PHAsset] = []
-        fetched.reserveCapacity(result.count)
-        result.enumerateObjects { asset, _, _ in
-            fetched.append(asset)
-        }
-        assets = fetched
+        // The fetch result is lazy; only visible photos are read.
+        let loaded = PhotoLibraryAssets(fetchResult: PHAsset.fetchAssets(with: .image, options: options))
+        library = loaded
         if ProcessInfo.processInfo.arguments.contains("--preview-photo-send"),
            selectedAssetIDs.isEmpty {
-            selectedAssetIDs = fetched.prefix(4).map(\.localIdentifier)
+            selectedAssetIDs = (0..<min(4, loaded.count)).compactMap(loaded.id(at:))
         }
     }
 
+    /// The preview sends the photo on screen when nothing is selected.
     @MainActor
-    private func sendSelection() {
-        guard !selectedAssetIDs.isEmpty, !isSending else { return }
+    private func sendSelection(fallbackID: String?) {
+        let ids = selectedAssetIDs.isEmpty ? [fallbackID].compactMap { $0 } : selectedAssetIDs
+        guard !ids.isEmpty, !isSending else { return }
         isSending = true
-        let selectedAssets = selectedAssetIDs.compactMap { id in
-            assets.first(where: { $0.localIdentifier == id })
-        }
+        let selectedAssets = PhotoLibraryAssets.assets(for: ids)
         let batches = PhotoSelectionPreparationPlan.batches(
             for: selectedAssets,
             grouping: grouping
         )
-        let selectedEdits = editedPhotos.filter { selectedAssetIDs.contains($0.key) }
-        dismiss()
+        let selectedEdits = editedPhotos.filter { ids.contains($0.key) }
+        let stillOnly = stillOnlyIDs
+        onClose()
         Task {
             await Task.yield()
             do {
@@ -335,57 +315,13 @@ struct PhotoLibrarySendPicker: View {
                     let attachments = try await PhotoLibraryAttachmentLoader.load(
                         batch,
                         edits: selectedEdits,
-                        stillOnlyIDs: stillOnlyIDs
+                        stillOnlyIDs: stillOnly
                     )
                     guard await onSend(attachments, grouping) else { return }
                 }
             } catch {
                 onError(error.localizedDescription)
             }
-        }
-    }
-}
-
-private struct PhotoLibraryThumbnail: View {
-    private static let imageManager = PHCachingImageManager()
-
-    let asset: PHAsset
-    let editedImage: UIImage?
-    @State private var image: UIImage?
-    @State private var requestID = PHInvalidImageRequestID
-
-    var body: some View {
-        Rectangle()
-            .fill(Color(uiColor: .secondarySystemFill))
-            .aspectRatio(1, contentMode: .fit)
-            .overlay {
-                if let displayImage = editedImage ?? image {
-                    Image(uiImage: displayImage)
-                        .resizable()
-                        .scaledToFill()
-                }
-            }
-            .clipped()
-            .onAppear(perform: requestImage)
-            .onDisappear {
-                Self.imageManager.cancelImageRequest(requestID)
-            }
-    }
-
-    private func requestImage() {
-        guard image == nil, editedImage == nil else { return }
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic
-        options.resizeMode = .fast
-        options.isNetworkAccessAllowed = true
-        requestID = Self.imageManager.requestImage(
-            for: asset,
-            targetSize: CGSize(width: 320, height: 320),
-            contentMode: .aspectFill,
-            options: options
-        ) { result, _ in
-            guard let result else { return }
-            Task { @MainActor in image = result }
         }
     }
 }
