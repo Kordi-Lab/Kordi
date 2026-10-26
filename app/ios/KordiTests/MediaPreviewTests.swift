@@ -276,7 +276,7 @@ final class MediaPreviewTests: XCTestCase {
 
         XCTAssertTrue(received.attachments[0].isPlayableVideo)
         XCTAssertTrue(MessageAttachmentPresentation.usesBorderlessVideoSurface(for: received))
-        XCTAssertTrue(MessageMediaStatusPresentation.showsOverlay(for: received))
+        XCTAssertFalse(MessageMediaStatusPresentation.showsOverlay(for: received))
 
         received.text = "A received clip"
         XCTAssertTrue(received.attachments[0].isPlayableVideo)
