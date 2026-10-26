@@ -4,8 +4,8 @@ import type { CloudAuthCapabilities, CloudAuthClient } from './authClient';
 
 type CapabilitiesSource = Pick<CloudAuthClient, 'capabilities'>;
 
-// One fetch per key per app load. Callers using the default client share the
-// API base URL as the key, so the sign-in screen and account settings make one
+// One fetch per key per app load, unless explicitly refreshed. Default clients
+// share the API base URL as the key, so sign-in and account settings make one
 // request; other clients are cached per instance. A failed fetch is dropped so
 // the next caller retries.
 const capabilitiesByKey = new Map<string, Promise<CloudAuthCapabilities>>();
@@ -37,7 +37,7 @@ export type CloudAuthCapabilitiesState = {
   status: CloudAuthCapabilitiesStatus;
   /** Null unless `status` is `loaded`. */
   capabilities: CloudAuthCapabilities | null;
-  /** Fetches again; a failed fetch is never cached, so this reaches the server. */
+  /** Fetches again, including after a successful response was cached. */
   refetch: () => void;
 };
 
@@ -62,7 +62,12 @@ export function useCloudAuthCapabilitiesState(client: CapabilitiesSource | null,
     );
     return () => { cancelled = true; };
   }, [attempt, client, key]);
-  const refetch = useCallback(() => setAttempt((value) => value + 1), []);
+  const refetch = useCallback(() => {
+    if (!client) return;
+    if (key === undefined) capabilitiesByClient.delete(client);
+    else capabilitiesByKey.delete(key);
+    setAttempt((value) => value + 1);
+  }, [client, key]);
   const current = client && settled && settled.client === client && settled.key === key && settled.attempt === attempt
     ? settled
     : null;
