@@ -172,9 +172,11 @@ export class CommonGroundStore {
     if (this.top().name === 'home') void this.loadRooms();
   }
 
-  home() {
+  home({ reload = true }: { reload?: boolean } = {}) {
     this.set({ stack: [{ name: 'home' }], notice: null });
-    void this.loadHome();
+    // Selecting a wallet card already loads it; avoid a second response racing that selection.
+    if (reload) void this.loadHome();
+    else void this.loadRooms();
   }
 
   async loadScreen(screen: CgScreen = this.top()): Promise<void> {
@@ -331,14 +333,9 @@ export class CommonGroundStore {
     if (saved) this.set({ owner: saved });
   }
 
-  async setSharing(sharing: boolean, profileId = this.state.profileId): Promise<boolean> {
-    const saved = await this.run('sharing', () => this.client.setSharing(sharing, profileId));
-    if (!saved) return false;
-    this.set({
-      ...(this.state.profileId === profileId ? { owner: saved } : {}),
-      profiles: this.state.profiles.map((profile) => profile.profileId === profileId ? { ...profile, sharing: saved.sharing } : profile),
-    });
-    return true;
+  async setSharing(sharing: boolean): Promise<void> {
+    const saved = await this.run('sharing', () => this.client.setSharing(sharing, this.state.profileId));
+    if (saved) this.set({ owner: saved });
   }
 
   async deleteCard(): Promise<boolean> {

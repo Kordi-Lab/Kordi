@@ -5,11 +5,12 @@ import { peopleCount, roomTitle, topicCount } from './format';
 import type { CgHost } from './host';
 import { PairCodePanel } from './PairCodePanel';
 import { UnbuiltCardRow } from './UnbuiltCardRow';
-import { CgAvatar, CgNotice, CgScore, CgTag } from './parts';
+import { CgAvatar, CgNotice, CgProgress, CgScore, CgTag } from './parts';
 import { CardGlyph, CardSwatch } from './ProfileCard';
 import { personTitle } from './profiles';
 import { currentProfile, hasAnyCard, type CgState, type CommonGroundStore } from './store';
 import { CG_TOPIC_SECTIONS, type CgRoomSummary } from './types';
+import { ownerIsCurrent } from './wallet';
 
 /** The first run: one suggested card, or the current profile, with Build. */
 export function EmptyWallet({ state, store }: { state: CgState; store: CommonGroundStore }) {
@@ -49,6 +50,7 @@ function YourCard({ state, store }: { state: CgState; store: CommonGroundStore }
   const profile = currentProfile(state);
   const design: CgCardDesign = profile ? profileDesign(profile) : 'work';
   const name = profile?.name ?? 'Your card';
+  if (!ownerIsCurrent(state)) return <CgProgress line="Opening your card" />;
   if (!card) return <UnbuiltCardRow state={state} store={store} />;
   const topics = CG_TOPIC_SECTIONS.flatMap(([key]) => card[key]);
   return (

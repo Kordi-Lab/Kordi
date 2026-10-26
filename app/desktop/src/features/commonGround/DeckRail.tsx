@@ -11,11 +11,10 @@ export type CgDeckCard = { id: string; face: CgCardFace };
  * The deck rail: the profiles as overlapping tiles, the selected one at full height with a ring,
  * then "New card". Clicking a tile selects it; Open on the selected tile shows its page.
  */
-export function DeckRail({ cards, selected, canAdd, disabled = false, onSelect, onOpen, onNew }: {
+export function DeckRail({ cards, selected, canAdd, onSelect, onOpen, onNew }: {
   cards: CgDeckCard[];
   selected: string | null;
   canAdd: boolean;
-  disabled?: boolean;
   onSelect: (id: string) => void;
   onOpen?: (id: string) => void;
   onNew: () => void;
@@ -38,12 +37,11 @@ export function DeckRail({ cards, selected, canAdd, disabled = false, onSelect, 
               data-design={card.face.design}
               style={style}
               aria-pressed={on}
-              aria-disabled={disabled || undefined}
               aria-label={`${card.face.name} card`}
-              onClick={() => { if (!disabled) onSelect(card.id); }}
-              onDoubleClick={() => { if (!disabled && card.face.status === 'built') onOpen?.(card.id); }}
+              onClick={() => onSelect(card.id)}
+              onDoubleClick={() => { if (card.face.status === 'built') onOpen?.(card.id); }}
               onKeyDown={(event) => {
-                if (disabled || event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+                if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
                 event.preventDefault();
                 onSelect(card.id);
               }}
@@ -54,7 +52,6 @@ export function DeckRail({ cards, selected, canAdd, disabled = false, onSelect, 
                   <button
                     type="button"
                     className="cg-tile-open"
-                    disabled={disabled}
                     aria-label={`Open ${card.face.name}`}
                     onClick={(event) => { event.stopPropagation(); onOpen(card.id); }}
                   >
@@ -66,7 +63,7 @@ export function DeckRail({ cards, selected, canAdd, disabled = false, onSelect, 
           );
         })}
         {canAdd ? (
-          <button type="button" disabled={disabled} data-help-target="grounding-new-card" className="cg-deck-new" style={{ transform: `translate3d(0, ${layout.plusY}px, 0)` }} onClick={onNew}>
+          <button type="button" data-help-target="grounding-new-card" className="cg-deck-new" style={{ transform: `translate3d(0, ${layout.plusY}px, 0)` }} onClick={onNew}>
             <Plus className="h-[15px] w-[15px]" aria-hidden="true" />
             New card
           </button>

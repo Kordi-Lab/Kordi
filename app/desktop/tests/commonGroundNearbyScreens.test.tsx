@@ -170,79 +170,54 @@ test('nearby screen: Within stores the range and searches again; Add posts a req
   });
 });
 
-test('nearby screen: rail and header switch the shared card and matches without leaving Nearby', async () => {
-  const { store, calls } = storeWith({
-    'GET nearby': { status: 200, body: settings() },
-    'GET nearby/needs': { status: 200, body: { needs: [] } },
-    'GET nearby/people': [{ status: 200, body: people }, { status: 200, body: { ...people, people: [], matching: 0 } }],
-    'PUT nearby': [{ status: 200, body: settings({ profileId: workshops.profileId }) }, { status: 200, body: settings() }],
-    'GET card?profileId=cgp_ws': { status: 200, body: owner() },
-    'GET card?profileId=cgp_work': { status: 200, body: owner() },
-  });
-  // Opening Nearby must reflect its saved card even if another Grounding card was selected.
-  store.set({ profileId: health.profileId });
-  store.open({ name: 'nearby' });
-  await mount(createElement(Screen, { store }), async (root) => {
-    const selected = () => root.querySelector('.cg-deck [aria-pressed="true"]')?.getAttribute('aria-label');
-    assert.equal(selected(), 'Work card');
-    await click(root.querySelector('[aria-label="Workshops card"]'));
-    assert.equal(selected(), 'Workshops card');
-    assert.match(root.querySelector('[data-cg-nb-menu="card"]')?.textContent ?? '', /Sharing: Workshops/);
-    assert.deepEqual(calls.find((call) => call.method === 'PUT')?.body, { profileId: workshops.profileId });
-    assert.equal(store.top().name, 'nearby');
-    assert.doesNotMatch(root.textContent ?? '', /Maya Chen/);
-    await click(root.querySelector('[data-cg-nb-menu="card"]'));
-    await click(buttonNamed(root, 'Work'));
-    assert.equal(selected(), 'Work card');
-    assert.equal(store.getSnapshot().profileId, work.profileId);
-    assert.equal(store.top().name, 'nearby');
-  });
-});
-
-test('nearby screen: a private card requires consent in place; cancel leaves sharing untouched', async () => {
+test('nearby screen: selecting a rail card opens its home without changing Nearby sharing', async () => {
+  const { CommonGroundPage } = await import('../src/features/commonGround/CommonGroundPage');
   const { store, calls } = storeWith({
     'GET nearby': { status: 200, body: settings() },
     'GET nearby/needs': { status: 200, body: { needs: [] } },
     'GET nearby/people': { status: 200, body: people },
-    'PUT settings': { status: 200, body: owner() },
-    'PUT nearby': { status: 200, body: settings({ profileId: workshops.profileId }) },
-    'GET card?profileId=cgp_ws': { status: 200, body: owner() },
+    'GET rooms': { status: 200, body: { rooms: [] } },
   });
-  store.set({ profiles: [work, { ...workshops, sharing: false }, health] });
+  store.set({ owner: owner({ profile: work }) });
+  let finishCard!: (value: ReturnType<typeof owner>) => void;
+  store.client.card = (id) => {
+    assert.equal(id, workshops.profileId);
+    return new Promise((resolve) => { finishCard = resolve; });
+  };
   store.open({ name: 'nearby' });
-  await mount(createElement(Screen, { store }), async (root) => {
+  await mount(createElement(CommonGroundPage, { store, host }), async (root) => {
     await click(root.querySelector('[aria-label="Workshops card"]'));
-    let dialog = document.querySelector('[role="dialog"]')!;
-    assert.match(dialog.textContent ?? '', /Share Workshops nearby/);
-    assert.equal(calls.filter((call) => call.method === 'PUT').length, 0);
-    await click(buttonNamed(dialog, 'Cancel'));
-    assert.equal(document.querySelector('[role="dialog"]'), null);
-    assert.equal(calls.filter((call) => call.method === 'PUT').length, 0);
-    await click(root.querySelector('[aria-label="Workshops card"]'));
-    dialog = document.querySelector('[role="dialog"]')!;
-    await click(buttonNamed(dialog, 'Share and switch'));
-    assert.deepEqual(calls.filter((call) => call.method === 'PUT').map((call) => call.body), [
-      { sharing: true, profileId: workshops.profileId }, { profileId: workshops.profileId },
-    ]);
-    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.deepEqual(store.getSnapshot().stack, [{ name: 'home' }]);
+    assert.equal(store.getSnapshot().profileId, workshops.profileId);
+    assert.equal(root.querySelector('h1')?.textContent, 'Grounding');
     assert.equal(root.querySelector('.cg-deck [aria-pressed="true"]')?.getAttribute('aria-label'), 'Workshops card');
-    assert.equal(store.getSnapshot().profiles.find((item) => item.profileId === workshops.profileId)?.sharing, true);
-    assert.equal(store.top().name, 'nearby');
+    assert.match(root.textContent ?? '', /Opening your card/);
+    assert.doesNotMatch(root.textContent ?? '', /Agent memory/, 'the old card topics never appear under the new card');
+    await act(async () => finishCard(owner({ profile: workshops, card: { ...owner().card!, workingOn: ['Weekend workshops'] } })));
+    await settle();
+    assert.match(root.querySelector('.cg-yours')?.textContent ?? '', /WorkshopsWeekend workshops/);
+    assert.equal(root.querySelector('.cg-nb'), null);
+    assert.equal(calls.filter((call) => call.method === 'PUT').length, 0, 'navigation does not change sharing');
   });
 });
 
-test('nearby screen: selecting a card while off does not enable Nearby', async () => {
+test('nearby screen: keyboard selection opens an unbuilt card home with its Build action', async () => {
+  const { CommonGroundPage } = await import('../src/features/commonGround/CommonGroundPage');
   const { store, calls } = storeWith({
-    'GET nearby': { status: 200, body: settings({ enabled: false, participating: false }) },
+    'GET nearby': { status: 200, body: settings() },
     'GET nearby/needs': { status: 200, body: { needs: [] } },
-    'GET card?profileId=cgp_ws': { status: 200, body: owner() },
+    'GET nearby/people': { status: 200, body: people },
+    'GET rooms': { status: 200, body: { rooms: [] } },
+    'GET card?profile=cgp_health': { status: 200, body: owner({ profile: health, card: null }) },
   });
   store.open({ name: 'nearby' });
-  await mount(createElement(Screen, { store }), async (root) => {
-    await click(root.querySelector('[aria-label="Workshops card"]'));
-    assert.equal(store.getSnapshot().profileId, workshops.profileId);
+  await mount(createElement(CommonGroundPage, { store, host }), async (root) => {
+    await act(async () => root.querySelector('[aria-label="Health card"]')!.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+    await settle();
+    assert.equal(store.top().name, 'home');
+    assert.equal(store.getSnapshot().profileId, health.profileId);
+    assert.match(root.textContent ?? '', /Build/);
+    assert.equal(root.querySelector('.cg-nb'), null);
     assert.equal(calls.filter((call) => call.method === 'PUT').length, 0);
-    await click(buttonNamed(root, 'Turn on'));
-    assert.equal(document.querySelector('[role="radio"][aria-checked="true"]')?.getAttribute('aria-label'), 'Workshops');
   });
 });
