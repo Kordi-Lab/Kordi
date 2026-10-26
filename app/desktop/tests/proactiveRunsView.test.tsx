@@ -24,7 +24,7 @@ async function flush() {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 }
 
-test('the Runs tab lists proactive activity under the existing runs', async () => {
+test('the Runs tab lists Cooperative activity under the existing runs', async () => {
   const loads: string[] = [];
   await withJsdomRoot(async (mount) => {
     const host = await mount(<RunsView agent={agent} now={NOW} loadProactiveActivity={async (id) => { loads.push(id); return entries; }} />);
@@ -37,7 +37,7 @@ test('the Runs tab lists proactive activity under the existing runs', async () =
       'Launch crewOffered · Done2d ago',
     ]);
     assert.match(host.textContent ?? '', /2026-10-24T08:00:00Z/);
-    assert.ok((host.textContent ?? '').indexOf('Runs') < (host.textContent ?? '').indexOf('Proactive'));
+    assert.ok((host.textContent ?? '').indexOf('Runs') < (host.textContent ?? '').indexOf('Cooperative'));
   });
   assert.deepEqual(loads, ['alpha']);
 });
@@ -46,7 +46,7 @@ test('an enabled agent with no activity shows one line', async () => {
   await withJsdomRoot(async (mount) => {
     const host = await mount(<RunsView agent={agent} now={NOW} loadProactiveActivity={async () => []} />);
     await flush();
-    assert.equal(host.querySelector('.app-agent-studio-proactive-activity .app-agent-studio-runtime-note')?.textContent, 'No proactive activity yet.');
+    assert.equal(host.querySelector('.app-agent-studio-proactive-activity .app-agent-studio-runtime-note')?.textContent, 'No activity yet.');
   });
 });
 

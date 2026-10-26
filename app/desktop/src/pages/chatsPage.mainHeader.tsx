@@ -13,6 +13,8 @@ import type {
   CloudSupportTicketResult,
 } from '@/features/cloud/supportClient';
 import { useCloudCallContext } from '@/features/cloud/useCloudCallContext';
+import { PersonalAgentHeaderTitle } from '@/features/personalAgent/PersonalAgentHeaderTitle';
+import { usePersonalAgentForConversation } from '@/features/personalAgent/personalAgentStore';
 
 type MainHeaderRename = {
   enabled: boolean;
@@ -73,7 +75,8 @@ export function MainChatHeader({
     if (!calls) return;
     void calls.start(conversation, kind);
   };
-  const title = (
+  const personalAgent = usePersonalAgentForConversation(conversation);
+  const title = personalAgent ? <PersonalAgentHeaderTitle entry={personalAgent} /> : (
     <div className="app-chat-header-title app-page-header-title-row app-chat-pane-title-row flex min-w-0 items-center text-white">
       {rename.enabled ? (
         rename.editing ? (
@@ -192,7 +195,8 @@ export function MainChatHeader({
       <CompanionToolbar {...companion} />
     </div>
   );
-  const hasMetadata = Boolean(metadata.subtitle || metadata.forkSourceSessionId);
+  // A personal session's header shows its own status line.
+  const hasMetadata = !personalAgent && Boolean(metadata.subtitle || metadata.forkSourceSessionId);
   const metadataRow = hasMetadata ? (
     <div
       className="app-chat-pane-metadata-row flex min-w-0 items-center gap-1 text-[11px] leading-5 text-slate-400"

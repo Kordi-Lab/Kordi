@@ -1,6 +1,7 @@
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import { agentRuntimePresence, type CloudPresenceAccount } from '@/features/cloud/presence';
 import { useContactPresenceLabel } from '@/features/cloud/useCloudPresence';
+import { usePersonalAgentForConversation } from '@/features/personalAgent/personalAgentStore';
 import {
   chatHeaderSubtitle,
   selfAgentSessionIdForTitleRename,
@@ -48,7 +49,10 @@ export function useChatHeaderModel({
   const contactPresenceSubtitle = useContactPresenceLabel(
     activeConv.type === 'person' ? contactPresence : agentRuntimePresence(contactPresence),
   );
+  // A personal session keeps its agent's name.
+  const personalAgent = usePersonalAgentForConversation(activeConv);
   const canRename = isNativeShell
+    && !personalAgent
     && activeConv.type === 'owned-agent'
     && (Boolean(selfAgentSessionId) || isDraft)
     && !isStarting;
@@ -86,7 +90,7 @@ export function useChatHeaderModel({
   };
 
   return {
-    subtitle: chatHeaderSubtitle(activeConv, contactPresenceSubtitle),
+    subtitle: personalAgent ? 'Online' : chatHeaderSubtitle(activeConv, contactPresenceSubtitle),
     isStarting,
     rename: {
       enabled: canRename,

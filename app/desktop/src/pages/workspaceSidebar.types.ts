@@ -138,6 +138,8 @@ export type WorkspaceSidebarChats = {
   ) => void | Promise<void>;
   isCollaborationSyncing: boolean;
   isCollaborationSyncUnavailable?: boolean;
+  /** Opens an agent's Blueprint in the Agents page, from a personal session's menu. */
+  onOpenAgentSettings?: (localAgentId: string) => void;
 };
 
 export type WorkspaceSidebarProjects = {

@@ -1,22 +1,30 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { Bot, Check, FileCode2, LockKeyhole, Pencil, Puzzle, Radar, Settings2, Wrench, X } from 'lucide-react';
+import { Bot, Check, FileCode2, LockKeyhole, Pencil, Puzzle, RadioTower, Settings2, Users, Wrench, X } from 'lucide-react';
 import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
 import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
 import type { DesktopAgentBuilderStatus } from '@/lib/desktop';
 import { CloudSignupAvatarPicker } from '../cloud/CloudSignupAvatarPicker';
 import type { Agent } from '../types';
-import { cloudAgentAccessDescription, cloudAgentAccessLabel, cloudAgentProactiveDescription, cloudAgentProactiveLabel, type AgentStudioConfigDraft } from './model';
+import { cloudAgentAccessDescription, cloudAgentAccessLabel, cloudAgentProactiveDescription, cloudAgentProactiveLabel, personalAgentProactiveDescription, type AgentStudioConfigDraft } from './model';
 import { BlueprintMenuRow } from './BlueprintMenuRow';
 import type { ShapeAgentDraft } from './shapeAgentDraft';
 import { factoryAvatarSeed } from './useFactoryCreationAvatar';
 
 const noopAvatarAction = () => undefined;
 
-/** The Proactive row's value, how a change reaches the draft, and (for the default agent) where the Runs tab loads activity. */
-export type AgentProactiveControl = { enabled: boolean; onChange?: (enabled: boolean) => void; activity?: { agentId: string; enabled: boolean } };
+/** One On/Off agent setting row: its value and how a change reaches the draft. */
+export type AgentSettingControl = { enabled: boolean; onChange?: (enabled: boolean) => void };
+
+/**
+ * The Cooperative row (group watching, still `proactive` inside), where the
+ * Runs tab loads its activity for the default agent, and the Proactive row
+ * (reaching out in Personal agent) when the agent has it.
+ */
+export type AgentProactiveControl = AgentSettingControl & { activity?: { agentId: string; enabled: boolean }; personal?: AgentSettingControl };
 
 const ACCESS_OPTIONS = (['private', 'participant_conversations'] as const).map((scope) => ({ value: scope, label: cloudAgentAccessLabel(scope) }));
 const PROACTIVE_OPTIONS = (['off', 'on'] as const).map((value) => ({ value, label: cloudAgentProactiveLabel(value === 'on'), description: cloudAgentProactiveDescription(value === 'on') }));
+const PERSONAL_PROACTIVE_OPTIONS = (['off', 'on'] as const).map((value) => ({ value, label: cloudAgentProactiveLabel(value === 'on'), description: personalAgentProactiveDescription(value === 'on') }));
 
 function BlueprintRow({ icon: Icon, label, value, detail, onEdit }: {
   icon: typeof Bot;
@@ -176,7 +184,10 @@ export function AgentStudioBlueprintView({
         <BlueprintRow icon={Wrench} label="Tools" value={`${tools.length} selected`} detail={tools.join(', ') || 'No tools selected'} onEdit={onOpenCapabilities} />
         <BlueprintMenuRow icon={LockKeyhole} label="Access" menuLabel="Agent access" value={accessScope} detail={cloudAgentAccessDescription(accessScope)} options={ACCESS_OPTIONS} onSelect={creating || agent ? onAccessScopeChange : undefined} />
         {proactive ? (
-          <BlueprintMenuRow icon={Radar} label="Proactive" menuLabel="Agent proactive" value={proactive.enabled ? 'on' : 'off'} detail={cloudAgentProactiveDescription(proactive.enabled)} options={PROACTIVE_OPTIONS} onSelect={proactive.onChange && (creating || agent) ? (value) => proactive.onChange?.(value === 'on') : undefined} />
+          <BlueprintMenuRow icon={Users} label="Cooperative" menuLabel="Agent cooperative" value={proactive.enabled ? 'on' : 'off'} detail={cloudAgentProactiveDescription(proactive.enabled)} options={PROACTIVE_OPTIONS} onSelect={proactive.onChange && (creating || agent) ? (value) => proactive.onChange?.(value === 'on') : undefined} />
+        ) : null}
+        {proactive?.personal ? (
+          <BlueprintMenuRow icon={RadioTower} label="Proactive" menuLabel="Agent proactive" value={proactive.personal.enabled ? 'on' : 'off'} detail={personalAgentProactiveDescription(proactive.personal.enabled)} options={PERSONAL_PROACTIVE_OPTIONS} onSelect={proactive.personal.onChange && (creating || agent) ? (value) => proactive.personal?.onChange?.(value === 'on') : undefined} />
         ) : null}
         {totalChanges > 0 ? (
           <div className="app-agent-studio-draft-summary"><div>

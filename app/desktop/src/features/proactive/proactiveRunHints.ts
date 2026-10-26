@@ -4,7 +4,10 @@
 
 export const PROACTIVE_EVAL_REQUESTED_EVENT = 'proactive.eval_requested';
 export const PROACTIVE_RUN_REQUESTED_EVENT = 'proactive.run_requested';
+/** A personal agent's evaluation of new connector events; it runs like a proactive evaluation. */
+export const PERSONAL_AGENT_EVAL_REQUESTED_EVENT = 'personal_agent.eval_requested';
 const EVAL_PREFIX = 'proactive_eval_';
+const PERSONAL_AGENT_EVAL_PREFIX = 'personal_agent_eval_';
 const APPROVED_PREFIX = 'proactive_run_';
 const MAX_PENDING = 8;
 const MAX_REMEMBERED = 256;
@@ -17,14 +20,15 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-/** Reads one `proactive.eval_requested` or `proactive.run_requested` hint. */
+/** Reads one `proactive.eval_requested`, `personal_agent.eval_requested` or `proactive.run_requested` hint. */
 export function parseProactiveRunRequest(eventType: string | undefined, payload: unknown): ProactiveRunRequest | null {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
   const record = payload as Record<string, unknown>;
   const runId = text(record.runId);
   const sessionId = text(record.sessionId);
   if (!sessionId) return null;
-  if (eventType === PROACTIVE_EVAL_REQUESTED_EVENT && runId.startsWith(EVAL_PREFIX)) {
+  if ((eventType === PROACTIVE_EVAL_REQUESTED_EVENT && runId.startsWith(EVAL_PREFIX))
+    || (eventType === PERSONAL_AGENT_EVAL_REQUESTED_EVENT && runId.startsWith(PERSONAL_AGENT_EVAL_PREFIX))) {
     return { kind: 'evaluation', runId, sessionId };
   }
   if (eventType === PROACTIVE_RUN_REQUESTED_EVENT && runId.startsWith(APPROVED_PREFIX)) {

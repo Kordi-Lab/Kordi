@@ -7,6 +7,7 @@ import {
   type DesktopAgentBuilderSummary,
 } from '@/lib/desktopAgentBuilderCatalog';
 import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
+import { useAgentBlueprintRequest } from '@/features/personalAgent/agentBlueprintRequest';
 import type { Agent } from '../types';
 import { agentBuilderSeedForAgent, newArtifactSeed, seedForLibraryArtifact } from './factoryAgentUtils';
 import {
@@ -135,6 +136,9 @@ export function useFactoryBuildRouting({
       setRoutingToBuild(false);
     }
   };
+
+  // A personal session's "Agent settings" opens that agent's Blueprint here.
+  useAgentBlueprintRequest(agents, (agent) => { void editAgentInBuild(agent); });
 
   const editLibraryArtifactInBuild = async (artifact: FactoryLibraryArtifact) => {
     setRoutingToBuild(true);

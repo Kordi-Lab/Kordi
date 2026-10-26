@@ -31,7 +31,7 @@ const rawAgent = {
   },
 };
 
-test('proactive defaults to off when the server omits it or sends junk', () => {
+test('Cooperative defaults to off when the server omits it or sends junk', () => {
   assert.deepEqual(normalizeCloudAgentDefinition(rawAgent)?.proactive, { enabled: false });
   for (const junk of [null, 'on', 1, [], { enabled: 'true' }, { enabled: 1 }]) {
     assert.deepEqual(normalizeCloudAgentDefinition({ ...rawAgent, proactive: junk })?.proactive, { enabled: false });
@@ -58,22 +58,22 @@ test('local agents carry no proactive draft', () => {
   assert.equal(buildAgentStudioDraft(local).proactive, undefined);
 });
 
-test('the change list shows Proactive updated only when the draft differs', () => {
+test('the change list shows Cooperative updated only when the draft differs', () => {
   const agent = cloudAgentDefinitionToAgent(normalizeCloudAgentDefinition(rawAgent)!);
   const persisted = buildPersistedAgentConfig(agent);
   assert.deepEqual(agentStudioConfigChanges(buildAgentStudioDraft(agent), persisted), []);
   const changes = agentStudioConfigChanges({ ...buildAgentStudioDraft(agent), proactive: { enabled: true } }, persisted);
-  assert.deepEqual(changes, [{ key: 'proactive', label: 'Proactive updated', detail: 'On' }]);
+  assert.deepEqual(changes, [{ key: 'proactive', label: 'Cooperative updated', detail: 'On' }]);
 });
 
-test('Proactive labels and descriptions follow the Blueprint copy', () => {
+test('Cooperative labels and descriptions follow the Blueprint copy', () => {
   assert.equal(cloudAgentProactiveLabel(false), 'Off');
   assert.equal(cloudAgentProactiveLabel(true), 'On');
-  assert.equal(cloudAgentProactiveDescription(false), 'Does nothing on its own.');
+  assert.equal(cloudAgentProactiveDescription(false), 'Stays out of your groups.');
   assert.equal(cloudAgentProactiveDescription(true), 'Watches the groups you are in and asks you before it helps.');
 });
 
-test('publishing sends proactive with the update and the create input', async () => {
+test('publishing sends Cooperative as cooperative with the update and the create input', async () => {
   const bodies: unknown[] = [];
   const client = new CloudAgentsClient({
     baseUrl: 'https://cloud.example',
@@ -83,7 +83,8 @@ test('publishing sends proactive with the update and the create input', async ()
     },
   });
   const updated = await client.updateCloudAgent('token', 'cloud_agent_abc', { proactive: { enabled: true } });
-  assert.deepEqual((bodies[0] as { proactive?: unknown }).proactive, { enabled: true });
+  assert.deepEqual((bodies[0] as { cooperative?: unknown }).cooperative, { enabled: true });
+  assert.equal('proactive' in (bodies[0] as object), false);
   assert.deepEqual(updated.proactive, { enabled: true });
 
   const draft = { name: 'A', role: 'B', description: '', systemPrompt: 'C', sourceSummary: '', boundaries: [], skills: [] };
@@ -91,5 +92,12 @@ test('publishing sends proactive with the update and the create input', async ()
   assert.equal('proactive' in factoryAgentCreateInput({ draft, accessScope: 'private' }), false);
 
   const source = readFileSync(new URL('../src/kordi-app/agents/AgentsPage.tsx', import.meta.url), 'utf8');
-  assert.match(source, /activeDraftChanges\.some\(\(change\) => change\.key === 'proactive'\) && activeAgentConfig\.proactive \? \{ proactive: activeAgentConfig\.proactive \}/);
+  assert.match(source, /\.\.\.cloudAgentSettingsUpdate\(activeDraftChanges, activeAgentConfig\)/);
+  assert.match(source, /!AGENT_SETTING_CHANGE_KEYS\.has\(change\.key\)/);
+});
+
+test('the cooperative field wins over the legacy proactive field', () => {
+  assert.deepEqual(normalizeCloudAgentDefinition({ ...rawAgent, cooperative: { enabled: true }, proactive: { enabled: false } })?.proactive, { enabled: true });
+  assert.deepEqual(normalizeCloudAgentDefinition({ ...rawAgent, cooperative: { enabled: false }, proactive: { enabled: true } })?.proactive, { enabled: false });
+  assert.deepEqual(normalizeCloudAgentDefinition({ ...rawAgent, proactive: { enabled: true } })?.proactive, { enabled: true });
 });

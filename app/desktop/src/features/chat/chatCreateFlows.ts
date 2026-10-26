@@ -420,7 +420,7 @@ export function existingBlankSessionIdForAgentStart(agent: Agent, conversations:
   const agentKeys = agentMatchKeys(agent);
   const blankConversation = conversations
     .filter((conversation) => {
-      if (conversation.type !== 'owned-agent') return false;
+      if (conversation.type !== 'owned-agent' || metadataRecord(conversation.metadata).personalAgent) return false; // A personal session is never reused.
       if (conversationHasUserContent(conversation)) return false;
       return conversationAgentMatchKeys(conversation).some((key) => agentKeys.has(normalizedMatchKey(key)));
     })

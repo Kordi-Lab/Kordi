@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useAcceptedCloudGroupNavigation } from '@/app/useAcceptedCloudGroupNavigation';
 import { chatNavigationIndex } from '@/features/chat/chatNavigation';
 import { useCommonGroundPairLinks } from '@/features/commonGround/useCommonGroundPairLinks';
+import { usePersonalAgentSync } from '@/features/personalAgent/usePersonalAgentSync';
 
 export function useKordiAppModel({
   cloudSessionOverride,
@@ -45,6 +46,14 @@ export function useKordiAppModel({
   });
   // A `kordi://common-ground/pair/<code>` link opens Contacts, where Grounding redeems it.
   useCommonGroundPairLinks(() => foundation.navigation.setActiveNav('contacts'));
+  // The owner's personal agents: the sidebar section, the session header, and one local session each.
+  usePersonalAgentSync({
+    accountId: foundation.environment.cloudSession.account?.accountId ?? null,
+    agents: workspace.directory.displayedAgents,
+    canonicalState: foundation.canonical.canonicalSessionState,
+    setCanonicalState: foundation.canonical.setCanonicalSessionState,
+    canCreateSessions: foundation.environment.isNativeShell && foundation.canonical.canonicalInitialRefreshSettled,
+  });
   const actions = useKordiAppActions({ foundation, workspace });
   const cloudCalls = useCloudCalls({
     account: foundation.environment.cloudSession.account,

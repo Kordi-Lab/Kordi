@@ -11,6 +11,8 @@ export function projectChatGroups(
     pinnedSessionIds?: ReadonlySet<string>;
     expandedProjectIds?: ReadonlySet<string>;
     previewLimit?: number;
+    /** The owner's personal agent rows, listed first; their sessions stay out of every other section. */
+    personal?: { rows: readonly ChatSidebarRow[]; sessionIds: ReadonlySet<string> };
   } = {},
 ) {
   const projectBySession = new Map(projects.flatMap((project) =>
@@ -19,7 +21,7 @@ export function projectChatGroups(
   const pinned: ChatSidebarRow[] = [];
   const recents: ChatSidebarRow[] = [];
   for (const row of rows) {
-    if (row.kind !== 'session') continue;
+    if (row.kind !== 'session' || options.personal?.sessionIds.has(row.sessionId)) continue;
     const project = projectBySession.get(row.sessionId);
     if (options.pinnedSessionIds?.has(row.sessionId)) pinned.push(row);
     else if (!project) recents.push(row);
@@ -44,6 +46,10 @@ export function projectChatGroups(
       ...row, key: `${section}:${row.key}`, ...(flat ? { depth: 0 } : {}),
     });
   };
+  if (options.personal?.rows.length) {
+    appendSection('personal');
+    groupedRows.push(...options.personal.rows);
+  }
   if (pinned.length) {
     appendSection('pinned');
     appendSessions(pinned, 'pinned', true);
