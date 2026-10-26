@@ -8,10 +8,10 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
+    Extension, Json,
     extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    Extension, Json,
 };
 use chrono::{DateTime, Utc};
 use rand::Rng;
@@ -22,9 +22,9 @@ use sqlx_core::{query::query, query_as::query_as};
 
 use super::profiles::{self, Profile};
 use super::{
-    card, db_error, err, limited, people, PAIR_CODE_LIMIT, PAIR_IP_LIMIT, PAIR_REDEEM_LIMIT,
+    PAIR_CODE_LIMIT, PAIR_IP_LIMIT, PAIR_REDEEM_LIMIT, card, db_error, err, limited, people,
 };
-use crate::auth::rate_limit::{rate_limit_client_key, CloudRateLimiter, RateLimitDecision};
+use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, rate_limit_client_key};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
 /// Crockford base32 without I, L, O and U, so codes read aloud cleanly.
@@ -152,6 +152,62 @@ pub(super) async fn create(
             })),
         )
             .into_response(),
+        Err(error) => db_error(error),
+    }
+}
+
+/// Checks only a code owned by the authenticated account. The code stays in
+/// the request body, and polling never redeems it or refreshes its expiry.
+#[derive(Debug, Deserialize)]
+pub(super) struct StatusRequest {
+    code: String,
+}
+
+pub(super) async fn status(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Json(body): Json<StatusRequest>,
+) -> Response {
+    if normalize(&body.code).len() != CODE_CHARS {
+        return code_not_found();
+    }
+    let row: Result<Option<(String, Option<String>, bool)>, _> = query_as(
+        "SELECT profile_id, redeemed_by, expires_at > now()
+         FROM cloud_common_ground_pairing_codes
+         WHERE code_hash = $1 AND account_id = $2",
+    )
+    .bind(hash(&body.code))
+    .bind(&session.account_id)
+    .fetch_optional(state.db_pool())
+    .await;
+    let (profile_id, redeemed_by, valid) = match row {
+        Ok(Some(row)) => row,
+        Ok(None) => return code_not_found(),
+        Err(error) => return db_error(error),
+    };
+    let Some(other) = redeemed_by else {
+        return (
+            StatusCode::OK,
+            Json(json!({
+                "status": if valid { "waiting" } else { "expired" }
+            })),
+        )
+            .into_response();
+    };
+    match people::shared_view(
+        state.db_pool(),
+        &session.account_id,
+        &other,
+        Some(&profile_id),
+    )
+    .await
+    {
+        Ok(Some(person)) => (
+            StatusCode::OK,
+            Json(json!({"status": "paired", "person": person})),
+        )
+            .into_response(),
+        Ok(None) => people::not_found(),
         Err(error) => db_error(error),
     }
 }

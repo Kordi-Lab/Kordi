@@ -464,3 +464,9 @@ func commonGroundParseDate(_ raw: String?) -> Date? {
     if let date = fractional.date(from: raw) { return date }
     return ISO8601DateFormatter().date(from: raw)
 }
+
+/// Completion of this account's exact displayed code, including repeat pairings.
+struct CommonGroundPairStatus: Decodable {
+    let status: String
+    let person: CommonGroundPersonCard?
+}

@@ -241,6 +241,40 @@ final class CommonGroundPairingTests: XCTestCase {
         XCTAssertTrue(harness.redeemed.isEmpty)
     }
 
+    func testCodeOwnerOpensMatchAfterRemoteScanWithoutRadio() async {
+        let model = stubbedModel()
+        model.currentProfileID = "p_work"
+        let freshCode = Self.codeJSON.replacingOccurrences(of: "2026-10-21T10:02:00.123456Z",
+            with: ISO8601DateFormatter().string(from: Date().addingTimeInterval(120)))
+        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/pairings/code", [(201, freshCode)])
+        let completed = "{\"status\":\"paired\",\"person\":" + Self.redeemJSON + "}"
+        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/pairings/status", [
+            (200, #"{"status":"waiting"}"#), (200, completed),
+        ])
+        let controller = CommonGroundTapController(pollInterval: .milliseconds(5))
+        var opened: [CommonGroundPersonCard] = []
+        controller.start(model: model, onMatch: { opened.append($0) }, onProblem: { _ in XCTFail("unexpected prerequisite") })
+        await settle { !opened.isEmpty }
+        XCTAssertEqual(opened.map(\.person.accountId), ["acct_b"])
+        XCTAssertEqual(model.viewerProfiles["acct_b"], "p_work")
+        XCTAssertEqual(model.people["acct_b"]?.card.canHelp, ["Rust"])
+        let checks = CommonGroundURLProtocol.requests.filter { $0.request.url?.path.hasSuffix("pairings/status") == true }
+        XCTAssertEqual(checks.count, 2)
+        controller.stop()
+    }
+
+    func testWaitingOrExpiredCodeDoesNotOpenAnOldPairing() async {
+        let model = stubbedModel()
+        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/pairings/status", [
+            (200, #"{"status":"waiting"}"#), (200, #"{"status":"expired"}"#),
+        ])
+        let waiting = await model.completedPairCode("AAAA-BBBB")
+        let expired = await model.completedPairCode("AAAA-BBBB")
+        XCTAssertNil(waiting)
+        XCTAssertNil(expired)
+        XCTAssertTrue(model.people.isEmpty)
+    }
+
     // MARK: Model
 
     private func stubbedModel() -> CommonGroundModel {
