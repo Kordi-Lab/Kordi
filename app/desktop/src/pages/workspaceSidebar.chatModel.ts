@@ -1,9 +1,10 @@
 import { useChatProjects } from '@/features/projects/chatProjects';
 import { projectScopedSidebarSessions } from '@/features/projects/projectChatGroups';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { buildForkLineage } from '@/features/chat/forkLineage';
 import { filterParticipantSpaces } from '@/features/chat/participantSpaces';
+import { subscribeParticipantSpaceExpansion } from '@/features/chat/participantSpaceNavigation';
 import { spaceMatchesChannel } from '@/features/chat/participantSpaceFilters';
 import { effectiveSessionUnread, sessionsForGlobalAttention, totalVisibleUnread } from '@/features/chat/unreadCounts';
 import type { ChatChannel } from '@/kordi-app/types';
@@ -159,6 +160,10 @@ export function useWorkspaceChatSidebarModel(
       expanded ? spaceId : current === spaceId ? null : current
     ));
   }, []);
+
+  useEffect(() => subscribeParticipantSpaceExpansion((spaceId) => {
+    setParticipantSpaceExpanded(spaceId, true);
+  }), [setParticipantSpaceExpanded]);
 
   const allSidebarSessions = useMemo(() => {
     const seen = new Set<string>();
