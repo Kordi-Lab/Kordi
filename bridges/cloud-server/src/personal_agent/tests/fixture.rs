@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
+use tokio::sync::{Mutex, MutexGuard};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -19,6 +20,11 @@ use crate::events::EventBus;
 use crate::personal_agent::sweep::{select, Candidate};
 use crate::personal_agent::PersonalAgentConfig;
 use crate::server::ServerState;
+
+// The public sweep visits every eligible agent in the database. Keep each
+// fixture alive under this lock so it cannot queue another test's agent
+// between that test's setup and its candidate/cap assertions.
+static FIXTURE_LOCK: Mutex<()> = Mutex::const_new(());
 
 pub(super) async fn pool() -> Option<PgPool> {
     let skip_requested = std::env::var("KORDI_CONNECTOR_DB_TESTS").as_deref() == Ok("skip");
@@ -73,6 +79,7 @@ pub(super) async fn signed_in_account(pool: &PgPool, name: &str) -> (String, Str
 }
 
 pub(super) struct Fixture {
+    _guard: MutexGuard<'static, ()>,
     pub pool: PgPool,
     pub app: Router,
     pub owner: String,
@@ -96,6 +103,7 @@ pub(super) fn quick() -> PersonalAgentConfig {
 /// Mina owns Scout and a Gmail connector granted to Scout; Riya is another
 /// account. Scout's Proactive setting starts off.
 pub(super) async fn fixture() -> Option<Fixture> {
+    let guard = FIXTURE_LOCK.lock().await;
     let pool = pool().await?;
     let (owner, owner_device, owner_token) = signed_in_account(&pool, "Mina").await;
     let (_, _, other_token) = signed_in_account(&pool, "Riya").await;
@@ -120,6 +128,7 @@ pub(super) async fn fixture() -> Option<Fixture> {
     grant(&pool, &connector_id, &agent_id).await;
     let app = crate::server::router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
     Some(Fixture {
+        _guard: guard,
         pool,
         app,
         owner,
@@ -280,7 +289,6 @@ impl Fixture {
         .execute(&self.pool)
         .await
         .unwrap();
-        // A parallel test's sweep may hold the row for a moment.
         for _ in 0..5 {
             let found = select(&self.pool, config, 10_000)
                 .await
@@ -315,7 +323,6 @@ impl Fixture {
             .mail("Sam <sam@example.com>", "Dinner tonight?", 120)
             .await;
         let candidate = self.candidate(&quick()).await.expect("a candidate");
-        // A parallel test's full sweep may queue it first; either run will do.
         crate::personal_agent::sweep::evaluate(&self.pool, &candidate)
             .await
             .unwrap();
