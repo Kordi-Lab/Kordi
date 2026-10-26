@@ -108,13 +108,39 @@ struct Reply {
 /// Characters of evidence text kept as a reference snippet.
 const SNIPPET_CHARS: usize = 220;
 
+/// Why a reply did not become a card.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum ReplyError {
+    /// Not a readable card object.
+    Malformed,
+    /// A readable card with no current topic: nothing in the sources fits
+    /// the profile, so trying again with the same sources cannot help.
+    NoTopics,
+}
+
+impl ReplyError {
+    /// The build error code clients show.
+    pub(super) fn code(&self) -> &'static str {
+        match self {
+            Self::Malformed => "invalid_output",
+            Self::NoTopics => "no_topics",
+        }
+    }
+}
+
 /// Parses the run's reply into topics and the evidence they cite. Evidence
 /// no topic cites is dropped, so the server keeps only what the card shows
-/// its owner. Returns `None` when the reply is not a card.
-pub(super) fn parse_reply(text: &str, gathered: &[Gathered]) -> Option<(Topics, Vec<Evidence>)> {
-    let start = text.find('{')?;
-    let end = text.rfind('}')?;
-    let reply: Reply = serde_json::from_str(text.get(start..=end)?).ok()?;
+/// its owner.
+pub(super) fn parse_reply(
+    text: &str,
+    gathered: &[Gathered],
+) -> Result<(Topics, Vec<Evidence>), ReplyError> {
+    let start = text.find('{').ok_or(ReplyError::Malformed)?;
+    let end = text.rfind('}').ok_or(ReplyError::Malformed)?;
+    let reply: Reply = text
+        .get(start..=end)
+        .and_then(|json| serde_json::from_str(json).ok())
+        .ok_or(ReplyError::Malformed)?;
     let mut seen = HashSet::new();
     let mut topics = Topics::default();
     let mut cited_indexes = Vec::new();
@@ -148,7 +174,7 @@ pub(super) fn parse_reply(text: &str, gathered: &[Gathered]) -> Option<(Topics, 
     topics.earlier = take(reply.earlier, &mut topics);
     topics.earlier.truncate(4);
     // A reply with no current topic is not a card.
-    topics.current().next()?;
+    topics.current().next().ok_or(ReplyError::NoTopics)?;
     let keep: HashSet<String> = topics
         .current()
         .chain(topics.earlier.iter())
@@ -179,5 +205,5 @@ pub(super) fn parse_reply(text: &str, gathered: &[Gathered]) -> Option<(Topics, 
             }
         })
         .collect();
-    Some((topics, evidence))
+    Ok((topics, evidence))
 }
