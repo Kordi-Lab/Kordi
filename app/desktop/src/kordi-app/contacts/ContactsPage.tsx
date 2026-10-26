@@ -1,10 +1,12 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useSessionPanelSlot } from '@/app/sessionPanelSlot';
 
 import { cn } from '@/lib/utils';
+import type { ParticipantSpaceViewModel } from '../types';
 import { ContactDetailDialog, ContactDetailEmpty, ContactDetailPane } from './ContactDetailPane';
+import { ContactsGroupChannelsDialog } from './ContactsGroupChannelsDialog';
 import { ContactsListColumn } from './ContactsListColumn';
 import type { ContactsPageProps } from './contactsPageTypes';
 import {
@@ -32,6 +34,8 @@ export function ContactsPage(props: ContactsPageProps) {
     sharedConversationFor,
     leadingDetail,
   } = props;
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const selectedGroup = props.groupSpaces?.find((space) => space.id === selectedGroupId);
   const rootRef = useRef<HTMLDivElement>(null);
   const slot = useSessionPanelSlot();
   // With the list in the sidebar the detail always has the page to itself.
@@ -60,7 +64,9 @@ export function ContactsPage(props: ContactsPageProps) {
     requestActions,
   } : null;
 
-  const listProps = { ...props, requests, requestActions, fullWidth: isNarrow };
+  const listProps = { ...props, requests, requestActions, fullWidth: isNarrow,
+    onOpenGroup: props.onOpenGroup ? (space: ParticipantSpaceViewModel) => setSelectedGroupId(space.id) : undefined,
+  };
 
   return (
     <div ref={rootRef} className={cn('app-contacts-page relative flex h-full min-h-0 min-w-0 flex-1', isNarrow && 'is-narrow')}>
@@ -74,6 +80,14 @@ export function ContactsPage(props: ContactsPageProps) {
       ) : null}
       {!isNarrow && !hasLeadingDetail && (detailProps ? <ContactDetailPane {...detailProps} /> : <ContactDetailEmpty />)}
       {isNarrow && detailProps ? <ContactDetailDialog {...detailProps} /> : null}
+      {selectedGroup ? (
+        <ContactsGroupChannelsDialog space={selectedGroup} onDismiss={() => setSelectedGroupId(null)}
+          onSelectChannel={(sessionId) => {
+            setSelectedGroupId(null);
+            onCloseOverlay();
+            props.onOpenGroup?.(selectedGroup, sessionId);
+          }} />
+      ) : null}
     </div>
   );
 }

@@ -392,3 +392,18 @@
 .app-contacts-danger-action:hover {
   background: var(--app-transient-danger-hover-bg);
 }
+
+.app-contacts-channel-row {
+  border: 0;
+  background: transparent;
+  color: var(--utility-foreground);
+}
+
+.app-contacts-channel-row:hover {
+  background: var(--app-quiet-control-hover-bg);
+}
+
+.app-contacts-channel-row:focus-visible {
+  outline: 2px solid var(--app-quiet-control-focus-ring);
+  outline-offset: -2px;
+}

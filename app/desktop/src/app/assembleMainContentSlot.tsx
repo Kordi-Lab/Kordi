@@ -92,9 +92,8 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         },
         onOpenAgentSettings: () => args.setActiveNav('agents'),
         groupSpaces: args.participantSpaces,
-        onOpenGroup: (space) => {
-          const sessionId = space.sessions[0]?.id;
-          if (!sessionId) return;
+        onOpenGroup: (space, sessionId) => {
+          if (!space.sessions.some((session) => session.id === sessionId)) return;
           args.setActiveNav('chats');
           requestParticipantSpaceExpansion(space.id);
           void args.handleSelectChatSession(sessionId);
