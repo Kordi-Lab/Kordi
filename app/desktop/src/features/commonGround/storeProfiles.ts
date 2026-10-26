@@ -5,7 +5,7 @@
 import { isRouteMissing, type CommonGroundClient } from './client';
 import { pickProfile, type CgProfileMemory } from './profiles';
 import type { CgScreen, CgState } from './store';
-import type { CgCardLook, CgOwnerView, CgProfile, CgProfileInput, CgProfilePatch, CgSourcePicks } from './types';
+import type { CgCardLook, CgProfile, CgProfileInput, CgProfilePatch, CgSourcePicks } from './types';
 
 /** The parts of the store these operations use. */
 export type CgProfileStoreHost = {
@@ -59,24 +59,16 @@ export async function setLook(host: CgProfileStoreHost, profileId: string, look:
 
 export const LOOK_NOT_SAVED = 'Could not save the card look. Try again.';
 
-const cardCaches = new WeakMap<CgProfileStoreHost, { cards: Map<string, CgOwnerView>; revision: number }>();
+const selectionRevisions = new WeakMap<CgProfileStoreHost, number>();
 
-/** Reuse this card's last view immediately, then refresh without replacing the wallet. */
+/** Keep the selected card home visible while its details refresh. */
 export async function selectProfile(host: CgProfileStoreHost, profileId: string): Promise<void> {
-  const current = host.getSnapshot();
-  let cache = cardCaches.get(host);
-  if (!cache) { cache = { cards: new Map(), revision: 0 }; cardCaches.set(host, cache); }
-  if (current.owner?.profile?.profileId === current.profileId && current.profileId) cache.cards.set(current.profileId, current.owner);
-  for (const id of cache.cards.keys()) if (!current.profiles.some((profile) => profile.profileId === id)) cache.cards.delete(id);
-  const cached = cache.cards.get(profileId);
-  const revision = ++cache.revision;
+  const revision = (selectionRevisions.get(host) ?? 0) + 1;
+  selectionRevisions.set(host, revision);
   host.memory.write(profileId);
-  host.set({ profileId, notice: null, ...(cached ? { owner: cached } : {}) });
+  host.set({ profileId, notice: null });
   const owner = await host.run('profile', () => host.client.card(profileId));
-  if (owner && cache.revision === revision && host.getSnapshot().profileId === profileId) {
-    cache.cards.set(profileId, owner);
-    host.set({ owner });
-  }
+  if (owner && selectionRevisions.get(host) === revision && host.getSnapshot().profileId === profileId) host.set({ owner });
 }
 
 /** Creates a profile, makes it current and opens Build for it. */
