@@ -331,6 +331,7 @@
 		D04921479041D102A8EFB537 /* SharedEmojiAnimationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 030EF9AB2B49807064976F35 /* SharedEmojiAnimationView.swift */; };
 		D054ED524D6E174EFA0FD7B8 /* CommonGroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C92DB0175FB38A09C313B82 /* CommonGroundView.swift */; };
 		D0D50762EB040DB1DAB59C52 /* ExpressiveMediaPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2C10B9D09B7992549A6CE35 /* ExpressiveMediaPicker.swift */; };
+		D1666AE13D39512AF35A9D55 /* AppModel+PersonalAgents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75E1D3C2011737116168C8D4 /* AppModel+PersonalAgents.swift */; };
 		D1C4E82858C0768DDB71F53C /* ChatRowSwipeGestureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C0C3CC4E57DFE30A0CA7CCC /* ChatRowSwipeGestureTests.swift */; };
 		D25A4CCFEA8C0D8E288B44BA /* MessageAuthorIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AC62340EAC0499F399211E9 /* MessageAuthorIdentityTests.swift */; };
 		D2FC34F12B335A9D4B2998D9 /* PreviewData+Trajectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = C75854832F415234D5CAD6B9 /* PreviewData+Trajectory.swift */; };
@@ -358,6 +359,7 @@
 		E04CC05C99A7E684F3F26112 /* ContactProfileSharedItemsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D532A8DAAC5AE9484BF6B4E /* ContactProfileSharedItemsTests.swift */; };
 		E081B6CC1FCAF0B7E12CFDF6 /* AgentSessionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AD0EB50947B85C39FEB9B7C /* AgentSessionRow.swift */; };
 		E0F0008CCF400F15797C48A7 /* DigestCalendarProposal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 470C042F5532317F61414EB9 /* DigestCalendarProposal.swift */; };
+		E11662787A3627651B930E5E /* PersonalAgentProactiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 005F26DAD9021F2E678B0285 /* PersonalAgentProactiveTests.swift */; };
 		E12C1453D5A6124D38ADCCDB /* MessageSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = F305FE926E2E9CD51093F80E /* MessageSource.swift */; };
 		E14FDE308576D28A58E4D00B /* SystemNoticeIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FD2D1F807A447AC713E259F /* SystemNoticeIdentityTests.swift */; };
 		E1DA88F3DADA025B847BEA95 /* AppModel+Projects.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D12C6499747CB927D098133 /* AppModel+Projects.swift */; };
@@ -451,6 +453,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		005F26DAD9021F2E678B0285 /* PersonalAgentProactiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalAgentProactiveTests.swift; sourceTree = "<group>"; };
 		00B91CB9823A024699588B01 /* PreviewProviderLoginSimulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewProviderLoginSimulator.swift; sourceTree = "<group>"; };
 		030EF9AB2B49807064976F35 /* SharedEmojiAnimationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedEmojiAnimationView.swift; sourceTree = "<group>"; };
 		032F0E9CF2067EBA48D5195A /* BlobEmojiComposerText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlobEmojiComposerText.swift; sourceTree = "<group>"; };
@@ -632,6 +635,7 @@
 		73650F2DD5273D64954C6150 /* PreviewData+SharedDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreviewData+SharedDocument.swift"; sourceTree = "<group>"; };
 		73E9A6AE6D5175756B1A3A62 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		758049F3F18473348374B2D9 /* KordiTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KordiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		75E1D3C2011737116168C8D4 /* AppModel+PersonalAgents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+PersonalAgents.swift"; sourceTree = "<group>"; };
 		7650894957E5DBF2D39B673C /* KordiCallCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiCallCoordinator.swift; sourceTree = "<group>"; };
 		776E1480D4A2BEE9853F6E6E /* DocumentReaderModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentReaderModel.swift; sourceTree = "<group>"; };
 		7805A402F46DA6E4EF049DC0 /* CommonGroundProfileSharing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonGroundProfileSharing.swift; sourceTree = "<group>"; };
@@ -1376,6 +1380,7 @@
 				E094A05643A2F44276E4EF06 /* NotoEmojiTests.swift */,
 				4D22A792A04EFA89754D2EE1 /* OfflineChatRefreshTests.swift */,
 				466AF82DD1F473F95EFB1239 /* PersonalAgentPersistenceTests.swift */,
+				005F26DAD9021F2E678B0285 /* PersonalAgentProactiveTests.swift */,
 				309CD0A7C2C6D11A2519E80E /* PersonalAgentTests.swift */,
 				1191C3E2CAC97C793025229F /* PhotoLibraryPickerTests.swift */,
 				A0EB7D196B884D42DD66025D /* PinnedMessageStackTests.swift */,
@@ -1419,6 +1424,7 @@
 			isa = PBXGroup;
 			children = (
 				8468E1A2764A8C92164AD82E /* AppModel.swift */,
+				75E1D3C2011737116168C8D4 /* AppModel+PersonalAgents.swift */,
 				60DD1D3913A71FB94809F8D0 /* AppModelGroupParticipants.swift */,
 				85D76D3C4C75887D61CBC73A /* AppModelSessionPins.swift */,
 				CB6037E13EA0BCC18AA44625 /* AttachmentReactionMutationQueue.swift */,
@@ -1874,6 +1880,7 @@
 				ED0D7936BFA2433311A7D3C3 /* NotoEmojiTests.swift in Sources */,
 				A16CDFD55AF387279483B919 /* OfflineChatRefreshTests.swift in Sources */,
 				01FA35115D37DE58B2AE7D78 /* PersonalAgentPersistenceTests.swift in Sources */,
+				E11662787A3627651B930E5E /* PersonalAgentProactiveTests.swift in Sources */,
 				EE64BB21E4547CE91EB26876 /* PersonalAgentTests.swift in Sources */,
 				9EEC14CDADE49DF686549E53 /* PhotoLibraryPickerTests.swift in Sources */,
 				FF896F1C74C9FE471D43BB12 /* PinnedMessageStackTests.swift in Sources */,
@@ -1925,6 +1932,7 @@
 				D65ED09543D8CF7ABC146FF0 /* AppIconSettings.swift in Sources */,
 				7B0A2530B19830857AC137E9 /* AppModel+CommonGround.swift in Sources */,
 				BE7A0C420EAEE2B706EFF49E /* AppModel+Digest.swift in Sources */,
+				D1666AE13D39512AF35A9D55 /* AppModel+PersonalAgents.swift in Sources */,
 				E1DA88F3DADA025B847BEA95 /* AppModel+Projects.swift in Sources */,
 				2E4333FCFA2A1DA835345DE6 /* AppModel.swift in Sources */,
 				F636F0EBC6F4844FCBDF2F2D /* AppModelGroupParticipants.swift in Sources */,

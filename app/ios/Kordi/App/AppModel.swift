@@ -5409,6 +5409,7 @@ final class AppModel: ObservableObject {
             ownedCloudAgents.removeAll { $0.agentId == id }
             personalAgents?.removeAll { $0.agentId == id }
             await rebuildConversationCatalog()
+            if let accountId = account?.accountId { await persistCloudSnapshot(accountId: accountId) }
             errorMessage = nil
             return true
         } catch {
@@ -6675,6 +6676,7 @@ final class AppModel: ObservableObject {
                         }
                         guard self.token == token, !Task.isCancelled else { return }
                         applyCloudSyncEvents(pendingEvents)
+                        await refreshPersonalAgentsIfNeeded(after: pendingEvents)
                         let hasDirectoryChanges = pendingEvents.contains {
                             $0.eventType != "message.upsert"
                                 && $0.eventType != "session.pin.updated"
@@ -6924,7 +6926,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func rebuildConversationCatalog() async {
+    func rebuildConversationCatalog() async {
         guard let account else { return }
         guard previewMode || hasHydratedSessionVisibility else { return }
         let expectedToken = token
@@ -7526,7 +7528,7 @@ final class AppModel: ObservableObject {
     }
 
 
-    private func persistCloudSnapshot(accountId: String) async {
+    func persistCloudSnapshot(accountId: String) async {
         guard account?.accountId == accountId else { return }
         await wireCache.save(
             accountId: accountId,

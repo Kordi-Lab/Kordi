@@ -7,10 +7,12 @@ enum PersonalAgentSessionCatalog {
     static let emptyPreview = "No messages yet"
 
     /// Marks the owner's personal sessions and shows them under the agent's
-    /// name instead of a session title. A loaded `personalAgents` list is
-    /// authoritative over snapshot bindings, which can outlive an archived
-    /// agent; either way the agent must be the default agent or an active
-    /// owned agent (`activeOwnedAgentIds` is nil until the owned agents load).
+    /// name instead of a session title. The server lists and marks a session
+    /// only while the agent's Proactive setting is on. A loaded list is
+    /// required, and a synced snapshot without the marker means the setting
+    /// was turned off; before the list loads, the marker alone decides. The
+    /// agent must be the default agent or an active owned agent
+    /// (`activeOwnedAgentIds` is nil until the owned agents load).
     static func tagged(
         _ conversations: [ConversationSummary],
         canonicalBySessionId: [String: CloudChatConversation],
@@ -24,11 +26,13 @@ enum PersonalAgentSessionCatalog {
         return conversations.map { conversation in
             var tagged = conversation
             tagged.personalAgentId = nil
+            let snapshot = canonicalBySessionId[conversation.sessionId]
             let candidate: String?
             if let listedAgentIdBySessionId {
-                candidate = listedAgentIdBySessionId[conversation.sessionId]
+                candidate = snapshot == nil || snapshot?.personalAgentId != nil
+                    ? listedAgentIdBySessionId[conversation.sessionId] : nil
             } else {
-                candidate = canonicalBySessionId[conversation.sessionId]?.personalAgentId
+                candidate = snapshot?.personalAgentId
             }
             guard conversation.kind == .agent, let agentId = candidate?.nonEmpty,
                   isPersonalAgent(agentId, ownAccountId: ownAccountId, activeOwnedAgentIds: activeOwnedAgentIds) else {
@@ -80,7 +84,8 @@ enum PersonalAgentSessionCatalog {
                     $0.personalAgentId == entry.agentId && $0.sessionId == entry.sessionId
                 }) ?? latestByAgentId[entry.agentId] {
                     rows.append(conversation)
-                } else if let placeholder = placeholder(for: entry, in: conversations, ownAccountId: ownAccountId) {
+                } else if !conversations.contains(where: { $0.sessionId == entry.sessionId }),
+                          let placeholder = placeholder(for: entry, in: conversations, ownAccountId: ownAccountId) {
                     rows.append(placeholder)
                 }
             }
@@ -106,6 +111,25 @@ enum PersonalAgentSessionCatalog {
             || conversation.lastMessage.localizedCaseInsensitiveContains(query)
             || conversation.agentDisplayName?.localizedCaseInsensitiveContains(query) == true
             || conversation.ownerDisplayName?.localizedCaseInsensitiveContains(query) == true
+    }
+
+    /// Sessions that are or were just personal, so a synced change to one of
+    /// them (the Mac turning Proactive on or off) reloads the list.
+    static func personalSessionIds(
+        personalAgents: [CloudPersonalAgent]?,
+        conversations: [ConversationSummary],
+        canonical: [CloudChatConversation]
+    ) -> Set<String> {
+        Set((personalAgents ?? []).map(\.sessionId))
+            .union(conversations.filter { $0.personalAgentId != nil }.map(\.sessionId))
+            .union(canonical.filter { $0.personalAgentId != nil }.map { $0.legacySessionId?.nonEmpty ?? $0.id })
+    }
+
+    static func eventsTouchPersonalSession(_ events: [CloudSyncEvent], personalSessionIds: Set<String>) -> Bool {
+        events.contains { event in
+            event.eventType == "session.title.updated"
+                && event.payload?.sessionTitle.map { personalSessionIds.contains($0.sessionId) } == true
+        }
     }
 
     /// A personal session already exists on the server, so its first send

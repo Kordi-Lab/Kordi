@@ -45,12 +45,12 @@ struct PersonalAgentPersistenceTests {
         let list = [CloudPersonalAgent(agentId: Fixture.defaultAgentId, conversationId: "c1", sessionId: defaultSession)]
         let conversations = Self.catalog(
             ownedAgents: [research],
-            bindings: [(Fixture.researchAgentId, researchSession), (nil, defaultSession)],
+            bindings: [(Fixture.researchAgentId, researchSession), (Fixture.defaultAgentId, defaultSession)],
             personalAgents: list
         )
-        // Listed without a snapshot binding: personal.
+        // Listed and marked: personal.
         #expect(try #require(conversations.first { $0.sessionId == defaultSession }).personalAgentId == Fixture.defaultAgentId)
-        // Bound in a stale snapshot but missing from the list: ordinary.
+        // Marked in a stale snapshot but missing from the list: ordinary.
         #expect(try #require(conversations.first { $0.sessionId == researchSession }).personalAgentId == nil)
 
         let rows = PersonalAgentSessionCatalog.rows(conversations: conversations, personalAgents: list, ownAccountId: Fixture.owner)
