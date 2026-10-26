@@ -100,6 +100,7 @@ struct ConversationSummary: Identifiable, Hashable {
     let sessionId: String
     let agentDisplayName: String?
     let groupSpaceId: String?
+    let groupCreatorAccountId: String?
     let groupParticipants: [CloudGroupParticipant]
     let messageCount: Int?
     let forkedFromSessionId: String?
@@ -126,6 +127,7 @@ struct ConversationSummary: Identifiable, Hashable {
         sessionId: String,
         agentDisplayName: String? = nil,
         groupSpaceId: String? = nil,
+        groupCreatorAccountId: String? = nil,
         groupParticipants: [CloudGroupParticipant] = [],
         messageCount: Int? = nil,
         forkedFromSessionId: String? = nil,
@@ -154,6 +156,7 @@ struct ConversationSummary: Identifiable, Hashable {
         self.sessionId = sessionId
         self.agentDisplayName = agentDisplayName
         self.groupSpaceId = groupSpaceId
+        self.groupCreatorAccountId = groupCreatorAccountId
         self.groupParticipants = groupParticipants
         self.messageCount = messageCount
         self.forkedFromSessionId = forkedFromSessionId

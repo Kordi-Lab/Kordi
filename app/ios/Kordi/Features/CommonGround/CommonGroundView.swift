@@ -4,6 +4,59 @@ import SwiftUI
 /// by pairing codes (one to one) or by entering the same four-digit room code.
 /// Backed by `/v1/cloud/common-ground`; see CommonGroundModel.swift.
 
+/// Keep Grounding discoverable while the service is being configured, without
+/// starting card, pairing, or Nearby requests before the server supports them.
+struct CommonGroundDestinationView: View {
+    @ObservedObject var appModel: AppModel
+    @Environment(\.scenePhase) private var scenePhase
+    var onClose: (() -> Void)? = nil
+    let onOpenConversation: (ConversationSummary) -> Void
+    @State private var isRefreshing = false
+
+    var body: some View {
+        Group {
+            if appModel.isCommonGroundAvailable {
+                CommonGroundView(appModel: appModel, onClose: onClose, onOpenConversation: onOpenConversation)
+            } else {
+                NavigationStack {
+                    ContentUnavailableView {
+                        Label("Grounding", systemImage: "person.2")
+                    } description: {
+                        Text("Grounding is not available on this server yet.")
+                    } actions: {
+                        Button(isRefreshing ? "Checking…" : "Try again") {
+                            Task { await refreshAvailability() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isRefreshing)
+                    }
+                    .toolbar {
+                        if let onClose {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button("Back", systemImage: "chevron.left", action: onClose)
+                                    .labelStyle(.iconOnly)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .task { if !appModel.isCommonGroundAvailable { await refreshAvailability() } }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active && !appModel.isCommonGroundAvailable {
+                Task { await refreshAvailability() }
+            }
+        }
+    }
+
+    private func refreshAvailability() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        await appModel.refreshMemoryCapabilities()
+    }
+}
+
 // MARK: - Routes
 
 enum CommonGroundRoute: Hashable {

@@ -4622,6 +4622,7 @@ final class AppModel: ObservableObject {
             lastMessage: "\(account.preferredName) created this channel.", lastActivityAt: Date(),
             unreadCount: 0, avatarSource: nil, agentActivity: nil,
             sessionId: sessionID, groupSpaceId: space.preferenceId,
+            groupCreatorAccountId: source.groupCreatorAccountId,
             groupParticipants: participants, messageCount: 0
         )
         errorMessage = nil
@@ -4717,6 +4718,7 @@ final class AppModel: ObservableObject {
             agentActivity: nil,
             sessionId: sessionID,
             groupSpaceId: sessionID,
+            groupCreatorAccountId: account.accountId,
             groupParticipants: participants,
             messageCount: 0
         )

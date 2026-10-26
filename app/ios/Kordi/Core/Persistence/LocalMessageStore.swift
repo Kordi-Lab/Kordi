@@ -31,6 +31,7 @@ final class CachedConversationRecord {
     var sessionId: String
     var agentDisplayName: String?
     var groupSpaceId: String?
+    var groupCreatorAccountId: String?
     var groupParticipantsJSON: String?
     var messageCount: Int?
     var forkedFromSessionId: String?
@@ -59,6 +60,7 @@ final class CachedConversationRecord {
         sessionId = conversation.sessionId
         agentDisplayName = conversation.agentDisplayName
         groupSpaceId = conversation.groupSpaceId
+        groupCreatorAccountId = conversation.groupCreatorAccountId
         messageCount = conversation.messageCount
         forkedFromSessionId = conversation.forkedFromSessionId
         personalAgentId = conversation.personalAgentId
@@ -93,6 +95,7 @@ final class CachedConversationRecord {
             sessionId: sessionId,
             agentDisplayName: agentDisplayName,
             groupSpaceId: groupSpaceId,
+            groupCreatorAccountId: groupCreatorAccountId,
             groupParticipants: groupParticipants,
             messageCount: messageCount,
             forkedFromSessionId: forkedFromSessionId,

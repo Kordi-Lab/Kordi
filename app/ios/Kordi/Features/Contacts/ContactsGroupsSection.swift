@@ -6,7 +6,7 @@ struct ContactsGroupsSection: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let spaces: [GroupSpaceSummary]
     let isSearching: Bool
-    var onOpenConversation: ((ConversationSummary) -> Void)? = nil
+    var onOpenGroup: ((GroupSpaceSummary) -> Void)? = nil
     @State private var isCollapsed = false
     @State private var isExpanded = false
 
@@ -35,9 +35,7 @@ struct ContactsGroupsSection: View {
         Section {
             if showsRows {
                 ForEach(Self.visible(spaces, isExpanded: isExpanded, isSearching: isSearching)) { space in
-                    if let conversation = Self.conversation(for: space) {
-                        entry(space: space, conversation: conversation)
-                    }
+                    entry(space: space)
                 }
                 if showsMoreToggle { moreToggle }
             }
@@ -66,21 +64,17 @@ struct ContactsGroupsSection: View {
     }
 
     @ViewBuilder
-    private func entry(space: GroupSpaceSummary, conversation: ConversationSummary) -> some View {
+    private func entry(space: GroupSpaceSummary) -> some View {
         Group {
-            if let onOpenConversation {
-                Button { onOpenConversation(conversation) } label: { ContactsGroupRow(space: space) }
+            if let onOpenGroup {
+                Button { onOpenGroup(space) } label: { ContactsGroupRow(space: space) }
                     .buttonStyle(.plain)
             } else {
-                NavigationLink(value: conversation) { ContactsGroupRow(space: space) }
+                NavigationLink(value: space) { ContactsGroupRow(space: space) }
             }
         }
         .contactsListRow()
-    }
-
-    /// The group's main chat, or its most recent one when there is no main chat.
-    static func conversation(for space: GroupSpaceSummary) -> ConversationSummary? {
-        space.membershipSessions.first { $0.sessionId == $0.groupSpaceId } ?? space.membershipSessions.first
+        .accessibilityHint("Choose a channel in this group")
     }
 
     /// "3 people · 09:41"; the time is left out when the group has no activity yet.
