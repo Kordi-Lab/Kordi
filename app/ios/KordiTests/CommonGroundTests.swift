@@ -389,6 +389,16 @@ final class CommonGroundURLProtocol: URLProtocol {
 
     private static var responses: [String: [(status: Int, body: String)]] = [:]
     private(set) static var requests: [Recorded] = []
+    private static var heldPaths: Set<String> = []
+    private static var pending: [String: [() -> Void]] = [:]
+
+    static func hold(_ path: String) { heldPaths.insert(path) }
+    static func hasHeldResponse(_ path: String) -> Bool { !(pending[path] ?? []).isEmpty }
+    static func release(_ path: String) {
+        heldPaths.remove(path)
+        let callbacks = pending.removeValue(forKey: path) ?? []
+        callbacks.forEach { $0() }
+    }
 
     static var paths: [String] {
         requests.map { "\($0.request.httpMethod ?? "GET") \($0.request.url?.path ?? "")" }
@@ -397,6 +407,8 @@ final class CommonGroundURLProtocol: URLProtocol {
     static func reset() {
         responses = [:]
         requests = []
+        heldPaths = []
+        pending = [:]
     }
 
     static func stub(_ method: String, _ path: String, _ queue: [(Int, String)]) {
@@ -420,9 +432,14 @@ final class CommonGroundURLProtocol: URLProtocol {
             httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "application/json"]
         )!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(stubbed.body.utf8))
-        client?.urlProtocolDidFinishLoading(self)
+        let deliver = {
+            self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            self.client?.urlProtocol(self, didLoad: Data(stubbed.body.utf8))
+            self.client?.urlProtocolDidFinishLoading(self)
+        }
+        let path = request.url?.path ?? ""
+        if Self.heldPaths.contains(path) { Self.pending[path, default: []].append(deliver) }
+        else { deliver() }
     }
 
     override func stopLoading() {}

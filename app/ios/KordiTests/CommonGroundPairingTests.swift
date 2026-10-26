@@ -263,6 +263,34 @@ final class CommonGroundPairingTests: XCTestCase {
         controller.stop()
     }
 
+    func testChangingCardWhileCompletionIsPendingDoesNotOpenOrRememberOldMatch() async {
+        let model = stubbedModel()
+        model.currentProfileID = "p_work"
+        let expiry = ISO8601DateFormatter().string(from: Date().addingTimeInterval(120))
+        let work = Self.codeJSON.replacingOccurrences(of: "2026-10-21T10:02:00.123456Z", with: expiry)
+        let health = work.replacingOccurrences(of: "p_work", with: "p_health").replacingOccurrences(of: "K4M7-2QXA", with: "AAAA-BBBB")
+        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/pairings/code", [(201, work), (201, health)])
+        let statusPath = "/v1/cloud/common-ground/pairings/status"
+        CommonGroundURLProtocol.stub("POST", statusPath, [
+            (200, "{\"status\":\"paired\",\"person\":" + Self.redeemJSON + "}"),
+            (200, #"{"status":"waiting"}"#),
+        ])
+        CommonGroundURLProtocol.hold(statusPath)
+        let controller = CommonGroundTapController(pollInterval: .milliseconds(5))
+        var opened = false
+        controller.start(model: model, onMatch: { _ in opened = true }, onProblem: { _ in })
+        await settle { CommonGroundURLProtocol.hasHeldResponse(statusPath) }
+        XCTAssertTrue(CommonGroundURLProtocol.hasHeldResponse(statusPath))
+        model.currentProfileID = "p_health"
+        CommonGroundURLProtocol.release(statusPath)
+        await settle { controller.code?.code == "AAAA-BBBB" }
+        XCTAssertEqual(controller.code?.code, "AAAA-BBBB")
+        XCTAssertFalse(opened)
+        XCTAssertTrue(model.people.isEmpty)
+        XCTAssertNil(model.viewerProfiles["acct_b"])
+        controller.stop()
+    }
+
     func testWaitingOrExpiredCodeDoesNotOpenAnOldPairing() async {
         let model = stubbedModel()
         CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/pairings/status", [

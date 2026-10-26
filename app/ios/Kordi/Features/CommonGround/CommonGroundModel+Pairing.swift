@@ -22,7 +22,6 @@ extension CommonGroundModel {
         guard let status = try? await call({ try await $0.commonGroundPairStatus(token: $1, code: code) }),
               status.status == "paired", let card = status.person,
               card.person.accountId != me.accountId else { return nil }
-        remember(card, profileId: card.profileId)
         return card
     }
 

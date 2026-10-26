@@ -97,11 +97,17 @@ final class CommonGroundTapController: ObservableObject {
     private func keepCodeFresh() async {
         while !Task.isCancelled {
             // Check before rotating a nearly expired code so a recent scan is not lost.
-            if let code, let model, codeProfileID == model.pairingProfileID,
-               let card = await model.completedPairCode(code.code) {
+            if let code, let model, codeProfileID == model.pairingProfileID {
+                let askedProfile = codeProfileID
+                let askedCode = code.code
+                let card = await model.completedPairCode(askedCode)
                 guard !Task.isCancelled else { return }
-                finish(card)
-                return
+                if let card, model.pairingProfileID == askedProfile,
+                   codeProfileID == askedProfile, self.code?.code == askedCode {
+                    model.remember(card, profileId: card.profileId)
+                    finish(card)
+                    return
+                }
             }
             guard !Task.isCancelled else { return }
             if let exchange, let model, exchange.needsRefresh() || codeProfileID != model.pairingProfileID {
