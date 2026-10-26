@@ -334,6 +334,35 @@ for (const [tour, targets] of [
   });
 }
 
+for (const theme of ['dark', 'light']) {
+  test(`documents spotlight includes its label and selector in ${theme} mode`, async ({ page }) => {
+    await page.goto(`/tests/visual/commonGroundPage.html?tour=cards&emptyCard=1&theme=${theme}`);
+    for (const target of ['grounding-cards', 'grounding-new-card']) {
+      await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', target);
+      await page.getByRole('button', { name: 'Next', exact: true }).click();
+    }
+    const spotlight = page.locator('.help-tour-spotlight');
+    await expect(spotlight).toHaveAttribute('data-target', 'grounding-documents');
+    const row = page.locator('[data-help-target="grounding-documents"]');
+    await expect(row).toContainText('Documents');
+    await expect(row).toContainText('1 chosen');
+    await expect.poll(async () => {
+      const target = await row.boundingBox();
+      const ring = await spotlight.boundingBox();
+      const card = await page.locator('.help-tour-card').boundingBox();
+      if (!target || !ring || !card) return false;
+      const containsRow = ring.x <= target.x && ring.y <= target.y
+        && ring.x + ring.width >= target.x + target.width
+        && ring.y + ring.height >= target.y + target.height;
+      const besideRow = card.x + card.width <= ring.x || card.x >= ring.x + ring.width
+        || card.y + card.height <= ring.y || card.y >= ring.y + ring.height;
+      return containsRow && besideRow;
+    }).toBe(true);
+    await expect(spotlight).toHaveCSS('border-top-width', '2px');
+    await page.screenshot({ path: test.info().outputPath(`documents-spotlight-${theme}.png`) });
+  });
+}
+
 for (const tour of ['grounding', 'cards'] as const) {
   test(`${tour} tour uses temporary example cards through review and sharing`, async ({ page }) => {
     await page.goto(`/tests/visual/commonGroundPage.html?tour=${tour}&emptyCard=1&theme=light`);

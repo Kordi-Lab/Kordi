@@ -87,13 +87,14 @@ export function CgGroup({ children, className }: { children: ReactNode; classNam
   return <div className={cn('cg-group', className)}>{children}</div>;
 }
 
-export function CgRow({ lead, title, sub, trailing, onClick, label }: {
+export function CgRow({ lead, title, sub, trailing, onClick, label, helpTarget }: {
   lead?: ReactNode;
   title: ReactNode;
   sub?: ReactNode;
   trailing?: ReactNode;
   onClick?: () => void;
   label?: string;
+  helpTarget?: string;
 }) {
   const body = (
     <>
@@ -106,8 +107,8 @@ export function CgRow({ lead, title, sub, trailing, onClick, label }: {
     </>
   );
   return onClick
-    ? <button type="button" className="cg-row is-button" onClick={onClick} aria-label={label}>{body}</button>
-    : <div className="cg-row">{body}</div>;
+    ? <button type="button" className="cg-row is-button" onClick={onClick} aria-label={label} data-help-target={helpTarget}>{body}</button>
+    : <div className="cg-row" data-help-target={helpTarget}>{body}</div>;
 }
 
 export function CgButton({ children, onClick, disabled, quiet = false, danger = false, type = 'button', label }: {

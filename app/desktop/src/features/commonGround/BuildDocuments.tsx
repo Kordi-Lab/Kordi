@@ -31,11 +31,12 @@ export function DocumentsRow({ client, chosen, onChange }: {
   const toggle = (id: string) => onChange(chosen.includes(id) ? chosen.filter((item) => item !== id) : full ? chosen : [...chosen, id]);
   return (
     <CgRow
+      helpTarget="grounding-documents"
       lead={<CgIcon tone="accent"><FileText className="h-4 w-4" /></CgIcon>}
       title="Documents"
       trailing={(
         <span className="cg-docs-anchor" data-docs-anchor="">
-          <button type="button" data-help-target="grounding-documents" className="cg-docs-count" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <button type="button" className="cg-docs-count" aria-expanded={open} onClick={() => setOpen(!open)}>
             {documentsSummary(chosen.length)}
             <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
