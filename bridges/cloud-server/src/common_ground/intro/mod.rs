@@ -53,7 +53,9 @@ async fn room_profiles(
     .await
 }
 
-/// Display names and the cards `accounts` share in the room.
+/// Display names and the cards `accounts` share in the room. Everyone the
+/// intro names reads it, so it quotes cards only while all of them share
+/// theirs in the room; otherwise it only names people.
 async fn introduced(
     pool: &PgPool,
     room_id: Uuid,
@@ -66,6 +68,9 @@ async fn introduced(
         .into_iter()
         .map(|card| (card.account_id, card.topics))
         .collect();
+    if !ids.iter().all(|id| cards.contains_key(id)) {
+        cards.clear();
+    }
     let names: HashMap<String, Option<String>> =
         query_as("SELECT account_id, display_name FROM cloud_accounts WHERE account_id = ANY($1)")
             .bind(&ids)
@@ -262,6 +267,8 @@ pub(super) async fn fail(
 
 /// How `account` relates to the other people in the conversation, from the
 /// stored matches with `account`'s room card as viewer, in join order.
+/// Everyone in the group reads the line, so it quotes cards only while all
+/// of them share theirs in the room.
 async fn related_people(
     pool: &PgPool,
     system_agent_account: &str,
@@ -269,10 +276,7 @@ async fn related_people(
     conversation_id: Uuid,
     account: &str,
 ) -> sqlx_core::Result<(Option<Topics>, Vec<(Member, Relation)>)> {
-    let mut skip: Vec<String> = crate::system_agent::service_account_id()
-        .into_iter()
-        .map(str::to_string)
-        .collect();
+    let mut skip = system_account::service_account_ids();
     skip.extend([system_agent_account.to_string(), account.to_string()]);
     let others: Vec<(String,)> = query_as(
         "SELECT account_id FROM cloud_chat_conversation_members
@@ -296,6 +300,9 @@ async fn related_people(
         .filter_map(|id| Some((id.clone(), profiles.get(id)?.clone())))
         .collect();
     let mut cards = shared_cards(pool, &members).await?;
+    if cards.len() < ids.len() {
+        return Ok((None, Vec::new()));
+    }
     let Some(position) = cards.iter().position(|card| card.account_id == account) else {
         return Ok((None, Vec::new()));
     };

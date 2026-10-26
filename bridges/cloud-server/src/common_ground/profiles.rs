@@ -335,9 +335,9 @@ pub(super) async fn insert(
     Ok(Ok(profile))
 }
 
-/// The response to send instead when `profile` has no shared card.
-pub(super) async fn require_shared_card(pool: &PgPool, profile: &Profile) -> Option<Response> {
-    match card::load(pool, &profile.profile_id).await {
+/// The response to send instead when `profile_id` has no shared card.
+pub(super) async fn require_shared_card(pool: &PgPool, profile_id: &str) -> Option<Response> {
+    match card::load(pool, profile_id).await {
         Ok(Some(row)) if row.has_card() && row.sharing => None,
         Ok(Some(row)) if row.has_card() => Some(super::sharing_off()),
         Ok(_) => Some(card::no_card()),

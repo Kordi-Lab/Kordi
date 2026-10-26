@@ -35,23 +35,15 @@ async fn recent_hides_scores_that_are_stale_unshared_or_no_longer_visible() {
     assert!(entry["score"].as_i64().unwrap() > 0);
     assert_eq!(entry["headline"], "Memory for agents");
 
-    // Sharing off, even without a new revision, hides the stored match.
+    // Sharing off, even without a new revision, leaves the person out of
+    // Recent until it is back on.
     let set_sharing = |on: bool| {
         query("UPDATE cloud_common_ground_cards SET sharing_enabled = $2 WHERE account_id = $1")
             .bind(priya.clone())
             .bind(on)
     };
     set_sharing(false).execute(&pool).await.unwrap();
-    let entry = recent_first(&app, &alex_token).await;
-    assert_eq!(
-        entry["person"]["accountId"],
-        priya.as_str(),
-        "the person stays in Recent"
-    );
-    assert_eq!(
-        (entry["score"].clone(), entry["headline"].clone()),
-        (Value::Null, Value::Null)
-    );
+    assert_eq!(recent_first(&app, &alex_token).await, Value::Null);
     set_sharing(true).execute(&pool).await.unwrap();
     assert!(recent_first(&app, &alex_token).await["score"].is_i64());
 

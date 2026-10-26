@@ -285,9 +285,11 @@ pub(in crate::common_ground) struct SettingsRequest {
     sharing: bool,
 }
 
-/// `PUT /v1/cloud/common-ground/settings`: sharing off hides the profile's
-/// card from new rooms and pairings and from people who could already see
-/// it. An account without a profile gets its work profile here.
+/// `PUT /v1/cloud/common-ground/settings`: sharing off keeps the profile out
+/// of new rooms and pairings, hides its card from everyone it is linked to
+/// and hides their cards from you through those links. The links stay, so
+/// sharing on restores them. An account without a profile gets its work
+/// profile here.
 pub(in crate::common_ground) async fn update_settings(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
