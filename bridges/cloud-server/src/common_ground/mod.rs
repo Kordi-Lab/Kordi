@@ -7,7 +7,8 @@
 //! turns on, through the profile's lens. Every topic
 //! cites redacted, dated evidence that only the owner sees. Others see a
 //! card's topics, minus hidden ones, only while they share a room or a
-//! pairing with its owner in which the owner shares that profile.
+//! pairing with its owner in which the owner shares that profile, and only
+//! while both profiles linked there share a built card.
 
 mod actions;
 mod build;

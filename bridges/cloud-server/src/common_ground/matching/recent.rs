@@ -34,11 +34,11 @@ type RecentRow = (
 );
 
 /// `GET /v1/cloud/common-ground/recent`: people whose match you opened,
-/// newest first, one entry per (person, profile they shared). The score and
+/// newest first, one entry per (person, profile they shared). An entry is
+/// left out while either profile does not share a built card. The score and
 /// headline are shown only while the match is still current: both cards are
-/// at the revisions it was computed from, the other person still shares,
-/// and the two profiles still see each other. Otherwise the person stays in
-/// your history without them.
+/// at the revisions it was computed from and the two profiles still see
+/// each other. Otherwise the person stays in your history without them.
 pub(in crate::common_ground) async fn recent(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -49,12 +49,9 @@ pub(in crate::common_ground) async fn recent(
                     account.account_id, account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url,
                     m.result_json,
                     m.opened_at,
-                    COALESCE(viewer_card.built_at IS NOT NULL
-                        AND viewer_card.revision = m.viewer_revision
-                        AND other_card.built_at IS NOT NULL
-                        AND other_card.sharing_enabled
+                    COALESCE(viewer_card.revision = m.viewer_revision
                         AND other_card.revision = m.other_revision
-                        AND {}, false) AS current,
+                        AND {visible}, false) AS current,
                     m.viewer_profile_id, theirs.profile_id, theirs.kind, theirs.name, theirs.design,
                     theirs.icon
              FROM cloud_common_ground_matches m
@@ -65,10 +62,13 @@ pub(in crate::common_ground) async fn recent(
              LEFT JOIN cloud_common_ground_cards other_card
                ON other_card.profile_id = m.other_profile_id
              WHERE m.viewer_account_id = $1 AND m.opened_at IS NOT NULL
+               AND {viewer_shares} AND {other_shares}
              ORDER BY m.other_profile_id, m.opened_at DESC
          ) latest
          ORDER BY opened_at DESC LIMIT 50",
-        people::profile_visible_sql("m.viewer_profile_id", "m.other_profile_id"),
+        visible = people::profile_visible_sql("m.viewer_profile_id", "m.other_profile_id"),
+        viewer_shares = people::shares_sql("m.viewer_profile_id"),
+        other_shares = people::shares_sql("m.other_profile_id"),
     );
     let pool = state.db_pool();
     let rows: Result<Vec<RecentRow>, _> = query_as(&sql)

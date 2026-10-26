@@ -1,7 +1,10 @@
 //! Who can see whose card. A profile's card is visible to people who share
 //! a room (open or closed, until either leaves) or a pairing with its owner
-//! in which the owner shares that profile, only while the owner shares it,
-//! and never with hidden topics or references. People never see another
+//! in which the owner shares that profile, only while both linked profiles
+//! have a built card with sharing on, and never with hidden topics or
+//! references. Turning sharing off hides your card through every link of
+//! that profile and hides the other cards from you through them; the links
+//! stay, so turning it back on restores both. People never see another
 //! profile of the same person.
 
 use std::sync::Arc;
@@ -47,35 +50,49 @@ pub(super) async fn handle(pool: &PgPool, account_id: &str) -> sqlx_core::Result
     Ok(row.and_then(|(handle,)| handle))
 }
 
-/// SQL that is true when the account in `viewer` may see the shared card of
-/// the account in `other` (both SQL expressions): they are paired, or both
-/// are still in the same room, open or closed. Leaving a room withdraws it.
-pub(super) fn visible_sql(viewer: &str, other: &str) -> String {
-    visibility_sql(viewer, other, "true")
+/// SQL that is true when the profile in `profile` (an SQL expression) has a
+/// built card with sharing on. A pairing or room links two people only
+/// while both linked profiles pass it.
+pub(super) fn shares_sql(profile: &str) -> String {
+    format!(
+        "EXISTS (SELECT 1 FROM cloud_common_ground_cards shared_card
+                 WHERE shared_card.profile_id = {profile}
+                   AND shared_card.built_at IS NOT NULL AND shared_card.sharing_enabled)"
+    )
 }
 
-fn visibility_sql(viewer: &str, other: &str, room_filter: &str) -> String {
+/// SQL that is true when the account in `viewer` may see the shared card of
+/// the account in `other` (both SQL expressions): they are paired, or both
+/// are still in the same room, open or closed, and both share the profiles
+/// linked there. Leaving a room withdraws it.
+pub(super) fn visible_sql(viewer: &str, other: &str) -> String {
     format!(
         "(EXISTS (
-             SELECT 1 FROM cloud_common_ground_pairings
-             WHERE account_a = LEAST({viewer}, {other}) AND account_b = GREATEST({viewer}, {other})
+             SELECT 1 FROM cloud_common_ground_pairings pairing
+             WHERE pairing.account_a = LEAST({viewer}, {other})
+               AND pairing.account_b = GREATEST({viewer}, {other})
+               AND {pairing_a} AND {pairing_b}
          ) OR EXISTS (
              SELECT 1 FROM cloud_common_ground_room_members mine
              JOIN cloud_common_ground_room_members theirs
                ON theirs.room_id = mine.room_id AND theirs.account_id = {other}
                   AND theirs.left_at IS NULL
-             JOIN cloud_common_ground_rooms room ON room.room_id = mine.room_id
-             WHERE mine.account_id = {viewer} AND mine.left_at IS NULL AND {room_filter}
-         ))"
+             WHERE mine.account_id = {viewer} AND mine.left_at IS NULL
+               AND {mine_shares} AND {theirs_shares}
+         ))",
+        pairing_a = shares_sql("pairing.profile_a"),
+        pairing_b = shares_sql("pairing.profile_b"),
+        mine_shares = shares_sql("mine.profile_id"),
+        theirs_shares = shares_sql("theirs.profile_id"),
     )
 }
 
 /// SQL that is true when the profile in `viewer_profile` may see the card of
-/// the profile in `other_profile`: they are paired with those profiles, or
-/// both share them in the same room and have not left.
+/// the profile in `other_profile`: both share them, and they are paired with
+/// those profiles or both share them in the same room and have not left.
 pub(super) fn profile_visible_sql(viewer_profile: &str, other_profile: &str) -> String {
     format!(
-        "(EXISTS (
+        "({viewer_shares} AND {other_shares} AND (EXISTS (
              SELECT 1 FROM cloud_common_ground_pairings
              WHERE (profile_a = {viewer_profile} AND profile_b = {other_profile})
                 OR (profile_a = {other_profile} AND profile_b = {viewer_profile})
@@ -85,7 +102,9 @@ pub(super) fn profile_visible_sql(viewer_profile: &str, other_profile: &str) -> 
                ON theirs.room_id = mine.room_id AND theirs.profile_id = {other_profile}
                   AND theirs.left_at IS NULL
              WHERE mine.profile_id = {viewer_profile} AND mine.left_at IS NULL
-         ))"
+         )))",
+        viewer_shares = shares_sql(viewer_profile),
+        other_shares = shares_sql(other_profile),
     )
 }
 
@@ -102,8 +121,18 @@ pub(super) struct Link {
 
 /// Every (viewer profile, other profile) pair through which `viewer` sees
 /// `other`, most recent first: a pairing, or a room both still share, open
-/// or closed. Limited to the viewer sharing `$3` when that is not null.
-fn links_sql(limit: &str) -> String {
+/// or closed. Limited to the viewer sharing `$3` when that is not null, and
+/// with `shared_only` to pairs where both profiles share a built card.
+fn links_sql(limit: &str, shared_only: bool) -> String {
+    let shared = if shared_only {
+        format!(
+            "AND {} AND {}",
+            shares_sql("links.vp"),
+            shares_sql("links.op")
+        )
+    } else {
+        String::new()
+    };
     format!(
         "SELECT vp, op, bool_or(live) FROM (
              SELECT CASE WHEN p.account_a = $1 THEN p.profile_a ELSE p.profile_b END AS vp,
@@ -120,13 +149,14 @@ fn links_sql(limit: &str) -> String {
              JOIN cloud_common_ground_rooms room ON room.room_id = mine.room_id
              WHERE mine.account_id = $1 AND mine.left_at IS NULL
          ) links
-         WHERE $3::text IS NULL OR vp = $3
+         WHERE ($3::text IS NULL OR vp = $3) {shared}
          GROUP BY vp, op ORDER BY max(at) DESC, vp, op {limit}"
     )
 }
 
 /// All the pairs of profiles through which `viewer` sees `other`, most
-/// recent first.
+/// recent first. Pairs where either profile does not share a built card are
+/// left out.
 pub(super) async fn links(
     pool: &PgPool,
     viewer: &str,
@@ -135,7 +165,7 @@ pub(super) async fn links(
     if viewer == other {
         return Ok(Vec::new());
     }
-    let rows: Vec<(String, String, Option<bool>)> = query_as(&links_sql(""))
+    let rows: Vec<(String, String, Option<bool>)> = query_as(&links_sql("", true))
         .bind(viewer)
         .bind(other)
         .bind(None::<&str>)
@@ -153,7 +183,8 @@ fn to_link((viewer_profile, other_profile, live): (String, String, Option<bool>)
 }
 
 /// The most recent pairing or room that makes `other` visible to `viewer`,
-/// limited to the viewer sharing `viewer_profile` when given.
+/// limited to the viewer sharing `viewer_profile` when given. Only a link
+/// where both profiles share a built card counts.
 pub(super) async fn link(
     pool: &PgPool,
     viewer: &str,
@@ -163,7 +194,7 @@ pub(super) async fn link(
     if viewer == other {
         return Ok(None);
     }
-    let row: Option<(String, String, Option<bool>)> = query_as(&links_sql("LIMIT 1"))
+    let row: Option<(String, String, Option<bool>)> = query_as(&links_sql("LIMIT 1", true))
         .bind(viewer)
         .bind(other)
         .bind(viewer_profile)
@@ -172,7 +203,8 @@ pub(super) async fn link(
     Ok(row.map(to_link))
 }
 
-/// Whether `viewer` may see `other`'s shared card.
+/// Whether `viewer` may see `other`'s shared card through any link where
+/// both profiles share a built card.
 pub(super) async fn can_see<'e, E>(
     executor: E,
     viewer: &str,
@@ -218,7 +250,7 @@ pub(super) async fn read(
     let viewer_profile = params.profile.as_deref().filter(|id| !id.is_empty());
     match shared_view(state.db_pool(), &session.account_id, &other, viewer_profile).await {
         Ok(Some(view)) => (StatusCode::OK, Json(view)).into_response(),
-        Ok(None) => not_found(),
+        Ok(None) => hidden(state.db_pool(), &session.account_id, &other, viewer_profile).await,
         Err(error) => db_error(error),
     }
 }
@@ -229,6 +261,42 @@ pub(super) fn not_found() -> Response {
         "This card isn't available.",
         StatusCode::NOT_FOUND,
     )
+}
+
+/// The answer when `viewer` sees no link to `other`: a 409 when a pairing or
+/// room links them through a profile of the viewer's (only `viewer_profile`
+/// when given) whose card is not shared (`common_ground_sharing_off`) or not
+/// built (`common_ground_no_card`), else the 404 any hidden card gets. Only
+/// the viewer's own cards decide, so the answer never tells whether the
+/// other person shares.
+pub(super) async fn hidden(
+    pool: &PgPool,
+    viewer: &str,
+    other: &str,
+    viewer_profile: Option<&str>,
+) -> Response {
+    if viewer == other {
+        return not_found();
+    }
+    let sql = format!(
+        "SELECT COALESCE(bool_or(card.built_at IS NOT NULL AND NOT card.sharing_enabled), false),
+                COALESCE(bool_or(card.built_at IS NULL), false)
+         FROM ({}) link (vp, op, live)
+         LEFT JOIN cloud_common_ground_cards card ON card.profile_id = link.vp",
+        links_sql("", false)
+    );
+    let found: sqlx_core::Result<(bool, bool)> = query_as(&sql)
+        .bind(viewer)
+        .bind(other)
+        .bind(viewer_profile)
+        .fetch_one(pool)
+        .await;
+    match found {
+        Ok((true, _)) => super::sharing_off(),
+        Ok((false, true)) => card::no_card(),
+        Ok((false, false)) => not_found(),
+        Err(error) => db_error(error),
+    }
 }
 
 pub(super) async fn shared_view(
@@ -311,9 +379,9 @@ pub(crate) struct ProfileCommonGround {
 
 /// The card lists of the profile `other` shares with `viewer`, at most
 /// `limit` topics each, under the same rule as [`shared_view`]: the most
-/// recent pairing or room decides which profile that is. The owner sees
-/// their default profile while sharing is on. `None` when no card is
-/// visible or built.
+/// recent pairing or room where both profiles share a built card decides
+/// which profile that is. The owner sees their default profile while
+/// sharing is on. `None` when no card is visible or built.
 pub(crate) async fn profile_common_ground(
     pool: &PgPool,
     viewer: &str,

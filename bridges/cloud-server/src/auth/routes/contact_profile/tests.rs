@@ -301,6 +301,7 @@ async fn common_ground_shows_only_when_the_card_is_visible_and_shared() {
         befriend(&pool, &me, peer).await;
         card(&pool, peer, sharing).await;
     }
+    card(&pool, &me, true).await;
     pair(&pool, &me, &paired).await;
     pair(&pool, &me, &private).await;
 
@@ -321,4 +322,16 @@ async fn common_ground_shows_only_when_the_card_is_visible_and_shared() {
         assert_eq!(status, 200);
         assert_eq!(body["commonGround"], Value::Null, "{peer}");
     }
+    // Nor while my own card is not shared.
+    query("UPDATE cloud_common_ground_cards SET sharing_enabled = false WHERE account_id = $1")
+        .bind(&me)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, body) = send(&app, "GET", &profile_path(&paired), &token, None).await;
+    assert_eq!(
+        (status, &body["commonGround"]),
+        (200, &Value::Null),
+        "{body}"
+    );
 }

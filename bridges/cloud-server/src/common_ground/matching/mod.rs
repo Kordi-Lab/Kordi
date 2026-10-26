@@ -226,6 +226,28 @@ pub(super) fn result(viewer: &SharedCard, other: &SharedCard, found: prompt::Fou
     }
 }
 
+/// Themes with only the people in `cards`, the cards the viewer sees. A
+/// theme left with fewer than two of them is dropped, so no theme stands
+/// for someone hidden; the largest come first.
+pub(super) fn visible_themes(
+    themes: Vec<(String, Vec<String>)>,
+    cards: &[SharedCard],
+) -> Vec<(String, Vec<String>)> {
+    let mut themes: Vec<(String, Vec<String>)> = themes
+        .into_iter()
+        .map(|(label, people)| {
+            let people: Vec<String> = people
+                .into_iter()
+                .filter(|id| cards.iter().any(|card| &card.account_id == id))
+                .collect();
+            (label, people)
+        })
+        .filter(|(_, people)| people.len() >= 2)
+        .collect();
+    themes.sort_by_key(|theme| std::cmp::Reverse(theme.1.len()));
+    themes
+}
+
 /// The largest theme with the viewer and at least two others, else the
 /// largest one with the viewer.
 pub(super) fn suggestion<'a>(
