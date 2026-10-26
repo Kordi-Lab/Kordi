@@ -66,6 +66,10 @@ test('a project plus creates in that folder, expands it, and prevents duplicate 
     await act(async () => create.click());
     assert.equal(create.disabled, true);
     await act(async () => create.click());
+    await waitForReactCondition(
+      () => calls.some(({ command }) => command === 'desktop_chat_new_project_session'),
+      'The native project creation request starts',
+    );
     const creations = calls.filter(({ command }) => command === 'desktop_chat_new_project_session');
     assert.equal(creations.length, 1);
     assert.equal(creations[0].args?.projectRoot, '/fixture/beta', 'Create uses the clicked folder, even when another project is active');
