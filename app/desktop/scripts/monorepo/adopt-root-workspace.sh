@@ -41,7 +41,7 @@ cat > "$ROOT_DIR/shared/rust/protocol/Cargo.toml" <<'EOF'
 name = "kordi-protocol"
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license = "Apache-2.0"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

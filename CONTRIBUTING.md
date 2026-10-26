@@ -183,3 +183,7 @@ Recommended required checks:
 - `Desktop frontend`
 - `Rust checks`
 - `Repository hygiene`
+
+## License
+
+By submitting a contribution for inclusion in Kordi, you agree to license it under the [Apache License 2.0](LICENSE), unless a separate agreement explicitly provides otherwise. Preserve applicable third-party license and attribution notices.
