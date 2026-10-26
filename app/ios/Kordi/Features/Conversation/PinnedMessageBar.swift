@@ -64,7 +64,13 @@ struct PinnedMessageBar: View {
                 .accessibilityLabel("View pinned messages")
             }
             .padding(.leading, 16).padding(.trailing, 8)
-            .background(.bar)
+            // Nearly opaque so messages scrolling underneath never show through the text.
+            .background {
+                ZStack {
+                    Rectangle().fill(.bar)
+                    chatTheme.canvas.opacity(0.96)
+                }
+            }
             .overlay(alignment: .bottom) { Divider() }
             .sensoryFeedback(.selection, trigger: selectedID)
             .sheet(isPresented: $isListPresented, onDismiss: {
