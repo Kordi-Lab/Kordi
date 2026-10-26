@@ -35,9 +35,8 @@ export function composerSendGate(input: ComposerSendGateInput): ComposerSendGate
   return { blocked, notice: blocked ? ROUTE_ACCOUNT_UNAVAILABLE_NOTICE : null };
 }
 
-/** The send gate for the live composer, re-evaluated when the hosted account list arrives. */
-export function useComposerSendGate(input: Omit<ComposerSendGateInput, 'accountListsLoaded'>): ComposerSendGate {
+/** True once both this Mac's and Kordi Cloud's account lists have arrived; re-renders when the hosted list does. */
+export function useAccountListsLoaded(): boolean {
   const hostedListed = Boolean(useHostedAccountsSnapshot().listed);
-  const accountListsLoaded = hostedListed && registeredAccountChoices().localChoices !== null;
-  return composerSendGate({ ...input, accountListsLoaded });
+  return hostedListed && registeredAccountChoices().localChoices !== null;
 }

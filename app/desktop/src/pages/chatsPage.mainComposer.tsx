@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
-import { useComposerSendGate } from '@/features/chat/composerSendGate';
+import { useComposerRouteAccountGuard } from '@/features/chat/useRouteAccountFallback';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
 import {
@@ -140,12 +140,11 @@ export function MainComposer({
     && shouldUseCompactModelRouteMenu(conversation);
   const routeSelection = collaborationRouting.enabled && collaborationRouting.model
     ? collaborationRouting.model.selection : composerSelection;
-  const sendGate = useComposerSendGate({ paneKind: localRouting.paneKind, canConfigureModelRoute,
-    selection: routeSelection, providerOptions: composerProviderOptions });
-  const canSend = !sendGate.blocked;
-  const onSend: MainComposerProps['onSend'] = (draftOverride, attachmentOverride) => (
-    canSend ? sendMessage(draftOverride, attachmentOverride) : undefined
-  );
+  // Only the session route names an account, so only it can lose one; the replacement saves as a route menu pick does.
+  const sendGate = useComposerRouteAccountGuard({ sessionId: conversation.id, enabled: Boolean(collaborationRouting.enabled && collaborationRouting.model) && !collaborationRouting.busy,
+    paneKind: localRouting.paneKind, canConfigureModelRoute, selection: routeSelection, providerOptions: composerProviderOptions,
+    modelOptions: chatModelOptions ?? [], applyRoute: collaborationRouting.onSaveCompact });
+  const onSend: MainComposerProps['onSend'] = (draft, attachments) => (sendGate.blocked ? undefined : sendMessage(draft, attachments));
   const voice = useVoiceComposer({
     conversation,
     cloudAccountId,
@@ -402,7 +401,7 @@ export function MainComposer({
                 modelOptions={chatModelOptions && chatModelOptions.length > 0
                   ? chatModelOptions
                   : undefined}
-                onSave={collaborationRouting.onSaveCompact}
+                onSave={collaborationRouting.onSaveCompact} sharedRoute={localRouting.paneKind !== 'agent'}
               />
             ) : null}
             {!editingMessage && !voiceSurfaceActive && localRouting.paneKind === 'agent'
@@ -454,7 +453,7 @@ export function MainComposer({
                     menu={{
                       openSelector: openComposerSelector,
                       agentSelectorOpen: collaborationRouting.agentSelectorOpen,
-                      compact: display.showCompanionPane,
+                      compact: display.showCompanionPane, sharedRoute: localRouting.paneKind !== 'agent',
                     }}
                     onSignIn={display.onOpenAuthentication}
                     options={{
@@ -485,7 +484,7 @@ export function MainComposer({
               </Button>
             ) : <VoiceComposerControls
               voice={voice}
-              hasSendableDraft={hasSendableDraft && canSend}
+              hasSendableDraft={hasSendableDraft && !sendGate.blocked}
               activeLiveTurnIsRunning={display.activeLiveTurnIsRunning}
               onSend={() => { void onSend(); }}
               stop={stop}

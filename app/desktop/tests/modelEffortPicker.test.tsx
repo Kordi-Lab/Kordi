@@ -17,7 +17,7 @@ const models = [
   { value: 'openai/gpt-6-sol', label: 'gpt-6-sol', provider: 'openai', thinkingLevels: ['default','low','medium','high','xhigh','max'] },
   { value: 'anthropic/claude-fable-5-1', label: 'claude-fable-5-1', provider: 'anthropic', thinkingLevels: ['default','minimal','low','medium','high','xhigh','max'] },
 ];
-async function harness(options: { unavailable?: boolean; fail?: boolean; shared?: boolean; noEffort?: boolean } = {}) {
+async function harness(options: { unavailable?: boolean; fail?: boolean; shared?: boolean; ownAgentChat?: boolean; noEffort?: boolean } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div class="kordi-app theme-light" style="--app-accent: rgb(135, 88, 55)"></div></body></html>', { pretendToBeVisual: true });
   const replacements = { window: dom.window, document: dom.window.document, navigator: dom.window.navigator,
     HTMLElement: dom.window.HTMLElement, Element: dom.window.Element, Node: dom.window.Node, IS_REACT_ACT_ENVIRONMENT: true };
@@ -38,7 +38,7 @@ async function harness(options: { unavailable?: boolean; fail?: boolean; shared?
     };
     return <ModelEffortPicker selection={selection} providerOptions={providers}
       modelOptions={options.noEffort ? models.map(model => ({ ...model, thinkingLevels: [] })) : models}
-      onApply={apply} confirmAccountChanges={options.shared ?? true} />;
+      onApply={apply} confirmAccountChanges={options.shared ?? true} sharedRoute={!options.ownAgentChat} />;
   }
   await act(async () => root.render(<Harness />));
   const click = async (selector: string) => {
@@ -93,6 +93,16 @@ test('model picks apply immediately; shared account picks wait for confirmation 
     await h.click('[aria-label^="Select model,"]'); await h.click('.app-model-picker-account'); await h.text('Personal'); await h.text('Change account');
     assert.equal(h.saves.length,2); assert.equal(h.saves[1].providerOption?.value,'openai::profile:personal');
     assert.equal(h.saves[1].model,models[1].value);
+  } finally { await h.cleanup(); }
+});
+
+test('in your own agent chat the account prompt does not call the account shared', async () => {
+  const h = await harness({ ownAgentChat: true });
+  try {
+    await h.click('[aria-label^="Select model,"]'); await h.click('.app-model-picker-account'); await h.text('Personal');
+    assert.equal(document.querySelector('[role=dialog]')?.getAttribute('aria-label'),'Change account');
+    assert.match(document.querySelector('.app-model-picker strong')?.textContent ?? '', /^Change account\?$/);
+    assert.doesNotMatch(document.body.textContent ?? '', /shared/i);
   } finally { await h.cleanup(); }
 });
 

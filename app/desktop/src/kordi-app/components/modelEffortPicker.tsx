@@ -18,12 +18,15 @@ export type ModelEffortPickerProps = {
   modelOptions: ComposerModelOption[];
   onApply: (route: ComposerRoute, type: PickType) => void | boolean | Promise<void | boolean>;
   confirmAccountChanges?: boolean;
+  /** Other people's messages also get agent replies on this route; false in your own agent chat. */
+  sharedRoute?: boolean;
   defaultOpen?: boolean;
   onSignIn?: () => void;
 };
 
 export function ModelEffortPicker({ selection, providerOptions, modelOptions, onApply,
-  confirmAccountChanges = false, defaultOpen = false, onSignIn }: ModelEffortPickerProps) {
+  confirmAccountChanges = false, sharedRoute = true, defaultOpen = false, onSignIn }: ModelEffortPickerProps) {
+  const confirmTitle = sharedRoute ? 'Change shared account' : 'Change account';
   const id = useId();
   const triggerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -162,7 +165,7 @@ export function ModelEffortPicker({ selection, providerOptions, modelOptions, on
     <span>{modelDisplayName(option.value, option.label)}<small className="app-transient-metadata">{option.providerLabel ?? providerDisplayLabel(option.provider ?? '')}</small></span>
     {option.value === selection.model ? <Check size={14} aria-hidden="true" /> : null}
   </button>;
-  const menu = <div ref={menuRef} id={id} role="dialog" aria-label={view === 'thinking' ? 'Thinking effort' : view === 'provider' ? 'Choose account' : view === 'confirm' ? 'Change shared account' : 'Select model'}
+  const menu = <div ref={menuRef} id={id} role="dialog" aria-label={view === 'thinking' ? 'Thinking effort' : view === 'provider' ? 'Choose account' : view === 'confirm' ? confirmTitle : 'Select model'}
     aria-busy={saving} className={cn('app-transient-surface app-transient-scroll app-compact-model-menu app-composer-model-menu-layer app-model-picker', light && 'app-compact-model-menu-light', view === 'thinking' && 'app-model-picker-effort')} style={position}>
     {view === 'thinking' ? <>
       <div className="app-effort-heading"><div className="app-effort-identity"><strong>{modelEffortLabel(draftEffort)}</strong>
@@ -179,7 +182,7 @@ export function ModelEffortPicker({ selection, providerOptions, modelOptions, on
       </div> : null}
     </> : <>
       <div className="app-model-picker-heading">{view !== 'model' ? <button type="button" onClick={() => { setPending(null); setView('model'); }} aria-label="Back to models"><ChevronLeft size={16} /></button> : null}
-        <strong>{view === 'provider' ? 'Choose account' : view === 'confirm' ? 'Change shared account?' : 'Select model'}</strong>
+        <strong>{view === 'provider' ? 'Choose account' : view === 'confirm' ? `${confirmTitle}?` : 'Select model'}</strong>
         <button type="button" onClick={close} aria-label="Close model picker"><X size={15} /></button></div>
       {view === 'confirm' && pending ? <>
         <p className="app-model-picker-message">Use {pending.route.providerOption?.selectionLabel ?? pending.route.providerOption?.label} for future agent replies in this conversation?</p>
