@@ -62,6 +62,13 @@ export function documentsSummary(count: number): string {
   return count ? `${count} chosen` : 'None chosen';
 }
 
+/** A build that found nothing for the profile cannot succeed again with the same sources. */
+export function buildFailureMessage(errorCode: string | null) {
+  return errorCode === 'no_topics'
+    ? 'Nothing here fits this profile. Add a note or choose other sources.'
+    : 'Could not build your card. Try again.';
+}
+
 /** The hint in the build screen's notes box: what this profile keeps. Work when there is no profile, as the server builds. */
 export function notesHint(kind: CgProfileKind | null | undefined) {
   switch (kind) {

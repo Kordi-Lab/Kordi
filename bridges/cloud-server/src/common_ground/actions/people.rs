@@ -292,7 +292,7 @@ pub(in crate::common_ground) async fn meet(
         kind: crate::common_ground::SYSTEM_NOTICE_KIND.to_string(),
         content: json!({
             "schema": 1,
-            "blocks": [crate::pip::cards::card_block_from_row(&row, "event")],
+            "blocks": [crate::system_agent::cards::card_block_from_row(&row, "event")],
             "legacy_attachments": [],
         }),
         reply_to_message_id: None,

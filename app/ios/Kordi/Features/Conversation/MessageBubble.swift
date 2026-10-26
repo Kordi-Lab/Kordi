@@ -559,7 +559,9 @@ struct MessageBubble: View, Equatable {
             }
         } else if usesBorderlessVideoSurface {
             VStack(spacing: 7) {
-                ForEach(message.attachments) { attachment in
+                // Keyed by position: when the server confirms a send, the attachment
+                // ID changes, and keying by ID would rebuild the video and flash it.
+                ForEach(Array(message.attachments.enumerated()), id: \.offset) { _, attachment in
                     MessageVideoAttachment(
                         attachment: attachment,
                         deliveryState: message.deliveryState,
@@ -840,7 +842,8 @@ struct MessageBubble: View, Equatable {
                     .frame(maxWidth: .infinity, alignment: .center)
                 } else {
                     VStack(spacing: 7) {
-                        ForEach(message.attachments) { attachment in
+                        // Keyed by position so a confirmed send does not rebuild the card.
+                        ForEach(Array(message.attachments.enumerated()), id: \.offset) { _, attachment in
                             MessageAttachmentCard(
                                 attachment: attachment,
                                 deliveryState: message.deliveryState,
@@ -1300,7 +1303,7 @@ struct MessageBubble: View, Equatable {
         }
         let attachmentLabel = message.voiceMessage != nil
             ? ", voice message"
-            : message.attachments.contains(where: { $0.isMP4Video })
+            : message.attachments.contains(where: { $0.isPlayableVideo })
                 ? ", video message"
                 : message.attachments.isEmpty ? "" : ", \(attachmentCountText(message.attachments.count))"
         let messageText = ComposerMentionTargetCatalog.accessibilityText(
@@ -1774,7 +1777,7 @@ enum MessageAttachmentPresentation {
 
     static func usesBorderlessVideoSurface(for message: ChatMessage) -> Bool {
         !message.attachments.isEmpty
-            && message.attachments.allSatisfy(\.isMP4Video)
+            && message.attachments.allSatisfy(\.isPlayableVideo)
             && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && message.replyToMessageId == nil
             && message.messageAction == nil
@@ -1929,7 +1932,7 @@ private struct MessageAttachmentCard: View {
                 onPrepareActions: onPrepareActions,
                 onRequestActions: onRequestActions
             )
-        } else if attachment.isMP4Video {
+        } else if attachment.isPlayableVideo {
             MessageVideoAttachment(
                 attachment: attachment,
                 deliveryState: deliveryState,
@@ -2567,8 +2570,6 @@ private struct MessageVideoAttachment: View {
     @State private var posterAspectRatio: CGFloat?
     @State private var isLoading = false
     @State private var loadFailed = false
-    @State private var playbackHasStarted = false
-    @State private var playbackTimeObserver: Any?
 
     var body: some View {
         Group {
@@ -2576,63 +2577,8 @@ private struct MessageVideoAttachment: View {
                 resolvingSurface
             } else if deliveryState == .sending && (uploadProgress ?? 0) < 1 {
                 sendingSurface
-            } else if let player {
-                ZStack(alignment: .topTrailing) {
-                    if isPresentedFullScreen {
-                        if let poster {
-                            Image(uiImage: poster)
-                                .resizable()
-                                .scaledToFill()
-                        } else {
-                            Color(uiColor: .secondarySystemBackground)
-                        }
-                    } else {
-                        VideoPlayer(player: player)
-                            .aspectRatio(videoAspectRatio, contentMode: .fit)
-                            .frame(maxWidth: .infinity)
-                            .background(.black)
-                            .accessibilityLabel("Play \(attachment.name)")
-                        if !playbackHasStarted {
-                            ZStack {
-                                if let poster {
-                                    Image(uiImage: poster)
-                                        .resizable()
-                                        .scaledToFill()
-                                } else {
-                                    Color(uiColor: .secondarySystemBackground)
-                                }
-                                Color.black.opacity(poster == nil ? 0 : 0.18)
-                                ProgressView()
-                                    .controlSize(.large)
-                                    .tint(.white)
-                            }
-                            .clipped()
-                            .allowsHitTesting(false)
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("Loading \(attachment.name)")
-                        } else {
-                            Button {
-                                onExpand(attachment, player, poster)
-                            } label: {
-                                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                    .font(.caption.weight(.semibold))
-                                    .frame(width: 34, height: 34)
-                                    .foregroundStyle(.white)
-                                    .background(Color.black.opacity(0.44), in: Circle())
-                                    .overlay {
-                                        Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-                                    }
-                                    .frame(width: 44, height: 44)
-                            }
-                            .buttonStyle(.plain)
-                            .padding(4)
-                            .zIndex(1)
-                            .accessibilityLabel("Play \(attachment.name) in full screen")
-                        }
-                    }
-                }
             } else {
-                Button(action: loadAndPlay) {
+                Button(action: openFullScreen) {
                     ZStack {
                         Color(uiColor: .secondarySystemBackground)
                         if let poster {
@@ -2660,6 +2606,7 @@ private struct MessageVideoAttachment: View {
                             Circle()
                                 .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
                         }
+                        .opacity(isPresentedFullScreen ? 0 : 1)
                         .accessibilityHidden(true)
                     }
                     .aspectRatio(videoAspectRatio, contentMode: .fit)
@@ -2683,19 +2630,20 @@ private struct MessageVideoAttachment: View {
         .background(poster == nil ? Color(uiColor: .secondarySystemBackground) : .black)
         .compositingGroup()
         .clipShape(.rect(cornerRadius: 13))
+        // Sending ends with a crossfade instead of a jump to the played-state look.
+        .animation(.easeOut(duration: 0.2), value: deliveryState == .sending)
         .task(id: attachment.id) {
             let image = await onPreparePreview(attachment)
-            if !Task.isCancelled {
+            // Keep the current poster until a replacement exists; the confirmed
+            // attachment's preview may take a moment to load.
+            if !Task.isCancelled, let image {
                 poster = image
-                if let image, image.size.width > 0, image.size.height > 0 {
+                if image.size.width > 0, image.size.height > 0 {
                     posterAspectRatio = image.size.width / image.size.height
                 }
             }
         }
-        .onDisappear {
-            clearPlaybackTimeObserver()
-            player?.pause()
-        }
+        .onDisappear { player?.pause() }
     }
 
     private var sendingSurface: some View {
@@ -2762,7 +2710,7 @@ private struct MessageVideoAttachment: View {
     }
 
     private var resolvingSurface: some View {
-        Button(action: loadAndPlay) {
+        Button(action: openFullScreen) {
             ZStack {
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
                     .fill(Color(uiColor: .secondarySystemBackground))
@@ -2795,10 +2743,12 @@ private struct MessageVideoAttachment: View {
         )
     }
 
-    private func loadAndPlay() {
+    /// A tap opens the video full screen, where a drag down closes it. The
+    /// video is prepared once and reused for later taps.
+    private func openFullScreen() {
         guard !isLoading else { return }
         if let player {
-            player.play()
+            onExpand(attachment, player, poster)
             return
         }
         isLoading = true
@@ -2822,32 +2772,10 @@ private struct MessageVideoAttachment: View {
                 }
             }
             let preparedPlayer = AVPlayer(playerItem: AVPlayerItem(asset: asset))
-            observePlaybackStart(preparedPlayer)
             player = preparedPlayer
             isLoading = false
-            preparedPlayer.play()
+            onExpand(attachment, preparedPlayer, poster)
         }
-    }
-
-    private func observePlaybackStart(_ player: AVPlayer) {
-        clearPlaybackTimeObserver()
-        playbackHasStarted = false
-        playbackTimeObserver = player.addBoundaryTimeObserver(
-            forTimes: [NSValue(time: CMTime(seconds: 0.05, preferredTimescale: 600))],
-            queue: .main
-        ) { [weak player] in
-            playbackHasStarted = true
-            if let observer = playbackTimeObserver {
-                player?.removeTimeObserver(observer)
-                playbackTimeObserver = nil
-            }
-        }
-    }
-
-    private func clearPlaybackTimeObserver() {
-        guard let playbackTimeObserver else { return }
-        player?.removeTimeObserver(playbackTimeObserver)
-        self.playbackTimeObserver = nil
     }
 
     private var videoAspectRatio: CGFloat {

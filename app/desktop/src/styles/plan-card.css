@@ -1,6 +1,6 @@
 /* The plan agent's cards: the vote card and the calendar card in a transcript. */
 
-/* --- Pip plan card --- */
+/* --- System agent plan card --- */
 .app-plan-card {
   display: flex; flex-direction: column; gap: 8px;
   min-width: 240px; max-width: 340px; margin-top: 6px;

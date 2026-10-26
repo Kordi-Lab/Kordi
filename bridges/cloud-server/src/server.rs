@@ -14,8 +14,8 @@ use crate::calls::{CallMediaConfig, CallMediaConfigError};
 use crate::events::{EventBus, EventBusError};
 use crate::notifications::{PushNotificationConfigError, PushNotificationService};
 use crate::pg::{init_pool, PgPoolError};
-use crate::pip::{PendingPipConfig, PipConfigError, PipService};
 use crate::support::{PendingSupportConfig, SupportConfigError, SupportService};
+use crate::system_agent::{PendingSystemAgentConfig, SystemAgentConfigError, SystemAgentService};
 use crate::updates::store::{
     MinioReleaseStore, ReleaseCatalogStore, ReleaseStoreConfig, ReleaseStoreError,
 };
@@ -29,7 +29,7 @@ pub struct ServerState {
     s3: Option<S3Config>,
     release_store: Option<ReleaseCatalogStore>,
     support: Option<SupportService>,
-    pip: Option<PipService>,
+    system_agent: Option<SystemAgentService>,
     call_media: Option<CallMediaConfig>,
     notifications: Option<PushNotificationService>,
     signup_email: Option<crate::auth::signup_email::SignupEmailService>,
@@ -47,7 +47,7 @@ impl ServerState {
             s3: None,
             release_store: None,
             support: None,
-            pip: None,
+            system_agent: None,
             call_media: None,
             notifications: None,
             signup_email: None,
@@ -92,8 +92,8 @@ impl ServerState {
         self
     }
 
-    pub fn with_pip(mut self, pip: PipService) -> Self {
-        self.pip = Some(pip);
+    pub fn with_system_agent(mut self, system_agent: SystemAgentService) -> Self {
+        self.system_agent = Some(system_agent);
         self
     }
 
@@ -154,8 +154,8 @@ impl ServerState {
         self.release_store.as_ref()
     }
 
-    pub fn pip(&self) -> Option<&PipService> {
-        self.pip.as_ref()
+    pub fn system_agent(&self) -> Option<&SystemAgentService> {
+        self.system_agent.as_ref()
     }
 
     pub fn support(&self) -> Option<&SupportService> {
@@ -260,7 +260,7 @@ pub enum RunError {
     Events(EventBusError),
     RateLimiter(RateLimiterError),
     Support(SupportConfigError),
-    Pip(PipConfigError),
+    SystemAgent(SystemAgentConfigError),
     CallMedia(CallMediaConfigError),
     Notifications(PushNotificationConfigError),
     Bind(std::io::Error),
@@ -274,7 +274,7 @@ impl std::fmt::Display for RunError {
             Self::Events(err) => write!(f, "{err}"),
             Self::RateLimiter(err) => write!(f, "{err}"),
             Self::Support(err) => write!(f, "configure support: {err}"),
-            Self::Pip(err) => write!(f, "configure PiP: {err}"),
+            Self::SystemAgent(err) => write!(f, "configure the System agent: {err}"),
             Self::CallMedia(err) => write!(f, "configure call media: {err}"),
             Self::Notifications(err) => write!(f, "configure Apple notifications: {err}"),
             Self::Bind(err) => write!(f, "bind: {err}"),
@@ -387,17 +387,18 @@ pub async fn run(
         println!("Kordi support contact is disabled");
     }
     crate::system_account::bootstrap(state.db_pool()).await;
-    if let Some(pending) = PendingPipConfig::from_env().map_err(RunError::Pip)? {
-        let pip_config = crate::pip::bootstrap_pip_agent(state.db_pool(), pending)
-            .await
-            .map_err(RunError::Pip)?;
+    if let Some(pending) = PendingSystemAgentConfig::from_env().map_err(RunError::SystemAgent)? {
+        let system_agent_config =
+            crate::system_agent::bootstrap_system_agent(state.db_pool(), pending)
+                .await
+                .map_err(RunError::SystemAgent)?;
         println!(
-            "Kordi PiP plan agent configured as {} ({})",
-            pip_config.name, pip_config.account_id
+            "Kordi System agent configured as {} ({})",
+            system_agent_config.name, system_agent_config.account_id
         );
-        state = state.with_pip(PipService::new(pip_config));
+        state = state.with_system_agent(SystemAgentService::new(system_agent_config));
     } else {
-        println!("Kordi PiP plan agent is disabled");
+        println!("Kordi System agent is disabled");
     }
     if let Some(s3) = S3Config::from_env() {
         println!(
@@ -429,7 +430,7 @@ pub async fn run(
         );
     }
     let state = Arc::new(state);
-    workers::spawn_background_workers(&state, database_url);
+    workers::spawn_background_workers(&state, database_url, &rate_limiter);
     let sweeper_state = state.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(crate::presence::presence_sweep_interval());

@@ -1,0 +1,346 @@
+//! The System agent's plan card messages, and which card revision it has
+//! already seen.
+
+use serde_json::{json, Value};
+use sqlx_core::executor::Executor;
+use sqlx_core::query::query;
+use sqlx_core::query_as::query_as;
+use sqlx_postgres::{PgPool, Postgres};
+use uuid::Uuid;
+
+use crate::chat_sync::models::SendMessageRequest;
+use crate::plan_cards::models::{PlanCardRow, PlanCardState};
+
+/// Key prefix in `cloud_pip_conversation_state.hooks_fired` holding the newest
+/// revision of one card the System agent has seen, so a vote wakes it once per
+/// change.
+pub(crate) const CARD_SEEN_PREFIX: &str = "card_seen:";
+
+/// The newest revision of `event_id` the System agent has seen, or 0.
+pub(crate) fn seen_revision(hooks_fired: &Value, event_id: &str) -> i64 {
+    hooks_fired
+        .get(format!("{CARD_SEEN_PREFIX}{event_id}"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+}
+
+/// Records that the System agent has seen `revision` of a card. The stored
+/// revision never moves back, so a run finishing after the System agent's own
+/// later action changes nothing.
+pub(crate) async fn mark_card_seen<'e>(
+    executor: impl Executor<'e, Database = Postgres>,
+    conversation_id: Uuid,
+    event_id: &str,
+    revision: i64,
+) -> Result<(), sqlx_core::Error> {
+    query(
+        "UPDATE cloud_pip_conversation_state
+         SET hooks_fired = jsonb_set(hooks_fired, ARRAY[$2::text], to_jsonb(GREATEST($3::bigint,
+             CASE WHEN jsonb_typeof(hooks_fired->($2::text)) = 'number'
+                  THEN (hooks_fired->>($2::text))::bigint ELSE 0 END))),
+             updated_at = now()
+         WHERE conversation_id = $1",
+    )
+    .bind(conversation_id)
+    .bind(format!("{CARD_SEEN_PREFIX}{event_id}"))
+    .bind(revision)
+    .execute(executor)
+    .await?;
+    Ok(())
+}
+
+/// Which card a plan shows as: a vote while it polls between options, and a
+/// calendar card for the plan itself once it is proposed as one concrete
+/// option, confirmed, or canceled. They are separate messages.
+pub(crate) fn card_view(row: &PlanCardRow) -> &'static str {
+    if row.state == PlanCardState::Polling && !row.options.is_empty() {
+        "vote"
+    } else {
+        "event"
+    }
+}
+
+fn block_view(block: &Value) -> &'static str {
+    match block.get("view").and_then(Value::as_str) {
+        Some("vote") => "vote",
+        Some("event") => "event",
+        _ => {
+            let polling = block.get("state").and_then(Value::as_str) == Some("polling");
+            let has_options = block
+                .get("options")
+                .and_then(Value::as_array)
+                .is_some_and(|options| !options.is_empty());
+            if polling && has_options {
+                "vote"
+            } else {
+                "event"
+            }
+        }
+    }
+}
+
+/// A `plan_card` message block for one card view, built from the stored card.
+pub(crate) fn card_block_from_row(row: &PlanCardRow, view: &str) -> Value {
+    json!({
+        "type": "plan_card",
+        "view": view,
+        "eventId": row.event_id,
+        "revision": row.revision,
+        "managerIds": row.manager_ids,
+        "state": row.state.as_db_str(),
+        "title": row.title,
+        "startAt": row.start_at,
+        "endAt": row.end_at,
+        "location": row.location,
+        "unresolvedFields": row.unresolved_fields,
+        "options": serde_json::to_value(&row.options).unwrap_or_else(|_| json!([])),
+        "participants": row.participants.iter().map(|participant| json!({
+            "participantId": participant.account_id,
+            "displayName": participant.display_name,
+            "organizer": participant.organizer,
+            "rsvp": participant.rsvp.as_db_str(),
+            "avatarUrl": participant.avatar_url,
+        })).collect::<Vec<_>>(),
+    })
+}
+
+fn card_blocks<'a>(content: &'a Value, event_id: &'a str) -> impl Iterator<Item = &'a Value> {
+    content
+        .get("blocks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(move |block| {
+            block.get("type").and_then(Value::as_str) == Some("plan_card")
+                && block.get("eventId").and_then(Value::as_str) == Some(event_id)
+        })
+}
+
+/// Whether a card block predates participant avatars: at least one participant
+/// has no `avatarUrl` key. Blocks written before avatars were carried are
+/// repaired on the next sync even when the card's revision has not moved, so an
+/// existing card does not have to change to show faces. A refreshed block
+/// always carries the key (null when the account has no avatar), so this fires
+/// at most once per block.
+fn block_needs_avatar_backfill(block: &Value) -> bool {
+    block
+        .get("participants")
+        .and_then(Value::as_array)
+        .map(|participants| {
+            participants
+                .iter()
+                .any(|participant| participant.get("avatarUrl").is_none())
+        })
+        .unwrap_or(true)
+}
+
+/// A carrier message's content with its card blocks for `row` brought up to
+/// `row`'s revision, keeping each block's view. A block already at the same or
+/// a newer revision is left alone, so a slower refresh never moves a card
+/// back, unless it still predates participant avatars. `None` when nothing
+/// changes.
+fn refreshed_card_content(mut content: Value, row: &PlanCardRow) -> Option<Value> {
+    let mut changed = false;
+    for block in content
+        .get_mut("blocks")
+        .and_then(Value::as_array_mut)
+        .into_iter()
+        .flatten()
+    {
+        let shows_card = block.get("type").and_then(Value::as_str) == Some("plan_card")
+            && block.get("eventId").and_then(Value::as_str) == Some(row.event_id.as_str());
+        let stored_revision = block.get("revision").and_then(Value::as_i64).unwrap_or(0);
+        let needs_backfill = shows_card && block_needs_avatar_backfill(block);
+        if shows_card && (stored_revision < row.revision || needs_backfill) {
+            *block = card_block_from_row(row, block_view(block));
+            changed = true;
+        }
+    }
+    changed.then_some(content)
+}
+
+/// Refreshes in place every message from `sender` that carries `row`'s card,
+/// keeping each one's view. Returns whether any message carries the card and
+/// whether one already shows the view the card now wants. A member who proposed
+/// a card in their own chat (Common ground's Meet) carries it in their own
+/// message, so their card stays current the same way the System agent's does.
+pub(crate) async fn refresh_card_carriers(
+    pool: &PgPool,
+    sender: &str,
+    row: &PlanCardRow,
+) -> Result<(bool, bool), sqlx_core::Error> {
+    let Ok(conversation_id) = Uuid::parse_str(&row.conversation_id) else {
+        return Ok((false, false));
+    };
+    let wanted = card_view(row);
+    let probe = json!([{"type": "plan_card", "eventId": row.event_id}]);
+    let carriers: Vec<(Uuid, Value)> = query_as(
+        "SELECT message_id, content FROM cloud_chat_messages
+         WHERE conversation_id = $1 AND sender_account_id = $2 AND deleted_at IS NULL
+           AND content->'blocks' @> $3::jsonb
+         ORDER BY conversation_sequence DESC LIMIT 6",
+    )
+    .bind(conversation_id)
+    .bind(sender)
+    .bind(&probe)
+    .fetch_all(pool)
+    .await?;
+    let has_carrier = !carriers.is_empty();
+    let mut shows_wanted = false;
+    for (message_id, content) in carriers {
+        shows_wanted |=
+            card_blocks(&content, &row.event_id).any(|block| block_view(block) == wanted);
+        crate::chat_sync::store::refresh_server_message_content(
+            pool,
+            sender,
+            message_id,
+            |content| refreshed_card_content(content, row),
+        )
+        .await
+        .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
+    }
+    Ok((has_carrier, shows_wanted))
+}
+
+/// Brings the System agent's card messages for a plan up to date. Every message
+/// already carrying the card is refreshed in place, keeping its own view, so
+/// votes and answers show on the card with no new chat line. When the plan
+/// needs a view no message shows yet (the vote card when a poll opens, the
+/// calendar card when a poll resolves), the System agent posts it as a new
+/// card-only message and its sequence is returned.
+pub(crate) async fn sync_card_messages(
+    pool: &PgPool,
+    system_agent_account_id: &str,
+    row: &PlanCardRow,
+) -> Result<Option<i64>, sqlx_core::Error> {
+    let Ok(conversation_id) = Uuid::parse_str(&row.conversation_id) else {
+        return Ok(None);
+    };
+    let wanted = card_view(row);
+    let (has_carrier, shows_wanted) =
+        refresh_card_carriers(pool, system_agent_account_id, row).await?;
+    // A canceled plan updates the cards it already has; it never adds one.
+    if shows_wanted || (row.state == PlanCardState::Canceled && has_carrier) {
+        return Ok(None);
+    }
+    let request = SendMessageRequest {
+        client_message_id: Uuid::new_v5(
+            &Uuid::NAMESPACE_OID,
+            format!("{}:{}", row.event_id, wanted).as_bytes(),
+        ),
+        kind: "text".to_string(),
+        content: json!({
+            "schema": 1,
+            "blocks": [card_block_from_row(row, wanted)],
+            "legacy_attachments": [],
+        }),
+        reply_to_message_id: None,
+        attachment_ids: Vec::new(),
+    };
+    // The System agent's own messages never wake the sweep, so the cursor stays
+    // put and members' messages posted meanwhile are still read.
+    let outcome = crate::chat_sync::store::send_message(
+        pool,
+        system_agent_account_id,
+        conversation_id,
+        request,
+    )
+    .await
+    .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
+    Ok(Some(outcome.value.conversation_sequence))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plan_cards::models::{PlanCardParticipantStatus, PlanCardRow, PlanCardRsvp};
+
+    fn row(revision: i64) -> PlanCardRow {
+        PlanCardRow {
+            event_id: "plan_a".to_string(),
+            conversation_id: Uuid::nil().to_string(),
+            revision,
+            state: PlanCardState::Polling,
+            title: "Dinner".to_string(),
+            start_at: None,
+            end_at: None,
+            location: None,
+            unresolved_fields: Vec::new(),
+            source_message_ids: Vec::new(),
+            participants: Vec::new(),
+            manager_ids: Vec::new(),
+            options: Vec::new(),
+            note: None,
+        }
+    }
+
+    #[test]
+    fn a_card_block_never_moves_back_to_an_older_revision() {
+        let content = json!({"blocks": [card_block_from_row(&row(6), "event")]});
+        assert!(refreshed_card_content(content.clone(), &row(5)).is_none());
+        assert!(refreshed_card_content(content.clone(), &row(6)).is_none());
+        let newer = refreshed_card_content(content, &row(7)).expect("newer revision applies");
+        assert_eq!(newer["blocks"][0]["revision"], 7);
+        assert_eq!(newer["blocks"][0]["view"], "event");
+    }
+
+    #[test]
+    fn a_card_block_without_avatars_is_backfilled_at_the_same_revision() {
+        let mut card = row(6);
+        card.participants = vec![PlanCardParticipantStatus {
+            account_id: "acct_a".to_string(),
+            display_name: "Ada".to_string(),
+            organizer: true,
+            rsvp: PlanCardRsvp::Pending,
+            avatar_url: Some("https://cdn.example/a.png".to_string()),
+        }];
+        // A pre-avatar block sitting at the card's current revision.
+        let legacy = json!({"blocks": [{
+            "type": "plan_card",
+            "view": "event",
+            "eventId": "plan_a",
+            "revision": 6,
+            "participants": [{
+                "participantId": "acct_a",
+                "displayName": "Ada",
+                "organizer": true,
+                "rsvp": "pending",
+            }],
+        }]});
+        let refreshed =
+            refreshed_card_content(legacy, &card).expect("a stale avatar block is backfilled");
+        assert_eq!(
+            refreshed["blocks"][0]["participants"][0]["avatarUrl"],
+            "https://cdn.example/a.png"
+        );
+        // Once the key is present the block is left alone at the same revision.
+        assert!(refreshed_card_content(refreshed, &card).is_none());
+    }
+
+    #[test]
+    fn a_card_block_carries_participant_avatars() {
+        let mut card = row(1);
+        card.participants = vec![
+            PlanCardParticipantStatus {
+                account_id: "acct_a".to_string(),
+                display_name: "Ada".to_string(),
+                organizer: true,
+                rsvp: PlanCardRsvp::Pending,
+                avatar_url: Some("https://cdn.example/a.png".to_string()),
+            },
+            PlanCardParticipantStatus {
+                account_id: "acct_b".to_string(),
+                display_name: "Bob".to_string(),
+                organizer: false,
+                rsvp: PlanCardRsvp::Pending,
+                avatar_url: None,
+            },
+        ];
+        let block = card_block_from_row(&card, "event");
+        assert_eq!(
+            block["participants"][0]["avatarUrl"],
+            "https://cdn.example/a.png"
+        );
+        assert!(block["participants"][1]["avatarUrl"].is_null());
+    }
+}

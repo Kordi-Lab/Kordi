@@ -111,10 +111,10 @@ pub enum ConnectorAudience {
     /// The owner started the run in a conversation only they and their own
     /// agent can read, or it is an owner-only background job.
     OwnerPrivate,
-    /// Other accounts can read the output: group conversations, runs a
-    /// contact or shared-agent member started, PiP posts, and subsessions
-    /// of shared runs. The default, so an unlabeled run gets no connector
-    /// tools at all.
+    /// Other accounts can read the output: group conversations, runs a contact
+    /// or shared-agent member started, the System agent posts, and subsessions
+    /// of shared runs. The default, so an unlabeled run gets no connector tools
+    /// at all.
     #[default]
     Shared,
 }

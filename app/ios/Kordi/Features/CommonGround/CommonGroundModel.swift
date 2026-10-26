@@ -25,6 +25,8 @@ final class CommonGroundModel: ObservableObject {
     let memoriesEnabled: Bool
     /// `memoryVersion` 3: Add to card and Remove from card on the card page.
     let cardChoicesEnabled: Bool
+    /// `commonGroundNearbyVersion` 1: the Nearby row and screens.
+    let nearbyEnabled: Bool
     let defaults: UserDefaults
 
     @Published private(set) var owner: CommonGroundOwnerView?
@@ -51,6 +53,8 @@ final class CommonGroundModel: ObservableObject {
     @Published var roomPreviews: [String: CommonGroundRoomPreview] = [:]
     /// The current profile's routed memories, set in CommonGroundModel+Memories.swift.
     @Published var profileMemories: [CloudProfileMemory] = []
+    /// Nearby settings, people and requests, set in CommonGroundModel+Nearby.swift.
+    @Published var nearby = CommonGroundNearbyState()
     /// The viewer's profile to see each person through, from Recent or a room.
     var viewerProfiles: [String: String] = [:]
     /// The last code looked up; an answer for any other code is stale.
@@ -61,12 +65,13 @@ final class CommonGroundModel: ObservableObject {
     var designMove: Task<Void, Never>?
 
     init(me: CommonGroundPerson, profilesEnabled: Bool = false, memoriesEnabled: Bool = false, cardChoicesEnabled: Bool = false,
-         defaults: UserDefaults = .standard, context: @escaping Context) {
+         nearbyEnabled: Bool = false, defaults: UserDefaults = .standard, context: @escaping Context) {
         self.me = me
         self.context = context
         self.profilesEnabled = profilesEnabled
         self.memoriesEnabled = memoriesEnabled
         self.cardChoicesEnabled = cardChoicesEnabled
+        self.nearbyEnabled = nearbyEnabled
         self.defaults = defaults
     }
 
@@ -98,6 +103,8 @@ final class CommonGroundModel: ObservableObject {
 
     static let messages: [String: String] = [
         "common_ground_no_sources": "Turn on a source first.",
+        // A build that found nothing for the profile; trying again cannot help.
+        "no_topics": "Nothing here fits this profile. Add a note or choose other sources.",
         "common_ground_build_in_progress": "Your card is already being built.",
         "common_ground_room_not_found": roomNotFound,
         "common_ground_code_not_found": "Code not found.",
@@ -116,7 +123,7 @@ final class CommonGroundModel: ObservableObject {
             let seconds = Double(error.retryAfterSeconds ?? 60)
             return "Try again in \(max(1, Int((seconds / 60).rounded(.up)))) min."
         }
-        return messages[error.code] ?? error.message
+        return messages[error.code] ?? nearbyMessages[error.code] ?? error.message
     }
 
     func report(_ error: Error) {

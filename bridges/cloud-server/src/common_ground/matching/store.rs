@@ -28,7 +28,7 @@ const BLOCKING_RUN_SQL: &str = "created_at > now() - interval '15 minutes'
 
 /// Stored results for `viewer`, keyed by the other profile, that are still
 /// valid for both current cards.
-pub(super) async fn fresh_results(
+pub(in crate::common_ground) async fn fresh_results(
     pool: &PgPool,
     viewer: &SharedCard,
     others: &[SharedCard],
@@ -79,7 +79,7 @@ async fn load_results(
 
 /// How queued work for a viewer or room stands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Pending {
+pub(in crate::common_ground) enum Pending {
     /// A run is working (or was just queued).
     Running,
     /// The last run failed moments ago; the next request retries.
@@ -88,7 +88,7 @@ pub(super) enum Pending {
 
 /// What asking for a run did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Queued {
+pub(in crate::common_ground) enum Queued {
     /// A run is working or paused after a failure; nothing was charged.
     Pending(Pending),
     /// A new run would exceed the matching budget; nothing was queued.
@@ -142,9 +142,9 @@ async fn blocking_run(
 /// Queues a run matching `viewer` with up to [`MATCH_BATCH`] of `stale`,
 /// unless one is already working for this viewer profile. Only a queued run is
 /// charged to the viewer's matching budget.
-pub(super) async fn queue_matches(
+pub(in crate::common_ground) async fn queue_matches(
     pool: &PgPool,
-    service: &crate::pip::PipConfig,
+    service: &crate::system_agent::SystemAgentConfig,
     rate_limiter: &CloudRateLimiter,
     viewer: &SharedCard,
     stale: &[SharedCard],
@@ -231,7 +231,7 @@ pub(super) async fn latest_themes(
 /// The run is charged to `requester`'s matching budget.
 pub(super) async fn queue_themes(
     pool: &PgPool,
-    service: &crate::pip::PipConfig,
+    service: &crate::system_agent::SystemAgentConfig,
     rate_limiter: &CloudRateLimiter,
     room_id: Uuid,
     requester: &str,

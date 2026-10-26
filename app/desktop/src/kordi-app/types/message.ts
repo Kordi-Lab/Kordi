@@ -211,8 +211,8 @@ export type MessagePlanCardParticipant = {
   avatarUrl?: string | null;
 };
 
-/** A shared plan card snapshot carried by a PiP message. The server keeps the
- * live card; each PiP message carries the state at the time it was posted. */
+/** A shared plan card snapshot carried by a System agent message. The server keeps the
+ * live card; each System agent message carries the state at the time it was posted. */
 export type MessagePlanCardOption = {
   id: string;
   label: string;

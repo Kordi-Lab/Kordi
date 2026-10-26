@@ -40,7 +40,7 @@ fi
 tests=(
   signup_email_tests::upgrade_from_109_preserves_existing_accounts_without_certifying_email
   pin_stack_tests::upgrade_from_107_preserves_pins_and_rolling_writes
-  projection_tests::upgrade_from_98_backfills_projection_and_pip_context_boundaries
+  projection_tests::upgrade_from_98_backfills_projection_and_system_agent_context_boundaries
   upgrade_from_91_retains_pin_actions_and_captures_rolling_writes
   upgrade_from_75_preserves_history_and_new_identity_guards
   upgrade_from_digest_76_preserves_existing_report_and_calendar
@@ -80,6 +80,7 @@ tests=(
   memory_tests::upgrade_from_150_adds_memory_card_overrides
   proactive_tests::upgrade_from_153_adds_proactive_agents
   proactive_tests::upgrade_from_154_counts_evaluation_memory_searches
+  common_ground_nearby_tests::upgrade_from_155_adds_common_ground_nearby
 )
 index=0
 for test_name in "${tests[@]}"; do

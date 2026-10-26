@@ -1,7 +1,7 @@
-//! System: the server-managed account that posts notices, such as the
-//! Grounding intro and the line when someone joins a Grounding group.
-//! Clients show its messages as "System". It has no email, no sign-in and no
-//! agent of its own. Like PiP it is a service member: it belongs to the
+//! System: the server-managed account that posts notices, such as the Grounding
+//! intro and the line when someone joins a Grounding group. Clients show its
+//! messages as "System". It has no email, no sign-in and no agent of its own.
+//! Like the System agent it is a service member: it belongs to the
 //! conversations it posts in, but is never listed, counted or removable as a
 //! person.
 
@@ -19,16 +19,16 @@ pub const SYSTEM_DISPLAY_NAME: &str = "System";
 /// Conversation kinds System may join.
 const SYSTEM_CONVERSATION_KINDS: &[&str] = &["group"];
 
-/// Whether `account_id` is a server-managed account: System, or PiP when it
-/// runs on this server.
+/// Whether `account_id` is a server-managed account: System, or the System
+/// agent when it runs on this server.
 pub fn is_service_account(account_id: &str) -> bool {
-    account_id == SYSTEM_ACCOUNT_ID || crate::pip::service_account_id() == Some(account_id)
+    account_id == SYSTEM_ACCOUNT_ID || crate::system_agent::service_account_id() == Some(account_id)
 }
 
 /// Every server-managed account id, System first.
 pub fn service_account_ids() -> Vec<String> {
     std::iter::once(SYSTEM_ACCOUNT_ID)
-        .chain(crate::pip::service_account_id())
+        .chain(crate::system_agent::service_account_id())
         .map(str::to_string)
         .collect()
 }

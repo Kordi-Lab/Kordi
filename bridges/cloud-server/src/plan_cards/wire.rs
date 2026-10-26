@@ -1,5 +1,5 @@
-//! Plan-card requests as clients and PiP's runner send them, and the error
-//! responses they get back.
+//! Plan-card requests as clients and the System agent's runner send them, and
+//! the error responses they get back.
 
 use axum::{
     http::StatusCode,
@@ -195,7 +195,7 @@ fn upcoming_start(value: Option<&str>, past: (&str, &str)) -> Result<Option<Stri
 
 impl ProposeRequest {
     /// Validates a proposal and turns it into store arguments. `scope` is the
-    /// only conversation a PiP run may propose in.
+    /// only conversation a System agent run may propose in.
     pub(crate) fn into_args(self, scope: Option<Uuid>) -> Result<PlanCardProposeArgs, Rejection> {
         let Ok(conversation_id) = Uuid::parse_str(&self.conversation_id) else {
             return Err(bad_request(

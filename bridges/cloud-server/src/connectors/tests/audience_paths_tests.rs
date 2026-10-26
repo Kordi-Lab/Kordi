@@ -1,6 +1,7 @@
 //! Consent boundary through the real run-creating paths (issue 1712, PR 5):
 //! person and scheduled claims, the desktop claim, spawned subsessions, the
-//! digest refresh, and the PiP sweep each record the audience themselves.
+//! digest refresh, and the System agent sweep each record the audience
+//! themselves.
 
 use super::audience_tests::conversation;
 use super::broker_tests::TEST_RUNNER;
@@ -208,11 +209,11 @@ async fn digest_refresh_creates_an_owner_private_background_run() {
 }
 
 #[tokio::test]
-async fn pip_sweep_creates_a_shared_run() {
+async fn system_agent_sweep_creates_a_shared_run() {
     let Some(pool) = pool().await else { return };
-    let (pip, _) = signed_in_account(&pool, "pip_service").await;
-    let (jordan, _) = signed_in_account(&pool, "pip_member").await;
-    let group = conversation(&pool, "group", &jordan, &[&pip]).await;
+    let (system_agent, _) = signed_in_account(&pool, "system_agent_service").await;
+    let (jordan, _) = signed_in_account(&pool, "system_agent_member").await;
+    let group = conversation(&pool, "group", &jordan, &[&system_agent]).await;
     let (conversation_id,): (Uuid,) = query_as(
         "SELECT conversation_id FROM cloud_chat_conversations WHERE legacy_session_id = $1",
     )
@@ -245,20 +246,21 @@ async fn pip_sweep_creates_a_shared_run() {
     .await
     .unwrap();
 
-    let queued = crate::pip::store::sweep(&pool, &crate::pip::test_config(&pip))
-        .await
-        .unwrap();
+    let queued =
+        crate::system_agent::store::sweep(&pool, &crate::system_agent::test_config(&system_agent))
+            .await
+            .unwrap();
     assert_eq!(queued, 1);
     let runs: Vec<(String, String, String)> = query_as(
         "SELECT run_id, run_trigger, connector_audience FROM cloud_agent_fallback_runs \
          WHERE owner_account_id = $1",
     )
-    .bind(&pip)
+    .bind(&system_agent)
     .fetch_all(&pool)
     .await
     .unwrap();
     assert_eq!(runs.len(), 1, "{runs:?}");
-    assert!(runs[0].0.starts_with(crate::pip::RUN_PREFIX));
+    assert!(runs[0].0.starts_with(crate::system_agent::RUN_PREFIX));
     assert_eq!(
         (runs[0].1.as_str(), runs[0].2.as_str()),
         ("background", "shared")

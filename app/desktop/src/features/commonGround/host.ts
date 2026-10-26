@@ -27,6 +27,8 @@ export type CgHost = {
   profiles?: boolean;
   /** True when profiles keep their sources and documents can be read (`commonGroundVersion` 3). */
   sources?: boolean;
+  /** True when the server has Nearby people (`commonGroundNearbyVersion`); Home shows the Nearby row. */
+  nearby?: boolean;
   memoryAvailable: boolean;
   /** True when memories are filed to profiles (`memoryVersion` 2); the card page lists them. */
   memoryRouting?: boolean;

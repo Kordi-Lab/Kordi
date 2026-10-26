@@ -357,6 +357,7 @@ private final class PhotoLibraryGridCell: UICollectionViewCell {
 
     private let imageView = UIImageView()
     private let liveBadge = UIImageView()
+    private let durationLabel = UILabel()
     private let selectionCircle = UIView()
     private let selectionNumber = UILabel()
     private(set) var assetID: String?
@@ -364,6 +365,7 @@ private final class PhotoLibraryGridCell: UICollectionViewCell {
     weak var imageManager: PHImageManager?
     var requestID = PHInvalidImageRequestID
     private var isLivePhoto = false
+    private var videoDuration: TimeInterval?
     private var isStillOnly = false
     private var selectionPosition: Int?
 
@@ -391,7 +393,13 @@ private final class PhotoLibraryGridCell: UICollectionViewCell {
         selectionNumber.adjustsFontSizeToFitWidth = true
         selectionNumber.minimumScaleFactor = 0.6
 
-        [imageView, liveBadge, selectionCircle].forEach(contentView.addSubview)
+        durationLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+        durationLabel.textColor = .white
+        durationLabel.shadowColor = UIColor.black.withAlphaComponent(0.6)
+        durationLabel.shadowOffset = CGSize(width: 0, height: 1)
+        durationLabel.textAlignment = .right
+
+        [imageView, liveBadge, durationLabel, selectionCircle].forEach(contentView.addSubview)
         selectionCircle.addSubview(selectionNumber)
         isAccessibilityElement = true
     }
@@ -403,6 +411,7 @@ private final class PhotoLibraryGridCell: UICollectionViewCell {
         let bounds = contentView.bounds
         imageView.frame = bounds
         liveBadge.frame = CGRect(x: 4, y: bounds.maxY - 28, width: 24, height: 24)
+        durationLabel.frame = CGRect(x: 4, y: bounds.maxY - 22, width: bounds.width - 10, height: 18)
         selectionCircle.frame = CGRect(x: bounds.maxX - 33, y: 6, width: 27, height: 27)
         selectionNumber.frame = selectionCircle.bounds.insetBy(dx: 3, dy: 3)
     }
@@ -418,6 +427,9 @@ private final class PhotoLibraryGridCell: UICollectionViewCell {
     func show(asset: PHAsset) {
         assetID = asset.localIdentifier
         isLivePhoto = asset.mediaSubtypes.contains(.photoLive)
+        videoDuration = asset.mediaType == .video ? asset.duration : nil
+        durationLabel.text = videoDuration.map(PhotoLibraryGridMetrics.durationText)
+        durationLabel.isHidden = videoDuration == nil
         updateLiveBadge()
         updateAccessibility()
     }
@@ -444,9 +456,10 @@ private final class PhotoLibraryGridCell: UICollectionViewCell {
     }
 
     private func updateAccessibility() {
-        accessibilityLabel = isLivePhoto ? "Live Photo" : "Photo"
+        accessibilityLabel = videoDuration.map { "Video, \(PhotoLibraryGridMetrics.durationText($0))" }
+            ?? (isLivePhoto ? "Live Photo" : "Photo")
         accessibilityValue = selectionPosition.map { "Selected \($0)" } ?? "Not selected"
         accessibilityTraits = selectionPosition == nil ? .button : [.button, .selected]
-        accessibilityHint = "Opens the photo"
+        accessibilityHint = videoDuration == nil ? "Opens the photo" : "Opens the video"
     }
 }

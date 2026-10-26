@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { mapCanonicalMessage } from '../../src/features/canonical/readModel/messageMapping';
 import { mapCollaborationConversationToViewModel } from '../../src/features/collaboration/transcript';
 import { conversation, host } from '../helpers/collaborationTranscriptFixtures';
-import { KORDI_SYSTEM_AVATAR_URL } from '../../src/features/pip/pipIdentity';
+import { KORDI_SYSTEM_AVATAR_URL } from '../../src/features/systemAgent/systemAgentIdentity';
 import { MessageBubble } from '../../src/kordi-app/components/transcript';
 import type { CanonicalIdentity, CanonicalSessionMessage, Message } from '../../src/kordi-app/types';
 import type { MessagePlanCard } from '../../src/kordi-app/types/message';
@@ -13,21 +13,22 @@ import '../../src/index.css';
 const theme = new URLSearchParams(location.search).get('theme') === 'dark' ? 'dark' : 'light';
 document.body.className = `kordi-app theme-${theme}`;
 document.documentElement.classList.toggle('dark', theme === 'dark');
-const pip = { id: 'human:acct_kordi_pip', kind: 'human', displayName: 'PiP', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_kordi_pip',
+// The stored account id keeps the System agent's old name.
+const systemAgent = { id: 'human:acct_kordi_pip', kind: 'human', displayName: 'System', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_kordi_pip',
   humanId: 'acct_kordi_pip', profileImageUrl: KORDI_SYSTEM_AVATAR_URL, createdAtMs: 1, updatedAtMs: 1 } as CanonicalIdentity;
 const maya = { id: 'human:acct_preview_maya', kind: 'human', displayName: 'Maya Chen', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_preview_maya',
   humanId: 'acct_preview_maya', avatarKey: 'maya-preview', createdAtMs: 1, updatedAtMs: 1 } as CanonicalIdentity;
-const identities = new Map([[pip.id, pip], [maya.id, maya]]);
+const identities = new Map([[systemAgent.id, systemAgent], [maya.id, maya]]);
 const row = (id: string, sender: CanonicalIdentity, messageKind: string, text: string, minute: number): CanonicalSessionMessage => ({
   id, sessionId: 'session:group:preview', senderIdentityId: sender.id, senderRole: 'person', messageKind, contentText: text,
   content: { schema: 1, blocks: [{ type: 'text', text }] }, status: 'received', sequenceNum: minute, createdAtMs: Date.UTC(2026, 9, 21, 9, minute), updatedAtMs: 1,
   sourceTransport: 'cloud-group',
 });
 const messages = [
-  row('intro', pip, 'system-notice', 'This group is for planning the offsite.\nMaya and Alex both work on the mobile app and are in Lisbon this month.', 1),
-  row('joined', pip, 'system-notice', 'Jordan Lee joined. Jordan leads design and has run two offsites before.', 2),
+  row('intro', systemAgent, 'system-notice', 'This group is for planning the offsite.\nMaya and Alex both work on the mobile app and are in Lisbon this month.', 1),
+  row('joined', systemAgent, 'system-notice', 'Jordan Lee joined. Jordan leads design and has run two offsites before.', 2),
   row('maya', maya, 'text', 'Great, welcome Jordan!', 3),
-  row('pip', pip, 'text', 'Here is a first draft of the plan.', 4),
+  row('system-agent', systemAgent, 'text', 'Here is a first draft of the plan.', 4),
 ].map((message) => mapCanonicalMessage(message, identities, 'human:me')).filter((message): message is Message => Boolean(message));
 const planCard: MessagePlanCard = {
   eventId: 'preview-coffee', revision: 2, view: 'event', state: 'polling', title: 'Coffee with Maya', unresolvedFields: [], options: [],

@@ -17,11 +17,14 @@ struct CloudAuthCapabilities: Decodable, Equatable {
     let memoryVersion: Int?
     /// Present when the server serves `/v1/cloud/common-ground`.
     let commonGroundVersion: Int?
+    /// Present when the server serves `/v1/cloud/common-ground/nearby`.
+    let commonGroundNearbyVersion: Int?
     /// Present when the server serves `/v1/cloud/contacts/{id}/profile`.
     let contactProfileVersion: Int?
 
     private enum CodingKeys: String, CodingKey {
-        case password, oauthProviders, connectorsVersion, memoryVersion, commonGroundVersion, contactProfileVersion
+        case password, oauthProviders, connectorsVersion, memoryVersion, commonGroundVersion, commonGroundNearbyVersion
+        case contactProfileVersion
     }
 
     init(
@@ -30,6 +33,7 @@ struct CloudAuthCapabilities: Decodable, Equatable {
         connectorsVersion: Int? = nil,
         memoryVersion: Int? = nil,
         commonGroundVersion: Int? = nil,
+        commonGroundNearbyVersion: Int? = nil,
         contactProfileVersion: Int? = nil
     ) {
         self.password = password
@@ -37,6 +41,7 @@ struct CloudAuthCapabilities: Decodable, Equatable {
         self.connectorsVersion = connectorsVersion
         self.memoryVersion = memoryVersion
         self.commonGroundVersion = commonGroundVersion
+        self.commonGroundNearbyVersion = commonGroundNearbyVersion
         self.contactProfileVersion = contactProfileVersion
     }
 
@@ -47,6 +52,7 @@ struct CloudAuthCapabilities: Decodable, Equatable {
         connectorsVersion = try? container.decodeIfPresent(Int.self, forKey: .connectorsVersion)
         memoryVersion = try? container.decodeIfPresent(Int.self, forKey: .memoryVersion)
         commonGroundVersion = try? container.decodeIfPresent(Int.self, forKey: .commonGroundVersion)
+        commonGroundNearbyVersion = try? container.decodeIfPresent(Int.self, forKey: .commonGroundNearbyVersion)
         contactProfileVersion = try? container.decodeIfPresent(Int.self, forKey: .contactProfileVersion)
     }
 }

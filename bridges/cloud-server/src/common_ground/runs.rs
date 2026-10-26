@@ -1,7 +1,7 @@
 //! Background runs for Common ground. Every run belongs to the Kordi-operated
-//! service account (PiP's credential), so it uses the Kordi key rather than a
-//! member's own provider. Runs have no chat and no tools; the runner answers
-//! each with one completion, and the server parses the reply.
+//! service account (the System agent's credential), so it uses the Kordi key
+//! rather than a member's own provider. Runs have no chat and no tools; the
+//! runner answers each with one completion, and the server parses the reply.
 
 use chrono::Utc;
 use sqlx_core::{query::query, transaction::Transaction};
@@ -29,7 +29,7 @@ pub(super) struct NewRun<'a> {
 
 pub(super) async fn insert(
     tx: &mut Transaction<'_, Postgres>,
-    service: &crate::pip::PipConfig,
+    service: &crate::system_agent::SystemAgentConfig,
     run: NewRun<'_>,
 ) -> sqlx_core::Result<()> {
     let now = Utc::now().to_rfc3339();
@@ -108,6 +108,8 @@ pub async fn complete(
         super::build::complete(pool, run_id, runner_id, text).await
     } else if run_id.starts_with(INTRO_PREFIX) {
         super::intro::complete(pool, run_id, runner_id, text).await
+    } else if run_id.starts_with(super::nearby::NEED_PREFIX) {
+        super::nearby::complete_check(pool, run_id, runner_id, text).await
     } else {
         super::matching::complete(pool, run_id, runner_id, text).await
     }
@@ -123,6 +125,8 @@ pub async fn fail(
         super::build::fail(pool, run_id, runner_id, code).await
     } else if run_id.starts_with(INTRO_PREFIX) {
         super::intro::fail(pool, run_id, runner_id, code).await
+    } else if run_id.starts_with(super::nearby::NEED_PREFIX) {
+        super::nearby::fail_check(pool, run_id, runner_id, code).await
     } else {
         super::matching::fail(pool, run_id, runner_id, code).await
     }

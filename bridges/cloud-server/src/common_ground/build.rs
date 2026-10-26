@@ -34,7 +34,7 @@ pub(super) async fn start(
     Extension(session): Extension<CloudSession>,
     Json(request): Json<BuildRequest>,
 ) -> Response {
-    let Some(pip) = state.pip() else {
+    let Some(system_agent) = state.system_agent() else {
         return super::unavailable();
     };
     let pool = state.db_pool();
@@ -104,7 +104,7 @@ pub(super) async fn start(
         system_prompt = format!("{system_prompt}\n\n{}", related::SYSTEM_BLOCK);
         user_prompt.push_str(&related::user_block(&candidates));
     }
-    let config = pip.config();
+    let config = system_agent.config();
     let run_id = runs::new_run_id(CARD_PREFIX);
     let picks = request.picks.map(|picks| picks.cleaned());
     let result = async {
@@ -200,9 +200,12 @@ pub(super) async fn complete(
         return Err(sqlx_core::Error::RowNotFound);
     };
     let gathered: Vec<Gathered> = serde_json::from_value(gathered).unwrap_or_default();
-    let Some((topics, evidence)) = prompt::parse_reply(text, &gathered) else {
-        eprintln!("[common-ground] Rejected run {run_id}: the reply is not a card");
-        return fail(pool, run_id, Some(runner_id), "invalid_output").await;
+    let (topics, evidence) = match prompt::parse_reply(text, &gathered) {
+        Ok(card) => card,
+        Err(error) => {
+            eprintln!("[common-ground] Rejected run {run_id}: {}", error.code());
+            return fail(pool, run_id, Some(runner_id), error.code()).await;
+        }
     };
     let mut tx = pool.begin().await?;
     if !runs::mark_completed(&mut tx, run_id, runner_id).await? {

@@ -5,7 +5,7 @@ import { SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import { ConnectorsSection } from './BuildConnectors';
 import { DeviceRows, type CgDeviceTitles } from './BuildDeviceRows';
 import { DocumentsRow } from './BuildDocuments';
-import { agentFilesSummary, canBuildProfile, commonGroundBuildRequest, notesHint, type CgBuildChoices } from './buildRequest';
+import { agentFilesSummary, buildFailureMessage, canBuildProfile, commonGroundBuildRequest, notesHint, type CgBuildChoices } from './buildRequest';
 import { DEVICE_SOURCES } from './deviceAccess';
 import type { CgHost } from './host';
 import { CgAvatar, CgBack, CgGroup, CgHero, CgIcon, CgNotice, CgProgress, CgRow, CgSection } from './parts';
@@ -52,7 +52,7 @@ export function BuildScreen({ state, store, host }: { state: CgState; store: Com
     notes: picks.notes,
     ...(sourcesOn ? { documents: picks.documents, picks } : {}),
   };
-  const failed = state.owner?.build.status === 'failed' && !state.notice ? 'Could not build your card. Try again.' : null;
+  const failed = state.owner?.build.status === 'failed' && !state.notice ? buildFailureMessage(state.owner.build.errorCode) : null;
   const hasAgentFiles = Boolean(agentFiles?.length);
   const agentsRow = host.agentFiles ? (
     <CgRow
