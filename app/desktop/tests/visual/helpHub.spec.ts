@@ -362,3 +362,33 @@ for (const off of [false, true]) {
     if (off) await expect(page.getByRole('switch', { name: 'Let Kordi save memories' })).not.toBeChecked();
   });
 }
+
+test('memory tour scrolls growing examples into view and clips highlights to the settings viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 1180, height: 600 });
+  await page.goto('/tests/visual/memorySettings.html?tour=imports&emptyMemory=1&theme=light');
+  for (let i = 0; i < 3; i += 1) await page.getByRole('button', { name: 'Next', exact: true }).click();
+  const target = page.locator('[data-help-target="memory-review"]');
+  const spotlight = page.locator('.help-tour-spotlight');
+  await expect(spotlight).toHaveAttribute('data-target', 'memory-review');
+  const scroller = page.locator('.app-cloud-account-settings-page > .app-scroll-area');
+  await expect(scroller).toHaveAttribute('data-help-tour-scroll', '');
+  // The empty-state example and asynchronous file discovery can change the layout after the step starts.
+  await target.evaluate((element) => { element.style.paddingBottom = '160px'; });
+  await expect.poll(async () => {
+    const content = await target.boundingBox();
+    const viewport = await scroller.boundingBox();
+    return Boolean(content && viewport && content.y >= viewport.y && content.y + content.height <= viewport.y + viewport.height + 1);
+  }).toBe(true);
+  await page.screenshot({ path: test.info().outputPath('memory-tour-scrolled-example.png') });
+  // Taller targets and smaller windows must never paint a spotlight through the dialog's edge.
+  await target.evaluate((element) => { element.style.minHeight = '900px'; });
+  await page.setViewportSize({ width: 1180, height: 460 });
+  await expect.poll(async () => {
+    const highlight = await spotlight.boundingBox();
+    const viewport = await scroller.boundingBox();
+    return Boolean(highlight && viewport && highlight.y >= viewport.y - 1 && highlight.y + highlight.height <= viewport.y + viewport.height + 1);
+  }).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-help-tour-scroll]')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as unknown as { featureTourActions: string[] }).featureTourActions)).toEqual([]);
+});

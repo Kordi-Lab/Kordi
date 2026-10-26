@@ -8,6 +8,7 @@ import { cloudApiBaseUrl, defaultCloudAuthClient } from '@/features/cloud/authCl
 import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
 import { commonGroundVersionFromCapabilities } from '@/features/cloud/commonGroundCapability';
 import { setHelpTourLocation } from './helpTourSession';
+import { trackHelpTourTarget } from './helpTourTarget';
 import '@/styles/help.css';
 
 type Props = {
@@ -62,19 +63,19 @@ export default function HelpTour({ progressKey, tourId = 'workspace', initialSec
     prepare.current(step);
     let frame = 0;
     let current: HTMLElement | null = null;
-    let missingSince = performance.now();
-    const measure = () => {
+    let target: ReturnType<typeof trackHelpTourTarget> | null = null;
+    let missingSince: number | null = null;
+    const measure = (now: number) => {
+      missingSince ??= now;
       const element = document.querySelector<HTMLElement>(`[data-help-target="${targetName}"]`);
-      if (element && element !== current) { current = element; element.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' }); }
-      const bounds = element?.getBoundingClientRect();
-      const visible = bounds && bounds.width > 0 && bounds.height > 0 && bounds.bottom > 0 && bounds.right > 0 && bounds.top < innerHeight && bounds.left < innerWidth && !element?.closest('[inert], [aria-hidden="true"]');
-      const nextRect = visible ? { left: Math.max(4, bounds.left - 5), top: Math.max(4, bounds.top - 5), width: Math.min(innerWidth - 4, bounds.right + 5) - Math.max(4, bounds.left - 5), height: Math.min(innerHeight - 4, bounds.bottom + 5) - Math.max(4, bounds.top - 5) } : null;
+      if (element !== current) { target?.dispose(); current = element; target = element ? trackHelpTourTarget(element) : null; }
+      const nextRect = target?.measure() ?? null;
       // Keep the last placement while navigation mounts the next target.
       // Clearing it would send the popover to a fallback position for one frame.
       if (nextRect) setAnchor((old) => old?.target === targetName && JSON.stringify(old.rect) === JSON.stringify(nextRect) ? old : { target: targetName, rect: nextRect });
       setTrackedTarget(nextRect ? targetName : null);
-      if (nextRect) missingSince = performance.now();
-      else if (performance.now() - missingSince >= (step.groundingScreen || step.settings ? 6000 : 1500)) {
+      if (nextRect) missingSince = now;
+      else if (now - missingSince >= (step.groundingScreen || step.settings ? 6000 : 1500)) {
         // A tour only explains controls the user can see and use.
         setUnavailable((old) => old.includes(step.target) ? old : [...old, step.target]);
         return;
@@ -84,8 +85,8 @@ export default function HelpTour({ progressKey, tourId = 'workspace', initialSec
       if (panelBounds) setSize((old) => old.width === panelBounds.width && old.height === panelBounds.height ? old : { width: panelBounds.width, height: panelBounds.height });
       frame = requestAnimationFrame(measure);
     };
-    measure();
-    return () => cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(measure);
+    return () => { cancelAnimationFrame(frame); target?.dispose(); };
   }, [step, targetName]);
 
   useEffect(() => { if (steps.length === 0) onExit(); }, [steps.length, onExit]);

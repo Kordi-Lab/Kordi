@@ -113,3 +113,7 @@
 .help-import-example > p { color: var(--app-transient-muted-text); font-size: 12px; margin: 8px 0 16px; }
 .cg-page .help-example-content :disabled { opacity: 1; cursor: default; }
 .help-example-content .cg-wallet-col.is-push { animation: none; }
+
+.kordi-app [data-help-tour-scroll] { scrollbar-color: var(--app-transient-muted-text) transparent; scrollbar-width: auto; }
+.kordi-app [data-help-tour-scroll]::-webkit-scrollbar { display: block; width: 8px; height: 8px; }
+.kordi-app [data-help-tour-scroll]::-webkit-scrollbar-thumb { background-color: var(--app-transient-muted-text); border-radius: 8px; }
