@@ -134,8 +134,9 @@ export function NearbyScreen({ state, store, host }: { state: CgState; store: Co
     <div className="cg-nb">
       <StatusLine phase={phase} nb={nb} nearby={nearby} />
       {editing ? null : <CgNotice text={nb.notice} />}
-      <h2 className="cg-msec">Open to</h2>
-      <NearbyOpenTo settings={settings} nearby={nearby} />
+      <h2 className="cg-msec">Meet for</h2>
+      <p className="cg-nb-activity-help">Choose activities you’d like to do with people you meet. Saved for this card.</p>
+      <NearbyOpenTo key={settings.profileId} settings={settings} nearby={nearby} profile={state.profiles.find((profile) => profile.profileId === settings.profileId)} busy={nb.busy !== null} />
       {phase === 'on' ? (
         <NearbyPeople settings={settings} results={nb.results} nearby={nearby} onOpen={(accountId) => store.open({ name: 'nearbyPerson', accountId })} />
       ) : null}

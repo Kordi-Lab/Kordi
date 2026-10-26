@@ -15,6 +15,7 @@ mod matching_unit_tests;
 mod nearby_access_tests;
 mod nearby_alerts_tests;
 mod nearby_needs_tests;
+mod nearby_profile_preferences_tests;
 mod nearby_search_tests;
 mod nearby_support;
 mod nearby_tests;

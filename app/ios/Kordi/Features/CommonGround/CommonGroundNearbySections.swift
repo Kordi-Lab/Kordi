@@ -1,6 +1,6 @@
 import SwiftUI
 
-// The Nearby screen's parts: the Sharing chip, Open to, People, Looking for
+// The Nearby screen's parts: the Sharing chip, Meet for, People, Looking for
 // and Alerts. Each reads the shared model; changes are written at once.
 
 /// "Sharing Work" with the card's swatch; a menu when there is a choice.
@@ -26,6 +26,7 @@ struct CommonGroundNearbyCardChip: View {
             } label: {
                 label(selected, menu: true)
             }
+            .disabled(model.busy != nil)
         } else {
             label(selected, menu: false)
         }
@@ -51,61 +52,97 @@ struct CommonGroundNearbyCardChip: View {
     }
 }
 
-/// What the person is open to right now, shown on their nearby entry.
+/// Suggestions are choices, never consent. Only saved activities are selected.
+enum CommonGroundNearbyActivities {
+    static func suggestions(for profile: CommonGroundProfileSummary?) -> [String] {
+        switch profile?.icon {
+        case "camera": return ["Photo walk", "Sharing tips", "Creative project", "Coffee chat"]
+        case "graduation": return ["Alumni meetup", "Mentoring", "Career chat", "Reconnecting"]
+        case "leaf": return ["Activity partner", "Training together", "Sharing tips", "Encouragement"]
+        default: break
+        }
+        switch profile?.kind {
+        case "health": return ["Activity partner", "Training together", "Sharing tips", "Encouragement"]
+        case "work": return ["Coffee chat", "Collaborating", "Advice", "Hiring"]
+        case "daily": return ["Shared activity", "Exploring together", "Sharing tips", "Coffee chat"]
+        default: return ["Shared activity", "Sharing ideas", "Advice", "Coffee chat"]
+        }
+    }
+
+    static func options(for profile: CommonGroundProfileSummary?, selected: [String]) -> [String] {
+        let suggested = suggestions(for: profile)
+        return suggested + selected.filter { entry in
+            !suggested.contains { $0.caseInsensitiveCompare(entry) == .orderedSame }
+        }
+    }
+}
+
+/// Activities saved for the card currently shared through Nearby.
 struct CommonGroundNearbyOpenToSection: View {
-    static let suggested = ["Coffee chat", "Collaborating", "Advice", "Hiring"]
     @EnvironmentObject private var model: CommonGroundModel
     @Environment(\.kordiChatTheme) private var chatTheme
     @State private var draft: String?
+    @State private var draftProfileId: String?
     @FocusState private var typing: Bool
 
     var body: some View {
         let chosen = model.nearby.settings?.openTo ?? []
-        let typed = chosen.filter { entry in !Self.suggested.contains { $0.caseInsensitiveCompare(entry) == .orderedSame } }
-        CommonGroundSection(title: "Open to") {
-            FlowLayout(spacing: 8) {
-                ForEach(Self.suggested + typed, id: \.self) { entry in
-                    let on = chosen.contains { $0.caseInsensitiveCompare(entry) == .orderedSame }
-                    Button {
-                        Task { await model.toggleNearbyOpenTo(entry) }
-                    } label: {
-                        chip(entry, on: on)
+        let profileId = model.nearby.settings?.profileId
+        let profile = model.profile(profileId)
+        CommonGroundSection(title: "Meet for") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Choose activities you’d like to do with people you meet. Saved for this card.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                FlowLayout(spacing: 8) {
+                    ForEach(CommonGroundNearbyActivities.options(for: profile, selected: chosen), id: \.self) { entry in
+                        let on = chosen.contains { $0.caseInsensitiveCompare(entry) == .orderedSame }
+                        Button {
+                            Task { await model.toggleNearbyOpenTo(entry, profileId: profileId) }
+                        } label: {
+                            chip(entry, on: on)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(profileId == nil || model.busy != nil || (!on && chosen.count >= 5))
+                        .accessibilityAddTraits(on ? .isSelected : [])
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!on && chosen.count >= 5)
-                    .accessibilityAddTraits(on ? .isSelected : [])
-                }
-                if draft != nil {
-                    TextField("Open to", text: Binding(get: { draft ?? "" }, set: { draft = String($0.prefix(30)) }))
-                        .font(.subheadline.weight(.medium))
-                        .focused($typing)
-                        .submitLabel(.done)
-                        .onSubmit(commit)
-                        .onAppear { typing = true }
-                        .frame(width: 120)
-                        .padding(.horizontal, 12)
-                        .frame(height: commonGroundTagHeight)
-                        .overlay(commonGroundTagShape.strokeBorder(chatTheme.accent.opacity(0.55), lineWidth: 1.5))
-                } else {
-                    Button {
-                        draft = ""
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 10)
+                    if draft != nil {
+                        TextField("Activity", text: Binding(get: { draft ?? "" }, set: { draft = String($0.prefix(30)) }))
+                            .font(.subheadline.weight(.medium))
+                            .focused($typing)
+                            .submitLabel(.done)
+                            .onSubmit(commit)
+                            .onAppear { typing = true }
+                            .frame(width: 120)
+                            .padding(.horizontal, 12)
                             .frame(height: commonGroundTagHeight)
-                            .background(Color(uiColor: .tertiarySystemFill), in: commonGroundTagShape)
+                            .overlay(commonGroundTagShape.strokeBorder(chatTheme.accent.opacity(0.55), lineWidth: 1.5))
+                    } else {
+                        Button {
+                            draftProfileId = profileId
+                            draft = ""
+                        } label: {
+                            Label("Add activity", systemImage: "plus")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 10)
+                                .frame(height: commonGroundTagHeight)
+                                .background(Color(uiColor: .tertiarySystemFill), in: commonGroundTagShape)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(profileId == nil || model.busy != nil || chosen.count >= 5)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(chosen.count >= 5)
-                    .accessibilityLabel("Add")
                 }
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onChange(of: typing) { _, focused in if !focused, draft != nil { commit() } }
+        .onChange(of: profileId) { _, _ in
+            draft = nil
+            draftProfileId = nil
+            typing = false
+        }
     }
 
     private func chip(_ entry: String, on: Bool) -> some View {
@@ -125,8 +162,10 @@ struct CommonGroundNearbyOpenToSection: View {
 
     private func commit() {
         let text = draft ?? ""
+        let profileId = draftProfileId
         draft = nil
-        Task { await model.addNearbyOpenTo(text) }
+        draftProfileId = nil
+        Task { await model.addNearbyOpenTo(text, profileId: profileId) }
     }
 }
 

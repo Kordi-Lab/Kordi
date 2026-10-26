@@ -5,7 +5,7 @@ Contract for issue #2100. Nearby people is part of Grounding (internal name `com
 ## Summary
 
 - A person turns on Nearby, consents, and picks one Grounding profile to share. While it is on, they can see other participants within a range and minimum match score, and those participants can see them.
-- Their iPhone sends its location, also in the background. Location counts as current for 30 minutes after it was taken. The Mac reads the same results and settings but never sends a location in this version.
+- The newest fresh location from any signed-in device is used. An iPhone can update in the background; the Mac and browser can request and submit a foreground fix. Location counts as current for 30 minutes after it was taken.
 - Requests ("needs") describe who they want to meet. A request has no end, or a time window that ends within 7 days. Requests can be edited, paused and deleted.
 - The server checks nearby participants against requests and against the match score, and sends an alert to the person's iPhones. Alerts are deduplicated and capped per day.
 - Turning Nearby off or pausing it hides the person, stops searching and stops alerts at once. The server checks this on every request and again before each alert is sent.
@@ -113,9 +113,10 @@ Distance is the haversine distance between the two rounded points (Earth radius 
 - `enabled: true` requires `consent: true` in the same body whenever the account is not already enabled. Otherwise it returns `409 common_ground_nearby_consent_required`. Consent sets `consented_at`.
 - `profileId` must be one of the viewer's profiles (`404 common_ground_profile_not_found`). Enabling with a profile that has no built card returns `409 common_ground_no_card`; with sharing off it returns `409 common_ground_sharing_off`.
 - `pausedUntil`: an ISO time at most 7 days ahead, or null to resume.
-- `openTo`: up to 5 entries of up to 30 characters, trimmed and deduplicated (case-insensitive). The clients offer Coffee chat, Collaborating, Advice and Hiring, plus typed entries. This is the person's stated current willingness; others see it on their nearby entry.
+- `openTo`: up to 5 entries of up to 30 characters, trimmed and deduplicated (case-insensitive). The clients label this **Meet for**, explain that these are meeting activities rather than search filters, and offer suggestions based on the shared card’s kind and icon plus typed entries. No suggestion is selected automatically. Choices are saved per profile and restored when switching cards; others see the active card’s choices on the nearby entry.
 - `range` must be a band value. `minScore` must be one of 0, 50, 70 or 85.
 - `alerts.matchMinScore` must be one of 50, 70 or 85. `alerts.maxPerDay` must be one of 1, 3 or 10.
+- `openToProfileId` optionally scopes an activity edit to the active card. A stale edit returns `409 common_ground_nearby_card_changed` without changing either card. Older clients can omit this field and edit the currently shared card.
 - Any other value returns `422 common_ground_nearby_invalid_settings`.
 - The response is the same shape as `GET`.
 - Every accepted `PUT` sends `common_ground.nearby.updated` to the account. One that leaves the account enabled and not paused marks it dirty; turning off or pausing runs the deletions in [Turning off, pausing, signing out](#turning-off-pausing-signing-out) instead.
@@ -377,3 +378,7 @@ These tables are in one migration. Every account foreign key is `ON DELETE CASCA
 
 - iOS decides when a suspended app runs. Significant-change and region events can arrive minutes late, and a force-quit app gets no background time. A person who stays in one place without opening Kordi stops being shown after 30 minutes. The status line and this document say so; the app does not promise uninterrupted discovery.
 - Rounded coordinates and distance bands limit what a viewer learns. The post limit slows down someone who moves a fake location around to triangulate, but cannot rule it out.
+
+### Card activity preferences
+
+Migration 159 preserves existing `openTo` choices on the currently shared profile in `cloud_common_ground_nearby_profile_preferences`. Switching profiles restores that profile’s saved choices, or an empty list for a new profile. The active Nearby row remains the projection read by search, alerts, and older clients. Profile deletion cascades to its activity preferences.

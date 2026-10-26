@@ -448,7 +448,7 @@ test('nearby person: evidence names where it sits on the card', () => {
   assert.equal(evidenceLine(check({ kind: 'work', evidence: 'Founding Loom Labs' }), card), 'Working on · Founding Loom Labs');
   assert.equal(evidenceLine(check({ kind: 'interest', evidence: 'agent  memory' }), card), 'Interests · agent  memory');
   assert.equal(evidenceLine(check({ kind: 'affiliation', evidence: 'Fudan University' }), card), 'Profile · Fudan University');
-  assert.equal(evidenceLine(check({ kind: 'willingness', evidence: 'Coffee chat' }), card), 'Open to · Coffee chat');
+  assert.equal(evidenceLine(check({ kind: 'willingness', evidence: 'Coffee chat' }), card), 'Meet for · Coffee chat');
   assert.equal(evidenceLine(check({ verdict: 'unknown' }), card), 'Not shared');
 });
 

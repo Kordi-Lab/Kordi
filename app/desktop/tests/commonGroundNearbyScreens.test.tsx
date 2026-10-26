@@ -169,3 +169,25 @@ test('nearby screen: Within stores the range and searches again; Add posts a req
     assert.match(root.textContent ?? '', /Demo partnerNo end · 1 km/);
   });
 });
+
+test('meeting activities explain their purpose and use the shared card’s suggestions', async () => {
+  const { store, calls } = storeWith({
+    'GET nearby': { status: 200, body: settings({ profileId: health.profileId, openTo: ['Sunday trail run'] }) },
+    'GET nearby/needs': { status: 200, body: { needs: [] } },
+    'GET nearby/people': { status: 200, body: { people: [], matching: 0, location: fresh() } },
+    'PUT nearby': { status: 200, body: settings({ profileId: health.profileId, openTo: ['Sunday trail run', 'Training together'] }) },
+  });
+  store.set({ profileId: health.profileId });
+  await mount(createElement(Screen, { store }), async (root) => {
+    assert.match(root.textContent ?? '', /Meet for/);
+    assert.match(root.textContent ?? '', /Choose activities you’d like to do with people you meet. Saved for this card./);
+    assert.equal(buttonNamed(root, 'Hiring'), undefined);
+    assert.equal(buttonNamed(root, 'Sunday trail run')?.getAttribute('aria-pressed'), 'true');
+    assert.equal(buttonNamed(root, 'Training together')?.getAttribute('aria-pressed'), 'false');
+    assert.ok(root.querySelector('[aria-label="Add activity"]'));
+    await click(buttonNamed(root, 'Training together'));
+    assert.deepEqual(calls.find((call) => call.method === 'PUT')?.body, {
+      openTo: ['Sunday trail run', 'Training together'], openToProfileId: health.profileId,
+    });
+  });
+});

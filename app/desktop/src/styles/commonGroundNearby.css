@@ -110,3 +110,5 @@
   .cg-nb-menu { animation: none; }
   .cg-nb-chip { transition: none; }
 }
+
+.cg-nb-activity-help { margin: -8px 0 12px; color: var(--utility-muted-text); font-size: 13px; line-height: 1.5; }
