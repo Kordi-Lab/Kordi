@@ -239,8 +239,12 @@ enum PendingAttachmentLoader {
     }
 
     nonisolated static func loadCameraVideo(_ sourceURL: URL) async throws -> PendingAttachment {
+        try await loadVideo(AVURLAsset(url: sourceURL))
+    }
+
+    /// Exports a recorded or photo-library video to MP4 within the upload limit.
+    nonisolated static func loadVideo(_ asset: AVAsset) async throws -> PendingAttachment {
         let outputURL = temporaryVideoURL(fileExtension: "mp4")
-        let asset = AVURLAsset(url: sourceURL)
         var exportError: Error = AttachmentTransferError.invalidVideo
         var didExport = false
         for preset in cameraVideoExportPresets {

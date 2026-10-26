@@ -559,7 +559,9 @@ struct MessageBubble: View, Equatable {
             }
         } else if usesBorderlessVideoSurface {
             VStack(spacing: 7) {
-                ForEach(message.attachments) { attachment in
+                // Keyed by position: when the server confirms a send, the attachment
+                // ID changes, and keying by ID would rebuild the video and flash it.
+                ForEach(Array(message.attachments.enumerated()), id: \.offset) { _, attachment in
                     MessageVideoAttachment(
                         attachment: attachment,
                         deliveryState: message.deliveryState,
@@ -840,7 +842,8 @@ struct MessageBubble: View, Equatable {
                     .frame(maxWidth: .infinity, alignment: .center)
                 } else {
                     VStack(spacing: 7) {
-                        ForEach(message.attachments) { attachment in
+                        // Keyed by position so a confirmed send does not rebuild the card.
+                        ForEach(Array(message.attachments.enumerated()), id: \.offset) { _, attachment in
                             MessageAttachmentCard(
                                 attachment: attachment,
                                 deliveryState: message.deliveryState,
@@ -2683,11 +2686,15 @@ private struct MessageVideoAttachment: View {
         .background(poster == nil ? Color(uiColor: .secondarySystemBackground) : .black)
         .compositingGroup()
         .clipShape(.rect(cornerRadius: 13))
+        // Sending ends with a crossfade instead of a jump to the played-state look.
+        .animation(.easeOut(duration: 0.2), value: deliveryState == .sending)
         .task(id: attachment.id) {
             let image = await onPreparePreview(attachment)
-            if !Task.isCancelled {
+            // Keep the current poster until a replacement exists; the confirmed
+            // attachment's preview may take a moment to load.
+            if !Task.isCancelled, let image {
                 poster = image
-                if let image, image.size.width > 0, image.size.height > 0 {
+                if image.size.width > 0, image.size.height > 0 {
                     posterAspectRatio = image.size.width / image.size.height
                 }
             }
