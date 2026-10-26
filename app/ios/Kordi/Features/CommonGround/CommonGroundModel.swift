@@ -78,6 +78,12 @@ final class CommonGroundModel: ObservableObject {
     /// The profile card calls act on; nil before profiles.
     var activeProfileID: String? { profilesEnabled ? currentProfileID : nil }
 
+    /// The active profile's kind; Work when there is none, as the server builds.
+    var activeProfileKind: CommonGroundProfileKind {
+        profiles.first { $0.profileId == activeProfileID }
+            .flatMap { CommonGroundProfileKind(rawValue: $0.kind) } ?? .work
+    }
+
     var card: CommonGroundOwnCard? { owner?.card }
     var hasCard: Bool { owner?.card != nil }
     var isBuilding: Bool { owner?.build.status == "building" }
