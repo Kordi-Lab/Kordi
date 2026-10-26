@@ -170,7 +170,7 @@ async fn represented_confirm_and_cancel_require_provenance_and_manager_authority
         .unwrap()
     };
     let actor = |represented_accounts| super::routes::Actor {
-        account_id: "pip-service".to_string(),
+        account_id: "system-agent-service".to_string(),
         on_behalf_of_conversation: Some(conversation),
         represented_accounts,
     };

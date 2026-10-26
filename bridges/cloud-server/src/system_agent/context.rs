@@ -1,4 +1,4 @@
-//! What PiP is shown, and whether it needs to look at all.
+//! What the System agent is shown, and whether it needs to look at all.
 //!
 //! Every run is a paid model call, so two things happen before one is queued:
 //! a free text check decides whether new messages could be about a plan, and
@@ -40,7 +40,7 @@ pub(crate) fn budget_messages(
     mut newest_first: Vec<ContextMessage>,
     context_start_sequence: i64,
     seen_sequence: i64,
-    pip_account_id: &str,
+    system_agent_account_id: &str,
 ) -> Vec<Value> {
     newest_first.retain(|message| {
         message.sequence > context_start_sequence && !message.text.trim().is_empty()
@@ -72,7 +72,7 @@ pub(crate) fn budget_messages(
                 "isNew": message.sequence > seen_sequence,
                 "senderId": message.sender_id,
                 "senderName": message.sender_name,
-                "fromPip": message.sender_id == pip_account_id,
+                "fromSystemAgent": message.sender_id == system_agent_account_id,
                 "kind": message.kind,
                 "text": message.text,
                 "createdAt": message.created_at,
@@ -81,9 +81,9 @@ pub(crate) fn budget_messages(
         .collect()
 }
 
-/// The card as PiP needs it: every field that drives a decision, with vote
-/// and participant lists reduced to counts plus the people PiP may need to
-/// name once a group is large.
+/// The card as the System agent needs it: every field that drives a decision,
+/// with vote and participant lists reduced to counts plus the people the System
+/// agent may need to name once a group is large.
 pub(crate) fn compact_card(row: &PlanCardRow) -> Value {
     let count = |rsvp: PlanCardRsvp| row.participants.iter().filter(|p| p.rsvp == rsvp).count();
     let total = row.participants.len();
@@ -254,7 +254,7 @@ const PLAN_WORDS: &[&str] = &[
     "event",
     "rsvp",
     "vote",
-    "pip",
+    "pip", // the agent's former name, which people may still use
 ];
 const ANSWER_WORDS: &[&str] = &[
     "yes",
@@ -468,7 +468,7 @@ mod tests {
                 created_at: String::new(),
             })
             .collect();
-        let kept = budget_messages(messages, 10, 27, "acct_pip");
+        let kept = budget_messages(messages, 10, 27, "acct_system_agent");
         assert!(kept.len() < 30);
         assert!(kept
             .iter()

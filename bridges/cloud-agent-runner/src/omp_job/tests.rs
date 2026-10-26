@@ -39,7 +39,7 @@ fn run_fixture() -> CloudAgentRun {
 fn sandbox_free_jobs_keep_exact_tool_catalog_and_route() {
     let run = run_fixture();
     let auth = auth_fixture("https://example.com/v1".into());
-    for tools in [crate::pip::tools(), crate::digest::tools()] {
+    for tools in [crate::system_agent::tools(), crate::digest::tools()] {
         let expected = tools
             .iter()
             .map(|tool| tool["function"]["name"].as_str().unwrap())
@@ -87,9 +87,9 @@ fn auth_fixture(base_url: String) -> OpenAiProviderConfig {
 /// Uses the actual packaged worker, synthetic SSE, and no external account.
 #[tokio::test]
 #[ignore = "requires KORDI_OMP_WORKER_ENTRY pointing to the compiled worker"]
-async fn packaged_worker_runs_scoped_pip_and_digest_tools() {
+async fn packaged_worker_runs_scoped_system_agent_and_digest_tools() {
     let worker = worker_command().unwrap();
-    for tools in [crate::pip::tools(), crate::digest::tools()] {
+    for tools in [crate::system_agent::tools(), crate::digest::tools()] {
         let tool_name = tools[0]["function"]["name"].as_str().unwrap().to_string();
         let catalog = tools
             .iter()

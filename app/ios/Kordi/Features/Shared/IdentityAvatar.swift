@@ -14,7 +14,7 @@ struct IdentityAvatar: View {
     var showsInitials = true
 
     private var normalizedImageSource: String? {
-        if isPip || isSystem { return nil }
+        if isSystemAgent || isSystem { return nil }
         if let source = AvatarImageLoader.normalizedSource(imageSource) { return source }
         guard kind == .agent, !isKordiSupport, let seed = seed?.nonEmpty else { return nil }
         return CanonicalAvatarSystem.previewURL(
@@ -27,8 +27,8 @@ struct IdentityAvatar: View {
         KordiSupportIdentity.matches(name: name, seed: seed)
     }
 
-    private var isPip: Bool {
-        KordiPipIdentity.matches(name: name, seed: seed)
+    private var isSystemAgent: Bool {
+        KordiSystemAgentIdentity.matches(name: name, seed: seed)
     }
 
     private var isSystem: Bool { KordiSystemIdentity.matches(seed: seed) }
@@ -52,7 +52,7 @@ struct IdentityAvatar: View {
 
     @ViewBuilder
     private var fallback: some View {
-        if isSystem || isPip {
+        if isSystem || isSystemAgent {
             KordiSystemAvatar()
         } else if isKordiSupport {
             KordiSupportAvatar()
@@ -134,9 +134,10 @@ struct AvatarActionPill: View {
     }
 }
 
-/// The built-in plan agent. Its account still posts plans, but the app shows
-/// it as System with the gray Kordi bird, like every server notice.
-enum KordiPipIdentity {
+/// The System agent, the built-in plan agent. Its account still posts plans, but
+/// the app shows it as System with the gray Kordi bird, like every server notice.
+enum KordiSystemAgentIdentity {
+    // The stored ids keep the agent's old name.
     static let accountId = "acct_kordi_pip"
     static let agentId = "cloud_agent_kordi_pip"
     /// The name the agent's account carried before it showed as System.
@@ -144,19 +145,19 @@ enum KordiPipIdentity {
 
     /// The legacy name, in any capitalisation, so messages loaded before the
     /// server rename still show as System.
-    static func isPipName(_ name: String?) -> Bool {
+    static func isLegacyName(_ name: String?) -> Bool {
         name?.trimmingCharacters(in: .whitespacesAndNewlines)
             .caseInsensitiveCompare(legacyName) == .orderedSame
     }
 
-    static func isPip(accountId: String?) -> Bool {
+    static func isSystemAgent(accountId: String?) -> Bool {
         accountId?.trimmingCharacters(in: .whitespacesAndNewlines) == Self.accountId
     }
 
     static func matches(name: String?, seed: String?) -> Bool {
         let normalizedSeed = seed?.trimmingCharacters(in: .whitespacesAndNewlines)
         if normalizedSeed == accountId || normalizedSeed == agentId { return true }
-        return isPipName(name) && (normalizedSeed?.isEmpty ?? true)
+        return isLegacyName(name) && (normalizedSeed?.isEmpty ?? true)
     }
 }
 

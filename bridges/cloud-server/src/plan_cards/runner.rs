@@ -1,7 +1,8 @@
-//! Plan-card actions issued by the cloud runner on behalf of a leased PiP run.
+//! Plan-card actions issued by the cloud runner on behalf of a leased System
+//! agent run.
 //!
 //! The runner authenticates with its runner token; this module binds the
-//! action to the run's owner (PiP's system account) and the run's own
+//! action to the run's owner (the System agent's account) and the run's own
 //! conversation, so a run can never touch another chat's card.
 
 use std::{collections::BTreeSet, sync::Arc};
@@ -48,14 +49,14 @@ pub async fn runner_action(
     runner_id: &str,
     request: Value,
 ) -> Response {
-    let Some(pip) = state.pip() else {
+    let Some(system_agent) = state.system_agent() else {
         return error(
             "plan_card_unavailable",
-            "PiP is not enabled on this server.",
+            "The System agent is not enabled on this server.",
             StatusCode::NOT_FOUND,
         );
     };
-    let pip_account_id = pip.config().account_id.clone();
+    let system_agent_account_id = system_agent.config().account_id.clone();
     let run: Option<(String, String, String)> = match query_as(
         "SELECT owner_account_id, session_id, prompt FROM cloud_agent_fallback_runs
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')
@@ -82,17 +83,20 @@ pub async fn runner_action(
             StatusCode::NOT_FOUND,
         );
     };
-    // An ordinary agent run owned by PiP's account is not one of PiP's sweeps.
-    if owner_account_id != pip_account_id || !run_id.starts_with(crate::pip::RUN_PREFIX) {
+    // An ordinary agent run owned by the System agent's account is not one of
+    // its sweeps.
+    if owner_account_id != system_agent_account_id
+        || !run_id.starts_with(crate::system_agent::RUN_PREFIX)
+    {
         return error(
             "plan_card_forbidden",
-            "Only PiP runs may manage plan cards through the runner.",
+            "Only System agent runs may manage plan cards through the runner.",
             StatusCode::FORBIDDEN,
         );
     }
     let conversation_id: Option<Uuid> = crate::chat_sync::store::conversation_id_for_session(
         state.db_pool(),
-        &pip_account_id,
+        &system_agent_account_id,
         &session_id,
     )
     .await
@@ -100,7 +104,7 @@ pub async fn runner_action(
     let Some(conversation_id) = conversation_id else {
         return error(
             "plan_card_forbidden",
-            "PiP is not an active member of this conversation.",
+            "The System agent is not an active member of this conversation.",
             StatusCode::FORBIDDEN,
         );
     };
@@ -116,7 +120,7 @@ pub async fn runner_action(
     };
     let action = request.action();
     let actor = Actor {
-        account_id: pip_account_id,
+        account_id: system_agent_account_id,
         on_behalf_of_conversation: Some(conversation_id),
         represented_accounts: represented_accounts(&prompt),
     };
@@ -124,15 +128,20 @@ pub async fn runner_action(
         Ok(row) => {
             // Publish each successful tool mutation, even if a later model
             // step fails before the run completion callback.
-            if let Err(error) =
-                crate::pip::cards::sync_card_messages(state.db_pool(), &actor.account_id, &row)
-                    .await
+            if let Err(error) = crate::system_agent::cards::sync_card_messages(
+                state.db_pool(),
+                &actor.account_id,
+                &row,
+            )
+            .await
             {
-                eprintln!("[pip] Could not refresh the plan card after its action: {error}");
+                eprintln!(
+                    "[system-agent] Could not refresh the plan card after its action: {error}"
+                );
             }
-            // PiP knows the card as its own action left it, so only later
-            // member responses wake the next sweep.
-            if let Err(error) = crate::pip::cards::mark_card_seen(
+            // The System agent knows the card as its own action left it, so
+            // only later member responses wake the next sweep.
+            if let Err(error) = crate::system_agent::cards::mark_card_seen(
                 state.db_pool(),
                 conversation_id,
                 &row.event_id,
@@ -140,15 +149,15 @@ pub async fn runner_action(
             )
             .await
             {
-                eprintln!("[pip] Could not record the card PiP saw: {error}");
+                eprintln!("[system-agent] Could not record the card the System agent saw: {error}");
             }
             // The model gets the compact card: counts and the people it may
             // need to name, never every voter of a large group.
-            Json(crate::pip::context::compact_card(&row)).into_response()
+            Json(crate::system_agent::context::compact_card(&row)).into_response()
         }
         Err(response) => {
             eprintln!(
-                "[pip] plan_card {action} rejected for run {run_id}: status {}",
+                "[system-agent] plan_card {action} rejected for run {run_id}: status {}",
                 response.status()
             );
             *response

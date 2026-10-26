@@ -1,6 +1,6 @@
 //! Background runs that belong to a feature instead of a chat: the digest,
-//! PiP, Common ground, proactive and personal agent evaluation runs. Each
-//! feature stores its own result.
+//! System agent, Common ground, proactive and personal agent evaluation runs.
+//! Each feature stores its own result.
 
 use sqlx_postgres::PgPool;
 
@@ -15,8 +15,8 @@ pub(super) async fn complete(
 ) -> RunResult<bool> {
     if run_id.starts_with(crate::digest::RUN_PREFIX) {
         crate::digest::complete(pool, run_id, runner_id, response_text).await?;
-    } else if run_id.starts_with(crate::pip::RUN_PREFIX) {
-        crate::pip::store::complete(pool, run_id, runner_id, response_text).await?;
+    } else if run_id.starts_with(crate::system_agent::RUN_PREFIX) {
+        crate::system_agent::store::complete(pool, run_id, runner_id, response_text).await?;
     } else if run_id.starts_with(crate::common_ground::RUN_PREFIX) {
         crate::common_ground::complete(pool, run_id, runner_id, response_text).await?;
     } else if run_id.starts_with(crate::proactive::RUN_PREFIX) {
@@ -39,8 +39,8 @@ pub(super) async fn fail(
     let runner = Some(runner_id);
     if run_id.starts_with(crate::digest::RUN_PREFIX) {
         crate::digest::fail(pool, run_id, runner, error_code).await?;
-    } else if run_id.starts_with(crate::pip::RUN_PREFIX) {
-        crate::pip::store::fail(pool, run_id, runner, error_code).await?;
+    } else if run_id.starts_with(crate::system_agent::RUN_PREFIX) {
+        crate::system_agent::store::fail(pool, run_id, runner, error_code).await?;
     } else if run_id.starts_with(crate::common_ground::RUN_PREFIX) {
         crate::common_ground::fail(pool, run_id, runner, error_code).await?;
     } else if run_id.starts_with(crate::proactive::RUN_PREFIX) {

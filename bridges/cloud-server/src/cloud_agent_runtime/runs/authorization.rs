@@ -199,8 +199,9 @@ async fn personal_session_target(
     }))
 }
 
-/// PiP lives in every group and runs on a Kordi-operated key, so members may
-/// never start an agent run on PiP's account; PiP's sweep queues its own runs.
+/// The System agent lives in every group and runs on a Kordi-operated key, so
+/// members may never start an agent run on its account; its own sweep queues
+/// its runs.
 /// System posts notices only and never runs an agent for anyone.
 fn is_service_owner(owner_account_id: &str) -> bool {
     crate::system_account::is_service_account(owner_account_id)

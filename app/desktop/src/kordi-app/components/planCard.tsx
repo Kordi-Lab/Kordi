@@ -76,9 +76,9 @@ function leadingOption(options: MessagePlanCardOption[]): MessagePlanCardOption 
 }
 
 /**
- * The shared plan card PiP manages for a chat. The snapshot comes from PiP's
+ * The shared plan card the System agent manages for a chat. The snapshot comes from its
  * message; buttons act for the signed-in member, and the card refreshes for
- * everyone through the same message. PiP decides in chat what happens next.
+ * everyone through the same message. The System agent decides in chat what happens next.
  */
 
 export function PlanCardContent({

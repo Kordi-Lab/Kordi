@@ -133,8 +133,8 @@ async fn terminal_response_state(
 }
 
 /// Publishes the terminal reply of an ended user request that has none and
-/// returns its message ID. Scheduled, digest, PiP, and background-session
-/// runs keep their own lifecycles and are skipped.
+/// returns its message ID. Scheduled, digest, System agent, and
+/// background-session runs keep their own lifecycles and are skipped.
 pub async fn publish_missing_terminal_response(
     pool: &PgPool,
     run_id: &str,
@@ -172,7 +172,7 @@ pub async fn publish_terminal_response(
         || crate::document_shares::agents::is_comment_request(&request_id)
         || run_id.starts_with(crate::digest::RUN_PREFIX)
         || super::super::import_runs::is_import_run(run_id)
-        || run_id.starts_with(crate::pip::RUN_PREFIX)
+        || run_id.starts_with(crate::system_agent::RUN_PREFIX)
         || run_id.starts_with(crate::common_ground::RUN_PREFIX)
         || run_id.starts_with(crate::proactive::RUN_PREFIX)
         || run_id.starts_with(crate::personal_agent::RUN_PREFIX)

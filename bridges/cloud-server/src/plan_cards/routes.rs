@@ -65,29 +65,35 @@ async fn handle(
     };
     match dispatch_row(state.db_pool(), &actor, request).await {
         Ok(row) => {
-            // A member's response belongs on the card, not in the chat: PiP's
-            // message that carries this card is refreshed in place for
-            // everyone, with no new line and no model run. PiP is not in
-            // direct chats or Grounding groups, so it has nothing there.
-            if let Some(pip) = state.pip() {
-                let pip_account = pip.config().account_id.as_str();
+            // A member's response belongs on the card, not in the chat: the
+            // System agent's message that carries this card is refreshed in
+            // place for everyone, with no new line and no model run. The System
+            // agent is not in direct chats or Grounding groups, so it has
+            // nothing there.
+            if let Some(system_agent) = state.system_agent() {
+                let system_agent_account = system_agent.config().account_id.as_str();
                 let in_chat = match Uuid::parse_str(&row.conversation_id) {
-                    Ok(id) => is_active_member(state.db_pool(), id, pip_account).await,
+                    Ok(id) => is_active_member(state.db_pool(), id, system_agent_account).await,
                     Err(_) => false,
                 };
                 if in_chat {
-                    let synced =
-                        crate::pip::cards::sync_card_messages(state.db_pool(), pip_account, &row)
-                            .await;
+                    let synced = crate::system_agent::cards::sync_card_messages(
+                        state.db_pool(),
+                        system_agent_account,
+                        &row,
+                    )
+                    .await;
                     if let Err(error) = synced {
-                        eprintln!("[pip] Could not update the plan card messages: {error}");
+                        eprintln!(
+                            "[system-agent] Could not update the plan card messages: {error}"
+                        );
                     }
                 }
             }
             // An organizer who carries the card in their own message (a Meet
             // from Common ground) sees it refreshed the same way.
             for organizer in row.participants.iter().filter(|p| p.organizer) {
-                if let Err(error) = crate::pip::cards::refresh_card_carriers(
+                if let Err(error) = crate::system_agent::cards::refresh_card_carriers(
                     state.db_pool(),
                     &organizer.account_id,
                     &row,
@@ -104,9 +110,9 @@ async fn handle(
 }
 
 /// Who is acting on a card. A signed-in member acts for themselves only. A
-/// service agent (PiP) acts inside one conversation and may record another
-/// active member's RSVP, confirmation, or cancellation from what that member
-/// said in the chat.
+/// service agent (the System agent) acts inside one conversation and may record
+/// another active member's RSVP, confirmation, or cancellation from what that
+/// member said in the chat.
 pub(crate) struct Actor {
     pub account_id: String,
     pub on_behalf_of_conversation: Option<Uuid>,
@@ -142,9 +148,9 @@ async fn may_act_for(pool: &PgPool, actor: &Actor, acting_for: &str) -> bool {
     }
 }
 
-/// A PiP run acts only on cards in its own conversation, whatever event id the
-/// chat put in front of it. Members are checked against the card's own
-/// conversation by the store.
+/// A System agent run acts only on cards in its own conversation, whatever
+/// event id the chat put in front of it. Members are checked against the card's
+/// own conversation by the store.
 async fn require_in_scope(pool: &PgPool, actor: &Actor, event_id: &str) -> Result<(), Rejection> {
     let Some(scope) = actor.on_behalf_of_conversation else {
         return Ok(());
@@ -167,8 +173,8 @@ async fn require_in_scope(pool: &PgPool, actor: &Actor, event_id: &str) -> Resul
 }
 
 /// A member deciding a plan for everyone (confirming, reopening, or canceling
-/// it) must be its organizer or an owner or admin of the chat. PiP's runs
-/// decide from what members said in the chat.
+/// it) must be its organizer or an owner or admin of the chat. The System
+/// agent's runs decide from what members said in the chat.
 async fn require_plan_manager(
     pool: &PgPool,
     account_id: &str,
@@ -198,17 +204,17 @@ async fn require_plan_manager(
     }
 }
 
-/// A signed-in member never opens a card; PiP does. The organizer of a card
-/// may revise it (a new time, place, or title) for the same people while it is
-/// still open. The store rejects a confirmed or canceled card and a stale
-/// revision, and resets answers when the time or place changes.
+/// A signed-in member never opens a card; the System agent does. The organizer
+/// of a card may revise it (a new time, place, or title) for the same people
+/// while it is still open. The store rejects a confirmed or canceled card and a
+/// stale revision, and resets answers when the time or place changes.
 async fn organizer_revision(
     pool: &PgPool,
     account_id: &str,
     mut args: PlanCardProposeArgs,
 ) -> Result<PlanCardProposeArgs, Rejection> {
     let Some(event_id) = args.existing_event_id.as_deref() else {
-        return Err(forbidden("Plan cards are proposed by PiP."));
+        return Err(forbidden("Plan cards are proposed by the System agent."));
     };
     if !is_active_member(pool, args.conversation_id, account_id).await {
         return Err(store_error(PlanCardStoreError::Forbidden));
@@ -253,8 +259,9 @@ fn forbidden(message: &str) -> Rejection {
     error("plan_card_forbidden", message, StatusCode::FORBIDDEN)
 }
 
-/// Applies one request and returns the resulting card, or the error response
-/// to send back. The member route and PiP's runner both act through here.
+/// Applies one request and returns the resulting card, or the error response to
+/// send back. The member route and the System agent's runner both act through
+/// here.
 pub(crate) async fn dispatch_row(
     pool: &PgPool,
     actor: &Actor,
@@ -285,8 +292,9 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
         }
         Request::Propose(propose) => {
             let mut args = propose.into_args(actor.on_behalf_of_conversation)?;
-            // PiP manages the card but never attends it. The model sometimes
-            // lists the agent among the participants; never store it as one.
+            // The System agent manages the card but never attends it. The model
+            // sometimes lists the agent among the participants; never store it
+            // as one.
             args.participants
                 .retain(|participant| participant.account_id != actor.account_id);
             if args.participants.is_empty() {
@@ -329,8 +337,9 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
                         StatusCode::BAD_REQUEST,
                     )
                 })?;
-            // A member records only their own RSVP. PiP may record another
-            // active member's RSVP from what that member said in the chat.
+            // A member records only their own RSVP. The System agent may record
+            // another active member's RSVP from what that member said in the
+            // chat.
             if !may_act_for(pool, actor, &participant_id).await {
                 return Err(forbidden("You can only record your own RSVP."));
             }

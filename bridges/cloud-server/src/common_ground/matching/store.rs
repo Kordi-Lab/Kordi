@@ -144,7 +144,7 @@ async fn blocking_run(
 /// charged to the viewer's matching budget.
 pub(super) async fn queue_matches(
     pool: &PgPool,
-    service: &crate::pip::PipConfig,
+    service: &crate::system_agent::SystemAgentConfig,
     rate_limiter: &CloudRateLimiter,
     viewer: &SharedCard,
     stale: &[SharedCard],
@@ -231,7 +231,7 @@ pub(super) async fn latest_themes(
 /// The run is charged to `requester`'s matching budget.
 pub(super) async fn queue_themes(
     pool: &PgPool,
-    service: &crate::pip::PipConfig,
+    service: &crate::system_agent::SystemAgentConfig,
     rate_limiter: &CloudRateLimiter,
     room_id: Uuid,
     requester: &str,

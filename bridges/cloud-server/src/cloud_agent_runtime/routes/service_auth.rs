@@ -28,8 +28,8 @@ pub(crate) fn service_provider_auths(state: &ServerState) -> Vec<ServiceProvider
             run_id_prefix: None,
         });
     }
-    if let Some(pip) = state.pip() {
-        let config = pip.config();
+    if let Some(system_agent) = state.system_agent() {
+        let config = system_agent.config();
         let provider_auth = config.provider_auth();
         auths.push(ServiceProviderAuth {
             owner_account_id: &config.account_id,
@@ -39,7 +39,7 @@ pub(crate) fn service_provider_auths(state: &ServerState) -> Vec<ServiceProvider
             api_key: provider_auth.api_key(),
             base_url: provider_auth.base_url(),
             model: provider_auth.model(),
-            run_id_prefix: Some(crate::pip::RUN_PREFIX),
+            run_id_prefix: Some(crate::system_agent::RUN_PREFIX),
         });
         // Common ground runs use the same Kordi-operated key.
         auths.push(ServiceProviderAuth {

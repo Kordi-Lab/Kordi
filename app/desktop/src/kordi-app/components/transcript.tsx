@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 import { ArrowRightLeft, Check, CheckCircle2, ChevronUp, Clock3, Split, SquareArrowOutUpRight, Undo2 } from 'lucide-react';
 import { memo,useLayoutEffect,useRef,useState,type PointerEvent as ReactPointerEvent } from 'react';
 import type { EditFilePreview, Message, MessageAttachment, MessageSourceReference } from '../types';
-import { isSystemAvatarUrl } from '@/features/pip/pipIdentity';
+import { isSystemAvatarUrl } from '@/features/systemAgent/systemAgentIdentity';
 import { AGENT_GROUP_NAME_CLASS,AgentHeaderMeta,AgentOwnerTag } from './AgentOwnerTag';
 import { IdentityAvatar,useLocalAgentAvatarSeed,useLocalProfileAvatarSeed,type IdentityAvatarKind } from './IdentityAvatar';
 import { ForwardedFromHeader } from './forwardedFromHeader';
