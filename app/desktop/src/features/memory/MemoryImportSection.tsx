@@ -1,3 +1,4 @@
+import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -124,7 +125,7 @@ export function MemoryImportSection({
   return (
     <SettingsSection title="Import">
       {files.length === 0 ? (
-        <SettingsRow title="No agent files found." description="Finds instructions and memories from your coding agents." />
+        <><HelpEmptyExample kind="files" /><SettingsRow title="No agent files found." description="Finds instructions and memories from your coding agents." /></>
       ) : (
         <MemoryImportTree
           apps={memoryImportTree(files)}
@@ -150,6 +151,7 @@ export function MemoryImportSection({
                   variant="secondary"
                   className="h-8 rounded-lg px-3.5 text-[12px]"
                   disabled={running}
+                  data-help-target="memory-import-files"
                   onClick={() => { void choose(); }}
                 >
                   Choose files…
@@ -159,6 +161,7 @@ export function MemoryImportSection({
                 type="button"
                 className="h-8 rounded-lg px-3.5 text-[12px]"
                 disabled={running || !providerReady || selected.size === 0}
+                data-help-target="memory-import-run"
                 onClick={() => { void run(); }}
               >
                 {running ? 'Importing…' : 'Import'}

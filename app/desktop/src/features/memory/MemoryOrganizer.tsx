@@ -1,3 +1,4 @@
+import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
 import { Search } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 
@@ -168,7 +169,7 @@ export function MemoryOrganizer({
 
   return (
     <SettingsSection title={`All memories · ${lessons.length}`}>
-      <div data-memory-organizer="">
+      <div data-memory-organizer="" data-help-target="memory-review">
         <p className="sr-only" aria-live="polite">{statusMessage}</p>
         {lessons.length > 0 ? (
           <>
@@ -188,6 +189,7 @@ export function MemoryOrganizer({
           <p className="app-error-text my-2 rounded-[12px] bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100" role="alert">{error}</p>
         ) : null}
         {notice}
+        {lessons.length === 0 ? <HelpEmptyExample kind="memories" /> : null}
         <MemoryList
           client={client}
           lessons={visible}

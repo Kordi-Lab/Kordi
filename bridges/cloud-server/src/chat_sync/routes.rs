@@ -133,7 +133,10 @@ async fn create_conversation(
     {
         Ok(outcome) => {
             if outcome.inserted {
-                if let Some(system_agent) = state.system_agent() {
+                if let Some(system_agent) = state
+                    .system_agent()
+                    .filter(|agent| agent.config().group_chat_enabled)
+                {
                     if let Err(error) = crate::system_agent::membership::join_conversation(
                         state.db_pool(),
                         &system_agent.config().account_id,

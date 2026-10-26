@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { markHelpWelcome } from '@/features/onboarding/helpProgress';
 
 import {
   activateDesktopCloudAccountStorage,
@@ -340,6 +341,7 @@ export function useCloudSession({
     async ({ email, password, verificationId, verificationCode, displayName, avatarSeed, avatarMutation }) => {
       try {
         const result = await authClient.signup({ email, password, verificationId, verificationCode, displayName, avatarSeed, avatarMutation });
+        markHelpWelcome(result.account.accountId, cloudApiBaseUrl());
         await completeCloudAuthResult({
           result,
           currentAccountId: accountIdRef.current,

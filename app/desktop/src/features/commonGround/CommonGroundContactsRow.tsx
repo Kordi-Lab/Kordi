@@ -13,6 +13,7 @@ export function CommonGroundContactsRow({ selected, hasInvitation = false, onSel
   return (
     <button
       type="button"
+      data-help-target="grounding"
       onClick={onSelect}
       aria-current={selected ? 'true' : undefined}
       className={cn(

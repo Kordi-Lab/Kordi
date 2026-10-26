@@ -63,11 +63,18 @@ async fn native_notification_permission_state() -> Result<String, String> {
 
 #[cfg(target_os = "macos")]
 async fn request_native_notification_permission() -> Result<String, String> {
-    let granted = tokio::time::timeout(PERMISSION_TIMEOUT, mac_usernotifications::request_auth())
+    tokio::time::timeout(PERMISSION_TIMEOUT, mac_usernotifications::request_auth())
         .await
         .map_err(|_| "Notification permission request timed out.".to_string())?
         .map_err(|error| format!("Notification permission request failed: {error}"))?;
-    Ok(if granted { "granted" } else { "denied" }.to_string())
+    // The notification library may report false even when macOS rejects the
+    // application's signature without presenting a prompt. Do not call that a
+    // user denial or silently return the UI to an unchanged Allow button.
+    let state = native_notification_permission_state().await?;
+    if state == "default" {
+        return Err("macOS did not complete the notification permission request. Check that this app bundle is correctly signed.".to_string());
+    }
+    Ok(state)
 }
 
 #[cfg(not(target_os = "macos"))]

@@ -1,3 +1,4 @@
+import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChatProjects } from '@/features/projects/chatProjects';
 import { projectChatGroups } from '@/features/projects/projectChatGroups';
@@ -132,11 +133,14 @@ export function WorkspaceChatLists({
           />
         )}
         emptyState={
+          <>
+          {!model.showArchived ? <HelpEmptyExample kind="chat" /> : null}
           <SidebarEmptyState>
             {model.showArchived
               ? 'No archived contact chats.'
               : 'No conversations yet. Start a chat to see it here.'}
           </SidebarEmptyState>
+          </>
         }
       />
     );
@@ -235,11 +239,14 @@ export function WorkspaceChatLists({
           />
         )}
         emptyState={
+          <>
+          {!model.showArchived ? <HelpEmptyExample kind="chat" /> : null}
           <SidebarEmptyState>
             {model.showArchived
               ? 'No archived agent chats.'
               : 'No agent conversations yet. Start one to see it here.'}
           </SidebarEmptyState>
+          </>
         }
       />
     </>

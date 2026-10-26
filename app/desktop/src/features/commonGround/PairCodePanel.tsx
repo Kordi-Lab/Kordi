@@ -74,7 +74,7 @@ function PairRow({ state, store }: { state: CgState; store: CommonGroundStore })
       <button
         type="button"
         className="cg-pair-row cg-pair-open"
-        data-cg-pair="true"
+        data-cg-pair="true" data-help-target="grounding-pair"
         aria-expanded={open}
         onClick={() => (canShare ? setOpen((value) => !value) : store.open({ name: 'build' }))}
       >
@@ -143,7 +143,7 @@ export function PairCodePanel({ state, store, nearby = false }: { state: CgState
   return (
     <div className="cg-panel cg-paircode">
       <PairRow state={state} store={store} />
-      <div className="cg-pair-row is-code">
+      <div data-help-target="grounding-room" className="cg-pair-row is-code">
         <span className="cg-pair-icon is-cyan" aria-hidden="true"><Hash className="h-[15px] w-[15px]" /></span>
         <span className="cg-pair-title">Pair code</span>
         <Digits key={digitsKey} disabled={!canCreate || busy} missing={missing} onCode={onCode} />

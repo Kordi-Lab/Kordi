@@ -1,3 +1,4 @@
+import { HelpEmptyExample } from '@/features/onboarding/HelpEmptyExample';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -41,7 +42,7 @@ export function AgentsSidebar({
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-1 p-2">
-          {agents.length === 0 ? <div className="app-agent-empty-copy px-3 py-4 text-[13px]">No agents yet.</div> : null}
+          {agents.length === 0 ? <div className="app-agent-empty-copy px-3 py-4 text-[13px]"><HelpEmptyExample kind="agents" />No agents yet.</div> : null}
           {agents.map((agent) => {
             const config = agentConfigs[agent.id];
             const isSelected = activeAgentId === agent.id;

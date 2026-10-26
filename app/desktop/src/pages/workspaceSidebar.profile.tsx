@@ -308,6 +308,7 @@ export function SidebarProfileControl({
         type="button"
         className="app-nav-rail-profile rounded-full"
         onClick={() => setIsProfileCardOpen((open) => !open)}
+        data-help-target="profile"
         aria-label="Open profile"
         aria-expanded={isProfileCardOpen}
       >

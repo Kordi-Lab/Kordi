@@ -73,6 +73,7 @@ async fn provider_context_excludes_pre_join_messages_across_retry_and_completion
     .await
     .unwrap();
     let config = super::SystemAgentConfig {
+        group_chat_enabled: true,
         account_id: system_agent.clone(),
         owner_email: "system-agent-test@example.invalid".to_string(),
         agent_id: "system-agent-boundary-test".to_string(),

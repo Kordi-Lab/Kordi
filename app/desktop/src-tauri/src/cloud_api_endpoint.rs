@@ -100,14 +100,45 @@ fn resolve_cloud_api_base_url(
     Ok(origin)
 }
 
+// Finder and Dock launches do not inherit the terminal's development variables.
+// Retain only an explicitly configured community loopback origin in debug builds;
+// never embed an operator acknowledgement or a remote/product fallback.
+fn bundled_community_api_base(
+    built_base: Option<&str>,
+    built_profile: Option<&str>,
+    debug_build: bool,
+) -> Option<String> {
+    if !debug_build || built_profile.map(str::trim) != Some("community") {
+        return None;
+    }
+    let origin = normalize_cloud_api_base_url(built_base?).ok()?;
+    let url = reqwest::Url::parse(&origin).ok()?;
+    let host = url.host_str()?;
+    let loopback = host.eq_ignore_ascii_case("localhost")
+        || host
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback());
+    loopback.then_some(origin)
+}
+
 pub(crate) fn cloud_api_base_url_from_env() -> Result<String, String> {
     let vite_base = std::env::var("VITE_KORDI_CLOUD_API_BASE").ok();
     let native_base = std::env::var("KORDI_CLOUD_API_BASE").ok();
     let dev_profile = std::env::var("VITE_KORDI_DEV_PROFILE").ok();
     let production_debug_ack = std::env::var("VITE_KORDI_PRODUCTION_DEBUG_ACK").ok();
+    let bundled_base = bundled_community_api_base(
+        option_env!("VITE_KORDI_CLOUD_API_BASE"),
+        option_env!("VITE_KORDI_DEV_PROFILE"),
+        cfg!(debug_assertions),
+    );
     resolve_cloud_api_base_url(
         vite_base.as_deref(),
-        native_base.as_deref(),
+        native_base
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .or(bundled_base.as_deref()),
         cfg!(debug_assertions),
         dev_profile.as_deref(),
         production_debug_ack.as_deref(),
@@ -116,7 +147,71 @@ pub(crate) fn cloud_api_base_url_from_env() -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_cloud_api_base_url, DEFAULT_CLOUD_API_BASE_URL};
+    use super::{
+        bundled_community_api_base, resolve_cloud_api_base_url, DEFAULT_CLOUD_API_BASE_URL,
+    };
+
+    #[test]
+    fn packaged_community_preview_can_reopen_without_terminal_variables() {
+        let bundled =
+            bundled_community_api_base(Some("http://127.0.0.1:18181"), Some("community"), true);
+        assert_eq!(
+            resolve_cloud_api_base_url(None, bundled.as_deref(), true, None, None).unwrap(),
+            "http://127.0.0.1:18181"
+        );
+        assert_eq!(
+            resolve_cloud_api_base_url(
+                Some("http://127.0.0.1:17081"),
+                bundled.as_deref(),
+                true,
+                None,
+                None
+            )
+            .unwrap(),
+            "http://127.0.0.1:17081"
+        );
+        assert!(resolve_cloud_api_base_url(
+            Some(DEFAULT_CLOUD_API_BASE_URL),
+            bundled.as_deref(),
+            true,
+            None,
+            None
+        )
+        .is_err());
+        assert!(resolve_cloud_api_base_url(
+            None,
+            bundled.as_deref(),
+            true,
+            Some("operator"),
+            Some("1")
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn bundled_fallback_never_grants_remote_or_release_access() {
+        for base in [
+            DEFAULT_CLOUD_API_BASE_URL,
+            "https://staging.example.test",
+            "http://192.0.2.1:18181",
+            "http://user:secret@127.0.0.1:18181",
+            "http://127.0.0.1:18181/path",
+        ] {
+            assert!(bundled_community_api_base(Some(base), Some("community"), true).is_none());
+        }
+        for profile in [None, Some("operator")] {
+            assert!(
+                bundled_community_api_base(Some("http://127.0.0.1:18181"), profile, true).is_none()
+            );
+        }
+        assert!(bundled_community_api_base(
+            Some("http://127.0.0.1:18181"),
+            Some("community"),
+            false
+        )
+        .is_none());
+        assert!(bundled_community_api_base(None, Some("community"), true).is_none());
+    }
 
     #[test]
     fn debug_build_requires_an_explicit_non_production_cloud_api() {

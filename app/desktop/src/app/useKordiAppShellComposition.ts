@@ -476,6 +476,7 @@ export function useKordiAppShellComposition({
     mainContent: shellSlots.mainContent,
     rightDetailRail: shellSlots.rightDetailRail,
     authGate: shellSlots.authGate,
+    workspaceHelpAvailable: authNavigation.workspaceHelpAvailable,
     inlineAuthDialog: shellSlots.inlineAuthDialog,
     messageForwardDialog: messages.messageForwardDialog,
     messageDeleteDialog: messages.messageDeleteDialog,

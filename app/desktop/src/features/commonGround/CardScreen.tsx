@@ -151,7 +151,7 @@ export function CardScreen({ state, store, memoryRouting = false, memoryCards = 
       </div>
       <CardNow topics={timeline.now} onCard={onCard} />
       {CG_TOPIC_SECTIONS.map(([key, title]) => (
-        <section key={key}>
+        <section key={key} data-help-target={key === CG_TOPIC_SECTIONS[0][0] ? "grounding-topics" : undefined}>
           <h3 className="cg-msec">{title}</h3>
           <div className="cg-panel cg-lines">
             {card[key].map((topic) => (
@@ -206,7 +206,7 @@ export function CardScreen({ state, store, memoryRouting = false, memoryCards = 
           </div>
         </>
       ) : null}
-      <div className="cg-panel cg-cardpage-share">
+      <div data-help-target="grounding-sharing" className="cg-panel cg-cardpage-share">
         <div className="cg-mrow">
           <span className="cg-mrow-text"><span className="cg-mrow-title">Share my card</span></span>
           <SettingsSwitch label="Share my card" enabled={state.owner.sharing} disabled={state.busy === 'sharing'} onChange={(on) => void store.setSharing(on)} />

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { consumeHelpGrounding, hasHelpGrounding, OPEN_GROUNDING_EVENT } from '@/features/onboarding/helpNavigation';
 import type { ReactNode } from 'react';
 
 import { cloudApiBaseUrl, defaultCloudAuthClient, type CloudAccount } from '@/features/cloud/authClient';
@@ -56,7 +57,15 @@ function openConnectorsSettings(providerId: ConnectorsSettingsTarget['providerId
  */
 export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, options: CommonGroundEntryOptions): CommonGroundEntry {
   // A pairing link opens Grounding, which redeems the code.
-  const [selected, setSelected] = useState(hasPendingPairLink);
+  const [selected, setSelected] = useState(() => hasPendingPairLink() || hasHelpGrounding(options.account?.accountId ?? ''));
+  useEffect(() => {
+    consumeHelpGrounding(options.account?.accountId ?? '');
+    const open = () => {
+      if (consumeHelpGrounding(options.account?.accountId ?? '')) setSelected(true);
+    };
+    window.addEventListener(OPEN_GROUNDING_EVENT, open);
+    return () => window.removeEventListener(OPEN_GROUNDING_EVENT, open);
+  }, [options.account?.accountId]);
   useEffect(() => {
     const onPairLink = () => setSelected(true);
     window.addEventListener(COMMON_GROUND_PAIR_LINK_EVENT, onPairLink);

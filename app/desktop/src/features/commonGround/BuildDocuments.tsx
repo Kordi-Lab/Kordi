@@ -31,6 +31,7 @@ export function DocumentsRow({ client, chosen, onChange }: {
   const toggle = (id: string) => onChange(chosen.includes(id) ? chosen.filter((item) => item !== id) : full ? chosen : [...chosen, id]);
   return (
     <CgRow
+      helpTarget="grounding-documents"
       lead={<CgIcon tone="accent"><FileText className="h-4 w-4" /></CgIcon>}
       title="Documents"
       trailing={(

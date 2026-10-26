@@ -198,6 +198,7 @@ export function SettingsNav<T extends string>({ groups, activeId, onSelect, clas
                 <button
                   key={item.id}
                   type="button"
+                  data-help-target={`settings-${item.id}`}
                   aria-current={active ? 'page' : undefined}
                   onClick={() => onSelect(item.id)}
                   className={cn(

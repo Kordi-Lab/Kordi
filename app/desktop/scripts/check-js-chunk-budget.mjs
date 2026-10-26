@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readdir, stat } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -13,6 +13,9 @@ const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;
 // The document editor (Tiptap, ProseMirror, Markdown parser) is one lazy chunk that loads with the
 // first opened document. It gets its own cap, like the atlases, without relaxing the app budget.
 const MAX_DOCUMENT_EDITOR_BYTES = 750_000;
+// Product guides and permission setup load only when Help opens. Bound their
+// JavaScript and CSS together, keeping the existing app/startup budget intact.
+const MAX_HELP_CENTER_BYTES = 50_000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const assetsDir = process.argv[2]
@@ -74,7 +77,22 @@ try {
   if (editorBytes > MAX_DOCUMENT_EDITOR_BYTES || editorChunks.length > 1) {
     throw new Error(`The document editor chunk exceeds its separate ${formatKb(MAX_DOCUMENT_EDITOR_BYTES)} budget (${formatKb(editorBytes)}).`);
   }
-  if (distBytes - atlasBytes - editorBytes > MAX_DESKTOP_DIST_BYTES) {
+  const helpFiles = (await readdir(assetsDir)).filter((name) => /^help-center-[\w-]+\.(?:js|css)$/.test(name));
+  const helpSizes = await Promise.all(helpFiles.map(async (name) => (await stat(path.join(assetsDir, name))).size));
+  const helpBytes = helpSizes.reduce((total, size) => total + size, 0);
+  if (helpBytes > MAX_HELP_CENTER_BYTES || helpFiles.filter((name) => name.endsWith('.js')).length > 1 || helpFiles.filter((name) => name.endsWith('.css')).length > 1) {
+    throw new Error(`The help center exceeds its separate ${formatKb(MAX_HELP_CENTER_BYTES)} budget (${formatKb(helpBytes)}).`);
+  }
+  // Rolldown can move shared dependencies into a named lazy group, causing an
+  // eager import back into it. Only the dynamically imported help entries may
+  // statically import the help chunk; other app chunks must not load it.
+  for (const chunk of chunks.filter((item) => !/^(?:HelpMenu|HelpTour)-[\w-]+\.js$/.test(item.name))) {
+    const source = await readFile(path.join(assetsDir, chunk.name), 'utf8');
+    if (/\b(?:import|export)\s*(?:\{[^}]*\}|\*[^;]*)?\s*(?:from\s*)?["']\.\/(?:help-center|HelpMenu|HelpTour)-[\w-]+\.js["']/.test(source)) {
+      throw new Error(`Help must load on demand, but ${chunk.name} imports it eagerly.`);
+    }
+  }
+  if (distBytes - atlasBytes - editorBytes - helpBytes > MAX_DESKTOP_DIST_BYTES) {
     console.error(`Desktop web bundle budget exceeded. Maximum allowed size is ${formatKb(MAX_DESKTOP_DIST_BYTES)}.`);
     console.error(`- dist: ${formatKb(distBytes)}`);
     process.exit(1);
@@ -83,6 +101,7 @@ try {
   console.log(`Desktop web bundle budget ok: ${formatKb(distBytes)} total.`);
   if (atlasBytes) console.log(`Bundled Noto thumbnails: ${formatKb(atlasBytes)} of ${formatKb(MAX_NOTO_THUMBNAIL_BYTES)}.`);
   if (editorBytes) console.log(`Document editor chunk: ${formatKb(editorBytes)} of ${formatKb(MAX_DOCUMENT_EDITOR_BYTES)}.`);
+  if (helpBytes) console.log(`Help center: ${formatKb(helpBytes)} of ${formatKb(MAX_HELP_CENTER_BYTES)}.`);
 } catch (error) {
   if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
     console.error(`No built JavaScript chunks found in ${assetsDir}. Run pnpm --dir app/desktop build first.`);

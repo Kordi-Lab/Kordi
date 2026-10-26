@@ -16,6 +16,7 @@ mod digest_calendar;
 mod digest_calendar_sync;
 mod link_preview;
 mod mac_local;
+mod media_permissions;
 mod media_preview_window;
 mod menu_bar;
 mod message_notification;
@@ -167,6 +168,20 @@ fn desktop_reveal_in_finder(path: String) -> Result<String, String> {
 }
 
 pub fn run() {
+    let context = tauri::generate_context!();
+    let cloud_edition = is_cloud_edition_context(
+        std::env::var("KORDI_EDITION").ok().as_deref(),
+        std::env::var("VITE_KORDI_EDITION").ok().as_deref(),
+        &context.config().identifier,
+    );
+    if cloud_edition {
+        if let Err(error) = cloud_api_base_url_from_env() {
+            // Returning before AppKit's launch callback avoids a non-unwinding
+            // panic and macOS's recurring crash-recovery dialog.
+            eprintln!("[kordi] Cannot start this preview: {error}");
+            return;
+        }
+    }
     chat::interrupted_requests::record_process_start();
     system_proxy::install_native_proxy_environment();
     let app = tauri::Builder::default()
@@ -178,9 +193,6 @@ pub fn run() {
         .manage(DesktopChatManager::default())
         .setup(|app| {
             let is_cloud_edition = is_cloud_edition_app(app);
-            if is_cloud_edition {
-                cloud_api_base_url_from_env().map_err(std::io::Error::other)?;
-            }
             configure_cloud_app_data_dir(app, is_cloud_edition);
             activate_stored_cloud_account_data_dir(is_cloud_edition);
             if let Err(err) = chat::allow_attachment_asset_scope(app) {
@@ -227,6 +239,7 @@ pub fn run() {
             digest_calendar_sync::desktop_digest_calendar_delete,
             digest_calendar_sync::desktop_digest_calendar_observe,
             message_notification::desktop_request_notification_permission,
+            media_permissions::desktop_media_permission,
             message_notification::desktop_show_message_notification,
             chat::memory::desktop_memory_settings,
             chat::memory::desktop_memory_update_settings,
@@ -433,7 +446,7 @@ pub fn run() {
             voice_message::desktop_voice_playback_sample,
             voice_message::desktop_voice_stop
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building Kordi desktop");
     app.run(|app_handle, event| match event {
         tauri::RunEvent::Exit => {

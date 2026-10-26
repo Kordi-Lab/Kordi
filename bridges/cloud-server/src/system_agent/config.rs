@@ -99,6 +99,7 @@ impl fmt::Debug for SystemAgentProviderAuth {
 
 #[derive(Debug, Clone)]
 pub struct PendingSystemAgentConfig {
+    pub group_chat_enabled: bool,
     pub account_id: String,
     pub owner_email: String,
     pub agent_id: String,
@@ -109,6 +110,7 @@ pub struct PendingSystemAgentConfig {
 
 #[derive(Debug, Clone)]
 pub struct SystemAgentConfig {
+    pub group_chat_enabled: bool,
     pub account_id: String,
     pub owner_email: String,
     pub agent_id: String,
@@ -235,6 +237,7 @@ impl PendingSystemAgentConfig {
             ));
         }
         Ok(Some(Self {
+            group_chat_enabled: !switched_off(setting(&mut get, "GROUP_CHAT_ENABLED").as_deref()),
             account_id: required_or_default(
                 &mut get,
                 "ACCOUNT_ID",
@@ -275,6 +278,7 @@ impl SystemAgentConfig {
 #[cfg(test)]
 pub(crate) fn test_config(account_id: &str) -> SystemAgentConfig {
     SystemAgentConfig {
+        group_chat_enabled: true,
         account_id: account_id.to_string(),
         owner_email: "system-agent-test@example.invalid".to_string(),
         agent_id: format!("system-agent-{account_id}"),
@@ -320,6 +324,32 @@ mod tests {
     }
 
     #[test]
+    fn grounding_credentials_can_be_enabled_without_group_chat_automation() {
+        for name in [
+            "KORDI_SYSTEM_AGENT_GROUP_CHAT_ENABLED",
+            "KORDI_PIP_GROUP_CHAT_ENABLED",
+        ] {
+            let config = configured(&[
+                ("KORDI_SYSTEM_AGENT_OPENAI_API_KEY", "synthetic-key"),
+                (name, "false"),
+            ])
+            .expect("Grounding service remains available");
+            assert!(!config.group_chat_enabled);
+            assert_eq!(config.provider_auth.api_key(), "synthetic-key");
+        }
+        let config = configured(&[
+            ("KORDI_SYSTEM_AGENT_OPENAI_API_KEY", "synthetic-key"),
+            ("KORDI_SYSTEM_AGENT_GROUP_CHAT_ENABLED", "true"),
+            ("KORDI_PIP_GROUP_CHAT_ENABLED", "false"),
+        ])
+        .unwrap();
+        assert!(
+            config.group_chat_enabled,
+            "the new setting takes precedence"
+        );
+    }
+
+    #[test]
     fn enabled_system_agent_requires_its_own_api_key() {
         let values = HashMap::from([("KORDI_SYSTEM_AGENT_ENABLED", "true")]);
         let error = PendingSystemAgentConfig::from_lookup(|key| {
@@ -340,6 +370,7 @@ mod tests {
         })
         .unwrap()
         .unwrap();
+        assert!(config.group_chat_enabled);
         assert_eq!(config.account_id, DEFAULT_SYSTEM_AGENT_ACCOUNT_ID);
         assert_eq!(config.agent_id, DEFAULT_SYSTEM_AGENT_ID);
         assert_eq!(config.name, "System");

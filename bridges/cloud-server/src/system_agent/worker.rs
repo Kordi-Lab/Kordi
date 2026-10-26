@@ -14,6 +14,9 @@ pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
             return;
         };
         let config = system_agent.config().clone();
+        if !config.group_chat_enabled {
+            return;
+        }
         let mut timer = tokio::time::interval(std::time::Duration::from_secs(SWEEP_INTERVAL_SECS));
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut ticks: u32 = 0;
