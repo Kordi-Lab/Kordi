@@ -1,3 +1,4 @@
+import AVFoundation
 import Photos
 import PhotosUI
 import SwiftUI
@@ -142,7 +143,9 @@ struct PhotoLibraryPreview: View {
                     .background(.black.opacity(0.45), in: Capsule())
             }
             .buttonStyle(.plain)
-            .disabled(asset == nil || isSending)
+            .disabled(asset == nil || isSending || asset?.mediaType == .video)
+            // The editor works on photos only.
+            .opacity(asset?.mediaType == .video ? 0 : 1)
             Spacer()
             sendButton(currentID: asset?.localIdentifier)
         }
@@ -218,6 +221,10 @@ private struct PhotoLibraryPager: UIViewRepresentable {
         }
         context.coordinator.attachDismissDrag(to: view)
         return view
+    }
+
+    static func dismantleUIView(_ view: PagerCollectionView, coordinator: Coordinator) {
+        coordinator.stopPlayback(in: view)
     }
 
     func updateUIView(_ view: PagerCollectionView, context: Context) {
@@ -312,7 +319,20 @@ private struct PhotoLibraryPager: UIViewRepresentable {
                 playsLive: !parent.stillOnlyIDs.contains(id),
                 scale: collectionView.traitCollection.displayScale
             )
+            cell.setActive(indexPath.item == index.wrappedValue)
             return cell
+        }
+
+        /// Only the photo or video on screen plays.
+        private func activateCurrentPage(in collectionView: UICollectionView) {
+            for case let cell as PagerCell in collectionView.visibleCells {
+                guard let indexPath = collectionView.indexPath(for: cell) else { continue }
+                cell.setActive(indexPath.item == index.wrappedValue)
+            }
+        }
+
+        func stopPlayback(in collectionView: UICollectionView) {
+            for case let cell as PagerCell in collectionView.visibleCells { cell.setActive(false) }
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -323,6 +343,7 @@ private struct PhotoLibraryPager: UIViewRepresentable {
             let count = parent?.library.count ?? 0
             guard page >= 0, page < count, page != index.wrappedValue else { return }
             index.wrappedValue = page
+            if let collectionView = scrollView as? UICollectionView { activateCurrentPage(in: collectionView) }
         }
 
         /// Opens on the tapped photo and keeps the current page through size changes.
@@ -335,6 +356,7 @@ private struct PhotoLibraryPager: UIViewRepresentable {
             view.collectionViewLayout.invalidateLayout()
             view.layoutIfNeeded()
             view.contentOffset = CGPoint(x: CGFloat(index.wrappedValue) * width, y: 0)
+            activateCurrentPage(in: view)
         }
     }
 
@@ -374,9 +396,16 @@ private struct PhotoLibraryPager: UIViewRepresentable {
 
         private let imageView = UIImageView()
         private let liveView = PHLivePhotoView()
+        private let playerView = PlayerView()
+        private let playIcon = UIImageView(image: UIImage(systemName: "play.circle.fill"))
         private var assetID: String?
         private var imageRequest = PHInvalidImageRequestID
         private var liveRequest = PHInvalidImageRequestID
+        private var videoRequest = PHInvalidImageRequestID
+        private var player: AVPlayer?
+        private var endObserver: NSObjectProtocol?
+        private var isVideo = false
+        private var isActive = false
 
         override init(frame: CGRect) {
             super.init(frame: frame)
@@ -384,7 +413,14 @@ private struct PhotoLibraryPager: UIViewRepresentable {
             liveView.contentMode = .scaleAspectFit
             liveView.isMuted = false
             liveView.backgroundColor = .clear
-            [imageView, liveView].forEach(contentView.addSubview)
+            playerView.isHidden = true
+            playIcon.tintColor = .white
+            playIcon.preferredSymbolConfiguration = .init(pointSize: 64, weight: .regular)
+            playIcon.layer.shadowOpacity = 0.3
+            playIcon.layer.shadowRadius = 6
+            playIcon.isHidden = true
+            [imageView, liveView, playerView, playIcon].forEach(contentView.addSubview)
+            contentView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(togglePlayback)))
             isAccessibilityElement = true
         }
 
@@ -394,6 +430,9 @@ private struct PhotoLibraryPager: UIViewRepresentable {
             super.layoutSubviews()
             imageView.frame = contentView.bounds
             liveView.frame = contentView.bounds
+            playerView.frame = contentView.bounds
+            playIcon.sizeToFit()
+            playIcon.center = CGPoint(x: contentView.bounds.midX, y: contentView.bounds.midY)
         }
 
         override func prepareForReuse() {
@@ -402,17 +441,29 @@ private struct PhotoLibraryPager: UIViewRepresentable {
             imageView.image = nil
             liveView.stopPlayback()
             liveView.livePhoto = nil
+            releasePlayer()
             assetID = nil
+            isVideo = false
+            isActive = false
+        }
+
+        override func accessibilityActivate() -> Bool {
+            guard isVideo else { return false }
+            togglePlayback()
+            return true
         }
 
         func show(asset: PHAsset, edited: UIImage?, playsLive: Bool, scale: CGFloat) {
             let id = asset.localIdentifier
             let isLive = asset.mediaSubtypes.contains(.photoLive)
-            accessibilityLabel = isLive ? "Live Photo" : "Photo"
+            isVideo = asset.mediaType == .video
+            accessibilityLabel = isVideo ? "Video" : isLive ? "Live Photo" : "Photo"
+            accessibilityHint = isVideo ? "Plays or pauses the video" : nil
             if assetID != id {
                 cancelRequests()
                 imageView.image = nil
                 liveView.livePhoto = nil
+                releasePlayer()
                 assetID = id
             }
             let showsLive = isLive && playsLive && edited == nil
@@ -436,6 +487,9 @@ private struct PhotoLibraryPager: UIViewRepresentable {
                     }
                 }
             }
+            if isVideo, player == nil {
+                loadVideo(asset, id: id)
+            }
             if showsLive, liveView.livePhoto == nil {
                 let options = PHLivePhotoRequestOptions()
                 options.deliveryMode = .highQualityFormat
@@ -452,11 +506,84 @@ private struct PhotoLibraryPager: UIViewRepresentable {
             }
         }
 
+        /// Videos play while their page is on screen and pause when it leaves.
+        func setActive(_ active: Bool) {
+            isActive = active
+            guard isVideo else { return }
+            if active, let player {
+                player.play()
+            } else {
+                player?.pause()
+            }
+            updatePlayIcon()
+        }
+
+        private func loadVideo(_ asset: PHAsset, id: String) {
+            let options = PHVideoRequestOptions()
+            options.deliveryMode = .automatic
+            options.isNetworkAccessAllowed = true
+            videoRequest = PHImageManager.default().requestPlayerItem(forVideo: asset, options: options) { [weak self] item, _ in
+                guard let item else { return }
+                Task { @MainActor in
+                    guard let self, self.assetID == id, self.player == nil else { return }
+                    let player = AVPlayer(playerItem: item)
+                    self.player = player
+                    self.playerView.playerLayer.player = player
+                    self.playerView.isHidden = false
+                    self.endObserver = NotificationCenter.default.addObserver(
+                        forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
+                    ) { [weak self] _ in
+                        MainActor.assumeIsolated {
+                            self?.player?.seek(to: .zero)
+                            self?.updatePlayIcon()
+                        }
+                    }
+                    self.setActive(self.isActive)
+                }
+            }
+        }
+
+        @objc private func togglePlayback() {
+            guard isVideo, let player else { return }
+            if player.timeControlStatus == .paused { player.play() } else { player.pause() }
+            updatePlayIcon()
+        }
+
+        private func updatePlayIcon() {
+            let isPlaying = player.map { $0.rate != 0 || $0.timeControlStatus != .paused } ?? false
+            playIcon.isHidden = !isVideo || isPlaying
+        }
+
+        private func releasePlayer() {
+            player?.pause()
+            if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+            endObserver = nil
+            playerView.playerLayer.player = nil
+            playerView.isHidden = true
+            playIcon.isHidden = true
+            player = nil
+        }
+
         private func cancelRequests() {
             PHImageManager.default().cancelImageRequest(imageRequest)
             PHImageManager.default().cancelImageRequest(liveRequest)
+            PHImageManager.default().cancelImageRequest(videoRequest)
             imageRequest = PHInvalidImageRequestID
             liveRequest = PHInvalidImageRequestID
+            videoRequest = PHInvalidImageRequestID
         }
+    }
+
+    private final class PlayerView: UIView {
+        override class var layerClass: AnyClass { AVPlayerLayer.self }
+        var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            playerLayer.videoGravity = .resizeAspect
+            backgroundColor = .clear
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     }
 }
