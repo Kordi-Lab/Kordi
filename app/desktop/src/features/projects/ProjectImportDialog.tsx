@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react';
-import { ArrowLeft, Check, ChevronRight, Folder, FolderOpen, GitBranch, LoaderCircle, RefreshCw, Search, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, Folder, FolderOpen, GitBranch, LoaderCircle, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { AppDialog } from '@/components/ui/dialog';
 import { desktopProjectImportApi, githubRepositoryFromInput, type GithubRepository, type ProjectImportApi } from './projectImportApi';
 
@@ -10,7 +10,9 @@ export function ProjectImportDialog({ onClose, onImported, api = desktopProjectI
   preview?: boolean;
 }) {
   const id = useId();
-  const [source, setSource] = useState<'local' | 'github' | null>(null);
+  const [source, setSource] = useState<'new' | 'local' | 'github' | null>(null);
+  const [name, setName] = useState('');
+  const [newParent, setNewParent] = useState('');
   const [query, setQuery] = useState('');
   const [selection, setSelection] = useState('');
   const [folder, setFolder] = useState('');
@@ -37,20 +39,28 @@ export function ProjectImportDialog({ onClose, onImported, api = desktopProjectI
     return () => { canceled = true; };
   }, [api, page, refresh, source]);
 
-  const chooseFolder = async (destination: boolean) => {
+  const chooseFolder = async (destination: 'new' | 'local' | 'github') => {
     setBusy(true); setError('');
     try {
       const path = await api.chooseFolder();
-      if (path) { if (destination) setParent(path); else setFolder(path); }
+      if (path) {
+        if (destination === 'new') setNewParent(path);
+        else if (destination === 'github') setParent(path);
+        else setFolder(path);
+      }
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to choose a folder. Enter its path instead.'); }
     finally { setBusy(false); }
   };
   const repository = githubRepositoryFromInput(query) ?? selection;
   const matches = repositories.filter((repo) => repo.fullName.toLowerCase().includes(query.toLowerCase()));
+  const canSubmit = Boolean(imported || (source === 'new' ? name.trim() : source === 'local' ? folder.trim() : repository));
   const addProject = async () => {
+    if (busy || !canSubmit) return;
     setBusy(true); setError('');
     try {
-      const project = imported ?? (source === 'local' ? await api.addLocal(folder.trim()) : await api.clone(repository, parent.trim() || undefined));
+      const project = imported ?? (source === 'new'
+        ? await api.create(name.trim(), newParent.trim() || undefined)
+        : source === 'local' ? await api.addLocal(folder.trim()) : await api.clone(repository, parent.trim() || undefined));
       setImported(project);
       await onImported(project);
       onClose();
@@ -61,16 +71,21 @@ export function ProjectImportDialog({ onClose, onImported, api = desktopProjectI
   return <AppDialog titleId={`${id}-title`} descriptionId={`${id}-description`} onDismiss={onClose} dismissDisabled={busy} busy={busy} className="chat-project-import">
     <header className="chat-project-import-heading">
       {source ? <button type="button" aria-label="Back to project sources" disabled={locked} onClick={() => { setSource(null); setSelection(''); setQuery(''); setError(''); }}><ArrowLeft size={16} /></button> : <Folder size={18} />}
-      <h2 id={`${id}-title`}>{source === 'github' ? 'Add from GitHub' : source === 'local' ? 'Add a local project' : 'Add project'}</h2>
+      <h2 id={`${id}-title`}>{source === 'new' ? 'New project' : source === 'github' ? 'Add from GitHub' : source === 'local' ? 'Add a local project' : 'Add project'}</h2>
       <button type="button" aria-label="Close project import" disabled={busy} onClick={onClose}><X size={16} /></button>
     </header>
-    <p id={`${id}-description`} className="chat-project-import-description">{source === 'github' ? 'Choose a repository or paste its GitHub URL.' : source === 'local' ? 'Choose the folder where your agent will work.' : 'Choose where your agent will work.'}</p>
+    <p id={`${id}-description`} className="chat-project-import-description">{source === 'new' ? 'Name your project. A new folder will be created in the save location.' : source === 'github' ? 'Choose a repository or paste its GitHub URL.' : source === 'local' ? 'Choose the folder where your agent will work.' : 'Choose where your agent will work.'}</p>
     {!source ? <div className="chat-project-sources">
+      <button type="button" onClick={() => setSource('new')}><Plus size={17} /><span><strong>New project</strong><small>Start with an empty folder on this Mac.</small></span><ChevronRight size={16} /></button>
       <button type="button" onClick={() => setSource('local')}><FolderOpen size={17} /><span><strong>Open local folder</strong><small>Use files already on this Mac.</small></span><ChevronRight size={16} /></button>
       <button type="button" onClick={() => { setLoading(true); setLoadError(''); setSource('github'); }}><GitBranch size={17} /><span><strong>Clone from GitHub</strong><small>Download a repository to this Mac.</small></span><ChevronRight size={16} /></button>
-    </div> : <>
-      {source === 'local' ? <>
-        <button type="button" className="chat-project-folder-browse" disabled={locked} onClick={() => void chooseFolder(false)}><FolderOpen size={17} />Choose folder…</button>
+    </div> : <form onSubmit={(event) => { event.preventDefault(); void addProject(); }}>
+      {source === 'new' ? <>
+        <label className="chat-project-path-label">Project name<input autoFocus required value={name} disabled={locked} onChange={(event) => setName(event.target.value)} placeholder="My project" /></label>
+        <label className="chat-project-path-label">Save location<input value={newParent} disabled={locked} onChange={(event) => setNewParent(event.target.value)} placeholder="~/KordiProjects (default)" /></label>
+        <button type="button" className="chat-project-folder-browse" disabled={locked} onClick={() => void chooseFolder('new')}><FolderOpen size={17} />Choose folder…</button>
+      </> : source === 'local' ? <>
+        <button type="button" className="chat-project-folder-browse" disabled={locked} onClick={() => void chooseFolder('local')}><FolderOpen size={17} />Choose folder…</button>
         <label className="chat-project-path-label">Folder path<input autoFocus value={folder} disabled={locked} onChange={(event) => setFolder(event.target.value)} placeholder="Choose a folder or enter its path" /></label>
       </> : <>
         <div className="chat-project-repo-search"><Search size={15} /><input autoFocus disabled={locked} aria-label="Search repositories or paste a GitHub URL" placeholder="Search repositories or paste a GitHub URL" value={query} onChange={(event) => { setQuery(event.target.value); setSelection(''); }} /></div>
@@ -83,10 +98,10 @@ export function ProjectImportDialog({ onClose, onImported, api = desktopProjectI
           {loading ? <p className="chat-project-empty" role="status">Loading repositories…</p> : !githubRepositoryFromInput(query) && !matches.length && !loadError ? <p className="chat-project-empty">{query ? 'No matching repositories. Paste a GitHub repository URL.' : 'No repositories found. Paste a GitHub repository URL.'}</p> : null}
           {hasMore && !githubRepositoryFromInput(query) ? <button type="button" disabled={loading || locked} onClick={() => { setLoading(true); setLoadError(''); setPage((current) => current + 1); }}>Load more repositories</button> : null}
         </div>
-        {repository ? <div className="chat-project-destination"><Folder size={15} /><span>Local workspace <strong>{parent || 'KordiProjects'}/{repository.split('/').pop()}</strong></span><button type="button" disabled={locked} onClick={() => void chooseFolder(true)}>Change</button></div> : null}
+        {repository ? <div className="chat-project-destination"><Folder size={15} /><span>Local workspace <strong>{parent || 'KordiProjects'}/{repository.split('/').pop()}</strong></span><button type="button" disabled={locked} onClick={() => void chooseFolder('github')}>Change</button></div> : null}
       </>}
-      <button type="button" className="chat-project-primary" disabled={busy || (!imported && !(source === 'local' ? folder.trim() : repository))} onClick={() => void addProject()}>{busy ? <><LoaderCircle size={14} className="animate-spin" />{source === 'github' && !imported ? 'Cloning repository…' : 'Adding project…'}</> : imported ? 'Retry opening project' : 'Add project'}</button>
-    </>}
+      <button type="submit" className="chat-project-primary" disabled={busy || !canSubmit}>{busy ? <><LoaderCircle size={14} className="animate-spin" />{source === 'new' && !imported ? 'Creating project…' : source === 'github' && !imported ? 'Cloning repository…' : 'Adding project…'}</> : imported ? 'Retry opening project' : source === 'new' ? 'Create project' : 'Add project'}</button>
+    </form>}
     {error ? <p role="alert" className="chat-project-import-error">{error}</p> : null}
     {preview ? <p className="chat-project-disclaimer">Demo preview · Project imports are simulated.</p> : null}
   </AppDialog>;
