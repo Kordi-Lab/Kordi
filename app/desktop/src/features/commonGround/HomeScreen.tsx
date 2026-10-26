@@ -65,13 +65,13 @@ function YourCard({ state, store }: { state: CgState; store: CommonGroundStore }
   );
 }
 
-export function HomeScreen({ state, store }: { state: CgState; store: CommonGroundStore; host?: CgHost }) {
+export function HomeScreen({ state, store, host }: { state: CgState; store: CommonGroundStore; host?: CgHost }) {
   if (!hasAnyCard(state)) return <EmptyWallet state={state} store={store} />;
   return (
     <div className="cg-home">
       <h2 className="cg-msec">Your card</h2>
       <YourCard state={state} store={store} />
-      <PairCodePanel state={state} store={store} />
+      <PairCodePanel state={state} store={store} nearby={Boolean(host?.nearby && state.profilesOn)} />
       <CgNotice text={state.notice} />
       {state.support.rooms && state.roomList.length ? (
         <>

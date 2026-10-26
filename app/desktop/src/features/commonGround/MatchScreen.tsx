@@ -5,7 +5,7 @@ import { PersonActions } from './PersonActions';
 import { CgAvatar, CgBack, CgGroup, CgNotice, CgProgress, CgRow, CgSection, CgSegmented, CgTopicDot } from './parts';
 import { personTitle } from './profiles';
 import { personKey, type CgState, type CommonGroundStore } from './store';
-import type { CgTrade } from './types';
+import type { CgMatch, CgTrade } from './types';
 
 function lowerFirst(text: string) {
   return text.charAt(0).toLowerCase() + text.slice(1);
@@ -21,6 +21,39 @@ function TradeRows({ items, whose }: { items: CgTrade[]; whose: string }) {
   );
 }
 
+/** Shared and Trade for a found match, or a line while it is being found. */
+export function MatchDetails({ match }: { match: Pick<CgMatch, 'status' | 'person' | 'shared' | 'youBring' | 'theyBring' | 'nextStep'> }) {
+  const [tab, setTab] = useState<'shared' | 'trade'>('shared');
+  const person = match.person;
+  const shared = match.shared ?? [];
+  const youBring = match.youBring ?? [];
+  const theyBring = match.theyBring ?? [];
+  if (match.status === 'matching') return <CgProgress line="Finding what you share" />;
+  if (match.status === 'failed') return <CgNotice text="Could not find a match. Try again later." />;
+  return (
+    <>
+      <CgSegmented value={tab} onChange={setTab} label="Match" options={[['shared', 'Shared'], ['trade', 'Trade']]} />
+      {tab === 'shared' ? (
+        <CgSection>
+          <CgGroup>
+            {shared.length
+              ? shared.map((reason) => <CgRow key={reason.topic} lead={<CgTopicDot topic={reason.topic} />} title={reason.topic} sub={reason.why} />)
+              : <CgRow title={<span className="cg-muted">No clear overlap yet</span>} />}
+          </CgGroup>
+        </CgSection>
+      ) : youBring.length || theyBring.length ? (
+        <>
+          {youBring.length ? <CgSection title="You bring"><TradeRows items={youBring} whose={`${person.name}'s`} /></CgSection> : null}
+          {theyBring.length ? <CgSection title={`${person.name} brings`}><TradeRows items={theyBring} whose="your" /></CgSection> : null}
+        </>
+      ) : (
+        <CgSection><CgGroup><CgRow title={<span className="cg-muted">No clear trade yet</span>} /></CgGroup></CgSection>
+      )}
+      {match.nextStep ? <div className="cg-next-step">{match.nextStep}</div> : null}
+    </>
+  );
+}
+
 export function MatchScreen({ accountId, profileId, state, store, host }: {
   accountId: string;
   profileId?: string;
@@ -28,7 +61,6 @@ export function MatchScreen({ accountId, profileId, state, store, host }: {
   store: CommonGroundStore;
   host: CgHost;
 }) {
-  const [tab, setTab] = useState<'shared' | 'trade'>('shared');
   const match = state.matches[personKey(accountId, profileId)];
   if (!match) {
     return (
@@ -40,9 +72,6 @@ export function MatchScreen({ accountId, profileId, state, store, host }: {
   }
   const person = match.person;
   const ready = match.status === 'ready';
-  const shared = match.shared ?? [];
-  const youBring = match.youBring ?? [];
-  const theyBring = match.theyBring ?? [];
   return (
     <>
       <CgBack onBack={() => store.back()} />
@@ -58,30 +87,7 @@ export function MatchScreen({ accountId, profileId, state, store, host }: {
       </div>
       <PersonActions person={person} state={state} store={store} host={host} />
       <CgNotice text={state.notice} />
-      {match.status === 'matching' ? <CgProgress line="Finding what you share" /> : null}
-      {match.status === 'failed' ? <CgNotice text="Could not find a match. Try again later." /> : null}
-      {ready ? (
-        <>
-          <CgSegmented value={tab} onChange={setTab} label="Match" options={[['shared', 'Shared'], ['trade', 'Trade']]} />
-          {tab === 'shared' ? (
-            <CgSection>
-              <CgGroup>
-                {shared.length
-                  ? shared.map((reason) => <CgRow key={reason.topic} lead={<CgTopicDot topic={reason.topic} />} title={reason.topic} sub={reason.why} />)
-                  : <CgRow title={<span className="cg-muted">No clear overlap yet</span>} />}
-              </CgGroup>
-            </CgSection>
-          ) : youBring.length || theyBring.length ? (
-            <>
-              {youBring.length ? <CgSection title="You bring"><TradeRows items={youBring} whose={`${person.name}'s`} /></CgSection> : null}
-              {theyBring.length ? <CgSection title={`${person.name} brings`}><TradeRows items={theyBring} whose="your" /></CgSection> : null}
-            </>
-          ) : (
-            <CgSection><CgGroup><CgRow title={<span className="cg-muted">No clear trade yet</span>} /></CgGroup></CgSection>
-          )}
-          {match.nextStep ? <div className="cg-next-step">{match.nextStep}</div> : null}
-        </>
-      ) : null}
+      <MatchDetails match={match} />
     </>
   );
 }
