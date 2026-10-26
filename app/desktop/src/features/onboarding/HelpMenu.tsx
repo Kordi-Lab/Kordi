@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, CircleHelp, Play, ShieldCheck, X } from 'lucide-react';
 import { AppDialog, AppDialogTitle, type AppDialogAnchor } from '@/components/ui/dialog';
@@ -13,7 +13,14 @@ import type { HelpTourId } from './helpTourSteps';
 import type { HelpAction } from './helpContent';
 import '@/styles/help.css';
 
+export type HelpUpdateAction = {
+  updateAvailable: boolean;
+  label: string;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+};
+
 export type HelpMenuProps = {
+  updateAction?: HelpUpdateAction;
   progressKey: string;
   settingsAvailable: boolean;
   supportAvailable: boolean;
@@ -25,7 +32,7 @@ export type HelpMenuProps = {
   initialView?: 'home' | 'permissions';
 };
 
-export default function HelpMenu({ progressKey, settingsAvailable, supportAvailable, onAction, onOpenSession, onDismiss, onStartTour, anchor, initialView = 'home' }: HelpMenuProps) {
+export default function HelpMenu({ progressKey, settingsAvailable, supportAvailable, onAction, onOpenSession, onDismiss, onStartTour, anchor, updateAction, initialView = 'home' }: HelpMenuProps) {
   const titleId = useId();
   const [view, setView] = useState<'home' | 'permissions' | 'updates'>(initialView);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +74,7 @@ export default function HelpMenu({ progressKey, settingsAvailable, supportAvaila
       <div className="help-menu-divider" />
       <button onClick={() => setView('updates')}><span>What’s new</span></button>
       {supportAvailable ? <button disabled={busy} onClick={() => void action({ kind: 'support' })}><span>Contact support</span></button> : null}
+      {updateAction ? <button onClick={(event) => { updateAction.onClick(event); onDismiss(); }}><span>{updateAction.label}</span><ArrowRight size={14} /></button> : null}
     </div> : <div className="help-menu-content">
       {view === 'permissions' ? <HelpPermissions compact onAction={(target) => void action(target)} onOpenSession={(id) => { onOpenSession(id); onDismiss(); }} connectorsAvailable={settingsAvailable && (nativeMacPermissions() || (capabilities.capabilities?.connectorsVersion ?? 0) > 0)} groundingAvailable={(capabilities.capabilities?.commonGroundVersion ?? 0) > 0} /> : <HelpReleaseNotes native={isNativeDesktopShell()} />}
     </div>}

@@ -10,11 +10,13 @@ import type { HelpTourId } from './helpTourSteps';
 import type { HelpAction } from './helpContent';
 import { HelpWelcome } from './HelpWelcome';
 import { HelpAvailabilityContext } from './helpAvailability';
+import type { HelpUpdateAction } from './HelpMenu';
 
 const HelpMenu = lazy(() => import('./HelpMenu'));
 const HelpTour = lazy(() => import('./HelpTour'));
 
 type HelpEntryProps = {
+  updateAction?: HelpUpdateAction;
   activeNav: NavId;
   setActiveNav: (nav: NavId) => void;
   account: WorkspaceSidebarAccount;
@@ -28,7 +30,8 @@ export function HelpEntry(props: HelpEntryProps) {
   return <AccountHelpEntry key={props.account.cloudAccount?.accountId ?? 'local'} {...props} />;
 }
 
-function AccountHelpEntry({ setActiveNav, account, onOpenSupport, onOpenSession }: HelpEntryProps) {
+function AccountHelpEntry({ setActiveNav, account, onOpenSupport, onOpenSession, updateAction }: HelpEntryProps) {
+  const updateAvailable = updateAction?.updateAvailable ?? false;
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<AppDialogAnchor | null>(null);
   const [tour, setTour] = useState<HelpTourId | null>(null);
@@ -70,15 +73,15 @@ function AccountHelpEntry({ setActiveNav, account, onOpenSupport, onOpenSession 
     if (target.kind === 'support') await onOpenSupport?.();
   };
   return <div className="relative">
-    <button data-help-target="help" ref={trigger} type="button" className="app-workspace-nav-button relative mx-auto grid h-8 w-8 place-items-center rounded-[10px] p-0" data-active={open || Boolean(tour)} aria-label={welcome ? 'Help & setup: get started with Kordi' : 'Help & setup'} title={welcome ? 'New to Kordi? Start here' : 'Help & setup'} aria-haspopup="dialog" aria-expanded={open || Boolean(tour)} onClick={openHelp}>
+    <button data-help-target="help" ref={trigger} type="button" className="app-workspace-nav-button relative mx-auto grid h-8 w-8 place-items-center rounded-[10px] p-0" data-active={open || Boolean(tour)} aria-label={updateAvailable ? 'Help & setup: update available' : welcome ? 'Help & setup: get started with Kordi' : 'Help & setup'} title={updateAvailable ? 'Update available' : welcome ? 'New to Kordi? Start here' : 'Help & setup'} aria-haspopup="dialog" aria-expanded={open || Boolean(tour)} onClick={openHelp}>
       <CircleHelp className="h-[18px] w-[18px]" aria-hidden="true" />
-      {welcome ? <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true" /> : null}
+      {updateAvailable ? <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-red-500" aria-hidden="true" /> : welcome ? <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true" /> : null}
     </button>
     {welcome && !open && !tour ? <HelpWelcome trigger={trigger} onStart={() => startTour()} onDismiss={() => {
           setWelcome(false);
           saveHelpProgress(progressKey, { ...readHelpProgress(progressKey), welcome: false });
         }} /> : null}
-    {open ? <Suspense fallback={<span role="status" className="sr-only">Loading help…</span>}><HelpMenu anchor={anchor} progressKey={progressKey} initialView={initialView} onStartTour={startTour} settingsAvailable={settingsAvailable} supportAvailable={Boolean(onOpenSupport)} onAction={action} onOpenSession={onOpenSession} onDismiss={() => setOpen(false)} /></Suspense> : null}
+    {open ? <Suspense fallback={<span role="status" className="sr-only">Loading help…</span>}><HelpMenu updateAction={updateAction} anchor={anchor} progressKey={progressKey} initialView={initialView} onStartTour={startTour} settingsAvailable={settingsAvailable} supportAvailable={Boolean(onOpenSupport)} onAction={action} onOpenSession={onOpenSession} onDismiss={() => setOpen(false)} /></Suspense> : null}
     {tour ? <Suspense fallback={<span role="status" className="sr-only">Loading tour…</span>}><HelpTour initialSection={tour === 'workspace' ? undefined : tour} progressKey={progressKey} settingsAvailable={settingsAvailable} onExit={exitTour} onPrepare={(step) => {
       if (step.settings && settingsAvailable) {
         tourOpenedSettings.current = true;

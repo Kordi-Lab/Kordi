@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { createElement } from 'react';
+import React, { act, createElement, useState } from 'react';
+import { useSidebarUpdater, type SidebarUpdaterProps } from '../src/pages/workspaceSidebar.update';
+import type { DesktopUpdaterState } from '../src/features/updates/desktopUpdater';
+import { withJsdomRoot } from './helpers/mountWithJsdom';
+import { HelpEntry } from '../src/features/onboarding/HelpEntry';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
@@ -96,136 +100,122 @@ function sidebarProps(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test('WorkspaceSidebar keeps the native updater hidden until an update is available', () => {
+test('WorkspaceSidebar exposes updates through Help without a separate rail button', () => {
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps({
-    onCheckForUpdates: async () => ({ status: 'up-to-date', currentVersion: '0.0.1-beta.7' }),
+    onCheckForUpdates: async () => ({ status: 'up-to-date' }),
   }) as never));
-
-  assert.doesNotMatch(markup, /app-update-wave-button/);
-  assert.doesNotMatch(markup, /Kordi update/);
+  const navigation = readFileSync(new URL('../src/pages/workspaceSidebar.navigation.tsx', import.meta.url), 'utf8');
+  const help = readFileSync(new URL('../src/features/onboarding/HelpMenu.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(markup, /app-update-wave-button|blob-wave/);
+  assert.match(navigation, /<HelpEntry\s+updateAction=\{menuAction\}/);
+  assert.ok(help.indexOf('{updateAction ?') > help.indexOf('Contact support'));
+  for (const updateAvailable of [false, true]) {
+    const helpMarkup = renderToStaticMarkup(<HelpEntry activeNav="chats" setActiveNav={() => {}}
+      account={{ localProfileAvatarSeed: 'preview' }} onOpenSession={() => {}}
+      updateAction={{ updateAvailable, label: updateAvailable ? 'Update available' : 'Check for updates', onClick: () => {} }} />);
+    assert.equal(helpMarkup.includes('bg-red-500'), updateAvailable);
+    assert.equal(helpMarkup.includes('Help &amp; setup: update available'), updateAvailable);
+  }
 });
 
-test('WorkspaceSidebar places the updater in the global rail above the profile', () => {
-  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps({
-    onCheckForUpdates: async () => ({ status: 'up-to-date', currentVersion: '0.0.1-beta.7' }),
-  }) as never));
-  const source = [
-    readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8'),
-    readFileSync(new URL('../src/pages/workspaceSidebar.chrome.tsx', import.meta.url), 'utf8'),
-    readFileSync(new URL('../src/components/SidebarListChrome.tsx', import.meta.url), 'utf8'),
-    readFileSync(new URL('../src/pages/workspaceSidebar.navigation.tsx', import.meta.url), 'utf8'),
-    readFileSync(new URL('../src/pages/workspaceSidebar.update.tsx', import.meta.url), 'utf8'),
-  ].join('\n');
-  const css = readDesktopShellCss();
-  const chatsHeaderStart = markup.indexOf('app-chat-sidebar-header');
-  const chatsHeaderEnd = markup.indexOf('app-workspace-search', chatsHeaderStart);
-  const chatsHeaderMarkup = markup.slice(chatsHeaderStart, chatsHeaderEnd);
-
-  assert.match(markup, /class="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2\.5"/);
-  assert.match(markup, /class="app-chat-sidebar-actions flex shrink-0 items-center gap-2"/);
-  assert.match(markup, /app-nav-rail-bottom/);
-  assert.doesNotMatch(chatsHeaderMarkup, /app-update-wave-button/);
-  assert.match(source, /<SidebarUpdater[\s\S]*<SidebarProfileControl/);
-  assert.match(source, /app-update-wave-button app-workspace-nav-button relative mx-auto grid h-8 w-8 place-items-center rounded-\[10px\] p-0/);
-  assert.match(source, /app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-\[10px\] p-0 transition/);
-  assert.match(source, /src="\/blob-wave\.gif"/);
-  assert.match(source, /srcSet="\/blob-wave-static\.png"/);
-  assert.doesNotMatch(source, /border border-slate-300\/70 bg-white text-slate-950/);
-  assert.doesNotMatch(css, /app-update-logo-button/);
-  assert.match(css, /\.app-chat-sidebar-actions \.app-icon-button:focus-visible/);
+test('the Help update row describes checking, availability, progress, and retry states', () => {
+  const labels: [DesktopUpdaterState, string][] = [
+    [{ status: 'idle' }, 'Check for updates'],
+    [{ status: 'up-to-date' }, 'Check for updates'],
+    [{ status: 'checking' }, 'Checking for updates…'],
+    [{ status: 'available', latestVersion: '1.2.3' }, 'Update available'],
+    [{ status: 'downloading' }, 'Downloading update…'],
+    [{ status: 'installing' }, 'Installing update…'],
+    [{ status: 'relaunching' }, 'Relaunching Kordi…'],
+    [{ status: 'failed', failureStage: 'check' }, 'Check for updates'],
+    [{ status: 'failed', failureStage: 'install' }, 'Retry update'],
+  ];
+  for (const [state, title] of labels) {
+    assert.equal(desktopUpdateButtonPresentation(state).title, title);
+  }
 });
 
-test('WorkspaceSidebar does not expose the native updater control in web mode', () => {
-  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps({
-    isNativeShell: false,
-    onCheckForUpdates: async () => ({ status: 'up-to-date', currentVersion: '0.0.1-beta.7' }),
-  }) as never));
+function UpdateHarness(props: SidebarUpdaterProps) {
+  const { menuAction, popover } = useSidebarUpdater(props);
+  const [open, setOpen] = useState(false);
+  return <>
+    <button onClick={() => setOpen(true)}>Help</button>
+    {open && menuAction ? <button data-update-action onClick={(event) => {
+      menuAction.onClick(event);
+      setOpen(false);
+    }}>{menuAction.label}</button> : null}
+    {popover}
+  </>;
+}
 
-  assert.doesNotMatch(markup, /app-update-wave-button/);
-  assert.doesNotMatch(markup, /Kordi update/);
-});
+async function clickButton(label: string) {
+  const button = Array.from(document.querySelectorAll('button')).find((item) =>
+    item.getAttribute('aria-label') === label || item.textContent === label);
+  assert.ok(button, `Missing button: ${label}`);
+  await act(async () => button.click());
+}
 
-test('desktop update button only presents actionable update states', () => {
-  assert.deepEqual(desktopUpdateButtonPresentation({ status: 'checking' }), {
-    visible: false,
-    title: 'Kordi update needs attention',
+test('Help checks manually and keeps the update dialog alive after the menu closes', async () => {
+  await withJsdomRoot(async (mount) => {
+    let checks = 0;
+    let installs = 0;
+    let publish: (state: DesktopUpdaterState) => void = () => {};
+    await mount(<UpdateHarness isNativeShell onCheckForUpdates={async () => {
+      checks += 1;
+      return checks === 1 ? { status: 'up-to-date' } : { status: 'available', latestVersion: '1.2.3' };
+    }} onInstallUpdate={async () => { installs += 1; }} onSubscribeToUpdate={(listener) => {
+      publish = listener;
+      return () => {};
+    }} />);
+    assert.equal(checks, 1);
+    assert.equal(document.querySelector('[role="dialog"]'), null);
+    await clickButton('Help');
+    await clickButton('Check for updates');
+    assert.equal(checks, 2);
+    assert.equal(installs, 0);
+    assert.equal(document.querySelector('[data-update-action]'), null);
+    assert.equal(document.querySelector('[role="dialog"]')?.getAttribute('data-update-state'), 'available');
+    await clickButton('Close update status');
+    await clickButton('Help');
+    await clickButton('Update available');
+    assert.equal(checks, 2);
+    await clickButton('Update Kordi now');
+    assert.equal(installs, 1);
+    await act(async () => publish({ status: 'downloading', receivedBytes: 50, totalBytes: 100 }));
+    assert.equal(document.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'), '50');
   });
-  assert.deepEqual(desktopUpdateButtonPresentation({
-    status: 'available',
-    currentVersion: '0.0.1-beta.7',
-    latestVersion: '0.0.1-beta.8',
-  }), {
-    visible: true,
-    title: 'Kordi 0.0.1-beta.8 is ready — open update options',
-  });
-  assert.equal(desktopUpdateButtonPresentation({ status: 'up-to-date' }).visible, false);
-  assert.equal(desktopUpdateButtonPresentation({
-    status: 'failed',
-    failureStage: 'check',
-  }).visible, false);
-  assert.equal(desktopUpdateButtonPresentation({
-    status: 'failed',
-    failureStage: 'install',
-  }).visible, true);
 });
 
-test('WorkspaceSidebar update affordance uses a friendly wave and confirmation popover', () => {
-  const updaterSource = readFileSync(
-    new URL('../src/pages/workspaceSidebar.update.tsx', import.meta.url),
-    'utf8',
-  );
-  const source = [
-    updaterSource,
-    readFileSync(new URL('../src/pages/workspaceSidebar.updatePopover.tsx', import.meta.url), 'utf8'),
-    readFileSync(new URL('../src/pages/workspaceSidebar.updatePresentation.ts', import.meta.url), 'utf8'),
-  ].join('\n');
+test('failed manual checks retry checking without invoking installation', async () => {
+  await withJsdomRoot(async (mount) => {
+    let checks = 0;
+    let installs = 0;
+    await mount(<UpdateHarness isNativeShell onCheckForUpdates={async () => {
+      checks += 1;
+      if (checks < 3) throw new Error('Offline');
+      return { status: 'up-to-date' };
+    }} onInstallUpdate={async () => { installs += 1; }} />);
+    await clickButton('Help');
+    await clickButton('Check for updates');
+    assert.equal(document.querySelector('[role="dialog"]')?.getAttribute('data-update-state'), 'failed');
+    await clickButton('Try again');
+    assert.equal(checks, 3);
+    assert.equal(installs, 0);
+    assert.match(document.body.textContent ?? '', /Kordi is up to date/);
+  });
+});
 
-  assert.match(source, /blob-wave\.gif/);
-  assert.match(source, /blob-wave-static\.png/);
-  assert.match(source, /buttonPresentation\.visible/);
-  assert.match(source, /void runUpdateCheck\(\)/);
-  assert.match(source, /className="sr-only" role="status"/);
-  assert.doesNotMatch(source, /Check for updates/);
-  assert.match(source, /w-\[14\.5rem\]/);
-  assert.match(source, /w-\[12\.75rem\]/);
-  assert.match(source, /app-update-popover-tail/);
-  assert.match(source, /app-update-popover/);
-  assert.match(source, /data-update-state=\{state\.status\}/);
-  assert.doesNotMatch(source, /app-update-popover overflow-hidden border/);
-  assert.match(source, /w-\[18rem\]/);
-  assert.match(source, /title=\{isUpdateConfirmOpen \? undefined : buttonPresentation\.title\}/);
-  assert.doesNotMatch(source, /min-h-16 items-center justify-center/);
-  assert.doesNotMatch(source, />\s*Done\s*</);
-  assert.match(source, /status === 'up-to-date'/);
-  assert.match(source, /Kordi is up to date/);
-  assert.match(source, /Couldn’t check for updates/);
-  assert.match(source, /state\.status === 'available'/);
-  assert.match(source, /New Kordi is here/);
-  assert.match(source, /aria-label=\{state\.status === 'available' \? 'Update Kordi now' : undefined\}/);
-  assert.doesNotMatch(source, />\s*Update now\s*</);
-  assert.doesNotMatch(source, />\s*Not now\s*</);
-  assert.match(source, /onInstallUpdate/);
-  assert.match(source, /Downloading/);
-  assert.match(source, /Installing verified update…/);
-  assert.doesNotMatch(source, /Installing signed update/);
-  assert.match(source, /Relaunching/);
-  assert.match(source, /Unable to install the verified update\./);
-  assert.doesNotMatch(source, /download, verify, install, and relaunch Kordi automatically\./);
-  assert.match(source, /Retry/);
-  assert.match(source, /Download manually/);
-  assert.match(source, /receivedBytes/);
-  assert.match(source, /totalBytes/);
-  assert.match(source, /role="progressbar"/);
-  assert.match(source, /aria-valuenow/);
-  assert.match(source, /app-update-popover-action-primary/);
-  assert.match(source, /app-update-popover-action-secondary/);
-  assert.match(source, /updateConfirmAnchor/);
-  assert.match(source, /Math\.min\(rect\.right \+ 8/);
-  assert.match(source, /bottom: Math\.max\(12, window\.innerHeight - rect\.bottom\)/);
-  assert.match(source, /position: 'fixed'/);
-  assert.match(source, /bottom: anchor\.bottom/);
-  assert.match(source, /if \(!anchor \|\| typeof document === 'undefined'\) return null/);
-  assert.doesNotMatch(updaterSource, /RefreshCw/);
+test('web mode omits the native update row and does not check', async () => {
+  await withJsdomRoot(async (mount) => {
+    let checks = 0;
+    await mount(<UpdateHarness isNativeShell={false} onCheckForUpdates={async () => {
+      checks += 1;
+      return { status: 'up-to-date' };
+    }} />);
+    await clickButton('Help');
+    assert.equal(document.querySelector('[data-update-action]'), null);
+    assert.equal(checks, 0);
+  });
 });
 
 test('desktop update popover uses a quiet theme-aware surface in dark mode', () => {
