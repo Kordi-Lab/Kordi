@@ -31,7 +31,7 @@ After the fix, all 128 Grounding server tests passed against the disposable data
 
 The connected physical iPhone had Developer Mode enabled. The approved Beta environment uses a loopback API intended for simulators; the physical phone cannot reach the Mac through its own loopback address. See [Native iPhone environments](../development-environments.md#native-iphone-environments). No production deployment, production account mutation, or production notification test was performed.
 
-The approved shared development connection could not start because its Google Cloud session required reauthentication. The isolated database validation does not depend on that connection and does not use or reset persistent development accounts.
+The approved shared development connection was restored after Google Cloud reauthentication. Its capability response advertises neither `commonGroundVersion` nor `commonGroundNearbyVersion`, so it cannot validate this feature interactively in its current configuration. The isolated database validation does not use or reset persistent development accounts. Validation remains in development, as requested; production-device checks are outside this run's scope.
 
 ## Reproduction
 
