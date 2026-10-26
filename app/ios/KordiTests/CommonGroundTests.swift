@@ -188,6 +188,38 @@ final class CommonGroundTests: XCTestCase {
         XCTAssertFalse(CommonGroundContactAction.canMeet(.init(request: "outgoing")))
     }
 
+    func testPersonCommunicationActionsWaitForAcceptedContact() {
+        for relationship in [
+            CommonGroundRelationship(),
+            .init(request: "outgoing", requestId: "r"),
+            .init(request: "incoming", requestId: "r"),
+            .init(request: "incoming"),
+        ] {
+            let state = CommonGroundPersonActionAvailability(relationship: relationship, busy: false)
+            XCTAssertTrue(state.showsActions)
+            XCTAssertTrue(state.showsContactAction)
+            XCTAssertFalse(state.communicationEnabled, "A pending request must not unlock Message or Meet")
+            XCTAssertEqual(state.contactActionEnabled, state.contactAction == .add || state.contactAction == .accept)
+        }
+        let accepted = CommonGroundPersonActionAvailability(relationship: .init(contact: true), busy: false)
+        XCTAssertTrue(accepted.showsActions)
+        XCTAssertFalse(accepted.showsContactAction, "Contacts should not gain a duplicate Message action")
+        XCTAssertTrue(accepted.communicationEnabled)
+    }
+
+    func testPersonActionsRemainUnavailableWhileBusyOrRelationshipUnknown() {
+        let unknown = CommonGroundPersonActionAvailability(relationship: nil, busy: false)
+        XCTAssertFalse(unknown.showsActions)
+        XCTAssertFalse(unknown.contactActionEnabled)
+        XCTAssertFalse(unknown.communicationEnabled)
+        for relationship in [CommonGroundRelationship(), .init(request: "incoming", requestId: "r"), .init(contact: true)] {
+            let busy = CommonGroundPersonActionAvailability(relationship: relationship, busy: true)
+            XCTAssertTrue(busy.showsActions)
+            XCTAssertFalse(busy.contactActionEnabled)
+            XCTAssertFalse(busy.communicationEnabled)
+        }
+    }
+
     // MARK: Capability
 
     func testAvailabilityNeedsSignInAndCapability() throws {
