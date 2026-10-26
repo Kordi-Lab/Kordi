@@ -23,6 +23,11 @@ enum CommonGroundAvailability {
         (capabilities?.commonGroundVersion ?? 0) >= 2
     }
 
+    /// `commonGroundNearbyVersion` 1: the Nearby row in the Pair group.
+    static func hasNearby(capabilities: CloudAuthCapabilities?) -> Bool {
+        (capabilities?.commonGroundVersion ?? 0) >= 1 && (capabilities?.commonGroundNearbyVersion ?? 0) >= 1
+    }
+
     /// Whether a room invitation is waiting. There is no invitation feed
     /// outside a room yet, so the dot stays off.
     static func hasWaitingInvitation() -> Bool { false }
@@ -45,7 +50,9 @@ extension AppModel {
         let profiles = CommonGroundAvailability.hasProfiles(capabilities: memoryCapabilities)
         let memories = MemoryPresentation.hasProfileRouting(memoryCapabilities)
         let cardChoices = MemoryPresentation.hasCardChoices(memoryCapabilities)
-        return CommonGroundModel(me: me, profilesEnabled: profiles, memoriesEnabled: memories, cardChoicesEnabled: cardChoices) { [weak self] in
+        let nearby = CommonGroundAvailability.hasNearby(capabilities: memoryCapabilities)
+        return CommonGroundModel(me: me, profilesEnabled: profiles, memoriesEnabled: memories, cardChoicesEnabled: cardChoices,
+                                 nearbyEnabled: nearby) { [weak self] in
             guard let self else { throw CancellationError() }
             let (api, token, _) = try self.digestContext()
             return (api, token)

@@ -270,11 +270,15 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* Pinned Common ground row: brand blue tile with a red dot when a room invitation waits. */
-/* Accent-tinted like the other Kordi controls, not a solid brand color. */
+/* Pinned Common ground row: a Grounding pink tint (the glyph in pink on a faint pink wash), with a red dot when a room invitation waits. */
 .app-common-ground-tile {
-  background: color-mix(in oklab, var(--app-accent) 18%, transparent);
-  color: var(--app-accent);
+  background: oklch(0.66 0.19 350 / 0.16);
+  color: oklch(0.55 0.19 350);
+}
+
+.theme-dark .app-common-ground-tile {
+  background: oklch(0.72 0.19 350 / 0.2);
+  color: oklch(0.82 0.19 350);
 }
 
 .app-common-ground-dot {

@@ -1,0 +1,112 @@
+/* Grounding › Nearby on the Mac: the Pair row, the Nearby column, its menus and dialogs, and the nearby person. */
+
+/* The third Pair row. */
+.cg-nb-row { position: relative; width: 100%; border: 0; border-radius: 0 0 9px 9px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.cg-nb-row::before { content: ""; position: absolute; top: 0; right: 0; left: 48px; border-top: 0.5px solid var(--cg-line); }
+.cg-nb-row:hover { background: var(--cg-fill); }
+.cg-nb-row .cg-pair-title { flex: none; }
+
+/* The column: 540px like Home, centred while Nearby is off. */
+.cg-wallet-col.is-push.is-nearby { max-width: 540px; }
+.cg-wallet-main.is-center { display: flex; align-items: center; justify-content: center; }
+.cg-nb-status { display: flex; align-items: baseline; gap: 6px; margin: 0 2px; color: var(--utility-muted-text); font-size: 12px; }
+.cg-nb-resume { font-weight: 600; }
+.cg-nb-sechead { display: flex; align-items: center; gap: 8px; margin: 18px 2px 8px; }
+.cg-nb-sechead .cg-msec { flex: 1; margin: 0; }
+.cg-nb-pills { display: flex; gap: 6px; }
+
+/* Header: the shared card as a menu, and More. */
+.cg-share-chip.is-menu { padding-right: 9px; border: 0; color: inherit; font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; }
+.cg-share-chip.is-menu:hover, .cg-share-chip.is-menu[aria-expanded="true"] { background: color-mix(in oklab, var(--utility-foreground) 9%, transparent); }
+.cg-nb-caret { width: 12px; height: 12px; flex: none; color: var(--utility-muted-text); stroke-width: 2.4; }
+.cg-nb-iconbtn { display: grid; width: 28px; height: 28px; flex: none; place-items: center; border: 0; border-radius: 7px; background: none; color: var(--utility-muted-text); cursor: pointer; }
+.cg-nb-iconbtn:hover, .cg-nb-iconbtn[aria-expanded="true"] { background: var(--cg-fill); color: var(--utility-foreground); }
+.cg-mbtn.is-sm { height: 24px; gap: 4px; padding: 0 7px 0 9px; font-size: 12px; }
+
+/* Menus under their button. */
+.cg-nb-anchor { position: relative; display: inline-flex; flex: none; }
+.cg-nb-menu {
+  position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; min-width: 180px; padding: 4px; border: 0.5px solid var(--cg-line); border-radius: 10px;
+  background: var(--app-transient-surface-fallback, var(--app-main-bg)); box-shadow: 0 10px 30px rgb(0 0 0 / 0.18), 0 1px 3px rgb(0 0 0 / 0.08);
+  animation: cg-pop 200ms ease-out; transform-origin: top left;
+}
+.cg-nb-menu.is-right { right: 0; left: auto; transform-origin: top right; }
+.cg-nb-mitem {
+  display: flex; width: 100%; align-items: center; gap: 8px; padding: 6px 10px; border: 0; border-radius: 6px; background: none;
+  color: var(--utility-foreground); font: inherit; font-size: 13px; text-align: left; white-space: nowrap; cursor: pointer;
+}
+.cg-nb-mitem:hover { background: var(--cg-fill); }
+.cg-nb-mitem.is-danger { color: var(--app-transient-danger-text, oklch(58% 0.2 27)); }
+.cg-nb-mitem.is-separated { position: relative; margin-top: 9px; }
+.cg-nb-mitem.is-separated::before { content: ""; position: absolute; top: -5px; right: 6px; left: 6px; border-top: 0.5px solid var(--cg-line); }
+.cg-nb-tick { display: grid; width: 14px; flex: none; place-items: center; }
+
+/* Open to. */
+.cg-nb-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px; }
+.cg-nb-chip {
+  display: inline-flex; height: 28px; align-items: center; gap: 5px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--cg-fill);
+  color: var(--utility-foreground); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; transition: background 200ms ease-out, color 200ms ease-out;
+}
+.cg-nb-chip:hover:not(.is-on):not(:disabled) { background: color-mix(in oklab, var(--utility-foreground) 9%, transparent); }
+.cg-nb-chip.is-on { background: color-mix(in oklab, var(--app-accent) 14%, transparent); color: var(--app-accent); }
+.cg-nb-chip.is-on svg { stroke-width: 2.6; }
+.cg-nb-chip:disabled { opacity: 0.4; cursor: default; }
+.cg-nb-chip.is-add { padding: 0 8px; color: var(--utility-muted-text); }
+.cg-nb-chip.is-draft { background: transparent; box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--app-accent) 55%, transparent); cursor: text; }
+.cg-nb-chip.is-draft input { width: 120px; padding: 0; border: 0; background: transparent; color: var(--utility-foreground); font: inherit; outline: none; }
+
+/* People, Looking for, Alerts. */
+.cg-mrow + .cg-mrow.is-plain::before { left: 12px; }
+.cg-mrow.is-ended > * { opacity: 0.5; }
+.cg-nb-person { min-height: 50px; }
+.cg-nb-person-title { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.cg-nb-person-title .cg-mrow-title { flex: 0 1 auto; }
+.cg-nb-met {
+  display: inline-flex; min-width: 0; max-width: 200px; height: 20px; flex: 0 1 auto; align-items: center; gap: 4px; padding: 0 7px; border-radius: 6px;
+  background: color-mix(in oklab, var(--app-accent) 13%, transparent); font-size: 11px; font-weight: 500;
+}
+.cg-nb-met > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cg-nb-met svg { width: 11px; height: 11px; flex: none; color: var(--app-accent); stroke-width: 3; }
+.cg-mrow.is-matching { min-height: 40px; }
+.cg-nb-spin { display: grid; width: 30px; flex: none; place-items: center; color: var(--utility-muted-text); }
+.cg-nb-add { gap: 6px; color: var(--app-accent); font-weight: 500; }
+
+/* Off: the mark, one line and Turn on. */
+.cg-nb-off { display: flex; flex-direction: column; align-items: center; padding-bottom: 80px; text-align: center; }
+.cg-nb-mark { display: grid; width: 56px; height: 56px; place-items: center; border-radius: 50%; background: color-mix(in oklab, var(--app-accent) 13%, transparent); color: var(--app-accent); }
+.cg-nb-mark svg { width: 26px; height: 26px; stroke-width: 1.7; }
+.cg-nb-off h2 { margin: 14px 0 0; font-size: 17px; font-weight: 700; }
+.cg-nb-off p { margin: 2px 0 0; color: var(--utility-muted-text); font-size: 13px; }
+.cg-nb-off .cg-mbtn { margin-top: 16px; }
+
+/* Dialogs: Turn on Nearby? and the request editor. */
+.cg-nb-swrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+.cg-nb-dialog .cg-pop-label { margin-top: 16px; }
+.cg-nb-swrow.is-first { margin-top: 18px; }
+.cg-nb-area { resize: none; line-height: 1.5; }
+.cg-nb-slot { align-content: start; }
+.cg-nb-actions { align-items: center; }
+.cg-nb-actions > .is-danger-quiet { margin-right: auto; }
+
+/* Nearby person: the shared card and the distance under the name, then your requests. */
+.cg-nb-hero-line { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.cg-nb-pchip { display: inline-flex; height: 22px; align-items: center; gap: 6px; padding: 0 9px 0 6px; border-radius: 999px; background: var(--cg-fill); color: var(--utility-foreground); font-size: 12px; font-weight: 500; }
+.cg-nb-pchip .cg-swatch.is-chip { width: 18px; height: 12px; }
+.cg-nb-req { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; }
+.cg-nb-req + .cg-nb-req { border-top: 1px solid var(--cg-line); }
+.cg-nb-req-title { font-size: 13px; font-weight: 600; line-height: 18px; }
+.cg-nb-check { display: flex; align-items: flex-start; gap: 8px; }
+.cg-nb-check-icon {
+  display: grid; width: 18px; height: 18px; flex: none; place-items: center; margin-top: 1px; border: 1.5px dashed color-mix(in oklab, var(--utility-muted-text) 60%, transparent); border-radius: 50%;
+}
+.cg-nb-check.is-met .cg-nb-check-icon { border: 0; background: color-mix(in oklab, var(--app-accent) 15%, transparent); color: var(--app-accent); }
+.cg-nb-check-icon svg { width: 11px; height: 11px; stroke-width: 3; }
+.cg-nb-check-text { display: flex; min-width: 0; flex-direction: column; }
+.cg-nb-check-label { font-size: 13px; line-height: 18px; }
+.cg-nb-check:not(.is-met) .cg-nb-check-label { color: var(--utility-muted-text); }
+.cg-nb-check-evidence { color: var(--utility-muted-text); font-size: 11.5px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cg-nb-menu { animation: none; }
+  .cg-nb-chip { transition: none; }
+}

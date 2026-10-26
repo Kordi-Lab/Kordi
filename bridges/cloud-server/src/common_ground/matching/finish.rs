@@ -78,6 +78,7 @@ pub(in crate::common_ground) async fn complete(
             let payload = json!({ "profileId": viewer_card.profile_id });
             crate::common_ground::hint(&mut tx, viewer, "common_ground.matches.updated", payload)
                 .await?;
+            crate::common_ground::nearby::run_finished(&mut tx, viewer).await?;
         }
     } else if let Some(room_id) = room_id {
         let Some(themes) = prompt::parse_themes(text, cards.len()) else {
@@ -147,6 +148,7 @@ pub(in crate::common_ground) async fn fail(
                 json!({}),
             )
             .await?;
+            crate::common_ground::nearby::run_finished(&mut tx, &viewer).await?;
         }
         Some((None, Some(room_id))) => notify_room(&mut tx, room_id).await?,
         _ => {}

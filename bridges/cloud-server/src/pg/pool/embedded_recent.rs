@@ -388,4 +388,5 @@ pub(super) const RECENT_MIGRATIONS: &[EmbeddedMigration] = &[
         "proactive evaluation memory search count",
         "0155_proactive_memory_searches.sql"
     ),
+    migration!(156, "common ground nearby", "0156_common_ground_nearby.sql"),
 ];
