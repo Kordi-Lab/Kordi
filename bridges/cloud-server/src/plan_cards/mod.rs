@@ -12,10 +12,10 @@
 //! digest-style background sweep in a future slice.
 
 /// SQL condition for a card still in play, on a table aliased `card`: not
-/// canceled, and not over (two hours past its end, or its start when it has
-/// no end). A card with no time yet stays in play for 30 days after its last
-/// change. PiP's sweep, PiP's run input, and the digest's guard all use it, so
-/// they agree on which card is open.
+/// canceled, and not over (two hours past its end, or its start when it has no
+/// end). A card with no time yet stays in play for 30 days after its last
+/// change. The System agent's sweep and run input and the digest's guard all
+/// use it, so they agree on which card is open.
 macro_rules! live_plan_card_sql {
     () => {
         "(card.state <> 'canceled' AND (

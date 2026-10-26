@@ -29,8 +29,8 @@ pub struct ServiceProviderAuth<'a> {
     pub base_url: &'a str,
     pub model: &'a str,
     /// When set, the credential only serves runs whose id starts with this
-    /// prefix. PiP's key belongs to PiP's own sweep runs, never to an ordinary
-    /// agent run that happens to be owned by PiP's account.
+    /// prefix. The System agent's key belongs to its own sweep runs, never to
+    /// an ordinary agent run that happens to be owned by its account.
     pub run_id_prefix: Option<&'a str>,
 }
 
@@ -111,12 +111,12 @@ mod tests {
             "defaultAuthProvider": "openai",
             "defaultAuthChoice": "pip-service-api-key",
         });
-        let pip_key = || ServiceProviderAuth {
+        let system_agent_key = || ServiceProviderAuth {
             owner_account_id: "acct_kordi_pip",
             snapshot_id: "pip-service-openai",
             provider: "openai",
             auth_choice: "pip-service-api-key",
-            api_key: "secret-pip-key",
+            api_key: "secret-system-agent-key",
             base_url: "https://api.openai.com/v1",
             model: "gpt",
             run_id_prefix: Some("pip_"),
@@ -125,14 +125,14 @@ mod tests {
             "acct_kordi_pip",
             "pip_123",
             &route,
-            vec![pip_key()]
+            vec![system_agent_key()]
         )
         .is_some());
         assert!(service_provider_auth_for_run(
             "acct_kordi_pip",
             "run_from_a_member",
             &route,
-            vec![pip_key()]
+            vec![system_agent_key()]
         )
         .is_none());
     }

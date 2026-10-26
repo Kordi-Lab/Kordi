@@ -17,16 +17,16 @@ async fn tool_time_changes_refresh_the_same_message_before_run_completion() {
     crate::pg::pool::apply_migrations(&pool).await.unwrap();
     let member = format!("member-{}", Uuid::new_v4().simple());
     seed_account(&pool, &member).await;
-    let pending = super::PendingPipConfig::from_lookup(|key| match key {
-        "KORDI_PIP_OPENAI_API_KEY" => Some("synthetic-test-key".to_string()),
+    let pending = super::PendingSystemAgentConfig::from_lookup(|key| match key {
+        "KORDI_SYSTEM_AGENT_OPENAI_API_KEY" => Some("synthetic-test-key".to_string()),
         _ => None,
     })
     .unwrap()
     .unwrap();
-    let config = super::bootstrap_pip_agent(&pool, pending).await.unwrap();
-    let pip = config.account_id.clone();
+    let config = super::bootstrap_system_agent(&pool, pending).await.unwrap();
+    let system_agent = config.account_id.clone();
     let chat = Uuid::new_v4();
-    seed_conversation(&pool, chat, &member, &[&member, &pip]).await;
+    seed_conversation(&pool, chat, &member, &[&member, &system_agent]).await;
     let session = format!("group:{chat}");
     query("UPDATE cloud_chat_conversations SET legacy_session_id=$2 WHERE conversation_id=$1")
         .bind(chat)
@@ -38,9 +38,10 @@ async fn tool_time_changes_refresh_the_same_message_before_run_completion() {
     let now = chrono::Utc::now().to_rfc3339();
     let lease_expires_at = (chrono::Utc::now() + chrono::Duration::minutes(5)).to_rfc3339();
     query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,claimed_by,lease_expires_at,created_at,updated_at) VALUES($1,$1,$1,$2,$3,$3,'running','{}','test-runner',$4,$5,$5)")
-        .bind(&run).bind(&session).bind(&pip).bind(lease_expires_at).bind(now).execute(&pool).await.unwrap();
+        .bind(&run).bind(&session).bind(&system_agent).bind(lease_expires_at).bind(now).execute(&pool).await.unwrap();
     let state = Arc::new(
-        ServerState::new(pool.clone(), EventBus::noop()).with_pip(super::PipService::new(config)),
+        ServerState::new(pool.clone(), EventBus::noop())
+            .with_system_agent(super::SystemAgentService::new(config)),
     );
     let first = (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339();
     let next = (chrono::Utc::now() + chrono::Duration::days(3)).to_rfc3339();

@@ -7,6 +7,9 @@ Issue #762 sketched a read-only version of this; this document is the
 version that runs the work after approval, enforced in the layers that
 issue #1711 defines.
 
+Proactive is not a System agent job ([System agent](../system-agent.md)): the
+owner's own agent watches and runs on the owner's accounts and approval.
+
 ## Setting
 
 The Blueprint page of every owned agent gains a `Proactive` row under
@@ -57,7 +60,7 @@ owner is an active member. State per agent and conversation lives in
 A conversation first seen by the sweep starts at its newest message;
 history is never evaluated.
 
-The sweep (`bridges/cloud-server/src/proactive/`, modelled on `pip/`)
+The sweep (`bridges/cloud-server/src/proactive/`, modelled on the System agent's `system_agent/`)
 runs every 5 seconds. A conversation is a candidate when all of these
 hold:
 
@@ -123,7 +126,7 @@ run can do, so a default agent with no skills list is judged fairly.
 
 Routing follows the Mac-first rule; see Mac execution below.
 
-Completion is dispatched by the `proactive_eval_` prefix, like `pip_` and
+Completion is dispatched by the `proactive_eval_` prefix, like the System agent's `pip_` and
 `digest_`, and never reaches the group delivery path.
 
 ## Memory

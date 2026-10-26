@@ -11,14 +11,15 @@ pub(super) fn configured() -> Result<Option<OpenAiProviderConfig>, ModelLoopErro
 fn from_lookup(
     get: impl Fn(&str) -> Option<String>,
 ) -> Result<Option<OpenAiProviderConfig>, ModelLoopError> {
-    let key = get("KORDI_PIP_FALLBACK_API_KEY").unwrap_or_default();
+    let setting = |suffix| super::setting(&get, suffix).unwrap_or_default();
+    let key = setting("FALLBACK_API_KEY");
     if key.trim().is_empty() {
         return Ok(None);
     }
-    let base = get("KORDI_PIP_FALLBACK_BASE_URL").unwrap_or_default();
-    let model = get("KORDI_PIP_FALLBACK_MODEL").unwrap_or_default();
+    let base = setting("FALLBACK_BASE_URL");
+    let model = setting("FALLBACK_MODEL");
     let url = reqwest::Url::parse(base.trim())
-        .map_err(|_| ModelLoopError::Provider("Invalid PiP fallback base URL".into()))?;
+        .map_err(|_| ModelLoopError::Provider("Invalid System agent fallback base URL".into()))?;
     if url.scheme() != "https"
         || !url.username().is_empty()
         || url.password().is_some()
@@ -27,11 +28,11 @@ fn from_lookup(
         || model.trim().is_empty()
     {
         return Err(ModelLoopError::Provider(
-            "PiP fallback requires an HTTPS base URL and a model".into(),
+            "System agent fallback requires an HTTPS base URL and a model".into(),
         ));
     }
     OpenAiProviderConfig::from_material(&ProviderAuthMaterial {
-        snapshot_id: "pip-fallback".into(),
+        snapshot_id: "system-agent-fallback".into(),
         provider: "openai-compatible".into(),
         auth_choice: "api-key".into(),
         payload: json!({"apiKey":key,"baseUrl":base,"model":model}),
@@ -55,7 +56,7 @@ pub(super) async fn next_response<P: CloudModelProvider + Sync>(
         .await
         .unwrap_or_else(|_| {
             Err(ModelLoopError::Provider(
-                "PiP primary provider timed out".into(),
+                "System agent primary provider timed out".into(),
             ))
         })
     } else {
@@ -64,7 +65,7 @@ pub(super) async fn next_response<P: CloudModelProvider + Sync>(
     match response {
         Err(ModelLoopError::Provider(_)) if fallback.is_some() => {
             *auth = fallback.take().expect("fallback was checked");
-            tracing::warn!(model = %auth.model, "pip provider fallback activated");
+            tracing::warn!(model = %auth.model, "system agent provider fallback activated");
             provider.next_response(auth, messages, tools).await
         }
         result => result,
@@ -79,9 +80,9 @@ mod tests {
 
     fn fallback() -> OpenAiProviderConfig {
         from_lookup(|key| match key {
-            "KORDI_PIP_FALLBACK_API_KEY" => Some("synthetic".into()),
-            "KORDI_PIP_FALLBACK_BASE_URL" => Some("https://example.com/v1".into()),
-            "KORDI_PIP_FALLBACK_MODEL" => Some("deepseek-v4.1-flash".into()),
+            "KORDI_SYSTEM_AGENT_FALLBACK_API_KEY" => Some("synthetic".into()),
+            "KORDI_SYSTEM_AGENT_FALLBACK_BASE_URL" => Some("https://example.com/v1".into()),
+            "KORDI_SYSTEM_AGENT_FALLBACK_MODEL" => Some("deepseek-v4.1-flash".into()),
             _ => None,
         })
         .unwrap()
@@ -93,6 +94,17 @@ mod tests {
         assert!(from_lookup(|_| None).unwrap().is_none());
         assert_eq!(fallback().model, "deepseek-v4.1-flash");
         assert!(from_lookup(|_| Some("invalid".into())).is_err());
+    }
+
+    #[test]
+    fn old_setting_names_still_configure_the_fallback() {
+        let auth = from_lookup(|key| match key {
+            "KORDI_PIP_FALLBACK_API_KEY" => Some("synthetic".into()),
+            "KORDI_PIP_FALLBACK_BASE_URL" => Some("https://example.com/v1".into()),
+            "KORDI_PIP_FALLBACK_MODEL" => Some("old-model".into()),
+            _ => None,
+        });
+        assert_eq!(auth.unwrap().unwrap().model, "old-model");
     }
 
     struct Provider {
@@ -189,7 +201,7 @@ mod tests {
             .unwrap()
             .expect("fallback credentials required");
         let provider = crate::model_loop::OpenAiCompatibleProvider::default();
-        let tools = crate::pip::tools();
+        let tools = crate::system_agent::tools();
         let mut messages = vec![
             json!({"role":"system","content":"Synthetic integration test. Call the requested plan_card action exactly once. After its successful result, return only {\"message\":\"Test response recorded\",\"hooksHandled\":[]}."}),
             json!({"role":"user","content":"Use plan_card to record RSVP yes for participant synthetic-member on event synthetic-plan."}),

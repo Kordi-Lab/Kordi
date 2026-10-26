@@ -3,7 +3,7 @@ use super::*;
 /// Refresh a trusted server-authored message's content in place, without
 /// marking it edited. The message keeps its timeline position, its version
 /// moves so every client replaces its copy, and readers see no edit marker.
-/// PiP uses this to keep one plan card current as members respond.
+/// The System agent uses this to keep one plan card current as members respond.
 /// Rewrites a server-authored message's content. `update` receives the
 /// content as stored, read under the message's row lock, and returns the new
 /// content or `None` to leave it, so concurrent refreshes never overwrite

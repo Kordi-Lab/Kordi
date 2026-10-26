@@ -137,7 +137,7 @@ pub(super) async fn select(
 ) -> Result<Vec<Candidate>, sqlx_core::Error> {
     let window_start = (Utc::now() - chrono::Duration::hours(24)).to_rfc3339();
     let rows: Vec<CandidateRow> = query_as(SWEEP_SQL)
-        .bind(crate::pip::membership::PIP_CONVERSATION_KINDS)
+        .bind(crate::system_agent::membership::SYSTEM_AGENT_CONVERSATION_KINDS)
         .bind(crate::system_account::service_account_ids())
         .bind(limit)
         .bind(config.quiet_seconds as f64)
@@ -164,7 +164,7 @@ pub(super) async fn select(
 pub(super) async fn seed(pool: &PgPool) -> Result<(), sqlx_core::Error> {
     query(PRUNE_SQL).execute(pool).await?;
     query(SEED_SQL)
-        .bind(crate::pip::membership::PIP_CONVERSATION_KINDS)
+        .bind(crate::system_agent::membership::SYSTEM_AGENT_CONVERSATION_KINDS)
         .execute(pool)
         .await?;
     Ok(())

@@ -27,7 +27,7 @@ test('the built-in agent is not a plan participant', () => {
     revision: 1,
     participants: [
       { participantId: 'acct_a', displayName: 'Ada', organizer: true, rsvp: 'yes' },
-      { participantId: 'acct_kordi_pip', displayName: 'PiP', organizer: false, rsvp: 'pending' },
+      { participantId: 'acct_kordi_pip', displayName: 'System', organizer: false, rsvp: 'pending' },
     ],
   });
 
