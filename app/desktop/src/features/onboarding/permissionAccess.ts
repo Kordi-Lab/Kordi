@@ -3,11 +3,12 @@ import { isMacPlatform } from '@/features/connectors/connectorsClient';
 import { nativeNotificationPermissionState, requestNativeNotificationPermission } from '@/features/notifications/nativeNotifications';
 import { desktopDeviceAccess, privacySettingsUrl } from '@/features/commonGround/deviceAccess';
 
-export type PermissionId = 'notifications' | 'microphone' | 'camera' | 'speech' | 'calendar' | 'reminders';
+export type PermissionId = 'notifications' | 'microphone' | 'camera' | 'speech' | 'calendar' | 'reminders' | 'location';
 export type PermissionStatus = 'allowed' | 'not-requested' | 'denied' | 'restricted' | 'unavailable' | 'unknown';
 export type PermissionDefinition = { id: PermissionId; name: string; description: string; settingsPane?: string };
 export const permissionDefinitions: readonly PermissionDefinition[] = [
   { id: 'notifications', name: 'Notifications', description: 'Alerts for new messages and updates.' },
+  { id: 'location', name: 'Location', description: 'Find nearby people using this device’s location. Others see only a rough distance.', settingsPane: 'Privacy_LocationServices' },
   { id: 'microphone', name: 'Microphone', description: 'Record voice messages and join audio calls.', settingsPane: 'Privacy_Microphone' },
   { id: 'camera', name: 'Camera', description: 'Record video messages and join video calls.', settingsPane: 'Privacy_Camera' },
   { id: 'speech', name: 'Speech recognition', description: 'Turn your voice messages into text.', settingsPane: 'Privacy_SpeechRecognition' },
@@ -32,6 +33,11 @@ export function permissionAction(status: PermissionStatus, settingsAvailable: bo
 export function nativeMacPermissions() { return isNativeDesktopShell() && isMacPlatform(); }
 
 export async function readHelpPermission(id: PermissionId): Promise<PermissionStatus> {
+  if (id === 'location') {
+    if (nativeMacPermissions()) return normalizePermission(await invokeDesktop<string>('desktop_nearby_location_permission', { request: false }));
+    if (!navigator.geolocation) return 'unavailable';
+    return normalizePermission((await navigator.permissions.query({ name: 'geolocation' })).state);
+  }
   if (id === 'notifications') {
     if (isNativeDesktopShell()) return normalizePermission(await nativeNotificationPermissionState());
     return typeof Notification === 'undefined' ? 'unavailable' : normalizePermission(Notification.permission);
@@ -50,6 +56,14 @@ export async function readHelpPermission(id: PermissionId): Promise<PermissionSt
 }
 
 export async function requestHelpPermission(id: PermissionId): Promise<void> {
+  if (id === 'location') {
+    if (nativeMacPermissions()) await invokeDesktop<string>('desktop_nearby_location_permission', { request: true });
+    else {
+      const { requestNearbyDeviceLocation } = await import('../commonGround/nearbyLocationFix');
+      await requestNearbyDeviceLocation();
+    }
+    return;
+  }
   if (id === 'notifications') {
     if (isNativeDesktopShell()) await requestNativeNotificationPermission();
     else if (typeof Notification !== 'undefined') await Notification.requestPermission();

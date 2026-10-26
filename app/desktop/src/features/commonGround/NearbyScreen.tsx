@@ -3,6 +3,7 @@ import { ChevronDown, MapPin, MoreHorizontal } from 'lucide-react';
 
 import { profileDesign } from './cardDesign';
 import type { CgHost } from './host';
+import { NearbyDeviceLocation } from './NearbyDeviceLocation';
 import { NearbyConsentDialog, NearbyRequestDialog } from './NearbyDialogs';
 import { NbMenuButton } from './NearbyMenu';
 import { NearbyAlerts, NearbyNeeds, NearbyOpenTo, NearbyPeople } from './NearbySections';
@@ -76,8 +77,7 @@ function NearbyOff({ busy, onTurnOn }: { busy: boolean; onTurnOn: () => void }) 
 }
 
 /**
- * Grounding › Nearby on the Mac, in the wallet column: who is around (from the location the
- * account's iPhone sends), what you are open to, who you are looking for, and alerts.
+ * Grounding › Nearby: people around the account's latest device location, requests, and alerts.
  */
 export function NearbyScreen({ state, store, host }: { state: CgState; store: CommonGroundStore; host: CgHost }) {
   const [nb, nearby] = useNearby(store, { poll: true, needs: true });
@@ -133,12 +133,11 @@ export function NearbyScreen({ state, store, host }: { state: CgState; store: Co
   return shell(
     <div className="cg-nb">
       <StatusLine phase={phase} nb={nb} nearby={nearby} />
+      {phase !== 'paused' ? <NearbyDeviceLocation nearby={nearby} /> : null}
       {editing ? null : <CgNotice text={nb.notice} />}
       <h2 className="cg-msec">Open to</h2>
       <NearbyOpenTo settings={settings} nearby={nearby} />
-      {phase === 'on' ? (
-        <NearbyPeople settings={settings} results={nb.results} nearby={nearby} onOpen={(accountId) => store.open({ name: 'nearbyPerson', accountId })} />
-      ) : null}
+      <NearbyPeople settings={settings} results={nb.results} nearby={nearby} unavailable={phase === 'no-phone' ? 'location' : phase === 'paused' ? 'paused' : undefined} notice={nb.notice} onOpen={(accountId) => store.open({ name: 'nearbyPerson', accountId })} />
       <h2 className="cg-msec">Looking for</h2>
       <NearbyNeeds needs={nb.needs} onOpen={(item) => setEditing({ need: item, failed: false })} />
       <h2 className="cg-msec">Alerts</h2>
