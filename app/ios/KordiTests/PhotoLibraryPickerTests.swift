@@ -35,6 +35,14 @@ final class PhotoLibraryPickerTests: XCTestCase {
         XCTAssertEqual(select(drag, through: -3), ["e", "d", "c", "b", "a"])
     }
 
+    func testVideoDurationsReadLikePhotos() {
+        XCTAssertEqual(PhotoLibraryGridMetrics.durationText(7.4), "0:07")
+        XCTAssertEqual(PhotoLibraryGridMetrics.durationText(59.6), "1:00")
+        XCTAssertEqual(PhotoLibraryGridMetrics.durationText(754), "12:34")
+        XCTAssertEqual(PhotoLibraryGridMetrics.durationText(3723), "1:02:03")
+        XCTAssertEqual(PhotoLibraryGridMetrics.durationText(-1), "0:00")
+    }
+
     func testGridIndexResolvesGapsToANeighbourAndClampsToTheLastPhoto() {
         let width: CGFloat = 402
         let side = PhotoLibraryGridMetrics.itemSide(width: width, scale: 3)
