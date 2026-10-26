@@ -81,7 +81,7 @@ struct CommonGroundBuildView: View {
                     field("Homepage; ORCID; papers", text: $links)
                 }
                 CommonGroundSection(title: "Notes") {
-                    field("What are you working on?", text: $notes)
+                    field(model.activeProfileKind.notesHint, text: $notes)
                 }
                 if let failure = model.buildFailureMessage {
                     Text(failure)
