@@ -191,7 +191,9 @@ test('nearby screen: selecting a rail card opens its home without changing Nearb
     assert.equal(store.getSnapshot().profileId, workshops.profileId);
     assert.equal(root.querySelector('h1')?.textContent, 'Grounding');
     assert.equal(root.querySelector('.cg-deck [aria-pressed="true"]')?.getAttribute('aria-label'), 'Workshops card');
-    assert.match(root.textContent ?? '', /Opening your card/);
+    assert.doesNotMatch(root.textContent ?? '', /Opening your card/);
+    assert.equal(root.querySelector('.cg-progress'), null, 'card switching never shows the bird progress view');
+    assert.ok(root.querySelector('[aria-label="Open Workshops"]'));
     assert.doesNotMatch(root.textContent ?? '', /Agent memory/, 'the old card topics never appear under the new card');
     await act(async () => finishCard(owner({ profile: workshops, card: { ...owner().card!, workingOn: ['Weekend workshops'] } })));
     await settle();

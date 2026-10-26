@@ -5,7 +5,7 @@ import { peopleCount, roomTitle, topicCount } from './format';
 import type { CgHost } from './host';
 import { PairCodePanel } from './PairCodePanel';
 import { UnbuiltCardRow } from './UnbuiltCardRow';
-import { CgAvatar, CgNotice, CgProgress, CgScore, CgTag } from './parts';
+import { CgAvatar, CgNotice, CgScore, CgTag } from './parts';
 import { CardGlyph, CardSwatch } from './ProfileCard';
 import { personTitle } from './profiles';
 import { currentProfile, hasAnyCard, type CgState, type CommonGroundStore } from './store';
@@ -46,22 +46,22 @@ function RoomRow({ room, state, store }: { room: CgRoomSummary; state: CgState; 
 
 /** Your card: the swatch, the name and its topics; the chevron opens the card page, or Build when it has none. */
 function YourCard({ state, store }: { state: CgState; store: CommonGroundStore }) {
-  const card = state.owner?.card;
+  const ready = ownerIsCurrent(state);
+  const card = ready ? state.owner?.card : null;
   const profile = currentProfile(state);
   const design: CgCardDesign = profile ? profileDesign(profile) : 'work';
   const name = profile?.name ?? 'Your card';
-  if (!ownerIsCurrent(state)) return <CgProgress line="Opening your card" />;
-  if (!card) return <UnbuiltCardRow state={state} store={store} />;
-  const topics = CG_TOPIC_SECTIONS.flatMap(([key]) => card[key]);
+  if ((ready && !card) || profile?.hasCard === false) return <UnbuiltCardRow state={state} store={store} />;
+  const topics = card ? CG_TOPIC_SECTIONS.flatMap(([key]) => card[key]) : [];
   return (
-    <div className="cg-panel cg-yours">
-      <button type="button" className="cg-mrow" aria-label={`Open ${name}`} onClick={() => store.open({ name: 'card' })}>
+    <div className="cg-panel cg-yours" aria-busy={!ready}>
+      <button type="button" className="cg-mrow" aria-label={`Open ${name}`} disabled={!ready} onClick={() => store.open({ name: 'card' })}>
         <CardSwatch design={design} />
         <span className="cg-mrow-text"><span className="cg-mrow-title">{name}</span></span>
         <ChevronRight className="cg-mrow-chev" aria-hidden="true" />
       </button>
       <div className="cg-yours-tags">
-        {topics.map((topic) => <CgTag key={topic} topic={topic} muted={card.hidden.includes(topic)} small />)}
+        {topics.map((topic) => <CgTag key={topic} topic={topic} muted={card?.hidden.includes(topic)} small />)}
       </div>
     </div>
   );

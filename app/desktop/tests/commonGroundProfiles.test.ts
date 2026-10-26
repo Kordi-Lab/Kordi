@@ -147,3 +147,26 @@ test('profiles: Home shows Your card with a Build row for an unbuilt profile; ve
   await missing.loadHome();
   assert.equal(missing.getSnapshot().profilesOn, false);
 });
+
+test('switching back shows cached card content immediately and ignores an older response', async () => {
+  const { client } = mockServer({});
+  const store = new CommonGroundStore(client, { profiles: true });
+  const workOwner = owner({ profile: { ...work, focus: null } });
+  const healthOwner = owner({ profile: { ...health, focus: null }, card: { ...workOwner.card!, workingOn: ['Running'] } });
+  store.set({ profiles: [work, { ...health, hasCard: true }], profileId: work.profileId, owner: workOwner, loaded: true });
+  const pending: Array<(value: typeof workOwner) => void> = [];
+  client.card = () => new Promise((resolve) => { pending.push(resolve); });
+  const toHealth = store.selectProfile(health.profileId);
+  pending[0](healthOwner);
+  await toHealth;
+  const toWork = store.selectProfile(work.profileId);
+  assert.deepEqual(store.getSnapshot().owner?.card?.workingOn, ['Agent memory']);
+  const backToHealth = store.selectProfile(health.profileId);
+  assert.deepEqual(store.getSnapshot().owner?.card?.workingOn, ['Running']);
+  pending[1](workOwner);
+  await toWork;
+  assert.deepEqual(store.getSnapshot().owner?.card?.workingOn, ['Running'], 'late Work response cannot replace Health');
+  pending[2](owner({ ...healthOwner, card: { ...healthOwner.card!, workingOn: ['Updated running plan'] } }));
+  await backToHealth;
+  assert.deepEqual(store.getSnapshot().owner?.card?.workingOn, ['Updated running plan']);
+});
