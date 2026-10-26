@@ -3,13 +3,21 @@ import SwiftUI
 /// Home's Tap row (one to one) above the Pair code row: the "#" tile, four
 /// digit boxes typed through one number field, an inline error and a link
 /// under them: Create a code, or Enter pair room once four digits are typed.
-/// Tap stays enabled without a card: it opens the build.
+/// Nearby comes last when the server has it. Tap stays enabled without a
+/// card: it opens the build.
 struct CommonGroundPairCodeRow: View {
+    /// The Nearby row's value ("4 people", "Off", "Paused") and its action.
+    struct NearbyRow {
+        var value: String?
+        let open: () -> Void
+    }
+
     @Environment(\.kordiChatTheme) private var chatTheme
     @Binding var code: String
     var error: String?
     var enabled = true
     var onTap: (() -> Void)? = nil
+    var nearby: NearbyRow? = nil
     let onEnter: (String) -> Void
     let onCreate: () -> Void
     @FocusState private var focused: Bool
@@ -28,7 +36,7 @@ struct CommonGroundPairCodeRow: View {
             if let onTap {
                 Button(action: onTap) {
                     HStack(spacing: 12) {
-                        tile("iphone.radiowaves.left.and.right")
+                        tile("iphone.radiowaves.left.and.right", hue: .violet)
                         Text("Tap").font(.body).foregroundStyle(.primary)
                         Spacer(minLength: 8)
                         Image(systemName: "chevron.right")
@@ -45,22 +53,41 @@ struct CommonGroundPairCodeRow: View {
             pairCode
                 .disabled(!enabled)
                 .opacity(enabled ? 1 : 0.5)
+            if let nearby {
+                SessionDetailSeparator(leading: titleInset - 16)
+                nearbyRow(nearby)
+            }
         }
     }
 
-    private func tile(_ symbol: String) -> some View {
-        Image(systemName: symbol)
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(.white)
-            .frame(width: 30, height: 30)
-            .background(chatTheme.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .accessibilityHidden(true)
+    private func tile(_ symbol: String, hue: CommonGroundTileHue) -> some View {
+        CommonGroundTile(symbol: symbol, hue: hue)
+    }
+
+    private func nearbyRow(_ row: NearbyRow) -> some View {
+        Button(action: row.open) {
+            HStack(spacing: 12) {
+                tile("mappin.and.ellipse", hue: .amber)
+                Text("Nearby").font(.body).foregroundStyle(.primary)
+                Spacer(minLength: 8)
+                if let value = row.value {
+                    Text(value).font(.body).foregroundStyle(.secondary)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, SessionDetailMetrics.rowHorizontalInset)
+            .frame(minHeight: 56)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SessionRowButtonStyle())
     }
 
     @ViewBuilder private var pairCode: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                tile("number")
+                tile("number", hue: .cyan)
                 Text("Pair code").font(.body)
                 Spacer(minLength: 8)
                 digits

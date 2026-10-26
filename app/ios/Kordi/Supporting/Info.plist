@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>ai.kordi.nearby.refresh</string>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -65,6 +69,10 @@
 	<string>Kordi uses the camera when you record a video message, attach a photo, join a video call, or scan a Grounding pairing code.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Kordi uses the local network to establish audio and video calls when required, and to pair Grounding cards with phones nearby.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>With background alerts on, Kordi checks your location so it can tell you when someone you're looking for is nearby.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Kordi shows people near you who also turned on Nearby.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Kordi uses the microphone when you record a voice or video message or join a call.</string>
 	<key>NSNearbyInteractionUsageDescription</key>
@@ -80,6 +88,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>fetch</string>
 		<string>remote-notification</string>
 		<string>voip</string>
 	</array>
