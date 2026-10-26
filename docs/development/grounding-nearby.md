@@ -248,7 +248,7 @@ The server validates every `met` and downgrades it to `unknown` when its evidenc
 
 - `interest`: the evidence must equal (after folding case and spacing) a topic on the candidate's shared card.
 - `work`: it must equal a Working on topic.
-- `affiliation`: it must equal a shared topic, or appear in the shared profile's name or focus line.
+- `affiliation`: it must appear as whole words in the shared profile's name or focus line. Card topics alone are not accepted because they do not distinguish interest from affiliation.
 - `willingness`: it must equal one of the candidate's `openTo` entries.
 
 A shared topic alone therefore never proves willingness, and an interest never proves an affiliation. An affiliation found in the profile name or focus line must appear there as whole words. A `met` that fails validation keeps its kind and loses its evidence. A candidate **meets** a request only when every condition is `met` after validation.
