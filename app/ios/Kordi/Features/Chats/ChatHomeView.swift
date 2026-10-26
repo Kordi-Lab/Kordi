@@ -195,7 +195,7 @@ struct ChatHomeView: View {
                 do { try await Task.sleep(for: .seconds(10)) } catch { break }
             }
         }
-        .navigationDestination(item: $composedConversation) { selected in
+        .stableNavigationDestination(item: $composedConversation) { selected in
             ConversationView(conversation: selected)
         }
         .navigationDestination(isPresented: $showingArchivedChats) {
@@ -223,7 +223,7 @@ struct ChatHomeView: View {
                 }
             }
         }
-        .navigationDestination(item: $newChatMode) { mode in
+        .stableNavigationDestination(item: $newChatMode) { mode in
             newChatDestination(for: mode)
         }
         .sheet(item: $groupManagementPresentation) { presentation in
@@ -1037,7 +1037,7 @@ struct ArchivedChatsView: View {
         .listStyle(.plain)
         .navigationTitle("Archived Chats")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $selectedConversation) { conversation in
+        .stableNavigationDestination(item: $selectedConversation) { conversation in
             ConversationView(conversation: conversation)
         }
         .overlay {

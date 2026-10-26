@@ -20,7 +20,8 @@ struct MemoryOrganizerSection: View {
                 SettingsCaption("Memory is off. These are kept but not read.")
             }
             if organizer.total > 0 {
-                searchField
+                SettingsSearchField("Search memories", text: $query)
+                    .accessibilityIdentifier("memory-search")
                 MemoryFilterRow(groups: organizer.filterGroups(filters: filters), filters: $filters)
             }
             if memoryEnabled {
@@ -55,42 +56,18 @@ struct MemoryOrganizerSection: View {
         }
     }
 
-    private var searchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            TextField("Search memories", text: $query)
-                .font(.subheadline)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .submitLabel(.search)
-            if !query.isEmpty {
-                Button("Clear search", systemImage: "xmark.circle.fill") { query = "" }
-                    .labelStyle(.iconOnly)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.horizontal, 10)
-        .frame(minHeight: 36)
-        .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 10))
-        .padding(.vertical, 6)
-        .accessibilityIdentifier("memory-search")
-    }
-
     private func row(_ memory: CloudMemory, organizer: MemoryOrganizer) -> some View {
         let captions = model.ownerCaption(memory).map { [$0] } ?? []
         return VStack(alignment: .leading, spacing: 6) {
             Button { editing = memory } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(memory.text)
-                        .font(.subheadline)
+                        .font(SettingsFont.rowTitle)
                         .foregroundStyle(.primary)
                         .lineLimit(3)
                         .multilineTextAlignment(.leading)
                     ForEach([model.detail(memory)] + captions, id: \.self) { line in
-                        Text(line).font(.caption).foregroundStyle(.secondary)
+                        Text(line).font(SettingsFont.subtitle).foregroundStyle(.secondary)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

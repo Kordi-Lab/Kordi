@@ -35,7 +35,7 @@ struct MemoryFilterRow: View {
                 ForEach(groups) { group in
                     HStack(spacing: 6) {
                         Text(group.layer.title)
-                            .font(.caption)
+                            .font(SettingsFont.subtitle)
                             .foregroundStyle(.secondary)
                         ForEach(group.chips) { chip in
                             filterChip(chip.label, count: chip.count)

@@ -39,6 +39,8 @@ type CollaborationRoutingControlsProps = {
     openSelector: ComposerSelector;
     agentSelectorOpen: boolean;
     compact: boolean;
+    /** False in your own agent chat, where an account change affects only you. */
+    sharedRoute?: boolean;
   };
   onSignIn?: () => void;
   options: {
@@ -66,7 +68,7 @@ export function CollaborationRoutingControls({
   actions,
 }: CollaborationRoutingControlsProps) {
   const { agents, selectedAgent, selection, visibility } = model;
-  const { openSelector, agentSelectorOpen, compact } = menu;
+  const { openSelector, agentSelectorOpen, compact, sharedRoute } = menu;
   const { authLabel, authOptions, providerOptions, modelOptions } = options;
 
   return (
@@ -118,6 +120,7 @@ export function CollaborationRoutingControls({
       <ComposerModelControls
         scope="chat"
         confirmAccountChanges
+        sharedRoute={sharedRoute}
         selection={selection}
         openSelector={openSelector}
         onToggleSelector={actions.toggleSelector}

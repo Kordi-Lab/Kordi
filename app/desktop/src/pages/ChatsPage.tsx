@@ -508,7 +508,7 @@ export function ChatsPage({
                   modelOptions: chatModelOptions && chatModelOptions.length > 0
                     ? chatModelOptions
                     : undefined,
-                  onSave: collaborationRouting.main.saveCompactRoute,
+                  onSave: collaborationRouting.main.saveCompactRoute, sharedRoute: activePaneKind !== 'agent',
                 }}
                 chatMentionTargetsForText={composer.chatMentionTargetsForText}
                 actions={{

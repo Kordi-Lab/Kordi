@@ -7938,6 +7938,13 @@ final class AppModel: ObservableObject {
                 messageID: anchor.id, latestMessageID: history.last?.id, at: Date()
             )
         }
+        // Two shared pins in the main group, to review the pinned message bar.
+        if ProcessInfo.processInfo.arguments.contains("--preview-pinned-message") {
+            sessionPinsByID["session:group:mobile"] = CloudSessionPin(
+                sessionId: "session:group:mobile", sharedMessageId: "gm1", privateMessageId: nil,
+                effectiveMessageId: "gm1", updatedAt: nil, sharedMessageIds: ["gm1", "gm0"]
+            )
+        }
         #endif
         ownedCloudAgents = [
             CloudAgent(

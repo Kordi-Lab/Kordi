@@ -10,7 +10,7 @@ struct AccountEmailVerificationStatus: View {
             verified ? "Verified" : "Not verified",
             systemImage: verified ? "checkmark.seal.fill" : "exclamationmark.circle"
         )
-        .font(.caption)
+        .font(SettingsFont.subtitle)
         .foregroundStyle(verified ? Color.green : Color.orange)
         .labelStyle(.titleAndIcon)
     }
@@ -38,77 +38,69 @@ struct AccountEmailVerificationSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    Text(instructions)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            SettingsPage {
+                SettingsCaption(instructions)
 
-                Section("Email verification code") {
-                    TextField("123456", text: $verificationCode)
-                        .textContentType(.oneTimeCode)
-                        .keyboardType(.numberPad)
-                        .font(.title3.monospacedDigit())
-                        .focused($codeFieldFocused)
-                        .disabled(isBusy || challenge == nil)
-                        .onChange(of: verificationCode) { _, next in
-                            let digits = String(next.filter { $0.isASCII && $0.isNumber }.prefix(6))
-                            if digits != next { verificationCode = digits }
-                        }
-                        .accessibilityIdentifier("account-email-code")
-
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        let seconds = max(0, Int(ceil(resendAt.timeIntervalSince(context.date))))
-                        Button {
-                            Task { await requestCode() }
-                        } label: {
-                            HStack(spacing: 8) {
-                                if isSending { ProgressView() }
-                                Text(resendLabel(seconds: seconds))
-                            }
-                        }
-                        .font(.footnote)
-                        .disabled(isBusy || seconds > 0)
-                        .accessibilityIdentifier("account-email-resend")
+                SettingsSectionTitle("Email verification code")
+                    .padding(.top, 8)
+                TextField("123456", text: $verificationCode)
+                    .textContentType(.oneTimeCode)
+                    .keyboardType(.numberPad)
+                    .font(.title3.monospacedDigit())
+                    .settingsField()
+                    .focused($codeFieldFocused)
+                    .disabled(isBusy || challenge == nil)
+                    .onChange(of: verificationCode) { _, next in
+                        let digits = String(next.filter { $0.isASCII && $0.isNumber }.prefix(6))
+                        if digits != next { verificationCode = digits }
                     }
+                    .accessibilityIdentifier("account-email-code")
+
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let seconds = max(0, Int(ceil(resendAt.timeIntervalSince(context.date))))
+                    Button {
+                        Task { await requestCode() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isSending { ProgressView() }
+                            Text(resendLabel(seconds: seconds))
+                        }
+                    }
+                    .font(SettingsFont.inlineAction)
+                    .frame(minHeight: SettingsMetrics.textRowMinHeight)
+                    .disabled(isBusy || seconds > 0)
+                    .accessibilityIdentifier("account-email-resend")
                 }
 
                 if let error = model.errorMessage {
-                    Section {
-                        Label {
-                            Text(error).fixedSize(horizontal: false, vertical: true)
-                        } icon: {
-                            Image(systemName: "exclamationmark.circle.fill")
-                        }
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
-                        .padding(14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .accessibilityLabel("Email verification error: \(error)")
+                    Label {
+                        Text(error).fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: "exclamationmark.circle.fill")
                     }
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets())
+                    .font(SettingsFont.rowTitle)
+                    .foregroundStyle(.red)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.vertical, 8)
+                    .accessibilityLabel("Email verification error: \(error)")
                 }
 
-                Section {
-                    Button {
-                        Task { await verify() }
-                    } label: {
-                        HStack {
-                            if isVerifying { ProgressView() }
-                            Text(isVerifying ? "Verifying…" : "Verify email")
-                        }
-                        .frame(maxWidth: .infinity)
+                Button {
+                    Task { await verify() }
+                } label: {
+                    HStack {
+                        if isVerifying { ProgressView() }
+                        Text(isVerifying ? "Verifying…" : "Verify email")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(isBusy || challenge == nil || !codeIsComplete)
-                    .accessibilityIdentifier("account-email-verify")
+                    .frame(maxWidth: .infinity)
                 }
-                .listRowBackground(Color.clear)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(isBusy || challenge == nil || !codeIsComplete)
+                .padding(.top, 12)
+                .accessibilityIdentifier("account-email-verify")
             }
             .navigationTitle("Verify email")
             .navigationBarTitleDisplayMode(.inline)

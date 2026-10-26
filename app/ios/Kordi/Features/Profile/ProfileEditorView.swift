@@ -44,7 +44,7 @@ struct ProfileSettingsView: View {
                     .padding(.top, 16)
                 if let error = model.errorMessage.nonEmpty {
                     Text(error)
-                        .font(.footnote)
+                        .font(SettingsFont.rowTitle)
                         .foregroundStyle(KordiTheme.destructiveText)
                         .padding(.horizontal, 16)
                         .padding(.top, 10)
@@ -199,7 +199,7 @@ struct ProfileSettingsView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Text(ProfileFormatting.kordiIdUnlockCaption(lockedUntil))
-                        .font(.system(size: 13))
+                        .font(SettingsFont.subtitle)
                         .foregroundStyle(.secondary)
                 }
                 .accessibilityElement(children: .combine)
@@ -299,7 +299,7 @@ struct ProfileSettingsView: View {
                     .environment(\.calendar, ProfileFormatting.calendar)
                     .frame(maxWidth: .infinity)
                     Button("Clear") { clearBirthday() }
-                        .font(.subheadline)
+                        .font(SettingsFont.rowTitle)
                         .foregroundStyle(KordiTheme.destructiveText)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
@@ -324,7 +324,7 @@ struct ProfileSettingsView: View {
                             model.errorMessage = nil
                             isVerifyingEmail = true
                         }
-                        .font(.caption.weight(.semibold))
+                        .font(SettingsFont.inlineAction)
                         .foregroundStyle(KordiTheme.profileAccent)
                         .accessibilityIdentifier("profile-verify-email")
                     }
@@ -345,6 +345,7 @@ struct ProfileSettingsView: View {
                 }
             } label: {
                 Text("Sign out")
+                    .font(SettingsFont.rowTitle)
                     .foregroundStyle(KordiTheme.destructiveText)
                     .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
                     .padding(.horizontal, 16)
@@ -367,15 +368,16 @@ struct ProfileSettingsView: View {
         VStack(spacing: 0) {
             HStack(alignment: alignment, spacing: 0) {
                 Text(label)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(SettingsFont.rowTitle.weight(.semibold))
                     .foregroundStyle(.primary)
                     .frame(width: Self.labelWidth, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                 VStack(alignment: .leading, spacing: 4) {
                     value()
+                        .font(SettingsFont.rowTitle)
                     if let field, let error = model.profileFieldError, error.field == field {
                         Text(error.message)
-                            .font(.system(size: 13))
+                            .font(SettingsFont.subtitle)
                             .foregroundStyle(KordiTheme.destructiveText)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("profile-field-error")
@@ -523,14 +525,16 @@ private struct TimeZonePickerView: View {
             if query.isEmpty {
                 choice(id: "", selected: selection.isEmpty) {
                     Text("Automatic")
+                        .font(SettingsFont.rowTitle)
                 }
             }
             ForEach(filtered) { zone in
                 choice(id: zone.id, selected: selection == zone.id) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(zone.name), \(zone.offset)")
+                            .font(SettingsFont.rowTitle)
                         Text(zone.id)
-                            .font(.caption)
+                            .font(SettingsFont.subtitle)
                             .foregroundStyle(.secondary)
                     }
                 }

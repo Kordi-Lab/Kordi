@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LogOut, Pencil, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { settingsType } from '@/kordi-app/components/settingsType';
 import { cn } from '@/lib/utils';
 
 import {
@@ -46,7 +47,7 @@ export type CloudDevicesSessionLoader = () => Promise<{ token: string; accountId
 
 function SectionHeading({ id, children }: { id: string; children: string }) {
   return (
-    <h2 id={id} className="m-0 text-[13px] font-semibold text-white">
+    <h2 id={id} className={cn('m-0', settingsType.label)}>
       {children}
     </h2>
   );
@@ -232,7 +233,7 @@ export function CloudDevicesPanel({
   return (
     <div className="app-cloud-account-settings-section max-w-[680px] py-1">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="m-0 text-[15px] font-semibold text-white">Active sessions</h2>
+        <h2 className={cn('m-0', settingsType.heading)}>Active sessions</h2>
         <Button
           variant="quiet"
           size="icon"
@@ -268,7 +269,7 @@ export function CloudDevicesPanel({
                 {currentPending ? null : (
                   <Button
                     variant="quiet"
-                    className="h-8 rounded-full px-3 text-[11px] text-sky-200 hover:text-sky-100"
+                    className="h-8 rounded-full px-3 text-[12px] text-sky-200 hover:text-sky-100"
                     disabled={actionsDisabled}
                     onClick={() => setRenameRequest({
                       device: currentDevice,
@@ -306,7 +307,7 @@ export function CloudDevicesPanel({
                   <span className="text-[12px] font-medium">Log out of all other devices</span>
                 </Button>
               ) : (
-                <p className="m-0 mt-3 text-[11px] leading-4 text-slate-400">No other devices.</p>
+                <p className={cn('m-0 mt-3', settingsType.description)}>No other devices.</p>
               )}
             </section>
           ) : (

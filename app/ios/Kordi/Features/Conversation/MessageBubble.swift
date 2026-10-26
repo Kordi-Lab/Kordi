@@ -2480,25 +2480,80 @@ struct VideoPreviewPresentation: Identifiable {
 
 private struct NativeFullScreenVideoPlayer: UIViewControllerRepresentable {
     let player: AVPlayer
+    var onDismissOffset: (CGFloat) -> Void = { _ in }
+    var onDismiss: () -> Void = {}
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
         controller.player = player
         controller.showsPlaybackControls = true
         controller.videoGravity = .resizeAspect
+        context.coordinator.parent = self
+        context.coordinator.attachDismissDrag(to: controller.view)
         return controller
     }
 
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
         if controller.player !== player { controller.player = player }
+        context.coordinator.parent = self
     }
 
     static func dismantleUIViewController(
         _ controller: AVPlayerViewController,
-        coordinator: ()
+        coordinator: Coordinator
     ) {
         controller.player?.pause()
         controller.player = nil
+    }
+
+    /// A mostly downward drag closes the video, as in the image viewer. The
+    /// drag is measured in window coordinates because SwiftUI moves the view.
+    @MainActor
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var parent: NativeFullScreenVideoPlayer?
+
+        func attachDismissDrag(to view: UIView) {
+            let drag = UIPanGestureRecognizer(target: self, action: #selector(handleDismissDrag))
+            drag.maximumNumberOfTouches = 1
+            drag.delegate = self
+            view.addGestureRecognizer(drag)
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
+            let velocity = pan.velocity(in: nil)
+            let movement = velocity == .zero ? pan.translation(in: nil) : velocity
+            return movement.y > 0 && movement.y > abs(movement.x) * 1.1
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool { true }
+
+        @objc private func handleDismissDrag(_ recognizer: UIPanGestureRecognizer) {
+            guard let parent else { return }
+            let point = recognizer.translation(in: nil)
+            let translation = CGSize(width: point.x, height: point.y)
+            let distance = MediaPreviewDismissal.verticalOffset(for: translation)
+            switch recognizer.state {
+            case .began, .changed:
+                parent.onDismissOffset(distance)
+            case .ended:
+                let velocity = recognizer.velocity(in: nil)
+                let predicted = CGSize(width: point.x + velocity.x * 0.25, height: point.y + velocity.y * 0.25)
+                let height = recognizer.view?.window?.bounds.height ?? recognizer.view?.bounds.height ?? 0
+                if MediaPreviewDismissal.shouldDismiss(translation: translation, predictedEndTranslation: predicted, viewportHeight: height) {
+                    parent.onDismiss()
+                } else {
+                    parent.onDismissOffset(0)
+                }
+            default:
+                parent.onDismissOffset(0)
+            }
+        }
     }
 }
 
@@ -2827,50 +2882,74 @@ private struct MessageVideoAttachment: View {
 
 struct FullScreenMessageVideo: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let player: AVPlayer
     let name: String
     let poster: UIImage?
+    /// Closes the video when it is hosted outside a SwiftUI presentation.
+    var onClose: (() -> Void)? = nil
     @State private var playbackHasStarted = false
     @State private var playbackTimeObserver: Any?
+    @State private var dismissOffset: CGFloat = 0
+    @State private var isClosing = false
+    @State private var videoSize: CGSize?
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black.ignoresSafeArea()
-            NativeFullScreenVideoPlayer(player: player)
-                .ignoresSafeArea()
-                .accessibilityLabel("Play \(name)")
-            if !playbackHasStarted {
+        // The same drag and close motion as the chat image viewer.
+        let backdrop = isClosing ? 0 : MediaPreviewDismissal.backdropOpacity(offset: dismissOffset)
+        let scale = MediaPreviewDismissal.dragScale(offset: dismissOffset) * (isClosing ? MediaPreviewDismissal.closingScale : 1)
+        ZStack {
+            Color.black.opacity(backdrop).ignoresSafeArea()
+            GeometryReader { geometry in
                 ZStack {
-                    if let poster {
-                        Image(uiImage: poster)
-                            .resizable()
-                            .scaledToFit()
-                    } else {
-                        Color(uiColor: .secondarySystemBackground)
-                            .ignoresSafeArea()
+                    NativeFullScreenVideoPlayer(
+                        player: player,
+                        onDismissOffset: { offset in
+                            if offset == 0 {
+                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { dismissOffset = 0 }
+                            } else {
+                                dismissOffset = offset
+                            }
+                        },
+                        onDismiss: close
+                    )
+                    .accessibilityLabel("Play \(name)")
+                    if !playbackHasStarted {
+                        ZStack {
+                            if let poster {
+                                Image(uiImage: poster)
+                                    .resizable()
+                                    .scaledToFit()
+                            }
+                            ProgressView()
+                                .controlSize(.large)
+                                .tint(.white)
+                        }
+                        .allowsHitTesting(false)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Loading \(name)")
                     }
-                    Color.black.opacity(poster == nil ? 0 : 0.12)
-                        .ignoresSafeArea()
-                    ProgressView()
-                        .controlSize(.large)
-                        .tint(.white)
                 }
-                .allowsHitTesting(false)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Loading \(name)")
+                // While dragged, only the video frame shows, not the player's black bars.
+                .mask { videoMask(in: geometry.size) }
             }
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.body.weight(.semibold))
-                    .frame(width: 44, height: 44)
-                    .foregroundStyle(.white)
-                    .background(.black.opacity(0.62), in: Circle())
+            .ignoresSafeArea()
+            .scaleEffect(scale)
+            .opacity(isClosing ? 0 : 1)
+            .offset(y: dismissOffset)
+        }
+        .presentationBackground(.clear)
+        .environment(\.colorScheme, .dark)
+        // Drag down closes the video; VoiceOver can use escape or this action.
+        .accessibilityAction(.escape, close)
+        .accessibilityAction(named: "Close video", close)
+        .task {
+            videoSize = poster?.size
+            guard let item = player.currentItem else { return }
+            for await size in item.publisher(for: \.presentationSize).values where size.width > 0 && size.height > 0 {
+                videoSize = size
+                return
             }
-            .buttonStyle(.plain)
-            .padding(16)
-            .accessibilityLabel("Exit full screen video")
         }
         .onAppear {
             observePlaybackStart()
@@ -2880,6 +2959,28 @@ struct FullScreenMessageVideo: View {
             clearPlaybackTimeObserver()
             player.pause()
         }
+    }
+
+    @ViewBuilder
+    private func videoMask(in container: CGSize) -> some View {
+        if (dismissOffset > 0 || isClosing), let videoSize, videoSize.width > 0, videoSize.height > 0 {
+            let fit = min(container.width / videoSize.width, container.height / videoSize.height)
+            Rectangle()
+                .frame(width: videoSize.width * fit, height: videoSize.height * fit)
+                .frame(width: container.width, height: container.height)
+        } else {
+            Rectangle()
+        }
+    }
+
+    private func close() {
+        guard !isClosing else { return }
+        guard !reduceMotion else { return finishClosing() }
+        withAnimation(MediaPreviewDismissal.closingAnimation) { isClosing = true } completion: { finishClosing() }
+    }
+
+    private func finishClosing() {
+        if let onClose { onClose() } else { dismiss() }
     }
 
     private func observePlaybackStart() {
