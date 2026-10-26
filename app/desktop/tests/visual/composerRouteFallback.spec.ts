@@ -44,8 +44,12 @@ test('a failed save rolls the pick back with a notice', async ({ page }) => {
 
   await page.keyboard.press('Escape');
   await effortButton(page).click();
-  const slider = page.getByRole('dialog', { name: 'Thinking effort' }).getByRole('slider', { name: 'Thinking effort' });
+  const effortMenu = page.getByRole('dialog', { name: 'Thinking effort' });
+  // Let the menu's scheduled autofocus settle before moving focus to the slider.
+  await expect(effortMenu.getByRole('button').first()).toBeFocused();
+  const slider = effortMenu.getByRole('slider', { name: 'Thinking effort' });
   await slider.focus(); await slider.press('ArrowRight');
+  await expect(pendingSaves(page)).toHaveAttribute('data-pending-saves', '1');
   await expect(effortButton(page)).toHaveText('High', { timeout: 200 });
   await expect(pendingSaves(page).getByRole('alert')).toHaveText('Unable to save the model');
   await expect(effortButton(page)).toHaveText('Medium');

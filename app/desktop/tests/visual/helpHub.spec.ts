@@ -207,12 +207,34 @@ test('a delayed tour target never sends the glass popover to the middle of the w
   await page.locator('[data-help-target="grounding-cards"]').evaluate((node) => node.setAttribute('data-help-target', 'delayed-deck'));
   await expect(card).toHaveAttribute('data-positioned', 'false');
   await expect(card).toBeHidden();
-  expect(await card.evaluate((node) => getComputedStyle(node).backdropFilter)).toContain('blur(');
   await page.locator('[data-help-target="delayed-deck"]').evaluate((node) => node.setAttribute('data-help-target', 'grounding-cards'));
   await expect(card).toHaveAttribute('data-positioned', 'true');
   await expect(page.locator('.help-tour-spotlight')).toHaveAttribute('data-target', 'grounding-cards');
 });
 
+
+test('tour glass respects transparency and contrast preferences', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Media feature overrides require Chromium CDP.');
+  const session = await page.context().newCDPSession(page);
+  await page.goto('/tests/visual/helpHub.html');
+  await page.getByRole('button', { name: 'Help & setup', exact: true }).click();
+  await page.getByRole('button', { name: 'Show me around' }).click();
+  const card = page.locator('.help-tour-card');
+  await expect(card).toBeVisible();
+  // CI hosts may enable Reduce Transparency. Exercise each material explicitly.
+  for (const [contrast, transparency, glass] of [
+    ['no-preference', 'no-preference', true],
+    ['no-preference', 'reduce', false],
+    ['more', 'no-preference', false],
+  ] as const) {
+    await session.send('Emulation.setEmulatedMedia', { features: [
+      { name: 'prefers-contrast', value: contrast },
+      { name: 'prefers-reduced-transparency', value: transparency },
+      { name: 'prefers-reduced-motion', value: 'reduce' },
+    ] });
+    await expect(card).toHaveCSS('backdrop-filter', glass ? /blur\(24px\)/ : 'none');
+  }
+});
 
 test('a workspace without Grounding gets a tour of available controls and preserves resume progress', async ({ page }) => {
   await page.route('**/v1/cloud/auth/capabilities', (route) => route.fulfill({ json: { password: true, oauthProviders: ['google', 'github'] } }));
