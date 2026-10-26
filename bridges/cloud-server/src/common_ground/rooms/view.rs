@@ -1,5 +1,6 @@
 //! Your rooms list and a room's lobby. Every member shows the profile they
-//! share in the room.
+//! share in the room, and `hasCard` only while both their card and yours
+//! there are built and shared.
 
 use std::sync::Arc;
 
@@ -16,7 +17,7 @@ use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
 use super::{member_count_sql, my_room, room_not_found};
-use crate::common_ground::{actions, db_error, people, profiles, ROOM_OPEN_SQL};
+use crate::common_ground::{actions, card, db_error, people, profiles, ROOM_OPEN_SQL};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
 type ListRow = (
@@ -140,6 +141,13 @@ pub(in crate::common_ground) async fn view(
         .bind(viewer)
         .fetch_one(pool)
         .await?;
+    // Cards show only while both your card and theirs here are shared.
+    let viewer_shares = match &profile_id {
+        Some(profile_id) => card::load(pool, profile_id)
+            .await?
+            .is_some_and(|card| card.has_card() && card.sharing),
+        None => false,
+    };
     // Members arrive in join order; you are never in the list.
     let members: Vec<MemberRow> = query_as(
         "SELECT member.account_id, account.display_name, COALESCE(account.public_handle, account.public_account_number::TEXT), account.avatar_url,
@@ -180,7 +188,7 @@ pub(in crate::common_ground) async fn view(
                     handle.as_deref(),
                     avatar_url.as_deref(),
                 );
-                person["hasCard"] = json!(has_card);
+                person["hasCard"] = json!(has_card && viewer_shares);
                 person["profile"] = profiles::tag(
                     &profile,
                     &kind,

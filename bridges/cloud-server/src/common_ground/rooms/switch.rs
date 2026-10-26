@@ -116,7 +116,7 @@ pub(in crate::common_ground) async fn switch_profile(
         Ok(None) => return profiles::not_found(),
         Err(response) => return *response,
     };
-    if let Some(response) = profiles::require_shared_card(pool, &profile).await {
+    if let Some(response) = profiles::require_shared_card(pool, &profile.profile_id).await {
         return response;
     }
     let result = async {

@@ -93,7 +93,7 @@ Each profile has one card.
 - **Working on**, **Interests**, **Can help with**, **Looking for**: tags with **×** to remove and **+ Add** to type one (up to 40 characters).
 - **Timeline**: each topic at the time it first appeared (quarters for the last year, then years). Topics without recent evidence are muted.
 - **References**: tapping a tag opens a sheet with the topic, first and last seen dates, and the sources behind it (source, date, title, snippet; a link when there is one). References are visible only to you.
-- Footer: **Rebuild card**. In Settings: **Share my card** (off hides this profile from new rooms and pairings), **Delete card** (the profile stays).
+- Footer: **Rebuild card**. In Settings: **Share my card**, **Delete card** (the profile stays). With sharing off, nobody you met through this profile sees its card, and you don't see theirs through it; it can't join new rooms or pairings. Turning it back on restores the same rooms and pairings.
 
 ## States
 
@@ -113,7 +113,7 @@ Each profile has one card.
 
 - Sources are read only after the person turns them on. Device data is limited to titles and dates. Agent files are redacted (emails, links, paths, keys) before use.
 - The card leaves out health, family, money, relationships, locations and similar personal topics.
-- Others see your topics only after you share a room or a pairing with them, and never see references or hidden topics.
+- Others see your topics only after you share a room or a pairing with them, only while both of you share the profiles linked there, and never see references or hidden topics.
 - Card building and matching run on Kordi's servers; source text is kept only as the short references your card cites.
 
 ## Server
@@ -129,6 +129,7 @@ Routes under `/v1/cloud/common-ground/`. Every person returned in Common ground 
 - `GET rooms`: your rooms, open or closed, newest activity first; leaving a room removes it from the list.
 - `POST rooms`: Create a code; opens a room on a free four-digit code with `name` (required), `kind` and `profileId`, and returns `201` with the lobby and its `code`.
 - A closed room stays readable for members who have not left: `GET rooms/:code` returns `open: false`, results and `people/:id/match` return what was stored without running matching again, members still see each other's cards, and Start group and Join still work. Leaving the room withdraws that visibility.
+- A room or pairing links two people only while both linked profiles have a built card with sharing on. When your card is the reason, `people/:id`, `people/:id/match`, Add, Chat, Meet and room results answer 409 `common_ground_sharing_off` (or `common_ground_no_card`). When theirs is, the person routes answer 404 `common_ground_person_not_found`, and Recent, results and themes leave them out. Lobby members show `hasCard: false`, and group intros and joined lines quote no topics unless everyone they name shares.
 - `POST rooms/:code/group`: Start group; adds your contacts and invites the other room members. An optional `topic` records the room topic the group is for.
 - `POST rooms/:code/invitations/:ref/join`: Join; accepts a room group invitation addressed to you.
 

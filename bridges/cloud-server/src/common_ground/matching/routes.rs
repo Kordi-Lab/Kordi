@@ -12,10 +12,10 @@ use serde_json::{json, Value};
 use sqlx_core::{query::query, query_as::query_as};
 
 use super::store::{self, Pending, Queued, MAX_THEME_MEMBERS};
-use super::{shared_cards, suggestion, MatchResult, SharedCard};
+use super::{shared_cards, suggestion, visible_themes, MatchResult, SharedCard};
 use crate::auth::rate_limit::CloudRateLimiter;
 use crate::common_ground::actions::{attach, relationship, relationships, room_extras};
-use crate::common_ground::profiles::ProfileQuery;
+use crate::common_ground::profiles::{self, ProfileQuery};
 use crate::common_ground::{card, db_error, limited, people, rooms};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
@@ -76,7 +76,14 @@ pub(in crate::common_ground) async fn results(
         Err(error) => return db_error(error),
     };
     let Some(viewer) = cards.iter().find(|c| c.account_id == account).cloned() else {
-        return card::no_card();
+        // Your card here is not shared or not built: nobody shows.
+        let mine = members.iter().find(|(id, _)| id == account);
+        return match mine {
+            Some((_, profile_id)) => profiles::require_shared_card(pool, profile_id)
+                .await
+                .unwrap_or_else(card::no_card),
+            None => card::no_card(),
+        };
     };
     let others: Vec<SharedCard> = cards
         .iter()
@@ -108,7 +115,9 @@ pub(in crate::common_ground) async fn results(
         Ok(themes) => themes,
         Err(error) => return db_error(error),
     };
-    let needs_themes = open && themes.is_none() && theme_members.len() >= 2;
+    // A closed room keeps themes computed with people who no longer share.
+    let visible = themes.map(|themes| visible_themes(themes, &cards));
+    let needs_themes = open && visible.is_none() && theme_members.len() >= 2;
     // Each queued run is charged; polling while one works or pauses is free.
     let mut pending = None;
     if open && !stale.is_empty() {
@@ -173,7 +182,7 @@ pub(in crate::common_ground) async fn results(
         ids.sort_by_key(|id| *id != account);
         json!({ "label": label, "people": ids.into_iter().filter_map(by_id).map(person).collect::<Vec<_>>() })
     };
-    let themes = themes.unwrap_or_default();
+    let themes = visible.unwrap_or_default();
     (
         StatusCode::OK,
         Json(json!({
@@ -210,7 +219,7 @@ pub(in crate::common_ground) async fn match_detail(
     let requested = params.profile.as_deref().filter(|id| !id.is_empty());
     let link = match people::link(pool, account, &other, requested).await {
         Ok(Some(link)) => link,
-        Ok(None) => return people::not_found(),
+        Ok(None) => return people::hidden(pool, account, &other, requested).await,
         Err(error) => return db_error(error),
     };
     let pair = [
@@ -221,15 +230,12 @@ pub(in crate::common_ground) async fn match_detail(
         Ok(cards) => cards,
         Err(error) => return db_error(error),
     };
+    // A card that stopped sharing since the link was read hides it.
     let (Some(viewer), Some(other_card)) = (
         cards.iter().find(|c| c.account_id == account),
         cards.iter().find(|c| c.account_id == other),
     ) else {
-        return if cards.iter().any(|c| c.account_id == account) {
-            people::not_found()
-        } else {
-            card::no_card()
-        };
+        return people::hidden(pool, account, &other, requested).await;
     };
     let fresh = if link.live {
         store::fresh_results(pool, viewer, std::slice::from_ref(other_card)).await

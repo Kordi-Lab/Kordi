@@ -86,7 +86,7 @@ async fn sharing_profile(
     let Some(profile) = profiles::choose(pool, account, requested, suggested_kind).await? else {
         return Err(Box::new(card::no_card()));
     };
-    match profiles::require_shared_card(pool, &profile).await {
+    match profiles::require_shared_card(pool, &profile.profile_id).await {
         Some(response) => Err(Box::new(response)),
         None => Ok(profile),
     }

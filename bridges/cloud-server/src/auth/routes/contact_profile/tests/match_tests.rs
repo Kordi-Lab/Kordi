@@ -320,7 +320,7 @@ async fn pairs_the_viewer_cannot_see_are_null() {
         .unwrap();
     assert_eq!(contact_match(&app, &token, &them).await, Value::Null);
 
-    // Nor while my own card is not shared.
+    // Nor, with their card lists, while my own card is not shared.
     store(
         &pool,
         (&me, &mine, 1),
@@ -334,5 +334,10 @@ async fn pairs_the_viewer_cannot_see_are_null() {
         .execute(&pool)
         .await
         .unwrap();
-    assert_eq!(contact_match(&app, &token, &them).await, Value::Null);
+    let (status, body) = send(&app, "GET", &profile_path(&them), &token, None).await;
+    assert_eq!(
+        (status, &body["commonGround"]),
+        (200, &Value::Null),
+        "{body}"
+    );
 }

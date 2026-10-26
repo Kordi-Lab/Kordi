@@ -27,9 +27,9 @@ use sqlx_postgres::PgPool;
 
 use super::{db_error, people as cg_people};
 
-/// The response to send instead when `viewer` may not act on `other`: they
-/// share a room or a pairing, or else see each other through nearby right
-/// now.
+/// The response when neither a shared room/pairing link nor reciprocal Nearby
+/// participation allows the action. A hidden link answers 409 when the viewer's
+/// own card is not shared; otherwise the person remains a 404.
 async fn require_visible(pool: &PgPool, viewer: &str, other: &str) -> Option<Response> {
     if viewer == other {
         return Some(cg_people::not_found());
@@ -41,7 +41,7 @@ async fn require_visible(pool: &PgPool, viewer: &str, other: &str) -> Option<Res
     };
     match visible {
         Ok(true) => None,
-        Ok(false) => Some(cg_people::not_found()),
+        Ok(false) => Some(cg_people::hidden(pool, viewer, other, None).await),
         Err(error) => Some(db_error(error)),
     }
 }

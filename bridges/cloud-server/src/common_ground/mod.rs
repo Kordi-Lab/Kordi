@@ -5,9 +5,9 @@
 //! its own card. A card is built by a background run on the Kordi-operated key
 //! (the System agent's service credential) from the sources the owner turns on,
 //! through the profile's lens. Every topic cites redacted, dated evidence that
-//! only the owner sees. Others see a card's topics, minus hidden ones, only
-//! while they share a room or a pairing with its owner in which the owner
-//! shares that profile.
+//! only the owner sees. Room and pairing links reveal shared topics only while
+//! both linked profiles share a built card. Nearby separately requires both
+//! people to participate and have fresh locations.
 
 mod actions;
 mod build;
