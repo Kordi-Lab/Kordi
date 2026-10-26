@@ -5,6 +5,16 @@ import XCTest
 @testable import Kordi
 
 final class MediaPreviewTests: XCTestCase {
+    func testReceivedQuickTimeVideosPlayInTheChatViewerWhileUploadsStayMP4() {
+        XCTAssertTrue(VideoAttachmentPolicy.isPlayable(name: "clip.mov", mimeType: "video/quicktime"))
+        XCTAssertTrue(VideoAttachmentPolicy.isPlayable(name: "clip.mov", mimeType: nil))
+        XCTAssertTrue(VideoAttachmentPolicy.isPlayable(name: "clip.m4v", mimeType: "application/octet-stream"))
+        XCTAssertTrue(VideoAttachmentPolicy.isPlayable(name: "clip.mp4", mimeType: "video/mp4"))
+        XCTAssertFalse(VideoAttachmentPolicy.isPlayable(name: "notes.pdf", mimeType: "application/pdf"))
+        XCTAssertFalse(VideoAttachmentPolicy.isPlayable(name: "clip.mov", mimeType: "application/zip"))
+        XCTAssertFalse(VideoAttachmentPolicy.isMP4(name: "clip.mov", mimeType: "video/quicktime"))
+    }
+
     func testGalleryIncludesOnlyImagesInMessageOrder() {
         let firstImage = attachment(id: "image-1", kind: .image)
         let file = attachment(id: "file-1", kind: .file)
@@ -251,6 +261,26 @@ final class MediaPreviewTests: XCTestCase {
         XCTAssertTrue(MessageAttachmentPresentation.usesBorderlessMediaSurface(for: videoMessage))
         XCTAssertTrue(MessageMediaStatusPresentation.showsOverlay(for: videoMessage))
         XCTAssertFalse(MessageAttachmentPresentation.usesBorderlessVideoSurface(for: captionedMessage))
+    }
+
+    func testReceivedQuickTimeMessageUsesVideoSurfaceWithAndWithoutCaption() {
+        let video = ChatAttachment(
+            attachmentId: "received-video",
+            name: "clip.MOV",
+            kind: .file,
+            mimeType: "video/quicktime",
+            sizeBytes: 1024,
+            previewURL: nil
+        )
+        var received = message(id: "received", author: .person, attachments: [video])
+
+        XCTAssertTrue(received.attachments[0].isPlayableVideo)
+        XCTAssertTrue(MessageAttachmentPresentation.usesBorderlessVideoSurface(for: received))
+        XCTAssertFalse(MessageMediaStatusPresentation.showsOverlay(for: received))
+
+        received.text = "A received clip"
+        XCTAssertTrue(received.attachments[0].isPlayableVideo)
+        XCTAssertFalse(MessageAttachmentPresentation.usesBorderlessVideoSurface(for: received))
     }
 
     func testVideoMessageLayoutPreservesSourceAspectRatio() {
