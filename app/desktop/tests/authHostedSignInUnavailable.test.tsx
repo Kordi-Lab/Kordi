@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import React, { act } from 'react';
+import ts from 'typescript';
 
 import type { CloudProviderAuthSnapshot } from '../src/features/cloud/cloudAgentRuntimeTypes';
 import { SIGN_IN_UNAVAILABLE_MESSAGE } from '../src/features/cloud/ompAvailability';
@@ -148,8 +149,7 @@ test('the provider page on a server without hosted sign-in keeps saved accounts 
   });
 });
 
-test('the removed sentence appears nowhere in the Mac app source', () => {
-  const root = new URL('../src', import.meta.url).pathname;
+function sourceFiles() {
   const files: string[] = [];
   const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {
@@ -158,7 +158,26 @@ test('the removed sentence appears nowhere in the Mac app source', () => {
       else if (/\.(ts|tsx)$/.test(name)) files.push(path);
     }
   };
-  walk(root);
+  walk(new URL('../src', import.meta.url).pathname);
   assert.ok(files.length > 100);
-  for (const file of files) assert.doesNotMatch(readFileSync(file, 'utf8'), removedNotice, file);
+  return files;
+}
+
+test('the removed sentence appears nowhere in the Mac app source', () => {
+  for (const file of sourceFiles()) assert.doesNotMatch(readFileSync(file, 'utf8'), removedNotice, file);
+});
+
+test('no string or JSX text in the Mac app, previews included, names OMP', () => {
+  // Comments and identifiers may name OMP; the bare wire value `runner: 'OMP'` is data, never rendered.
+  const found: string[] = [];
+  for (const file of sourceFiles()) {
+    const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+    const visit = (node: ts.Node) => {
+      const text = ts.isStringLiteralLike(node) || ts.isTemplateLiteralToken(node) || ts.isJsxText(node) ? node.text : null;
+      if (text !== null && text !== 'OMP' && /\bOMP\b/.test(text)) found.push(`${file.slice(file.indexOf('/src/'))}: ${text.trim()}`);
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  assert.deepEqual(found, []);
 });

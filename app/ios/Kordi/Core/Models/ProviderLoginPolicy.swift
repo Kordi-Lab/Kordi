@@ -240,9 +240,6 @@ struct ProviderLoginMethod: Identifiable, Hashable {
         case .browserSignIn:
             return "Opens the provider's page in your browser to approve access."
         case .apiKey:
-            if let variable = policy.envVars.first(where: { $0.hasSuffix("_API_KEY") }) {
-                return "Paste a key from the provider's console; OMP reads it as \(variable)."
-            }
             return "Paste a key from the provider's console."
         case .deviceCode:
             return "Shows a one-time code to approve on the provider's page."
@@ -393,7 +390,7 @@ enum OMPBackendSupport {
     static let notConfiguredCode = "provider_auth_not_configured"
     static let transientCode = "omp_unavailable"
     static let unavailableMessage = "Sign-in isn't available right now."
-    static let transientMessage = "OMP is not responding right now. Wait a moment, then try again."
+    static let transientMessage = "Sign-in isn't reachable right now. Try again in a moment."
 
     /// A newer server's own 404s for a missing sign-in or account.
     private static let missingResourceCodes: Set<String> = [
@@ -404,6 +401,11 @@ enum OMPBackendSupport {
         guard let error = error as? CloudAPIError else { return false }
         if error.code == notConfiguredCode { return true }
         return error.statusCode == 404 && !missingResourceCodes.contains(error.code)
+    }
+
+    /// Server text that names the OMP worker is never shown; the caller's own line stands in.
+    static func displayable(_ message: String) -> String? {
+        message.range(of: #"\bOMP\b"#, options: .regularExpression) == nil ? message.nonEmpty : nil
     }
 
     static func isTransient(_ error: Error) -> Bool {

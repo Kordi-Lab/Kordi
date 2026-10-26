@@ -86,8 +86,6 @@ struct ProviderLoginMethodPicker: View {
                     }
                     .accessibilityIdentifier("provider-login-method-\(method.id)")
                 }
-            } footer: {
-                Text("OMP completes each step on Kordi Cloud; provider tokens never reach this iPhone.")
             }
         }
         .listStyle(.insetGrouped)
@@ -177,12 +175,6 @@ struct ProviderLoginScreen: View {
                             .font(.footnote)
                             .foregroundStyle(.red)
                             .accessibilityIdentifier("provider-login-error")
-                    }
-                } footer: {
-                    if !model.ompBackendUnavailable {
-                        Text(method.isKeyEntry
-                            ? "OMP checks the key on Kordi Cloud before it is saved to your account."
-                            : "OMP completes each step on Kordi Cloud; provider tokens never reach this iPhone.")
                     }
                 }
             }

@@ -208,6 +208,9 @@ final class ProviderLoginControllerTests: XCTestCase {
 
     func testUnavailableBackendShowsOnlyOneShortGenericLine() throws {
         XCTAssertEqual(OMPBackendSupport.unavailableMessage, "Sign-in isn't available right now.")
+        XCTAssertNil(OMPBackendSupport.displayable("The OMP route test failed. Try again."))
+        XCTAssertNil(OMPBackendSupport.displayable(""))
+        XCTAssertEqual(OMPBackendSupport.displayable("The provider rejected this key."), "The provider rejected this key.")
         for word in ["OMP", "backend", "server"] {
             XCTAssertFalse(OMPBackendSupport.unavailableMessage.localizedCaseInsensitiveContains(word), word)
         }
@@ -227,6 +230,56 @@ final class ProviderLoginControllerTests: XCTestCase {
         // Actions that need hosted sign-in stay off while the backend has none.
         XCTAssertTrue(flow.contains("|| model.ompBackendUnavailable)"))
         XCTAssertTrue(flow.contains(".disabled(model.ompBackendUnavailable)"))
+    }
+
+    /// Comments and identifiers may name OMP; the bare wire value "OMP" is data, never shown.
+    func testNoStringLiteralInTheAppNamesOMP() throws {
+        let ios = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let files = ["Kordi", "KordiShareExtension"].flatMap { folder in
+            (FileManager.default.enumerator(at: ios.appendingPathComponent(folder), includingPropertiesForKeys: nil)?
+                .compactMap { $0 as? URL } ?? []).filter { $0.pathExtension == "swift" }
+        }
+        XCTAssertGreaterThan(files.count, 100)
+        let word = try NSRegularExpression(pattern: #"\bOMP\b"#)
+        var found: [String] = []
+        for file in files {
+            for line in try String(contentsOf: file, encoding: .utf8).components(separatedBy: .newlines) {
+                for literal in Self.stringLiterals(in: line) where literal != "OMP"
+                    && word.firstMatch(in: literal, range: NSRange(literal.startIndex..., in: literal)) != nil {
+                    found.append("\(file.lastPathComponent): \(literal)")
+                }
+            }
+        }
+        XCTAssertEqual(found, [])
+    }
+
+    /// The contents of each double-quoted literal on one line, stopping at a `//` comment.
+    static func stringLiterals(in line: String) -> [String] {
+        var literals: [String] = []
+        var current: String?
+        var escaped = false
+        var previous: Character = " "
+        for character in line {
+            if current != nil {
+                if escaped {
+                    escaped = false
+                } else if character == "\\" {
+                    escaped = true
+                } else if character == "\"" {
+                    literals.append(current ?? "")
+                    current = nil
+                    previous = character
+                    continue
+                }
+                current?.append(character)
+            } else if character == "\"" {
+                current = ""
+            } else if character == "/", previous == "/" {
+                break
+            }
+            previous = character
+        }
+        return literals
     }
 
     func testUnavailableBackendFailsOnceWithTheShortLine() async throws {

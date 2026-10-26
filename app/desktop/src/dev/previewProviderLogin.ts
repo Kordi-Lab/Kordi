@@ -160,7 +160,7 @@ export function createPreviewProviderLogin(loadCatalog: () => Promise<OmpCatalog
       }
       update(entry, {
         status: 'running',
-        step: { type: 'progress', message: entry.flow === 'api-key' ? 'Verifying with OMP…' : 'Finishing sign-in…' },
+        step: { type: 'progress', message: entry.flow === 'api-key' ? 'Verifying…' : 'Finishing sign-in…' },
       });
       later(entry, () => complete(entry));
       return Promise.resolve(entry.session);

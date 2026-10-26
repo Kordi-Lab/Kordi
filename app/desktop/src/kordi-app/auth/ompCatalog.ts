@@ -185,7 +185,7 @@ function ompProvider(entry: OmpCatalogEntry, locals: DesktopAuthProvider[]): Des
     statusSummary: options.length > 0
       ? locals.find((local) => local.options.length > 0)?.statusSummary ?? 'Saved accounts'
       : 'No saved accounts',
-    loginHint: `Connect ${label} to use its OMP models.`,
+    loginHint: `Connect ${label} to use its models.`,
     envVar: entry.auth?.envVars[0] ?? '',
     helpUrl: entry.auth?.authUrl ?? '',
     supportsOAuth: kordiSignInProviderIds.has(entry.id) || kind === 'oauth-code' || kind === 'device-code',
@@ -326,7 +326,7 @@ function catalogMethods(item: AuthDisplayProvider, entry: OmpCatalogEntry | unde
       title: login.kind === 'device-code' ? 'Device sign-in' : login.kind === 'custom' && !deviceHooks.has(login.hook ?? '') ? 'Connect account' : 'Sign in',
       detail: login.kind === 'device-code' || deviceHooks.has(login.hook ?? '')
         ? `Sign in on ${name}'s page with a one-time code.`
-        : login.kind === 'oauth-code' ? `Sign in with your ${name} account in the browser.` : `Connect ${name} with the details OMP asks for.`,
+        : login.kind === 'oauth-code' ? `Sign in with your ${name} account in the browser.` : `Connect ${name} with the details it asks for.`,
       options: options.filter((option) => option.method === 'OAuth' || option.method === 'Account'),
     });
   }
@@ -335,7 +335,7 @@ function catalogMethods(item: AuthDisplayProvider, entry: OmpCatalogEntry | unde
       ...base,
       mode: 'api-key',
       title: 'API key',
-      detail: `Paste a ${name} API key. OMP checks it and stores it in your Kordi account.`,
+      detail: `Paste a ${name} API key.`,
       options: options.filter((option) => option.method === 'API key'),
     });
   }

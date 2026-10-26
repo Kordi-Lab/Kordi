@@ -69,8 +69,8 @@ test('prompt, paste-code and api-key steps ask for input with the right masking'
   assert.equal(key.input?.kind, 'api-key');
   assert.equal(key.input?.secret, true);
   assert.equal(key.input?.authUrl, 'https://keys.example');
-  assert.equal(providerLoginReducer(key, { type: 'submit' }).statusLine, 'Verifying with OMP…');
-  assert.equal(providerLoginReducer(prompt, { type: 'submit' }).statusLine, 'Sending to OMP…');
+  assert.equal(providerLoginReducer(key, { type: 'submit' }).statusLine, 'Verifying…');
+  assert.equal(providerLoginReducer(prompt, { type: 'submit' }).statusLine, 'Sending…');
 });
 
 test('progress steps update one status line and stale versions are ignored', () => {

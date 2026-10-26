@@ -195,7 +195,7 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
             )}
           />
         ) : null}
-        {!client ? <SettingsRow title="Hosted sign-in is unavailable" description="Sign in to Kordi to add accounts through OMP." /> : null}
+        {!client ? <SettingsRow title="Hosted sign-in is unavailable" description="Sign in to Kordi to add accounts." /> : null}
       </SettingsSection>
 
       {started ? (

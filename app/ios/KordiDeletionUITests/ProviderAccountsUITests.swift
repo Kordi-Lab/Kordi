@@ -131,14 +131,14 @@ final class ProviderAccountsUITests: ProviderUITestCase {
         type("invalid-key", into: key, in: app)
         tap(app.buttons["provider-login-save-key"], in: app)
         let status = element("provider-login-status", in: app)
-        let verifying = NSPredicate(format: "label CONTAINS 'Verifying with OMP'")
+        let verifying = NSPredicate(format: "label CONTAINS 'Verifying'")
         expectation(for: verifying, evaluatedWith: status)
         waitForExpectations(timeout: 5)
         let reopened = app.secureTextFields["provider-login-input"]
         XCTAssertFalse(reopened.waitForExistence(timeout: 1), "The key field stays closed while OMP checks the key")
         let error = app.staticTexts["provider-login-error"]
         XCTAssertTrue(error.waitForExistence(timeout: 10))
-        XCTAssertEqual(error.label, "OMP did not accept that value. Check it and start again.")
+        XCTAssertEqual(error.label, "That value wasn't accepted. Check it and start again.")
         XCTAssertFalse(reopened.exists, "A rejected key ends the sign-in")
         capture("API key rejected by OMP", app: app)
 

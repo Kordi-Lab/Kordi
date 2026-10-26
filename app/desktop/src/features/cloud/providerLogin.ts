@@ -109,12 +109,12 @@ export function providerLoginErrorMessage(code: ProviderLoginErrorCode, reason?:
     case 'login_not_found': return 'This sign-in is no longer available. Start again.';
     case 'login_expired': return 'This sign-in expired before it finished. Start again.';
     case 'login_failed': return `The provider did not complete sign-in${failureReason(reason)}. Try again.`;
-    case 'login_unsupported': return 'OMP cannot add this account from Kordi yet.';
-    case 'invalid_login_input': return 'OMP did not accept that value. Check it and try again.';
+    case 'login_unsupported': return "This account can't be added from Kordi yet.";
+    case 'invalid_login_input': return "That value wasn't accepted. Check it and try again.";
     case 'rate_limited': return 'Too many sign-in attempts. Wait a minute and try again.';
-    case 'omp_unavailable': return 'OMP is not reachable right now. Try again in a moment.';
+    case 'omp_unavailable': return "Sign-in isn't reachable right now. Try again in a moment.";
     case 'provider_auth_not_configured': return SIGN_IN_UNAVAILABLE_MESSAGE;
-    case 'omp_busy': return 'OMP is busy with other sign-ins. Try again in a moment.';
+    case 'omp_busy': return 'Too many sign-ins at once. Try again in a moment.';
     case 'not_signed_in': return 'Sign in to Kordi before adding an account.';
     case 'network_error': return 'Kordi could not reach the server. Check your connection and try again.';
     default: return 'Sign-in could not continue. Try again.';
@@ -401,11 +401,11 @@ export function loginCallbackHint(view: ProviderLoginView): string | null {
 export function providerLoginReducer(state: ProviderLoginView, action: ProviderLoginAction): ProviderLoginView {
   switch (action.type) {
     case 'start':
-      return { ...initialProviderLoginView, phase: 'starting', statusLine: 'Starting sign-in with OMP…' };
+      return { ...initialProviderLoginView, phase: 'starting', statusLine: 'Starting sign-in…' };
     case 'session':
       return viewFromSession(state, action.session);
     case 'submit': {
-      const statusLine = state.input?.kind === 'api-key' ? 'Verifying with OMP…' : 'Sending to OMP…';
+      const statusLine = state.input?.kind === 'api-key' ? 'Verifying…' : 'Sending…';
       const answered = action.answer
         ? [...state.transcript, { type: 'answer' as const, label: action.answer.label, value: action.answer.secret ? null : action.answer.value }]
         : state.transcript;

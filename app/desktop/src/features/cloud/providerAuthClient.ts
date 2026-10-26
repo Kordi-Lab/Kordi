@@ -45,6 +45,10 @@ export function createCloudProviderAuthApi(client: { request: CloudRequest } = d
       return await send<T>(path, init, fallbackMessage);
     } catch (caught) {
       if (caught instanceof CloudAuthError && isOmpUnavailableResponse(caught.status, caught.code)) throw new OmpUnavailableError();
+      // Server text that names the OMP worker gives way to this route's own line.
+      if (caught instanceof CloudAuthError && /\bOMP\b/.test(caught.message)) {
+        throw new CloudAuthError(caught.code, fallbackMessage, caught.status, caught.retryAfterSeconds);
+      }
       throw caught;
     }
   };
@@ -62,7 +66,7 @@ export function createCloudProviderAuthApi(client: { request: CloudRequest } = d
       return response.snapshots;
     },
     ompProviderCatalog(token?: string): Promise<OmpProviderCatalogResponse> {
-      return sendOmp('/v1/cloud/agent-provider-auth/catalog', { method: 'GET', headers: token ? authorized(token) : {} }, 'Could not load OMP providers.');
+      return sendOmp('/v1/cloud/agent-provider-auth/catalog', { method: 'GET', headers: token ? authorized(token) : {} }, 'Could not load providers.');
     },
     validateOmpProviderKey(token: string, provider: string, apiKey: string): Promise<{ verified: boolean }> {
       return sendOmp(

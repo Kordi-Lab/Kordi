@@ -1657,7 +1657,7 @@ final class AppModel: ObservableObject {
             provider: account.provider,
             accountLabel: account.label?.nonEmpty ?? "Saved account",
             model: model,
-            response: "Preview reply: this offline fixture stands in for one short hosted OMP turn."
+            response: "Preview reply: this offline fixture stands in for one short hosted turn."
         )
     }
 
@@ -8136,7 +8136,7 @@ final class AppModel: ObservableObject {
         case "network_error":
             return "Authentication could not be refreshed. Check your connection and try again; saved access is unchanged."
         default:
-            return error.message.nonEmpty ?? fallback
+            return OMPBackendSupport.displayable(error.message) ?? fallback
         }
     }
 

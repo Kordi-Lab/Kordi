@@ -236,7 +236,7 @@ final class ProviderLoginTests: XCTestCase {
         // Provider text is never shown; only known classifications are.
         let failed = reduce(.start, .session(ProviderLoginSession(status: .failed, error: "login_failed", reason: "The provider denied access")))
         XCTAssertEqual(failed.phase, .failed)
-        XCTAssertEqual(failed.failure, "OMP could not finish signing in. Try again.")
+        XCTAssertEqual(failed.failure, "Sign-in didn't finish. Try again.")
         let rejected = reduce(.start, .session(ProviderLoginSession(status: .failed, error: "invalid_input")))
         XCTAssertEqual(rejected.failure, ProviderLoginViewState.reasonMessage("invalid_input"))
 
@@ -267,10 +267,10 @@ final class ProviderLoginTests: XCTestCase {
         }
         XCTAssertEqual(
             ProviderLoginViewState.failureMessage(code: "login_failed", reason: "invalid_input"),
-            "OMP did not accept that value. Check it and start again."
+            "That value wasn't accepted. Check it and start again."
         )
         for reason in ["unknown", "invalid_worker_state", "Provider said: synthetic-secret"] {
-            XCTAssertEqual(ProviderLoginViewState.failureMessage(code: "login_failed", reason: reason), "OMP could not finish signing in. Try again.")
+            XCTAssertEqual(ProviderLoginViewState.failureMessage(code: "login_failed", reason: reason), "Sign-in didn't finish. Try again.")
             XCTAssertEqual(ProviderLoginViewState.failureMessage(code: "some_new_code", reason: reason), "Sign-in failed. Try again.")
         }
 
@@ -307,7 +307,7 @@ final class ProviderLoginTests: XCTestCase {
             (.session(ProviderLoginSession(status: .completed, snapshot: snapshot)), nil),
         ]).entries.map(\.kind)
         XCTAssertEqual(entries.count, 6)
-        XCTAssertEqual(entries[0], .progress("Connecting to OMP…"))
+        XCTAssertEqual(entries[0], .progress("Connecting…"))
         XCTAssertEqual(entries[1], .auth(url: URL(string: "https://example.com/oauth")!, instructions: "Complete login.", userCode: nil))
         guard case .input(let input) = entries[2] else { return XCTFail("Expected the paste step") }
         XCTAssertEqual(input.kind, .pasteCode)

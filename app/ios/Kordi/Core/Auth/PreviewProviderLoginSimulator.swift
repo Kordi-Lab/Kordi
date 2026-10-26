@@ -165,7 +165,7 @@ actor PreviewProviderLoginSimulator: ProviderLoginTransport {
         }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty, !Self.allowsEmpty(session.current.step) {
-            throw CloudAPIError(code: "invalid_login_input", message: "OMP could not use this input.", statusCode: 400)
+            throw CloudAPIError(code: "invalid_login_input", message: "That value wasn't accepted.", statusCode: 400)
         }
         counter += 1
         // OMP keeps the answered step while it checks the value.

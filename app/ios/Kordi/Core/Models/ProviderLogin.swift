@@ -193,13 +193,13 @@ struct ProviderLoginViewState: Equatable {
         }
     }
 
-    static let verifyingMessage = "Verifying with OMP…"
+    static let verifyingMessage = "Verifying…"
     static let savingMessage = "Saving the account…"
 
     static func reduce(_ state: ProviderLoginViewState, _ event: ProviderLoginEvent) -> ProviderLoginViewState {
         switch event {
         case .start:
-            return ProviderLoginViewState(phase: .starting, status: "Connecting to OMP…")
+            return ProviderLoginViewState(phase: .starting, status: "Connecting…")
         case .reset:
             return ProviderLoginViewState()
         case .cancel:
@@ -245,7 +245,7 @@ struct ProviderLoginViewState: Equatable {
         // `auth` outlives the step that created it; keep its page and code visible.
         if let auth = session.auth {
             guard let target = httpsURL(auth.launchUrl) ?? httpsURL(auth.url) else {
-                return failed(state, "OMP returned a sign-in address Kordi cannot open.")
+                return failed(state, "This sign-in address can't be opened.")
             }
             next.signInURL = target
             next.userCode = userCode(in: auth.instructions) ?? next.userCode
@@ -253,20 +253,20 @@ struct ProviderLoginViewState: Equatable {
         }
         guard let step = session.step else {
             if next.phase != .signIn { next.phase = .working }
-            next.status = session.status == .claiming ? savingMessage : next.status ?? "Waiting for OMP…"
+            next.status = session.status == .claiming ? savingMessage : next.status ?? "Waiting…"
             return next
         }
         if step.isInput, session.status != .awaitingInput {
             // OMP reads input only while awaiting it; an input step on a running
             // session is the value it is still checking.
             next.phase = .working
-            next.status = state.phase == .working ? state.status ?? verifyingMessage : "Waiting for OMP…"
+            next.status = state.phase == .working ? state.status ?? verifyingMessage : "Waiting…"
             return next
         }
         switch step {
         case .openURL(let url, let launchURL, let instructions):
             guard let target = httpsURL(launchURL) ?? httpsURL(url) else {
-                return failed(state, "OMP returned a sign-in address Kordi cannot open.")
+                return failed(state, "This sign-in address can't be opened.")
             }
             next.phase = .signIn
             next.inputKind = nil
@@ -294,7 +294,7 @@ struct ProviderLoginViewState: Equatable {
             next.status = nil
         case .progress(let message):
             if next.phase != .signIn { next.phase = .working }
-            next.status = message.nonEmpty ?? "Waiting for OMP…"
+            next.status = message.nonEmpty ?? "Waiting…"
             next.userCode = next.userCode ?? userCode(in: message)
         case .apiKey(let instructions, let placeholder, let authURL):
             next.phase = .input
@@ -325,13 +325,13 @@ struct ProviderLoginViewState: Equatable {
         case "login_expired":
             return "This sign-in expired. Start again."
         case "login_failed":
-            return reasonMessage(reason) ?? "OMP could not finish signing in. Try again."
+            return reasonMessage(reason) ?? "Sign-in didn't finish. Try again."
         case "invalid_login_input":
-            return "OMP did not accept that value. Check it and try again."
+            return "That value wasn't accepted. Check it and try again."
         case "login_unsupported":
             return unsupportedMessage
         case "omp_busy":
-            return "OMP is handling other sign-ins. Wait a moment, then try again."
+            return "Too many sign-ins at once. Try again in a moment."
         case "rate_limited":
             return "Too many sign-in attempts. Wait a minute, then try again."
         case OMPBackendSupport.notConfiguredCode:
@@ -358,7 +358,7 @@ struct ProviderLoginViewState: Equatable {
     static func reasonMessage(_ reason: String?) -> String? {
         switch reason?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "invalid_input":
-            return "OMP did not accept that value. Check it and start again."
+            return "That value wasn't accepted. Check it and start again."
         case "provider_rejected":
             return "The provider did not accept this sign-in. Check the account and try again."
         case "timeout":
@@ -366,7 +366,7 @@ struct ProviderLoginViewState: Equatable {
         case "unsupported_flow", "unknown_provider":
             return unsupportedMessage
         case "session_lost", "start_failed":
-            return "OMP stopped this sign-in. Start again."
+            return "Sign-in stopped. Start again."
         case "claim_failed", "save_failed":
             return "Sign-in finished, but Kordi Cloud could not save the account. Start again."
         default:

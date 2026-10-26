@@ -224,6 +224,6 @@ final class ProviderAccountTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(100))
         }
         XCTAssertEqual(controller.state.phase, .failed)
-        XCTAssertEqual(controller.state.failure, "OMP did not accept that value. Check it and start again.")
+        XCTAssertEqual(controller.state.failure, "That value wasn't accepted. Check it and start again.")
     }
 }

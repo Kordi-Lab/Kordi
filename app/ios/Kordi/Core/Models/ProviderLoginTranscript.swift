@@ -53,7 +53,7 @@ struct ProviderLoginTranscript: Equatable {
         switch event {
         case .start:
             entries.removeAll()
-            appendProgress(new.status ?? "Connecting to OMP…")
+            appendProgress(new.status ?? "Connecting…")
         case .reset:
             entries.removeAll()
         case .cancel:

@@ -1326,7 +1326,7 @@ actor CloudAPIClient {
             method: "POST",
             token: token,
             body: ProviderLoginInputRequest(value: value),
-            fallback: "Could not send this value to OMP."
+            fallback: "Could not send this value."
         )
     }
 
@@ -1348,7 +1348,7 @@ actor CloudAPIClient {
             path: "/v1/cloud/agent-provider-auth/catalog",
             method: "GET",
             token: token,
-            fallback: "Could not load OMP providers."
+            fallback: "Could not load providers."
         )
     }
 

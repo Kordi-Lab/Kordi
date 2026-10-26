@@ -242,7 +242,7 @@ export function AuthProviderDetail({
                   onClick={() => (addMethods.length === 1 ? choose(addMethods[0]) : navigate({}))}
                 />
               ) : (
-                <SettingsRow title="Not available yet" description="OMP has no sign-in step for this provider that Kordi can show." />
+                <SettingsRow title="Not available yet" />
               )}
             </SettingsSection>
 

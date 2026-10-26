@@ -298,7 +298,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
         title: provider.id === 'custom' ? 'Custom API' : `${provider.label} API key`,
         detail: provider.id === 'custom'
           ? 'Use a public HTTPS endpoint with an OpenAI-compatible Chat Completions API.'
-          : 'Save an API key for this OMP provider in your Kordi account.',
+          : 'Save an API key in your Kordi account.',
         providerId: provider.id,
         helpUrl: provider.helpUrl,
         envVar: provider.envVar,

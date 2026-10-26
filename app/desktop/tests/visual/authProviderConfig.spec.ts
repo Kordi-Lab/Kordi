@@ -77,7 +77,7 @@ test('OpenAI: the provider page has no inputs, the picker lists four methods, an
   await detail(page).getByRole('textbox', { name: 'Account name' }).fill('Billing key');
   await detail(page).getByLabel('API key', { exact: true }).fill('preview-openai-value');
   await detail(page).getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(steps(page).getByText('Verifying with OMP…')).toBeVisible();
+  await expect(steps(page).getByText('Verifying…')).toBeVisible();
   await finishAndReturn(page, 'Billing key');
   await expect(account(page, 'Billing key')).toContainText('API key');
 
@@ -176,7 +176,7 @@ test('env-only login keeps the field open after OMP rejects a value', async ({ p
   await expect(key).toHaveAttribute('placeholder', groq.login.envVars[0]);
   await key.fill('invalid-value');
   await detail(page).getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(detail(page).getByRole('alert')).toHaveText('OMP did not accept that value. Check it and try again.');
+  await expect(detail(page).getByRole('alert')).toHaveText("That value wasn't accepted. Check it and try again.");
   await key.fill('preview-groq-value');
   await detail(page).getByRole('button', { name: 'Save', exact: true }).click();
   await finishAndReturn(page, 'Work');
@@ -261,7 +261,7 @@ test('Anthropic API keys start the api-key method', async ({ page }) => {
   await detail(page).getByRole('textbox', { name: 'Account name' }).fill('Billing');
   await detail(page).getByLabel('API key', { exact: true }).fill('preview-anthropic-value');
   await detail(page).getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(steps(page).getByText('Verifying with OMP…')).toBeVisible();
+  await expect(steps(page).getByText('Verifying…')).toBeVisible();
   await expect(signedIn(page, 'Billing')).toBeVisible();
   await expect(steps(page).getByRole('button')).toHaveText(['Start chat', 'Done']);
   await steps(page).getByRole('button', { name: 'Start chat' }).click();

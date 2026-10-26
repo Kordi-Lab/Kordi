@@ -56,7 +56,7 @@ function createPreviewCloudSources(onNotice: (notice: string) => void): PreviewC
     captureBusy: previewParams().get('captureBusy') === '1',
     onSnapshot: (snapshot) => {
       snapshots = [...snapshots, { ...snapshot, modelHint: null, createdAt: new Date().toISOString(), revokedAt: null }];
-      onNotice(`OMP saved ${snapshot.label}.`);
+      onNotice(`Saved ${snapshot.label}.`);
     },
   });
   return {

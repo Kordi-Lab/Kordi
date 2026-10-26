@@ -57,6 +57,18 @@ test('provider-auth routes on an older backend report OMP as unavailable', async
   await assert.rejects(restarting.api.ompProviderCatalog(), (caught) => caught instanceof CloudAuthError && !isOmpUnavailableError(caught));
 });
 
+test('server text that names OMP never reaches the page; other server text does', async () => {
+  const named = providerAuthApi(502, { errorCode: 'server_error', message: 'The OMP route test failed. Try again.' });
+  await assert.rejects(
+    named.api.testProviderRoute('token', { provider: 'groq', authChoice: 'profile:work', model: 'groq/m', thinking: 'medium' }),
+    (caught) => caught instanceof CloudAuthError && caught.code === 'server_error' && caught.message === 'Could not test this provider route.',
+  );
+  await assert.rejects(named.api.validateOmpProviderKey('token', 'groq', 'value'), (caught) => caught instanceof CloudAuthError && caught.message === 'Could not verify this provider key.');
+  await assert.rejects(named.api.ompProviderCatalog(), (caught) => caught instanceof CloudAuthError && caught.message === 'Could not load providers.');
+  const plain = providerAuthApi(502, { errorCode: 'server_error', message: 'The provider rejected this key.' });
+  await assert.rejects(plain.api.validateOmpProviderKey('token', 'groq', 'value'), (caught) => caught instanceof CloudAuthError && caught.message === 'The provider rejected this key.');
+});
+
 test('sign-in sessions on an older backend report OMP as unavailable', async () => {
   const unavailable = providerLoginErrorFromResponse(404, null);
   assert.equal(unavailable.code, 'provider_auth_not_configured');
