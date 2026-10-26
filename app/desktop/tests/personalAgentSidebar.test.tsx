@@ -244,3 +244,45 @@ test('Agent settings opens the Blueprint once the Agents page has the agent', as
     assert.deepEqual(opened, [research.id]);
   });
 });
+
+test('a personal session whose agent is not loaded stays out of Recents and keeps the restricted menu', async () => {
+  // The server lists Research agent, but this Mac's agent list does not hold it yet.
+  setPersonalAgentEntries(entries.map((entry) => entry.agentId === 'cloud_agent_research'
+    ? { ...entry, name: 'Agent', localAgentId: null, avatarSeed: 'cloud_agent_research' } : entry));
+  const settings: string[] = [];
+  try {
+    const props = sidebarProps({ onOpenAgentSettings: (id: string) => settings.push(id) });
+    const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, props as never));
+    assert.doesNotMatch(markup, new RegExp(`data-agent-session-row="${RESEARCH_SESSION}"`));
+    assert.match(markup, /data-personal-agent-row="cloud_agent_research"/);
+    // The session names the agent until the list holds it.
+    assert.match(markup, /title="Research agent"/);
+    await withJsdomRoot(async (mount) => {
+      const host = await mount(createElement(WorkspaceSidebar, props as never));
+      await act(async () => {
+        host.querySelector(`[data-personal-agent-row="cloud_agent_research"]`)!
+          .dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 80 }));
+      });
+      assert.deepEqual([...document.querySelectorAll('[data-session-context-action]')].map((item) => item.textContent?.trim()), ['Mark as unread', 'Mute']);
+    });
+    assert.deepEqual(settings, []);
+  } finally {
+    setPersonalAgentEntries([]);
+  }
+});
+
+test('a marked personal session the list does not name yet still gets the section and the restricted menu', async () => {
+  setPersonalAgentEntries([]);
+  await withJsdomRoot(async (mount) => {
+    const host = await mount(createElement(WorkspaceSidebar, sidebarProps() as never));
+    assert.equal(host.querySelector(`[data-agent-session-row="${KORDI_SESSION}"]`), null);
+    assert.ok(host.querySelector(`[data-personal-agent-row="cloud-agent:${ACCOUNT}"]`));
+    assert.ok(host.querySelector('[data-personal-agent-row="cloud_agent_research"]'));
+    await act(async () => {
+      host.querySelector(`[data-personal-agent-row="cloud_agent_research"]`)!
+        .dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 80 }));
+    });
+    const actions = [...document.querySelectorAll('[data-session-context-action]')].map((item) => item.textContent?.trim());
+    assert.deepEqual(actions, ['Mark as unread', 'Mute']);
+  });
+});

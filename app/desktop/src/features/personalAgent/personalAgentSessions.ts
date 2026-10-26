@@ -18,12 +18,23 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+/** The identities that stand for the owner's default agent in its personal session. */
+function defaultAgentIdentityIds(state: CanonicalSessionState, agentId: string) {
+  const ids = new Set<string>();
+  const local = ownedAgentIdentityId(state, state.profile.activeAgentIdentityId);
+  if (local) ids.add(local);
+  // The cloud mirror files the default agent's replies under this identity.
+  if (agentId.startsWith('cloud-agent:')) ids.add(`agent:cloud-self:${agentId.slice('cloud-agent:'.length)}`);
+  return { ids, preferred: local };
+}
+
 /**
  * The local sessions this Mac still needs for the owner's personal agents.
  * Each uses the server's session id, so the cloud mirror files the agent's
  * messages there, and is set up like a chat started with that agent, so
- * replies come from it and sends target it. A session that already carries
- * the marker for its agent is left as it is.
+ * replies come from it and sends target it. A session that has its marker,
+ * kind, agent identity and target is left as it is; anything else (a missing
+ * session, or one rewritten for another agent) is repaired.
  */
 export function planPersonalAgentSessions(
   entries: readonly PersonalAgentEntry[],
@@ -34,30 +45,38 @@ export function planPersonalAgentSessions(
   if (!state || !humanIdentityId) return [];
   return entries.flatMap((entry): PersonalAgentSessionPlan[] => {
     const existing = state.sessions.find((session) => session.id === entry.sessionId);
-    if (existing && personalAgentMarker(existing.metadata) === entry.agentId) return [];
+    const metadata = record(existing?.metadata);
+    const marked = personalAgentMarker(existing?.metadata) === entry.agentId;
     const marker = { personalAgent: { agentId: entry.agentId } };
     if (entry.isDefault) {
-      const primaryIdentityId = ownedAgentIdentityId(state, existing?.primaryIdentityId ?? state.profile.activeAgentIdentityId);
+      const own = defaultAgentIdentityIds(state, entry.agentId);
+      const existingPrimary = existing?.primaryIdentityId?.trim() ?? '';
+      if (existing && marked && existing.kind === 'self-agent' && own.ids.has(existingPrimary) && !metadata.cloudAgentId) return [];
+      const primaryIdentityId = own.ids.has(existingPrimary) ? existingPrimary : own.preferred;
       if (!primaryIdentityId) return [];
+      // Another agent's target, left by an earlier rewrite, would send the owner's messages there.
+      const { cloudAgentId: _agentId, cloudAgentName: _agentName, cloudSelfAgentTarget: _target, ...rest } = metadata;
       return [{
         session: {
           id: entry.sessionId, kind: 'self-agent', title: existing?.title || entry.name, status: 'active',
           createdByIdentityId: humanIdentityId, primaryIdentityId, participantIdentityIds: [primaryIdentityId],
-          metadata: { ...record(existing?.metadata), cloudSelfAgentSession: true, ...marker },
+          metadata: { ...rest, cloudSelfAgentSession: true, ...marker },
         },
       }];
     }
-    const agent = agents.find((candidate) => candidate.id === entry.localAgentId);
+    const agent = entry.localAgentId ? agents.find((candidate) => candidate.id === entry.localAgentId) : undefined;
     const identity = agent ? agentCanonicalIdentityRequest(agent) : null;
     const identityId = identity?.id?.trim();
     if (!agent || !identity || !identityId) return [];
+    if (existing && marked && existing.kind === 'direct-agent' && existing.primaryIdentityId === identityId
+      && metadata.cloudAgentId === agent.cloudAgentId) return [];
     return [{
       identity,
       session: {
         id: entry.sessionId, kind: 'direct-agent', title: existing?.title || agent.name, status: 'active',
         createdByIdentityId: humanIdentityId, primaryIdentityId: identityId, relationshipIdentityId: null,
         participantIdentityIds: [identityId],
-        metadata: { ...record(existing?.metadata), ...buildChatAgentSessionMetadata(agent), ...marker },
+        metadata: { ...metadata, ...buildChatAgentSessionMetadata(agent), ...marker },
       },
     }];
   });

@@ -17,6 +17,7 @@ import {
   type PersistedAgentConfig,
 } from './model';
 import { CLOUD_AGENT_TOOL_DESCRIPTIONS } from './factoryAgentUtils';
+import { editedAgentSettings, withEditedAgentSetting, withoutAgentSettings, withServerAgentSettings } from './agentSettingDrafts';
 
 const EMPTY_FILE_PREVIEW = { status: 'idle' as const, text: '' };
 
@@ -41,7 +42,8 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
     () =>
       Object.fromEntries(
         agents.map((agent) => {
-          const persisted = persistedAgentConfigs[agent.id] ?? buildPersistedAgentConfig(agent);
+          const persisted = withServerAgentSettings(persistedAgentConfigs[agent.id] ?? buildPersistedAgentConfig(agent), agent);
+          const edited = editedAgentSettings(agentDrafts[agent.id]);
           return [
             agent.id,
             {
@@ -49,8 +51,9 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
               loadedSkills: agentDrafts[agent.id]?.loadedSkills ?? persisted.loadedSkills,
               loadedTools: agentDrafts[agent.id]?.loadedTools ?? persisted.loadedTools,
               loadedPlugins: agentDrafts[agent.id]?.loadedPlugins ?? persisted.loadedPlugins,
-              proactive: agentDrafts[agent.id]?.proactive ?? persisted.proactive,
-              personalProactive: agentDrafts[agent.id]?.personalProactive ?? persisted.personalProactive,
+              proactive: edited.proactive ?? persisted.proactive,
+              personalProactive: edited.personalProactive ?? persisted.personalProactive,
+              ...(edited.editedSettings ? { editedSettings: edited.editedSettings } : {}),
             },
           ];
         }),
@@ -59,7 +62,7 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
   );
 
   const activeAgentConfig = activeAgent ? agentConfigs[activeAgent.id] ?? buildAgentStudioDraft(activeAgent) : null;
-  const activePersistedConfig = activeAgent ? persistedAgentConfigs[activeAgent.id] ?? buildPersistedAgentConfig(activeAgent) : null;
+  const activePersistedConfig = activeAgent ? withServerAgentSettings(persistedAgentConfigs[activeAgent.id] ?? buildPersistedAgentConfig(activeAgent), activeAgent) : null;
   const availableSkills = useMemo(
     () =>
       Array.from(
@@ -190,13 +193,13 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
       }
       const persisted = persistedAgentConfigs[agentId] ?? buildPersistedAgentConfig(fallbackAgent);
       const stored = current[agentId];
+      // Settings enter the stored draft only when changed here (see agentSettingDrafts).
       const baseline: AgentStudioConfigDraft = {
         systemPrompt: stored?.systemPrompt ?? persisted.systemPrompt,
         loadedSkills: stored?.loadedSkills ?? persisted.loadedSkills,
         loadedTools: stored?.loadedTools ?? persisted.loadedTools,
         loadedPlugins: stored?.loadedPlugins ?? persisted.loadedPlugins,
-        proactive: stored?.proactive ?? persisted.proactive,
-        personalProactive: stored?.personalProactive ?? persisted.personalProactive,
+        ...editedAgentSettings(stored),
       };
       return {
         ...current,
@@ -224,8 +227,6 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
         loadedSkills: persisted.loadedSkills,
         loadedTools: persisted.loadedTools,
         loadedPlugins: persisted.loadedPlugins,
-        proactive: persisted.proactive,
-        personalProactive: persisted.personalProactive,
       },
     }));
     setEditingSectionByAgentId((current) => ({ ...current, [agent.id]: null }));
@@ -394,7 +395,7 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
       ].slice(0, 12),
     };
     setPersistedAgentConfigs((current) => ({ ...current, [agent.id]: nextPersisted }));
-    setAgentDrafts((current) => ({ ...current, [agent.id]: draft }));
+    setAgentDrafts((current) => ({ ...current, [agent.id]: withoutAgentSettings(draft) }));
     setSaveFeedbackByAgentId((current) => ({
       ...current,
       [agent.id]: { tone: 'success', text: `${agent.name} is published and ready.` },
@@ -433,8 +434,8 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
       })),
     updatePrompt: (agentId: string, value: string) => updateAgentDraft(agentId, (current) => ({ ...current, systemPrompt: value })),
     replaceAgentDraft,
-    setProactiveDraft: (agentId: string, enabled: boolean) => updateAgentDraft(agentId, (current) => ({ ...current, proactive: { enabled } })),
-    setPersonalProactiveDraft: (agentId: string, enabled: boolean) => updateAgentDraft(agentId, (current) => ({ ...current, personalProactive: enabled })),
+    setProactiveDraft: (agentId: string, enabled: boolean) => updateAgentDraft(agentId, (current) => withEditedAgentSetting(current, 'proactive', { proactive: { enabled } })),
+    setPersonalProactiveDraft: (agentId: string, enabled: boolean) => updateAgentDraft(agentId, (current) => withEditedAgentSetting(current, 'personalProactive', { personalProactive: enabled })),
     updateActiveFileDraft,
     toggleSkill: (agentId: string, skill: string, selected: boolean) =>
       updateAgentDraft(agentId, (current) => ({

@@ -73,7 +73,7 @@ test('Cooperative labels and descriptions follow the Blueprint copy', () => {
   assert.equal(cloudAgentProactiveDescription(true), 'Watches the groups you are in and asks you before it helps.');
 });
 
-test('publishing sends Cooperative as cooperative with the update and the create input', async () => {
+test('publishing sends Cooperative as both proactive and cooperative with the update and the create input', async () => {
   const bodies: unknown[] = [];
   const client = new CloudAgentsClient({
     baseUrl: 'https://cloud.example',
@@ -83,8 +83,14 @@ test('publishing sends Cooperative as cooperative with the update and the create
     },
   });
   const updated = await client.updateCloudAgent('token', 'cloud_agent_abc', { proactive: { enabled: true } });
+  // A server without #2091 reads only `proactive`; a newer one accepts both while they agree.
   assert.deepEqual((bodies[0] as { cooperative?: unknown }).cooperative, { enabled: true });
-  assert.equal('proactive' in (bodies[0] as object), false);
+  assert.deepEqual((bodies[0] as { proactive?: unknown }).proactive, { enabled: true });
+  await client.createCloudAgent('token', { name: 'A', role: 'B', systemPrompt: 'C', proactive: { enabled: false } });
+  assert.deepEqual((bodies[1] as { proactive?: unknown }).proactive, { enabled: false });
+  assert.deepEqual((bodies[1] as { cooperative?: unknown }).cooperative, { enabled: false });
+  await client.updateCloudAgent('token', 'cloud_agent_abc', { name: 'Renamed' });
+  assert.equal('proactive' in (bodies[2] as object) || 'cooperative' in (bodies[2] as object), false);
   assert.deepEqual(updated.proactive, { enabled: true });
 
   const draft = { name: 'A', role: 'B', description: '', systemPrompt: 'C', sourceSummary: '', boundaries: [], skills: [] };

@@ -1,5 +1,6 @@
 import { DEFAULT_LOCAL_AGENT_AVATAR_SEED } from '@/features/canonical/localAgentAvatar';
 import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
+import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
 import type { Agent, Conversation } from '@/kordi-app/types';
 import type { PersonalAgentSession } from './personalAgentClient';
 import type { PersonalAgentEntry } from './personalAgentStore';
@@ -19,10 +20,7 @@ export function personalAgentMarker(metadata: unknown): string | null {
   return typeof agentId === 'string' && agentId.trim() ? agentId.trim() : null;
 }
 
-/**
- * Joins the server's personal sessions with the local agent list for names and
- * avatars. A Factory agent the list does not hold yet is left out until it does.
- */
+/** Joins the server's personal sessions with the local agent list for names and avatars. */
 export function joinPersonalAgents(
   sessions: readonly PersonalAgentSession[],
   agents: readonly Agent[],
@@ -41,34 +39,48 @@ export function joinPersonalAgents(
         isDefault: true,
       }];
     }
+    // A Factory agent the local list does not hold yet keeps its row; the
+    // session supplies its name until the agent loads.
     const agent = agents.find((candidate) => candidate.cloudAgentId === session.agentId);
-    if (!agent) return [];
     return [{
       ...session,
-      name: agent.name.trim() || 'Agent',
-      localAgentId: agent.id,
-      avatarSeed: agent.avatarSeed?.trim() || agent.id,
-      profileImageUrl: agent.profileImageUrl ?? null,
+      name: agent?.name.trim() || 'Agent',
+      localAgentId: agent?.id ?? null,
+      avatarSeed: agent?.avatarSeed?.trim() || agent?.id || session.agentId,
+      profileImageUrl: agent?.profileImageUrl ?? null,
       isDefault: false,
     }];
   });
 }
 
 type ConversationIds = Pick<Conversation, 'id' | 'metadata'> & { canonicalSessionId?: string | null };
+type ConversationLike = ConversationIds & Partial<Pick<Conversation, 'canonicalParticipants' | 'participants' | 'name' | 'type'>>;
 
-/** The personal agent a conversation belongs to: by session id, then by the session's marker. */
-export function personalAgentEntryForConversation(
-  entries: readonly PersonalAgentEntry[],
-  conversation: ConversationIds | null | undefined,
-): PersonalAgentEntry | null {
-  if (!conversation || entries.length === 0) return null;
-  const ids = new Set([conversation.id, conversation.canonicalSessionId].map((id) => id?.trim()).filter(Boolean));
-  const marker = personalAgentMarker(conversation.metadata);
-  return entries.find((entry) => ids.has(entry.sessionId) || (entry.conversationId && ids.has(entry.conversationId)))
-    ?? (marker ? entries.find((entry) => entry.agentId === marker) ?? null : null);
+/** The agent a personal session's conversation names, for an agent the local list does not hold. */
+function withConversationAgent(entry: PersonalAgentEntry, conversation: ConversationLike): PersonalAgentEntry {
+  if (entry.localAgentId || !conversation.canonicalParticipants?.length) return entry;
+  const agent = primaryAgentForConversation(conversation as Conversation);
+  return agent ? { ...entry, name: agent.name || entry.name, avatarSeed: agent.avatarSeed || entry.avatarSeed, profileImageUrl: agent.profileImageUrl ?? entry.profileImageUrl } : entry;
 }
 
-/** Whether a conversation is an agent's personal session, even before the list loads. */
-export function isPersonalAgentConversation(entries: readonly PersonalAgentEntry[], conversation: ConversationIds) {
-  return Boolean(personalAgentMarker(conversation.metadata) || personalAgentEntryForConversation(entries, conversation));
+/**
+ * The personal agent a conversation belongs to: by session id, then by the
+ * session's marker. A marked session the list does not name yet (it has not
+ * loaded) still counts, as the marked agent.
+ */
+export function personalAgentEntryForConversation(
+  entries: readonly PersonalAgentEntry[],
+  conversation: ConversationLike | null | undefined,
+): PersonalAgentEntry | null {
+  if (!conversation) return null;
+  const ids = new Set([conversation.id, conversation.canonicalSessionId].map((id) => id?.trim()).filter(Boolean));
+  const marker = personalAgentMarker(conversation.metadata);
+  const entry = entries.find((candidate) => ids.has(candidate.sessionId) || (candidate.conversationId && ids.has(candidate.conversationId)))
+    ?? (marker ? entries.find((candidate) => candidate.agentId === marker) : undefined);
+  if (entry) return withConversationAgent(entry, conversation);
+  if (!marker) return null;
+  return withConversationAgent({
+    agentId: marker, conversationId: '', sessionId: conversation.canonicalSessionId?.trim() || conversation.id, proactive: false,
+    name: 'Agent', localAgentId: null, avatarSeed: marker, profileImageUrl: null, isDefault: false,
+  }, conversation);
 }

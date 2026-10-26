@@ -62,8 +62,8 @@ export function WorkspaceChatLists({
   ), [model.agentSessionRowsById, model.pinnedSessionIds]);
   const personalAgents = usePersonalAgentEntries();
   const personal = useMemo(() => (
-    model.showArchived ? undefined : personalAgentSidebarRows(personalAgents, model.agentSessionRowsById, model.chatSearch)
-  ), [model.agentSessionRowsById, model.chatSearch, model.showArchived, personalAgents]);
+    model.showArchived ? undefined : personalAgentSidebarRows(personalAgents, model.allSidebarSessionRowsById, model.chatSearch)
+  ), [model.allSidebarSessionRowsById, model.chatSearch, model.showArchived, personalAgents]);
   const grouped = useMemo(() => projectChatGroups(
     model.agentSidebarRows, model.showArchived ? [] : projects?.projects ?? [], collapsed,
     Boolean(projects?.enabled && !model.chatSearch && !model.showArchived),
@@ -212,8 +212,8 @@ export function WorkspaceChatLists({
           )
         ) : personalAgentIdFromRowKey(descriptor.key) ? (
           <PersonalAgentSidebarRow
-            entry={personalAgents.find((entry) => entry.agentId === personalAgentIdFromRowKey(descriptor.key))}
-            row={descriptor.kind === 'session' ? model.agentSessionRowsById.get(descriptor.sessionId) : undefined}
+            entry={personal?.entriesByAgentId.get(personalAgentIdFromRowKey(descriptor.key) ?? '')}
+            row={descriptor.kind === 'session' ? model.allSidebarSessionRowsById.get(descriptor.sessionId) : undefined}
             model={model}
             activeConvId={activeConvId}
             onSelectChatSession={contactActions.onSelectChatSession}

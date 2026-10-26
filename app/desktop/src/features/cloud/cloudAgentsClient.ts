@@ -66,10 +66,14 @@ async function readJsonSafe(response: Response): Promise<unknown> {
   }
 }
 
-/** The request body: the group-watching setting goes out as `cooperative`, its current server name. */
+/**
+ * The request body: the group-watching setting goes out under both names with
+ * the same value. Servers before #2091 read only `proactive`; newer servers
+ * accept both while they agree.
+ */
 function cloudAgentRequestBody(input: UpdateCloudAgentInput) {
   const { proactive, ...rest } = input;
-  return { ...rest, ...(proactive ? { cooperative: proactive } : {}) };
+  return { ...rest, ...(proactive ? { proactive, cooperative: proactive } : {}) };
 }
 
 function cloudAgentError(status: number, body: unknown, fallbackMessage: string): CloudAuthError {

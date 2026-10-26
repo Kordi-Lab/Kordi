@@ -3,6 +3,7 @@ import type { CloudAccount, CloudMessage } from './authClient';
 import type { CloudSelfAgentCanonicalSyncPlan } from './cloudSelfAgentCanonicalSync';
 import { cloudAgentSessionTargetFromMessages } from './cloudSelfAgentSessionIdentity';
 import { defaultCloudAgentId } from './cloudAgentIdentity';
+import { isPersonalAgentSession } from '@/features/personalAgent/personalAgentStore';
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object'
   && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -40,6 +41,10 @@ export function applyCloudSelfAgentTargetIdentities(
   }
   const ownerIdentityId = state.profile.humanIdentityId || `human:${account.accountId}`;
   for (const [sessionId, entries] of bySession) {
+    // A personal session belongs to its agent for good: an @mention of another
+    // agent there must not turn it into that agent's chat.
+    if (isPersonalAgentSession(sessionId, state.sessions.find(session => session.id === sessionId)?.metadata)
+      || isPersonalAgentSession(null, sessions.get(sessionId)?.metadata)) continue;
     const target = cloudAgentSessionTargetFromMessages(entries, account.accountId);
     if (!target || target.targetCloudAgentId === defaultCloudAgentId(account.accountId)) continue;
     const existingIdentity = state.identities.find(identity => identity.kind === 'agent'

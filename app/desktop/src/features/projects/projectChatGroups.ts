@@ -20,8 +20,17 @@ export function projectChatGroups(
   const groups = new Map<string, { name: string; rows: ChatSidebarRow[] }>();
   const pinned: ChatSidebarRow[] = [];
   const recents: ChatSidebarRow[] = [];
-  for (const row of rows) {
-    if (row.kind !== 'session' || options.personal?.sessionIds.has(row.sessionId)) continue;
+  // Forks of a personal session stay in the other sections, lifted to the
+  // depth they would have without that parent (direct forks at the top level).
+  let personalParentDepth: number | null = null;
+  for (const listed of rows) {
+    if (listed.kind !== 'session') continue;
+    if (personalParentDepth !== null && listed.depth <= personalParentDepth) personalParentDepth = null;
+    if (options.personal?.sessionIds.has(listed.sessionId)) {
+      personalParentDepth ??= listed.depth;
+      continue;
+    }
+    const row = personalParentDepth === null ? listed : { ...listed, depth: listed.depth - personalParentDepth - 1 };
     const project = projectBySession.get(row.sessionId);
     if (options.pinnedSessionIds?.has(row.sessionId)) pinned.push(row);
     else if (!project) recents.push(row);

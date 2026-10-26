@@ -112,20 +112,22 @@ test('the change list shows Proactive updated with its own key', () => {
   assert.equal(AGENT_SETTING_CHANGE_KEYS.has('prompt'), false);
 });
 
-test('stored drafts keep personalProactive and older drafts still load', async () => {
+test('stored drafts keep only settings edited here; older drafts fall back to the server value', async () => {
   const agent = definitionAgent();
   assert.equal(parsePersistedAgentConfig(JSON.stringify({ personalProactive: true }), agent).personalProactive, true);
   assert.equal(parsePersistedAgentConfig('{}', agent).personalProactive, false);
   await withJsdomRoot(async () => {
     window.localStorage.setItem(AGENT_CONFIG_STORAGE_KEY, JSON.stringify({
-      [agent.id]: { systemPrompt: 'Draft', proactive: { enabled: true }, personalProactive: true },
-      older: { systemPrompt: 'Old', proactive: { enabled: true } },
+      [agent.id]: { systemPrompt: 'Draft', proactive: { enabled: true }, personalProactive: true, editedSettings: ['personalProactive', 'bogus'] },
+      older: { systemPrompt: 'Old', proactive: { enabled: true }, personalProactive: false },
     }));
     const drafts = readStoredAgentDrafts();
     assert.equal(drafts[agent.id]?.personalProactive, true);
-    assert.deepEqual(drafts[agent.id]?.proactive, { enabled: true });
+    assert.equal(drafts[agent.id]?.proactive, undefined);
+    assert.deepEqual(drafts[agent.id]?.editedSettings, ['personalProactive']);
+    assert.equal(drafts.older?.systemPrompt, 'Old');
     assert.equal(drafts.older?.personalProactive, undefined);
-    assert.deepEqual(drafts.older?.proactive, { enabled: true });
+    assert.equal(drafts.older?.proactive, undefined);
   });
 });
 
@@ -144,7 +146,7 @@ test('a Factory agent publishes only the changed settings in its update body', a
     },
   });
   const updated = await client.updateCloudAgent('token', 'cloud_agent_abc', { ...cloudAgentSettingsUpdate([{ key: 'personalProactive', label: '', detail: '' }, { key: 'proactive', label: '', detail: '' }], config) });
-  assert.deepEqual(bodies[0], { cooperative: { enabled: true }, personalAgent: { proactive: true } });
+  assert.deepEqual(bodies[0], { proactive: { enabled: true }, cooperative: { enabled: true }, personalAgent: { proactive: true } });
   assert.deepEqual(updated.personalAgent, { proactive: true });
   assert.deepEqual(updated.proactive, { enabled: true });
 

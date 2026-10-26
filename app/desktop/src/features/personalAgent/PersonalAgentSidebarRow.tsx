@@ -7,7 +7,7 @@ import type { WorkspaceChatSidebarModel } from '@/pages/workspaceSidebar.chatMod
 import { SidebarUnreadBadge } from '@/pages/workspaceSidebar.shared';
 import type { PersonalAgentEntry } from './personalAgentStore';
 
-type SidebarSessionRow = NonNullable<ReturnType<WorkspaceChatSidebarModel['agentSessionRowsById']['get']>>;
+type SidebarSessionRow = NonNullable<ReturnType<WorkspaceChatSidebarModel['allSidebarSessionRowsById']['get']>>;
 
 /** One owned agent's always-online session at the top of Agent Chats. */
 export function PersonalAgentSidebarRow({

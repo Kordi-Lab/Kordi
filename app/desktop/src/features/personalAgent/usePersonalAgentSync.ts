@@ -8,6 +8,7 @@ import { loadChatSyncConversations } from '@/lib/desktopChatSync';
 import { listPersonalAgentSessions, personalAgentSessionsFromSnapshots, type PersonalAgentSession } from './personalAgentClient';
 import { joinPersonalAgents } from './personalAgentEntries';
 import { planPersonalAgentSessions, type PersonalAgentSessionPlan } from './personalAgentSessions';
+import { loadUntilSuccess } from './personalAgentListRetry';
 import { setPersonalAgentEntries } from './personalAgentStore';
 
 const RETRY_MS = 30_000;
@@ -24,6 +25,8 @@ type Options = {
   /** Cached chat-sync snapshots, which name personal sessions before the list loads. */
   loadCachedConversations?: (accountId: string) => Promise<ChatSyncConversation[]>;
   createSession?: (plan: PersonalAgentSessionPlan) => Promise<(state: CanonicalSessionState) => CanonicalSessionState>;
+  /** Waits between list retries; tests shorten them. */
+  retryDelaysMs?: readonly number[];
 };
 
 async function createLocalSession(plan: PersonalAgentSessionPlan) {
@@ -39,7 +42,7 @@ async function createLocalSession(plan: PersonalAgentSessionPlan) {
  */
 export function usePersonalAgentSync({
   accountId, agents, canonicalState, setCanonicalState, canCreateSessions, reportWarning,
-  list = listPersonalAgentSessions, createSession = createLocalSession, loadCachedConversations = loadChatSyncConversations,
+  list = listPersonalAgentSessions, createSession = createLocalSession, loadCachedConversations = loadChatSyncConversations, retryDelaysMs,
 }: Options) {
   const [loaded, setLoaded] = useState<{ accountId: string; sessions: PersonalAgentSession[] } | null>(null);
   const [cached, setCached] = useState<{ accountId: string; sessions: PersonalAgentSession[] } | null>(null);
@@ -48,8 +51,8 @@ export function usePersonalAgentSync({
     .map((agent) => agent.cloudAgentId)
     .sort()
     .join(','), [agents]);
-  const latest = useRef({ list, reportWarning, loadCachedConversations });
-  useEffect(() => { latest.current = { list, reportWarning, loadCachedConversations }; }, [list, loadCachedConversations, reportWarning]);
+  const latest = useRef({ list, reportWarning, loadCachedConversations, retryDelaysMs });
+  useEffect(() => { latest.current = { list, reportWarning, loadCachedConversations, retryDelaysMs }; }, [list, loadCachedConversations, reportWarning, retryDelaysMs]);
 
   useEffect(() => {
     if (!accountId) return;
@@ -58,13 +61,17 @@ export function usePersonalAgentSync({
       (conversations) => { if (!cancelled) setCached({ accountId, sessions: personalAgentSessionsFromSnapshots(conversations) }); },
       () => undefined,
     );
-    void (async () => {
+    const stop = loadUntilSuccess(async () => {
       const session = await loadSession();
-      if (!session?.token || session.accountId !== accountId) return;
+      if (!session?.token || session.accountId !== accountId) return false;
       const sessions = await latest.current.list(session.token);
       if (!cancelled) setLoaded({ accountId, sessions });
-    })().catch((error: unknown) => latest.current.reportWarning?.('[personal-agent] could not load personal agents', error));
-    return () => { cancelled = true; };
+      return true;
+    }, {
+      onError: (error) => latest.current.reportWarning?.('[personal-agent] could not load personal agents', error),
+      ...(latest.current.retryDelaysMs ? { delaysMs: latest.current.retryDelaysMs } : {}),
+    });
+    return () => { cancelled = true; stop(); };
   }, [accountId, ownedAgentKey]);
 
   const entries = useMemo(() => {

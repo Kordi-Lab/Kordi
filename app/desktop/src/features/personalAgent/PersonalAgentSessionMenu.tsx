@@ -16,6 +16,7 @@ export function PersonalAgentSessionMenu({
   onSetUnread: (sessionId: string, unread: boolean) => void;
   onOpenAgentSettings?: (localAgentId: string) => void;
 }) {
+  const { localAgentId } = target.personalAgent;
   const run = (action: () => void) => {
     onClose();
     action();
@@ -46,9 +47,9 @@ export function PersonalAgentSessionMenu({
             : <BellOff className="app-transient-action-icon" aria-hidden="true" />}
           {target.muted ? 'Unmute' : 'Mute'}
         </button>
-        {onOpenAgentSettings ? (
+        {onOpenAgentSettings && localAgentId ? (
           <button type="button" role="menuitem" data-session-context-action="agent-settings" className={ROW_CLASS}
-            onClick={() => run(() => onOpenAgentSettings(target.personalAgent.localAgentId))}>
+            onClick={() => run(() => onOpenAgentSettings(localAgentId))}>
             <Settings className="app-transient-action-icon" aria-hidden="true" />
             Agent settings
           </button>

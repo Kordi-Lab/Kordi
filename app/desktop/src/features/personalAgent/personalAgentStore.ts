@@ -1,13 +1,13 @@
 import { useSyncExternalStore } from 'react';
 import type { Conversation } from '@/kordi-app/types';
 import type { PersonalAgentSession } from './personalAgentClient';
-import { personalAgentEntryForConversation } from './personalAgentEntries';
+import { personalAgentEntryForConversation, personalAgentMarker } from './personalAgentEntries';
 
 /** A personal session joined with the local agent that owns it, ready for the sidebar and header. */
 export type PersonalAgentEntry = PersonalAgentSession & {
   name: string;
-  /** The local agent id, used to open the agent's Blueprint. */
-  localAgentId: string;
+  /** The local agent id, used to open the agent's Blueprint; null while the agent list does not hold it. */
+  localAgentId: string | null;
   avatarSeed: string;
   profileImageUrl: string | null;
   isDefault: boolean;
@@ -49,4 +49,14 @@ export function usePersonalAgentEntries(): readonly PersonalAgentEntry[] {
 /** The personal agent a conversation is the session of, if any. */
 export function usePersonalAgentForConversation(conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'metadata'> | null | undefined) {
   return personalAgentEntryForConversation(usePersonalAgentEntries(), conversation);
+}
+
+/**
+ * Whether a session is a personal session: its marker, or its id in the
+ * server list, whether or not its agent is loaded yet.
+ */
+export function isPersonalAgentSession(sessionId: string | null | undefined, metadata?: unknown) {
+  const id = sessionId?.trim();
+  return Boolean(personalAgentMarker(metadata)
+    || (id && snapshot.some((entry) => entry.sessionId === id || entry.conversationId === id)));
 }

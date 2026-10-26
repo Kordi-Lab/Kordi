@@ -140,6 +140,11 @@ test('providers show their display names, and unknown ones their capitalized id'
   assert.equal(messageEventSourceProvider('notion').name, 'Notion');
   assert.equal(messageEventSourceProvider('linear_app').name, 'Linear app');
   assert.equal(messageEventSourceProvider('').name, 'Source');
+  // Inherited object members are not providers.
+  assert.equal(messageEventSourceProvider('constructor').name, 'Constructor');
+  assert.equal(messageEventSourceProvider('__proto__').name, 'Proto');
+  assert.equal(messageEventSourceProvider('toString').name, 'Tostring');
+  assert.equal(typeof messageEventSourceProvider('hasOwnProperty').icon, 'object');
 });
 
 test('source chips render the provider and the muted title under the message', async () => {

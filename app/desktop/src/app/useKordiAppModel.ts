@@ -9,6 +9,7 @@ import { useAcceptedCloudGroupNavigation } from '@/app/useAcceptedCloudGroupNavi
 import { chatNavigationIndex } from '@/features/chat/chatNavigation';
 import { useCommonGroundPairLinks } from '@/features/commonGround/useCommonGroundPairLinks';
 import { usePersonalAgentSync } from '@/features/personalAgent/usePersonalAgentSync';
+import { reportCloudAgentAvailabilityWarning } from '@/features/cloud/useCloudCollaborationState';
 
 export function useKordiAppModel({
   cloudSessionOverride,
@@ -53,6 +54,7 @@ export function useKordiAppModel({
     canonicalState: foundation.canonical.canonicalSessionState,
     setCanonicalState: foundation.canonical.setCanonicalSessionState,
     canCreateSessions: foundation.environment.isNativeShell && foundation.canonical.canonicalInitialRefreshSettled,
+    reportWarning: reportCloudAgentAvailabilityWarning,
   });
   const actions = useKordiAppActions({ foundation, workspace });
   const cloudCalls = useCloudCalls({
