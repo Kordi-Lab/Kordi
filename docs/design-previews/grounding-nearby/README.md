@@ -75,4 +75,3 @@ The Icons switch in the top bar (`icons=current|tint|gradient|plain`, default `t
 - `plain`: no tile, an outline glyph in the text colour.
 
 Real files a chosen style changes: Mac `app/desktop/src/styles/shell-contacts.css` (`.app-common-ground-tile`) and `app/desktop/src/styles/commonGroundWallet.css` (`.cg-pair-icon`, one hue per row in `PairCodePanel.tsx`); iPhone `app/ios/Kordi/Features/CommonGround/CommonGroundPairCodeRow.swift` (`tile(_:)`).
-
