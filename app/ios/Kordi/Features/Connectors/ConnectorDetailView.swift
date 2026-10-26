@@ -46,23 +46,23 @@ struct ConnectorDetailView: View {
 
     /// Larger logo, the name, and one short grey state.
     private var header: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: SettingsMetrics.iconSpacing) {
             ConnectorLogo(providerId: definition.providerId, size: 40)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(definition.name)
-                    .font(.title3.weight(.semibold))
+                    .font(SettingsFont.headerTitle)
                     .accessibilityAddTraits(.isHeader)
                 Text(ConnectorsModel.detailState(definition: definition, state: state))
-                    .font(.subheadline)
+                    .font(SettingsFont.subtitle)
                     .foregroundStyle(.secondary)
                 if definition.experimental {
                     Text("Experimental, read-only, best effort.")
-                        .font(.caption)
+                        .font(SettingsFont.subtitle)
                         .foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
     }
 
@@ -311,24 +311,24 @@ private struct ConnectorConsentSheet: View {
                         .font(.title3.weight(.semibold))
                         .accessibilityAddTraits(.isHeader)
                     Text(consent.message)
-                        .font(.subheadline)
+                        .font(SettingsFont.rowTitle)
                         .foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(consent.scopes) { scope in
                             Label(scope.label, systemImage: scope.systemImage)
-                                .font(.subheadline)
+                                .font(SettingsFont.rowTitle)
                         }
                     }
                     if let note = consent.note {
                         Text(note)
-                            .font(.footnote)
+                            .font(SettingsFont.subtitle)
                             .foregroundStyle(.secondary)
                     }
                     if busy {
                         HStack(spacing: 8) {
                             ProgressView()
                             Text(consent.waitingText)
-                                .font(.footnote)
+                                .font(SettingsFont.subtitle)
                                 .foregroundStyle(.secondary)
                         }
                         .accessibilityElement(children: .combine)

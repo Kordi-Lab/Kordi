@@ -32,236 +32,67 @@ struct ProviderAuthenticationDetailView: View {
     var body: some View {
         ScrollViewReader { scroller in
         List {
-            Section {
-                HStack(spacing: 11) {
-                    ProviderAuthenticationIcon(provider: provider, size: 40)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(provider.name)
-                            .font(.body.weight(.semibold))
-                        Text(provider.subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-                .padding(.vertical, 2)
-            }
+            Group {
+                header
+                    .padding(.top, SettingsMetrics.pageInsets.top)
 
-            Section("Saved accounts") {
+                SettingsDivider()
+                SettingsSectionTitle("Saved accounts")
                 if profiles.isEmpty {
-                    Text("No accounts connected yet")
-                        .foregroundStyle(.secondary)
+                    SettingsCaption("No accounts connected yet")
                 }
                 ForEach(profiles, id: \.snapshotId) { profile in
-                    HStack(spacing: 11) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(profile.label?.nonEmpty ?? accountMethod(profile))
-                                .font(.body.weight(.medium))
-                                .accessibilityIdentifier(
-                                    profile.snapshotId == highlightedSnapshotID ? "saved-account-new" : "saved-account"
-                                )
-                            Text(accountDetail(profile))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .accessibilityIdentifier("saved-account-detail")
-                            if provider.id == ProviderAuthenticationDefinition.custom.id, profile.modelHint?.nonEmpty == nil {
-                                Text("Add a model ID to start chatting")
-                                    .font(.caption)
-                                    .foregroundStyle(.orange)
-                                    .accessibilityIdentifier("custom-missing-model")
-                            }
-                        }
-                        Spacer(minLength: 8)
-                        if provider.id == ProviderAuthenticationDefinition.custom.id {
-                            Button {
-                                startEditingCustom(profile)
-                            } label: {
-                                Image(systemName: "pencil")
-                            }
-                            .buttonStyle(.borderless)
-                            .accessibilityLabel("Edit \(profile.label?.nonEmpty ?? "account")")
-                        }
-                        Button(role: .destructive) {
-                            removeTarget = profile
-                            showRemoveConfirmation = true
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("Remove \(profile.label?.nonEmpty ?? accountMethod(profile))")
-                    }
-                    .frame(minHeight: 44)
-                    .id(profile.snapshotId)
-                    .listRowBackground(
-                        profile.snapshotId == highlightedSnapshotID ? Color.green.opacity(0.14) : nil
-                    )
-                    .swipeActions(edge: .leading) {
-                        if !isActive(profile) {
-                            Button("Make active") { model.makeAccountActive(profile) }
-                                .tint(chatTheme.accent)
-                        }
-                    }
+                    savedAccountRow(profile)
                 }
-            }
 
-            Section {
-                Button {
-                    startChat()
-                } label: {
-                    HStack(spacing: 8) {
-                        if isStartingChat { ProgressView().controlSize(.small).tint(.white) }
-                        Text("Start chat")
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(profiles.isEmpty || isStartingChat || activeChatModel == nil)
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
-                .accessibilityIdentifier("provider-start-chat")
-            } footer: {
+                startChatButton
+                    .padding(.top, 12)
                 if profiles.isEmpty {
-                    Text("Add an account to start a chat.")
+                    SettingsCaption("Add an account to start a chat.")
                 } else if let active = model.activeAccount(for: provider.id) {
                     if let modelName = activeChatModel {
-                        Text("Uses \(active.label?.nonEmpty ?? accountMethod(active)) with \(modelName).")
+                        SettingsCaption("Uses \(active.label?.nonEmpty ?? accountMethod(active)) with \(modelName).")
                     } else {
-                        Text("Add a model ID to start chatting.")
+                        SettingsCaption("Add a model ID to start chatting.")
                     }
                 }
-            }
 
-            if !loginMethods.isEmpty {
-                Section {
-                    Button {
-                        showsAddAccount = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Add account")
-                                    .foregroundStyle(Color.primary)
-                                Text(ProviderLoginMethod.summary(of: loginMethods))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 8)
-                            Image(systemName: "chevron.right")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                                .accessibilityHidden(true)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .accessibilityIdentifier("provider-add-account")
-                } footer: {
+                if !loginMethods.isEmpty {
+                    SettingsDivider()
+                    addAccountButton
                     if model.ompBackendUnavailable {
-                        Text(OMPBackendSupport.unavailableMessage)
+                        SettingsCaption(OMPBackendSupport.unavailableMessage)
                             .accessibilityIdentifier("omp-backend-unavailable")
                     }
-                }
-            } else if provider.id == ProviderAuthenticationDefinition.custom.id {
-                Section(editingCustom.map { "Edit \($0.label?.nonEmpty ?? "account")" } ?? "New account name") {
-                    TextField("For example, Personal or Work", text: $profileLabel)
-                        .textInputAutocapitalization(.words)
-                        .accessibilityIdentifier("custom-label")
-                }
-                Section {
-                    TextField("https://api.example.com/v1", text: $customBaseURL)
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
-                        .autocorrectionDisabled()
-                        .accessibilityIdentifier("custom-base-url")
-                } header: {
-                    Text("Endpoint")
-                } footer: {
-                    Text("Use a public HTTPS endpoint with an OpenAI-compatible Chat Completions API.")
-                }
-                Section {
-                    TextField("deepseek-chat", text: $customModelID)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .accessibilityIdentifier("custom-model-id")
-                    if customModelIDTooLong {
-                        Text("Use at most \(Self.customModelIDLimit) characters.")
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
-                } header: {
-                    Text("Model ID")
-                } footer: {
-                    Text("The model name your endpoint serves, sent as the Chat Completions model field.")
-                }
-                Section {
-                    HStack(spacing: 10) {
-                        Image(systemName: "key")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 20)
-                            .accessibilityHidden(true)
-                        SecureField("Paste API key", text: $apiKey)
-                            .textContentType(.password)
-                            .keyboardType(.asciiCapable)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .privacySensitive()
-                            .focused($apiKeyFocused)
-                            .accessibilityIdentifier("custom-api-key")
-                    }
-
-                    Button {
-                        Task { await saveAPIKey() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isSaving { ProgressView().controlSize(.small) }
-                            Text(editingCustom == nil ? apiKeyActionTitle : "Save changes")
-                        }
-                        .frame(maxWidth: .infinity, alignment: .center)
-                    }
-                    .disabled(isSaving || apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        || customBaseURL.isEmpty || customModelIDValue.isEmpty || customModelIDTooLong)
-                    .accessibilityIdentifier("custom-save")
-                    if editingCustom != nil {
-                        Button("Cancel editing", role: .cancel) { stopEditingCustom() }
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .accessibilityIdentifier("custom-cancel-edit")
-                    }
-                } header: {
-                    Text("Add API key")
-                } footer: {
-                    Text(editingCustom == nil
-                        ? "Encrypted in your Kordi account and available to Cloud sessions on iPhone and Mac. The key is cleared from this screen after saving."
-                        : "Enter the endpoint and key again; this iPhone does not keep them. Saving replaces this account.")
-                }
-            } else {
-                Section {
-                    HStack(alignment: .top, spacing: 11) {
+                } else if provider.id == ProviderAuthenticationDefinition.custom.id {
+                    customAccountForm
+                } else {
+                    SettingsDivider()
+                    SettingsSectionTitle("Mac runtime")
+                    HStack(alignment: .top, spacing: SettingsMetrics.iconSpacing) {
                         Image(systemName: "macbook")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 22)
-                        VStack(alignment: .leading, spacing: 3) {
+                            .font(.body)
+                            .frame(width: SettingsMetrics.iconWidth)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
                             Text(macRuntimeTitle)
-                                .font(.body.weight(.medium))
+                                .font(SettingsFont.rowTitle)
                             Text(macRuntimeDetail)
-                                .font(.caption)
+                                .font(SettingsFont.subtitle)
                                 .foregroundStyle(.secondary)
                         }
                     }
-                } header: {
-                    Text("Mac runtime")
+                    .padding(.vertical, 5)
                 }
-            }
 
-            if let error = model.providerAuthenticationErrorMessage.nonEmpty {
-                Section {
+                if let error = model.providerAuthenticationErrorMessage.nonEmpty {
+                    SettingsDivider()
                     AuthenticationErrorRow(error: error) {
                         Task { await model.refreshProviderAuthentication() }
                     }
                 }
             }
-
+            .settingsListRow()
         }
         .onChange(of: highlightedSnapshotID) { _, id in
             guard let id else { return }
@@ -272,8 +103,7 @@ struct ProviderAuthenticationDetailView: View {
             }
         }
         }
-        .listStyle(.insetGrouped)
-        .environment(\.defaultMinListRowHeight, 44)
+        .settingsListStyle()
         // The full provider name appears once, in the header above.
         .navigationTitle("Accounts")
         .navigationBarTitleDisplayMode(.inline)
@@ -312,6 +142,197 @@ struct ProviderAuthenticationDetailView: View {
         } message: {
             Text("Sessions using this account may need another account selected.")
         }
+    }
+
+    /// Symbol, full provider name, and its sign-in summary, like the Settings sheet's account header.
+    private var header: some View {
+        HStack(spacing: SettingsMetrics.iconSpacing) {
+            ProviderAuthenticationIcon(provider: provider, size: 40)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(provider.name)
+                    .font(SettingsFont.headerTitle)
+                Text(provider.subtitle)
+                    .font(SettingsFont.subtitle)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func savedAccountRow(_ profile: CloudProviderAuthSnapshot) -> some View {
+        HStack(spacing: SettingsMetrics.iconSpacing) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.body)
+                .foregroundStyle(.green)
+                .frame(width: SettingsMetrics.iconWidth)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(profile.label?.nonEmpty ?? accountMethod(profile))
+                    .font(SettingsFont.rowTitle)
+                    .accessibilityIdentifier(
+                        profile.snapshotId == highlightedSnapshotID ? "saved-account-new" : "saved-account"
+                    )
+                Text(accountDetail(profile))
+                    .font(SettingsFont.subtitle)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("saved-account-detail")
+                if provider.id == ProviderAuthenticationDefinition.custom.id, profile.modelHint?.nonEmpty == nil {
+                    Text("Add a model ID to start chatting")
+                        .font(SettingsFont.subtitle)
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("custom-missing-model")
+                }
+            }
+            Spacer(minLength: 8)
+            if provider.id == ProviderAuthenticationDefinition.custom.id {
+                Button {
+                    startEditingCustom(profile)
+                } label: {
+                    Image(systemName: "pencil")
+                        .frame(width: 36, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Edit \(profile.label?.nonEmpty ?? "account")")
+            }
+            Button(role: .destructive) {
+                removeTarget = profile
+                showRemoveConfirmation = true
+            } label: {
+                Image(systemName: "trash")
+                    .frame(width: 36, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Remove \(profile.label?.nonEmpty ?? accountMethod(profile))")
+        }
+        .padding(.vertical, 5)
+        .frame(minHeight: SettingsMetrics.rowMinHeight)
+        .id(profile.snapshotId)
+        .listRowBackground(
+            profile.snapshotId == highlightedSnapshotID ? Color.green.opacity(0.14) : nil
+        )
+        .swipeActions(edge: .leading) {
+            if !isActive(profile) {
+                Button("Make active") { model.makeAccountActive(profile) }
+                    .tint(chatTheme.accent)
+            }
+        }
+    }
+
+    private var startChatButton: some View {
+        Button {
+            startChat()
+        } label: {
+            HStack(spacing: 8) {
+                if isStartingChat { ProgressView().controlSize(.small).tint(.white) }
+                Text("Start chat")
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .disabled(profiles.isEmpty || isStartingChat || activeChatModel == nil)
+        .accessibilityIdentifier("provider-start-chat")
+    }
+
+    private var addAccountButton: some View {
+        Button {
+            showsAddAccount = true
+        } label: {
+            HStack(spacing: 10) {
+                CompactSettingsLabel(
+                    title: "Add account",
+                    subtitle: ProviderLoginMethod.summary(of: loginMethods),
+                    systemImage: "plus"
+                )
+                Spacer(minLength: 0)
+                SettingsChevron()
+            }
+            .frame(minHeight: SettingsMetrics.rowMinHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("provider-add-account")
+    }
+
+    @ViewBuilder
+    private var customAccountForm: some View {
+        SettingsDivider()
+        SettingsSectionTitle(editingCustom.map { "Edit \($0.label?.nonEmpty ?? "account")" } ?? "New account name")
+        TextField("For example, Personal or Work", text: $profileLabel)
+            .textInputAutocapitalization(.words)
+            .settingsField()
+            .accessibilityIdentifier("custom-label")
+
+        SettingsSectionTitle("Endpoint")
+            .padding(.top, 8)
+        TextField("https://api.example.com/v1", text: $customBaseURL)
+            .textInputAutocapitalization(.never)
+            .keyboardType(.URL)
+            .autocorrectionDisabled()
+            .settingsField()
+            .accessibilityIdentifier("custom-base-url")
+        SettingsCaption("Use a public HTTPS endpoint with an OpenAI-compatible Chat Completions API.")
+
+        SettingsSectionTitle("Model ID")
+            .padding(.top, 8)
+        TextField("deepseek-chat", text: $customModelID)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .settingsField()
+            .accessibilityIdentifier("custom-model-id")
+        if customModelIDTooLong {
+            Text("Use at most \(Self.customModelIDLimit) characters.")
+                .font(SettingsFont.subtitle)
+                .foregroundStyle(.red)
+                .padding(.vertical, 4)
+        }
+        SettingsCaption("The model name your endpoint serves, sent as the Chat Completions model field.")
+
+        SettingsSectionTitle("Add API key")
+            .padding(.top, 8)
+        HStack(spacing: 10) {
+            Image(systemName: "key")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            SecureField("Paste API key", text: $apiKey)
+                .textContentType(.password)
+                .keyboardType(.asciiCapable)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .privacySensitive()
+                .focused($apiKeyFocused)
+                .accessibilityIdentifier("custom-api-key")
+        }
+        .settingsField()
+        Button {
+            Task { await saveAPIKey() }
+        } label: {
+            HStack(spacing: 8) {
+                if isSaving { ProgressView().controlSize(.small) }
+                Text(editingCustom == nil ? apiKeyActionTitle : "Save changes")
+            }
+            .font(SettingsFont.action)
+            .frame(maxWidth: .infinity, minHeight: SettingsMetrics.textRowMinHeight, alignment: .center)
+        }
+        .buttonStyle(.borderless)
+        .disabled(isSaving || apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || customBaseURL.isEmpty || customModelIDValue.isEmpty || customModelIDTooLong)
+        .accessibilityIdentifier("custom-save")
+        if editingCustom != nil {
+            Button("Cancel editing", role: .cancel) { stopEditingCustom() }
+                .font(SettingsFont.rowTitle)
+                .buttonStyle(.borderless)
+                .frame(maxWidth: .infinity, minHeight: SettingsMetrics.textRowMinHeight, alignment: .center)
+                .accessibilityIdentifier("custom-cancel-edit")
+        }
+        SettingsCaption(editingCustom == nil
+            ? "Encrypted in your Kordi account and available to Cloud sessions on iPhone and Mac. The key is cleared from this screen after saving."
+            : "Enter the endpoint and key again; this iPhone does not keep them. Saving replaces this account.")
     }
 
     private func saveAPIKey() async {

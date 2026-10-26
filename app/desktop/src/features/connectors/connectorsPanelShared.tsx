@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { settingsType } from '@/kordi-app/components/settingsType';
 import { cn } from '@/lib/utils';
 
 import type { ConnectorDefinition } from './connectorsModel';
@@ -8,7 +9,8 @@ export function Badge({ children, tone, inDialog = false }: { children: ReactNod
   return (
     <span
       className={cn(
-        'rounded-full px-2 py-0.5 text-[10px] font-medium',
+        'rounded-full px-2 py-0.5',
+        settingsType.badge,
         inDialog
           // Body-portaled dialogs: `body.theme-light` is set by the app shell.
           ? tone === 'amber'

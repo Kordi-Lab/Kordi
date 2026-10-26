@@ -115,7 +115,7 @@ struct AccountSheet: View {
                         Spacer(minLength: 8)
                         if model.deviceReviewRequired {
                             Text("Review")
-                                .font(.caption2.weight(.semibold))
+                                .font(SettingsFont.badge)
                                 .foregroundStyle(.orange)
                                 .accessibilityLabel("New device needs review")
                         }
@@ -127,7 +127,7 @@ struct AccountSheet: View {
                         Spacer(minLength: 8)
                         if !model.providerAuthProfiles.isEmpty {
                             Text("\(model.providerAuthProfiles.count)")
-                                .font(.caption)
+                                .font(SettingsFont.subtitle)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -192,10 +192,10 @@ struct AccountSheet: View {
             )
             VStack(alignment: .leading, spacing: 3) {
                 Text(model.account?.preferredName ?? "Kordi account")
-                    .font(.headline)
+                    .font(SettingsFont.headerTitle)
                 if let email = model.account?.primaryEmail.nonEmpty {
                     Text(email)
-                        .font(.caption)
+                        .font(SettingsFont.subtitle)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -212,7 +212,7 @@ struct AccountSheet: View {
                 Spacer(minLength: 0)
                 SettingsChevron()
             }
-            .frame(minHeight: 48)
+            .frame(minHeight: SettingsMetrics.rowMinHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -224,43 +224,54 @@ private struct NotificationSettingsView: View {
     @EnvironmentObject private var coordinator: KordiNotificationCoordinator
 
     var body: some View {
-        List {
-            Section {
-                HStack {
-                    Label("System permission", systemImage: "bell.badge")
-                    Spacer()
-                    Text(permissionLabel)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                if coordinator.authorizationState == .notDetermined {
-                    Button("Enable notifications") {
-                        Task { await coordinator.requestAuthorization() }
-                    }
-                } else if coordinator.authorizationState == .denied {
-                    Button("Open iPhone Settings") {
-                        coordinator.openSystemSettings()
-                    }
-                }
-            } footer: {
-                Text("iOS controls whether Kordi can show notifications. Kordi controls which message details are included.")
+        SettingsPage {
+            SettingsRow {
+                CompactSettingsLabel(title: "System permission", systemImage: "bell.badge", value: permissionLabel)
             }
 
-            Section("Messages") {
-                Toggle("Message notifications", isOn: preferenceBinding(.messages))
-                Toggle("Notification sound", isOn: preferenceBinding(.sound))
-                    .disabled(!coordinator.messagesEnabled)
-                Toggle("Message previews", isOn: preferenceBinding(.previews))
-                    .disabled(!coordinator.messagesEnabled)
-                Toggle("App icon badge", isOn: preferenceBinding(.badge))
+            if coordinator.authorizationState == .notDetermined {
+                actionRow("Enable notifications") {
+                    Task { await coordinator.requestAuthorization() }
+                }
+            } else if coordinator.authorizationState == .denied {
+                actionRow("Open iPhone Settings") {
+                    coordinator.openSystemSettings()
+                }
             }
+            SettingsCaption("iOS controls whether Kordi can show notifications. Kordi controls which message details are included.")
+
+            SettingsDivider()
+            SettingsSectionTitle("Messages")
+            preferenceToggle("Message notifications", .messages)
+            preferenceToggle("Notification sound", .sound)
+                .disabled(!coordinator.messagesEnabled)
+            preferenceToggle("Message previews", .previews)
+                .disabled(!coordinator.messagesEnabled)
+            preferenceToggle("App icon badge", .badge)
         }
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await coordinator.refreshAuthorizationState()
         }
+    }
+
+    private func actionRow(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(SettingsFont.action)
+                .frame(maxWidth: .infinity, minHeight: SettingsMetrics.textRowMinHeight, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.tint)
+    }
+
+    private func preferenceToggle(_ title: String, _ preference: KordiMessageNotificationPreference) -> some View {
+        Toggle(isOn: preferenceBinding(preference)) {
+            CompactSettingsLabel(title: title, systemImage: nil)
+        }
+        .frame(minHeight: SettingsMetrics.rowMinHeight)
     }
 
     private var permissionLabel: String {
@@ -335,7 +346,7 @@ private struct DevicesSettingsView: View {
     @State private var isMutating = false
 
     /// Leading inset that aligns sub-rows with the row title (icon width + spacing).
-    private static let titleInset: CGFloat = 22 + 12
+    private static let titleInset: CGFloat = SettingsMetrics.iconWidth + SettingsMetrics.iconSpacing
 
     @ViewBuilder
     private var deviceSections: some View {
@@ -345,9 +356,9 @@ private struct DevicesSettingsView: View {
             currentDeviceSection(current)
         } else {
             Label("This iPhone is not in the list. Refresh and try again.", systemImage: "exclamationmark.triangle")
-                .font(.subheadline)
+                .font(SettingsFont.rowTitle)
                 .foregroundStyle(.orange)
-                .frame(minHeight: 48, alignment: .leading)
+                .frame(minHeight: SettingsMetrics.rowMinHeight, alignment: .leading)
         }
         if !locked, !list.otherDevices.isEmpty {
             destructiveRow("Log out of all other devices") { logoutRequest = .allOthers }
@@ -378,7 +389,7 @@ private struct DevicesSettingsView: View {
                     renameDraft = device.title
                     renameTarget = device
                 }
-                .font(.caption.weight(.semibold))
+                .font(SettingsFont.inlineAction)
                 .foregroundStyle(.secondary)
                 .disabled(isMutating)
             }
@@ -441,7 +452,7 @@ private struct DevicesSettingsView: View {
                 isMutating = false
             }
         }
-        .font(.caption.weight(.semibold))
+        .font(SettingsFont.inlineAction)
         .buttonStyle(.bordered)
         .buttonBorderShape(.capsule)
         .controlSize(.small)
@@ -467,14 +478,7 @@ private struct DevicesSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if model.isRefreshingDevices && model.devices.isEmpty {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        Text("Loading…")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(minHeight: 48)
-                    .accessibilityElement(children: .combine)
+                    SettingsLoadingRow("Loading…")
                 } else if model.devices.isEmpty {
                     ContentUnavailableView("No active sessions", systemImage: "laptopcomputer.and.iphone")
                         .frame(maxWidth: .infinity)
@@ -485,14 +489,10 @@ private struct DevicesSettingsView: View {
 
                 if let error = model.deviceErrorMessage.nonEmpty {
                     SettingsDivider()
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label(error, systemImage: "exclamationmark.circle")
-                            .font(.subheadline)
-                            .foregroundStyle(.red)
-                        Button("Try again") { Task { await model.refreshDevices() } }
-                            .font(.subheadline.weight(.semibold))
-                            .frame(minHeight: 44)
-                    }
+                    SettingsErrorLabel(error)
+                    Button("Try again") { Task { await model.refreshDevices() } }
+                        .font(SettingsFont.action)
+                        .frame(minHeight: SettingsMetrics.textRowMinHeight)
                 }
             }
             .padding(.horizontal, 20)
@@ -566,7 +566,7 @@ private struct DeviceStatusTag: View {
 
     var body: some View {
         Text(text)
-            .font(.caption2.weight(.semibold))
+            .font(SettingsFont.badge)
             .foregroundStyle(.orange)
     }
 }
@@ -580,21 +580,21 @@ private struct DeviceSessionRow: View {
     let lines: [String]
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: SettingsMetrics.iconSpacing) {
             Image(systemName: systemImage)
                 .font(.body)
-                .frame(width: 22)
+                .frame(width: SettingsMetrics.iconWidth)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(title).font(.subheadline)
+                    Text(title).font(SettingsFont.rowTitle)
                     if let tag {
                         DeviceStatusTag(text: tag)
                     }
                 }
                 ForEach(lines, id: \.self) { line in
                     Text(line)
-                        .font(.caption)
+                        .font(SettingsFont.subtitle)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -603,7 +603,7 @@ private struct DeviceSessionRow: View {
         }
         .foregroundStyle(.primary)
         .padding(.vertical, 5)
-        .frame(minHeight: 48)
+        .frame(minHeight: SettingsMetrics.rowMinHeight)
         .accessibilityElement(children: .combine)
     }
 }

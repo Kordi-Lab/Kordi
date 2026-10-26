@@ -55,7 +55,7 @@ struct MemoryAddRow: View {
                 CompactSettingsLabel(title: "Add memory", systemImage: "plus")
                 Spacer(minLength: 0)
             }
-            .frame(minHeight: 48)
+            .frame(minHeight: SettingsMetrics.rowMinHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -85,7 +85,7 @@ private struct MemoryRow: View {
                 SettingsChevron()
             }
             .padding(.vertical, 4)
-            .frame(minHeight: 48)
+            .frame(minHeight: SettingsMetrics.rowMinHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -122,7 +122,7 @@ struct MemoryEditSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Memory", text: $draft, axis: .vertical)
-                        .font(.subheadline)
+                        .font(SettingsFont.rowTitle)
                         .lineLimit(6...14)
                         .focused($focused)
                         .disabled(isSaving)
@@ -141,12 +141,12 @@ struct MemoryEditSheet: View {
                             .monospacedDigit()
                             .foregroundStyle(MemoryPresentation.isOverLimit(draft) ? Color.red : Color.secondary)
                     }
-                    .font(.caption)
+                    .font(SettingsFont.subtitle)
                     .padding(.horizontal, 4)
 
                     if let error {
                         Text(error)
-                            .font(.caption)
+                            .font(SettingsFont.subtitle)
                             .foregroundStyle(.red)
                             .padding(.horizontal, 4)
                     }
