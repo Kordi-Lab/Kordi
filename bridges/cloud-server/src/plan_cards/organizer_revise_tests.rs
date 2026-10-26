@@ -90,7 +90,7 @@ async fn organizer_changes_the_time_over_http() {
         kind: "text".to_string(),
         content: json!({
             "schema": 1,
-            "blocks": [crate::pip::cards::card_block_from_row(&row, "event")],
+            "blocks": [crate::system_agent::cards::card_block_from_row(&row, "event")],
             "legacy_attachments": [],
         }),
         reply_to_message_id: None,
@@ -165,7 +165,10 @@ async fn organizer_changes_the_time_over_http() {
     let response = post(&jordan_token, revise(None, revision)).await.unwrap();
     assert_eq!(response.status(), 403);
     let error: Value = response.json().await.unwrap();
-    assert_eq!(error["message"], "Plan cards are proposed by PiP.");
+    assert_eq!(
+        error["message"],
+        "Plan cards are proposed by the System agent."
+    );
 
     // A change of time keeps the same people.
     let mut with_riya = revise(Some(&event_id), revision);

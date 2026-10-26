@@ -1,4 +1,5 @@
-//! Provisioning for PiP's system account, agent definition and membership.
+//! Provisioning for the System agent's account, agent definition and
+//! membership.
 
 use chrono::Utc;
 use sqlx_core::query::query;
@@ -9,19 +10,20 @@ use crate::avatars::{
     generated_avatar_marker, AGENT_AVATAR_STYLE, AVATAR_RENDERER_VERSION, HUMAN_AVATAR_STYLE,
 };
 
-use super::config::{PendingPipConfig, PipConfig, PipConfigError};
-use super::prompt::PIP_SYSTEM_PROMPT;
+use super::config::{PendingSystemAgentConfig, SystemAgentConfig, SystemAgentConfigError};
+use super::prompt::SYSTEM_AGENT_PROMPT;
 
-/// Creates or refreshes PiP's account, default agent profile and agent
-/// definition, then makes sure PiP sits in every existing group conversation
-/// except Grounding groups.
-pub async fn bootstrap_pip_agent(
+/// Creates or refreshes the System agent's account, default agent profile and
+/// agent definition, then makes sure the System agent sits in every existing
+/// group conversation except Grounding groups.
+pub async fn bootstrap_system_agent(
     pool: &PgPool,
-    pending: PendingPipConfig,
-) -> Result<PipConfig, PipConfigError> {
+    pending: PendingSystemAgentConfig,
+) -> Result<SystemAgentConfig, SystemAgentConfigError> {
     let now = Utc::now().to_rfc3339();
     // Accounts only accept the human generated style (database check
-    // constraint); clients substitute PiP's own mark for this account id.
+    // constraint); clients substitute the System agent's own mark for this
+    // account id.
     let account_avatar_url = generated_avatar_marker(HUMAN_AVATAR_STYLE, &pending.account_id, 1);
     let agent_avatar_url = generated_avatar_marker(AGENT_AVATAR_STYLE, &pending.agent_id, 1);
 
@@ -32,8 +34,8 @@ pub async fn bootstrap_pip_agent(
             .await?;
     if let Some((account_id,)) = existing_by_email {
         if account_id != pending.account_id {
-            return Err(PipConfigError::Invalid(
-                "KORDI_PIP_OWNER_EMAIL already belongs to another account",
+            return Err(SystemAgentConfigError::Invalid(
+                "KORDI_SYSTEM_AGENT_OWNER_EMAIL already belongs to another account",
             ));
         }
     }
@@ -59,8 +61,9 @@ pub async fn bootstrap_pip_agent(
     .execute(pool)
     .await?;
 
-    // Member listings join every member to a default agent profile, so PiP
-    // needs one even though it never delegates to a personal agent.
+    // Member listings join every member to a default agent profile, so the
+    // System agent needs one even though it never delegates to a personal
+    // agent.
     query(
         "INSERT INTO cloud_default_agent_profiles (
              owner_account_id, display_name, avatar_url, avatar_source, avatar_style,
@@ -81,7 +84,7 @@ pub async fn bootstrap_pip_agent(
     .execute(pool)
     .await?;
 
-    let config = PipConfig {
+    let config = SystemAgentConfig {
         group_chat_enabled: pending.group_chat_enabled,
         account_id: pending.account_id,
         owner_email: pending.owner_email,
@@ -123,7 +126,7 @@ pub async fn bootstrap_pip_agent(
     .bind(&config.account_id)
     .bind(&config.name)
     .bind(&config.subtitle)
-    .bind(PIP_SYSTEM_PROMPT)
+    .bind(SYSTEM_AGENT_PROMPT)
     .bind(config.model_routing())
     .bind(&now)
     .bind(&agent_avatar_url)
@@ -132,20 +135,20 @@ pub async fn bootstrap_pip_agent(
     .execute(pool)
     .await?;
     if result.rows_affected() == 0 {
-        return Err(PipConfigError::Invalid(
-            "The configured PiP agent id belongs to another account",
+        return Err(SystemAgentConfigError::Invalid(
+            "The configured System agent id belongs to another account",
         ));
     }
 
     if config.group_chat_enabled {
         let joined = super::membership::join_all_groups(pool, &config.account_id).await?;
         if joined > 0 {
-            println!("PiP joined {joined} existing group conversation(s)");
+            println!("System agent joined {joined} existing group conversation(s)");
         }
     }
     let left = super::membership::leave_room_groups(pool, &config.account_id).await?;
     if left > 0 {
-        println!("PiP left {left} Grounding group(s)");
+        println!("System agent left {left} Grounding group(s)");
     }
     Ok(config)
 }

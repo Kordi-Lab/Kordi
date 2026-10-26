@@ -1,8 +1,8 @@
 //! Consent boundary on connector delivery (issue 1712, PR 5), against
 //! `$DATABASE_URL`: only runs whose output the owner alone can read receive
 //! connector tools, and the trigger still limits them to `read` when nobody
-//! started the run. The digest and PiP runs, the desktop claim, and spawned
-//! subsessions are covered through their real paths in
+//! started the run. The digest and System agent runs, the desktop claim, and
+//! spawned subsessions are covered through their real paths in
 //! `audience_paths_tests`.
 
 use super::broker_tests::{runner, TEST_RUNNER};

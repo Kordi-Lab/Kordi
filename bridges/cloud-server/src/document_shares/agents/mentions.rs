@@ -216,10 +216,10 @@ pub(crate) async fn candidates_for_account(
     .bind(session_id)
     .fetch_all(pool)
     .await?;
-    let pip = crate::pip::service_account_id();
+    let system_agent = crate::system_agent::service_account_id();
     candidates.extend(
         rows.into_iter()
-            .filter(|(_, owner, _, _)| pip != Some(owner.as_str()))
+            .filter(|(_, owner, _, _)| system_agent != Some(owner.as_str()))
             .map(|(agent_id, owner, owner_name, name)| AgentCandidate {
                 agent_id,
                 own: owner == account_id,

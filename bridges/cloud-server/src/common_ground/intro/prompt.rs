@@ -1,5 +1,5 @@
-//! The prompt for a group intro run, and the templated line PiP posts when
-//! an invited person joins.
+//! The prompt for a group intro run, and the templated line the System agent
+//! posts when an invited person joins.
 
 use super::mentions::Member;
 use crate::common_ground::card::Topics;

@@ -5,14 +5,15 @@ use crate::server::ServerState;
 const SWEEP_INTERVAL_SECS: u64 = 5;
 const STALE_CHECK_EVERY_TICKS: u32 = 12;
 
-/// Sweeps PiP's conversations on a fixed interval. Only changed inputs or a
-/// due reminder queue a run, so an idle server issues no model calls.
+/// Sweeps the System agent's conversations on a fixed interval. Only changed
+/// inputs or a due reminder queue a run, so an idle server issues no model
+/// calls.
 pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let Some(pip) = state.pip().cloned() else {
+        let Some(system_agent) = state.system_agent().cloned() else {
             return;
         };
-        let config = pip.config().clone();
+        let config = system_agent.config().clone();
         if !config.group_chat_enabled {
             return;
         }
@@ -24,11 +25,11 @@ pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
             ticks = ticks.wrapping_add(1);
             if ticks.is_multiple_of(STALE_CHECK_EVERY_TICKS) {
                 if let Err(error) = super::store::release_stale_runs(state.db_pool()).await {
-                    eprintln!("[pip] Stale run check failed: {error}");
+                    eprintln!("[system-agent] Stale run check failed: {error}");
                 }
             }
             if let Err(error) = super::store::sweep(state.db_pool(), &config).await {
-                eprintln!("[pip] Sweep failed; retrying on the next tick: {error}");
+                eprintln!("[system-agent] Sweep failed; retrying on the next tick: {error}");
             }
         }
     })

@@ -215,20 +215,22 @@ pub(super) async fn answer_match(pool: &PgPool, viewer: &str) -> String {
 }
 
 /// Signed-in people with cards in one fresh room, in join order, with the
-/// app (PiP configured) and the room code.
+/// app (the System agent configured) and the room code.
 pub(super) async fn people_in_a_room(
     pool: &PgPool,
     labels: &[&str],
 ) -> (axum::Router, String, Vec<(String, String)>) {
     use super::db_fixture::{account, app, signed_in};
-    // PiP's account is process-wide once set, and member counts leave it out;
-    // settle it first so a group's PiP is never counted as a person, even
-    // when tests run in parallel.
-    if crate::pip::service_account_id().is_none() {
+    // The System agent's account is process-wide once set, and member counts
+    // leave it out; settle it first so a group's System agent is never counted
+    // as a person, even when tests run in parallel.
+    if crate::system_agent::service_account_id().is_none() {
         let candidate = account(pool, "service").await;
-        crate::pip::PipService::new(crate::pip::test_config(&candidate));
+        crate::system_agent::SystemAgentService::new(crate::system_agent::test_config(&candidate));
     }
-    let service = crate::pip::service_account_id().unwrap().to_string();
+    let service = crate::system_agent::service_account_id()
+        .unwrap()
+        .to_string();
     let app = app(pool, Some(&service));
     let mut people = Vec::new();
     for label in labels {
