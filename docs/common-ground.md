@@ -132,6 +132,17 @@ Routes under `/v1/cloud/common-ground/`. Every person returned in Common ground 
 - `POST rooms/:code/group`: Start group; adds your contacts and invites the other room members. An optional `topic` records the room topic the group is for.
 - `POST rooms/:code/invitations/:ref/join`: Join; accepts a room group invitation addressed to you.
 
+### Nearby
+
+Nearby people (#2100) sits under Pair. The contract is [development/grounding-nearby.md](development/grounding-nearby.md); the capability is `commonGroundNearbyVersion`, present with `commonGroundVersion`.
+
+- `GET|PUT nearby`: the setting (consent, the shared profile, `openTo`, range, minimum score, alerts) and whether the account takes part.
+- `POST|DELETE nearby/location`: the calling device's location, rounded to 3 decimals and current for 30 minutes.
+- `GET nearby/people`: present participants within the viewer's range and minimum score; `GET nearby/people/:id`: one of them with their shared card, request checks and match.
+- `GET|POST nearby/needs`, `PUT|DELETE nearby/needs/:id`: requests, checked by `cg_need_` runs.
+- Visibility is reciprocal and checked live on every path; rooms and pairings never stand in for it. Add, Message and Meet also accept a person visible through nearby at that moment.
+- A sweep worker sends deduplicated, capped alerts (`common_ground.nearby.alert`, push type `common_ground_nearby`).
+
 ## Platform layout
 
 ### iOS
@@ -155,6 +166,7 @@ Routes under `/v1/cloud/common-ground/`. Every person returned in Common ground 
 - Tailwind with the semantic tokens in `theme-palette.css`, `lucide-react` icons, `IdentityAvatar` and the circle grid avatar, settings rows from `settingsLayout`.
 - The first version uses one column: Home shows the card summary, Pair, Room and Recent, and the card opens as its own screen.
 - Pair shows your short text code, not a QR code.
+- Nearby (#2100, with `commonGroundNearbyVersion`) is the third row of the Pair panel and opens in the same column. The Mac reads the location the account's iPhone sends; it never asks for its own location and shows no system notifications.
 - There is no Agents on this Mac source.
 - Rooms are not named from the Mac; a room shows its name when someone else named it.
 - Match actions are Add (or Accept, Requested, Message) and Meet; Joint idea and Share come later.

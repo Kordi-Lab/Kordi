@@ -6,6 +6,7 @@ import { cloudApiBaseUrl } from '@/features/cloud/cloudApiEnvironment';
 import { cloudFetchImpl } from '@/features/cloud/cloudTransport';
 import { loadSession } from '@/features/cloud/session';
 import { isCardDesign, isCardIcon } from './cardDesign';
+import { nearbyRoutes } from './clientNearby';
 import type {
   CgBuildRequest, CgCreatedGroup, CgDocument, CgCreateRoomInput, CgGroup, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPairCode, CgPerson,
   CgPersonCard, CgProfile, CgProfileInput, CgProfilePatch, CgRecentEntry, CgRelationship, CgResults, CgRoom, CgRoomPreview, CgRoomSummary, CgRoutedMemory,
@@ -279,6 +280,7 @@ export function createCommonGroundClient(options: CommonGroundClientOptions = {}
     redeem: async (code: string, profileId?: string | null) => withRelationship(
       await data<CgPersonCard>('POST', cg('pairings/redeem'), profileId ? { code, profileId } : { code }),
     ),
+    ...nearbyRoutes(data),
   };
 }
 

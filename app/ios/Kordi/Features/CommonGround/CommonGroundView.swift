@@ -13,6 +13,9 @@ enum CommonGroundRoute: Hashable {
     case results(String)
     case match(String)
     case person(String, paired: Bool)
+    /// Nearby people, and one person seen through Nearby.
+    case nearby
+    case nearbyPerson(String)
 }
 
 private struct CommonGroundOpenConversationKey: EnvironmentKey {
@@ -60,9 +63,12 @@ struct CommonGroundView: View {
                     case .results(let code): CommonGroundResultsView(code: code, path: $path)
                     case .match(let id): CommonGroundMatchView(personID: id)
                     case .person(let id, let paired): CommonGroundPersonView(personID: id, paired: paired, path: $path)
+                    case .nearby: CommonGroundNearbyView(path: $path)
+                    case .nearbyPerson(let id): CommonGroundNearbyPersonView(personID: id)
                     }
                 }
         }
+        .modifier(CommonGroundNearbyAlertOpening(path: $path, enabled: model.nearbyEnabled))
         .overlay(alignment: .top) { CommonGroundToast(text: $model.notice) }
         .environmentObject(model)
         .environment(\.commonGroundOpenConversation, onOpenConversation)

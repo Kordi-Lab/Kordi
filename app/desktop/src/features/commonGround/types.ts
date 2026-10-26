@@ -281,3 +281,6 @@ export type CgMatch = {
 export type CgMeetInput = { title?: string; startAt: string; endAt?: string; location?: string };
 
 export type CgCreatedGroup = { group: CgGroup; added: CgPerson[]; invited: CgPerson[] };
+
+/** Grounding › Pair › Nearby screens (`commonGroundNearbyVersion`): the Nearby column and a nearby person. */
+export type CgNearbyScreen = { name: 'nearby' } | { name: 'nearbyPerson'; accountId: string };

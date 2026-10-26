@@ -75,7 +75,16 @@ button.cg-mrow:hover { background: var(--cg-fill); }
 
 /* Pair code: four digits, Create, the room under the boxes. */
 .cg-pair-row { display: flex; min-height: 56px; align-items: center; gap: 10px; padding: 7px 12px; }
-.cg-pair-icon { display: grid; width: 26px; height: 26px; flex: none; place-items: center; border-radius: 7px; background: var(--app-accent); color: #fff; }
+/* Tint: each Pair row's glyph in its hue on a faint wash of the same hue (Pair violet, Pair code cyan, Nearby amber). */
+.cg-pair-icon {
+  --cg-icon-h: 285; --cg-icon-c: 0.14;
+  display: grid; width: 26px; height: 26px; flex: none; place-items: center; border-radius: 7px;
+  background: oklch(0.66 var(--cg-icon-c) var(--cg-icon-h) / 0.16); color: oklch(0.55 var(--cg-icon-c) var(--cg-icon-h));
+}
+.theme-dark .cg-pair-icon { background: oklch(0.72 var(--cg-icon-c) var(--cg-icon-h) / 0.2); color: oklch(0.82 var(--cg-icon-c) var(--cg-icon-h)); }
+.cg-pair-icon.is-violet { --cg-icon-h: 285; --cg-icon-c: 0.14; }
+.cg-pair-icon.is-cyan { --cg-icon-h: 215; --cg-icon-c: 0.12; }
+.cg-pair-icon.is-amber { --cg-icon-h: 70; --cg-icon-c: 0.15; }
 .cg-pair-title { min-width: 0; flex: 1; font-size: 13px; font-weight: 500; }
 .cg-paircode .cg-digits { display: flex; gap: 6px; padding: 0; margin-right: 4px; }
 .cg-paircode .cg-digits input {

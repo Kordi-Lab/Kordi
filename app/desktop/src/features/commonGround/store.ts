@@ -10,13 +10,13 @@ import * as profileOps from './storeProfiles';
 import * as roomOps from './storeRooms';
 import type {
   CgBuildRequest, CgCardLook, CgCreateRoomInput, CgJoinInput, CgMatch, CgMeetInput, CgOwnerView, CgPersonCard, CgProfile, CgProfileInput, CgProfilePatch, CgRecentEntry,
-  CgRelationship, CgResults, CgRoom, CgRoomSummary, CgTopicLists,
+  CgNearbyScreen, CgRelationship, CgResults, CgRoom, CgRoomSummary, CgTopicLists,
 } from './types';
 
 export type CgScreen =
   | { name: 'home' }
   | { name: 'build'; memory?: boolean }
-  | { name: 'card' }
+  | { name: 'card' } | CgNearbyScreen
   | { name: 'lobby'; code: string }
   | { name: 'results'; code: string }
   | { name: 'match'; accountId: string; profileId?: string }

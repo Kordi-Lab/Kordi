@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Grounding nearby · Kordi proposal</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="../grounding-profile-cards/tokens.css">
+<link rel="stylesheet" href="../grounding-profile-cards/cards.css">
+<link rel="stylesheet" href="ios.css">
+<link rel="stylesheet" href="mac.css">
+<link rel="stylesheet" href="icons.css">
+</head>
+<body>
+<!-- Standalone design preview: Grounding > Pair > Nearby people. Synthetic people, no network calls, system fonts only. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <mask id="kbird-cut" maskUnits="userSpaceOnUse" x="-100" y="-100" width="712" height="712">
+      <ellipse cx="262" cy="292" rx="150" ry="136" fill="#fff"/>
+      <path d="M400,342 C436,322 462,272 470,204 C448,236 420,244 386,218Z" fill="#fff" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>
+      <circle cx="194" cy="266" r="17"/>
+      <path d="M269.6,333.2 C292,299.6 348,282 397.6,285.2 C381.6,325.2 336.8,357.2 288.8,355.6 C272.8,354 264.8,344.4 269.6,333.2Z"/>
+    </mask>
+    <symbol id="kbird" viewBox="64 58 384 384">
+      <g transform="translate(256,250) scale(0.94) translate(-270,-292)">
+        <path d="M120,276 L82,294 L120,312Z" fill="#f7b32b" stroke="#f7b32b" stroke-width="12" stroke-linejoin="round"/>
+        <rect x="-100" y="-100" width="712" height="712" fill="currentColor" mask="url(#kbird-cut)"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+<div class="stage">
+  <div class="top">
+    <div class="modes" role="group" aria-label="Device">
+      <button id="modeIos" aria-pressed="true">iPhone</button>
+      <button id="modeMac" aria-pressed="false">Mac</button>
+    </div>
+    <label class="pickwrap"><select class="pick" id="pick" aria-label="Screen"></select><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></label>
+    <div class="modes" role="group" aria-label="Icons" id="iconModes">
+      <button data-icons="current" aria-pressed="false">Today</button>
+      <button data-icons="tint" aria-pressed="true">Tint</button>
+      <button data-icons="gradient" aria-pressed="false">Gradient</button>
+      <button data-icons="plain" aria-pressed="false">Plain</button>
+    </div>
+    <button class="themebtn" id="themeBtn" aria-label="Switch light or dark"></button>
+  </div>
+  <div class="phone" id="phone">
+    <div class="island"></div>
+    <div class="sbar"><span id="clock">3:41</span><span class="r">
+      <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+      <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor" aria-hidden="true"><path d="M8 1.6c2.5 0 4.8 1 6.5 2.6l1.2-1.3C13.6 1 11 0 8 0S2.4 1 .3 2.9l1.2 1.3C3.2 2.6 5.5 1.6 8 1.6z"/><path d="M8 5.2c1.5 0 2.9.6 4 1.6l1.2-1.3A7.6 7.6 0 0 0 8 3.6c-2 0-3.8.7-5.2 1.9L4 6.8c1.1-1 2.5-1.6 4-1.6z"/><path d="M8 11.5l2.6-2.8A3.8 3.8 0 0 0 8 7.6c-1 0-1.9.4-2.6 1.1z"/></svg>
+      <span class="batt"></span></span></div>
+    <div class="screen" id="screen"></div>
+    <div class="homeind"></div>
+  </div>
+  <div class="macwrap" id="macwrap" hidden><div class="mac" id="mac"></div></div>
+  <div class="macnote" id="macnote" hidden>Mac mode needs a wider window.</div>
+  <p class="hint" id="hint"></p>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

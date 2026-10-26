@@ -16,6 +16,7 @@ mod contact_match;
 mod documents;
 mod intro;
 mod matching;
+mod nearby;
 mod pairing;
 mod people;
 mod profile;
@@ -46,6 +47,9 @@ use crate::auth::rate_limit::{AccountActionLimit, CloudRateLimiter};
 use crate::{auth::routes::cloud_session_middleware, server::ServerState};
 
 pub(crate) use contact_match::contact_match;
+pub(crate) use nearby::{
+    forget_device as forget_nearby_device, forget_devices as forget_nearby_devices,
+};
 pub(crate) use people::{profile_common_ground, ProfileCommonGround};
 pub use runs::{complete, fail, RUN_PREFIX};
 
@@ -117,6 +121,37 @@ pub(super) const GROUP_LIMIT: AccountActionLimit = AccountActionLimit {
 /// Common ground needs the Kordi-operated credential for card builds.
 pub fn available(state: &ServerState) -> bool {
     state.system_agent().is_some()
+}
+
+/// `commonGroundVersion` and `commonGroundNearbyVersion` in the auth
+/// capabilities: both present exactly when Grounding is available.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct Capabilities {
+    #[serde(
+        rename = "commonGroundVersion",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub version: Option<u32>,
+    #[serde(
+        rename = "commonGroundNearbyVersion",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub nearby_version: Option<u32>,
+}
+
+pub fn capabilities(state: &ServerState) -> Capabilities {
+    let on = available(state);
+    Capabilities {
+        version: on.then_some(COMMON_GROUND_VERSION),
+        nearby_version: on.then_some(nearby::COMMON_GROUND_NEARBY_VERSION),
+    }
+}
+
+/// Starts the nearby alert sweep when Grounding is available.
+pub fn spawn_nearby(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) {
+    if available(&state) {
+        nearby::spawn(state, rate_limiter);
+    }
 }
 
 pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> Router {
@@ -212,6 +247,7 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
             "/v1/cloud/common-ground/rooms/:code/invitations/:invitation_ref/join",
             post(actions::join),
         )
+        .merge(nearby::routes())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,
