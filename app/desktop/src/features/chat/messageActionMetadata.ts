@@ -54,7 +54,8 @@ export function messageActionSourceFromMessage(
   message: Message,
   sourceSessionId: string,
 ): MessageActionSource | null {
-  const sourceMessageId = clean(message.id) || clean(message.entryId);
+  // Quotes cross devices; the transcript ID may contain a viewer-specific prefix.
+  const sourceMessageId = clean(message.reactionTargetMessageId) || clean(message.id) || clean(message.entryId);
   const sessionId = clean(sourceSessionId);
   if (!sourceMessageId || !sessionId) {
     return null;

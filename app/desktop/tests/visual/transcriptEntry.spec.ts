@@ -41,6 +41,7 @@ test('initial load, cold hydration, and session entry reveal only a stable measu
   await assertStableEntry('first');
   await page.getByRole('button', { name: 'Cold session' }).click();
   await expect(page.getByText('Loading synthetic messages')).toBeVisible();
+  await page.getByRole('button', { name: 'Finish cold hydration' }).click();
   await assertStableEntry('cold');
   await page.getByRole('button', { name: 'Next session' }).click();
   await assertStableEntry('next');

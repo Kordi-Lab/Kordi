@@ -1,4 +1,5 @@
 import XCTest
+import Testing
 @testable import Kordi
 
 final class MessageAuthorIdentityTests: XCTestCase {
@@ -179,5 +180,73 @@ final class MessageAuthorIdentityTests: XCTestCase {
             seed: id, rendererVersion: CanonicalAvatarSystem.rendererVersion, uploadedAsset: upload,
             version: 1, updatedAt: "2026-10-14T00:00:00Z"
         )
+    }
+}
+
+
+@Suite struct QuotedMessageIdentityTests {
+    private let wireID = "10000000-0000-4000-8000-000000000001"
+    private let clientID = "20000000-0000-4000-8000-000000000002"
+
+    private func message(_ id: String, clientID: String? = nil, author: MessageAuthor = .me) -> ChatMessage {
+        ChatMessage(id: id, clientMessageId: clientID, conversationId: "direct-test", author: author,
+            authorName: author == .me ? "You" : "Morgan", text: "A synthetic message",
+            createdAt: .distantPast, deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
+    }
+
+    @Test func desktopQuoteResolvesOriginalSenderAvatarAndReplyCount() throws {
+        let avatar = "https://example.test/alex.png"
+        let account = CloudAccount(accountId: "acct_self", kordiId: nil, displayName: "Alex",
+            primaryEmail: nil, avatarUrl: avatar,
+            avatar: CanonicalAvatarDescriptor(entityType: "human", entityId: "acct_self", source: "uploaded",
+                style: CanonicalAvatarSystem.humanStyle, seed: "acct_self",
+                rendererVersion: CanonicalAvatarSystem.rendererVersion, uploadedAsset: avatar,
+                version: 1, updatedAt: "2026-01-01T00:00:00Z"),
+            defaultAgent: nil, nodeId: nil, passwordSet: true)
+        let conversation = ConversationSummary(id: "direct-test", kind: .person, peerAccountId: "acct_peer",
+            agentId: nil, ownerDisplayName: "Morgan", displayName: "Morgan", lastMessage: "",
+            lastActivityAt: .distantPast, unreadCount: 0, avatarSource: "https://example.test/morgan.png",
+            agentActivity: nil, sessionId: "direct-test")
+        let original = message(wireID, clientID: clientID)
+        for reference in [wireID, clientID, "collaboration-message:desktop-viewer:\(wireID)"] {
+            var reply = message("reply", author: .person)
+            reply.messageAction = .quote(MessageActionSource(sourceSessionId: "direct-test",
+                sourceMessageId: reference, senderLabel: "Alex", textPreview: original.text, attachmentCount: 0))
+            let projection = MessageThreadProjection(messages: [original, reply])
+            let source = try #require(reply.quotedReplyMessageId.flatMap { projection.messageReferences.message(for: $0) })
+            let identity = MessageAuthorIdentity.resolve(source, in: conversation, account: account, mentionTargets: [])
+            #expect(source.id == original.id)
+            #expect(identity.name == "Alex")
+            #expect(identity.source == avatar)
+            #expect(projection.quoteReplyIDs(sourceID: reference) == [reply.id])
+            #expect(projection.messageReferences.resolve(reference) == original.id)
+        }
+    }
+
+    @Test func groupPayloadAndTransportIDsResolveToOneSender() throws {
+        var source = message("group-payload", clientID: clientID, author: .person)
+        source.reactionTargetMessageId = wireID
+        let references = MessageReferenceIndex(messages: [source])
+        for reference in [source.id, clientID, wireID, "collaboration-message:desktop-viewer:\(wireID)"] {
+            #expect(references.message(for: reference) == source)
+            #expect(MessageQuotePresentation.message(source, matchesReference: reference))
+        }
+    }
+
+    @Test func unknownReferencesNeverBorrowAnAvatarFromTextOrAnArbitrarySuffix() {
+        let source = message(wireID)
+        let references = MessageReferenceIndex(messages: [source])
+        for reference in ["", " ", "other-namespace:\(wireID)", "collaboration-message:desktop-viewer:\(clientID)",
+                          "collaboration-message:desktop-viewer:\(wireID):", source.text] {
+            #expect(references.message(for: reference) == nil)
+        }
+    }
+
+    @Test func exactMessageIDWinsOverAnotherMessagesAlias() {
+        let source = message(wireID)
+        let other = message("other", clientID: wireID, author: .person)
+        for messages in [[source, other], [other, source]] {
+            #expect(MessageReferenceIndex(messages: messages).message(for: wireID) == source)
+        }
     }
 }
