@@ -70,9 +70,11 @@ define_class!(
 impl NearbyLocationDelegate {
     fn authorized(&self, manager: &CLLocationManager) {
         match unsafe { manager.authorizationStatus() } {
-            CLAuthorizationStatus::AuthorizedAlways
+            CLAuthorizationStatus::NotDetermined
+            | CLAuthorizationStatus::AuthorizedAlways
             | CLAuthorizationStatus::AuthorizedWhenInUse => {
                 if !self.ivars().started.replace(true) {
+                    // macOS prompts when a location service starts, including first use.
                     unsafe { manager.requestLocation() };
                 }
             }
@@ -121,8 +123,11 @@ pub(super) async fn request(app: tauri::AppHandle) -> Reply {
             let manager = CLLocationManager::new();
             manager.setDesiredAccuracy(100.0);
             manager.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
-            if manager.authorizationStatus() == CLAuthorizationStatus::NotDetermined {
-                manager.requestWhenInUseAuthorization();
+            if !CLLocationManager::locationServicesEnabled_class() {
+                delegate.finish(
+                    &manager,
+                    Err("Turn on Location Services in System Settings, then try again.".into()),
+                );
             } else {
                 delegate.authorized(&manager);
             }
@@ -154,4 +159,29 @@ pub(super) async fn request(app: tauri::AppHandle) -> Reply {
     .map_err(|_| "Could not finish the location request.")?;
     let _ = done.await;
     result
+}
+
+pub(super) async fn permission(app: tauri::AppHandle) -> Result<String, String> {
+    let (sender, receiver) = oneshot::channel();
+    app.run_on_main_thread(move || {
+        let status = unsafe {
+            if !CLLocationManager::locationServicesEnabled_class() {
+                "denied"
+            } else {
+                match CLLocationManager::new().authorizationStatus() {
+                    CLAuthorizationStatus::NotDetermined => "not_determined",
+                    CLAuthorizationStatus::Denied => "denied",
+                    CLAuthorizationStatus::Restricted => "restricted",
+                    CLAuthorizationStatus::AuthorizedAlways
+                    | CLAuthorizationStatus::AuthorizedWhenInUse => "granted",
+                    _ => "unknown",
+                }
+            }
+        };
+        let _ = sender.send(status.to_string());
+    })
+    .map_err(|_| "Could not read location permission.")?;
+    receiver
+        .await
+        .map_err(|_| "Could not read location permission.".into())
 }

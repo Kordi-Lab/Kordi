@@ -137,6 +137,7 @@ test('native permissions request only on Allow and recover through Settings', as
   await page.addInitScript(() => {
     const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
     let microphone = 'not_determined';
+    let locationPermission = 'not_determined';
     Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
     Object.assign(window, { permissionTestCalls: calls, __TAURI_INTERNALS__: {
       transformCallback: () => 1,
@@ -144,6 +145,10 @@ test('native permissions request only on Allow and recover through Settings', as
         calls.push({ command, args });
         if (command === 'desktop_notification_permission_state') return 'denied';
         if (command === 'common_ground_device_status') return { calendar: 'granted', reminders: 'not_determined' };
+        if (command === 'desktop_nearby_location_permission') {
+          if (args?.request) locationPermission = 'granted';
+          return locationPermission;
+        }
         if (command === 'desktop_media_permission') {
           if (args?.source === 'microphone') {
             if (args.request) microphone = 'granted';
@@ -162,12 +167,16 @@ test('native permissions request only on Allow and recover through Settings', as
   await expect(page.getByRole('button', { name: 'Allow: Microphone' })).toBeVisible();
   const calls = () => page.evaluate(() => (window as unknown as { permissionTestCalls: Array<{ command: string; args?: Record<string, unknown> }> }).permissionTestCalls);
   expect((await calls()).some((call) => call.args?.request === true || call.command === 'desktop_request_notification_permission')).toBe(false);
+  await page.getByRole('button', { name: 'Allow: Location' }).click();
+  await expect(page.getByRole('button', { name: 'Open Settings: Location' })).toBeVisible();
+  await page.getByRole('button', { name: 'Open Settings: Location' }).click();
+  await expect.poll(async () => (await calls()).some((call) => call.command === 'desktop_open_external_url' && String(call.args?.url).includes('Privacy_LocationServices'))).toBe(true);
   await page.getByRole('button', { name: 'Allow: Microphone' }).click();
   await expect(page.getByRole('button', { name: 'Open Settings: Microphone' })).toBeVisible();
   await page.getByRole('button', { name: 'Open Settings: Camera' }).click();
   await expect.poll(async () => (await calls()).some((call) => call.command === 'desktop_open_external_url' && String(call.args?.url).includes('Privacy_Camera'))).toBe(true);
   await expect(page.getByText('Restricted', { exact: true })).toBeVisible();
-  expect((await calls()).filter((call) => call.args?.request === true)).toHaveLength(1);
+  expect((await calls()).filter((call) => call.args?.request === true)).toHaveLength(2);
   const calendar = page.locator('.help-device-permission').filter({ has: page.getByRole('heading', { name: 'Calendar', exact: true }) });
   await expect(calendar.locator('summary')).toHaveCount(0);
   await expect(calendar.getByText('Show calendar events.', { exact: false })).toBeVisible();

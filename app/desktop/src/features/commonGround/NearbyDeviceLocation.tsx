@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { isNativeDesktopShell, openDesktopExternalUrl } from '@/lib/desktop';
 import { commonGroundErrorMessage } from './client';
 import { requestNearbyDeviceLocation } from './nearbyLocationFix';
 import type { CgNearbyStore } from './storeNearby';
@@ -39,6 +40,7 @@ export function NearbyDeviceLocation({ nearby }: { nearby: CgNearbyStore }) {
       </button>
       <p>Nearby uses the most recent location from any of your signed-in devices.</p>
       {notice ? <p role="status">{notice}</p> : null}
+      {isNativeDesktopShell() && /Mac/.test(navigator.platform) ? <button type="button" className="cg-link" onClick={() => void openDesktopExternalUrl('x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices').catch((error) => setNotice(commonGroundErrorMessage(error)))}>Location settings</button> : null}
     </div>
   );
 }

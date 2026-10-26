@@ -268,3 +268,28 @@ test('nearby screen: a pending search shows progress and a failed search offers 
     assert.doesNotMatch(root.textContent ?? '', /Could not reach Kordi Cloud/);
   });
 });
+
+test('nearby screen: manual refresh reloads results and requests, with duplicate clicks disabled', async () => {
+  const { store, calls } = storeWith({
+    'GET nearby': { status: 200, body: settings() },
+    'GET nearby/needs': { status: 200, body: { needs: [] } },
+    'GET nearby/people': { status: 200, body: people },
+  });
+  await mount(createElement(Screen, { store }), async (root) => {
+    let finish!: (result: Awaited<ReturnType<typeof store.client.nearbyPeople>>) => void;
+    let searches = 0;
+    store.client.nearbyPeople = () => { searches += 1; return new Promise((resolve) => { finish = resolve; }); };
+    await click(buttonNamed(root, 'Refresh results'));
+    const button = buttonNamed(root, 'Refreshing…');
+    assert.ok(button?.disabled);
+    await click(button);
+    assert.equal(searches, 1);
+    await act(async () => finish({ people: [], matching: 0, location: fresh() }));
+    await settle();
+    assert.match(root.textContent ?? '', /No matches nearby/);
+    assert.doesNotMatch(root.textContent ?? '', /Maya Chen/);
+    assert.equal(buttonNamed(root, 'Refresh results')?.disabled, false);
+    assert.equal(calls.filter((call) => call.url.endsWith('/nearby/needs')).length, 2);
+    assert.equal(calls.filter((call) => call.method === 'PUT').length, 0, 'refresh preserves search settings');
+  });
+});

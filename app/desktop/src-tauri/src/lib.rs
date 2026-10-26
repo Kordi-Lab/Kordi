@@ -210,6 +210,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             nearby_location::desktop_nearby_location,
+            nearby_location::desktop_nearby_location_permission,
             transcript_trace::desktop_transcript_trace,
             auth_window::desktop_set_auth_window_surface,
             window_backdrop::desktop_set_window_backdrop,

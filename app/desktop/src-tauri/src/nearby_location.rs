@@ -25,3 +25,30 @@ pub async fn desktop_nearby_location(app: tauri::AppHandle) -> Result<LocationFi
         Err("Location is unavailable on this device. Use another signed-in device.".into())
     }
 }
+
+/// Permission setup does not publish a location or enable Nearby.
+#[tauri::command]
+pub async fn desktop_nearby_location_permission(
+    app: tauri::AppHandle,
+    request: bool,
+) -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let status = macos::permission(app.clone()).await?;
+        if request && status == "not_determined" {
+            let result = macos::request(app.clone()).await;
+            let status = macos::permission(app).await?;
+            if status == "not_determined" {
+                result?;
+            }
+            Ok(status)
+        } else {
+            Ok(status)
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, request);
+        Ok("unavailable".into())
+    }
+}

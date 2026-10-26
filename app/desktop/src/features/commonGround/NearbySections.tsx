@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronRight, LoaderCircle, Plus } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, LoaderCircle, Plus, RefreshCw } from 'lucide-react';
 
 import { SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import { cn } from '@/lib/utils';
@@ -103,6 +103,15 @@ export function NearbyPeople({ settings, results, nearby, unavailable, notice, o
   nearby: CgNearbyStore;
   onOpen: (accountId: string) => void;
 }) {
+  const [refreshing, setRefreshing] = useState(false);
+  const pendingRefresh = useRef(false);
+  const refresh = async () => {
+    if (pendingRefresh.current) return;
+    pendingRefresh.current = true;
+    setRefreshing(true);
+    nearby.set({ notice: null });
+    try { await nearby.refresh(); } finally { pendingRefresh.current = false; setRefreshing(false); }
+  };
   const rows = results?.people.filter((entry) => entry.status !== 'matching') ?? [];
   const more = matchingCount(results);
   return (
@@ -110,6 +119,10 @@ export function NearbyPeople({ settings, results, nearby, unavailable, notice, o
       <div className="cg-nb-sechead">
         <h2 className="cg-msec">People</h2>
         <span className="cg-nb-pills">
+          <button type="button" className="cg-mbtn is-sm" disabled={refreshing} onClick={() => void refresh()}>
+            <RefreshCw className={cn('h-3 w-3', refreshing && 'animate-spin motion-reduce:animate-none')} aria-hidden="true" />
+            {refreshing ? 'Refreshing…' : 'Refresh results'}
+          </button>
           <NbMenuButton id="range" label="Within" className="cg-mbtn is-sm" items={checkItems(NEARBY_RANGES, settings.range, (range) => void nearby.setFilters({ range }))}>
             {rangePill(settings.range)}{caret}
           </NbMenuButton>
@@ -139,7 +152,7 @@ export function NearbyPeople({ settings, results, nearby, unavailable, notice, o
               {unavailable === 'location' ? <span className="cg-mrow-sub">Update your location to see who is nearby.</span> : null}
               {unavailable === 'paused' ? <span className="cg-mrow-sub">Resume Nearby to see results.</span> : null}
             </span>
-            {!unavailable && notice ? <button type="button" className="cg-link" onClick={() => { nearby.set({ notice: null }); void nearby.refresh(); }}>Try again</button> : null}
+            {!unavailable && notice ? <button type="button" className="cg-link" disabled={refreshing} onClick={() => void refresh()}>Try again</button> : null}
           </div>
         </div>
       )}
