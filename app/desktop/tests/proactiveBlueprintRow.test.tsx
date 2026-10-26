@@ -41,42 +41,42 @@ function rowText(host: HTMLElement, label: string) {
   };
 }
 
-test('the Proactive row sits under Access and shows Off or On with its description', async () => {
+test('the Cooperative row sits under Access and shows Off or On with its description', async () => {
   await withJsdomRoot(async (mount) => {
     const host = await mount(view(false));
     const labels = Array.from(host.querySelectorAll('.app-agent-studio-blueprint-label')).map((element) => element.textContent);
-    assert.equal(labels.indexOf('Proactive'), labels.indexOf('Access') + 1);
-    assert.deepEqual(rowText(host, 'Proactive'), { value: 'Off', detail: 'Does nothing on its own.' });
+    assert.equal(labels.indexOf('Cooperative'), labels.indexOf('Access') + 1);
+    assert.deepEqual(rowText(host, 'Cooperative'), { value: 'Off', detail: 'Stays out of your groups.' });
     await mount(view(true));
-    assert.deepEqual(rowText(host, 'Proactive'), { value: 'On', detail: 'Watches the groups you are in and asks you before it helps.' });
+    assert.deepEqual(rowText(host, 'Cooperative'), { value: 'On', detail: 'Watches the groups you are in and asks you before it helps.' });
   });
 });
 
-test('choosing On in the Proactive menu updates the draft', async () => {
+test('choosing On in the Cooperative menu updates the draft', async () => {
   const changes: boolean[] = [];
   await withJsdomRoot(async (mount) => {
     const host = await mount(view(false, (enabled) => changes.push(enabled)));
-    const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Edit proactive"]');
+    const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Edit cooperative"]');
     assert.ok(trigger);
     await act(async () => { trigger.click(); });
-    const menu = host.querySelector('[role="menu"][aria-label="Agent proactive"]');
+    const menu = host.querySelector('[role="menu"][aria-label="Agent cooperative"]');
     assert.ok(menu);
     const options = Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'));
     assert.deepEqual(options.map((option) => option.querySelector('small')?.textContent), [
-      'Does nothing on its own.',
+      'Stays out of your groups.',
       'Watches the groups you are in and asks you before it helps.',
     ]);
     assert.equal(options[0]?.getAttribute('aria-checked'), 'true');
     await act(async () => { options[1]!.click(); });
     assert.deepEqual(changes, [true]);
-    assert.equal(host.querySelector('[role="menu"][aria-label="Agent proactive"]'), null);
+    assert.equal(host.querySelector('[role="menu"][aria-label="Agent cooperative"]'), null);
   });
 });
 
-test('the Proactive row is read-only without a change handler', async () => {
+test('the Cooperative row is read-only without a change handler', async () => {
   await withJsdomRoot(async (mount) => {
     const host = await mount(view(false));
-    assert.equal(host.querySelector('button[aria-label="Edit proactive"]'), null);
+    assert.equal(host.querySelector('button[aria-label="Edit cooperative"]'), null);
     assert.ok(host.querySelector('button[aria-label="Edit access"]'));
   });
 });

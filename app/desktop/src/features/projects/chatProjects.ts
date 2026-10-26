@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react';
 import type { ChatWorkspaceSelection, GitWorkspace } from './gitWorkspace';
 import type { Conversation } from '@/kordi-app/types';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
+import { isPersonalAgentSession } from '@/features/personalAgent/personalAgentStore';
 
 export type ChatProject = {
   id: string;
@@ -27,7 +28,9 @@ export function projectForChat(projects: readonly ChatProject[], sessionId: stri
 }
 
 export function canChooseChatProject(conversation: Conversation) {
+  // An agent's personal session never becomes a project session.
   return !conversation.agentSubsessionId && !conversation.collaborationTarget
+    && !isPersonalAgentSession(conversation.canonicalSessionId ?? conversation.id, conversation.metadata)
     && (isLocalDraftChatConversationId(conversation.id)
       || (Boolean(conversation.desktopRuntimeBacked) && !isCloudChatRuntimeCopy(conversation)));
 }

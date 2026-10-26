@@ -12,6 +12,7 @@ import {
   type ChatSidebarSessionInput,
 } from '@/pages/sidebar/chatSidebarRows';
 import { groupSpacePreferenceId, participantSpaceSessionPreferenceId } from '@/pages/workspaceSidebar.chatHelpers';
+import { sidebarSessionMatchesSearch } from '@/pages/sidebar/sidebarSessionSearch';
 import type {
   WorkspaceSidebarChats,
   WorkspaceSidebarParticipantSpace as ParticipantSpaceItem,
@@ -271,12 +272,7 @@ export function useWorkspaceChatSidebarModel(
         .flatMap((space) =>
           space.sessions.map((session) => ({ session, space })),
         ), projects?.projects ?? [])
-        .filter(({ session, space }) => !chatSearch.trim() || [
-          session.title,
-          session.preview,
-          space.title,
-          ...space.participants.map((participant) => participant.name),
-        ].join(' ').toLowerCase().includes(chatSearch.trim().toLowerCase()))
+        .filter((row) => sidebarSessionMatchesSearch(row, chatSearch))
         .sort(
           (left, right) =>
             Number(pinnedSessionIds.has(participantSpaceSessionPreferenceId(right.session)))

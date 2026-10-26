@@ -204,6 +204,37 @@ pub(super) async fn ensure_loaded_or_create_session(
     Ok(session_id)
 }
 
+/// The runtime of the session a chat state shows. A refresh for another
+/// session unloads idle runtimes, possibly between this session being opened
+/// and its state being built. Loaded again, a stored session resumes; a chat
+/// this Mac never stored (a cloud chat opened here as an in-memory copy, such
+/// as an agent's personal session before its first local turn) is created
+/// again the way `desktop_chat_session_detail` opened it, instead of failing
+/// with "No session matching".
+pub(super) async fn active_runtime_handle(
+    manager: &DesktopChatManager,
+    cwd: &std::path::Path,
+    active_session_id: &str,
+) -> Result<super::DesktopSessionHandle, String> {
+    if let Some(runtime) = manager
+        .sessions
+        .lock()
+        .await
+        .get(active_session_id)
+        .cloned()
+    {
+        return Ok(runtime);
+    }
+    ensure_loaded_or_create_explicit_session(manager, cwd, active_session_id.to_string()).await?;
+    manager
+        .sessions
+        .lock()
+        .await
+        .get(active_session_id)
+        .cloned()
+        .ok_or_else(|| "Active session is unavailable".to_string())
+}
+
 pub(super) async fn build_chat_state(
     manager: &DesktopChatManager,
     cwd: &std::path::Path,
@@ -230,22 +261,7 @@ pub(super) async fn build_chat_state(
         return Ok(state);
     }
 
-    let active_runtime = {
-        let mut sessions = manager.sessions.lock().await;
-
-        if !sessions.contains_key(&active_session_id) {
-            let runtime = resume_desktop_runtime(cwd, &active_session_id).await?;
-            sessions.insert(
-                active_session_id.clone(),
-                Arc::new(tokio::sync::Mutex::new(runtime)),
-            );
-        }
-
-        sessions
-            .get(&active_session_id)
-            .cloned()
-            .ok_or_else(|| "Active session is unavailable".to_string())?
-    };
+    let active_runtime = active_runtime_handle(manager, cwd, &active_session_id).await?;
 
     // The canonical sync below carries the interruption note.
     close_interrupted_request(manager, &active_session_id, &active_runtime).await;
@@ -323,6 +339,10 @@ pub(super) async fn build_chat_state(
     retain_active_or_running_sessions(manager, &state.active_session_id).await;
     Ok(state)
 }
+
+#[cfg(test)]
+#[path = "session_lifecycle_unloaded_tests.rs"]
+mod unloaded_tests;
 
 #[cfg(test)]
 mod tests {

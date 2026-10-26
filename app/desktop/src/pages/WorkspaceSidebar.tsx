@@ -25,6 +25,7 @@ import type {
   GroupContextMenuTarget,
   SessionContextMenuTarget,
 } from '@/pages/SessionActionOverlays';
+import { PersonalAgentSessionMenu } from '@/features/personalAgent/PersonalAgentSessionMenu';
 import { WorkspaceChatLists } from '@/pages/workspaceSidebar.chatLists';
 import { useWorkspaceChatSidebarModel } from '@/pages/workspaceSidebar.chatModel';
 import { ChatSidebarChrome } from '@/pages/workspaceSidebar.chrome';
@@ -121,6 +122,7 @@ export function WorkspaceSidebar({
     onSetChatGroupMuted,
     onSetChatGroupArchived,
     onDeleteChatSession,
+    onOpenAgentSettings,
   } = chats;
   const {
     onCreateProjectFromFolder,
@@ -335,7 +337,15 @@ export function WorkspaceSidebar({
         </div>
       </aside>
 
-      {sessionContextMenu ? (
+      {sessionContextMenu?.personalAgent ? (
+        <PersonalAgentSessionMenu
+          target={{ ...sessionContextMenu, personalAgent: sessionContextMenu.personalAgent }}
+          onClose={() => setSessionContextMenu(null)}
+          onSetMuted={(sessionId, muted) => { void onSetChatSessionMuted(sessionId, muted); }}
+          onSetUnread={(sessionId, unread) => { void onSetChatSessionUnread(sessionId, unread); }}
+          onOpenAgentSettings={onOpenAgentSettings}
+        />
+      ) : sessionContextMenu ? (
         <SessionContextMenu
           target={sessionContextMenu}
           onClose={() => setSessionContextMenu(null)}

@@ -24,7 +24,7 @@ async function loadOwnerProactiveActivity(agentId: string) {
   return listProactiveActivity(session.token, agentId, 50);
 }
 
-/** The agent's recent proactive evaluations, loaded once when the Runs tab opens. */
+/** The agent's recent Cooperative evaluations of its owner's groups, loaded once when the Runs tab opens. */
 function ProactiveActivityList({ agentId, enabled, load, now }: { agentId: string; enabled: boolean; load: LoadProactiveActivity; now?: number }) {
   const [openedAt] = useState(() => Date.now());
   const [state, setState] = useState<{ agentId: string | null; entries: ProactiveActivityEntry[] | null; error: string | null }>({ agentId: null, entries: null, error: null });
@@ -32,18 +32,18 @@ function ProactiveActivityList({ agentId, enabled, load, now }: { agentId: strin
     let cancelled = false;
     load(agentId)
       .then((entries) => { if (!cancelled) setState({ agentId, entries, error: null }); })
-      .catch((error: unknown) => { if (!cancelled) setState({ agentId, entries: [], error: error instanceof Error ? error.message : 'Could not load proactive activity.' }); });
+      .catch((error: unknown) => { if (!cancelled) setState({ agentId, entries: [], error: error instanceof Error ? error.message : 'Could not load activity.' }); });
     return () => { cancelled = true; };
   }, [agentId, load]);
   const current = state.agentId === agentId ? state : { entries: null, error: null };
   const entries = current.entries ?? [];
   if (!enabled && entries.length === 0 && !current.error) return null;
   return (
-    <section className="app-agent-studio-proactive-activity" aria-label="Proactive activity">
-      <WorkspaceHeading title="Proactive" />
+    <section className="app-agent-studio-proactive-activity" aria-label="Cooperative activity">
+      <WorkspaceHeading title="Cooperative" />
       {current.entries === null ? <div className="app-agent-studio-runtime-note"><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Loading…</div>
         : current.error ? <div className="app-agent-studio-file-feedback is-error">{current.error}</div>
-          : entries.length === 0 ? <div className="app-agent-studio-runtime-note">No proactive activity yet.</div> : (
+          : entries.length === 0 ? <div className="app-agent-studio-runtime-note">No activity yet.</div> : (
             <div className="app-agent-studio-simple-list">
               {entries.map((entry, index) => {
                 const Icon = DECISION_ICON[entry.decision];

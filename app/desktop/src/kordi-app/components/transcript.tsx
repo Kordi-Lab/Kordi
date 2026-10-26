@@ -11,16 +11,7 @@ import { relatedAgentSessionsFromTools,type RelatedAgentSessionRunStatus } from 
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
 import { generatedAvatarSeedForLabel,selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
-import {
-  ArrowRightLeft,
-  Check,
-  CheckCircle2,
-  ChevronUp,
-  Clock3,
-  Split,
-  SquareArrowOutUpRight,
-  Undo2
-} from 'lucide-react';
+import { ArrowRightLeft, Check, CheckCircle2, ChevronUp, Clock3, Split, SquareArrowOutUpRight, Undo2 } from 'lucide-react';
 import { memo,useLayoutEffect,useRef,useState,type PointerEvent as ReactPointerEvent } from 'react';
 import type { EditFilePreview, Message, MessageAttachment, MessageSourceReference } from '../types';
 import { isSystemAvatarUrl } from '@/features/pip/pipIdentity';
@@ -36,6 +27,7 @@ import { MessageLinkPreview } from './messageLinkPreview';
 import { standaloneExternalMessageLink } from './messageLinks';
 import { MessageReactionChips } from './messageReactions';
 import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
+import { MessageEventSourceChips } from './messageEventSources';
 import { SupportContactAnswer,SupportContactTypingIndicator } from './transcriptAssistantAnswer';
 import { AttachmentPreview } from './transcriptAttachments';
 import { TranscriptCallActivityContent } from './transcriptCallActivityContent';
@@ -584,6 +576,7 @@ function MessageBubbleView({
               onOpenArtifact={onOpenArtifact}
               onOpenAuthSettings={onOpenAuthSettings}
             />
+            <MessageEventSourceChips sources={msg.eventSources} />
             <RelatedAgentSessionLinks sessions={relatedAgentSessions} agentName={msg.sender} statusBySessionId={relatedAgentSessionStatusById} onOpen={onOpenForkSession} />
             {msg.attachments?.length ? <div className="mt-1.5"><AttachmentPreview msg={msg} /></div> : null}
           </div>

@@ -51,7 +51,7 @@ import { useSkillLibrary } from './useSkillLibrary';
 import { useFactoryCreationAvatar } from './useFactoryCreationAvatar';
 import { useFactoryAgentAvatarActions } from './useFactoryAgentAvatarActions';
 import { useFactoryBuildAgent } from './factoryBuildAgent';
-import { factoryProactiveControl, useCreationProactiveDraft, useDefaultAgentProactive, withDefaultAgentProactiveChange } from './factoryProactiveDraft';
+import { AGENT_SETTING_CHANGE_KEYS, cloudAgentSettingsUpdate, factoryProactiveControl, publishDefaultAgentSettings, useCreationProactiveDraft, useDefaultAgentProactive, withDefaultAgentSettingChanges } from './factoryProactiveDraft';
 import { cloudAgentDefinitionChanges, factoryAgentAvatarPresentation, factoryAgentIdentityChanges, factoryLocalAgentCapabilities, publishDefaultAgentIdentity } from './factoryAgentIdentity';
 
 export function AgentsPage({
@@ -121,7 +121,7 @@ export function AgentsPage({
     availableTools,
     availablePlugins,
     activeDraftChanges: modelActiveDraftChanges,
-    resetAgentDraft, setProactiveDraft,
+    resetAgentDraft, setProactiveDraft, setPersonalProactiveDraft,
     saveAgentConfig,
     markAgentDraftPublished,
     saveActiveFile,
@@ -287,7 +287,7 @@ export function AgentsPage({
     systemPrompt: builder.status.draft.systemPrompt,
     loadedSkills: builder.status.draft.skills.map((skill) => skill.name),
     loadedTools: builder.status.draft.tools,
-    loadedPlugins: builder.status.draft.plugins, proactive: modelActiveAgentConfig?.proactive,
+    loadedPlugins: builder.status.draft.plugins, proactive: modelActiveAgentConfig?.proactive, personalProactive: modelActiveAgentConfig?.personalProactive,
   } : modelActiveAgentConfig;
   const rawActiveDraftChanges = activeAgentConfig && activePersistedConfig
     ? agentStudioConfigChanges(activeAgentConfig, activePersistedConfig)
@@ -303,7 +303,7 @@ export function AgentsPage({
   );
   const activeDraftChanges = selectedAgent?.cloudAgentId
     ? rawActiveDraftChanges
-    : withDefaultAgentProactiveChange(publishableLocalAgentConfigChanges(rawActiveDraftChanges, hasLocalConfig, canToggleRuntimeSkills), activeAgentConfig, defaultProactive.published);
+    : withDefaultAgentSettingChanges(publishableLocalAgentConfigChanges(rawActiveDraftChanges, hasLocalConfig, canToggleRuntimeSkills), activeAgentConfig, defaultProactive);
   const editableCapabilityKinds = useMemo(() => {
     const kinds = new Set<AgentStudioCapabilityKind>();
     if (buildingStandaloneArtifact) {
@@ -484,7 +484,7 @@ export function AgentsPage({
         if (!creationDraft || !onCreateCloudAgent) return;
         const created = await onCreateCloudAgent(factoryAgentCreateInput({
           draft: creationDraft, runtime: status.draft, accessScope: creationAccessScope,
-          creatorAgent, avatarMutation: factoryAvatar.mutation, proactive: creationProactive.input,
+          creatorAgent, avatarMutation: factoryAvatar.mutation, proactive: creationProactive.input, personalAgent: creationProactive.personalInput,
         }));
         factoryAvatar.clearAvatar();
         const targetKey = factoryArtifactTargetKey(cloudAccountId, 'agent', created.id);
@@ -523,7 +523,7 @@ export function AgentsPage({
               expectedVersion: selectedAgent.cloudAgentAvatarVersion,
             },
           } : {}),
-          ...(accessChanged ? { accessScope: selectedAccessScope } : {}), ...(activeDraftChanges.some((change) => change.key === 'proactive') && activeAgentConfig.proactive ? { proactive: activeAgentConfig.proactive } : {}),
+          ...(accessChanged ? { accessScope: selectedAccessScope } : {}), ...cloudAgentSettingsUpdate(activeDraftChanges, activeAgentConfig),
         });
         markAgentDraftPublished(selectedAgent, activeAgentConfig);
         setAccessDraftByAgentId((current) => {
@@ -548,8 +548,8 @@ export function AgentsPage({
           await onUpdateAgentModelRouting(selectedAgent, selectedRouting);
         }
         await publishDefaultAgentIdentity({ agent: selectedAgent, draft: builderDraft, mutation: factoryAvatar.mutation, avatarKey: selectedAvatarKey, onRenameLocalAgent, onUpdateLocalAgentAvatar });
-        if (activeDraftChanges.some((change) => change.key === 'proactive') && activeAgentConfig.proactive) await defaultProactive.publish(activeAgentConfig.proactive.enabled);
-        const hasFileBackedChange = activeDraftChanges.some((change) => change.key !== 'proactive' && (change.key !== 'skills' || !canToggleRuntimeSkills));
+        await publishDefaultAgentSettings(defaultProactive, activeDraftChanges, activeAgentConfig);
+        const hasFileBackedChange = activeDraftChanges.some((change) => !AGENT_SETTING_CHANGE_KEYS.has(change.key) && (change.key !== 'skills' || !canToggleRuntimeSkills));
         if (hasFileBackedChange) await saveAgentConfig(selectedAgent, 'all', activeAgentConfig);
         if (accessChanged) {
           setPublishedAccessByAgentId((current) => ({ ...current, [selectedAgent.id]: selectedAccessScope }));
@@ -762,7 +762,7 @@ export function AgentsPage({
               creationDraft={creationDraft}
               creationAccessScope={creationAccessScope}
               agentAccessScope={selectedAccessScope}
-              proactive={factoryProactiveControl({ creating, creation: creationProactive, agent: selectedAgent, config: activeAgentConfig, setProactiveDraft, defaultAgent: defaultProactive })}
+              proactive={factoryProactiveControl({ creating, creation: creationProactive, agent: selectedAgent, config: activeAgentConfig, setProactiveDraft, setPersonalProactiveDraft, defaultAgent: defaultProactive })}
               onCreationAccessScopeChange={(scope) => {
                 void persistBuilderDraft((draft) => ({ ...draft, access: scope === 'participant_conversations' ? 'participant-conversations' : 'only-me' }));
               }}

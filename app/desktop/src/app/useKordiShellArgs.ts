@@ -27,6 +27,7 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
     return {
       sidebar: {
         isNativeShell: args.isNativeShell,
+        setActiveAgentId: args.setActiveAgentId,
         defaultCloudAgentRuntimeRoute: args.defaultCloudAgentRuntimeRoute,
         isSingleWorkspacePage: args.isSingleWorkspacePage,
         collapseChatSessions: args.collapseChatSessions,

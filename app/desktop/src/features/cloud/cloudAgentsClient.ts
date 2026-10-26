@@ -16,7 +16,10 @@ import { cloudFetchImpl } from './cloudTransport';
 
 export type CloudAgentAccessScope = 'private' | 'participant_conversations';
 export type CloudAgentStatus = 'active' | 'archived';
+/** Cooperative in the UI: whether the agent watches its owner's groups. The server also names it `cooperative`. */
 export type CloudAgentProactive = { enabled: boolean };
+/** Proactive in the UI: whether the agent may message its owner first in its personal session. */
+export type CloudAgentPersonalAgent = { proactive: boolean };
 
 export type CloudAgentResource = {
   kind: 'url' | 'file' | 'text' | string;
@@ -44,6 +47,7 @@ export type CreateCloudAgentInput = {
   skills?: CloudAgentSkill[];
   modelRouting?: Record<string, unknown>;
   proactive?: CloudAgentProactive;
+  personalAgent?: CloudAgentPersonalAgent;
 };
 
 export type UpdateCloudAgentInput = Partial<CreateCloudAgentInput>;
@@ -60,6 +64,16 @@ async function readJsonSafe(response: Response): Promise<unknown> {
   } catch {
     return null;
   }
+}
+
+/**
+ * The request body: the group-watching setting goes out under both names with
+ * the same value. Servers before #2091 read only `proactive`; newer servers
+ * accept both while they agree.
+ */
+function cloudAgentRequestBody(input: UpdateCloudAgentInput) {
+  const { proactive, ...rest } = input;
+  return { ...rest, ...(proactive ? { proactive, cooperative: proactive } : {}) };
 }
 
 function cloudAgentError(status: number, body: unknown, fallbackMessage: string): CloudAuthError {
@@ -139,7 +153,7 @@ export class CloudAgentsClient {
     const body = await this.send<CloudAgentEnvelope>('/v1/cloud/agents', {
       method: 'POST',
       headers: this.authHeaders(token),
-      body: JSON.stringify({ ...input, ...(pendingAvatar ? { avatarMutation: undefined } : {}) }),
+      body: JSON.stringify({ ...cloudAgentRequestBody(input), ...(pendingAvatar ? { avatarMutation: undefined } : {}) }),
     }, 'Could not create Agent.');
     const agent = normalizeCloudAgentDefinition(body.agent);
     if (!agent) throw new CloudAuthError('unknown', 'Agent response was invalid.', 0);
@@ -177,7 +191,7 @@ export class CloudAgentsClient {
     const body = await this.send<CloudAgentEnvelope>(`/v1/cloud/agents/${encodeURIComponent(agentId)}`, {
       method: 'PUT',
       headers: this.authHeaders(token),
-      body: JSON.stringify({ ...input, ...(avatarMutation ? { avatarMutation } : {}) }),
+      body: JSON.stringify({ ...cloudAgentRequestBody(input), ...(avatarMutation ? { avatarMutation } : {}) }),
     }, 'Could not update Agent.');
     const agent = normalizeCloudAgentDefinition(body.agent);
     if (!agent) throw new CloudAuthError('unknown', 'Agent response was invalid.', 0);

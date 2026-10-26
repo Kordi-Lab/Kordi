@@ -574,11 +574,11 @@ export function AgentStudioWorkspace({
   creationAccessScope: CloudAgentAccessScope;
   agentAccessScope: CloudAgentAccessScope;
   onCreationAccessScopeChange: (scope: CloudAgentAccessScope) => void;
-  /** The Blueprint's Proactive row; omitted when the agent cannot watch groups. */
+  /** The Blueprint's Cooperative and Proactive rows; omitted when the agent has neither setting. */
   proactive?: AgentProactiveControl;
   config: AgentStudioConfigDraft | null;
   persisted: PersistedAgentConfig | null;
-  changes: Array<{ key: 'prompt' | 'skills' | 'tools' | 'plugins' | 'definition' | 'access' | 'proactive' | 'routing'; label: string; detail: string }>;
+  changes: Array<{ key: 'prompt' | 'skills' | 'tools' | 'plugins' | 'definition' | 'access' | 'proactive' | 'personalProactive' | 'routing'; label: string; detail: string }>;
   availableSkills: string[];
   skillDescriptions: Readonly<Record<string, string>>;
   availableTools: string[];

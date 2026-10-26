@@ -1,4 +1,5 @@
 import type { MessageActionMetadata, MessageMention } from '@/kordi-app/types';
+import type { MessageEventSource } from '@/kordi-app/types/message';
 import type { CloudMessage } from './authClient';
 import {
   CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND,
@@ -34,6 +35,8 @@ export type CloudSelfAgentRestoreMessage = {
   responseExecution: CloudAgentExecutionSnapshot | undefined;
   /** How a reply that kept its partial text ended early. */
   responseEnding?: CloudAgentReplyEnding;
+  /** Connector events an agent reply is about, kept in order. */
+  responseSources?: MessageEventSource[];
   messageAction: MessageActionMetadata | null;
   mentions: MessageMention[] | undefined;
   agentRuntimeRoute: ReturnType<typeof cloudAgentRuntimeRouteChangeFromBody>;
@@ -101,6 +104,7 @@ export function normalizeCloudSelfAgentRestoreMessage(
       : null,
     responseExecution: response?.execution,
     ...(response?.ending ? { responseEnding: response.ending } : {}),
+    ...(response?.sources?.length ? { responseSources: response.sources } : {}),
     messageAction: response ? null : cloudDirectMessageAction(message.body),
     mentions: response ? undefined : cloudDirectMessageMentions(message.body),
     agentRuntimeRoute: isModelChange

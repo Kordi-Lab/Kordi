@@ -57,7 +57,7 @@ export async function listProactiveActivity(token: string, agentId: string, limi
   const body = await defaultCloudAuthClient().request<unknown>(
     `${agentPath(agentId)}/activity?limit=${encodeURIComponent(String(limit))}`,
     { method: 'GET', headers: { authorization: `Bearer ${token}` } },
-    'Could not load proactive activity.',
+    'Could not load activity.',
   );
   return normalizeProactiveActivity(body);
 }
@@ -71,16 +71,16 @@ function proactiveSetting(body: unknown): { enabled: boolean } {
   return { enabled: Boolean(body && typeof body === 'object' && (body as { enabled?: unknown }).enabled === true) };
 }
 
-/** Whether the agent watches its owner's groups. Owner only. */
+/** Whether the agent watches its owner's groups (Cooperative in the UI). Owner only. */
 export async function getProactiveSetting(token: string, agentId: string): Promise<{ enabled: boolean }> {
   return proactiveSetting(await defaultCloudAuthClient().request<unknown>(
     agentPath(agentId),
     { method: 'GET', headers: { authorization: `Bearer ${token}` } },
-    'Could not load the proactive setting.',
+    'Could not load the Cooperative setting.',
   ));
 }
 
-/** Turns the agent's proactive watching on or off. Owner only. */
+/** Turns the agent's group watching (Cooperative) on or off. Owner only. */
 export async function setProactiveSetting(token: string, agentId: string, enabled: boolean): Promise<{ enabled: boolean }> {
   return proactiveSetting(await defaultCloudAuthClient().request<unknown>(
     agentPath(agentId),
@@ -89,6 +89,6 @@ export async function setProactiveSetting(token: string, agentId: string, enable
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
       body: JSON.stringify({ enabled }),
     },
-    'Could not update the proactive setting.',
+    'Could not update the Cooperative setting.',
   ));
 }

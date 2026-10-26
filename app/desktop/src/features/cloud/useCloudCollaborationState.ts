@@ -179,7 +179,7 @@ export {
   suppressCloudCollaborationUnreadCounts,
 } from './useCloudCollaborationReadModel';
 
-function reportCloudAgentAvailabilityWarning(message: string, error: unknown) { console.warn(message, error); }
+export function reportCloudAgentAvailabilityWarning(message: string, error: unknown) { console.warn(message, error); }
 function reportCloudAgentExecutionWarning(message: string, error: unknown) {
   const detail = error instanceof Error ? error.message : String(error);
   console.warn(`${message}: ${detail}`);

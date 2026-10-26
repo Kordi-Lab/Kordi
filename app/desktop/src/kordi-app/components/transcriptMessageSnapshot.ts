@@ -34,6 +34,7 @@ export function messageSnapshotKey(msg: Message) {
     msg.cloudMessageVersion ?? '',
     msg.planCard ? [msg.planCard.eventId, msg.planCard.view ?? '', msg.planCard.revision, ...(msg.planCard.options ?? []).map((option) => option.votes.join('+'))].join(':') : '',
     msg.editedAt ?? '',
+    msg.eventSources?.map((source) => [source.eventId, source.provider, source.title].join(':')).join('|') ?? '',
     msg.voiceMessage ? [
       msg.voiceMessage.mediaId,
       msg.voiceMessage.localPath ?? '',
