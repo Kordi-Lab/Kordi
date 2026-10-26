@@ -1,6 +1,8 @@
 //! The Proactive setting of an owned agent (`personalAgent.proactive`), what
 //! turning it on and off does, and what archiving a definition removes. One
-//! table holds it for definitions and the default agent alike.
+//! table holds it for definitions and the default agent alike. With no row
+//! the default agent is on and a definition is off; a stored row wins, so
+//! turning the default agent off sticks.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -31,7 +33,31 @@ impl PersonalAgentSetting {
 
 type Tx<'a, 'b> = &'a mut Transaction<'b, Postgres>;
 
-/// The stored setting of `agent_id`; no row is off.
+/// SQL that is true while the Proactive setting of the agent in column
+/// `$agent`, owned by the account in column `$owner`, is on: its row, else
+/// on for the default agent only.
+macro_rules! effective_on_sql {
+    ($agent:literal, $owner:literal) => {
+        concat!(
+            "COALESCE((SELECT setting.proactive FROM cloud_personal_agent_settings setting \
+             WHERE setting.agent_id = ",
+            $agent,
+            "), ",
+            $agent,
+            " = 'cloud-agent:' || ",
+            $owner,
+            ")"
+        )
+    };
+}
+pub(crate) use effective_on_sql;
+
+/// The setting of `agent_id` without a stored row.
+fn default_for(agent_id: &str) -> bool {
+    crate::proactive::agents::default_owner(agent_id).is_some()
+}
+
+/// The setting in effect for `agent_id`: its row, else the default.
 pub(crate) async fn stored(
     pool: &PgPool,
     agent_id: &str,
@@ -42,13 +68,16 @@ pub(crate) async fn stored(
             .fetch_optional(pool)
             .await?;
     Ok(PersonalAgentSetting {
-        proactive: row.is_some_and(|(on,)| on),
+        proactive: row.map_or_else(|| default_for(agent_id), |(on,)| on),
     })
 }
 
-/// Stores `setting` for the owner's agent and returns the previous one.
-/// Turning it on starts the cursor at now, so history is never evaluated;
-/// turning it off cancels the agent's queued evaluations and frees it.
+/// Stores `setting` for the owner's agent as an explicit row and returns the
+/// one in effect before. Turning it on starts the cursor at now, so history
+/// is never evaluated. While it is on, the agent's personal session is made
+/// ready (created, unhidden, or replaced after a delete). Turning it off
+/// cancels the agent's queued evaluations and frees it. Every change tells
+/// the owner's devices whether the session is a personal session now.
 pub(crate) async fn store_in_transaction(
     transaction: Tx<'_, '_>,
     owner_account_id: &str,
@@ -62,7 +91,7 @@ pub(crate) async fn store_in_transaction(
     .fetch_optional(&mut **transaction)
     .await?;
     let was = PersonalAgentSetting {
-        proactive: was.is_some_and(|(on,)| on),
+        proactive: was.map_or_else(|| default_for(agent_id), |(on,)| on),
     };
     query(
         "INSERT INTO cloud_personal_agent_settings (agent_id, owner_account_id, proactive)
@@ -79,7 +108,30 @@ pub(crate) async fn store_in_transaction(
     } else if was.proactive && !setting.proactive {
         stop_in_transaction(transaction, agent_id).await?;
     }
+    let changed = was != setting;
+    let announced = if setting.proactive {
+        let (_, activation) =
+            super::activation::activate_in_transaction(transaction, owner_account_id, agent_id)
+                .await
+                .map_err(store_error)?;
+        // A new conversation's `conversation.created` already carries it.
+        changed && activation != super::activation::Activation::Created
+    } else {
+        changed
+    };
+    if announced {
+        crate::chat_sync::store::announce_personal_session(transaction, agent_id)
+            .await
+            .map_err(store_error)?;
+    }
     Ok(was)
+}
+
+fn store_error(error: crate::chat_sync::store::StoreError) -> sqlx_core::Error {
+    match error {
+        crate::chat_sync::store::StoreError::Database(error) => error,
+        other => sqlx_core::Error::Protocol(other.to_string()),
+    }
 }
 
 /// Starts (or restarts) the agent's cursor at now with a clean schedule, and
@@ -144,10 +196,7 @@ pub(crate) async fn forget_in_transaction(
     stop_in_transaction(transaction, agent_id).await?;
     crate::chat_sync::store::unbind_personal_session(transaction, agent_id)
         .await
-        .map_err(|error| match error {
-            crate::chat_sync::store::StoreError::Database(error) => error,
-            other => sqlx_core::Error::Protocol(other.to_string()),
-        })?;
+        .map_err(store_error)?;
     for table in [
         "cloud_personal_agent_settings",
         "cloud_personal_agent_state",

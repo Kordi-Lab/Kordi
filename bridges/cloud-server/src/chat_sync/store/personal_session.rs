@@ -1,7 +1,8 @@
 //! Marks the personal session of an owned agent
 //! (docs/development/personal-agent.md), so clients list it under Personal
 //! agent. Its row in `cloud_personal_agent_sessions` names the agent; the
-//! conversation snapshot carries it as `personal_agent`.
+//! conversation snapshot carries it as `personal_agent` while the agent's
+//! Proactive setting is on.
 
 use std::collections::HashMap;
 
@@ -65,33 +66,61 @@ pub(crate) async fn unbind_personal_session(
     .fetch_all(&mut **transaction)
     .await?;
     for (conversation_id,) in unbound {
-        let (version,): (i32,) = query_as(
-            "UPDATE cloud_chat_conversations SET version = version + 1, updated_at = now() \
-             WHERE conversation_id = $1 RETURNING version",
-        )
-        .bind(conversation_id)
-        .fetch_one(&mut **transaction)
-        .await?;
-        let payloads =
-            super::support::load_active_conversation_projections(transaction, conversation_id)
-                .await?
-                .into_iter()
-                .map(|(account, conversation)| (account, json!({ "conversation": conversation })))
-                .collect();
-        super::sync_events::insert_sync_event_fanout(
-            transaction,
-            "conversation.updated",
-            Some(conversation_id),
-            Some(conversation_id),
-            Some(version),
-            payloads,
-        )
-        .await?;
+        announce(transaction, conversation_id).await?;
     }
     Ok(())
 }
 
-/// The agent of each personal session among `conversation_ids`.
+/// Tells the members of `agent_id`'s bound personal session that its
+/// `personal_agent` marker changed: the agent's Proactive setting was turned
+/// on or off in this transaction.
+pub(crate) async fn announce_personal_session(
+    transaction: &mut Transaction<'_, Postgres>,
+    agent_id: &str,
+) -> Result<(), StoreError> {
+    let bound: Option<(Uuid,)> =
+        query_as("SELECT conversation_id FROM cloud_personal_agent_sessions WHERE agent_id = $1")
+            .bind(agent_id)
+            .fetch_optional(&mut **transaction)
+            .await?;
+    match bound {
+        Some((conversation_id,)) => announce(transaction, conversation_id).await,
+        None => Ok(()),
+    }
+}
+
+/// Moves the conversation's version and sends every member's devices a
+/// `conversation.updated` with the current snapshot.
+async fn announce(
+    transaction: &mut Transaction<'_, Postgres>,
+    conversation_id: Uuid,
+) -> Result<(), StoreError> {
+    let (version,): (i32,) = query_as(
+        "UPDATE cloud_chat_conversations SET version = version + 1, updated_at = now() \
+         WHERE conversation_id = $1 RETURNING version",
+    )
+    .bind(conversation_id)
+    .fetch_one(&mut **transaction)
+    .await?;
+    let payloads =
+        super::support::load_active_conversation_projections(transaction, conversation_id)
+            .await?
+            .into_iter()
+            .map(|(account, conversation)| (account, json!({ "conversation": conversation })))
+            .collect();
+    super::sync_events::insert_sync_event_fanout(
+        transaction,
+        "conversation.updated",
+        Some(conversation_id),
+        Some(conversation_id),
+        Some(version),
+        payloads,
+    )
+    .await
+}
+
+/// The agent of each personal session among `conversation_ids`: bound, with
+/// the agent's Proactive setting on.
 pub(super) async fn personal_agent_ids(
     transaction: &mut Transaction<'_, Postgres>,
     conversation_ids: &[Uuid],
@@ -99,10 +128,15 @@ pub(super) async fn personal_agent_ids(
     if conversation_ids.is_empty() {
         return Ok(HashMap::new());
     }
-    let rows: Vec<(Uuid, String)> = query_as(
-        "SELECT conversation_id, agent_id FROM cloud_personal_agent_sessions \
-         WHERE conversation_id = ANY($1)",
-    )
+    let rows: Vec<(Uuid, String)> = query_as(concat!(
+        "SELECT binding.conversation_id, binding.agent_id \
+         FROM cloud_personal_agent_sessions binding \
+         WHERE binding.conversation_id = ANY($1) AND ",
+        crate::personal_agent::setting::effective_on_sql!(
+            "binding.agent_id",
+            "binding.owner_account_id"
+        )
+    ))
     .bind(conversation_ids)
     .fetch_all(&mut **transaction)
     .await?;

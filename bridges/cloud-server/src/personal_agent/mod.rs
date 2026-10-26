@@ -11,6 +11,7 @@
 //! `share` posts one agent message with its source events in the personal
 //! session and pushes it; a `skip` only moves the cursor.
 
+mod activation;
 mod complete;
 mod config;
 pub(crate) mod desktop;

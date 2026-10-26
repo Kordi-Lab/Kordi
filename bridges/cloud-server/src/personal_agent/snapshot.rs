@@ -116,12 +116,11 @@ pub(super) async fn load_agent(
                 "SELECT account.account_id, account.display_name, account.public_handle, ",
                 crate::proactive::agents::default_name_sql!("account", "profile"),
                 ", '', 'null'::jsonb
-                 FROM cloud_personal_agent_settings setting
-                 JOIN cloud_accounts account ON account.account_id = setting.owner_account_id
+                 FROM cloud_accounts account
                  LEFT JOIN cloud_default_agent_profiles profile
                    ON profile.owner_account_id = account.account_id
-                 WHERE setting.agent_id = $1 AND setting.owner_account_id = $2
-                   AND setting.proactive"
+                 WHERE account.account_id = $2 AND ",
+                super::setting::effective_on_sql!("$1", "account.account_id")
             ))
             .bind(agent_id)
             .bind(owner)

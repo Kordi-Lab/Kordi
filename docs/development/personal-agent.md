@@ -13,7 +13,9 @@ Two agent settings, two meanings:
   agent's personal session. Internally it is `personalAgent.proactive`
   (module `personal_agent/`, prefix `personal_agent_eval_`). The desktop
   already uses "outreach" and "reachout" for other things; do not use those
-  names.
+  names. An agent is a personal agent, listed under Personal agent, only
+  while its Proactive is on. The owner's default agent ("<Name>'s Kordi")
+  is on by default; Factory agents are off by default.
 
 ## Settings API
 
@@ -40,56 +42,81 @@ Agent definition JSON (`/v1/cloud/agents` create, update, list, and the
   `{ "proactive": bool }` returns the same shape. Owner only (`403` for
   another account, `404` for an unknown or archived definition). Works for
   the default agent id `cloud-agent:<account_id>` and owned definitions.
-  Turning it on (re)seeds the agent's cursor to now: history is never
-  evaluated. Turning it off cancels queued `personal_agent_eval_` runs of
-  the agent and clears its active run; a run a runner or Mac already holds
-  finishes but posts nothing.
+  `GET` returns the setting in effect: with no stored row, `true` for the
+  default agent (existing accounts included) and `false` for a definition.
+  `PUT` always stores an explicit row, so turning the default agent off
+  sticks. The sweep, the list, the marker and the lock below all use the
+  setting in effect.
+- Turning it on (`PUT`, or create/update of a definition with
+  `personalAgent.proactive: true`) (re)seeds the agent's cursor to now, so
+  history is never evaluated, and makes the personal session ready in the
+  same transaction: the bound conversation is reused (history kept),
+  unhidden if the owner hid it while it was off (with the usual
+  `session.unhidden` event), or replaced by a new conversation when the
+  owner deleted it then (the old one stays as an ordinary chat). A `PUT`
+  of `true` while already on makes the session ready the same way.
+  Turning it off cancels queued `personal_agent_eval_` runs of the agent
+  and clears its active run; a run a runner or Mac already holds finishes
+  but posts nothing. Every on/off change moves the bound conversation's
+  version and sends the owner a `conversation.updated`, so clients add or
+  drop the `personal_agent` marker without a bootstrap (a newly created
+  conversation's `conversation.created` already carries it).
 - Storage: `cloud_personal_agent_settings` (`agent_id`, `owner_account_id`,
   `proactive`, `updated_at`; migration `0156_personal_agents.sql`, which
   creates only the new tables; the indexes on existing tables are in
   `0157_personal_agent_indexes.sql`, and both set a 5 second
-  `lock_timeout`), one table for definitions and the default agent. No row is off. Changing it
-  through the route publishes `agent.definition.upserted` for a
-  definition; the default agent has no definition event.
+  `lock_timeout`), one table for definitions and the default agent.
+  Changing it through the route publishes `agent.definition.upserted` for
+  a definition; the default agent has no definition event.
 
 ## Personal sessions
 
 One `kind='ai'` conversation per owned agent (the default agent and every
-active owned definition), owner as the only member.
+active owned definition), owner as the only member. It is a personal
+session while the agent's Proactive is on; while it is off the
+conversation is an ordinary agent chat that keeps its binding, so turning
+it on again reuses it.
 
 - `legacy_session_id`: `session:self-agent:<account_id>:personal:<agent_id>`.
   Clients never parse it; they use the `personal_agent` field below. Only
   the server creates a conversation with an id of this shape: a client
   create that would make a new one returns `400`.
 - The binding is `cloud_personal_agent_sessions` (`agent_id`,
-  `owner_account_id`, `conversation_id` unique, `created_at`). The sweep
+  `owner_account_id`, `conversation_id` unique, `created_at`). A session
+  that replaces a deleted one has the id
+  `session:self-agent:<account_id>:personal:<agent_id>:<suffix>`. The sweep
   also creates a missing session before it queues an evaluation. A
   definition is bound only while it is active, checked under a lock in the
   binding transaction, so a concurrent archive cannot leave a binding.
-- `GET /v1/cloud/personal-agents` lists them and creates any missing one in
-  the same request (idempotent, safe under concurrent calls):
+- `GET /v1/cloud/personal-agents` lists the personal agents, the agents
+  whose Proactive is on, and makes any missing session ready in the same
+  request (idempotent, safe under concurrent calls). `proactive` is always
+  `true` here:
 
   ```json
   { "agents": [
       { "agentId": "cloud-agent:<account_id>",
         "conversationId": "<uuid>",
         "sessionId": "session:self-agent:<account_id>:personal:cloud-agent:<account_id>",
-        "proactive": false } ] }
+        "proactive": true } ] }
   ```
 
   Default agent first, then owned definitions by creation time. A created
   conversation produces the usual `conversation.created` sync event.
 - Conversation snapshots (bootstrap, sync events, conversation reads) carry
-  `"personal_agent": { "agent_id": "…" }` for these conversations (snake_case
-  like every chat-sync snapshot field), derived from
-  `cloud_personal_agent_sessions` the way `origin: "grounding"` is.
+  `"personal_agent": { "agent_id": "…" }` (snake_case like every chat-sync
+  snapshot field) while the conversation is bound in
+  `cloud_personal_agent_sessions` and the agent's Proactive is on, derived
+  the way `origin: "grounding"` is.
 - A request message in a personal session without `targetCloudAgentId`
-  targets the session's agent (server default), not the default agent.
+  targets the session's agent (server default), not the default agent,
+  whether Proactive is on or off.
   A cloud reply there gets the definition's persona ("You are <name>,
   <owner>'s Cloud Agent." and its prompt, boundaries and skills) even for
   an agent that is not shared with participants.
 - Hide (archive) and delete of a personal session return
-  `409 personal_session_locked`. Pin, mute and unread work as usual.
+  `409 personal_session_locked` while the marker is present. Pin, mute and
+  unread work as usual. While Proactive is off they work as for any chat.
 - Archiving a definition removes its personal-session binding, setting and
   state rows, after cancelling its queued evaluations. The conversation
   stays as an ordinary agent chat; its message log rows stay too. Its
@@ -108,7 +135,9 @@ time.
 A worker sweep (every 5 s, `personal_agent::spawn` from
 `server/workers.rs`) picks an agent when all of these hold:
 
-- its `personalAgent.proactive` is on and the agent is active;
+- its `personalAgent.proactive` is on (the setting in effect) and the agent
+  is active. A state row starts when the setting is turned on, or, for a
+  default agent on without a row, once it has a granted live connector;
 - there are new granted events since the cursor;
 - the newest new event was received at least 60 s ago, or the oldest at
   least 5 min ago (batching);
@@ -258,11 +287,13 @@ run (`digest_`, `import_`, `pip_`, `cg_`, `proactive_eval_`,
 - Mac Blueprint: `Cooperative` row (was `Proactive`; Off "Stays out of your
   groups.", On "Watches the groups you are in and asks you before it
   helps.") and a new `Proactive` row under it (Off "Waits for you to write
-  first.", On "Reaches out to you in Personal agent."). The Runs view
+  first.", On "Reaches out to you in Personal agent."; On by default for
+  the default agent, Off for Factory agents). The Runs view
   heading for group offers becomes `Cooperative`.
 - Mac sidebar and iPhone Agents tab: a `Personal agent` section above
-  `Pinned` and `Recents`, one row per owned agent from
-  `GET /v1/cloud/personal-agents`, with the agent's avatar (rounded square,
+  `Pinned` and `Recents`, one row per personal agent (Proactive on) from
+  `GET /v1/cloud/personal-agents` or the `personal_agent` marker, with the
+  agent's avatar (rounded square,
   the app's agent radius) and an online dot, name, preview, time, unread.
   Context menu: Mark as read/unread, Mute, and on Mac `Agent settings`
   (opens the agent's Blueprint). No Rename, Pin, Archive, Delete.

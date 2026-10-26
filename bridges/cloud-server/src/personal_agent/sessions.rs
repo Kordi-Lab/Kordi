@@ -1,16 +1,17 @@
 //! Personal sessions: one `kind = 'ai'` conversation per owned agent (the
 //! default agent and every active definition), with the owner as its only
-//! member. The server creates them on demand; clients never archive or
-//! delete them, and a message there without a target goes to its agent.
+//! member. An agent is a personal agent while its Proactive setting is on;
+//! then its session is listed, marked, and cannot be hidden or deleted.
+//! While it is off the session is an ordinary agent chat and keeps its
+//! binding. A message there without a target goes to its agent either way.
 
-use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_core::transaction::Transaction;
 use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
-use crate::chat_sync::models::{ConversationKind, CreateConversationRequest};
-use crate::chat_sync::store::{self, StoreError};
+use super::activation::activate_in_transaction;
+use crate::chat_sync::store::StoreError;
 use crate::proactive::agents::default_agent_id;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,23 +22,30 @@ pub(crate) struct PersonalSession {
     pub session_id: String,
 }
 
-/// The owner's agents in list order: the default agent first, then active
-/// definitions by creation time.
-pub(crate) async fn owned_agents(
+/// The owner's personal agents, the agents whose Proactive setting is on, in
+/// list order: the default agent first, then active definitions by creation
+/// time.
+pub(crate) async fn personal_agents(
     pool: &PgPool,
     owner_account_id: &str,
 ) -> Result<Vec<String>, sqlx_core::Error> {
-    let rows: Vec<(String,)> = query_as(
-        "SELECT agent_id FROM cloud_agent_definitions
-         WHERE owner_account_id = $1 AND status = 'active' AND is_system_managed = FALSE
-         ORDER BY created_at ASC, agent_id ASC",
-    )
+    let default_agent = default_agent_id(owner_account_id);
+    let rows: Vec<(String,)> = query_as(concat!(
+        "SELECT agent.agent_id FROM (
+             SELECT $2::text AS agent_id, $1::text AS owner_account_id, '' AS created_at, 0 AS rank
+             UNION ALL
+             SELECT agent_id, owner_account_id, created_at, 1 FROM cloud_agent_definitions
+             WHERE owner_account_id = $1 AND status = 'active' AND is_system_managed = FALSE
+         ) agent
+         WHERE ",
+        super::setting::effective_on_sql!("agent.agent_id", "agent.owner_account_id"),
+        " ORDER BY agent.rank, agent.created_at ASC, agent.agent_id ASC"
+    ))
     .bind(owner_account_id)
+    .bind(&default_agent)
     .fetch_all(pool)
     .await?;
-    let mut agents = vec![default_agent_id(owner_account_id)];
-    agents.extend(rows.into_iter().map(|(agent_id,)| agent_id));
-    Ok(agents)
+    Ok(rows.into_iter().map(|(agent_id,)| agent_id).collect())
 }
 
 /// The agent's bound personal session.
@@ -65,76 +73,50 @@ pub(crate) async fn bound(
     }))
 }
 
-/// Returns the agent's personal session, creating and binding it first when
-/// it has none and the agent is the default agent or an active definition.
-/// Racing calls get one conversation: creation takes the session id's lock
-/// and uses an operation id derived from the session id.
+/// Returns the agent's personal session, made ready by
+/// [`activate_in_transaction`] unless the bound one is in use as it is.
 pub(crate) async fn ensure(
     pool: &PgPool,
     owner_account_id: &str,
     agent_id: &str,
 ) -> Result<PersonalSession, StoreError> {
     if let Some(found) = bound(pool, owner_account_id, agent_id).await? {
-        return Ok(found);
-    }
-    let session_id = store::personal_session_id(owner_account_id, agent_id);
-    let request = CreateConversationRequest {
-        client_operation_id: Uuid::new_v5(&Uuid::NAMESPACE_OID, session_id.as_bytes()),
-        kind: ConversationKind::Ai,
-        shared_title: None,
-        client_session_id: session_id,
-        member_account_ids: vec![owner_account_id.to_string()],
-    };
-    let mut transaction = pool.begin().await?;
-    // A definition must still be active when it is bound. The lock holds an
-    // archive until this commits; the archive then unbinds the session.
-    if crate::proactive::agents::default_owner(agent_id).is_none() {
-        let active: Option<(String,)> = query_as(
-            "SELECT agent_id FROM cloud_agent_definitions
-             WHERE agent_id = $1 AND owner_account_id = $2 AND status = 'active'
-               AND is_system_managed = FALSE
-             FOR SHARE",
+        let (visible,): (bool,) = query_as(
+            "SELECT NOT EXISTS(SELECT 1 FROM cloud_account_session_visibility
+                 WHERE account_id = $1 AND session_id = ANY($2)
+                   AND (hidden_at IS NOT NULL OR deleted_at IS NOT NULL))",
         )
-        .bind(agent_id)
         .bind(owner_account_id)
-        .fetch_optional(&mut *transaction)
+        .bind(vec![
+            found.session_id.clone(),
+            found.conversation_id.to_string(),
+        ])
+        .fetch_one(pool)
         .await?;
-        if active.is_none() {
-            return Err(StoreError::NotFound);
+        if visible {
+            return Ok(found);
         }
     }
-    let outcome = store::create_personal_session_in_transaction(
-        &mut transaction,
-        owner_account_id,
-        request,
-        agent_id,
-    )
-    .await?;
-    // A conversation that already existed is bound here.
-    query(
-        "INSERT INTO cloud_personal_agent_sessions (agent_id, owner_account_id, conversation_id)
-         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-    )
-    .bind(agent_id)
-    .bind(owner_account_id)
-    .bind(outcome.value.id)
-    .execute(&mut *transaction)
-    .await?;
+    let mut transaction = pool.begin().await?;
+    let (session, _) =
+        activate_in_transaction(&mut transaction, owner_account_id, agent_id).await?;
     transaction.commit().await?;
-    bound(pool, owner_account_id, agent_id)
-        .await?
-        .ok_or(StoreError::NotFound)
+    Ok(session)
 }
 
-/// Whether `conversation_id` is a personal session, which cannot be hidden
-/// or deleted.
+/// Whether `conversation_id` is a personal session now: bound to an agent
+/// whose Proactive setting is on. Such a session cannot be hidden or
+/// deleted; while the setting is off it is an ordinary agent chat.
 pub(crate) async fn locked(
     transaction: &mut Transaction<'_, Postgres>,
     conversation_id: Uuid,
 ) -> Result<bool, sqlx_core::Error> {
-    let (locked,): (bool,) = query_as(
-        "SELECT EXISTS(SELECT 1 FROM cloud_personal_agent_sessions WHERE conversation_id = $1)",
-    )
+    let (locked,): (bool,) = query_as(concat!(
+        "SELECT EXISTS(SELECT 1 FROM cloud_personal_agent_sessions binding
+         WHERE binding.conversation_id = $1 AND ",
+        super::setting::effective_on_sql!("binding.agent_id", "binding.owner_account_id"),
+        ")"
+    ))
     .bind(conversation_id)
     .fetch_one(&mut **transaction)
     .await?;

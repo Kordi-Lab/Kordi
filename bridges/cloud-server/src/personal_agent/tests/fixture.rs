@@ -280,11 +280,19 @@ impl Fixture {
         .execute(&self.pool)
         .await
         .unwrap();
-        select(&self.pool, config, 10_000)
-            .await
-            .expect("sweep query")
-            .into_iter()
-            .find(|candidate| candidate.agent_id == self.agent_id)
+        // A parallel test's sweep may hold the row for a moment.
+        for _ in 0..5 {
+            let found = select(&self.pool, config, 10_000)
+                .await
+                .expect("sweep query")
+                .into_iter()
+                .find(|candidate| candidate.agent_id == self.agent_id);
+            if found.is_some() {
+                return found;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        }
+        None
     }
 
     /// (cursor is older than an hour ago + 1 minute, active run, cooldown in

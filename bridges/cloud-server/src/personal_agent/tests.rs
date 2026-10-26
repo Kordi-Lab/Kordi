@@ -8,6 +8,7 @@ mod batches_db;
 mod delivery_db;
 mod desktop_db;
 mod fixture;
+mod membership_db;
 mod sessions_db;
 mod settings_db;
 mod sweep_db;

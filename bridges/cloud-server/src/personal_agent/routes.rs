@@ -4,7 +4,6 @@
 //! `/v1/cloud/personal-agents`, which lists the caller's agents with their
 //! personal sessions and creates any that are missing.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
@@ -129,28 +128,19 @@ pub(crate) async fn put_setting(
     }
 }
 
-/// `GET /v1/cloud/personal-agents`: the caller's agents, the default agent
-/// first and then active definitions by creation time, each with its
-/// personal session, created here when it is missing.
+/// `GET /v1/cloud/personal-agents`: the caller's personal agents, the agents
+/// whose Proactive setting is on (the default agent first, then active
+/// definitions by creation time), each with its personal session, made
+/// ready here when it is missing.
 pub(crate) async fn list(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Response {
     let pool = state.db_pool();
     let owner = session.account_id.as_str();
-    let agents = match super::sessions::owned_agents(pool, owner).await {
+    let agents = match super::sessions::personal_agents(pool, owner).await {
         Ok(agents) => agents,
         Err(err) => return server_error("list agents", err),
-    };
-    let settings: Result<Vec<(String, bool)>, _> = query_as(
-        "SELECT agent_id, proactive FROM cloud_personal_agent_settings WHERE owner_account_id = $1",
-    )
-    .bind(owner)
-    .fetch_all(pool)
-    .await;
-    let settings: HashMap<String, bool> = match settings {
-        Ok(rows) => rows.into_iter().collect(),
-        Err(err) => return server_error("list settings", err),
     };
     let mut items = Vec::with_capacity(agents.len());
     for agent_id in agents {
@@ -159,7 +149,7 @@ pub(crate) async fn list(
                 "agentId": agent_id,
                 "conversationId": personal.conversation_id.to_string(),
                 "sessionId": personal.session_id,
-                "proactive": settings.get(&agent_id).copied().unwrap_or(false),
+                "proactive": true,
             })),
             // One agent's session must not hide the others.
             Err(err) => eprintln!("[personal_agent] personal session of {agent_id}: {err}"),

@@ -254,7 +254,9 @@ pub use message::{
     refresh_server_message_content, replace_message_snapshot, send_message,
 };
 pub(crate) use message::{replace_server_message_in_transaction, send_message_in_transaction};
-pub(crate) use personal_session::{personal_session_id, unbind_personal_session};
+pub(crate) use personal_session::{
+    announce_personal_session, personal_session_id, unbind_personal_session,
+};
 use reaction::reactions_by_message;
 pub use reaction::set_reaction;
 pub use service_members::{join_service_member, remove_service_member};

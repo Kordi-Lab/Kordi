@@ -29,23 +29,30 @@ use crate::cloud_agent_runtime::runs::AgentRuntimeRoute;
 
 const SWEEP_BATCH: i64 = 10;
 
-/// An agent with its setting on and no state row starts at now.
+/// An agent with its setting on and no state row starts at now: one turned
+/// on, or a default agent that is on without a row and has a granted
+/// connector.
 const SEED_SQL: &str = "INSERT INTO cloud_personal_agent_state (agent_id, owner_account_id)
      SELECT setting.agent_id, setting.owner_account_id FROM cloud_personal_agent_settings setting
      WHERE setting.proactive
+     UNION
+     SELECT g.agent_id, c.account_id FROM cloud_connector_agent_grants g
+     JOIN cloud_connectors c ON c.connector_id = g.connector_id
+     WHERE g.agent_id = 'cloud-agent:' || c.account_id AND c.status <> 'revoked'
+       AND NOT EXISTS (SELECT 1 FROM cloud_personal_agent_settings setting
+                       WHERE setting.agent_id = g.agent_id)
      ON CONFLICT (agent_id) DO NOTHING";
 
-/// Candidates: $1 batch, $2 quiet seconds, $3 max wait seconds, $4 daily
+/// Candidates, locked with `SKIP LOCKED` so sweeps on several servers never
+/// wait on each other: $1 batch, $2 quiet seconds, $3 max wait seconds, $4 daily
 /// evaluations, $5 cap window start (RFC 3339, as runs store it), $6 daily
 /// messages, $7 settle seconds, $8 ignored event kinds.
-pub(super) const SWEEP_SQL: &str = "UPDATE cloud_personal_agent_state state SET checked_at = now()
+pub(super) const SWEEP_SQL: &str = concat!(
+    "UPDATE cloud_personal_agent_state state SET checked_at = now()
  FROM (
      SELECT s.agent_id, s.owner_account_id, s.cursor_received_at, s.cursor_event_id,
             s.enabled_at
      FROM cloud_personal_agent_state s
-     JOIN cloud_personal_agent_settings setting
-       ON setting.agent_id = s.agent_id AND setting.owner_account_id = s.owner_account_id
-      AND setting.proactive
      CROSS JOIN LATERAL (
          SELECT max(e.received_at) AS newest, min(e.received_at) AS oldest
          FROM cloud_connector_events e
@@ -58,7 +65,10 @@ pub(super) const SWEEP_SQL: &str = "UPDATE cloud_personal_agent_state state SET 
            AND e.received_at <= now() - make_interval(secs => $7)
            AND e.expires_at > now() AND NOT (e.kind = ANY($8))
      ) fresh
-     WHERE s.active_run_id IS NULL AND s.retry_after <= now() AND s.cooldown_until <= now()
+     WHERE ",
+    super::setting::effective_on_sql!("s.agent_id", "s.owner_account_id"),
+    "
+       AND s.active_run_id IS NULL AND s.retry_after <= now() AND s.cooldown_until <= now()
        AND (s.agent_id = 'cloud-agent:' || s.owner_account_id OR EXISTS (
              SELECT 1 FROM cloud_agent_definitions d
              WHERE d.agent_id = s.agent_id AND d.owner_account_id = s.owner_account_id
@@ -74,10 +84,12 @@ pub(super) const SWEEP_SQL: &str = "UPDATE cloud_personal_agent_state state SET 
              WHERE sent.agent_id = s.agent_id AND sent.created_at > now() - interval '24 hours') < $6
      ORDER BY s.checked_at ASC
      LIMIT $1
+     FOR UPDATE OF s SKIP LOCKED
  ) picked
  WHERE state.agent_id = picked.agent_id
  RETURNING picked.agent_id, picked.owner_account_id, picked.cursor_received_at,
-           picked.cursor_event_id, picked.enabled_at";
+           picked.cursor_event_id, picked.enabled_at"
+);
 
 /// An agent the sweep picked.
 #[derive(Debug, Clone)]
@@ -267,6 +279,18 @@ pub(super) async fn reserve(
     run_id: &str,
     to: &Cursor,
 ) -> Result<bool, sqlx_core::Error> {
+    // The default agent is on without a row; one is written so there is a
+    // row to lock.
+    if crate::proactive::agents::default_owner(&candidate.agent_id).is_some() {
+        query(
+            "INSERT INTO cloud_personal_agent_settings (agent_id, owner_account_id, proactive)
+             VALUES ($1, $2, TRUE) ON CONFLICT (agent_id) DO NOTHING",
+        )
+        .bind(&candidate.agent_id)
+        .bind(&candidate.owner_account_id)
+        .execute(&mut **tx)
+        .await?;
+    }
     let on: Option<(bool,)> = query_as(
         "SELECT proactive FROM cloud_personal_agent_settings
          WHERE agent_id = $1 AND owner_account_id = $2 FOR SHARE",
