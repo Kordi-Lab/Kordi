@@ -21,6 +21,7 @@ export type SessionContextMenuTarget = {
   pinned?: boolean;
   muted?: boolean;
   unread?: boolean;
+  /** An agent's personal session: read state, mute, and its agent's settings only. */ personalAgent?: { agentId: string; localAgentId: string | null };
 };
 
 export type GroupContextMenuTarget = {

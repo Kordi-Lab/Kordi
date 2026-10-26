@@ -21,6 +21,7 @@ pub mod document_shares;
 pub mod events;
 pub(crate) mod memory_store;
 pub mod notifications;
+pub mod personal_agent;
 pub mod pg;
 pub mod plan_cards;
 pub mod presence;

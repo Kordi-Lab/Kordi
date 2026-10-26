@@ -33,6 +33,8 @@ export type ChatSyncConversation = {
   group_avatar?: import('@/features/chat/groupAvatar').GroupAvatarSnapshot | null;
   /** `grounding` for a group started from a Grounding room. */
   origin?: 'grounding' | null;
+  /** Set on an owned agent's personal session (`kind: 'ai'`), naming that agent. */
+  personal_agent?: { agent_id: string } | null;
   forked_from_session_id?: string | null;
   forked_from_message_id?: string | null;
   latest_message_sequence: number;

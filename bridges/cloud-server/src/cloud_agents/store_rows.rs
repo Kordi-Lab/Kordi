@@ -11,7 +11,10 @@ macro_rules! agent_columns {
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
              model_routing_json, proactive_json, created_at, updated_at, archived_at, avatar_url,
              avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version,
-             avatar_updated_at"
+             avatar_updated_at, COALESCE((SELECT setting.proactive
+                 FROM cloud_personal_agent_settings setting
+                 WHERE setting.agent_id = cloud_agent_definitions.agent_id), FALSE)
+               AS personal_agent_proactive"
     };
 }
 pub(super) use agent_columns;
@@ -31,6 +34,7 @@ pub(super) struct CloudAgentRow {
     skills_json: serde_json::Value,
     model_routing_json: serde_json::Value,
     proactive_json: serde_json::Value,
+    personal_agent_proactive: bool,
     created_at: String,
     updated_at: String,
     archived_at: Option<String>,
@@ -60,6 +64,7 @@ impl<'row> FromRow<'row, PgRow> for CloudAgentRow {
             skills_json: row.try_get("skills_json")?,
             model_routing_json: row.try_get("model_routing_json")?,
             proactive_json: row.try_get("proactive_json")?,
+            personal_agent_proactive: row.try_get("personal_agent_proactive")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
             archived_at: row.try_get("archived_at")?,
@@ -105,6 +110,10 @@ pub(super) fn row_to_definition(row: CloudAgentRow) -> CloudAgentDefinition {
         skills: serde_json::from_value(row.skills_json).unwrap_or_default(),
         model_routing: row.model_routing_json,
         proactive: crate::proactive::ProactiveSetting::from_stored(&row.proactive_json),
+        cooperative: crate::proactive::ProactiveSetting::from_stored(&row.proactive_json),
+        personal_agent: crate::personal_agent::PersonalAgentSetting {
+            proactive: row.personal_agent_proactive,
+        },
         created_at: row.created_at,
         updated_at: row.updated_at,
         archived_at: row.archived_at,

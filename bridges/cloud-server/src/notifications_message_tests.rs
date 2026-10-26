@@ -192,6 +192,21 @@ fn agent_notifications_use_the_agent_display_name() {
         "Kordi"
     );
 
+    let personal_agent = encoded_envelope(
+        CLOUD_AGENT_RESPONSE_PREFIX,
+        json!({ "kind": "agent-response", "text": "Sam wrote", "agentName": "Scout" }),
+    );
+    assert_eq!(
+        notification_sender_display_name(
+            &message(
+                json!({ "schema": 1, "blocks": [{ "type": "text", "text": personal_agent }] }),
+                0,
+            ),
+            "Alex".to_string(),
+        ),
+        "Scout"
+    );
+
     let group_agent = encoded_envelope(
         CLOUD_GROUP_PREFIX,
         json!({

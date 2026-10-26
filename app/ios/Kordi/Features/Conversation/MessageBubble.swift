@@ -408,6 +408,10 @@ struct MessageBubble: View, Equatable {
                     quoteLine(source)
                 }
 
+                if message.author == .agent, !message.sources.isEmpty {
+                    MessageSourceChips(sources: message.sources).padding(.horizontal, 4)
+                }
+
                 MessageBubbleAccessoryRow(
                     reactions: message.reactions,
                     threadReplyCount: threadReplyCount,

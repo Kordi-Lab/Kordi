@@ -133,7 +133,7 @@ const ELIGIBLE: &str = concat!(
     "AND lease_expires_at::timestamptz <= $1::timestamptz ",
     ")) ",
     // Proactive runs need no project folder (`proactive::needs_no_project_folder`).
-    "AND (starts_with(candidate.run_id, 'proactive_eval_') OR starts_with(candidate.run_id, 'proactive_run_') OR NOT EXISTS(SELECT 1 FROM cloud_project_devices p JOIN cloud_devices d USING(device_id), jsonb_array_elements(p.projects) project WHERE p.account_id=candidate.owner_account_id AND (project->'sessions') ? candidate.session_id AND d.revoked_at IS NULL AND (candidate.execution_backend='desktop' OR p.updated_at>now()-make_interval(secs=>$3)))) ",
+    "AND (starts_with(candidate.run_id, 'proactive_eval_') OR starts_with(candidate.run_id, 'proactive_run_') OR starts_with(candidate.run_id, 'personal_agent_eval_') OR NOT EXISTS(SELECT 1 FROM cloud_project_devices p JOIN cloud_devices d USING(device_id), jsonb_array_elements(p.projects) project WHERE p.account_id=candidate.owner_account_id AND (project->'sessions') ? candidate.session_id AND d.revoked_at IS NULL AND (candidate.execution_backend='desktop' OR p.updated_at>now()-make_interval(secs=>$3)))) ",
     "AND NOT candidate.legacy_duplicate AND candidate.cancel_requested_at IS NULL ",
     // A memory import runs only on the Mac that started it (`import_runs`).
     "AND NOT starts_with(candidate.run_id, 'import_') ",

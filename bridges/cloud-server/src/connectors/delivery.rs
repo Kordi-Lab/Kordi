@@ -154,7 +154,10 @@ async fn compute_and_store(
     if delivered {
         return Ok(for_backend(tools_from_json(stored), &backend));
     }
-    let tools = if requester == owner {
+    // A personal agent evaluation reads its events from its prompt; its only
+    // tool is `search_memory`, added below.
+    let evaluation = run_id.starts_with(crate::personal_agent::RUN_PREFIX);
+    let tools = if requester == owner && !evaluation {
         tools_for_run(
             pool,
             providers,
@@ -179,7 +182,8 @@ async fn compute_and_store(
         Ok(documents) => tools.extend(documents),
         Err(error) => eprintln!("[documents] document tools for {run_id}: {error}"),
     }
-    // A proactive run searches its owner's memories through the same field.
+    // A proactive run or a personal agent evaluation searches its owner's
+    // memories through the same field.
     tools.extend(crate::proactive::memory_search::lease_tools(run_id));
     let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_str()).collect();
     eprintln!("[connectors] lease tools for {run_id}: {names:?}");

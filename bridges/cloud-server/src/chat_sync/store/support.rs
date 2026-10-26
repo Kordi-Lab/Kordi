@@ -154,6 +154,8 @@ pub(super) async fn load_conversation(
     .fetch_optional(&mut **transaction)
     .await?;
     let (personal_title, preferences_version) = preferences.ok_or(StoreError::Forbidden)?;
+    let personal_agent =
+        super::personal_session::conversation_personal_agent(transaction, conversation_id).await?;
     Ok(ConversationSnapshot {
         id: row.0,
         kind: parse_kind(&row.1)?,
@@ -165,6 +167,7 @@ pub(super) async fn load_conversation(
         group_title: row.7,
         group_avatar: row.13,
         origin: super::grounding_origin::conversation_origin(transaction, conversation_id).await?,
+        personal_agent,
         forked_from_session_id: row.8,
         forked_from_message_id: row.9,
         latest_message_sequence: row.10,
@@ -212,6 +215,8 @@ pub(super) async fn load_active_conversation_projections(
     .await?;
     let members = member_rows(transaction, conversation_id).await?;
     let origin = super::grounding_origin::conversation_origin(transaction, conversation_id).await?;
+    let personal_agent =
+        super::personal_session::conversation_personal_agent(transaction, conversation_id).await?;
     let kind = parse_kind(&row.1)?;
     Ok(preferences
         .into_iter()
@@ -229,6 +234,7 @@ pub(super) async fn load_active_conversation_projections(
                     group_title: row.7.clone(),
                     group_avatar: row.13.clone(),
                     origin: origin.clone(),
+                    personal_agent: personal_agent.clone(),
                     forked_from_session_id: row.8.clone(),
                     forked_from_message_id: row.9.clone(),
                     latest_message_sequence: row.10,

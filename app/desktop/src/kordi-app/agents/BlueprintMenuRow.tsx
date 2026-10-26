@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 
 export type BlueprintMenuOption<T extends string> = { value: T; label: string; description?: string };
 
-/** A Blueprint row whose value is picked from a small menu (Access, Proactive). */
+/** A Blueprint row whose value is picked from a small menu (Access, Cooperative, Proactive). */
 export function BlueprintMenuRow<T extends string>({
   icon: Icon,
   label,

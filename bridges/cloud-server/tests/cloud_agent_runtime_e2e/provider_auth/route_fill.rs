@@ -44,6 +44,28 @@ async fn record_run(
     route: Value,
     age_minutes: i64,
 ) {
+    record_run_as(
+        pool,
+        owner,
+        session_id,
+        "car_fill_",
+        status,
+        route,
+        age_minutes,
+    )
+    .await;
+}
+
+/// [`record_run`] with a run id that starts with `prefix`.
+async fn record_run_as(
+    pool: &sqlx_postgres::PgPool,
+    owner: &TestAccount,
+    session_id: &str,
+    prefix: &str,
+    status: &str,
+    route: Value,
+    age_minutes: i64,
+) {
     let at = (chrono::Utc::now() - chrono::Duration::minutes(age_minutes)).to_rfc3339();
     let id = uuid::Uuid::new_v4().simple().to_string();
     sqlx_core::query::query(
@@ -52,7 +74,7 @@ async fn record_run(
          updated_at, runtime_route_json, execution_backend, execution_agent_id) \
          VALUES ($1, $1, $2, $3, $4, $4, $5, 'earlier', $6, $6, $7, 'desktop', $8)",
     )
-    .bind(format!("car_fill_{id}"))
+    .bind(format!("{prefix}{id}"))
     .bind(format!("msg_fill_{id}"))
     .bind(session_id)
     .bind(&owner.account_id)
@@ -201,4 +223,42 @@ async fn a_cloud_run_without_history_records_the_account_it_resolved() {
     assert_eq!(route["defaultAuthProvider"], "openai-codex");
     assert_eq!(route["defaultAuthChoice"], "cloud-login:only");
     assert!(route.get("defaultModel").is_none(), "{route}");
+}
+
+#[tokio::test]
+async fn background_feature_runs_never_lend_their_route_to_a_chat() {
+    let Some(pool) = try_pool().await else { return };
+    set_provider_auth_env();
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
+    let owner = offline_owner(&router, "route-fill-feature-owner").await;
+    publish_cloud_login(&router, &owner, "cloud-login:main").await;
+    let session = format!("session:self-agent:{}", uuid::Uuid::new_v4());
+    let chat = codex_route(SESSION_MODEL, "cloud-login:main");
+    record_run(&pool, &owner, &session, "completed", chat.clone(), 30).await;
+    // Newer evaluations and approved runs carry an agent's own model.
+    for (age, prefix) in [
+        "personal_agent_eval_",
+        "proactive_eval_",
+        "proactive_run_",
+        "digest_",
+        "pip_",
+        "cg_",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let route = codex_route("openai-codex/gpt-agent-only", "cloud-login:main");
+        record_run_as(
+            &pool,
+            &owner,
+            &session,
+            prefix,
+            "completed",
+            route,
+            age as i64,
+        )
+        .await;
+    }
+    let filled = claim_route(&router, &pool, &owner, &session, None).await;
+    assert_eq!(filled, chat);
 }

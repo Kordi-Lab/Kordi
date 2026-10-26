@@ -7,13 +7,20 @@ Issue #762 sketched a read-only version of this; this document is the
 version that runs the work after approval, enforced in the layers that
 issue #1711 defines.
 
+The UI calls this setting `Cooperative` (issue #2091); the API and the code
+keep the `proactive` names, and `cooperative` is accepted as an alias. The
+UI's `Proactive` is now the personal agent, which writes to its owner
+first (`personal-agent.md`). Its evaluations reuse this feature's Mac path
+and `search_memory` (see Mac execution).
+
 Proactive is not a System agent job ([System agent](../system-agent.md)): the
 owner's own agent watches and runs on the owner's accounts and approval.
 
 ## Setting
 
-The Blueprint page of every owned agent gains a `Proactive` row under
-`Access`, with the values `Off` (default) and `On`. It is a draft change
+The Blueprint page of every owned agent gains a `Cooperative` row (first
+shipped as `Proactive`) under `Access`, with the values `Off` (default) and
+`On`. It is a draft change
 like the others and goes live on publish.
 
 Turning it on never changes `Access`. With `Only me`, the group still
@@ -23,8 +30,11 @@ approved run is an owner-started request.
 API shape on `/v1/cloud/agents` (create, update, list, shared):
 
 ```json
-{ "proactive": { "enabled": false } }
+{ "proactive": { "enabled": false }, "cooperative": { "enabled": false } }
 ```
+
+`cooperative` always equals `proactive`; on input either key is accepted,
+and both with different values is `400 invalid_proactive`.
 
 Column `proactive_json` on `cloud_agent_definitions` (migration
 `0154_proactive_agents.sql`), default `{"enabled":false}`. The server
@@ -49,6 +59,8 @@ definition `404`):
 - `PUT /v1/cloud/agents/{agent_id}/proactive` with `{"enabled": bool}`
   returns the same shape. Off cancels queued evaluations and expires
   pending proposals.
+- `GET|PUT /v1/cloud/agents/{agent_id}/cooperative` are the same routes
+  under the UI name.
 
 ## What the agent watches
 
@@ -245,6 +257,10 @@ Evaluation runs:
   whose stop was requested posts nothing: it ends as `cancelled`, with the
   usual stop reply for an approved run, and the Mac gets
   `409 execution_lease_lost`, as a renewal after a stop does.
+- Personal agent evaluations (`personal_agent_eval_`, `personal-agent.md`)
+  take the same path: the `proactive` readiness row, the generic claim with
+  the same answer shape, the digest observe route for `search_memory`, and
+  this complete route.
 
 Approved runs:
 

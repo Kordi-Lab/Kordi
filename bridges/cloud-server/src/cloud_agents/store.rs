@@ -17,10 +17,21 @@ use crate::cloud_agents::store_avatar::activate_agent_avatar_reference;
 use crate::cloud_agents::store_cleaning::{
     clean_resources, clean_skills, json_or_array, timestamp, BOUNDARY_MAX_ITEMS,
 };
+use crate::cloud_agents::store_personal;
 use crate::cloud_agents::store_rows::{agent_columns, row_to_definition, CloudAgentRow};
 use crate::proactive::ProactiveSetting;
 
+pub use crate::cloud_agents::store_personal::set_agent_personal;
 pub use crate::cloud_agents::store_shared::list_shared_agent_summaries;
+
+/// The proactive setting a request asks for under either of its names.
+fn requested_proactive(
+    proactive: &Option<serde_json::Value>,
+    cooperative: &Option<serde_json::Value>,
+) -> Result<Option<ProactiveSetting>, CloudAgentStoreError> {
+    ProactiveSetting::from_request(proactive.as_ref(), cooperative.as_ref())
+        .map_err(|message| CloudAgentStoreError::InvalidSetting("invalid_proactive", message))
+}
 
 const NAME_MAX_LEN: usize = 120;
 const ROLE_MAX_LEN: usize = 160;
@@ -32,6 +43,8 @@ const BOUNDARY_MAX_LEN: usize = 240;
 #[derive(Debug)]
 pub enum CloudAgentStoreError {
     Invalid(String),
+    /// A setting with its own error code, such as `invalid_proactive`.
+    InvalidSetting(&'static str, String),
     AvatarConflict,
     Database(sqlx_core::Error),
     Sync(crate::chat_sync::store::StoreError),
@@ -40,7 +53,7 @@ pub enum CloudAgentStoreError {
 impl std::fmt::Display for CloudAgentStoreError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Invalid(message) => write!(f, "{message}"),
+            Self::Invalid(message) | Self::InvalidSetting(_, message) => write!(f, "{message}"),
             Self::AvatarConflict => write!(f, "avatar version conflict"),
             Self::Database(err) => write!(f, "{err}"),
             Self::Sync(err) => write!(f, "{err}"),
@@ -124,10 +137,8 @@ pub async fn create_agent_definition(
     let resources = clean_resources(input.resources);
     let skills = clean_skills(input.skills);
     let model_routing = input.model_routing.unwrap_or_else(|| serde_json::json!({}));
-    let proactive = match input.proactive.as_ref() {
-        Some(value) => ProactiveSetting::parse(value).map_err(CloudAgentStoreError::Invalid)?,
-        None => ProactiveSetting::default(),
-    };
+    let proactive = requested_proactive(&input.proactive, &input.cooperative)?.unwrap_or_default();
+    let personal = store_personal::requested(input.personal_agent.as_ref())?;
     let now_text = timestamp(now);
     let initial_avatar = AvatarDescriptor {
         entity_type: "agent".to_string(),
@@ -193,7 +204,8 @@ pub async fn create_agent_definition(
     .bind(proactive.to_value())
     .fetch_one(&mut *transaction)
     .await?;
-    let agent = row_to_definition(row);
+    let mut agent = row_to_definition(row);
+    store_personal::apply(&mut transaction, owner_account_id, &mut agent, personal).await?;
     insert_agent_sync_event(
         &mut transaction,
         owner_account_id,
@@ -241,10 +253,10 @@ pub async fn update_agent_definition(
     }
     let was_shared = current.access_scope == CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS;
     let was_proactive = current.proactive.enabled;
-    if let Some(value) = input.proactive.as_ref() {
-        current.proactive =
-            ProactiveSetting::parse(value).map_err(CloudAgentStoreError::Invalid)?;
+    if let Some(setting) = requested_proactive(&input.proactive, &input.cooperative)? {
+        current.proactive = setting;
     }
+    let personal = store_personal::requested(input.personal_agent.as_ref())?;
 
     if let Some(value) = input.access_scope {
         current.access_scope =
@@ -345,7 +357,8 @@ pub async fn update_agent_definition(
     let Some(row) = row else {
         return Ok(None);
     };
-    let agent = row_to_definition(row);
+    let mut agent = row_to_definition(row);
+    store_personal::apply(&mut transaction, owner_account_id, &mut agent, personal).await?;
     insert_agent_sync_event(
         &mut transaction,
         owner_account_id,
@@ -449,6 +462,7 @@ pub async fn archive_agent_definition(
     .await?;
     crate::proactive::setting::stop_in_transaction(&mut transaction, agent_id).await?;
     crate::proactive::setting::forget_in_transaction(&mut transaction, agent_id).await?;
+    crate::personal_agent::setting::forget_in_transaction(&mut transaction, agent_id).await?;
     transaction.commit().await?;
     Ok(Some(agent))
 }

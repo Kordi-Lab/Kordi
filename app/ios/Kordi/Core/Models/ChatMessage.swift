@@ -1204,6 +1204,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     // Derived from pending requests, never from transport delivery receipts.
     var agentQueuePosition: Int? = nil
     var backgroundAgentSessions: [BackgroundAgentSession]
+    /// Connector events an agent message is based on (#2091).
+    var sources: [MessageSource]
     var mentions: [MessageMention]
     var reactions: [MessageReaction]
     var attachmentReactions: [String: [MessageReaction]]
@@ -1292,6 +1294,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         agentExecution: AgentExecutionSnapshot? = nil,
         agentReplyEnding: AgentReplyEnding? = nil,
         backgroundAgentSessions: [BackgroundAgentSession] = [],
+        sources: [MessageSource] = [],
         reactions: [MessageReaction] = [],
         attachmentReactions: [String: [MessageReaction]] = [:]
     ) {
@@ -1323,6 +1326,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.agentExecution = agentExecution
         self.agentReplyEnding = agentReplyEnding
         self.backgroundAgentSessions = backgroundAgentSessions
+        self.sources = sources
         self.mentions = mentions
         self.reactions = reactions
         self.attachmentReactions = attachmentReactions
@@ -1390,7 +1394,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         case messageKind, voiceMessage
         case agentExecution
         case agentReplyEnding
-        case backgroundAgentSessions
+        case backgroundAgentSessions, sources
         case mentions
         case reactions, attachmentReactions
     }
@@ -1433,6 +1437,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
             [BackgroundAgentSession].self,
             forKey: .backgroundAgentSessions
         ) ?? []
+        sources = (try? container.decodeIfPresent(MessageSourceList.self, forKey: .sources))?.values ?? []
         mentions = try container.decodeIfPresent([MessageMention].self, forKey: .mentions) ?? []
         reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
         attachmentReactions = try container.decodeIfPresent([String: [MessageReaction]].self, forKey: .attachmentReactions) ?? [:]

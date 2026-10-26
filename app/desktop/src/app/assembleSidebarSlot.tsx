@@ -20,6 +20,7 @@ import { normalizeKordiId } from '@/features/cloud/kordiId';
 import { publishMemoryVersion } from '@/features/memory/memoryAvailability';
 import { authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
 import { usesDefaultLocalAgentSession } from '@/app/openLocalAgentChat';
+import { requestAgentBlueprint } from '@/features/personalAgent/agentBlueprintRequest';
 
 type SidebarChatActions = Pick<
   WorkspaceSidebarProps['chats'],
@@ -197,6 +198,11 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
         },
         onMarkChatSessionsRead: (sessionIds) => {
           void args.handleMarkChatSessionsRead(sessionIds);
+        },
+        onOpenAgentSettings: (localAgentId) => {
+          requestAgentBlueprint(localAgentId);
+          args.setActiveAgentId(localAgentId);
+          args.setActiveNav('agents');
         },
         onSetChatGroupPinned: (groupSpaceId, pinned) => {
           void args.handleSetChatGroupPinned(groupSpaceId, pinned);

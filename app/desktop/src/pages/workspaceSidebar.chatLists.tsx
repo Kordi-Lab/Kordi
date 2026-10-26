@@ -9,6 +9,9 @@ import { participantSpaceSessionPreferenceId } from '@/pages/workspaceSidebar.ch
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
 
 import { AgentSidebarRow } from '@/pages/workspaceSidebar.agentRows';
+import { PersonalAgentSidebarRow } from '@/features/personalAgent/PersonalAgentSidebarRow';
+import { personalAgentIdFromRowKey, personalAgentSidebarRows } from '@/features/personalAgent/personalAgentSidebarRows';
+import { usePersonalAgentEntries, usePersonalAgentListLoaded } from '@/features/personalAgent/personalAgentStore';
 import type { ContactSidebarRowActions } from '@/pages/workspaceSidebar.contactRows';
 import { ContactSidebarRow } from '@/pages/workspaceSidebar.contactRows';
 import type { WorkspaceChatSidebarModel } from '@/pages/workspaceSidebar.chatModel';
@@ -57,11 +60,20 @@ export function WorkspaceChatLists({
         || (space.kind === 'self' && !primaryAgentForConversation(session.conversation)))
       .map(({ session }) => session.id),
   ), [model.agentSessionRowsById, model.pinnedSessionIds]);
+  const personalAgents = usePersonalAgentEntries();
+  const personalAgentsLoaded = usePersonalAgentListLoaded();
+  const personal = useMemo(() => (
+    model.showArchived ? undefined : {
+      ...personalAgentSidebarRows(personalAgents, model.allSidebarSessionRowsById, model.chatSearch, { markerFallback: !personalAgentsLoaded }),
+      // While searching, matching personal agents show even when the section is folded.
+      showWhileCollapsed: Boolean(model.chatSearch.trim()),
+    }
+  ), [model.allSidebarSessionRowsById, model.chatSearch, model.showArchived, personalAgents, personalAgentsLoaded]);
   const grouped = useMemo(() => projectChatGroups(
     model.agentSidebarRows, model.showArchived ? [] : projects?.projects ?? [], collapsed,
     Boolean(projects?.enabled && !model.chatSearch && !model.showArchived),
-    { pinnedSessionIds, expandedProjectIds, previewLimit: model.chatSearch ? Infinity : 5 },
-  ), [model.agentSidebarRows, projects?.projects, projects?.enabled, collapsed, model.chatSearch, model.showArchived, pinnedSessionIds, expandedProjectIds]);
+    { pinnedSessionIds, expandedProjectIds, previewLimit: model.chatSearch ? Infinity : 5, personal },
+  ), [model.agentSidebarRows, projects?.projects, projects?.enabled, collapsed, model.chatSearch, model.showArchived, pinnedSessionIds, expandedProjectIds, personal]);
   const animatedRows = useMemo(() => grouped.rows.map((row) => {
     if (row.kind !== 'session') return row;
     const session = model.agentSessionRowsById.get(row.sessionId);
@@ -158,9 +170,9 @@ export function WorkspaceChatLists({
         renderRow={(descriptor) => descriptor.kind === 'space' ? (
           descriptor.spaceId.startsWith('section:') ? (
             <ProjectSidebarHeading
-              section={descriptor.spaceId.slice(8) as 'pinned' | 'projects' | 'recents'}
+              section={descriptor.spaceId.slice(8) as 'personal' | 'pinned' | 'projects' | 'recents'}
               first={grouped.rows[0]?.key === descriptor.key}
-              expanded={!collapsed.has(descriptor.spaceId)}
+              expanded={!collapsed.has(descriptor.spaceId) || (descriptor.spaceId === 'section:personal' && Boolean(personal?.showWhileCollapsed))}
               onToggle={() => toggle(descriptor.spaceId)}
               onCreateProject={projects?.enabled ? projects.openImporter : undefined}
             />
@@ -203,6 +215,15 @@ export function WorkspaceChatLists({
               {locateError?.id === descriptor.spaceId ? <p role="alert" className="chat-workspace-error chat-project-locate-error">{locateError.message}</p> : null}
             </div>
           )
+        ) : personalAgentIdFromRowKey(descriptor.key) ? (
+          <PersonalAgentSidebarRow
+            entry={personal?.entriesByAgentId.get(personalAgentIdFromRowKey(descriptor.key) ?? '')}
+            row={descriptor.kind === 'session' ? model.allSidebarSessionRowsById.get(descriptor.sessionId) : undefined}
+            model={model}
+            activeConvId={activeConvId}
+            onSelectChatSession={contactActions.onSelectChatSession}
+            onOpenSessionContextMenu={contactActions.onOpenSessionContextMenu}
+          />
         ) : (
           <AgentSidebarRow
             descriptor={descriptor}

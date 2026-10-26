@@ -92,9 +92,21 @@ export type AgentConfigDraft = {
 export type AgentStudioConfigDraft = AgentConfigDraft & {
   loadedTools: string[];
   loadedPlugins: string[];
-  /** Cloud agents only; kept in the stored draft like the other fields until publish. */
+  /** Cooperative (group watching); its server value unless edited here. */
   proactive?: CloudAgentProactive;
+  /** Proactive (reaching out in the personal session); its server value unless edited here. */
+  personalProactive?: boolean;
+  /** The settings changed here and not yet published; only these override the server value. */
+  editedSettings?: AgentSettingKey[];
 };
+
+export type AgentSettingKey = 'proactive' | 'personalProactive';
+
+/** The edited-setting list of a stored draft; drafts from older builds have none, so the server value wins. */
+export function storedEditedSettings(value: unknown): AgentSettingKey[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((key): key is AgentSettingKey => key === 'proactive' || key === 'personalProactive'))];
+}
 
 export type AgentStudioCapabilityKind = 'skill' | 'tool' | 'plugin';
 
@@ -209,6 +221,7 @@ export type PersistedAgentConfig = AgentConfigDraft & {
   loadedTools: string[];
   loadedPlugins: string[];
   proactive?: CloudAgentProactive;
+  personalProactive?: boolean;
   editHistory: AgentEditHistoryEntry[];
 };
 
@@ -238,7 +251,12 @@ export function cloudAgentProactiveLabel(enabled: boolean | undefined) {
 export function cloudAgentProactiveDescription(enabled: boolean | undefined) {
   return enabled
     ? 'Watches the groups you are in and asks you before it helps.'
-    : 'Does nothing on its own.';
+    : 'Stays out of your groups.';
+}
+
+/** The Proactive row's copy: whether the agent may message its owner first in Personal agent. */
+export function personalAgentProactiveDescription(enabled: boolean | undefined) {
+  return enabled ? 'Reaches out to you in Personal agent.' : 'Waits for you to write first.';
 }
 
 export function buildAgentDraft(agent: Agent): AgentConfigDraft {
@@ -253,7 +271,7 @@ export function buildAgentStudioDraft(agent: Agent): AgentStudioConfigDraft {
     ...buildAgentDraft(agent),
     loadedTools: agent.loadedTools,
     loadedPlugins: agent.loadedPlugins,
-    ...(agent.cloudAgentId ? { proactive: { enabled: agent.cloudAgentProactive?.enabled === true } } : {}),
+    ...(agent.cloudAgentId ? { proactive: { enabled: agent.cloudAgentProactive?.enabled === true }, personalProactive: agent.cloudAgentPersonalAgent?.proactive === true } : {}),
   };
 }
 
@@ -278,7 +296,7 @@ function sameStringList(left: string[], right: string[]) {
 }
 
 export function agentStudioConfigChanges(draft: AgentStudioConfigDraft, persisted: PersistedAgentConfig) {
-  const changes: Array<{ key: 'prompt' | 'skills' | 'tools' | 'plugins' | 'proactive'; label: string; detail: string }> = [];
+  const changes: Array<{ key: 'prompt' | 'skills' | 'tools' | 'plugins' | 'proactive' | 'personalProactive'; label: string; detail: string }> = [];
   if (draft.systemPrompt !== persisted.systemPrompt) {
     changes.push({ key: 'prompt', label: 'System prompt updated', detail: 'prompt' });
   }
@@ -292,7 +310,10 @@ export function agentStudioConfigChanges(draft: AgentStudioConfigDraft, persiste
     changes.push({ key: 'plugins', label: 'Plugin selection updated', detail: `${draft.loadedPlugins.length} loaded` });
   }
   if (draft.proactive && draft.proactive.enabled !== (persisted.proactive?.enabled ?? false)) {
-    changes.push({ key: 'proactive', label: 'Proactive updated', detail: cloudAgentProactiveLabel(draft.proactive.enabled) });
+    changes.push({ key: 'proactive', label: 'Cooperative updated', detail: cloudAgentProactiveLabel(draft.proactive.enabled) });
+  }
+  if (draft.personalProactive !== undefined && draft.personalProactive !== (persisted.personalProactive ?? false)) {
+    changes.push({ key: 'personalProactive', label: 'Proactive updated', detail: cloudAgentProactiveLabel(draft.personalProactive) });
   }
   return changes;
 }
@@ -346,6 +367,7 @@ export function parsePersistedAgentConfig(raw: string, agent: Agent): PersistedA
   try {
     const parsed = JSON.parse(raw) as Partial<PersistedAgentConfig> & { editHistory?: unknown };
     const proactive = storedProactive(parsed.proactive) ?? buildAgentStudioDraft(agent).proactive;
+    const personalProactive = typeof parsed.personalProactive === 'boolean' ? parsed.personalProactive : buildAgentStudioDraft(agent).personalProactive;
     return {
       systemPrompt: typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : agent.systemPrompt,
       loadedSkills: Array.isArray(parsed.loadedSkills)
@@ -358,6 +380,7 @@ export function parsePersistedAgentConfig(raw: string, agent: Agent): PersistedA
         ? parsed.loadedPlugins.filter((entry): entry is string => typeof entry === 'string')
         : agent.loadedPlugins,
       ...(proactive ? { proactive } : {}),
+      ...(personalProactive !== undefined ? { personalProactive } : {}),
       editHistory: Array.isArray(parsed.editHistory)
         ? parsed.editHistory.flatMap((entry) => {
             if (!entry || typeof entry !== 'object') return [];
@@ -372,6 +395,17 @@ export function parsePersistedAgentConfig(raw: string, agent: Agent): PersistedA
   } catch {
     return buildPersistedAgentConfig(agent);
   }
+}
+
+function storedDraftSettings(draft: Partial<AgentStudioConfigDraft>) {
+  const edited = storedEditedSettings(draft.editedSettings);
+  const proactive = edited.includes('proactive') ? storedProactive(draft.proactive) : undefined;
+  const personalProactive = edited.includes('personalProactive') && typeof draft.personalProactive === 'boolean' ? draft.personalProactive : undefined;
+  return {
+    ...(proactive ? { proactive } : {}),
+    ...(personalProactive !== undefined ? { personalProactive } : {}),
+    ...(edited.length ? { editedSettings: edited } : {}),
+  };
 }
 
 export function readStoredAgentDrafts() {
@@ -395,7 +429,7 @@ export function readStoredAgentDrafts() {
           loadedPlugins: Array.isArray(draft.loadedPlugins)
             ? draft.loadedPlugins.filter((entry): entry is string => typeof entry === 'string')
             : undefined,
-          proactive: storedProactive(draft.proactive),
+          ...storedDraftSettings(draft),
         },
       ]),
     );

@@ -61,6 +61,9 @@ pub struct ConversationSnapshot {
     /// `"grounding"` for a group Grounding started; absent otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
+    /// The owned agent whose personal session this is; absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub personal_agent: Option<PersonalAgentRef>,
     pub forked_from_session_id: Option<String>,
     pub forked_from_message_id: Option<String>,
     pub latest_message_sequence: i64,
@@ -68,6 +71,12 @@ pub struct ConversationSnapshot {
     pub updated_at: DateTime<Utc>,
     pub members: Vec<MemberSnapshot>,
     pub preferences: ConversationPreferencesSnapshot,
+}
+
+/// The agent of a personal session (docs/development/personal-agent.md).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PersonalAgentRef {
+    pub agent_id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

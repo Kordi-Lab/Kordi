@@ -20,31 +20,55 @@ use history::{
 };
 pub(super) use history::{fallback_prompt_with_history, CloudFallbackHistoryMessage};
 
-async fn shared_cloud_agent_prompt_prefix(
+pub(crate) async fn shared_cloud_agent_prompt_prefix(
     pool: &PgPool,
     input: &ClaimRunRequest,
 ) -> Result<Option<String>, sqlx_core::Error> {
     let Some(target) = shared_cloud_agent_target_for_claim(pool, input).await? else {
         return Ok(None);
     };
-    let row: Option<(String, String, Option<String>, serde_json::Value, serde_json::Value)> = query_as(
-        "SELECT name, system_prompt, source_summary, boundaries_json, skills_json
-         FROM cloud_agent_definitions
-         WHERE agent_id = $1 AND owner_account_id = $2 AND status = 'active' AND access_scope = 'participant_conversations'",
+    // A private agent answers with its persona in its own personal session
+    // (docs/development/personal-agent.md).
+    let row: Option<(
+        String,
+        String,
+        Option<String>,
+        serde_json::Value,
+        serde_json::Value,
+        bool,
+    )> = query_as(
+        "SELECT name, system_prompt, source_summary, boundaries_json, skills_json,
+                access_scope = 'participant_conversations'
+         FROM cloud_agent_definitions agent
+         WHERE agent_id = $1 AND owner_account_id = $2 AND status = 'active'
+           AND (access_scope = 'participant_conversations' OR EXISTS (
+             SELECT 1 FROM cloud_personal_agent_sessions binding
+             JOIN cloud_chat_conversations conversation
+               ON conversation.conversation_id = binding.conversation_id
+             WHERE binding.agent_id = agent.agent_id
+               AND binding.owner_account_id = agent.owner_account_id
+               AND conversation.legacy_session_id = $3))",
     )
     .bind(&target.agent_id)
     .bind(&target.owner_account_id)
+    .bind(&input.session_id)
     .fetch_optional(pool)
     .await?;
-    let Some((name, system_prompt, source_summary, boundaries_json, skills_json)) = row else {
+    let Some((name, system_prompt, source_summary, boundaries_json, skills_json, shared)) = row
+    else {
         return Ok(None);
+    };
+    let kind = if shared {
+        "shared Cloud Agent"
+    } else {
+        "Cloud Agent"
     };
     let boundaries: Vec<String> = serde_json::from_value(boundaries_json).unwrap_or_default();
     let skills: Vec<serde_json::Value> = serde_json::from_value(skills_json).unwrap_or_default();
     let owner = target.owner_name.unwrap_or(target.owner_account_id);
     let mut sections = vec![
-        format!("You are {name}, {owner}'s shared Cloud Agent."),
-        "Answer as this shared Cloud Agent, not as the default Kordi agent.".to_string(),
+        format!("You are {name}, {owner}'s {kind}."),
+        format!("Answer as this {kind}, not as the default Kordi agent."),
         format!("Cloud Agent system prompt:\n{system_prompt}"),
     ];
     if let Some(summary) = source_summary

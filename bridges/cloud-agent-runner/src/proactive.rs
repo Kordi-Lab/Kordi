@@ -15,8 +15,16 @@ use crate::model_loop::{
 use crate::runtime::{CloudModelEngine, RunnerStepOutcome};
 
 pub const RUN_PREFIX: &str = "proactive_eval_";
+/// Personal agent evaluations (docs/development/personal-agent.md) run the
+/// same single turn; the server reads `share` or `skip` from the reply.
+pub const PERSONAL_AGENT_RUN_PREFIX: &str = "personal_agent_eval_";
 /// Runs the owner allowed. They search memories like an evaluation.
 pub const APPROVED_RUN_PREFIX: &str = "proactive_run_";
+
+/// Whether `run_id` is an evaluation this module runs.
+pub fn is_evaluation(run_id: &str) -> bool {
+    run_id.starts_with(RUN_PREFIX) || run_id.starts_with(PERSONAL_AGENT_RUN_PREFIX)
+}
 /// The server's memory search tool on a proactive run's lease.
 pub const SEARCH_MEMORY_TOOL: &str = "search_memory";
 /// Searches an evaluation may make before it must answer.

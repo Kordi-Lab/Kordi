@@ -1,4 +1,6 @@
 import { canChooseChatProject } from '@/features/projects/chatProjects';
+import { personalAgentEntryForConversation } from '@/features/personalAgent/personalAgentEntries';
+import { getPersonalAgentEntries, isPersonalAgentListLoaded } from '@/features/personalAgent/personalAgentStore';
 import { sessionRunsOnAnotherMac } from '@/features/projects/remoteProjectCatalog';
 import { BellOff, Bookmark, ChevronRight, Paperclip, Pin, Split } from 'lucide-react';
 
@@ -124,7 +126,11 @@ export function AgentSidebarRow({
           if (!target) return;
           event.preventDefault();
           event.stopPropagation();
-          onOpenSessionContextMenu({ ...target, canChooseProject: canChooseChatProject(conversation) && !sessionRunsOnAnotherMac(session.id) });
+          // A personal session listed here (its row not yet in the section) keeps the restricted menu.
+          const personal = personalAgentEntryForConversation(getPersonalAgentEntries(), conversation, { markerFallback: !isPersonalAgentListLoaded() });
+          onOpenSessionContextMenu(personal
+            ? { ...target, canRename: false, personalAgent: { agentId: personal.agentId, localAgentId: personal.localAgentId } }
+            : { ...target, canChooseProject: canChooseChatProject(conversation) && !sessionRunsOnAnotherMac(session.id) });
         }}
         className={cn(
           'app-session-row app-agent-session-row w-full px-2.5 py-1 text-left text-white',

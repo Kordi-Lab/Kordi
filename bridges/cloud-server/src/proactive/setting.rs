@@ -31,6 +31,26 @@ impl ProactiveSetting {
     pub fn to_value(self) -> Value {
         serde_json::json!({ "enabled": self.enabled })
     }
+
+    /// The setting a create or update request asks for: `cooperative` is the
+    /// UI name of `proactive` and either key is accepted. Both present with
+    /// different values is an error. `None` when neither is present.
+    pub fn from_request(
+        proactive: Option<&Value>,
+        cooperative: Option<&Value>,
+    ) -> Result<Option<Self>, String> {
+        let proactive = proactive.map(Self::parse).transpose()?;
+        let cooperative = cooperative
+            .map(Self::parse)
+            .transpose()
+            .map_err(|_| "cooperative must be {\"enabled\": true|false}".to_string())?;
+        match (proactive, cooperative) {
+            (Some(left), Some(right)) if left != right => {
+                Err("proactive and cooperative must match".to_string())
+            }
+            (left, right) => Ok(left.or(right)),
+        }
+    }
 }
 
 /// Cancels the agent's queued evaluations, frees their conversations, and
@@ -156,5 +176,28 @@ mod tests {
             ProactiveSetting::default().to_value(),
             json!({"enabled": false})
         );
+    }
+
+    #[test]
+    fn cooperative_is_an_alias_that_must_agree() {
+        let on = json!({"enabled": true});
+        let off = json!({"enabled": false});
+        let read = |p: Option<&Value>, c: Option<&Value>| ProactiveSetting::from_request(p, c);
+        assert_eq!(read(None, None), Ok(None));
+        assert_eq!(
+            read(Some(&on), None),
+            Ok(Some(ProactiveSetting { enabled: true }))
+        );
+        assert_eq!(
+            read(None, Some(&on)),
+            Ok(Some(ProactiveSetting { enabled: true }))
+        );
+        assert_eq!(
+            read(Some(&off), Some(&off)),
+            Ok(Some(ProactiveSetting::default()))
+        );
+        assert!(read(Some(&on), Some(&off)).is_err());
+        assert!(read(None, Some(&json!({"enabled": 1}))).is_err());
+        assert!(read(Some(&json!(true)), None).is_err());
     }
 }

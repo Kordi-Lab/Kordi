@@ -34,6 +34,27 @@ async fn conversation_id_for_visibility_in_transaction(
     .map(|row: Option<(uuid::Uuid,)>| row.map(|(conversation_id,)| conversation_id))
 }
 
+/// A personal agent session (docs/development/personal-agent.md) cannot be
+/// hidden or deleted.
+async fn personal_session_lock(
+    transaction: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    conversation_id: uuid::Uuid,
+) -> Option<Response> {
+    match crate::personal_agent::sessions::locked(transaction, conversation_id).await {
+        Ok(false) => None,
+        Ok(true) => Some(err(
+            "personal_session_locked",
+            "A personal agent session cannot be archived or deleted.",
+            StatusCode::CONFLICT,
+        )),
+        Err(_) => Some(err(
+            "server_error",
+            "Database error.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        )),
+    }
+}
+
 pub(super) async fn list_cloud_session_visibility(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -101,6 +122,9 @@ pub(super) async fn hide_cloud_session(
         }
     };
 
+    if let Some(response) = personal_session_lock(&mut transaction, conversation_id).await {
+        return response;
+    }
     let now = Utc::now().to_rfc3339();
     if query(
         "INSERT INTO cloud_account_session_visibility \
@@ -292,6 +316,9 @@ pub(super) async fn delete_cloud_session(
         }
     };
 
+    if let Some(response) = personal_session_lock(&mut transaction, conversation_id).await {
+        return response;
+    }
     let now = Utc::now().to_rfc3339();
     if query(
         "INSERT INTO cloud_account_session_visibility \

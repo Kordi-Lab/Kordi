@@ -12,6 +12,8 @@ enum CloudConversationCatalog {
         sessionForksById: [String: CloudSessionForkSummary] = [:],
         hiddenSessionIds: Set<String> = [],
         deletedSessionIds: Set<String> = [],
+        personalAgents: [CloudPersonalAgent]? = nil,
+        ownedAgentsLoaded: Bool = true,
         now: Date = Date()
     ) -> [ConversationSummary] {
         let invisibleSessionIds = hiddenSessionIds.union(deletedSessionIds)
@@ -87,9 +89,15 @@ enum CloudConversationCatalog {
             canonicalConversations: visibleCanonicalConversations,
             sessionForksById: sessionForksById
         ).filter { !existingAgentSessionIds.contains($0.sessionId) }
-        let discoveredAgentIds = Set(agentSessions.compactMap(\.agentId))
+        agentSessions = PersonalAgentSessionCatalog.tagged(
+            agentSessions, canonicalBySessionId: canonicalConversationsBySessionId, ownAccountId: account.accountId,
+            activeOwnedAgentIds: ownedAgentsLoaded ? PersonalAgentSessionCatalog.activeAgentIds(ownedAgents) : nil,
+            personalAgents: personalAgents
+        )
+        let discoveredAgentIds = Set(agentSessions.filter { $0.personalAgentId == nil }.compactMap(\.agentId))
         let hasDefaultAgentSession = agentSessions.contains {
-            $0.agentId == CanonicalAvatarSystem.agentID(account.defaultAgent?.agentId, ownerAccountID: account.accountId)
+            $0.personalAgentId == nil
+                && $0.agentId == CanonicalAvatarSystem.agentID(account.defaultAgent?.agentId, ownerAccountID: account.accountId)
                 && $0.peerAccountId == account.accountId
         }
 
@@ -542,7 +550,8 @@ enum CloudConversationCatalog {
             let titleDefinition = canonical.flatMap {
                 agentDefinition(matchingTitlesIn: $0, agentsById: agentsById)
             }
-            let targetId = requests.compactMap { $0.1.targetCloudAgentId?.nonEmpty }.last
+            let targetId = canonical?.personalAgentId
+                ?? requests.compactMap { $0.1.targetCloudAgentId?.nonEmpty }.last
                 ?? knownAgentId(from: sessionId, agentsById: agentsById)
                 ?? titleDefinition?.agentId
             let definition = targetId.flatMap { agentsById[$0] } ?? titleDefinition
@@ -677,7 +686,8 @@ enum CloudConversationCatalog {
                 matchingTitlesIn: conversation,
                 agentsById: agentsById
             )
-            let targetId = requests.compactMap { $0.targetCloudAgentId?.nonEmpty }.last
+            let targetId = conversation.personalAgentId
+                ?? requests.compactMap { $0.targetCloudAgentId?.nonEmpty }.last
                 ?? knownAgentId(from: sessionId, agentsById: agentsById)
                 ?? titleDefinition?.agentId
             let definition = targetId.flatMap { agentsById[$0] } ?? titleDefinition
@@ -724,7 +734,7 @@ enum CloudConversationCatalog {
                 ownerDisplayName: ownerName,
                 displayName: title,
                 lastMessage: latest.map { CloudMessageCodec.previewText($0) }
-                    ?? definition?.description?.nonEmpty
+                    ?? (conversation.personalAgentId == nil ? definition?.description?.nonEmpty : nil)
                     ?? "No messages yet",
                 lastAttachment: previewAttachment(latest),
                 lastActivityAt: max(
