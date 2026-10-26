@@ -3,5 +3,6 @@ pub mod routes;
 pub mod store;
 mod store_avatar;
 mod store_cleaning;
+mod store_personal;
 mod store_rows;
 mod store_shared;

@@ -5,7 +5,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { BuildScreen } from '../src/features/commonGround/BuildScreen';
-import { canBuildProfile, commonGroundBuildRequest, documentsSummary, initialPicks, NO_PICKS, type CgBuildChoices } from '../src/features/commonGround/buildRequest';
+import { buildFailureMessage, canBuildProfile, commonGroundBuildRequest, documentsSummary, initialPicks, NO_PICKS, notesHint, type CgBuildChoices } from '../src/features/commonGround/buildRequest';
 import type { CgHost } from '../src/features/commonGround/host';
 import { ProfileCard } from '../src/features/commonGround/ProfileCard';
 import { CommonGroundStore } from '../src/features/commonGround/store';
@@ -77,6 +77,37 @@ test('sources: Build shows Kordi, connected accounts and this Mac, with a small 
   assert.match(markup, /class="cg-build-pill"[^>]*>Build</);
   const older = renderToStaticMarkup(createElement(BuildScreen, { state: store.getSnapshot(), store, host: { ...host, sources: false } }));
   assert.equal(older.includes('>Documents<'), false);
+});
+
+test('build: a card with nothing for the profile says so instead of asking to try again', () => {
+  assert.equal(buildFailureMessage('no_topics'), 'Nothing here fits this profile. Add a note or choose other sources.');
+  assert.equal(buildFailureMessage('invalid_output'), 'Could not build your card. Try again.');
+  assert.equal(buildFailureMessage(null), 'Could not build your card. Try again.');
+  const { client } = mockServer({});
+  const store = new CommonGroundStore(client, { profiles: true });
+  store.set({ owner: owner({ card: null, build: { status: 'failed', errorCode: 'no_topics' } }), loaded: true,
+    profiles: [profile('cgp_health', 'health', 'Health', false, { sources: saved })], profileId: 'cgp_health' });
+  const host = { self: { accountId: 'me', name: 'Me', avatarUrl: null }, profiles: true, sources: true, memoryAvailable: false,
+    connectors: null, agentFiles: null, device: null, openUrl: () => undefined } as unknown as CgHost;
+  const markup = renderToStaticMarkup(createElement(BuildScreen, { state: store.getSnapshot(), store, host }));
+  assert.ok(markup.includes('Nothing here fits this profile. Add a note or choose other sources.'));
+  assert.equal(markup.includes('Try again'), false);
+});
+
+test('build: the notes hint follows the profile kind', () => {
+  assert.equal(notesHint('work'), 'What are you working on?');
+  assert.equal(notesHint('health'), 'How do you stay active?');
+  assert.equal(notesHint('daily'), 'What do you enjoy doing?');
+  assert.equal(notesHint('custom'), 'What should this profile show?');
+  assert.equal(notesHint(null), 'What are you working on?');
+  const { client } = mockServer({});
+  const store = new CommonGroundStore(client, { profiles: true });
+  store.set({ owner: owner({ card: null }), loaded: true,
+    profiles: [profile('cgp_health', 'health', 'Health', false, { sources: saved })], profileId: 'cgp_health' });
+  const host = { self: { accountId: 'me', name: 'Me', avatarUrl: null }, profiles: true, sources: true, memoryAvailable: false,
+    connectors: null, agentFiles: null, device: null, openUrl: () => undefined } as unknown as CgHost;
+  const markup = renderToStaticMarkup(createElement(BuildScreen, { state: store.getSnapshot(), store, host }));
+  assert.match(markup, /placeholder="How do you stay active\?"/);
 });
 
 test('cards: the owner name sits under the title and the handle by the bird', () => {

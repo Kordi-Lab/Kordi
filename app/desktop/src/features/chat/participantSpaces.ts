@@ -41,7 +41,7 @@ function cleanOptionalText(value?: string | null) {
 }
 
 export function isBlankParticipantSpaceSession(session: ParticipantSpaceSessionViewModel) {
-  return !conversationHasUserContent(session.conversation) && !metadataStringValue(metadataRecord(session.conversation.metadata), 'projectRoot')
+  return !conversationHasUserContent(session.conversation) && !metadataStringValue(metadataRecord(session.conversation.metadata), 'projectRoot') && !metadataRecord(session.conversation.metadata).personalAgent
     && isBlankSessionLabel(session.title)
     && isBlankSessionLabel(session.conversation.name);
 }
@@ -53,7 +53,7 @@ export function isPersistedBlankGroupContinuation(session: ParticipantSpaceSessi
 function blankAgentConversationCollapseKey(conversation: Conversation) {
   if (conversationHasUserContent(conversation) || conversation.type === 'person') return null;
   const metadata = metadataRecord(conversation.metadata);
-  if (metadata.source === 'ask-agent-new-chat' || metadataStringValue(metadata, 'projectRoot')) return null;
+  if (metadata.source === 'ask-agent-new-chat' || metadataStringValue(metadata, 'projectRoot') || metadata.personalAgent) return null;
   const agent = nonSelfAgents(allDisplayParticipants(conversation))[0];
   const title = cleanOptionalText(conversation.name).toLowerCase();
   const agentName = cleanOptionalText(agent?.name).toLowerCase();

@@ -1,6 +1,6 @@
 //! Background runs that belong to a feature instead of a chat: the digest,
-//! System agent, Common ground, and proactive evaluation runs. Each feature
-//! stores its own result.
+//! System agent, Common ground, proactive and personal agent evaluation runs.
+//! Each feature stores its own result.
 
 use sqlx_postgres::PgPool;
 
@@ -21,6 +21,8 @@ pub(super) async fn complete(
         crate::common_ground::complete(pool, run_id, runner_id, response_text).await?;
     } else if run_id.starts_with(crate::proactive::RUN_PREFIX) {
         crate::proactive::complete(pool, run_id, runner_id, response_text).await?;
+    } else if run_id.starts_with(crate::personal_agent::RUN_PREFIX) {
+        crate::personal_agent::complete(pool, run_id, runner_id, response_text).await?;
     } else {
         return Ok(false);
     }
@@ -43,6 +45,8 @@ pub(super) async fn fail(
         crate::common_ground::fail(pool, run_id, runner, error_code).await?;
     } else if run_id.starts_with(crate::proactive::RUN_PREFIX) {
         crate::proactive::fail(pool, run_id, runner, error_code).await?;
+    } else if run_id.starts_with(crate::personal_agent::RUN_PREFIX) {
+        crate::personal_agent::fail(pool, run_id, runner, error_code).await?;
     } else {
         return Ok(false);
     }

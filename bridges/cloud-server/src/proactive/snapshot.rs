@@ -47,7 +47,7 @@ pub(super) struct Agent {
 
 /// A decoded chat message.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(super) struct Decoded {
+pub(crate) struct Decoded {
     /// The id runs use for the message: the group envelope's own id when the
     /// message carries one, else the stored message id.
     pub id: Option<String>,
@@ -66,7 +66,7 @@ pub(super) struct Snapshot {
 
 /// `@Handle` for a member: the display name without spaces, which is what
 /// the clients' mention parsers match.
-pub(super) fn handle(display_name: &str) -> String {
+pub(crate) fn handle(display_name: &str) -> String {
     display_name
         .chars()
         .filter(|c| c.is_alphanumeric())
@@ -132,7 +132,7 @@ fn names_agent(message: &Value, agent_id: &str) -> bool {
 
 /// Decodes one stored message: its text blocks, the envelope id, whether an
 /// agent wrote it, and whether it mentions the agent.
-pub(super) fn decode(content: &Value, agent_id: &str, agent_name: &str) -> Decoded {
+pub(crate) fn decode(content: &Value, agent_id: &str, agent_name: &str) -> Decoded {
     let mut decoded = Decoded::default();
     let mut texts = Vec::new();
     // A voice message's speech goes through the fail-closed voice rule, never

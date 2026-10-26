@@ -23,7 +23,7 @@ pub(crate) mod proposal;
 mod push;
 pub mod routes;
 pub mod setting;
-mod snapshot;
+pub(crate) mod snapshot;
 mod sweep;
 mod worker;
 
@@ -38,11 +38,13 @@ pub use worker::spawn;
 pub const RUN_PREFIX: &str = "proactive_eval_";
 /// Runs the owner allowed: ordinary group runs, delivered as the agent.
 pub const APPROVED_RUN_PREFIX: &str = "proactive_run_";
-/// Whether `run_id` is a proactive run, which needs no project folder in a
-/// group that is a project session: an evaluation's only tool reads
-/// memories, and an approved run works in an empty folder of its own.
+/// Whether `run_id` is a proactive run or a personal agent evaluation, which
+/// needs no project folder in a project session: an evaluation's only tool
+/// reads memories, and an approved run works in an empty folder of its own.
 pub fn needs_no_project_folder(run_id: &str) -> bool {
-    run_id.starts_with(RUN_PREFIX) || run_id.starts_with(APPROVED_RUN_PREFIX)
+    run_id.starts_with(RUN_PREFIX)
+        || run_id.starts_with(APPROVED_RUN_PREFIX)
+        || run_id.starts_with(crate::personal_agent::RUN_PREFIX)
 }
 
 /// The readiness row a Mac publishes when it can run proactive runs

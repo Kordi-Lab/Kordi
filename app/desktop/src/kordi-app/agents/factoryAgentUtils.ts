@@ -34,6 +34,7 @@ export function factoryAgentCreateInput({
   creatorAgent,
   avatarMutation,
   proactive,
+  personalAgent,
 }: {
   draft: ShapeAgentDraft;
   runtime?: DesktopAgentBuilderDraft | null;
@@ -41,10 +42,12 @@ export function factoryAgentCreateInput({
   creatorAgent?: Agent | null;
   avatarMutation?: CanonicalAvatarMutation;
   proactive?: CreateCloudAgentInput['proactive'];
+  personalAgent?: CreateCloudAgentInput['personalAgent'];
 }): CreateCloudAgentInput {
   return {
     accessScope,
     ...(proactive ? { proactive } : {}),
+    ...(personalAgent ? { personalAgent } : {}),
     name: draft.name,
     role: draft.role,
     description: draft.description,

@@ -173,6 +173,14 @@ pub(super) fn reconcile_session_title_metadata(
         "groupNameUpdatedAtMs",
     );
     preserve_metadata_key(&mut next_metadata, &existing_metadata, "fork");
+    // A cloud agent's personal session keeps its marker when a local turn
+    // rewrites the shell; otherwise every turn drops and re-adds it.
+    preserve_metadata_key(&mut next_metadata, &existing_metadata, "personalAgent");
+    preserve_metadata_key(
+        &mut next_metadata,
+        &existing_metadata,
+        "cloudSelfAgentSession",
+    );
     if next_metadata.get("fork").is_some() {
         if let Some(Value::String(existing_created_from)) = existing_metadata.get("createdFrom") {
             if existing_created_from.contains("fork") {

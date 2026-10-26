@@ -248,8 +248,8 @@ impl RunnerMemory {
 /// (docs/development/proactive-agent.md), or any run whose lease carries
 /// the tool.
 pub fn searches_memory(run: &CloudAgentRun) -> bool {
-    use crate::proactive::{APPROVED_RUN_PREFIX, RUN_PREFIX, SEARCH_MEMORY_TOOL};
-    run.run_id.starts_with(RUN_PREFIX)
+    use crate::proactive::{is_evaluation, APPROVED_RUN_PREFIX, SEARCH_MEMORY_TOOL};
+    is_evaluation(&run.run_id)
         || run.run_id.starts_with(APPROVED_RUN_PREFIX)
         || run.connectors.descriptor(SEARCH_MEMORY_TOOL).is_some()
 }

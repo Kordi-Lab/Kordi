@@ -165,7 +165,7 @@ export function planCloudSelfAgentCanonicalSync({
       createdAtMs,
       responseRequestId,
       responseDeliveryState,
-      responseExecution, responseEnding,
+      responseExecution, responseEnding, responseSources,
       messageAction, mentions, agentRuntimeRoute,
     } = restoreMessage;
     const sourceTransport =
@@ -413,7 +413,7 @@ export function planCloudSelfAgentCanonicalSync({
             replyToMessageId: parentMessageId ?? stableRequestCloudMessageId,
             deliveryState,
             ...cloudAgentExecutionCanonicalContent(responseExecution),
-            ...(responseEnding ? { ending: responseEnding } : {}),
+            ...(responseEnding ? { ending: responseEnding } : {}), ...(responseSources?.length ? { sources: responseSources } : {}),
             ...(deliveryState === 'failed' && !responseEnding ? { error: text } : {}),
           }
         : role === 'system' && agentRuntimeRoute

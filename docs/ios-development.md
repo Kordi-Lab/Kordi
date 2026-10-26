@@ -112,6 +112,7 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-launching` | Color Relay app launch state |
 | `--preview-data` | Complete signed-in Contact chat flow |
 | `--preview-agent-page` | Agents root tab (combine with preview data) |
+| `--preview-personal-agent` | Personal agent section with three sample agents, unread outreach messages with source chips, and an empty session; combine with `--preview-data --preview-agent-page` |
 | `--preview-login` | Email and social login |
 | `--preview-signup` | Account creation |
 | `--preview-contacts` | Contacts and requests |

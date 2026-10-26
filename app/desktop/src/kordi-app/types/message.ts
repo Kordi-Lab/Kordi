@@ -222,6 +222,9 @@ export type MessagePlanCardOption = {
   votes: string[];
 };
 
+/** A connector event an agent message is about, shown as a chip under the message. */
+export type MessageEventSource = { eventId: string; provider: string; title: string };
+
 export type MessagePlanCard = {
   eventId: string;
   revision: number;
@@ -305,6 +308,7 @@ export type Message = {
   messageKind?: string | null;
   voiceMessage?: MessageVoice | null;
   planCard?: MessagePlanCard | null;
+  eventSources?: MessageEventSource[] | null;
   detail?: string;
   statusChips?: string[];
   attachments?: MessageAttachment[];

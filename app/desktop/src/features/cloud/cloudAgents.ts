@@ -1,7 +1,7 @@
 import { DEFAULT_LOCAL_AGENT_AVATAR_SEED } from '@/features/canonical/localAgentAvatar';
 import type { Agent, DesktopCollaborationAgent } from '@/kordi-app/types';
 import type { CloudSyncEvent } from './authClient';
-import type { CloudAgentAccessScope, CloudAgentProactive, CloudAgentResource, CloudAgentSkill, CloudAgentStatus } from './cloudAgentsClient';
+import type { CloudAgentAccessScope, CloudAgentPersonalAgent, CloudAgentProactive, CloudAgentResource, CloudAgentSkill, CloudAgentStatus } from './cloudAgentsClient';
 import {
   canonicalAvatarImageSource,
   canonicalAvatarImageUrl,
@@ -26,6 +26,7 @@ export type CloudAgentDefinition = {
   skills: CloudAgentSkill[];
   modelRouting: Record<string, unknown>;
   proactive: CloudAgentProactive;
+  personalAgent: CloudAgentPersonalAgent;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
@@ -82,9 +83,14 @@ function normalizeModelRouting(value: unknown): Record<string, unknown> {
   return objectRecord(value) ?? {};
 }
 
-/** Proactive is off unless the server says `{ enabled: true }`; older servers omit the field. */
+/** Cooperative (`proactive` before #2091) is off unless the server says `{ enabled: true }`; older servers omit the field. */
 export function normalizeCloudAgentProactive(value: unknown): CloudAgentProactive {
   return { enabled: objectRecord(value)?.enabled === true };
+}
+
+/** Reaching out in the personal session is off unless the server says `{ proactive: true }`. */
+export function normalizeCloudAgentPersonalAgent(value: unknown): CloudAgentPersonalAgent {
+  return { proactive: objectRecord(value)?.proactive === true };
 }
 
 export function normalizeCloudAgentDefinition(value: unknown): CloudAgentDefinition | null {
@@ -119,7 +125,8 @@ export function normalizeCloudAgentDefinition(value: unknown): CloudAgentDefinit
     resources: normalizeResources(record.resources),
     skills: normalizeSkills(record.skills),
     modelRouting: normalizeModelRouting(record.modelRouting),
-    proactive: normalizeCloudAgentProactive(record.proactive),
+    proactive: normalizeCloudAgentProactive(record.cooperative ?? record.proactive),
+    personalAgent: normalizeCloudAgentPersonalAgent(record.personalAgent),
     createdAt,
     updatedAt,
     archivedAt: cleanNullableText(record.archivedAt),
@@ -182,6 +189,7 @@ export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): A
     cloudAgentId: definition.agentId,
     cloudAgentAccessScope: definition.accessScope,
     cloudAgentProactive: definition.proactive,
+    cloudAgentPersonalAgent: definition.personalAgent,
     cloudAgentOwnerAccountId: definition.ownerAccountId,
     cloudAgentDescription: definition.description,
     cloudAgentSourceSummary: definition.sourceSummary,

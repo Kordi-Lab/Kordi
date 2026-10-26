@@ -180,6 +180,7 @@ enum CloudDirectMessageProjector {
             ),
             agentReplyEnding: CloudMessageCodec.agentReplyEnding(message.body),
             backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
+            sources: CloudMessageCodec.agentResponseSources(message.body),
             reactions: message.reactions,
             attachmentReactions: message.attachmentReactions
         )

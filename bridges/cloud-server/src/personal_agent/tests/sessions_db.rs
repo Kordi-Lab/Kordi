@@ -1,0 +1,373 @@
+//! Personal sessions: created once per agent, marked in conversation
+//! snapshots and locked against hide and delete while the setting is on,
+//! the default target of their requests, and released when a definition is
+//! archived.
+
+use serde_json::json;
+use sqlx_core::query_as::query_as;
+use uuid::Uuid;
+
+use super::fixture::*;
+use crate::chat_sync::models::{ConversationKind, CreateConversationRequest, SendMessageRequest};
+use crate::chat_sync::store::{self, StoreError};
+
+#[tokio::test]
+async fn listing_creates_each_session_once_even_when_calls_race() {
+    let Some(f) = fixture().await else { return };
+    let call = || f.send("GET", "/v1/cloud/personal-agents", &f.owner_token, None);
+    let (a, b, c) = tokio::join!(call(), call(), call());
+    for (status, body) in [&a, &b, &c] {
+        assert_eq!(status.as_u16(), 200, "{body}");
+    }
+    assert_eq!(a.1, b.1);
+    assert_eq!(a.1, c.1);
+    let agents = a.1["agents"].as_array().unwrap();
+    let default_agent = format!("cloud-agent:{}", f.owner);
+    assert_eq!(agents.len(), 1, "Scout is off by default: {agents:?}");
+    assert_eq!(agents[0]["agentId"], default_agent.as_str());
+    assert_eq!(agents[0]["proactive"], true);
+    assert_eq!(
+        agents[0]["sessionId"],
+        format!("session:self-agent:{}:personal:{default_agent}", f.owner).as_str()
+    );
+    let (conversations, created): (i64, i64) = query_as(
+        "SELECT (SELECT count(*) FROM cloud_chat_conversations \
+                 WHERE created_by_account_id = $1 AND kind = 'ai' \
+                   AND legacy_session_id LIKE 'session:self-agent:%:personal:%'), \
+                (SELECT count(*) FROM cloud_chat_user_sync_events \
+                 WHERE account_id = $1 AND event_type = 'conversation.created')",
+    )
+    .bind(&f.owner)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        (conversations, created),
+        (1, 1),
+        "one conversation and event"
+    );
+
+    // Turning Scout on makes its session at once, marked in its event.
+    let (status, _) = f.set_proactive(&f.agent_id, true).await;
+    assert_eq!(status, 200);
+    let (payload,): (serde_json::Value,) = query_as(
+        "SELECT payload FROM cloud_chat_user_sync_events \
+         WHERE account_id = $1 AND event_type = 'conversation.created' \
+           AND payload #>> '{conversation,personal_agent,agent_id}' = $2",
+    )
+    .bind(&f.owner)
+    .bind(&f.agent_id)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(payload["conversation"]["kind"], "ai");
+    let (_, again) = call().await;
+    let listed: Vec<&str> = again["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|agent| agent["agentId"].as_str().unwrap())
+        .collect();
+    assert_eq!(listed, vec![default_agent.as_str(), f.agent_id.as_str()]);
+    f.set_proactive(&default_agent, false).await;
+    let (_, after) = call().await;
+    assert_eq!(after["agents"].as_array().unwrap().len(), 1);
+    assert_eq!(after["agents"][0]["agentId"], f.agent_id.as_str());
+}
+
+async fn snapshot(f: &Fixture, conversation_id: Uuid) -> serde_json::Value {
+    let bootstrap = store::bootstrap(&f.pool, &f.owner).await.unwrap();
+    let conversation = bootstrap
+        .conversations
+        .iter()
+        .find(|conversation| conversation.id == conversation_id)
+        .expect("in the bootstrap");
+    serde_json::to_value(conversation).unwrap()
+}
+
+/// The owner's latest `conversation.updated` for `conversation_id`.
+async fn last_update(f: &Fixture, conversation_id: Uuid) -> serde_json::Value {
+    let (payload,): (serde_json::Value,) = query_as(
+        "SELECT payload FROM cloud_chat_user_sync_events \
+         WHERE account_id = $1 AND event_type = 'conversation.updated' \
+           AND payload #>> '{conversation,id}' = $2 ORDER BY stream_seq DESC LIMIT 1",
+    )
+    .bind(&f.owner)
+    .bind(conversation_id.to_string())
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    payload["conversation"].clone()
+}
+
+#[tokio::test]
+async fn the_marker_follows_the_setting_and_clients_cannot_forge_a_session() {
+    let Some(f) = fixture().await else { return };
+    f.set_proactive(&f.agent_id, true).await;
+    let (conversation_id, _) = f.personal_session(&f.agent_id).await;
+    let marker = json!({"agent_id": f.agent_id});
+    let on = snapshot(&f, conversation_id).await;
+    assert_eq!(on["personal_agent"], marker);
+    f.set_proactive(&f.agent_id, false).await;
+    let off = snapshot(&f, conversation_id).await;
+    assert!(off.get("personal_agent").is_none(), "{off}");
+    let update = last_update(&f, conversation_id).await;
+    assert!(update.get("personal_agent").is_none());
+    assert_eq!(update["version"], on["version"].as_i64().unwrap() + 1);
+    f.set_proactive(&f.agent_id, true).await;
+    let update = last_update(&f, conversation_id).await;
+    assert_eq!(update["personal_agent"], marker);
+    assert_eq!(update["version"], on["version"].as_i64().unwrap() + 2);
+
+    let forged = store::create_conversation(
+        &f.pool,
+        &f.owner,
+        CreateConversationRequest {
+            client_operation_id: Uuid::new_v4(),
+            kind: ConversationKind::Ai,
+            shared_title: None,
+            client_session_id: format!("session:self-agent:{}:personal:cloud_agent_new", f.owner),
+            member_account_ids: vec![f.owner.clone()],
+        },
+    )
+    .await;
+    assert!(matches!(forged, Err(StoreError::InvalidInput(_))));
+    let ordinary = store::create_conversation(
+        &f.pool,
+        &f.owner,
+        CreateConversationRequest {
+            client_operation_id: Uuid::new_v4(),
+            kind: ConversationKind::Ai,
+            shared_title: None,
+            client_session_id: format!("session:self-agent:{}", Uuid::new_v4().simple()),
+            member_account_ids: vec![f.owner.clone()],
+        },
+    )
+    .await
+    .unwrap();
+    let value = serde_json::to_value(&ordinary.value).unwrap();
+    assert!(value.get("personal_agent").is_none(), "absent elsewhere");
+}
+
+#[tokio::test]
+async fn the_lock_holds_only_while_the_setting_is_on() {
+    let Some(f) = fixture().await else { return };
+    f.set_proactive(&f.agent_id, true).await;
+    let (_, session_id) = f.personal_session(&f.agent_id).await;
+    let base = format!("/v1/cloud/sessions/{}", urlencode(&session_id));
+    let (status, body) = f
+        .send("PUT", &format!("{base}/hidden"), &f.owner_token, None)
+        .await;
+    assert_eq!(status, 409);
+    assert_eq!(body["errorCode"], "personal_session_locked");
+    let (status, body) = f.send("DELETE", &base, &f.owner_token, None).await;
+    assert_eq!(status, 409);
+    assert_eq!(body["errorCode"], "personal_session_locked");
+    let (status, body) = f
+        .send("PUT", &format!("{base}/pinned"), &f.owner_token, None)
+        .await;
+    assert!(status.is_success(), "pin works: {status} {body}");
+    let (status, _) = f
+        .send("PUT", &format!("{base}/muted"), &f.owner_token, None)
+        .await;
+    assert!(status.is_success(), "mute works");
+    f.set_proactive(&f.agent_id, false).await;
+    let (status, _) = f
+        .send("PUT", &format!("{base}/hidden"), &f.owner_token, None)
+        .await;
+    assert!(status.is_success(), "an ordinary agent chat while off");
+}
+
+fn urlencode(value: &str) -> String {
+    value.replace(':', "%3A")
+}
+
+fn claim(
+    session_id: &str,
+    owner: &str,
+    message_id: &str,
+) -> crate::cloud_agent_runtime::runs::ClaimRunRequest {
+    serde_json::from_value(json!({
+        "requestMessageId": message_id,
+        "sessionId": session_id,
+        "ownerAccountId": owner,
+        "requesterAccountId": owner,
+        "prompt": "hello",
+        "idempotencyKey": message_id,
+    }))
+    .unwrap()
+}
+
+#[tokio::test]
+async fn requests_without_a_target_go_to_the_session_agent() {
+    let Some(f) = fixture().await else { return };
+    let (conversation_id, session_id) = f.personal_session(&f.agent_id).await;
+    let message = store::send_message(
+        &f.pool,
+        &f.owner,
+        conversation_id,
+        SendMessageRequest {
+            client_message_id: Uuid::new_v4(),
+            kind: "text".into(),
+            content: json!({"schema": 1, "blocks": [{"type": "text", "text": "What is new?"}]}),
+            reply_to_message_id: None,
+            attachment_ids: Vec::new(),
+        },
+    )
+    .await
+    .unwrap()
+    .value;
+    let input = claim(&session_id, &f.owner, &message.id.to_string());
+    let agent = crate::cloud_agent_runtime::runs::execution_agent_id(&f.pool, &input)
+        .await
+        .unwrap();
+    assert_eq!(agent, f.agent_id);
+    let default_agent = format!("cloud-agent:{}", f.owner);
+    let (_, default_session) = f.personal_session(&default_agent).await;
+    let input = claim(&default_session, &f.owner, "msg_none");
+    let agent = crate::cloud_agent_runtime::runs::execution_agent_id(&f.pool, &input)
+        .await
+        .unwrap();
+    assert_eq!(agent, default_agent, "the default agent's own session");
+    let other = claim(
+        &format!("session:self-agent:{}", Uuid::new_v4()),
+        &f.owner,
+        "m",
+    );
+    let agent = crate::cloud_agent_runtime::runs::execution_agent_id(&f.pool, &other)
+        .await
+        .unwrap();
+    assert_eq!(agent, default_agent, "an ordinary chat is unchanged");
+}
+
+#[tokio::test]
+async fn archiving_a_definition_releases_its_session() {
+    let Some(f) = fixture().await else { return };
+    let (run_id, _) = f.queue_evaluation().await;
+    let (conversation_id, session_id) = f.personal_session(&f.agent_id).await;
+    let (status, _) = f
+        .send(
+            "DELETE",
+            &format!("/v1/cloud/agents/{}", f.agent_id),
+            &f.owner_token,
+            None,
+        )
+        .await;
+    assert_eq!(status, 200);
+    let rows: (i64, i64, i64, String, bool) = query_as(
+        "SELECT (SELECT count(*) FROM cloud_personal_agent_sessions WHERE agent_id = $1), \
+                (SELECT count(*) FROM cloud_personal_agent_settings WHERE agent_id = $1), \
+                (SELECT count(*) FROM cloud_personal_agent_state WHERE agent_id = $1), \
+                (SELECT status FROM cloud_agent_fallback_runs WHERE run_id = $2), \
+                EXISTS(SELECT 1 FROM cloud_chat_conversations WHERE conversation_id = $3)",
+    )
+    .bind(&f.agent_id)
+    .bind(&run_id)
+    .bind(conversation_id)
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert_eq!(rows, (0, 0, 0, "cancelled".to_string(), true));
+    let (_, list) = f
+        .send("GET", "/v1/cloud/personal-agents", &f.owner_token, None)
+        .await;
+    assert_eq!(
+        list["agents"].as_array().unwrap().len(),
+        1,
+        "only the default"
+    );
+    let uri = format!("/v1/cloud/sessions/{}/hidden", urlencode(&session_id));
+    let (status, _) = f.send("PUT", &uri, &f.owner_token, None).await;
+    assert!(status.is_success(), "an ordinary chat again");
+}
+
+#[tokio::test]
+async fn archived_definitions_lose_the_marker_and_get_no_new_session() {
+    let Some(f) = fixture().await else { return };
+    let (conversation_id, _) = f.personal_session(&f.agent_id).await;
+    let (before,): (i32,) =
+        query_as("SELECT version FROM cloud_chat_conversations WHERE conversation_id = $1")
+            .bind(conversation_id)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    let (status, _) = f
+        .send(
+            "DELETE",
+            &format!("/v1/cloud/agents/{}", f.agent_id),
+            &f.owner_token,
+            None,
+        )
+        .await;
+    assert_eq!(status, 200);
+    let (payload,): (serde_json::Value,) = query_as(
+        "SELECT payload FROM cloud_chat_user_sync_events \
+         WHERE account_id = $1 AND event_type = 'conversation.updated' \
+           AND payload #>> '{conversation,id}' = $2 ORDER BY stream_seq DESC LIMIT 1",
+    )
+    .bind(&f.owner)
+    .bind(conversation_id.to_string())
+    .fetch_one(&f.pool)
+    .await
+    .unwrap();
+    assert!(
+        payload["conversation"].get("personal_agent").is_none(),
+        "{payload}"
+    );
+    assert_eq!(payload["conversation"]["version"], before + 1);
+    let again = crate::personal_agent::sessions::ensure(&f.pool, &f.owner, &f.agent_id).await;
+    assert!(
+        matches!(again, Err(StoreError::NotFound)),
+        "an archived agent"
+    );
+    let (bindings,): (i64,) =
+        query_as("SELECT count(*) FROM cloud_personal_agent_sessions WHERE agent_id = $1")
+            .bind(&f.agent_id)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(bindings, 0);
+}
+
+#[tokio::test]
+async fn a_private_agent_answers_with_its_persona_in_its_personal_session() {
+    let Some(f) = fixture().await else { return };
+    let (conversation_id, session_id) = f.personal_session(&f.agent_id).await;
+    let message = store::send_message(
+        &f.pool,
+        &f.owner,
+        conversation_id,
+        SendMessageRequest {
+            client_message_id: Uuid::new_v4(),
+            kind: "text".into(),
+            content: json!({"schema": 1, "blocks": [{"type": "text", "text": "Any news?"}]}),
+            reply_to_message_id: None,
+            attachment_ids: Vec::new(),
+        },
+    )
+    .await
+    .unwrap()
+    .value;
+    let input = claim(&session_id, &f.owner, &message.id.to_string());
+    let prefix =
+        crate::cloud_agent_runtime::runs::prompt_history::shared_cloud_agent_prompt_prefix(
+            &f.pool, &input,
+        )
+        .await
+        .unwrap()
+        .expect("the persona");
+    assert!(
+        prefix.starts_with("You are Scout, Mina's Cloud Agent."),
+        "{prefix}"
+    );
+    assert!(prefix.contains("Be precise and kind."));
+    let other = format!("session:self-agent:{}", Uuid::new_v4());
+    let elsewhere = claim(&other, &f.owner, "m");
+    let prefix =
+        crate::cloud_agent_runtime::runs::prompt_history::shared_cloud_agent_prompt_prefix(
+            &f.pool, &elsewhere,
+        )
+        .await
+        .unwrap();
+    assert!(prefix.is_none(), "a private agent elsewhere is unchanged");
+}

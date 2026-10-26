@@ -165,7 +165,7 @@ export type Agent = {
   isCollaborationActive?: boolean;
   isCollaborationRegistered?: boolean;
   cloudAgentId?: string;
-  cloudAgentAccessScope?: 'private' | 'participant_conversations'; cloudAgentProactive?: { enabled: boolean };
+  cloudAgentAccessScope?: 'private' | 'participant_conversations'; cloudAgentProactive?: { enabled: boolean }; cloudAgentPersonalAgent?: { proactive: boolean };
   cloudAgentOwnerAccountId?: string;
   cloudAgentDescription?: string | null;
   cloudAgentSourceSummary?: string | null;

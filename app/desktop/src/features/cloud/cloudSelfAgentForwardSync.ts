@@ -11,6 +11,8 @@ import { boundedRequestContextMessages } from './cloudAgentRequestContext';
 import { routeRunsOnKordiCloud } from './cloudAgentRuntimeRoute';
 import { cloudSelfAgentOperationClientMessageId,cloudSelfAgentProcessingLedgerKey } from './cloudSelfAgentIdentity';
 import { cloudAgentTargetsBySessionId,cloudSyncedLocalAgentSessionIds } from './cloudSelfAgentSessionIdentity';
+import { personalAgentMarker } from '@/features/personalAgent/personalAgentEntries';
+import { isPersonalAgentSession } from '@/features/personalAgent/personalAgentStore';
 import { type CloudSelfAgentSyncLedger,cleanText } from "./cloudSelfAgentSyncLedger";
 export {
   cloudSelfAgentOperationClientMessageId,
@@ -248,7 +250,8 @@ export function planCloudSelfAgentSessionReconciliation(
       && session.status === 'active'
     ))
     .map((session) => {
-      const target = options.identitySyncedSessionIds?.has(session.id)
+      // A personal session's agent comes from its server snapshot: no identity marker (an empty message) is sent there.
+      const target = options.identitySyncedSessionIds?.has(session.id) || isPersonalAgentSession(session.id, session.metadata) || personalAgentMarker(session.metadata)
         ? undefined
         : targetsBySessionId.get(session.id);
       const remote = remoteBySessionId.get(session.id) ?? null;

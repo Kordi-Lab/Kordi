@@ -15,6 +15,7 @@ import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import { cloudDirectMessageAction, cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from './cloudDirectMessages';
 import { isCloudGroupControlMessage } from './cloudGroupMessages';
 import { compareCloudMessages } from './cloudMessageMerge';
+import { parseCloudAgentSources } from './cloudAgentSources';
 const CLOUD_AGENT_RESPONSE_PREFIX = 'kordi-cloud-agent-response:';
 const CLOUD_AGENT_CANCEL_PREFIX = 'kordi-cloud-agent-cancel:';
 const CLOUD_AGENT_NATIVE_CONTEXT_MESSAGE_LIMIT = 40;
@@ -44,6 +45,8 @@ export type CloudAgentResponseEnvelope = {
   execution?: CloudAgentExecutionSnapshot;
   backgroundSessions?: CloudAgentBackgroundSession[];
   messageAction?: MessageActionMetadata;
+  /** Connector events the message is about, shown as chips (personal agent outreach). */
+  sources?: import('@/kordi-app/types/message').MessageEventSource[];
   /**
    * Ephemeral owner-runtime claim used only to arbitrate which signed-in Mac
    * executes a self-agent request. It is never rendered or forwarded to a
@@ -231,6 +234,7 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
     const execution = parseCloudAgentExecutionSnapshot(parsed.execution);
     const backgroundSessions = parseCloudAgentBackgroundSessions(parsed.backgroundSessions);
     const messageAction = cloudMessageActionFromRecord(parsed.messageAction);
+    const sources = parseCloudAgentSources(parsed.sources);
     const executionClaimId = typeof parsed.executionClaimId === 'string'
       ? parsed.executionClaimId.trim().slice(0, 160)
       : '';
@@ -243,6 +247,7 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
       ...(execution ? { execution } : {}),
       ...(backgroundSessions.length > 0 ? { backgroundSessions } : {}),
       ...(messageAction?.kind === 'thread' ? { messageAction } : {}),
+      ...(sources.length > 0 ? { sources } : {}),
       ...(executionClaimId ? { executionClaimId } : {}),
     };
   } catch {

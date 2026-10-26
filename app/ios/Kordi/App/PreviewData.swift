@@ -215,12 +215,13 @@ enum PreviewData {
                 ChatMessage(id: "gm2", conversationId: "group:mobile-release", author: .person, authorName: "Ethan Park", text: "I added the device testing notes.", createdAt: now.addingTimeInterval(-240), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
             ]
         ]
+        let personal = arguments.contains("--preview-personal-agent") ? personalAgentFixture(now: now) : (conversations: [], messages: [:])
         return PreviewFixture(
             account: account,
             contacts: contacts,
             contactRequests: contactRequests,
-            conversations: conversations,
-            messagesByConversation: messages
+            conversations: conversations + personal.conversations,
+            messagesByConversation: messages.merging(personal.messages) { current, _ in current }
         )
     }
 

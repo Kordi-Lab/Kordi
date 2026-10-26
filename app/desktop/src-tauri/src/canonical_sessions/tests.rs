@@ -67,6 +67,7 @@ mod group_reasoning;
 mod group_titles;
 mod identity_sessions;
 mod message_lifecycle;
+mod personal_agent_metadata;
 mod profile_adoption;
 mod profile_lifecycle;
 mod replay_idempotence;

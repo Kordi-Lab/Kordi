@@ -11,6 +11,12 @@ export function projectChatGroups(
     pinnedSessionIds?: ReadonlySet<string>;
     expandedProjectIds?: ReadonlySet<string>;
     previewLimit?: number;
+    /**
+     * The owner's personal agent rows, listed first; their sessions stay out of
+     * every other section. The section folds like Recents (`section:personal`);
+     * `showWhileCollapsed` (a search) keeps its matching rows visible.
+     */
+    personal?: { rows: readonly ChatSidebarRow[]; sessionIds: ReadonlySet<string>; showWhileCollapsed?: boolean };
   } = {},
 ) {
   const projectBySession = new Map(projects.flatMap((project) =>
@@ -18,8 +24,17 @@ export function projectChatGroups(
   const groups = new Map<string, { name: string; rows: ChatSidebarRow[] }>();
   const pinned: ChatSidebarRow[] = [];
   const recents: ChatSidebarRow[] = [];
-  for (const row of rows) {
-    if (row.kind !== 'session') continue;
+  // Forks of a personal session stay in the other sections, lifted to the
+  // depth they would have without that parent (direct forks at the top level).
+  let personalParentDepth: number | null = null;
+  for (const listed of rows) {
+    if (listed.kind !== 'session') continue;
+    if (personalParentDepth !== null && listed.depth <= personalParentDepth) personalParentDepth = null;
+    if (options.personal?.sessionIds.has(listed.sessionId)) {
+      personalParentDepth ??= listed.depth;
+      continue;
+    }
+    const row = personalParentDepth === null ? listed : { ...listed, depth: listed.depth - personalParentDepth - 1 };
     const project = projectBySession.get(row.sessionId);
     if (options.pinnedSessionIds?.has(row.sessionId)) pinned.push(row);
     else if (!project) recents.push(row);
@@ -44,6 +59,10 @@ export function projectChatGroups(
       ...row, key: `${section}:${row.key}`, ...(flat ? { depth: 0 } : {}),
     });
   };
+  if (options.personal?.rows.length) {
+    appendSection('personal');
+    if (!collapsed.has('section:personal') || options.personal.showWhileCollapsed) groupedRows.push(...options.personal.rows);
+  }
   if (pinned.length) {
     appendSection('pinned');
     appendSessions(pinned, 'pinned', true);

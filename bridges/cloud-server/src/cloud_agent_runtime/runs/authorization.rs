@@ -154,7 +154,7 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
     .fetch_optional(pool)
     .await?;
     let Some(target) = row.and_then(|(body,)| direct_cloud_agent_target(&body)) else {
-        return Ok(None);
+        return personal_session_target(pool, input).await;
     };
     if is_default_kordi_target(
         &target.agent_id,
@@ -168,6 +168,34 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
         agent_id: target.agent_id,
         owner_account_id: target.owner_account_id,
         owner_name: target.owner_name,
+    }))
+}
+
+/// A request with no target in the personal session of an owned definition
+/// goes to that agent (docs/development/personal-agent.md).
+async fn personal_session_target(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+) -> Result<Option<SharedCloudAgentTarget>, sqlx_core::Error> {
+    let Some(agent_id) = crate::personal_agent::sessions::default_target(
+        pool,
+        &input.session_id,
+        &input.owner_account_id,
+        &input.requester_account_id,
+    )
+    .await?
+    else {
+        return Ok(None);
+    };
+    let owner: Option<(Option<String>,)> =
+        query_as("SELECT display_name FROM cloud_accounts WHERE account_id = $1")
+            .bind(&input.owner_account_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(Some(SharedCloudAgentTarget {
+        agent_id,
+        owner_account_id: input.owner_account_id.clone(),
+        owner_name: owner.and_then(|(name,)| name),
     }))
 }
 

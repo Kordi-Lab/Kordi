@@ -66,6 +66,34 @@ async fn evaluations_complete_with_one_turn_and_no_sandbox() {
 }
 
 #[tokio::test]
+async fn personal_agent_evaluations_run_the_same_single_turn() {
+    let run = CloudAgentRun {
+        session_id: "personal-agent:cloud-agent:acct_fixture".into(),
+        ..evaluation_run("personal_agent_eval_fixture")
+    };
+    let client = FakeClient::with_run(run);
+    let root = temp_sandbox();
+    let reply = "{\"decision\":\"skip\"}";
+    let outcome = legacy_fixture_run(&client, &EvaluationProvider(reply), root.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        outcome,
+        RunnerStepOutcome::Completed {
+            run_id: "personal_agent_eval_fixture".into()
+        }
+    );
+    assert!(!root.exists(), "no sandbox");
+    assert_eq!(
+        client.calls().last().map(String::as_str),
+        Some("complete:personal_agent_eval_fixture:{\"decision\":\"skip\"}")
+    );
+    assert!(crate::memory::searches_memory(&evaluation_run(
+        "personal_agent_eval_x"
+    )));
+}
+
+#[tokio::test]
 async fn an_empty_evaluation_reply_is_submitted_as_silence() {
     let client = FakeClient::with_run(evaluation_run("proactive_eval_empty"));
     let outcome = legacy_fixture_run(&client, &EvaluationProvider("  "), temp_sandbox())

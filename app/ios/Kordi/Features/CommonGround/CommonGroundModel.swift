@@ -78,6 +78,12 @@ final class CommonGroundModel: ObservableObject {
     /// The profile card calls act on; nil before profiles.
     var activeProfileID: String? { profilesEnabled ? currentProfileID : nil }
 
+    /// The active profile's kind; Work when there is none, as the server builds.
+    var activeProfileKind: CommonGroundProfileKind {
+        profiles.first { $0.profileId == activeProfileID }
+            .flatMap { CommonGroundProfileKind(rawValue: $0.kind) } ?? .work
+    }
+
     var card: CommonGroundOwnCard? { owner?.card }
     var hasCard: Bool { owner?.card != nil }
     var isBuilding: Bool { owner?.build.status == "building" }
@@ -97,6 +103,8 @@ final class CommonGroundModel: ObservableObject {
 
     static let messages: [String: String] = [
         "common_ground_no_sources": "Turn on a source first.",
+        // A build that found nothing for the profile; trying again cannot help.
+        "no_topics": "Nothing here fits this profile. Add a note or choose other sources.",
         "common_ground_build_in_progress": "Your card is already being built.",
         "common_ground_room_not_found": roomNotFound,
         "common_ground_code_not_found": "Code not found.",
