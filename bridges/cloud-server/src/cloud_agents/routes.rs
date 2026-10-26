@@ -18,6 +18,7 @@ use crate::cloud_agents::store::{
     archive_agent_definition, create_agent_definition, list_agent_definitions,
     list_shared_agent_summaries, update_agent_definition, CloudAgentStoreError,
 };
+use crate::personal_agent::routes as personal;
 use crate::proactive::routes as proactive;
 use crate::server::ServerState;
 
@@ -57,6 +58,16 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             "/v1/cloud/agents/:agent_id/proactive",
             get(proactive::get_setting).put(proactive::put_setting),
         )
+        // Cooperative is the UI name of the proactive setting.
+        .route(
+            "/v1/cloud/agents/:agent_id/cooperative",
+            get(proactive::get_setting).put(proactive::put_setting),
+        )
+        .route(
+            "/v1/cloud/agents/:agent_id/personal-agent",
+            get(personal::get_setting).put(personal::put_setting),
+        )
+        .route("/v1/cloud/personal-agents", get(personal::list))
         .route(
             "/v1/cloud/agents/:agent_id/proactive/proposals",
             get(proactive::list_proposals),
@@ -99,6 +110,9 @@ fn store_error_response(context: &str, error: CloudAgentStoreError) -> Response 
     match error {
         CloudAgentStoreError::Invalid(message) => {
             error_response("invalid_cloud_agent", &message, StatusCode::BAD_REQUEST)
+        }
+        CloudAgentStoreError::InvalidSetting(code, message) => {
+            error_response(code, &message, StatusCode::BAD_REQUEST)
         }
         CloudAgentStoreError::Database(err) => {
             eprintln!("[cloud_agents] {context}: {err}");

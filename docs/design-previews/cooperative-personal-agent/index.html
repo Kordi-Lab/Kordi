@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cooperative and Personal agent · Kordi proposal</title>
+<style>
+:root{
+  --font:-apple-system,"SF Pro Text",Inter,system-ui,sans-serif;
+  --page:#e9e9ee;--chrome:#fff;--chrome-text:#1c1c1e;--chrome-muted:rgba(60,60,67,.6);--chip:rgba(120,120,128,.12);
+  --m-canvas:oklch(95.5% .012 250);--m-rail:oklch(93.6% .015 250);--m-ink:rgb(15 23 42);--m-400:rgb(82 94 109);
+  --m-border:oklch(36% .025 250 / .15);--m-divider:oklch(36% .025 250 / .10);--m-accent:#365F98;--m-accent-ink:oklch(98% .005 250);
+  --m-selected:oklch(36% .025 250 / .08);--m-active:oklch(36% .025 250 / .11);--m-shadow:0 14px 36px rgb(0 0 0 / .16);
+  --i-page:#fff;--i-label:#000;--i-secondary:rgba(60,60,67,.6);--i-accent:#365F98;--i-hair:rgba(0,0,0,.12);
+  --i-bezel:#0b0b0c;--i-acc-ink:#fff;--i-bub:rgba(120,120,128,.16);--i-bar:rgba(249,249,251,.94);--i-shadow:0 30px 70px rgba(0,0,0,.18),0 2px 6px rgba(0,0,0,.08);
+  --online:#34c759;--badge:#365F98;--badge-ink:#fff;
+}
+:root[data-theme="dark"]{
+  --page:#141416;--chrome:#1c1c1e;--chrome-text:#f2f2f7;--chrome-muted:rgba(235,235,245,.6);--chip:rgba(120,120,128,.24);
+  --m-canvas:oklch(21.5% .018 250);--m-rail:oklch(19.5% .02 250);--m-ink:#fff;--m-400:#94a3b8;
+  --m-border:oklch(85% .018 250 / .16);--m-divider:oklch(85% .018 250 / .10);--m-accent:#AEC4E3;--m-accent-ink:oklch(22% .025 250);
+  --m-selected:oklch(85% .018 250 / .09);--m-active:oklch(85% .018 250 / .12);--m-shadow:0 14px 36px rgb(0 0 0 / .28);
+  --i-page:#000;--i-label:#fff;--i-secondary:rgba(235,235,245,.6);--i-accent:#AEC4E3;--i-hair:rgba(255,255,255,.18);
+  --i-bezel:#2a2a2d;--i-acc-ink:#0b1b33;--i-bub:rgba(120,120,128,.28);--i-bar:rgba(22,22,24,.94);--i-shadow:0 30px 70px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.4);
+  --online:#30d158;--badge:#AEC4E3;--badge-ink:#0b1b33;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --page:#141416;--chrome:#1c1c1e;--chrome-text:#f2f2f7;--chrome-muted:rgba(235,235,245,.6);--chip:rgba(120,120,128,.24);
+  --m-canvas:oklch(21.5% .018 250);--m-rail:oklch(19.5% .02 250);--m-ink:#fff;--m-400:#94a3b8;
+  --m-border:oklch(85% .018 250 / .16);--m-divider:oklch(85% .018 250 / .10);--m-accent:#AEC4E3;--m-accent-ink:oklch(22% .025 250);
+  --m-selected:oklch(85% .018 250 / .09);--m-active:oklch(85% .018 250 / .12);--m-shadow:0 14px 36px rgb(0 0 0 / .28);
+  --i-page:#000;--i-label:#fff;--i-secondary:rgba(235,235,245,.6);--i-accent:#AEC4E3;--i-hair:rgba(255,255,255,.18);
+  --i-bezel:#2a2a2d;--i-acc-ink:#0b1b33;--i-bub:rgba(120,120,128,.28);--i-bar:rgba(22,22,24,.94);--i-shadow:0 30px 70px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.4);
+  --online:#30d158;--badge:#AEC4E3;--badge-ink:#0b1b33;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--chrome-text);font-family:var(--font);-webkit-font-smoothing:antialiased}
+.bar{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;gap:12px 18px;align-items:center;padding:12px 20px;background:var(--chrome);font-size:13px;color:var(--chrome-muted);border-bottom:1px solid var(--chip)}
+.bar strong{color:var(--chrome-text);font-weight:600}
+.seg{display:inline-flex;gap:2px;background:var(--chip);border-radius:8px;padding:2px;margin-left:6px}
+.seg button{font:inherit;font-size:12px;border:0;background:transparent;color:var(--chrome-text);padding:4px 10px;border-radius:6px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--chrome);box-shadow:0 1px 2px rgba(0,0,0,.18);font-weight:600}
+.seg button:disabled{opacity:.35;cursor:default}
+.stage{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start;padding:24px 20px 32px;overflow-x:auto}
+.cap{font-size:12px;font-weight:600;color:var(--chrome-muted);margin:0 0 8px 4px}
+svg{display:block;flex:none}
+button{font-family:inherit}
+.win,.phone{--bg:var(--m-canvas);--rail:var(--m-rail);--ink:var(--m-ink);--mut:var(--m-400);--hair:var(--m-divider);--brd:var(--m-border);--acc:var(--m-accent);--acc-ink:var(--m-accent-ink);--bub:var(--m-selected);--act:var(--m-active)}
+.phone{--bg:var(--i-page);--rail:var(--i-page);--ink:var(--i-label);--mut:var(--i-secondary);--hair:var(--i-hair);--brd:var(--i-hair);--acc:var(--i-accent);--acc-ink:var(--i-acc-ink);--bub:var(--i-bub);--act:var(--i-bub)}
+.win{width:1040px;height:680px;max-width:calc(100vw - 40px);display:flex;border-radius:12px;overflow:hidden;background:var(--bg);color:var(--ink);box-shadow:var(--m-shadow);font-size:13px;position:relative}
+.win.narrow{width:900px;flex-direction:column}
+.phone{position:relative;width:413px;height:872px;border-radius:58px;border:10px solid var(--i-bezel);background:var(--bg);color:var(--ink);box-shadow:var(--i-shadow);overflow:hidden;flex:none;font-size:15px;display:flex;flex-direction:column}
+.sbar{height:54px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:6px 32px 0 44px;font-weight:600;font-size:17px}
+.sbar .gl{display:flex;gap:6px;align-items:center}
+.col{display:flex;flex-direction:column;min-width:0}
+/* avatars */
+.av{position:relative;flex:none;border-radius:50%;display:grid;place-items:center;font-weight:600;color:#fff}
+.av svg{width:100%;height:100%}
+.av .on{position:absolute;right:-1px;bottom:-1px;width:30%;height:30%;min-width:9px;min-height:9px;border-radius:50%;background:var(--online);border:2px solid var(--ring,var(--bg))}
+.av.saved{background:var(--acc);color:var(--acc-ink)}
+.av.sq{border-radius:17%}.av.sq .on{right:-3px;bottom:-3px}
+/* ---- Mac sidebar ---- */
+.side{width:268px;flex:none;background:var(--rail);border-right:1px solid var(--hair);display:flex;flex-direction:column;--ring:var(--rail)}
+.side .top{height:52px;display:flex;align-items:center;gap:8px;padding:0 12px 0 78px;position:relative}
+.lights{position:absolute;left:14px;top:20px;display:flex;gap:8px}.lights i{width:12px;height:12px;border-radius:50%;background:#ff5f57}.lights i+i{background:#febc2e}.lights i+i+i{background:#28c840}
+.side .top b{flex:1;font-size:13px;font-weight:600}
+.ibtn{width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--mut)}
+.search{margin:0 12px 8px;height:30px;border-radius:8px;background:var(--bub);display:flex;align-items:center;gap:6px;padding:0 9px;color:var(--mut);font-size:12px}
+.slist{flex:1;overflow:hidden;padding:2px 8px;display:flex;flex-direction:column;gap:1px}
+.shead{display:flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:var(--mut);padding:12px 8px 4px}.shead:first-child{padding-top:4px}.shead svg{opacity:.7}
+.ihead{font-size:15px;font-weight:600;color:var(--mut);padding:14px 16px 2px}
+.srow{position:relative;display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:9px;min-height:50px}
+.srow.active{background:var(--act)}
+.srow .main{flex:1;min-width:0}
+.srow .t{display:flex;align-items:center;gap:6px}
+.srow .t b{flex:1;min-width:0;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srow .t time{font-size:10.5px;color:var(--mut);flex:none}
+.srow .p{display:flex;align-items:center;gap:6px;margin-top:1px}
+.srow .p span{flex:1;min-width:0;font-size:10.5px;line-height:16px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{min-width:17px;height:17px;border-radius:9px;padding:0 5px;background:var(--badge);color:var(--badge-ink);font-size:10.5px;font-weight:700;display:grid;place-items:center;flex:none}
+.srow.plain{min-height:42px}
+/* ---- chat pane ---- */
+.pane{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.chead{height:52px;flex:none;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid var(--hair)}
+.chead .n{display:flex;flex-direction:column;line-height:17px}.chead .n b{font-size:13.5px;font-weight:600}.chead .n span{font-size:11.5px;color:var(--mut)}
+.chead .sp{flex:1}
+.phone .chead{height:52px;padding:0 12px;gap:8px}
+.phone .chead .n{align-items:center;flex:1}.phone .chead .n b{font-size:16px}.phone .chead .n span{font-size:12px}
+.back{color:var(--acc);display:flex;align-items:center;width:64px}
+.chat{flex:1;min-height:0;overflow:auto;padding:18px 24px;display:flex;flex-direction:column;gap:12px;scrollbar-width:none}
+.phone .chat{padding:12px 12px}
+.day{align-self:center;font-size:11px;font-weight:600;color:var(--mut);padding:4px 0}
+.msg{display:flex;gap:10px;align-items:flex-start;max-width:600px}
+.phone .msg{max-width:100%;gap:8px}
+.msg.me{align-self:flex-end;flex-direction:row-reverse;max-width:480px}
+.msg .col{gap:6px;min-width:0}
+.bub{padding:8px 12px;border-radius:16px;background:var(--bub);line-height:19px}
+.bub time{font-size:10.5px;color:var(--mut);margin-left:8px;float:right;margin-top:4px}
+.me .bub{background:var(--acc);color:var(--acc-ink)}.me .bub time{color:inherit;opacity:.7}
+.srcs{display:flex;flex-wrap:wrap;gap:6px}
+.src{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border:1px solid var(--brd);border-radius:8px;font-size:12px;color:var(--ink)}
+.src svg{color:var(--mut)}
+.src em{font-style:normal;color:var(--mut)}
+.card{border:1px solid var(--brd);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;line-height:19px;max-width:420px}
+.card .h{display:flex;align-items:center;gap:7px;font-weight:600}.card .h svg{color:var(--mut)}
+.card .draft{border-left:3px solid var(--acc);padding-left:10px;margin-left:2px}
+.acts{display:flex;align-items:center;gap:8px;min-height:30px}
+.acts .sp{flex:1}.acts .mu{color:var(--mut);font-size:12px;display:flex;align-items:center;gap:5px}.acts .mu svg{color:var(--online)}
+.btn{height:30px;border-radius:8px;padding:0 14px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--brd);background:transparent;color:var(--ink)}
+.btn.pri{background:var(--acc);color:var(--acc-ink);border-color:transparent}
+.phone .btn{height:34px;font-size:15px;border-radius:17px;padding:0 16px}
+.comp{flex:none;display:flex;align-items:center;gap:8px;padding:10px 20px 16px}
+.phone .comp{padding:8px 12px 30px}
+.comp .f{flex:1;height:38px;border:1px solid var(--brd);border-radius:19px;padding:0 16px;display:flex;align-items:center;color:var(--mut)}
+.comp .s{width:34px;height:34px;border-radius:50%;background:var(--acc);color:var(--acc-ink);display:grid;place-items:center}
+/* notifications and menus */
+.notif{position:absolute;z-index:6;display:flex;gap:10px;align-items:flex-start;padding:11px 13px;border-radius:18px;background:var(--chrome);color:var(--chrome-text);box-shadow:0 10px 30px rgba(0,0,0,.2);border:1px solid var(--chip)}
+.notif .app{width:36px;height:36px;border-radius:9px;background:#365F98;color:#fff;display:grid;place-items:center;flex:none}
+.notif .tx{flex:1;min-width:0;line-height:18px}.notif .tx b{font-size:13px}.notif .tx p{margin:1px 0 0;font-size:13px}
+.notif .tx .r{display:flex;gap:8px}.notif .tx .r b{flex:1}.notif .tx .r span{font-size:12px;color:var(--chrome-muted)}
+.win .notif{top:14px;right:14px;width:340px}
+.phone .notif{top:58px;left:10px;right:10px;border-radius:22px;padding:12px 14px}
+.phone .notif .tx b,.phone .notif .tx p{font-size:15px;line-height:20px}
+.menu{position:absolute;z-index:6;min-width:190px;background:var(--bg);border:1px solid var(--brd);border-radius:10px;box-shadow:var(--m-shadow);padding:5px}
+.menu div{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:6px;font-size:13px}
+.menu div:first-child{background:var(--acc);color:var(--acc-ink)}
+.menu div svg{opacity:.8}
+.phone .menu{border-radius:14px;min-width:250px;padding:0;background:var(--i-bar);backdrop-filter:blur(20px)}
+.phone .menu div{padding:12px 16px;font-size:16px;border-radius:0;justify-content:space-between;border-top:1px solid var(--hair)}
+.phone .menu div:first-child{border-top:0;background:transparent;color:inherit}
+.dim{position:absolute;inset:0;z-index:5;background:rgba(0,0,0,.18);backdrop-filter:blur(3px)}
+/* ---- iPhone list ---- */
+.nav{padding:4px 16px 8px;display:flex;align-items:center;justify-content:space-between}
+.nav h1{margin:0;font-size:34px;font-weight:700;letter-spacing:.2px}
+.nav .ibtn{color:var(--acc);width:34px;height:34px}
+.phone .search{margin:0 16px 8px;height:36px;border-radius:10px;font-size:16px;padding:0 10px}
+.ilist{flex:1;overflow:hidden}
+.irow{position:relative;display:flex;align-items:center;gap:12px;padding:9px 16px;--ring:var(--bg)}
+.irow .main{flex:1;min-width:0;border-bottom:1px solid var(--hair);padding:2px 0 11px;margin-bottom:-9px}
+.irow .t{display:flex;gap:8px;align-items:baseline}.irow .t b{flex:1;font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.irow .t time{font-size:14px;color:var(--mut)}
+.irow .p{display:flex;gap:8px;align-items:flex-start;margin-top:2px}.irow .p span{flex:1;font-size:15px;line-height:20px;color:var(--mut);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.irow .badge{min-width:22px;height:22px;border-radius:11px;font-size:13px;margin-top:2px}
+.srow .p .badge,.irow .p .badge{flex:none;display:grid;color:var(--badge-ink);font-weight:700;overflow:visible;white-space:nowrap}
+.irow.lift{z-index:6;background:var(--bg);border-radius:14px;margin:0 8px;padding:9px 8px;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+.irow.lift .main{border-bottom:0}
+.tabbar{flex:none;height:84px;border-top:1px solid var(--hair);background:var(--i-bar);display:flex;justify-content:space-around;padding:7px 6px 0}
+.tabbar span{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:500;color:var(--mut);width:72px}
+.tabbar span.sel{color:var(--acc)}
+/* ---- Blueprint ---- */
+.tabs{display:flex;gap:4px;padding:0 20px;height:48px;flex:none;align-items:flex-end;border-bottom:1px solid var(--hair)}
+.tab{display:flex;align-items:center;gap:7px;padding:0 12px;height:38px;color:var(--mut);border-bottom:2px solid transparent}
+.tab.on{color:var(--ink);font-weight:600;border-bottom-color:var(--acc)}
+.bp{flex:1;min-height:0;position:relative;padding:0 24px}
+.brow{position:relative;display:flex;align-items:center;min-height:54px;padding:8px 0;border-top:1px solid var(--hair)}
+.brow:first-child{border-top:0}
+.brow .k{width:200px;flex:none;display:flex;gap:10px;align-items:center;font-weight:500}
+.brow .k svg{color:var(--mut)}
+.brow .v{flex:1;min-width:0;line-height:19px}.brow .v b{display:block;font-weight:600}
+.brow .v span{display:block;color:var(--mut);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brow .pen{width:28px;height:28px;display:grid;place-items:center;color:var(--mut);border-radius:6px;flex:none}
+.brow .pen.act{background:var(--bub);color:var(--ink)}
+.brow.new .k span::after{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--acc);margin-left:7px;vertical-align:2px}
+.pop{position:absolute;right:0;top:100%;margin-top:-6px;width:360px;z-index:3;background:var(--bg);border:1px solid var(--brd);border-radius:10px;box-shadow:var(--m-shadow);padding:6px}
+.opt{display:flex;gap:10px;padding:8px 10px;border-radius:7px;line-height:19px}
+.opt.sel{background:var(--bub)}
+.opt .t{flex:1}.opt b{display:block;font-weight:600}.opt span{display:block;color:var(--mut);font-size:12px}
+.opt .ck{width:16px;color:var(--acc);padding-top:2px}
+.bfoot{position:absolute;left:0;right:0;bottom:0;height:76px;border-top:1px solid var(--hair);padding:0 24px;display:flex;align-items:center;gap:12px;background:var(--bg)}
+.bfoot .m{flex:1;line-height:19px}.bfoot b{display:block;font-weight:600}.bfoot .mu{color:var(--mut);font-size:12px}
+@media (max-width:640px){.bar{padding:10px 16px}.stage{padding:16px}}
+</style>
+</head>
+<body>
+<div class="bar" id="bar">
+  <strong>Cooperative and Personal agent</strong>
+  <label>Surface<span class="seg" data-key="surface"><button data-v="blueprint">Blueprint</button><button data-v="session">Personal agent</button><button data-v="list">Agent Chats</button></span></label>
+  <label>State<span class="seg" data-key="state" id="states"></span></label>
+  <label>Device<span class="seg" data-key="device"><button data-v="mac">Mac</button><button data-v="ios">iPhone</button></span></label>
+  <label>Theme<span class="seg" data-key="theme"><button data-v="light">Light</button><button data-v="dark">Dark</button></span></label>
+</div>
+<div class="stage" id="stage"></div>
+<script src="../agent-bird-avatars/birds.js"></script>
+<script>
+const SURFACES={
+  blueprint:{states:[["on","Both on"],["off","Both off"],["coop","Cooperative menu"],["pro","Proactive menu"]],def:"on"},
+  session:{states:[["outreach","Reaches out"],["sent","Reply sent"],["off","Proactive off"]],def:"outreach"},
+  list:{states:[["push","Notification"],["list","List"],["menu","Menu"]],def:"push"}
+};
+const DEFAULTS={surface:"session",state:"outreach",device:"mac",theme:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"};
+const params=new URLSearchParams(location.search),state={};
+for(const k in DEFAULTS)state[k]=params.get(k)||DEFAULTS[k];
+function normalize(){
+  if(!SURFACES[state.surface])state.surface=DEFAULTS.surface;
+  if(!SURFACES[state.surface].states.some(s=>s[0]===state.state))state.state=SURFACES[state.surface].def;
+  if(!["mac","ios"].includes(state.device))state.device="mac";
+  if(!["light","dark"].includes(state.theme))state.theme=DEFAULTS.theme;
+  if(state.surface==="blueprint")state.device="mac";
+}
+const svg=(d,s=16,w=1.7)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const I={
+  blueprint:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M9 9v11"/>',
+  caps:'<path d="M12 3l2.4 5.2 5.6.7-4.1 3.9 1 5.6L12 15.6 7.1 18.4l1-5.6L4 8.9l5.6-.7z"/>',
+  files:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
+  runs:'<path d="M7 4l12 8-12 8z"/>',
+  history:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
+  users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 010 6.8M18 14.3c2.1.7 3.5 2.8 3.5 5.7"/>',
+  wave:'<path d="M5 12a7 7 0 017-7M2 12A10 10 0 0112 2"/><circle cx="12" cy="12" r="2"/><path d="M12 14v7"/><path d="M19 12a7 7 0 00-7-7"/>',
+  image:'<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>',
+  doc:'<path d="M6 3h8l4 4v14H6z"/><path d="M9 12h6M9 16h6"/>',
+  cpu:'<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+  lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>',
+  pen:'<path d="M4 20l1-4L16.5 4.5a2 2 0 013 3L8 19z"/>',
+  compose:'<path d="M12 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2v-6"/><path d="M17.5 3.5a2.1 2.1 0 013 3L12 15l-4 1 1-4z"/>',
+  check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  send:'<path d="M12 19V6M6 11.5l6-6 6 6"/>',
+  search:'<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
+  mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/>',
+  cal:'<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  pr:'<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v7M18 15.5V10a3 3 0 00-3-3h-4M13 4.5L10.5 7 13 9.5"/>',
+  bookmark:'<path d="M6.5 3.5h11v17L12 16.5l-5.5 4z"/>',
+  unread:'<circle cx="12" cy="12" r="4"/>',
+  bell:'<path d="M6 16V11a6 6 0 0112 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 004 0"/>',
+  bellOff:'<path d="M6 16V11a6 6 0 019.5-4.9M18 11v5l1.5 2H8"/><path d="M10 20.5a2 2 0 004 0M3 3l18 18"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M4.2 6.2l2.1 2.1M17.7 15.7l2.1 2.1M2.5 12h3M18.5 12h3M4.2 17.8l2.1-2.1M17.7 8.3l2.1-2.1"/>',
+  chev:'<path d="M15 5l-7 7 7 7"/>',
+  contacts:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 4.6a3.5 3.5 0 010 6.8M18 14.3c2.1.7 3.5 2.8 3.5 5.7"/>',
+  chats:'<path d="M4 5h11a2 2 0 012 2v6a2 2 0 01-2 2H9l-4 3v-3H4a2 2 0 01-2-2V7a2 2 0 012-2z"/><path d="M19 9h1a2 2 0 012 2v5a2 2 0 01-2 2h-1v3l-3.5-3H12"/>',
+  agents:'<path d="M5 4h14a2 2 0 012 2v9a2 2 0 01-2 2h-7l-5 4v-4H5a2 2 0 01-2-2V6a2 2 0 012-2z"/><path d="M8 9h8M8 12.5h5"/>',
+  digest:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9zM9 11h6M9 15h6"/>',
+  account:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>'
+};
+let avN=0;
+const AG={kordi:{name:"Alex's Kordi",species:"robin",palette:"sky"},research:{name:"Research agent",species:"owl",palette:"lavender"},inbox:{name:"Inbox helper",species:"kingfisher",palette:"mint"}};
+const bird=(s,online,a="kordi")=>`<div class="av sq" style="width:${s}px;height:${s}px" aria-label="${AG[a].name}">${window.KordiBirds?KordiBirds.birdSvg(AG[a].species,{palette:AG[a].palette,radius:17,size:s,idPrefix:"pa"+(++avN)}):""}${online?'<span class="on" aria-label="Online"></span>':""}</div>`;
+const saved=s=>`<div class="av saved" style="width:${s}px;height:${s}px">${svg(I.bookmark,Math.round(s*.48),2)}</div>`;
+const isOut=()=>state.surface!=="session"||state.state!=="off";
+
+/* ---------- Synthetic content ---------- */
+const SRC={
+  airbnb:[I.mail,"Gmail","Airbnb · Sam"],
+  cal:[I.cal,"Calendar","Lab sync"],
+  pr:[I.pr,"GitHub","#412 review requested"]
+};
+const src=k=>{const [ic,a,b]=SRC[k];return `<span class="src">${svg(ic,13)}${a} <em>${b}</em></span>`;};
+const agentMsg=(body,time,srcs=[],extra="",size=30)=>`<div class="msg">${bird(size)}<div class="col"><div class="bub">${body}<time>${time}</time></div>${srcs.length?`<div class="srcs">${srcs.map(src).join("")}</div>`:""}${extra}</div></div>`;
+const meMsg=(body,time)=>`<div class="msg me"><div class="col"><div class="bub">${body}<time>${time}</time></div></div></div>`;
+function replyCard(){
+  const sent=state.state==="sent";
+  return `<div class="card"><div class="h">${svg(I.mail,15)}Reply to Sam</div>
+    <div class="draft">Hi Sam, 1 pm works. See you tomorrow!</div>
+    <div class="acts">${sent?`<span class="mu">${svg(I.check,14,2.4)}Sent</span>`:`<span class="sp"></span><button class="btn">Not now</button><button class="btn pri">Send</button>`}</div></div>`;
+}
+function chatBody(){
+  if(state.surface==="session"&&state.state==="off"){
+    return `<div class="day">Today</div>`+meMsg("Anything new from my connectors?","15:02")+
+      agentMsg("Sam asked on Airbnb about a 1 pm check-in tomorrow. Lab sync moved to 10 am Thursday, and Mei wants your review on #412 before it.","15:02",["airbnb","cal","pr"]);
+  }
+  return `<div class="day">Today</div>`+
+    agentMsg("Sam asked on Airbnb if they can check in at 1 pm tomorrow. You're free then.","09:12",["airbnb"],replyCard())+
+    agentMsg("Lab sync moved to 10 am Thursday. Mei wants your review on #412 before it.","14:40",["cal","pr"]);
+}
+const composer=()=>`<div class="comp"><div class="f">Message Alex's Kordi</div><span class="s">${svg(I.send,18,2.2)}</span></div>`;
+const preview=()=>state.surface==="session"&&state.state==="off"?"Sam asked on Airbnb about a 1 pm check-in…":"Lab sync moved to 10 am Thursday. Mei wants…";
+const paTime=()=>state.surface==="session"&&state.state==="off"?"15:02":"14:40";
+const unread=()=>state.surface==="list"||state.surface==="session"&&state.state==="outreach"?2:0;
+
+/* ---------- Mac ---------- */
+function macSidebar(activePA){
+  const u=unread();
+  const row=(av,t,time,p,cls="",badge=0)=>`<div class="srow ${cls}">${av}<div class="main"><div class="t"><b>${t}</b><time>${time}</time></div><div class="p"><span>${p}</span>${badge?`<span class="badge">${badge}</span>`:""}</div></div></div>`;
+  return `<aside class="side"><div class="top"><div class="lights"><i></i><i></i><i></i></div><b>Agent Chats</b><span class="ibtn">${svg(I.compose,16)}</span></div>
+    <div class="search">${svg(I.search,13)}Search</div>
+    <div class="slist">
+      <div class="shead">Personal agent</div>
+      ${row(bird(36,true),"Alex's Kordi",paTime(),preview(),activePA?"active":"",activePA&&state.surface==="session"?0:u)}
+      ${row(bird(36,true,"research"),"Research agent","11:20","Two new papers cite your workshop draft.","",1)}
+      ${row(bird(36,true,"inbox"),"Inbox helper","Tue","No messages yet")}
+      <div class="shead">Pinned</div>
+      ${row(saved(36),"Saved messages","Mon","figure3.png")}
+      <div class="shead">Recents${svg('<path d="M9 6l6 6-6 6"/>',12,2)}</div>
+      ${row("","Figure script fix","12:05","Alex's Kordi · Patched the loader to accept both","plain")}
+      ${row("","Trip to Lisbon","Tue","Research agent · Three options under €900","plain")}
+      ${row("","Lab notes summary","Mon","Alex's Kordi · Done, it is in the Lab notes doc.","plain")}
+    </div></aside>`;
+}
+function macPane(){
+  return `<section class="pane"><div class="chead">${bird(30,true)}<div class="n"><b>Alex's Kordi</b><span>Online</span></div></div>
+    <div class="chat">${chatBody()}</div>${composer()}</section>`;
+}
+function macSession(){
+  return `<div><div class="cap">Personal agent › Alex's Kordi · Mac</div><div class="win">${macSidebar(true)}${macPane()}</div></div>`;
+}
+function macList(){
+  let over="";
+  if(state.state==="push")over=`<div class="notif"><div class="app">${svg(I.agents,20,1.8)}</div><div class="tx"><div class="r"><b>Alex's Kordi</b><span>now</span></div><p>Sam asked on Airbnb if they can check in at 1 pm tomorrow. You're free then.</p></div></div>`;
+  if(state.state==="menu")over=`<div class="menu" style="left:150px;top:118px"><div>${svg(I.unread,14,2.2)}Mark as read</div><div>${svg(I.bellOff,14)}Mute</div><div>${svg(I.gear,14)}Agent settings</div></div>`;
+  return `<div><div class="cap">Agent Chats · Mac</div><div class="win">${macSidebar(state.state==="menu")}
+    <section class="pane"><div class="chead">${bird(30)}<div class="n"><b>Figure script fix</b><span>Alex's Kordi</span></div></div>
+      <div class="chat"><div class="day">Today</div>${meMsg("The figure script crashes on the new dataset, KeyError: 'timestamp'.","12:01")}${agentMsg("The new dataset names the column date. I patched the loader to accept both and re-ran it.","12:05")}</div>
+      <div class="comp"><div class="f">Message Alex's Kordi</div><span class="s">${svg(I.send,18,2.2)}</span></div></section>${over}</div></div>`;
+}
+
+/* ---------- Blueprint ---------- */
+function blueprint(){
+  const s=state.state,coop=s!=="off",pro=s!=="off";
+  const tab=(ic,l,on)=>`<div class="tab${on?" on":""}">${svg(I[ic],15)}<span>${l}</span></div>`;
+  const row=(ic,k,v,d)=>`<div class="brow"><div class="k">${svg(I[ic],17)}<span>${k}</span></div><div class="v"><b>${v}</b><span>${d}</span></div><span class="pen">${svg(I.pen,15)}</span></div>`;
+  const opt=(sel,t,d)=>`<div class="opt${sel?" sel":""}" role="menuitemradio" aria-checked="${sel}"><span class="ck">${sel?svg(I.check,16,2.2):""}</span><div class="t"><b>${t}</b><span>${d}</span></div></div>`;
+  const C={off:"Stays out of your groups.",on:"Watches the groups you are in and asks you before it helps."};
+  const P={off:"Waits for you to write first.",on:"Reaches out to you in Personal agent."};
+  const menuRow=(ic,k,on,copy,open,isNew)=>`<div class="brow${isNew?" new":""}"><div class="k">${svg(I[ic],17)}<span>${k}</span></div><div class="v"><b>${on?"On":"Off"}</b><span>${on?copy.on:copy.off}</span></div><span class="pen${open?" act":""}">${svg(I.pen,15)}</span>${open?`<div class="pop" role="menu">${opt(!on,"Off",copy.off)}${opt(on,"On",copy.on)}</div>`:""}</div>`;
+  return `<div><div class="cap">Blueprint · Mac (dot marks the new row; preview only)</div><div class="win narrow">
+    <div class="tabs">${tab("blueprint","Blueprint",1)}${tab("caps","Capabilities")}${tab("files","Files")}${tab("runs","Runs")}${tab("history","History")}</div>
+    <div class="bp">
+      ${row("user","Name","Alex's Kordi","Shown in chats, mentions, and replies.")}
+      <div class="brow"><div class="k">${svg(I.image,17)}<span>Avatar</span></div><div class="v" style="display:flex;align-items:center;gap:8px">${bird(36)}</div><span class="pen">${svg(I.pen,15)}</span></div>
+      ${row("doc","Prompt","Configured","You are Kordi, Alex's local Kordi agent. Use Kordi as you…")}
+      ${row("cpu","Model","openai-codex/gpt-6.1-sol","openai")}
+      ${row("lock","Access","Only me","Only you can use this agent. It stays synced privately to your Cloud account.")}
+      ${menuRow("users","Cooperative",coop,C,s==="coop",false)}
+      ${menuRow("wave","Proactive",pro,P,s==="pro",true)}
+      <div class="bfoot"><div class="m"><b>${s==="off"?"No changes":"1 change ready to review"}</b><span class="mu">Nothing is live until you publish.</span></div>
+        <button class="btn">Discard</button><button class="btn pri">Publish</button></div>
+    </div></div></div>`;
+}
+
+/* ---------- iPhone ---------- */
+const sbar=`<div class="sbar"><span>9:41</span><span class="gl"><svg width="18" height="11" viewBox="0 0 18 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="6" rx="1"/><rect x="10" y="2.5" width="3" height="8.5" rx="1"/><rect x="15" y="0" width="3" height="11" rx="1"/></svg><svg width="26" height="12" viewBox="0 0 26 12"><rect x=".5" y=".5" width="22" height="11" rx="3" fill="none" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="17" height="8" rx="1.6" fill="currentColor"/><rect x="24" y="4" width="1.5" height="4" rx=".7" fill="currentColor" opacity=".4"/></svg></span></div>`;
+function iosSession(){
+  return `<div><div class="cap">Personal agent › Alex's Kordi · iPhone 393pt</div><div class="phone">${sbar}
+    <div class="chead"><span class="back">${svg(I.chev,22,2.2)}</span><div class="n"><b>Alex's Kordi</b><span>Online</span></div><span style="width:64px;display:flex;justify-content:flex-end">${bird(34,true)}</span></div>
+    <div class="chat">${chatBody()}</div>${composer()}</div></div>`;
+}
+function iosList(){
+  const menu=state.state==="menu";
+  const row=(av,t,time,p,badge=0,lift=false)=>`<div class="irow${lift?" lift":""}">${av}<div class="main"><div class="t"><b>${t}</b><time>${time}</time></div><div class="p"><span>${p}</span>${badge?`<span class="badge">${badge}</span>`:""}</div></div></div>`;
+  const tab=(ic,l,sel)=>`<span class="${sel?"sel":""}">${svg(I[ic],24,1.6)}${l}</span>`;
+  const push=state.state==="push"?`<div class="notif"><div class="app">${svg(I.agents,20,1.8)}</div><div class="tx"><div class="r"><b>Alex's Kordi</b><span>now</span></div><p>Sam asked on Airbnb if they can check in at 1 pm tomorrow. You're free then.</p></div></div>`:"";
+  return `<div><div class="cap">Agents tab · iPhone 393pt</div><div class="phone">${sbar}${push}
+    <div class="nav"><h1>Agents</h1><span class="ibtn">${svg(I.compose,22,1.8)}</span></div>
+    <div class="search">${svg(I.search,16)}Search</div>
+    <div class="ilist" style="position:relative">
+      ${menu?'<div class="dim"></div>':""}
+      <div class="ihead">Personal agent</div>
+      ${row(bird(52,true),"Alex's Kordi","14:40","Lab sync moved to 10 am Thursday. Mei wants your review on #412 before it.",2,menu)}
+      ${menu?`<div class="menu" style="left:24px;top:124px"><div>Mark as read${svg(I.unread,18,2)}</div><div>Mute${svg(I.bellOff,18)}</div><div>Agent settings${svg(I.gear,18)}</div></div>`:""}
+      ${row(bird(52,true,"research"),"Research agent","11:20","Two new papers cite your workshop draft.",1)}
+      ${row(bird(52,true,"inbox"),"Inbox helper","Tue","No messages yet")}
+      <div class="ihead">Pinned</div>
+      ${row(saved(52),"Saved messages","Mon","figure3.png")}
+      <div class="ihead">Recents</div>
+      ${row("<div style='width:52px'></div>","Figure script fix","12:05","Alex's Kordi · Patched the loader to accept both")}
+    </div>
+    <div class="tabbar">${tab("contacts","Contacts")}${tab("chats","Chats")}${tab("agents","Agents",1)}${tab("digest","Digest")}${tab("account","Account")}</div></div></div>`;
+}
+
+function render(){
+  normalize();avN=0;
+  document.documentElement.dataset.theme=state.theme;
+  document.getElementById("states").innerHTML=SURFACES[state.surface].states.map(([v,l])=>`<button data-v="${v}">${l}</button>`).join("");
+  const mac=state.device==="mac";
+  document.getElementById("stage").innerHTML=state.surface==="blueprint"?blueprint():state.surface==="session"?(mac?macSession():iosSession()):(mac?macList():iosList());
+  document.querySelectorAll(".seg").forEach(seg=>seg.querySelectorAll("button").forEach(b=>{
+    b.setAttribute("aria-pressed",String(state[seg.dataset.key]===b.dataset.v));
+    b.disabled=state.surface==="blueprint"&&seg.dataset.key==="device"&&b.dataset.v==="ios";
+  }));
+  const q=new URLSearchParams(state).toString();
+  if(location.search.slice(1)!==q)history.replaceState(null,"","?"+q);
+}
+document.getElementById("bar").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-v]");if(!b||b.disabled)return;
+  const k=b.parentElement.dataset.key;state[k]=b.dataset.v;
+  if(k==="surface")state.state=SURFACES[state.surface].def;
+  render();
+});
+render();
+</script>
+</body>
+</html>

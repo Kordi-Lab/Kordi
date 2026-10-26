@@ -89,10 +89,19 @@ pub(super) fn notification_sender_display_name(
     let Some(raw_text) = raw_message_text(message) else {
         return fallback;
     };
-    if decoded_envelope(raw_text, CLOUD_AGENT_RESPONSE_PREFIX).is_some_and(|envelope| {
-        envelope.get("kind").and_then(serde_json::Value::as_str) == Some("agent-response")
-    }) {
-        return "Kordi".to_string();
+    if let Some(envelope) =
+        decoded_envelope(raw_text, CLOUD_AGENT_RESPONSE_PREFIX).filter(|envelope| {
+            envelope.get("kind").and_then(serde_json::Value::as_str) == Some("agent-response")
+        })
+    {
+        // A personal agent's own message names its agent.
+        return envelope
+            .get("agentName")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .unwrap_or("Kordi")
+            .to_string();
     }
     decoded_envelope(raw_text, CLOUD_GROUP_PREFIX)
         .filter(|envelope| {

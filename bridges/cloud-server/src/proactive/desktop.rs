@@ -57,7 +57,7 @@ pub(super) async fn announce_evaluation(
         .map_err(|_| sqlx_core::Error::Protocol("Could not announce the evaluation.".into()))
 }
 
-pub(super) fn executor(session: &CloudSession, claim_id: Uuid) -> String {
+pub(crate) fn executor(session: &CloudSession, claim_id: Uuid) -> String {
     format!("desktop:{}:{claim_id}", session.device_id)
 }
 
@@ -110,7 +110,7 @@ async fn lease(
     .bind((now + chrono::Duration::seconds(LEASE_SECONDS)).to_rfc3339())
     .bind(now.to_rfc3339())
     .bind(claimed_route_json(route))
-    .bind(run_id.starts_with(RUN_PREFIX))
+    .bind(is_evaluation(run_id))
     .bind(DESKTOP_ROUTE_KEY)
     .bind(DESKTOP_RELEASED_ERROR_CODE)
     .execute(pool)
@@ -122,8 +122,14 @@ async fn lease(
 /// hosted account route ([`lease`]).
 pub(crate) const DESKTOP_ROUTE_KEY: &str = "desktopRoute";
 
+/// A proactive or a personal agent evaluation: one model turn whose only
+/// tool is `search_memory`, claimed and completed through these routes.
+pub(crate) fn is_evaluation(run_id: &str) -> bool {
+    run_id.starts_with(RUN_PREFIX) || run_id.starts_with(crate::personal_agent::RUN_PREFIX)
+}
+
 /// Whether `executor` holds the run with a live desktop lease.
-pub(super) async fn held(pool: &PgPool, run_id: &str, owner: &str, executor: &str) -> Result<bool> {
+pub(crate) async fn held(pool: &PgPool, run_id: &str, owner: &str, executor: &str) -> Result<bool> {
     let (held,): (bool,) = query_as(
         "SELECT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs \
            WHERE run_id = $1 AND owner_account_id = $2 AND claimed_by = $3 \
@@ -187,6 +193,22 @@ pub(crate) async fn claim_evaluation(
     let Some((asked, agent_id)) = active else {
         return Ok(None);
     };
+    evaluation_claim(pool, session, claim_id, run_id, route, asked, &agent_id).await
+}
+
+/// Leases the evaluation `run_id` of `agent_id`, which the caller found to be
+/// its agent's active evaluation, to this Mac when it is ready for proactive
+/// runs, and answers with what to run. `asked` is the run's own route.
+pub(crate) async fn evaluation_claim(
+    pool: &PgPool,
+    session: &CloudSession,
+    claim_id: Uuid,
+    run_id: &str,
+    route: Option<&AgentRuntimeRoute>,
+    asked: Option<Value>,
+    agent_id: &str,
+) -> Result<Option<Value>> {
+    let owner = &session.account_id;
     if !ready(pool, session, CAPABILITY).await? {
         return Ok(None);
     }
@@ -225,7 +247,7 @@ pub(crate) async fn claim_evaluation(
             "model": asked.default_model,
             "thinking": asked.thinking,
             "provider": asked.default_auth_provider,
-            "modelChoice": model_choice(pool, &agent_id).await?,
+            "modelChoice": model_choice(pool, agent_id).await?,
             "fastModels": fast_models,
         },
     })))
@@ -357,7 +379,7 @@ pub(crate) async fn complete(
     Json(input): Json<CompleteInput>,
 ) -> Response {
     let pool = state.db_pool();
-    let evaluation = run_id.starts_with(RUN_PREFIX);
+    let evaluation = is_evaluation(&run_id);
     if !evaluation && !run_id.starts_with(APPROVED_RUN_PREFIX) {
         return lease_lost();
     }
@@ -374,14 +396,21 @@ pub(crate) async fn complete(
         };
     }
     if evaluation && input.text.len() > MAX_EVALUATION_BYTES {
-        return match super::fail(pool, &run_id, Some(&owner), "invalid_output").await {
+        let ended = match run_id.starts_with(RUN_PREFIX) {
+            true => super::fail(pool, &run_id, Some(&owner), "invalid_output").await,
+            false => {
+                crate::personal_agent::fail(pool, &run_id, Some(&owner), "invalid_output").await
+            }
+        };
+        return match ended {
             Ok(()) => Json(json!({"ok": true})).into_response(),
             Err(_) => failed(),
         };
     }
     match complete_run(pool, &run_id, &owner, &input.text).await {
         Ok(run) => {
-            // An evaluation posts nothing; its offer sends its own push.
+            // An evaluation posts nothing here; an offer or a personal agent
+            // message sends its own push.
             if !evaluation {
                 let message = run.response_message_id.as_deref();
                 crate::cloud_agent_runtime::routes::notify_run_response(&state, message).await;

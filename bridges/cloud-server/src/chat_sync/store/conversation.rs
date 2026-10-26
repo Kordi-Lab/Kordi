@@ -106,6 +106,32 @@ pub(crate) async fn create_room_group_in_transaction(
         None,
         1,
         Some(&group_title),
+        None,
+    )
+    .await
+}
+
+/// Creates, or returns, the personal session of the owner's agent `agent_id`
+/// (docs/development/personal-agent.md) and binds it to the agent before its
+/// `conversation.created` event is written. Only the server creates these:
+/// a client cannot create a new conversation with a personal session id.
+pub(crate) async fn create_personal_session_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    request: CreateConversationRequest,
+    agent_id: &str,
+) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
+    if request.kind != ConversationKind::Ai {
+        return Err(StoreError::InvalidInput("a personal session is an AI chat"));
+    }
+    create_conversation_with_options(
+        transaction,
+        account_id,
+        request,
+        None,
+        2,
+        None,
+        Some(agent_id),
     )
     .await
 }
@@ -123,6 +149,7 @@ async fn create_conversation_in_transaction_with_trusted_peer(
         trusted_peer_account_id,
         2,
         None,
+        None,
     )
     .await
 }
@@ -134,6 +161,7 @@ async fn create_conversation_with_options(
     trusted_peer_account_id: Option<&str>,
     min_group_members: usize,
     group_title: Option<&str>,
+    personal_agent_id: Option<&str>,
 ) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
     let shared_title = normalize_title(request.shared_title.as_deref())?;
     let members = normalized_members(account_id, &request.member_account_ids);
@@ -234,6 +262,13 @@ async fn create_conversation_with_options(
         }
     }
 
+    if personal_agent_id.is_none()
+        && super::personal_session::is_personal_session_id(&client_session_id)
+    {
+        return Err(StoreError::InvalidInput(
+            "personal sessions are created by the server",
+        ));
+    }
     let existing_accounts: (i64,) =
         query_as("SELECT COUNT(*) FROM cloud_accounts WHERE account_id = ANY($1)")
             .bind(&members)
@@ -299,6 +334,9 @@ async fn create_conversation_with_options(
         })
         .execute(&mut **transaction)
         .await?;
+    }
+    if let Some(agent_id) = personal_agent_id {
+        super::personal_session::bind(transaction, agent_id, account_id, conversation_id).await?;
     }
     let conversation = load_conversation(transaction, conversation_id, account_id).await?;
     for member in &members {

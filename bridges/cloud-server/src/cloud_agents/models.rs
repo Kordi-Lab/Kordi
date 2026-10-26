@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::avatars::{AvatarDescriptor, AvatarMutationRequest};
+use crate::personal_agent::PersonalAgentSetting;
 use crate::proactive::ProactiveSetting;
 
 pub const CLOUD_AGENT_ACCESS_PRIVATE: &str = "private";
@@ -47,6 +48,12 @@ pub struct CloudAgentDefinition {
     pub skills: Vec<CloudAgentSkill>,
     pub model_routing: serde_json::Value,
     pub proactive: ProactiveSetting,
+    /// The UI name of `proactive`, always equal to it.
+    #[serde(default)]
+    pub cooperative: ProactiveSetting,
+    /// docs/development/personal-agent.md
+    #[serde(default)]
+    pub personal_agent: PersonalAgentSetting,
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,
@@ -86,9 +93,15 @@ pub struct CreateCloudAgentRequest {
     pub skills: Vec<CloudAgentSkill>,
     #[serde(default)]
     pub model_routing: Option<serde_json::Value>,
-    /// `{"enabled": bool}`; validated by [`ProactiveSetting::parse`].
+    /// `{"enabled": bool}`; validated by [`ProactiveSetting::from_request`].
     #[serde(default)]
     pub proactive: Option<serde_json::Value>,
+    /// The UI name of `proactive`; either key is accepted.
+    #[serde(default)]
+    pub cooperative: Option<serde_json::Value>,
+    /// `{"proactive": bool}`; validated by [`PersonalAgentSetting::parse`].
+    #[serde(default)]
+    pub personal_agent: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,6 +121,12 @@ pub struct UpdateCloudAgentRequest {
     /// Missing means unchanged.
     #[serde(default)]
     pub proactive: Option<serde_json::Value>,
+    /// The UI name of `proactive`; missing means unchanged.
+    #[serde(default)]
+    pub cooperative: Option<serde_json::Value>,
+    /// Missing means unchanged.
+    #[serde(default)]
+    pub personal_agent: Option<serde_json::Value>,
 }
 
 pub fn clean_required_text(value: &str, field: &str, max_len: usize) -> Result<String, String> {

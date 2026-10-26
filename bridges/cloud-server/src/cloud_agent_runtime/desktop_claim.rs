@@ -40,21 +40,18 @@ async fn claim_request(
     // an evaluation's only tool searches memories, and an approved run works
     // in an empty folder of its own. Matched by run id before any chat
     // request path.
-    if input
-        .run
-        .request_message_id
-        .starts_with(crate::proactive::RUN_PREFIX)
-    {
-        let claim = crate::proactive::desktop::claim_evaluation;
-        return match claim(
-            state.db_pool(),
-            &session,
-            input.claim_id,
-            input.run.request_message_id.trim(),
-            input.run.runtime_route.as_ref(),
-        )
-        .await
-        {
+    if crate::proactive::desktop::is_evaluation(&input.run.request_message_id) {
+        let (pool, run_id) = (state.db_pool(), input.run.request_message_id.trim());
+        let (claim_id, route) = (input.claim_id, input.run.runtime_route.as_ref());
+        // A personal agent evaluation is claimed like a proactive one.
+        let claimed = if run_id.starts_with(crate::proactive::RUN_PREFIX) {
+            let claim = crate::proactive::desktop::claim_evaluation;
+            claim(pool, &session, claim_id, run_id, route).await
+        } else {
+            let claim = crate::personal_agent::desktop::claim_evaluation;
+            claim(pool, &session, claim_id, run_id, route).await
+        };
+        return match claimed {
             Ok(Some(value)) => Json(value).into_response(),
             Ok(None) => denied(),
             Err(e) => run_error_response(

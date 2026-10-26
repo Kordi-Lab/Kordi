@@ -80,6 +80,7 @@ tests=(
   memory_tests::upgrade_from_150_adds_memory_card_overrides
   proactive_tests::upgrade_from_153_adds_proactive_agents
   proactive_tests::upgrade_from_154_counts_evaluation_memory_searches
+  personal_agent_tests::upgrade_from_155_adds_personal_agents
 )
 index=0
 for test_name in "${tests[@]}"; do
@@ -115,3 +116,6 @@ DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
 # Proactive agent tests (docs/development/proactive-agent.md) follow the same rule.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --lib proactive:: -- --test-threads=1
+# Personal agent tests (docs/development/personal-agent.md) follow the same rule.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib personal_agent:: -- --test-threads=1

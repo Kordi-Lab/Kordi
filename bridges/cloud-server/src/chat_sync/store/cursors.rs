@@ -362,6 +362,8 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
     let grounding =
         super::grounding_origin::grounding_conversation_ids(&mut transaction, &conversation_ids)
             .await?;
+    let personal =
+        super::personal_session::personal_agent_ids(&mut transaction, &conversation_ids).await?;
     let session_ids = conversation_rows
         .iter()
         .map(|row| row.5.clone().unwrap_or_else(|| row.0.to_string()))
@@ -408,6 +410,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
                 group_title: row.7,
                 group_avatar: row.15,
                 origin: super::grounding_origin::origin_for(&grounding, row.0),
+                personal_agent: super::personal_session::personal_agent_for(&personal, row.0),
                 forked_from_session_id: row.8,
                 forked_from_message_id: row.9,
                 latest_message_sequence: row.10,

@@ -5,9 +5,9 @@ use std::sync::Arc;
 use super::ServerState;
 
 /// Starts every periodic worker: realtime wakes, support tickets, scheduled
-/// tasks, digests, PiP, proactive agents, plan-card projection, retention,
-/// terminal backfill, and the notification workers when notifications are
-/// configured.
+/// tasks, digests, PiP, proactive and personal agents, plan-card projection,
+/// retention, terminal backfill, and the notification workers when
+/// notifications are configured.
 pub(super) fn spawn_background_workers(state: &Arc<ServerState>, database_url: &str) {
     crate::chat_sync::realtime::spawn_wake_listener(
         database_url.to_string(),
@@ -18,6 +18,7 @@ pub(super) fn spawn_background_workers(state: &Arc<ServerState>, database_url: &
     crate::digest::spawn(state.clone());
     crate::pip::spawn(state.clone());
     crate::proactive::spawn(state.clone());
+    crate::personal_agent::spawn(state.clone());
     crate::plan_cards::projection::spawn(state.db_pool().clone());
     crate::chat_sync::retention::spawn_retention_worker(state.db_pool().clone());
     crate::cloud_agent_runtime::runs::terminal_backfill::spawn(state.db_pool().clone());

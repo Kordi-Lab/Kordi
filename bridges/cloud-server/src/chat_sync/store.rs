@@ -230,6 +230,7 @@ mod legacy_client_events;
 mod live_photo_validation;
 mod members;
 mod message;
+mod personal_session;
 mod subtyped_attachment_validation;
 pub use message::{update_voice_transcript, UpdateVoiceTranscriptRequest};
 mod pin_snapshots;
@@ -243,7 +244,8 @@ pub use thread_reads::{advance_thread_read, thread_reads};
 
 pub use conversation::{create_conversation, create_conversation_with_trusted_peer};
 pub(crate) use conversation::{
-    create_conversation_in_transaction, create_room_group_in_transaction,
+    create_conversation_in_transaction, create_personal_session_in_transaction,
+    create_room_group_in_transaction,
 };
 pub use cursors::{advance_delivery_cursor, advance_read_cursor, bootstrap, history, sync_batch};
 pub use members::{accept_invited_conversation_member, add_conversation_members};
@@ -252,6 +254,7 @@ pub use message::{
     refresh_server_message_content, replace_message_snapshot, send_message,
 };
 pub(crate) use message::{replace_server_message_in_transaction, send_message_in_transaction};
+pub(crate) use personal_session::personal_session_id;
 use reaction::reactions_by_message;
 pub use reaction::set_reaction;
 pub use service_members::{join_service_member, remove_service_member};

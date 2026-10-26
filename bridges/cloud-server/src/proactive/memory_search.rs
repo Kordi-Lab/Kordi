@@ -87,9 +87,10 @@ pub(crate) fn mac_tool() -> Value {
     json!({"name": SEARCH_MEMORY_TOOL, "description": DESCRIPTION, "parameters": schema()})
 }
 
-/// The memory tools on `run_id`'s lease: `search_memory` for proactive runs.
+/// The memory tools on `run_id`'s lease: `search_memory` for proactive runs
+/// and personal agent evaluations.
 pub(crate) fn lease_tools(run_id: &str) -> Vec<LeaseConnectorTool> {
-    if run_id.starts_with(RUN_PREFIX) || run_id.starts_with(APPROVED_RUN_PREFIX) {
+    if super::desktop::is_evaluation(run_id) || run_id.starts_with(APPROVED_RUN_PREFIX) {
         vec![descriptor()]
     } else {
         Vec::new()
@@ -234,15 +235,20 @@ type RunRow = (String, String, String, Option<String>);
 
 /// Counts one search of the evaluation `run_id`. False once it had
 /// [`MAX_EVALUATION_SEARCHES`] answers or it is no longer the active
-/// evaluation of its group; nothing is counted then.
+/// evaluation of its group, or of its agent for a personal agent
+/// evaluation; nothing is counted then.
 pub(crate) async fn charge_evaluation_search(
     pool: &PgPool,
     run_id: &str,
 ) -> Result<bool, sqlx_core::Error> {
-    let charged = query(
-        "UPDATE cloud_agent_proactive_state SET memory_searches = memory_searches + 1 \
-         WHERE active_run_id = $1 AND memory_searches < $2",
-    )
+    let state = match run_id.starts_with(RUN_PREFIX) {
+        true => "cloud_agent_proactive_state",
+        false => "cloud_personal_agent_state",
+    };
+    let charged = query(&format!(
+        "UPDATE {state} SET memory_searches = memory_searches + 1 \
+         WHERE active_run_id = $1 AND memory_searches < $2"
+    ))
     .bind(run_id)
     .bind(MAX_EVALUATION_SEARCHES)
     .execute(pool)
@@ -255,7 +261,7 @@ pub(crate) async fn charge_evaluation_search(
 async fn answer(state: &ServerState, run_id: &str, args: &Value) -> Result<Value, SearchError> {
     let (query, limit) = arguments(args)?;
     let pool: &PgPool = state.db_pool();
-    if run_id.starts_with(RUN_PREFIX) {
+    if super::desktop::is_evaluation(run_id) {
         // A failed count answers nothing.
         let charged = charge_evaluation_search(pool, run_id)
             .await

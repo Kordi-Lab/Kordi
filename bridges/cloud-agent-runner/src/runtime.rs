@@ -258,7 +258,7 @@ where
     if run.run_id.starts_with(crate::common_ground::RUN_PREFIX) {
         return crate::common_ground::step(client, provider, engine, run).await;
     }
-    if run.run_id.starts_with(crate::proactive::RUN_PREFIX) {
+    if crate::proactive::is_evaluation(&run.run_id) {
         return crate::proactive::step(client, provider, engine, run).await;
     }
     if run.run_id.starts_with("digest_") {

@@ -105,6 +105,7 @@ pub(crate) async fn run_facts(
         || run_id.starts_with(crate::pip::RUN_PREFIX)
         || run_id.starts_with(crate::common_ground::RUN_PREFIX)
         || run_id.starts_with(crate::proactive::RUN_PREFIX)
+        || run_id.starts_with(crate::personal_agent::RUN_PREFIX)
     {
         return Ok(None);
     }
