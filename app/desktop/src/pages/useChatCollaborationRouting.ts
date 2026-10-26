@@ -361,6 +361,7 @@ export function useChatCollaborationRouting({
         && main.openSelector.type === 'mode',
       setSelectedAgentId: setSelectedMainAgentId,
       update: updateMain,
+      busy: main.isBusy,
       saveCompactRoute: saveCompactMainRoute,
       defaultThinkingForModel,
     },

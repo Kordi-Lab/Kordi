@@ -101,7 +101,10 @@ type SyncResult = ReturnType<typeof useCloudAgentRuntimeRouteSync>;
 type SentMessage = { conversationId: string; body: string; options: Record<string, unknown> };
 
 async function withRouteSync(
-  options: { cloudMessages?: CloudMessage[]; initialRoutes?: Record<string, DesktopChatMessageRoute>; chatAuthOptions?: unknown[] },
+  options: {
+    cloudMessages?: CloudMessage[]; initialRoutes?: Record<string, DesktopChatMessageRoute>;
+    chatAuthOptions?: unknown[]; chatModelOptions?: { value: string; label: string; provider?: string }[];
+  },
   run: (handle: { current: () => SyncResult; selections: () => ComposerSelectionState; sent: SentMessage[] }) => Promise<void>,
 ) {
   await withJsdomRoot(async (mount) => {
@@ -124,7 +127,7 @@ async function withRouteSync(
         activeConversationId: PANEL_SESSION,
         activeLoginProviderId: null,
         canonicalSessionState: canonicalState,
-        chatModelOptions: [],
+        chatModelOptions: options.chatModelOptions ?? [],
         cloudAgentRuntimeRouteMessages: options.cloudMessages ?? [],
         composerAuthByScope: { optionsByScope: { chat: options.chatAuthOptions ?? [] } } as never,
         composerUi: { composerSelections, setComposerSelections } as never,
@@ -194,5 +197,45 @@ test('a ChatGPT sign-in recorded under the OpenAI family id resolves and forks w
     await act(async () => { current().inheritCloudAgentRuntimeRoute(PANEL_SESSION, 'session:fork:chatgpt'); });
     assert.equal(sent.length, 1);
     assert.deepEqual(parseCloudDirectMessageEnvelope(sent[0].body)?.agentRuntimeRoute, chatGptRoute);
+  });
+});
+
+const chatGptSignIn = {
+  providerId: 'openai-codex', providerLabel: 'ChatGPT', methodLabel: 'Saved account',
+  value: 'cloud-login:chatgpt', label: 'Work', active: true,
+};
+const openAiFamilyModels = [
+  { value: 'openai/gpt-6.1-sol', label: 'GPT-6.1 Sol', provider: 'openai' },
+  { value: 'openai-codex/gpt-6.1-sol', label: 'GPT-6.1 Sol', provider: 'openai-codex' },
+];
+
+test('a ChatGPT sign-in recorded with an OpenAI model runs, shows, and forks the sign-in model', async () => {
+  const repaired: DesktopChatMessageRoute = {
+    model: 'openai-codex/gpt-6.1-sol', authProvider: 'openai-codex', authChoice: 'cloud-login:chatgpt', thinking: 'medium',
+  };
+  await withRouteSync({
+    cloudMessages: [hostedRequest('request', 3, { ...repaired, model: 'openai/gpt-6.1-sol', authProvider: 'openai' })],
+    chatAuthOptions: [chatGptSignIn],
+    chatModelOptions: openAiFamilyModels,
+  }, async ({ current, selections, sent }) => {
+    assert.deepEqual(current().resolveChatRuntimeRoute(PANEL_SESSION), repaired);
+    assert.equal(selections().chat.model, repaired.model);
+    await act(async () => { current().inheritCloudAgentRuntimeRoute(PANEL_SESSION, 'session:fork:chatgpt'); });
+    assert.equal(sent.length, 1);
+    assert.deepEqual(parseCloudDirectMessageEnvelope(sent[0].body)?.agentRuntimeRoute, repaired);
+  });
+});
+
+test('a route change that pairs a ChatGPT sign-in with an OpenAI model saves the sign-in model', async () => {
+  await withRouteSync({ chatAuthOptions: [chatGptSignIn], chatModelOptions: openAiFamilyModels }, async ({ current, sent }) => {
+    await act(async () => {
+      await current().publishCloudAgentRuntimeRouteChange({
+        sessionId: PANEL_SESSION, model: 'openai/gpt-6.1-sol',
+        authProvider: 'openai-codex', authChoice: 'cloud-login:chatgpt', thinking: 'high',
+      });
+    });
+    assert.equal(sent.length, 1);
+    assert.equal(parseCloudDirectMessageEnvelope(sent[0].body)?.agentRuntimeRoute?.model, 'openai-codex/gpt-6.1-sol');
+    assert.equal(current().resolveChatRuntimeRoute(PANEL_SESSION)?.model, 'openai-codex/gpt-6.1-sol');
   });
 });
