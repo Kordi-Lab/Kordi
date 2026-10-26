@@ -1,7 +1,23 @@
 import SwiftUI
 
-/// Add (or Requested, Accept, Message) and Meet for one person, as glass
-/// tiles. Message and Meet lead into the Kordi chat.
+/// Keeps communication actions discoverable before a contact accepts.
+struct CommonGroundPersonActionAvailability {
+    let contactAction: CommonGroundContactAction
+    let busy: Bool
+
+    init(relationship: CommonGroundRelationship?, busy: Bool) {
+        contactAction = CommonGroundContactAction(relationship)
+        self.busy = busy
+    }
+
+    var showsActions: Bool { contactAction != .hidden }
+    var showsContactAction: Bool { showsActions && contactAction != .message }
+    var contactActionEnabled: Bool { showsContactAction && contactAction != .requested && !busy }
+    var communicationEnabled: Bool { contactAction == .message && !busy }
+}
+
+/// Add (or Requested, Accept), Message and Meet for one person, as glass
+/// tiles. Message and Meet stay disabled until both people are contacts.
 struct CommonGroundPersonActions: View {
     @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: CommonGroundModel
@@ -13,24 +29,33 @@ struct CommonGroundPersonActions: View {
     @State private var meetConversationId: String?
 
     private var relationship: CommonGroundRelationship? { model.relationship(for: person.accountId) }
-    private var action: CommonGroundContactAction { CommonGroundContactAction(relationship) }
-    private var canMeet: Bool { CommonGroundContactAction.canMeet(relationship) }
+    private var availability: CommonGroundPersonActionAvailability {
+        CommonGroundPersonActionAvailability(relationship: relationship, busy: model.busy != nil)
+    }
 
     var body: some View {
-        if action != .hidden {
-            CommonGroundActions(columns: canMeet ? 2 : 1) {
-                SessionProfileActionButton(title: action.title, symbol: action.symbol, tint: chatTheme.accent) {
-                    Task { await perform(action) }
-                }
-                .disabled(action == .requested || model.busy != nil)
-                if canMeet {
-                    SessionProfileActionButton(title: "Meet", symbol: "calendar", tint: chatTheme.accent) {
-                        meets = true
+        let state = availability
+        if state.showsActions {
+            CommonGroundActions(columns: state.showsContactAction ? 3 : 2) {
+                if state.showsContactAction {
+                    actionButton(
+                        title: state.contactAction.title,
+                        symbol: state.contactAction.symbol,
+                        enabled: state.contactActionEnabled
+                    ) {
+                        Task { await perform(state.contactAction) }
                     }
-                    .disabled(model.busy != nil)
                 }
+                actionButton(title: "Message", symbol: "message", enabled: state.communicationEnabled) {
+                    Task { await perform(.message) }
+                }
+                .accessibilityHint(relationship?.contact == true ? "" : "Available after the contact request is accepted.")
+                actionButton(title: "Meet", symbol: "calendar", enabled: state.communicationEnabled) {
+                    meets = true
+                }
+                .accessibilityHint(relationship?.contact == true ? "" : "Available after the contact request is accepted.")
             }
-            .frame(maxWidth: canMeet ? .infinity : 180)
+            .frame(maxWidth: .infinity)
             .sheet(isPresented: $meets, onDismiss: openMeetChat) {
                 CommonGroundMeetSheet(name: person.displayName) { input in
                     guard let response = await model.meet(person.accountId, input: input) else { return false }
@@ -42,6 +67,15 @@ struct CommonGroundPersonActions: View {
                 .presentationDragIndicator(.visible)
             }
         }
+    }
+
+    private func actionButton(title: String, symbol: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        SessionProfileActionButton(
+            title: title, symbol: symbol,
+            tint: enabled ? chatTheme.accent : Color(uiColor: .tertiaryLabel),
+            action: action
+        )
+        .disabled(!enabled)
     }
 
     private func openMeetChat() {
@@ -62,6 +96,7 @@ struct CommonGroundPersonActions: View {
                 await model.addContact(id)
             }
         case .message:
+            guard relationship?.contact == true else { return }
             guard let response = await model.openChat(id) else { return }
             await open(conversationId: response.conversationId, sessionId: response.sessionId)
         case .requested, .hidden:
