@@ -58,10 +58,13 @@ SDK credential cache after forty minutes so a token handed to the runner has
 time to cover its ten-minute turn. No refresh credential goes to the runner.
 Authentication errors omit provider response bodies and token values.
 
-Uploaded JWKS must be updated when the cluster's signing keys rotate. Preserve
-the server's service-account, environment, and volume settings during later
-deployments. Never copy production identity configuration or projected tokens
-to a development stack.
+Uploaded JWKS must be updated when the cluster's signing keys rotate. Later
+releases use the protected Deploy production workflow: it changes container
+images only, preserving the server's service account, environment and volumes.
+The legacy `deploy-cloud-server.sh` helper refuses to reapply its bootstrap
+manifest when Google identity or imported service settings are configured,
+before copying source, building images or changing any service. Never copy
+production identity configuration or projected tokens to a development stack.
 
 ## Migration checks
 

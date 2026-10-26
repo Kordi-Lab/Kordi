@@ -30,6 +30,12 @@ PUBLIC_ORIGIN="${KORDI_CLOUD_PUBLIC_BASE_URL:-https://kordi.ai}"
 
 GCLOUD_SSH=(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --project "${SSH_PROJECT}")
 
+# Inspect on the target host before copying, building, or applying anything.
+# Image promotion preserves operator-managed identity; the legacy manifest does not.
+guard_command="$(python3 -c 'import pathlib, shlex, sys; print("python3 -c " + shlex.quote(pathlib.Path(sys.argv[1]).read_text()))' \
+  "${REPO_ROOT}/scripts/backend_manifest_reapply.py")"
+"${GCLOUD_SSH[@]}" --command "$guard_command"
+
 echo "[deploy] target:    ${SSH_TARGET} (project ${SSH_PROJECT}, zone ${SSH_ZONE})"
 echo "[deploy] image tag: ${IMAGE_TAG}"
 echo "[deploy] image ref: ${IMAGE}"
