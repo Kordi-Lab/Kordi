@@ -3,6 +3,7 @@ import { ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { settingsType } from '@/kordi-app/components/settingsType';
 import type { DesktopAuthProvider, DesktopAuthState } from '@/kordi-app/types';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import type { CloudProviderAuthSnapshot } from '@/features/cloud/cloudAgentRuntimeTypes';
@@ -341,7 +342,7 @@ export function AuthPage({
       </Button>
       <span aria-hidden="true" className="h-4 w-px bg-[color:var(--app-divider)]" />
       {layerTitle ? null : <AuthProviderGlyph providerId={provider.id} label={provider.label} size="sm" />}
-      <h1 className="m-0 min-w-0 truncate text-[15px] font-semibold tracking-[-0.01em] text-white">{layerTitle ?? provider.label}</h1>
+      <h1 className={cn('m-0 min-w-0 truncate', settingsType.heading)}>{layerTitle ?? provider.label}</h1>
       {!layerTitle && canStartChat ? (
         <AuthActionButton
           type="button"

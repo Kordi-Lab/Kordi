@@ -21,9 +21,10 @@ export const connectorIcons: Record<ConnectorProviderId, LucideIcon> = {
   mac_notification_center: BellRing,
 };
 
-// Denser navigation rows (about 40px) than the shared SettingsRow default, applied
-// from a wrapper so the shared component stays unchanged.
-export const denseNavRowsClass = '[&_.app-settings-row-button]:min-h-8 [&_.app-settings-row-button]:py-0.5 [&_.app-settings-row-button]:gap-2.5 [&_.app-settings-row:not(.app-settings-row-button)]:py-1 [&_.app-settings-section]:pt-4 [&_.app-settings-section:first-child]:pt-2';
+// Denser rows (36px) than the shared SettingsRow default, applied from a wrapper so
+// the shared component stays unchanged. Button and plain rows get the same height and
+// keep the shared gap, so icons, titles and values line up across both kinds.
+export const denseNavRowsClass = '[&_.app-settings-row-button]:min-h-8 [&_.app-settings-row-button]:py-0.5 [&_.app-settings-row:not(.app-settings-row-button)]:py-0.5 [&_.app-settings-section]:pt-4 [&_.app-settings-section:first-child]:pt-2';
 
 const privacySettings = (pane: string) => `x-apple.systempreferences:com.apple.preference.security?${pane}`;
 

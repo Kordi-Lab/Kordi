@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLayout';
+import { settingsType } from '@/kordi-app/components/settingsType';
 
 import { ConnectorDetailView } from './ConnectorDetailView';
 import { ConnectorDialogs } from './ConnectorDialogs';
@@ -21,7 +22,8 @@ import {
   type ConnectorProviderId,
   type ConnectorState,
 } from './connectorsModel';
-import { connectorIcons, denseNavRowsClass, macPermissionHelp, type ConnectorDialog } from './connectorsPanelConstants';
+import { ConnectorLogo } from './ConnectorLogo';
+import { denseNavRowsClass, macPermissionHelp, type ConnectorDialog } from './connectorsPanelConstants';
 import { ConnectorBadge } from './connectorsPanelShared';
 
 function errorMessage(caught: unknown, fallback: string): string {
@@ -360,22 +362,22 @@ export function ConnectorsSettingsPanel({
 
   const renderListRow = (definition: ConnectorDefinition) => {
     const state = states[definition.providerId];
-    const Icon = connectorIcons[definition.providerId];
     const available = definition.availability === 'available';
     const value = connectorListValue(definition, state);
     return (
       <div key={definition.providerId} data-connector-row={definition.providerId}>
         <SettingsRow
           className="app-connector-row"
-          icon={<Icon aria-hidden="true" className="h-[18px] w-[18px] text-white" />}
+          icon={<ConnectorLogo providerId={definition.providerId} />}
           title={(
             <span className="flex min-w-0 items-center gap-2">
               <span className="truncate">{definition.name}</span>
               <ConnectorBadge definition={definition} />
             </span>
           )}
-          control={<span className="truncate text-[13px] font-normal text-slate-400">{value}</span>}
+          control={<span className={`truncate ${settingsType.value}`}>{value}</span>}
           chevron={available}
+          reserveChevron
           ariaLabel={available ? `${definition.name}, ${value}` : undefined}
           onClick={available ? () => openDetail(definition.providerId) : undefined}
         />

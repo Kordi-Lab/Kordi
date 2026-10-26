@@ -129,7 +129,7 @@ struct ConnectorsSettingsView: View {
                 SettingsErrorLabel(error)
                 if !store.hasLoaded {
                     Button("Try again") { Task { await store.refresh() } }
-                        .font(.subheadline.weight(.semibold))
+                        .font(SettingsFont.action)
                         .frame(minHeight: SettingsMetrics.textRowMinHeight)
                         .disabled(store.isLoading)
                 }
@@ -141,10 +141,10 @@ struct ConnectorsSettingsView: View {
                 }
             } else {
                 SettingsSectionTitle("Services")
-                SettingsGroup(items: catalog.filter { $0.kind == .service }) { row($0) }
+                ForEach(catalog.filter { $0.kind == .service }) { row($0) }
+                SettingsDivider()
                 SettingsSectionTitle("On this iPhone")
-                    .padding(.top, 14)
-                SettingsGroup(items: catalog.filter { $0.kind == .macLocal }) { row($0) }
+                ForEach(catalog.filter { $0.kind == .macLocal }) { row($0) }
             }
         }
         .connectorConsent($consent, store: store)
@@ -228,6 +228,8 @@ struct ConnectorsSettingsView: View {
                 ConnectorRowLabel(definition: definition)
             } trailing: {
                 ConnectorRowValue(text: "Coming later", systemImage: nil)
+                // Lines the value up with the rows that end in a chevron.
+                SettingsChevron().hidden()
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier(identifier)
@@ -240,18 +242,19 @@ private struct ConnectorRowLabel: View {
     let definition: ConnectorDefinition
 
     var body: some View {
-        HStack(spacing: 12) {
-            ConnectorLogo(providerId: definition.providerId, size: 24)
+        HStack(spacing: SettingsMetrics.iconSpacing) {
+            ConnectorLogo(providerId: definition.providerId, size: SettingsMetrics.iconWidth)
             VStack(alignment: .leading, spacing: 2) {
                 Text(definition.name)
-                    .font(.subheadline)
+                    .font(SettingsFont.rowTitle)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 if definition.experimental {
-                    Text("Experimental").font(.caption).foregroundStyle(.secondary)
+                    Text("Experimental").font(SettingsFont.subtitle).foregroundStyle(.secondary)
                 }
             }
         }
+        .padding(.vertical, 5)
     }
 }
 
@@ -269,7 +272,7 @@ private struct ConnectorRowValue: View {
                 Image(systemName: systemImage).accessibilityHidden(true)
             }
         }
-        .font(.subheadline)
+        .font(SettingsFont.subtitle)
         .foregroundStyle(.secondary)
     }
 }
