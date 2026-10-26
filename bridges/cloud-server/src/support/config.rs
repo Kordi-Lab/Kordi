@@ -1,5 +1,7 @@
 use std::{env, fmt};
 
+use crate::service_model::{vertex_configuration, ServiceCredential};
+
 pub const DEFAULT_SUPPORT_ACCOUNT_ID: &str = "acct_kordi_support";
 pub const DEFAULT_SUPPORT_AGENT_ID: &str = "cloud_agent_kordi_support";
 pub const DEFAULT_SUPPORT_NAME: &str = "Kordi Support";
@@ -12,8 +14,9 @@ const SUPPORT_OPENAI_SNAPSHOT_ID: &str = "support-service-openai";
 
 #[derive(Clone)]
 pub struct SupportProviderAuth {
-    api_key: String,
+    credential: ServiceCredential,
     model: String,
+    base_url: String,
 }
 
 impl SupportProviderAuth {
@@ -35,31 +38,47 @@ impl SupportProviderAuth {
                 "KORDI_SUPPORT_OPENAI_MODEL is required",
             ));
         }
-        Ok(Self { api_key, model })
+        Ok(Self {
+            credential: ServiceCredential::ApiKey(api_key),
+            model,
+            base_url: SUPPORT_OPENAI_BASE_URL.to_string(),
+        })
     }
 
     pub fn provider(&self) -> &'static str {
-        SUPPORT_OPENAI_PROVIDER
+        if self.credential.is_google_cloud() {
+            "vertex-ai"
+        } else {
+            SUPPORT_OPENAI_PROVIDER
+        }
     }
 
     pub fn auth_choice(&self) -> &'static str {
-        SUPPORT_OPENAI_AUTH_CHOICE
+        if self.credential.is_google_cloud() {
+            "support-service-google-cloud"
+        } else {
+            SUPPORT_OPENAI_AUTH_CHOICE
+        }
     }
 
-    pub fn base_url(&self) -> &'static str {
-        SUPPORT_OPENAI_BASE_URL
+    pub fn base_url(&self) -> &str {
+        &self.base_url
     }
 
     pub fn snapshot_id(&self) -> &'static str {
-        SUPPORT_OPENAI_SNAPSHOT_ID
+        if self.credential.is_google_cloud() {
+            "support-service-vertex"
+        } else {
+            SUPPORT_OPENAI_SNAPSHOT_ID
+        }
     }
 
     pub fn model(&self) -> &str {
         &self.model
     }
 
-    pub(crate) fn api_key(&self) -> &str {
-        &self.api_key
+    pub(crate) fn credential(&self) -> &ServiceCredential {
+        &self.credential
     }
 }
 
@@ -146,7 +165,15 @@ fn required_or_default(
 
 impl PendingSupportConfig {
     pub fn from_env() -> Result<Option<Self>, SupportConfigError> {
-        Self::from_lookup(|key| env::var(key).ok())
+        let config = Self::from_lookup(|key| env::var(key).ok())?;
+        if let Some(config) = &config {
+            config
+                .provider_auth
+                .credential()
+                .validate_configuration()
+                .map_err(SupportConfigError::Invalid)?;
+        }
+        Ok(config)
     }
 
     fn from_lookup(
@@ -166,14 +193,34 @@ impl PendingSupportConfig {
                 "Kordi support email configuration is invalid",
             ));
         }
-        let api_key = optional(&mut get, "KORDI_SUPPORT_OPENAI_API_KEY").ok_or(
-            SupportConfigError::Invalid("KORDI_SUPPORT_OPENAI_API_KEY is required"),
-        )?;
-        let model = required_or_default(
-            &mut get,
-            "KORDI_SUPPORT_OPENAI_MODEL",
-            DEFAULT_SUPPORT_OPENAI_MODEL,
-        );
+        let provider_auth = match optional(&mut get, "KORDI_SUPPORT_PROVIDER").as_deref() {
+            Some("vertex-ai") => {
+                let model = optional(&mut get, "KORDI_SUPPORT_VERTEX_MODEL");
+                let (credential, base_url, model) =
+                    vertex_configuration(&mut get, model).map_err(SupportConfigError::Invalid)?;
+                SupportProviderAuth {
+                    credential,
+                    base_url,
+                    model,
+                }
+            }
+            None | Some("openai") => {
+                let api_key = optional(&mut get, "KORDI_SUPPORT_OPENAI_API_KEY").ok_or(
+                    SupportConfigError::Invalid("KORDI_SUPPORT_OPENAI_API_KEY is required"),
+                )?;
+                let model = required_or_default(
+                    &mut get,
+                    "KORDI_SUPPORT_OPENAI_MODEL",
+                    DEFAULT_SUPPORT_OPENAI_MODEL,
+                );
+                SupportProviderAuth::openai_api_key(api_key, model)?
+            }
+            Some(_) => {
+                return Err(SupportConfigError::Invalid(
+                    "KORDI_SUPPORT_PROVIDER must be openai or vertex-ai",
+                ))
+            }
+        };
 
         Ok(Some(Self {
             owner_account_id: required_or_default(
@@ -194,7 +241,7 @@ impl PendingSupportConfig {
                 DEFAULT_SUPPORT_SUBTITLE,
             ),
             inbox,
-            provider_auth: SupportProviderAuth::openai_api_key(api_key, model)?,
+            provider_auth,
         }))
     }
 }
@@ -263,5 +310,53 @@ mod tests {
         let debug = format!("{config:?}");
         assert!(debug.contains("[REDACTED]"));
         assert!(!debug.contains("secret-support-key"));
+    }
+    #[test]
+    fn vertex_service_uses_explicit_model_without_an_openai_key() {
+        let mut values = HashMap::from([
+            ("KORDI_SUPPORT_ENABLED", "true"),
+            ("KORDI_SUPPORT_OWNER_EMAIL", "support@example.invalid"),
+            ("KORDI_SUPPORT_PROVIDER", "vertex-ai"),
+            ("KORDI_SERVICE_VERTEX_PROJECT", "synthetic-project"),
+            ("KORDI_SUPPORT_VERTEX_MODEL", "google/synthetic-model"),
+        ]);
+        let config =
+            PendingSupportConfig::from_lookup(|key| values.get(key).map(|value| value.to_string()))
+                .unwrap()
+                .unwrap();
+        assert_eq!(config.provider_auth.provider(), "vertex-ai");
+        assert_eq!(config.provider_auth.model(), "google/synthetic-model");
+        assert!(config.provider_auth.credential().is_google_cloud());
+        assert!(config
+            .provider_auth
+            .base_url()
+            .starts_with("https://aiplatform.googleapis.com/"));
+        // Selecting Vertex never silently falls back to an existing OpenAI key.
+        values.insert("KORDI_SUPPORT_OPENAI_API_KEY", "unused-secret");
+        values.remove("KORDI_SUPPORT_VERTEX_MODEL");
+        assert!(PendingSupportConfig::from_lookup(|key| values
+            .get(key)
+            .map(|value| value.to_string()))
+        .is_err());
+        values.insert("KORDI_SUPPORT_ENABLED", "false");
+        assert!(PendingSupportConfig::from_lookup(|key| values
+            .get(key)
+            .map(|value| value.to_string()))
+        .unwrap()
+        .is_none());
+    }
+
+    #[test]
+    fn service_rejects_unknown_provider() {
+        let values = HashMap::from([
+            ("KORDI_SUPPORT_ENABLED", "true"),
+            ("KORDI_SUPPORT_OWNER_EMAIL", "support@example.invalid"),
+            ("KORDI_SUPPORT_PROVIDER", "typo"),
+            ("KORDI_SUPPORT_OPENAI_API_KEY", "unused-secret"),
+        ]);
+        assert!(PendingSupportConfig::from_lookup(|key| values
+            .get(key)
+            .map(|value| value.to_string()))
+        .is_err());
     }
 }

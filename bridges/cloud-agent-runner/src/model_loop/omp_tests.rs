@@ -234,3 +234,27 @@ fn openai_api_keys_use_responses_without_changing_compatible_endpoints() {
     auth.provider = "openrouter".into();
     assert_eq!(api_for_provider(&auth), "openai-completions");
 }
+
+#[test]
+fn vertex_service_token_uses_google_endpoint_with_chat_completions() {
+    let endpoint = "https://aiplatform.googleapis.com/v1/projects/test-project/locations/global/endpoints/openapi";
+    let mut auth = OpenAiProviderConfig::from_material(&ProviderAuthMaterial {
+        snapshot_id: "pip-service-vertex".into(),
+        provider: "vertex-ai".into(),
+        auth_choice: "pip-service-google-cloud".into(),
+        payload: json!({"apiKey":"synthetic-oauth-token", "model":"google/synthetic-model", "baseUrl":endpoint}),
+    }).unwrap();
+    assert_eq!(api_for_provider(&auth), "openai-completions");
+    assert_eq!(omp_provider(&auth), "vertex-ai");
+    assert_eq!(auth.base_url, endpoint);
+    auth.apply_runtime_route(
+        &crate::client::AgentRuntimeRoute {
+            default_model: Some("google/synthetic-model".into()),
+            ..Default::default()
+        },
+        "vertex-ai",
+    )
+    .unwrap();
+    assert_eq!(auth.model, "google/synthetic-model");
+    assert_eq!(auth.api_key, "synthetic-oauth-token");
+}

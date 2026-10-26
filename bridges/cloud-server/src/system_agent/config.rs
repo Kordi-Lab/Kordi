@@ -7,6 +7,8 @@
 
 use std::{env, fmt};
 
+use crate::service_model::{vertex_configuration, ServiceCredential};
+
 // Stored ids (account, agent, owner email, auth choice, snapshot) keep the
 // old name so existing rows stay valid.
 pub const DEFAULT_SYSTEM_AGENT_ACCOUNT_ID: &str = "acct_kordi_pip";
@@ -24,7 +26,7 @@ const SYSTEM_AGENT_OPENAI_SNAPSHOT_ID: &str = "pip-service-openai";
 
 #[derive(Clone)]
 pub struct SystemAgentProviderAuth {
-    api_key: String,
+    credential: ServiceCredential,
     model: String,
     base_url: String,
 }
@@ -47,7 +49,7 @@ impl SystemAgentProviderAuth {
             ));
         }
         Ok(Self {
-            api_key,
+            credential: ServiceCredential::ApiKey(api_key),
             model,
             base_url: DEFAULT_SYSTEM_AGENT_OPENAI_BASE_URL.to_string(),
         })
@@ -60,11 +62,19 @@ impl SystemAgentProviderAuth {
     }
 
     pub fn provider(&self) -> &'static str {
-        SYSTEM_AGENT_OPENAI_PROVIDER
+        if self.credential.is_google_cloud() {
+            "vertex-ai"
+        } else {
+            SYSTEM_AGENT_OPENAI_PROVIDER
+        }
     }
 
     pub fn auth_choice(&self) -> &'static str {
-        SYSTEM_AGENT_OPENAI_AUTH_CHOICE
+        if self.credential.is_google_cloud() {
+            "pip-service-google-cloud"
+        } else {
+            SYSTEM_AGENT_OPENAI_AUTH_CHOICE
+        }
     }
 
     pub fn base_url(&self) -> &str {
@@ -72,15 +82,24 @@ impl SystemAgentProviderAuth {
     }
 
     pub fn snapshot_id(&self) -> &'static str {
-        SYSTEM_AGENT_OPENAI_SNAPSHOT_ID
+        if self.credential.is_google_cloud() {
+            "pip-service-vertex"
+        } else {
+            SYSTEM_AGENT_OPENAI_SNAPSHOT_ID
+        }
     }
 
     pub fn model(&self) -> &str {
         &self.model
     }
 
+    pub(crate) fn credential(&self) -> &ServiceCredential {
+        &self.credential
+    }
+
+    #[cfg(test)]
     pub(crate) fn api_key(&self) -> &str {
-        &self.api_key
+        self.credential.api_key()
     }
 }
 
@@ -204,7 +223,15 @@ fn required_or_default(
 
 impl PendingSystemAgentConfig {
     pub fn from_env() -> Result<Option<Self>, SystemAgentConfigError> {
-        Self::from_lookup(|key| env::var(key).ok())
+        let config = Self::from_lookup(|key| env::var(key).ok())?;
+        if let Some(config) = &config {
+            config
+                .provider_auth
+                .credential()
+                .validate_configuration()
+                .map_err(SystemAgentConfigError::Invalid)?;
+        }
+        Ok(config)
     }
 
     pub fn from_lookup(
@@ -217,18 +244,41 @@ impl PendingSystemAgentConfig {
         if switched_off(switch.as_deref()) {
             return Ok(None);
         }
-        let Some(api_key) = setting(&mut get, "OPENAI_API_KEY") else {
-            return if enabled(switch.as_deref()) {
-                Err(SystemAgentConfigError::Invalid(
-                    "KORDI_SYSTEM_AGENT_OPENAI_API_KEY is required",
+        let provider_auth = match setting(&mut get, "PROVIDER").as_deref() {
+            Some("vertex-ai") => {
+                let model = setting(&mut get, "VERTEX_MODEL");
+                let (credential, base_url, model) = vertex_configuration(&mut get, model)
+                    .map_err(SystemAgentConfigError::Invalid)?;
+                SystemAgentProviderAuth {
+                    credential,
+                    base_url,
+                    model,
+                }
+            }
+            None | Some("openai") => {
+                let Some(api_key) = setting(&mut get, "OPENAI_API_KEY") else {
+                    return if enabled(switch.as_deref()) {
+                        Err(SystemAgentConfigError::Invalid(
+                            "KORDI_SYSTEM_AGENT_OPENAI_API_KEY is required",
+                        ))
+                    } else {
+                        Ok(None)
+                    };
+                };
+                let model = required_or_default(
+                    &mut get,
+                    "OPENAI_MODEL",
+                    DEFAULT_SYSTEM_AGENT_OPENAI_MODEL,
+                );
+                let base_url = validated_base_url(setting(&mut get, "OPENAI_BASE_URL"))?;
+                SystemAgentProviderAuth::openai_api_key(api_key, model)?.with_base_url(base_url)
+            }
+            Some(_) => {
+                return Err(SystemAgentConfigError::Invalid(
+                    "KORDI_SYSTEM_AGENT_PROVIDER must be openai or vertex-ai",
                 ))
-            } else {
-                Ok(None)
-            };
+            }
         };
-        let model =
-            required_or_default(&mut get, "OPENAI_MODEL", DEFAULT_SYSTEM_AGENT_OPENAI_MODEL);
-        let base_url = validated_base_url(setting(&mut get, "OPENAI_BASE_URL"))?;
         let owner_email =
             required_or_default(&mut get, "OWNER_EMAIL", DEFAULT_SYSTEM_AGENT_OWNER_EMAIL);
         if !owner_email.contains('@') {
@@ -251,8 +301,7 @@ impl PendingSystemAgentConfig {
                 "AGENT_SUBTITLE",
                 DEFAULT_SYSTEM_AGENT_SUBTITLE,
             ),
-            provider_auth: SystemAgentProviderAuth::openai_api_key(api_key, model)?
-                .with_base_url(base_url),
+            provider_auth,
         }))
     }
 }
@@ -483,5 +532,54 @@ mod tests {
                 "{bad}"
             );
         }
+    }
+    #[test]
+    fn vertex_service_uses_explicit_model_without_an_openai_key() {
+        let mut values = HashMap::from([
+            ("KORDI_SYSTEM_AGENT_ENABLED", "true"),
+            ("KORDI_SYSTEM_AGENT_OWNER_EMAIL", "support@example.invalid"),
+            ("KORDI_SYSTEM_AGENT_PROVIDER", "vertex-ai"),
+            ("KORDI_SERVICE_VERTEX_PROJECT", "synthetic-project"),
+            ("KORDI_SYSTEM_AGENT_VERTEX_MODEL", "google/synthetic-model"),
+        ]);
+        let config = PendingSystemAgentConfig::from_lookup(|key| {
+            values.get(key).map(|value| value.to_string())
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(config.provider_auth.provider(), "vertex-ai");
+        assert_eq!(config.provider_auth.model(), "google/synthetic-model");
+        assert!(config.provider_auth.credential().is_google_cloud());
+        assert!(config
+            .provider_auth
+            .base_url()
+            .starts_with("https://aiplatform.googleapis.com/"));
+        // Selecting Vertex never silently falls back to an existing OpenAI key.
+        values.insert("KORDI_SYSTEM_AGENT_OPENAI_API_KEY", "unused-secret");
+        values.remove("KORDI_SYSTEM_AGENT_VERTEX_MODEL");
+        assert!(PendingSystemAgentConfig::from_lookup(|key| values
+            .get(key)
+            .map(|value| value.to_string()))
+        .is_err());
+        values.insert("KORDI_SYSTEM_AGENT_ENABLED", "false");
+        assert!(PendingSystemAgentConfig::from_lookup(|key| values
+            .get(key)
+            .map(|value| value.to_string()))
+        .unwrap()
+        .is_none());
+    }
+
+    #[test]
+    fn service_rejects_unknown_provider() {
+        let values = HashMap::from([
+            ("KORDI_SYSTEM_AGENT_ENABLED", "true"),
+            ("KORDI_SYSTEM_AGENT_OWNER_EMAIL", "support@example.invalid"),
+            ("KORDI_SYSTEM_AGENT_PROVIDER", "typo"),
+            ("KORDI_SYSTEM_AGENT_OPENAI_API_KEY", "unused-secret"),
+        ]);
+        assert!(PendingSystemAgentConfig::from_lookup(|key| values
+            .get(key)
+            .map(|value| value.to_string()))
+        .is_err());
     }
 }

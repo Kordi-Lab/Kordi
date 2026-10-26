@@ -29,6 +29,7 @@ pub mod proactive;
 pub mod projects;
 pub mod scheduled_tasks;
 pub mod server;
+pub(crate) mod service_model;
 pub mod support;
 pub mod system_account;
 pub mod system_agent;
