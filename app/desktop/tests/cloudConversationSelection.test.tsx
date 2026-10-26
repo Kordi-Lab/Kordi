@@ -69,8 +69,9 @@ test('cloud contact and agent selection never opens a local Agent runtime', asyn
     await act(async () => { selection = actions.handleSelectChatSession('session:direct-person:example:peer'); });
     assert.ok(prepared.includes('session:direct-person:example:peer'));
     assert.ok(hydrated.includes('session:direct-person:example:peer'), 'Pins and messages start loading together');
-    assert.notEqual(selected, 'session:direct-person:example:peer', 'Cold session publishes with its pin state ready');
+    assert.equal(selected, 'session:direct-person:example:peer', 'Cold selection switches immediately while pins load');
     await act(async () => { releasePin!(); await selection; });
+    assert.equal(selected, 'session:direct-person:example:peer', 'Pin completion preserves the selected conversation');
     pinPending = undefined;
     assert.deepEqual(hydrated, ['session:direct-person:example:peer']);
     assert.deepEqual(loaded, []);
