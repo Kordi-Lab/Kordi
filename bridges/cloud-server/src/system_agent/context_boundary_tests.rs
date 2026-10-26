@@ -18,9 +18,9 @@ async fn provider_context_excludes_pre_join_messages_across_retry_and_completion
     crate::pg::pool::apply_migrations(&pool)
         .await
         .expect("migrate test database");
-    let pip = format!("pip-boundary-{}", Uuid::new_v4().simple());
+    let system_agent = format!("system-agent-boundary-{}", Uuid::new_v4().simple());
     let member = format!("member-boundary-{}", Uuid::new_v4().simple());
-    for account in [&pip, &member] {
+    for account in [&system_agent, &member] {
         seed_account(&pool, account).await;
     }
     let chat = Uuid::new_v4();
@@ -41,9 +41,9 @@ async fn provider_context_excludes_pre_join_messages_across_retry_and_completion
         .await
         .expect("send pre-join message");
     }
-    super::membership::join_conversation(&pool, &pip, chat)
+    super::membership::join_conversation(&pool, &system_agent, chat)
         .await
-        .expect("join PiP");
+        .expect("join the System agent");
     let (context_start,): (i64,) = query_as(
         "SELECT context_start_sequence FROM cloud_pip_conversation_state WHERE conversation_id = $1",
     )
@@ -58,7 +58,7 @@ async fn provider_context_excludes_pre_join_messages_across_retry_and_completion
         SendMessageRequest {
             client_message_id: Uuid::new_v4(),
             kind: "text".to_string(),
-            content: json!({"schema": 1, "blocks": [{"type": "text", "text": "After PiP joined"}], "legacy_attachments": []}),
+            content: json!({"schema": 1, "blocks": [{"type": "text", "text": "After the System agent joined"}], "legacy_attachments": []}),
             reply_to_message_id: None,
             attachment_ids: Vec::new(),
         },
@@ -72,14 +72,17 @@ async fn provider_context_excludes_pre_join_messages_across_retry_and_completion
     .fetch_one(&pool)
     .await
     .unwrap();
-    let config = super::PipConfig {
-        account_id: pip.clone(),
-        owner_email: "pip-test@example.invalid".to_string(),
-        agent_id: "pip-boundary-test".to_string(),
+    let config = super::SystemAgentConfig {
+        account_id: system_agent.clone(),
+        owner_email: "system-agent-test@example.invalid".to_string(),
+        agent_id: "system-agent-boundary-test".to_string(),
         name: "System".to_string(),
         subtitle: "Test".to_string(),
-        provider_auth: super::PipProviderAuth::openai_api_key("synthetic-key", "synthetic-model")
-            .unwrap(),
+        provider_auth: super::SystemAgentProviderAuth::openai_api_key(
+            "synthetic-key",
+            "synthetic-model",
+        )
+        .unwrap(),
     };
     let input = super::input::build_input(
         &pool,
@@ -97,15 +100,15 @@ async fn provider_context_excludes_pre_join_messages_across_retry_and_completion
     .unwrap();
     let messages = input["messages"].as_array().unwrap();
     assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0]["text"], "After PiP joined");
+    assert_eq!(messages[0]["text"], "After the System agent joined");
 
     let now = chrono::Utc::now().to_rfc3339();
     let failed_run = format!("pip_{}", Uuid::new_v4().simple());
     let prompt =
         json!({"hooks": [{"name": "new_messages", "sinceSequence": context_start}]}).to_string();
-    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at) VALUES($1,$1,$1,'pip-boundary-test',$2,$2,'queued',$3,$4,$4)")
+    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at) VALUES($1,$1,$1,'system-agent-boundary-test',$2,$2,'queued',$3,$4,$4)")
         .bind(&failed_run)
-        .bind(&pip)
+        .bind(&system_agent)
         .bind(prompt)
         .bind(&now)
         .execute(&pool)
@@ -131,9 +134,9 @@ async fn provider_context_excludes_pre_join_messages_across_retry_and_completion
     assert_eq!((retry_seen, retry_boundary), (context_start, context_start));
 
     let completed_run = format!("pip_{}", Uuid::new_v4().simple());
-    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,claimed_by,created_at,updated_at) VALUES($1,$1,$1,'pip-boundary-test',$2,$2,'running','{\"hooks\":[],\"openCard\":null}','boundary-runner',$3,$3)")
+    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,claimed_by,created_at,updated_at) VALUES($1,$1,$1,'system-agent-boundary-test',$2,$2,'running','{\"hooks\":[],\"openCard\":null}','boundary-runner',$3,$3)")
         .bind(&completed_run)
-        .bind(&pip)
+        .bind(&system_agent)
         .bind(&now)
         .execute(&pool)
         .await

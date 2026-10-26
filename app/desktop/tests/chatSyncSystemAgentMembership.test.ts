@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CloudAuthClient } from '../src/features/cloud/authClient';
-import { KORDI_PIP_ACCOUNT_ID, KORDI_SYSTEM_ACCOUNT_ID } from '../src/features/pip/pipIdentity';
+import { KORDI_SYSTEM_AGENT_ACCOUNT_ID, KORDI_SYSTEM_ACCOUNT_ID } from '../src/features/systemAgent/systemAgentIdentity';
 import { conversation, message } from './helpers/chatSyncCanonicalFixtures';
 
-const pipMember = {
-  account_id: KORDI_PIP_ACCOUNT_ID, role: 'member', membership_state: 'active', version: 1,
+const systemAgentMember = {
+  account_id: KORDI_SYSTEM_AGENT_ACCOUNT_ID, role: 'member', membership_state: 'active', version: 1,
   last_delivered_sequence: 0, last_read_sequence: 0,
   joined_at: '2026-08-10T07:00:00Z', left_at: null,
 };
@@ -13,9 +13,9 @@ const pipMember = {
 const group = {
   ...conversation,
   kind: 'group' as const,
-  legacy_session_id: 'session:group:with-pip',
+  legacy_session_id: 'session:group:with-system-agent',
   preferences: { ...conversation.preferences, account_id: 'acct_b' },
-  members: [...conversation.members, pipMember],
+  members: [...conversation.members, systemAgentMember],
 };
 
 function clientRecording(calls: string[], conversations: unknown[] = [group]) {
@@ -46,7 +46,7 @@ function groupEnvelope(accountIds: string[]) {
   })).toString('base64url')}`;
 }
 
-test('a group send never tries to remove PiP, which clients do not list', async () => {
+test('a group send never tries to remove the System agent, which clients do not list', async () => {
   const calls: string[] = [];
   const client = clientRecording(calls);
   await client.syncCloudEvents('token', '0');
@@ -59,21 +59,21 @@ test('a group send never tries to remove PiP, which clients do not list', async 
   assert.equal(calls.some((url) => url.endsWith('/messages')), true);
 });
 
-test('a client that still lists PiP does not ask to add it either', async () => {
+test('a client that still lists the System agent does not ask to add it either', async () => {
   const calls: string[] = [];
   const client = clientRecording(calls);
   await client.syncCloudEvents('token', '0');
-  await client.sendMessage('token', 'acct_a', groupEnvelope(['acct_a', 'acct_b', KORDI_PIP_ACCOUNT_ID]), {
+  await client.sendMessage('token', 'acct_a', groupEnvelope(['acct_a', 'acct_b', KORDI_SYSTEM_AGENT_ACCOUNT_ID]), {
     sessionId: group.legacy_session_id,
     conversationKind: 'group',
-    memberAccountIds: ['acct_a', KORDI_PIP_ACCOUNT_ID],
+    memberAccountIds: ['acct_a', KORDI_SYSTEM_AGENT_ACCOUNT_ID],
   });
   assert.equal(calls.some((url) => url.endsWith('/members')), false);
 });
 
 test('a group send never tries to remove the system account either', async () => {
   const calls: string[] = [];
-  const withSystem = { ...group, members: [...group.members, { ...pipMember, account_id: KORDI_SYSTEM_ACCOUNT_ID }] };
+  const withSystem = { ...group, members: [...group.members, { ...systemAgentMember, account_id: KORDI_SYSTEM_ACCOUNT_ID }] };
   const client = clientRecording(calls, [withSystem]);
   await client.syncCloudEvents('token', '0');
   await client.sendMessage('token', 'acct_a', groupEnvelope(['acct_a', 'acct_b']), {

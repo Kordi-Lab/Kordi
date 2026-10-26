@@ -138,12 +138,13 @@ pub(in crate::common_ground) async fn start_group(
         Ok(created) => created,
         Err(response) => return *response,
     };
-    // System, not PiP, sits in a group started here and posts its notices:
-    // the intro, written on PiP's key, and a line for each person who joins.
+    // The System account, not the System agent, sits in a group started here
+    // and posts its notices: the intro, written on the System agent's key, and
+    // a line for each person who joins.
     if let Err(error) = crate::system_account::join(pool, created.conversation_id).await {
         eprintln!("[common-ground] Could not add System to a new group: {error}");
     }
-    if let Some(pip) = state.pip() {
+    if let Some(system_agent) = state.system_agent() {
         let intro = intro::NewIntro {
             room_id,
             group_space_id: &created.group_space_id,
@@ -154,7 +155,7 @@ pub(in crate::common_ground) async fn start_group(
             added: &created.added,
             invited: &created.invited,
         };
-        if let Err(error) = intro::queue(pool, pip.config(), intro).await {
+        if let Err(error) = intro::queue(pool, system_agent.config(), intro).await {
             eprintln!("[common-ground] Could not queue a group intro: {error}");
         }
     }

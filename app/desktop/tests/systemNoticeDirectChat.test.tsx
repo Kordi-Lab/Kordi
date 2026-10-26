@@ -10,7 +10,7 @@ import { cloudAvatarImageUrl } from '../src/features/cloud/avatar';
 import { generatedAvatarMarker } from '../src/features/cloud/canonicalAvatar';
 import { conversationPeer } from '../src/features/cloud/chatSyncMapping';
 import { normalizePlanCardSnapshot } from '../src/features/cloud/planCardSnapshot';
-import { isBuiltInIdentity, KORDI_SYSTEM_ACCOUNT_ID, KORDI_SYSTEM_AVATAR_URL } from '../src/features/pip/pipIdentity';
+import { isBuiltInIdentity, KORDI_SYSTEM_ACCOUNT_ID, KORDI_SYSTEM_AVATAR_URL } from '../src/features/systemAgent/systemAgentIdentity';
 import { MessageBubble } from '../src/kordi-app/components/transcript';
 import type { CanonicalIdentity, CanonicalSessionMessage } from '../src/kordi-app/types';
 
@@ -97,7 +97,7 @@ test('a group notice posted by the viewer is not an own bubble', () => {
   assert.equal(message.readReceiptSummary, null);
 });
 
-test('the system account is hidden like PiP', () => {
+test('the system account is hidden like the System agent', () => {
   const fromSystem = cloudMessageFromChatSync(chatMessage(KORDI_SYSTEM_ACCOUNT_ID, 'text'), direct);
   assert.equal(fromSystem.messageKind, 'system-notice');
   assert.equal(conversationPeer(direct, 'acct_me', KORDI_SYSTEM_ACCOUNT_ID), 'acct_sam');

@@ -210,19 +210,19 @@ where
     }
 
     client.mark_running(&run.run_id).await?;
-    if run.run_id.starts_with(crate::pip::RUN_PREFIX) {
+    if run.run_id.starts_with(crate::system_agent::RUN_PREFIX) {
         let response = {
             let generation = async {
                 match client.fetch_provider_auth(&run.run_id).await {
                     Ok(material) => match engine {
-                        CloudModelEngine::Omp => crate::pip::run_omp(client, &run, material).await,
-                        CloudModelEngine::Rust => crate::pip::run_legacy(client, provider, &run, material).await,
+                        CloudModelEngine::Omp => crate::system_agent::run_omp(client, &run, material).await,
+                        CloudModelEngine::Rust => crate::system_agent::run_legacy(client, provider, &run, material).await,
                     }
                         .map_err(|error| {
-                            tracing::warn!(run_id = %run.run_id, error = %error, "pip sweep run failed");
+                            tracing::warn!(run_id = %run.run_id, error = %error, "system agent sweep run failed");
                         }),
                     Err(error) => {
-                        tracing::warn!(run_id = %run.run_id, error = %error, "pip provider auth unavailable");
+                        tracing::warn!(run_id = %run.run_id, error = %error, "system agent provider auth unavailable");
                         Err(())
                     }
                 }
@@ -248,8 +248,13 @@ where
                 Ok(RunnerStepOutcome::Completed { run_id: run.run_id })
             }
             Err(()) => {
+                // The error code keeps the old name stored in earlier runs.
                 client
-                    .fail_run(&run.run_id, "pip_sweep_failed", "PiP sweep failed.")
+                    .fail_run(
+                        &run.run_id,
+                        "pip_sweep_failed",
+                        "System agent sweep failed.",
+                    )
                     .await?;
                 Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id })
             }

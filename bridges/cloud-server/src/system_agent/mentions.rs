@@ -1,11 +1,14 @@
-//! `@Handle` mentions in PiP's messages.
+//! `@Handle` mentions in the System agent's messages.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde_json::{json, Value};
 
-/// PiP's text in the cloud message envelope the clients decode, with the
-/// mentions they render and notify on.
-pub(crate) fn encode_pip_message_with_mentions(text: &str, mentions: Vec<Value>) -> String {
+/// The System agent's text in the cloud message envelope the clients decode,
+/// with the mentions they render and notify on.
+pub(crate) fn encode_system_agent_message_with_mentions(
+    text: &str,
+    mentions: Vec<Value>,
+) -> String {
     let payload =
         json!({"schemaVersion": 1, "kind": "message", "text": text, "mentions": mentions});
     format!(
@@ -23,8 +26,8 @@ pub(crate) fn mention_handle(display_name: &str) -> String {
         .collect()
 }
 
-/// Resolves `@Handle` tokens in PiP's text to member mentions in the shape
-/// the clients render and notify on. Unknown handles stay plain text.
+/// Resolves `@Handle` tokens in the System agent's text to member mentions in
+/// the shape the clients render and notify on. Unknown handles stay plain text.
 pub(crate) fn resolve_mentions(text: &str, members: &[(String, String)]) -> Vec<Value> {
     let mut mentions = Vec::new();
     let mut utf16_offset = 0usize;

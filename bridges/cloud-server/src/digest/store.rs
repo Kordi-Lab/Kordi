@@ -374,8 +374,10 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
     };
     // Best effort: a failed check keeps the suggestions rather than failing
     // the member's whole digest.
-    if let Err(error) = super::pip_guard::drop_pip_conflicts(pool, &input, &mut output).await {
-        eprintln!("[digest] Could not check suggestions against PiP plans: {error}");
+    if let Err(error) =
+        super::system_agent_guard::drop_system_agent_conflicts(pool, &input, &mut output).await
+    {
+        eprintln!("[digest] Could not check suggestions against System agent plans: {error}");
     }
     if let Err(reason) = validate_output(&output, &input) {
         eprintln!("[digest] Rejected run {run}: {reason}");

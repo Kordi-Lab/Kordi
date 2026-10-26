@@ -159,10 +159,10 @@ async fn fetch_rows(
         request = request.bind(ids);
     }
     let mut rows = request.fetch_all(pool).await?;
-    // PiP's messages are group coordination, not anyone's commitments; its
-    // plans reach the digest as calendar events. Reading them would also
-    // rerun every member's digest each time a vote refreshes PiP's card.
-    // System's notices are the same kind of coordination.
+    // The System agent's messages are group coordination, not anyone's
+    // commitments; its plans reach the digest as calendar events. Reading them
+    // would also rerun every member's digest each time a vote refreshes its
+    // card. System's notices are the same kind of coordination.
     rows.retain(|row| !crate::system_account::is_service_account(&row.4));
     Ok(rows)
 }

@@ -2,10 +2,10 @@ use super::*;
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_98_backfills_projection_and_pip_context_boundaries() {
+async fn upgrade_from_98_backfills_projection_and_system_agent_context_boundaries() {
     let pool = fixture(98).await;
     let conversation = Uuid::new_v4();
-    query("INSERT INTO cloud_chat_conversations(conversation_id,kind,created_by_account_id,client_operation_id,creation_fingerprint,legacy_session_id,next_message_sequence,latest_message_sequence) VALUES($1,'group','fixture-owner',$2,'pip-context-fixture',$3,8,7)")
+    query("INSERT INTO cloud_chat_conversations(conversation_id,kind,created_by_account_id,client_operation_id,creation_fingerprint,legacy_session_id,next_message_sequence,latest_message_sequence) VALUES($1,'group','fixture-owner',$2,'system-agent-context-fixture',$3,8,7)")
         .bind(conversation)
         .bind(Uuid::new_v4())
         .bind(format!("group:{conversation}"))

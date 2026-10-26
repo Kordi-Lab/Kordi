@@ -43,7 +43,8 @@ async fn join(app: &axum::Router, code: &str, token: &str, reference: &str) -> (
     .await
 }
 
-/// The people in a conversation, without PiP and System.
+/// The people in a conversation, without the System agent and the System
+/// account.
 async fn members(pool: &sqlx_postgres::PgPool, conversation_id: &Value) -> Vec<String> {
     let id: Uuid = conversation_id.as_str().unwrap().parse().unwrap();
     let rows: Vec<(String,)> = query_as(

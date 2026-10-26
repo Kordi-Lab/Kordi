@@ -8,7 +8,7 @@ final class SystemAccountIdentityTests: XCTestCase {
        {"participantId":"acct_me","displayName":"Shu Yang","organizer":true,"rsvp":"yes"},
        {"participantId":"acct_maya","displayName":"Maya","organizer":false,"rsvp":"pending"},
        {"participantId":"acct_kordi_system","displayName":"System","organizer":false,"rsvp":"pending"},
-       {"participantId":"acct_kordi_pip","displayName":"PiP","organizer":false,"rsvp":"pending"}
+       {"participantId":"acct_kordi_pip","displayName":"System","organizer":false,"rsvp":"pending"}
      ]}
     """#
 
@@ -28,7 +28,7 @@ final class SystemAccountIdentityTests: XCTestCase {
         XCTAssertEqual(own.author, .me)
         let identity = MessageAuthorIdentity.resolve(notice, in: conversation, account: nil, mentionTargets: [])
         XCTAssertTrue(KordiSystemIdentity.matches(seed: identity.seed))
-        XCTAssertFalse(KordiPipIdentity.matches(name: identity.name, seed: identity.seed))
+        XCTAssertFalse(KordiSystemAgentIdentity.matches(name: identity.name, seed: identity.seed))
     }
 
     func testDirectNoticeFromPeerShowsAsSystem() throws {
@@ -76,9 +76,9 @@ final class SystemAccountIdentityTests: XCTestCase {
 
         XCTAssertEqual(card.participants.map(\.participantId), ["acct_me", "acct_maya"])
         XCTAssertTrue(KordiSystemIdentity.isServiceAccount(KordiSystemIdentity.accountId))
-        XCTAssertTrue(KordiSystemIdentity.isServiceAccount(KordiPipIdentity.accountId))
+        XCTAssertTrue(KordiSystemIdentity.isServiceAccount(KordiSystemAgentIdentity.accountId))
         XCTAssertFalse(KordiSystemIdentity.isServiceAccount("acct_maya"))
-        XCTAssertFalse(KordiSystemIdentity.isSystem(accountId: KordiPipIdentity.accountId))
+        XCTAssertFalse(KordiSystemIdentity.isSystem(accountId: KordiSystemAgentIdentity.accountId))
     }
 
     private func makeDirect() -> ConversationSummary {

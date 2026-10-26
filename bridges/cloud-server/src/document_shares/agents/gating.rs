@@ -80,8 +80,8 @@ pub(crate) struct RunFacts {
 
 type RunRow = (String, String, String, String, String, String, bool);
 
-/// Loads the run and evaluates its gate. `None` when the run does not exist
-/// or is not a run that may use document tools at all (digest, PiP, and
+/// Loads the run and evaluates its gate. `None` when the run does not exist or
+/// is not a run that may use document tools at all (digest, System agent, and
 /// background-session runs).
 pub(crate) async fn run_facts(
     pool: &PgPool,
@@ -102,7 +102,7 @@ pub(crate) async fn run_facts(
     if child
         || run_id.starts_with(crate::digest::RUN_PREFIX)
         || crate::cloud_agent_runtime::import_runs::is_import_run(run_id)
-        || run_id.starts_with(crate::pip::RUN_PREFIX)
+        || run_id.starts_with(crate::system_agent::RUN_PREFIX)
         || run_id.starts_with(crate::common_ground::RUN_PREFIX)
         || run_id.starts_with(crate::proactive::RUN_PREFIX)
     {

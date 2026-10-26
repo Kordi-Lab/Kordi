@@ -1,5 +1,5 @@
-//! The bounded snapshot one PiP run sees: members, recent messages, the open
-//! card, and the hooks that woke PiP.
+//! The bounded snapshot one System agent run sees: members, recent messages,
+//! the open card, and the hooks that woke the System agent.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
@@ -13,7 +13,7 @@ use crate::plan_cards::store::parse_pg_timestamp;
 
 use super::addressing;
 use super::cards::seen_revision;
-use super::config::PipConfig;
+use super::config::SystemAgentConfig;
 use super::context;
 use super::mentions::mention_handle;
 
@@ -134,7 +134,7 @@ fn reminder_hook(candidate: &Candidate, event_id: &str, start_at: Option<&str>) 
 
 pub(super) async fn build_input(
     pool: &PgPool,
-    config: &PipConfig,
+    config: &SystemAgentConfig,
     candidate: &Candidate,
 ) -> Result<Value, sqlx_core::Error> {
     let conversation: Option<(String, Option<String>, Option<String>)> = query_as(
@@ -232,8 +232,8 @@ pub(super) async fn build_input(
         }
     }
 
-    // The card PiP manages: the most recently changed one still in play. The
-    // sweep's card and reminder conditions look at this same card.
+    // The card the System agent manages: the most recently changed one still in
+    // play. The sweep's card and reminder conditions look at this same card.
     let open_event: Option<(String,)> = query_as(concat!(
         "SELECT card.event_id FROM cloud_plan_cards card
          WHERE card.conversation_id = $1 AND ",
@@ -249,10 +249,10 @@ pub(super) async fn build_input(
     };
 
     let mut hooks: Vec<Value> = Vec::new();
-    // PiP's own messages are never news to PiP.
+    // The System agent's own messages are never news to it.
     if messages
         .iter()
-        .any(|message| message["isNew"] == json!(true) && message["fromPip"] != json!(true))
+        .any(|message| message["isNew"] == json!(true) && message["fromSystemAgent"] != json!(true))
     {
         hooks.push(json!({
             "name": "new_messages",
@@ -307,7 +307,7 @@ pub(super) async fn build_input(
 
     let listed_members = context::pick_members(&members, |member| member.0.as_str(), &featured);
     Ok(json!({
-        "pip": {"accountId": config.account_id, "name": config.name},
+        "systemAgent": {"accountId": config.account_id, "name": config.name},
         "conversation": {
             "id": candidate.conversation_id.to_string(),
             "kind": kind,
@@ -321,7 +321,7 @@ pub(super) async fn build_input(
                 "displayName": display_name,
                 "handle": format!("@{}", mention_handle(&display_name)),
                 "role": role,
-                "isPip": *account_id == config.account_id,
+                "isSystemAgent": *account_id == config.account_id,
                 "timezone": timezone,
             })
         }).collect::<Vec<_>>(),
@@ -337,7 +337,7 @@ pub(super) async fn build_input(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pip::mentions::encode_pip_message_with_mentions;
+    use crate::system_agent::mentions::encode_system_agent_message_with_mentions;
 
     fn candidate(hooks_fired: Value) -> Candidate {
         Candidate {
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn cloud_envelopes_decode_to_their_text() {
-        let encoded = encode_pip_message_with_mentions("Ramen at 12:30 works", Vec::new());
+        let encoded = encode_system_agent_message_with_mentions("Ramen at 12:30 works", Vec::new());
         assert_eq!(decode_cloud_text(&encoded), "Ramen at 12:30 works");
         assert_eq!(decode_cloud_text("plain"), "plain");
         assert_eq!(decode_cloud_text("kordi-cloud-message:!!notbase64"), "");

@@ -1,7 +1,7 @@
 import { cloudVoiceMessageMetadataOnly } from './cloudVoiceMessage';
 import type { MessagePlanCard } from '@/kordi-app/types/message';
 import { normalizePlanCardSnapshot } from './planCardSnapshot';
-import { isBuiltInAccountId, isSystemAccountId, KORDI_SYSTEM_NOTICE_KIND } from '@/features/pip/pipIdentity';
+import { isBuiltInAccountId, isSystemAccountId, KORDI_SYSTEM_NOTICE_KIND } from '@/features/systemAgent/systemAgentIdentity';
 import { normalizedLivePhoto } from '@/features/chat/livePhotos';
 import type { CloudMessage, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput } from './authClient';
 import type { ChatSyncConversation, ChatSyncMessage } from './chatSyncTypes';
