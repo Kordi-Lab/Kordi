@@ -3,6 +3,7 @@ import { ChevronRight, Hash } from 'lucide-react';
 
 import { profileDesign } from './cardDesign';
 import { CreateCodePopover, type CgShareChoice } from './CreateCodePopover';
+import { NearbyRow } from './NearbyRow';
 import { PairPopover } from './PairPopover';
 import { shareableProfiles } from './profiles';
 import { currentProfile, type CgState, type CommonGroundStore } from './store';
@@ -77,7 +78,7 @@ function PairRow({ state, store }: { state: CgState; store: CommonGroundStore })
         aria-expanded={open}
         onClick={() => (canShare ? setOpen((value) => !value) : store.open({ name: 'build' }))}
       >
-        <span className="cg-pair-icon" aria-hidden="true"><TwoPhones /></span>
+        <span className="cg-pair-icon is-violet" aria-hidden="true"><TwoPhones /></span>
         <span className="cg-pair-title">Pair</span>
         <ChevronRight className="cg-mrow-chev" aria-hidden="true" />
       </button>
@@ -89,9 +90,10 @@ function PairRow({ state, store }: { state: CgState; store: CommonGroundStore })
 /**
  * The Pair code row: Create opens a meetup on a new code; four typed digits turn it into Enter
  * pair room, which opens a room you are in, or joins the room and opens it, sharing the card the
- * room suggests, else the selected one. A code with no room turns the boxes red.
+ * room suggests, else the selected one. A code with no room turns the boxes red. With `nearby`
+ * (`commonGroundNearbyVersion`), Nearby is the third row.
  */
-export function PairCodePanel({ state, store }: { state: CgState; store: CommonGroundStore }) {
+export function PairCodePanel({ state, store, nearby = false }: { state: CgState; store: CommonGroundStore; nearby?: boolean }) {
   const [code, setCode] = useState<string | null>(null);
   const [lookup, setLookup] = useState<CgCodeLookup | null>(null);
   const [digitsKey, setDigitsKey] = useState(0);
@@ -142,7 +144,7 @@ export function PairCodePanel({ state, store }: { state: CgState; store: CommonG
     <div className="cg-panel cg-paircode">
       <PairRow state={state} store={store} />
       <div className="cg-pair-row is-code">
-        <span className="cg-pair-icon" aria-hidden="true"><Hash className="h-[15px] w-[15px]" /></span>
+        <span className="cg-pair-icon is-cyan" aria-hidden="true"><Hash className="h-[15px] w-[15px]" /></span>
         <span className="cg-pair-title">Pair code</span>
         <Digits key={digitsKey} disabled={!canCreate || busy} missing={missing} onCode={onCode} />
         {code ? (
@@ -163,6 +165,7 @@ export function PairCodePanel({ state, store }: { state: CgState; store: CommonG
         )}
       </div>
       {error ? <div className="cg-pair-error" role="alert">{error}</div> : null}
+      {nearby ? <NearbyRow store={store} /> : null}
       {creating ? (
         <CreateCodePopover
           cards={(state.profilesOn ? shareable : []).map((item): CgShareChoice => ({ id: item.profileId, name: item.name, design: profileDesign(item), icon: item.icon, kind: item.kind }))

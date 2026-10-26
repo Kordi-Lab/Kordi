@@ -70,6 +70,7 @@
 @import './styles/commonGround.css';
 @import './styles/commonGroundCards.css';
 @import './styles/commonGroundWallet.css';
+@import './styles/commonGroundNearby.css';
 @import "./features/projects/chatProjects.css";
 @import "./features/projects/agentProjectSidebar.css";
 @import "./features/projects/projectImport.css";

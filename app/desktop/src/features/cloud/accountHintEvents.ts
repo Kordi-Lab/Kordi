@@ -6,9 +6,13 @@
  * `proactive.proposal_changed` tells the owner that one of their agents'
  * proactive offers was created or changed. `proactive.eval_requested` and
  * `proactive.run_requested` hold an evaluation or an allowed offer for this
- * Mac (`features/proactive/proactiveMacRuns`).
+ * Mac (`features/proactive/proactiveMacRuns`). `common_ground.nearby.updated`
+ * and `common_ground.nearby.alert` refresh open Grounding Nearby views
+ * (`features/commonGround/nearbyHints`).
  */
 export const ACCOUNT_HINT_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'common_ground.nearby.alert',
+  'common_ground.nearby.updated',
   'digest.run_requested',
   'document.agent_request',
   'proactive.eval_requested',
