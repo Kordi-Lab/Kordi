@@ -1,5 +1,5 @@
-//! The sweep query against a real database: members' messages wake PiP, its
-//! own messages and cards it has seen do not.
+//! The sweep query against a real database: members' messages wake the System
+//! agent, its own messages and cards it has seen do not.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde_json::{json, Value};
@@ -30,13 +30,13 @@ async fn say(pool: &PgPool, sender: &str, conversation_id: Uuid, text: &str) {
         .unwrap();
 }
 
-async fn selected(pool: &PgPool, pip: &str, conversation_id: Uuid) -> bool {
+async fn selected(pool: &PgPool, system_agent: &str, conversation_id: Uuid) -> bool {
     query("UPDATE cloud_pip_conversation_state SET checked_at = now() - interval '1 hour'")
         .execute(pool)
         .await
         .unwrap();
     let rows: Vec<(Uuid, Option<String>, i64, i64, i64, Value)> = query_as(super::store::SWEEP_SQL)
-        .bind(pip)
+        .bind(system_agent)
         .bind(1000_i64)
         .fetch_all(pool)
         .await
@@ -58,22 +58,28 @@ async fn sweep_wakes_for_members_and_unseen_cards_only() {
         .await
         .expect("migrate test database");
     let suffix = Uuid::new_v4().simple().to_string();
-    let (pip, jordan) = (format!("pip-{suffix}"), format!("jordan-{suffix}"));
-    for account in [&pip, &jordan] {
+    let (system_agent, jordan) = (format!("system-agent-{suffix}"), format!("jordan-{suffix}"));
+    for account in [&system_agent, &jordan] {
         seed_account(&pool, account).await;
     }
     let chat = Uuid::new_v4();
-    seed_conversation(&pool, chat, &jordan, &[&jordan, &pip]).await;
+    seed_conversation(&pool, chat, &jordan, &[&jordan, &system_agent]).await;
     query("INSERT INTO cloud_pip_conversation_state (conversation_id) VALUES ($1)")
         .bind(chat)
         .execute(&pool)
         .await
         .unwrap();
 
-    say(&pool, &pip, chat, "Vote card is up.").await;
-    assert!(!selected(&pool, &pip, chat).await, "PiP's own message");
+    say(&pool, &system_agent, chat, "Vote card is up.").await;
+    assert!(
+        !selected(&pool, &system_agent, chat).await,
+        "the System agent's own message"
+    );
     say(&pool, &jordan, chat, "Dinner Friday at 7?").await;
-    assert!(selected(&pool, &pip, chat).await, "a member's message");
+    assert!(
+        selected(&pool, &system_agent, chat).await,
+        "a member's message"
+    );
 
     query("UPDATE cloud_pip_conversation_state SET seen_sequence = 100 WHERE conversation_id = $1")
         .bind(chat)
@@ -104,24 +110,30 @@ async fn sweep_wakes_for_members_and_unseen_cards_only() {
         .execute(&pool)
         .await
         .unwrap();
-    assert!(selected(&pool, &pip, chat).await, "an unseen card change");
+    assert!(
+        selected(&pool, &system_agent, chat).await,
+        "an unseen card change"
+    );
     super::cards::mark_card_seen(&pool, chat, &card.event_id, card.revision)
         .await
         .unwrap();
     super::cards::mark_card_seen(&pool, chat, &card.event_id, 0)
         .await
         .unwrap();
-    assert!(!selected(&pool, &pip, chat).await, "a card PiP has seen");
+    assert!(
+        !selected(&pool, &system_agent, chat).await,
+        "a card the System agent has seen"
+    );
     super::store::release_stale_runs(&pool)
         .await
         .expect("release query");
 }
 
-async fn pip_runs(pool: &PgPool, pip: &str) -> i64 {
+async fn system_agent_runs(pool: &PgPool, system_agent: &str) -> i64 {
     let (count,): (i64,) = query_as(
         "SELECT count(*) FROM cloud_agent_fallback_runs WHERE owner_account_id = $1 AND run_id LIKE 'pip\\_%'",
     )
-    .bind(pip)
+    .bind(system_agent)
     .fetch_one(pool)
     .await
     .unwrap();
@@ -142,12 +154,12 @@ async fn messages_for_an_agent_or_already_answered_do_not_queue_a_run() {
         .await
         .expect("migrate test database");
     let suffix = Uuid::new_v4().simple().to_string();
-    let (pip, jordan) = (format!("pip-{suffix}"), format!("jordan-{suffix}"));
-    for account in [&pip, &jordan] {
+    let (system_agent, jordan) = (format!("system-agent-{suffix}"), format!("jordan-{suffix}"));
+    for account in [&system_agent, &jordan] {
         seed_account(&pool, account).await;
     }
     let chat = Uuid::new_v4();
-    seed_conversation(&pool, chat, &jordan, &[&jordan, &pip]).await;
+    seed_conversation(&pool, chat, &jordan, &[&jordan, &system_agent]).await;
     query("UPDATE cloud_chat_conversations SET legacy_session_id = $2 WHERE conversation_id = $1")
         .bind(chat)
         .bind(format!("session-{suffix}"))
@@ -159,7 +171,7 @@ async fn messages_for_an_agent_or_already_answered_do_not_queue_a_run() {
         .execute(&pool)
         .await
         .unwrap();
-    let config = super::test_config(&pip);
+    let config = super::test_config(&system_agent);
     let sweep = || async {
         query("UPDATE cloud_pip_conversation_state SET checked_at = now() - interval '1 hour'")
             .execute(&pool)
@@ -188,7 +200,7 @@ async fn messages_for_an_agent_or_already_answered_do_not_queue_a_run() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(seen, latest, "PiP still marks it seen");
+    assert_eq!(seen, latest, "the System agent still marks it seen");
 
     // (b) A plain plan message an agent already answered.
     say(&pool, &jordan, chat, "Lunch tomorrow at noon?").await;
@@ -212,8 +224,8 @@ async fn messages_for_an_agent_or_already_answered_do_not_queue_a_run() {
         .unwrap();
     assert_eq!(sweep().await, 0, "a message an agent answered");
 
-    // (c) Plain coordination between people still wakes PiP.
+    // (c) Plain coordination between people still wakes the System agent.
     say(&pool, &jordan, chat, "Dinner Friday at 7?").await;
     assert_eq!(sweep().await, 1, "a plain plan message");
-    assert_eq!(pip_runs(&pool, &pip).await, 1);
+    assert_eq!(system_agent_runs(&pool, &system_agent).await, 1);
 }

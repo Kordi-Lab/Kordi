@@ -1,5 +1,5 @@
 import type { MessagePlanCard, MessagePlanCardOption, MessagePlanCardParticipant } from '@/kordi-app/types/message';
-import { isBuiltInAccountId } from '@/features/pip/pipIdentity';
+import { isBuiltInAccountId } from '@/features/systemAgent/systemAgentIdentity';
 
 const PLAN_CARD_STATES = new Set(['polling', 'awaiting_confirmation', 'confirmed', 'canceled']);
 
@@ -21,7 +21,7 @@ export function normalizePlanCardSnapshot(value: unknown): MessagePlanCard | nul
       if (!entry || typeof entry !== 'object') return [];
       const participant = entry as Record<string, unknown>;
       const participantId = typeof participant.participantId === 'string' ? participant.participantId : '';
-      // PiP and the system account manage the card but never attend it; they are
+      // The System agent and the system account manage the card but never attend it; they are
       // not participants for counts, lists, or faces.
       if (!participantId || isBuiltInAccountId(participantId)) return [];
       const rsvp: MessagePlanCardParticipant['rsvp'] = participant.rsvp === 'yes' || participant.rsvp === 'no' ? participant.rsvp : 'pending';
@@ -74,7 +74,7 @@ export function normalizePlanCardSnapshot(value: unknown): MessagePlanCard | nul
 }
 
 /**
- * The newest snapshot of every card in a transcript, by event. PiP reposts the
+ * The newest snapshot of every card in a transcript, by event. The System agent reposts the
  * card whenever it changes, so older messages carry stale copies; rendering
  * each of them with the newest state keeps every button at the current
  * revision.

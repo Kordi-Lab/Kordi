@@ -133,15 +133,15 @@ async fn create_conversation(
     {
         Ok(outcome) => {
             if outcome.inserted {
-                if let Some(pip) = state.pip() {
-                    if let Err(error) = crate::pip::membership::join_conversation(
+                if let Some(system_agent) = state.system_agent() {
+                    if let Err(error) = crate::system_agent::membership::join_conversation(
                         state.db_pool(),
-                        &pip.config().account_id,
+                        &system_agent.config().account_id,
                         outcome.value.id,
                     )
                     .await
                     {
-                        eprintln!("[pip] Could not join a new conversation: {error}");
+                        eprintln!("[system-agent] Could not join a new conversation: {error}");
                     }
                 }
             }

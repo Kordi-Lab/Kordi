@@ -1,5 +1,5 @@
-//! The one tool PiP's runs can call. The runner forwards every call to the
-//! server, which binds it to the run's own conversation.
+//! The one tool System agent runs can call. The runner forwards every call to
+//! the server, which binds it to the run's own conversation.
 
 use serde_json::{json, Value};
 

@@ -1,6 +1,6 @@
 # Unified OMP runtime
 
-Kordi runs desktop, CLI, TUI, managed child, cloud chat, PiP, and digest turns through the same pinned OMP worker by default. The worker owns the model/tool loop, retries, and compaction. Kordi continues to own admission, account selection, conversation history, permissions, tool execution, and delivery.
+Kordi runs desktop, CLI, TUI, managed child, cloud chat, System agent, and digest turns through the same pinned OMP worker by default. The worker owns the model/tool loop, retries, and compaction. Kordi continues to own admission, account selection, conversation history, permissions, tool execution, and delivery.
 
 ## Execution boundary
 
@@ -50,7 +50,7 @@ Native computer/browser Eval is admitted only for an owner-local macOS turn with
 3. Run the desktop runtime integration tests against synthetic loopback provider responses. They cover host tool execution, continuation, durable history, cancellation, and lifecycle events without using account credentials.
 4. Use the supported isolated desktop launcher. The shared local selector applies to debug and release desktop, CLI, TUI, and child turns. `KORDI_AGENT_ENGINE=omp` is the default; `rust` is an explicit rollback for new turns. The legacy `KORDI_DESKTOP_TURN_ENGINE` alias remains supported when the common setting is absent. Unknown values fail closed.
 5. Apply backend migration tests only to a task-owned database, then validate the cloud adapter and lease-fenced replay tests. `KORDI_CLOUD_AGENT_ENGINE=omp` is the default, including the development container. Supply an absolute `KORDI_OMP_WORKER_ENTRY` pointing to the packaged executable. `rust` explicitly selects the legacy loops for new jobs; unknown values fail closed.
-6. PiP and digest jobs use the same supervisor without a filesystem sandbox. PiP receives only its server-bound `plan_card` tool; digest receives only bounded `search_sessions` and `read_session` observation. If the configured PiP provider fallback is needed, the second worker continues from completed messages and tool results, with the remaining shared step/tool budget. Incomplete tool actions and supervisor/cancellation failures cannot restart the job on another provider.
+6. System agent and digest jobs use the same supervisor without a filesystem sandbox. The System agent receives only its server-bound `plan_card` tool; digest receives only bounded `search_sessions` and `read_session` observation. If the configured System agent provider fallback is needed, the second worker continues from completed messages and tool results, with the remaining shared step/tool budget. Incomplete tool actions and supervisor/cancellation failures cannot restart the job on another provider.
 
 The legacy loops remain available for explicit rollback. An engine change never moves an active turn between engines. Source defaults do not prove a deployed service has been updated; verify the running worker and its artifact before accepting the rollout.
 

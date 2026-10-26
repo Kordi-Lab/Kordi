@@ -1,11 +1,12 @@
-//! PiP outranks the digest on group plans.
+//! The System agent outranks the digest on group plans.
 //!
-//! PiP writes a confirmed plan to each attendee's calendar with an id that
-//! starts with `plan:` and keeps it in step with the plan card. The digest may
-//! read those events, but it never proposes changing them and never proposes
-//! a second event for a plan PiP tracks. The rule is applied when a digest
-//! is produced, and again the moment PiP confirms a plan, so a suggestion
-//! saved earlier does not linger until the member's next digest run.
+//! The System agent writes a confirmed plan to each attendee's calendar with an
+//! id that starts with `plan:` and keeps it in step with the plan card. The
+//! digest may read those events, but it never proposes changing them and never
+//! proposes a second event for a plan the System agent tracks. The rule is
+//! applied when a digest is produced, and again the moment the System agent
+//! confirms a plan, so a suggestion saved earlier does not linger until the
+//! member's next digest run.
 
 use std::collections::BTreeSet;
 
@@ -18,11 +19,12 @@ use uuid::Uuid;
 
 use super::models::{Input, Item, Output};
 
-pub fn is_pip_event(event_id: &str) -> bool {
+pub fn is_system_agent_event(event_id: &str) -> bool {
     event_id.starts_with("plan:")
 }
 
-/// A plan PiP tracks, as far as matching a digest suggestion needs.
+/// A plan the System agent tracks, as far as matching a digest suggestion
+/// needs.
 #[derive(Clone, Debug)]
 pub struct TrackedPlan {
     pub conversation_id: Option<String>,
@@ -50,12 +52,12 @@ fn parse_instant(value: Option<&str>) -> Option<DateTime<Utc>> {
         .map(|value| value.with_timezone(&Utc))
 }
 
-/// Whether a create suggestion is the same arrangement as a plan PiP tracks:
-/// it comes from the plan's chat near the plan's time (or at no stated time),
-/// or from that chat with a shared meaningful title word while the plan's own
-/// time is still open, or it starts within 90 minutes of the plan and shares
-/// a meaningful title word. A plan with no time never blocks everything else
-/// from its chat.
+/// Whether a create suggestion is the same arrangement as a plan the System
+/// agent tracks: it comes from the plan's chat near the plan's time (or at no
+/// stated time), or from that chat with a shared meaningful title word while
+/// the plan's own time is still open, or it starts within 90 minutes of the
+/// plan and shares a meaningful title word. A plan with no time never blocks
+/// everything else from its chat.
 fn duplicates(
     item_conversations: &BTreeSet<String>,
     item_title: &str,
@@ -84,7 +86,11 @@ fn keep_candidate(
     conversations_of: &dyn Fn(&str) -> Option<String>,
     plans: &[TrackedPlan],
 ) -> bool {
-    if item.existing_event_id.as_deref().is_some_and(is_pip_event) {
+    if item
+        .existing_event_id
+        .as_deref()
+        .is_some_and(is_system_agent_event)
+    {
         return false;
     }
     if item.calendar_action.as_deref().unwrap_or("create") != "create" {
@@ -127,7 +133,7 @@ async fn live_plans(
 }
 
 /// Applied when a digest is produced.
-pub(super) async fn drop_pip_conflicts(
+pub(super) async fn drop_system_agent_conflicts(
     pool: &PgPool,
     input: &Input,
     output: &mut Output,
@@ -154,7 +160,7 @@ pub(super) async fn drop_pip_conflicts(
         input
             .calendar_events
             .iter()
-            .filter(|event| is_pip_event(&event.id))
+            .filter(|event| is_system_agent_event(&event.id))
             .map(|event| TrackedPlan {
                 conversation_id: None,
                 title: event.title.clone(),
@@ -167,8 +173,8 @@ pub(super) async fn drop_pip_conflicts(
     Ok(())
 }
 
-/// Applied the moment PiP confirms or changes a plan: removes competing
-/// calendar suggestions from the saved digests of the plan's members.
+/// Applied the moment the System agent confirms or changes a plan: removes
+/// competing calendar suggestions from the saved digests of the plan's members.
 pub async fn clear_saved_conflicts(
     tx: &mut sqlx_core::transaction::Transaction<'_, Postgres>,
     account_ids: &[String],
@@ -212,7 +218,8 @@ pub async fn clear_saved_conflicts(
             continue;
         };
         // Only the snapshot this was read from is rewritten: a digest saved in
-        // the meantime was produced with PiP's plans already applied.
+        // the meantime was produced with the System agent's plans already
+        // applied.
         let written = query(
             "UPDATE cloud_account_digests
              SET snapshot_json = $2, revision = revision + 1, updated_at = now()

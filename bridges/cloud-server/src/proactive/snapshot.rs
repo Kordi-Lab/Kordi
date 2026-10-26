@@ -319,7 +319,8 @@ pub(super) async fn build(
             "createdAt": created_at,
         }));
     }
-    let listed = crate::pip::context::pick_members(&members, |member| member.0.as_str(), &speakers);
+    let listed =
+        crate::system_agent::context::pick_members(&members, |member| member.0.as_str(), &speakers);
     let skills: Vec<&str> = agent
         .skills
         .as_array()

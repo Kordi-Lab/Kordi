@@ -38,7 +38,7 @@ enum MessageAuthorIdentity {
         // The plan agent posts in the chat without being a member, so it is
         // never in groupParticipants; it shows as System, not as the group.
         if participant == nil, conversation.kind == .group,
-           KordiPipIdentity.isPipName(message.authorName) || message.authorName == KordiSystemIdentity.displayName {
+           KordiSystemAgentIdentity.isLegacyName(message.authorName) || message.authorName == KordiSystemIdentity.displayName {
             return KordiSystemIdentity.avatar
         }
         if isAgentInSharedSpace {

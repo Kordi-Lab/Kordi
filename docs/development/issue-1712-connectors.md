@@ -236,7 +236,7 @@ check: see "What shipped in PR 2" below.
 - Server: when a run is admitted in `cloud_agent_runtime`, compute the connector
   tool set from the owner's connectors, the grant set for the agent, the agent's
   capability profile (#1711, intersect only), and the trigger. Background and
-  scheduled runs (`pip/`, `digest/`, `scheduled_tasks/worker.rs`) get `read`
+  scheduled runs (`system_agent/`, `digest/`, `scheduled_tasks/worker.rs`) get `read`
   tools only. Put the descriptors in the lease.
 - Cloud runner: `bridges/cloud-agent-runner` turns each descriptor into a host
   tool whose `execute` calls the broker route. `tool_policy.rs` gains a
@@ -274,7 +274,7 @@ Server (`bridges/cloud-server`):
   when the person who sent the message owns the agent: the claim route
   (`claim_run_for_person_message`), the desktop claim
   (`claim_run_for_desktop`), and a subsession message from the owner.
-  Scheduled task occurrences (`claim_run`), PiP runs, digest runs, spawned
+  Scheduled task occurrences (`claim_run`), System agent runs, digest runs, spawned
   subsessions, and runs requested by a contact or a shared-agent member are
   `background`. A test scans the run inserts so a new one must name its
   trigger.
@@ -357,7 +357,7 @@ are a second wave.
 - Events: GitHub and Slack webhooks, Google Calendar watch and Gmail push
   through Pub/Sub where configured, and a polling fallback in
   `scheduled_tasks/worker.rs` for every provider. Events land in
-  `cloud_connector_events` and become an input for `digest/` and for the PiP
+  `cloud_connector_events` and become an input for `digest/` and for the System agent
   worker, read-only.
 - Rate and cost: per-account budget on broker calls, reusing the action budget
   pattern from #1672.
@@ -578,7 +578,7 @@ Consent boundary (server, `bridges/cloud-server`):
   trigger is decided. A run is `owner_private` only when the owner sent the
   message and the session is a `kind = 'ai'` conversation the owner created
   that has never had another member. Group conversations, contact-started and
-  shared-agent runs, sessions without a conversation row, and PiP runs are
+  shared-agent runs, sessions without a conversation row, and System agent runs are
   `shared`. Digest runs are `owner_private` (background, so read only).
   Scheduled occurrences follow their session and creator (a task in the
   owner's private conversation is `owner_private`; the default
@@ -591,7 +591,7 @@ Consent boundary (server, `bridges/cloud-server`):
   name both `run_trigger` and `connector_audience`; it walks every source
   file under `src/`. Database tests drive the real paths (person, scheduled,
   and desktop claims, a member who left or was removed, spawned subsessions,
-  `digest::store::refresh`, and the PiP sweep).
+  `digest::store::refresh`, and the System agent sweep).
 - Declines (`connectors::declined`): `declinedByOwner: true` on
   `POST /internal/connectors/call` writes a `denied` audit row for a tool on
   the active lease and returns `declined_by_owner` without reaching the

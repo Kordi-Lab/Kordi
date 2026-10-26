@@ -1,6 +1,6 @@
 import { messageSortPosition, buildMessageSortPositions, exchangeSortPosition } from './messageSortPositions';
 import { sortedCanonicalMessages, type SortableCanonicalMessage } from './messageSort';
-import { isBuiltInIdentity } from '@/features/pip/pipIdentity';
+import { isBuiltInIdentity } from '@/features/systemAgent/systemAgentIdentity';
 import { transcriptEntries } from './planCardEntries';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
 import { cloudAgentStoredReplyHasRunOutput as hasRunOutput, isCloudAgentStoredNoProviderReply } from '@/features/cloud/cloudAgentReplyText';
@@ -664,7 +664,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
   const participantsBySessionId = new Map<string, CanonicalSessionParticipant[]>();
   for (const participant of canonicalState.participants) {
     if (participant.state !== 'active') continue;
-    // PiP and the system account post in the chat but are never counted members.
+    // The System agent and the system account post in the chat but are never counted members.
     if (isBuiltInIdentity(identityById.get(participant.identityId))) continue;
     pushMapArray(participantsBySessionId, participant.sessionId, participant);
   }

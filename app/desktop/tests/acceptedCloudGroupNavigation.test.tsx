@@ -64,7 +64,7 @@ test('the old group: prefixed id matched no chat and fell back to the last direc
 
 const NADIA_SESSION_ID = 'session:direct-person:acct_me:acct_nadia';
 
-/** Canonical state shaped like the server's Common ground group: owner + PiP, no messages yet. */
+/** Canonical state shaped like the server's Common ground group: owner + the System agent, no messages yet. */
 function canonicalState(withGroup: boolean) {
   const at = (ms: number) => ({ createdAtMs: ms, updatedAtMs: ms });
   return {
@@ -73,7 +73,7 @@ function canonicalState(withGroup: boolean) {
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', ...at(1) },
       { id: 'human:nadia', kind: 'human', displayName: 'Nadia', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_nadia', humanId: 'acct_nadia', avatarKey: 'nadia', ...at(1) },
-      { id: 'human:acct_kordi_pip', kind: 'human', displayName: 'Kordi', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_kordi_pip', humanId: 'acct_kordi_pip', avatarKey: 'pip', ...at(1) },
+      { id: 'human:acct_kordi_pip', kind: 'human', displayName: 'Kordi', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_kordi_pip', humanId: 'acct_kordi_pip', avatarKey: 'system-agent', ...at(1) },
     ],
     sessions: [
       { id: NADIA_SESSION_ID, kind: 'direct-person', title: 'Nadia', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:nadia', relationshipIdentityId: 'human:nadia', metadata: { source: 'cloud-direct' }, ...at(2), lastMessageAtMs: 2 },

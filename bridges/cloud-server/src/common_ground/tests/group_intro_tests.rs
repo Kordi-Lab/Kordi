@@ -1,5 +1,5 @@
-//! The intro PiP posts when a group starts from a room, the line it posts
-//! when an invitee joins, and the members shown with each group.
+//! The intro the System agent posts when a group starts from a room, the line
+//! it posts when an invitee joins, and the members shown with each group.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde_json::{json, Value};
@@ -40,7 +40,9 @@ async fn results(app: &axum::Router, code: &str, token: &str) -> Value {
 }
 
 fn service() -> String {
-    crate::pip::service_account_id().unwrap().to_string()
+    crate::system_agent::service_account_id()
+        .unwrap()
+        .to_string()
 }
 
 fn conversation(group: &Value) -> Uuid {
@@ -71,8 +73,9 @@ async fn claim_intro(pool: &PgPool, group: &Value) -> (String, String, String) {
     (run_id, prompt, owner)
 }
 
-/// The cloud message envelopes PiP posted in a conversation, oldest first.
-async fn pip_envelopes(pool: &PgPool, conversation_id: Uuid) -> Vec<Value> {
+/// The cloud message envelopes the System agent posted in a conversation,
+/// oldest first.
+async fn system_agent_envelopes(pool: &PgPool, conversation_id: Uuid) -> Vec<Value> {
     let rows: Vec<(Value,)> = query_as(
         "SELECT content FROM cloud_chat_messages
          WHERE conversation_id = $1 AND sender_account_id = $2
@@ -95,9 +98,10 @@ async fn pip_envelopes(pool: &PgPool, conversation_id: Uuid) -> Vec<Value> {
         .collect()
 }
 
-/// Texts of the messages PiP posted in a conversation, oldest first.
-async fn pip_messages(pool: &PgPool, conversation_id: Uuid) -> Vec<String> {
-    pip_envelopes(pool, conversation_id)
+/// Texts of the messages the System agent posted in a conversation, oldest
+/// first.
+async fn system_agent_messages(pool: &PgPool, conversation_id: Uuid) -> Vec<String> {
+    system_agent_envelopes(pool, conversation_id)
         .await
         .into_iter()
         .map(|payload| payload["text"].as_str().unwrap().to_string())
@@ -129,8 +133,9 @@ fn mentions(payload: &Value) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Kinds of the messages PiP posted in a conversation, oldest first.
-async fn pip_kinds(pool: &PgPool, conversation_id: Uuid) -> Vec<String> {
+/// Kinds of the messages the System agent posted in a conversation, oldest
+/// first.
+async fn system_agent_kinds(pool: &PgPool, conversation_id: Uuid) -> Vec<String> {
     query_as(
         "SELECT message_kind FROM cloud_chat_messages
          WHERE conversation_id = $1 AND sender_account_id = $2
@@ -177,7 +182,7 @@ async fn intro_state(pool: &PgPool, run_id: &str) -> (bool, Option<String>) {
 }
 
 #[tokio::test]
-async fn start_group_queues_an_intro_that_pip_posts() {
+async fn start_group_queues_an_intro_that_system_agent_posts() {
     let Some(pool) = super::db_fixture::pool().await else {
         return;
     };
@@ -196,7 +201,11 @@ async fn start_group_queues_an_intro_that_pip_posts() {
     .await;
 
     let (run_id, prompt, owner) = claim_intro(&pool, &group).await;
-    assert_eq!(owner, service(), "the intro runs on PiP's account");
+    assert_eq!(
+        owner,
+        service(),
+        "the intro runs on the System agent's account"
+    );
     for expected in [
         "Group: Memory group\n",
         "Topic: Agent memory\n",
@@ -206,17 +215,19 @@ async fn start_group_queues_an_intro_that_pip_posts() {
     ] {
         assert!(prompt.contains(expected), "{expected:?} in {prompt}");
     }
-    assert!(pip_messages(&pool, conversation(&group)).await.is_empty());
+    assert!(system_agent_messages(&pool, conversation(&group))
+        .await
+        .is_empty());
 
     // The model wrote two names bare; the cap cuts the last "@Sam" in half.
     let lines = "  Welcome, Alex, Priya and Sam.\nAlex: memory.\n@Priya: tool use.\n\
                  Sam (invited): here.\n";
     let reply = format!("{lines}{} @Sam", "x".repeat(1_200 - 89));
     complete(&pool, &run_id, RUNNER, &reply).await.unwrap();
-    let posted = pip_envelopes(&pool, conversation(&group)).await;
+    let posted = system_agent_envelopes(&pool, conversation(&group)).await;
     assert_eq!(posted.len(), 1);
     assert_eq!(
-        pip_kinds(&pool, conversation(&group)).await,
+        system_agent_kinds(&pool, conversation(&group)).await,
         vec!["system-notice"]
     );
     let text = posted[0]["text"].as_str().unwrap();
@@ -248,7 +259,12 @@ async fn start_group_queues_an_intro_that_pip_posts() {
         .any(|c| c.id == conversation(&group)));
     // A repeated report posts nothing more.
     assert!(complete(&pool, &run_id, RUNNER, "Again").await.is_err());
-    assert_eq!(pip_messages(&pool, conversation(&group)).await.len(), 1);
+    assert_eq!(
+        system_agent_messages(&pool, conversation(&group))
+            .await
+            .len(),
+        1
+    );
 }
 
 #[tokio::test]
@@ -268,7 +284,9 @@ async fn a_failed_intro_posts_nothing() {
         (false, Some("provider_error".into()))
     );
     assert!(complete(&pool, &run_id, RUNNER, "Hello").await.is_err());
-    assert!(pip_messages(&pool, conversation(&group)).await.is_empty());
+    assert!(system_agent_messages(&pool, conversation(&group))
+        .await
+        .is_empty());
 
     // An empty reply fails the run the same way.
     let group = start(&app, &code, &alex_token, json!({"memberIds": [priya]})).await;
@@ -278,7 +296,9 @@ async fn a_failed_intro_posts_nothing() {
         intro_state(&pool, &run_id).await,
         (false, Some("invalid_output".into()))
     );
-    assert!(pip_messages(&pool, conversation(&group)).await.is_empty());
+    assert!(system_agent_messages(&pool, conversation(&group))
+        .await
+        .is_empty());
 }
 
 #[tokio::test]
@@ -311,7 +331,10 @@ async fn joining_posts_a_line_and_groups_show_their_members() {
     assert_eq!(shown, vec![alex.as_str(), priya.as_str()], "creator first");
     assert_eq!(row["members"][0]["name"], "Alex");
     assert_eq!(row["memberCount"], 2);
-    assert!(!row.to_string().contains(&service()), "PiP is not a member");
+    assert!(
+        !row.to_string().contains(&service()),
+        "the System agent is not a member"
+    );
 
     // Sam's stored match with Priya names her; Alex has none and is left out.
     store_match(
@@ -339,7 +362,7 @@ async fn joining_posts_a_line_and_groups_show_their_members() {
     )
     .await;
     assert_eq!(status, 200, "{body}");
-    let posted = pip_envelopes(&pool, conversation_id).await;
+    let posted = system_agent_envelopes(&pool, conversation_id).await;
     assert_eq!(posted.len(), 1);
     assert_eq!(
         posted[0]["text"],
@@ -354,7 +377,7 @@ async fn joining_posts_a_line_and_groups_show_their_members() {
         ]
     );
     assert_eq!(
-        pip_kinds(&pool, conversation_id).await,
+        system_agent_kinds(&pool, conversation_id).await,
         vec!["system-notice"]
     );
     let (_, again) = send(
@@ -366,7 +389,7 @@ async fn joining_posts_a_line_and_groups_show_their_members() {
     )
     .await;
     assert_eq!(again["status"], "already_joined");
-    assert_eq!(pip_messages(&pool, conversation_id).await.len(), 1);
+    assert_eq!(system_agent_messages(&pool, conversation_id).await.len(), 1);
 
     let theirs = results(&app, &code, &sam_token).await;
     let row = &theirs["groups"][0];

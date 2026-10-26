@@ -50,7 +50,7 @@ pub(in crate::common_ground) async fn results(
     Extension(session): Extension<CloudSession>,
     Path(code): Path<String>,
 ) -> Response {
-    let Some(pip) = state.pip() else {
+    let Some(system_agent) = state.system_agent() else {
         return crate::common_ground::unavailable();
     };
     let pool = state.db_pool();
@@ -114,7 +114,7 @@ pub(in crate::common_ground) async fn results(
     if open && !stale.is_empty() {
         let queued = store::queue_matches(
             pool,
-            pip.config(),
+            system_agent.config(),
             &rate_limiter,
             &viewer,
             &stale,
@@ -130,7 +130,7 @@ pub(in crate::common_ground) async fn results(
     if needs_themes {
         let queued = store::queue_themes(
             pool,
-            pip.config(),
+            system_agent.config(),
             &rate_limiter,
             room_id,
             account,
@@ -202,7 +202,7 @@ pub(in crate::common_ground) async fn match_detail(
     Path(other): Path<String>,
     Query(params): Query<ProfileQuery>,
 ) -> Response {
-    let Some(pip) = state.pip() else {
+    let Some(system_agent) = state.system_agent() else {
         return crate::common_ground::unavailable();
     };
     let pool = state.db_pool();
@@ -271,7 +271,7 @@ pub(in crate::common_ground) async fn match_detail(
     }
     match store::queue_matches(
         pool,
-        pip.config(),
+        system_agent.config(),
         &rate_limiter,
         viewer,
         std::slice::from_ref(other_card),
