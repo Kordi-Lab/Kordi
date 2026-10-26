@@ -174,9 +174,7 @@ export class CommonGroundStore {
 
   home({ reload = true }: { reload?: boolean } = {}) {
     this.set({ stack: [{ name: 'home' }], notice: null });
-    // Selecting a wallet card already loads it; avoid a second response racing that selection.
-    if (reload) void this.loadHome();
-    else void this.loadRooms();
+    void (reload ? this.loadHome() : this.loadRooms());
   }
 
   async loadScreen(screen: CgScreen = this.top()): Promise<void> {
