@@ -2956,7 +2956,8 @@ struct ConversationView: View {
         guard isReadPresentationVisible else { return } // The chat closed during the menu delay.
         ConversationModalPresenter.present(ownerID: conversation.id) { close in
             PhotoLibrarySendPicker(allowsSeparateMessages: conversation.kind != .agent, onSend: sendPhotoSelection,
-                onError: { model.errorMessage = $0 }, onClose: close).environment(\.kordiChatTheme, chatTheme).tint(chatTheme.accent)
+                onError: { model.errorMessage = $0 }, onClose: close, onPreparing: { isPreparingAttachments = $0 })
+                .environment(\.kordiChatTheme, chatTheme).tint(chatTheme.accent)
         }
     }
 

@@ -45,6 +45,8 @@ struct PhotoLibrarySendPicker: View {
     let onSend: ([PendingAttachment], PhotoSendGrouping) async -> Bool
     let onError: (String) -> Void
     let onClose: () -> Void
+    /// True while chosen photos and videos are still being prepared after the picker closes.
+    var onPreparing: (Bool) -> Void = { _ in }
 
     @State private var authorizationStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
     @State private var library: PhotoLibraryAssets?
@@ -56,6 +58,7 @@ struct PhotoLibrarySendPicker: View {
     @State private var previewIndex: Int?
     @State private var grouping: PhotoSendGrouping = .combined
     @State private var isSending = false
+    @State private var videoExports = PhotoLibraryVideoExports()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -115,6 +118,9 @@ struct PhotoLibrarySendPicker: View {
         .task {
             await loadLibrary()
         }
+        // Videos convert as soon as they are chosen, so Send does not wait for them.
+        .onChange(of: selectedAssetIDs) { _, ids in videoExports.sync(selected: ids) }
+        .onDisappear { videoExports.discardAll() }
     }
 
     private var pickerHeader: some View {
@@ -248,15 +254,17 @@ struct PhotoLibrarySendPicker: View {
         .background(.bar)
     }
 
+    /// Edits the most recently selected photo; videos cannot be edited.
     @MainActor
     private func beginEditingSelection() {
-        guard let id = PhotoLibrarySelection.editingID(in: selectedAssetIDs),
-              let asset = PhotoLibraryAssets.assets(for: [id]).first else { return }
+        guard let asset = PhotoLibraryAssets.assets(for: selectedAssetIDs).last(where: { $0.mediaType == .image })
+        else { return }
         beginEditing(asset)
     }
 
     @MainActor
     private func beginEditing(_ asset: PHAsset) {
+        guard asset.mediaType == .image else { return }
         let request = PhotoEditorRequest(asset: asset)
         if asset.mediaSubtypes.contains(.photoLive), !stillOnlyIDs.contains(request.id) {
             liveEditRequest = request
@@ -285,8 +293,13 @@ struct PhotoLibrarySendPicker: View {
 
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        // The fetch result is lazy; only visible photos are read.
-        let loaded = PhotoLibraryAssets(fetchResult: PHAsset.fetchAssets(with: .image, options: options))
+        options.predicate = NSPredicate(
+            format: "mediaType == %d || mediaType == %d",
+            PHAssetMediaType.image.rawValue,
+            PHAssetMediaType.video.rawValue
+        )
+        // The fetch result is lazy; only visible photos and videos are read.
+        let loaded = PhotoLibraryAssets(fetchResult: PHAsset.fetchAssets(with: options))
         library = loaded
         if ProcessInfo.processInfo.arguments.contains("--preview-photo-send"),
            selectedAssetIDs.isEmpty {
@@ -301,21 +314,26 @@ struct PhotoLibrarySendPicker: View {
         guard !ids.isEmpty, !isSending else { return }
         isSending = true
         let selectedAssets = PhotoLibraryAssets.assets(for: ids)
+        // Photos follow the grouping choice; each video is its own message after them.
         let batches = PhotoSelectionPreparationPlan.batches(
-            for: selectedAssets,
+            for: selectedAssets.filter { $0.mediaType != .video },
             grouping: grouping
-        )
+        ) + selectedAssets.filter { $0.mediaType == .video }.map { [$0] }
         let selectedEdits = editedPhotos.filter { ids.contains($0.key) }
         let stillOnly = stillOnlyIDs
+        let exports = videoExports.take(ids)
         onClose()
         Task {
             await Task.yield()
+            onPreparing(true)
+            defer { onPreparing(false) }
             do {
                 for batch in batches {
                     let attachments = try await PhotoLibraryAttachmentLoader.load(
                         batch,
                         edits: selectedEdits,
-                        stillOnlyIDs: stillOnly
+                        stillOnlyIDs: stillOnly,
+                        videoExports: exports
                     )
                     guard await onSend(attachments, grouping) else { return }
                 }
@@ -326,17 +344,69 @@ struct PhotoLibrarySendPicker: View {
     }
 }
 
+/// Converts chosen videos to MP4 while the picker is still open.
+@MainActor
+final class PhotoLibraryVideoExports {
+    private var tasks: [String: Task<PendingAttachment, Error>] = [:]
+
+    /// Starts conversions for newly chosen videos and drops deselected ones.
+    func sync(selected ids: [String]) {
+        let selected = Set(ids)
+        for (id, task) in tasks where !selected.contains(id) {
+            Self.discard(task)
+            tasks[id] = nil
+        }
+        let missing = ids.filter { tasks[$0] == nil }
+        guard !missing.isEmpty else { return }
+        for asset in PhotoLibraryAssets.assets(for: missing) where asset.mediaType == .video {
+            tasks[asset.localIdentifier] = Task.detached(priority: .userInitiated) {
+                try await PendingAttachmentLoader.loadVideo(
+                    try await PhotoLibraryAttachmentLoader.videoAsset(for: asset)
+                )
+            }
+        }
+    }
+
+    /// Hands the conversions for these videos to the sender.
+    func take(_ ids: [String]) -> [String: Task<PendingAttachment, Error>] {
+        var taken: [String: Task<PendingAttachment, Error>] = [:]
+        for id in ids {
+            if let task = tasks.removeValue(forKey: id) { taken[id] = task }
+        }
+        return taken
+    }
+
+    func discardAll() {
+        tasks.values.forEach(Self.discard)
+        tasks = [:]
+    }
+
+    private static func discard(_ task: Task<PendingAttachment, Error>) {
+        task.cancel()
+        Task { (try? await task.value)?.discardOwnedFile() }
+    }
+}
+
 enum PhotoLibraryAttachmentLoader {
     static func load(
         _ assets: [PHAsset],
         edits: [String: PhotoLibraryEdit] = [:],
-        stillOnlyIDs: Set<String> = []
+        stillOnlyIDs: Set<String> = [],
+        videoExports: [String: Task<PendingAttachment, Error>] = [:]
     ) async throws -> [PendingAttachment] {
         var attachments: [PendingAttachment] = []
         attachments.reserveCapacity(assets.count)
         var succeeded = false
         defer { if !succeeded { attachments.forEach { $0.discardOwnedFile() } } }
         for (index, asset) in assets.enumerated() {
+            if asset.mediaType == .video {
+                if let export = videoExports[asset.localIdentifier] {
+                    attachments.append(try await export.value)
+                } else {
+                    attachments.append(try await PendingAttachmentLoader.loadVideo(try await videoAsset(for: asset)))
+                }
+                continue
+            }
             if asset.mediaSubtypes.contains(.photoLive), !stillOnlyIDs.contains(asset.localIdentifier) {
                 guard edits[asset.localIdentifier] == nil else { throw AttachmentTransferError.invalidImage }
                 attachments.append(try await LivePhotoMedia.load(asset))
@@ -360,6 +430,25 @@ enum PhotoLibraryAttachmentLoader {
         }
         succeeded = true
         return attachments
+    }
+
+    /// The library video, downloaded from iCloud when needed.
+    static func videoAsset(for asset: PHAsset) async throws -> AVAsset {
+        try await withCheckedThrowingContinuation { continuation in
+            let options = PHVideoRequestOptions()
+            options.version = .current
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+            PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { video, _, info in
+                if let error = info?[PHImageErrorKey] as? Error {
+                    continuation.resume(throwing: error)
+                } else if let video {
+                    continuation.resume(returning: video)
+                } else {
+                    continuation.resume(throwing: AttachmentTransferError.invalidVideo)
+                }
+            }
+        }
     }
 
     static func imageData(for asset: PHAsset) async throws -> Data {
