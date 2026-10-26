@@ -62,35 +62,25 @@ struct ProviderLoginMethodPicker: View {
     @State private var didApplyInitial = false
 
     var body: some View {
-        List {
-            Section {
-                ForEach(methods) { method in
-                    Button {
-                        selected = method
-                    } label: {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(method.title)
-                                    .foregroundStyle(Color.primary)
-                                Text(method.pickerDescription)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 8)
-                            Image(systemName: "chevron.right")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                                .accessibilityHidden(true)
-                        }
-                        .contentShape(Rectangle())
+        SettingsPage {
+            ForEach(methods) { method in
+                Button {
+                    selected = method
+                } label: {
+                    HStack(spacing: 10) {
+                        CompactSettingsLabel(title: method.title, subtitle: method.pickerDescription, systemImage: nil)
+                        Spacer(minLength: 0)
+                        SettingsChevron()
                     }
-                    .accessibilityIdentifier("provider-login-method-\(method.id)")
+                    .frame(minHeight: SettingsMetrics.rowMinHeight)
+                    .contentShape(Rectangle())
                 }
-            } footer: {
-                Text("OMP completes each step on Kordi Cloud; provider tokens never reach this iPhone.")
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("provider-login-method-\(method.id)")
             }
+            SettingsDivider()
+            SettingsCaption("OMP completes each step on Kordi Cloud; provider tokens never reach this iPhone.")
         }
-        .listStyle(.insetGrouped)
         .navigationTitle("Add \(provider.shortName) account")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $selected) { method in
@@ -163,28 +153,29 @@ struct ProviderLoginScreen: View {
 
     var body: some View {
         List {
-            Section("Account name") {
+            Group {
+                SettingsSectionTitle("Account name")
+                    .padding(.top, SettingsMetrics.pageInsets.top)
                 TextField("Work", text: $label)
                     .textInputAutocapitalization(.words)
                     .disabled(state.isActive || state.phase == .completed)
+                    .settingsField()
                     .accessibilityIdentifier("provider-login-label")
-            }
-            if showsIntro {
-                Section {
+                if showsIntro {
+                    SettingsDivider()
                     intro
-                } footer: {
                     if model.ompBackendUnavailable {
-                        Text(OMPBackendSupport.unavailableMessage)
+                        SettingsCaption(OMPBackendSupport.unavailableMessage)
                             .accessibilityIdentifier("omp-backend-unavailable")
                     } else {
-                        Text(method.isKeyEntry
+                        SettingsCaption(method.isKeyEntry
                             ? "OMP checks the key on Kordi Cloud before it is saved to your account."
                             : "OMP completes each step on Kordi Cloud; provider tokens never reach this iPhone.")
                     }
                 }
-            }
-            if !controller.transcript.entries.isEmpty, !(state.phase == .failed && controller.backendUnavailable) {
-                Section("Steps") {
+                if !controller.transcript.entries.isEmpty, !(state.phase == .failed && controller.backendUnavailable) {
+                    SettingsDivider()
+                    SettingsSectionTitle("Steps")
                     ForEach(controller.transcript.entries) { entry in
                         entryView(entry)
                     }
@@ -193,9 +184,9 @@ struct ProviderLoginScreen: View {
                     }
                 }
             }
+            .settingsListRow()
         }
-        .listStyle(.insetGrouped)
-        .environment(\.defaultMinListRowHeight, 44)
+        .settingsListStyle()
         .navigationTitle("\(method.title) · \(provider.shortName)")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(state.isActive)
@@ -245,11 +236,14 @@ struct ProviderLoginScreen: View {
     @ViewBuilder
     private var intro: some View {
         Text(method.summary)
-            .font(.subheadline)
+            .font(SettingsFont.rowTitle)
+            .padding(.vertical, 6)
             .accessibilityIdentifier(method.isKeyEntry ? "provider-login-key-instructions" : "provider-login-summary")
         if method.isKeyEntry {
             if let keyURL = ProviderLoginViewState.httpsURL(method.policy.authUrl) {
                 Link("Get an API key", destination: keyURL)
+                    .font(SettingsFont.rowTitle)
+                    .frame(minHeight: SettingsMetrics.textRowMinHeight)
                     .accessibilityIdentifier("provider-login-get-key")
             }
             SecureField(method.policy.placeholder?.nonEmpty ?? "Paste key", text: $apiKey)
@@ -258,14 +252,19 @@ struct ProviderLoginScreen: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .privacySensitive()
+                .settingsField()
                 .accessibilityIdentifier("provider-api-key")
             Button("Save") { start(apiKey: apiKey) }
-                .fontWeight(.semibold)
+                .font(SettingsFont.action)
+                .buttonStyle(.borderless)
+                .frame(minHeight: SettingsMetrics.textRowMinHeight)
                 .disabled(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.ompBackendUnavailable)
                 .accessibilityIdentifier("provider-login-save-key")
         } else {
             Button(method.actionTitle) { start() }
-                .fontWeight(.semibold)
+                .font(SettingsFont.action)
+                .buttonStyle(.borderless)
+                .frame(minHeight: SettingsMetrics.textRowMinHeight)
                 .disabled(model.ompBackendUnavailable)
                 .accessibilityIdentifier("provider-login-start")
         }
@@ -289,45 +288,49 @@ struct ProviderLoginScreen: View {
                 )
             } else {
                 Text(message)
-                    .font(.footnote)
+                    .font(SettingsFont.subtitle)
                     .foregroundStyle(.secondary)
+                    .padding(.vertical, 6)
                     .accessibilityIdentifier("provider-login-progress")
             }
         case .failure(let message) where message == OMPBackendSupport.unavailableMessage:
-            // Shown once, in the footer above.
+            // Shown once, in the note above.
             EmptyView()
         case .failure(let message):
             VStack(alignment: .leading, spacing: 6) {
                 Text(message)
-                    .font(.footnote)
+                    .font(SettingsFont.subtitle)
                     .foregroundStyle(.red)
                     .accessibilityIdentifier("provider-login-error")
                 Button("Try again") { retry() }
                     .buttonStyle(.borderless)
-                    .font(.footnote.weight(.semibold))
+                    .font(SettingsFont.action)
                     .accessibilityIdentifier("provider-login-retry")
             }
+            .padding(.vertical, 6)
         case .completed(let name):
             VStack(alignment: .leading, spacing: 8) {
                 Text("Signed in as \(name)")
-                    .font(.body.weight(.semibold))
+                    .font(SettingsFont.action)
                     .foregroundStyle(.green)
                     .accessibilityIdentifier("provider-login-completed")
                 HStack(spacing: 20) {
                     Button("Done") { finish() }
                         .buttonStyle(.borderless)
-                        .fontWeight(.semibold)
+                        .font(SettingsFont.action)
                         .accessibilityIdentifier("provider-login-done")
                     Button("Start chat") { finish(startingChat: true) }
                         .buttonStyle(.borderless)
-                        .fontWeight(.semibold)
+                        .font(SettingsFont.action)
                         .accessibilityIdentifier("provider-login-start-chat")
                 }
             }
+            .padding(.vertical, 6)
         case .cancelled:
             Text("Canceled.")
-                .font(.footnote)
+                .font(SettingsFont.subtitle)
                 .foregroundStyle(.secondary)
+                .padding(.vertical, 6)
                 .accessibilityIdentifier("provider-login-cancelled")
         }
     }
@@ -336,7 +339,7 @@ struct ProviderLoginScreen: View {
         VStack(alignment: .leading, spacing: 8) {
             if let userCode {
                 Text("Enter this code on the sign-in page:")
-                    .font(.footnote)
+                    .font(SettingsFont.subtitle)
                     .foregroundStyle(.secondary)
                 Text(userCode)
                     .font(.title2.monospaced().weight(.semibold))
@@ -345,29 +348,29 @@ struct ProviderLoginScreen: View {
                     .accessibilityIdentifier("provider-login-device-code")
                 Button("Copy code") { UIPasteboard.general.string = userCode }
                     .buttonStyle(.borderless)
-                    .font(.footnote.weight(.semibold))
+                    .font(SettingsFont.inlineAction)
                     .accessibilityIdentifier("provider-login-copy-code")
             }
             if let instructions, !(userCode.map(instructions.contains) ?? false) {
                 Text(Self.sentence(instructions))
-                    .font(.footnote)
+                    .font(SettingsFont.subtitle)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("provider-login-instructions")
             }
             Button("Open sign-in page") { openSignInPage(url) }
                 .buttonStyle(.borderless)
-                .fontWeight(.semibold)
+                .font(SettingsFont.action)
                 .accessibilityIdentifier("provider-login-open-url")
             if method.style == .browserSignIn {
                 // Hosted OAuth redirects to a localhost callback this iPhone cannot serve.
                 Text(Self.localhostHint)
-                    .font(.footnote)
+                    .font(SettingsFont.subtitle)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("provider-login-localhost-hint")
             }
             HStack(spacing: 8) {
                 Text(url.absoluteString)
-                    .font(.caption.monospaced())
+                    .font(SettingsFont.subtitle.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -375,11 +378,11 @@ struct ProviderLoginScreen: View {
                 Spacer(minLength: 4)
                 Button("Copy link") { UIPasteboard.general.url = url }
                     .buttonStyle(.borderless)
-                    .font(.caption.weight(.semibold))
+                    .font(SettingsFont.inlineAction)
                     .accessibilityIdentifier("provider-login-copy-link")
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
     }
 
     private var lastEntryIsProgress: Bool {
@@ -397,11 +400,11 @@ struct ProviderLoginScreen: View {
     private func inputEntry(_ entry: ProviderLoginTranscriptEntry.Input, isActive: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(entry.message ?? Self.defaultMessage(for: entry.kind))
-                .font(.subheadline)
+                .font(SettingsFont.rowTitle)
                 .accessibilityIdentifier("provider-login-prompt")
             if let instructions = entry.instructions, isActive {
                 Text(Self.sentence(instructions))
-                    .font(.footnote)
+                    .font(SettingsFont.subtitle)
                     .foregroundStyle(.secondary)
             }
             if isActive {
@@ -419,7 +422,7 @@ struct ProviderLoginScreen: View {
                     }
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
+                    .settingsField()
                     .accessibilityIdentifier("provider-login-input")
                     Button(entry.kind == .apiKey ? "Save" : "Continue") {
                         let value = input
@@ -427,24 +430,24 @@ struct ProviderLoginScreen: View {
                         controller.submit(value)
                     }
                     .buttonStyle(.borderless)
-                    .fontWeight(.semibold)
+                    .font(SettingsFont.action)
                     .disabled(!entry.allowsEmpty && input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("provider-login-submit")
                 }
                 if let error = entry.error {
                     Text(error)
-                        .font(.footnote)
+                        .font(SettingsFont.subtitle)
                         .foregroundStyle(.red)
                         .accessibilityIdentifier("provider-login-error")
                 }
             } else if entry.isAnswered {
                 Text(entry.answer ?? "Sent")
-                    .font(.footnote.monospaced())
+                    .font(SettingsFont.subtitle.monospaced())
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("provider-login-answer")
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
     }
 
     private func statusLine(_ text: String, identifier: String) -> some View {
@@ -452,8 +455,9 @@ struct ProviderLoginScreen: View {
             ProgressView().controlSize(.small)
             Text(text)
         }
-        .font(.footnote)
+        .font(SettingsFont.subtitle)
         .foregroundStyle(.secondary)
+        .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier(identifier)
     }

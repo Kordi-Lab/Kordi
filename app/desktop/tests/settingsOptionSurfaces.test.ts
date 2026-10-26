@@ -27,7 +27,8 @@ test('settings pages render titled sections of divided rows without card shells'
   assert.doesNotMatch(cloudSettings, /app-cloud-account-settings-meta-row[^\n]*border-t/);
 
   // One heading per section, rows separated by thin dividers, no nested cards.
-  assert.match(layout, /<h2[\s\S]*?font-semibold/);
+  assert.match(layout, /<h2[\s\S]*?settingsType\.heading/);
+  assert.match(readSource('kordi-app/components/settingsType.ts'), /heading: '[^']*font-semibold/);
   assert.match(layout, /app-settings-rows divide-y divide-\[color:var\(--app-divider\)\]/);
   assert.doesNotMatch(layout, /app-settings-section[^\n]*(?:rounded-|bg-white|shadow-)/);
   assert.match(shellCss, /\.app-settings-option-row,\s*\.app-settings-section\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/);

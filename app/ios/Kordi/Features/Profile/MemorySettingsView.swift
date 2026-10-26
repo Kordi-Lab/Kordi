@@ -30,34 +30,20 @@ struct MemorySettingsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                if let error = model.errorMessage {
-                    errorBlock(error)
-                }
-
-                if let settings = model.settings {
-                    memorySection(settings)
-                    SettingsDivider()
-                    MemoryOrganizerSection(model: model, memoryEnabled: settings.memoryEnabled)
-                    forgetEverything
-                } else if model.isLoading || model.errorMessage == nil {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        Text("Loading memory…")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(minHeight: 48)
-                    .accessibilityElement(children: .combine)
-                }
+        SettingsPage {
+            if let error = model.errorMessage {
+                errorBlock(error)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
-            .padding(.bottom, 24)
+
+            if let settings = model.settings {
+                memorySection(settings)
+                SettingsDivider()
+                MemoryOrganizerSection(model: model, memoryEnabled: settings.memoryEnabled)
+                forgetEverything
+            } else if model.isLoading || model.errorMessage == nil {
+                SettingsLoadingRow("Loading memory…")
+            }
         }
-        .background(Color(uiColor: .systemBackground))
         .navigationTitle("Memory")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.load() }
@@ -73,18 +59,15 @@ struct MemorySettingsView: View {
     }
 
     private func errorBlock(_ error: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(error, systemImage: "exclamationmark.circle.fill")
-                .font(.subheadline)
-                .foregroundStyle(.red)
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsErrorLabel(error)
             if !model.hasLoaded {
                 Button("Try again") { Task { await model.load() } }
-                    .font(.subheadline.weight(.semibold))
-                    .frame(minHeight: 32)
+                    .font(SettingsFont.action)
+                    .frame(minHeight: SettingsMetrics.textRowMinHeight)
                     .disabled(model.isLoading)
             }
         }
-        .padding(.vertical, 8)
     }
 
     @ViewBuilder
@@ -110,7 +93,7 @@ struct MemorySettingsView: View {
                 systemImage: "brain"
             )
         }
-        .frame(minHeight: 48)
+        .frame(minHeight: SettingsMetrics.rowMinHeight)
         .disabled(model.isUpdatingSettings)
         .accessibilityIdentifier("memory-enabled-toggle")
 
@@ -124,7 +107,7 @@ struct MemorySettingsView: View {
                 systemImage: "lock.shield"
             )
         }
-        .frame(minHeight: 48)
+        .frame(minHeight: SettingsMetrics.rowMinHeight)
         .disabled(model.isUpdatingSettings)
         .accessibilityIdentifier("memory-sensitive-toggle")
     }
@@ -145,7 +128,7 @@ struct MemorySettingsView: View {
                     )
                     Spacer(minLength: 0)
                 }
-                .frame(minHeight: 48)
+                .frame(minHeight: SettingsMetrics.rowMinHeight)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

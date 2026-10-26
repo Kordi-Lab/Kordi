@@ -3,6 +3,7 @@ import { ChevronLeft } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { SettingsRow, SettingsSection, SettingsSwitch } from '@/kordi-app/components/settingsLayout';
+import { settingsType } from '@/kordi-app/components/settingsType';
 import { cn } from '@/lib/utils';
 
 import {
@@ -79,7 +80,7 @@ export function ConnectorDetailView({
         </Button>
         <span aria-hidden="true" className="h-4 w-px bg-[color:var(--app-divider)]" />
         <Icon aria-hidden="true" className="h-[18px] w-[18px] shrink-0 text-white" />
-        <h1 className="m-0 min-w-0 truncate text-[15px] font-semibold tracking-[-0.01em] text-white">{definition.name}</h1>
+        <h1 className={cn('m-0 min-w-0 truncate', settingsType.heading)}>{definition.name}</h1>
         <ConnectorBadge definition={definition} />
       </div>
 

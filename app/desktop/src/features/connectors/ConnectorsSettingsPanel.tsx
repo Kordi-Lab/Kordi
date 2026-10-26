@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLayout';
+import { settingsType } from '@/kordi-app/components/settingsType';
 
 import { ConnectorDetailView } from './ConnectorDetailView';
 import { ConnectorDialogs } from './ConnectorDialogs';
@@ -374,8 +375,9 @@ export function ConnectorsSettingsPanel({
               <ConnectorBadge definition={definition} />
             </span>
           )}
-          control={<span className="truncate text-[13px] font-normal text-slate-400">{value}</span>}
+          control={<span className={`truncate ${settingsType.value}`}>{value}</span>}
           chevron={available}
+          reserveChevron
           ariaLabel={available ? `${definition.name}, ${value}` : undefined}
           onClick={available ? () => openDetail(definition.providerId) : undefined}
         />

@@ -25,91 +25,86 @@ struct ProviderAuthenticationView: View {
         NavigationLink {
             ProviderAuthenticationDetailView(provider: provider)
         } label: {
-            ProviderAuthenticationRow(
-                provider: provider,
-                profiles: model.authenticationSnapshots(for: provider.id)
-            )
+            HStack(spacing: 10) {
+                ProviderAuthenticationRow(
+                    provider: provider,
+                    profiles: model.authenticationSnapshots(for: provider.id)
+                )
+                SettingsChevron()
+            }
+            .frame(minHeight: SettingsMetrics.rowMinHeight)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+    }
+
+    private var showsIndex: Bool {
+        providerSearch.isEmpty && indexLetters.count > 1
     }
 
     var body: some View {
         ScrollViewReader { index in
-          List {
-            Section {
-                HStack(spacing: 11) {
-                    Image(systemName: model.providerAuthProfiles.isEmpty ? "key" : "checkmark.shield.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(model.providerAuthProfiles.isEmpty ? Color.secondary : Color.green)
-                        .frame(width: 32, height: 32)
-                        .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(model.providerAuthProfiles.isEmpty ? "Add provider access" : "Authentication synced")
-                            .font(.body.weight(.semibold))
-                        Text(authenticationSummary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    summaryRow
+                    SettingsDivider()
+
+                    SettingsSectionTitle("Providers · \(visibleProviders.count)")
+                    SettingsSearchField("Search \(model.authenticationProviderDefinitions.count) providers", text: $providerSearch)
+
+                    if providerSearch.isEmpty && !connectedProviders.isEmpty {
+                        SettingsDivider()
+                        SettingsSectionTitle("Connected")
+                        ForEach(connectedProviders) { provider in
+                            providerLink(provider)
+                                .accessibilityIdentifier("connected-provider-\(provider.id)")
+                        }
                     }
-                }
-                .padding(.vertical, 2)
-            }
 
-            Section {
-                TextField("Search \(model.authenticationProviderDefinitions.count) providers", text: $providerSearch)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-            } header: {
-                Text("Providers · \(visibleProviders.count)")
-            }
-
-            if providerSearch.isEmpty && !connectedProviders.isEmpty {
-                Section("Connected") {
-                    ForEach(connectedProviders) { provider in
-                        providerLink(provider)
-                            .accessibilityIdentifier("connected-provider-\(provider.id)")
+                    ForEach(indexLetters, id: \.self) { letter in
+                        VStack(alignment: .leading, spacing: 0) {
+                            SettingsDivider()
+                            SettingsSectionTitle(letter)
+                            ForEach(visibleProviders.filter { $0.name.uppercased().hasPrefix(letter) }) { provider in
+                                providerLink(provider)
+                            }
+                        }
+                        .id(letter)
                     }
-                }
-            }
 
-            ForEach(indexLetters, id: \.self) { letter in
-                Section(letter) {
-                    ForEach(visibleProviders.filter { $0.name.uppercased().hasPrefix(letter) }) { provider in
-                        providerLink(provider)
+                    if let error = model.providerAuthenticationErrorMessage.nonEmpty {
+                        SettingsDivider()
+                        AuthenticationErrorRow(error: error) {
+                            Task { await model.refreshProviderAuthentication() }
+                        }
                     }
-                }
-                .id(letter)
-            }
 
-            if let error = model.providerAuthenticationErrorMessage.nonEmpty {
-                Section {
-                    AuthenticationErrorRow(error: error) {
-                        Task { await model.refreshProviderAuthentication() }
+                    SettingsDivider()
+                    SettingsCaption("Saved provider accounts are encrypted in Kordi Cloud. Choose a specific account for each agent session. Local-model access stays on your Mac.")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(SettingsMetrics.pageInsets)
+                // Keep the chevrons clear of the letter index.
+                .padding(.trailing, showsIndex ? Self.indexWidth : 0)
+            }
+            .background(Color(uiColor: .systemBackground))
+            .overlay(alignment: .trailing) {
+                if showsIndex {
+                    VStack(spacing: 0) {
+                        ForEach(indexLetters, id: \.self) { letter in
+                            Button(letter) {
+                                withAnimation(.easeOut(duration: 0.2)) { index.scrollTo(letter, anchor: .top) }
+                            }
+                            .font(.system(size: 10, weight: .semibold))
+                            .frame(width: 24, height: 17)
+                            .accessibilityLabel("Jump to \(letter) providers")
+                        }
                     }
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.trailing, 2)
                 }
             }
-
-            Section {} footer: {
-                Text("Saved provider accounts are encrypted in Kordi Cloud. Choose a specific account for each agent session. Local-model access stays on your Mac.")
-            }
-          }
-          .overlay(alignment: .trailing) {
-              if providerSearch.isEmpty && indexLetters.count > 1 {
-                  VStack(spacing: 0) {
-                      ForEach(indexLetters, id: \.self) { letter in
-                          Button(letter) {
-                              withAnimation(.easeOut(duration: 0.2)) { index.scrollTo(letter, anchor: .top) }
-                          }
-                          .font(.system(size: 10, weight: .semibold))
-                          .frame(width: 24, height: 17)
-                          .accessibilityLabel("Jump to \(letter) providers")
-                      }
-                  }
-                  .background(.regularMaterial, in: Capsule())
-                  .padding(.trailing, 2)
-              }
-          }
         }
-        .listStyle(.insetGrouped)
-        .environment(\.defaultMinListRowHeight, 44)
         .navigationTitle("Authentication")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -145,6 +140,29 @@ struct ProviderAuthenticationView: View {
         }
     }
 
+    /// Room the letter index takes at the trailing edge, beyond the page inset.
+    private static let indexWidth: CGFloat = 12
+
+    private var summaryRow: some View {
+        HStack(spacing: SettingsMetrics.iconSpacing) {
+            Image(systemName: model.providerAuthProfiles.isEmpty ? "key" : "checkmark.shield")
+                .font(.body)
+                .foregroundStyle(model.providerAuthProfiles.isEmpty ? Color.primary : Color.green)
+                .frame(width: SettingsMetrics.iconWidth)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.providerAuthProfiles.isEmpty ? "Add provider access" : "Authentication synced")
+                    .font(SettingsFont.rowTitle)
+                Text(authenticationSummary)
+                    .font(SettingsFont.subtitle)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 5)
+        .frame(minHeight: SettingsMetrics.rowMinHeight)
+        .accessibilityElement(children: .combine)
+    }
+
     private var authenticationSummary: String {
         let count = model.providerAuthProfiles.count
         return count == 0 ? "Choose a provider below to connect it." : "\(count) saved \(count == 1 ? "account" : "accounts") available across Kordi."
@@ -156,13 +174,14 @@ struct ProviderAuthenticationRow: View {
     let profiles: [CloudProviderAuthSnapshot]
 
     var body: some View {
-        HStack(spacing: 11) {
-            ProviderAuthenticationIcon(provider: provider, size: 34)
+        HStack(spacing: SettingsMetrics.iconSpacing) {
+            ProviderAuthenticationIcon(provider: provider)
             VStack(alignment: .leading, spacing: 2) {
                 Text(provider.shortName)
-                    .font(.body.weight(.medium))
+                    .font(SettingsFont.rowTitle)
+                    .foregroundStyle(.primary)
                 Text(profiles.isEmpty ? catalogSubtitle : savedAccessLabel)
-                    .font(.caption)
+                    .font(SettingsFont.subtitle)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -174,7 +193,7 @@ struct ProviderAuthenticationRow: View {
                     .accessibilityLabel("Connected")
             }
         }
-        .padding(.vertical, 1)
+        .padding(.vertical, 5)
     }
 
     /// The parenthetical from OMP's name, then the sign-in methods and model count.
@@ -190,16 +209,17 @@ struct ProviderAuthenticationRow: View {
     }
 }
 
+/// The provider's symbol in its colour, without a badge: in the row icon
+/// column by default, or larger beside a screen's header.
 struct ProviderAuthenticationIcon: View {
     let provider: ProviderAuthenticationDefinition
-    let size: CGFloat
+    var size: CGFloat = SettingsMetrics.iconWidth
 
     var body: some View {
         Image(systemName: provider.systemImage)
-            .font(.body.weight(.semibold))
+            .font(size > SettingsMetrics.iconWidth ? .system(size: size * 0.7) : .body)
             .foregroundStyle(tint)
             .frame(width: size, height: size)
-            .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
             .accessibilityHidden(true)
     }
 
@@ -222,21 +242,13 @@ struct AuthenticationErrorRow: View {
     let retry: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.circle.fill")
-                .foregroundStyle(.red)
-                .padding(.top, 2)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(error)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                Button("Try again", action: retry)
-                    .font(.subheadline.weight(.semibold))
-                    .frame(minHeight: 32)
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsErrorLabel(error)
+            Button("Try again", action: retry)
+                .font(SettingsFont.action)
+                .buttonStyle(.borderless)
+                .frame(minHeight: SettingsMetrics.textRowMinHeight)
         }
-        .padding(.vertical, 2)
         .accessibilityElement(children: .contain)
     }
 }

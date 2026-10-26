@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Check, KeyRound, Laptop, Monitor, ShieldAlert, Smartphone, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { settingsType } from '@/kordi-app/components/settingsType';
 import { cn } from '@/lib/utils';
 
 import type { CloudDeviceAuthorization } from './cloudDeviceClient';
@@ -39,7 +40,7 @@ export function MetaLine({ parts, online = false }: { parts: Array<string | null
   const text = parts.filter((part): part is string => Boolean(part));
   if (!online && text.length === 0) return null;
   return (
-    <p className="m-0 mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] leading-4 text-slate-400">
+    <p className={cn('m-0 mt-0.5 flex flex-wrap items-center gap-x-1.5', settingsType.description)}>
       {text.map((part, index) => (
         <span key={`${index}-${part}`} className="contents">
           {index > 0 ? <span aria-hidden="true">·</span> : null}
@@ -58,7 +59,7 @@ export function MetaLine({ parts, online = false }: { parts: Array<string | null
 
 function Badge({ tone, children }: { tone: 'amber'; children: string }) {
   return (
-    <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', tone === 'amber' && 'bg-amber-400/10 text-amber-100')}>
+    <span className={cn('rounded-full px-2 py-0.5', settingsType.badge, tone === 'amber' && 'bg-amber-400/10 text-amber-100')}>
       {children}
     </span>
   );
@@ -109,12 +110,12 @@ export function CurrentDeviceCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <h3 className="m-0 truncate text-[13px] font-medium text-white">{title}</h3>
+            <h3 className={cn('m-0 truncate', settingsType.rowTitle)}>{title}</h3>
             {pending ? <WaitingForApprovalBadge /> : null}
           </div>
-          {details ? <p className="m-0 mt-1 text-[11px] leading-4 text-slate-400">{details}</p> : null}
+          {details ? <p className={cn('m-0 mt-0.5', settingsType.description)}>{details}</p> : null}
           {pending ? (
-            note ? <p className="m-0 mt-1 text-[11px] leading-4 text-slate-400">{note}</p> : null
+            note ? <p className={cn('m-0 mt-0.5', settingsType.description)}>{note}</p> : null
           ) : (
             <MetaLine parts={[device.approximateLocation]} online />
           )}
@@ -149,7 +150,7 @@ export function DeviceRow({
       </IconCircle>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="truncate text-[13px] font-medium text-white">{title}</span>
+          <span className={cn('truncate', settingsType.rowTitle)}>{title}</span>
           {pending ? <NeedsReviewBadge /> : null}
         </div>
         <MetaLine
@@ -164,7 +165,7 @@ export function DeviceRow({
       {actionsHidden ? null : (
         <div className="flex shrink-0 items-center gap-1">
           {pending ? (
-            <Button variant="secondary" className="h-7 rounded-full px-2.5 text-[11px]" disabled={busy} onClick={onConfirm}>
+            <Button variant="secondary" className="h-7 rounded-full px-2.5 text-[12px]" disabled={busy} onClick={onConfirm}>
               <Check className="h-3.5 w-3.5" aria-hidden="true" />
               This was me
             </Button>
