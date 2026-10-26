@@ -11,6 +11,7 @@ export function useNativeViewport() {
     const unlisten: (() => void)[] = [];
     let nativeScale = window.devicePixelRatio || 1;
     let hasScaleEvent = false;
+    let measurementRevision = 0;
     let latestPhysicalSize: { width: number; height: number } | undefined;
     let clientWidth = window.innerWidth * readAppliedInterfaceZoom();
     let clientHeight = window.innerHeight * readAppliedInterfaceZoom();
@@ -23,6 +24,7 @@ export function useNativeViewport() {
       style.setProperty('--app-native-height', `${height}px`);
     };
     const applyPhysicalSize = (size: { width: number; height: number }) => {
+      measurementRevision++;
       latestPhysicalSize = size;
       clientWidth = size.width / nativeScale;
       clientHeight = size.height / nativeScale;
@@ -51,12 +53,18 @@ export function useNativeViewport() {
       // Resize and monitor changes may arrive while the initial query is pending.
       if (!hasScaleEvent) nativeScale = scale;
       applyPhysicalSize(latestPhysicalSize ?? size);
-      // macOS reports the web view frame as the inner size. Reattaching the
-      // web view after a gate transition emits no native resize event, so
-      // re-read the size only when the native side reports that change.
-      unlisten.push(subscribeAuthWindowCrop(() => {
-        void nativeWindow.innerSize().then(next => { if (!disposed) applyPhysicalSize(next); }).catch(() => undefined);
-      }));
+      // Docking the inspector or reattaching the webview changes its frame
+      // without resizing the native window. Re-query native dimensions on
+      // webview resize; browser viewport metrics can lag behind native events.
+      const refreshSize = () => {
+        const revision = ++measurementRevision;
+        void nativeWindow.innerSize().then(next => {
+          if (!disposed && revision === measurementRevision) applyPhysicalSize(next);
+        }).catch(() => undefined);
+      };
+      window.addEventListener('resize', refreshSize);
+      unlisten.push(() => window.removeEventListener('resize', refreshSize));
+      unlisten.push(subscribeAuthWindowCrop(refreshSize));
     }).catch(() => undefined);
     return () => {
       disposed = true;
