@@ -4,6 +4,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
+test('source OMP worker handles messages queued before browser initialization', () => {
+  const worker = spawnSync(process.execPath, ['run', 'src/worker.ts', '__kordi_smoke_eval'], {
+    cwd: import.meta.dir + '/..', encoding: 'utf8', timeout: 30_000,
+    env: { PATH: process.env.PATH ?? '/usr/bin:/bin', NODE_ENV: 'production', TMPDIR: tmpdir() },
+  });
+  if (worker.status !== 0) throw new Error(`Source worker startup failed: ${worker.stderr || worker.stdout}`);
+  expect(worker.status).toBe(0);
+  expect(worker.stdout.trim()).toBe('eval-result-2;computer-capabilities-ready;browser-worker-closed');
+}, 35_000);
+
 test('compiled OMP worker boots with the packaged version-matched native addon', () => {
   const triple = spawnSync('rustc', ['-vV'], { encoding: 'utf8' }).stdout.match(/^host: (.+)$/m)?.[1];
   if (!triple) throw new Error('Rust host target is required for the packaging smoke test.');
