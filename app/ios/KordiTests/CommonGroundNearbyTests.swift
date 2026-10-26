@@ -331,6 +331,8 @@ final class CommonGroundNearbyTests: XCTestCase {
         XCTAssertEqual(S.resolve(pausedUntil: nil, access: .always, precise: false, backgroundAlerts: true, refreshAvailable: true, stale: false, updated: now, now: now), .imprecise)
         XCTAssertEqual(S.updatedLine(now.addingTimeInterval(-150), now: now), "Updated 2 min ago · Works in the background")
         XCTAssertEqual(S.updatedLine(now.addingTimeInterval(-20), now: now), "Updated just now · Works in the background")
+        XCTAssertEqual(S.updatedLine(now.addingTimeInterval(-20), now: now, background: false),
+                       "Updated just now · Only while Kordi is open")
     }
 
     func testManualLocationUpdateExplainsWhenNearbyIsOff() {
@@ -341,6 +343,25 @@ final class CommonGroundNearbyTests: XCTestCase {
         locator.updateNow()
         XCTAssertFalse(locator.updatingNow)
         XCTAssertEqual(locator.locationError, "Turn on Nearby before updating your location.")
+    }
+
+    func testManualUpdateImmediatelyAfterSuccessIsNotAnError() {
+        let name = "nearby-recent-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        var state = CommonGroundNearbyDeviceState(accountId: "test-account", enabled: true,
+                                                  backgroundAlerts: false, lastAccess: .whenInUse)
+        state.lastPostAt = Date()
+        CommonGroundNearbyDeviceState.save(state, to: defaults)
+        let locator = CommonGroundNearbyLocator(defaults: defaults)
+        let manager = NearbyLocationRequestRecorder()
+        locator.manager = manager
+        locator.accessChanged()
+        locator.updateNow()
+        XCTAssertFalse(locator.updatingNow)
+        XCTAssertNil(locator.locationError)
+        XCTAssertEqual(locator.locationNotice, "Location is already up to date.")
+        XCTAssertTrue(manager.events.isEmpty, "A fresh accepted fix does not need another GPS request.")
     }
 
     func testManualFixStopsContinuousUpdatesBeforeRequesting() async {
@@ -457,6 +478,9 @@ final class CommonGroundNearbyTests: XCTestCase {
 
 private final class NearbyLocationRequestRecorder: CLLocationManager {
     var events: [String] = []
+    override var authorizationStatus: CLAuthorizationStatus { .authorizedWhenInUse }
+    override var accuracyAuthorization: CLAccuracyAuthorization { .fullAccuracy }
+    override func stopMonitoringSignificantLocationChanges() {}
     override func stopUpdatingLocation() { events.append("stop") }
     override func requestLocation() { events.append("request") }
 }

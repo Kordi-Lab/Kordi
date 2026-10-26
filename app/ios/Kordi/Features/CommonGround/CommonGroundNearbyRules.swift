@@ -219,11 +219,12 @@ enum CommonGroundNearbyStatus: Equatable {
     }
 
     /// "Updated 2 min ago · Works in the background".
-    static func updatedLine(_ updated: Date?, now: Date) -> String {
-        guard let updated else { return "Works in the background" }
+    static func updatedLine(_ updated: Date?, now: Date, background: Bool = true) -> String {
+        let mode = background ? "Works in the background" : "Only while Kordi is open"
+        guard let updated else { return mode }
         let minutes = Int(max(0, now.timeIntervalSince(updated)) / 60)
         let ago = minutes < 1 ? "Updated just now" : "Updated \(minutes) min ago"
-        return "\(ago) · Works in the background"
+        return "\(ago) · \(mode)"
     }
 
     /// "Paused until 3:00 PM", "Paused until tomorrow, 8:00 AM".

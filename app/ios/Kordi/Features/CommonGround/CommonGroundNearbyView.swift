@@ -97,10 +97,10 @@ struct CommonGroundNearbyView: View {
                 TimelineView(.periodic(from: .now, by: 30)) { context in
                     statusLine(status(settings, now: context.date), now: context.date)
                 }
-                if let error = locator.locationError {
-                    Text(error).font(.footnote).foregroundStyle(.secondary)
+                if let message = locator.locationError ?? locator.locationNotice {
+                    Text(message).font(.footnote).foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                        .accessibilityLabel("Location update: \(error)")
+                        .accessibilityLabel("Location update: \(message)")
                 }
             }
             .padding(.horizontal, 16)
@@ -167,10 +167,13 @@ struct CommonGroundNearbyView: View {
                 statusText("Location is out of date", link: "Update") { locator.updateNow() }
             case .foregroundOnly:
                 VStack(spacing: 4) {
+                    let line = CommonGroundNearbyStatus.updatedLine(
+                        locator.lastReply?.captured ?? settings?.location?.captured, now: now, background: false
+                    )
                     if locator.access == .always && locator.refreshAvailable {
-                        statusText("Only while Kordi is open")
+                        statusText(line)
                     } else {
-                        statusText("Only while Kordi is open", link: "Settings", action: openSettings)
+                        statusText(line, link: "Settings", action: openSettings)
                     }
                     Button("Update location") { locator.updateNow() }
                         .font(.footnote.weight(.semibold))

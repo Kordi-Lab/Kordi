@@ -32,6 +32,7 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
     @Published private(set) var posting = false
     @Published private(set) var updatingNow = false
     @Published private(set) var locationError: String?
+    @Published private(set) var locationNotice: String?
 
     let defaults: UserDefaults
     let api: CloudAPIClient
@@ -194,8 +195,13 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
     func updateNow() {
         guard !updatingNow, !posting else { return }
         locationError = nil
+        locationNotice = nil
         guard state?.enabled == true else {
             locationError = "Turn on Nearby before updating your location."
+            return
+        }
+        if access.granted, precise, hasRecentPost {
+            locationNotice = "Location is already up to date."
             return
         }
         updatingNow = true
@@ -214,10 +220,20 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
             guard generation == locationGeneration, foreground else { return }
             forceNext = true
             if !(await consider(fix)), locationError == nil {
-                locationError = "Could not update your location. Try again in a minute."
+                if hasRecentPost {
+                    locationNotice = "Location is already up to date."
+                } else {
+                    locationError = "Could not update your location. Try again in a minute."
+                }
             }
             forceNext = false
         }
+    }
+
+    private var hasRecentPost: Bool {
+        guard let posted = state?.lastPostAt else { return false }
+        let elapsed = Date().timeIntervalSince(posted)
+        return elapsed >= 0 && elapsed < CommonGroundNearbyPostRule.minInterval
     }
 
     /// One fix and a post when the rules allow it, for Home's Nearby row.
@@ -282,6 +298,7 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
             state?.lastLongitude = location.coordinate.longitude
             lastReply = reply.location
             locationError = nil
+            locationNotice = updatingNow ? "Location updated." : nil
             postCount += 1
             if backgroundAllowed { placeRegion(around: location.coordinate) }
             return true
