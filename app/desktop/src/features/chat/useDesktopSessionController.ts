@@ -132,6 +132,8 @@ export function useDesktopSessionController({
       isLegacyCanonicalCollaborationSessionId(sessionId)
       || isCanonicalCloudSessionId(sessionId)
     ) {
+      // Route immediately; cloud loading must never leave another channel's composer visible.
+      setActiveConvId(sessionId);
       setDesktopChatError(null);
       try {
         await Promise.all([hydrateCanonicalSessionPage(sessionId), prepareCloudSessionPin?.(sessionId).catch(() => {})]);
@@ -139,7 +141,6 @@ export function useDesktopSessionController({
         if (selectionRequestIdRef.current !== requestId) return;
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to open chat session');
       }
-      if (selectionRequestIdRef.current === requestId) setActiveConvId(sessionId);
       return;
     }
 
@@ -148,10 +149,9 @@ export function useDesktopSessionController({
       || sessionId.startsWith('bridge:')
       || isCloudCollaborationConversationId(sessionId)
     ) {
-      await prepareCloudSessionPin?.(sessionId).catch(() => {});
-      if (selectionRequestIdRef.current !== requestId) return;
       setActiveConvId(sessionId);
       setDesktopChatError(null);
+      await prepareCloudSessionPin?.(sessionId).catch(() => {});
       return;
     }
 
