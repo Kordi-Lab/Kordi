@@ -3,6 +3,7 @@ import SwiftUI
 private enum CommonGroundMatchTab: String, CaseIterable, Identifiable {
     case shared = "Shared"
     case trade = "Trade"
+    case card = "Card"
     var id: Self { self }
 }
 
@@ -43,6 +44,7 @@ private struct CommonGroundMatchContent: View {
     @EnvironmentObject private var model: CommonGroundModel
     let match: CommonGroundMatch
     @State private var tab = CommonGroundMatchTab.shared
+    @State private var loadingCard = false
 
     var body: some View {
         let person = match.person
@@ -60,6 +62,20 @@ private struct CommonGroundMatchContent: View {
                 .pickerStyle(.segmented)
 
                 switch tab {
+                case .card:
+                    if let card = model.people[person.accountId] {
+                        CommonGroundSharedCardDetails(person: card.person, topics: card.card)
+                    } else if loadingCard {
+                        ProgressView("Loading card").padding(16)
+                    } else {
+                        CommonGroundSection {
+                            VStack(spacing: 12) {
+                                Text("Card details are not available yet.").foregroundStyle(.secondary)
+                                Button("Reload card") { Task { await loadCard() } }
+                            }
+                            .padding(16)
+                        }
+                    }
                 case .shared:
                     CommonGroundSection {
                         if match.shared.isEmpty {
@@ -83,13 +99,24 @@ private struct CommonGroundMatchContent: View {
                         }
                     }
                 }
-                if let next = match.nextStep, !next.isEmpty {
+                if tab != .card, let next = match.nextStep, !next.isEmpty {
                     CommonGroundSection(title: "Next step") { row(next, nil) }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.top, 6)
         }
+        .task(id: tab) {
+            if tab == .card, model.people[person.accountId] == nil {
+                await loadCard()
+            }
+        }
+    }
+
+    private func loadCard() async {
+        loadingCard = true
+        defer { loadingCard = false }
+        await model.loadPerson(match.person.accountId)
     }
 
     private func tradeSection(_ title: String, _ items: [CommonGroundTrade]) -> some View {
@@ -136,15 +163,7 @@ struct CommonGroundPersonView: View {
                 CommonGroundPersonActions(person: person)
             }
             VStack(spacing: 16) {
-                if let topics = card?.card {
-                    ForEach(CommonGroundTopics.sections.indices, id: \.self) { index in
-                        let section = CommonGroundTopics.sections[index]
-                        let items = topics[keyPath: section.key]
-                        if !items.isEmpty {
-                            CommonGroundSection(title: section.title) { CommonGroundTagCloud(topics: items) }
-                        }
-                    }
-                }
+                CommonGroundSharedCardDetails(person: person, topics: card?.card)
                 Button("Find common ground") { path.append(.match(personID)) }
                     .buttonStyle(CommonGroundPrimaryButtonStyle())
                     .padding(.horizontal, 4)
@@ -153,5 +172,42 @@ struct CommonGroundPersonView: View {
             .padding(.horizontal, 16)
         }
         .task { if card == nil { await model.loadPerson(personID) } }
+    }
+}
+
+/// Only information in the person's shared card, preserving its visual
+/// identity and showing every shared topic rather than just match reasons.
+struct CommonGroundSharedCardDetails: View {
+    let person: CommonGroundPerson
+    let topics: CommonGroundTopics?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let profile = person.profile {
+                GeometryReader { geometry in
+                    ProfileCardView(design: profile.cardDesign, icon: profile.cardIcon,
+                                    kindDesign: profile.kindDesign, name: profile.title,
+                                    bottom: .topics(topics?.interests ?? []), width: geometry.size.width)
+                }
+                .aspectRatio(1 / ProfileCardView.aspect, contentMode: .fit)
+                if let focus = profile.focus?.trimmingCharacters(in: .whitespacesAndNewlines), !focus.isEmpty {
+                    Text(focus).font(.body).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if let topics {
+                ForEach(CommonGroundTopics.sections.indices, id: \.self) { index in
+                    let section = CommonGroundTopics.sections[index]
+                    let items = topics[keyPath: section.key]
+                    if !items.isEmpty {
+                        CommonGroundSection(title: section.title) { CommonGroundTagCloud(topics: items) }
+                    }
+                }
+                if CommonGroundTopics.sections.allSatisfy({ topics[keyPath: $0.key].isEmpty }) {
+                    Text("No topics shared yet.").font(.subheadline).foregroundStyle(.secondary)
+                }
+            } else {
+                Text("Card details are not available yet.").font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
     }
 }

@@ -40,19 +40,8 @@ struct CommonGroundResultsView: View {
     var body: some View {
         let topics = results?.topics ?? []
         CommonGroundPage(onBack: { path = [] }) {
-            CommonGroundHero(title: model.roomTitle(code), status: status(topics: topics.count)) {
-                CommonGroundStack(people: [model.me] + members, size: 92)
-            } actions: {
-                if !closed {
-                    CommonGroundActions(columns: 2) {
-                        ShareLink(item: code) {
-                            SessionProfileActionLabel(title: "Share code", symbol: "square.and.arrow.up", tint: chatTheme.accent, isSelected: false)
-                        }
-                        .buttonStyle(.plain)
-                        SessionProfileActionButton(title: "Leave", symbol: "rectangle.portrait.and.arrow.right", tint: chatTheme.accent, action: leave)
-                    }
-                }
-            }
+            CommonGroundRoomHeader(title: model.roomTitle(code), status: status(topics: topics.count),
+                                   code: code, people: [model.me] + members, closed: closed, leave: leave)
 
             VStack(spacing: 16) {
                 CommonGroundSharingRow(code: code)

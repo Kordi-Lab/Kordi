@@ -8,6 +8,7 @@ struct CommonGroundNearbyPersonView: View {
     private enum Tab: String, CaseIterable, Identifiable {
         case shared = "Shared"
         case trade = "Trade"
+        case card = "Card"
         var id: Self { self }
     }
 
@@ -144,6 +145,8 @@ struct CommonGroundNearbyPersonView: View {
     @ViewBuilder
     private func match(_ detail: CommonGroundNearbyPersonDetail, name: String) -> some View {
         switch tab {
+        case .card:
+            CommonGroundSharedCardDetails(person: detail.entry.person, topics: detail.card)
         case .shared:
             CommonGroundSection {
                 if detail.shared.isEmpty { row("No clear overlap yet", nil) }
@@ -161,7 +164,7 @@ struct CommonGroundNearbyPersonView: View {
                 if !detail.theyBring.isEmpty { trades("\(name) brings", detail.theyBring) }
             }
         }
-        if let next = detail.nextStep, !next.isEmpty {
+        if tab != .card, let next = detail.nextStep, !next.isEmpty {
             CommonGroundSection(title: "Next step") { row(next, nil) }
         }
     }
