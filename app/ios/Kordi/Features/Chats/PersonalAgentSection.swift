@@ -87,8 +87,8 @@ struct PersonalAgentSection: View {
 }
 
 struct PersonalAgentRow: View {
-    static let avatarSize: CGFloat = 52
-    static let separatorLeading: CGFloat = 16 + avatarSize + 12
+    static let avatarSize: CGFloat = 36
+    static let separatorLeading: CGFloat = 16 + avatarSize + 10
 
     @Environment(\.kordiChatTheme) private var chatTheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -96,9 +96,9 @@ struct PersonalAgentRow: View {
     var isMuted = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 10) {
             PersonalAgentAvatar(conversation: conversation, size: Self.avatarSize)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(PersonalAgentSessionCatalog.name(of: conversation))
                         .font(.headline)
@@ -108,16 +108,16 @@ struct PersonalAgentRow: View {
                     ChatListStateIndicators(isPinned: false, isMuted: isMuted)
                     Spacer(minLength: 8)
                     Text(chatListTimestamp(conversation.lastActivityAt))
-                        .font(.footnote)
+                        .font(.caption)
                         .foregroundStyle(conversation.hasUnreadAttention && !isMuted ? chatTheme.accent : .secondary)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                 }
-                HStack(alignment: .top, spacing: 8) {
+                HStack(alignment: .center, spacing: 8) {
                     BlobEmojiPreviewText(text: PersonalAgentSessionCatalog.preview(of: conversation))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     ConversationAttentionBadge(
                         unreadCount: conversation.unreadCount,
@@ -127,8 +127,8 @@ struct PersonalAgentRow: View {
                 }
             }
         }
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, minHeight: Self.avatarSize + 16, alignment: .leading)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 46, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
