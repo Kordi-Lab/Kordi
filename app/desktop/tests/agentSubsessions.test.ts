@@ -10,8 +10,10 @@ import type { CloudAgentSubsession } from '../src/features/cloud/agentSubsession
 
 test('iOS keeps the native child-chat navigation and the existing ConversationView', () => {
   const navigation = readFileSync(new URL('../../ios/Kordi/Features/Conversation/ConversationView.swift', import.meta.url), 'utf8');
+  const stableNavigation = readFileSync(new URL('../../ios/Kordi/App/StableNavigationDestination.swift', import.meta.url), 'utf8');
   const destination = readFileSync(new URL('../../ios/Kordi/Features/Conversation/AgentSubsessionView.swift', import.meta.url), 'utf8');
-  assert.match(navigation, /\.navigationDestination\(item: \$selectedBackgroundSession\)/);
+  assert.match(navigation, /\.stableNavigationDestination\(item: \$selectedBackgroundSession\)/);
+  assert.match(stableNavigation, /\.navigationDestination\(item: item, destination: destination\)/);
   assert.match(destination, /ConversationView\(conversation: snapshot\.conversation/);
   assert.doesNotMatch(destination, /MarkdownMessageContent|\.sheet\(|\.fullScreenCover\(/);
 });
