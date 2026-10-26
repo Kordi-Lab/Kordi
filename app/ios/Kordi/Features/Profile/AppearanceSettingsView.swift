@@ -58,7 +58,7 @@ struct AppearanceSettingsView: View {
                 SettingsSectionTitle("Chat theme")
                 Spacer(minLength: 8)
                 Text(selectedChatTheme.label)
-                    .font(.footnote)
+                    .font(SettingsFont.subtitle)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .accessibilityHidden(true)
@@ -272,7 +272,7 @@ private struct AppearanceOptionCard<Preview: View>: View {
                         }
                     }
                 Text(title)
-                    .font(.caption.weight(isSelected ? .semibold : .regular))
+                    .font(SettingsFont.subtitle.weight(isSelected ? .semibold : .regular))
                     .foregroundStyle(isSelected ? .primary : .secondary)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)

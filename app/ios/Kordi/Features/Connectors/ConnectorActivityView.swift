@@ -54,20 +54,20 @@ private struct ConnectorAuditRow: View {
                 Spacer(minLength: 4)
                 Text(entry.group == .act ? "Act" : "Read")
             }
-            .font(.caption)
+            .font(SettingsFont.subtitle)
             .foregroundStyle(.secondary)
             HStack(spacing: 6) {
                 Text(entry.tool)
-                    .font(.caption.monospaced())
+                    .font(SettingsFont.subtitle.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(entry.outcome.label)
-                    .font(.caption)
+                    .font(SettingsFont.subtitle)
                     .foregroundStyle(entry.outcome == .denied || entry.outcome == .blockedBackground || entry.outcome == .failed ? Color.red : Color.secondary)
             }
             Text(entry.summary)
-                .font(.subheadline)
+                .font(SettingsFont.rowTitle)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

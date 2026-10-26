@@ -3,6 +3,8 @@ import { ChevronDown, ChevronRight, Search, type LucideIcon } from 'lucide-react
 
 import { cn } from '@/lib/utils';
 
+import { settingsType } from './settingsType';
+
 // Shared settings layout: a heading followed by rows separated by thin
 // dividers. Each row has a title, an optional one-line description, and one
 // control on the right. Every settings surface uses these so they read alike.
@@ -31,14 +33,12 @@ export function SettingsSection({ title, ariaLabel, description, size = 'default
       {title ? (
         <h2
           id={headingId}
-          className={size === 'compact'
-            ? 'm-0 pb-1 text-[12px] font-medium text-slate-500'
-            : 'm-0 pb-2 text-[15px] font-semibold tracking-[-0.01em] text-white'}
+          className={size === 'compact' ? cn('m-0 pb-1', settingsType.label) : cn('m-0 pb-2', settingsType.heading)}
         >
           {title}
         </h2>
       ) : null}
-      {description ? <p className="m-0 pb-2 text-[12px] leading-5 text-slate-400">{description}</p> : null}
+      {description ? <p className={cn('m-0 pb-2', settingsType.description)}>{description}</p> : null}
       <div className="app-settings-rows divide-y divide-[color:var(--app-divider)]">{children}</div>
     </section>
   );
@@ -53,6 +53,8 @@ type SettingsRowProps = {
   /** Makes the whole row a button, for navigation rows. */
   onClick?: () => void;
   chevron?: boolean;
+  /** Keeps the chevron's width empty, so values line up with chevron rows in the same list. */
+  reserveChevron?: boolean;
   /** Content revealed under the row, such as an inline sign-in flow. */
   children?: ReactNode;
   className?: string;
@@ -61,18 +63,19 @@ type SettingsRowProps = {
   ariaLive?: 'polite';
 };
 
-export function SettingsRow({ title, description, control, icon, onClick, chevron, children, className, role, ariaLabel, ariaLive }: SettingsRowProps) {
+export function SettingsRow({ title, description, control, icon, onClick, chevron, reserveChevron, children, className, role, ariaLabel, ariaLive }: SettingsRowProps) {
   // Buttons may only hold phrasing content, so button rows use spans.
   const Text = onClick ? 'span' : 'div';
   const body = (
     <>
       {icon ? <span className="grid h-8 w-8 shrink-0 place-items-center">{icon}</span> : null}
       <Text className="min-w-0 flex-1">
-        <Text className="block text-[13px] font-medium leading-5 text-white">{title}</Text>
-        {description ? <Text data-settings-row-description="" className="mt-0.5 block text-[12px] leading-5 text-slate-400">{description}</Text> : null}
+        <Text className={cn('block', settingsType.rowTitle)}>{title}</Text>
+        {description ? <Text data-settings-row-description="" className={cn('mt-0.5 block', settingsType.description)}>{description}</Text> : null}
       </Text>
       {control ? <Text className="flex max-w-[60%] shrink-0 flex-wrap items-center justify-end gap-2">{control}</Text> : null}
-      {chevron ? <ChevronRight aria-hidden="true" className="app-settings-row-chevron h-3.5 w-3.5 shrink-0 text-slate-500" /> : null}
+      {chevron ? <ChevronRight aria-hidden="true" className="app-settings-row-chevron h-3.5 w-3.5 shrink-0 text-slate-500" />
+        : reserveChevron ? <Text aria-hidden="true" className="w-3.5 shrink-0" /> : null}
     </>
   );
 
@@ -186,7 +189,7 @@ export function SettingsNav<T extends string>({ groups, activeId, onSelect, clas
       </label>
       {visibleGroups.map((group) => (
         <div key={group.label} className="pt-5">
-          <div className="px-2.5 pb-1.5 text-[12px] font-medium text-slate-500">{group.label}</div>
+          <div className={cn('px-2.5 pb-1.5', settingsType.label)}>{group.label}</div>
           <div className="grid gap-0.5">
             {group.items.map((item) => {
               const Icon = item.icon;

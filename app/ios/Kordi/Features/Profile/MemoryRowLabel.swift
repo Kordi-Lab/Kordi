@@ -27,21 +27,21 @@ struct MemoryRowLabel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(text)
-                .font(.subheadline)
+                .font(SettingsFont.rowTitle)
                 .foregroundStyle(.primary)
                 .lineLimit(3)
                 .truncationMode(.tail)
                 .multilineTextAlignment(.leading)
             HStack(spacing: 6) {
                 if !detail.isEmpty {
-                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                    Text(detail).font(SettingsFont.subtitle).foregroundStyle(.secondary)
                 }
                 if let label = MemoryPresentation.categoryLabel(for: category) {
                     MemoryCategoryTag(label: label)
                 }
             }
             ForEach(captions, id: \.self) { caption in
-                Text(caption).font(.caption).foregroundStyle(.secondary)
+                Text(caption).font(SettingsFont.subtitle).foregroundStyle(.secondary)
             }
         }
         .fixedSize(horizontal: false, vertical: true)
