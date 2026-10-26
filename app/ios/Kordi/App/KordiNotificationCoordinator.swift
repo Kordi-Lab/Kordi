@@ -297,6 +297,10 @@ final class KordiNotificationCoordinator: ObservableObject {
         if notification.request.content.categoryIdentifier == "KORDI_CALENDAR" {
             return notification.request.content.userInfo["accountId"] as? String == model?.account?.accountId ? [.banner, .sound] : []
         }
+        if let alert = CommonGroundNearbyAlertPayload(notification.request.content.userInfo) {
+            guard alert.accountID == model?.account?.accountId else { return [] }
+            return soundEnabled ? [.banner, .list, .sound] : [.banner, .list]
+        }
         guard let payload = KordiMessageNotificationPayload(notification.request.content.userInfo) else {
             return [.banner, .sound, .badge]
         }
@@ -342,6 +346,13 @@ final class KordiNotificationCoordinator: ObservableObject {
     func consumeCalendarRoute() { pendingCalendarEventID = nil }
 
     private func routePendingNotificationIfPossible() {
+        // A Nearby alert opens Grounding, then the nearby person.
+        if let payload = pendingNotificationPayload, let alert = CommonGroundNearbyAlertPayload(payload),
+           alert.accountID == model?.account?.accountId {
+            pendingNotificationPayload = nil
+            CommonGroundNearbyAlertInbox.shared.accountId = alert.otherAccountID
+            return
+        }
         if let payload = pendingNotificationPayload,
            let eventID = payload["calendarEventId"] as? String,
            payload["accountId"] as? String == model?.account?.accountId {

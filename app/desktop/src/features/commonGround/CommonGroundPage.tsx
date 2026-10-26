@@ -8,6 +8,8 @@ import { HomeScreen } from './HomeScreen';
 import type { CgHost } from './host';
 import { LobbyScreen } from './LobbyScreen';
 import { MatchScreen } from './MatchScreen';
+import { NearbyPersonScreen } from './NearbyPersonScreen';
+import { NearbyScreen } from './NearbyScreen';
 import { CgNotice, CgProgress } from './parts';
 import { PersonScreen } from './PersonScreen';
 import { ResultsScreen } from './ResultsScreen';
@@ -56,6 +58,11 @@ export function CommonGroundPage({ store, host }: { store: CommonGroundStore; ho
         </WalletShell>
       </section>
     );
+  } else if (screen.name === 'nearby') {
+    // Nearby opens in the wallet's column, like the card page.
+    return <section aria-label="Grounding" className="cg-page is-wallet"><NearbyScreen {...props} /></section>;
+  } else if (screen.name === 'nearbyPerson') {
+    body = <NearbyPersonScreen accountId={screen.accountId} {...props} />;
   } else if (screen.name === 'build') {
     // Keyed by card, so switching cards (or the list arriving) opens Build with that card's picks.
     body = <BuildScreen key={`${state.profileId ?? ''}:${currentProfile(state) ? 'loaded' : ''}`} {...props} />;

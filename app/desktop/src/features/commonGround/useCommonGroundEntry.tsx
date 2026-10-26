@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { cloudApiBaseUrl, defaultCloudAuthClient, type CloudAccount } from '@/features/cloud/authClient';
 import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
 import { CloudConnectorsHttpClient } from '@/features/cloud/cloudConnectorsClient';
-import { commonGroundVersionFromCapabilities } from '@/features/cloud/commonGroundCapability';
+import { commonGroundNearbyVersionFromCapabilities, commonGroundVersionFromCapabilities } from '@/features/cloud/commonGroundCapability';
 import { dispatchCloudGroupInvitationAccepted } from '@/features/cloud/groupInvitationDeepLink';
 import { normalizeKordiId } from '@/features/cloud/kordiId';
 import { memoryCardsSupported, memoryRoutingAvailable, memoryVersionFromCapabilities } from '@/features/cloud/memoryCapability';
@@ -76,6 +76,7 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
   const available = Boolean(options.account) && version !== null;
   const profiles = (version ?? 0) >= 2;
   const sources = (version ?? 0) >= 3;
+  const nearby = profiles && commonGroundNearbyVersionFromCapabilities(capabilities) !== null;
   const accountId = options.account?.accountId ?? '';
   // The host stays stable across renders; its callbacks read the latest options.
   const latest = useRef(options);
@@ -105,6 +106,7 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
     self: { accountId, name: displayName || 'You', avatarUrl, handle },
     profiles,
     sources,
+    nearby,
     memoryAvailable,
     memoryRouting,
     memoryCards,
@@ -122,7 +124,7 @@ export function useCommonGroundEntry(handlers: ContactsSelectionHandlers, option
     agentFiles: desktopAgentFiles(),
     device: desktopDeviceAccess(),
     openUrl: (url) => { void openDesktopExternalUrl(url); },
-  }), [accountId, displayName, avatarUrl, handle, profiles, sources, memoryAvailable, memoryRouting, memoryCards, connectors]);
+  }), [accountId, displayName, avatarUrl, handle, profiles, sources, nearby, memoryAvailable, memoryRouting, memoryCards, connectors]);
 
   if (!available) return handlers;
   const { onSelectRequest } = handlers;

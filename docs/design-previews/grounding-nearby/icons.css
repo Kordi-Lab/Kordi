@@ -1,0 +1,40 @@
+/* Icon styles for the Grounding row and the Pair rows: tint (default), gradient and plain.
+   Every icon keeps its size, radius and glyph; only colour and material change.
+   Hues come from the Grounding palette in app/desktop/src/styles/commonGround.css. */
+.icn[data-hue="pink"] { --hh: 350; --hc: .19; }
+.icn[data-hue="violet"] { --hh: 285; --hc: .14; }
+.icn[data-hue="cyan"] { --hh: 215; --hc: .12; }
+.icn[data-hue="amber"] { --hh: 70; --hc: .15; }
+
+/* Per theme: glyph lightness, tint lightness and opacity, gradient lightness. */
+:root { --icn-gl: .55; --icn-bl: .66; --icn-ta: .16; --icn-dl: .66; --icn-plain: var(--k-fg, #000); }
+:root[data-theme="dark"] { --icn-gl: .82; --icn-bl: .72; --icn-ta: .2; --icn-dl: .58; }
+.phone { --icn-plain: var(--text); }
+.mac { --icn-plain: var(--k-fg); }
+
+/* Today: the Contacts row is an accent wash, the Pair rows solid accent tiles. */
+:root[data-icons="current"] .k-cgtile { background: color-mix(in oklab, var(--k-accent) 18%, transparent); color: var(--k-accent); }
+
+/* Tint: the glyph in its hue on a faint wash of the same hue. */
+:root[data-icons="tint"] .icn {
+  background: oklch(var(--icn-bl) var(--hc) var(--hh) / var(--icn-ta));
+  color: oklch(var(--icn-gl) var(--hc) var(--hh));
+}
+:root[data-icons="tint"] .icn svg { stroke-width: 2.1; }
+
+/* Gradient: a calm two-stop gradient with a faint top highlight and a white glyph. */
+:root[data-icons="gradient"] .icn {
+  background: linear-gradient(180deg,
+    oklch(calc(var(--icn-dl) + .07) calc(var(--hc) * .85) var(--hh)),
+    oklch(calc(var(--icn-dl) - .05) calc(var(--hc) * .85) var(--hh)));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), inset 0 0 0 .5px rgba(0,0,0,.08);
+  color: #fff;
+}
+
+/* Plain: no tile, an outline glyph in the text colour. */
+:root[data-icons="plain"] .icn { background: transparent; color: var(--icn-plain); box-shadow: none; }
+:root[data-icons="plain"] .icn svg { stroke-width: 1.8; }
+
+/* Amber reads brown at the shared lightness; lift it in the gradient. */
+:root[data-icons="gradient"] .icn[data-hue="amber"] { --icn-dl: .76; }
+:root[data-theme="dark"][data-icons="gradient"] .icn[data-hue="amber"] { --icn-dl: .66; }

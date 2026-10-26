@@ -3,3 +3,12 @@ export function commonGroundVersionFromCapabilities(capabilities: { commonGround
   const version = capabilities?.commonGroundVersion;
   return typeof version === 'number' && version > 0 ? version : null;
 }
+
+/** Nearby people route version (`commonGroundNearbyVersion`), counted only beside `commonGroundVersion`. */
+export function commonGroundNearbyVersionFromCapabilities(
+  capabilities: { commonGroundVersion?: number | null; commonGroundNearbyVersion?: number | null } | null | undefined,
+): number | null {
+  if (commonGroundVersionFromCapabilities(capabilities) === null) return null;
+  const version = capabilities?.commonGroundNearbyVersion;
+  return typeof version === 'number' && version > 0 ? version : null;
+}

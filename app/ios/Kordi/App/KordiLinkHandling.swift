@@ -42,22 +42,32 @@ private struct KordiLinkHandling: ViewModifier {
     }
 }
 
-/// Opens Grounding on the main stack when a pairing link arrives; Home
-/// takes the code from the inbox and pairs.
+/// Opens Grounding on the main stack when a pairing link or a tapped
+/// Nearby alert arrives; Home takes the code and pairs, Grounding opens the
+/// nearby person.
 struct CommonGroundPairLinkRouting: ViewModifier {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var inbox = CommonGroundPairLinkInbox.shared
+    @ObservedObject private var nearbyAlerts = CommonGroundNearbyAlertInbox.shared
     @Binding var path: [MainNavigationRoute]
 
     func body(content: Content) -> some View {
         // Also runs at launch and once Grounding becomes available.
-        content.task(id: model.isCommonGroundAvailable ? inbox.code : nil) {
-            guard inbox.code != nil, model.isCommonGroundAvailable else { return }
-            if let index = path.lastIndex(of: .commonGround) {
-                path.removeSubrange((index + 1)...)
-            } else {
-                path.append(.commonGround)
+        content
+            .task(id: model.isCommonGroundAvailable ? inbox.code : nil) {
+                if inbox.code != nil { openGrounding() }
             }
+            .task(id: model.isCommonGroundAvailable ? nearbyAlerts.accountId : nil) {
+                if nearbyAlerts.accountId != nil { openGrounding() }
+            }
+    }
+
+    private func openGrounding() {
+        guard model.isCommonGroundAvailable else { return }
+        if let index = path.lastIndex(of: .commonGround) {
+            path.removeSubrange((index + 1)...)
+        } else {
+            path.append(.commonGround)
         }
     }
 }
