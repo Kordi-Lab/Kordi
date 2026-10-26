@@ -4,6 +4,7 @@ import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRoutin
 import { defaultAgentProactiveId, getProactiveSetting, setProactiveSetting } from '@/features/cloud/proactiveClient';
 import { loadSession } from '@/features/cloud/session';
 import { getPersonalAgentSetting, setPersonalAgentSetting } from '@/features/personalAgent/personalAgentClient';
+import { requestPersonalAgentsRefresh } from '@/features/personalAgent/personalAgentStore';
 import type { Agent } from '../types';
 import type { AgentProactiveControl } from './AgentStudioBlueprintView';
 import { cloudAgentProactiveLabel, type AgentStudioConfigDraft } from './model';
@@ -102,6 +103,8 @@ export function useDefaultAgentProactive(agent: Agent | undefined, cloudAccountI
     const agentId = defaultAgentProactiveId(session.accountId);
     const saved = await setPersonalAgentSetting(session.token, agentId, proactive);
     setState((current) => ({ agentId, enabled: current?.agentId === agentId ? current.enabled : null, personal: saved.proactive }));
+    // The Personal agent section lists only agents with Proactive on: show the change at once.
+    requestPersonalAgentsRefresh();
   }, []);
   const current = isDefault ? state : null;
   return {

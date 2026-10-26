@@ -5,11 +5,11 @@ import type { Agent, CanonicalSessionState } from '@/kordi-app/types';
 import { openOrCreateCanonicalSessionFast, upsertCanonicalIdentityFast } from '@/lib/desktop';
 import type { ChatSyncConversation } from '@/features/cloud/chatSyncTypes';
 import { loadChatSyncConversations } from '@/lib/desktopChatSync';
-import { listPersonalAgentSessions, personalAgentSessionsFromSnapshots, type PersonalAgentSession } from './personalAgentClient';
-import { joinPersonalAgents } from './personalAgentEntries';
-import { planPersonalAgentSessions, type PersonalAgentSessionPlan } from './personalAgentSessions';
+import { listPersonalAgentSessions, markerlessSnapshotSessionIds, personalAgentSessionsFromSnapshots, type PersonalAgentSession } from './personalAgentClient';
+import { joinPersonalAgents, personalAgentMarker } from './personalAgentEntries';
+import { planPersonalAgentMarkerRemovals, planPersonalAgentSessions, type PersonalAgentSessionPlan } from './personalAgentSessions';
 import { loadUntilSuccess } from './personalAgentListRetry';
-import { setPersonalAgentEntries } from './personalAgentStore';
+import { setPersonalAgentEntries, subscribePersonalAgentsRefresh } from './personalAgentStore';
 
 const RETRY_MS = 30_000;
 
@@ -45,12 +45,17 @@ export function usePersonalAgentSync({
   list = listPersonalAgentSessions, createSession = createLocalSession, loadCachedConversations = loadChatSyncConversations, retryDelaysMs,
 }: Options) {
   const [loaded, setLoaded] = useState<{ accountId: string; sessions: PersonalAgentSession[] } | null>(null);
-  const [cached, setCached] = useState<{ accountId: string; sessions: PersonalAgentSession[] } | null>(null);
+  const [cached, setCached] = useState<{ accountId: string; sessions: PersonalAgentSession[]; markerless: Set<string> } | null>(null);
+  // A Factory agent's Proactive change reloads the list at once: the agent
+  // list refreshes after its update, which changes this key.
   const ownedAgentKey = useMemo(() => agents
     .filter((agent) => agent.isOwned && agent.cloudAgentId)
-    .map((agent) => agent.cloudAgentId)
+    .map((agent) => `${agent.cloudAgentId}:${agent.cloudAgentPersonalAgent?.proactive === true}`)
     .sort()
     .join(','), [agents]);
+  // The default agent's Proactive change asks for a reload explicitly.
+  const [refreshCount, setRefreshCount] = useState(0);
+  useEffect(() => subscribePersonalAgentsRefresh(() => setRefreshCount((count) => count + 1)), []);
   const latest = useRef({ list, reportWarning, loadCachedConversations, retryDelaysMs });
   useEffect(() => { latest.current = { list, reportWarning, loadCachedConversations, retryDelaysMs }; }, [list, loadCachedConversations, reportWarning, retryDelaysMs]);
 
@@ -58,7 +63,9 @@ export function usePersonalAgentSync({
     if (!accountId) return;
     let cancelled = false;
     latest.current.loadCachedConversations(accountId).then(
-      (conversations) => { if (!cancelled) setCached({ accountId, sessions: personalAgentSessionsFromSnapshots(conversations) }); },
+      (conversations) => {
+        if (!cancelled) setCached({ accountId, sessions: personalAgentSessionsFromSnapshots(conversations), markerless: markerlessSnapshotSessionIds(conversations) });
+      },
       () => undefined,
     );
     const stop = loadUntilSuccess(async () => {
@@ -72,21 +79,29 @@ export function usePersonalAgentSync({
       ...(latest.current.retryDelaysMs ? { delaysMs: latest.current.retryDelaysMs } : {}),
     });
     return () => { cancelled = true; stop(); };
-  }, [accountId, ownedAgentKey]);
+  }, [accountId, ownedAgentKey, refreshCount]);
 
+  // The last loaded list is the source; while none has loaded, the cached snapshots.
+  // A failed request keeps the previous source, so it never strips anything.
+  const listLoaded = Boolean(accountId && loaded?.accountId === accountId);
+  const snapshotLoaded = Boolean(accountId && cached?.accountId === accountId);
   const entries = useMemo(() => {
     if (!accountId) return [];
-    const sessions = loaded?.accountId === accountId ? loaded.sessions : cached?.accountId === accountId ? cached.sessions : [];
+    const sessions = listLoaded ? loaded!.sessions : snapshotLoaded ? cached!.sessions : [];
     return joinPersonalAgents(sessions, agents, accountId);
-  }, [accountId, agents, cached, loaded]);
-  useEffect(() => { setPersonalAgentEntries(entries); }, [entries]);
-  useEffect(() => () => setPersonalAgentEntries([]), []);
+  }, [accountId, agents, cached, listLoaded, loaded, snapshotLoaded]);
+  useEffect(() => { setPersonalAgentEntries(entries, listLoaded || snapshotLoaded); }, [entries, listLoaded, snapshotLoaded]);
+  useEffect(() => () => setPersonalAgentEntries([], false), []);
 
   const pending = useRef(new Set<string>());
   useEffect(() => {
     if (!canCreateSessions) return;
-    for (const plan of planPersonalAgentSessions(entries, agents, canonicalState)) {
-      const key = `${plan.session.id}\u0000${plan.session.primaryIdentityId ?? ''}`;
+    const removals = listLoaded || snapshotLoaded ? planPersonalAgentMarkerRemovals(canonicalState, {
+      listedSessionIds: listLoaded ? new Set(entries.map((entry) => entry.sessionId)) : null,
+      markerlessSnapshotSessionIds: cached?.markerless ?? new Set(),
+    }) : [];
+    for (const plan of [...planPersonalAgentSessions(entries, agents, canonicalState), ...removals]) {
+      const key = `${plan.session.id}\u0000${plan.session.primaryIdentityId ?? ''}\u0000${personalAgentMarker(plan.session.metadata) ?? 'strip'}`;
       if (pending.current.has(key)) continue;
       pending.current.add(key);
       createSession(plan).then(
@@ -100,7 +115,7 @@ export function usePersonalAgentSync({
         },
       );
     }
-  }, [agents, canCreateSessions, canonicalState, createSession, entries, setCanonicalState]);
+  }, [agents, cached, canCreateSessions, canonicalState, createSession, entries, listLoaded, setCanonicalState, snapshotLoaded]);
 
   return entries;
 }

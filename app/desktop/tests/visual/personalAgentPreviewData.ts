@@ -23,7 +23,7 @@ const AVATARS = { robin: bird('robin', 'sky'), owl: bird('owl', 'lavender'), kin
 export const previewPersonalAgents: PersonalAgentEntry[] = [
   { agentId: `cloud-agent:${ACCOUNT}`, conversationId: 'conv-kordi', sessionId: KORDI_SESSION, proactive: true, name: "Alex's Kordi", localAgentId: 'desktop:local-agent', avatarSeed: 'preview-robin', profileImageUrl: AVATARS.robin, isDefault: true },
   { agentId: 'cloud_agent_research', conversationId: 'conv-research', sessionId: RESEARCH_SESSION, proactive: true, name: 'Research agent', localAgentId: 'cloud-agent:cloud_agent_research', avatarSeed: 'preview-owl', profileImageUrl: AVATARS.owl, isDefault: false },
-  { agentId: 'cloud_agent_inbox', conversationId: 'conv-inbox', sessionId: INBOX_SESSION, proactive: false, name: 'Inbox helper', localAgentId: 'cloud-agent:cloud_agent_inbox', avatarSeed: 'preview-kingfisher', profileImageUrl: AVATARS.kingfisher, isDefault: false },
+  { agentId: 'cloud_agent_inbox', conversationId: 'conv-inbox', sessionId: INBOX_SESSION, proactive: true, name: 'Inbox helper', localAgentId: 'cloud-agent:cloud_agent_inbox', avatarSeed: 'preview-kingfisher', profileImageUrl: AVATARS.kingfisher, isDefault: false },
 ];
 
 function participants(agentName: string, agentSeed: string) {

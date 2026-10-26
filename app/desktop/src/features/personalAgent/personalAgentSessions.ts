@@ -81,3 +81,35 @@ export function planPersonalAgentSessions(
     }];
   });
 }
+
+/**
+ * Sessions that carry a personal marker their agent no longer has: the agent
+ * left the loaded list (Proactive was turned off), or, before the list
+ * loads, the session's own cached snapshot has no `personal_agent`. Each goes
+ * back to an ordinary agent chat; nothing is stripped without a loaded source.
+ */
+export function planPersonalAgentMarkerRemovals(
+  state: CanonicalSessionState | null,
+  source: { listedSessionIds: ReadonlySet<string> | null; markerlessSnapshotSessionIds: ReadonlySet<string> },
+): PersonalAgentSessionPlan[] {
+  if (!state) return [];
+  return state.sessions.flatMap((session): PersonalAgentSessionPlan[] => {
+    if (!personalAgentMarker(session.metadata)) return [];
+    const dropped = source.listedSessionIds
+      ? !source.listedSessionIds.has(session.id)
+      : source.markerlessSnapshotSessionIds.has(session.id);
+    if (!dropped || !session.createdByIdentityId) return [];
+    const primaryIdentityId = session.primaryIdentityId?.trim() || null;
+    return [{
+      session: {
+        id: session.id, kind: session.kind as PersonalAgentSessionPlan['session']['kind'], title: session.title, status: session.status,
+        createdByIdentityId: session.createdByIdentityId, primaryIdentityId,
+        projectId: session.projectId ?? null, projectName: session.projectName ?? null,
+        relationshipIdentityId: session.relationshipIdentityId ?? null,
+        participantIdentityIds: primaryIdentityId ? [primaryIdentityId] : [],
+        // An explicit null: the native upsert keeps a key that is left out.
+        metadata: { ...record(session.metadata), personalAgent: null },
+      },
+    }];
+  });
+}

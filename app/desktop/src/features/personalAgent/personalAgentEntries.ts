@@ -64,23 +64,23 @@ function withConversationAgent(entry: PersonalAgentEntry, conversation: Conversa
 }
 
 /**
- * The personal agent a conversation belongs to: by session id, then by the
- * session's marker. A marked session the list does not name yet (it has not
- * loaded) still counts, as the marked agent.
+ * The personal agent a conversation belongs to: its session in the current
+ * list (only agents with Proactive on). With `markerFallback` (no list has
+ * loaded yet), a session's own marker also counts, as the marked agent.
  */
 export function personalAgentEntryForConversation(
   entries: readonly PersonalAgentEntry[],
   conversation: ConversationLike | null | undefined,
+  { markerFallback = false }: { markerFallback?: boolean } = {},
 ): PersonalAgentEntry | null {
   if (!conversation) return null;
   const ids = new Set([conversation.id, conversation.canonicalSessionId].map((id) => id?.trim()).filter(Boolean));
-  const marker = personalAgentMarker(conversation.metadata);
-  const entry = entries.find((candidate) => ids.has(candidate.sessionId) || (candidate.conversationId && ids.has(candidate.conversationId)))
-    ?? (marker ? entries.find((candidate) => candidate.agentId === marker) : undefined);
+  const entry = entries.find((candidate) => ids.has(candidate.sessionId) || (candidate.conversationId && ids.has(candidate.conversationId)));
   if (entry) return withConversationAgent(entry, conversation);
+  const marker = markerFallback ? personalAgentMarker(conversation.metadata) : null;
   if (!marker) return null;
   return withConversationAgent({
-    agentId: marker, conversationId: '', sessionId: conversation.canonicalSessionId?.trim() || conversation.id, proactive: false,
+    agentId: marker, conversationId: '', sessionId: conversation.canonicalSessionId?.trim() || conversation.id, proactive: true,
     name: 'Agent', localAgentId: null, avatarSeed: marker, profileImageUrl: null, isDefault: false,
   }, conversation);
 }

@@ -67,25 +67,32 @@ test('entries take names and avatars from the local agents and keep agents the l
   assert.equal(joinPersonalAgents(sessions, [], ACCOUNT)[0]!.name, 'Kordi');
 });
 
-test('a conversation matches its personal agent by session id, conversation id or marker', () => {
+test('a conversation matches its personal agent by session or conversation id; its marker counts only until a list loads', () => {
   const entries = joinPersonalAgents(sessions, [kordi, research], ACCOUNT);
   const byId = (id: string, metadata?: unknown) => ({ id, canonicalSessionId: id, metadata }) as Pick<Conversation, 'id' | 'canonicalSessionId' | 'metadata'>;
   assert.equal(personalAgentEntryForConversation(entries, byId(RESEARCH_SESSION))?.agentId, 'cloud_agent_research');
   assert.equal(personalAgentEntryForConversation(entries, byId('conv-kordi'))?.agentId, DEFAULT_ID);
-  assert.equal(personalAgentEntryForConversation(entries, byId('session:other', { personalAgent: { agentId: 'cloud_agent_research' } }))?.agentId, 'cloud_agent_research');
+  // A marked session that is not the listed one (an old session) is an ordinary chat.
+  assert.equal(personalAgentEntryForConversation(entries, byId('session:other', { personalAgent: { agentId: 'cloud_agent_research' } })), null);
   assert.equal(personalAgentEntryForConversation(entries, byId('session:other')), null);
   assert.equal(personalAgentMarker({ personalAgent: { agentId: ' a ' } }), 'a');
   assert.equal(personalAgentMarker({ personalAgent: 'a' }), null);
-  // The marker alone identifies a personal session before the list loads.
-  assert.equal(personalAgentEntryForConversation([], byId('session:x', { personalAgent: { agentId: 'cloud_agent_x' } }))?.agentId, 'cloud_agent_x');
-  assert.equal(isPersonalAgentSession('session:x', { personalAgent: { agentId: 'cloud_agent_x' } }), true);
+  assert.equal(personalAgentMarker({ personalAgent: null }), null);
+  // The marker alone identifies a personal session before any list loads.
+  const marked = byId('session:x', { personalAgent: { agentId: 'cloud_agent_x' } });
+  assert.equal(personalAgentEntryForConversation([], marked, { markerFallback: true })?.agentId, 'cloud_agent_x');
+  assert.equal(personalAgentEntryForConversation([], marked), null);
+  setPersonalAgentEntries([], false);
+  assert.equal(isPersonalAgentSession('session:x', marked.metadata), true);
   assert.equal(isPersonalAgentSession('session:x'), false);
-  setPersonalAgentEntries(entries);
+  setPersonalAgentEntries(entries, true);
   try {
     assert.equal(isPersonalAgentSession('session:unknown'), true);
     assert.equal(isPersonalAgentSession('conv-research'), true);
+    // Once a list has loaded, a marker of an agent that left it no longer counts.
+    assert.equal(isPersonalAgentSession('session:x', marked.metadata), false);
   } finally {
-    setPersonalAgentEntries([]);
+    setPersonalAgentEntries([], false);
   }
 });
 
@@ -176,18 +183,22 @@ test('the Personal agent section lists every agent first and keeps its sessions 
   ]);
 });
 
-test('an unloaded agent and a marked session the list does not name show in the section with the session name', () => {
+test('an unloaded listed agent shows with the session name; a marked session counts only before a list loads', () => {
   const entries = joinPersonalAgents(sessions, [kordi], ACCOUNT);
   const sessionRows = new Map([
     sessionRow(RESEARCH_SESSION, 'Two new papers', 'Two new papers cite your draft.', { personalAgent: { agentId: 'cloud_agent_research' } }, 'Research agent'),
     sessionRow('session:marked-only', 'Inbox', 'Nothing new.', { personalAgent: { agentId: 'cloud_agent_inbox' } }, 'Inbox helper'),
   ]);
   const personal = personalAgentSidebarRows(entries, sessionRows);
-  assert.deepEqual(personal.rows.map((entry) => entry.key), [`personal:${DEFAULT_ID}`, 'personal:cloud_agent_research', 'personal:cloud_agent_unknown', 'personal:cloud_agent_inbox']);
+  assert.deepEqual(personal.rows.map((entry) => entry.key), [`personal:${DEFAULT_ID}`, 'personal:cloud_agent_research', 'personal:cloud_agent_unknown']);
   assert.equal(personal.entriesByAgentId.get('cloud_agent_research')?.name, 'Research agent');
   assert.equal(personal.entriesByAgentId.get('cloud_agent_research')?.localAgentId, null);
-  assert.equal(personal.entriesByAgentId.get('cloud_agent_inbox')?.name, 'Inbox helper');
-  assert.ok(personal.sessionIds.has('session:marked-only'));
+  // Inbox helper's Proactive is off: its old session goes back to the other sections.
+  assert.equal(personal.sessionIds.has('session:marked-only'), false);
+  const beforeList = personalAgentSidebarRows([], sessionRows, '', { markerFallback: true });
+  assert.deepEqual(beforeList.rows.map((entry) => entry.key), ['personal:cloud_agent_research', 'personal:cloud_agent_inbox']);
+  assert.equal(beforeList.entriesByAgentId.get('cloud_agent_inbox')?.name, 'Inbox helper');
+  assert.ok(beforeList.sessionIds.has('session:marked-only'));
 });
 
 test('searching keeps a personal row whose session matches like any other session', () => {

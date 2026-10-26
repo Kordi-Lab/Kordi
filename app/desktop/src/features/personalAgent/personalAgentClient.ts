@@ -31,8 +31,8 @@ export function normalizePersonalAgentSessions(body: unknown): PersonalAgentSess
 }
 
 /**
- * The personal sessions named by cached chat-sync snapshots (`personal_agent`),
- * used until the server list loads. Their Proactive setting is unknown here.
+ * The personal sessions named by cached chat-sync snapshots (`personal_agent`,
+ * present only while the agent's Proactive is on), used until the list loads.
  */
 export function personalAgentSessionsFromSnapshots(conversations: readonly ChatSyncConversation[]): PersonalAgentSession[] {
   const seen = new Set<string>();
@@ -41,11 +41,19 @@ export function personalAgentSessionsFromSnapshots(conversations: readonly ChatS
     const sessionId = text(conversation.legacy_session_id);
     if (conversation.kind !== 'ai' || !agentId || !sessionId || seen.has(agentId)) return [];
     seen.add(agentId);
-    return [{ agentId, conversationId: conversation.id, sessionId, proactive: false }];
+    return [{ agentId, conversationId: conversation.id, sessionId, proactive: true }];
   });
 }
 
-/** Lists the owner's personal sessions; the server creates any that are missing. */
+/** Session ids of cached `ai` conversations whose snapshot has no `personal_agent` (Proactive off). */
+export function markerlessSnapshotSessionIds(conversations: readonly ChatSyncConversation[]): Set<string> {
+  return new Set(conversations.flatMap((conversation) => {
+    const sessionId = text(conversation.legacy_session_id);
+    return conversation.kind === 'ai' && sessionId && !text(conversation.personal_agent?.agent_id) ? [sessionId] : [];
+  }));
+}
+
+/** Lists the owner's personal sessions (agents with Proactive on); the server creates any that are missing. */
 export async function listPersonalAgentSessions(token: string): Promise<PersonalAgentSession[]> {
   return normalizePersonalAgentSessions(await defaultCloudAuthClient().request<unknown>(
     '/v1/cloud/personal-agents',

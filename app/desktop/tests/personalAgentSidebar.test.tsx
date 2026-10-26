@@ -225,7 +225,7 @@ test('cached snapshots name personal sessions with the snake_case personal_agent
     { id: 'conv-3', kind: 'group', legacy_session_id: 'session:group:x', personal_agent: { agent_id: 'cloud_agent_x' } },
     { id: 'conv-4', kind: 'ai', legacy_session_id: null, personal_agent: { agent_id: 'cloud_agent_y' } },
   ] as unknown as ChatSyncConversation[]);
-  assert.deepEqual(sessions, [{ agentId: 'cloud_agent_research', conversationId: 'conv-1', sessionId: RESEARCH_SESSION, proactive: false }]);
+  assert.deepEqual(sessions, [{ agentId: 'cloud_agent_research', conversationId: 'conv-1', sessionId: RESEARCH_SESSION, proactive: true }]);
 });
 
 test('Agent settings opens the Blueprint once the Agents page has the agent', async () => {
@@ -285,4 +285,25 @@ test('a marked personal session the list does not name yet still gets the sectio
     const actions = [...document.querySelectorAll('[data-session-context-action]')].map((item) => item.textContent?.trim());
     assert.deepEqual(actions, ['Mark as unread', 'Mute']);
   });
+});
+
+test('an agent whose Proactive is off leaves the section; its old session is back in Recents with the normal menu', async () => {
+  // The loaded list no longer has Research agent; its session still carries the marker for a moment.
+  setPersonalAgentEntries(entries.filter((entry) => entry.agentId !== 'cloud_agent_research'), true);
+  try {
+    await withJsdomRoot(async (mount) => {
+      const host = await mount(createElement(WorkspaceSidebar, sidebarProps() as never));
+      assert.equal(host.querySelector('[data-personal-agent-row="cloud_agent_research"]'), null);
+      const row = host.querySelector<HTMLButtonElement>(`[data-agent-session-row="${RESEARCH_SESSION}"]`);
+      assert.ok(row, 'the old session is listed with the other chats');
+      await act(async () => {
+        row.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 80 }));
+      });
+      const menu = document.body.textContent ?? '';
+      for (const action of ['Rename', 'Pin', 'Archive', 'Delete chat']) assert.ok(menu.includes(action), action);
+      assert.equal(document.querySelector('[data-session-context-action="agent-settings"]'), null);
+    });
+  } finally {
+    setPersonalAgentEntries([], false);
+  }
 });

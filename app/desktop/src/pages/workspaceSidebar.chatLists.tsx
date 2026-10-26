@@ -11,7 +11,7 @@ import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
 import { AgentSidebarRow } from '@/pages/workspaceSidebar.agentRows';
 import { PersonalAgentSidebarRow } from '@/features/personalAgent/PersonalAgentSidebarRow';
 import { personalAgentIdFromRowKey, personalAgentSidebarRows } from '@/features/personalAgent/personalAgentSidebarRows';
-import { usePersonalAgentEntries } from '@/features/personalAgent/personalAgentStore';
+import { usePersonalAgentEntries, usePersonalAgentListLoaded } from '@/features/personalAgent/personalAgentStore';
 import type { ContactSidebarRowActions } from '@/pages/workspaceSidebar.contactRows';
 import { ContactSidebarRow } from '@/pages/workspaceSidebar.contactRows';
 import type { WorkspaceChatSidebarModel } from '@/pages/workspaceSidebar.chatModel';
@@ -61,9 +61,10 @@ export function WorkspaceChatLists({
       .map(({ session }) => session.id),
   ), [model.agentSessionRowsById, model.pinnedSessionIds]);
   const personalAgents = usePersonalAgentEntries();
+  const personalAgentsLoaded = usePersonalAgentListLoaded();
   const personal = useMemo(() => (
-    model.showArchived ? undefined : personalAgentSidebarRows(personalAgents, model.allSidebarSessionRowsById, model.chatSearch)
-  ), [model.allSidebarSessionRowsById, model.chatSearch, model.showArchived, personalAgents]);
+    model.showArchived ? undefined : personalAgentSidebarRows(personalAgents, model.allSidebarSessionRowsById, model.chatSearch, { markerFallback: !personalAgentsLoaded })
+  ), [model.allSidebarSessionRowsById, model.chatSearch, model.showArchived, personalAgents, personalAgentsLoaded]);
   const grouped = useMemo(() => projectChatGroups(
     model.agentSidebarRows, model.showArchived ? [] : projects?.projects ?? [], collapsed,
     Boolean(projects?.enabled && !model.chatSearch && !model.showArchived),

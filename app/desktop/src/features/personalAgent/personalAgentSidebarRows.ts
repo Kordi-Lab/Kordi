@@ -16,16 +16,18 @@ const PERSONAL_AGENT_ROW_HEIGHT = 50;
 
 /**
  * The Personal agent section from every sidebar session (unfiltered): one row
- * per agent in the server list, plus marked sessions the list does not name
- * yet, joined with the local session when this Mac has it. `sessionIds` are
- * kept out of every other section, whether or not the agent is loaded. While
- * searching, a row stays when its session matches like any other sidebar
- * session, or when the agent's name matches.
+ * per agent in the current list (Proactive on), joined with the local session
+ * when this Mac has it; until a list loads, marked sessions count too.
+ * `sessionIds` are kept out of every other section, whether or not the agent
+ * is loaded. While searching, a row stays when its session matches like any
+ * other sidebar session, or when the agent's name matches.
  */
 export function personalAgentSidebarRows(
   entries: readonly PersonalAgentEntry[],
   sessionRows: ReadonlyMap<string, SessionRow>,
   search = '',
+  /** No list has loaded yet: a session's own marker also counts. */
+  { markerFallback = false }: { markerFallback?: boolean } = {},
 ) {
   const sessionIds = new Set(entries.flatMap((entry) => [entry.sessionId, entry.conversationId].filter(Boolean)));
   const listed = new Map(entries.map((entry) => [entry.agentId, entry]));
@@ -36,7 +38,7 @@ export function personalAgentSidebarRows(
     const entry = personalAgentEntryForConversation(entries, {
       ...conversation, id: conversation.id || row.session.id,
       canonicalSessionId: row.session.canonicalSessionId ?? conversation.canonicalSessionId,
-    });
+    }, { markerFallback });
     if (!entry) continue;
     sessionIds.add(sessionId);
     if (!local.has(entry.agentId) || sessionId === entry.sessionId) local.set(entry.agentId, { entry, sessionId });
