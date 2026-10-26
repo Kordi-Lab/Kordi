@@ -592,6 +592,9 @@ struct ConversationView: View {
                 }
                 .clipped()
                 .animation(hasRevealedInitialViewport ? PinPresentationMotion.animation(reduceMotion: reduceMotion) : nil, value: pinnedMessages.map(\.id))
+                // The timeline below draws unclipped (see scrollClipDisabled), so keep the
+                // pinned bar above it or scrolled messages paint over the bar.
+                .zIndex(1)
                 GeometryReader { viewport in
                     ZStack {
                             ZStack(alignment: .bottomTrailing) {
