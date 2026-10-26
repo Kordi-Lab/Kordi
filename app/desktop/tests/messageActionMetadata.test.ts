@@ -137,3 +137,14 @@ test('messageActionPreviewText identifies attachment-only reply targets', () => 
     assert.equal(messageActionPreviewText({ text: '', attachments, messageKind }), expected);
   }
 });
+
+
+test('Cloud quote and forward metadata use the wire ID instead of a viewer-specific transcript ID', () => {
+  const wireId = '10000000-0000-4000-8000-000000000001';
+  const message = { ...sourceMessage, id: `collaboration-message:viewer:${wireId}`, reactionTargetMessageId: wireId };
+  const source = messageActionSourceFromMessage(message, 'session:direct');
+  assert.ok(source);
+  assert.equal(quoteMessageAction(source).source.sourceMessageId, wireId);
+  assert.equal(forwardMessageSourceFromMessage(message, 'session:direct')?.sourceMessageId, wireId);
+  assert.equal(messageActionSourceFromMessage({ ...sourceMessage, reactionTargetMessageId: ' ' }, 'session:local')?.sourceMessageId, sourceMessage.id);
+});

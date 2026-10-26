@@ -561,38 +561,53 @@ struct MessageThread: Identifiable, Equatable {
     }
 }
 
-struct MessageThreadProjection: Equatable {
-    let mainMessages: [ChatMessage]
-    let threadsByRootID: [String: MessageThread]
-    /// Main-conversation messages that quote or answer each message, oldest first.
-    let quoteReplyIDsBySourceID: [String: [String]]
+/// Resolves message references within one conversation, including IDs written by older desktop clients.
+struct MessageReferenceIndex: Equatable {
+    let messagesByID: [String: ChatMessage]
     private let primaryIDByAlias: [String: String]
 
-    private static func resolveMessageID(_ reference: String, aliases: [String: String]) -> String {
-        if let id = aliases[reference] { return id }
-        // Desktop presentation keys are not new threads. Reconcile only a
-        // known cloud message in this conversation, never an arbitrary suffix.
-        if reference.hasPrefix("collaboration-message:"),
-           let suffix = reference.split(separator: ":").last,
-           UUID(uuidString: String(suffix)) != nil,
-           let id = aliases[String(suffix)] { return id }
-        return reference
-    }
-
     init(messages: [ChatMessage]) {
-        var rootsByID: [String: ChatMessage] = [:]
-        for message in messages {
-            rootsByID[message.id] = message
-        }
+        var messagesByID: [String: ChatMessage] = [:]
+        for message in messages { messagesByID[message.id] = message }
+        self.messagesByID = messagesByID
         var aliases: [String: String] = [:]
         for message in messages {
-            for alias in [message.clientMessageId, message.reactionTargetMessageId].compactMap({ $0 })
-                where rootsByID[alias] == nil {
+            for alias in [message.clientMessageId, message.reactionTargetMessageId].compactMap({ $0?.nonEmpty })
+                where messagesByID[alias] == nil {
                 aliases[alias] = message.id
             }
         }
         for message in messages { aliases[message.id] = message.id }
         primaryIDByAlias = aliases
+    }
+
+    func resolve(_ reference: String) -> String {
+        let reference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let id = primaryIDByAlias[reference] { return id }
+        // Only this legacy presentation namespace may wrap a known ID. Never
+        // match arbitrary suffixes or names, or borrow a different sender's avatar.
+        if reference.hasPrefix("collaboration-message:"),
+           let suffix = reference.split(separator: ":", omittingEmptySubsequences: false).last,
+           let id = primaryIDByAlias[String(suffix)] { return id }
+        return reference
+    }
+
+    func message(for reference: String) -> ChatMessage? {
+        messagesByID[resolve(reference)]
+    }
+}
+
+struct MessageThreadProjection: Equatable {
+    let mainMessages: [ChatMessage]
+    let threadsByRootID: [String: MessageThread]
+    /// Main-conversation messages that quote or answer each message, oldest first.
+    let quoteReplyIDsBySourceID: [String: [String]]
+    let messageReferences: MessageReferenceIndex
+
+    init(messages: [ChatMessage]) {
+        let references = MessageReferenceIndex(messages: messages)
+        messageReferences = references
+        let rootsByID = references.messagesByID
         var rootIDByThreadMessageID: [String: String] = [:]
         var resolvingMessageIDs = Set<String>()
 
@@ -601,9 +616,9 @@ struct MessageThreadProjection: Equatable {
             guard resolvingMessageIDs.insert(message.id).inserted else { return nil }
             defer { resolvingMessageIDs.remove(message.id) }
             let explicitRootID = message.messageAction?.kind == "thread"
-                ? message.messageAction?.source.sourceMessageId.nonEmpty.map { Self.resolveMessageID($0, aliases: aliases) }
+                ? message.messageAction?.source.sourceMessageId.nonEmpty.map { references.resolve($0) }
                 : nil
-            let inheritedRootID = message.replyToMessageId.map { Self.resolveMessageID($0, aliases: aliases) }.flatMap { parentID in
+            let inheritedRootID = message.replyToMessageId.map { references.resolve($0) }.flatMap { parentID in
                 rootIDByThreadMessageID[parentID]
                     ?? rootsByID[parentID].flatMap { resolveRootID(for: $0) }
             }
@@ -621,7 +636,7 @@ struct MessageThreadProjection: Equatable {
                   appendingMessageIDs.insert(message.id).inserted else { return }
             defer { appendingMessageIDs.remove(message.id) }
             guard let rootID = resolveRootID(for: message) else { return }
-            if let parentID = message.replyToMessageId.map({ Self.resolveMessageID($0, aliases: aliases) }),
+            if let parentID = message.replyToMessageId.map({ references.resolve($0) }),
                let parent = rootsByID[parentID],
                resolveRootID(for: parent) == rootID {
                 appendThreadMessage(parent)
@@ -638,7 +653,7 @@ struct MessageThreadProjection: Equatable {
         let mainMessages = messages.filter { rootIDByThreadMessageID[$0.id] == nil }
         self.mainMessages = mainMessages
         quoteReplyIDsBySourceID = mainMessages.reduce(into: [:]) { result, message in
-            guard let sourceID = message.quotedReplyMessageId.map({ Self.resolveMessageID($0, aliases: aliases) }),
+            guard let sourceID = message.quotedReplyMessageId.map({ references.resolve($0) }),
                   sourceID != message.id,
                   rootsByID[sourceID] != nil else { return }
             result[sourceID, default: []].append(message.id)
@@ -646,18 +661,18 @@ struct MessageThreadProjection: Equatable {
     }
 
     func quoteReplyIDs(sourceID: String) -> [String] {
-        quoteReplyIDsBySourceID[Self.resolveMessageID(sourceID, aliases: primaryIDByAlias)] ?? []
+        quoteReplyIDsBySourceID[messageReferences.resolve(sourceID)] ?? []
     }
 
     func thread(rootID: String) -> MessageThread? {
-        let rootID = Self.resolveMessageID(rootID, aliases: primaryIDByAlias)
+        let rootID = messageReferences.resolve(rootID)
         if let thread = threadsByRootID[rootID] { return thread }
         guard let root = mainMessages.first(where: { $0.id == rootID }) else { return nil }
         return MessageThread(root: root, replies: [])
     }
 
     func replyCount(rootID: String) -> Int {
-        threadsByRootID[Self.resolveMessageID(rootID, aliases: primaryIDByAlias)]?.replies.count ?? 0
+        threadsByRootID[messageReferences.resolve(rootID)]?.replies.count ?? 0
     }
 
     static func rootSource(for message: ChatMessage, sessionID: String) -> MessageActionSource {

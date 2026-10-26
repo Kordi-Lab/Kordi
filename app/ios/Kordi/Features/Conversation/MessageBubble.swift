@@ -3753,13 +3753,7 @@ private struct MessageSendEntranceTransform: AnimatableModifier {
 enum MessageQuotePresentation {
     /// Quote metadata can name a message by its cloud, client, or desktop presentation ID.
     static func message(_ message: ChatMessage, matchesReference reference: String) -> Bool {
-        let reference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !reference.isEmpty else { return false }
-        let identifiers = [message.id, message.clientMessageId, message.reactionTargetMessageId].compactMap { $0 }
-        if identifiers.contains(reference) { return true }
-        guard reference.hasPrefix("collaboration-message:"),
-              let suffix = reference.split(separator: ":").last else { return false }
-        return identifiers.contains(String(suffix))
+        MessageReferenceIndex(messages: [message]).message(for: reference) != nil
     }
 
     static func senderLabel(_ senderLabel: String, selfDisplayName: String?) -> String {

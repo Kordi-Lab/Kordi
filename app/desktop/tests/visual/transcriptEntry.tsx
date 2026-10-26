@@ -51,7 +51,6 @@ function Entry() {
     setHydration('ready');
     setSession(key);
     setItems(cold ? [] : rows(key));
-    if (cold) setTimeout(() => setItems(rows(key)), 100);
   };
   const selected = applyCanonicalHydrationPlaceholder({
     id: session, canonicalSessionId: session, canonicalMessageCount: 200,
@@ -64,6 +63,7 @@ function Entry() {
     <button onClick={() => enter('first')}>First session</button>
     <button onClick={() => enter('next')}>Next session</button>
     <button onClick={() => enter('cold', true)}>Cold session</button>
+    <button onClick={() => setItems(rows('cold'))}>Finish cold hydration</button>
     <button onClick={() => { setSession('catalog'); setItems(rows('catalog').slice(-1)); setHydration('loading'); }}>Catalog-only session</button>
     <button onClick={() => { setItems(rows('catalog')); setHydration('ready'); }}>Finish catalog hydration</button>
     <button onClick={() => window.dispatchEvent(new Event('synthetic-media-loaded'))}>Finish late image</button>
