@@ -1,9 +1,9 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
 } from 'react';
 
 import type { DesktopUpdaterState } from '@/features/updates/desktopUpdater';
@@ -19,7 +19,7 @@ export type SidebarUpdaterProps = {
   onOpenUpdateUrl?: (url: string) => Promise<void> | void;
 };
 
-export function SidebarUpdater({
+export function useSidebarUpdater({
   isNativeShell,
   onCheckForUpdates,
   onInstallUpdate,
@@ -27,7 +27,6 @@ export function SidebarUpdater({
   onSubscribeToUpdate,
   onOpenUpdateUrl,
 }: SidebarUpdaterProps) {
-  const updateButtonRef = useRef<HTMLButtonElement | null>(null);
   const updatePopoverRef = useRef<HTMLDivElement | null>(null);
   const updateCheckPromiseRef = useRef<Promise<DesktopUpdaterState> | null>(null);
   const [updateState, setUpdateState] = useState<DesktopUpdaterState>({ status: 'idle' });
@@ -99,55 +98,46 @@ export function SidebarUpdater({
     };
   }, [isNativeShell, onCheckForUpdates, runUpdateCheck]);
 
-  const measureUpdateConfirmAnchor = useCallback(() => {
-    const trigger = updateButtonRef.current;
-    if (!trigger || typeof window === 'undefined') return;
-    const rect = trigger.getBoundingClientRect();
-    setUpdateConfirmAnchor({
-      left: Math.max(
-        12,
-        Math.min(rect.right + 8, window.innerWidth - 288 - 12),
-      ),
-      bottom: Math.max(12, window.innerHeight - rect.bottom),
-    });
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!isUpdateConfirmOpen) return;
-    measureUpdateConfirmAnchor();
-    window.addEventListener('resize', measureUpdateConfirmAnchor);
-    return () => window.removeEventListener('resize', measureUpdateConfirmAnchor);
-  }, [isUpdateConfirmOpen, measureUpdateConfirmAnchor]);
-
   useEffect(() => {
     if (!isUpdateConfirmOpen) return;
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as Node | null;
       if (!target) return;
       if (updatePopoverRef.current?.contains(target)) return;
-      if (updateButtonRef.current?.contains(target)) return;
       setIsUpdateConfirmOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setIsUpdateConfirmOpen(false);
     };
+    const onResize = () => setIsUpdateConfirmOpen(false);
+    window.addEventListener('resize', onResize);
     window.addEventListener('mousedown', onPointerDown);
     window.addEventListener('keydown', onKeyDown);
     return () => {
+      window.removeEventListener('resize', onResize);
       window.removeEventListener('mousedown', onPointerDown);
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [isUpdateConfirmOpen]);
 
-  const handleUpdateButtonClick = () => {
-    if (isUpdateConfirmOpen) {
-      setIsUpdateConfirmOpen(false);
-      return;
-    }
+  const handleUpdateButtonClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setUpdateConfirmAnchor({
+      left: Math.max(12, Math.min(rect.left, window.innerWidth - 288 - 12)),
+      bottom: Math.max(12, window.innerHeight - rect.bottom),
+    });
     setIsUpdateConfirmOpen(true);
+    if (updateState.status === 'idle' || updateState.status === 'up-to-date'
+      || (updateState.status === 'failed' && updateState.failureStage === 'check')) {
+      void runUpdateCheck();
+    }
   };
 
   const handleConfirmUpdate = async () => {
+    if (updateState.status === 'failed' && updateState.failureStage === 'check') {
+      await runUpdateCheck();
+      return;
+    }
     const action = updateState.status === 'failed'
       ? (onRetryUpdate ?? onInstallUpdate)
       : onInstallUpdate;
@@ -165,52 +155,25 @@ export function SidebarUpdater({
     }
   };
 
-  if (!isNativeShell || !onCheckForUpdates || !buttonPresentation.visible) return null;
-
-  return (
-    <>
-      <button
-        ref={updateButtonRef}
-        type="button"
-        onClick={handleUpdateButtonClick}
-        data-update-status={updateState.status}
-        className="app-update-wave-button app-workspace-nav-button relative mx-auto grid h-8 w-8 place-items-center rounded-[10px] p-0"
-        title={isUpdateConfirmOpen ? undefined : buttonPresentation.title}
-        aria-label={buttonPresentation.title}
-        aria-haspopup="dialog"
-        aria-expanded={isUpdateConfirmOpen}
-      >
-        <picture>
-          <source
-            media="(prefers-reduced-motion: reduce)"
-            srcSet="/blob-wave-static.png"
-          />
-          <img
-            src="/blob-wave.gif"
-            alt=""
-            className="h-6 w-6 object-contain"
-            draggable={false}
-          />
-        </picture>
-      </button>
-      {updateState.status === 'available' ? (
-        <span className="sr-only" role="status">
-          Kordi {updateState.latestVersion ?? 'update'} is ready to install
-        </span>
-      ) : null}
-      {isUpdateConfirmOpen ? (
-        <SidebarUpdatePopover
-          anchor={updateConfirmAnchor}
-          popoverRef={updatePopoverRef}
-          state={updateState}
-          canInstall={Boolean(onInstallUpdate)}
-          onClose={() => setIsUpdateConfirmOpen(false)}
-          onConfirm={() => {
-            void handleConfirmUpdate();
-          }}
-          onOpenUrl={onOpenUpdateUrl}
-        />
-      ) : null}
-    </>
-  );
+  const enabled = isNativeShell && Boolean(onCheckForUpdates);
+  return {
+    menuAction: enabled ? {
+      updateAvailable: updateState.status === 'available',
+      label: buttonPresentation.title,
+      onClick: handleUpdateButtonClick,
+    } : undefined,
+    popover: enabled && isUpdateConfirmOpen ? (
+      <SidebarUpdatePopover
+        anchor={updateConfirmAnchor}
+        popoverRef={updatePopoverRef}
+        state={updateState}
+        canInstall={Boolean(onInstallUpdate)}
+        onClose={() => setIsUpdateConfirmOpen(false)}
+        onConfirm={() => {
+          void handleConfirmUpdate();
+        }}
+        onOpenUrl={onOpenUpdateUrl}
+      />
+    ) : null,
+  };
 }

@@ -6,7 +6,7 @@ import type { NavId } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { SidebarProfileControl } from '@/pages/workspaceSidebar.profile';
 import {
-  SidebarUpdater,
+  useSidebarUpdater,
   type SidebarUpdaterProps,
 } from '@/pages/workspaceSidebar.update';
 import type { WorkspaceSidebarAccount } from '@/pages/workspaceSidebar.types';
@@ -39,6 +39,7 @@ export function WorkspaceNavigationRail({
   onOpenSupport?: () => Promise<void> | void;
   onOpenSession: (id: string) => void;
 }) {
+  const { menuAction, popover } = useSidebarUpdater({ isNativeShell, ...updater });
   return (
     <div
       className={cn(
@@ -97,11 +98,9 @@ export function WorkspaceNavigationRail({
       </div>
 
       <div className="app-nav-rail-bottom flex w-full flex-col items-center gap-2">
-        <SidebarUpdater
-          isNativeShell={isNativeShell}
-          {...updater}
-        />
+        {popover}
         <HelpEntry
+          updateAction={menuAction}
           activeNav={activeNav}
           setActiveNav={setActiveNav}
           account={account}
