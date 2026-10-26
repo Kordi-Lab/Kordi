@@ -873,7 +873,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
 
         XCTAssertTrue(source.contains("@State private var selectedConversation: ConversationSummary?"))
-        XCTAssertTrue(source.contains(".navigationDestination(item: $selectedConversation)"))
+        XCTAssertTrue(source.contains(".stableNavigationDestination(item: $selectedConversation)"))
         XCTAssertTrue(source.contains("GroupSpaceCatalog.build(\n            conversations: conversations"))
         XCTAssertTrue(source.contains("Task { _ = await model.restoreGroupSpace(space) }"))
     }
@@ -1501,7 +1501,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(bubbleSource.contains("!reactions.isEmpty || threadReplyCount > 0 || quoteReplyCount > 0"))
         XCTAssertTrue(conversationSource.contains("allowsQuotedReplies: conversation.kind.supportsQuotedReplies"))
         XCTAssertTrue(conversationSource.contains("allowsThreadReply: scopedThreadRootMessageID == nil"))
-        XCTAssertTrue(conversationSource.contains(".background(NavigationMinimalBackButtonBridge())\n                .navigationDestination(item: $activeRootMessageID)"))
+        XCTAssertTrue(conversationSource.contains(".background(NavigationMinimalBackButtonBridge())\n                .stableNavigationDestination(item: $activeRootMessageID)"))
         XCTAssertFalse(conversationSource.contains(".toolbarRole(.editor)"))
         XCTAssertTrue(conversationSource.contains("|| (scopedThreadRootMessageID == nil && model.hasEarlierMessages(for: conversation))"))
         XCTAssertTrue(conversationSource.contains("scrollPosition.setOffsetY(targetOffsetY, animated: !reduceMotion)"))
