@@ -45,8 +45,9 @@ test('OpenAI: the provider page has no inputs, the picker lists four methods, an
   await openProvider(page, 'openai', 'OpenAI');
 
   await expect(detail(page).locator('input')).toHaveCount(0);
-  await expect(account(page, 'Work')).toContainText('ChatGPT · On this Mac');
-  await expect(account(page, 'Personal')).toContainText('ChatGPT · On this Mac');
+  await expect(account(page, 'Work')).toContainText('ChatGPT');
+  await expect(account(page, 'Personal')).toContainText('ChatGPT');
+  await expect(detail(page).getByText(/On this Mac$|In your account/)).toHaveCount(0);
   await expect(account(page, 'Work').getByText('Active', { exact: true })).toBeVisible();
   await expect(detail(page).getByRole('button', { name: /^Add account/ })).toContainText('Browser sign-in, device code, on this Mac, API key');
 
