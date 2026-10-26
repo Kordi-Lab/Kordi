@@ -165,7 +165,7 @@ struct ConnectorsSettingsView: View {
                 .accessibilityLabel("Refresh connectors")
             }
         }
-        .navigationDestination(item: $openedProviderId) { providerId in
+        .stableNavigationDestination(item: $openedProviderId) { providerId in
             if let definition = catalog.first(where: { $0.providerId == providerId }) {
                 ConnectorDetailView(definition: definition, store: store)
             }
