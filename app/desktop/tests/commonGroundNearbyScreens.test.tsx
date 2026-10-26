@@ -221,3 +221,52 @@ test('nearby screen: keyboard selection opens an unbuilt card home with its Buil
     assert.equal(calls.filter((call) => call.method === 'PUT').length, 0);
   });
 });
+
+test('opening Nearby from another card selects that card before searching', async () => {
+  const { store, calls } = storeWith({
+    'GET nearby': { status: 200, body: settings() },
+    'PUT nearby': { status: 200, body: settings({ profileId: workshops.profileId }) },
+    'GET nearby/people': [
+      { status: 200, body: people },
+      { status: 200, body: { people: [], matching: 0, location: fresh() } },
+    ],
+  });
+  store.set({ profileId: workshops.profileId });
+  await mount(createElement(Panel, { store, nearby: true }), async (root) => {
+    const row = root.querySelector('[data-cg-nearby]');
+    assert.match(row?.textContent ?? '', /Find people for Workshops/);
+    assert.doesNotMatch(row?.textContent ?? '', /1 person nearby/);
+    await click(row);
+    const change = calls.findIndex((call) => call.method === 'PUT');
+    assert.deepEqual(calls[change].body, { profileId: workshops.profileId });
+    assert.ok(calls.slice(change + 1).some((call) => call.url.endsWith('/nearby/people')));
+    assert.deepEqual(store.top(), { name: 'nearby' });
+  });
+});
+
+test('a rejected card switch does not open the previous card’s Nearby results', async () => {
+  const { store } = storeWith({
+    'GET nearby': { status: 200, body: settings() },
+    'PUT nearby': { status: 409, body: { error: { code: 'common_ground_sharing_off', message: 'Turn on sharing for this card.' } } },
+    'GET nearby/people': { status: 200, body: people },
+  });
+  store.set({ profileId: workshops.profileId });
+  await mount(createElement(Panel, { store, nearby: true }), async (root) => {
+    await click(root.querySelector('[data-cg-nearby]'));
+    assert.equal(store.top().name, 'home');
+    assert.ok(store.getSnapshot().notice);
+  });
+});
+
+test('an unbuilt selected card opens Build instead of another card’s Nearby', async () => {
+  const { store, calls } = storeWith({
+    'GET nearby': { status: 200, body: settings() },
+    'GET nearby/people': { status: 200, body: people },
+  });
+  store.set({ profileId: health.profileId });
+  await mount(createElement(Panel, { store, nearby: true }), async (root) => {
+    await click(root.querySelector('[data-cg-nearby]'));
+    assert.equal(store.top().name, 'build');
+    assert.equal(calls.some((call) => call.method === 'PUT'), false);
+  });
+});
