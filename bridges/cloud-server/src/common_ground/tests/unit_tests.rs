@@ -3,7 +3,7 @@ use serde_json::json;
 
 use super::super::card::{Evidence, Topics};
 use super::super::prompt::system_prompt;
-use super::super::prompt::{parse_reply, user_prompt, Gathered};
+use super::super::prompt::{parse_reply, user_prompt, Gathered, ReplyError};
 use super::super::{build, pairing, profile, profiles, redact, rooms};
 
 fn day(value: &str) -> NaiveDate {
@@ -136,8 +136,18 @@ fn reply_parsing_keeps_cited_evidence_and_drops_the_rest() {
 #[test]
 fn a_reply_without_topics_is_not_a_card() {
     let gathered = vec![gathered("Notes", "Your notes", None)];
-    assert!(parse_reply("I can't help with that.", &gathered).is_none());
-    assert!(parse_reply(r#"{"working_on":[],"interests":[]}"#, &gathered).is_none());
+    assert_eq!(
+        parse_reply("I can't help with that.", &gathered).err(),
+        Some(ReplyError::Malformed)
+    );
+    // A readable card with nothing for the profile is told apart, so clients
+    // can say that trying again with the same sources will not help.
+    assert_eq!(
+        parse_reply(r#"{"working_on":[],"interests":[]}"#, &gathered).err(),
+        Some(ReplyError::NoTopics)
+    );
+    assert_eq!(ReplyError::NoTopics.code(), "no_topics");
+    assert_eq!(ReplyError::Malformed.code(), "invalid_output");
 }
 
 #[test]
