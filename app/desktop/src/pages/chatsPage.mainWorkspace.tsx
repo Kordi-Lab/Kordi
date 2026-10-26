@@ -397,6 +397,7 @@ export function ChatMainWorkspace({
                         },
                         onUpdate: models.routing.update,
                         onSaveCompact: models.routing.saveCompactRoute,
+                        busy: models.routing.busy,
                         defaultThinkingForModel:
                           models.routing.defaultThinkingForModel,
                       }}

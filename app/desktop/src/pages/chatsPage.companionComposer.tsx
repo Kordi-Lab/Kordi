@@ -329,6 +329,7 @@ export function CompanionComposer({
                     openSelector,
                     agentSelectorOpen: collaborationRouting.selectorOpen,
                     compact: true,
+                    sharedRoute: paneKind !== 'agent',
                   }}
                   options={{
                     authLabel: composerAuthLabel,
