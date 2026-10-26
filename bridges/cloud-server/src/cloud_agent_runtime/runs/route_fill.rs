@@ -18,12 +18,13 @@ use crate::cloud_agent_runtime::provider_auth::{
 const CANDIDATE_LIMIT: i64 = 16;
 
 /// Background feature runs, whose routes are never a chat's: the digest and
-/// imports ask for their own model, the System agent and Common ground run on a service
-/// account, and proactive and personal agent runs carry an agent's routing.
+/// imports ask for their own model, the System agent and Common ground run on
+/// a service account, and proactive and personal agent runs carry an agent's
+/// routing.
 const FEATURE_RUN_PREFIXES: &[&str] = &[
     crate::digest::RUN_PREFIX,
     crate::cloud_agent_runtime::import_runs::RUN_PREFIX,
-    crate::pip::RUN_PREFIX,
+    crate::system_agent::RUN_PREFIX,
     crate::common_ground::RUN_PREFIX,
     crate::proactive::RUN_PREFIX,
     crate::proactive::APPROVED_RUN_PREFIX,
