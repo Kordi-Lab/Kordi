@@ -166,7 +166,17 @@ struct CommonGroundNearbyView: View {
             case .stale:
                 statusText("Location is out of date", link: "Update") { locator.updateNow() }
             case .foregroundOnly:
-                statusText("Only while Kordi is open", link: "Update location") { locator.updateNow() }
+                VStack(spacing: 4) {
+                    if locator.access == .always && locator.refreshAvailable {
+                        statusText("Only while Kordi is open")
+                    } else {
+                        statusText("Only while Kordi is open", link: "Settings", action: openSettings)
+                    }
+                    Button("Update location") { locator.updateNow() }
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(chatTheme.accent)
+                        .buttonStyle(.plain)
+                }
             case .background(let updated):
                 statusText(CommonGroundNearbyStatus.updatedLine(updated, now: now), link: "Update location") { locator.updateNow() }
             }
