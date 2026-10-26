@@ -88,9 +88,9 @@ extension CommonGroundNearbyLocator {
     func oneFix(timeout: TimeInterval) async -> CLLocation? {
         guard let manager else { return nil }
         let key = UUID()
-        manager.requestLocation()
         return await withCheckedContinuation { continuation in
             fixWaiters[key] = continuation
+            manager.requestLocation()
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(timeout))
                 self?.fixWaiters.removeValue(forKey: key)?.resume(returning: nil)
@@ -113,7 +113,7 @@ extension CommonGroundNearbyLocator {
             manager.startUpdatingLocation()
             updating = true
         }
-        Task { await consider(location) }
+        if !updatingNow { Task { await consider(location) } }
     }
 
     func failed(_ error: Error) {

@@ -30,6 +30,8 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
     /// Counts accepted posts, so screens can refetch after one.
     @Published private(set) var postCount = 0
     @Published private(set) var posting = false
+    @Published private(set) var updatingNow = false
+    @Published private(set) var locationError: String?
 
     let defaults: UserDefaults
     let api: CloudAPIClient
@@ -150,16 +152,16 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
     func requestAccess(background: Bool) async {
         guard let manager else { return }
         if access == .notDetermined {
-            manager.requestWhenInUseAuthorization()
-            await waitForAccess()
+            await waitForAccess { manager.requestWhenInUseAuthorization() }
         }
         if background, access == .whenInUse { manager.requestAlwaysAuthorization() }
     }
 
-    private func waitForAccess() async {
+    private func waitForAccess(request: () -> Void) async {
         let key = UUID()
         await withCheckedContinuation { continuation in
             accessWaiters[key] = continuation
+            request()
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(120))
                 self?.accessWaiters.removeValue(forKey: key)?.resume()
@@ -177,8 +179,8 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
 
     /// The Nearby screen appeared: one fix now, then updates while it shows.
     func startForeground() {
-        guard let manager, state?.enabled == true, access.granted else { return }
         foreground = true
+        guard let manager, state?.enabled == true, access.granted else { return }
         manager.requestLocation()
     }
 
@@ -188,11 +190,34 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
         updating = false
     }
 
-    /// The Update button: a fresh fix, sent even if the phone has not moved.
+    /// An explicit update also requests access on a phone that has never been asked.
     func updateNow() {
-        guard let manager, state?.enabled == true, access.granted else { return }
-        forceNext = true
-        manager.requestLocation()
+        guard !updatingNow, !posting else { return }
+        locationError = nil
+        guard state?.enabled == true else {
+            locationError = "Turn on Nearby before updating your location."
+            return
+        }
+        updatingNow = true
+        foreground = true
+        let generation = locationGeneration
+        Task { @MainActor in
+            defer { updatingNow = false }
+            await requestAccess(background: false)
+            guard generation == locationGeneration, foreground else { return }
+            guard access.granted else { return }
+            guard precise else { return }
+            guard let fix = await oneFix(timeout: 15) else {
+                locationError = "Could not find your location. Try again."
+                return
+            }
+            guard generation == locationGeneration, foreground else { return }
+            forceNext = true
+            if !(await consider(fix)), locationError == nil {
+                locationError = "Could not update your location. Try again in a minute."
+            }
+            forceNext = false
+        }
     }
 
     /// One fix and a post when the rules allow it, for Home's Nearby row.
@@ -256,10 +281,16 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
             state?.lastLatitude = location.coordinate.latitude
             state?.lastLongitude = location.coordinate.longitude
             lastReply = reply.location
+            locationError = nil
             postCount += 1
             if backgroundAllowed { placeRegion(around: location.coordinate) }
             return true
         } catch let error as CloudAPIError {
+            if updatingNow {
+                locationError = error.code == "common_ground_nearby_inaccurate"
+                    ? "Your location is not accurate enough yet. Try again."
+                    : "Could not save your location. Check your connection and try again."
+            }
             if error.code == "common_ground_nearby_off" {
                 // Turned off or paused elsewhere: stop until the settings say otherwise.
                 state?.enabled = false
@@ -270,6 +301,7 @@ final class CommonGroundNearbyLocator: NSObject, ObservableObject {
             }
             return false
         } catch {
+            if updatingNow { locationError = "Could not save your location. Check your connection and try again." }
             return false
         }
     }

@@ -313,6 +313,10 @@ final class CommonGroundNearbyTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_000_000)
         typealias S = CommonGroundNearbyStatus
         let later = now.addingTimeInterval(3600)
+        XCTAssertEqual(S.resolve(pausedUntil: nil, access: .notDetermined, backgroundAlerts: true,
+                                 refreshAvailable: true, stale: true, updated: now, now: now), .permissionNeeded)
+        XCTAssertEqual(S.resolve(pausedUntil: nil, access: .notDetermined, backgroundAlerts: false,
+                                 refreshAvailable: true, stale: false, updated: nil, now: now), .permissionNeeded)
         XCTAssertEqual(S.resolve(pausedUntil: later, access: .always, backgroundAlerts: true, refreshAvailable: true, stale: true, updated: nil, now: now),
                        .paused(until: later))
         XCTAssertEqual(S.resolve(pausedUntil: nil, access: .denied, backgroundAlerts: true, refreshAvailable: true, stale: false, updated: nil, now: now), .denied)
@@ -326,6 +330,16 @@ final class CommonGroundNearbyTests: XCTestCase {
         XCTAssertEqual(S.resolve(pausedUntil: nil, access: .always, precise: false, backgroundAlerts: true, refreshAvailable: true, stale: false, updated: now, now: now), .imprecise)
         XCTAssertEqual(S.updatedLine(now.addingTimeInterval(-150), now: now), "Updated 2 min ago · Works in the background")
         XCTAssertEqual(S.updatedLine(now.addingTimeInterval(-20), now: now), "Updated just now · Works in the background")
+    }
+
+    func testManualLocationUpdateExplainsWhenNearbyIsOff() {
+        let name = "nearby-location-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let locator = CommonGroundNearbyLocator(defaults: defaults)
+        locator.updateNow()
+        XCTAssertFalse(locator.updatingNow)
+        XCTAssertEqual(locator.locationError, "Turn on Nearby before updating your location.")
     }
 
     func testPollingBacksOffWithoutProgress() {
