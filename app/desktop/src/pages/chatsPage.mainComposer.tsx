@@ -141,7 +141,7 @@ export function MainComposer({
   const routeSelection = collaborationRouting.enabled && collaborationRouting.model
     ? collaborationRouting.model.selection : composerSelection;
   // Only the session route names an account, so only it can lose one; the replacement saves as a route menu pick does.
-  const sendGate = useComposerRouteAccountGuard({ sessionId: conversation.id, enabled: Boolean(collaborationRouting.enabled && collaborationRouting.model) && !display.activeLiveTurnIsRunning,
+  const sendGate = useComposerRouteAccountGuard({ sessionId: conversation.id, enabled: Boolean(collaborationRouting.enabled && collaborationRouting.model) && !collaborationRouting.busy,
     paneKind: localRouting.paneKind, canConfigureModelRoute, selection: routeSelection, providerOptions: composerProviderOptions,
     modelOptions: chatModelOptions ?? [], applyRoute: collaborationRouting.onSaveCompact });
   const onSend: MainComposerProps['onSend'] = (draft, attachments) => (sendGate.blocked ? undefined : sendMessage(draft, attachments));

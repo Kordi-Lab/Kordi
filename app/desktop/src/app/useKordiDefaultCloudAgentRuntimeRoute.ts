@@ -140,8 +140,13 @@ export function resolveDefaultCloudAgentRuntimeRoute({
       (normalizeSelectedProviderId(option.providerId) ?? option.providerId)
       === normalizedModelProviderId,
   );
-  const authOption =
-    matchingAuthOptions.find((option) => option.active) ?? matchingAuthOptions[0] ?? null;
+  // An active account in the model's own namespace wins within the family, so a
+  // ChatGPT model keeps the ChatGPT sign-in when an OpenAI key is active too.
+  const routeNamespace = routeModel.includes('/') ? routeModel.slice(0, routeModel.indexOf('/')) : '';
+  const authOption = matchingAuthOptions.find((option) => option.active && option.providerId === routeNamespace)
+    ?? matchingAuthOptions.find((option) => option.active)
+    ?? matchingAuthOptions[0]
+    ?? null;
   // The composer groups OpenAI and ChatGPT together, but an account runs only
   // models in its own provider namespace.
   const model = authOption

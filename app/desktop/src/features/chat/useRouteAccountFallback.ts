@@ -5,12 +5,18 @@ import {
   type ComposerModelSelection,
   type ComposerRoute,
 } from '@/kordi-app/components/composerModelSelection';
+import { registeredAccountChoices } from '@/features/cloud/hostedAccountRegistry';
 import { composerSendGate, useAccountListsLoaded, type ComposerSendGate, type ComposerSendGateInput } from './composerSendGate';
 
 export type RouteAccountFallbackInput = ComposerSendGateInput & {
   selection: ComposerModelSelection & { thinking?: string | null };
   modelOptions: ComposerModelOption[];
+  /** Account choices this Mac or Kordi Cloud lists, whatever their models; such an account is not gone. */
+  knownAccountChoices?: ReadonlySet<string>;
 };
+
+/** How long a fallback decision must hold before it is applied, so a chat switch settles first. */
+export const ROUTE_ACCOUNT_FALLBACK_SETTLE_MS = 600;
 
 /**
  * The route that replaces an account this device no longer has, under the
@@ -19,7 +25,10 @@ export type RouteAccountFallbackInput = ComposerSendGateInput & {
  * not arrived, or no single usable account is clear; then the owner picks.
  */
 export function routeAccountFallbackDecision(input: RouteAccountFallbackInput): ComposerRoute | null {
-  if (!composerSendGate(input).blocked) return null;
+  if (!composerSendGate(input).blocked || input.modelOptions.length === 0) return null;
+  // The provider options leave out accounts whose models have not loaded; only a removed account falls back.
+  const choice = input.selection.authChoice?.trim();
+  if (choice && input.knownAccountChoices?.has(choice)) return null;
   const route = unavailableAccountReplacement({
     selection: { ...input.selection, thinking: input.selection.thinking || 'default' },
     providerOptions: input.providerOptions,
@@ -43,25 +52,41 @@ export function shouldApplyRouteAccountFallback(key: string, appliedKeys: Set<st
 /** Saves a complete route, as a pick in the route menu does. */
 export type ApplyFallbackRoute = (route: ComposerRoute) => unknown;
 
-/** Moves a route off an unavailable account onto the clear replacement, once per session and account. */
+/**
+ * Moves a route off an unavailable account onto the clear replacement, once
+ * per session and account. The decision must hold for `settleMs`: right after
+ * a chat switch the selection can still be the previous chat's for a render.
+ */
 export function useRouteAccountFallback({
   sessionId,
   enabled,
   applyRoute,
+  settleMs = ROUTE_ACCOUNT_FALLBACK_SETTLE_MS,
   ...input
 }: RouteAccountFallbackInput & {
   sessionId: string | null | undefined;
   enabled: boolean;
   applyRoute: ApplyFallbackRoute;
+  settleMs?: number;
 }) {
   const appliedRef = useRef(new Set<string>());
   const route = enabled && sessionId ? routeAccountFallbackDecision(input) : null;
   const key = sessionId ? routeAccountFallbackKey(sessionId, input.selection) : '';
-  // The applied keys keep a re-run, for example on a new callback, from applying twice.
+  const decision = route ? JSON.stringify([key, route.providerOption?.value, route.model, route.thinking]) : '';
+  const latest = useRef({ route, applyRoute });
+  useEffect(() => { latest.current = { route, applyRoute }; });
   useEffect(() => {
-    if (!route || !shouldApplyRouteAccountFallback(key, appliedRef.current)) return;
-    void applyRoute(route);
-  }, [applyRoute, key, route]);
+    if (!decision) return;
+    const timer = setTimeout(() => {
+      const current = latest.current.route;
+      if (!current || !shouldApplyRouteAccountFallback(key, appliedRef.current)) return;
+      // A refused save, for example while a turn starts, may try again on the next decision.
+      void Promise.resolve(latest.current.applyRoute(current)).then((applied) => {
+        if (applied === false) appliedRef.current.delete(key);
+      }, () => { appliedRef.current.delete(key); });
+    }, settleMs);
+    return () => clearTimeout(timer);
+  }, [decision, key, settleMs]);
 }
 
 /**
@@ -76,6 +101,8 @@ export function useComposerRouteAccountGuard(
   },
 ): ComposerSendGate {
   const accountListsLoaded = useAccountListsLoaded();
-  useRouteAccountFallback({ ...input, accountListsLoaded });
+  const { hostedChoices, localChoices } = registeredAccountChoices();
+  const knownAccountChoices = new Set([...hostedChoices, ...(localChoices ?? [])]);
+  useRouteAccountFallback({ ...input, accountListsLoaded, knownAccountChoices });
   return composerSendGate({ ...input, accountListsLoaded });
 }
