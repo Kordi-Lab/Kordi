@@ -97,7 +97,7 @@ test('pair panel: the Nearby row shows only with the capability, and opens Nearb
   await mount(createElement(Panel, { store, nearby: true }), async (root) => {
     const row = root.querySelector('[data-cg-nearby]');
     assert.ok(row?.querySelector('.cg-pair-icon.is-amber'));
-    assert.match(row?.textContent ?? '', /Nearby1 person · from your iPhone/);
+    assert.match(row?.textContent ?? '', /Nearby1 person nearby/);
     await click(row);
     assert.deepEqual(store.top(), { name: 'nearby' });
   });
@@ -125,7 +125,7 @@ test('nearby screen: Turn on asks for consent with the card and background alert
     assert.deepEqual(put?.body, { enabled: true, consent: true, profileId: 'cgp_ws', pausedUntil: null, alerts: { requests: false, matches: false } });
     assert.equal(document.querySelector('[role="dialog"]'), null);
     const text = root.textContent ?? '';
-    assert.match(text, /From your iPhone · 3 min ago/);
+    assert.match(text, /Location updated · 3 min ago/);
     assert.match(text, /Maya Chen/);
     assert.match(text, /92% · Under 500 m · Both build memory for agents/);
     assert.match(text, /Matching 2 more/);
@@ -167,5 +167,104 @@ test('nearby screen: Within stores the range and searches again; Add posts a req
     assert.deepEqual(calls.find((call) => call.method === 'POST')?.body, { text: 'Demo partner', range: 1000 });
     assert.equal(document.querySelector('[role="dialog"]'), null);
     assert.match(root.textContent ?? '', /Demo partnerNo end · 1 km/);
+  });
+});
+
+test('nearby screen: no matches and no location both keep a visible People result state', async () => {
+  for (const hasLocation of [true, false]) {
+    const { store } = storeWith({
+      'GET nearby': { status: 200, body: settings({ location: hasLocation ? fresh() : null }) },
+      'GET nearby/needs': { status: 200, body: { needs: [] } },
+      'GET nearby/people': { status: 200, body: { people: [], matching: 0, location: fresh() } },
+    });
+    await mount(createElement(Screen, { store }), async (root) => {
+      assert.ok([...root.querySelectorAll('h2')].some((heading) => heading.textContent === 'People'));
+      assert.match(root.textContent ?? '', hasLocation ? /No matches nearby/ : /No results yet/);
+      assert.match(root.textContent ?? '', hasLocation ? /Try a wider distance/ : /Update your location to see who is nearby/);
+      assert.ok(buttonNamed(root, 'Use this device’s location'));
+      assert.doesNotMatch(root.textContent ?? '', /Open Kordi on your iPhone/);
+    });
+  }
+});
+
+test('nearby screen: a device fix is requested only on click, rounded, posted, and followed by results', async () => {
+  const { store, calls } = storeWith({
+    'GET nearby': [{ status: 200, body: settings({ location: null }) }, { status: 200, body: settings() }],
+    'GET nearby/needs': { status: 200, body: { needs: [] } },
+    'GET nearby/people': { status: 200, body: people },
+    'POST nearby/location': { status: 200, body: { location: fresh() } },
+  });
+  await mount(createElement(Screen, { store }), async (root) => {
+    let requests = 0;
+    const timestamp = Date.now();
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: {
+      getCurrentPosition: (success: PositionCallback) => {
+        requests += 1;
+        success({ coords: { latitude: 40.123456, longitude: -75.654321, accuracy: 50.4 }, timestamp } as GeolocationPosition);
+      },
+    } });
+    assert.equal(requests, 0);
+    await click(buttonNamed(root, 'Use this device’s location'));
+    assert.equal(requests, 1);
+    assert.deepEqual(calls.find((call) => call.url.endsWith('/nearby/location'))?.body, {
+      latitude: 40.123, longitude: -75.654, accuracy: 50, capturedAt: new Date(timestamp).toISOString(),
+    });
+    assert.match(root.textContent ?? '', /Maya Chen/);
+    assert.doesNotMatch(root.textContent ?? '', /No results yet/);
+  });
+});
+
+test('nearby screen: denied location shows recovery guidance without posting coordinates', async () => {
+  const { store, calls } = storeWith({
+    'GET nearby': { status: 200, body: settings({ location: null }) },
+    'GET nearby/needs': { status: 200, body: { needs: [] } },
+  });
+  await mount(createElement(Screen, { store }), async (root) => {
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: {
+      getCurrentPosition: (_success: PositionCallback, failure: PositionErrorCallback) => failure({ code: 1 } as GeolocationPositionError),
+    } });
+    await click(buttonNamed(root, 'Use this device’s location'));
+    assert.match(root.textContent ?? '', /Allow location access/);
+    assert.match(root.textContent ?? '', /No results yet/);
+    assert.equal(calls.filter((call) => call.method === 'POST').length, 0);
+    assert.equal(buttonNamed(root, 'Use this device’s location')?.disabled, false);
+  });
+});
+
+test('nearby screen: leaving before the device answers discards the late fix', async () => {
+  const { store, calls } = storeWith({
+    'GET nearby': { status: 200, body: settings({ location: null }) },
+    'GET nearby/needs': { status: 200, body: { needs: [] } },
+  });
+  let finish!: PositionCallback;
+  await mount(createElement(Screen, { store }), async (root) => {
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: {
+      getCurrentPosition: (success: PositionCallback) => { finish = success; },
+    } });
+    await click(buttonNamed(root, 'Use this device’s location'));
+    assert.ok(buttonNamed(root, 'Finding your location…')?.disabled);
+  });
+  finish({ coords: { latitude: 40, longitude: -75, accuracy: 20 }, timestamp: Date.now() } as GeolocationPosition);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(calls.filter((call) => call.method === 'POST').length, 0);
+});
+
+test('nearby screen: a pending search shows progress and a failed search offers retry', async () => {
+  const { store } = storeWith({
+    'GET nearby': { status: 200, body: settings() },
+    'GET nearby/needs': { status: 200, body: { needs: [] } },
+  });
+  let fail!: (error: Error) => void;
+  store.client.nearbyPeople = () => new Promise((_resolve, reject) => { fail = reject; });
+  await mount(createElement(Screen, { store }), async (root) => {
+    assert.match(root.textContent ?? '', /Finding nearby people/);
+    assert.doesNotMatch(root.textContent ?? '', /No matches nearby/);
+    await act(async () => fail(new Error('Could not reach Kordi Cloud.')));
+    await settle();
+    assert.match(root.textContent ?? '', /Could not load nearby people/);
+    store.client.nearbyPeople = async () => ({ people: [], matching: 0, location: fresh() });
+    await click(buttonNamed(root, 'Try again'));
+    assert.match(root.textContent ?? '', /No matches nearby/);
+    assert.doesNotMatch(root.textContent ?? '', /Could not reach Kordi Cloud/);
   });
 });

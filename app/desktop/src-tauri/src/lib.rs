@@ -20,6 +20,7 @@ mod media_permissions;
 mod media_preview_window;
 mod menu_bar;
 mod message_notification;
+mod nearby_location;
 mod project;
 mod remote_image;
 mod skill_library;
@@ -208,6 +209,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            nearby_location::desktop_nearby_location,
             transcript_trace::desktop_transcript_trace,
             auth_window::desktop_set_auth_window_surface,
             window_backdrop::desktop_set_window_backdrop,

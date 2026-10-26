@@ -95,9 +95,11 @@ function PersonRow({ entry, onOpen }: { entry: CgNearbyEntry; onOpen: () => void
 }
 
 /** People: the Within and match filters, then who is around, and how many are still being matched. */
-export function NearbyPeople({ settings, results, nearby, onOpen }: {
+export function NearbyPeople({ settings, results, nearby, unavailable, notice, onOpen }: {
   settings: CgNearbySettings;
   results: CgNearbyResults | null;
+  unavailable?: 'location' | 'paused';
+  notice?: string | null;
   nearby: CgNearbyStore;
   onOpen: (accountId: string) => void;
 }) {
@@ -116,7 +118,7 @@ export function NearbyPeople({ settings, results, nearby, onOpen }: {
           </NbMenuButton>
         </span>
       </div>
-      {results ? (
+      {results && !unavailable ? (
         <div className="cg-panel">
           {rows.map((entry) => <PersonRow key={entry.person.accountId} entry={entry} onOpen={() => onOpen(entry.person.accountId)} />)}
           {more ? (
@@ -126,10 +128,21 @@ export function NearbyPeople({ settings, results, nearby, onOpen }: {
             </div>
           ) : null}
           {!rows.length && !more ? (
-            <div className="cg-mrow is-plain"><span className="cg-mrow-text"><span className="cg-mrow-sub">No one nearby yet</span></span></div>
+            <div className="cg-mrow is-plain" role="status"><span className="cg-mrow-text"><span className="cg-mrow-title">No matches nearby</span><span className="cg-mrow-sub">Try a wider distance or a lower match score.</span></span></div>
           ) : null}
         </div>
-      ) : null}
+      ) : (
+        <div className="cg-panel" role="status">
+          <div className="cg-mrow is-plain">
+            <span className="cg-mrow-text">
+              <span className="cg-mrow-title">{unavailable === 'location' ? 'No results yet' : unavailable === 'paused' ? 'Nearby is paused' : notice ? 'Could not load nearby people' : 'Finding nearby people…'}</span>
+              {unavailable === 'location' ? <span className="cg-mrow-sub">Update your location to see who is nearby.</span> : null}
+              {unavailable === 'paused' ? <span className="cg-mrow-sub">Resume Nearby to see results.</span> : null}
+            </span>
+            {!unavailable && notice ? <button type="button" className="cg-link" onClick={() => { nearby.set({ notice: null }); void nearby.refresh(); }}>Try again</button> : null}
+          </div>
+        </div>
+      )}
     </>
   );
 }
