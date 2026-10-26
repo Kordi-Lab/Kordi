@@ -392,9 +392,23 @@ struct ChatAttachment: Identifiable, Codable, Hashable {
         VideoAttachmentPolicy.isMP4(name: name, mimeType: mimeType)
     }
 
+    /// Any video the chat can play in its own viewer, including received
+    /// QuickTime files. Uploads stay MP4 only.
+    var isPlayableVideo: Bool {
+        VideoAttachmentPolicy.isPlayable(name: name, mimeType: mimeType)
+    }
+
 }
 
 enum VideoAttachmentPolicy {
+    nonisolated static func isPlayable(name: String, mimeType: String?) -> Bool {
+        if isMP4(name: name, mimeType: mimeType) { return true }
+        let normalizedMIMEType = mimeType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if normalizedMIMEType.hasPrefix("video/") { return true }
+        let isGenericType = normalizedMIMEType.isEmpty || normalizedMIMEType == "application/octet-stream"
+        return isGenericType && ["mov", "m4v", "mp4"].contains(URL(fileURLWithPath: name).pathExtension.lowercased())
+    }
+
     nonisolated static func isMP4(name: String, mimeType: String?) -> Bool {
         let normalizedMIMEType = mimeType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return normalizedMIMEType == "video/mp4"
