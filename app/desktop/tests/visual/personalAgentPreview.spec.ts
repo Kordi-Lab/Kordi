@@ -6,8 +6,8 @@ test('Personal agent section, session header, source chips and menu', async ({ p
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(0)).toContainText("Alex's Kordi");
   await expect(rows.nth(2)).toContainText('No messages yet');
-  await expect(page.getByRole('heading', { name: 'Personal agent' })).toBeVisible();
-  const personalTop = (await page.getByRole('heading', { name: 'Personal agent' }).boundingBox())!.y;
+  await expect(page.getByRole('button', { name: 'Personal agent' })).toBeVisible();
+  const personalTop = (await page.getByRole('button', { name: 'Personal agent' }).boundingBox())!.y;
   const recentsTop = (await page.getByRole('button', { name: 'Recents' }).boundingBox())!.y;
   expect(personalTop).toBeLessThan(recentsTop);
 

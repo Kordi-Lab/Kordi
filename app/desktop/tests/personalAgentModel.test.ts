@@ -285,3 +285,14 @@ test('messages sent in a Factory agent personal session target that agent', asyn
   // The default agent's session goes to the owner's own agent, which needs no explicit target.
   assert.equal(targets.has(DEFAULT_SESSION), false);
 });
+
+test('the Personal agent section folds like Recents and a search shows its matches while folded', () => {
+  const personalRow = (agentId: string): ChatSidebarRow => ({ kind: 'session', key: `personal:${agentId}`, sessionId: `session:${agentId}`, spaceId: 'personal', depth: 0, activePath: false, estimatedHeight: 50 });
+  const personal = { rows: [personalRow('a'), personalRow('b')], sessionIds: new Set(['session:a', 'session:b']) };
+  const keys = (collapsed: Set<string>, showWhileCollapsed = false) => projectChatGroups([row('session:other')], [], collapsed, false, { personal: { ...personal, showWhileCollapsed } })
+    .rows.map((entry) => entry.key);
+  assert.deepEqual(keys(new Set()), ['agent-section:personal', 'personal:a', 'personal:b', 'agent-section:recents', 'recent:session:session:other']);
+  // Folded: the heading stays, its rows hide, the other sections are untouched.
+  assert.deepEqual(keys(new Set(['section:personal'])), ['agent-section:personal', 'agent-section:recents', 'recent:session:session:other']);
+  assert.deepEqual(keys(new Set(['section:personal']), true), ['agent-section:personal', 'personal:a', 'personal:b', 'agent-section:recents', 'recent:session:session:other']);
+});

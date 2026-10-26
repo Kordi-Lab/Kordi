@@ -96,6 +96,12 @@ test('once its agent leaves the list, the old session is no longer guarded as pe
 });
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+async function until(ready: () => boolean, timeoutMs = 5_000) {
+  for (let waited = 0; !ready(); waited += 5) {
+    if (waited >= timeoutMs) return;
+    await wait(5);
+  }
+}
 
 test('the sync strips sessions that left the list, keeps them when the list fails, and reloads on demand', async () => {
   __setSessionBackendForTests({ load: async () => ({ token: 'token', accountId: ACCOUNT, expiresAt: '2099-01-01T00:00:00Z' }), save: async () => undefined, clear: async () => undefined });
@@ -120,21 +126,21 @@ test('the sync strips sessions that left the list, keeps them when the list fail
     await withJsdomRoot(async (mount) => {
       const agents = [kordi, research];
       await mount(createElement(Harness, { agents }));
-      await act(async () => { await wait(20); });
+      await act(async () => { await until(() => calls >= 1); await wait(10); });
       assert.equal(calls, 1);
       // The list failed and no snapshot names anything: nothing is stripped.
       assert.equal(plans.filter((plan) => (plan.session.metadata as Record<string, unknown>).personalAgent === null).length, 0);
 
       // Proactive changed in the Blueprint: the list loads again at once.
       fail = false;
-      await act(async () => { requestPersonalAgentsRefresh(); await wait(20); });
+      await act(async () => { requestPersonalAgentsRefresh(); await until(() => plans.some((plan) => (plan.session.metadata as Record<string, unknown>).personalAgent === null)); });
       assert.equal(calls, 2);
       assert.deepEqual(getPersonalAgentEntries().map((entry) => entry.agentId), [DEFAULT_ID]);
       assert.deepEqual(plans.filter((plan) => (plan.session.metadata as Record<string, unknown>).personalAgent === null).map((plan) => plan.session.id), [RESEARCH_SESSION]);
 
       // A Factory agent's Proactive change reaches the agent list and reloads too.
       await mount(createElement(Harness, { agents: [kordi, { ...research, cloudAgentPersonalAgent: { proactive: true } }] }));
-      await act(async () => { await wait(20); });
+      await act(async () => { await until(() => calls >= 3); });
       assert.equal(calls, 3);
     });
   } finally {
@@ -165,7 +171,7 @@ test('the default agent shows the server Proactive value, a new agent starts off
   try {
     await withJsdomRoot(async (mount) => {
       await mount(createElement(Harness));
-      await act(async () => { await wait(20); });
+      await act(async () => { await until(() => settings?.personalPublished !== null); });
       assert.equal(settings!.personalPublished, true);
       const control = factoryProactiveControl({
         creating: false, creation: creation!, agent: kordi, config: { systemPrompt: '', loadedSkills: [], loadedTools: [], loadedPlugins: [] },

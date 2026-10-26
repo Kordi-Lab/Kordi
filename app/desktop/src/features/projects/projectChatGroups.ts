@@ -11,8 +11,12 @@ export function projectChatGroups(
     pinnedSessionIds?: ReadonlySet<string>;
     expandedProjectIds?: ReadonlySet<string>;
     previewLimit?: number;
-    /** The owner's personal agent rows, listed first; their sessions stay out of every other section. */
-    personal?: { rows: readonly ChatSidebarRow[]; sessionIds: ReadonlySet<string> };
+    /**
+     * The owner's personal agent rows, listed first; their sessions stay out of
+     * every other section. The section folds like Recents (`section:personal`);
+     * `showWhileCollapsed` (a search) keeps its matching rows visible.
+     */
+    personal?: { rows: readonly ChatSidebarRow[]; sessionIds: ReadonlySet<string>; showWhileCollapsed?: boolean };
   } = {},
 ) {
   const projectBySession = new Map(projects.flatMap((project) =>
@@ -57,7 +61,7 @@ export function projectChatGroups(
   };
   if (options.personal?.rows.length) {
     appendSection('personal');
-    groupedRows.push(...options.personal.rows);
+    if (!collapsed.has('section:personal') || options.personal.showWhileCollapsed) groupedRows.push(...options.personal.rows);
   }
   if (pinned.length) {
     appendSection('pinned');

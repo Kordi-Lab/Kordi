@@ -11,6 +11,14 @@ import { withJsdomRoot } from './helpers/mountWithJsdom';
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Waits until `ready` holds, so timer-based steps do not depend on machine load. */
+async function until(ready: () => boolean, timeoutMs = 5_000) {
+  for (let waited = 0; !ready(); waited += 5) {
+    if (waited >= timeoutMs) return;
+    await wait(5);
+  }
+}
+
 function eventTarget() {
   const listeners = new Map<string, Set<() => void>>();
   return {
@@ -36,7 +44,8 @@ test('a failed load retries with backoff until it succeeds, then stops', async (
     if (calls < 4) throw new Error(`down ${calls}`);
     return true;
   }, { onError: (error) => errors.push(error), delaysMs: [5, 10, 20], windowTarget: win as never, documentTarget: doc as never });
-  await wait(120);
+  await until(() => calls >= 4);
+  await wait(30);
   assert.equal(calls, 4);
   assert.equal(errors.length, 3);
   win.fire('focus');
@@ -55,10 +64,10 @@ test('focus, coming online, or becoming visible retries a failed load at once', 
     if (calls < 3) throw new Error('down');
     return true;
   }, { onError: () => undefined, delaysMs: [60_000], windowTarget: win as never, documentTarget: doc as never });
-  await wait(5);
+  await until(() => calls >= 1);
   assert.equal(calls, 1);
   win.fire('online');
-  await wait(5);
+  await until(() => calls >= 2);
   assert.equal(calls, 2);
   doc.visibilityState = 'hidden';
   doc.fire('visibilitychange');
@@ -66,7 +75,7 @@ test('focus, coming online, or becoming visible retries a failed load at once', 
   assert.equal(calls, 2, 'a hidden window waits');
   doc.visibilityState = 'visible';
   win.fire('focus');
-  await wait(5);
+  await until(() => calls >= 3);
   assert.equal(calls, 3);
   stop();
 });
@@ -92,7 +101,7 @@ test('the sync retries a failed personal agents list and reports each failure', 
   try {
     await withJsdomRoot(async (mount) => {
       await mount(createElement(Harness));
-      await act(async () => { await wait(80); });
+      await act(async () => { await until(() => getPersonalAgentEntries().length > 0); });
       assert.equal(calls, 3);
       assert.deepEqual(warnings, ['[personal-agent] could not load personal agents', '[personal-agent] could not load personal agents']);
       assert.deepEqual(getPersonalAgentEntries().map((entry) => entry.sessionId), ['session:personal']);

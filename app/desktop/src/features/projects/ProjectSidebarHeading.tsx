@@ -10,7 +10,7 @@ export function ProjectSidebarHeading({
   onCreateProject?: () => void;
 }) {
   const label = section === 'personal' ? 'Personal agent' : section === 'pinned' ? 'Pinned' : section === 'projects' ? 'Projects' : 'Recents';
-  const collapsible = section === 'projects' || section === 'recents';
+  const collapsible = section !== 'pinned';
   return <div className="chat-project-section-heading" data-first-section={first || undefined}>
     {collapsible ? <button type="button" className="chat-project-section-toggle"
       aria-expanded={expanded} onClick={onToggle}>

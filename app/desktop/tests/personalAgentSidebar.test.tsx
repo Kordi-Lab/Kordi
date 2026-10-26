@@ -307,3 +307,36 @@ test('an agent whose Proactive is off leaves the section; its old session is bac
     setPersonalAgentEntries([], false);
   }
 });
+
+test('the Personal agent heading folds and unfolds its rows, and a search shows matches while folded', async () => {
+  setPersonalAgentEntries(entries, true);
+  try {
+    await withJsdomRoot(async (mount) => {
+      let host = await mount(createElement(WorkspaceSidebar, sidebarProps() as never));
+      const toggle = () => [...host.querySelectorAll<HTMLButtonElement>('.chat-project-section-toggle')]
+        .find((button) => button.textContent?.includes('Personal agent'))!;
+      const personalRows = () => host.querySelectorAll('[data-personal-agent-row]').length;
+      assert.equal(toggle().getAttribute('aria-expanded'), 'true');
+      assert.equal(personalRows(), 3);
+
+      await act(async () => { toggle().click(); });
+      assert.equal(toggle().getAttribute('aria-expanded'), 'false');
+      assert.equal(personalRows(), 0);
+      // Other sections keep their rows.
+      assert.ok(host.querySelector('[data-agent-session-row="session:direct-agent:figure"]'));
+
+      // Searching while folded shows the matching personal agents.
+      host = await mount(createElement(WorkspaceSidebar, sidebarProps({ chatSearch: 'two new papers' }) as never));
+      assert.deepEqual([...host.querySelectorAll('[data-personal-agent-row]')].map((item) => item.getAttribute('data-personal-agent-row')), ['cloud_agent_research']);
+      assert.equal(toggle().getAttribute('aria-expanded'), 'true');
+
+      // The search ends: the section is still folded.
+      host = await mount(createElement(WorkspaceSidebar, sidebarProps() as never));
+      assert.equal(personalRows(), 0);
+      await act(async () => { toggle().click(); });
+      assert.equal(personalRows(), 3);
+    });
+  } finally {
+    setPersonalAgentEntries([], false);
+  }
+});
