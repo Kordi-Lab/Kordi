@@ -148,9 +148,10 @@ export function CgSegmented<T extends string>({ value, options, onChange, label 
 }
 
 /** The Kordi mark and one line, while the agent works. */
-export function CgProgress({ line }: { line: string }) {
+/** `inline` is the small one-line status shown under a list while it fills in. */
+export function CgProgress({ line, inline = false }: { line: string; inline?: boolean }) {
   return (
-    <div className="cg-progress" role="status">
+    <div className={cn('cg-progress', inline && 'is-inline')} role="status">
       <KordiFlyingBird className="cg-mark" />
       <span>{line}</span>
     </div>

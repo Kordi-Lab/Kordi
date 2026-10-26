@@ -76,6 +76,8 @@ export function ResultsScreen({ code, state, store, host }: { code: string; stat
   const startGroup = (theme: { label: string; people: CgPerson[] }) => setStarting(topicGroupDraft(theme, selfId));
   const line = `${peopleCount(everyone.length)} · ${results.topics.length} shared topics`;
   const profileId = results.profileId ?? room?.profileId ?? undefined;
+  // While matching, an empty list shows only the progress line under the tabs.
+  const matchingEmpty = results.status === 'matching' && (tab === 'people' ? results.people : results.topics).length === 0;
 
   return (
     <>
@@ -97,7 +99,6 @@ export function ResultsScreen({ code, state, store, host }: { code: string; stat
         </DetailTiles>
       )}
       <CgNotice text={state.notice} />
-      {results.status === 'matching' ? <CgProgress line="Finding overlap" /> : null}
       {suggestion ? (
         <CgSection title="Suggested">
           <CgGroup>
@@ -111,7 +112,7 @@ export function ResultsScreen({ code, state, store, host }: { code: string; stat
         </CgSection>
       ) : null}
       <CgSegmented value={tab} onChange={setTab} label="Results" options={[['people', 'People'], ['topics', 'Topics']]} />
-      <CgSection>
+      {matchingEmpty ? null : <CgSection>
         <CgGroup>
           {tab === 'people'
             ? results.people.map((entry) => (
@@ -142,7 +143,8 @@ export function ResultsScreen({ code, state, store, host }: { code: string; stat
             ? <CgRow title={<span className="cg-muted">{tab === 'people' ? 'No matches yet' : 'No shared topics yet'}</span>} />
             : null}
         </CgGroup>
-      </CgSection>
+      </CgSection>}
+      {results.status === 'matching' ? <CgProgress inline line="Finding overlap" /> : null}
       <GroupsSection code={code} results={results} state={state} store={store} host={host} />
       {closed ? (
         <div className="cg-actions-end">
