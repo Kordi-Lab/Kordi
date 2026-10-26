@@ -206,7 +206,30 @@ final class ProviderLoginControllerTests: XCTestCase {
         XCTAssertEqual(ProviderLoginViewState.failureMessage(code: OMPBackendSupport.transientCode, reason: nil), OMPBackendSupport.transientMessage)
     }
 
-    func testUnavailableBackendFailsOnceWithTheBackendMessage() async throws {
+    func testUnavailableBackendShowsOnlyOneShortGenericLine() throws {
+        XCTAssertEqual(OMPBackendSupport.unavailableMessage, "Sign-in isn't available right now.")
+        for word in ["OMP", "backend", "server"] {
+            XCTAssertFalse(OMPBackendSupport.unavailableMessage.localizedCaseInsensitiveContains(word), word)
+        }
+        let kordi = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Kordi")
+        func source(_ path: String) throws -> String {
+            try String(contentsOf: kordi.appendingPathComponent(path), encoding: .utf8)
+        }
+        let flow = try source("Features/Profile/ProviderLoginFlow.swift")
+        for path in ["Features/Profile/ProviderLoginFlow.swift", "Features/Profile/ProviderAuthenticationDetailView.swift", "Core/Models/ProviderLoginPolicy.swift"] {
+            let text = try source(path)
+            XCTAssertFalse(text.contains("not available on this backend"), path)
+            XCTAssertFalse(text.contains("need a newer server"), path)
+            XCTAssertFalse(text.contains("omp-backend-unavailable"), path)
+        }
+        XCTAssertFalse(try source("Features/Profile/ProviderAuthenticationDetailView.swift").contains("OMPBackendSupport.unavailableMessage"))
+        // Actions that need hosted sign-in stay off while the backend has none.
+        XCTAssertTrue(flow.contains("|| model.ompBackendUnavailable)"))
+        XCTAssertTrue(flow.contains(".disabled(model.ompBackendUnavailable)"))
+    }
+
+    func testUnavailableBackendFailsOnceWithTheShortLine() async throws {
         for error in [
             CloudAPIError(code: "server_error", message: "Not found", statusCode: 404),
             CloudAPIError(code: "provider_auth_not_configured", message: "Off", statusCode: 503),

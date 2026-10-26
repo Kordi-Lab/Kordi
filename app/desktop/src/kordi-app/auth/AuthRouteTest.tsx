@@ -17,12 +17,12 @@ const thinkingOptions = [
 type AuthRouteTestProps = {
   provider: AuthDisplayProvider;
   onTestRoute: (input: CloudProviderRouteTestInput) => Promise<CloudProviderRouteTestResult>;
-  /** Why the test cannot run on this backend; the button stays off while set. */
-  disabledReason?: string | null;
+  /** The backend cannot run hosted tests; the button stays off. */
+  disabled?: boolean;
 };
 
 /** A compact route form followed by one explicit hosted test. */
-export function AuthRouteTest({ provider, onTestRoute, disabledReason = null }: AuthRouteTestProps) {
+export function AuthRouteTest({ provider, onTestRoute, disabled = false }: AuthRouteTestProps) {
   const [providerChoice, setProviderChoice] = useState('');
   const [routeChoice, setRouteChoice] = useState('');
   const [modelOverride, setModelOverride] = useState<string | null>(null);
@@ -133,18 +133,17 @@ export function AuthRouteTest({ provider, onTestRoute, disabledReason = null }: 
       </div>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-[color:var(--app-divider)] py-3.5">
         <p className="m-0 text-[12px] leading-5 text-slate-400">Sends one short request and may use provider quota.</p>
-        <AuthActionButton type="button" className={authButtonPrimaryClass} title={disabledReason ?? undefined} disabled={Boolean(disabledReason) || routeTesting || !routeModel.trim()} onClick={() => { void runRouteTest(); }}>
+        <AuthActionButton type="button" className={authButtonPrimaryClass} disabled={disabled || routeTesting || !routeModel.trim()} onClick={() => { void runRouteTest(); }}>
           {routeTesting ? 'Testing…' : 'Run test'}
         </AuthActionButton>
       </div>
-      {disabledReason ? <p className="m-0 pb-3.5 text-[12px] leading-5 text-slate-400">{disabledReason}</p> : null}
       {routeResult ? (
         <div role="status" className="py-3.5">
           <div className="text-[13px] font-medium text-white">Confirmed · {routeResult.accountLabel} · {routeResult.model}</div>
           <div className="mt-0.5 text-[12px] leading-5 text-slate-400">{routeResult.response}</div>
         </div>
       ) : null}
-      {routeError && routeError !== disabledReason ? <div className="app-error-text py-3.5 text-[12px] text-rose-200" role="alert">{routeError}</div> : null}
+      {routeError ? <div className="app-error-text py-3.5 text-[12px] text-rose-200" role="alert">{routeError}</div> : null}
     </SettingsSection>
   );
 }

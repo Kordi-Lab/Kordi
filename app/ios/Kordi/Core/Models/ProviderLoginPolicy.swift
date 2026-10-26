@@ -385,12 +385,14 @@ extension ProviderAuthenticationDefinition {
 /// The one place that decides what a provider-auth failure means. A backend
 /// that predates OMP (an HTTP 404 from these routes) or has OMP switched off
 /// (503 `provider_auth_not_configured`) stays unavailable until a refresh
-/// succeeds. A 503 `omp_unavailable` or `omp_busy` is a passing worker
-/// failure, so the action stays available and can be retried.
+/// succeeds: its actions stay off without a notice, and only an attempt that
+/// still fails shows `unavailableMessage`. A 503 `omp_unavailable` or
+/// `omp_busy` is a passing worker failure, so the action stays available and
+/// can be retried.
 enum OMPBackendSupport {
     static let notConfiguredCode = "provider_auth_not_configured"
     static let transientCode = "omp_unavailable"
-    static let unavailableMessage = "OMP is not available on this backend yet. Saved accounts still work; key verification, route tests and sign-in steps need a newer server."
+    static let unavailableMessage = "Sign-in isn't available right now."
     static let transientMessage = "OMP is not responding right now. Wait a moment, then try again."
 
     /// A newer server's own 404s for a missing sign-in or account.

@@ -5,10 +5,8 @@ import type { ProviderLoginClient, ProviderLoginSnapshot } from '@/features/clou
 import type { LoginCallbackCapture } from '@/features/cloud/loginCallbackCapture';
 import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLayout';
 import type { AuthDisplayMethod, AuthDisplayProvider } from './model';
-import { OMP_UNAVAILABLE_MESSAGE } from '@/features/cloud/ompAvailability';
 import {
   AuthActionButton,
-  AuthPageNotice,
   authButtonDangerClass,
   authButtonNeutralClass,
 } from './AuthDetailPrimitives';
@@ -60,7 +58,7 @@ type AuthProviderDetailProps = {
   recentlyAdded?: string[];
   /** Auth choices whose hosted copy needs the owner to sign in again. */
   needsReconnect?: string[];
-  /** The backend has no OMP yet: saved accounts work, OMP actions are off. */
+  /** The backend has no OMP yet: saved accounts work, OMP actions are off, and no notice explains it. */
   ompUnavailable?: boolean;
   onOmpUnavailable?: () => void;
 };
@@ -141,7 +139,6 @@ export function AuthProviderDetail({
     navigate(match ? { method: match.key } : {});
   };
 
-  const notice = ompUnavailable ? <AuthPageNotice>{OMP_UNAVAILABLE_MESSAGE}</AuthPageNotice> : null;
   const omp = { ompUnavailable, onOmpUnavailable };
 
   // Layer 3: one method's login page. Layer 2: the method picker.
@@ -152,14 +149,13 @@ export function AuthProviderDetail({
       const editing = route.account ? customApiAccounts(provider).find((account) => account.authChoice === route.account) ?? null : null;
       return (
         <div className="grid min-h-0 w-full pb-6 pt-6">
-          {notice}
           <AuthCustomApiSetup
             key={editing?.authChoice ?? 'new'}
             account={editing}
             onValidateCloudKey={onValidateCloudKey}
             onSaveCloudKey={onSaveCloudKey}
             onSaved={(authChoice, { edited }) => { if (!edited) onAccountAdded?.(authChoice); navigate(null); }}
-            disabledReason={ompUnavailable ? OMP_UNAVAILABLE_MESSAGE : null}
+            disabled={ompUnavailable}
           />
         </div>
       );
@@ -185,7 +181,6 @@ export function AuthProviderDetail({
     }
     return (
       <div className="grid min-h-0 w-full pb-6 pt-6">
-        {notice}
         <SettingsSection className="app-auth-detail-section">
           {addMethods.map((method) => (
             <SettingsRow
@@ -213,7 +208,6 @@ export function AuthProviderDetail({
             {error}
           </div>
         )}
-        {isLocalModelControl ? null : notice}
 
         {isLocalModelControl ? (
           <SettingsSection title="Local server" className="app-auth-detail-section">
@@ -252,7 +246,7 @@ export function AuthProviderDetail({
               )}
             </SettingsSection>
 
-            {onTestRoute ? <AuthRouteTest provider={provider} onTestRoute={onTestRoute} disabledReason={ompUnavailable ? OMP_UNAVAILABLE_MESSAGE : null} /> : null}
+            {onTestRoute ? <AuthRouteTest provider={provider} onTestRoute={onTestRoute} disabled={ompUnavailable} /> : null}
 
             {hasSavedProfiles && hasLocalSavedProfiles && !provider.catalogOnly ? (
               <SettingsSection title="Advanced" className="app-auth-detail-section">

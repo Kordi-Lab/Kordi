@@ -1,6 +1,6 @@
 import { cloudApiBaseUrl } from './cloudApiEnvironment';
 import { cloudFetchImpl } from './cloudTransport';
-import { isOmpUnavailableResponse, OMP_UNAVAILABLE_MESSAGE } from './ompAvailability';
+import { isOmpUnavailableResponse, SIGN_IN_UNAVAILABLE_MESSAGE } from './ompAvailability';
 import { publishableAccountLabel } from './routeAccountChoice';
 import { loadSession } from './session';
 
@@ -113,7 +113,7 @@ export function providerLoginErrorMessage(code: ProviderLoginErrorCode, reason?:
     case 'invalid_login_input': return 'OMP did not accept that value. Check it and try again.';
     case 'rate_limited': return 'Too many sign-in attempts. Wait a minute and try again.';
     case 'omp_unavailable': return 'OMP is not reachable right now. Try again in a moment.';
-    case 'provider_auth_not_configured': return OMP_UNAVAILABLE_MESSAGE;
+    case 'provider_auth_not_configured': return SIGN_IN_UNAVAILABLE_MESSAGE;
     case 'omp_busy': return 'OMP is busy with other sign-ins. Try again in a moment.';
     case 'not_signed_in': return 'Sign in to Kordi before adding an account.';
     case 'network_error': return 'Kordi could not reach the server. Check your connection and try again.';

@@ -14,7 +14,6 @@ import { createDesktopLoginCallbackCapture, type LoginCallbackCapture } from '@/
 import { publishHostedProviderSnapshots } from '@/features/cloud/hostedAccounts';
 import { testCloudProviderRoute } from '@/features/cloud/providerRouteTest';
 import { publishableAccountLabel } from '@/features/cloud/routeAccountChoice';
-import { OMP_UNAVAILABLE_MESSAGE } from '@/features/cloud/ompAvailability';
 import { openDesktopExternalUrl, type DesktopChatMessageRoute } from '@/lib/desktop';
 import { AuthActionButton, authButtonPrimaryClass } from './AuthDetailPrimitives';
 import { AuthProviderDetail } from './AuthProviderDetail';
@@ -251,7 +250,6 @@ export function AuthPage({
         <AuthProviderList
           providers={visibleProviders}
           notice={[
-            ompUnavailable ? OMP_UNAVAILABLE_MESSAGE : null,
             catalogNotice,
             authState ? null : LOCAL_ACCOUNTS_UNAVAILABLE_NOTICE,
           ].filter(Boolean).join(' ') || null}

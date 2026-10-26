@@ -157,11 +157,6 @@ struct ProviderAuthenticationDetailView: View {
                         .contentShape(Rectangle())
                     }
                     .accessibilityIdentifier("provider-add-account")
-                } footer: {
-                    if model.ompBackendUnavailable {
-                        Text(OMPBackendSupport.unavailableMessage)
-                            .accessibilityIdentifier("omp-backend-unavailable")
-                    }
                 }
             } else if provider.id == ProviderAuthenticationDefinition.custom.id {
                 Section(editingCustom.map { "Edit \($0.label?.nonEmpty ?? "account")" } ?? "New account name") {

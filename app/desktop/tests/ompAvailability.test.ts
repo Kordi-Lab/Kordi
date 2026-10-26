@@ -6,8 +6,8 @@ import { CloudAuthError } from '../src/features/cloud/cloudAuthError';
 import {
   isOmpUnavailableError,
   isOmpUnavailableResponse,
-  OMP_UNAVAILABLE_MESSAGE,
   OmpUnavailableError,
+  SIGN_IN_UNAVAILABLE_MESSAGE,
 } from '../src/features/cloud/ompAvailability';
 import { createCloudProviderAuthApi } from '../src/features/cloud/providerAuthClient';
 import { createCloudProviderLoginClient, providerLoginErrorFromResponse, ProviderLoginError } from '../src/features/cloud/providerLogin';
@@ -34,7 +34,13 @@ test('a missing route or OMP not configured is one state; a missing login sessio
   assert.equal(isOmpUnavailableResponse(404, 'login_not_found'), false);
   assert.equal(isOmpUnavailableResponse(503, 'omp_busy'), false);
   assert.equal(isOmpUnavailableResponse(503, null), false);
-  assert.equal(new OmpUnavailableError().message, OMP_UNAVAILABLE_MESSAGE);
+  assert.equal(new OmpUnavailableError().message, SIGN_IN_UNAVAILABLE_MESSAGE);
+});
+
+test('a failure for a server without hosted sign-in shows one short generic line', () => {
+  assert.equal(SIGN_IN_UNAVAILABLE_MESSAGE, "Sign-in isn't available right now.");
+  assert.doesNotMatch(SIGN_IN_UNAVAILABLE_MESSAGE, /OMP|backend|server/i);
+  assert.equal(providerLoginErrorFromResponse(404, null).message, SIGN_IN_UNAVAILABLE_MESSAGE);
 });
 
 test('provider-auth routes on an older backend report OMP as unavailable', async () => {
@@ -54,7 +60,7 @@ test('provider-auth routes on an older backend report OMP as unavailable', async
 test('sign-in sessions on an older backend report OMP as unavailable', async () => {
   const unavailable = providerLoginErrorFromResponse(404, null);
   assert.equal(unavailable.code, 'provider_auth_not_configured');
-  assert.equal(unavailable.message, OMP_UNAVAILABLE_MESSAGE);
+  assert.equal(unavailable.message, SIGN_IN_UNAVAILABLE_MESSAGE);
   assert.equal(isOmpUnavailableError(unavailable), true);
   assert.equal(isOmpUnavailableError(providerLoginErrorFromResponse(503, { errorCode: 'provider_auth_not_configured' })), true);
   const restarting = providerLoginErrorFromResponse(503, { errorCode: 'omp_unavailable' });

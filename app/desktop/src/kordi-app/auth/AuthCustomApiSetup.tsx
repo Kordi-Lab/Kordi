@@ -21,8 +21,8 @@ function validCustomBaseUrl(value: string) {
 type FieldError = { field: 'baseUrl' | 'model' | 'save'; message: string };
 
 type AuthCustomApiSetupProps = {
-  /** Why keys cannot be verified on this backend; Save stays off while set. */
-  disabledReason?: string | null;
+  /** The backend cannot verify keys; Save stays off. */
+  disabled?: boolean;
   /** An existing account to change; saving re-publishes it under the same choice. */
   account?: CustomApiAccount | null;
   onValidateCloudKey?: (providerId: string, apiKey: string) => Promise<{ verified: boolean }>;
@@ -31,13 +31,13 @@ type AuthCustomApiSetupProps = {
   onSaved?: (authChoice: string, options: { edited: boolean }) => void;
 };
 
-function errorText(error: FieldError | null, field: FieldError['field'], disabledReason: string | null) {
-  if (!error || error.field !== field || error.message === disabledReason) return null;
+function errorText(error: FieldError | null, field: FieldError['field']) {
+  if (!error || error.field !== field) return null;
   return <span role="alert" className="app-error-text block text-rose-200">{error.message}</span>;
 }
 
 /** Kordi-only OpenAI-compatible endpoint; OMP has no catalog entry for it, so the account names its model. */
-export function AuthCustomApiSetup({ account = null, onValidateCloudKey, onSaveCloudKey, onSaved, disabledReason = null }: AuthCustomApiSetupProps) {
+export function AuthCustomApiSetup({ account = null, onValidateCloudKey, onSaveCloudKey, onSaved, disabled = false }: AuthCustomApiSetupProps) {
   const [label, setLabel] = useState(account?.label ?? '');
   const [baseUrl, setBaseUrl] = useState('');
   const [model, setModel] = useState(account?.model ?? '');
@@ -93,22 +93,22 @@ export function AuthCustomApiSetup({ account = null, onValidateCloudKey, onSaveC
       />
       <SettingsRow
         title="Base URL"
-        description={<>The endpoint root, ending before /chat/completions.{errorText(error, 'baseUrl', disabledReason)}</>}
+        description={<>The endpoint root, ending before /chat/completions.{errorText(error, 'baseUrl')}</>}
         control={<input aria-label="API base URL" placeholder="https://api.example.com/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} className={inputClass} />}
       />
       <SettingsRow
         title="Model ID"
-        description={<>The model name your endpoint serves, sent as the Chat Completions model field.{errorText(error, 'model', disabledReason)}</>}
+        description={<>The model name your endpoint serves, sent as the Chat Completions model field.{errorText(error, 'model')}</>}
         control={<input aria-label="Model ID" placeholder="deepseek-chat" maxLength={CUSTOM_MODEL_MAX_LENGTH} value={model} onChange={(event) => setModel(event.target.value)} className={inputClass} />}
       />
       <SettingsRow
         title="API key"
-        description={errorText(error, 'save', disabledReason) ?? 'Stored in your Kordi account for hosted agents.'}
+        description={errorText(error, 'save') ?? 'Stored in your Kordi account for hosted agents.'}
         control={(
           <>
             <input aria-label="API key" type="password" autoComplete="off" placeholder="API key" value={apiKey} onChange={(event) => setApiKey(event.target.value)} className={inputClass} />
             {/* A new key after an error lets a corrected form save at once, past the double-press guard. */}
-            <AuthActionButton key={error ? 'save-retry' : 'save'} type="button" className={authButtonPrimaryClass} title={disabledReason ?? undefined} disabled={Boolean(disabledReason) || saving || !complete} onClick={() => { void save(); }}>
+            <AuthActionButton key={error ? 'save-retry' : 'save'} type="button" className={authButtonPrimaryClass} disabled={disabled || saving || !complete} onClick={() => { void save(); }}>
               {saving ? 'Saving…' : 'Save key'}
             </AuthActionButton>
           </>

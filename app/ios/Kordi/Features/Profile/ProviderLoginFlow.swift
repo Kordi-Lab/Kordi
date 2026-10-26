@@ -172,11 +172,14 @@ struct ProviderLoginScreen: View {
             if showsIntro {
                 Section {
                     intro
+                    if state.phase == .failed, controller.backendUnavailable, let failure = state.failure {
+                        Text(failure)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("provider-login-error")
+                    }
                 } footer: {
-                    if model.ompBackendUnavailable {
-                        Text(OMPBackendSupport.unavailableMessage)
-                            .accessibilityIdentifier("omp-backend-unavailable")
-                    } else {
+                    if !model.ompBackendUnavailable {
                         Text(method.isKeyEntry
                             ? "OMP checks the key on Kordi Cloud before it is saved to your account."
                             : "OMP completes each step on Kordi Cloud; provider tokens never reach this iPhone.")
@@ -293,9 +296,6 @@ struct ProviderLoginScreen: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("provider-login-progress")
             }
-        case .failure(let message) where message == OMPBackendSupport.unavailableMessage:
-            // Shown once, in the footer above.
-            EmptyView()
         case .failure(let message):
             VStack(alignment: .leading, spacing: 6) {
                 Text(message)

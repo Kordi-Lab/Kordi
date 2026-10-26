@@ -25,11 +25,6 @@ export function DetailRow({
   );
 }
 
-/** Muted page notice, for example when the backend has no OMP yet. */
-export function AuthPageNotice({ children }: { children: ReactNode }) {
-  return <p role="note" data-auth-page-notice="" className="m-0 pb-3 text-[12px] leading-5 text-slate-400">{children}</p>;
-}
-
 function stopEventPropagation(event: { stopPropagation: () => void }) {
   event.stopPropagation();
 }

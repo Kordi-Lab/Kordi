@@ -518,8 +518,8 @@ KORDI_RELEASE_S3_SECRET_KEY=<from kordi-release-reader>
 
 The OMP route worker handles provider sign-in, API key checks, route tests,
 and the provider catalog for the Cloud server. Without it, those requests
-return `provider_auth_not_configured` and the desktop reports that OMP is not
-available on this backend. `manifests/omp-route-worker-deployment.yaml`
+return `provider_auth_not_configured`, and the Mac and iPhone apps turn those
+actions off while saved accounts keep working. `manifests/omp-route-worker-deployment.yaml`
 defines a one-replica Deployment, a ClusterIP Service on port 17331, and a
 NetworkPolicy: only `kordi-cloud-server` pods may connect, and the worker may
 reach only cluster DNS and public addresses. Keep one replica, because

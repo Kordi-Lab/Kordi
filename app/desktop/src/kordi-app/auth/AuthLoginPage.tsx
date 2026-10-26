@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLayout';
 import { loginCallbackHint, pasteCodeFallback, type ProviderLoginClient, type ProviderLoginSnapshot } from '@/features/cloud/providerLogin';
 import { loginCallbackPath, loginCallbackPort, type LoginCallbackCapture } from '@/features/cloud/loginCallbackCapture';
-import { OMP_UNAVAILABLE_MESSAGE } from '@/features/cloud/ompAvailability';
-import { AuthActionButton, AuthPageNotice, authButtonNeutralClass, authButtonPrimaryClass } from './AuthDetailPrimitives';
+import { AuthActionButton, authButtonNeutralClass, authButtonPrimaryClass } from './AuthDetailPrimitives';
 import type { AuthAddMethod } from './authAddMethods';
 import { loginMethodVerbs } from './providerCopy';
 import { useProviderLogin } from './useProviderLogin';
@@ -26,7 +25,7 @@ type AuthLoginPageProps = {
   onStartChat?: () => void;
   /** Receives a browser sign-in's localhost redirect on this Mac; without it the user pastes the address. */
   callbackCapture?: LoginCallbackCapture | null;
-  /** The backend has no OMP sign-in: the page explains once and keeps its actions off. */
+  /** The backend has no OMP sign-in: the page keeps its actions off, without a notice. */
   ompUnavailable?: boolean;
   /** Called when a start is refused because the backend has no OMP sign-in; later failures are transient. */
   onOmpUnavailable?: () => void;
@@ -73,7 +72,6 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
     ? input.message : null;
   const pasteDescription = pasteMessage ?? callbackHint ?? pasteCodeFallback;
 
-  const blockedTitle = unavailable ? OMP_UNAVAILABLE_MESSAGE : undefined;
   // A busy loopback port is explained before OMP asks for the pasted link.
   const portBusyLine = view.callback === 'port-busy' && running && !input && callbackHint
     && !view.transcript.some((entry) => entry.type === 'answer') ? callbackHint : null;
@@ -124,14 +122,14 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
   const copy = (value: string, what: 'code' | 'link') => {
     void navigator.clipboard?.writeText(value).then(() => setCopied(what)).catch(() => undefined);
   };
-  const errorMessage = refusedStart ? null
-    : kind === 'api-key' && view.error?.code === 'login_unsupported'
-      ? 'This provider does not take an API key here. Use another method.'
-      : view.error?.message ?? null;
+  // A refused start shows the error's one short line next to the control it turned off.
+  const errorMessage = kind === 'api-key' && view.error?.code === 'login_unsupported'
+    ? 'This provider does not take an API key here. Use another method.'
+    : view.error?.message ?? null;
+  const errorLine = errorMessage ? <span role="alert" className="app-error-text block text-rose-200">{errorMessage}</span> : null;
 
   return (
     <div className="grid min-h-0 min-w-0 w-full pb-6 pt-6">
-      {unavailable ? <AuthPageNotice>{OMP_UNAVAILABLE_MESSAGE}</AuthPageNotice> : null}
       <SettingsSection className="app-auth-detail-section">
         <SettingsRow
           title="Account name"
@@ -159,7 +157,7 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
                     Get an API key
                   </a>
                 ) : null}
-                {errorMessage && (keyStep || !running) ? <span role="alert" className="app-error-text block text-rose-200">{errorMessage}</span> : null}
+                {keyStep || !running ? errorLine : null}
               </>
             )}
             control={(
@@ -178,7 +176,6 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
                   key={view.error ? 'save-retry' : 'save'}
                   type="button"
                   className={authButtonPrimaryClass}
-                  title={blockedTitle}
                   disabled={unavailable || !client || !keyValue.trim() || (running && !keyStep) || view.phase === 'completed'}
                   onClick={() => (keyStep ? submit(keyValue.trim()) : begin())}
                 >
@@ -190,9 +187,9 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
         ) : !started ? (
           <SettingsRow
             title={method.title}
-            description={instructions}
+            description={<>{instructions}{errorLine}</>}
             control={(
-              <AuthActionButton key="start" type="button" className={authButtonPrimaryClass} title={blockedTitle} disabled={unavailable || !client} onClick={begin}>
+              <AuthActionButton key="start" type="button" className={authButtonPrimaryClass} disabled={unavailable || !client} onClick={begin}>
                 {loginMethodVerbs[kind]}
               </AuthActionButton>
             )}
@@ -246,7 +243,7 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
                   {input.kind === 'paste-code' ? pasteDescription : input.message}
                   {input.kind !== 'paste-code' && input.placeholder ? <span className="block text-[11px] text-slate-500">e.g., {input.placeholder}</span> : null}
                   {callbackHint && (input.kind !== 'paste-code' || pasteMessage) ? <span data-login-callback-hint="" className="block text-[11px] text-slate-500">{callbackHint}</span> : null}
-                  {errorMessage ? <span role="alert" className="app-error-text block text-rose-200">{errorMessage}</span> : null}
+                  {errorLine}
                 </>
               )}
               control={(
