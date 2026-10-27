@@ -180,7 +180,7 @@ struct CommonGroundNearbyPeopleSection: View {
     private var settings: CommonGroundNearbySettings? { model.nearby.settings }
 
     /// No fix can be sent: location access or precise location is off.
-    private var locationOff: Bool { status == .denied || status == .imprecise }
+    private var locationOff: Bool { status == .permissionNeeded || status == .denied || status == .imprecise }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -208,7 +208,9 @@ struct CommonGroundNearbyPeopleSection: View {
     }
 
     @ViewBuilder private var rows: some View {
-        if locationOff {
+        if status == .permissionNeeded {
+            line("Allow location to find people nearby on this iPhone.")
+        } else if locationOff {
             HStack(spacing: 12) {
                 Text(status == .imprecise ? "Precise location is off" : "Location access is off").font(.body)
                 Spacer(minLength: 8)

@@ -1,4 +1,5 @@
 import XCTest
+import CoreLocation
 @testable import Kordi
 
 /// Nearby people (#2100): wire shapes from docs/development/grounding-nearby.md,
@@ -382,6 +383,10 @@ final class CommonGroundNearbyTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_000_000)
         typealias S = CommonGroundNearbyStatus
         let later = now.addingTimeInterval(3600)
+        XCTAssertEqual(S.resolve(pausedUntil: nil, access: .notDetermined, backgroundAlerts: true,
+                                 refreshAvailable: true, stale: true, updated: now, now: now), .permissionNeeded)
+        XCTAssertEqual(S.resolve(pausedUntil: nil, access: .notDetermined, backgroundAlerts: false,
+                                 refreshAvailable: true, stale: false, updated: nil, now: now), .permissionNeeded)
         XCTAssertEqual(S.resolve(pausedUntil: later, access: .always, backgroundAlerts: true, refreshAvailable: true, stale: true, updated: nil, now: now),
                        .paused(until: later))
         XCTAssertEqual(S.resolve(pausedUntil: nil, access: .denied, backgroundAlerts: true, refreshAvailable: true, stale: false, updated: nil, now: now), .denied)
@@ -395,6 +400,87 @@ final class CommonGroundNearbyTests: XCTestCase {
         XCTAssertEqual(S.resolve(pausedUntil: nil, access: .always, precise: false, backgroundAlerts: true, refreshAvailable: true, stale: false, updated: now, now: now), .imprecise)
         XCTAssertEqual(S.updatedLine(now.addingTimeInterval(-150), now: now), "Updated 2 min ago · Works in the background")
         XCTAssertEqual(S.updatedLine(now.addingTimeInterval(-20), now: now), "Updated just now · Works in the background")
+        XCTAssertEqual(S.updatedLine(now.addingTimeInterval(-20), now: now, background: false),
+                       "Updated just now · Only while Kordi is open")
+    }
+
+    func testManualLocationUpdateExplainsWhenNearbyIsOff() {
+        let name = "nearby-location-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let locator = CommonGroundNearbyLocator(defaults: defaults)
+        locator.updateNow()
+        XCTAssertFalse(locator.updatingNow)
+        XCTAssertEqual(locator.locationError, "Turn on Nearby before updating your location.")
+    }
+
+    func testManualUpdateImmediatelyAfterSuccessIsNotAnError() {
+        let name = "nearby-recent-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        var state = CommonGroundNearbyDeviceState(accountId: "test-account", enabled: true,
+                                                  backgroundAlerts: false, lastAccess: .whenInUse)
+        state.lastPostAt = Date()
+        CommonGroundNearbyDeviceState.save(state, to: defaults)
+        let locator = CommonGroundNearbyLocator(defaults: defaults)
+        let manager = NearbyLocationRequestRecorder()
+        locator.manager = manager
+        locator.accessChanged()
+        locator.updateNow()
+        XCTAssertFalse(locator.updatingNow)
+        XCTAssertNil(locator.locationError)
+        XCTAssertEqual(locator.locationNotice, "Location is already up to date.")
+        XCTAssertTrue(manager.events.isEmpty, "A fresh accepted fix does not need another GPS request.")
+    }
+
+    func testManualFixStopsContinuousUpdatesBeforeRequesting() async {
+        let name = "nearby-request-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let locator = CommonGroundNearbyLocator(defaults: defaults)
+        let manager = NearbyLocationRequestRecorder()
+        locator.manager = manager
+        locator.updating = true
+        let waiting = Task { @MainActor in await locator.oneFix(timeout: 1) }
+        await Task.yield()
+        XCTAssertEqual(manager.events, ["stop", "request"])
+        XCTAssertFalse(locator.updating)
+        locator.resolveFixWaiters(nil)
+        _ = await waiting.value
+    }
+
+    func testTemporaryLocationErrorKeepsWaitingForTheNextFix() async {
+        let name = "nearby-fix-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let locator = CommonGroundNearbyLocator(defaults: defaults)
+        let key = UUID()
+        let waiting = Task { @MainActor in
+            await withCheckedContinuation { continuation in locator.fixWaiters[key] = continuation }
+        }
+        await Task.yield()
+        locator.failed(NSError(domain: kCLErrorDomain, code: CLError.locationUnknown.rawValue))
+        XCTAssertEqual(locator.fixWaiters.count, 1, "A temporary GPS failure must not finish the update.")
+        locator.received([CLLocation(latitude: 0, longitude: 0)])
+        let fix = await waiting.value
+        XCTAssertNotNil(fix)
+        XCTAssertTrue(locator.fixWaiters.isEmpty)
+    }
+
+    func testDeniedLocationErrorFinishesWaiting() async {
+        let name = "nearby-denied-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let locator = CommonGroundNearbyLocator(defaults: defaults)
+        let key = UUID()
+        let waiting = Task { @MainActor in
+            await withCheckedContinuation { continuation in locator.fixWaiters[key] = continuation }
+        }
+        await Task.yield()
+        locator.failed(NSError(domain: kCLErrorDomain, code: CLError.denied.rawValue))
+        let fix = await waiting.value
+        XCTAssertNil(fix)
+        XCTAssertTrue(locator.fixWaiters.isEmpty)
     }
 
     func testPollingBacksOffWithoutProgress() {
@@ -457,4 +543,13 @@ final class CommonGroundNearbyTests: XCTestCase {
         CommonGroundNearbyDeviceState.save(nil, to: defaults)
         XCTAssertNil(CommonGroundNearbyDeviceState.load(from: defaults))
     }
+}
+
+private final class NearbyLocationRequestRecorder: CLLocationManager {
+    var events: [String] = []
+    override var authorizationStatus: CLAuthorizationStatus { .authorizedWhenInUse }
+    override var accuracyAuthorization: CLAccuracyAuthorization { .fullAccuracy }
+    override func stopMonitoringSignificantLocationChanges() {}
+    override func stopUpdatingLocation() { events.append("stop") }
+    override func requestLocation() { events.append("request") }
 }

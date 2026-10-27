@@ -197,6 +197,8 @@ enum CommonGroundNearbyWindow {
 /// The line under the Sharing chip.
 enum CommonGroundNearbyStatus: Equatable {
     case paused(until: Date)
+    /// Nearby can already be enabled on another device before this phone grants access.
+    case permissionNeeded
     /// Location access is off: the People section says so instead.
     case denied
     /// Precise location is off, so no fix is sent.
@@ -208,6 +210,7 @@ enum CommonGroundNearbyStatus: Equatable {
     static func resolve(pausedUntil: Date?, access: CommonGroundNearbyAccess, precise: Bool = true, backgroundAlerts: Bool,
                         refreshAvailable: Bool, stale: Bool, updated: Date?, now: Date) -> CommonGroundNearbyStatus {
         if let pausedUntil, pausedUntil > now { return .paused(until: pausedUntil) }
+        if access == .notDetermined { return .permissionNeeded }
         if access == .denied || access == .restricted { return .denied }
         if access.granted, !precise { return .imprecise }
         if stale { return .stale }
@@ -216,11 +219,12 @@ enum CommonGroundNearbyStatus: Equatable {
     }
 
     /// "Updated 2 min ago · Works in the background".
-    static func updatedLine(_ updated: Date?, now: Date) -> String {
-        guard let updated else { return "Works in the background" }
+    static func updatedLine(_ updated: Date?, now: Date, background: Bool = true) -> String {
+        let mode = background ? "Works in the background" : "Only while Kordi is open"
+        guard let updated else { return mode }
         let minutes = Int(max(0, now.timeIntervalSince(updated)) / 60)
         let ago = minutes < 1 ? "Updated just now" : "Updated \(minutes) min ago"
-        return "\(ago) · Works in the background"
+        return "\(ago) · \(mode)"
     }
 
     /// "Paused until 3:00 PM", "Paused until tomorrow, 8:00 AM".
