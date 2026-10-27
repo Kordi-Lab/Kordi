@@ -13,6 +13,7 @@ mod matching_guard_tests;
 mod matching_tests;
 mod matching_unit_tests;
 mod nearby_access_tests;
+mod nearby_affiliation_tests;
 mod nearby_alerts_tests;
 mod nearby_needs_tests;
 mod nearby_search_tests;

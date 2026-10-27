@@ -97,6 +97,29 @@ fn each_kind_needs_its_own_source() {
 }
 
 #[test]
+fn a_school_interest_is_not_evidence_of_affiliation() {
+    let mut interested = material();
+    interested.profile_name = "Personal".into();
+    interested.focus = None;
+    interested.topics.interests.push("Fudan".into());
+    let text = reply(json!([
+        {"condition": 0, "verdict": "met", "kind": "affiliation", "evidence": "Fudan"},
+        {"condition": 1, "verdict": "met", "kind": "willingness", "evidence": "Coffee chat"},
+    ]));
+    let checked = parse_checks(&text, &[("p1".into(), interested.clone())]).unwrap();
+    assert!(
+        !checked[0].met(),
+        "an interest in a school does not establish affiliation"
+    );
+    assert_eq!(checked[0].checks[0].verdict, Verdict::Unknown);
+    assert_eq!(checked[0].checks[0].evidence, None);
+
+    let previously_proven = parse_checks(&text, &people()).unwrap();
+    assert!(previously_proven[0].met());
+    assert!(!previously_proven[0].revalidated(&interested).met());
+}
+
+#[test]
 fn fabricated_or_malformed_checks_are_downgraded() {
     let text = reply(json!([
         {"condition": 0, "verdict": "met", "kind": "interest", "evidence": "Quantum chess"},
