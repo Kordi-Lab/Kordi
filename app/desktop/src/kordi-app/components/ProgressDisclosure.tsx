@@ -17,7 +17,10 @@ export function ProgressDisclosure({ expanded, children }: { expanded: boolean; 
     element.getBoundingClientRect();
     const resize = () => {
       const maxHeight = Number.parseFloat(window.getComputedStyle(element).maxHeight);
-      const height = expanded ? Math.min(inner.getBoundingClientRect().height, Number.isFinite(maxHeight) ? maxHeight : Infinity) : 0;
+      // CSS heights use layout pixels; bounding rectangles include ancestor zoom
+      // and transforms, which would apply that scale twice and leave a blank gap.
+      const contentHeight = Number.parseFloat(window.getComputedStyle(inner).height);
+      const height = expanded ? Math.min(contentHeight, Number.isFinite(maxHeight) ? maxHeight : Infinity) : 0;
       if (element.style.height !== `${height}px`) element.style.height = `${height}px`;
     };
     resize();
