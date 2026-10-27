@@ -10,6 +10,7 @@ import {
   type PointerEventHandler,
 } from 'react';
 
+import type { MessageMention } from '@/kordi-app/types';
 import { parseMessageInlineParts } from '@/kordi-app/components/messageLinks';
 import { cn } from '@/lib/utils';
 import { blobEmojiTextParts } from './blobEmoji';
@@ -25,7 +26,7 @@ import type { EmojiTextSelection } from './emojiText';
 
 const COMPOSER_MENTION_ATTRIBUTE = 'data-composer-mention';
 
-const composerMentions = (value: string) => parseMessageInlineParts(value).filter((part) => part.type === 'mention');
+const composerMentions = (value: string, mentions?: MessageMention[]) => parseMessageInlineParts(value, mentions).filter((part) => part.type === 'mention');
 
 function appendComposerText(
   fragment: DocumentFragment,
@@ -51,10 +52,10 @@ function appendComposerText(
   if (cursor < value.length) fragment.append(document.createTextNode(value.slice(cursor)));
 }
 
-function renderComposerValue(root: HTMLElement, value: string) {
+function renderComposerValue(root: HTMLElement, value: string, structuredMentions?: MessageMention[]) {
   const fragment = document.createDocumentFragment();
   const parts = blobEmojiTextParts(value);
-  const mentions = composerMentions(value);
+  const mentions = composerMentions(value, structuredMentions);
   let offset = 0;
   for (const part of parts) {
     if (part.type === 'emoji') fragment.append(blobEmojiComposerNode(part.emoji, part.token));
@@ -84,8 +85,8 @@ function expectsCaretAnchor(value: string) {
   return parts[parts.length - 1]?.type === 'emoji';
 }
 
-function hasValidMentions(root: HTMLElement, value: string) {
-  const mentions = composerMentions(value);
+function hasValidMentions(root: HTMLElement, value: string, structuredMentions?: MessageMention[]) {
+  const mentions = composerMentions(value, structuredMentions);
   const nodes = Array.from(root.querySelectorAll(`[${COMPOSER_MENTION_ATTRIBUTE}]`));
   return nodes.length === mentions.length && nodes.every((node, index) => (
     node.textContent === mentions[index]?.label
@@ -101,11 +102,11 @@ function hasValidCaretAnchor(root: HTMLElement) {
   );
 }
 
-function composerNeedsRender(root: HTMLElement, value: string) {
+function composerNeedsRender(root: HTMLElement, value: string, mentions?: MessageMention[]) {
   return blobEmojiComposerValue(root) !== value
     || renderedBlobEmojiCount(root) !== expectedBlobEmojiCount(value)
     || hasValidCaretAnchor(root) !== expectsCaretAnchor(value)
-    || !hasValidMentions(root, value);
+    || !hasValidMentions(root, value, mentions);
 }
 
 function logicalLength(node: Node): number {
@@ -279,6 +280,7 @@ export type BlobEmojiComposerInputHandle = {
 
 type Props = {
   value: string;
+  mentions?: MessageMention[];
   className?: string;
   placeholder: string;
   readOnly?: boolean;
@@ -299,6 +301,7 @@ type Props = {
 export const BlobEmojiComposerInput = forwardRef<BlobEmojiComposerInputHandle, Props>(
   function BlobEmojiComposerInput({
     value,
+    mentions,
     className,
     placeholder,
     readOnly = false,
@@ -335,22 +338,23 @@ export const BlobEmojiComposerInput = forwardRef<BlobEmojiComposerInputHandle, P
 
     useLayoutEffect(() => {
       const root = rootRef.current;
-      const nextSelection = pendingSelection.current;
       if (!root) return;
-      if (composerNeedsRender(root, value)) {
-        renderComposerValue(root, value);
+      const needsRender = composerNeedsRender(root, value, mentions);
+      const nextSelection = pendingSelection.current ?? (needsRender && document.activeElement === root ? selectionIn(root) : null);
+      if (needsRender) {
+        renderComposerValue(root, value, mentions);
       }
       if (!nextSelection) return;
       pendingSelection.current = null;
       restoreSelection(root, nextSelection);
-    }, [value]);
+    }, [value, mentions]);
 
     const commit = (target: HTMLDivElement) => {
       const nextSelection = selectionIn(target);
       const nextValue = blobEmojiComposerValue(target);
       pendingSelection.current = nextSelection;
-      if (composerNeedsRender(target, nextValue)) {
-        renderComposerValue(target, nextValue);
+      if (composerNeedsRender(target, nextValue, mentions)) {
+        renderComposerValue(target, nextValue, mentions);
         restoreSelection(target, nextSelection);
       }
       onChange(nextValue, target);

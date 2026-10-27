@@ -61,6 +61,7 @@ test('typing or pasting a known token rehydrates it as an inline image', async (
         ref={inputRef}
         value={value}
         placeholder="Message"
+        mentions={[{label:'Lab agent',targetKind:'agent',targetIdentityId:'agent:lab'},{label:'Hana’s agent',targetKind:'agent',targetIdentityId:'agent:hana'}]}
         onChange={setValue}
       />
     );
@@ -78,6 +79,15 @@ test('typing or pasting a known token rehydrates it as an inline image', async (
     assert.equal(mentions[0]?.classList.contains('app-message-mention-agent'), true);
     assert.equal(mentions[1]?.classList.contains('app-message-mention-person'), true);
     assert.equal(blobEmojiComposerValue(editor), 'Ask @Kordi and @MayaChen via maya@example.com');
+
+    await act(async () => {
+      editor.textContent = '@Lab agent Please coordinate with @Hana’s agent before the pilot.';
+      editor.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    });
+    assert.deepEqual(Array.from(editor.querySelectorAll('[data-composer-mention]')).map(node => [node.textContent, node.getAttribute('data-mention-kind')]), [['@Lab agent', 'agent'], ['@Hana’s agent', 'agent']]);
+    const end = blobEmojiComposerValue(editor).length;
+    inputRef.current?.focus({ start: end, end });
+    assert.deepEqual(inputRef.current?.selection(), { start: end, end });
 
     await act(async () => {
       editor.textContent = 'Hi :blob:blobwave:';

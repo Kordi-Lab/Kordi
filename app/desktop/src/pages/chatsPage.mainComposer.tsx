@@ -247,6 +247,12 @@ export function MainComposer({
               <BlobEmojiComposerInput
                 ref={composerInputRef}
                 value={composerText}
+                mentions={conversation.canonicalParticipants?.map((participant) => ({
+                  label: participant.name,
+                  displayLabel: participant.name,
+                  targetKind: participant.kind === 'agent' ? 'agent' : 'person',
+                  targetIdentityId: participant.id,
+                }))}
                 readOnly={editingMessage && messageEditBusy}
                 ariaBusy={editingMessage && messageEditBusy}
                 onPointerDownCapture={() => {
