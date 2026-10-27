@@ -16,9 +16,9 @@ struct IdentityAvatar: View {
     private var normalizedImageSource: String? {
         if isSystemAgent || isSystem { return nil }
         if let source = AvatarImageLoader.normalizedSource(imageSource) { return source }
-        guard kind == .agent, !isKordiSupport, let seed = seed?.nonEmpty else { return nil }
+        guard kind != .group, !isKordiSupport, let seed = seed?.nonEmpty else { return nil }
         return CanonicalAvatarSystem.previewURL(
-            style: CanonicalAvatarSystem.agentStyle,
+            style: kind == .person ? CanonicalAvatarSystem.humanStyle : CanonicalAvatarSystem.agentStyle,
             seed: seed
         )?.absoluteString
     }
@@ -301,7 +301,7 @@ enum AvatarImageLoader {
         guard let url = URL(string: value),
               let scheme = url.scheme?.lowercased(),
               ["http", "https"].contains(scheme) else { return nil }
-        return value
+        return CanonicalAvatarSystem.humanPresentationURL(from: url)?.absoluteString ?? value
     }
 
     static func image(from source: String) async -> UIImage? {

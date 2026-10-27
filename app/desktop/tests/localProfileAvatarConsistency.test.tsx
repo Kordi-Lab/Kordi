@@ -109,7 +109,7 @@ test('mounted self avatars react to live profile changes without changing their 
     });
     assert.match(
       host.querySelector('img')?.getAttribute('src') ?? '',
-      /\/v1\/avatars\/preview\/lorelei\/acct_alex\.png/,
+      /\/v1\/avatars\/preview\/boring-marble-v1\/acct_alex\.png/,
     );
     assert.equal(host.textContent, '');
 

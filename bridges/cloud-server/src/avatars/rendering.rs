@@ -46,6 +46,9 @@ pub(super) fn render_key_png(key: &RenderKey) -> Result<Vec<u8>, String> {
         RenderKey::Bird(bird) => return rasterize_svg(&render_bird_svg(*bird)),
         RenderKey::Seed { style, seed } => (style, seed),
     };
+    if style_name == super::boring_marble::STYLE {
+        return rasterize_svg(&super::boring_marble::render_svg(seed));
+    }
     let definition = dicebear_styles::get(style_name)
         .ok_or_else(|| "Avatar style is unavailable.".to_string())?;
     let style = Style::from_str(definition).map_err(|error| error.to_string())?;

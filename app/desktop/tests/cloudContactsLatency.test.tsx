@@ -258,6 +258,6 @@ test('IdentityAvatar generates a canonical human avatar when an image is missing
     name: 'Peer User',
   }));
 
-  assert.match(markup, /\/v1\/avatars\/preview\/lorelei\/acct_peer\.png/);
+  assert.match(markup, /\/v1\/avatars\/preview\/boring-marble-v1\/acct_peer\.png/);
   assert.doesNotMatch(markup, />PE<\/span>|linear-gradient\(135deg,/);
 });

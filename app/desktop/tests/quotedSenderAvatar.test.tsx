@@ -100,14 +100,14 @@ test('the thread quote line renders the quoted sender avatar instead of an inval
       const peer = await mount(<SourceMessageQuote sourceMessage={{
         messageId: 'm', senderLabel: 'Peer Person', senderKind: 'human', senderAvatarSeed: 'acct_peer_seed', text: 'hi',
       }} />);
-      assert.match(peer.querySelector('img')?.getAttribute('src') ?? '', /preview\/lorelei\/acct_peer_seed\.png$/);
+      assert.match(peer.querySelector('img')?.getAttribute('src') ?? '', /preview\/boring-marble-v1\/acct_peer_seed\.png$/);
 
       const self = await mount(<SourceMessageQuote sourceMessage={{ messageId: 'm', senderLabel: 'You', text: 'hi' }} />);
-      assert.match(self.querySelector('img')?.getAttribute('src') ?? '', /preview\/lorelei\/acct_me_seed\.png$/);
+      assert.match(self.querySelector('img')?.getAttribute('src') ?? '', /preview\/boring-marble-v1\/acct_me_seed\.png$/);
 
       const unknown = await mount(<SourceMessageQuote sourceMessage={{ messageId: 'm', senderLabel: 'Main Test B', text: 'hi' }} />);
       const src = unknown.querySelector('img')?.getAttribute('src') ?? '';
-      assert.match(src, /preview\/lorelei\/human-main-test-b-[a-z0-9]+\.png$/);
+      assert.match(src, /preview\/boring-marble-v1\/human-main-test-b-[a-z0-9]+\.png$/);
     } finally {
       setMessageLayout('chat');
       setActiveLocalProfileIdentity({ avatarSeed: null, displayName: null, profileImageUrl: null });

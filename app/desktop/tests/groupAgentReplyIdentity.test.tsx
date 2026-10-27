@@ -123,7 +123,7 @@ test('the quote line shows a member picture and the viewer avatar', async () => 
     assert.equal(member.querySelector('img')?.getAttribute('src'), 'https://images.test/peer.png');
 
     const self = await mount(<SourceMessageQuote sourceMessage={{ messageId: 'm', senderLabel: 'Shu Yang', text: '@babyshu test' }} />);
-    assert.match(self.querySelector('img')?.getAttribute('src') ?? '', /preview\/lorelei\/acct_me_seed\.png$/);
+    assert.match(self.querySelector('img')?.getAttribute('src') ?? '', /preview\/boring-marble-v1\/acct_me_seed\.png$/);
     assert.match(self.textContent ?? '', /^@Shu Yang /);
   });
 });

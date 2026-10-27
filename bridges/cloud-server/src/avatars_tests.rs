@@ -64,7 +64,12 @@ fn uploaded_avatar_normalization_is_bounded_and_generates_all_variants() {
 
 #[test]
 fn renderer_is_deterministic_for_every_pinned_style() {
-    for style in [HUMAN_AVATAR_STYLE, AGENT_AVATAR_STYLE, BIRD_AVATAR_STYLE] {
+    for style in [
+        HUMAN_AVATAR_STYLE,
+        AGENT_AVATAR_STYLE,
+        BIRD_AVATAR_STYLE,
+        boring_marble::STYLE,
+    ] {
         let first = render_png(style, "stable_seed").expect("render avatar");
         let second = render_png(style, "stable_seed").expect("render avatar again");
         assert_eq!(first, second);
@@ -74,7 +79,12 @@ fn renderer_is_deterministic_for_every_pinned_style() {
 
 #[tokio::test]
 async fn preview_route_renders_every_style_as_png() {
-    for style in [HUMAN_AVATAR_STYLE, AGENT_AVATAR_STYLE, BIRD_AVATAR_STYLE] {
+    for style in [
+        HUMAN_AVATAR_STYLE,
+        AGENT_AVATAR_STYLE,
+        BIRD_AVATAR_STYLE,
+        boring_marble::STYLE,
+    ] {
         let response = render_avatar_preview(
             Extension(Arc::new(CloudRateLimiter::memory(
                 CloudRateLimitConfig::production(),
@@ -139,7 +149,7 @@ async fn untouched_agents_render_as_the_bird_their_seed_hashes_to() {
 }
 
 #[tokio::test]
-async fn people_keep_their_lorelei_avatars() {
+async fn historical_lorelei_urls_keep_their_immutable_images() {
     let seed = "acct_123";
     let style = dicebear_core::Style::from_str(dicebear_styles::get(HUMAN_AVATAR_STYLE).unwrap())
         .expect("lorelei style");
@@ -339,4 +349,20 @@ fn bird_markers_round_trip() {
         Some(BIRD_AVATAR_STYLE.to_string())
     );
     assert!(parse_generated_avatar_marker(&generated_avatar_marker("other", "seed", 1)).is_none());
+}
+
+#[tokio::test]
+async fn boring_marble_preview_is_seeded_and_separate_from_historical_images() {
+    let first = preview_png(boring_marble::STYLE, "acct_123").await;
+    assert_eq!(first, render_png(boring_marble::STYLE, "acct_123").unwrap());
+    assert_ne!(
+        first,
+        preview_png(boring_marble::STYLE, "randomized_seed").await
+    );
+    assert_ne!(first, render_png(HUMAN_AVATAR_STYLE, "acct_123").unwrap());
+    let image = image::load_from_memory(&first).unwrap().to_rgba8();
+    assert_eq!(image.dimensions(), (256, 256));
+    assert!(image.pixels().all(|pixel| pixel.0[3] == 255));
+    // Presentation styles must not leak into stored descriptors or database constraints.
+    assert!(!is_supported_style(boring_marble::STYLE));
 }
