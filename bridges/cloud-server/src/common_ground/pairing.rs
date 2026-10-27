@@ -8,10 +8,10 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    Extension, Json,
     extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
+    Extension, Json,
 };
 use chrono::{DateTime, Utc};
 use rand::Rng;
@@ -22,9 +22,9 @@ use sqlx_core::{query::query, query_as::query_as};
 
 use super::profiles::{self, Profile};
 use super::{
-    PAIR_CODE_LIMIT, PAIR_IP_LIMIT, PAIR_REDEEM_LIMIT, card, db_error, err, limited, people,
+    card, db_error, err, limited, people, PAIR_CODE_LIMIT, PAIR_IP_LIMIT, PAIR_REDEEM_LIMIT,
 };
-use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, rate_limit_client_key};
+use crate::auth::rate_limit::{rate_limit_client_key, CloudRateLimiter, RateLimitDecision};
 use crate::{auth::routes::CloudSession, server::ServerState};
 
 /// Crockford base32 without I, L, O and U, so codes read aloud cleanly.

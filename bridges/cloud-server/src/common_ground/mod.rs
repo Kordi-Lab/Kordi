@@ -215,7 +215,10 @@ pub fn routes(state: Arc<ServerState>, rate_limiter: Arc<CloudRateLimiter>) -> R
         )
         .route("/v1/cloud/common-ground/recent", get(matching::recent))
         .route("/v1/cloud/common-ground/pairings", get(pairing::list))
-        .route("/v1/cloud/common-ground/pairings/status", post(pairing::status))
+        .route(
+            "/v1/cloud/common-ground/pairings/status",
+            post(pairing::status),
+        )
         .route(
             "/v1/cloud/common-ground/pairings/code",
             post(pairing::create),
