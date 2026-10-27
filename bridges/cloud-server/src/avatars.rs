@@ -26,6 +26,7 @@ use self::rendering::{
 
 pub mod assets;
 pub mod birds;
+mod boring_marble;
 mod rendering;
 
 pub const AVATAR_RENDERER_VERSION: &str = "dicebear-rust-10.6.0-styles-10.5.0";
@@ -330,7 +331,7 @@ async fn render_avatar_preview(
     headers: HeaderMap,
     Path((style, file_name)): Path<(String, String)>,
 ) -> Response {
-    if !is_supported_style(&style) {
+    if !is_supported_style(&style) && style != boring_marble::STYLE {
         return avatar_error(StatusCode::NOT_FOUND, "Avatar style was not found.");
     }
     let Some(seed) = file_name.strip_suffix(".png") else {

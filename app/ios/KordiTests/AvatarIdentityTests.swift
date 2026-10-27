@@ -1,5 +1,6 @@
 import UIKit
 import XCTest
+import Testing
 @testable import Kordi
 
 final class AvatarIdentityTests: XCTestCase {
@@ -87,7 +88,7 @@ final class AvatarIdentityTests: XCTestCase {
         XCTAssertNotNil(AvatarImageLoader.cachedImage(from: url.absoluteString, urlCache: urlCache))
     }
 
-    func testCanonicalAvatarMarkerResolvesToThePinnedKordiRenderer() throws {
+    func testCanonicalHumanAvatarResolvesToBoringMarbleWithTheSavedSeed() throws {
         let marker = try XCTUnwrap(CanonicalAvatarSystem.marker(
             style: CanonicalAvatarSystem.humanStyle,
             seed: "acct_123",
@@ -104,7 +105,7 @@ final class AvatarIdentityTests: XCTestCase {
         ))
         XCTAssertEqual(
             renderURL.absoluteString,
-            "https://avatars.example/v1/avatars/dicebear-rust-10.6.0-styles-10.5.0/lorelei/acct_123.png?v=4"
+            "https://avatars.example/v1/avatars/preview/boring-marble-v1/acct_123.png"
         )
         XCTAssertNotNil(AvatarImageLoader.normalizedSource(marker))
     }
@@ -342,4 +343,29 @@ private func testHumanAvatar(entityId: String) -> CanonicalAvatarDescriptor {
         version: 1,
         updatedAt: "2026-08-19T00:00:00Z"
     )
+}
+
+@MainActor
+struct HumanBoringAvatarTests {
+    @Test(arguments: ["acct_123", "randomized_seed"])
+    func previewAndSavedMarkerUseTheSameMarble(seed: String) throws {
+        let base = try #require(URL(string: "https://avatars.example"))
+        let marker = try #require(CanonicalAvatarSystem.marker(
+            style: CanonicalAvatarSystem.humanStyle, seed: seed, version: 2
+        ))
+        let preview = CanonicalAvatarSystem.previewURL(
+            style: CanonicalAvatarSystem.humanStyle, seed: seed, baseURL: base
+        )
+        #expect(preview?.absoluteString == "https://avatars.example/v1/avatars/preview/boring-marble-v1/\(seed).png")
+        #expect(CanonicalAvatarSystem.renderURL(from: marker, baseURL: base) == preview)
+    }
+
+    @Test(arguments: ["preview", "dicebear-rust-10.6.0-styles-10.5.0"])
+    func resolvedHumanURLKeepsItsOrigin(renderer: String) throws {
+        let source = try #require(URL(string: "https://avatars.example/api/v1/avatars/\(renderer)/lorelei/acct_123.png?v=4"))
+        #expect(CanonicalAvatarSystem.humanPresentationURL(from: source)?.absoluteString
+            == "https://avatars.example/api/v1/avatars/preview/boring-marble-v1/acct_123.png")
+        #expect(AvatarImageLoader.normalizedSource(source.absoluteString)
+            == "https://avatars.example/api/v1/avatars/preview/boring-marble-v1/acct_123.png")
+    }
 }

@@ -48,7 +48,7 @@ test('server-rendered legacy thumbs URLs map to the same-origin bird preview', (
   assert.equal(canonicalAvatarImageUrl(invalid), invalid);
 });
 
-test('picked birds, uploaded photos, and human avatars keep their images', () => {
+test('picked birds and uploaded photos keep their images', () => {
   assert.match(
     canonicalAvatarImageUrl(PICKED_MARKER) ?? '',
     new RegExp(`/v1/avatars/${RENDERER}/kordi-birds/bird-owl-ink-sky\\.png\\?v=2$`),
@@ -57,14 +57,8 @@ test('picked birds, uploaded photos, and human avatars keep their images', () =>
     canonicalAvatarImageUrl(UPLOADED_MARKER) ?? '',
     /\/v1\/avatars\/assets\/ava_0123456789abcdef0123456789abcdef\/256\.jpg$/,
   );
-  assert.match(
-    canonicalAvatarImageUrl(`kordi-avatar://${RENDERER}/lorelei/acct_x?version=3`) ?? '',
-    new RegExp(`/v1/avatars/${RENDERER}/lorelei/acct_x\\.png\\?v=3$`),
-  );
   for (const unchanged of [
     `https://kordi.test/v1/avatars/${RENDERER}/kordi-birds/bird-jay-mint.png?v=2`,
-    `https://kordi.test/v1/avatars/${RENDERER}/lorelei/acct_x.png?v=3`,
-    'https://kordi.test/v1/avatars/preview/lorelei/acct_x.png',
     'https://kordi.test/v1/avatars/assets/ava_0123456789abcdef0123456789abcdef/256.jpg',
     'https://images.test/thumbs/agent.png',
     'data:image/png;base64,avatar',
