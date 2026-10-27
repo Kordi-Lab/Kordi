@@ -27,7 +27,19 @@ After the fix, all 128 Grounding server tests passed against the disposable data
 | Alert deduplication, frequency, and delivery rechecks | Database cases cover one alert per request revision, weekly match deduplication, daily cap, quiet gap, expiry, and consent/request/score revalidation. | APNs transport delivery is not covered by these database tests. |
 | Existing room matching, proximity, QR, and short-code pairing | Full Grounding database suite plus 12 native pairing tests cover exchange, code redemption, deep links, range/fallback rules, and errors. | Physical proximity radio exchange and camera QR scanning still need device checks. |
 
-## Environment limits
+## Later two-phone development validation
+
+An explicitly approved, device-scoped development bridge subsequently enabled isolated Beta testing with two dedicated accounts. No production account or service was used. The combined candidate contains the selected-card navigation, per-card meeting activities, iOS location, message preview, reciprocal pairing, and room-sharing follow-ups.
+
+- Both physical phones completed proximity discovery, token exchange, distance gating, code redemption, and navigation to the match page. This is physical Tap evidence; it does not establish camera QR acceptance.
+- The first phone granted location access and successfully uploaded a location. Permission and manual-refresh regressions also passed focused native tests.
+- Room results now refresh membership while visible; cancellation and closed-room cases passed focused tests. Card details open first, followed by Shared and Trade. Room codes and the compact visual card picker were inspected in the simulator.
+- Voice sending failed because attachment storage was absent from the isolated development fixture. After configuring task-owned storage, synthetic M4A upload and download returned identical bytes for both accounts. The user subsequently confirmed that voice sending was fixed. No account sessions, storage credentials, relay configuration, or device probes are included in the product changes.
+- The follow-up native suites passed 33 location tests, 74 message-codec/catalog tests, 15 pairing tests, and 27 room/profile tests before integration. Four focused backend pairing regressions also passed. These are separate suite results, not a single combined test count.
+
+Physical background scheduling, suspended permission changes, and real APNs receipt/tap remain unverified. User acceptance of the foreground demo does not establish those requirements. Keep #2100 open for that remaining evidence.
+
+## Initial environment limits
 
 The connected physical iPhone had Developer Mode enabled. The approved Beta environment uses a loopback API intended for simulators; the physical phone cannot reach the Mac through its own loopback address. See [Native iPhone environments](../development-environments.md#native-iphone-environments). No production deployment, production account mutation, or production notification test was performed.
 
@@ -61,7 +73,7 @@ xcodebuild -project app/ios/Kordi.xcodeproj -scheme 'Kordi Beta' \
 
 ## Physical-device exit checklist
 
-Keep #2100 open until an explicitly approved device/backend setup is available and the following evidence is recorded:
+Keep #2100 open until the remaining physical-device evidence is recorded. The approved development setup and successful foreground proximity exchange above satisfy only part of this checklist:
 
 - Two dedicated accounts; client build and deployed backend revision identified.
 - Real notification registration and receipt, followed by tapping into the correct Nearby person.
