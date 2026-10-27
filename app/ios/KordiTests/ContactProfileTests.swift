@@ -353,6 +353,222 @@ final class ContactProfileTests: XCTestCase {
         XCTAssertFalse(model.isFallback)
     }
 
+    private func avatarProfile(_ avatar: String) throws -> CloudContactProfile {
+        try decode(Self.personJSON.replacingOccurrences(of: #""avatarUrl": null,"#,
+                                                       with: "\"avatarUrl\": \"\(avatar)\","))
+    }
+
+    private func refreshID(_ avatar: String?, viewer: CloudAccount? = nil) -> ContactProfileRefreshID {
+        let contact = CloudContact(accountId: subject.accountId, kordiId: subject.kordiId,
+                                   displayName: subject.name, avatarUrl: avatar, nodeId: nil, createdAt: "")
+        return ContactProfileRefreshID(subject: subject, viewer: viewer, contacts: [contact])
+    }
+
+    func testRefreshIdentityUsesSavedDirectoryAvatarInsteadOfSheetSnapshot() {
+        let oldSubject = ContactProfileSubject(accountId: subject.accountId, name: subject.name, avatarUrl: "old")
+        let contact = CloudContact(accountId: subject.accountId, kordiId: nil, displayName: subject.name,
+                                   avatarUrl: "saved", nodeId: nil, createdAt: "")
+        let saved = ContactProfileRefreshID(subject: oldSubject, viewer: nil, contacts: [contact])
+        XCTAssertEqual(saved.avatarUrl, "saved")
+        XCTAssertNotEqual(saved, ContactProfileRefreshID(subject: oldSubject, viewer: nil, contacts: []))
+        XCTAssertNil(refreshID(nil).avatarUrl)
+    }
+
+    func testSavedAvatarRefreshPreservesDetailsUntilAuthoritativeProfileArrives() async throws {
+        let old = try avatarProfile("old")
+        let saved = try avatarProfile("saved")
+        let started = expectation(description: "Avatar refresh started")
+        var pending: CheckedContinuation<CloudContactProfile, Error>?
+        var requests = 0
+        let model = ContactProfileModel {
+            requests += 1
+            if requests == 1 { return old }
+            return try await withCheckedThrowingContinuation { pending = $0; started.fulfill() }
+        }
+        await model.load(refreshID: refreshID("old"))
+        let refresh = Task { await model.load(refreshID: refreshID("saved")) }
+        await fulfillment(of: [started], timeout: 2)
+        XCTAssertEqual(model.profile, old)
+        XCTAssertTrue(model.isLoading)
+        pending?.resume(returning: saved)
+        await refresh.value
+        XCTAssertEqual(model.profile?.avatarUrl, "saved")
+        XCTAssertEqual(model.profile?.about, old.about)
+        XCTAssertEqual(model.profile?.shared, old.shared)
+        XCTAssertFalse(model.isFallback)
+        await model.load(refreshID: refreshID("saved"))
+        XCTAssertEqual(requests, 2)
+    }
+
+    func testSupersededAvatarResponsesCannotReplaceTheSavedProfile() async throws {
+        struct Failure: Error {}
+        for fails in [false, true] {
+            let old = try avatarProfile("old")
+            let saved = try avatarProfile("saved")
+            let started = expectation(description: "Older request started")
+            var pending: CheckedContinuation<CloudContactProfile, Error>?
+            var requests = 0
+            let model = ContactProfileModel {
+                requests += 1
+                if requests > 1 { return saved }
+                return try await withCheckedThrowingContinuation { pending = $0; started.fulfill() }
+            }
+            let initial = Task { await model.load(refreshID: refreshID("old")) }
+            await fulfillment(of: [started], timeout: 2)
+            await model.load(refreshID: refreshID("saved"))
+            if fails { pending?.resume(throwing: Failure()) } else { pending?.resume(returning: old) }
+            await initial.value
+            XCTAssertEqual(model.profile, saved)
+            XCTAssertFalse(model.isFallback)
+            XCTAssertFalse(model.isLoading)
+        }
+    }
+
+    func testCancelledAvatarRefreshCannotPublishAndCanRetry() async throws {
+        let old = try avatarProfile("old")
+        let saved = try avatarProfile("saved")
+        let started = expectation(description: "Refresh started before dismissal")
+        var pending: CheckedContinuation<CloudContactProfile, Error>?
+        var requests = 0
+        let model = ContactProfileModel {
+            requests += 1
+            if requests == 1 { return old }
+            if requests > 2 { return saved }
+            return try await withCheckedThrowingContinuation { pending = $0; started.fulfill() }
+        }
+        await model.load(refreshID: refreshID("old"))
+        let refresh = Task { await model.load(refreshID: refreshID("saved")) }
+        await fulfillment(of: [started], timeout: 2)
+        refresh.cancel()
+        XCTAssertEqual(model.profile, old)
+        // Reappearance can occur before a cancelled transport completes.
+        await model.load(refreshID: refreshID("saved"))
+        XCTAssertEqual(model.profile, saved)
+        pending?.resume(returning: old)
+        await refresh.value
+        XCTAssertEqual(model.profile, saved)
+        XCTAssertFalse(model.isLoading)
+    }
+
+    private var otherViewer: CloudAccount {
+        CloudAccount(accountId: "acct_other_viewer", kordiId: nil, displayName: "Viewer",
+                                  primaryEmail: nil, avatarUrl: nil,
+                                  avatar: CanonicalAvatarDescriptor(entityType: "account", entityId: "acct_other_viewer",
+                                      source: "generated", style: "lorelei", seed: "viewer", rendererVersion: "test",
+                                      uploadedAsset: nil, version: 1, updatedAt: ""), nodeId: nil, passwordSet: true)
+    }
+
+    func testViewerChangeClearsDetailsAndRejectsPreviousViewersPendingResponse() async throws {
+        let old = try avatarProfile("old")
+        let saved = try avatarProfile("saved")
+        let viewer = otherViewer
+        struct Failure: Error {}
+        let started = expectation(description: "Previous viewer refresh started")
+        let switched = expectation(description: "New viewer request started")
+        var pendingOld: CheckedContinuation<CloudContactProfile, Error>?
+        var pendingNew: CheckedContinuation<CloudContactProfile, Error>?
+        var requests = 0
+        let model = ContactProfileModel {
+            requests += 1
+            if requests == 1 { return old }
+            if requests == 2 { throw Failure() }
+            return try await withCheckedThrowingContinuation {
+                if requests == 3 { pendingOld = $0; started.fulfill() }
+                else { pendingNew = $0; switched.fulfill() }
+            }
+        }
+        await model.load(refreshID: refreshID("old"))
+        await model.load(refreshID: refreshID("saved"))
+        XCTAssertEqual(model.profile, old)
+        XCTAssertFalse(model.isFallback)
+        let refresh = Task { await model.load(refreshID: refreshID("saved")) }
+        await fulfillment(of: [started], timeout: 2)
+        let newViewer = Task { await model.load(refreshID: refreshID("saved", viewer: viewer)) }
+        await fulfillment(of: [switched], timeout: 2)
+        XCTAssertNil(model.profile)
+        pendingOld?.resume(returning: old)
+        await refresh.value
+        XCTAssertNil(model.profile)
+        XCTAssertTrue(model.isLoading)
+        pendingNew?.resume(returning: saved)
+        await newViewer.value
+        XCTAssertEqual(model.profile, saved)
+    }
+
+    func testViewerChangeAfterFailedRefreshDoesNotRetainPreviousDetails() async throws {
+        struct Failure: Error {}
+        let old = try avatarProfile("old")
+        let saved = try avatarProfile("saved")
+        let started = expectation(description: "Different viewer request started")
+        var pending: CheckedContinuation<CloudContactProfile, Error>?
+        var requests = 0
+        let model = ContactProfileModel {
+            requests += 1
+            if requests == 1 { return old }
+            if requests == 2 { throw Failure() }
+            return try await withCheckedThrowingContinuation { pending = $0; started.fulfill() }
+        }
+        await model.load(refreshID: refreshID("old"))
+        await model.load(refreshID: refreshID("saved"))
+        XCTAssertEqual(model.profile, old)
+        let switched = Task { await model.load(refreshID: refreshID("saved", viewer: otherViewer)) }
+        await fulfillment(of: [started], timeout: 2)
+        XCTAssertNil(model.profile)
+        pending?.resume(returning: saved)
+        await switched.value
+        XCTAssertEqual(model.profile, saved)
+    }
+
+    func testSavedAvatarDuringOlderWorkspaceRefreshRepairsChatListAfterFailure() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let defaultsName = "avatar-sync-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
+        let keychain = KeychainSessionStore(service: defaultsName, developmentDefaults: defaults)
+        try keychain.saveToken("synthetic-session")
+        defer {
+            try? keychain.deleteToken()
+            defaults.removePersistentDomain(forName: defaultsName)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let wireCache = CloudWireCache(directory: directory)
+        await wireCache.save(accountId: "acct_viewer", cursor: "cursor-start", messagesByPeer: [:],
+                             sessionForksById: [:], visibility: CloudSessionVisibility(
+                                hiddenSessionIds: [], deletedSessionIds: [], pinnedSessionIds: [],
+                                mutedSessionIds: [], unreadSessionIds: [], pinnedGroupSpaceIds: []))
+        let oldRequest = expectation(description: "Older directory request is in flight")
+        let eventConsumed = expectation(description: "Saved avatar event consumed while older request is active")
+        AvatarDirectoryURLProtocol.configure(oldRequest: oldRequest, eventConsumed: eventConsumed)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [AvatarDirectoryURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let appModel = AppModel(
+            api: CloudAPIClient(baseURL: URL(string: "http://127.0.0.1:9")!, session: session),
+            keychain: keychain, shareCredentialStore: ShareExtensionCredentialStore(configuration: nil),
+            cache: try LocalMessageStore(inMemory: true), wireCache: wireCache, previewMode: false)
+        let startup = Task { await appModel.start() }
+        await fulfillment(of: [oldRequest, eventConsumed], timeout: 8)
+        XCTAssertTrue(appModel.isRefreshing)
+        XCTAssertEqual(AvatarDirectoryURLProtocol.contactRequestCount, 1)
+        AvatarDirectoryURLProtocol.finishOldRequest()
+        await startup.value
+        XCTAssertEqual(appModel.contacts.first?.avatarUrl, "old")
+        // The next read fails. The repair must remain pending and retry on a later
+        // poll even though no more directory events arrive.
+        for _ in 0..<100 {
+            if appModel.conversations.first(where: { $0.peerAccountId == "acct_nadia" })?.avatarSource == "saved" { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(appModel.contacts.first?.avatarUrl, "saved")
+        XCTAssertEqual(appModel.conversations.first(where: { $0.peerAccountId == "acct_nadia" })?.avatarSource, "saved")
+        XCTAssertEqual(AvatarDirectoryURLProtocol.contactRequestCount, 3)
+        await appModel.signOut()
+        let readsAfterSignOut = AvatarDirectoryURLProtocol.contactRequestCount
+        try await Task.sleep(for: .milliseconds(2200))
+        XCTAssertEqual(AvatarDirectoryURLProtocol.contactRequestCount, readsAfterSignOut)
+        XCTAssertTrue(appModel.contacts.isEmpty)
+    }
+
     /// Renders the sheet in each state and writes PNGs for review.
     func testRendersProfileSheetStates() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
@@ -418,6 +634,87 @@ private final class ContactProfileURLProtocol: URLProtocol {
         let response = HTTPURLResponse(url: request.url!, statusCode: Self.status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(Self.body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+/// All startup/sync traffic is intercepted; the fixture never reaches a backend.
+private final class AvatarDirectoryURLProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var reads = 0
+    private static var oldRequest: AvatarDirectoryURLProtocol?
+    private static var oldRequestStarted: XCTestExpectation?
+    private static var eventConsumed: XCTestExpectation?
+    private static var eventDelivered = false
+
+    static var contactRequestCount: Int { lock.withLock { reads } }
+
+    static func configure(oldRequest: XCTestExpectation, eventConsumed: XCTestExpectation) {
+        lock.withLock {
+            reads = 0
+            self.oldRequest = nil
+            oldRequestStarted = oldRequest
+            self.eventConsumed = eventConsumed
+            eventDelivered = false
+        }
+    }
+
+    static func finishOldRequest() {
+        let request = lock.withLock { let request = oldRequest; oldRequest = nil; return request }
+        request?.respond(contacts(avatar: "old"))
+    }
+
+    private static func contacts(avatar: String) -> String {
+        #"{"contacts":[{"accountId":"acct_nadia","displayName":"Nadia","avatarUrl":""#
+            + avatar + #"","createdAt":"2026-01-01T00:00:00Z"}]}"#
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        switch request.url?.path {
+        case "/v1/cloud/auth/me":
+            respond(#"{"accountId":"acct_viewer","displayName":"Viewer","passwordSet":true,"avatar":{"entityType":"account","entityId":"acct_viewer","source":"generated","style":"lorelei","seed":"viewer","rendererVersion":"test","version":1,"updatedAt":""}}"#)
+        case "/v1/cloud/contacts":
+            let count = Self.lock.withLock {
+                Self.reads += 1
+                if Self.reads == 1 {
+                    Self.oldRequest = self
+                    Self.oldRequestStarted?.fulfill()
+                }
+                return Self.reads
+            }
+            if count == 2 { respond(#"{"code":"temporary_failure","message":"Synthetic retry"}"#, status: 503) }
+            if count > 2 { respond(Self.contacts(avatar: "saved")) }
+        case "/v2/chat/sync":
+            let (deliver, consumed) = Self.lock.withLock {
+                let deliver = Self.reads > 0 && !Self.eventDelivered
+                Self.eventDelivered = Self.eventDelivered || deliver
+                let cursor = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                    .queryItems?.first(where: { $0.name == "cursor" })?.value
+                let consumed = cursor == "cursor-avatar" ? Self.eventConsumed : nil
+                if consumed != nil { Self.eventConsumed = nil }
+                return (deliver, consumed)
+            }
+            let event = deliver
+                ? #"{"stream_seq":2,"event_id":"avatar-event","protocol_version":2,"type":"account.directory.changed","critical":false,"occurred_at":"2026-01-01T00:00:00Z","payload":{}}"# : ""
+            let cursor = Self.lock.withLock { Self.eventDelivered ? "cursor-avatar" : "cursor-start" }
+            respond("{\"protocol_version\":2,\"events\":[\(event)],\"next_cursor\":\"\(cursor)\",\"last_stream_seq\":2,\"has_more\":false,\"server_time\":\"2026-01-01T00:00:00Z\"}")
+            consumed?.fulfill()
+        default:
+            // Unrelated optional services are deliberately unavailable.
+            respond(#"{"code":"unavailable","message":"Synthetic fixture"}"#, status: 404)
+        }
+    }
+
+    private func respond(_ body: String, status: Int = 200) {
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1",
+                                       headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
 
