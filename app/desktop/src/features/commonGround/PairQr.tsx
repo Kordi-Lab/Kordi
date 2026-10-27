@@ -12,7 +12,7 @@ function loadEncoder(): Promise<QrFactory> {
 
 /** A QR code for `value`: dark modules on white with a two-module margin, in every theme. */
 export function PairQr({ value }: { value: string | null }) {
-  const [factory, setFactory] = useState<QrFactory | null>(encoder);
+  const [factory, setFactory] = useState<QrFactory | null>(() => encoder);
   useEffect(() => {
     if (factory) return undefined;
     let live = true;
