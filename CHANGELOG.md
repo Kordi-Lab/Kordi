@@ -47,6 +47,9 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ### Fixed
 
+- Refreshed saved avatars in iPhone contact profiles and chat lists even when
+  an older refresh was still running or a request failed. Cancelled or delayed
+  profile requests no longer replace newer saved details ([#2153]).
 - Opening a group from Contacts now presents its channels, and selecting one
   switches immediately. Grounding stays discoverable on iPhone, with retry
   and foreground refresh. Mac source errors are distinguished from empty
@@ -1144,3 +1147,4 @@ This release is the comparison baseline for beta.8. See the
 [#2145]: https://github.com/Kordi-Lab/Kordi/pull/2145
 [#2149]: https://github.com/Kordi-Lab/Kordi/pull/2149
 [#2150]: https://github.com/Kordi-Lab/Kordi/pull/2150
+[#2153]: https://github.com/Kordi-Lab/Kordi/pull/2153
