@@ -343,6 +343,7 @@ final class CommonGroundModel: ObservableObject {
     func refreshRoom(_ code: String) async -> Bool {
         do {
             let room = try await call { try await $0.commonGroundRoom(token: $1, code: code) }
+            guard !Task.isCancelled else { return false }
             if rooms[code] != room { withAnimation(.snappy) { rooms[code] = room } }
             return true
         } catch let error as CloudAPIError where error.code == "common_ground_room_not_found" {
@@ -365,7 +366,9 @@ final class CommonGroundModel: ObservableObject {
         do {
             if !quiet { busy = "find" }
             defer { if busy == "find" { busy = nil } }
-            results[code] = try await call { try await $0.commonGroundResults(token: $1, code: code) }
+            let next = try await call { try await $0.commonGroundResults(token: $1, code: code) }
+            guard !Task.isCancelled else { return false }
+            results[code] = next
             return true
         } catch {
             if !quiet { report(error) }
@@ -380,6 +383,18 @@ final class CommonGroundModel: ObservableObject {
             try? await Task.sleep(for: interval)
             guard !Task.isCancelled else { return }
             await loadResults(code, quiet: true)
+        }
+    }
+
+    /// A completed match can change when someone joins or changes their
+    /// shared card. Refresh membership and cached results while visible;
+    /// the server reuses completed matches whose inputs have not changed.
+    func followRoomResults(_ code: String, every interval: Duration = matchPollInterval) async {
+        while !Task.isCancelled {
+            guard await refreshRoom(code), !Task.isCancelled else { return }
+            await loadResults(code, quiet: true)
+            guard !Task.isCancelled, !isClosed(code) else { return }
+            do { try await Task.sleep(for: interval) } catch { return }
         }
     }
 

@@ -27,6 +27,7 @@ struct CommonGroundResultsView: View {
     @EnvironmentObject private var model: CommonGroundModel
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.commonGroundOpenConversation) private var openConversation
+    @Environment(\.scenePhase) private var scenePhase
     let code: String
     @Binding var path: [CommonGroundRoute]
     @State private var tab = CommonGroundRoomTab.people
@@ -40,19 +41,8 @@ struct CommonGroundResultsView: View {
     var body: some View {
         let topics = results?.topics ?? []
         CommonGroundPage(onBack: { path = [] }) {
-            CommonGroundHero(title: model.roomTitle(code), status: status(topics: topics.count)) {
-                CommonGroundStack(people: [model.me] + members, size: 92)
-            } actions: {
-                if !closed {
-                    CommonGroundActions(columns: 2) {
-                        ShareLink(item: code) {
-                            SessionProfileActionLabel(title: "Share code", symbol: "square.and.arrow.up", tint: chatTheme.accent, isSelected: false)
-                        }
-                        .buttonStyle(.plain)
-                        SessionProfileActionButton(title: "Leave", symbol: "rectangle.portrait.and.arrow.right", tint: chatTheme.accent, action: leave)
-                    }
-                }
-            }
+            CommonGroundRoomHeader(title: model.roomTitle(code), status: status(topics: topics.count),
+                                   code: code, people: [model.me] + members, closed: closed, leave: leave)
 
             VStack(spacing: 16) {
                 CommonGroundSharingRow(code: code)
@@ -80,11 +70,13 @@ struct CommonGroundResultsView: View {
             }
             .padding(.horizontal, 16)
         }
-        .task(id: results?.status) {
-            if results == nil { await model.loadResults(code, quiet: true) }
-            await model.waitForResults(code)
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            await model.followRoomResults(code)
         }
-        .task { if room == nil { await model.refreshRoom(code) } }
+        .refreshable {
+            if await model.refreshRoom(code) { await model.loadResults(code, quiet: true) }
+        }
         .sheet(item: $draft) { draft in
             CommonGroundStartGroupSheet(
                 defaultName: draft.name,
