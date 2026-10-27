@@ -17,6 +17,14 @@ extension CommonGroundModel {
         }
     }
 
+    /// The code owner also opens the match when another phone scans the QR.
+    func completedPairCode(_ code: String) async -> CommonGroundPersonCard? {
+        guard let status = try? await call({ try await $0.commonGroundPairStatus(token: $1, code: code) }),
+              status.status == "paired", let card = status.person,
+              card.person.accountId != me.accountId else { return nil }
+        return card
+    }
+
     /// Redeems the other person's code. Your own code is refused here; the
     /// server refuses another device of your account.
     func redeemPairCode(_ code: String, ownCode: String? = nil) async -> CommonGroundRedeemOutcome {

@@ -2,10 +2,11 @@ import SwiftUI
 
 /// Someone seen through Nearby: the match badge, their shared card's name
 /// and the distance band, Add or Message and Meet, the checks for your
-/// requests, then Shared and Trade. Waits while the match is being found;
+/// requests, then Card, Shared and Trade. Waits while the match is being found;
 /// leaves when the person is no longer visible.
 struct CommonGroundNearbyPersonView: View {
     private enum Tab: String, CaseIterable, Identifiable {
+        case card = "Card"
         case shared = "Shared"
         case trade = "Trade"
         var id: Self { self }
@@ -16,7 +17,7 @@ struct CommonGroundNearbyPersonView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.kordiChatTheme) private var chatTheme
     let personID: String
-    @State private var tab = Tab.shared
+    @State private var tab = Tab.card
 
     var body: some View {
         let detail = model.nearby.persons[personID]
@@ -144,6 +145,8 @@ struct CommonGroundNearbyPersonView: View {
     @ViewBuilder
     private func match(_ detail: CommonGroundNearbyPersonDetail, name: String) -> some View {
         switch tab {
+        case .card:
+            CommonGroundSharedCardDetails(person: detail.entry.person, topics: detail.card)
         case .shared:
             CommonGroundSection {
                 if detail.shared.isEmpty { row("No clear overlap yet", nil) }
@@ -161,7 +164,7 @@ struct CommonGroundNearbyPersonView: View {
                 if !detail.theyBring.isEmpty { trades("\(name) brings", detail.theyBring) }
             }
         }
-        if let next = detail.nextStep, !next.isEmpty {
+        if tab != .card, let next = detail.nextStep, !next.isEmpty {
             CommonGroundSection(title: "Next step") { row(next, nil) }
         }
     }

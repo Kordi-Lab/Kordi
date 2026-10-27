@@ -181,6 +181,12 @@ extension CloudAPIClient {
     }
 
     /// Pairs with the person who showed `code`, sharing `profileId` back.
+    func commonGroundPairStatus(token: String, code: String) async throws -> CommonGroundPairStatus {
+        struct Body: Encodable { let code: String }
+        return try await send(path: cg("pairings/status"), method: "POST", token: token,
+                              body: Body(code: code), fallback: "Could not check pairing.")
+    }
+
     func redeemCommonGroundPairCode(token: String, code: String, profileId: String? = nil) async throws -> CommonGroundPersonCard {
         struct Body: Encodable { let code: String; let profileId: String? }
         return try await send(path: cg("pairings/redeem"), method: "POST", token: token, body: Body(code: code, profileId: profileId), fallback: "Could not pair.")

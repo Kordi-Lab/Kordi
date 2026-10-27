@@ -88,9 +88,15 @@ extension CommonGroundNearbyLocator {
     func oneFix(timeout: TimeInterval) async -> CLLocation? {
         guard let manager else { return nil }
         let key = UUID()
-        manager.requestLocation()
         return await withCheckedContinuation { continuation in
             fixWaiters[key] = continuation
+            // requestLocation is ignored while standard updates are running.
+            // Stop them first; received(_:) resumes them for a visible screen.
+            if updating {
+                manager.stopUpdatingLocation()
+                updating = false
+            }
+            manager.requestLocation()
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(timeout))
                 self?.fixWaiters.removeValue(forKey: key)?.resume(returning: nil)
@@ -113,11 +119,15 @@ extension CommonGroundNearbyLocator {
             manager.startUpdatingLocation()
             updating = true
         }
-        Task { await consider(location) }
+        if !updatingNow { Task { await consider(location) } }
     }
 
     func failed(_ error: Error) {
-        resolveFixWaiters(nil)
+        let failure = error as NSError
+        // A one-shot request may briefly have no fix. Keep its waiter alive
+        // for the next standard update, bounded by the existing deadline.
+        let temporary = failure.domain == kCLErrorDomain && failure.code == CLError.locationUnknown.rawValue
+        if !temporary { resolveFixWaiters(nil) }
         // A screen still showing keeps trying with standard updates.
         if foreground, !updating, let manager, access.granted {
             manager.startUpdatingLocation()

@@ -133,11 +133,12 @@ struct CommonGroundNearbyUpdate: Encodable, Hashable {
     var profileId: String?
     var pausedUntil: String?? = nil
     var openTo: [String]?
+    var openToProfileId: String?
     var range: Int?
     var minScore: Int?
     var alerts: Alerts?
 
-    private enum CodingKeys: String, CodingKey { case enabled, consent, profileId, pausedUntil, openTo, range, minScore, alerts }
+    private enum CodingKeys: String, CodingKey { case enabled, consent, profileId, pausedUntil, openTo, openToProfileId, range, minScore, alerts }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -146,6 +147,7 @@ struct CommonGroundNearbyUpdate: Encodable, Hashable {
         try c.encodeIfPresent(profileId, forKey: .profileId)
         if let pausedUntil { try c.encode(pausedUntil, forKey: .pausedUntil) }
         try c.encodeIfPresent(openTo, forKey: .openTo)
+        try c.encodeIfPresent(openToProfileId, forKey: .openToProfileId)
         try c.encodeIfPresent(range, forKey: .range)
         try c.encodeIfPresent(minScore, forKey: .minScore)
         try c.encodeIfPresent(alerts, forKey: .alerts)
@@ -261,7 +263,7 @@ struct CommonGroundNearbyCheck: Decodable, Hashable {
     let verdict: String
     /// "interest", "work", "affiliation" or "willingness".
     let kind: String?
-    /// A label from their shared card, profile or Open to; nil unless met.
+    /// A label from their shared card, profile or Meet for activities; nil unless met.
     let evidence: String?
 
     private enum CodingKeys: String, CodingKey { case condition, label, verdict, kind, evidence }
@@ -284,7 +286,7 @@ struct CommonGroundNearbyCheck: Decodable, Hashable {
         case "work": "Working on"
         case "interest": "Card"
         case "affiliation": "Profile"
-        case "willingness": "Open to"
+        case "willingness": "Meet for"
         default: nil
         }
         return source.map { "\($0) · \(evidence)" } ?? evidence

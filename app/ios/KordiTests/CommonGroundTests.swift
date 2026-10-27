@@ -282,6 +282,39 @@ final class CommonGroundTests: XCTestCase {
         XCTAssertNil(model.notice)
     }
 
+    func testCompletedRoomContinuesSyncingWhenAnotherPersonJoins() async throws {
+        let model = stubbedModel()
+        let empty = #"{"code":"4821","open":true,"members":[]}"#
+        let joined = #"{"code":"4821","open":true,"members":[{"accountId":"acct_n","name":"Nadia"}]}"#
+        let ready = #"{"status":"ready","people":[]}"#
+        let updated = #"{"status":"ready","people":[{"person":{"accountId":"acct_n","name":"Nadia"},"score":82,"headline":"Shared interests"}]}"#
+        model.setRoom(try JSONDecoder().decode(CommonGroundRoom.self, from: Data(empty.utf8)), code: "4821")
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/rooms/4821", [(200, empty), (200, joined)])
+        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/rooms/4821/results", [(200, ready), (200, updated)])
+
+        let polling = Task { await model.followRoomResults("4821", every: .milliseconds(1)) }
+        for _ in 0..<100 {
+            if model.results["4821"]?.people.count == 1 { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        polling.cancel()
+        await polling.value
+        XCTAssertEqual(model.rooms["4821"]?.members.count, 1)
+        XCTAssertEqual(model.results["4821"]?.people.first?.person.accountId, "acct_n")
+        let requestCount = CommonGroundURLProtocol.requests.count
+        try await Task.sleep(for: .milliseconds(10))
+        XCTAssertEqual(CommonGroundURLProtocol.requests.count, requestCount, "Leaving the page stops polling")
+    }
+
+    func testClosedRoomRefreshesOnceThenStopsFollowing() async {
+        let model = stubbedModel()
+        CommonGroundURLProtocol.stub("GET", "/v1/cloud/common-ground/rooms/4821", [(200, #"{"code":"4821","open":false,"members":[]}"#)])
+        CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/rooms/4821/results", [(200, #"{"status":"ready","people":[]}"#)])
+        await model.followRoomResults("4821", every: .milliseconds(1))
+        XCTAssertEqual(CommonGroundURLProtocol.paths.filter { $0.hasSuffix("/4821") }.count, 1)
+        XCTAssertEqual(CommonGroundURLProtocol.paths.filter { $0.hasSuffix("/results") }.count, 1)
+    }
+
     func testTopicGroupRequestCarriesTopic() async throws {
         let model = stubbedModel()
         CommonGroundURLProtocol.stub("POST", "/v1/cloud/common-ground/rooms/4821/group", [(201, #"""
@@ -389,6 +422,16 @@ final class CommonGroundURLProtocol: URLProtocol {
 
     private static var responses: [String: [(status: Int, body: String)]] = [:]
     private(set) static var requests: [Recorded] = []
+    private static var heldPaths: Set<String> = []
+    private static var pending: [String: [() -> Void]] = [:]
+
+    static func hold(_ path: String) { heldPaths.insert(path) }
+    static func hasHeldResponse(_ path: String) -> Bool { !(pending[path] ?? []).isEmpty }
+    static func release(_ path: String) {
+        heldPaths.remove(path)
+        let callbacks = pending.removeValue(forKey: path) ?? []
+        callbacks.forEach { $0() }
+    }
 
     static var paths: [String] {
         requests.map { "\($0.request.httpMethod ?? "GET") \($0.request.url?.path ?? "")" }
@@ -397,6 +440,8 @@ final class CommonGroundURLProtocol: URLProtocol {
     static func reset() {
         responses = [:]
         requests = []
+        heldPaths = []
+        pending = [:]
     }
 
     static func stub(_ method: String, _ path: String, _ queue: [(Int, String)]) {
@@ -420,9 +465,14 @@ final class CommonGroundURLProtocol: URLProtocol {
             httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "application/json"]
         )!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(stubbed.body.utf8))
-        client?.urlProtocolDidFinishLoading(self)
+        let deliver = {
+            self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            self.client?.urlProtocol(self, didLoad: Data(stubbed.body.utf8))
+            self.client?.urlProtocolDidFinishLoading(self)
+        }
+        let path = request.url?.path ?? ""
+        if Self.heldPaths.contains(path) { Self.pending[path, default: []].append(deliver) }
+        else { deliver() }
     }
 
     override func stopLoading() {}

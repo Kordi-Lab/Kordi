@@ -454,3 +454,6 @@ async fn deleting_a_profile_leaves_rooms_and_drops_its_matches() {
         (&json!(alex.health), &json!(["Alex health topic"]))
     );
 }
+
+#[path = "pairing_status_tests.rs"]
+mod pairing_status_tests;

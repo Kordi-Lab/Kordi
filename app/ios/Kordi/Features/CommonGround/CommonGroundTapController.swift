@@ -17,6 +17,10 @@ final class CommonGroundTapController: ObservableObject {
     private var refresher: Task<Void, Never>?
     /// The card the current code shares; a different card asks for a new code.
     private var codeProfileID: String?
+    private var finished = false
+    private let pollInterval: Duration
+
+    init(pollInterval: Duration = .seconds(1)) { self.pollInterval = pollInterval }
     private var onMatch: (CommonGroundPersonCard) -> Void = { _ in }
     private var onProblem: (CommonGroundPairError) -> Void = { _ in }
 
@@ -26,6 +30,7 @@ final class CommonGroundTapController: ObservableObject {
         onProblem: @escaping (CommonGroundPairError) -> Void
     ) {
         guard exchange == nil else { return }
+        finished = false
         self.model = model
         self.onMatch = onMatch
         self.onProblem = onProblem
@@ -61,6 +66,7 @@ final class CommonGroundTapController: ObservableObject {
         setRadio(false)
         refresher?.cancel()
         refresher = nil
+        exchange = nil
     }
 
     /// A typed or scanned code; returns the line to show when it fails.
@@ -80,6 +86,8 @@ final class CommonGroundTapController: ObservableObject {
     }
 
     private func finish(_ card: CommonGroundPersonCard) {
+        guard !finished else { return }
+        finished = true
         stop()
         onMatch(card)
     }
@@ -88,6 +96,20 @@ final class CommonGroundTapController: ObservableObject {
     /// picked; waits a little after a failure instead of retrying every second.
     private func keepCodeFresh() async {
         while !Task.isCancelled {
+            // Check before rotating a nearly expired code so a recent scan is not lost.
+            if let code, let model, codeProfileID == model.pairingProfileID {
+                let askedProfile = codeProfileID
+                let askedCode = code.code
+                let card = await model.completedPairCode(askedCode)
+                guard !Task.isCancelled else { return }
+                if let card, model.pairingProfileID == askedProfile,
+                   codeProfileID == askedProfile, self.code?.code == askedCode {
+                    model.remember(card, profileId: card.profileId)
+                    finish(card)
+                    return
+                }
+            }
+            guard !Task.isCancelled else { return }
             if let exchange, let model, exchange.needsRefresh() || codeProfileID != model.pairingProfileID {
                 let asked = model.pairingProfileID
                 switch await model.newPairCode() {
@@ -105,7 +127,7 @@ final class CommonGroundTapController: ObservableObject {
                     return
                 }
             }
-            try? await Task.sleep(for: .seconds(1))
+            try? await Task.sleep(for: pollInterval)
         }
     }
 }

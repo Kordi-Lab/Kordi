@@ -266,10 +266,7 @@ enum CloudConversationCatalog {
             if let latestCanonicalMessage {
                 visibleRows.append((
                     parseCloudDate(latestCanonicalMessage.createdAt),
-                    CloudMessageCodec.previewText(latestCanonicalMessage).nonEmpty
-                        ?? latestCanonicalMessage.planCard.map {
-                            $0.cardView == .vote ? "Vote: \($0.title)" : "Plan: \($0.title)"
-                        },
+                    CloudMessageCodec.previewText(latestCanonicalMessage).nonEmpty,
                     previewAttachment(latestCanonicalMessage)
                 ))
             }

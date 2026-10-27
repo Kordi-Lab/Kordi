@@ -17,6 +17,7 @@ mod need_routes;
 mod needs;
 mod participation;
 mod person;
+mod profile_preferences;
 mod results;
 mod search;
 mod settings;

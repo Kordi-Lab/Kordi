@@ -448,7 +448,7 @@ test('nearby person: evidence names where it sits on the card', () => {
   assert.equal(evidenceLine(check({ kind: 'work', evidence: 'Founding Loom Labs' }), card), 'Working on · Founding Loom Labs');
   assert.equal(evidenceLine(check({ kind: 'interest', evidence: 'agent  memory' }), card), 'Interests · agent  memory');
   assert.equal(evidenceLine(check({ kind: 'affiliation', evidence: 'Fudan University' }), card), 'Profile · Fudan University');
-  assert.equal(evidenceLine(check({ kind: 'willingness', evidence: 'Coffee chat' }), card), 'Open to · Coffee chat');
+  assert.equal(evidenceLine(check({ kind: 'willingness', evidence: 'Coffee chat' }), card), 'Meet for · Coffee chat');
   assert.equal(evidenceLine(check({ verdict: 'unknown' }), card), 'Not shared');
 });
 
@@ -464,4 +464,28 @@ test('nearby polling backs off after two minutes without progress and restarts a
   assert.equal(nearby.pollDelay(undefined, Date.now() + 120_000), NEARBY_SLOW_POLL_MS);
   await nearby.setFilters({ range: 500 });
   assert.equal(nearby.pollDelay(), NEARBY_FAST_POLL_MS);
+});
+
+test('switching cards clears old results and ignores a late search and settings response', async () => {
+  const { nearby, client } = nearbyFor({
+    'PUT nearby': { status: 200, body: settings({ profileId: 'cgp_running' }) },
+    'GET nearby/people': { status: 200, body: people([entry('runner')]) },
+  });
+  nearby.set({ settings: settings(), loaded: true });
+  let finishOldSearch!: (value: Awaited<ReturnType<typeof client.nearbyPeople>>) => void;
+  let finishOldSettings!: (value: CgNearbySettings) => void;
+  const search = client.nearbyPeople;
+  client.nearbyPeople = () => new Promise((resolve) => { finishOldSearch = resolve; });
+  client.nearby = () => new Promise((resolve) => { finishOldSettings = resolve; });
+  const oldSearch = nearby.loadPeople();
+  const oldSettings = nearby.loadSettings();
+  client.nearbyPeople = search;
+  const switching = nearby.setProfile('cgp_running');
+  assert.equal(nearby.getSnapshot().results, null);
+  assert.equal(await switching, true);
+  finishOldSearch(await mockServer({ 'GET nearby/people': { status: 200, body: people([entry('workmate')]) } }).client.nearbyPeople());
+  finishOldSettings(settings());
+  await Promise.all([oldSearch, oldSettings]);
+  assert.equal(nearby.getSnapshot().settings?.profileId, 'cgp_running');
+  assert.deepEqual(nearby.getSnapshot().results?.people.map((row) => row.person.accountId), ['runner']);
 });

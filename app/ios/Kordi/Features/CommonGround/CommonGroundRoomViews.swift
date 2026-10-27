@@ -6,6 +6,7 @@ import SwiftUI
 struct CommonGroundLobbyView: View {
     @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: CommonGroundModel
+    @Environment(\.scenePhase) private var scenePhase
     let code: String
     @Binding var path: [CommonGroundRoute]
 
@@ -14,20 +15,11 @@ struct CommonGroundLobbyView: View {
 
     var body: some View {
         CommonGroundPage(onBack: { path = [] }) {
-            CommonGroundHero(title: room?.title ?? "Room \(code)", status: status) {
-                CommonGroundStack(people: [model.me] + members, size: 92)
-            } actions: {
-                CommonGroundActions(columns: 2) {
-                    ShareLink(item: code) {
-                        SessionProfileActionLabel(title: "Share code", symbol: "square.and.arrow.up", tint: chatTheme.accent, isSelected: false)
-                    }
-                    .buttonStyle(.plain)
-                    SessionProfileActionButton(title: "Leave", symbol: "rectangle.portrait.and.arrow.right", tint: chatTheme.accent) {
-                        Task {
-                            await model.leaveRoom(code)
-                            path = []
-                        }
-                    }
+            CommonGroundRoomHeader(title: room?.title ?? "Room", status: status,
+                                   code: code, people: [model.me] + members) {
+                Task {
+                    await model.leaveRoom(code)
+                    path = []
                 }
             }
             VStack(spacing: 16) {
@@ -58,12 +50,17 @@ struct CommonGroundLobbyView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
         }
-        .task {
+        .refreshable { _ = await model.refreshRoom(code) }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
             while !Task.isCancelled {
-                guard await model.refreshRoom(code) else {
+                let exists = await model.refreshRoom(code)
+                guard !Task.isCancelled else { return }
+                guard exists else {
                     path = []
                     return
                 }
+                guard !Task.isCancelled, !model.isClosed(code) else { return }
                 try? await Task.sleep(for: CommonGroundModel.lobbyPollInterval)
             }
         }
@@ -72,5 +69,69 @@ struct CommonGroundLobbyView: View {
     private var status: String {
         if members.isEmpty { return "Waiting for others" }
         return "\(members.count + 1) people"
+    }
+}
+
+/// Keeps the invitation code visible after entering a room, with compact
+/// copy, share and leave controls instead of a second row of large tiles.
+struct CommonGroundRoomHeader: View {
+    let title: String
+    let status: String
+    let code: String
+    let people: [CommonGroundPerson]
+    var closed = false
+    let leave: () -> Void
+    @State private var copied = false
+
+    var body: some View {
+        CommonGroundHero(title: title, status: status) {
+            CommonGroundStack(people: people, size: 64)
+        } actions: {
+            VStack(spacing: 10) {
+                Button {
+                    UIPasteboard.general.string = code
+                    copied = true
+                } label: {
+                    HStack(spacing: 10) {
+                        Text(copied ? "Copied" : "Room code")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Text(code)
+                            .font(.title2.monospaced().weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .font(.subheadline)
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 44)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Copy room code")
+                .accessibilityValue(code.map(String.init).joined(separator: " "))
+                .accessibilityIdentifier("grounding-room-code")
+                .sensoryFeedback(.success, trigger: copied)
+                .task(id: copied) {
+                    guard copied else { return }
+                    try? await Task.sleep(for: .seconds(2))
+                    guard !Task.isCancelled else { return }
+                    copied = false
+                }
+                if !closed {
+                    HStack(spacing: 20) {
+                        ShareLink(item: code) {
+                            Label("Share code", systemImage: "square.and.arrow.up")
+                                .frame(minHeight: 44)
+                        }
+                        Button(action: leave) {
+                            Label("Leave", systemImage: "rectangle.portrait.and.arrow.right")
+                                .frame(minHeight: 44)
+                        }
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 }

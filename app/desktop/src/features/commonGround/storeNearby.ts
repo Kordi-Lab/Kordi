@@ -58,6 +58,7 @@ export class CgNearbyStore {
   private state = initialState();
   private listeners = new Set<() => void>();
   private peopleRequest = 0;
+  private profileRevision = 0;
   private refreshing: Promise<void> | null = null;
   private refreshAgain = false;
   private watched = new Map<string, number>();
@@ -107,10 +108,15 @@ export class CgNearbyStore {
   }
 
   async loadSettings(): Promise<boolean> {
+    if (this.state.busy) return false;
+    const revision = this.profileRevision;
     try {
-      this.set({ settings: await this.client.nearby(), blocked: null, loaded: true });
+      const settings = await this.client.nearby();
+      if (revision !== this.profileRevision || this.state.busy === 'profile') return false;
+      this.set({ settings, blocked: null, loaded: true });
       return true;
     } catch (error) {
+      if (revision !== this.profileRevision) return false;
       this.set({ loaded: true, notice: commonGroundErrorMessage(error) });
       return false;
     }
@@ -118,6 +124,7 @@ export class CgNearbyStore {
 
   /** Search with the stored range and score; only the newest search lands. */
   async loadPeople(): Promise<void> {
+    if (this.state.busy === 'profile') return;
     const mine = ++this.peopleRequest;
     try {
       const results = await this.client.nearbyPeople();
@@ -140,11 +147,15 @@ export class CgNearbyStore {
   }
 
   async loadPerson(accountId: string): Promise<void> {
+    if (this.state.busy === 'profile') return;
+    const revision = this.profileRevision;
     try {
       const person = await this.client.nearbyPerson(accountId);
+      if (revision !== this.profileRevision) return;
       const { [accountId]: _cleared, ...personNotices } = this.state.personNotices;
       this.set({ persons: { ...this.state.persons, [accountId]: person }, personNotices });
     } catch (error) {
+      if (revision !== this.profileRevision) return;
       const gone = GONE.has(commonGroundErrorCode(error) ?? '');
       const { [accountId]: _dropped, ...persons } = this.state.persons;
       this.set({ persons: gone ? persons : this.state.persons, personNotices: { ...this.state.personNotices, [accountId]: commonGroundErrorMessage(error) } });
@@ -240,7 +251,10 @@ export class CgNearbyStore {
     if (await this.save('filters', filters, filters)) await this.researchIfOn();
   }
 
-  setOpenTo = async (openTo: string[]) => { await this.save('openTo', { openTo }, { openTo }); };
+  setOpenTo = async (openTo: string[], profileId = this.state.settings?.profileId) => {
+    if (this.state.busy || !profileId || profileId !== this.state.settings?.profileId) return;
+    if (!await this.save('openTo', { openTo, openToProfileId: profileId }, { openTo })) await this.loadSettings();
+  };
 
   setAlerts = async (alerts: Partial<CgNearbyAlerts>) => {
     const current = this.state.settings?.alerts;
@@ -248,8 +262,14 @@ export class CgNearbyStore {
   };
 
   /** Shares another card through Nearby. */
-  async setProfile(profileId: string): Promise<void> {
-    if (await this.save('profile', { profileId }, { profileId })) await this.researchIfOn();
+  async setProfile(profileId: string): Promise<boolean> {
+    if (this.state.busy) return false;
+    this.profileRevision += 1;
+    this.peopleRequest += 1;
+    this.set({ results: null, persons: {}, personNotices: {} });
+    const saved = await this.save('profile', { profileId }, { profileId, openTo: [] });
+    await this.researchIfOn();
+    return saved;
   }
 
   // Requests

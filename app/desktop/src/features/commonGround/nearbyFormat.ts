@@ -173,6 +173,6 @@ export function evidenceLine(check: CgNearbyCheck, card: CgTopicLists): string {
   if (!evidence) return 'Not shared';
   if (check.verdict !== 'met') return evidence;
   const section = CG_TOPIC_SECTIONS.find(([key]) => card[key].some((topic) => fold(topic) === fold(evidence)))?.[1];
-  const where = check.kind === 'willingness' ? 'Open to' : check.kind === 'work' ? 'Working on' : section ?? (check.kind === 'affiliation' ? 'Profile' : null);
+  const where = check.kind === 'willingness' ? 'Meet for' : check.kind === 'work' ? 'Working on' : section ?? (check.kind === 'affiliation' ? 'Profile' : null);
   return where ? `${where} · ${evidence}` : evidence;
 }

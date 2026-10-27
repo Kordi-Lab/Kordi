@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// Grounding › Pair › Nearby. Off: one line and Turn on. On: the card being
-/// shared, the location status, Open to, People, Looking for and Alerts.
+/// shared, the location status, Meet for, People, Looking for and Alerts.
 /// While it shows, the list polls (every 3 s while people are being
 /// matched, else every 30 s) and this iPhone sends its location.
 struct CommonGroundNearbyView: View {
@@ -97,6 +97,11 @@ struct CommonGroundNearbyView: View {
                 TimelineView(.periodic(from: .now, by: 30)) { context in
                     statusLine(status(settings, now: context.date), now: context.date)
                 }
+                if let message = locator.locationError ?? locator.locationNotice {
+                    Text(message).font(.footnote).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .accessibilityLabel("Location update: \(message)")
+                }
             }
             .padding(.horizontal, 16)
             VStack(spacing: 24) {
@@ -126,7 +131,7 @@ struct CommonGroundNearbyView: View {
     }
 
     private func status(_ settings: CommonGroundNearbySettings, now: Date) -> CommonGroundNearbyStatus {
-        let stale = settings.location?.fresh == false || (model.nearby.noLocation && settings.location != nil)
+        let stale = settings.location == nil || settings.location?.fresh == false || model.nearby.noLocation
         return CommonGroundNearbyStatus.resolve(
             pausedUntil: settings.pausedUntilDate,
             access: locator.access,
@@ -141,25 +146,43 @@ struct CommonGroundNearbyView: View {
 
     @ViewBuilder
     private func statusLine(_ status: CommonGroundNearbyStatus, now: Date) -> some View {
-        switch status {
-        case .paused(let until):
-            statusText(CommonGroundNearbyStatus.pausedLine(until, now: now), link: "Resume") {
-                Task { await model.resumeNearby() }
+        if locator.updatingNow || locator.posting {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Updating your location…").font(.footnote).foregroundStyle(.secondary)
             }
-        case .denied:
-            EmptyView()
-        case .imprecise:
-            statusText("Precise location is off", link: "Settings", action: openSettings)
-        case .stale:
-            statusText("Location is out of date", link: "Update") { locator.updateNow() }
-        case .foregroundOnly:
-            if locator.access == .always && locator.refreshAvailable {
-                statusText("Only while Kordi is open")
-            } else {
-                statusText("Only while Kordi is open", link: "Settings", action: openSettings)
+        } else {
+            switch status {
+            case .permissionNeeded:
+                statusText("Use this iPhone to find people nearby", link: "Allow location") { locator.updateNow() }
+            case .paused(let until):
+                statusText(CommonGroundNearbyStatus.pausedLine(until, now: now), link: "Resume") {
+                    Task { await model.resumeNearby() }
+                }
+            case .denied:
+                EmptyView()
+            case .imprecise:
+                statusText("Precise location is off", link: "Settings", action: openSettings)
+            case .stale:
+                statusText("Location is out of date", link: "Update") { locator.updateNow() }
+            case .foregroundOnly:
+                VStack(spacing: 4) {
+                    let line = CommonGroundNearbyStatus.updatedLine(
+                        locator.lastReply?.captured ?? settings?.location?.captured, now: now, background: false
+                    )
+                    if locator.access == .always && locator.refreshAvailable {
+                        statusText(line)
+                    } else {
+                        statusText(line, link: "Settings", action: openSettings)
+                    }
+                    Button("Update location") { locator.updateNow() }
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(chatTheme.accent)
+                        .buttonStyle(.plain)
+                }
+            case .background(let updated):
+                statusText(CommonGroundNearbyStatus.updatedLine(updated, now: now), link: "Update location") { locator.updateNow() }
             }
-        case .background(let updated):
-            statusText(CommonGroundNearbyStatus.updatedLine(updated, now: now))
         }
     }
 

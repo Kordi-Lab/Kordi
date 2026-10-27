@@ -172,9 +172,9 @@ export class CommonGroundStore {
     if (this.top().name === 'home') void this.loadRooms();
   }
 
-  home() {
+  home({ reload = true }: { reload?: boolean } = {}) {
     this.set({ stack: [{ name: 'home' }], notice: null });
-    void this.loadHome();
+    void (reload ? this.loadHome() : this.loadRooms());
   }
 
   async loadScreen(screen: CgScreen = this.top()): Promise<void> {

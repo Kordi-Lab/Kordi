@@ -33,6 +33,7 @@ extension CommonGroundModel {
         "common_ground_nearby_too_many_needs": "You can have up to 10 requests.",
         "common_ground_nearby_need_not_found": "This request was deleted.",
         "common_ground_nearby_inaccurate": "Your location isn't precise enough.",
+        "common_ground_nearby_card_changed": "The Nearby card changed. Refresh before editing its activities.",
     ]
 
     /// How often the poll checks whether a fetch is due.
@@ -133,31 +134,38 @@ extension CommonGroundModel {
     }
 
     func setNearbyProfile(_ profileId: String) async {
-        guard profileId != nearby.settings?.profileId else { return }
-        if await updateNearby(CommonGroundNearbyUpdate(profileId: profileId), optimistic: { $0.profileId = profileId }) {
+        guard busy == nil, profileId != nearby.settings?.profileId else { return }
+        if await updateNearby(CommonGroundNearbyUpdate(profileId: profileId), optimistic: {
+            $0.profileId = profileId
+            $0.openTo = []
+        }) {
             nearby.peopleChangedAt = .now
             await loadNearbyPeople()
         }
     }
 
-    /// Turns one Open to entry on or off; at most 5.
-    func toggleNearbyOpenTo(_ entry: String) async {
-        guard var list = nearby.settings?.openTo else { return }
+    /// Turns one activity on or off for the card shown at the tap; at most 5.
+    func toggleNearbyOpenTo(_ entry: String, profileId: String?) async {
+        guard busy == nil, let profileId, let settings = nearby.settings,
+              settings.profileId == profileId else { return }
+        var list = settings.openTo
         if let index = list.firstIndex(where: { $0.caseInsensitiveCompare(entry) == .orderedSame }) {
             list.remove(at: index)
         } else {
             guard list.count < 5 else { return }
             list.append(entry)
         }
-        await updateNearby(CommonGroundNearbyUpdate(openTo: list), optimistic: { $0.openTo = list })
+        if !(await updateNearby(CommonGroundNearbyUpdate(openTo: list, openToProfileId: profileId), optimistic: { $0.openTo = list })) {
+            await loadNearby(quiet: true)
+        }
     }
 
-    /// A typed Open to entry: trimmed, up to 30 characters, not a duplicate.
-    func addNearbyOpenTo(_ text: String) async {
+    /// A typed activity: trimmed, up to 30 characters, not a duplicate.
+    func addNearbyOpenTo(_ text: String, profileId: String?) async {
         let clean = String(text.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(30))
         guard !clean.isEmpty, let list = nearby.settings?.openTo, list.count < 5,
               !list.contains(where: { $0.caseInsensitiveCompare(clean) == .orderedSame }) else { return }
-        await toggleNearbyOpenTo(clean)
+        await toggleNearbyOpenTo(clean, profileId: profileId)
     }
 
     /// Within and the minimum match are stored, then the list is fetched again.

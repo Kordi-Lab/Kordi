@@ -69,7 +69,8 @@ export function WalletShell({ state, store, owner, title, onBack, chip, actions,
     if (id === 'suggested') return;
     const target = state.profiles.find((item) => item.profileId === id);
     if (id !== state.profileId) void store.selectProfile(id);
-    if (onCard && !target?.hasCard) store.back();
+    if (page === 'nearby') store.home({ reload: false });
+    else if (onCard && !target?.hasCard) store.back();
   };
   const openCard = (id: string) => {
     if (id !== state.profileId) void store.selectProfile(id);

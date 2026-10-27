@@ -194,6 +194,8 @@ struct UpdateBody {
     #[serde(deserialize_with = "present")]
     paused_until: Option<Option<DateTime<Utc>>>,
     open_to: Option<Vec<String>>,
+    /// Reject an activity edit from a card that is no longer active.
+    open_to_profile_id: Option<String>,
     range: Option<i64>,
     min_score: Option<i64>,
     alerts: Option<AlertsBody>,
@@ -348,6 +350,24 @@ async fn write(
             Some(row) if row.has_card() => return Ok(Some(sharing_off())),
             _ => return Ok(Some(card::no_card())),
         }
+    }
+    if body.open_to.is_some()
+        && body
+            .open_to_profile_id
+            .as_deref()
+            .is_some_and(|id| Some(id) != next.profile_id.as_deref())
+    {
+        return Ok(Some(err(
+            "common_ground_nearby_card_changed",
+            "The Nearby card changed. Refresh before editing its activities.",
+            StatusCode::CONFLICT,
+        )));
+    }
+    if let Some(profile_id) = next.profile_id.as_deref() {
+        if next.profile_id != current.profile_id && body.open_to.is_none() {
+            next.open_to = super::profile_preferences::load(tx, profile_id).await?;
+        }
+        super::profile_preferences::save(tx, profile_id, &next.open_to).await?;
     }
     if enabling {
         next.consented_at = Some(now);

@@ -5,10 +5,12 @@ import { SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import { cn } from '@/lib/utils';
 import { NbMenuButton } from './NearbyMenu';
 import {
-  bandLabel, checkItems, NEARBY_PER_DAY, NEARBY_RANGES, NEARBY_SCORES, needEnded, needSub, OPEN_TO_CHARS, OPEN_TO_MAX, OPEN_TO_SUGGESTIONS, openToEntry, perDayLabel,
+  bandLabel, checkItems, NEARBY_PER_DAY, NEARBY_RANGES, NEARBY_SCORES, needEnded, needSub, OPEN_TO_CHARS, OPEN_TO_MAX, openToEntry, perDayLabel,
   rangePill, scorePill,
 } from './nearbyFormat';
 import { CgAvatar } from './parts';
+import { nearbyActivitySuggestions } from './nearbyActivities';
+import type { CgProfile } from './types';
 import { personTitle } from './profiles';
 import { matchingCount, type CgNearbyStore } from './storeNearby';
 import type { CgNearbyEntry, CgNearbyResults, CgNearbySettings, CgNeed } from './typesNearby';
@@ -16,31 +18,32 @@ import type { CgNearbyEntry, CgNearbyResults, CgNearbySettings, CgNeed } from '.
 const caret = <ChevronDown className="cg-nb-caret" aria-hidden="true" />;
 const same = (left: string, right: string) => left.toLowerCase() === right.toLowerCase();
 
-/** Open to: the four suggestions and typed entries; up to five on, each up to 30 characters. */
-export function NearbyOpenTo({ settings, nearby }: { settings: CgNearbySettings; nearby: CgNearbyStore }) {
+/** Activities for this card, with suggestions and custom entries. */
+export function NearbyOpenTo({ settings, nearby, profile, busy = false }: { settings: CgNearbySettings; nearby: CgNearbyStore; profile?: CgProfile; busy?: boolean }) {
   const [draft, setDraft] = useState<string | null>(null);
   const done = useRef(false);
   const openTo = settings.openTo;
-  const chips = [...OPEN_TO_SUGGESTIONS, ...openTo.filter((item) => !OPEN_TO_SUGGESTIONS.some((suggestion) => same(suggestion, item)))];
+  const suggestions = nearbyActivitySuggestions(profile);
+  const chips = [...suggestions, ...openTo.filter((item) => !suggestions.some((suggestion) => same(suggestion, item)))];
   const isOn = (chip: string) => openTo.some((item) => same(item, chip));
   const full = openTo.length >= OPEN_TO_MAX;
   const toggle = (chip: string) => {
-    if (isOn(chip)) void nearby.setOpenTo(openTo.filter((item) => !same(item, chip)));
-    else if (!full) void nearby.setOpenTo([...openTo, chip]);
+    if (isOn(chip)) void nearby.setOpenTo(openTo.filter((item) => !same(item, chip)), settings.profileId);
+    else if (!full) void nearby.setOpenTo([...openTo, chip], settings.profileId);
   };
   const finish = (value: string | null) => {
     if (done.current) return;
     done.current = true;
     setDraft(null);
     const entry = value === null ? null : openToEntry(openTo, value);
-    if (entry) void nearby.setOpenTo([...openTo, entry]);
+    if (entry) void nearby.setOpenTo([...openTo, entry], settings.profileId);
   };
   return (
     <div className="cg-panel cg-nb-chips">
       {chips.map((chip) => {
         const on = isOn(chip);
         return (
-          <button key={chip} type="button" className={cn('cg-nb-chip', on && 'is-on')} aria-pressed={on} disabled={!on && full} onClick={() => toggle(chip)}>
+          <button key={chip} type="button" className={cn('cg-nb-chip', on && 'is-on')} aria-pressed={on} disabled={busy || (!on && full)} onClick={() => toggle(chip)}>
             {on ? <Check className="h-[13px] w-[13px]" aria-hidden="true" /> : null}
             {chip}
           </button>
@@ -52,8 +55,9 @@ export function NearbyOpenTo({ settings, nearby }: { settings: CgNearbySettings;
             autoFocus
             value={draft}
             maxLength={OPEN_TO_CHARS}
-            placeholder="Open to"
-            aria-label="Open to"
+            placeholder="Activity"
+            aria-label="Activity"
+            disabled={busy}
             autoComplete="off"
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -64,7 +68,7 @@ export function NearbyOpenTo({ settings, nearby }: { settings: CgNearbySettings;
           />
         </span>
       ) : (
-        <button type="button" className="cg-nb-chip is-add" aria-label="Add" disabled={full} onClick={() => { done.current = false; setDraft(''); }}>
+        <button type="button" className="cg-nb-chip is-add" aria-label="Add activity" disabled={busy || full} onClick={() => { done.current = false; setDraft(''); }}>
           <Plus className="h-[14px] w-[14px]" aria-hidden="true" />
         </button>
       )}
