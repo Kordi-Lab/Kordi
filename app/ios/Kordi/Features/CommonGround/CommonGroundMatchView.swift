@@ -1,9 +1,9 @@
 import SwiftUI
 
 private enum CommonGroundMatchTab: String, CaseIterable, Identifiable {
+    case card = "Card"
     case shared = "Shared"
     case trade = "Trade"
-    case card = "Card"
     var id: Self { self }
 }
 
@@ -77,7 +77,7 @@ struct CommonGroundMatchingAnimation: View {
 private struct CommonGroundMatchContent: View {
     @EnvironmentObject private var model: CommonGroundModel
     let match: CommonGroundMatch
-    @State private var tab = CommonGroundMatchTab.shared
+    @State private var tab = CommonGroundMatchTab.card
     @State private var loadingCard = false
 
     var body: some View {
