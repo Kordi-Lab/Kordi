@@ -251,7 +251,10 @@ export class CgNearbyStore {
     if (await this.save('filters', filters, filters)) await this.researchIfOn();
   }
 
-  setOpenTo = async (openTo: string[]) => { await this.save('openTo', { openTo }, { openTo }); };
+  setOpenTo = async (openTo: string[], profileId = this.state.settings?.profileId) => {
+    if (this.state.busy || !profileId || profileId !== this.state.settings?.profileId) return;
+    if (!await this.save('openTo', { openTo, openToProfileId: profileId }, { openTo })) await this.loadSettings();
+  };
 
   setAlerts = async (alerts: Partial<CgNearbyAlerts>) => {
     const current = this.state.settings?.alerts;
@@ -264,7 +267,7 @@ export class CgNearbyStore {
     this.profileRevision += 1;
     this.peopleRequest += 1;
     this.set({ results: null, persons: {}, personNotices: {} });
-    const saved = await this.save('profile', { profileId }, { profileId });
+    const saved = await this.save('profile', { profileId }, { profileId, openTo: [] });
     await this.researchIfOn();
     return saved;
   }

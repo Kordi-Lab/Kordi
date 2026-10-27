@@ -111,6 +111,7 @@
   .cg-nb-chip { transition: none; }
 }
 
+.cg-nb-activity-help { margin: -8px 0 12px; color: var(--utility-muted-text); font-size: 13px; line-height: 1.5; }
 /* Keep location permission guidance readable in narrow wallet columns. */
 .cg-nb-status.cg-nb-location { flex-direction: column; align-items: flex-start; gap: 4px; }
 .cg-nb-location p { margin: 0; }

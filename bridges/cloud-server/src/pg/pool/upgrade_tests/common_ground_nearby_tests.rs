@@ -127,3 +127,29 @@ async fn upgrade_from_155_adds_common_ground_nearby() {
     assert_eq!(count(&pool, "cloud_common_ground_nearby_alerts").await, 0);
     assert_eq!(count(&pool, "cloud_common_ground_nearby").await, 1);
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_158_preserves_activities_on_the_shared_card() {
+    let pool = fixture(158).await;
+    execute(&pool, "INSERT INTO cloud_common_ground_profiles(profile_id,account_id,kind,name,position) VALUES('activities_work','fixture-owner','work','Work',0),('activities_health','fixture-owner','health','Health',1)").await;
+    execute(&pool, "INSERT INTO cloud_common_ground_nearby(account_id,profile_id,open_to_json) VALUES('fixture-owner','activities_work','[\"Hiring\"]')").await;
+    apply_migrations(&pool).await.unwrap();
+    latest_version(&pool).await;
+    let (choices,): (Value,) = query_as("SELECT open_to_json FROM cloud_common_ground_nearby_profile_preferences WHERE profile_id = 'activities_work'").fetch_one(&pool).await.unwrap();
+    assert_eq!(choices, json!(["Hiring"]));
+    assert_eq!(
+        count(&pool, "cloud_common_ground_nearby_profile_preferences").await,
+        1,
+        "Unselected cards do not inherit activity choices"
+    );
+    execute(
+        &pool,
+        "DELETE FROM cloud_common_ground_profiles WHERE profile_id = 'activities_work'",
+    )
+    .await;
+    assert_eq!(
+        count(&pool, "cloud_common_ground_nearby_profile_preferences").await,
+        0
+    );
+}

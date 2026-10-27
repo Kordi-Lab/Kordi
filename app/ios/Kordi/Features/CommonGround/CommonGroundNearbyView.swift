@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// Grounding › Pair › Nearby. Off: one line and Turn on. On: the card being
-/// shared, the location status, Open to, People, Looking for and Alerts.
+/// shared, the location status, Meet for, People, Looking for and Alerts.
 /// While it shows, the list polls (every 3 s while people are being
 /// matched, else every 30 s) and this iPhone sends its location.
 struct CommonGroundNearbyView: View {

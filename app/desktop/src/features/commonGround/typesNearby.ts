@@ -30,6 +30,7 @@ export type CgNearbySettings = {
 
 /** `PUT nearby` writes only the fields present; turning on needs `consent: true`. */
 export type CgNearbyPatch = Partial<Pick<CgNearbySettings, 'enabled' | 'profileId' | 'pausedUntil' | 'openTo' | 'range' | 'minScore'>> & {
+  openToProfileId?: string;
   consent?: boolean;
   alerts?: Partial<CgNearbyAlerts>;
 };
