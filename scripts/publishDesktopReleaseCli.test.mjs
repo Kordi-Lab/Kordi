@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import {
   assert,
   readFile,
@@ -193,4 +194,22 @@ test('S3 adapter returns object validators and exposes only conditional puts for
   assert.equal(commands[2].input.IfMatch, '"etag-v1"');
   assert.equal(commands.length, 3);
   assert.equal(store.deleteObject, undefined);
+});
+
+
+test('shared-session routing prompt passes the shipped-artifact privacy scan', async () => {
+  const source = await readFile(new URL(
+    '../app/desktop/src-tauri/src/canonical_sessions/prompt_context/background_routing.rs',
+    import.meta.url,
+  ), 'utf8');
+  const literal = source.match(/SHARED_SESSION_BACKGROUND_WORK_POLICY: &str =\s*("[^\n]+");/);
+  assert.ok(literal, 'the shipped shared-session prompt must be found');
+  const policy = JSON.parse(literal[1]);
+  assert.ok(policy.includes('Never put absolute local file paths'));
+  assert.ok(policy.includes('Name files by their file name only.'));
+  const scan = spawnSync('rg', releaseTreeScanArguments('-'), {
+    input: policy,
+    encoding: 'utf8',
+  });
+  assert.equal(scan.status, 1, 'the shipped prompt must pass the unchanged artifact privacy guard');
 });
