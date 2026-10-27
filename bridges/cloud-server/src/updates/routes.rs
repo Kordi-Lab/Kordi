@@ -19,6 +19,7 @@ mod asset;
 use asset::asset_response;
 
 const DEFAULT_PUBLIC_BASE_URL: &str = "https://kordi.ai";
+const OS_VERSION_HEADER: &str = "x-kordi-os-version";
 const IMMUTABLE_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
 
 pub fn routes(state: Arc<ServerState>) -> Router {
@@ -121,6 +122,12 @@ struct UpdateEvent<'a> {
 }
 
 fn update_event_response(mut response: Response, event: UpdateEvent<'_>) -> Response {
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+        .headers_mut()
+        .append(header::VARY, HeaderValue::from_static(OS_VERSION_HEADER));
     let safe_component = |value: &str| value.chars().take(64).collect::<String>();
     let event_json = serde_json::json!({
         "event": "desktop_update",
@@ -172,15 +179,17 @@ fn release_store(state: &ServerState) -> Result<ReleaseCatalogStore, Box<Respons
 async fn beta_update(
     State(state): State<Arc<ServerState>>,
     Path((target, arch, current_version)): Path<(String, String, String)>,
+    headers: HeaderMap,
 ) -> Response {
-    update_for_channel(state, "beta", target, arch, current_version).await
+    update_for_channel(state, "beta", target, arch, current_version, headers).await
 }
 
 async fn acceptance_update(
     State(state): State<Arc<ServerState>>,
     Path((target, arch, current_version)): Path<(String, String, String)>,
+    headers: HeaderMap,
 ) -> Response {
-    update_for_channel(state, "acceptance", target, arch, current_version).await
+    update_for_channel(state, "acceptance", target, arch, current_version, headers).await
 }
 
 async fn update_for_channel(
@@ -189,6 +198,7 @@ async fn update_for_channel(
     target: String,
     arch: String,
     current_version: String,
+    headers: HeaderMap,
 ) -> Response {
     let correlation_id = uuid::Uuid::new_v4().to_string();
     let respond = |response, outcome, release_version, asset| {
@@ -250,6 +260,23 @@ async fn update_for_channel(
             )
         }
     };
+    let mut reported_versions = headers.get_all(OS_VERSION_HEADER).iter();
+    let reported_version = reported_versions
+        .next()
+        .and_then(|value| value.to_str().ok());
+    let reported_version = if reported_versions.next().is_none() {
+        reported_version
+    } else {
+        None
+    };
+    if !asset.supports_system_version(reported_version) {
+        return respond(
+            StatusCode::NO_CONTENT.into_response(),
+            "unsupported_system_version",
+            Some(&catalog.release.version),
+            None,
+        );
+    }
     let Some(signature) = asset.signature.clone() else {
         return respond(
             unavailable(),

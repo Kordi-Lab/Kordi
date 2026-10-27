@@ -28,6 +28,7 @@ fn asset(file_name: &str, signature: Option<String>) -> ReleaseAsset {
         sha256: digest('a'),
         size_bytes: 123,
         signature,
+        minimum_system_version: None,
     }
 }
 
@@ -196,4 +197,33 @@ fn semantic_prerelease_ordering_offers_beta6_to_beta5_1_without_downgrades() {
 #[test]
 fn malformed_current_client_version_fails_closed() {
     assert!(select_update(&release(), "darwin", "aarch64", "latest").is_err());
+}
+
+#[test]
+fn optional_minimum_system_version_is_validated_only_for_updater_assets() {
+    let mut candidate = release();
+    candidate
+        .platforms
+        .get_mut("darwin-aarch64")
+        .unwrap()
+        .minimum_system_version = Some("13.0".into());
+    candidate.validate().unwrap();
+    for invalid in ["", "13", "13.x", "13.0-beta", "0.0", "13.00", "65536.0"] {
+        candidate
+            .platforms
+            .get_mut("darwin-aarch64")
+            .unwrap()
+            .minimum_system_version = Some(invalid.into());
+        assert_eq!(
+            candidate.validate(),
+            Err(super::model::MetadataError::MinimumSystemVersion),
+            "{invalid}"
+        );
+    }
+    let mut candidate = release();
+    candidate.manual.minimum_system_version = Some("13.0".into());
+    assert_eq!(
+        candidate.validate(),
+        Err(super::model::MetadataError::MinimumSystemVersion)
+    );
 }

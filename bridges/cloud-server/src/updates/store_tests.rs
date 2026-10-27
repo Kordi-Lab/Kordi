@@ -259,6 +259,7 @@ fn asset(file_name: &str, updater: bool, bytes: &[u8]) -> ReleaseAsset {
         sha256: sha256(bytes),
         size_bytes: bytes.len() as u64,
         signature: updater.then(signature),
+        minimum_system_version: None,
     }
 }
 

@@ -14,3 +14,8 @@ mod routes_test_support;
 mod routes_tests;
 #[cfg(test)]
 mod store_tests;
+
+mod system_version;
+
+#[cfg(test)]
+mod system_version_routes_tests;
