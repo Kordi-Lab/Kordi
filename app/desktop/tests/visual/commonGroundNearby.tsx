@@ -10,7 +10,7 @@ import { CommonGroundStore, type CgScreen } from '../../src/features/commonGroun
 import { saveSession } from '../../src/features/cloud/session';
 import { ContactsPage } from '../../src/kordi-app/pages';
 import type { Contact, ContactClass } from '../../src/kordi-app/types';
-import { commonGroundFixtures, initialsAvatar } from './commonGroundFixtures';
+import { commonGroundFixtures, generatedPersonAvatar } from './commonGroundFixtures';
 import '../../src/index.css';
 
 // Login-free preview of Grounding › Nearby in the real Contacts page, for comparing with the
@@ -42,7 +42,7 @@ let settings: Record<string, unknown> = {
 };
 const stranger = { contact: false, request: null, requestId: null, conversationId: null };
 const nearbyPerson = (accountId: string, name: string, kind: string, profileName: string) => (
-  { accountId, name, avatarUrl: initialsAvatar(name, theme), profile: { profileId: `cgp_${accountId}`, kind, name: profileName } }
+  { accountId, name, avatarUrl: generatedPersonAvatar(accountId), profile: { profileId: `cgp_${accountId}`, kind, name: profileName } }
 );
 const founding = { needId: 'cgn_1', text: 'Someone founding a startup' };
 const entry = (person: ReturnType<typeof nearbyPerson>, maxMeters: number, score: number, headline: string, requests: unknown[] = []) => ({
@@ -137,7 +137,7 @@ const CONTACTS: Contact[] = ['Hana Sato', 'Ines Wolf', 'Rafa Mendes'].map((name)
   return {
     id: `cloud:${id}`, name, initials: name.split(' ').map((part) => part[0]).join(''), classType: 'other-users', entityType: 'user',
     subtitle: 'Kordi account', collaborationSources: ['Cloud'], status: 'Available', discoverableOn: [], detail: '', owner: name,
-    sourceHostId: 'cloud', sourceParticipantId: id, avatarSeed: id, profileImageUrl: initialsAvatar(name, theme),
+    sourceHostId: 'cloud', sourceParticipantId: id, avatarSeed: id, profileImageUrl: generatedPersonAvatar(id),
   };
 });
 

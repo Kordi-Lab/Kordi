@@ -12,7 +12,7 @@ import { CommonGroundStore, type CgScreen } from '../../src/features/commonGroun
 import { saveSession } from '../../src/features/cloud/session';
 import { ContactsPage } from '../../src/kordi-app/pages';
 import type { Contact, ContactClass } from '../../src/kordi-app/types';
-import { commonGroundFixtures, initialsAvatar } from './commonGroundFixtures';
+import { commonGroundFixtures, generatedPersonAvatar } from './commonGroundFixtures';
 import '../../src/index.css';
 
 // Login-free preview of Common ground in the real Contacts page. A fetch stub answers the
@@ -115,7 +115,7 @@ const CONTACTS: Contact[] = ['Maya Chen', 'Hana Sato', 'Ines Wolf', 'Rafa Mendes
   return {
     id: `cloud:${id}`, name, initials: name.split(' ').map((part) => part[0]).join(''), classType: 'other-users', entityType: 'user',
     subtitle: 'Kordi account', collaborationSources: ['Cloud'], status: 'Available', discoverableOn: [], detail: '', owner: name,
-    sourceHostId: 'cloud', sourceParticipantId: id, avatarSeed: id, profileImageUrl: initialsAvatar(name, theme),
+    sourceHostId: 'cloud', sourceParticipantId: id, avatarSeed: id, profileImageUrl: generatedPersonAvatar(id),
   };
 });
 
