@@ -1,3 +1,4 @@
+import { assertVersionParity } from './desktop-release-version-parity.mjs';
 import { checkMacOSRuntimeMinimum, versionParts } from '../check-macos-runtime-minimum.mjs';
 import {
   createHash,
@@ -884,43 +885,6 @@ function requireRun(run, command, args, message, options) {
   return result;
 }
 
-function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-async function assertVersionParity(repoRoot, version) {
-  const desktopRoot = join(repoRoot, 'app', 'desktop');
-  const [pkg, packageLock, tauri, cloudTauri, cargoToml, cargoLock, workspaceLock, releaseTest] = await Promise.all([
-    readFile(join(desktopRoot, 'package.json'), 'utf8').then(JSON.parse),
-    readFile(join(desktopRoot, 'package-lock.json'), 'utf8').then(JSON.parse),
-    readFile(join(desktopRoot, 'src-tauri', 'tauri.conf.json'), 'utf8').then(JSON.parse),
-    readFile(join(desktopRoot, 'src-tauri', 'tauri.cloud.conf.json'), 'utf8').then(JSON.parse),
-    readFile(join(desktopRoot, 'src-tauri', 'Cargo.toml'), 'utf8'),
-    readFile(join(desktopRoot, 'src-tauri', 'Cargo.lock'), 'utf8'),
-    readFile(join(repoRoot, 'Cargo.lock'), 'utf8'),
-    readFile(join(desktopRoot, 'tests', 'releaseVersion.test.mjs'), 'utf8'),
-  ]);
-  const escaped = escapeRegex(version);
-  const releaseName = `V${version.replace(/-beta\./, '.beta')}`;
-  const cargoPattern = new RegExp(`name = "kordi-desktop"\\nversion = "${escaped}"`);
-  const checks = [
-    [pkg.version === version, 'desktop package'],
-    [packageLock.version === version && packageLock.packages?.['']?.version === version, 'desktop package lock'],
-    [tauri.version === version, 'Tauri configuration'],
-    [tauri.plugins?.updater?.pubkey === TAURI_UPDATER_PUBLIC_KEY, 'Tauri updater public key'],
-    [JSON.stringify(tauri.plugins?.updater?.endpoints) === JSON.stringify([
-      'https://kordi.ai/updates/desktop/{{target}}/{{arch}}/{{current_version}}',
-    ]), 'Tauri updater endpoint'],
-    [cloudTauri.version === undefined || cloudTauri.version === version, 'Cloud Tauri configuration'],
-    [cargoPattern.test(cargoToml), 'desktop Cargo manifest'],
-    [cargoPattern.test(cargoLock), 'desktop Cargo lock'],
-    [cargoPattern.test(workspaceLock), 'workspace Cargo lock'],
-    [releaseTest.includes(`const releaseName = '${releaseName}'`) && releaseTest.includes(`const appVersion = '${version}'`), 'release contract test'],
-  ];
-  const failed = checks.find(([ok]) => !ok);
-  if (failed) throw new Error(`${failed[1]} does not match release version ${version}`);
-}
-
 async function assertAcceptanceConfigParity(repoRoot) {
   const tauriRoot = join(repoRoot, 'app', 'desktop', 'src-tauri');
   const [target, bootstrap] = await Promise.all([
@@ -1052,7 +1016,7 @@ function createArtifactVerifier({
       if (status.stdout.trim()) throw new Error('Release worktree must be clean');
       const head = requireRun(run, 'git', ['rev-parse', 'HEAD'], 'Unable to read release commit', { cwd: repoRoot }).stdout.trim();
       if (head !== input.expectedCommit) throw new Error('Current commit does not match expected release commit');
-      await assertVersionParity(repoRoot, input.version);
+      await assertVersionParity(repoRoot, input.version, TAURI_UPDATER_PUBLIC_KEY);
       const tauri = JSON.parse(await readFile(join(repoRoot, 'app/desktop/src-tauri/tauri.conf.json'), 'utf8'));
       const minimumSystemVersion = tauri.bundle?.macOS?.minimumSystemVersion;
       versionParts(minimumSystemVersion);
