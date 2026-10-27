@@ -183,6 +183,28 @@ func renamedAgentProfileWinsOverHistoricalSessionLabels(isOwner: Bool) throws {
 }
 
 final class CloudConversationCatalogTests: XCTestCase {
+    func testCardOnlyPlanUpdatesDirectAndGroupConversationPreviews() throws {
+        let card = try JSONDecoder().decode(PlanCard.self, from: Data(#"{"eventId":"plan-preview","revision":2,"state":"confirmed","title":"Coffee with Maya","view":"event"}"#.utf8))
+        let directID = directPersonSessionId("acct_me", "acct_maya")
+        let groupID = "session:group:plan-preview"
+        var direct = wire(id: "direct-plan", body: "", sessionId: directID, createdAt: "2026-10-26T10:00:00Z",
+            from: "acct_maya", to: "acct_me", messageKind: KordiSystemIdentity.messageKind)
+        direct.planCard = card
+        var group = wire(id: "group-plan", body: "", sessionId: groupID, createdAt: "2026-10-26T10:01:00Z",
+            from: "acct_maya", to: "acct_me", messageKind: KordiSystemIdentity.messageKind)
+        group.planCard = card
+        let catalog = CloudConversationCatalog.build(account: account, contacts: [contact], ownedAgents: [], sharedAgents: [],
+            messagesByPeer: ["acct_maya": [direct, group]], canonicalConversations: [
+                canonicalConversation(id: groupID, kind: "group", sessionId: groupID, latestSequence: 1,
+                    lastReadSequence: 0, sharedTitle: "Friends")
+            ])
+        for sessionID in [directID, groupID] {
+            let conversation = try XCTUnwrap(catalog.first { $0.sessionId == sessionID })
+            XCTAssertEqual(conversation.lastMessage, "Plan confirmed: Coffee with Maya")
+            XCTAssertEqual(conversation.previewText, "Plan confirmed: Coffee with Maya")
+        }
+    }
+
     func testGroupPreviewUsesCanonicalSequenceWhenEmbeddedTimesTie() throws {
         let sessionId = "session:group:sequence-preview"
         let participants = [

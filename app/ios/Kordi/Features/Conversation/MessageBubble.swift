@@ -1155,6 +1155,7 @@ struct MessageBubble: View, Equatable {
             && !groupedWithNext
             && !usesBorderlessImageSurface
             && !usesDetachedImageGroup
+            && !usesStandalonePlanCard
     }
 
     private var bubbleTailAlignment: Alignment {
